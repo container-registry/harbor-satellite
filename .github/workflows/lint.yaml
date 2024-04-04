@@ -5,11 +5,11 @@ on:
       - main
     types: [submitted]
     paths:
-      - '**.go'
+      - '**/*.go'
   # Add manual trigger for easier testing
   workflow_dispatch:
 jobs:
-  lint-and-test:
+  lint:
     if: github.event.review.state == 'APPROVED'
     runs-on: ubuntu-latest
     steps:
