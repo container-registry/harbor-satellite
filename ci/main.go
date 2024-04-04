@@ -27,6 +27,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	// TEST
 	// print output
 	slog.Info("Hello from Dagger!", "version", version)
 }
