@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"container-registry.com/harbor-satelite/internal/satellite"
 	"golang.org/x/sync/errgroup"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"container-registry.com/harbor-satelite/internal/satellite"
 )
 
 func main() {
@@ -25,7 +25,7 @@ func main() {
 		os.Exit(1)
 	}
 }
-
+// TEST
 func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
