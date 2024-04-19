@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"container-registry.com/harbor-satelite/internal/satellite"
-	"golang.org/x/sync/errgroup"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/sync/errgroup"
+
+	"container-registry.com/harbor-satelite/internal/satellite"
 )
 
 func main() {
