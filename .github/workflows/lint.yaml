@@ -7,7 +7,7 @@ on:
 jobs:
   lint:
     # the ON keyword is ANY not AND for conditions. Need to work around with labelling for PRs. 
-    if: github.event.label.name == 'golang' && github.event.review.state == 'approved'
+    if: ${{ github.event.label.name == 'golang' }} && github.event.review.state == 'approved'
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
