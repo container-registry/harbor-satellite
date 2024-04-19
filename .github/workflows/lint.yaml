@@ -6,7 +6,7 @@ on:
     types: [submitted]
 jobs:
   lint:
-    # the ON keyword is ANY not AND for conditions. Need to work around with labelling for PRs. 
+    # the ON keyword is ANY not AND for conditions regarding path. Need to work around with labelling for PRs. 
     if: contains(github.event.pull_request.labels.*.name, 'golang') && github.event.review.state == 'approved'
     runs-on: ubuntu-latest
     steps:

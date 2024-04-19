@@ -26,7 +26,6 @@ func main() {
 	}
 }
 
-// TEST AGAIN
 func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
