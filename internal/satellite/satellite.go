@@ -2,6 +2,7 @@ package satellite
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"container-registry.com/harbor-satelite/internal/replicate"
@@ -13,8 +14,16 @@ type Satellite struct {
 	replicator replicate.Replicator
 }
 
+func NewSatellite(storer store.Storer, replicator replicate.Replicator) *Satellite {
+	return &Satellite{
+		storer:     storer,
+		replicator: replicator,
+	}
+}
+
 func (s *Satellite) Run(ctx context.Context) error {
-	ticker := time.NewTicker(5 * time.Minute)
+	// Temporarily set to faster tick rate for testing purposes
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -32,5 +41,6 @@ func (s *Satellite) Run(ctx context.Context) error {
 				}
 			}
 		}
+		fmt.Print("--------------------------------\n")
 	}
 }

@@ -11,7 +11,9 @@ import (
 	"syscall"
 	"time"
 
+	"container-registry.com/harbor-satelite/internal/replicate"
 	"container-registry.com/harbor-satelite/internal/satellite"
+	"container-registry.com/harbor-satelite/internal/store"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -59,7 +61,17 @@ func run() error {
 		return metricsSrv.Shutdown(shutdownCtx)
 	})
 
-	s := satellite.Satellite{}
+	// Instantiate a new Satellite and its components
+	storer := store.NewInMemoryStore()
+	replicator := replicate.NewReplicator()
+	s := satellite.NewSatellite(storer, replicator)
+
+	// Run the Satellite
+	if err := s.Run(ctx); err != nil {
+		fmt.Println("Error running satellite:", err)
+		os.Exit(1)
+	}
+
 	g.Go(func() error {
 		return s.Run(ctx)
 	})
