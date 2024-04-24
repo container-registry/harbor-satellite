@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -61,8 +62,30 @@ func run() error {
 		return metricsSrv.Shutdown(shutdownCtx)
 	})
 
+	// Prompt the user to choose between remote and file fetcher
+	fmt.Println("Choose an image list fetcher:")
+	fmt.Println("1. Remote")
+	fmt.Println("2. File")
+	fmt.Print("Enter your choice (1 or 2): ")
+
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read user input: %w", err)
+	}
+
+	var fetcher store.ImageFetcher
+	switch input {
+	case "1\n":
+		fetcher = store.RemoteImageListFetcher()
+	case "2\n":
+		fetcher = store.FileImageListFetcher()
+	default:
+		return fmt.Errorf("invalid choice")
+	}
+
 	// Instantiate a new Satellite and its components
-	storer := store.NewInMemoryStore()
+	storer := store.NewInMemoryStore(fetcher)
 	replicator := replicate.NewReplicator()
 	s := satellite.NewSatellite(storer, replicator)
 
@@ -76,7 +99,7 @@ func run() error {
 		return s.Run(ctx)
 	})
 
-	err := g.Wait()
+	err = g.Wait()
 	if err != nil {
 		return err
 	}
