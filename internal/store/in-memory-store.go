@@ -53,28 +53,32 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 		fmt.Println("Adding fetched images and hash to the local store...")
 		s.Add(ctx, remoteHash, imageList)
 	} else {
-		fmt.Println("Local store is not empty. Fetching images from external source...")
+		fmt.Println("Checking for changes in remote source...")
 
-		imageList, err := s.fetcher.List(ctx)
-		if err != nil {
-			return nil, err
-		}
-
+		// Fetch the remote hash
 		remoteHash, err := s.fetcher.GetHash(ctx)
 		if err != nil {
 			return nil, err
 		}
 
+		// Fetch the local hash
 		localHash, err := s.GetLocalHash(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		// If the local and remote hashes are not equal, add the new images to the store
+		// If the local and remote hashes are not equal, clear the store and add incoming images
 		if !areImagesEqual(localHash, remoteHash) {
-			fmt.Println("Local and remote hashes are not equal. Updating the local store with new images...")
+			fmt.Println("WARNING : Local and remote hashes are not equal. Updating the local store with new images...")
+			fmt.Println("Old Store :", s.images)
+
+			imageList, err := s.fetcher.List(ctx)
+			if err != nil {
+				return nil, err
+			}
 			s.Remove(ctx, "")
 			s.Add(ctx, remoteHash, imageList)
+			fmt.Println("New Store :", s.images)
 		} else {
 			fmt.Println("Local and remote hashes are equal. No update needed.")
 		}
@@ -88,7 +92,6 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 
 func (s *inMemoryStore) Add(ctx context.Context, hash string, imageList []Image) error {
 	s.images[hash] = imageList
-	fmt.Println("Images and hash added to the store:", s.images)
 	return nil
 }
 
@@ -106,8 +109,6 @@ func (s *inMemoryStore) Remove(ctx context.Context, hash string) error {
 }
 
 func areImagesEqual(localHash string, remoteHash string) bool {
-	fmt.Println("Local hash:", localHash)
-	fmt.Println("Remote hash:", remoteHash)
 	return localHash == remoteHash
 }
 
