@@ -1,0 +1,19 @@
+{
+ "results": [
+    {
+      "name": "alpine:3.1"
+    },
+    {
+      "name": "alpine:3.2"
+    },
+    {
+      "name": "alpine:3.3"
+    },
+    {
+      "name": "ubuntu:latest"
+    },
+    {
+      "name": "nginx:1.19"
+    }
+ ]
+}

@@ -8,23 +8,24 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 )
 
 type RemoteImageList struct {
-	BaseURL    string
-	Repository string
+	BaseURL string
 }
 
-func RemoteImageListFetcher() *RemoteImageList {
+func RemoteImageListFetcher(url string) *RemoteImageList {
 	return &RemoteImageList{
-		BaseURL:    "https://registry.hub.docker.com/v2/repositories",
-		Repository: "alpine",
+		BaseURL: url,
 	}
 }
 
 func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
-	url := fmt.Sprintf("%s/%s/", client.BaseURL, client.Repository)
-	resp, err := http.Get(url)
+	// Extract the last segment of the BaseURL to use as the image name
+	lastSegment := path.Base(client.BaseURL)
+	fmt.Println("Last segment:", lastSegment)
+	resp, err := http.Get(client.BaseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +54,7 @@ func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
 	images := make([]Image, len(data.Results))
 	for i, result := range data.Results {
 		images[i] = Image{
-			Reference: fmt.Sprintf("%s:%s", client.Repository, result.Name),
+			Reference: fmt.Sprintf("%s:%s", lastSegment, result.Name),
 		}
 	}
 	fmt.Println("Fetched", len(images), "images :", images)
@@ -62,9 +63,7 @@ func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
 }
 
 func (client *RemoteImageList) GetHash(ctx context.Context) (string, error) {
-	url := fmt.Sprintf("%s/%s/", client.BaseURL, client.Repository)
-	fmt.Println("Source :", url)
-	resp, err := http.Get(url)
+	resp, err := http.Get(client.BaseURL)
 	if err != nil {
 		return "", err
 	}
