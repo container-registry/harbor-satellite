@@ -2,8 +2,7 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"errors"
 	"fmt"
 )
 
@@ -11,102 +10,112 @@ type Image struct {
 	Reference string
 }
 
+type inMemoryStore struct {
+	images  map[string][]Image
+	fetcher ImageFetcher
+}
+
 type Storer interface {
 	List(ctx context.Context) ([]Image, error)
-	Add(ctx context.Context, img Image) error
-	Remove(ctx context.Context, ref string) error
+	Add(ctx context.Context, hash string, imageList []Image) error
+	Remove(ctx context.Context, hash string) error
 }
 
 type ImageFetcher interface {
 	List(ctx context.Context) ([]Image, error)
-}
-
-type inMemoryStore struct {
-	images  map[string]Image
-	fetcher ImageFetcher
+	GetHash(ctx context.Context) (string, error)
 }
 
 func NewInMemoryStore(fetcher ImageFetcher) Storer {
 	return &inMemoryStore{
-		images:  make(map[string]Image),
+		images:  make(map[string][]Image),
 		fetcher: fetcher,
 	}
 }
 
 func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
-	fetchedImages, err := s.fetcher.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var images []Image
-	for _, img := range s.images {
-		images = append(images, img)
-	}
+	// Check if the local store is empty
+	if len(s.images) == 0 {
+		fmt.Println("Local store is empty. Fetching images from the remote source...")
+		// Fetch images from the remote source
+		imageList, err := s.fetcher.List(ctx)
+		if err != nil {
+			return nil, err
+		}
 
-	// Check if the fetched images are the same as the locally stored images
-	if len(images) == 0 || !areImagesEqual(images, fetchedImages) {
-		// If the local store is empty or the images are different, update the local store
-		fmt.Println("Updating local store with new images...")
-		for k := range s.images {
-			fmt.Println("Deleting image:", k)
-			s.Remove(ctx, k) // Clear the local store
+		// Fetch the remote hash
+		remoteHash, err := s.fetcher.GetHash(ctx)
+		if err != nil {
+			return nil, err
 		}
-		for _, img := range fetchedImages {
-			fmt.Println("Adding image:", img)
-			s.Add(ctx, img) // Add the new images to the local store
-		}
-		// Reload images from the store
-		for _, img := range s.images {
-			images = append(images, img)
-		}
-		fmt.Println("Images after update:", images)
+
+		// Add the fetched images and hash to the local store
+		fmt.Println("Adding fetched images and hash to the local store...")
+		s.Add(ctx, remoteHash, imageList)
 	} else {
-		// If the images are the same, inform the user
-		fmt.Println("Images present in store are up to date.")
-	}
-	return fetchedImages, nil
-}
+		fmt.Println("Local store is not empty. Fetching images from external source...")
 
-func (s *inMemoryStore) Add(ctx context.Context, img Image) error {
-	s.images[img.Reference] = img
-	return nil
-}
+		imageList, err := s.fetcher.List(ctx)
+		if err != nil {
+			return nil, err
+		}
 
-func (s *inMemoryStore) Remove(ctx context.Context, ref string) error {
-	delete(s.images, ref)
-	return nil
-}
+		remoteHash, err := s.fetcher.GetHash(ctx)
+		if err != nil {
+			return nil, err
+		}
 
-func areImagesEqual(localImages, fetchedImages []Image) bool {
-	hashMap1 := make(map[string]Image)
-	hashMap2 := make(map[string]Image)
+		localHash, err := s.GetLocalHash(ctx)
+		if err != nil {
+			return nil, err
+		}
 
-	for _, img := range localImages {
-		hash := img.Hash()
-		hashMap1[hash] = img
-		fmt.Printf("localImages Hash: %s\n", hash)
-	}
-
-	for _, img := range fetchedImages {
-		hash := img.Hash()
-		hashMap2[hash] = img
-		fmt.Printf("fetchedImages Hash: %s\n", hash)
-	}
-
-	if len(hashMap1) != len(hashMap2) {
-		return false
-	}
-
-	for k, v := range hashMap1 {
-		if v2, ok := hashMap2[k]; !ok || v != v2 {
-			return false
+		// If the local and remote hashes are not equal, add the new images to the store
+		if !areImagesEqual(localHash, remoteHash) {
+			fmt.Println("Local and remote hashes are not equal. Updating the local store with new images...")
+			s.Remove(ctx, "")
+			s.Add(ctx, remoteHash, imageList)
+		} else {
+			fmt.Println("Local and remote hashes are equal. No update needed.")
 		}
 	}
-
-	return true
+	var allImages []Image
+	for _, images := range s.images {
+		allImages = append(allImages, images...)
+	}
+	return allImages, nil
 }
 
-func (img Image) Hash() string {
-	hash := sha256.Sum256([]byte(img.Reference))
-	return hex.EncodeToString(hash[:])
+func (s *inMemoryStore) Add(ctx context.Context, hash string, imageList []Image) error {
+	s.images[hash] = imageList
+	fmt.Println("Images and hash added to the store:", s.images)
+	return nil
+}
+
+// Remove images from the store based on the provided hash
+// If no hash is provided, it clears the entire store
+func (s *inMemoryStore) Remove(ctx context.Context, hash string) error {
+	if hash == "" {
+		s.images = make(map[string][]Image)
+		fmt.Println("Store cleared.")
+	} else {
+		fmt.Println("Removing images with hash:", hash)
+		delete(s.images, hash)
+	}
+	return nil
+}
+
+func areImagesEqual(localHash string, remoteHash string) bool {
+	fmt.Println("Local hash:", localHash)
+	fmt.Println("Remote hash:", remoteHash)
+	return localHash == remoteHash
+}
+
+func (s *inMemoryStore) GetLocalHash(ctx context.Context) (string, error) {
+	for hash, images := range s.images {
+		if len(images) > 0 {
+			return hash, nil
+		}
+	}
+	return "", errors.New("no hash found in the local store")
 }

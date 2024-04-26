@@ -19,9 +19,14 @@ func RemoteImageListFetcher() *RemoteImageList {
 func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
 	// Placeholder for fetching images from a remote registry
 	images := []Image{
-		{Reference: "alpine:3.1"},
-		{Reference: "alpine:3.2"},
-		{Reference: "alpine:3.3"},
+		{"alpine:3.11"},
+		{"alpine:3.12"},
+		{"alpine:3.13"},
 	}
 	return images, nil
+}
+
+func (client *RemoteImageList) GetHash(ctx context.Context) (string, error) {
+	// Placeholder for fetching image hash from a remote registry
+	return "hash123", nil
 }
