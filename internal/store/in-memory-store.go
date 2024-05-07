@@ -114,7 +114,7 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 
 		}
 
-		// Create imageMap filled with all images from imageList
+		// Create imageMap filled with all images from remote imageList
 		imageMap := make(map[string]bool)
 		for _, img := range imageList {
 			imageMap[img.Reference] = true
@@ -123,14 +123,13 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 		// Iterate over in memory store and remove any image that is not found in imageMap
 		for digest, image := range s.images {
 			if _, exists := imageMap[image]; !exists {
-				// The image does not exist in imageList, so remove it from the store
 				s.Remove(ctx, digest, image)
 			}
 		}
 
 	}
 
-	// Print out the entire store
+	// Print out the entire store for debugging purposes
 	fmt.Println("Current store:")
 	for digest, imageRef := range s.images {
 		fmt.Printf("Digest: %s, Image: %s\n", digest, imageRef)
