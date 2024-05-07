@@ -1,19 +1,19 @@
 {
- "results": [
+ "images": [
     {
-      "name": "alpine:3.1"
+      "name": "album-server:album2.1.0",
+      "digest": "sha256:74b3ab50ecaf1765d8066221fbcbbbb2df5f2fe898f7d25c480db4fb6ac2effd",
+      "repositoryUrl": "https://demo.goharbor.io/v2/myproject"
     },
     {
-      "name": "alpine:3.2"
+      "name": "album-server:latest",
+      "digest": "sha256:0d420809e7f6edca49a308d0233534991aebce5f54ebb3f97ee87dff8b62b701",
+      "repositoryUrl": "https://demo.goharbor.io/v2/myproject"
     },
     {
-      "name": "alpine:3.3"
-    },
-    {
-      "name": "ubuntu:latest"
-    },
-    {
-      "name": "nginx:1.19"
+      "name": "album-server:zot-linux-arm64",
+      "digest": "sha256:671b2e3cdcf32a36335949845fa22883daaeced02082595e71df71ee64eae30f",
+      "repositoryUrl": "https://demo.goharbor.io/v2/myproject"
     }
- ]
+  ]
 }

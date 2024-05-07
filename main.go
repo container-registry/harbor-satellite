@@ -67,11 +67,12 @@ func run() error {
 
 	var fetcher store.ImageFetcher
 	for {
-		fmt.Print("Enter the source (URL or relative file path): ")
+		fmt.Print("Enter the source (Repository URL or relative file path): ")
 
 		// For testing purposes :
-		// https://registry.hub.docker.com/v2/repositories/alpine
-		// /image-list/images.json
+		// https://demo.goharbor.io/v2/<project_name>/<repo_name>
+		// https://demo.goharbor.io/v2/myproject/album-server
+		// Local file path : /image-list/images.json
 
 		reader := bufio.NewReader(os.Stdin)
 		input, err := reader.ReadString('\n')

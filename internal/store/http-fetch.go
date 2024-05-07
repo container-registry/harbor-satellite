@@ -2,17 +2,23 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"path"
+	"os"
+
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 type RemoteImageList struct {
 	BaseURL string
+}
+
+type TagListResponse struct {
+	Name string   `json:"name"`
+	Tags []string `json:"tags"`
 }
 
 func RemoteImageListFetcher(url string) *RemoteImageList {
@@ -21,66 +27,107 @@ func RemoteImageListFetcher(url string) *RemoteImageList {
 	}
 }
 
+func (r *RemoteImageList) Type() string {
+	return "Remote"
+}
+
 func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
-	// Extract the last segment of the BaseURL to use as the image name
-	lastSegment := path.Base(client.BaseURL)
-	fmt.Println("Last segment:", lastSegment)
-	resp, err := http.Get(client.BaseURL)
+	// Construct the URL for fetching tags
+	url := client.BaseURL + "/tags/list"
+
+	// Encode credentials for Basic Authentication
+	username := os.Getenv("HARBOR_USERNAME")
+	password := os.Getenv("HARBOR_PASSWORD")
+	auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+
+	// Create a new HTTP request
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set the Authorization header
+	req.Header.Set("Authorization", "Basic "+auth)
+
+	// Send the request
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch tags: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch images: %s", resp.Status)
-	}
-
+	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	var data struct {
-		Results []struct {
-			Name string `json:"name"`
-		} `json:"results"`
+	// Unmarshal the JSON response
+	var tagListResponse TagListResponse
+	if err := json.Unmarshal(body, &tagListResponse); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON response: %w", err)
 	}
 
-	err = json.Unmarshal(body, &data)
-	if err != nil {
-		return nil, err
-	}
+	// Prepare a slice to store the images
+	var images []Image
 
-	images := make([]Image, len(data.Results))
-	for i, result := range data.Results {
-		images[i] = Image{
-			Reference: fmt.Sprintf("%s:%s", lastSegment, result.Name),
-		}
+	// Iterate over the tags and construct the image references
+	for _, tag := range tagListResponse.Tags {
+		images = append(images, Image{
+			Reference: fmt.Sprintf("%s:%s", tagListResponse.Name, tag),
+		})
 	}
 	fmt.Println("Fetched", len(images), "images :", images)
-
 	return images, nil
 }
 
-func (client *RemoteImageList) GetHash(ctx context.Context) (string, error) {
-	resp, err := http.Get(client.BaseURL)
+func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (string, error) {
+	// Construct the URL for fetching the manifest
+	url := client.BaseURL + "/manifests/" + tag
+
+	// Encode credentials for Basic Authentication
+	username := os.Getenv("HARBOR_USERNAME")
+	password := os.Getenv("HARBOR_PASSWORD")
+	auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+
+	// Create a new HTTP request
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set the Authorization header
+	req.Header.Set("Authorization", "Basic "+auth)
+
+	// Send the request
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch manifest: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to fetch images: %s", resp.Status)
-	}
-
+	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Hash and return the body
-	hash := sha256.Sum256(body)
-	hashString := hex.EncodeToString(hash[:])
+	// Unmarshal the JSON response
+	var manifestResponse v1.Manifest
+	if err := json.Unmarshal(body, &manifestResponse); err != nil {
+		return "", fmt.Errorf("failed to unmarshal JSON response: %w", err)
+	}
 
-	return hashString, nil
+	// Return the digest from the config section of the response
+	return string(manifestResponse.Config.Digest), nil
+}
+
+func (client *RemoteImageList) GetTag(ctx context.Context, digest string) (string, error) {
+	return "", fmt.Errorf("not implemented yet")
+}
+
+func (client *RemoteImageList) ListDigests(ctx context.Context) ([]string, error) {
+	return nil, fmt.Errorf("not implemented yet")
 }
