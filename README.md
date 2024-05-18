@@ -61,8 +61,10 @@ In a highly dynamic environment where the remote registry operator or edge consu
 
 
 ## Development
-The project is currently in active development. If you are interested in participating or using the product, reach out.
+
+The project is currently in active development. If you are interested in participating or using the product, [reach out](https://container-registry.com/contact/).
 
 ## Community, Discussion, Contribution, and Support
+
 You can reach the Harbor community and developers via the following channels:
 - [#harbor-satellite on CNCF Slack ](https://cloud-native.slack.com/archives/C06NE6EJBU1)
