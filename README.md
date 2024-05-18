@@ -36,28 +36,28 @@ Harbor Satellite, at its most basic, will run in a single container and will be 
 - **OCI Registry** : Is an embedded registry responsible for storing required OCI artifacts locally.
 - **Ground Control** : Is a component of Harbor and is responsible for serving a constructed list of images that need to be present on this edge location.
 
-![Basic Harbor Satellite Diagram](../docs/images/harbor-satellite-overview.svg)
+![Basic Harbor Satellite Diagram](docs/images/harbor-satellite-overview.svg)
 
 
 ### Replicating From a Remote Registry to the Edge Registry
 
 In this use case, the stateless satellite component will handle pulling images from a remote registry and then pushing them to the local OCI registry. This local registry will then be accessible to other local edge devices, who can pull required images directly from it.
 
-![Use Case #1](../docs/images/satellite_use_case_1.svg)
+![Use Case #1](docs/images/satellite_use_case_1.svg)
 
 ### Replicating From a Remote Registry to an Edge Kubernetes Registry
 
 The stateless satellite component sends pull instructions to Spegel instances running on each Kubernetes node. The node container runtime will then directly pull images from a remote registry to its internal store. Building on Spegel images are now available for other local nodes, removing the need for each of them to individually pull an image from a remote registry.
 This use case only works in Kubernetes environments, the major advantage of such a setup compared to use case #1 is that it allows to operate a stateful registry on a stateless cluster.  The only dependency satellite has is on spegel.
 
-![Use Case #1](../docs/images/satellite_use_case_2.svg)
+![Use Case #1](docs/images/satellite_use_case_2.svg)
 
 
 ### Proxying From a Remote Registry Over to the Edge Registry
 The stateless satellite component will be responsible for configuring the local OCI registry running in proxy mode and the configuration of the container runtime. This local registry is handing, image pulls from the remote registry and serving them up for use by local edge devices.  
 In a highly dynamic environment where the remote registry operator or edge consumer cannot produce a list of images that need to be present on edge. the Satellite can also act as a remote proxy for edge devices. This ensures the availability of necessary images without the need for a pre-compiled list of images.
 
-![Use Case #1](../docs/images/satellite_use_case_3.svg)
+![Use Case #1](docs/images/satellite_use_case_3.svg)
 
 
 ## Development
