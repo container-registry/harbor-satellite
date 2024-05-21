@@ -66,7 +66,6 @@ func (client *FileImageList) List(ctx context.Context) ([]Image, error) {
 		for _, image := range repo.Images {
 			// Add each "name" value to the images slice
 			images = append(images, Image{Name: image.Name})
-			fmt.Println(image.Name)
 		}
 	}
 

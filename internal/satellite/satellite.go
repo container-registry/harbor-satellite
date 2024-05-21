@@ -73,7 +73,6 @@ func (s *Satellite) StartZotRegistry() error {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	fmt.Println("Command:", cmd.String())
 
 	err = cmd.Start()
 	if err != nil {

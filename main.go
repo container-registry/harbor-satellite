@@ -125,22 +125,15 @@ func run() error {
 
 			// Split the host and path
 			hostParts := strings.Split(hostAndPath, "/")
-			if len(hostParts) < 2 {
-				fmt.Println("Invalid URL format")
-			}
 
 			// Set useful environment variables
 			host := hostParts[0]
-			fmt.Println("Host:", host)
 			os.Setenv("HOST", host)
 			apiVersion := hostParts[1]
-			fmt.Println("API Version:", apiVersion)
 			os.Setenv("API_VERSION", apiVersion)
 			registry := hostParts[2]
-			fmt.Println("Registry:", registry)
 			os.Setenv("REGISTRY", registry)
 			repository := hostParts[3]
-			fmt.Println("Repository:", repository)
 			os.Setenv("REPOSITORY", repository)
 
 		}

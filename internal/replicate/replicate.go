@@ -42,6 +42,8 @@ func (r *BasicReplicator) Replicate(ctx context.Context, image string) error {
 	// Probably use crane.Catalog to get a list of images in the local registry and compare to incoming image list
 
 	source := getPullSource(image)
+	fmt.Println("Source:", source)
+
 	if source != "" {
 		CopyImage(source)
 	}
@@ -51,7 +53,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, image string) error {
 func getPullSource(image string) string {
 	input := os.Getenv("USER_INPUT")
 	if os.Getenv("SCHEME") == "https://" {
-		url := os.Getenv("HOST") + "/" + os.Getenv("REGISTRY") + "/" + os.Getenv("REPOSITORY") + "/" + image
+		url := os.Getenv("HOST") + "/" + os.Getenv("REGISTRY") + "/" + image
 		return url
 	} else {
 		registryInfo, err := getFileInfo(input)
