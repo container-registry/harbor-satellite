@@ -1,0 +1,40 @@
+{
+    "distSpecVersion": "1.1.0",
+    "storage": {
+        "rootDirectory": "/tmp/zot"
+    },
+    "http": {
+        "address": "127.0.0.1",
+        "port": "8585",
+        "accessControl": {
+            "repositories": {
+                "**": {
+                    "anonymousPolicy": [
+                        "read",
+                        "create"
+                    ]
+                },
+                "tmp/**": {
+                    "anonymousPolicy": [
+                        "read",
+                        "create",
+                        "update"
+                    ]
+                },
+                "infra/**": {
+                    "anonymousPolicy": [
+                        "read"
+                    ]
+                },
+                "repos2/repo": {
+                    "anonymousPolicy": [
+                        "read"
+                    ]
+                }
+            }
+        }
+    },
+    "log": {
+        "level": "info"
+    }
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -22,6 +23,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -70,7 +73,6 @@ func run() error {
 		fmt.Print("Enter the source (Repository URL or relative file path): ")
 
 		// For testing purposes :
-		// https://demo.goharbor.io/v2/<project_name>/<repo_name>
 		// https://demo.goharbor.io/v2/myproject/album-server
 		// Local file path : /image-list/images.json
 
@@ -109,12 +111,45 @@ func run() error {
 			}
 			fmt.Println("Input is a valid file path.")
 			fetcher = store.FileImageListFetcher(input)
+			os.Setenv("USER_INPUT", input)
 		} else {
 			fmt.Println("Input is a valid URL.")
 			// If there was no error, the input is a valid URL.
 			fetcher = store.RemoteImageListFetcher(input)
+			os.Setenv("USER_INPUT", input)
+			// Split the URL into scheme and the rest
+			parts := strings.SplitN(input, "://", 2)
+			scheme := parts[0] + "://"
+			os.Setenv("SCHEME", scheme)
+			hostAndPath := parts[1]
+
+			// Split the host and path
+			hostParts := strings.Split(hostAndPath, "/")
+			if len(hostParts) < 2 {
+				fmt.Println("Invalid URL format")
+			}
+
+			// Set useful environment variables
+			host := hostParts[0]
+			fmt.Println("Host:", host)
+			os.Setenv("HOST", host)
+			apiVersion := hostParts[1]
+			fmt.Println("API Version:", apiVersion)
+			os.Setenv("API_VERSION", apiVersion)
+			registry := hostParts[2]
+			fmt.Println("Registry:", registry)
+			os.Setenv("REGISTRY", registry)
+			repository := hostParts[3]
+			fmt.Println("Repository:", repository)
+			os.Setenv("REPOSITORY", repository)
+
 		}
 		break
+	}
+	// Load.env file
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatalf("Error loading.env file: %v", err)
 	}
 
 	// Instantiate a new Satellite and its components
@@ -132,7 +167,7 @@ func run() error {
 		return s.Run(ctx)
 	})
 
-	err := g.Wait()
+	err = g.Wait()
 	if err != nil {
 		return err
 	}

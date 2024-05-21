@@ -75,7 +75,7 @@ func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
 	// Iterate over the tags and construct the image references
 	for _, tag := range tagListResponse.Tags {
 		images = append(images, Image{
-			Reference: fmt.Sprintf("%s:%s", tagListResponse.Name, tag),
+			Name: fmt.Sprintf("%s:%s", tagListResponse.Name, tag),
 		})
 	}
 	fmt.Println("Fetched", len(images), "images :", images)
@@ -100,6 +100,8 @@ func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (strin
 	// Set the Authorization header
 	req.Header.Set("Authorization", "Basic "+auth)
 
+	req.Header.Add("Accept", "application/vnd.oci.image.manifest.v1+json")
+
 	// Send the request
 	httpClient := &http.Client{}
 	resp, err := httpClient.Do(req)
@@ -122,12 +124,4 @@ func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (strin
 
 	// Return the digest from the config section of the response
 	return string(manifestResponse.Config.Digest), nil
-}
-
-func (client *RemoteImageList) GetTag(ctx context.Context, digest string) (string, error) {
-	return "", fmt.Errorf("not implemented yet")
-}
-
-func (client *RemoteImageList) ListDigests(ctx context.Context) ([]string, error) {
-	return nil, fmt.Errorf("not implemented yet")
 }
