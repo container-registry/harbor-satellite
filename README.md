@@ -5,10 +5,10 @@ Satellite registries can be used in stateful or stateless mode with the intentio
 
 ## Primary Use Cases
 
-- Overcome connectivity limitations on edge locations.
+- Overcome connectivity issues that affect software distribution to edge locations.
 - Mange distribution of containerized software to edge locations.
-- Managing hundreds or thousands of container registries across edge locations.
-- Works nicely with Kubernetes, but can also happily run without any container runtime as a bootstrap application.
+- Managing hundreds or thousands of container registries at edge locations.
+- Works nicely with Kubernetes, yet can work without any container runtime, or as an edge bootstrap instance.
 
 ## Why
 
