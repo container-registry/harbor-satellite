@@ -2,8 +2,8 @@ SOURCE_FILE=zot-2.0.4.tar.gz
 EXTRACTED_DIR=zot-2.0.4
 BIN_DIR=../bin
 BIN=bin
-ZOT_BINARY=zot-darwin-arm64
-ZLI_BINARY=zli-darwin-arm64
+ZOT_BINARY=zot
+ZLI_BINARY=zli
 
 # Build calls the appropriate build function based on the OS
 build:
@@ -11,25 +11,20 @@ build:
 	ARCH=$(shell uname -m); \
 	if [ "$$OS" = "darwin" ] && [ "$$ARCH" = "arm64" ]; then \
 		echo "Building for macOS ARM..."; \
-		$(eval ZOT_BINARY := zot-darwin-arm64) \
-		$(MAKE) _build; \
+		$(MAKE) _build ZOT_BINARY=zot-darwin-arm64 ZLI_BINARY=zli-darwin-arm64; \
 	elif [ "$$OS" = "darwin" ] && [ "$$ARCH" = "x86_64" ]; then \
 		echo "Building for macOS Intel..."; \
-		$(eval ZOT_BINARY := zot-darwin-amd64) \
-		$(MAKE) build-macos-amd64; \
-	elif [ "$$OS" = "linux" ] && ["$$ARCH" = "arm64" ] ; then \
+		$(MAKE) _build ZOT_BINARY=zot-darwin-amd64 ZLI_BINARY=zli-darwin-amd64; \
+	elif [ "$$OS" = "linux" ] && [ "$$ARCH" = "arm64" ]; then \
 		echo "Building for Linux ARM..."; \
-		$(eval ZOT_BINARY := zot-linux-arm64) \
-		$(MAKE) build-linux; \
-	elif [ "$$OS" = "linux" ] && ["$$ARCH" = "x86_64" ] ; then \
+		$(MAKE) _build ZOT_BINARY=zot-linux-arm64 ZLI_BINARY=zli-linux-arm64; \
+	elif [ "$$OS" = "linux" ] && [ "$$ARCH" = "x86_64" ]; then \
 		echo "Building for Linux Intel..."; \
-		$(eval ZOT_BINARY := zot-linux-amd64) \
-		$(MAKE) build-linux; \
+		$(MAKE) _build ZOT_BINARY=zot-linux-amd64 ZLI_BINARY=zli-linux-amd64; \
 	else \
 		echo "Unsupported OS."; \
 		exit 1; \
 	fi
-
 
 _build:
 	@test -d $(BIN) || mkdir -p $(BIN)
