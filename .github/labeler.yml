@@ -1,0 +1,8 @@
+# Add the documentation label to all PRs that modify md files
+documentation:
+- changed-files:
+  - any-glob-to-any-file: '**/*.md'
+# Add the golang label to all PRs that modify go files
+golang:
+- changed-files:
+  - any-glob-to-any-file: '**/*.go'
