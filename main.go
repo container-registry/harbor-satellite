@@ -150,12 +150,6 @@ func run() error {
 	replicator := replicate.NewReplicator()
 	s := satellite.NewSatellite(storer, replicator)
 
-	// Run the Satellite
-	if err := s.Run(ctx); err != nil {
-		fmt.Println("Error running satellite:", err)
-		os.Exit(1)
-	}
-
 	g.Go(func() error {
 		return s.Run(ctx)
 	})
