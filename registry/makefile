@@ -4,6 +4,7 @@ BIN_DIR=../bin
 BIN=bin
 ZOT_BINARY=zot
 ZLI_BINARY=zli
+ROOT_DIR=/tmp/zot
 
 # Build calls the appropriate build function based on the OS
 build:
@@ -55,16 +56,16 @@ run:
 	ARCH=$(shell uname -m); \
 	if [ "$$OS" = "darwin" ] && [ "$$ARCH" = "arm64" ]; then \
 		echo "Running for MacOS ARM..."; \
-		$(BIN)/zot-darwin-arm64 serve ./config.json; \
+		$(BIN)/zot-darwin-arm64 serve $(BIN)/config.json; \
 	elif [ "$$OS" = "darwin" ] && [ "$$ARCH" = "x86_64" ]; then \
 		echo "Running for MacOS Intel..."; \
-		$(BIN)/zot-darwin-amd64 serve ./config.json; \
+		$(BIN)/zot-darwin-amd64 serve $(BIN)/config.json; \
 	elif [ "$$OS" = "linux" ] && [ "$$ARCH" = "arm64" ]; then \
 		echo "Running for Linux ARM..."; \
-		$(BIN)/zot-linux-arm64 serve ./config.json; \
+		$(BIN)/zot-linux-arm64 serve $(BIN)/config.json; \
 	elif [ "$$OS" = "linux" ] && [ "$$ARCH" = "x86_64" ]; then \
 		echo "Running for Linux Intel..."; \
-		$(BIN)/zot-linux-amd64 serve ./config.json; \
+		$(BIN)/zot-linux-amd64 serve $(BIN)/config.json; \
 	else \
 		echo "Unsupported OS or architecture."; \
 		exit 1; \
@@ -72,5 +73,7 @@ run:
 
 clean:
 	rm -rf $(EXTRACTED_DIR) $(BIN)
+	rm -rf $(ROOT_DIR)
 
-
+empty:
+	rm -rf $(ROOT_DIR)

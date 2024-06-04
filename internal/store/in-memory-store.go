@@ -2,14 +2,11 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"strings"
 
-	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/google/go-containerregistry/pkg/crane"
 )
 
 type Image struct {
@@ -189,6 +186,7 @@ func (s *inMemoryStore) RemoveImage(ctx context.Context, image string) error {
 	return nil
 }
 
+// TODO: Rework complicated logic and add support for multiple repositories
 // checkImageAndDigest checks if the image exists in the store and if the digest matches the image reference
 func (s *inMemoryStore) checkImageAndDigest(digest string, image string) bool {
 
@@ -198,26 +196,22 @@ func (s *inMemoryStore) checkImageAndDigest(digest string, image string) bool {
 			// Image exists, now check if the digest matches
 			if storeDigest == digest {
 				// Digest exists and matches the current image's
-				fmt.Printf("Digest for image %s exists in the store and matches remote digest\n", image)
-				// TODO: Add support for multiple repositories
-				// Remove what comes before the ":" in image and set it to tag cariable
+				// Remove what comes before the ":" in image and set it to tag variable
 				tag := strings.Split(image, ":")[1]
 				localRegistryDigest, err := GetLocalDigest(context.Background(), tag)
 				if err != nil {
 					fmt.Println("Error getting digest from local registry:", err)
 					return false
 				} else {
+					// Check if the digest from the local registry matches the digest from the store
 					if digest == localRegistryDigest {
-						fmt.Printf("Digest for image %s in the store matches the local registry\n", image)
 						return true
 					} else {
-						fmt.Printf("Digest %s for image %s in the store does not match the local registry digest %s \n", storeDigest, image, localRegistryDigest)
 						return false
 					}
 				}
 			} else {
 				// Digest exists but does not match the current image reference
-				fmt.Printf("Digest for image %s exists in the store but does not match the current image reference\n", image)
 				s.Remove(context.Background(), storeDigest, storeImage)
 				s.Add(context.Background(), digest, image)
 				return false
@@ -226,51 +220,26 @@ func (s *inMemoryStore) checkImageAndDigest(digest string, image string) bool {
 	}
 
 	// If the image doesn't exist in the store, add it
-	fmt.Printf("Image \"%s\" does not exist in the store\n", image)
 	s.Add(context.Background(), digest, image)
 	return false
 }
 
 func GetLocalDigest(ctx context.Context, tag string) (string, error) {
+
 	zotUrl := os.Getenv("ZOT_URL")
-	// Construct the URL for fetching the manifest
 	userURL := os.Getenv("USER_INPUT")
-	// remove the starting elements until the double slash
+	// Remove extra characters from the URL
 	userURL = userURL[strings.Index(userURL, "//")+2:]
 	userURL = strings.ReplaceAll(userURL, "/v2", "")
 
-	// Construct the URL for fetching the manifest
-	url := "http://" + zotUrl + "/v2/" + userURL + "/manifests/" + tag
+	// Construct the URL for fetching the digest
+	url := zotUrl + userURL + ":" + tag
 
-	// Create a new HTTP request
-	req, err := http.NewRequest("GET", url, nil)
+	// Use crane.Digest to get the digest of the image
+	digest, err := crane.Digest(url)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("failed to get digest using crane: %w", err)
 	}
 
-	// Set the Authorization header to accept correct manifest media type
-	req.Header.Add("Accept", "application/vnd.oci.image.manifest.v1+json")
-
-	// Send the request
-	httpClient := &http.Client{}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch manifest: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Unmarshal the JSON response
-	var manifestResponse v1.Manifest
-	if err := json.Unmarshal(body, &manifestResponse); err != nil {
-		return "", fmt.Errorf("failed to unmarshal JSON response: %w", err)
-	}
-
-	// Return the digest from the config section of the response
-	return string(manifestResponse.Config.Digest), nil
+	return digest, nil
 }

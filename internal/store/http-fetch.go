@@ -8,8 +8,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
-	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/crane"
 )
 
 type RemoteImageList struct {
@@ -83,45 +85,24 @@ func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
 }
 
 func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (string, error) {
-	// Construct the URL for fetching the manifest
-	url := client.BaseURL + "/manifests/" + tag
+	// Construct the image reference
+	imageRef := fmt.Sprintf("%s:%s", client.BaseURL, tag)
+	// Remove extra characters from the URL
+	imageRef = imageRef[strings.Index(imageRef, "//")+2:]
+	imageRef = strings.ReplaceAll(imageRef, "/v2", "")
 
 	// Encode credentials for Basic Authentication
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
-	auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
 
-	// Create a new HTTP request
-	req, err := http.NewRequest("GET", url, nil)
+	// Use crane.Digest to get the digest of the image
+	digest, err := crane.Digest(imageRef, crane.WithAuth(&authn.Basic{
+		Username: username,
+		Password: password,
+	}))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("failed to fetch digest: %w", err)
 	}
 
-	// Set the Authorization header
-	req.Header.Set("Authorization", "Basic "+auth)
-
-	req.Header.Add("Accept", "application/vnd.oci.image.manifest.v1+json")
-
-	// Send the request
-	httpClient := &http.Client{}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch manifest: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	// Unmarshal the JSON response
-	var manifestResponse v1.Manifest
-	if err := json.Unmarshal(body, &manifestResponse); err != nil {
-		return "", fmt.Errorf("failed to unmarshal JSON response: %w", err)
-	}
-
-	// Return the digest from the config section of the response
-	return string(manifestResponse.Config.Digest), nil
+	return digest, nil
 }

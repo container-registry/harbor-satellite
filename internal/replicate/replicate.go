@@ -40,9 +40,9 @@ func (r *BasicReplicator) Replicate(ctx context.Context, image string) error {
 
 	// TODO: Implement deletion of images from the local registry that are not present in the source registry
 	// Probably use crane.Catalog to get a list of images in the local registry and compare to incoming image list
+	// Then use crane.Delete to delete those images
 
 	source := getPullSource(image)
-	fmt.Println("Source:", source)
 
 	if source != "" {
 		CopyImage(source)
@@ -107,12 +107,7 @@ func CopyImage(imageName string) error {
 	srcRef := imageName
 	destRef := zotUrl + imageName
 
-	// Delete ./local-oci-layout directory if it already exists
-	if err := os.RemoveAll("./local-oci-layout"); err != nil {
-		return fmt.Errorf("failed to remove directory: %w", err)
-	}
-
-	// Pull the image with additional flags and specify a destination directory
+	// Pull the image and specify a destination directory
 	srcImage, err := crane.Pull(srcRef)
 	if err != nil {
 		return fmt.Errorf("failed to pull image: %w", err)
@@ -126,7 +121,12 @@ func CopyImage(imageName string) error {
 		return fmt.Errorf("failed to push image: %w", err)
 	} else {
 		fmt.Println("Image pushed successfully")
+	}
 
+	// Delete ./local-oci-layout directory if it already exists
+	// This is required because it is a temporary directory used by crane to pull and push images to and from
+	if err := os.RemoveAll("./local-oci-layout"); err != nil {
+		return fmt.Errorf("failed to remove directory: %w", err)
 	}
 
 	return nil

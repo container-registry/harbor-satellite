@@ -5,7 +5,7 @@
       "repository": "myproject",
       "images": [
         {
-          "name": "album-server@sha256:23d6e6de0b63623e44a1ec59746682c77f197702ae77264eb287fa5119256f8a"
+          "name": "album-server@sha256:71df27326a806ef2946ce502d26212efa11d70e4dcea06ceae612eb29cba398b"
         },
         {
           "name": "album-server"
