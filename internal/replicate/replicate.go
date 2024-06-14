@@ -8,12 +8,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"container-registry.com/harbor-satellite/internal/store"
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 )
 
 type Replicator interface {
 	// Replicate copies images from the source registry to the local registry.
 	Replicate(ctx context.Context, image string) error
+	DeleteExtraImages(ctx context.Context, imgs []store.Image) error
 }
 
 type BasicReplicator struct{}
@@ -38,15 +41,58 @@ func NewReplicator() Replicator {
 
 func (r *BasicReplicator) Replicate(ctx context.Context, image string) error {
 
-	// TODO: Implement deletion of images from the local registry that are not present in the source registry
-	// Probably use crane.Catalog to get a list of images in the local registry and compare to incoming image list
-	// Then use crane.Delete to delete those images
-
 	source := getPullSource(image)
 
 	if source != "" {
 		CopyImage(source)
 	}
+	return nil
+}
+
+func stripPrefix(imageName string) string {
+	if idx := strings.Index(imageName, ":"); idx != -1 {
+		return imageName[idx+1:]
+	}
+	return imageName
+}
+
+func (r *BasicReplicator) DeleteExtraImages(ctx context.Context, imgs []store.Image) error {
+	zotUrl := os.Getenv("ZOT_URL")
+	host := os.Getenv("HOST")
+	registry := os.Getenv("REGISTRY")
+	repository := os.Getenv("REPOSITORY")
+
+	localRegistry := fmt.Sprintf("%s/%s/%s/%s", zotUrl, host, registry, repository)
+	fmt.Println("Syncing local registry:", localRegistry)
+
+	// Get the list of images from the local registry
+	localImages, err := crane.ListTags(localRegistry)
+	if err != nil {
+		return fmt.Errorf("failed to get local registry catalog: %w", err)
+	}
+
+	// Create a map for quick lookup of the provided image list
+	imageMap := make(map[string]struct{})
+	for _, img := range imgs {
+		// Strip the "album-server:" prefix from the image name
+		strippedName := stripPrefix(img.Name)
+		imageMap[strippedName] = struct{}{}
+	}
+
+	// Iterate over the local images and delete those not in the provided image list
+	for _, localImage := range localImages {
+		if _, exists := imageMap[localImage]; !exists {
+			// Image is not in the provided list, delete it
+			fmt.Print("Deleting image: ", localRegistry+":"+localImage, " ... ")
+			err := crane.Delete(fmt.Sprintf("%s:%s", localRegistry, localImage))
+			if err != nil {
+				fmt.Printf("failed to delete image %s: %v\n", localImage, err)
+				return nil
+			}
+			fmt.Printf("Deleted image: %s\n", localImage)
+		}
+	}
+
 	return nil
 }
 
@@ -105,27 +151,45 @@ func CopyImage(imageName string) error {
 	}
 
 	srcRef := imageName
-	destRef := zotUrl + imageName
+	destRef := zotUrl + "/" + imageName
 
-	// Pull the image and specify a destination directory
-	srcImage, err := crane.Pull(srcRef)
+	// Get credentials from environment variables
+	username := os.Getenv("HARBOR_USERNAME")
+	password := os.Getenv("HARBOR_PASSWORD")
+	if username == "" || password == "" {
+		return fmt.Errorf("HARBOR_USERNAME or HARBOR_PASSWORD environment variable is not set")
+	}
+
+	auth := authn.FromConfig(authn.AuthConfig{
+		Username: username,
+		Password: password,
+	})
+
+	// Pull the image with authentication
+	srcImage, err := crane.Pull(srcRef, crane.WithAuth(auth))
 	if err != nil {
+		fmt.Printf("Failed to pull image: %v\n", err)
 		return fmt.Errorf("failed to pull image: %w", err)
 	} else {
 		fmt.Println("Image pulled successfully")
+		fmt.Printf("Pulled image details: %+v\n", srcImage)
 	}
 
 	// Push the image to the destination registry
 	err = crane.Push(srcImage, destRef)
 	if err != nil {
+		fmt.Printf("Failed to push image: %v\n", err)
 		return fmt.Errorf("failed to push image: %w", err)
 	} else {
 		fmt.Println("Image pushed successfully")
+		fmt.Printf("Pushed image to: %s\n", destRef)
 	}
 
-	// Delete ./local-oci-layout directory if it already exists
+	// Delete ./local-oci-layout directory
 	// This is required because it is a temporary directory used by crane to pull and push images to and from
+	// And crane does not automatically clean it
 	if err := os.RemoveAll("./local-oci-layout"); err != nil {
+		fmt.Printf("Failed to remove directory: %v\n", err)
 		return fmt.Errorf("failed to remove directory: %w", err)
 	}
 

@@ -1,0 +1,12 @@
+# Wether to us the built-in Zot registry or not
+bring_own_registry = false
+
+# URL of own registry
+own_registry_adr = "127.0.0.1:8585"
+
+# URL of remote registry OR local file path
+url_or_file = "https://demo.goharbor.io/v2/myproject/album-server"
+
+# For testing purposes :
+#		 https://demo.goharbor.io/v2/myproject/album-server
+#		 /image-list/images.json

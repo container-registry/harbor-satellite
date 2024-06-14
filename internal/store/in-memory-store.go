@@ -77,6 +77,12 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 			}
 		}
 
+		// Empty and refill imageList with the contents from s.images
+		imageList = imageList[:0]
+		for name, digest := range s.images {
+			imageList = append(imageList, Image{Name: name, Digest: digest})
+		}
+
 		// Print out the entire store for debugging purposes
 		fmt.Println("Current store:")
 		for image := range s.images {
@@ -132,6 +138,12 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 		fmt.Println("Current store:")
 		for digest, imageRef := range s.images {
 			fmt.Printf("Digest: %s, Image: %s\n", digest, imageRef)
+		}
+
+		// Empty and refill imageList with the contents from s.images
+		imageList = imageList[:0]
+		for _, name := range s.images {
+			imageList = append(imageList, Image{Digest: "", Name: name})
 		}
 
 	}
@@ -219,21 +231,24 @@ func (s *inMemoryStore) checkImageAndDigest(digest string, image string) bool {
 		}
 	}
 
-	// If the image doesn't exist in the store, add it
-	s.Add(context.Background(), digest, image)
-	return false
+	// Try to add the image to the store
+	// Add will check if it already exists in the store before adding
+	// If adding was successful, return true, else return false
+	err := s.Add(context.Background(), digest, image)
+	return err != nil
+
 }
 
 func GetLocalDigest(ctx context.Context, tag string) (string, error) {
 
 	zotUrl := os.Getenv("ZOT_URL")
 	userURL := os.Getenv("USER_INPUT")
-	// Remove extra characters from the URL
+	// Remove extra characters from the URLs
 	userURL = userURL[strings.Index(userURL, "//")+2:]
 	userURL = strings.ReplaceAll(userURL, "/v2", "")
 
 	// Construct the URL for fetching the digest
-	url := zotUrl + userURL + ":" + tag
+	url := zotUrl + "/" + userURL + ":" + tag
 
 	// Use crane.Digest to get the digest of the image
 	digest, err := crane.Digest(url)

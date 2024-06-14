@@ -101,7 +101,8 @@ func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (strin
 		Password: password,
 	}))
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch digest: %w", err)
+		fmt.Printf("failed to fetch digest for %s: %v\n", imageRef, err)
+		return "", nil
 	}
 
 	return digest, nil

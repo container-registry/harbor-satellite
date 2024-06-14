@@ -1,4 +1,4 @@
-# Proposal: `Harbor Satellite`
+# Harbor Satellite — Bring Container Registries to the Edge
 
 Authors: Vadim Bauer / [Vad1mo](https://github.com/Vad1mo), Csaba Almasi, Philip Laine, David Huseby / [dhuseby](https://github.com/dhuseby),  Roald Brunell / [OneFlyingBanana](https://github.com/OneFlyingBanana)
 
