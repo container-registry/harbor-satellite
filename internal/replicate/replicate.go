@@ -40,7 +40,6 @@ func NewReplicator() Replicator {
 }
 
 func (r *BasicReplicator) Replicate(ctx context.Context, image string) error {
-
 	source := getPullSource(image)
 
 	if source != "" {
@@ -115,7 +114,6 @@ func getPullSource(image string) string {
 
 		return registryURL + repositoryName + "/" + image
 	}
-
 }
 
 func getFileInfo(input string) (*RegistryInfo, error) {
@@ -152,6 +150,7 @@ func CopyImage(imageName string) error {
 
 	srcRef := imageName
 	destRef := zotUrl + "/" + imageName
+	fmt.Println("this is destRef: ", destRef)
 
 	// Get credentials from environment variables
 	username := os.Getenv("HARBOR_USERNAME")
@@ -176,7 +175,7 @@ func CopyImage(imageName string) error {
 	}
 
 	// Push the image to the destination registry
-	err = crane.Push(srcImage, destRef)
+	err = crane.Push(srcImage, destRef, crane.Insecure)
 	if err != nil {
 		fmt.Printf("Failed to push image: %v\n", err)
 		return fmt.Errorf("failed to push image: %w", err)

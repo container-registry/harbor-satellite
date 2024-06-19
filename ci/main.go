@@ -8,6 +8,15 @@ import (
 	"dagger.io/dagger"
 )
 
+const (
+	imageVersion  = "golang:1.22" // Use a constant for the Go image version
+	exposePort    = 9090          // Client port to expose
+	containerPort = 9090          // Container port to expose
+	appDir        = "/app"        // Directory inside the container
+	appBinary     = "app"         // Name of the built application
+	sourceFile    = "main.go"     // Source file to build
+)
+
 func main() {
 	ctx := context.Background()
 

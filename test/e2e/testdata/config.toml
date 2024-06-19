@@ -1,0 +1,5 @@
+
+# Auto-generated
+bring_own_registry = true
+url_or_file = "https://demo.goharbor.io/v2/library/registry"
+own_registry_adr = "reg:5000"
