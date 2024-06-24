@@ -42,22 +42,10 @@ func TestSetupContainerRegistry(t *testing.T) {
 	assert.NoError(t, err, "Failed to set up container registry")
 	// reg, _ := registry.Hostname(ctx)
 	// fmt.Println(reg)
-	//
-	// // expose HTTP service to host
-	// tunnel, err := client.Host().Tunnel(registry).Start(ctx)
-	// assert.NoError(t, err, "Failed to serve tunnel to host")
-	//
-	// // get HTTP service address
-	// endpoint, err := tunnel.Endpoint(ctx, dagger.ServiceEndpointOpts{
-	// 	Scheme: "tcp",
-	// })
-	// assert.NoError(t, err, "Failed to get registry endpoint")
-	//
-	// log.Println(endpoint, "\n\n\n\n\nthe tunnel endpoint", endpoint)
 
 	// Push the image to the registry
-	// pushImageToRegistry(ctx, client, registry, endpoint)
-	// assert.NoError(t, err, "Failed to upload image to registry")
+	pushImageToRegistry(ctx, client, remote)
+	assert.NoError(t, err, "Failed to upload image to registry")
 
 	// Implement the Satellite Testing
 	buildSatellite(client, ctx, registry, remote)
@@ -71,40 +59,20 @@ func setupRemoteRegistry(
 ) (*dagger.Service, error) {
 	// socket to connect to host Docker
 	socket := client.Host().UnixSocket("/var/run/docker.sock")
-	configFile := client.Host().File("./testdata/harbor.yml")
-	dir := client.Host().Directory("./testdata/")
 
 	// Pull the Harbor registry image
 	container, err := client.Container().
-		From("docker:dind").
-		WithExposedPort(80).WithUnixSocket("/var/run/docker.sock", socket).
+		From("registry:2").
+		WithExposedPort(5000).
+    WithUnixSocket("/var/run/docker.sock", socket).
 		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock").
-		WithMountedDirectory("/data", dir).
-		WithWorkdir("/data").
-		WithExec([]string{"ls"}).
-		WithExec([]string{"pwd"}).
-		WithExec([]string{"apk", "update"}).
-		WithExec([]string{"apk", "add", "wget", "ca-certificates"}).
-		WithExec([]string{"update-ca-certificates"}).
-		WithExec([]string{"wget", "https://github.com/goharbor/harbor/releases/download/v2.11.0/harbor-offline-installer-v2.11.0.tgz"}).
-		WithExec([]string{"pwd"}).
-		WithExec([]string{"tar", "xzvf", "harbor-offline-installer-v2.11.0.tgz"}).
-		WithExec([]string{"pwd"}).
-		WithExec([]string{"sh", "-c", "cd harbor/"}).
-		WithExec([]string{"pwd"}).
-		WithExec([]string{"ls", "-al"}).
-		WithFile("./harbor.yml", configFile).
-		WithExec([]string{"pwd"}).
-		WithExec([]string{"pwd || ./install.sh"}).
-		Sync(ctx)
-
-	service, err := container.AsService().Start(ctx)
+		AsService().Start(ctx)
 	if err != nil {
-		log.Fatal("Error while creating registry: ", err)
+		return nil, err
 	}
 
 	// Return the registry URL
-	return service, nil
+	return container, nil
 }
 
 // Setup Container Registry as a Dagger Service
@@ -113,12 +81,14 @@ func setupContainerRegistry(
 	ctx context.Context,
 ) (*dagger.Service, error) {
 	// socket to connect to host Docker
-	// socket := client.Host().UnixSocket("/var/run/docker.sock")
+	socket := client.Host().UnixSocket("/var/run/docker.sock")
 
 	// Pull the registry image
 	container, err := client.Container().
 		From("registry:2").
 		WithExposedPort(5000, dagger.ContainerWithExposedPortOpts{Protocol: "TCP"}).
+    WithUnixSocket("/var/run/docker.sock", socket).
+		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock").
 		AsService().Start(ctx)
 	if err != nil {
 		log.Fatal("Error while creating registry: ", err)
@@ -133,53 +103,31 @@ func pushImageToRegistry(
 	ctx context.Context,
 	client *dagger.Client,
 	registry *dagger.Service,
-	srvAddr string,
 ) {
-	// socket to connect to host Docker
+	// // socket to connect to host Docker
 	socket := client.Host().UnixSocket("/var/run/docker.sock")
+	// newUrl := strings.Replace(srvAddr, "tcp://", "", 1)
+	// fmt.Println(newUrl)
 
 	container := client.Container().
-		From("docker:dind").
-		WithServiceBinding("reg", registry).WithUnixSocket("/var/run/docker.sock", socket).
-		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock")
+		From("alpine").
+    WithUnixSocket("/var/run/docker.sock", socket).
+		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock").
+		WithServiceBinding("remote", registry)
 
-	log.Println("completed setting up the docker container")
+	log.Println("completed setting up the pushing container")
 
-	log.Println("\n\n\ncompleted pulling docker image")
-	container = container.WithExec([]string{"docker", "--version"})
-	container = container.WithExec([]string{"docker", "info"})
+	log.Println("going to pull and push the image")
 
-	log.Println("going to pull the image")
-	container = container.WithExec([]string{"docker", "pull", imageToPush})
+	// add crane push images
+	container = container.WithExec([]string{"apk", "add", "crane"}).
+		WithExec([]string{"crane", "copy", "busybox:stable", "remote:5000/library/busybox:stable", "--insecure"}).
+		WithExec([]string{"crane", "copy", "busybox:latest", "remote:5000/library/busybox:latest", "--insecure"})
 
-	// tag the image
-	imageTag := fmt.Sprintf("%s/%s", srvAddr, imageToPush)
-	container = container.WithExec([]string{"docker", "tag", imageToPush, imageTag})
+	container = container.WithExec([]string{"crane", "catalog", "remote:5000", "--insecure"})
 
-	// list alll the images present
-	container = container.WithExec([]string{"docker", "images"})
-
-	// push and then delete the images
-	container = container.WithExec([]string{"docker", "push", imageTag})
-
-	container = container.WithExec([]string{"docker", "pull", "golang:1.22"})
-	imageTag = fmt.Sprintf("%s/%s", srvAddr, "golang:1.22")
-	container = container.WithExec([]string{"docker", "tag", "golang:1.22", imageTag})
-
-	container = container.WithExec([]string{"apk", "add", "go"}).
-		WithExec([]string{"apk", "add", "curl"}).
-		WithExec([]string{"apk", "add", "crane"}).
-		WithExec([]string{"docker", "run", "-d", "-p", "5000:5000", "--name", "registry", "registry:2"}).
-		WithExec([]string{"docker", "container", "ls"}).
-		WithExec([]string{"crane", "catalog", "localhost:5000"})
-
-	container = container.WithExec([]string{"go", "version"})
-
-	// building and testing the satellite
-	// buildSatellite(client, ctx, registry, container, srvAddr)
-
-	// prints, _ := container.Stdout(ctx)
-	// fmt.Println(prints)
+	prints, _ := container.Stdout(ctx)
+	fmt.Println(prints)
 }
 
 // buildSatellite and test test the connection
@@ -188,7 +136,7 @@ func buildSatellite(
 	ctx context.Context,
 	registry *dagger.Service,
 	remote *dagger.Service,
-) {
+) *dagger.Service {
 	// slog.Info("Starting the Satellite build process...")
 	// endp, err := registry.Endpoint(ctx)
 	// hostname, err := registry.Hostname(ctx)
@@ -222,27 +170,37 @@ func buildSatellite(
 	// }
 
 	// Pull the image from Docker Hub
-	// socket := client.Host().UnixSocket("/var/run/docker.sock")
+	socket := client.Host().UnixSocket("/var/run/docker.sock")
 
 	// Configure and build the container
 
 	container := client.Container().From("golang:alpine").WithDirectory(appDir, dir).
 		WithWorkdir(appDir).
 		WithServiceBinding("reg", registry).
+		WithServiceBinding("remote", remote).
+    WithUnixSocket("/var/run/docker.sock", socket).
+		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock").
 		WithExec([]string{"cat", "config.toml"}).
 		WithFile("./config.toml", configFile).
+		WithExec([]string{"cat", "config.toml"}).
 		WithExec([]string{"apk", "add", "crane"}).
 		WithExec([]string{"crane", "-v", "catalog", "reg:5000", "--insecure"}).
-		// WithExec([]string{"curl", "-v", "https://reg:5000"}).
-		WithExec([]string{"cat", "config.toml"}).
+		WithExec([]string{"crane", "-v", "catalog", "remote:5000", "--insecure"}).
 		WithExec([]string{"go", "build", "-o", appBinary, sourceFile}).
 		WithExposedPort(containerPort).
 		WithExec([]string{"./" + appBinary})
+
+	service, err := container.AsService().Start(ctx)
+	if err != nil {
+		log.Fatalf("Error in running Satellite: %v", err)
+	}
 
 	slog.Info("Satellite service is running and accessible")
 
 	prints, _ := container.Stdout(ctx)
 	fmt.Println(prints)
+
+	return service
 }
 
 // getProjectDir gets the directory of the project

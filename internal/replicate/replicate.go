@@ -97,7 +97,8 @@ func (r *BasicReplicator) DeleteExtraImages(ctx context.Context, imgs []store.Im
 
 func getPullSource(image string) string {
 	input := os.Getenv("USER_INPUT")
-	if os.Getenv("SCHEME") == "https://" {
+	scheme := os.Getenv("SCHEME")
+	if strings.HasPrefix(scheme, "http://") || strings.HasPrefix(scheme, "https://") {
 		url := os.Getenv("HOST") + "/" + os.Getenv("REGISTRY") + "/" + image
 		return url
 	} else {
@@ -148,9 +149,10 @@ func CopyImage(imageName string) error {
 		return fmt.Errorf("ZOT_URL environment variable is not set")
 	}
 
-	srcRef := imageName
-	destRef := zotUrl + "/" + imageName
-	fmt.Println("this is destRef: ", destRef)
+	// Clean up the image name by removing any host part
+	cleanedImageName := removeHostName(imageName)
+	destRef := fmt.Sprintf("%s/%s", zotUrl, cleanedImageName)
+	fmt.Println("Destination reference:", destRef)
 
 	// Get credentials from environment variables
 	username := os.Getenv("HARBOR_USERNAME")
@@ -165,7 +167,7 @@ func CopyImage(imageName string) error {
 	})
 
 	// Pull the image with authentication
-	srcImage, err := crane.Pull(srcRef, crane.WithAuth(auth))
+	srcImage, err := crane.Pull(imageName, crane.WithAuth(auth), crane.Insecure)
 	if err != nil {
 		fmt.Printf("Failed to pull image: %v\n", err)
 		return fmt.Errorf("failed to pull image: %w", err)
@@ -192,5 +194,26 @@ func CopyImage(imageName string) error {
 		return fmt.Errorf("failed to remove directory: %w", err)
 	}
 
+	// // Use crane.Copy to copy the image directly without pulling & storing
+	// // this only works when remote & local registries are same.
+	// err := crane.Copy(imageName, destRef, crane.WithAuth(auth), crane.Insecure)
+	// if err != nil {
+	// 	fmt.Printf("Failed to copy image: %v\n", err)
+	// 	return fmt.Errorf("failed to copy image: %w", err)
+	// } else {
+	// 	fmt.Println("Image copied successfully")
+	// 	fmt.Printf("Copied image from %s to: %s\n", imageName, destRef)
+	// }
+
 	return nil
+}
+
+// Split the imageName by "/" and take only the parts after the hostname
+func removeHostName(imageName string) string {
+	parts := strings.Split(imageName, "/")
+	if len(parts) > 1 {
+		return strings.Join(parts[1:], "/")
+	}
+
+	return imageName
 }

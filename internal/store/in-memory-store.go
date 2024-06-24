@@ -155,7 +155,6 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 		fmt.Println("No changes detected in the store")
 		return nil, nil
 	}
-
 }
 
 func (s *inMemoryStore) Add(ctx context.Context, digest string, image string) error {
@@ -201,7 +200,6 @@ func (s *inMemoryStore) RemoveImage(ctx context.Context, image string) error {
 // TODO: Rework complicated logic and add support for multiple repositories
 // checkImageAndDigest checks if the image exists in the store and if the digest matches the image reference
 func (s *inMemoryStore) checkImageAndDigest(digest string, image string) bool {
-
 	// Check if the received image exists in the store
 	for storeDigest, storeImage := range s.images {
 		if storeImage == image {
@@ -236,19 +234,18 @@ func (s *inMemoryStore) checkImageAndDigest(digest string, image string) bool {
 	// If adding was successful, return true, else return false
 	err := s.Add(context.Background(), digest, image)
 	return err != nil
-
 }
 
 func GetLocalDigest(ctx context.Context, tag string) (string, error) {
-
 	zotUrl := os.Getenv("ZOT_URL")
 	userURL := os.Getenv("USER_INPUT")
 	// Remove extra characters from the URLs
 	userURL = userURL[strings.Index(userURL, "//")+2:]
 	userURL = strings.ReplaceAll(userURL, "/v2", "")
 
+	regUrl := removeHostName(userURL)
 	// Construct the URL for fetching the digest
-	url := zotUrl + "/" + userURL + ":" + tag
+	url := zotUrl + "/" + regUrl + ":" + tag
 
 	// Use crane.Digest to get the digest of the image
 	digest, err := crane.Digest(url)
@@ -257,4 +254,14 @@ func GetLocalDigest(ctx context.Context, tag string) (string, error) {
 	}
 
 	return digest, nil
+}
+
+// Split the imageName by "/" and take only the parts after the hostname
+func removeHostName(imageName string) string {
+	parts := strings.Split(imageName, "/")
+	if len(parts) > 1 {
+		return strings.Join(parts[1:], "/")
+	}
+
+	return imageName
 }

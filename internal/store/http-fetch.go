@@ -99,7 +99,7 @@ func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (strin
 	digest, err := crane.Digest(imageRef, crane.WithAuth(&authn.Basic{
 		Username: username,
 		Password: password,
-	}))
+	}), crane.Insecure)
 	if err != nil {
 		fmt.Printf("failed to fetch digest for %s: %v\n", imageRef, err)
 		return "", nil
