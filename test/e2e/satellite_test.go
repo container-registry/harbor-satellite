@@ -8,20 +8,16 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"dagger.io/dagger"
 	"github.com/stretchr/testify/assert"
 )
 
 const (
-	regUrl        = "localhost:5000"
-	imageToPush   = "ubuntu" // Image to push to the registry
-	imageVersion  = "golang:1.22"
-	exposePort    = 9090
-	containerPort = 9090
-	appDir        = "/app"
-	appBinary     = "app"
-	sourceFile    = "main.go"
+	appDir     = "/app"
+	appBinary  = "app"
+	sourceFile = "main.go"
 )
 
 func TestSetupContainerRegistry(t *testing.T) {
@@ -35,25 +31,27 @@ func TestSetupContainerRegistry(t *testing.T) {
 	defer client.Close()
 
 	// Set up remote Registry
-	remote, err := setupRemoteRegistry(client, ctx)
+	remote, err := setupRemoteRegistry(t, client, ctx)
 	assert.NoError(t, err, "Failed to set up remote registry")
 	// Set up the container registry
-	registry, err := setupContainerRegistry(client, ctx)
+	registry, err := setupContainerRegistry(t, client, ctx)
 	assert.NoError(t, err, "Failed to set up container registry")
 	// reg, _ := registry.Hostname(ctx)
 	// fmt.Println(reg)
 
 	// Push the image to the registry
-	pushImageToRegistry(ctx, client, remote)
+	pushImageToRegistry(t, ctx, client, remote)
 	assert.NoError(t, err, "Failed to upload image to registry")
 
 	// Implement the Satellite Testing
-	buildSatellite(client, ctx, registry, remote)
+	stdOut := buildSatellite(t, client, ctx, remote, registry)
 	assert.NoError(t, err, "Failed to build Satellite")
+	fmt.Println(stdOut)
 }
 
 // Setup Container Registry as a Dagger Service
 func setupRemoteRegistry(
+	t *testing.T,
 	client *dagger.Client,
 	ctx context.Context,
 ) (*dagger.Service, error) {
@@ -64,12 +62,12 @@ func setupRemoteRegistry(
 	container, err := client.Container().
 		From("registry:2").
 		WithExposedPort(5000).
-    WithUnixSocket("/var/run/docker.sock", socket).
+		WithUnixSocket("/var/run/docker.sock", socket).
 		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock").
+		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		AsService().Start(ctx)
-	if err != nil {
-		return nil, err
-	}
+
+	assert.NoError(t, err, "Failed in setting up remote registry.")
 
 	// Return the registry URL
 	return container, nil
@@ -77,6 +75,7 @@ func setupRemoteRegistry(
 
 // Setup Container Registry as a Dagger Service
 func setupContainerRegistry(
+	t *testing.T,
 	client *dagger.Client,
 	ctx context.Context,
 ) (*dagger.Service, error) {
@@ -87,12 +86,12 @@ func setupContainerRegistry(
 	container, err := client.Container().
 		From("registry:2").
 		WithExposedPort(5000, dagger.ContainerWithExposedPortOpts{Protocol: "TCP"}).
-    WithUnixSocket("/var/run/docker.sock", socket).
+		WithUnixSocket("/var/run/docker.sock", socket).
 		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock").
+		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		AsService().Start(ctx)
-	if err != nil {
-		log.Fatal("Error while creating registry: ", err)
-	}
+
+	assert.NoError(t, err, "Failed in setting up registry")
 
 	// Return the registry URL
 	return container, nil
@@ -100,6 +99,7 @@ func setupContainerRegistry(
 
 // Upload image to the registry
 func pushImageToRegistry(
+	t *testing.T,
 	ctx context.Context,
 	client *dagger.Client,
 	registry *dagger.Service,
@@ -110,44 +110,36 @@ func pushImageToRegistry(
 	// fmt.Println(newUrl)
 
 	container := client.Container().
-		From("alpine").
-    WithUnixSocket("/var/run/docker.sock", socket).
+		From("docker:dind").
+		WithUnixSocket("/var/run/docker.sock", socket).
 		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock").
+		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithServiceBinding("remote", registry)
-
-	log.Println("completed setting up the pushing container")
-
-	log.Println("going to pull and push the image")
 
 	// add crane push images
 	container = container.WithExec([]string{"apk", "add", "crane"}).
+		WithExec([]string{"docker", "pull", "busybox:1.36"}).
+		WithExec([]string{"docker", "pull", "busybox:stable"}).
+		WithExec([]string{"crane", "copy", "busybox:1.36", "remote:5000/library/busybox:1.36", "--insecure"}).
 		WithExec([]string{"crane", "copy", "busybox:stable", "remote:5000/library/busybox:stable", "--insecure"}).
-		WithExec([]string{"crane", "copy", "busybox:latest", "remote:5000/library/busybox:latest", "--insecure"})
+		WithExec([]string{"crane", "digest", "remote:5000/library/busybox:1.36", "--insecure"}).
+		WithExec([]string{"crane", "digest", "remote:5000/library/busybox:stable", "--insecure"})
 
 	container = container.WithExec([]string{"crane", "catalog", "remote:5000", "--insecure"})
 
-	prints, _ := container.Stdout(ctx)
+	prints, err := container.Stdout(ctx)
+	assert.NoError(t, err, "Failed to push image to remote registry")
 	fmt.Println(prints)
 }
 
 // buildSatellite and test test the connection
 func buildSatellite(
+	t *testing.T,
 	client *dagger.Client,
 	ctx context.Context,
-	registry *dagger.Service,
 	remote *dagger.Service,
-) *dagger.Service {
-	// slog.Info("Starting the Satellite build process...")
-	// endp, err := registry.Endpoint(ctx)
-	// hostname, err := registry.Hostname(ctx)
-	// ports, err := registry.Ports(ctx)
-	// fmt.Println(
-	// 	"\n\n\n \n \n ------------------------------------------------------------------------------",
-	// )
-	// fmt.Printf("endpoint: %s", endp)
-	// fmt.Printf("hostname: %s", hostname)
-	// fmt.Printf("ports: %v %v", ports, srvAddr)
-
+	registry *dagger.Service,
+) *dagger.Container {
 	// Get the directory of project located one level up from the current working directory
 	parentDir, err := getProjectDir()
 	if err != nil {
@@ -176,31 +168,34 @@ func buildSatellite(
 
 	container := client.Container().From("golang:alpine").WithDirectory(appDir, dir).
 		WithWorkdir(appDir).
-		WithServiceBinding("reg", registry).
 		WithServiceBinding("remote", remote).
-    WithUnixSocket("/var/run/docker.sock", socket).
+		WithServiceBinding("reg", registry).
+		WithUnixSocket("/var/run/docker.sock", socket).
 		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock").
+		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithExec([]string{"cat", "config.toml"}).
 		WithFile("./config.toml", configFile).
 		WithExec([]string{"cat", "config.toml"}).
 		WithExec([]string{"apk", "add", "crane"}).
 		WithExec([]string{"crane", "-v", "catalog", "reg:5000", "--insecure"}).
 		WithExec([]string{"crane", "-v", "catalog", "remote:5000", "--insecure"}).
+		WithExec([]string{"crane", "digest", "remote:5000/library/busybox:stable", "--insecure"}).
 		WithExec([]string{"go", "build", "-o", appBinary, sourceFile}).
-		WithExposedPort(containerPort).
-		WithExec([]string{"./" + appBinary})
+		WithExposedPort(9090).
+		WithExec([]string{"go", "run", "./test/e2e/test.go"})
 
-	service, err := container.AsService().Start(ctx)
-	if err != nil {
-		log.Fatalf("Error in running Satellite: %v", err)
-	}
+	assert.NoError(t, err, "Test failed in buildSatellite")
+	// service, err := container.AsService().Start(ctx)
+	// if err != nil {
+	// 	log.Fatalf("Error in running Satellite: %v", err)
+	// }
 
-	slog.Info("Satellite service is running and accessible")
+	slog.Info("Satellite is running and accessible")
 
-	prints, _ := container.Stdout(ctx)
+	prints, err := container.Stdout(ctx)
 	fmt.Println(prints)
 
-	return service
+	return container
 }
 
 // getProjectDir gets the directory of the project
