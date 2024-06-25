@@ -194,21 +194,10 @@ func CopyImage(imageName string) error {
 		return fmt.Errorf("failed to remove directory: %w", err)
 	}
 
-	// // Use crane.Copy to copy the image directly without pulling & storing
-	// // this only works when remote & local registries are same.
-	// err := crane.Copy(imageName, destRef, crane.WithAuth(auth), crane.Insecure)
-	// if err != nil {
-	// 	fmt.Printf("Failed to copy image: %v\n", err)
-	// 	return fmt.Errorf("failed to copy image: %w", err)
-	// } else {
-	// 	fmt.Println("Image copied successfully")
-	// 	fmt.Printf("Copied image from %s to: %s\n", imageName, destRef)
-	// }
-
 	return nil
 }
 
-// Split the imageName by "/" and take only the parts after the hostname
+// take only the parts after the hostname
 func removeHostName(imageName string) string {
 	parts := strings.Split(imageName, "/")
 	if len(parts) > 1 {

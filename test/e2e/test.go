@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -15,14 +16,12 @@ func main() {
 	// Get stdout pipe
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		fmt.Println("Error creating stdout pipe:", err)
-		os.Exit(1)
+		log.Fatalf("Error creating stdout pipe: %v", err)
 	}
 
 	// Start the command
 	if err := cmd.Start(); err != nil {
-		fmt.Println("Error starting command:", err)
-		os.Exit(1)
+		log.Fatalf("Error starting command: %v", err)
 	}
 
 	// Create a scanner to read the command output line by line
@@ -35,20 +34,20 @@ func main() {
 		// Check if the line contains "----"
 		if len(lineParts) > 2 {
 			fmt.Println("Satellite is Working...\nExiting...")
-			cmd.Process.Kill() // Kill the process
-			os.Exit(0)         // Exit the program
+			if err := cmd.Process.Kill(); err != nil {
+				fmt.Println("Error killing process:", err)
+			}
+			os.Exit(0) // Exit the program
 		}
 	}
 
 	// Handle any scanner error
 	if err := scanner.Err(); err != nil {
-		fmt.Println("Error reading stdout:", err)
-		os.Exit(1)
+		log.Fatalf("Error reading stdout: %v", err)
 	}
 
 	// Wait for the command to finish
 	if err := cmd.Wait(); err != nil {
-		fmt.Println("Command execution failed:", err)
-		os.Exit(1)
+		log.Fatalf("Command execution failed: %v", err)
 	}
 }
