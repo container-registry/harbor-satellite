@@ -2,10 +2,11 @@ package satellite
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"container-registry.com/harbor-satelite/internal/replicate"
-	"container-registry.com/harbor-satelite/internal/store"
+	"container-registry.com/harbor-satellite/internal/replicate"
+	"container-registry.com/harbor-satellite/internal/store"
 )
 
 type Satellite struct {
@@ -13,9 +14,36 @@ type Satellite struct {
 	replicator replicate.Replicator
 }
 
+func NewSatellite(storer store.Storer, replicator replicate.Replicator) *Satellite {
+	return &Satellite{
+		storer:     storer,
+		replicator: replicator,
+	}
+}
+
 func (s *Satellite) Run(ctx context.Context) error {
-	ticker := time.NewTicker(5 * time.Minute)
+	// Execute the initial operation immediately without waiting for the ticker
+	imgs, err := s.storer.List(ctx)
+	if err != nil {
+		return err
+	}
+	if len(imgs) == 0 {
+		fmt.Println("No images to replicate")
+	} else {
+		for _, img := range imgs {
+			err = s.replicator.Replicate(ctx, img.Name)
+			if err != nil {
+				return err
+			}
+		}
+		s.replicator.DeleteExtraImages(ctx, imgs)
+	}
+	fmt.Print("--------------------------------\n")
+
+	// Temporarily set to faster tick rate for testing purposes
+	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -25,12 +53,18 @@ func (s *Satellite) Run(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			for _, img := range imgs {
-				err = s.replicator.Replicate(ctx, img.Reference)
-				if err != nil {
-					return err
+			if len(imgs) == 0 {
+				fmt.Println("No images to replicate")
+			} else {
+				for _, img := range imgs {
+					err = s.replicator.Replicate(ctx, img.Name)
+					if err != nil {
+						return err
+					}
 				}
+				s.replicator.DeleteExtraImages(ctx, imgs)
 			}
 		}
+		fmt.Print("--------------------------------\n")
 	}
 }

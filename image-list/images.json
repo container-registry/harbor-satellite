@@ -1,0 +1,19 @@
+{
+  "registryUrl": "https://demo.goharbor.io/v2/",
+  "repositories": [
+    {
+      "repository": "myproject",
+      "images": [
+        {
+          "name": "album-server@sha256:71df27326a806ef2946ce502d26212efa11d70e4dcea06ceae612eb29cba398b"
+        },
+        {
+          "name": "album-server"
+        },
+        {
+          "name": "album-server:v1-manifest-app"
+        }
+      ]
+    }
+  ]
+}
