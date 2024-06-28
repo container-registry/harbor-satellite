@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -85,13 +84,13 @@ func run() error {
 		registryAdr := viper.GetString("own_registry_adr")
 
 		// Validate registryAdr format
-		matched, err := regexp.MatchString(`^127\.0\.0\.1:\d{1,5}$`, registryAdr)
-		if err != nil {
-			return fmt.Errorf("error validating registry address: %w", err)
-		}
-		if !matched {
-			return fmt.Errorf("invalid registry address format: %s", registryAdr)
-		}
+		// matched, err := regexp.MatchString(`^127\.0\.0\.1:\d{1,5}$`, registryAdr)
+		// if err != nil {
+		// 	return fmt.Errorf("error validating registry address: %w", err)
+		// }
+		// if matched {
+		// 	return fmt.Errorf("invalid registry address format: %s", registryAdr)
+		// }
 		os.Setenv("ZOT_URL", registryAdr)
 		fmt.Println("Registry URL set to:", registryAdr)
 	} else {
@@ -105,7 +104,6 @@ func run() error {
 				cancel()
 				return err
 			}
-
 		})
 	}
 
