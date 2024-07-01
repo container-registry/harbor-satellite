@@ -31,8 +31,7 @@ import (
 func main() {
 	err := run()
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatalf("Error running satellite: %v", err)
 	}
 }
 
@@ -83,14 +82,6 @@ func run() error {
 	if bringOwnRegistry {
 		registryAdr := viper.GetString("own_registry_adr")
 
-		// Validate registryAdr format
-		// matched, err := regexp.MatchString(`^127\.0\.0\.1:\d{1,5}$`, registryAdr)
-		// if err != nil {
-		// 	return fmt.Errorf("error validating registry address: %w", err)
-		// }
-		// if matched {
-		// 	return fmt.Errorf("invalid registry address format: %s", registryAdr)
-		// }
 		os.Setenv("ZOT_URL", registryAdr)
 		fmt.Println("Registry URL set to:", registryAdr)
 	} else {
@@ -108,42 +99,22 @@ func run() error {
 	}
 
 	input := viper.GetString("url_or_file")
+	// Attempt to parse the input as a URL
 	parsedURL, err := url.Parse(input)
+	// If parsing as URL fails or no scheme detected, treat it as a file path
 	if err != nil || parsedURL.Scheme == "" {
-		if strings.ContainsAny(input, "\\:*?\"<>|") {
-			fmt.Println("Path contains invalid characters. Please check the configuration.")
-			return fmt.Errorf("invalid file path")
-		}
-		dir, err := os.Getwd()
+		// Treat input as a file path
+		err = processFilePath(input, fetcher)
 		if err != nil {
-			fmt.Println("Error getting current directory:", err)
-			return err
+			log.Fatalf("Error in processing file path: %v", err)
 		}
-		absPath := filepath.Join(dir, input)
-		if _, err := os.Stat(absPath); os.IsNotExist(err) {
-			fmt.Println("No URL or file found. Please check the configuration.")
-			return fmt.Errorf("file not found")
-		}
-		fmt.Println("Input is a valid file path.")
-		fetcher = store.FileImageListFetcher(input)
-		os.Setenv("USER_INPUT", input)
 	} else {
-		fmt.Println("Input is a valid URL.")
+		// Process input as a URL
 		fetcher = store.RemoteImageListFetcher(input)
-		os.Setenv("USER_INPUT", input)
-		parts := strings.SplitN(input, "://", 2)
-		scheme := parts[0] + "://"
-		os.Setenv("SCHEME", scheme)
-		hostAndPath := parts[1]
-		hostParts := strings.Split(hostAndPath, "/")
-		host := hostParts[0]
-		os.Setenv("HOST", host)
-		apiVersion := hostParts[1]
-		os.Setenv("API_VERSION", apiVersion)
-		registry := hostParts[2]
-		os.Setenv("REGISTRY", registry)
-		repository := hostParts[3]
-		os.Setenv("REPOSITORY", repository)
+		err = processURL(input)
+		if err != nil {
+			log.Fatalf("Error in processing URL: %v", err)
+		}
 	}
 
 	err = godotenv.Load()
@@ -163,5 +134,56 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func processFilePath(input string, fetcher store.ImageFetcher) error {
+	// Check for invalid characters in file path
+	if strings.ContainsAny(input, "\\:*?\"<>|") {
+		fmt.Println("Path contains invalid characters. Please check the configuration.")
+		return fmt.Errorf("invalid file path")
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		fmt.Println("Error getting current directory:", err)
+		return err
+	}
+	absPath := filepath.Join(dir, input)
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		fmt.Println("No URL or file found. Please check the configuration.")
+		return fmt.Errorf("file not found")
+	}
+	fmt.Println("Input is a valid file path.")
+	fetcher = store.FileImageListFetcher(input)
+	os.Setenv("USER_INPUT", input)
+
+	return nil
+}
+
+func processURL(input string) error {
+	fmt.Println("Input is a valid URL.")
+
+	// Set environment variables
+	os.Setenv("USER_INPUT", input)
+
+	// Extract URL components
+	parts := strings.SplitN(input, "://", 2)
+	scheme := parts[0] + "://"
+	os.Setenv("SCHEME", scheme)
+
+	hostAndPath := parts[1]
+	hostParts := strings.Split(hostAndPath, "/")
+	host := hostParts[0]
+	os.Setenv("HOST", host)
+
+	apiVersion := hostParts[1]
+	os.Setenv("API_VERSION", apiVersion)
+
+	registry := hostParts[2]
+	os.Setenv("REGISTRY", registry)
+
+	repository := hostParts[3]
+	os.Setenv("REPOSITORY", repository)
+
 	return nil
 }
