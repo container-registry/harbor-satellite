@@ -54,7 +54,7 @@ func run() error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	logLevel := viper.GetString("log_level")
-	ctx = logger.NewContextWithLogger(ctx, logLevel)
+	ctx = logger.AddLoggerToContext(ctx, logLevel)
 
 	log := logger.FromContext(ctx)
 	errLog := logger.ErrorLoggerFromContext(ctx)

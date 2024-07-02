@@ -12,8 +12,8 @@ type contextKey string
 const loggerKey contextKey = "logger"
 const errorLoggerKey contextKey = "errorLogger"
 
-// NewContextWithLogger creates a new context with a zerolog logger for stdout adn stderr and sets the global log level.
-func NewContextWithLogger(ctx context.Context, logLevel string) context.Context {
+// AddLoggerToContext creates a new context with a zerolog logger for stdout adn stderr and sets the global log level.
+func AddLoggerToContext(ctx context.Context, logLevel string) context.Context {
 	// Set log level to configured value
 	switch logLevel {
 	case "debug":
