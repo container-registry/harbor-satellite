@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -18,20 +18,30 @@ import (
 	"container-registry.com/harbor-satellite/internal/replicate"
 	"container-registry.com/harbor-satellite/internal/satellite"
 	"container-registry.com/harbor-satellite/internal/store"
+	"container-registry.com/harbor-satellite/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/spf13/viper"
 
 	"github.com/joho/godotenv"
 )
 
 func main() {
+	viper.SetConfigName("config")
+	viper.SetConfigType("toml")
+	viper.AddConfigPath(".")
+	if err := viper.ReadInConfig(); err != nil {
+		fmt.Println("Error reading config file, ", err)
+		fmt.Println("Exiting Satellite")
+		os.Exit(1)
+	}
+
 	err := run()
 	if err != nil {
-		fmt.Println(err)
 		os.Exit(1)
 	}
 }
@@ -43,13 +53,12 @@ func run() error {
 	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
 
-	viper.SetConfigName("config")
-	viper.SetConfigType("toml")
-	viper.AddConfigPath(".")
+	logLevel := viper.GetString("log_level")
+	ctx = logger.NewContextWithLogger(ctx, logLevel)
 
-	if err := viper.ReadInConfig(); err != nil {
-		return fmt.Errorf("fatal error config file: %w", err)
-	}
+	log := logger.FromContext(ctx)
+	errLog := logger.ErrorLoggerFromContext(ctx)
+	log.Info().Msg("Satellite starting")
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{}))
@@ -84,26 +93,33 @@ func run() error {
 		registryAdr := viper.GetString("own_registry_adr")
 
 		// Validate registryAdr format
-		// matched, err := regexp.MatchString(`^127\.0\.0\.1:\d{1,5}$`, registryAdr)
-		// if err != nil {
-		// 	return fmt.Errorf("error validating registry address: %w", err)
-		// }
-		// if matched {
-		// 	return fmt.Errorf("invalid registry address format: %s", registryAdr)
-		// }
-		os.Setenv("ZOT_URL", registryAdr)
-		fmt.Println("Registry URL set to:", registryAdr)
+		ip := net.ParseIP(registryAdr)
+		if ip == nil {
+			errLog.Error().Msg("Invalid IP address")
+			return errors.New("invalid IP address")
+		}
+		if ip.To4() != nil {
+			log.Info().Msg("IP address is valid IPv4")
+		} else {
+			errLog.Error().Msg("IP address is IPv6 format and unsupported")
+			return errors.New("IP address is IPv6 format and unsupported")
+		}
+		registryPort := viper.GetString("own_registry_port")
+		os.Setenv("ZOT_URL", registryAdr+":"+registryPort)
 	} else {
+		log.Info().Msg("Launching default registry")
 		g.Go(func() error {
-			launch, err := registry.LaunchRegistry()
+			launch, err := registry.LaunchRegistry(viper.GetString("zotConfigPath"))
 			if launch {
-				cancel()
-				return nil
-			} else {
-				log.Println("Error launching registry :", err)
 				cancel()
 				return err
 			}
+			if err != nil {
+				cancel()
+				errLog.Error().Err(err).Msg("Failed to launch default registry")
+				return err
+			}
+			return nil
 		})
 	}
 
@@ -111,25 +127,25 @@ func run() error {
 	parsedURL, err := url.Parse(input)
 	if err != nil || parsedURL.Scheme == "" {
 		if strings.ContainsAny(input, "\\:*?\"<>|") {
-			fmt.Println("Path contains invalid characters. Please check the configuration.")
-			return fmt.Errorf("invalid file path")
+			errLog.Error().Msg("Path contains invalid characters. Please check the configuration.")
+			return err
 		}
 		dir, err := os.Getwd()
 		if err != nil {
-			fmt.Println("Error getting current directory:", err)
+			errLog.Error().Err(err).Msg("Error getting current directory")
 			return err
 		}
 		absPath := filepath.Join(dir, input)
 		if _, err := os.Stat(absPath); os.IsNotExist(err) {
-			fmt.Println("No URL or file found. Please check the configuration.")
-			return fmt.Errorf("file not found")
+			errLog.Error().Err(err).Msg("No URL or file found. Please check the configuration.")
+			return err
 		}
-		fmt.Println("Input is a valid file path.")
-		fetcher = store.FileImageListFetcher(input)
+		log.Info().Msg("Input is a valid file path.")
+		fetcher = store.FileImageListFetcher(ctx, input)
 		os.Setenv("USER_INPUT", input)
 	} else {
-		fmt.Println("Input is a valid URL.")
-		fetcher = store.RemoteImageListFetcher(input)
+		log.Info().Msg("Input is a valid URL.")
+		fetcher = store.RemoteImageListFetcher(ctx, input)
 		os.Setenv("USER_INPUT", input)
 		parts := strings.SplitN(input, "://", 2)
 		scheme := parts[0] + "://"
@@ -148,19 +164,22 @@ func run() error {
 
 	err = godotenv.Load()
 	if err != nil {
-		log.Fatalf("Error loading.env file: %v", err)
+		errLog.Error().Err(err).Msg("Error loading.env file")
+		return err
 	}
 
-	storer := store.NewInMemoryStore(fetcher)
-	replicator := replicate.NewReplicator()
-	s := satellite.NewSatellite(storer, replicator)
+	ctx, storer := store.NewInMemoryStore(ctx, fetcher)
+	replicator := replicate.NewReplicator(ctx)
+	s := satellite.NewSatellite(ctx, storer, replicator)
 
 	g.Go(func() error {
 		return s.Run(ctx)
 	})
+	log.Info().Msg("Satellite running")
 
 	err = g.Wait()
 	if err != nil {
+		errLog.Error().Err(err).Msg("Error running satellite")
 		return err
 	}
 	return nil

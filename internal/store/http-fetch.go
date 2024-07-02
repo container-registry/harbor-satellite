@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"container-registry.com/harbor-satellite/logger"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 )
@@ -23,17 +25,19 @@ type TagListResponse struct {
 	Tags []string `json:"tags"`
 }
 
-func RemoteImageListFetcher(url string) *RemoteImageList {
+func RemoteImageListFetcher(ctx context.Context, url string) *RemoteImageList {
 	return &RemoteImageList{
 		BaseURL: url,
 	}
 }
 
-func (r *RemoteImageList) Type() string {
+func (r *RemoteImageList) Type(ctx context.Context) string {
 	return "Remote"
 }
 
 func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
+	log := logger.FromContext(ctx)
+	errLog := logger.ErrorLoggerFromContext(ctx)
 	// Construct the URL for fetching tags
 	url := client.BaseURL + "/tags/list"
 
@@ -45,30 +49,39 @@ func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
 	// Create a new HTTP request
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		errLog.Error().Msgf("failed to create request: %v", err)
+		return nil, err
 	}
 
 	// Set the Authorization header
 	req.Header.Set("Authorization", "Basic "+auth)
 
-	// Send the request
-	httpClient := &http.Client{}
+	// Configure the HTTP client with a timeout
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	// Send the HTTP request
+	log.Info().Msgf("Sending request to %s", url)
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch tags: %w", err)
+		errLog.Error().Msgf("failed to send request: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		errLog.Error().Msgf("failed to read response body: %v", err)
+		return nil, err
 	}
 
 	// Unmarshal the JSON response
 	var tagListResponse TagListResponse
 	if err := json.Unmarshal(body, &tagListResponse); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON response: %w", err)
+		errLog.Error().Msgf("failed to unmarshal response: %v", err)
+		return nil, err
 	}
 
 	// Prepare a slice to store the images
@@ -80,11 +93,11 @@ func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
 			Name: fmt.Sprintf("%s:%s", tagListResponse.Name, tag),
 		})
 	}
-	fmt.Println("Fetched", len(images), "images :", images)
 	return images, nil
 }
 
 func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (string, error) {
+	errLog := logger.ErrorLoggerFromContext(ctx)
 	// Construct the image reference
 	imageRef := fmt.Sprintf("%s:%s", client.BaseURL, tag)
 	// Remove extra characters from the URL
@@ -101,7 +114,7 @@ func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (strin
 		Password: password,
 	}), crane.Insecure)
 	if err != nil {
-		fmt.Printf("failed to fetch digest for %s: %v\n", imageRef, err)
+		errLog.Error().Msgf("failed to get digest using crane: %v", err)
 		return "", nil
 	}
 
