@@ -14,95 +14,128 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 )
 
-type RemoteImageList struct {
+// RemoteImageSource represents a source of images from a remote URL.
+type RemoteImageSource struct {
 	BaseURL string
 }
 
+// TagListResponse represents the JSON structure for the tags list response.
 type TagListResponse struct {
 	Name string   `json:"name"`
 	Tags []string `json:"tags"`
 }
 
-func RemoteImageListFetcher(url string) *RemoteImageList {
-	return &RemoteImageList{
-		BaseURL: url,
-	}
+// NewRemoteImageSource creates a new RemoteImageSource instance.
+func NewRemoteImageSource(url string) *RemoteImageSource {
+	return &RemoteImageSource{BaseURL: url}
 }
 
-func (r *RemoteImageList) Type() string {
+// SourceType returns the type of the image source as a string.
+func (r *RemoteImageSource) SourceType() string {
 	return "Remote"
 }
 
-func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
-	// Construct the URL for fetching tags
-	url := client.BaseURL + "/tags/list"
+// FetchImages retrieves a list of images from the remote repository.
+func (r *RemoteImageSource) List(ctx context.Context) ([]Image, error) {
+	url := r.BaseURL + "/tags/list"
+	authHeader, err := createAuthHeader()
+	if err != nil {
+		return nil, fmt.Errorf("error creating auth header: %w", err)
+	}
 
-	// Encode credentials for Basic Authentication
+	body, err := fetchResponseBody(url, authHeader)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching tags list: %w", err)
+	}
+
+	images, err := parseTagsResponse(body)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing tags response: %w", err)
+	}
+
+	fmt.Println("Fetched", len(images), "images:", images)
+	return images, nil
+}
+
+// FetchDigest fetches the digest for a specific image tag.
+func (r *RemoteImageSource) GetDigest(ctx context.Context, tag string) (string, error) {
+	imageRef := fmt.Sprintf("%s:%s", r.BaseURL, tag)
+	imageRef = cleanImageReference(imageRef)
+
+	digest, err := fetchImageDigest(imageRef)
+	if err != nil {
+		return "", fmt.Errorf("error fetching digest for %s: %w", imageRef, err)
+	}
+
+	return digest, nil
+}
+
+// createAuthHeader generates the authorization header for HTTP requests.
+func createAuthHeader() (string, error) {
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
+	if username == "" || password == "" {
+		return "", fmt.Errorf("environment variables HARBOR_USERNAME or HARBOR_PASSWORD not set")
+	}
 	auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	return "Basic " + auth, nil
+}
 
-	// Create a new HTTP request
+// fetchResponseBody makes an HTTP GET request and returns the response body.
+func fetchResponseBody(url, authHeader string) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("Authorization", authHeader)
 
-	// Set the Authorization header
-	req.Header.Set("Authorization", "Basic "+auth)
-
-	// Send the request
-	httpClient := &http.Client{}
-	resp, err := httpClient.Do(req)
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch tags: %w", err)
+		return nil, fmt.Errorf("failed to fetch response: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Unmarshal the JSON response
-	var tagListResponse TagListResponse
-	if err := json.Unmarshal(body, &tagListResponse); err != nil {
+	return body, nil
+}
+
+// parseTagsResponse unmarshals the tags list response and constructs image references.
+func parseTagsResponse(body []byte) ([]Image, error) {
+	var tagList TagListResponse
+	if err := json.Unmarshal(body, &tagList); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON response: %w", err)
 	}
 
-	// Prepare a slice to store the images
 	var images []Image
-
-	// Iterate over the tags and construct the image references
-	for _, tag := range tagListResponse.Tags {
-		images = append(images, Image{
-			Name: fmt.Sprintf("%s:%s", tagListResponse.Name, tag),
-		})
+	for _, tag := range tagList.Tags {
+		images = append(images, Image{Name: fmt.Sprintf("%s:%s", tagList.Name, tag)})
 	}
-	fmt.Println("Fetched", len(images), "images :", images)
+
 	return images, nil
 }
 
-func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (string, error) {
-	// Construct the image reference
-	imageRef := fmt.Sprintf("%s:%s", client.BaseURL, tag)
-	// Remove extra characters from the URL
+// cleanImageReference cleans up the image reference string.
+func cleanImageReference(imageRef string) string {
 	imageRef = imageRef[strings.Index(imageRef, "//")+2:]
-	imageRef = strings.ReplaceAll(imageRef, "/v2", "")
+	return strings.ReplaceAll(imageRef, "/v2", "")
+}
 
-	// Encode credentials for Basic Authentication
+// fetchImageDigest retrieves the digest for an image reference.
+func fetchImageDigest(imageRef string) (string, error) {
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
 
-	// Use crane.Digest to get the digest of the image
 	digest, err := crane.Digest(imageRef, crane.WithAuth(&authn.Basic{
 		Username: username,
 		Password: password,
 	}), crane.Insecure)
 	if err != nil {
-		fmt.Printf("failed to fetch digest for %s: %v\n", imageRef, err)
-		return "", nil
+		return "", fmt.Errorf("failed to fetch digest: %w", err)
 	}
 
 	return digest, nil
