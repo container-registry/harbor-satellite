@@ -104,17 +104,18 @@ func run() error {
 	// If parsing as URL fails or no scheme detected, treat it as a file path
 	if err != nil || parsedURL.Scheme == "" {
 		// Treat input as a file path
-		err = processFilePath(input, fetcher)
+		err = processFilePath(input)
 		if err != nil {
 			log.Fatalf("Error in processing file path: %v", err)
 		}
+		fetcher = store.FileImageListFetcher(input)
 	} else {
 		// Process input as a URL
-		fetcher = store.RemoteImageListFetcher(input)
 		err = processURL(input)
 		if err != nil {
 			log.Fatalf("Error in processing URL: %v", err)
 		}
+		fetcher = store.NewRemoteImageSource(input)
 	}
 
 	err = godotenv.Load()
@@ -137,7 +138,7 @@ func run() error {
 	return nil
 }
 
-func processFilePath(input string, fetcher store.ImageFetcher) error {
+func processFilePath(input string) error {
 	// Check for invalid characters in file path
 	if strings.ContainsAny(input, "\\:*?\"<>|") {
 		fmt.Println("Path contains invalid characters. Please check the configuration.")
@@ -154,7 +155,6 @@ func processFilePath(input string, fetcher store.ImageFetcher) error {
 		return fmt.Errorf("file not found")
 	}
 	fmt.Println("Input is a valid file path.")
-	fetcher = store.FileImageListFetcher(input)
 	os.Setenv("USER_INPUT", input)
 
 	return nil

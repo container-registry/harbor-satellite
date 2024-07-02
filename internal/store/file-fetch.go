@@ -24,7 +24,7 @@ type ImageData struct {
 	Repositories []Repository `json:"repositories"`
 }
 
-func (f *FileImageList) Type() string {
+func (f *FileImageList) SourceType() string {
 	return "File"
 }
 

@@ -28,7 +28,7 @@ type Storer interface {
 type ImageFetcher interface {
 	List(ctx context.Context) ([]Image, error)
 	GetDigest(ctx context.Context, tag string) (string, error)
-	Type() string
+	SourceType() string
 }
 
 func NewInMemoryStore(fetcher ImageFetcher) Storer {
@@ -49,7 +49,7 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 	}
 
 	// Handle File and Remote fetcher types differently
-	switch s.fetcher.Type() {
+	switch s.fetcher.SourceType() {
 	case "File":
 		for _, img := range imageList {
 			// Check if the image already exists in the store
