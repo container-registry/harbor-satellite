@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"container-registry.com/harbor-satellite/logger"
 	"github.com/google/go-containerregistry/pkg/crane"
 )
 
@@ -28,28 +29,31 @@ type Storer interface {
 type ImageFetcher interface {
 	List(ctx context.Context) ([]Image, error)
 	GetDigest(ctx context.Context, tag string) (string, error)
-	Type() string
+	Type(ctx context.Context) string
 }
 
-func NewInMemoryStore(fetcher ImageFetcher) Storer {
-	return &inMemoryStore{
+func NewInMemoryStore(ctx context.Context, fetcher ImageFetcher) (context.Context, Storer) {
+	return ctx, &inMemoryStore{
 		images:  make(map[string]string),
 		fetcher: fetcher,
 	}
 }
 
 func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
+	log := logger.FromContext(ctx)
+	errLog := logger.ErrorLoggerFromContext(ctx)
 	var imageList []Image
 	var change bool
+	err := error(nil)
 
 	// Fetch images from the file/remote source
-	imageList, err := s.fetcher.List(ctx)
+	imageList, err = s.fetcher.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Handle File and Remote fetcher types differently
-	switch s.fetcher.Type() {
+	switch s.fetcher.Type(ctx) {
 	case "File":
 		for _, img := range imageList {
 			// Check if the image already exists in the store
@@ -58,7 +62,7 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 				s.AddImage(ctx, img.Name)
 				change = true
 			} else {
-				fmt.Printf("Image %s already exists in the store\n", img.Name)
+				log.Info().Msgf("Image %s already exists in the store", img.Name)
 			}
 		}
 
@@ -84,9 +88,9 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 		}
 
 		// Print out the entire store for debugging purposes
-		fmt.Println("Current store:")
+		log.Info().Msg("Current store:")
 		for image := range s.images {
-			fmt.Printf("Image: %s\n", image)
+			log.Info().Msgf("Image: %s", image)
 		}
 
 	case "Remote":
@@ -104,7 +108,7 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 			tagParts := strings.Split(img.Name, ":")
 			// Check if there is a tag part, min length is 1 char
 			if len(tagParts) < 2 {
-				fmt.Println("No tag part found in the image reference")
+				errLog.Error().Msgf("Invalid image reference: %s", img.Name)
 			}
 			// Use the last part as the tag
 			tag := tagParts[len(tagParts)-1]
@@ -115,7 +119,7 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 			}
 
 			// Check if the image exists and matches the digest
-			if !(s.checkImageAndDigest(digest, img.Name)) {
+			if !(s.checkImageAndDigest(ctx, digest, img.Name)) {
 				change = true
 			}
 
@@ -135,9 +139,9 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 			}
 		}
 		// Print out the entire store for debugging purposes
-		fmt.Println("Current store:")
+		log.Info().Msg("Current store:")
 		for digest, imageRef := range s.images {
-			fmt.Printf("Digest: %s, Image: %s\n", digest, imageRef)
+			log.Info().Msgf("Image: %s, Digest: %s", imageRef, digest)
 		}
 
 		// Empty and refill imageList with the contents from s.images
@@ -148,58 +152,64 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 
 	}
 	if change {
-		fmt.Println("Changes detected in the store")
+		log.Info().Msg("Changes detected in the store")
 		change = false
 		return imageList, nil
 	} else {
-		fmt.Println("No changes detected in the store")
+		log.Info().Msg("No changes detected in the store")
 		return nil, nil
 	}
 }
 
 func (s *inMemoryStore) Add(ctx context.Context, digest string, image string) error {
+	log := logger.FromContext(ctx)
 	// Check if the image already exists in the store
 	if _, exists := s.images[digest]; exists {
-		fmt.Printf("Image: %s, digest: %s already exists in the store.\n", image, digest)
+		log.Info().Msgf("Image: %s, digest: %s already exists in the store.", image, digest)
 		return fmt.Errorf("image %s already exists in the store", image)
 	} else {
 		// Add the image and its digest to the store
 		s.images[digest] = image
-		fmt.Printf("Successfully added image: %s, digest: %s\n", image, digest)
+		log.Info().Msgf("Successfully added image: %s, digest: %s", image, digest)
 		return nil
 	}
 }
 
 func (s *inMemoryStore) AddImage(ctx context.Context, image string) error {
+	log := logger.FromContext(ctx)
 	// Add the image to the store
 	s.images[image] = ""
-	fmt.Printf("Added image: %s\n", image)
+	log.Info().Msgf("Added image: %s", image)
 	return nil
 }
 
 func (s *inMemoryStore) Remove(ctx context.Context, digest string, image string) error {
+	log := logger.FromContext(ctx)
 	// Check if the image exists in the store
 	if _, exists := s.images[digest]; exists {
 		// Remove the image and its digest from the store
 		delete(s.images, digest)
-		fmt.Printf("Successfully removed image: %s, digest: %s\n", image, digest)
+		log.Info().Msgf("Successfully removed image: %s, digest: %s", image, digest)
 		return nil
 	} else {
-		fmt.Printf("Failed to remove image: %s, digest: %s. Not found in the store.\n", image, digest)
+		log.Warn().Msgf("Failed to remove image: %s, digest: %s. Not found in the store.", image, digest)
 		return fmt.Errorf("image %s not found in the store", image)
 	}
 }
 
 func (s *inMemoryStore) RemoveImage(ctx context.Context, image string) error {
+	log := logger.FromContext(ctx)
 	// Remove the image from the store
 	delete(s.images, image)
-	fmt.Printf("Removed image: %s\n", image)
+	log.Info().Msgf("Removed image: %s", image)
 	return nil
 }
 
 // TODO: Rework complicated logic and add support for multiple repositories
 // checkImageAndDigest checks if the image exists in the store and if the digest matches the image reference
-func (s *inMemoryStore) checkImageAndDigest(digest string, image string) bool {
+func (s *inMemoryStore) checkImageAndDigest(ctx context.Context, digest string, image string) bool {
+	errLog := logger.ErrorLoggerFromContext(ctx)
+
 	// Check if the received image exists in the store
 	for storeDigest, storeImage := range s.images {
 		if storeImage == image {
@@ -210,7 +220,7 @@ func (s *inMemoryStore) checkImageAndDigest(digest string, image string) bool {
 				tag := strings.Split(image, ":")[1]
 				localRegistryDigest, err := GetLocalDigest(context.Background(), tag)
 				if err != nil {
-					fmt.Println("Error getting digest from local registry:", err)
+					errLog.Error().Msgf("Error getting digest from local registry: %v", err)
 					return false
 				} else {
 					// Check if the digest from the local registry matches the digest from the store
@@ -237,6 +247,8 @@ func (s *inMemoryStore) checkImageAndDigest(digest string, image string) bool {
 }
 
 func GetLocalDigest(ctx context.Context, tag string) (string, error) {
+	errLog := logger.ErrorLoggerFromContext(ctx)
+
 	zotUrl := os.Getenv("ZOT_URL")
 	userURL := os.Getenv("USER_INPUT")
 	// Remove extra characters from the URLs
@@ -250,6 +262,7 @@ func GetLocalDigest(ctx context.Context, tag string) (string, error) {
 	// Use crane.Digest to get the digest of the image
 	digest, err := crane.Digest(url)
 	if err != nil {
+		errLog.Error().Msgf("Error getting digest using crane: %v", err)
 		return "", fmt.Errorf("failed to get digest using crane: %w", err)
 	}
 

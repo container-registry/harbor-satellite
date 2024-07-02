@@ -2,11 +2,11 @@ package satellite
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"container-registry.com/harbor-satellite/internal/replicate"
 	"container-registry.com/harbor-satellite/internal/store"
+	"container-registry.com/harbor-satellite/logger"
 )
 
 type Satellite struct {
@@ -14,7 +14,7 @@ type Satellite struct {
 	replicator replicate.Replicator
 }
 
-func NewSatellite(storer store.Storer, replicator replicate.Replicator) *Satellite {
+func NewSatellite(ctx context.Context, storer store.Storer, replicator replicate.Replicator) *Satellite {
 	return &Satellite{
 		storer:     storer,
 		replicator: replicator,
@@ -22,23 +22,28 @@ func NewSatellite(storer store.Storer, replicator replicate.Replicator) *Satelli
 }
 
 func (s *Satellite) Run(ctx context.Context) error {
+	log := logger.FromContext(ctx)
+	errLog := logger.ErrorLoggerFromContext(ctx)
+
 	// Execute the initial operation immediately without waiting for the ticker
 	imgs, err := s.storer.List(ctx)
 	if err != nil {
+		errLog.Error().Err(err).Msg("Error listing images")
 		return err
 	}
 	if len(imgs) == 0 {
-		fmt.Println("No images to replicate")
+		log.Info().Msg("No images to replicate")
 	} else {
 		for _, img := range imgs {
 			err = s.replicator.Replicate(ctx, img.Name)
 			if err != nil {
+				errLog.Error().Err(err).Msg("Error replicating image")
 				return err
 			}
 		}
 		s.replicator.DeleteExtraImages(ctx, imgs)
 	}
-	fmt.Print("--------------------------------\n")
+	log.Info().Msg("--------------------------------\n")
 
 	// Temporarily set to faster tick rate for testing purposes
 	ticker := time.NewTicker(3 * time.Second)
@@ -51,20 +56,22 @@ func (s *Satellite) Run(ctx context.Context) error {
 		case <-ticker.C:
 			imgs, err := s.storer.List(ctx)
 			if err != nil {
+				errLog.Error().Err(err).Msg("Error listing images")
 				return err
 			}
 			if len(imgs) == 0 {
-				fmt.Println("No images to replicate")
+				log.Info().Msg("No images to replicate")
 			} else {
 				for _, img := range imgs {
 					err = s.replicator.Replicate(ctx, img.Name)
 					if err != nil {
+						errLog.Error().Err(err).Msg("Error replicating image")
 						return err
 					}
 				}
 				s.replicator.DeleteExtraImages(ctx, imgs)
 			}
 		}
-		fmt.Print("--------------------------------\n")
+		log.Info().Msg("--------------------------------\n")
 	}
 }

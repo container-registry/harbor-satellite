@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"container-registry.com/harbor-satellite/internal/store"
+	"container-registry.com/harbor-satellite/logger"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 )
@@ -35,15 +36,16 @@ type RegistryInfo struct {
 	Repositories []Repository `json:"repositories"`
 }
 
-func NewReplicator() Replicator {
+func NewReplicator(context context.Context) Replicator {
 	return &BasicReplicator{}
 }
 
 func (r *BasicReplicator) Replicate(ctx context.Context, image string) error {
-	source := getPullSource(image)
+
+	source := getPullSource(ctx, image)
 
 	if source != "" {
-		CopyImage(source)
+		CopyImage(ctx, source)
 	}
 	return nil
 }
@@ -56,18 +58,21 @@ func stripPrefix(imageName string) string {
 }
 
 func (r *BasicReplicator) DeleteExtraImages(ctx context.Context, imgs []store.Image) error {
+	log := logger.FromContext(ctx)
+	errLog := logger.ErrorLoggerFromContext(ctx)
 	zotUrl := os.Getenv("ZOT_URL")
 	host := os.Getenv("HOST")
 	registry := os.Getenv("REGISTRY")
 	repository := os.Getenv("REPOSITORY")
 
 	localRegistry := fmt.Sprintf("%s/%s/%s/%s", zotUrl, host, registry, repository)
-	fmt.Println("Syncing local registry:", localRegistry)
+	log.Info().Msgf("Local registry: %s", localRegistry)
 
 	// Get the list of images from the local registry
 	localImages, err := crane.ListTags(localRegistry)
 	if err != nil {
-		return fmt.Errorf("failed to get local registry catalog: %w", err)
+		errLog.Error().Msgf("failed to list tags: %v", err)
+		return err
 	}
 
 	// Create a map for quick lookup of the provided image list
@@ -82,29 +87,31 @@ func (r *BasicReplicator) DeleteExtraImages(ctx context.Context, imgs []store.Im
 	for _, localImage := range localImages {
 		if _, exists := imageMap[localImage]; !exists {
 			// Image is not in the provided list, delete it
-			fmt.Print("Deleting image: ", localRegistry+":"+localImage, " ... ")
+			log.Info().Msgf("Deleting image: %s", localImage)
 			err := crane.Delete(fmt.Sprintf("%s:%s", localRegistry, localImage))
 			if err != nil {
-				fmt.Printf("failed to delete image %s: %v\n", localImage, err)
-				return nil
+				errLog.Error().Msgf("failed to delete image: %v", err)
+				return err
 			}
-			fmt.Printf("Deleted image: %s\n", localImage)
+			log.Info().Msgf("Image deleted: %s", localImage)
 		}
 	}
 
 	return nil
 }
 
-func getPullSource(image string) string {
+func getPullSource(ctx context.Context, image string) string {
+	errLog := logger.ErrorLoggerFromContext(ctx)
 	input := os.Getenv("USER_INPUT")
 	scheme := os.Getenv("SCHEME")
 	if strings.HasPrefix(scheme, "http://") || strings.HasPrefix(scheme, "https://") {
 		url := os.Getenv("HOST") + "/" + os.Getenv("REGISTRY") + "/" + image
 		return url
 	} else {
-		registryInfo, err := getFileInfo(input)
+		registryInfo, err := getFileInfo(ctx, input)
 		if err != nil {
-			return "Error loading file info: " + err.Error()
+			errLog.Error().Msgf("Error getting file info: %v", err)
+			return ""
 		}
 		registryURL := registryInfo.RegistryUrl
 		registryURL = strings.TrimPrefix(registryURL, "https://")
@@ -117,11 +124,13 @@ func getPullSource(image string) string {
 	}
 }
 
-func getFileInfo(input string) (*RegistryInfo, error) {
+func getFileInfo(ctx context.Context, input string) (*RegistryInfo, error) {
+	errLog := logger.ErrorLoggerFromContext(ctx)
 	// Get the current working directory
 	workingDir, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get working directory: %w", err)
+		errLog.Error().Msgf("Error getting current directory: %v", err)
+		return nil, err
 	}
 
 	// Construct the full path by joining the working directory and the input path
@@ -130,22 +139,27 @@ func getFileInfo(input string) (*RegistryInfo, error) {
 	// Read the file
 	jsonData, err := os.ReadFile(fullPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		errLog.Error().Msgf("Error reading file: %v", err)
+		return nil, err
 	}
 
 	var registryInfo RegistryInfo
 	err = json.Unmarshal(jsonData, &registryInfo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+		errLog.Error().Msgf("Error unmarshalling JSON data: %v", err)
+		return nil, err
 	}
 
 	return &registryInfo, nil
 }
 
-func CopyImage(imageName string) error {
-	fmt.Println("Copying image:", imageName)
+func CopyImage(ctx context.Context, imageName string) error {
+	log := logger.FromContext(ctx)
+	errLog := logger.ErrorLoggerFromContext(ctx)
+	log.Info().Msgf("Copying image: %s", imageName)
 	zotUrl := os.Getenv("ZOT_URL")
 	if zotUrl == "" {
+		errLog.Error().Msg("ZOT_URL environment variable is not set")
 		return fmt.Errorf("ZOT_URL environment variable is not set")
 	}
 
@@ -158,6 +172,7 @@ func CopyImage(imageName string) error {
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
 	if username == "" || password == "" {
+		errLog.Error().Msg("HARBOR_USERNAME or HARBOR_PASSWORD environment variable is not set")
 		return fmt.Errorf("HARBOR_USERNAME or HARBOR_PASSWORD environment variable is not set")
 	}
 
@@ -169,28 +184,26 @@ func CopyImage(imageName string) error {
 	// Pull the image with authentication
 	srcImage, err := crane.Pull(imageName, crane.WithAuth(auth), crane.Insecure)
 	if err != nil {
-		fmt.Printf("Failed to pull image: %v\n", err)
+		errLog.Error().Msgf("Failed to pull image: %v", err)
 		return fmt.Errorf("failed to pull image: %w", err)
 	} else {
-		fmt.Println("Image pulled successfully")
-		fmt.Printf("Pulled image details: %+v\n", srcImage)
+		log.Info().Msg("Image pulled successfully")
 	}
 
 	// Push the image to the destination registry
 	err = crane.Push(srcImage, destRef, crane.Insecure)
 	if err != nil {
-		fmt.Printf("Failed to push image: %v\n", err)
+		errLog.Error().Msgf("Failed to push image: %v", err)
 		return fmt.Errorf("failed to push image: %w", err)
 	} else {
-		fmt.Println("Image pushed successfully")
-		fmt.Printf("Pushed image to: %s\n", destRef)
+		log.Info().Msg("Image pushed successfully")
 	}
 
 	// Delete ./local-oci-layout directory
 	// This is required because it is a temporary directory used by crane to pull and push images to and from
 	// And crane does not automatically clean it
 	if err := os.RemoveAll("./local-oci-layout"); err != nil {
-		fmt.Printf("Failed to remove directory: %v\n", err)
+		errLog.Error().Msgf("Failed to remove directory: %v", err)
 		return fmt.Errorf("failed to remove directory: %w", err)
 	}
 
