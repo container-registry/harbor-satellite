@@ -45,12 +45,12 @@ func (r *RemoteImageSource) List(ctx context.Context) ([]Image, error) {
 
 	body, err := fetchResponseBody(url, authHeader)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching tags list: %w", err)
+		return nil, fmt.Errorf("error fetching tags list from %s: %w", url, err)
 	}
 
 	images, err := parseTagsResponse(body)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing tags response: %w", err)
+		return nil, fmt.Errorf("error parsing tags response from %s: %w", url, err)
 	}
 
 	fmt.Println("Fetched", len(images), "images:", images)
@@ -85,20 +85,20 @@ func createAuthHeader() (string, error) {
 func fetchResponseBody(url, authHeader string) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request for %s: %w", url, err)
 	}
 	req.Header.Set("Authorization", authHeader)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch response: %w", err)
+		return nil, fmt.Errorf("failed to fetch response from %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		return nil, fmt.Errorf("failed to read response body from %s: %w", url, err)
 	}
 
 	return body, nil
@@ -135,7 +135,7 @@ func fetchImageDigest(imageRef string) (string, error) {
 		Password: password,
 	}), crane.Insecure)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch digest: %w", err)
+		return "", fmt.Errorf("failed to fetch digest for %s: %w", imageRef, err)
 	}
 
 	return digest, nil
