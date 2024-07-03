@@ -98,7 +98,9 @@ func (s *inMemoryStore) handleFileSource(ctx context.Context, imageList []Image)
 			}
 		}
 		if !found {
-			s.RemoveImage(ctx, image)
+			if err := s.RemoveImage(ctx, image); err != nil {
+				return false, err
+			}
 			change = true
 		}
 	}
@@ -206,8 +208,14 @@ func (s *inMemoryStore) Add(ctx context.Context, digest string, image string) er
 	}
 }
 
+// Add the image to the store
 func (s *inMemoryStore) AddImage(ctx context.Context, image string) {
-	// Add the image to the store
+	if _, exists := s.images[image]; exists {
+		fmt.Printf(
+			"Warning: Image %s already exists in the store. Proceeding with the addition.\n",
+			image,
+		)
+	}
 	s.images[image] = ""
 	fmt.Printf("Added image: %s\n", image)
 }
