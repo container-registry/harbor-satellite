@@ -161,7 +161,10 @@ func (s *inMemoryStore) handleRemoteSource(ctx context.Context, imageList []Imag
 	// Iterate over in memory store and remove any image that is not found in imageMap
 	for digest, image := range s.images {
 		if _, exists := imageMap[image]; !exists {
-			s.Remove(ctx, digest, image)
+			if err := s.Remove(ctx, digest, image); err != nil {
+				return false, err
+			}
+
 			change = true
 		}
 	}
@@ -224,9 +227,13 @@ func (s *inMemoryStore) Remove(ctx context.Context, digest string, image string)
 }
 
 // Remove the image from the store
-func (s *inMemoryStore) RemoveImage(ctx context.Context, image string) {
+func (s *inMemoryStore) RemoveImage(ctx context.Context, image string) error {
+	if _, exists := s.images[image]; !exists {
+		return fmt.Errorf("image %s not found in the store", image)
+	}
 	delete(s.images, image)
 	fmt.Printf("Removed image: %s\n", image)
+	return nil
 }
 
 // TODO: Rework complicated logic and add support for multiple repositories
