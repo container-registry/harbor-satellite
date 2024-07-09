@@ -37,7 +37,6 @@ func (r *RemoteImageList) Type(ctx context.Context) string {
 
 func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
 	log := logger.FromContext(ctx)
-	errLog := logger.ErrorLoggerFromContext(ctx)
 	// Construct the URL for fetching tags
 	url := client.BaseURL + "/tags/list"
 
@@ -49,7 +48,7 @@ func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
 	// Create a new HTTP request
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		errLog.Error().Msgf("failed to create request: %v", err)
+		log.Error().Msgf("failed to create request: %v", err)
 		return nil, err
 	}
 
@@ -65,7 +64,7 @@ func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
 	log.Info().Msgf("Sending request to %s", url)
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		errLog.Error().Msgf("failed to send request: %v", err)
+		log.Error().Msgf("failed to send request: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -73,14 +72,14 @@ func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		errLog.Error().Msgf("failed to read response body: %v", err)
+		log.Error().Msgf("failed to read response body: %v", err)
 		return nil, err
 	}
 
 	// Unmarshal the JSON response
 	var tagListResponse TagListResponse
 	if err := json.Unmarshal(body, &tagListResponse); err != nil {
-		errLog.Error().Msgf("failed to unmarshal response: %v", err)
+		log.Error().Msgf("failed to unmarshal response: %v", err)
 		return nil, err
 	}
 
@@ -97,7 +96,7 @@ func (client *RemoteImageList) List(ctx context.Context) ([]Image, error) {
 }
 
 func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (string, error) {
-	errLog := logger.ErrorLoggerFromContext(ctx)
+	log := logger.FromContext(ctx)
 	// Construct the image reference
 	imageRef := fmt.Sprintf("%s:%s", client.BaseURL, tag)
 	// Remove extra characters from the URL
@@ -114,7 +113,7 @@ func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (strin
 		Password: password,
 	}), crane.Insecure)
 	if err != nil {
-		errLog.Error().Msgf("failed to get digest using crane: %v", err)
+		log.Error().Msgf("failed to get digest using crane: %v", err)
 		return "", nil
 	}
 

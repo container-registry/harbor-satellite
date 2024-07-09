@@ -30,11 +30,11 @@ func (f *FileImageList) Type(ctx context.Context) string {
 }
 
 func FileImageListFetcher(ctx context.Context, relativePath string) *FileImageList {
-	errLog := logger.ErrorLoggerFromContext(ctx)
+	log := logger.FromContext(ctx)
 	// Get the current working directory
 	dir, err := os.Getwd()
 	if err != nil {
-		errLog.Error().Err(err).Msg("Error getting current directory")
+		log.Error().Err(err).Msg("Error getting current directory")
 		return nil
 	}
 
@@ -47,13 +47,13 @@ func FileImageListFetcher(ctx context.Context, relativePath string) *FileImageLi
 }
 
 func (client *FileImageList) List(ctx context.Context) ([]Image, error) {
-	errLog := logger.ErrorLoggerFromContext(ctx)
+	log := logger.FromContext(ctx)
 	var images []Image
 
 	// Read the file
 	data, err := os.ReadFile(client.Path)
 	if err != nil {
-		errLog.Error().Err(err).Msg("Error reading file")
+		log.Error().Err(err).Msg("Error reading file")
 		return nil, err
 	}
 
@@ -61,7 +61,7 @@ func (client *FileImageList) List(ctx context.Context) ([]Image, error) {
 	// Parse the JSON data
 	err = json.Unmarshal(data, &imageData)
 	if err != nil {
-		errLog.Error().Err(err).Msg("Error unmarshalling JSON data")
+		log.Error().Err(err).Msg("Error unmarshalling JSON data")
 		return nil, err
 	}
 

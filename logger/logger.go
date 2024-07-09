@@ -10,7 +10,6 @@ import (
 type contextKey string
 
 const loggerKey contextKey = "logger"
-const errorLoggerKey contextKey = "errorLogger"
 
 // AddLoggerToContext creates a new context with a zerolog logger for stdout adn stderr and sets the global log level.
 func AddLoggerToContext(ctx context.Context, logLevel string) context.Context {
@@ -31,13 +30,9 @@ func AddLoggerToContext(ctx context.Context, logLevel string) context.Context {
 	default:
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
-	// Use os.Stdout for the main logger
-	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
-	ctx = context.WithValue(ctx, loggerKey, &logger)
 
-	// Use os.Stderr for the error logger
-	errorLogger := zerolog.New(os.Stderr).With().Timestamp().Logger()
-	ctx = context.WithValue(ctx, errorLoggerKey, &errorLogger)
+	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
+	ctx = context.WithValue(ctx, loggerKey, &logger)
 
 	return ctx
 }
@@ -52,16 +47,4 @@ func FromContext(ctx context.Context) *zerolog.Logger {
 		return &defaultLogger
 	}
 	return logger
-}
-
-// ErrorLoggerFromContext extracts the error logger from the context.
-func ErrorLoggerFromContext(ctx context.Context) *zerolog.Logger {
-	errorLogger, ok := ctx.Value(errorLoggerKey).(*zerolog.Logger)
-	if !ok {
-		// Fallback to a default logger if none is found in the context.
-		defaultErrorLogger := zerolog.New(os.Stderr).With().Timestamp().Logger()
-		defaultErrorLogger.Error().Msg("Failed to extract error logger from context")
-		return &defaultErrorLogger
-	}
-	return errorLogger
 }

@@ -41,7 +41,6 @@ func NewInMemoryStore(ctx context.Context, fetcher ImageFetcher) (context.Contex
 
 func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 	log := logger.FromContext(ctx)
-	errLog := logger.ErrorLoggerFromContext(ctx)
 	var imageList []Image
 	var change bool
 	err := error(nil)
@@ -108,7 +107,7 @@ func (s *inMemoryStore) List(ctx context.Context) ([]Image, error) {
 			tagParts := strings.Split(img.Name, ":")
 			// Check if there is a tag part, min length is 1 char
 			if len(tagParts) < 2 {
-				errLog.Error().Msgf("Invalid image reference: %s", img.Name)
+				log.Error().Msgf("Invalid image reference: %s", img.Name)
 			}
 			// Use the last part as the tag
 			tag := tagParts[len(tagParts)-1]
@@ -208,7 +207,7 @@ func (s *inMemoryStore) RemoveImage(ctx context.Context, image string) error {
 // TODO: Rework complicated logic and add support for multiple repositories
 // checkImageAndDigest checks if the image exists in the store and if the digest matches the image reference
 func (s *inMemoryStore) checkImageAndDigest(ctx context.Context, digest string, image string) bool {
-	errLog := logger.ErrorLoggerFromContext(ctx)
+	log := logger.FromContext(ctx)
 
 	// Check if the received image exists in the store
 	for storeDigest, storeImage := range s.images {
@@ -220,7 +219,7 @@ func (s *inMemoryStore) checkImageAndDigest(ctx context.Context, digest string, 
 				tag := strings.Split(image, ":")[1]
 				localRegistryDigest, err := GetLocalDigest(context.Background(), tag)
 				if err != nil {
-					errLog.Error().Msgf("Error getting digest from local registry: %v", err)
+					log.Error().Msgf("Error getting digest from local registry: %v", err)
 					return false
 				} else {
 					// Check if the digest from the local registry matches the digest from the store
@@ -247,34 +246,24 @@ func (s *inMemoryStore) checkImageAndDigest(ctx context.Context, digest string, 
 }
 
 func GetLocalDigest(ctx context.Context, tag string) (string, error) {
-	errLog := logger.ErrorLoggerFromContext(ctx)
+	log := logger.FromContext(ctx)
 
 	zotUrl := os.Getenv("ZOT_URL")
 	userURL := os.Getenv("USER_INPUT")
+
 	// Remove extra characters from the URLs
 	userURL = userURL[strings.Index(userURL, "//")+2:]
 	userURL = strings.ReplaceAll(userURL, "/v2", "")
 
-	regUrl := removeHostName(userURL)
 	// Construct the URL for fetching the digest
-	url := zotUrl + "/" + regUrl + ":" + tag
+	url := zotUrl + "/" + userURL + ":" + tag
 
 	// Use crane.Digest to get the digest of the image
 	digest, err := crane.Digest(url)
 	if err != nil {
-		errLog.Error().Msgf("Error getting digest using crane: %v", err)
+		log.Error().Msgf("Error getting digest using crane: %v", err)
 		return "", fmt.Errorf("failed to get digest using crane: %w", err)
 	}
 
 	return digest, nil
-}
-
-// Split the imageName by "/" and take only the parts after the hostname
-func removeHostName(imageName string) string {
-	parts := strings.Split(imageName, "/")
-	if len(parts) > 1 {
-		return strings.Join(parts[1:], "/")
-	}
-
-	return imageName
 }

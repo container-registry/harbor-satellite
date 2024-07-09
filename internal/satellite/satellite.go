@@ -23,12 +23,11 @@ func NewSatellite(ctx context.Context, storer store.Storer, replicator replicate
 
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
-	errLog := logger.ErrorLoggerFromContext(ctx)
 
 	// Execute the initial operation immediately without waiting for the ticker
 	imgs, err := s.storer.List(ctx)
 	if err != nil {
-		errLog.Error().Err(err).Msg("Error listing images")
+		log.Error().Err(err).Msg("Error listing images")
 		return err
 	}
 	if len(imgs) == 0 {
@@ -37,7 +36,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		for _, img := range imgs {
 			err = s.replicator.Replicate(ctx, img.Name)
 			if err != nil {
-				errLog.Error().Err(err).Msg("Error replicating image")
+				log.Error().Err(err).Msg("Error replicating image")
 				return err
 			}
 		}
@@ -56,7 +55,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		case <-ticker.C:
 			imgs, err := s.storer.List(ctx)
 			if err != nil {
-				errLog.Error().Err(err).Msg("Error listing images")
+				log.Error().Err(err).Msg("Error listing images")
 				return err
 			}
 			if len(imgs) == 0 {
@@ -65,7 +64,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 				for _, img := range imgs {
 					err = s.replicator.Replicate(ctx, img.Name)
 					if err != nil {
-						errLog.Error().Err(err).Msg("Error replicating image")
+						log.Error().Err(err).Msg("Error replicating image")
 						return err
 					}
 				}
