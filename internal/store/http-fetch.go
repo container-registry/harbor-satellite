@@ -14,28 +14,24 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 )
 
-// RemoteImageSource represents a source of images from a remote URL.
 type RemoteImageSource struct {
 	BaseURL string
 }
 
-// TagListResponse represents the JSON structure for the tags list response.
 type TagListResponse struct {
 	Name string   `json:"name"`
 	Tags []string `json:"tags"`
 }
 
-// NewRemoteImageSource creates a new RemoteImageSource instance.
 func NewRemoteImageSource(url string) *RemoteImageSource {
 	return &RemoteImageSource{BaseURL: url}
 }
 
-// SourceType returns the type of the image source as a string.
 func (r *RemoteImageSource) SourceType() string {
 	return "Remote"
 }
 
-// FetchImages retrieves a list of images from the remote repository.
+// retrieves a list of images from  remote repository.
 func (r *RemoteImageSource) List(ctx context.Context) ([]Image, error) {
 	url := r.BaseURL + "/tags/list"
 	authHeader, err := createAuthHeader()
@@ -57,7 +53,7 @@ func (r *RemoteImageSource) List(ctx context.Context) ([]Image, error) {
 	return images, nil
 }
 
-// FetchDigest fetches the digest for a specific image tag.
+// fetches  digest for a specific image.
 func (r *RemoteImageSource) GetDigest(ctx context.Context, tag string) (string, error) {
 	imageRef := fmt.Sprintf("%s:%s", r.BaseURL, tag)
 	imageRef = cleanImageReference(imageRef)
@@ -70,7 +66,7 @@ func (r *RemoteImageSource) GetDigest(ctx context.Context, tag string) (string, 
 	return digest, nil
 }
 
-// createAuthHeader generates the authorization header for HTTP requests.
+// createAuthHeader generates  authorization header for HTTP requests.
 func createAuthHeader() (string, error) {
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
@@ -81,7 +77,7 @@ func createAuthHeader() (string, error) {
 	return "Basic " + auth, nil
 }
 
-// fetchResponseBody makes an HTTP GET request and returns the response body.
+// fetchResponseBody makes an HTTP GET request and returns  response body.
 func fetchResponseBody(url, authHeader string) ([]byte, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -125,7 +121,7 @@ func cleanImageReference(imageRef string) string {
 	return strings.ReplaceAll(imageRef, "/v2", "")
 }
 
-// fetchImageDigest retrieves the digest for an image reference.
+// fetchImageDigest retrieves  digest for an image reference.
 func fetchImageDigest(imageRef string) (string, error) {
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
