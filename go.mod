@@ -13,7 +13,10 @@ require (
 
 )
 
-require github.com/spf13/viper v1.19.0
+require (
+	github.com/spf13/viper v1.19.0
+	github.com/stretchr/testify v1.9.0
+)
 
 require (
 	cloud.google.com/go v0.112.1 // indirect
@@ -346,7 +349,6 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stefanberger/go-pkcs11uri v0.0.0-20230803200340-78284954bff6 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/swaggo/files v0.0.0-20220610200504-28940afbdbfe // indirect
 	github.com/swaggo/http-swagger v1.3.4 // indirect
