@@ -5,7 +5,8 @@
 package database
 
 import (
-	"time"
+	"database/sql"
+	"encoding/json"
 )
 
 type Group struct {
@@ -13,6 +14,11 @@ type Group struct {
 	GroupName string
 	Username  string
 	Password  string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt sql.NullTime
+	UpdatedAt sql.NullTime
+}
+
+type Image struct {
+	GroupID   int32
+	ImageList json.RawMessage
 }

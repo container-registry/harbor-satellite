@@ -7,8 +7,26 @@ package database
 
 import (
 	"context"
-	"time"
+	"database/sql"
 )
+
+const authenticate = `-- name: Authenticate :one
+SELECT id FROM groups
+WHERE username = $1 AND password = $2 AND group_name = $3
+`
+
+type AuthenticateParams struct {
+	Username  string
+	Password  string
+	GroupName string
+}
+
+func (q *Queries) Authenticate(ctx context.Context, arg AuthenticateParams) (int32, error) {
+	row := q.db.QueryRowContext(ctx, authenticate, arg.Username, arg.Password, arg.GroupName)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
+}
 
 const createGroup = `-- name: CreateGroup :one
 INSERT INTO groups (id, group_name, username, password, created_at, updated_at)
@@ -21,8 +39,8 @@ type CreateGroupParams struct {
 	GroupName string
 	Username  string
 	Password  string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt sql.NullTime
+	UpdatedAt sql.NullTime
 }
 
 func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Group, error) {
@@ -46,12 +64,63 @@ func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Group
 	return i, err
 }
 
-const getGroups = `-- name: GetGroups :many
+const deleteGroupByID = `-- name: DeleteGroupByID :exec
+DELETE FROM groups
+WHERE id = $1
+`
+
+func (q *Queries) DeleteGroupByID(ctx context.Context, id int32) error {
+	_, err := q.db.ExecContext(ctx, deleteGroupByID, id)
+	return err
+}
+
+const deleteGroupByName = `-- name: DeleteGroupByName :exec
+DELETE FROM groups
+WHERE group_name = $1
+`
+
+func (q *Queries) DeleteGroupByName(ctx context.Context, groupName string) error {
+	_, err := q.db.ExecContext(ctx, deleteGroupByName, groupName)
+	return err
+}
+
+const getGroup = `-- name: GetGroup :one
+SELECT id, group_name, username, password, created_at, updated_at FROM groups
+WHERE group_name = $1 LIMIT 1
+`
+
+func (q *Queries) GetGroup(ctx context.Context, groupName string) (Group, error) {
+	row := q.db.QueryRowContext(ctx, getGroup, groupName)
+	var i Group
+	err := row.Scan(
+		&i.ID,
+		&i.GroupName,
+		&i.Username,
+		&i.Password,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getGroupID = `-- name: GetGroupID :one
+SELECT id FROM groups
+WHERE group_name = $1 LIMIT 1
+`
+
+func (q *Queries) GetGroupID(ctx context.Context, groupName string) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getGroupID, groupName)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
+}
+
+const listGroups = `-- name: ListGroups :many
 SELECT id, group_name, username, password, created_at, updated_at FROM groups
 `
 
-func (q *Queries) GetGroups(ctx context.Context) ([]Group, error) {
-	rows, err := q.db.QueryContext(ctx, getGroups)
+func (q *Queries) ListGroups(ctx context.Context) ([]Group, error) {
+	rows, err := q.db.QueryContext(ctx, listGroups)
 	if err != nil {
 		return nil, err
 	}
