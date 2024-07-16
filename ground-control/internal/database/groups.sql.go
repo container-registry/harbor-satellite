@@ -7,7 +7,7 @@ package database
 
 import (
 	"context"
-	"database/sql"
+	"time"
 )
 
 const authenticate = `-- name: Authenticate :one
@@ -29,23 +29,21 @@ func (q *Queries) Authenticate(ctx context.Context, arg AuthenticateParams) (int
 }
 
 const createGroup = `-- name: CreateGroup :one
-INSERT INTO groups (id, group_name, username, password, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO groups (group_name, username, password, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING id, group_name, username, password, created_at, updated_at
 `
 
 type CreateGroupParams struct {
-	ID        int32
 	GroupName string
 	Username  string
 	Password  string
-	CreatedAt sql.NullTime
-	UpdatedAt sql.NullTime
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Group, error) {
 	row := q.db.QueryRowContext(ctx, createGroup,
-		arg.ID,
 		arg.GroupName,
 		arg.Username,
 		arg.Password,

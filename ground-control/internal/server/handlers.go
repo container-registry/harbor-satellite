@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -20,8 +21,8 @@ type GetGroupRequest struct {
 }
 
 type ImageListReqParams struct {
-	GroupName string `json:"group_name"`
-  ImageList json.RawMessage `json:"image_list"`
+	GroupName string          `json:"group_name"`
+	ImageList json.RawMessage `json:"image_list"`
 }
 
 func (s *Server) Ping(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +32,10 @@ func (s *Server) Ping(w http.ResponseWriter, r *http.Request) {
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	err := s.db.Ping()
 	if err != nil {
-		log.Fatalf("error pinging db: %v", err)
+		log.Printf("error pinging db: %v", err)
+		msg, _ := json.Marshal(map[string]string{"status": "unhealthy"})
+		http.Error(w, string(msg), http.StatusBadRequest)
+		return
 	}
 
 	jsonResp, err := json.Marshal(map[string]string{"status": "healthy"})
@@ -60,12 +64,11 @@ func (s *Server) createGroupHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	jsonResp, err := json.Marshal(result)
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(result)
 	if err != nil {
 		log.Fatalf("error handling JSON marshal. Err: %v", err)
 	}
-	_, _ = w.Write(jsonResp)
 }
 
 func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
@@ -75,11 +78,11 @@ func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonResp, err := json.Marshal(result)
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(result)
 	if err != nil {
 		log.Fatalf("error handling JSON marshal. Err: %v", err)
 	}
-	_, _ = w.Write(jsonResp)
 }
 
 func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
@@ -94,23 +97,26 @@ func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonResp, err := json.Marshal(result)
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(result)
 	if err != nil {
 		log.Fatalf("error handling JSON marshal. Err: %v", err)
 	}
-	_, _ = w.Write(jsonResp)
 }
 
 func (s *Server) getImageListHandler(w http.ResponseWriter, r *http.Request) {
-	var req GroupRequestParams
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	groupName := r.Header.Get("GroupName")
+	username := r.Header.Get("Username")
+	password := r.Header.Get("Password")
+	if groupName == "" || username == "" || password == "" {
+		http.Error(w, "Missing Authentication header params", http.StatusBadRequest)
 		return
 	}
+
 	params := database.AuthenticateParams{
-		GroupName: req.GroupName,
-		Username:  req.Username,
-		Password:  req.Password,
+		GroupName: groupName,
+		Username:  username,
+		Password:  password,
 	}
 
 	group_id, err := s.dbQueries.Authenticate(r.Context(), params)
@@ -123,11 +129,12 @@ func (s *Server) getImageListHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	jsonResp, err := json.Marshal(result)
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(result)
 	if err != nil {
 		log.Fatalf("error handling JSON marshal. Err: %v", err)
 	}
-	_, _ = w.Write(jsonResp)
 }
 
 func (s *Server) addImageListHandler(w http.ResponseWriter, r *http.Request) {
@@ -147,25 +154,31 @@ func (s *Server) addImageListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-  group_id, err := s.dbQueries.GetGroupID(r.Context(), params.GroupName)
+	group_id, err := s.dbQueries.GetGroupID(r.Context(), params.GroupName)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		log.Printf("error in getting group_id for %v, Err: %v", params.GroupName, err)
+		http.Error(
+			w,
+			fmt.Sprintf("Invalid group: %v, Err: %v", params.GroupName, err),
+			http.StatusNotFound,
+		)
 		return
 	}
 
-  reqParams := database.AddImageListParams{
-    GroupID: group_id,
-    ImageList: params.ImageList,
-  }
+	reqParams := database.AddImageListParams{
+		GroupID:   group_id,
+		ImageList: params.ImageList,
+	}
 
-	result, err := s.dbQueries.AddImageList(r.Context(), reqParams)
+	err = s.dbQueries.AddImageList(r.Context(), reqParams)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(
+			w,
+			fmt.Sprintf("Error adding Image List. Err: %v", err),
+			http.StatusInternalServerError,
+		)
 		return
 	}
-	jsonResp, err := json.Marshal(result)
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
-	}
-	_, _ = w.Write(jsonResp)
+
+	w.WriteHeader(http.StatusCreated)
 }

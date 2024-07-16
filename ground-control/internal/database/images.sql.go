@@ -10,12 +10,11 @@ import (
 	"encoding/json"
 )
 
-const addImageList = `-- name: AddImageList :one
+const addImageList = `-- name: AddImageList :exec
 INSERT INTO images (group_id, image_list)
 VALUES ($1, $2)
 ON CONFLICT (group_id) DO UPDATE
 SET image_list = EXCLUDED.image_list
-RETURNING group_id, image_list
 `
 
 type AddImageListParams struct {
@@ -23,11 +22,9 @@ type AddImageListParams struct {
 	ImageList json.RawMessage
 }
 
-func (q *Queries) AddImageList(ctx context.Context, arg AddImageListParams) (Image, error) {
-	row := q.db.QueryRowContext(ctx, addImageList, arg.GroupID, arg.ImageList)
-	var i Image
-	err := row.Scan(&i.GroupID, &i.ImageList)
-	return i, err
+func (q *Queries) AddImageList(ctx context.Context, arg AddImageListParams) error {
+	_, err := q.db.ExecContext(ctx, addImageList, arg.GroupID, arg.ImageList)
+	return err
 }
 
 const deleteImageList = `-- name: DeleteImageList :exec
