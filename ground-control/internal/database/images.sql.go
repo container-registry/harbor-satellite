@@ -7,44 +7,126 @@ package database
 
 import (
 	"context"
-	"encoding/json"
+	"time"
 )
 
-const addImageList = `-- name: AddImageList :exec
-INSERT INTO images (group_id, image_list)
-VALUES ($1, $2)
-ON CONFLICT (group_id) DO UPDATE
-SET image_list = EXCLUDED.image_list
+const addImage = `-- name: AddImage :one
+INSERT INTO images (registry, repository, tag, digest, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, registry, repository, tag, digest, created_at, updated_at
 `
 
-type AddImageListParams struct {
-	GroupID   int32
-	ImageList json.RawMessage
+type AddImageParams struct {
+	Registry   string
+	Repository string
+	Tag        string
+	Digest     string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
-func (q *Queries) AddImageList(ctx context.Context, arg AddImageListParams) error {
-	_, err := q.db.ExecContext(ctx, addImageList, arg.GroupID, arg.ImageList)
-	return err
+func (q *Queries) AddImage(ctx context.Context, arg AddImageParams) (Image, error) {
+	row := q.db.QueryRowContext(ctx, addImage,
+		arg.Registry,
+		arg.Repository,
+		arg.Tag,
+		arg.Digest,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Image
+	err := row.Scan(
+		&i.ID,
+		&i.Registry,
+		&i.Repository,
+		&i.Tag,
+		&i.Digest,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const deleteImageList = `-- name: DeleteImageList :exec
 DELETE FROM images
-WHERE group_id = $1
+WHERE id = $1
 `
 
-func (q *Queries) DeleteImageList(ctx context.Context, groupID int32) error {
-	_, err := q.db.ExecContext(ctx, deleteImageList, groupID)
+func (q *Queries) DeleteImageList(ctx context.Context, id int32) error {
+	_, err := q.db.ExecContext(ctx, deleteImageList, id)
 	return err
 }
 
-const getImageList = `-- name: GetImageList :one
-SELECT image_list FROM images
-WHERE group_id = $1
+const getImage = `-- name: GetImage :one
+SELECT id, registry, repository, tag, digest, created_at, updated_at FROM images
+WHERE id = $1
 `
 
-func (q *Queries) GetImageList(ctx context.Context, groupID int32) (json.RawMessage, error) {
-	row := q.db.QueryRowContext(ctx, getImageList, groupID)
-	var image_list json.RawMessage
-	err := row.Scan(&image_list)
-	return image_list, err
+func (q *Queries) GetImage(ctx context.Context, id int32) (Image, error) {
+	row := q.db.QueryRowContext(ctx, getImage, id)
+	var i Image
+	err := row.Scan(
+		&i.ID,
+		&i.Registry,
+		&i.Repository,
+		&i.Tag,
+		&i.Digest,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getImagesForSatellite = `-- name: GetImagesForSatellite :many
+WITH satellite_groups AS (
+    SELECT group_id FROM satellite_groups WHERE satellite_id = (SELECT id FROM satellites WHERE satellites.token = $1)
+),
+satellite_labels AS (
+    SELECT label_id FROM satellite_labels WHERE satellite_id = (SELECT id FROM satellites WHERE satellites.token = $1)
+),
+group_images AS (
+    SELECT image_id FROM group_images WHERE group_id IN (SELECT group_id FROM satellite_groups)
+),
+label_images AS (
+    SELECT image_id FROM label_images WHERE label_id IN (SELECT label_id FROM satellite_labels)
+),
+all_images AS (
+    SELECT image_id FROM group_images
+    UNION
+    SELECT image_id FROM label_images
+)
+SELECT id, registry, repository, tag, digest, created_at, updated_at
+FROM images
+WHERE id IN (SELECT image_id FROM all_images)
+`
+
+func (q *Queries) GetImagesForSatellite(ctx context.Context, token string) ([]Image, error) {
+	rows, err := q.db.QueryContext(ctx, getImagesForSatellite, token)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Image
+	for rows.Next() {
+		var i Image
+		if err := rows.Scan(
+			&i.ID,
+			&i.Registry,
+			&i.Repository,
+			&i.Tag,
+			&i.Digest,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

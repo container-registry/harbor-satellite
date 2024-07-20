@@ -10,111 +10,66 @@ import (
 	"time"
 )
 
-const authenticate = `-- name: Authenticate :one
-SELECT id FROM groups
-WHERE username = $1 AND password = $2 AND group_name = $3
-`
-
-type AuthenticateParams struct {
-	Username  string
-	Password  string
-	GroupName string
-}
-
-func (q *Queries) Authenticate(ctx context.Context, arg AuthenticateParams) (int32, error) {
-	row := q.db.QueryRowContext(ctx, authenticate, arg.Username, arg.Password, arg.GroupName)
-	var id int32
-	err := row.Scan(&id)
-	return id, err
-}
-
 const createGroup = `-- name: CreateGroup :one
-INSERT INTO groups (group_name, username, password, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, group_name, username, password, created_at, updated_at
+INSERT INTO groups (group_name, created_at, updated_at)
+VALUES ($1, $2, $3)
+RETURNING id, group_name, created_at, updated_at
 `
 
 type CreateGroupParams struct {
 	GroupName string
-	Username  string
-	Password  string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
 func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Group, error) {
-	row := q.db.QueryRowContext(ctx, createGroup,
-		arg.GroupName,
-		arg.Username,
-		arg.Password,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-	)
+	row := q.db.QueryRowContext(ctx, createGroup, arg.GroupName, arg.CreatedAt, arg.UpdatedAt)
 	var i Group
 	err := row.Scan(
 		&i.ID,
 		&i.GroupName,
-		&i.Username,
-		&i.Password,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const deleteGroupByID = `-- name: DeleteGroupByID :exec
-DELETE FROM groups
+const getGroupByID = `-- name: GetGroupByID :one
+SELECT id, group_name, created_at, updated_at FROM groups
 WHERE id = $1
 `
 
-func (q *Queries) DeleteGroupByID(ctx context.Context, id int32) error {
-	_, err := q.db.ExecContext(ctx, deleteGroupByID, id)
-	return err
-}
-
-const deleteGroupByName = `-- name: DeleteGroupByName :exec
-DELETE FROM groups
-WHERE group_name = $1
-`
-
-func (q *Queries) DeleteGroupByName(ctx context.Context, groupName string) error {
-	_, err := q.db.ExecContext(ctx, deleteGroupByName, groupName)
-	return err
-}
-
-const getGroup = `-- name: GetGroup :one
-SELECT id, group_name, username, password, created_at, updated_at FROM groups
-WHERE group_name = $1 LIMIT 1
-`
-
-func (q *Queries) GetGroup(ctx context.Context, groupName string) (Group, error) {
-	row := q.db.QueryRowContext(ctx, getGroup, groupName)
+func (q *Queries) GetGroupByID(ctx context.Context, id int32) (Group, error) {
+	row := q.db.QueryRowContext(ctx, getGroupByID, id)
 	var i Group
 	err := row.Scan(
 		&i.ID,
 		&i.GroupName,
-		&i.Username,
-		&i.Password,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const getGroupID = `-- name: GetGroupID :one
-SELECT id FROM groups
-WHERE group_name = $1 LIMIT 1
+const getGroupByName = `-- name: GetGroupByName :one
+SELECT id, group_name, created_at, updated_at FROM groups
+WHERE group_name = $1
 `
 
-func (q *Queries) GetGroupID(ctx context.Context, groupName string) (int32, error) {
-	row := q.db.QueryRowContext(ctx, getGroupID, groupName)
-	var id int32
-	err := row.Scan(&id)
-	return id, err
+func (q *Queries) GetGroupByName(ctx context.Context, groupName string) (Group, error) {
+	row := q.db.QueryRowContext(ctx, getGroupByName, groupName)
+	var i Group
+	err := row.Scan(
+		&i.ID,
+		&i.GroupName,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const listGroups = `-- name: ListGroups :many
-SELECT id, group_name, username, password, created_at, updated_at FROM groups
+SELECT id, group_name, created_at, updated_at FROM groups
 `
 
 func (q *Queries) ListGroups(ctx context.Context) ([]Group, error) {
@@ -129,8 +84,6 @@ func (q *Queries) ListGroups(ctx context.Context) ([]Group, error) {
 		if err := rows.Scan(
 			&i.ID,
 			&i.GroupName,
-			&i.Username,
-			&i.Password,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
