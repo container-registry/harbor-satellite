@@ -9,6 +9,9 @@ own_registry_adr = "127.0.0.1:5000"
 url_or_file = "https://demo.goharbor.io/v2/myproject/album-server"
 # url_or_file = "http://localhost:5001/v2/library/busybox"
 
+# Endpoint of ground_control
+ground_control = "http://localhost:8080/satellite/images"
+
 # For testing purposes :
 #		 https://demo.goharbor.io/v2/myproject/album-server
 #		 /image-list/images.json

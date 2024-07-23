@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"container-registry.com/harbor-satellite/internal/images"
 	"container-registry.com/harbor-satellite/internal/replicate"
 	"container-registry.com/harbor-satellite/internal/satellite"
 	"container-registry.com/harbor-satellite/internal/store"
@@ -25,7 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/viper"
 
-	"github.com/joho/godotenv"
+	_ "github.com/joho/godotenv/autoload"
 )
 
 func main() {
@@ -98,6 +99,13 @@ func run() error {
 		})
 	}
 
+	gc := viper.GetString("ground_control")
+	gcURL, err := url.Parse(gc)
+	if err != nil {
+		return fmt.Errorf("invalid ground_control URL: %v", err)
+	}
+  fmt.Println("url", gcURL, "schema: ", gcURL.Scheme,"Hostname: ", gcURL.Hostname(),"host: ", gcURL.Host)
+
 	input := viper.GetString("url_or_file")
 	// Attempt to parse the input as a URL
 	parsedURL, err := url.Parse(input)
@@ -115,13 +123,19 @@ func run() error {
 		if err != nil {
 			log.Fatalf("Error in processing URL: %v", err)
 		}
-		fetcher = store.NewRemoteImageSource(input)
+    fmt.Println(input)
+		// fetcher = store.NewRemoteImageSource(input)
 	}
 
-	err = godotenv.Load()
+  imgUrl, err := images.GetImages(gc)
 	if err != nil {
-		log.Fatalf("Error loading.env file: %v", err)
+		return fmt.Errorf("error processing ground_control endpoint: %v", err)
 	}
+	err = processURL(imgUrl)
+	if err != nil {
+		log.Fatalf("Error in processing URL: %v", err)
+	}
+  fetcher = store.NewRemoteImageSource("http://localhost:5000/v2/library/busybox")
 
 	storer := store.NewInMemoryStore(fetcher)
 	replicator := replicate.NewReplicator()
@@ -176,13 +190,12 @@ func processURL(input string) error {
 	host := hostParts[0]
 	os.Setenv("HOST", host)
 
-	apiVersion := hostParts[1]
-	os.Setenv("API_VERSION", apiVersion)
+	os.Setenv("API_VERSION", "v2")
 
-	registry := hostParts[2]
+	registry := hostParts[1]
 	os.Setenv("REGISTRY", registry)
 
-	repository := hostParts[3]
+	repository := hostParts[2]
 	os.Setenv("REPOSITORY", repository)
 
 	return nil
