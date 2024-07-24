@@ -16,46 +16,37 @@ import (
 type GroupRequestParams struct {
 	GroupName string `json:"group_name"`
 }
-
 type LabelRequestParams struct {
 	LabelName string `json:"label_name"`
 }
-
 type AddSatelliteParams struct {
 	Name string `json:"name"`
 }
-
 type AddSatelliteToGroupParams struct {
 	SatelliteID int `json:"satellite_ID"`
 	GroupID     int `json:"group_ID"`
 }
-
 type AddSatelliteToLabelParams struct {
 	SatelliteID int `json:"satellite_ID"`
 	LabelID     int `json:"label_ID"`
 }
-
 type AssignImageToLabelParams struct {
 	LabelID int `json:"label_ID"`
 	ImageID int `json:"image_ID"`
 }
-
 type AssignImageToGroupParams struct {
 	GroupID int32 `json:"group_ID"`
 	ImageID int32 `json:"image_ID"`
 }
-
 type ImageAddParams struct {
 	Registry   string `json:"registry"`
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
 	Digest     string `json:"digest"`
 }
-
 type GetGroupRequest struct {
 	GroupName string `json:"group_name"`
 }
-
 type ImageListReqParams struct {
 	GroupName string          `json:"group_name"`
 	ImageList json.RawMessage `json:"image_list"`
@@ -84,20 +75,17 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonResp, err := json.Marshal(map[string]string{"status": "healthy"})
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
-	}
-	_, _ = w.Write(jsonResp)
+	WriteJSONResponse(w, http.StatusOK, map[string]string{"status": "healthy"})
 }
 
 func (s *Server) createGroupHandler(w http.ResponseWriter, r *http.Request) {
 	// Decode request body
 	var req GroupRequestParams
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := DecodeRequestBody(r, req); err != nil {
+		HandleAppError(w, err)
 		return
 	}
+
 	params := database.CreateGroupParams{
 		GroupName: req.GroupName,
 		CreatedAt: time.Now(),
@@ -107,21 +95,17 @@ func (s *Server) createGroupHandler(w http.ResponseWriter, r *http.Request) {
 	// Call the database query to create Group
 	result, err := s.dbQueries.CreateGroup(r.Context(), params)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HandleAppError(w, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(result)
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
-	}
+
+	WriteJSONResponse(w, http.StatusCreated, result)
 }
 
 func (s *Server) createLabelHandler(w http.ResponseWriter, r *http.Request) {
-	// Decode request body
 	var req LabelRequestParams
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := DecodeRequestBody(r, req); err != nil {
+		HandleAppError(w, err)
 		return
 	}
 	params := database.CreateLabelParams{
@@ -130,24 +114,19 @@ func (s *Server) createLabelHandler(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: time.Now(),
 	}
 
-	// Call the database query to create Group
 	result, err := s.dbQueries.CreateLabel(r.Context(), params)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HandleAppError(w, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(result)
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
-	}
+
+	WriteJSONResponse(w, http.StatusCreated, result)
 }
 
 func (s *Server) addImageHandler(w http.ResponseWriter, r *http.Request) {
-	// Decode request body
 	var req ImageAddParams
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := DecodeRequestBody(r, req); err != nil {
+		HandleAppError(w, err)
 		return
 	}
 
@@ -163,18 +142,14 @@ func (s *Server) addImageHandler(w http.ResponseWriter, r *http.Request) {
 	// Call the database query to create Group
 	result, err := s.dbQueries.AddImage(r.Context(), params)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HandleAppError(w, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(result)
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
-	}
+
+	WriteJSONResponse(w, http.StatusCreated, result)
 }
 
 func (s *Server) addSatelliteHandler(w http.ResponseWriter, r *http.Request) {
-	// Decode request body
 	var req AddSatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
@@ -182,16 +157,8 @@ func (s *Server) addSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token, err := GenerateRandomToken(32)
-  log.Println(token)
 	if err != nil {
-		log.Println("Error generating random token: ", err)
-		err = &AppError{
-			Message: "Failed to generate Random token",
-			Code:    http.StatusInternalServerError,
-		}
-		log.Println(err)
 		HandleAppError(w, err)
-		return
 	}
 
 	params := database.CreateSatelliteParams{
@@ -199,7 +166,6 @@ func (s *Server) addSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 		Token: token,
 	}
 
-	// Call the database query to create Group
 	result, err := s.dbQueries.CreateSatellite(r.Context(), params)
 	if err != nil {
 		log.Println(err)
@@ -211,7 +177,6 @@ func (s *Server) addSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
-	// Decode request body
 	var req AddSatelliteToGroupParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
@@ -225,12 +190,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 
 	err := s.dbQueries.AddSatelliteToGroup(r.Context(), params)
 	if err != nil {
-		log.Println("Error: ", err)
-		err = &AppError{
-			Message: "Failed to Add Satellite to Group",
-			Code:    http.StatusUnprocessableEntity,
-		}
-		log.Println(err)
+		log.Printf("Error: Failed to Add Satellite to Group: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -239,7 +199,6 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) addSatelliteToLabel(w http.ResponseWriter, r *http.Request) {
-	// Decode request body
 	var req AddSatelliteToLabelParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
@@ -253,12 +212,7 @@ func (s *Server) addSatelliteToLabel(w http.ResponseWriter, r *http.Request) {
 
 	err := s.dbQueries.AddSatelliteToLabel(r.Context(), params)
 	if err != nil {
-		log.Println("Error: ", err)
-		err = &AppError{
-			Message: "Failed to Add Satellite to Label",
-			Code:    http.StatusUnprocessableEntity,
-		}
-		log.Println(err)
+		log.Printf("Error: Failed to add satellite to label: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -267,7 +221,6 @@ func (s *Server) addSatelliteToLabel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) assignImageToLabel(w http.ResponseWriter, r *http.Request) {
-	// Decode request body
 	var req AssignImageToLabelParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
@@ -281,12 +234,7 @@ func (s *Server) assignImageToLabel(w http.ResponseWriter, r *http.Request) {
 
 	err := s.dbQueries.AssignImageToLabel(r.Context(), params)
 	if err != nil {
-		log.Println("Error: ", err)
-		err = &AppError{
-			Message: "Failed to Add Image to Label",
-			Code:    http.StatusUnprocessableEntity,
-		}
-		log.Println(err)
+		log.Printf("Error: Failed to assign image to label: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -295,7 +243,6 @@ func (s *Server) assignImageToLabel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) assignImageToGroup(w http.ResponseWriter, r *http.Request) {
-	// Decode request body
 	var req AssignImageToGroupParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
@@ -309,12 +256,7 @@ func (s *Server) assignImageToGroup(w http.ResponseWriter, r *http.Request) {
 
 	err := s.dbQueries.AssignImageToGroup(r.Context(), params)
 	if err != nil {
-		log.Println("Error: ", err)
-		err = &AppError{
-			Message: "Failed to Add Image to Label",
-			Code:    http.StatusUnprocessableEntity,
-		}
-		log.Println(err)
+		log.Printf("Error: Failed to assign image to group: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -323,37 +265,14 @@ func (s *Server) assignImageToGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GetImagesForSatellite(w http.ResponseWriter, r *http.Request) {
-	// Decode request body
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		err := &AppError{
-			Message: "Authorization header missing",
-			Code:    http.StatusUnauthorized,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	parts := strings.Split(authHeader, " ")
-	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-		err := &AppError{
-			Message: "Invalid Authorization header format",
-			Code:    http.StatusUnauthorized,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	token := parts[1]
-
+  token, err := GetAuthToken(r)
+  if err != nil {
+    HandleAppError(w, err)
+    return
+  }
 	result, err := s.dbQueries.GetImagesForSatellite(r.Context(), token)
 	if err != nil {
-		log.Println("Error: ", err)
-		err = &AppError{
-			Message: "Failed to Get Images",
-			Code:    http.StatusUnprocessableEntity,
-		}
-		log.Println(err)
+		log.Printf("Error: Failed to get image for satellite: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -364,15 +283,11 @@ func (s *Server) GetImagesForSatellite(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListGroups(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+    HandleAppError(w, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(result)
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
-	}
+  WriteJSONResponse(w, http.StatusOK, result)
 }
 
 func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
@@ -385,11 +300,7 @@ func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(result)
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
-	}
+  WriteJSONResponse(w, http.StatusOK, result)
 }
 
 // creates a unique random API token of the specified length in bytes.
@@ -401,4 +312,27 @@ func GenerateRandomToken(length int) (string, error) {
 	}
 
 	return hex.EncodeToString(token), nil
+}
+
+func GetAuthToken(r *http.Request) (string, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		err := &AppError{
+			Message: "Authorization header missing",
+			Code:    http.StatusUnauthorized,
+		}
+		return "", err
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		err := &AppError{
+			Message: "Invalid Authorization header format",
+			Code:    http.StatusUnauthorized,
+		}
+		return "", err
+	}
+	token := parts[1]
+
+	return token, nil
 }
