@@ -12,7 +12,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/ping", s.Ping).Methods("GET")
 	r.HandleFunc("/health", s.healthHandler).Methods("GET")
 
-  // Ground Control interface
+	r.HandleFunc("/registry/list", s.regListHandler).Methods("GET")
+
+	// Ground Control interface
 	r.HandleFunc("/group/list", s.listGroupHandler).Methods("GET")
 	r.HandleFunc("/group/{group}", s.getGroupHandler).Methods("GET")
 
@@ -29,7 +31,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.HandleFunc("/satellite/images", s.GetImagesForSatellite).Methods("GET")
 
-  // Satellite based routes
+	// Satellite based routes
 	// r.HandleFunc("/images", s.getImageListHandler).Methods("GET")
 	// r.HandleFunc("/images", s.addImageListHandler).Methods("POST")
 	// r.HandleFunc("/group", s.deleteGroupHandler).Methods("DELETE")

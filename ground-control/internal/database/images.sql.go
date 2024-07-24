@@ -84,16 +84,10 @@ WITH satellite_groups AS (
 satellite_labels AS (
     SELECT label_id FROM satellite_labels WHERE satellite_id = (SELECT id FROM satellites WHERE satellites.token = $1)
 ),
-group_images AS (
-    SELECT image_id FROM group_images WHERE group_id IN (SELECT group_id FROM satellite_groups)
-),
-label_images AS (
-    SELECT image_id FROM label_images WHERE label_id IN (SELECT label_id FROM satellite_labels)
-),
 all_images AS (
-    SELECT image_id FROM group_images
+    SELECT image_id FROM group_images WHERE group_id IN (SELECT group_id FROM satellite_groups)
     UNION
-    SELECT image_id FROM label_images
+    SELECT image_id FROM label_images WHERE label_id IN (SELECT label_id FROM satellite_labels)
 )
 SELECT id, registry, repository, tag, digest, created_at, updated_at
 FROM images

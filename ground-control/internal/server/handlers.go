@@ -10,9 +10,15 @@ import (
 	"time"
 
 	"container-registry.com/harbor-satellite/ground-control/internal/database"
+	"container-registry.com/harbor-satellite/ground-control/reg"
 	"github.com/gorilla/mux"
 )
 
+type RegListParams struct {
+	Url      string `json:"registry_url"`
+	UserName string `json:"username"`
+	Password string `json:"password"`
+}
 type GroupRequestParams struct {
 	GroupName string `json:"group_name"`
 }
@@ -81,20 +87,24 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createGroupHandler(w http.ResponseWriter, r *http.Request) {
 	// Decode request body
 	var req GroupRequestParams
-	if err := DecodeRequestBody(r, req); err != nil {
+	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
 		return
 	}
 
 	params := database.CreateGroupParams{
 		GroupName: req.GroupName,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+    CreatedAt: time.Now(),
+    UpdatedAt: time.Now(),
 	}
 
 	// Call the database query to create Group
 	result, err := s.dbQueries.CreateGroup(r.Context(), params)
 	if err != nil {
+    err = &AppError{
+      Message: err.Error(),
+      Code: http.StatusBadRequest,
+    }
 		HandleAppError(w, err)
 		return
 	}
@@ -104,7 +114,7 @@ func (s *Server) createGroupHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createLabelHandler(w http.ResponseWriter, r *http.Request) {
 	var req LabelRequestParams
-	if err := DecodeRequestBody(r, req); err != nil {
+	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
 		return
 	}
@@ -125,7 +135,7 @@ func (s *Server) createLabelHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) addImageHandler(w http.ResponseWriter, r *http.Request) {
 	var req ImageAddParams
-	if err := DecodeRequestBody(r, req); err != nil {
+	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
 		return
 	}
@@ -265,11 +275,11 @@ func (s *Server) assignImageToGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) GetImagesForSatellite(w http.ResponseWriter, r *http.Request) {
-  token, err := GetAuthToken(r)
-  if err != nil {
-    HandleAppError(w, err)
-    return
-  }
+	token, err := GetAuthToken(r)
+	if err != nil {
+		HandleAppError(w, err)
+		return
+	}
 	result, err := s.dbQueries.GetImagesForSatellite(r.Context(), token)
 	if err != nil {
 		log.Printf("Error: Failed to get image for satellite: %v", err)
@@ -283,11 +293,34 @@ func (s *Server) GetImagesForSatellite(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListGroups(r.Context())
 	if err != nil {
-    HandleAppError(w, err)
+		HandleAppError(w, err)
 		return
 	}
 
-  WriteJSONResponse(w, http.StatusOK, result)
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) regListHandler(w http.ResponseWriter, r *http.Request) {
+	username := r.URL.Query().Get("username")
+	password := r.URL.Query().Get("password")
+	url := r.URL.Query().Get("url")
+
+	if url == "" {
+		err := &AppError{
+			Message: "Missing URL in Request",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	result, err := reg.FetchRepos(username, password, url)
+	if err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
 }
 
 func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
@@ -300,7 +333,7 @@ func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-  WriteJSONResponse(w, http.StatusOK, result)
+	WriteJSONResponse(w, http.StatusOK, result)
 }
 
 // creates a unique random API token of the specified length in bytes.

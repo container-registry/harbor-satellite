@@ -49,7 +49,6 @@ func NewServer() *http.Server {
 		log.Fatalf("Error in sql: %v", err)
 	}
 
-
 	dbQueries := database.New(db)
 
 	NewServer := &Server{

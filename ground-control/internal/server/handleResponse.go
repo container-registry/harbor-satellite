@@ -19,10 +19,10 @@ func (e *AppError) Error() string {
 func WriteJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
-// handle AppError and send structured JSON response.
+// handle AppError and senda structured JSON response.
 func HandleAppError(w http.ResponseWriter, err error) {
 	if appErr, ok := err.(*AppError); ok {
 		WriteJSONResponse(w, appErr.Code, appErr)
