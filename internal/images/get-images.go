@@ -21,26 +21,32 @@ type Image struct {
 }
 
 func GetImages(url string) (string, error) {
-	bearerToken := fmt.Sprintf("Bearer %s", os.Getenv("TOKEN"))
+	token := os.Getenv("TOKEN")
+	if token == "" {
+		log.Fatal("Token cannot be empty")
+	}
+
+	bearerToken := fmt.Sprintf("Bearer %s", token)
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		log.Printf("error in creating request: %v", err)
+		return "", err
 	}
 	req.Header.Add("Authorization", bearerToken)
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return "", err
 	}
 	defer res.Body.Close()
-	body, err := io.ReadAll(res.Body)
+	body, _ := io.ReadAll(res.Body)
 
 	// snippet only
 	var result []Image
 	if err := json.Unmarshal(body, &result); err != nil { // Parse []byte to go struct pointer
-		fmt.Println("Can not unmarshal JSON")
+		log.Println("Can not unmarshal JSON")
 		return "", err
 	}
 
@@ -48,7 +54,7 @@ func GetImages(url string) (string, error) {
 
 	for _, img := range result {
 		url := fmt.Sprintf("http://%s/%s", img.Registry, img.Repository)
-    fmt.Println("url: ", url)
+		fmt.Println("url: ", url)
 		return url, nil
 	}
 

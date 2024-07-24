@@ -100,11 +100,10 @@ func run() error {
 	}
 
 	gc := viper.GetString("ground_control")
-	gcURL, err := url.Parse(gc)
+	_, err := url.Parse(gc)
 	if err != nil {
 		return fmt.Errorf("invalid ground_control URL: %v", err)
 	}
-  fmt.Println("url", gcURL, "schema: ", gcURL.Scheme,"Hostname: ", gcURL.Hostname(),"host: ", gcURL.Host)
 
 	input := viper.GetString("url_or_file")
 	// Attempt to parse the input as a URL
@@ -116,26 +115,17 @@ func run() error {
 		if err != nil {
 			log.Fatalf("Error in processing file path: %v", err)
 		}
-		fetcher = store.FileImageListFetcher(input)
-	} else {
-		// Process input as a URL
-		err = processURL(input)
-		if err != nil {
-			log.Fatalf("Error in processing URL: %v", err)
-		}
-    fmt.Println(input)
-		// fetcher = store.NewRemoteImageSource(input)
 	}
 
-  imgUrl, err := images.GetImages(gc)
+	imgUrl, err := images.GetImages(gc)
 	if err != nil {
 		return fmt.Errorf("error processing ground_control endpoint: %v", err)
 	}
-	err = processURL(imgUrl)
+	repoUrl, err := processURL(imgUrl)
 	if err != nil {
-		log.Fatalf("Error in processing URL: %v", err)
+		return fmt.Errorf("error in processing URL: %v", err)
 	}
-  fetcher = store.NewRemoteImageSource("http://localhost:5000/v2/library/busybox")
+	fetcher = store.NewRemoteImageSource(repoUrl)
 
 	storer := store.NewInMemoryStore(fetcher)
 	replicator := replicate.NewReplicator()
@@ -174,7 +164,7 @@ func processFilePath(input string) error {
 	return nil
 }
 
-func processURL(input string) error {
+func processURL(input string) (string, error) {
 	fmt.Println("Input is a valid URL.")
 
 	// Set environment variables
@@ -190,7 +180,8 @@ func processURL(input string) error {
 	host := hostParts[0]
 	os.Setenv("HOST", host)
 
-	os.Setenv("API_VERSION", "v2")
+	apiVersion := "v2"
+	os.Setenv("API_VERSION", apiVersion)
 
 	registry := hostParts[1]
 	os.Setenv("REGISTRY", registry)
@@ -198,5 +189,7 @@ func processURL(input string) error {
 	repository := hostParts[2]
 	os.Setenv("REPOSITORY", repository)
 
-	return nil
+	url := fmt.Sprintf("%s%s/%s/%s/%s", scheme, host, apiVersion, registry, repository)
+
+	return url, nil
 }
