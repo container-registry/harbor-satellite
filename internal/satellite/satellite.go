@@ -25,6 +25,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	// Execute the initial operation immediately without waiting for the ticker
 	imgs, err := s.storer.List(ctx)
 	if err != nil {
+
 		return err
 	}
 	if len(imgs) == 0 {
@@ -36,7 +37,10 @@ func (s *Satellite) Run(ctx context.Context) error {
 				return err
 			}
 		}
-		s.replicator.DeleteExtraImages(ctx, imgs)
+		err = s.replicator.DeleteExtraImages(ctx, imgs)
+		if err != nil {
+			return err
+		}
 	}
 	fmt.Print("--------------------------------\n")
 
@@ -62,7 +66,10 @@ func (s *Satellite) Run(ctx context.Context) error {
 						return err
 					}
 				}
-				s.replicator.DeleteExtraImages(ctx, imgs)
+				err = s.replicator.DeleteExtraImages(ctx, imgs)
+				if err != nil {
+					return err
+				}
 			}
 		}
 		fmt.Print("--------------------------------\n")

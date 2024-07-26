@@ -14,7 +14,6 @@ import (
 )
 
 type Replicator interface {
-	// Replicate copies images from the source registry to the local registry.
 	Replicate(ctx context.Context, image string) error
 	DeleteExtraImages(ctx context.Context, imgs []store.Image) error
 }
@@ -39,15 +38,16 @@ func NewReplicator() Replicator {
 	return &BasicReplicator{}
 }
 
+// Replicate copies an image from  source registry to  local registry.
 func (r *BasicReplicator) Replicate(ctx context.Context, image string) error {
 	source := getPullSource(image)
-
-	if source != "" {
-		CopyImage(source)
+	if source == "" {
+		return fmt.Errorf("source not found for image: %s", image)
 	}
-	return nil
+	return CopyImage(source)
 }
 
+// stripPrefix removes  prefix from  image name.
 func stripPrefix(imageName string) string {
 	if idx := strings.Index(imageName, ":"); idx != -1 {
 		return imageName[idx+1:]
@@ -56,37 +56,24 @@ func stripPrefix(imageName string) string {
 }
 
 func (r *BasicReplicator) DeleteExtraImages(ctx context.Context, imgs []store.Image) error {
-	zotUrl := os.Getenv("ZOT_URL")
-	host := os.Getenv("HOST")
-	registry := os.Getenv("REGISTRY")
-	repository := os.Getenv("REPOSITORY")
+	localRegistry := getEnvRegistryPath()
 
-	localRegistry := fmt.Sprintf("%s/%s/%s/%s", zotUrl, host, registry, repository)
 	fmt.Println("Syncing local registry:", localRegistry)
 
-	// Get the list of images from the local registry
 	localImages, err := crane.ListTags(localRegistry)
 	if err != nil {
 		return fmt.Errorf("failed to get local registry catalog: %w", err)
 	}
 
-	// Create a map for quick lookup of the provided image list
 	imageMap := make(map[string]struct{})
 	for _, img := range imgs {
-		// Strip the "album-server:" prefix from the image name
-		strippedName := stripPrefix(img.Name)
-		imageMap[strippedName] = struct{}{}
+		imageMap[stripPrefix(img.Name)] = struct{}{}
 	}
 
-	// Iterate over the local images and delete those not in the provided image list
 	for _, localImage := range localImages {
 		if _, exists := imageMap[localImage]; !exists {
-			// Image is not in the provided list, delete it
-			fmt.Print("Deleting image: ", localRegistry+":"+localImage, " ... ")
-			err := crane.Delete(fmt.Sprintf("%s:%s", localRegistry, localImage))
-			if err != nil {
-				fmt.Printf("failed to delete image %s: %v\n", localImage, err)
-				return nil
+			if err := crane.Delete(fmt.Sprintf("%s:%s", localRegistry, localImage)); err != nil {
+				return fmt.Errorf("failed to delete image %s: %v\n", localImage, err)
 			}
 			fmt.Printf("Deleted image: %s\n", localImage)
 		}
@@ -95,114 +82,91 @@ func (r *BasicReplicator) DeleteExtraImages(ctx context.Context, imgs []store.Im
 	return nil
 }
 
+// getPullSource constructs  source URL for pulling an image.
 func getPullSource(image string) string {
-	input := os.Getenv("USER_INPUT")
 	scheme := os.Getenv("SCHEME")
 	if strings.HasPrefix(scheme, "http://") || strings.HasPrefix(scheme, "https://") {
-		url := os.Getenv("HOST") + "/" + os.Getenv("REGISTRY") + "/" + image
-		return url
-	} else {
-		registryInfo, err := getFileInfo(input)
-		if err != nil {
-			return "Error loading file info: " + err.Error()
-		}
-		registryURL := registryInfo.RegistryUrl
-		registryURL = strings.TrimPrefix(registryURL, "https://")
-		registryURL = strings.TrimSuffix(registryURL, "v2/")
-
-		// TODO: Handle multiple repositories
-		repositoryName := registryInfo.Repositories[0].Repository
-
-		return registryURL + repositoryName + "/" + image
+		return fmt.Sprintf("%s/%s/%s", os.Getenv("HOST"), os.Getenv("REGISTRY"), image)
 	}
+
+	registryInfo, err := getFileInfo(os.Getenv("USER_INPUT"))
+	if err != nil {
+		fmt.Printf("Error loading file info: %v\n", err)
+		return ""
+	}
+
+	registryURL := strings.TrimSuffix(
+		strings.TrimPrefix(registryInfo.RegistryUrl, "https://"),
+		"v2/",
+	)
+	repositoryName := registryInfo.Repositories[0].Repository
+
+	return fmt.Sprintf("%s/%s/%s", registryURL, repositoryName, image)
 }
 
+// getFileInfo reads and unmarshals  registry info from a JSON file.
 func getFileInfo(input string) (*RegistryInfo, error) {
-	// Get the current working directory
-	workingDir, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get working directory: %w", err)
-	}
-
-	// Construct the full path by joining the working directory and the input path
-	fullPath := filepath.Join(workingDir, input)
-
-	// Read the file
-	jsonData, err := os.ReadFile(fullPath)
+	fullPath := filepath.Join(getWorkingDir(), input)
+	data, err := os.ReadFile(fullPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
 	var registryInfo RegistryInfo
-	err = json.Unmarshal(jsonData, &registryInfo)
-	if err != nil {
+	if err := json.Unmarshal(data, &registryInfo); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 
 	return &registryInfo, nil
 }
 
+// CopyImage pulls an image from  source and pushes it to  destination.
 func CopyImage(imageName string) error {
 	fmt.Println("Copying image:", imageName)
-	zotUrl := os.Getenv("ZOT_URL")
-	if zotUrl == "" {
-		return fmt.Errorf("ZOT_URL environment variable is not set")
-	}
-
-	// Clean up the image name by removing any host part
-	cleanedImageName := removeHostName(imageName)
-	destRef := fmt.Sprintf("%s/%s", zotUrl, cleanedImageName)
-	fmt.Println("Destination reference:", destRef)
-
-	// Get credentials from environment variables
-	username := os.Getenv("HARBOR_USERNAME")
-	password := os.Getenv("HARBOR_PASSWORD")
-	if username == "" || password == "" {
-		return fmt.Errorf("HARBOR_USERNAME or HARBOR_PASSWORD environment variable is not set")
-	}
+	destRef := fmt.Sprintf("%s/%s", os.Getenv("ZOT_URL"), removeHostName(imageName))
 
 	auth := authn.FromConfig(authn.AuthConfig{
-		Username: username,
-		Password: password,
+		Username: os.Getenv("HARBOR_USERNAME"),
+		Password: os.Getenv("HARBOR_PASSWORD"),
 	})
 
-	// Pull the image with authentication
-	srcImage, err := crane.Pull(imageName, crane.WithAuth(auth), crane.Insecure)
+	err := crane.Copy(imageName, destRef, crane.Insecure, crane.WithAuth(auth))
 	if err != nil {
-		fmt.Printf("Failed to pull image: %v\n", err)
-		return fmt.Errorf("failed to pull image: %w", err)
-	} else {
-		fmt.Println("Image pulled successfully")
-		fmt.Printf("Pulled image details: %+v\n", srcImage)
+		return fmt.Errorf("Error in copying image from %s to %s: %v", imageName, destRef, err)
 	}
 
-	// Push the image to the destination registry
-	err = crane.Push(srcImage, destRef, crane.Insecure)
-	if err != nil {
-		fmt.Printf("Failed to push image: %v\n", err)
-		return fmt.Errorf("failed to push image: %w", err)
-	} else {
-		fmt.Println("Image pushed successfully")
-		fmt.Printf("Pushed image to: %s\n", destRef)
-	}
+	fmt.Println("Image pushed successfully")
+	fmt.Printf("Pushed image to: %s\n", destRef)
 
-	// Delete ./local-oci-layout directory
-	// This is required because it is a temporary directory used by crane to pull and push images to and from
-	// And crane does not automatically clean it
 	if err := os.RemoveAll("./local-oci-layout"); err != nil {
-		fmt.Printf("Failed to remove directory: %v\n", err)
-		return fmt.Errorf("failed to remove directory: %w", err)
+		return fmt.Errorf("failed to remove temporary directory: %w", err)
 	}
 
 	return nil
 }
 
-// take only the parts after the hostname
+// removeHostName removes  hostname from  image name.
 func removeHostName(imageName string) string {
-	parts := strings.Split(imageName, "/")
+	parts := strings.SplitN(imageName, "/", 2)
 	if len(parts) > 1 {
-		return strings.Join(parts[1:], "/")
+		return parts[1]
 	}
-
 	return imageName
+}
+
+// getEnvRegistryPath constructs  local registry URL from environment variables.
+func getEnvRegistryPath() string {
+	return fmt.Sprintf("%s/%s/%s",
+		os.Getenv("ZOT_URL"),
+		os.Getenv("REGISTRY"),
+		os.Getenv("REPOSITORY"))
+}
+
+// getWorkingDir returns  current working directory.
+func getWorkingDir() string {
+	workingDir, err := os.Getwd()
+	if err != nil {
+		panic(fmt.Errorf("failed to get working directory: %w", err))
+	}
+	return workingDir
 }

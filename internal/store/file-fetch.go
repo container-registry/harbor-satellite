@@ -24,7 +24,7 @@ type ImageData struct {
 	Repositories []Repository `json:"repositories"`
 }
 
-func (f *FileImageList) Type() string {
+func (f *FileImageList) SourceType() string {
 	return "File"
 }
 
@@ -73,5 +73,6 @@ func (client *FileImageList) List(ctx context.Context) ([]Image, error) {
 }
 
 func (client *FileImageList) GetDigest(ctx context.Context, tag string) (string, error) {
+	// TODO: Implement GetDigest for FileImageList
 	return "Not implemented yet", nil
 }
