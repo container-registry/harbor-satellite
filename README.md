@@ -1,4 +1,4 @@
-# Harbor Satellite — Sofware Distribution to the Edge
+# Harbor Satellite — Software Distribution to the Edge
 
 Harbor Satellite aims to bring Harbor container registries to edge locations, ensuring consistent, available, and integrity-checked images for edge computing environments. The developed sofware of a stateful, standalone satellite registry that can function as a primary registry for edge locations and act as a fallback option if the central Harbor registry is unavailable.
 
