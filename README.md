@@ -96,4 +96,4 @@ The project is currently in active development. If you are interested in partici
 
 You can reach the Harbor community and developers via the following channels:
 
-- [#harbor-satellite on CNCF Slack](https://cloud-native.slack.com/archives/C06NE6EJBU1) (Request an invite to join the CNCF Slack via https://slack.cncf.io/)
+- [#harbor-satellite on CNCF Slack](https://cloud-native.slack.com/archives/C06NE6EJBU1) (Request an invite to join the CNCF Slack via [slack.cncf.io](https://slack.cncf.io/))
