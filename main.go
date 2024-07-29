@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -15,24 +16,44 @@ import (
 	"syscall"
 	"time"
 
-	"container-registry.com/harbor-satellite/internal/images"
 	"container-registry.com/harbor-satellite/internal/replicate"
 	"container-registry.com/harbor-satellite/internal/satellite"
 	"container-registry.com/harbor-satellite/internal/store"
+	"container-registry.com/harbor-satellite/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/spf13/viper"
 
-	_ "github.com/joho/godotenv/autoload"
+	"github.com/joho/godotenv"
 )
 
+type ImageList struct {
+	RegistryURL  string `json:"registryUrl"`
+	Repositories []struct {
+		Repository string `json:"repository"`
+		Images     []struct {
+			Name string `json:"name"`
+		} `json:"images"`
+	} `json:"repositories"`
+}
+
 func main() {
+	viper.SetConfigName("config")
+	viper.SetConfigType("toml")
+	viper.AddConfigPath(".")
+	if err := viper.ReadInConfig(); err != nil {
+		fmt.Println("Error reading config file, ", err)
+		fmt.Println("Exiting Satellite")
+		os.Exit(1)
+	}
+
 	err := run()
 	if err != nil {
-		log.Fatalf("Error running satellite: %v", err)
+		os.Exit(1)
 	}
 }
 
@@ -43,13 +64,11 @@ func run() error {
 	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
 
-	viper.SetConfigName("config")
-	viper.SetConfigType("toml")
-	viper.AddConfigPath(".")
+	logLevel := viper.GetString("log_level")
+	ctx = logger.AddLoggerToContext(ctx, logLevel)
 
-	if err := viper.ReadInConfig(); err != nil {
-		return fmt.Errorf("fatal error config file: %w", err)
-	}
+	log := logger.FromContext(ctx)
+	log.Info().Msg("Satellite starting")
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{}))
@@ -83,113 +102,126 @@ func run() error {
 	if bringOwnRegistry {
 		registryAdr := viper.GetString("own_registry_adr")
 
-		os.Setenv("ZOT_URL", registryAdr)
-		fmt.Println("Registry URL set to:", registryAdr)
+		// Validate registryAdr format
+		ip := net.ParseIP(registryAdr)
+		if ip == nil {
+			log.Error().Msg("Invalid IP address")
+			return errors.New("invalid IP address")
+		}
+		if ip.To4() != nil {
+			log.Info().Msg("IP address is valid IPv4")
+		} else {
+			log.Error().Msg("IP address is IPv6 format and unsupported")
+			return errors.New("IP address is IPv6 format and unsupported")
+		}
+		registryPort := viper.GetString("own_registry_port")
+		os.Setenv("ZOT_URL", registryAdr+":"+registryPort)
 	} else {
+		log.Info().Msg("Launching default registry")
 		g.Go(func() error {
-			launch, err := registry.LaunchRegistry()
+			launch, err := registry.LaunchRegistry(viper.GetString("zotConfigPath"))
 			if launch {
-				cancel()
-				return nil
-			} else {
-				log.Println("Error launching registry :", err)
 				cancel()
 				return err
 			}
+			if err != nil {
+				cancel()
+				log.Error().Err(err).Msg("Failed to launch default registry")
+				return err
+			}
+			return nil
 		})
 	}
 
-	gc := viper.GetString("ground_control")
-	_, err := url.Parse(gc)
-	if err != nil {
-		return fmt.Errorf("invalid ground_control URL: %v", err)
-	}
-
 	input := viper.GetString("url_or_file")
-	// Attempt to parse the input as a URL
 	parsedURL, err := url.Parse(input)
-	// If parsing as URL fails or no scheme detected, treat it as a file path
 	if err != nil || parsedURL.Scheme == "" {
-		// Treat input as a file path
-		err = processFilePath(input)
-		if err != nil {
-			log.Fatalf("Error in processing file path: %v", err)
+		if strings.ContainsAny(input, "\\:*?\"<>|") {
+			log.Error().Msg("Path contains invalid characters. Please check the configuration.")
+			return err
 		}
+		dir, err := os.Getwd()
+		if err != nil {
+			log.Error().Err(err).Msg("Error getting current directory")
+			return err
+		}
+		absPath := filepath.Join(dir, input)
+		if _, err := os.Stat(absPath); os.IsNotExist(err) {
+			log.Error().Err(err).Msg("No URL or file found. Please check the configuration.")
+			return err
+		}
+		log.Info().Msg("Input is a valid file path.")
+		fetcher = store.FileImageListFetcher(ctx, input)
+		os.Setenv("USER_INPUT", input)
+
+		// Parse images.json and set environment variables
+		file, err := os.Open(absPath)
+		if err != nil {
+			log.Error().Err(err).Msg("Error opening images.json file")
+			return err
+		}
+		defer file.Close()
+
+		var imageList ImageList
+		if err := json.NewDecoder(file).Decode(&imageList); err != nil {
+			log.Error().Err(err).Msg("Error decoding images.json file")
+			return err
+		}
+
+		registryURL := imageList.RegistryURL
+		registryParts := strings.Split(registryURL, "/")
+		if len(registryParts) < 3 {
+			log.Error().Msg("Invalid registryUrl format in images.json")
+			return errors.New("invalid registryUrl format in images.json")
+		}
+		registry := registryParts[2]
+		os.Setenv("REGISTRY", registry)
+
+		if len(imageList.Repositories) > 0 {
+			repository := imageList.Repositories[0].Repository
+			os.Setenv("REPOSITORY", repository)
+		} else {
+			log.Error().Msg("No repositories found in images.json")
+			return errors.New("no repositories found in images.json")
+		}
+	} else {
+		log.Info().Msg("Input is a valid URL.")
+		fetcher = store.RemoteImageListFetcher(ctx, input)
+		os.Setenv("USER_INPUT", input)
+		parts := strings.SplitN(input, "://", 2)
+		scheme := parts[0] + "://"
+		os.Setenv("SCHEME", scheme)
+		registryAndPath := parts[1]
+		registryParts := strings.Split(registryAndPath, "/")
+		registry := registryParts[0]
+		os.Setenv("REGISTRY", registry)
+		apiVersion := registryParts[1]
+		os.Setenv("API_VERSION", apiVersion)
+		repository := registryParts[2]
+		os.Setenv("REPOSITORY", repository)
+		image := registryParts[3]
+		os.Setenv("IMAGE", image)
 	}
 
-	imgUrl, err := images.GetImages(gc)
+	err = godotenv.Load()
 	if err != nil {
-		return fmt.Errorf("error processing ground_control endpoint: %v", err)
+		log.Error().Err(err).Msg("Error loading.env file")
+		return err
 	}
-	repoUrl, err := processURL(imgUrl)
-	if err != nil {
-		return fmt.Errorf("error in processing URL: %v", err)
-	}
-	fetcher = store.NewRemoteImageSource(repoUrl)
 
-	storer := store.NewInMemoryStore(fetcher)
-	replicator := replicate.NewReplicator()
-	s := satellite.NewSatellite(storer, replicator)
+	ctx, storer := store.NewInMemoryStore(ctx, fetcher)
+	replicator := replicate.NewReplicator(ctx)
+	s := satellite.NewSatellite(ctx, storer, replicator)
 
 	g.Go(func() error {
 		return s.Run(ctx)
 	})
+	log.Info().Msg("Satellite running")
 
 	err = g.Wait()
 	if err != nil {
+		log.Error().Err(err).Msg("Error running satellite")
 		return err
 	}
 	return nil
-}
-
-func processFilePath(input string) error {
-	// Check for invalid characters in file path
-	if strings.ContainsAny(input, "\\:*?\"<>|") {
-		fmt.Println("Path contains invalid characters. Please check the configuration.")
-		return fmt.Errorf("invalid file path")
-	}
-	dir, err := os.Getwd()
-	if err != nil {
-		fmt.Println("Error getting current directory:", err)
-		return err
-	}
-	absPath := filepath.Join(dir, input)
-	if _, err := os.Stat(absPath); os.IsNotExist(err) {
-		fmt.Println("No URL or file found. Please check the configuration.")
-		return fmt.Errorf("file not found")
-	}
-	fmt.Println("Input is a valid file path.")
-	os.Setenv("USER_INPUT", input)
-
-	return nil
-}
-
-func processURL(input string) (string, error) {
-	fmt.Println("Input is a valid URL.")
-
-	// Set environment variables
-	os.Setenv("USER_INPUT", input)
-
-	// Extract URL components
-	parts := strings.SplitN(input, "://", 2)
-	scheme := parts[0] + "://"
-	os.Setenv("SCHEME", scheme)
-
-	hostAndPath := parts[1]
-	hostParts := strings.Split(hostAndPath, "/")
-	host := hostParts[0]
-	os.Setenv("HOST", host)
-
-	apiVersion := "v2"
-	os.Setenv("API_VERSION", apiVersion)
-
-	registry := hostParts[1]
-	os.Setenv("REGISTRY", registry)
-
-	repository := hostParts[2]
-	os.Setenv("REPOSITORY", repository)
-
-	url := fmt.Sprintf("%s%s/%s/%s/%s", scheme, host, apiVersion, registry, repository)
-
-	return url, nil
 }

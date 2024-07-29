@@ -1,16 +1,18 @@
 # Wether to us the built-in Zot registry or not
 bring_own_registry = false
 
-# URL of own registry
-own_registry_adr = "127.0.0.1:5000"
+# IP address and port of own registry
+own_registry_adr = "127.0.0.1"
+own_registry_port = "8585"
 
 # URL of remote registry OR local file path
-# url_or_file = "https://demo.goharbor.io/v2/library/busy"
 url_or_file = "https://demo.goharbor.io/v2/myproject/album-server"
-# url_or_file = "http://localhost:5001/v2/library/busybox"
 
-# Endpoint of ground_control
-ground_control = "http://localhost:8080/satellite/images"
+# Default path for Zot registry config.json
+zotConfigPath = "./registry/config.json"
+
+# Set logging level
+log_level = "info"
 
 # For testing purposes :
 #		 https://demo.goharbor.io/v2/myproject/album-server

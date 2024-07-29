@@ -5,13 +5,10 @@
       "repository": "myproject",
       "images": [
         {
-          "name": "album-server@sha256:71df27326a806ef2946ce502d26212efa11d70e4dcea06ceae612eb29cba398b"
+          "name": "album-server@sha256:39879890008f12c25ea14125aa8e9ec8ef3e167f0b0ed88057e955a8fa32c430"
         },
         {
-          "name": "album-server"
-        },
-        {
-          "name": "album-server:v1-manifest-app"
+          "name": "album-server:busybox"
         }
       ]
     }

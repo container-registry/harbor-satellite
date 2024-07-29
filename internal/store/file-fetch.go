@@ -3,9 +3,10 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
+
+	"container-registry.com/harbor-satellite/logger"
 )
 
 type FileImageList struct {
@@ -24,15 +25,16 @@ type ImageData struct {
 	Repositories []Repository `json:"repositories"`
 }
 
-func (f *FileImageList) SourceType() string {
+func (f *FileImageList) Type(ctx context.Context) string {
 	return "File"
 }
 
-func FileImageListFetcher(relativePath string) *FileImageList {
+func FileImageListFetcher(ctx context.Context, relativePath string) *FileImageList {
+	log := logger.FromContext(ctx)
 	// Get the current working directory
 	dir, err := os.Getwd()
 	if err != nil {
-		fmt.Println("Error getting current directory:", err)
+		log.Error().Err(err).Msg("Error getting current directory")
 		return nil
 	}
 
@@ -45,11 +47,13 @@ func FileImageListFetcher(relativePath string) *FileImageList {
 }
 
 func (client *FileImageList) List(ctx context.Context) ([]Image, error) {
+	log := logger.FromContext(ctx)
 	var images []Image
 
 	// Read the file
 	data, err := os.ReadFile(client.Path)
 	if err != nil {
+		log.Error().Err(err).Msg("Error reading file")
 		return nil, err
 	}
 
@@ -57,6 +61,7 @@ func (client *FileImageList) List(ctx context.Context) ([]Image, error) {
 	// Parse the JSON data
 	err = json.Unmarshal(data, &imageData)
 	if err != nil {
+		log.Error().Err(err).Msg("Error unmarshalling JSON data")
 		return nil, err
 	}
 
@@ -73,6 +78,5 @@ func (client *FileImageList) List(ctx context.Context) ([]Image, error) {
 }
 
 func (client *FileImageList) GetDigest(ctx context.Context, tag string) (string, error) {
-	// TODO: Implement GetDigest for FileImageList
 	return "Not implemented yet", nil
 }
