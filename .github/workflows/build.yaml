@@ -27,11 +27,9 @@ jobs:
           sudo apt-get install -y ca-certificates
           sudo update-ca-certificates
 
-      - name: Install curl
-        run: sudo apt-get install -y curl
-
-      - name: Install Docker
+      - name: Install curl and Docker
         run: |
+          sudo apt-get install -y curl
           curl -fsSL https://get.docker.com -o get-docker.sh
           sudo sh get-docker.sh
 
@@ -72,11 +70,9 @@ jobs:
           sudo apt-get install -y ca-certificates
           sudo update-ca-certificates
 
-      - name: Install curl
-        run: sudo apt-get install -y curl
-
-      - name: Install Docker
+      - name: Install curl and Docker
         run: |
+          sudo apt-get install -y curl
           curl -fsSL https://get.docker.com -o get-docker.sh
           sudo sh get-docker.sh
 

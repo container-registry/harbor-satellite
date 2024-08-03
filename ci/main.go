@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -14,6 +15,7 @@ import (
 func main() {
 	if len(os.Args) < 2 {
 		slog.Error("Please provide the app name (satellite or ground-control) as an argument.")
+		os.Exit(1)
 	}
 
 	appName := os.Args[1]
@@ -24,7 +26,7 @@ func main() {
 	sha := os.Getenv("GITHUB_SHA")
 
 	if token == "" || user == "" || repo == "" || sha == "" {
-		panic("Missing required environment variables")
+		panic(fmt.Sprintf("Missing required environment variables: GITHUB_TOKEN=%s, GITHUB_USERNAME=%s, GITHUB_REPOSITORY=%s, GITHUB_SHA=%s", token, user, repo, sha))
 	}
 
 	config := config.Config{
@@ -49,7 +51,7 @@ func main() {
 		err := satelliteCI.StartSatelliteCI()
 		if err != nil {
 			slog.Error("Error executing Satellite CI: " + err.Error())
-			panic(err)
+			os.Exit(1)
 		}
 
 	case "ground-control":
@@ -57,7 +59,7 @@ func main() {
 		err := ground_control_ci.StartGroundControlCI()
 		if err != nil {
 			slog.Error("Error executing Ground Control CI: " + err.Error())
-			panic(err)
+			os.Exit(1)
 		}
 	default:
 		slog.Error("Invalid app name. Please provide either 'satellite' or 'ground-control'.")
