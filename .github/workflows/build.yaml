@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     # unless you specify the success on the event,
     # this job will also run if the lint workflow was skipped(which is also the case if the condition for the file extension type is false).
-    # if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -55,7 +55,7 @@ jobs:
   dagger-build-ground-control:
     # unless you specify the success on the event,
     # this job will also run if the lint workflow was skipped(which is also the case if the condition for the file extension type is false).
-    # if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
