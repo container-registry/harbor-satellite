@@ -39,7 +39,7 @@ jobs:
       - name: Install Dagger CLI
         run: |
           cd /usr/local
-          curl -L https://dl.dagger.io/dagger/install.sh | sudo sh
+          curl -L https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=0.12.3 sudo sh
           cd -
 
       - name: Build Satellite with Dagger
@@ -82,7 +82,7 @@ jobs:
       - name: Install Dagger CLI
         run: |
           cd /usr/local
-          curl -L https://dl.dagger.io/dagger/install.sh | sudo sh
+          curl -L https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=0.12.3 sudo sh
           cd -
 
       - name: Build Ground Control with Dagger

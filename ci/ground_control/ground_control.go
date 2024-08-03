@@ -66,13 +66,15 @@ func (s *GroundControlCI) ExecuteTests() error {
 }
 
 func (s *GroundControlCI) BuildGroundControl() error {
-
+	slog.Info("Building binary for Ground Control")
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return err
 	}
+	slog.Info("Current directory: ", currentDir, ".")
 	groundControlDir := fmt.Sprintf("%s/%s", currentDir, "ground-control")
 	sourceDir := s.client.Host().Directory(groundControlDir)
+	slog.Info("Source directory set")
 
 	binaryBuildContainer := s.client.Container().
 		From("golang:1.22").
@@ -80,13 +82,14 @@ func (s *GroundControlCI) BuildGroundControl() error {
 		WithWorkdir("/ground_control").
 		WithExec([]string{"go", "build", "-o", fmt.Sprintf("/%s/ground_control", BinaryPath), "."})
 
+	slog.Info("Build container configured")
 	_, err = binaryBuildContainer.File(fmt.Sprintf("/%s/ground_control", BinaryPath)).
 		Export(*s.ctx, fmt.Sprintf("/%s/%s/ground_control", currentDir, BinaryPath))
 
 	if err != nil {
 		return err
 	}
-	slog.Info("Binary built successfully")
+	slog.Info("Binary built and exported successfully for Ground Control")
 	return nil
 }
 

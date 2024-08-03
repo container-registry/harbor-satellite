@@ -65,12 +65,15 @@ func (s *SatelliteCI) ExecuteTests() error {
 }
 
 func (s *SatelliteCI) BuildSatellite() error {
-
+	slog.Info("Building binary for Satellite")
 	currentDir, err := os.Getwd()
 	if err != nil {
+		slog.Error("Failed to get current directory: ", err.Error(), ".")
 		return err
 	}
+	slog.Info("Current directory: ", currentDir, ".")
 	sourceDir := s.client.Host().Directory(currentDir)
+	slog.Info("Source directory set")
 
 	binaryBuildContainer := s.client.Container().
 		From("golang:1.22").
@@ -78,13 +81,15 @@ func (s *SatelliteCI) BuildSatellite() error {
 		WithWorkdir("/satellite").
 		WithExec([]string{"go", "build", "-o", fmt.Sprintf("/%s/satellite", BinaryPath), "."})
 
+	slog.Info("Build container configured")
 	_, err = binaryBuildContainer.File(fmt.Sprintf("/%s/satellite", BinaryPath)).
 		Export(*s.ctx, fmt.Sprintf("/%s/%s/satellite", currentDir, BinaryPath))
 
 	if err != nil {
+		slog.Error("Failed to export binary: ", err.Error(), ".")
 		return err
 	}
-	slog.Info("Binary built successfully")
+	slog.Info("Binary built and exported successfully for Satellite")
 	return nil
 }
 
