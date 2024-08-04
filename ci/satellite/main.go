@@ -61,8 +61,8 @@ func (s *SatelliteCI) ExecuteTests() error {
 	cmd := exec.Command("go", "test", "./...", "-v", "-count=1")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		slog.Error("Error executing tests: ", err.Error())
-		slog.Error("Output: ", string(output))
+		slog.Error("Error executing tests: ", "error", err.Error())
+		slog.Error("Output: ", "output", string(output))
 		return err
 	}
 
