@@ -17,7 +17,7 @@ COPY . .
 RUN go build -o satellite main.go
 
 # Start a new stage from scratch
-FROM scratch
+FROM alpine:latest
 
 # Copy the Pre-built binary file from the previous stage
 COPY --from=builder /app/satellite /satellite
