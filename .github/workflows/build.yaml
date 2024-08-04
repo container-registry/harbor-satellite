@@ -1,33 +1,107 @@
 name: Build
+
+# Trigger this workflow after the "Lint" workflow completes
 on:
-  # Build only triggers once lint and test workflow successfully completes
   workflow_run:
     workflows: [Lint]
     types:
       - completed
 
 jobs:
-  dagger-build:
+  dagger-build-satellite:
+    # Specify the runner to use
     runs-on: ubuntu-latest
-    # unless you specify the success on the event, 
-    # this job will also run if the lint workflow was skipped(which is also the case if the condition for the file extension type is false).
+    # Only run this job if the Lint workflow concluded successfully
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
-    - 
-      name: Checkout repository
-      uses: actions/checkout@v4
-    - 
-      name: Setup go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '>=1.22'
-    -
-        name: Install
-        run: go get dagger.io/dagger@latest
-    -
-        name: Install Dagger CLI
-        run: cd /usr/local && { curl -L https://dl.dagger.io/dagger/install.sh | sh; cd -; }
-    -
-        name: Build with Dagger
-        run: dagger run go run ci/main.go
-    
+      # Step to checkout the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step to set up the Go environment
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '>=1.22'
+
+      # Step to update CA certificates
+      - name: Update CA certificates
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates
+          sudo update-ca-certificates
+
+      # Step to install curl and Docker
+      - name: Install curl and Docker
+        run: |
+          sudo apt-get install -y curl
+          curl -fsSL https://get.docker.com -o get-docker.sh
+          sudo sh get-docker.sh
+
+      # Step to verify Docker installation
+      - name: Verify Docker installation
+        run: docker --version
+
+      # Step to install Dagger CLI using the Dagger GitHub Action
+      - name: Install Dagger GitHub Action
+        uses: dagger/dagger-action@v1
+        with:
+          version: '0.12.3'
+
+      # Step to build the satellite project using Dagger
+      - name: Build Satellite with Dagger
+        run: dagger run go run ci/main.go satellite
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_USERNAME: ${{ github.repository_owner }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+
+  dagger-build-ground-control:
+    # Specify the runner to use
+    runs-on: ubuntu-latest
+    # Only run this job if the Lint workflow concluded successfully
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      # Step to checkout the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step to set up the Go environment
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '>=1.22'
+
+      # Step to update CA certificates
+      - name: Update CA certificates
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates
+          sudo update-ca-certificates
+
+      # Step to install curl and Docker
+      - name: Install curl and Docker
+        run: |
+          sudo apt-get install -y curl
+          curl -fsSL https://get.docker.com -o get-docker.sh
+          sudo sh get-docker.sh
+
+      # Step to verify Docker installation
+      - name: Verify Docker installation
+        run: docker --version
+
+      # Step to install Dagger CLI using the Dagger GitHub Action
+      - name: Install Dagger GitHub Action
+        uses: dagger/dagger-action@v1
+        with:
+          version: '0.12.3'
+
+      # Step to build the ground-control project using Dagger
+      - name: Build Ground Control with Dagger
+        run: dagger run go run ci/main.go ground-control
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_USERNAME: ${{ github.repository_owner }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
