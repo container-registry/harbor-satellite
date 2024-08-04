@@ -76,8 +76,8 @@ func (s *SatelliteCI) BuildSatellite() error {
 	slog.Info("Building binaries for Satellite")
 
 	currentDir, err := os.Getwd()
-	if err != nil {
-		slog.Error("Failed to get current directory: ", err.Error())
+	if (err != nil) {
+		slog.Error("Failed to get current directory: ", "error", err.Error())
 		return err
 	}
 	slog.Info("Current directory: ", currentDir)
