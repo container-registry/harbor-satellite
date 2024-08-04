@@ -1,4 +1,4 @@
-package ground_control_ci
+package satellite_ci
 
 import (
 	"context"
@@ -15,37 +15,34 @@ import (
 	"github.com/google/go-github/v39/github"
 )
 
-const (
-	// Update BinaryPath to match the expected path in Dockerfile or your build setup
-	BinaryPath     = "./" // Adjust if a specific directory is used for binaries
-	DockerFilePath = "./ci/ground_control/Dockerfile"
-)
+const BinaryPath = "./"
+const DockerFilePath = "./ci/satellite/Dockerfile"
 
-// GroundControlCI holds the configuration and context for the CI process
-type GroundControlCI struct {
+// SatelliteCI holds the configuration and context for the CI process
+type SatelliteCI struct {
 	config *config.Config
 	client *dagger.Client
 	ctx    context.Context
 }
 
-// NewGroundControlCI creates a new instance of GroundControlCI
-func NewGroundControlCI(client *dagger.Client, ctx context.Context, config *config.Config) *GroundControlCI {
-	return &GroundControlCI{
+// NewSatelliteCI creates a new instance of SatelliteCI
+func NewSatelliteCI(client *dagger.Client, ctx context.Context, config *config.Config) *SatelliteCI {
+	return &SatelliteCI{
 		client: client,
 		ctx:    ctx,
 		config: config,
 	}
 }
 
-// StartGroundControlCI starts the CI process for Ground Control
-func (s *GroundControlCI) StartGroundControlCI() error {
+// StartSatelliteCI starts the CI process for Satellite
+func (s *SatelliteCI) StartSatelliteCI() error {
 	// Execute tests
 	if err := s.ExecuteTests(); err != nil {
 		return err
 	}
 
-	// Build the Ground Control binaries
-	if err := s.BuildGroundControl(); err != nil {
+	// Build the Satellite binaries
+	if err := s.BuildSatellite(); err != nil {
 		return err
 	}
 
@@ -57,52 +54,53 @@ func (s *GroundControlCI) StartGroundControlCI() error {
 	return nil
 }
 
-// ExecuteTests runs the tests for the Ground Control project
-func (s *GroundControlCI) ExecuteTests() error {
+// ExecuteTests runs the tests for the Satellite project
+func (s *SatelliteCI) ExecuteTests() error {
 	slog.Info("Running Tests")
 
 	cmd := exec.Command("go", "test", "./...", "-v", "-count=1")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		slog.Error("Error executing tests: ", err.Error(), ".")
-		slog.Error("Output: ", string(output), ".")
+		slog.Error("Error executing tests: ", err.Error())
+		slog.Error("Output: ", string(output))
 		return err
 	}
 
-	slog.Info("Output: ", string(output), ".")
-	slog.Info("Tests executed successfully.")
+	slog.Info("Output: ", string(output))
+	slog.Info("Tests executed successfully")
 	return nil
 }
 
-// BuildGroundControl builds the Ground Control binaries using Dagger
-func (s *GroundControlCI) BuildGroundControl() error {
-	slog.Info("Building binaries for Ground Control")
+// BuildSatellite builds the Satellite binaries using Dagger
+func (s *SatelliteCI) BuildSatellite() error {
+	slog.Info("Building binaries for Satellite")
 
 	currentDir, err := os.Getwd()
 	if err != nil {
+		slog.Error("Failed to get current directory: ", err.Error())
 		return err
 	}
-	slog.Info("Current directory: ", currentDir, ".")
-	groundControlDir := filepath.Join(currentDir, "ground-control")
-	sourceDir := s.client.Host().Directory(groundControlDir)
+	slog.Info("Current directory: ", currentDir)
+
+	sourceDir := s.client.Host().Directory(currentDir)
 	slog.Info("Source directory set")
 
 	// List of binaries to build
-	binaries := []string{"ground_control", "another_binary"}
+	binaries := []string{"satellite", "another_binary"}
 
 	for _, binary := range binaries {
 		slog.Info("Building binary: ", binary)
 
 		binaryBuildContainer := s.client.Container().
 			From("golang:1.22").
-			WithDirectory("/app", sourceDir).
-			WithWorkdir("/app").
-			WithExec([]string{"go", "build", "-o", filepath.Join(BinaryPath, binary), "."})
+			WithDirectory("/satellite", sourceDir).
+			WithWorkdir("/satellite").
+			WithExec([]string{"go", "build", "-o", fmt.Sprintf("/%s/%s", BinaryPath, binary), "."})
 
 		slog.Info("Build container configured for: ", binary)
 
-		_, err := binaryBuildContainer.File(filepath.Join(BinaryPath, binary)).
-			Export(s.ctx, filepath.Join(currentDir, BinaryPath, binary))
+		_, err := binaryBuildContainer.File(fmt.Sprintf("/%s/%s", BinaryPath, binary)).
+			Export(s.ctx, fmt.Sprintf("%s/%s", BinaryPath, binary))
 
 		if err != nil {
 			return err
@@ -114,7 +112,7 @@ func (s *GroundControlCI) BuildGroundControl() error {
 }
 
 // ReleaseBinary releases the built binaries to GitHub
-func (s *GroundControlCI) ReleaseBinary() error {
+func (s *SatelliteCI) ReleaseBinary() error {
 	slog.Info("Releasing binaries to GitHub")
 
 	ts := oauth2.StaticTokenSource(
@@ -125,7 +123,7 @@ func (s *GroundControlCI) ReleaseBinary() error {
 
 	// Create a new release
 	release, _, err := client.Repositories.CreateRelease(s.ctx, s.config.GithubUser, "harbor-satellite", &github.RepositoryRelease{
-		TagName:    github.String("v" + s.config.Github_SHA[:6]),
+		TagName:    github.String("v" + s.config.Github_SHA[:5]),
 		Name:       github.String(s.config.AppName + " Release"),
 		Body:       github.String("Automated release by CI"),
 		Draft:      github.Bool(false),
@@ -136,7 +134,7 @@ func (s *GroundControlCI) ReleaseBinary() error {
 	}
 
 	// List of binaries to release
-	binaries := []string{"ground_control", "another_binary"}
+	binaries := []string{"satellite", "another_binary"}
 
 	for _, binary := range binaries {
 		binaryPath := filepath.Join(BinaryPath, binary)
