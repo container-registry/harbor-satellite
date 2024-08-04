@@ -48,8 +48,7 @@ func main() {
 	switch appName {
 	case "satellite":
 		satelliteCI := satellite_ci.NewSatelliteCI(client, ctx, &config)
-		err := satelliteCI.StartSatelliteCI()
-		if err != nil {
+		if err := satelliteCI.StartSatelliteCI(); err != nil {
 			slog.Error("Error executing Satellite CI: " + err.Error())
 			os.Exit(1)
 		}
