@@ -6,62 +6,118 @@ import (
 	"log/slog"
 	"os"
 
-	"container-registry.com/harbor-satellite/ci/config"
-	ground_control_ci "container-registry.com/harbor-satellite/ci/ground_control"
-	satellite_ci "container-registry.com/harbor-satellite/ci/satellite"
-	"dagger.io/dagger"
+	"container-registry.com/harbor-satellite/ci/internal/dagger"
 )
 
-func main() {
-	if len(os.Args) < 2 {
-		slog.Error("Please provide the app name (satellite or ground-control) as an argument.")
+const (
+	DEFAULT_GO = "golang:1.22"
+	PROJ_MOUNT = "/app"
+	OUT_DIR    = "/binaries"
+)
+
+type HarborSatellite struct{}
+
+// Returns a container that echoes whatever string argument is provided
+func (m *HarborSatellite) ContainerEcho(stringArg string) *dagger.Container {
+	return dag.Container().From("alpine:latest").WithExec([]string{"echo", stringArg})
+}
+
+// Returns lines that match a pattern in the files of the provided Directory
+func (m *HarborSatellite) Grepdir(ctx context.Context, directoryArg *dagger.Directory, pattern string) (string, error) {
+	return dag.Container().
+		From("alpine:latest").
+		WithMountedDirectory("/mnt", directoryArg).
+		WithWorkdir("/mnt").
+		WithExec([]string{"grep", "-R", pattern, "."}).
+		Stdout(ctx)
+}
+
+func (m *HarborSatellite) Start(ctx context.Context, name string, source *dagger.Directory, release *dagger.Directory, GITHUB_TOKEN, VERSION, REPO_OWNER, REPO_NAME, RELEASE_NAME string) {
+
+	if name == "" {
+		slog.Error("Please provide the app name (satellite or ground-control) as an argument")
 		os.Exit(1)
 	}
 
-	appName := os.Args[1]
-
-	token := os.Getenv("GITHUB_TOKEN")
-	user := os.Getenv("GITHUB_USERNAME")
-	repo := os.Getenv("GITHUB_REPOSITORY")
-	sha := os.Getenv("GITHUB_SHA")
-
-	if token == "" || user == "" || repo == "" || sha == "" {
-		panic(fmt.Sprintf("Missing required environment variables: GITHUB_TOKEN=%s, GITHUB_USERNAME=%s, GITHUB_REPOSITORY=%s, GITHUB_SHA=%s", token, user, repo, sha))
-	}
-
-	config := config.Config{
-		GithubToken:       token,
-		GithubUser:        user,
-		Github_Repository: repo,
-		Github_SHA:        sha,
-		AppName:           appName,
-	}
-	ctx := context.Background()
-
-	// initialize Dagger client
-	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stderr))
-	if err != nil {
-		panic(err)
-	}
-	defer client.Close()
-
-	switch appName {
+	switch name {
 	case "satellite":
-		satelliteCI := satellite_ci.NewSatelliteCI(client, &ctx, &config)
-		err := satelliteCI.StartSatelliteCI()
+		slog.Info("Starting satellite CI")
+		err := m.StartSatelliteCi(ctx, source, release, GITHUB_TOKEN, VERSION, REPO_OWNER, REPO_NAME, RELEASE_NAME, name)
 		if err != nil {
-			slog.Error("Error executing Satellite CI: " + err.Error())
+			slog.Error("Failed to start satellite CI")
 			os.Exit(1)
 		}
-
 	case "ground-control":
-		ground_control_ci := ground_control_ci.NewGroundControlCI(client, &ctx, &config)
-		err := ground_control_ci.StartGroundControlCI()
+		slog.Info("Starting ground-control CI")
+		err := m.StartGroundControlCI(ctx, source, release, GITHUB_TOKEN, VERSION, REPO_OWNER, REPO_NAME, RELEASE_NAME, name)
 		if err != nil {
-			slog.Error("Error executing Ground Control CI: " + err.Error())
+			slog.Error("Failed to complete ground-control CI")
 			os.Exit(1)
 		}
 	default:
-		slog.Error("Invalid app name. Please provide either 'satellite' or 'ground-control'.")
+		slog.Error("Invalid app name. Please provide either 'satellite' or 'ground-control'")
+		os.Exit(1)
 	}
+}
+
+func (m *HarborSatellite) Build(ctx context.Context, source *dagger.Directory, name string) *dagger.Directory {
+	return m.build(source, name)
+}
+
+func (m *HarborSatellite) Release(ctx context.Context, directory *dagger.Directory, release *dagger.Directory, GITHUB_TOKEN, VERSION, REPO_OWNER, REPO_NAME, RELEASE_NAME, name string) (string, error) {
+
+	releaseContainer := dag.Container().
+		From("alpine:latest").
+		WithDirectory(".", directory).
+		WithDirectory(".", release).
+		WithExec([]string{"apk", "add", "--no-cache", "bash", "curl"}).
+		WithEnvVariable("GITHUB_API_TOKEN", GITHUB_TOKEN).
+		WithEnvVariable("VERSION", fmt.Sprintf("%s-%s", name, VERSION)).
+		WithEnvVariable("REPO_OWNER", REPO_OWNER).
+		WithEnvVariable("REPO_NAME", REPO_NAME).
+		WithEnvVariable("RELEASE_NAME", RELEASE_NAME).
+		WithEnvVariable("OUT_DIR", OUT_DIR).
+		WithExec([]string{"chmod", "+x", "release.sh"}).
+		WithExec([]string{"ls", "-lR", "."}).
+		WithExec([]string{"bash", "-c", "./release.sh"})
+	output, err := releaseContainer.Stdout(ctx)
+	if err != nil {
+		return output, err
+	}
+
+	// Return the updated release directory
+	return output, nil
+}
+
+func (m *HarborSatellite) build(source *dagger.Directory, name string) *dagger.Directory {
+	fmt.Print("Building Satellite\n")
+	gooses := []string{"linux", "darwin"}
+	goarches := []string{"amd64", "arm64"}
+	binaryName := name // base name for the binary
+
+	// create empty directory to put build artifacts
+	outputs := dag.Directory()
+
+	golang := dag.Container().
+		From(DEFAULT_GO).
+		WithDirectory(PROJ_MOUNT, source).
+		WithWorkdir(PROJ_MOUNT)
+	for _, goos := range gooses {
+		for _, goarch := range goarches {
+			// create the full binary name with OS and architecture
+			outputBinary := fmt.Sprintf("%s/%s-%s-%s", OUT_DIR, binaryName, goos, goarch)
+
+			// build artifact with specified binary name
+			build := golang.
+				WithEnvVariable("GOOS", goos).
+				WithEnvVariable("GOARCH", goarch).
+				WithExec([]string{"go", "build", "-o", outputBinary})
+
+			// add build to outputs
+			outputs = outputs.WithDirectory(OUT_DIR, build.Directory(OUT_DIR))
+		}
+	}
+
+	// return build directory
+	return outputs
 }

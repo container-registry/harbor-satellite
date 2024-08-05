@@ -9,86 +9,25 @@ on:
 jobs:
   dagger-build-satellite:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     # unless you specify the success on the event,
     # this job will also run if the lint workflow was skipped(which is also the case if the condition for the file extension type is false).
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v4
+      - name: Call Dagger Function to build and publish on Github
+        uses: dagger/dagger-for-github@v5
         with:
-          go-version: '>=1.22'
-
-      - name: Update CA certificates
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ca-certificates
-          sudo update-ca-certificates
-
-      - name: Install curl and Docker
-        run: |
-          sudo apt-get install -y curl
-          curl -fsSL https://get.docker.com -o get-docker.sh
-          sudo sh get-docker.sh
-
-      - name: Verify Docker installation
-        run: docker --version
-
-      - name: Install Dagger CLI
-        run: |
-          cd /usr/local
-          curl -L https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=0.12.3 sudo sh
-          cd -
-
-      - name: Build Satellite with Dagger
-        run: dagger run go run ci/main.go satellite
+          version: latest
+          verb: call
+          module: github.com/Mehul-Kumar/harbor-satellite
+          args: start --name=satellite --source=. --release=./ci --GITHUB-TOKEN=env:GITHUB_TOKEN --version=$GITHUB_SHA --REPO_OWNER=$GITHUB_USERNAME --REPO_NAME=harbor-satellite --RELEASE_NAME=satellite
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_USERNAME: ${{ github.repository_owner }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_SHA: ${{ github.sha }}
-
-  dagger-build-ground-control:
-    # unless you specify the success on the event,
-    # this job will also run if the lint workflow was skipped(which is also the case if the condition for the file extension type is false).
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '>=1.22'
-
-      - name: Update CA certificates
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ca-certificates
-          sudo update-ca-certificates
-
-      - name: Install curl and Docker
-        run: |
-          sudo apt-get install -y curl
-          curl -fsSL https://get.docker.com -o get-docker.sh
-          sudo sh get-docker.sh
-
-      - name: Verify Docker installation
-        run: docker --version
-
-      - name: Install Dagger CLI
-        run: |
-          cd /usr/local
-          curl -L https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=0.12.3 sudo sh
-          cd -
-
-      - name: Build Ground Control with Dagger
-        run: dagger run go run ci/main.go ground-control
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_USERNAME: ${{ github.repository_owner }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
