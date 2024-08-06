@@ -10,11 +10,11 @@ jobs:
   dagger-build-satellite:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     # unless you specify the success on the event,
     # this job will also run if the lint workflow was skipped(which is also the case if the condition for the file extension type is false).
-    # if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,9 +24,40 @@ jobs:
         with:
           version: latest
           verb: call
-          module: github.com/Mehul-Kumar/harbor-satellite
-          args: start --name=satellite --source=. --release=./ci --GITHUB-TOKEN=env:GITHUB_TOKEN --version=$GITHUB_SHA --REPO_OWNER=$GITHUB_USERNAME --REPO_NAME=harbor-satellite --RELEASE_NAME=satellite
-          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+          module: github.com/container-registry/harbor-satellite
+          args: start --name=satellite --source=. --release=./ci --GITHUB-TOKEN=$GITHUB_TOKEN --version=$GITHUB_SHA --REPO_OWNER=$GITHUB_USERNAME --REPO_NAME=harbor-satellite --RELEASE_NAME=satellite
+          ### Uncomment the below line if you wish to see the traces of the workflow on dagger cloud
+          ### register to dagger cloud and get the token
+          #### https://dagger.cloud/
+          # cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_USERNAME: ${{ github.repository_owner }}
+          GITHUB_SHA: ${{ github.sha }}
+
+  build-ground-control:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    # unless you specify the success on the event,
+    # this job will also run if the lint workflow was skipped(which is also the case if the condition for the file extension type is false).
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Call Dagger Function to build and publish on Github
+        uses: dagger/dagger-for-github@v5
+        with:
+          version: latest
+          verb: call
+          module: github.com/container-registry/harbor-satellite
+          args: start --name=ground-control --source=./ground-control --release=./ci --GITHUB-TOKEN=$GITHUB_TOKEN --version=$GITHUB_SHA --REPO_OWNER=$GITHUB_USERNAME --REPO_NAME=harbor-satellite --RELEASE_NAME=ground-control
+          ### Uncomment the below line if you wish to see the traces of the workflow on dagger cloud
+          ### register to dagger cloud and get the token
+          #### https://dagger.cloud/
+          # cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_USERNAME: ${{ github.repository_owner }}
