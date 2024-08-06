@@ -17,21 +17,6 @@ const (
 
 type HarborSatellite struct{}
 
-// Returns a container that echoes whatever string argument is provided
-func (m *HarborSatellite) ContainerEcho(stringArg string) *dagger.Container {
-	return dag.Container().From("alpine:latest").WithExec([]string{"echo", stringArg})
-}
-
-// Returns lines that match a pattern in the files of the provided Directory
-func (m *HarborSatellite) Grepdir(ctx context.Context, directoryArg *dagger.Directory, pattern string) (string, error) {
-	return dag.Container().
-		From("alpine:latest").
-		WithMountedDirectory("/mnt", directoryArg).
-		WithWorkdir("/mnt").
-		WithExec([]string{"grep", "-R", pattern, "."}).
-		Stdout(ctx)
-}
-
 func (m *HarborSatellite) Start(ctx context.Context, name string, source *dagger.Directory, release *dagger.Directory, GITHUB_TOKEN, VERSION, REPO_OWNER, REPO_NAME, RELEASE_NAME string) {
 
 	if name == "" {

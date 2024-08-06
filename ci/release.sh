@@ -3,7 +3,8 @@
 function check_if_success() {
     if [ $? -ne 0 ]; then
         echo "Error running last command"
-        exit $?
+        local exit_code=$?
+        exit $exit_code
     fi
 }
 
@@ -22,11 +23,11 @@ Make sure the following environment variables are set:
 
 Example:
     export GITHUB_API_TOKEN=your_token
-    export VERSION=v1.0.0
+    export VERSION=v1.0.0  /// Here we have set is as satellite-{sha} and ground-control-{sha}
     export REPO_OWNER=your_username
     export REPO_NAME=your_repo
     export RELEASE_NAME=\"Release v1.0.0\"
-    export OUT_DIR=./bin
+    export OUT_DIR=./binaries /// this is default set in the build call for both the ground-control and the satellite
     export PRERELEASE=false
     ./release.sh"
 }
