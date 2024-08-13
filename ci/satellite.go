@@ -24,7 +24,8 @@ func (m *HarborSatellite) StartSatelliteCi(ctx context.Context, source *dagger.D
 
 func (m *HarborSatellite) ExecuteTestsForSatellite(ctx context.Context, source *dagger.Directory) (string, error) {
 	goContainer := dag.Container().
-		From(DEFAULT_GO)
+		From("golang:1.22-alpine").
+		WithExec([]string{"apk", "add", "--no-cache", "docker"})
 
 	containerWithDocker, err := m.Attach(ctx, goContainer, "24.0")
 	if err != nil {

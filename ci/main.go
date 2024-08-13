@@ -13,6 +13,7 @@ const (
 	DEFAULT_GO = "golang:1.22"
 	PROJ_MOUNT = "/app"
 	OUT_DIR    = "/binaries"
+	DOCKER_PORT =- 2375
 )
 
 type HarborSatellite struct{}
