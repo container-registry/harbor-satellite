@@ -10,15 +10,17 @@ import (
 )
 
 const (
-	DEFAULT_GO = "golang:1.22"
-	PROJ_MOUNT = "/app"
-	OUT_DIR    = "/binaries"
-	DOCKER_PORT =- 2375
+	DEFAULT_GO         = "golang:1.22"
+	PROJ_MOUNT         = "/app"
+	OUT_DIR            = "/binaries"
+	DOCKER_PORT        = 2375
+	SYFT_VERSION       = "v1.9.0"
+	GORELEASER_VERSION = "v2.1.0"
 )
 
 type HarborSatellite struct{}
 
-func (m *HarborSatellite) Start(ctx context.Context, name string, source *dagger.Directory, release *dagger.Directory, GITHUB_TOKEN, VERSION, REPO_OWNER, REPO_NAME, RELEASE_NAME string) {
+func (m *HarborSatellite) Start(ctx context.Context, name string, source *dagger.Directory, GITHUB_TOKEN string) {
 
 	if name == "" {
 		slog.Error("Please provide the app name (satellite or ground-control) as an argument")
@@ -28,14 +30,14 @@ func (m *HarborSatellite) Start(ctx context.Context, name string, source *dagger
 	switch name {
 	case "satellite":
 		slog.Info("Starting satellite CI")
-		err := m.StartSatelliteCi(ctx, source, release, GITHUB_TOKEN, VERSION, REPO_OWNER, REPO_NAME, RELEASE_NAME, name)
+		err := m.StartSatelliteCi(ctx, source, GITHUB_TOKEN, name)
 		if err != nil {
 			slog.Error("Failed to start satellite CI")
 			os.Exit(1)
 		}
 	case "ground-control":
 		slog.Info("Starting ground-control CI")
-		err := m.StartGroundControlCI(ctx, source, release, GITHUB_TOKEN, VERSION, REPO_OWNER, REPO_NAME, RELEASE_NAME, name)
+		err := m.StartGroundControlCI(ctx, source, GITHUB_TOKEN, name)
 		if err != nil {
 			slog.Error("Failed to complete ground-control CI")
 			os.Exit(1)
@@ -50,29 +52,22 @@ func (m *HarborSatellite) Build(ctx context.Context, source *dagger.Directory, n
 	return m.build(source, name)
 }
 
-func (m *HarborSatellite) Release(ctx context.Context, directory *dagger.Directory, release *dagger.Directory, GITHUB_TOKEN, VERSION, REPO_OWNER, REPO_NAME, RELEASE_NAME, name string) (string, error) {
+func (m *HarborSatellite) Release(ctx context.Context, directory *dagger.Directory, token string) (string, error) {
+	release_output, err := dag.Container().
+		From(fmt.Sprintf("goreleaser/goreleaser:%s", GORELEASER_VERSION)).
+		WithMountedDirectory(PROJ_MOUNT, directory).
+		WithWorkdir(PROJ_MOUNT).
+		WithEnvVariable("GITHUB_TOKEN", token).
+		WithExec([]string{"goreleaser", "release","--clean"}).
+		Stderr(ctx)
 
-	releaseContainer := dag.Container().
-		From("alpine:latest").
-		WithDirectory(".", directory).
-		WithDirectory(".", release).
-		WithExec([]string{"apk", "add", "--no-cache", "bash", "curl"}).
-		WithEnvVariable("GITHUB_API_TOKEN", GITHUB_TOKEN).
-		WithEnvVariable("VERSION", fmt.Sprintf("%s-%s", name, VERSION)).
-		WithEnvVariable("REPO_OWNER", REPO_OWNER).
-		WithEnvVariable("REPO_NAME", REPO_NAME).
-		WithEnvVariable("RELEASE_NAME", RELEASE_NAME).
-		WithEnvVariable("OUT_DIR", OUT_DIR).
-		WithExec([]string{"chmod", "+x", "release.sh"}).
-		WithExec([]string{"ls", "-lR", "."}).
-		WithExec([]string{"bash", "-c", "./release.sh"})
-	output, err := releaseContainer.Stdout(ctx)
 	if err != nil {
-		return output, err
+		slog.Error("Failed to release Ground Control: ", err, ".")
+		slog.Error("Release Output:", release_output, ".")
+		return release_output, err
 	}
 
-	// Return the updated release directory
-	return output, nil
+	return release_output, nil
 }
 
 func (m *HarborSatellite) build(source *dagger.Directory, name string) *dagger.Directory {

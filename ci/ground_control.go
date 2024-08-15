@@ -8,12 +8,12 @@ import (
 	"container-registry.com/harbor-satellite/ci/internal/dagger"
 )
 
-func (m *HarborSatellite) StartGroundControlCI(ctx context.Context, source *dagger.Directory, release *dagger.Directory, GITHUB_TOKEN, VERSION, REPO_OWNER, REPO_NAME, RELEASE_NAME, name string) error {
+func (m *HarborSatellite) StartGroundControlCI(ctx context.Context, source *dagger.Directory,  GITHUB_TOKEN, name string) error {
 	// Build Ground Control
 	slog.Info("Building Ground Control")
-	outputDir := m.Build(ctx, source, name)
+	_ = m.Build(ctx, source, name)
 
-	release_output, err := m.Release(ctx, outputDir, release, GITHUB_TOKEN, VERSION, REPO_OWNER, REPO_NAME, RELEASE_NAME, name)
+	release_output, err := m.Release(ctx, source, GITHUB_TOKEN)
 	if err != nil {
 		slog.Error("Failed to release Ground Control")
 		slog.Error(err.Error())
