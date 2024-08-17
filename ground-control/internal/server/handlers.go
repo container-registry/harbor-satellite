@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -94,17 +95,17 @@ func (s *Server) createGroupHandler(w http.ResponseWriter, r *http.Request) {
 
 	params := database.CreateGroupParams{
 		GroupName: req.GroupName,
-    CreatedAt: time.Now(),
-    UpdatedAt: time.Now(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	// Call the database query to create Group
 	result, err := s.dbQueries.CreateGroup(r.Context(), params)
 	if err != nil {
-    err = &AppError{
-      Message: err.Error(),
-      Code: http.StatusBadRequest,
-    }
+		err = &AppError{
+			Message: err.Error(),
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}
@@ -301,13 +302,13 @@ func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) regListHandler(w http.ResponseWriter, r *http.Request) {
-	username := r.URL.Query().Get("username")
-	password := r.URL.Query().Get("password")
-	url := r.URL.Query().Get("url")
+	username := os.Getenv("HARBOR_USERNAME")
+	password := os.Getenv("HARBOR_PASSWORD")
+	url := os.Getenv("HARBOR_URL")
 
 	if url == "" {
 		err := &AppError{
-			Message: "Missing URL in Request",
+			Message: "Missing URL in ENV",
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
@@ -321,6 +322,31 @@ func (s *Server) regListHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) regReplicateAll(w http.ResponseWriter, r *http.Request) {
+	username := os.Getenv("HARBOR_USERNAME")
+	password := os.Getenv("HARBOR_PASSWORD")
+	url := os.Getenv("HARBOR_URL")
+
+	if url == "" {
+		err := &AppError{
+			Message: "Missing URL in ENV",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	repos, err := reg.FetchRepos(username, password, url)
+	if err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	reg.CopyRepos(repos)
+
+	WriteJSONResponse(w, http.StatusOK, repos)
 }
 
 func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {

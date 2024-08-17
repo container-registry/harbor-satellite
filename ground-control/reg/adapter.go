@@ -11,11 +11,6 @@ type AppError struct {
 	Message string `json:"message"`
 	Code    int    `json:"code"`
 }
-type Image struct {
-	Digest string
-	Name   string
-}
-
 type TagListResponse struct {
 	Name string   `json:"name"`
 	Tags []string `json:"tags"`
@@ -63,4 +58,9 @@ func FetchRepos(username, password, url string) ([]string, error) {
 	}
 
 	return repos, nil
+}
+
+func CopyRepos(repos []string) {
+	// TO-DO: replicate the listed repos to `library/satellite`
+	fmt.Println("kumar")
 }

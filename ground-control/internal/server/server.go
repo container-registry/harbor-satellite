@@ -35,6 +35,7 @@ func NewServer() *http.Server {
 		log.Fatalf("PORT is not valid: %v", err)
 	}
 
+	// TO-DO: create dynamic string based on prod and dev
 	connStr := fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		username,

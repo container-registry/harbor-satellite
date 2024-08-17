@@ -13,6 +13,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/health", s.healthHandler).Methods("GET")
 
 	r.HandleFunc("/registry/list", s.regListHandler).Methods("GET")
+	r.HandleFunc("/registry/replicate/all", s.regReplicateAll).Methods("GET")
 
 	// Ground Control interface
 	r.HandleFunc("/group/list", s.listGroupHandler).Methods("GET")
