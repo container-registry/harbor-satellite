@@ -7,15 +7,12 @@
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
 
 version: 2
-project_name: harbor-satellite-ground-control
-
-before:
-  hooks:
-    # You may remove this if you don't use go modules.
-    - go mod tidy
+project_name: ground-control
 
 builds:
-  - main: ./main.go
+  - main: "./main.go"
+    binary: "{{ .Env.APP_NAME }}"
+    dir: "./ground-control"
     env:
       - CGO_ENABLED=0
     ldflags:
@@ -32,12 +29,14 @@ builds:
       - goos: windows
         goarch: arm64
     mod_timestamp: "{{ .CommitTimestamp }}"
+    tags:
+      - "{{ .ProjectName }}-{{ .ShortCommit}}"
 
 archives:
   - format: tar.gz
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
-      {{ .ProjectName }}_
+      {{ .Env.APP_NAME }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386

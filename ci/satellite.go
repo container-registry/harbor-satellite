@@ -13,7 +13,7 @@ func (m *HarborSatellite) StartSatelliteCi(ctx context.Context, source *dagger.D
 	slog.Info("Building Satellite")
 	_ = m.Build(ctx, source, name)
 
-	release_output, err := m.Release(ctx, source, GITHUB_TOKEN)
+	release_output, err := m.Release(ctx, source, GITHUB_TOKEN, name)
 	if err != nil {
 		slog.Error("Failed to release Ground Control: ", err, ".")
 		slog.Error("Release Directory:", release_output, ".")

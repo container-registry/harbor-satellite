@@ -13,7 +13,7 @@ func (m *HarborSatellite) StartGroundControlCI(ctx context.Context, source *dagg
 	slog.Info("Building Ground Control")
 	_ = m.Build(ctx, source, name)
 
-	release_output, err := m.Release(ctx, source, GITHUB_TOKEN)
+	release_output, err := m.Release(ctx, source, GITHUB_TOKEN, name)
 	if err != nil {
 		slog.Error("Failed to release Ground Control")
 		slog.Error(err.Error())

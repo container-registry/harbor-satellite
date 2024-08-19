@@ -10,12 +10,13 @@ import (
 )
 
 const (
-	DEFAULT_GO         = "golang:1.22"
-	PROJ_MOUNT         = "/app"
-	OUT_DIR            = "/binaries"
-	DOCKER_PORT        = 2375
-	SYFT_VERSION       = "v1.9.0"
-	GORELEASER_VERSION = "v2.1.0"
+	DEFAULT_GO          = "golang:1.22"
+	PROJ_MOUNT          = "/app"
+	DOCKER_PORT         = 2375
+	SYFT_VERSION        = "v1.9.0"
+	GORELEASER_VERSION  = "v2.1.0"
+	GROUND_CONTROL_PATH = "./ground-control"
+	SATELLITE_PATH      = "."
 )
 
 type HarborSatellite struct{}
@@ -52,13 +53,22 @@ func (m *HarborSatellite) Build(ctx context.Context, source *dagger.Directory, n
 	return m.build(source, name)
 }
 
-func (m *HarborSatellite) Release(ctx context.Context, directory *dagger.Directory, token string) (string, error) {
+func (m *HarborSatellite) Release(ctx context.Context, directory *dagger.Directory, token, name string) (string, error) {
+	var path_to_main string
+
+	if name == "satellite" {
+		path_to_main = ".goreleaser.yaml"
+	} else {
+		path_to_main = "ground-control/.goreleaser.yaml"
+	}
 	release_output, err := dag.Container().
 		From(fmt.Sprintf("goreleaser/goreleaser:%s", GORELEASER_VERSION)).
 		WithMountedDirectory(PROJ_MOUNT, directory).
 		WithWorkdir(PROJ_MOUNT).
 		WithEnvVariable("GITHUB_TOKEN", token).
-		WithExec([]string{"goreleaser", "release","--clean"}).
+		WithEnvVariable("PATH_TO_MAIN", path_to_main).
+		WithEnvVariable("APP_NAME", name).
+		WithExec([]string{"goreleaser", "release", "-f", path_to_main, "--clean"}).
 		Stderr(ctx)
 
 	if err != nil {
@@ -71,7 +81,7 @@ func (m *HarborSatellite) Release(ctx context.Context, directory *dagger.Directo
 }
 
 func (m *HarborSatellite) build(source *dagger.Directory, name string) *dagger.Directory {
-	fmt.Print("Building Satellite\n")
+	fmt.Printf("Building %s\n", name)
 	gooses := []string{"linux", "darwin"}
 	goarches := []string{"amd64", "arm64"}
 	binaryName := name // base name for the binary
@@ -86,7 +96,7 @@ func (m *HarborSatellite) build(source *dagger.Directory, name string) *dagger.D
 	for _, goos := range gooses {
 		for _, goarch := range goarches {
 			// create the full binary name with OS and architecture
-			outputBinary := fmt.Sprintf("%s/%s-%s-%s", OUT_DIR, binaryName, goos, goarch)
+			outputBinary := fmt.Sprintf("%s/%s-%s-%s", name, binaryName, goos, goarch)
 
 			// build artifact with specified binary name
 			build := golang.
@@ -95,7 +105,7 @@ func (m *HarborSatellite) build(source *dagger.Directory, name string) *dagger.D
 				WithExec([]string{"go", "build", "-o", outputBinary})
 
 			// add build to outputs
-			outputs = outputs.WithDirectory(OUT_DIR, build.Directory(OUT_DIR))
+			outputs = outputs.WithDirectory(name, build.Directory(name))
 		}
 	}
 
