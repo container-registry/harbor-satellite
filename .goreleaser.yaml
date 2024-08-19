@@ -28,8 +28,11 @@ builds:
       - goos: windows
         goarch: arm64
     mod_timestamp: "{{ .CommitTimestamp }}"
-    tags:
-      - "{{ .ProjectName }}-{{ .ShortCommit}}"
+
+
+release:
+  target_commitish: " {{ .ShortCommit }}"
+  name_template: "{{ .Env.APP_NAME }}_{{ .ShortCommit }}"
 
 archives:
   - format: tar.gz

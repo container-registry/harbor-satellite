@@ -32,6 +32,10 @@ builds:
     tags:
       - "{{ .ProjectName }}-{{ .ShortCommit}}"
 
+release:
+  target_commitish: " {{ .ShortCommit }}"
+  name_template: "{{ .Env.APP_NAME }}_{{ .ShortCommit }}"
+
 archives:
   - format: tar.gz
     # this name template makes the OS and Arch compatible with the results of `uname`.
