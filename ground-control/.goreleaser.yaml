@@ -9,6 +9,10 @@
 version: 2
 project_name: ground-control
 
+git:
+  ignore_tags:
+    - "*-satellite"
+
 builds:
   - main: "./main.go"
     binary: "{{ .Env.APP_NAME }}"

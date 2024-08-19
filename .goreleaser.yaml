@@ -9,6 +9,9 @@
 version: 2
 project_name: harbor-satellite
 
+git:
+  ignore_tags:
+    - "*-ground-control"
 builds:
   - main: "./main.go"
     binary: "{{ .Env.APP_NAME }}"
