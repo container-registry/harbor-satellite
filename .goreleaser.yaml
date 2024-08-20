@@ -34,7 +34,6 @@ builds:
 
 
 release:
-  target_commitish: " {{ .ShortCommit }}"
   name_template: "{{ .Env.APP_NAME }}_{{ .ShortCommit }}"
 
 archives:

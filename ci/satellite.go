@@ -3,25 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"container-registry.com/harbor-satellite/ci/internal/dagger"
 )
 
-func (m *HarborSatellite) StartSatelliteCi(ctx context.Context, source *dagger.Directory, GITHUB_TOKEN, name string) error {
-	// Build Satellite
-	slog.Info("Building Satellite")
-	_ = m.Build(ctx, source, name)
-
-	release_output, err := m.Release(ctx, source, GITHUB_TOKEN, name)
-	if err != nil {
-		slog.Error("Failed to release Ground Control: ", err, ".")
-		slog.Error("Release Directory:", release_output, ".")
-		return err
-	}
-	return nil
-}
-
+// Would execute the tests for the satellite. Source should be the path to the path to main.go file.
 func (m *HarborSatellite) ExecuteTestsForSatellite(ctx context.Context, source *dagger.Directory) (string, error) {
 	goContainer := dag.Container().
 		From("golang:1.22-alpine").

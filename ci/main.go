@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 
 	"container-registry.com/harbor-satellite/ci/internal/dagger"
 )
@@ -13,7 +12,6 @@ const (
 	DEFAULT_GO          = "golang:1.22"
 	PROJ_MOUNT          = "/app"
 	DOCKER_PORT         = 2375
-	SYFT_VERSION        = "v1.9.0"
 	GORELEASER_VERSION  = "v2.1.0"
 	GROUND_CONTROL_PATH = "./ground-control"
 	SATELLITE_PATH      = "."
@@ -21,38 +19,12 @@ const (
 
 type HarborSatellite struct{}
 
-func (m *HarborSatellite) Start(ctx context.Context, name string, source *dagger.Directory, GITHUB_TOKEN string) {
-
-	if name == "" {
-		slog.Error("Please provide the app name (satellite or ground-control) as an argument")
-		os.Exit(1)
-	}
-
-	switch name {
-	case "satellite":
-		slog.Info("Starting satellite CI")
-		err := m.StartSatelliteCi(ctx, source, GITHUB_TOKEN, name)
-		if err != nil {
-			slog.Error("Failed to start satellite CI")
-			os.Exit(1)
-		}
-	case "ground-control":
-		slog.Info("Starting ground-control CI")
-		err := m.StartGroundControlCI(ctx, source, GITHUB_TOKEN, name)
-		if err != nil {
-			slog.Error("Failed to complete ground-control CI")
-			os.Exit(1)
-		}
-	default:
-		slog.Error("Invalid app name. Please provide either 'satellite' or 'ground-control'")
-		os.Exit(1)
-	}
-}
-
+// Build function would start the build process for the name provided. Source should be the path to the main.go file.
 func (m *HarborSatellite) Build(ctx context.Context, source *dagger.Directory, name string) *dagger.Directory {
 	return m.build(source, name)
 }
 
+// Release function would release the build to the github with the tags provided. Directory should be "." for both the satellite and the ground control.
 func (m *HarborSatellite) Release(ctx context.Context, directory *dagger.Directory, token, name string) (string, error) {
 	var path_to_main string
 
