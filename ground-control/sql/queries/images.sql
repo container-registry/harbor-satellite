@@ -7,7 +7,7 @@ INSERT INTO images (registry, repository, tag, digest, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
--- name: DeleteImageList :exec
+-- name: DeleteImage :exec
 DELETE FROM images
 WHERE id = $1;
 
