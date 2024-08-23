@@ -60,7 +60,3 @@ func FetchRepos(username, password, url string) ([]string, error) {
 	return repos, nil
 }
 
-func CopyRepos(repos []string) {
-	// TO-DO: replicate the listed repos to `library/satellite`
-	fmt.Println("kumar")
-}
