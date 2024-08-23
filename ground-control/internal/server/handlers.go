@@ -1,9 +1,11 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -267,7 +269,78 @@ func (s *Server) assignImageToGroup(w http.ResponseWriter, r *http.Request) {
 
 	err := s.dbQueries.AssignImageToGroup(r.Context(), params)
 	if err != nil {
-		log.Printf("Error: Failed to assign image to group: %v", err)
+		log.Printf("error: failed to assign image to group: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.createStateArtifact(r.Context(), req.GroupID)
+	if err != nil {
+		log.Printf("error: failed to create state artifact: %v", err)
+		err = &AppError{
+			Message: "Error in State Artifact: Please create project named 'satellite' for storing Satellite State Artifact",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) deleteImageFromGroup(w http.ResponseWriter, r *http.Request) {
+	var req AssignImageToGroupParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	params := database.RemoveImageFromGroupParams{
+		GroupID: int32(req.GroupID),
+		ImageID: int32(req.ImageID),
+	}
+
+	err := s.dbQueries.RemoveImageFromGroup(r.Context(), params)
+	if err != nil {
+		log.Printf("Error: Failed to delete image from group: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.createStateArtifact(r.Context(), req.GroupID)
+	if err != nil {
+		log.Printf("error: failed to create state artifact: %v", err)
+		log.Printf("adding deleted image back to group: %v", err)
+    err = s.dbQueries.AssignImageToGroup(r.Context(), database.AssignImageToGroupParams{
+			GroupID: req.GroupID,
+			ImageID: req.ImageID,
+		})
+		err = &AppError{
+			Message: "Error in State Artifact: Please create project named 'satellite' in registry for storing Satellite State Artifact",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) deleteImageFromLabel(w http.ResponseWriter, r *http.Request) {
+	var req AssignImageToLabelParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	params := database.RemoveImageFromLabelParams{
+		LabelID: int32(req.LabelID),
+		ImageID: int32(req.ImageID),
+	}
+
+	err := s.dbQueries.RemoveImageFromLabel(r.Context(), params)
+	if err != nil {
+		log.Printf("error: failed to remove image from label: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -315,6 +388,8 @@ func (s *Server) regListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	url = fmt.Sprintf("https://%s", url)
+
 	result, err := reg.FetchRepos(username, password, url)
 	if err != nil {
 		HandleAppError(w, err)
@@ -324,29 +399,43 @@ func (s *Server) regListHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) regReplicateAll(w http.ResponseWriter, r *http.Request) {
-	username := os.Getenv("HARBOR_USERNAME")
-	password := os.Getenv("HARBOR_PASSWORD")
+func (s *Server) createStateArtifact(ctx context.Context, groupID int32) error {
 	url := os.Getenv("HARBOR_URL")
 
-	if url == "" {
-		err := &AppError{
-			Message: "Missing URL in ENV",
-			Code:    http.StatusBadRequest,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	repos, err := reg.FetchRepos(username, password, url)
+	group, err := s.dbQueries.GetGroupByID(ctx, groupID)
 	if err != nil {
-		HandleAppError(w, err)
-		return
+		return fmt.Errorf("Error in creating State Artifact: %v", err)
 	}
 
-	reg.CopyRepos(repos)
+	res, err := s.dbQueries.GetImagesForGroup(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("Error in creating State Artifact: %v", err)
+	}
 
-	WriteJSONResponse(w, http.StatusOK, repos)
+	var images []reg.Images
+
+	for _, img := range res {
+		image := reg.Images{
+			Registry:   img.Registry,
+			Repository: img.Repository,
+			Tag:        img.Tag,
+			Digest:     img.Digest,
+		}
+		images = append(images, image)
+	}
+
+	State := &reg.SatelliteState{
+		Group:    group.GroupName,
+		Registry: url,
+		Images:   images,
+	}
+
+	err = reg.PushStateArtifact(ctx, *State)
+	if err != nil {
+		return fmt.Errorf("error in state artifact: %v", err)
+	}
+
+	return nil
 }
 
 func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {

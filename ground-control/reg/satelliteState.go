@@ -3,7 +3,6 @@ package reg
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 
 	"gopkg.in/yaml.v2"
@@ -38,35 +37,36 @@ type Images struct {
 }
 
 // Creates State artifact & push to registry.
-func PushStateArtifact(State SatelliteState, ctx context.Context) {
+func PushStateArtifact(ctx context.Context, State SatelliteState) error {
 	// generate the yaml content from state
 	yamlData, err := yaml.Marshal(State)
 	if err != nil {
-		fmt.Printf("Error while Marshaling. %v", err)
+    return fmt.Errorf("error in marshaling into yaml: %v", err)
 	}
 
 	fmt.Println(" --- YAML (Start) ---")
 	fmt.Println(string(yamlData))
 	fmt.Println(" --- YAML (END) ---")
 
-	// Create the file in /tmp/
+	// Create temp file in /tmp/
 	tmpFile, err := os.CreateTemp("/tmp/", "state-*.yaml")
 	if err != nil {
-		panic(err)
+    return fmt.Errorf("error creating tempDir: %v", err)
 	}
 	defer os.Remove(tmpFile.Name()) // Clean up the file after execution
 
 	if _, err := tmpFile.Write(yamlData); err != nil {
-		panic(err)
+    return fmt.Errorf("error writing data to file: %v", err)
 	}
+
 	if err := tmpFile.Close(); err != nil {
-		panic(err)
+    return fmt.Errorf("error in closing file: %v", err)
 	}
 
 	// Create a file store
 	fs, err := file.New("/tmp/")
 	if err != nil {
-		panic(err)
+    return fmt.Errorf("error creating file store: %v", err)
 	}
 	defer fs.Close()
 
@@ -77,7 +77,7 @@ func PushStateArtifact(State SatelliteState, ctx context.Context) {
 	for _, name := range fileNames {
 		fileDescriptor, err := fs.Add(ctx, name, mediaType, "")
 		if err != nil {
-			panic(err)
+      return fmt.Errorf("error in fileDescriptor: %v", err)
 		}
 		fileDescriptors = append(fileDescriptors, fileDescriptor)
 		fmt.Printf("file descriptor for %s: %v\n", name, fileDescriptor)
@@ -96,19 +96,19 @@ func PushStateArtifact(State SatelliteState, ctx context.Context) {
 		opts,
 	)
 	if err != nil {
-		panic(err)
+    return fmt.Errorf("error in manifestDescriptor: %v", err)
 	}
 	fmt.Println("manifest descriptor:", manifestDescriptor)
 
 	tag := "latest"
 	if err = fs.Tag(ctx, manifestDescriptor, tag); err != nil {
-		panic(err)
+    return fmt.Errorf("error in tag descriptor: %v", err)
 	}
 
 	// Connect to a remote repository
 	repo, err := remote.NewRepository(fmt.Sprintf("%s/satellite/%s", State.Registry, State.Group))
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("error: unable to establish a client: %v", err)
 	}
 
 	repo.Client = &auth.Client{
@@ -125,15 +125,14 @@ func PushStateArtifact(State SatelliteState, ctx context.Context) {
 	_, err = repo.Exists(ctx, manifestDescriptor)
 	if err != nil {
 		fmt.Println("error checking with existing repo")
-		log.Fatalf(
-			"please create project named 'satellite' for storing satellite state artifact: %v",
-			err,
-		)
+		return fmt.Errorf("please create project named 'satellite' for storing satellite state artifact: %v", err)
 	}
 
 	// Copy State to remote repository
 	_, err = oras.Copy(ctx, fs, tag, repo, tag, oras.DefaultCopyOptions)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("error in pushing state artifact: %v", err)
 	}
+
+	return nil
 }
