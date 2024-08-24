@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"container-registry.com/harbor-satellite/internal/store"
+	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
-	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 )
 
@@ -41,7 +41,6 @@ func NewReplicator(context context.Context) Replicator {
 }
 
 func (r *BasicReplicator) Replicate(ctx context.Context, image string) error {
-
 	source := getPullSource(ctx, image)
 
 	if source != "" {
@@ -165,18 +164,11 @@ func CopyImage(ctx context.Context, imageName string) error {
 	destRef := fmt.Sprintf("%s/%s", zotUrl, imageName)
 	log.Info().Msgf("Destination reference: %s", destRef)
 
-	// Get credentials from environment variables
-	username := os.Getenv("HARBOR_USERNAME")
-	password := os.Getenv("HARBOR_PASSWORD")
-	if username == "" || password == "" {
-		log.Error().Msg("HARBOR_USERNAME or HARBOR_PASSWORD environment variable is not set")
-		return fmt.Errorf("HARBOR_USERNAME or HARBOR_PASSWORD environment variable is not set")
+	auth, err := utils.Auth()
+	if err != nil {
+		log.Error().Msgf("error in authentication: %s", err)
+		return err
 	}
-
-	auth := authn.FromConfig(authn.AuthConfig{
-		Username: username,
-		Password: password,
-	})
 
 	// Pull the image with authentication
 	srcImage, err := crane.Pull(imageName, crane.WithAuth(auth), crane.Insecure)

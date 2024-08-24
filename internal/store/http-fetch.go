@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
-	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 )
 
@@ -103,15 +103,13 @@ func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (strin
 	imageRef = imageRef[strings.Index(imageRef, "//")+2:]
 	imageRef = strings.ReplaceAll(imageRef, "/v2", "")
 
-	// Encode credentials for Basic Authentication
-	username := os.Getenv("HARBOR_USERNAME")
-	password := os.Getenv("HARBOR_PASSWORD")
-
+	auth, err := utils.Auth()
+	if err != nil {
+		log.Error().Msgf("error in authentication: %s", err)
+		return "", err
+	}
 	// Use crane.Digest to get the digest of the image
-	digest, err := crane.Digest(imageRef, crane.WithAuth(&authn.Basic{
-		Username: username,
-		Password: password,
-	}), crane.Insecure)
+	digest, err := crane.Digest(imageRef, crane.WithAuth(auth), crane.Insecure)
 	if err != nil {
 		log.Error().Msgf("failed to get digest using crane: %v", err)
 		return "", nil
