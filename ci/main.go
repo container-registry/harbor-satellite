@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"container-registry.com/harbor-satellite/ci/internal/dagger"
 )
@@ -42,12 +43,13 @@ func (m *HarborSatellite) Release(ctx context.Context, directory *dagger.Directo
 	if err != nil {
 		slog.Error("Failed to prepare for release: ", err, ".")
 		slog.Error("Tag Release Output:", release_tag, ".")
-		return release_tag, err
+		os.Exit(1)
 	}
 	slog.Info("Tag Release Output:", release_tag, ".")
 	pathToMain, err := m.getPathToReleaser(name)
 	if err != nil {
-		return "", err
+		slog.Error("Failed to get path to main: ", err, ".")
+		os.Exit(1)
 	}
 	release_output, err := container.
 		From(fmt.Sprintf("goreleaser/goreleaser:%s", GORELEASER_VERSION)).
@@ -63,7 +65,7 @@ func (m *HarborSatellite) Release(ctx context.Context, directory *dagger.Directo
 	if err != nil {
 		slog.Error("Failed to release: ", err, ".")
 		slog.Error("Release Output:", release_output, ".")
-		return release_output, err
+		os.Exit(1)
 	}
 
 	return release_output, nil

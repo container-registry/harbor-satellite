@@ -18,7 +18,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -w -s -X github.com/Mehul-Kumar-27/harbor-satellite/internal/version.GitCommit={{.FullCommit}}
+      - -w -s -X github.com/container-registry/harbor-satellite/internal/version.GitCommit={{.FullCommit}}
     goos:
       - linux
       - darwin
@@ -34,7 +34,7 @@ builds:
 
 
 release:
-  name_template: "{{ .Env.APP_NAME }}_{{ .ShortCommit }}"
+  name_template: "{{ .Tag }}"
 
 archives:
   - format: tar.gz
