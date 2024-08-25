@@ -39,7 +39,7 @@ func (m *HarborSatellite) Service(
 ) *dagger.Service {
 	port := 2375
 	return dag.Container().
-		From(fmt.Sprintf("docker:%s-dind", dockerVersion)).
+		From(fmt.Sprintf("docker:%s", dockerVersion)).
 		WithMountedCache(
 			"/var/lib/docker",
 			dag.CacheVolume(dockerVersion+"-docker-lib"),

@@ -24,8 +24,8 @@ func (m *HarborSatellite) ExecuteTestsForSatellite(ctx context.Context, source *
 	fmt.Printf("Docker Host: %s\n", dockerHost)
 
 	goContainer = containerWithDocker.
-		WithMountedDirectory("/app", source).
-		WithWorkdir("/app").
+		WithMountedDirectory(PROJ_MOUNT, source).
+		WithWorkdir(PROJ_MOUNT).
 		WithExec([]string{"go", "test", "./..."})
 
 	output, err := goContainer.Stdout(ctx)
