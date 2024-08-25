@@ -60,5 +60,15 @@ To run a particular function, run:
 - #### Example: Building Satellite Binaries
     To build the satellite binaries, use the following command:
     - ```sh
-        dagger call build --source=. --name=satellite
-This would spin up a container and install required dependencies and build various architecture binaries
+        dagger call build --source=. --name=satellite export --path=./bin
+This would spin up a container and install required dependencies and build various architecture binaries and export them to the host on path ./bin for testing on the host.
+- #### Example: Releasing to GitHub
+    To release the project on GitHub, use the following command
+    - ```sh
+        dagger call release --directory=. --token=<your_github_token>  --name=satellite
+The above function would then proceed to release the project on github for the name provided. The above function also takes argument `--release-type` which would tell the release what kind of release it is i.e major, minor or path, The default value is set to be path release
+- #### Example: Releasing to GitHub with type of release
+    To release the project on GitHub, use the following command
+    - ```sh
+        dagger call release --directory=. --token=<your_github_token>  --name=satellite --release-type=minor
+The above function would release the minor version for the project mentioned
