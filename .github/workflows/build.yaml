@@ -1,33 +1,77 @@
 name: Build
+
 on:
-  # Build only triggers once lint and test workflow successfully completes
   workflow_run:
     workflows: [Lint]
     types:
       - completed
+  workflow_dispatch:
 
 jobs:
-  dagger-build:
+  dagger-build-satellite:
     runs-on: ubuntu-latest
-    # unless you specify the success on the event, 
-    # this job will also run if the lint workflow was skipped(which is also the case if the condition for the file extension type is false).
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write
+      packages: write
     steps:
-    - 
-      name: Checkout repository
-      uses: actions/checkout@v4
-    - 
-      name: Setup go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '>=1.22'
-    -
-        name: Install
-        run: go get dagger.io/dagger@latest
-    -
-        name: Install Dagger CLI
-        run: cd /usr/local && { curl -L https://dl.dagger.io/dagger/install.sh | sh; cd -; }
-    -
-        name: Build with Dagger
-        run: dagger run go run ci/main.go
-    
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build the binary for the satellite
+        uses: dagger/dagger-for-github@v5
+        with:
+          version: latest
+          verb: call
+          module: github.com/container-registry/harbor-satellite
+          args: build --source=. --name=satellite
+
+      - name: Release on Github
+        uses: dagger/dagger-for-github@v5
+        with:
+          version: latest
+          verb: call
+          module: github.com/container-registry/harbor-satellite
+          args: release --source=. --name=satellite --token=$GITHUB_TOKEN
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_USERNAME: ${{ github.repository_owner }}
+          GITHUB_SHA: ${{ github.sha }}
+          ### Uncomment the below line if you wish to see the traces of the workflow on dagger cloud
+          ### register to dagger cloud and get the token
+          #### https://dagger.cloud/
+          # cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
+
+  build-ground-control:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build the binary for ground control
+        uses: dagger/dagger-for-github@v5
+        with:
+          version: latest
+          verb: call
+          module: github.com/container-registry/harbor-satellite
+          args: build --source=./ground-control --name=ground-control
+
+      - name: Release on Github
+        uses: dagger/dagger-for-github@v5
+        with:
+          version: latest
+          verb: call
+          module: github.com/container-registry/harbor-satellite
+          args: release --source=. --name=ground-control --token=$GITHUB_TOKEN
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_USERNAME: ${{ github.repository_owner }}
+          GITHUB_SHA: ${{ github.sha }}
+          ### Uncomment the below line if you wish to see the traces of the workflow on dagger cloud
+          ### register to dagger cloud and get the token
+          #### https://dagger.cloud/
+          # cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}

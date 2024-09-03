@@ -26,3 +26,5 @@ dist/
 
 # Remove DS_Store
 .DS_Store
+zot/cache.db
+secrets.txt
