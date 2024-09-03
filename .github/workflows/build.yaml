@@ -5,6 +5,7 @@ on:
     workflows: [Lint]
     types:
       - completed
+  workflow_dispatch:
 
 jobs:
   dagger-build-satellite:
@@ -12,9 +13,6 @@ jobs:
     permissions:
       contents: write
       packages: write
-    # unless you specify the success on the event,
-    # this job will also run if the lint workflow was skipped(which is also the case if the condition for the file extension type is false).
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,9 +47,6 @@ jobs:
     permissions:
       contents: write
       packages: write
-    # unless you specify the success on the event,
-    # this job will also run if the lint workflow was skipped(which is also the case if the condition for the file extension type is false).
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
