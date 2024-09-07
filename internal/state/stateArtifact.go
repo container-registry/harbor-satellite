@@ -31,15 +31,15 @@ func PullStateArtifact(ctx context.Context, reg, groupName, tag string) error {
 		return fmt.Errorf("failed to pull state artifact: %v", err)
 	}
 
-	out, err := os.Create("state.yaml")
+	out, err := os.Create("state.json")
 	if err != nil {
-		return fmt.Errorf("failed to create state.yml file: %v", err)
+		return fmt.Errorf("failed to create state.json file: %v", err)
 	}
 	defer out.Close()
 
 	// export image
 	if err := crane.Export(img, out); err != nil {
-		return fmt.Errorf("failed to write state.yml file: %v", err)
+		return fmt.Errorf("failed to write state.json file: %v", err)
 	}
 
 	log.Info().Msgf("successfully written state to: %s", out.Name())
