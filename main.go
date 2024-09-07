@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/http/pprof"
 	"net/url"
 	"os"
 	"os/signal"
@@ -18,13 +17,11 @@ import (
 
 	"container-registry.com/harbor-satellite/internal/replicate"
 	"container-registry.com/harbor-satellite/internal/satellite"
+	"container-registry.com/harbor-satellite/internal/server"
 	"container-registry.com/harbor-satellite/internal/store"
 	"container-registry.com/harbor-satellite/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/spf13/viper"
 
@@ -70,32 +67,43 @@ func run() error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Satellite starting")
 
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{}))
-	mux.Handle("/debug/pprof/", http.HandlerFunc(pprof.Index))
-	mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
-	mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
-	mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
-	mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
-	mux.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
-	mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
-	mux.Handle("/debug/pprof/block", pprof.Handler("block"))
-	mux.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
-	metricsSrv := &http.Server{
-		Addr:    ":9090",
-		Handler: mux,
-	}
+	router := server.NewDefaultRouter("/api/v1")
+	router.Use(server.LoggingMiddleware)
+
+	app := server.NewApp(
+		router,
+		&server.MetricsRegistrar{},
+		&server.DebugRegistrar{},
+	)
+
+	app.SetupRoutes()
+	// Start the server in a goroutine
 	g.Go(func() error {
-		if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Println("Starting server on :9090")
+		if err := app.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("Server error: %v", err)
 			return err
 		}
 		return nil
 	})
+
+	// Graceful shutdown
 	g.Go(func() error {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		return metricsSrv.Shutdown(shutdownCtx)
+		log.Info().Msg("Shutdown signal received")
+
+		// Create a timeout context for shutdown
+		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancelShutdown()
+
+		log.Info().Msg("Shutting down server...")
+		if err := app.Shutdown(shutdownCtx); err != nil {
+			log.Error().Err(err).Msg("Server shutdown error")
+			return err
+		}
+
+		log.Info().Msg("Server gracefully stopped")
+		return nil
 	})
 
 	bringOwnRegistry := viper.GetBool("bring_own_registry")
