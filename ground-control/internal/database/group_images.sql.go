@@ -13,7 +13,7 @@ import (
 const assignImageToGroup = `-- name: AssignImageToGroup :exec
 INSERT INTO group_images (group_id, image_id)
 VALUES ($1, $2)
-ON CONFLICT DO NOTHING
+  ON CONFLICT DO NOTHING
 `
 
 type AssignImageToGroupParams struct {
@@ -64,6 +64,55 @@ func (q *Queries) GetImagesForGroup(ctx context.Context, groupID int32) ([]GetIm
 			&i.UpdatedAt,
 			&i.GroupID,
 			&i.ImageID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getImagesForGroupAndSubgroups = `-- name: GetImagesForGroupAndSubgroups :many
+WITH RECURSIVE GroupHierarchy AS (
+  SELECT g.id AS group_id
+  FROM groups g
+  WHERE g.id = $1
+
+  UNION ALL
+
+  SELECT g2.id AS group_id
+  FROM groups g2
+  JOIN GroupHierarchy gh ON g2.parent_group_id = gh.group_id
+)
+SELECT i.id, i.registry, i.repository, i.tag, i.digest, i.created_at, i.updated_at
+FROM images i
+JOIN group_images gi ON i.id = gi.image_id
+WHERE gi.group_id IN (SELECT gh.group_id FROM GroupHierarchy gh)
+`
+
+func (q *Queries) GetImagesForGroupAndSubgroups(ctx context.Context, id int32) ([]Image, error) {
+	rows, err := q.db.QueryContext(ctx, getImagesForGroupAndSubgroups, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Image
+	for rows.Next() {
+		var i Image
+		if err := rows.Scan(
+			&i.ID,
+			&i.Registry,
+			&i.Repository,
+			&i.Tag,
+			&i.Digest,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

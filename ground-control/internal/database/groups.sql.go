@@ -7,27 +7,35 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
 const createGroup = `-- name: CreateGroup :one
-INSERT INTO groups (group_name, created_at, updated_at)
-VALUES ($1, $2, $3)
-RETURNING id, group_name, created_at, updated_at
+INSERT INTO groups (group_name, parent_group_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4)
+RETURNING id, group_name, parent_group_id, created_at, updated_at
 `
 
 type CreateGroupParams struct {
-	GroupName string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	GroupName     string
+	ParentGroupID sql.NullInt32
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Group, error) {
-	row := q.db.QueryRowContext(ctx, createGroup, arg.GroupName, arg.CreatedAt, arg.UpdatedAt)
+	row := q.db.QueryRowContext(ctx, createGroup,
+		arg.GroupName,
+		arg.ParentGroupID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
 	var i Group
 	err := row.Scan(
 		&i.ID,
 		&i.GroupName,
+		&i.ParentGroupID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -35,7 +43,7 @@ func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Group
 }
 
 const getGroupByID = `-- name: GetGroupByID :one
-SELECT id, group_name, created_at, updated_at FROM groups
+SELECT id, group_name, parent_group_id, created_at, updated_at FROM groups
 WHERE id = $1
 `
 
@@ -45,6 +53,7 @@ func (q *Queries) GetGroupByID(ctx context.Context, id int32) (Group, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.GroupName,
+		&i.ParentGroupID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -52,7 +61,7 @@ func (q *Queries) GetGroupByID(ctx context.Context, id int32) (Group, error) {
 }
 
 const getGroupByName = `-- name: GetGroupByName :one
-SELECT id, group_name, created_at, updated_at FROM groups
+SELECT id, group_name, parent_group_id, created_at, updated_at FROM groups
 WHERE group_name = $1
 `
 
@@ -62,14 +71,50 @@ func (q *Queries) GetGroupByName(ctx context.Context, groupName string) (Group, 
 	err := row.Scan(
 		&i.ID,
 		&i.GroupName,
+		&i.ParentGroupID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
+const getSubgroups = `-- name: GetSubgroups :many
+SELECT id, group_name, parent_group_id, created_at, updated_at
+FROM groups
+WHERE parent_group_id = $1
+`
+
+func (q *Queries) GetSubgroups(ctx context.Context, parentGroupID sql.NullInt32) ([]Group, error) {
+	rows, err := q.db.QueryContext(ctx, getSubgroups, parentGroupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Group
+	for rows.Next() {
+		var i Group
+		if err := rows.Scan(
+			&i.ID,
+			&i.GroupName,
+			&i.ParentGroupID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGroups = `-- name: ListGroups :many
-SELECT id, group_name, created_at, updated_at FROM groups
+SELECT id, group_name, parent_group_id, created_at, updated_at FROM groups
 `
 
 func (q *Queries) ListGroups(ctx context.Context) ([]Group, error) {
@@ -84,6 +129,7 @@ func (q *Queries) ListGroups(ctx context.Context) ([]Group, error) {
 		if err := rows.Scan(
 			&i.ID,
 			&i.GroupName,
+			&i.ParentGroupID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

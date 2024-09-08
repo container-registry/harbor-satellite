@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -23,7 +24,8 @@ type RegListParams struct {
 	Password string `json:"password"`
 }
 type GroupRequestParams struct {
-	GroupName string `json:"group_name"`
+	GroupName     string `json:"group_name"`
+	ParentGroupID *int   `json:"parent_group_id,omitempty"`
 }
 type LabelRequestParams struct {
 	LabelName string `json:"label_name"`
@@ -94,11 +96,22 @@ func (s *Server) createGroupHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
+	// Convert ParentGroupID to sql.NullInt32
+	var parentGroupID sql.NullInt32
+	if req.ParentGroupID != nil {
+		parentGroupID = sql.NullInt32{
+			Int32: int32(*req.ParentGroupID),
+			Valid: true,
+		}
+	} else {
+		parentGroupID = sql.NullInt32{Valid: false} // Mark as invalid if null
+	}
 
 	params := database.CreateGroupParams{
-		GroupName: req.GroupName,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ParentGroupID: parentGroupID,
+		GroupName:     req.GroupName,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	// Call the database query to create Group
@@ -274,7 +287,7 @@ func (s *Server) assignImageToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.createStateArtifact(r.Context(), req.GroupID)
+	err = s.createGroupArtifact(r.Context(), req.GroupID)
 	if err != nil {
 		log.Printf("error: failed to create state artifact: %v", err)
 		err = &AppError{
@@ -307,11 +320,11 @@ func (s *Server) deleteImageFromGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.createStateArtifact(r.Context(), req.GroupID)
+	err = s.createGroupArtifact(r.Context(), req.GroupID)
 	if err != nil {
 		log.Printf("error: failed to create state artifact: %v", err)
 		log.Printf("adding deleted image back to group: %v", err)
-    err = s.dbQueries.AssignImageToGroup(r.Context(), database.AssignImageToGroupParams{
+		err = s.dbQueries.AssignImageToGroup(r.Context(), database.AssignImageToGroupParams{
 			GroupID: req.GroupID,
 			ImageID: req.ImageID,
 		})
@@ -399,17 +412,26 @@ func (s *Server) regListHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) createStateArtifact(ctx context.Context, groupID int32) error {
+func (s *Server) createGroupArtifact(ctx context.Context, groupID int32) error {
 	url := os.Getenv("HARBOR_URL")
 
 	group, err := s.dbQueries.GetGroupByID(ctx, groupID)
 	if err != nil {
-		return fmt.Errorf("Error in creating State Artifact: %v", err)
+		return fmt.Errorf("Error in getting group: %v", err)
+	}
+	if group.ParentGroupID.Valid {
+		if err := s.createGroupArtifact(ctx, group.ParentGroupID.Int32); err != nil {
+			return fmt.Errorf(
+				"error creating artifact for parent group %d: %v",
+				group.ParentGroupID.Int32,
+				err,
+			)
+		}
 	}
 
-	res, err := s.dbQueries.GetImagesForGroup(ctx, groupID)
+	res, err := s.dbQueries.GetImagesForGroupAndSubgroups(ctx, groupID)
 	if err != nil {
-		return fmt.Errorf("Error in creating State Artifact: %v", err)
+		return fmt.Errorf("Error in getting images for group: %v", err)
 	}
 
 	var images []reg.Images
@@ -424,13 +446,13 @@ func (s *Server) createStateArtifact(ctx context.Context, groupID int32) error {
 		images = append(images, image)
 	}
 
-	State := &reg.SatelliteState{
-		Group:    group.GroupName,
+	State := &reg.GroupState{
+		Name:     group.GroupName,
 		Registry: url,
 		Images:   images,
 	}
 
-	err = reg.PushStateArtifact(ctx, *State)
+	err = reg.PushGroupStateArtifact(ctx, *State)
 	if err != nil {
 		return fmt.Errorf("error in state artifact: %v", err)
 	}

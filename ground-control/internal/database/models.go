@@ -5,14 +5,16 @@
 package database
 
 import (
+	"database/sql"
 	"time"
 )
 
 type Group struct {
-	ID        int32
-	GroupName string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID            int32
+	GroupName     string
+	ParentGroupID sql.NullInt32
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type GroupImage struct {

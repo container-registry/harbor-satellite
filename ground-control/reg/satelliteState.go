@@ -14,8 +14,15 @@ import (
 	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
+type GroupState struct {
+	Name     string   `json:"name"             yaml:"name"`
+	Registry string   `json:"registry"         yaml:"registry"`
+	Images   []Images `json:"images,omitempty" yaml:"images,omitempty"`
+}
+
 type SatelliteState struct {
-	Group    string   `json:"group"            yaml:"group"`
+	Name     string   `json:"name"             yaml:"name"`
+	Groups   []string `json:"groups"           yaml:"groups"`
 	Registry string   `json:"registry"         yaml:"registry"`
 	Images   []Images `json:"images,omitempty" yaml:"images,omitempty"`
 }
@@ -36,11 +43,11 @@ type Images struct {
 }
 
 // Creates State artifact & push to registry.
-func PushStateArtifact(ctx context.Context, State SatelliteState) error {
-	// generate the yaml content from state
-	jsonData, err := json.Marshal(State)
+func PushGroupStateArtifact(ctx context.Context, State GroupState) error {
+	// generate the json content from state
+	jsonData, err := json.MarshalIndent(State, "", "  ")
 	if err != nil {
-		return fmt.Errorf("error in marshaling into yaml: %v", err)
+		return fmt.Errorf("error in marshaling into json: %v", err)
 	}
 
 	fmt.Println(" --- JSON (Start) ---")
@@ -70,7 +77,7 @@ func PushStateArtifact(ctx context.Context, State SatelliteState) error {
 	defer fs.Close()
 
 	// Add files to the file store
-	mediaType := "application/vnd.test.file"
+	mediaType := "application/vnd.test.file.v1+json"
 	fileNames := []string{fmt.Sprintf("%s", tmpFile.Name())}
 	fileDescriptors := make([]v1.Descriptor, 0, len(fileNames))
 	for _, name := range fileNames {
@@ -83,7 +90,7 @@ func PushStateArtifact(ctx context.Context, State SatelliteState) error {
 	}
 
 	// Pack the files and tag the packed manifest
-	artifactType := "application/vnd.test.artifact"
+	artifactType := "application/vnd.test.artifact.v1+json"
 	opts := oras.PackManifestOptions{
 		Layers: fileDescriptors,
 	}
@@ -105,7 +112,7 @@ func PushStateArtifact(ctx context.Context, State SatelliteState) error {
 	}
 
 	// Connect to a remote repository
-	repo, err := remote.NewRepository(fmt.Sprintf("%s/satellite/%s", State.Registry, State.Group))
+	repo, err := remote.NewRepository(fmt.Sprintf("%s/satellite/%s", State.Registry, State.Name))
 	if err != nil {
 		return fmt.Errorf("error: unable to establish a client: %v", err)
 	}

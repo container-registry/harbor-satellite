@@ -29,7 +29,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/label/images", s.deleteImageFromLabel).Methods("DELETE")
 	r.HandleFunc("/label/satellite", s.addSatelliteToLabel).Methods("POST")
 
-
 	r.HandleFunc("/satellite", s.addSatelliteHandler).Methods("POST")
 	r.HandleFunc("/satellite/images", s.GetImagesForSatellite).Methods("GET")
 
