@@ -6,15 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
+	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/replicate"
 	"container-registry.com/harbor-satellite/internal/satellite"
 	"container-registry.com/harbor-satellite/internal/server"
@@ -39,32 +38,24 @@ type ImageList struct {
 }
 
 func main() {
-	viper.SetConfigName("config")
-	viper.SetConfigType("toml")
-	viper.AddConfigPath(".")
-	if err := viper.ReadInConfig(); err != nil {
-		fmt.Println("Error reading config file, ", err)
-		fmt.Println("Exiting Satellite")
-		os.Exit(1)
-	}
-
-	err := run()
-	if err != nil {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func run() error {
+	config, err := config.LoadConfig()
+	if err != nil {
+		return err
+	}
 	var fetcher store.ImageFetcher
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
 
-	logLevel := viper.GetString("log_level")
-	ctx = logger.AddLoggerToContext(ctx, logLevel)
-
-	log := logger.FromContext(ctx)
+	log := logger.SetupLogger(ctx, config.LogLevel)
 	log.Info().Msg("Satellite starting")
 
 	router := server.NewDefaultRouter("/api/v1")
@@ -72,40 +63,15 @@ func run() error {
 
 	app := server.NewApp(
 		router,
+		ctx,
+		log,
+		config,
 		&server.MetricsRegistrar{},
 		&server.DebugRegistrar{},
 	)
 
 	app.SetupRoutes()
-	// Start the server in a goroutine
-	g.Go(func() error {
-		log.Println("Starting server on :9090")
-		if err := app.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("Server error: %v", err)
-			return err
-		}
-		return nil
-	})
-
-	// Graceful shutdown
-	g.Go(func() error {
-		<-ctx.Done()
-		log.Info().Msg("Shutdown signal received")
-
-		// Create a timeout context for shutdown
-		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancelShutdown()
-
-		log.Info().Msg("Shutting down server...")
-		if err := app.Shutdown(shutdownCtx); err != nil {
-			log.Error().Err(err).Msg("Server shutdown error")
-			return err
-		}
-
-		log.Info().Msg("Server gracefully stopped")
-		return nil
-	})
-
+	app.SetupServer(g)
 	bringOwnRegistry := viper.GetBool("bring_own_registry")
 	if bringOwnRegistry {
 		registryAdr := viper.GetString("own_registry_adr")

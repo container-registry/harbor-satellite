@@ -15,7 +15,7 @@ type Config struct {
 	Input           string
 }
 
-func NewConfig() (*Config, error) {
+func LoadConfig() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("toml")
 	viper.AddConfigPath(".")

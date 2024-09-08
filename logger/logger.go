@@ -48,3 +48,9 @@ func FromContext(ctx context.Context) *zerolog.Logger {
 	}
 	return logger
 }
+
+func SetupLogger(ctx context.Context, logLevel string) *zerolog.Logger{
+	ctx = AddLoggerToContext(ctx, logLevel)
+	logger := FromContext(ctx)
+	return logger
+}
