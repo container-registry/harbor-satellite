@@ -68,6 +68,7 @@ func run() error {
 		config,
 		&server.MetricsRegistrar{},
 		&server.DebugRegistrar{},
+		&satellite.SatelliteRegistrar{},
 	)
 
 	app.SetupRoutes()

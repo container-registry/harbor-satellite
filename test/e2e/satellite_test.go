@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,9 +14,12 @@ import (
 )
 
 const (
-	appDir     = "/app"
-	appBinary  = "app"
-	sourceFile = "main.go"
+	appDir                  = "/app"
+	appBinary               = "app"
+	sourceFile              = "main.go"
+	relative_path           = "./testdata/config.toml"
+	absolute_path           = "test/e2e/testdata/config.toml"
+	satellite_ping_endpoint = "/api/v1/satellite/ping"
 )
 
 func TestSatellite(t *testing.T) {
@@ -118,7 +122,6 @@ func pushImageToSourceRegistry(
 	fmt.Println(stdOut)
 }
 
-// buildSatellite and test test the connection
 func buildSatellite(
 	t *testing.T,
 	client *dagger.Client,
@@ -136,7 +139,7 @@ func buildSatellite(
 	dir := client.Host().Directory(parentDir)
 
 	// Get configuration file on the host
-	configFile := client.Host().File("./testdata/config.toml")
+	configFile := client.Host().File(absolute_path)
 
 	// Configure and build the Satellite
 	container := client.Container().From("golang:alpine").WithDirectory(appDir, dir).
@@ -149,17 +152,27 @@ func buildSatellite(
 		WithExec([]string{"cat", "config.toml"}).
 		WithFile("./config.toml", configFile).
 		WithExec([]string{"cat", "config.toml"}).
-		WithExec([]string{"apk", "add", "crane"}).
-		WithExec([]string{"crane", "-v", "catalog", "source:5000", "--insecure"}).
-		WithExec([]string{"crane", "digest", "source:5000/library/busybox:1.36", "--insecure"}).
 		WithExec([]string{"go", "build", "-o", appBinary, sourceFile}).
 		WithExposedPort(9090).
-		WithExec([]string{"go", "run", "./test/e2e/test.go"})
+		WithExec([]string{"./" + appBinary}).
+		AsService()
+	// Get the response
+	satellite_container := client.Container().
+		From("golang:alpine").
+		WithServiceBinding("satellite", container).
+		WithExec([]string{"wget", "-O", "-", "http://satellite:9090" + satellite_ping_endpoint})
 
-	assert.NoError(t, err, "Test failed in buildSatellite")
+	output, err := satellite_container.Stdout(ctx)
+	assert.NoError(t, err, "Failed to get output from satellite ping endpoint")
+	// Check the response
+	var response map[string]interface{}
+	err = json.Unmarshal([]byte(output), &response)
+	assert.NoError(t, err, "Failed to parse JSON response")
 
-	stdOut, _ := container.Stdout(ctx)
-	fmt.Println(stdOut)
+	// Assert the response
+	assert.Equal(t, true, response["success"], "Unexpected success value")
+	assert.Equal(t, "Ping satellite successful", response["message"], "Unexpected message")
+	assert.Equal(t, float64(200), response["status_code"], "Unexpected status code")
 }
 
 // Gets the directory of the project
