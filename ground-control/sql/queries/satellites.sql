@@ -14,7 +14,7 @@ WHERE name = $1 LIMIT 1;
 SELECT * FROM satellites
 WHERE token = $1 LIMIT 1;
 
--- name: GetSatelliteID :one
+-- name: GetSatelliteByID :one
 SELECT id FROM satellites
 WHERE name = $1 LIMIT 1;
 

@@ -12,7 +12,7 @@ import (
 const addSatelliteToGroup = `-- name: AddSatelliteToGroup :exec
 INSERT INTO satellite_groups (satellite_id, group_id)
 VALUES ($1, $2)
-ON CONFLICT DO NOTHING
+  ON CONFLICT DO NOTHING
 `
 
 type AddSatelliteToGroupParams struct {
@@ -22,5 +22,20 @@ type AddSatelliteToGroupParams struct {
 
 func (q *Queries) AddSatelliteToGroup(ctx context.Context, arg AddSatelliteToGroupParams) error {
 	_, err := q.db.ExecContext(ctx, addSatelliteToGroup, arg.SatelliteID, arg.GroupID)
+	return err
+}
+
+const removeSatelliteFromGroup = `-- name: RemoveSatelliteFromGroup :exec
+DELETE FROM satellite_groups
+WHERE satellite_id = $1 AND group_id = $2
+`
+
+type RemoveSatelliteFromGroupParams struct {
+	SatelliteID int32
+	GroupID     int32
+}
+
+func (q *Queries) RemoveSatelliteFromGroup(ctx context.Context, arg RemoveSatelliteFromGroupParams) error {
+	_, err := q.db.ExecContext(ctx, removeSatelliteFromGroup, arg.SatelliteID, arg.GroupID)
 	return err
 }

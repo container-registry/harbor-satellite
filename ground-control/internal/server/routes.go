@@ -17,20 +17,26 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/image", s.addImageHandler).Methods("POST")
 
 	// Ground Control interface
-	r.HandleFunc("/group", s.createGroupHandler).Methods("POST")
-	r.HandleFunc("/group/list", s.listGroupHandler).Methods("GET")
-	r.HandleFunc("/group/{group}", s.getGroupHandler).Methods("GET")
-	r.HandleFunc("/group/images", s.assignImageToGroup).Methods("POST")
-  r.HandleFunc("/group/images", s.deleteImageFromGroup).Methods("DELETE")
-	r.HandleFunc("/group/satellite", s.addSatelliteToGroup).Methods("POST")
+	r.HandleFunc("/groups/create", s.createGroupHandler).Methods("POST")
+	r.HandleFunc("/groups/list", s.listGroupHandler).Methods("GET")
+	r.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET")
+	r.HandleFunc("/groups/images", s.assignImageToGroup).Methods("POST")
+	r.HandleFunc("/groups/images", s.deleteImageFromGroup).Methods("DELETE")
+	r.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")
+	r.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")
 
 	r.HandleFunc("/label", s.createLabelHandler).Methods("POST")
 	r.HandleFunc("/label/images", s.assignImageToLabel).Methods("POST")
 	r.HandleFunc("/label/images", s.deleteImageFromLabel).Methods("DELETE")
 	r.HandleFunc("/label/satellite", s.addSatelliteToLabel).Methods("POST")
 
-	r.HandleFunc("/satellite", s.addSatelliteHandler).Methods("POST")
-	r.HandleFunc("/satellite/images", s.GetImagesForSatellite).Methods("GET")
+	r.HandleFunc("/satellites/create", s.addSatelliteHandler).Methods("POST")
+	r.HandleFunc("/satellites/list", s.listSatelliteHandler).Methods("GET")
+	r.HandleFunc("/satellites/{satellite}", s.getSatelliteByID).Methods("GET")
+	r.HandleFunc("/satellites/{satellite}", s.deleteSatelliteByID).Methods("DELETE")
+	// r.HandleFunc("/satellites/images", s.GetImagesForSatellite).Methods("GET")
+	r.HandleFunc("/satellites/images", s.assignImageToGroup).Methods("POST")
+	r.HandleFunc("/satellites/images", s.assignImageToGroup).Methods("DELETE")
 
 	// Satellite based routes
 	// r.HandleFunc("/images", s.getImageListHandler).Methods("GET")

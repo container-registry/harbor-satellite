@@ -57,6 +57,11 @@ type SatelliteGroup struct {
 	GroupID     int32
 }
 
+type SatelliteImage struct {
+	SatelliteID int32
+	ImageID     int32
+}
+
 type SatelliteLabel struct {
 	SatelliteID int32
 	LabelID     int32

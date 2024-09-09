@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -202,6 +203,95 @@ func (s *Server) addSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
+	result, err := s.dbQueries.ListSatellites(r.Context())
+	if err != nil {
+		log.Printf("error: error listing satellites: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) getSatelliteByID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	satelliteID := vars["satellite"]
+
+	result, err := s.dbQueries.GetSatelliteByID(r.Context(), satelliteID)
+	if err != nil {
+		log.Printf("error: error listing satellites: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) deleteSatelliteByID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	satelliteID := vars["satellite"]
+
+	id, err := strconv.ParseInt(satelliteID, 10, 32)
+	if err != nil {
+		log.Printf("error: id is invalid: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	result := s.dbQueries.DeleteSatellite(r.Context(), int32(id))
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) GetImagesForSatellite(w http.ResponseWriter, r *http.Request) {
+	token, err := GetAuthToken(r)
+	if err != nil {
+		HandleAppError(w, err)
+		return
+	}
+	result, err := s.dbQueries.GetImagesForSatellite(r.Context(), token)
+	if err != nil {
+		log.Printf("Error: Failed to get image for satellite: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+func (s *Server) assignImageToGroup(w http.ResponseWriter, r *http.Request) {
+	var req AssignImageToGroupParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	params := database.AssignImageToGroupParams{
+		GroupID: int32(req.GroupID),
+		ImageID: int32(req.ImageID),
+	}
+
+	err := s.dbQueries.AssignImageToGroup(r.Context(), params)
+	if err != nil {
+		log.Printf("error: failed to assign image to group: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.createGroupArtifact(r.Context(), req.GroupID)
+	if err != nil {
+		log.Printf("error: failed to create state artifact: %v", err)
+		err = &AppError{
+			Message: "Error in State Artifact: Please create project named 'satellite' for storing Satellite State Artifact",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
 func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var req AddSatelliteToGroupParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -217,6 +307,28 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	err := s.dbQueries.AddSatelliteToGroup(r.Context(), params)
 	if err != nil {
 		log.Printf("Error: Failed to Add Satellite to Group: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request) {
+	var req AddSatelliteToGroupParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	params := database.RemoveSatelliteFromGroupParams{
+		SatelliteID: int32(req.SatelliteID),
+		GroupID:     int32(req.GroupID),
+	}
+
+	err := s.dbQueries.RemoveSatelliteFromGroup(r.Context(), params)
+	if err != nil {
+		log.Printf("error: failed to remove satellite from group: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -359,22 +471,6 @@ func (s *Server) deleteImageFromLabel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
-}
-
-func (s *Server) GetImagesForSatellite(w http.ResponseWriter, r *http.Request) {
-	token, err := GetAuthToken(r)
-	if err != nil {
-		HandleAppError(w, err)
-		return
-	}
-	result, err := s.dbQueries.GetImagesForSatellite(r.Context(), token)
-	if err != nil {
-		log.Printf("Error: Failed to get image for satellite: %v", err)
-		HandleAppError(w, err)
-		return
-	}
-
-	WriteJSONResponse(w, http.StatusOK, result)
 }
 
 func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {

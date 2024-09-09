@@ -51,6 +51,18 @@ func (q *Queries) DeleteSatellite(ctx context.Context, id int32) error {
 	return err
 }
 
+const getSatelliteByID = `-- name: GetSatelliteByID :one
+SELECT id FROM satellites
+WHERE name = $1 LIMIT 1
+`
+
+func (q *Queries) GetSatelliteByID(ctx context.Context, name string) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getSatelliteByID, name)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getSatelliteByName = `-- name: GetSatelliteByName :one
 SELECT id, name, token, created_at, updated_at FROM satellites
 WHERE name = $1 LIMIT 1
@@ -85,18 +97,6 @@ func (q *Queries) GetSatelliteByToken(ctx context.Context, token string) (Satell
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const getSatelliteID = `-- name: GetSatelliteID :one
-SELECT id FROM satellites
-WHERE name = $1 LIMIT 1
-`
-
-func (q *Queries) GetSatelliteID(ctx context.Context, name string) (int32, error) {
-	row := q.db.QueryRowContext(ctx, getSatelliteID, name)
-	var id int32
-	err := row.Scan(&id)
-	return id, err
 }
 
 const listSatellites = `-- name: ListSatellites :many

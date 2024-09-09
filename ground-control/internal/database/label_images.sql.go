@@ -13,7 +13,7 @@ import (
 const assignImageToLabel = `-- name: AssignImageToLabel :exec
 INSERT INTO label_images (label_id, image_id)
 VALUES ($1, $2)
-ON CONFLICT DO NOTHING
+  ON CONFLICT DO NOTHING
 `
 
 type AssignImageToLabelParams struct {
