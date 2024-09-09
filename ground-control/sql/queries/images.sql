@@ -2,6 +2,9 @@
 SELECT * FROM images
 WHERE id = $1;
 
+-- name: ListImages :many
+SELECT * FROM images;
+
 -- name: AddImage :one
 INSERT INTO images (registry, repository, tag, digest, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6)

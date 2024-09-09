@@ -76,3 +76,38 @@ func (q *Queries) GetImage(ctx context.Context, id int32) (Image, error) {
 	)
 	return i, err
 }
+
+const listImages = `-- name: ListImages :many
+SELECT id, registry, repository, tag, digest, created_at, updated_at FROM images
+`
+
+func (q *Queries) ListImages(ctx context.Context) ([]Image, error) {
+	rows, err := q.db.QueryContext(ctx, listImages)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Image
+	for rows.Next() {
+		var i Image
+		if err := rows.Scan(
+			&i.ID,
+			&i.Registry,
+			&i.Repository,
+			&i.Tag,
+			&i.Digest,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

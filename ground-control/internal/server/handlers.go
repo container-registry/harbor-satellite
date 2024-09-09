@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"container-registry.com/harbor-satellite/ground-control/internal/database"
+	"container-registry.com/harbor-satellite/ground-control/internal/utils"
 	"container-registry.com/harbor-satellite/ground-control/reg"
 	"github.com/gorilla/mux"
 )
@@ -55,10 +56,7 @@ type AssignImageToSatelliteParams struct {
 	ImageID     int32 `json:"image_id"`
 }
 type ImageAddParams struct {
-	Registry   string `json:"registry"`
-	Repository string `json:"repository"`
-	Tag        string `json:"tag"`
-	Digest     string `json:"digest"`
+	Image string `json:"image"`
 }
 
 func DecodeRequestBody(r *http.Request, v interface{}) error {
@@ -126,6 +124,33 @@ func (s *Server) createGroupHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusCreated, result)
 }
 
+func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupID := vars["groupID"]
+
+	id, err := strconv.ParseInt(groupID, 10, 32)
+	if err != nil {
+		err = &AppError{
+			Message: "Error: Invalid groupID",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.dbQueries.DeleteGroup(r.Context(), int32(id))
+	if err != nil {
+		err = &AppError{
+			Message: err.Error(),
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
 func (s *Server) createLabelHandler(w http.ResponseWriter, r *http.Request) {
 	var req LabelRequestParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -150,27 +175,78 @@ func (s *Server) createLabelHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) addImageHandler(w http.ResponseWriter, r *http.Request) {
 	var req ImageAddParams
 	if err := DecodeRequestBody(r, &req); err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	image, err := utils.ParseArtifactURL(req.Image)
+	if err != nil {
+		log.Println(err)
+		err = &AppError{
+			Message: "Error: Invalid Artifact URL",
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}
 
 	params := database.AddImageParams{
-		Registry:   req.Registry,
-		Repository: req.Repository,
-		Tag:        req.Tag,
-		Digest:     req.Digest,
+		Registry:   image.Registry,
+		Repository: image.Repository,
+		Tag:        image.Tag,
+		Digest:     image.Digest,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
 
-	// Call the database query to create Group
+	// Call the database query to add image
 	result, err := s.dbQueries.AddImage(r.Context(), params)
 	if err != nil {
+		log.Println(err)
+		err = &AppError{
+			Message: "Error: Invalid Artifact URL",
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}
 
 	WriteJSONResponse(w, http.StatusCreated, result)
+}
+
+func (s *Server) listImageHandler(w http.ResponseWriter, r *http.Request) {
+	result, err := s.dbQueries.ListImages(r.Context())
+	if err != nil {
+		err = fmt.Errorf("error: list images failed: %v", err)
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) removeImageHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	imageID := vars["imageID"]
+
+	id, err := strconv.ParseInt(imageID, 10, 32)
+	if err != nil {
+		err = fmt.Errorf("error: invalid imageID: %v", err)
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.dbQueries.DeleteImage(r.Context(), int32(id))
+	if err != nil {
+		err = fmt.Errorf("error: delete image failed: %v", err)
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
 func (s *Server) addSatelliteHandler(w http.ResponseWriter, r *http.Request) {
@@ -242,9 +318,14 @@ func (s *Server) deleteSatelliteByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := s.dbQueries.DeleteSatellite(r.Context(), int32(id))
+	err = s.dbQueries.DeleteSatellite(r.Context(), int32(id))
+	if err != nil {
+		log.Printf("error: delete satellite failed: %v", err)
+		HandleAppError(w, err)
+		return
+	}
 
-	WriteJSONResponse(w, http.StatusOK, result)
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
 func (s *Server) assignImageToSatellite(w http.ResponseWriter, r *http.Request) {
@@ -477,6 +558,31 @@ func (s *Server) deleteImageFromGroup(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
+func (s *Server) listGroupImages(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupID := vars["groupID"]
+
+	id, err := strconv.ParseInt(groupID, 10, 32)
+	if err != nil {
+		log.Printf("Error: Invalid groupID: %v", err)
+		err := &AppError{
+			Message: "Error: Invalid GroupID",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	result, err := s.dbQueries.GetImagesForGroup(r.Context(), int32(id))
+	if err != nil {
+		log.Printf("Error: Failed to get image for group: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
 func (s *Server) deleteImageFromLabel(w http.ResponseWriter, r *http.Request) {
 	var req AssignImageToLabelParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -563,11 +669,11 @@ func (s *Server) createSatelliteArtifact(ctx context.Context, id int32) error {
 		images = append(images, image)
 	}
 
-  var groupsState []string
-  for _, group := range groups {
-    group := fmt.Sprintf("%s/satellite/groups/%s", url, group)
-    groupsState = append(groupsState, group)
-  }
+	var groupsState []string
+	for _, group := range groups {
+		group := fmt.Sprintf("%s/satellite/groups/%s", url, group)
+		groupsState = append(groupsState, group)
+	}
 
 	State := &reg.SatelliteState{
 		Name:     satellite.Name,
@@ -634,11 +740,11 @@ func (s *Server) createGroupArtifact(ctx context.Context, groupID int32) error {
 
 func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	groupID := vars["group"]
+	groupID := vars["groupID"]
 
-  id, err := strconv.ParseInt(groupID, 10, 32)
+	id, err := strconv.ParseInt(groupID, 10, 32)
 	if err != nil {
-    log.Printf("error: invalid groupID: %v", err)
+		log.Printf("error: invalid groupID: %v", err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
