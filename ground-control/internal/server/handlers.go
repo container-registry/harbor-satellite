@@ -299,10 +299,10 @@ func (s *Server) removeImageFromSatellite(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	err = s.createGroupArtifact(r.Context(), req.SatelliteID)
+	err = s.createSatelliteArtifact(r.Context(), req.SatelliteID)
 	if err != nil {
 		log.Printf("error: failed to create state artifact: %v", err)
-		log.Printf("adding deleted image back to group: %v", err)
+		log.Printf("adding deleted image back to satellite: %v", err)
 		err = s.dbQueries.AssignImageToSatellite(r.Context(), database.AssignImageToSatelliteParams{
 			SatelliteID: int32(req.SatelliteID),
 			ImageID:     int32(req.ImageID),
@@ -547,8 +547,12 @@ func (s *Server) createSatelliteArtifact(ctx context.Context, id int32) error {
 		return fmt.Errorf("Error in getting images for group: %v", err)
 	}
 
-	var images []reg.Images
+	groups, err := s.dbQueries.GetGroupsBySatelliteID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("Error in getting images for group: %v", err)
+	}
 
+	var images []reg.Images
 	for _, img := range res {
 		image := reg.Images{
 			Registry:   img.Registry,
@@ -559,8 +563,15 @@ func (s *Server) createSatelliteArtifact(ctx context.Context, id int32) error {
 		images = append(images, image)
 	}
 
+  var groupsState []string
+  for _, group := range groups {
+    group := fmt.Sprintf("%s/satellite/groups/%s", url, group)
+    groupsState = append(groupsState, group)
+  }
+
 	State := &reg.SatelliteState{
 		Name:     satellite.Name,
+		Groups:   groups,
 		Registry: url,
 		Images:   images,
 	}
@@ -623,9 +634,16 @@ func (s *Server) createGroupArtifact(ctx context.Context, groupID int32) error {
 
 func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	groupName := vars["group"]
+	groupID := vars["group"]
 
-	result, err := s.dbQueries.GetGroupByName(r.Context(), groupName)
+  id, err := strconv.ParseInt(groupID, 10, 32)
+	if err != nil {
+    log.Printf("error: invalid groupID: %v", err)
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	result, err := s.dbQueries.GetGroupByID(r.Context(), int32(id))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return

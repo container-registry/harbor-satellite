@@ -46,6 +46,7 @@ type State interface {
 	Marshal() ([]byte, error)
 	GetName() string
 	GetRegistry() string
+	isGroupState() bool
 }
 
 func (g GroupState) Marshal() ([]byte, error) {
@@ -60,6 +61,10 @@ func (g GroupState) GetRegistry() string {
 	return g.Registry
 }
 
+func (g GroupState) isGroupState() bool {
+	return true
+}
+
 func (s SatelliteState) Marshal() ([]byte, error) {
 	return json.MarshalIndent(s, "", "  ")
 }
@@ -70,6 +75,10 @@ func (s SatelliteState) GetName() string {
 
 func (s SatelliteState) GetRegistry() string {
 	return s.Registry
+}
+
+func (s SatelliteState) isGroupState() bool {
+	return false
 }
 
 // Creates State artifact & push to registry.
@@ -141,12 +150,23 @@ func PushStateArtifact(ctx context.Context, State State) error {
 		return fmt.Errorf("error in tag descriptor: %v", err)
 	}
 
+	var repo *remote.Repository
+
 	// Connect to a remote repository
-	repo, err := remote.NewRepository(
-		fmt.Sprintf("%s/satellite/%s", State.GetRegistry(), State.GetName()),
-	)
-	if err != nil {
-		return fmt.Errorf("error: unable to establish a client: %v", err)
+	if State.isGroupState() {
+		repo, err = remote.NewRepository(
+			fmt.Sprintf("%s/satellite/groups/%s", State.GetRegistry(), State.GetName()),
+		)
+		if err != nil {
+			return fmt.Errorf("error: unable to establish a client: %v", err)
+		}
+	} else {
+		repo, err = remote.NewRepository(
+			fmt.Sprintf("%s/satellite/satellites/%s", State.GetRegistry(), State.GetName()),
+		)
+		if err != nil {
+			return fmt.Errorf("error: unable to establish a client: %v", err)
+		}
 	}
 
 	repo.Client = &auth.Client{

@@ -25,6 +25,35 @@ func (q *Queries) AddSatelliteToGroup(ctx context.Context, arg AddSatelliteToGro
 	return err
 }
 
+const getGroupsBySatelliteID = `-- name: GetGroupsBySatelliteID :many
+SELECT g.group_name FROM groups g
+JOIN satellite_groups sg ON g.id = sg.group_id
+WHERE sg.satellite_id = $1
+`
+
+func (q *Queries) GetGroupsBySatelliteID(ctx context.Context, satelliteID int32) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getGroupsBySatelliteID, satelliteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var group_name string
+		if err := rows.Scan(&group_name); err != nil {
+			return nil, err
+		}
+		items = append(items, group_name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeSatelliteFromGroup = `-- name: RemoveSatelliteFromGroup :exec
 DELETE FROM satellite_groups
 WHERE satellite_id = $1 AND group_id = $2
