@@ -35,33 +35,30 @@ type AddSatelliteParams struct {
 	Name string `json:"name"`
 }
 type AddSatelliteToGroupParams struct {
-	SatelliteID int `json:"satellite_ID"`
-	GroupID     int `json:"group_ID"`
+	SatelliteID int `json:"satellite_id"`
+	GroupID     int `json:"group_id"`
 }
 type AddSatelliteToLabelParams struct {
-	SatelliteID int `json:"satellite_ID"`
-	LabelID     int `json:"label_ID"`
+	SatelliteID int `json:"satellite_id"`
+	LabelID     int `json:"label_id"`
 }
 type AssignImageToLabelParams struct {
-	LabelID int `json:"label_ID"`
-	ImageID int `json:"image_ID"`
+	LabelID int `json:"label_id"`
+	ImageID int `json:"image_id"`
 }
 type AssignImageToGroupParams struct {
-	GroupID int32 `json:"group_ID"`
-	ImageID int32 `json:"image_ID"`
+	GroupID int32 `json:"group_id"`
+	ImageID int32 `json:"image_id"`
+}
+type AssignImageToSatelliteParams struct {
+	SatelliteID int32 `json:"group_id"`
+	ImageID     int32 `json:"image_id"`
 }
 type ImageAddParams struct {
 	Registry   string `json:"registry"`
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
 	Digest     string `json:"digest"`
-}
-type GetGroupRequest struct {
-	GroupName string `json:"group_name"`
-}
-type ImageListReqParams struct {
-	GroupName string          `json:"group_name"`
-	ImageList json.RawMessage `json:"image_list"`
 }
 
 func DecodeRequestBody(r *http.Request, v interface{}) error {
@@ -217,10 +214,16 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getSatelliteByID(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	satelliteID := vars["satellite"]
-
-	result, err := s.dbQueries.GetSatelliteByID(r.Context(), satelliteID)
+	id, err := strconv.ParseInt(satelliteID, 10, 32)
 	if err != nil {
-		log.Printf("error: error listing satellites: %v", err)
+		log.Printf("error: invalid satellite ID: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	result, err := s.dbQueries.GetSatelliteByID(r.Context(), int32(id))
+	if err != nil {
+		log.Printf("error: error getting satellites: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -244,43 +247,28 @@ func (s *Server) deleteSatelliteByID(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) GetImagesForSatellite(w http.ResponseWriter, r *http.Request) {
-	token, err := GetAuthToken(r)
-	if err != nil {
-		HandleAppError(w, err)
-		return
-	}
-	result, err := s.dbQueries.GetImagesForSatellite(r.Context(), token)
-	if err != nil {
-		log.Printf("Error: Failed to get image for satellite: %v", err)
-		HandleAppError(w, err)
-		return
-	}
-
-	WriteJSONResponse(w, http.StatusOK, result)
-}
-func (s *Server) assignImageToGroup(w http.ResponseWriter, r *http.Request) {
-	var req AssignImageToGroupParams
+func (s *Server) assignImageToSatellite(w http.ResponseWriter, r *http.Request) {
+	var req AssignImageToSatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
 		return
 	}
 
-	params := database.AssignImageToGroupParams{
-		GroupID: int32(req.GroupID),
-		ImageID: int32(req.ImageID),
+	params := database.AssignImageToSatelliteParams{
+		SatelliteID: int32(req.SatelliteID),
+		ImageID:     int32(req.ImageID),
 	}
 
-	err := s.dbQueries.AssignImageToGroup(r.Context(), params)
+	err := s.dbQueries.AssignImageToSatellite(r.Context(), params)
 	if err != nil {
-		log.Printf("error: failed to assign image to group: %v", err)
+		log.Printf("error: failed to assign image to satellite: %v", err)
 		HandleAppError(w, err)
 		return
 	}
 
-	err = s.createGroupArtifact(r.Context(), req.GroupID)
+	err = s.createSatelliteArtifact(r.Context(), req.SatelliteID)
 	if err != nil {
-		log.Printf("error: failed to create state artifact: %v", err)
+		log.Printf("error: failed to create satellite state artifact: %v", err)
 		err = &AppError{
 			Message: "Error in State Artifact: Please create project named 'satellite' for storing Satellite State Artifact",
 			Code:    http.StatusBadRequest,
@@ -403,7 +391,7 @@ func (s *Server) assignImageToGroup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("error: failed to create state artifact: %v", err)
 		err = &AppError{
-			Message: "Error in State Artifact: Please create project named 'satellite' for storing Satellite State Artifact",
+			Message: "Error in State Artifact: Please create project named 'satellite' for storing Group State Artifact",
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
@@ -441,7 +429,7 @@ func (s *Server) deleteImageFromGroup(w http.ResponseWriter, r *http.Request) {
 			ImageID: req.ImageID,
 		})
 		err = &AppError{
-			Message: "Error in State Artifact: Please create project named 'satellite' in registry for storing Satellite State Artifact",
+			Message: "Error in State Artifact: Please create project named 'satellite' in registry for storing Group State Artifact",
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
@@ -508,6 +496,45 @@ func (s *Server) regListHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+func (s *Server) createSatelliteArtifact(ctx context.Context, id int32) error {
+	url := os.Getenv("HARBOR_URL")
+
+	satellite, err := s.dbQueries.GetSatelliteByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("Error in getting satellite: %v", err)
+	}
+
+	res, err := s.dbQueries.GetImagesForSatellite(ctx, id)
+	if err != nil {
+		return fmt.Errorf("Error in getting images for group: %v", err)
+	}
+
+	var images []reg.Images
+
+	for _, img := range res {
+		image := reg.Images{
+			Registry:   img.Registry,
+			Repository: img.Repository,
+			Tag:        img.Tag,
+			Digest:     img.Digest,
+		}
+		images = append(images, image)
+	}
+
+	State := &reg.SatelliteState{
+		Name:     satellite.Name,
+		Registry: url,
+		Images:   images,
+	}
+
+	err = reg.PushStateArtifact(ctx, *State)
+	if err != nil {
+		return fmt.Errorf("error in state artifact: %v", err)
+	}
+
+	return nil
+}
+
 func (s *Server) createGroupArtifact(ctx context.Context, groupID int32) error {
 	url := os.Getenv("HARBOR_URL")
 
@@ -548,7 +575,7 @@ func (s *Server) createGroupArtifact(ctx context.Context, groupID int32) error {
 		Images:   images,
 	}
 
-	err = reg.PushGroupStateArtifact(ctx, *State)
+	err = reg.PushStateArtifact(ctx, *State)
 	if err != nil {
 		return fmt.Errorf("error in state artifact: %v", err)
 	}

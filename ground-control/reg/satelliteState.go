@@ -42,10 +42,40 @@ type Images struct {
 	// Auth       Auth `json:"auth,omitempty" yaml:"auth,omitempty"`
 }
 
+type State interface {
+	Marshal() ([]byte, error)
+	GetName() string
+	GetRegistry() string
+}
+
+func (g GroupState) Marshal() ([]byte, error) {
+	return json.MarshalIndent(g, "", "  ")
+}
+
+func (g GroupState) GetName() string {
+	return g.Name
+}
+
+func (g GroupState) GetRegistry() string {
+	return g.Registry
+}
+
+func (s SatelliteState) Marshal() ([]byte, error) {
+	return json.MarshalIndent(s, "", "  ")
+}
+
+func (s SatelliteState) GetName() string {
+	return s.Name
+}
+
+func (s SatelliteState) GetRegistry() string {
+	return s.Registry
+}
+
 // Creates State artifact & push to registry.
-func PushGroupStateArtifact(ctx context.Context, State GroupState) error {
+func PushStateArtifact(ctx context.Context, State State) error {
 	// generate the json content from state
-	jsonData, err := json.MarshalIndent(State, "", "  ")
+	jsonData, err := State.Marshal()
 	if err != nil {
 		return fmt.Errorf("error in marshaling into json: %v", err)
 	}
@@ -112,7 +142,9 @@ func PushGroupStateArtifact(ctx context.Context, State GroupState) error {
 	}
 
 	// Connect to a remote repository
-	repo, err := remote.NewRepository(fmt.Sprintf("%s/satellite/%s", State.Registry, State.Name))
+	repo, err := remote.NewRepository(
+		fmt.Sprintf("%s/satellite/%s", State.GetRegistry(), State.GetName()),
+	)
 	if err != nil {
 		return fmt.Errorf("error: unable to establish a client: %v", err)
 	}
@@ -120,7 +152,7 @@ func PushGroupStateArtifact(ctx context.Context, State GroupState) error {
 	repo.Client = &auth.Client{
 		Client: retry.DefaultClient,
 		Cache:  auth.NewCache(),
-		Credential: auth.StaticCredential(State.Registry, auth.Credential{
+		Credential: auth.StaticCredential(State.GetRegistry(), auth.Credential{
 			// Username: "admin",
 			// Password: "Harbor12345",
 			Username: os.Getenv("HARBOR_USERNAME"),

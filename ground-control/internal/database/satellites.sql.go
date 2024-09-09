@@ -52,15 +52,21 @@ func (q *Queries) DeleteSatellite(ctx context.Context, id int32) error {
 }
 
 const getSatelliteByID = `-- name: GetSatelliteByID :one
-SELECT id FROM satellites
-WHERE name = $1 LIMIT 1
+SELECT id, name, token, created_at, updated_at FROM satellites
+WHERE id = $1 LIMIT 1
 `
 
-func (q *Queries) GetSatelliteByID(ctx context.Context, name string) (int32, error) {
-	row := q.db.QueryRowContext(ctx, getSatelliteByID, name)
-	var id int32
-	err := row.Scan(&id)
-	return id, err
+func (q *Queries) GetSatelliteByID(ctx context.Context, id int32) (Satellite, error) {
+	row := q.db.QueryRowContext(ctx, getSatelliteByID, id)
+	var i Satellite
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Token,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getSatelliteByName = `-- name: GetSatelliteByName :one
@@ -97,6 +103,18 @@ func (q *Queries) GetSatelliteByToken(ctx context.Context, token string) (Satell
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getSatelliteID = `-- name: GetSatelliteID :one
+SELECT id FROM satellites
+WHERE name = $1 LIMIT 1
+`
+
+func (q *Queries) GetSatelliteID(ctx context.Context, name string) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getSatelliteID, name)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
 }
 
 const listSatellites = `-- name: ListSatellites :many
