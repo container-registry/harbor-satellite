@@ -280,6 +280,44 @@ func (s *Server) assignImageToSatellite(w http.ResponseWriter, r *http.Request) 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
+func (s *Server) removeImageFromSatellite(w http.ResponseWriter, r *http.Request) {
+	var req AssignImageToSatelliteParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	params := database.RemoveImageFromSatelliteParams{
+		SatelliteID: int32(req.SatelliteID),
+		ImageID:     int32(req.ImageID),
+	}
+
+	err := s.dbQueries.RemoveImageFromSatellite(r.Context(), params)
+	if err != nil {
+		log.Printf("Error: Failed to delete image from group: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.createGroupArtifact(r.Context(), req.SatelliteID)
+	if err != nil {
+		log.Printf("error: failed to create state artifact: %v", err)
+		log.Printf("adding deleted image back to group: %v", err)
+		err = s.dbQueries.AssignImageToSatellite(r.Context(), database.AssignImageToSatelliteParams{
+			SatelliteID: int32(req.SatelliteID),
+			ImageID:     int32(req.ImageID),
+		})
+		err = &AppError{
+			Message: "Error in State Artifact: Please create project named 'satellite' in registry for storing Group State Artifact",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
 func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var req AddSatelliteToGroupParams
 	if err := DecodeRequestBody(r, &req); err != nil {
