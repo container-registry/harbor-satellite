@@ -26,7 +26,9 @@ type LabelRequestParams struct {
 	LabelName string `json:"label_name"`
 }
 type AddSatelliteParams struct {
-	Name string `json:"name"`
+	Name   string   `json:"name"`
+	Groups *[]string `json:"groups,omitempty"`
+	Images *[]string `json:"images,omitempty"`
 }
 type AddSatelliteToGroupParams struct {
 	SatelliteID int `json:"satellite_ID"`
@@ -157,6 +159,94 @@ func (s *Server) addImageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusCreated, result)
+}
+
+func (s *Server) listImageHandler(w http.ResponseWriter, r *http.Request) {
+	result, err := s.dbQueries.ListImages(r.Context())
+	if err != nil {
+		err = fmt.Errorf("error: list images failed: %v", err)
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) removeImageHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	imageID := vars["imageID"]
+
+	id, err := strconv.ParseInt(imageID, 10, 32)
+	if err != nil {
+		err = fmt.Errorf("error: invalid imageID: %v", err)
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.dbQueries.DeleteImage(r.Context(), int32(id))
+	if err != nil {
+		err = fmt.Errorf("error: delete image failed: %v", err)
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
+	var req AddSatelliteParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	token, err := GenerateRandomToken(32)
+	if err != nil {
+		HandleAppError(w, err)
+	}
+
+	params := database.CreateSatelliteParams{
+		Name:  req.Name,
+		Token: token,
+	}
+
+	result, err := s.dbQueries.CreateSatellite(r.Context(), params)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
+	var req AddSatelliteParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	token, err := GenerateRandomToken(32)
+	if err != nil {
+		HandleAppError(w, err)
+	}
+
+	params := database.CreateSatelliteParams{
+		Name:  req.Name,
+		Token: token,
+	}
+
+	result, err := s.dbQueries.CreateSatellite(r.Context(), params)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
 }
 
 func (s *Server) addSatelliteHandler(w http.ResponseWriter, r *http.Request) {

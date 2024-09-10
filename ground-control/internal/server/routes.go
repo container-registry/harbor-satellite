@@ -30,6 +30,15 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/label/images", s.assignImageToLabel).Methods("POST")
 
 	r.HandleFunc("/satellite/images", s.GetImagesForSatellite).Methods("GET")
+	r.HandleFunc("/satellites/register", s.registerSatelliteHandler).Methods("POST")
+	r.HandleFunc("/satellites/ztr", s.ztrHandler).Methods("POST")
+	// r.HandleFunc("/satellites/create", s.addSatelliteHandler).Methods("POST")
+	r.HandleFunc("/satellites/list", s.listSatelliteHandler).Methods("GET")
+	r.HandleFunc("/satellites/{satellite}", s.getSatelliteByID).Methods("GET")
+	r.HandleFunc("/satellites/{satellite}", s.deleteSatelliteByID).Methods("DELETE")
+	// r.HandleFunc("/satellites/images", s.GetImagesForSatellite).Methods("GET")
+	r.HandleFunc("/satellites/image", s.assignImageToSatellite).Methods("POST")
+	r.HandleFunc("/satellites/image", s.removeImageFromSatellite).Methods("DELETE")
 
 	// Satellite based routes
 	// r.HandleFunc("/images", s.getImageListHandler).Methods("GET")
