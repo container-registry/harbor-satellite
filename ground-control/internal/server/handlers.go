@@ -1,15 +1,21 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"container-registry.com/harbor-satellite/ground-control/internal/database"
+	"container-registry.com/harbor-satellite/ground-control/internal/utils"
 	"container-registry.com/harbor-satellite/ground-control/reg"
 	"github.com/gorilla/mux"
 )
@@ -20,7 +26,8 @@ type RegListParams struct {
 	Password string `json:"password"`
 }
 type GroupRequestParams struct {
-	GroupName string `json:"group_name"`
+	GroupName     string `json:"group_name"`
+	ParentGroupID *int   `json:"parent_group_id,omitempty"`
 }
 type LabelRequestParams struct {
 	LabelName string `json:"label_name"`
@@ -29,33 +36,27 @@ type AddSatelliteParams struct {
 	Name string `json:"name"`
 }
 type AddSatelliteToGroupParams struct {
-	SatelliteID int `json:"satellite_ID"`
-	GroupID     int `json:"group_ID"`
+	SatelliteID int `json:"satellite_id"`
+	GroupID     int `json:"group_id"`
 }
 type AddSatelliteToLabelParams struct {
-	SatelliteID int `json:"satellite_ID"`
-	LabelID     int `json:"label_ID"`
+	SatelliteID int `json:"satellite_id"`
+	LabelID     int `json:"label_id"`
 }
 type AssignImageToLabelParams struct {
-	LabelID int `json:"label_ID"`
-	ImageID int `json:"image_ID"`
+	LabelID int `json:"label_id"`
+	ImageID int `json:"image_id"`
 }
 type AssignImageToGroupParams struct {
-	GroupID int32 `json:"group_ID"`
-	ImageID int32 `json:"image_ID"`
+	GroupID int32 `json:"group_id"`
+	ImageID int32 `json:"image_id"`
+}
+type AssignImageToSatelliteParams struct {
+	SatelliteID int32 `json:"group_id"`
+	ImageID     int32 `json:"image_id"`
 }
 type ImageAddParams struct {
-	Registry   string `json:"registry"`
-	Repository string `json:"repository"`
-	Tag        string `json:"tag"`
-	Digest     string `json:"digest"`
-}
-type GetGroupRequest struct {
-	GroupName string `json:"group_name"`
-}
-type ImageListReqParams struct {
-	GroupName string          `json:"group_name"`
-	ImageList json.RawMessage `json:"image_list"`
+	Image string `json:"image"`
 }
 
 func DecodeRequestBody(r *http.Request, v interface{}) error {
@@ -91,25 +92,63 @@ func (s *Server) createGroupHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
+	// Convert ParentGroupID to sql.NullInt32
+	var parentGroupID sql.NullInt32
+	if req.ParentGroupID != nil {
+		parentGroupID = sql.NullInt32{
+			Int32: int32(*req.ParentGroupID),
+			Valid: true,
+		}
+	} else {
+		parentGroupID = sql.NullInt32{Valid: false} // Mark as invalid if null
+	}
 
 	params := database.CreateGroupParams{
-		GroupName: req.GroupName,
-    CreatedAt: time.Now(),
-    UpdatedAt: time.Now(),
+		ParentGroupID: parentGroupID,
+		GroupName:     req.GroupName,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	// Call the database query to create Group
 	result, err := s.dbQueries.CreateGroup(r.Context(), params)
 	if err != nil {
-    err = &AppError{
-      Message: err.Error(),
-      Code: http.StatusBadRequest,
-    }
+		err = &AppError{
+			Message: err.Error(),
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}
 
 	WriteJSONResponse(w, http.StatusCreated, result)
+}
+
+func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupID := vars["groupID"]
+
+	id, err := strconv.ParseInt(groupID, 10, 32)
+	if err != nil {
+		err = &AppError{
+			Message: "Error: Invalid groupID",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.dbQueries.DeleteGroup(r.Context(), int32(id))
+	if err != nil {
+		err = &AppError{
+			Message: err.Error(),
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
 func (s *Server) createLabelHandler(w http.ResponseWriter, r *http.Request) {
@@ -136,27 +175,78 @@ func (s *Server) createLabelHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) addImageHandler(w http.ResponseWriter, r *http.Request) {
 	var req ImageAddParams
 	if err := DecodeRequestBody(r, &req); err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	image, err := utils.ParseArtifactURL(req.Image)
+	if err != nil {
+		log.Println(err)
+		err = &AppError{
+			Message: "Error: Invalid Artifact URL",
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}
 
 	params := database.AddImageParams{
-		Registry:   req.Registry,
-		Repository: req.Repository,
-		Tag:        req.Tag,
-		Digest:     req.Digest,
+		Registry:   image.Registry,
+		Repository: image.Repository,
+		Tag:        image.Tag,
+		Digest:     image.Digest,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
 
-	// Call the database query to create Group
+	// Call the database query to add image
 	result, err := s.dbQueries.AddImage(r.Context(), params)
 	if err != nil {
+		log.Println(err)
+		err = &AppError{
+			Message: "Error: Invalid Artifact URL",
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}
 
 	WriteJSONResponse(w, http.StatusCreated, result)
+}
+
+func (s *Server) listImageHandler(w http.ResponseWriter, r *http.Request) {
+	result, err := s.dbQueries.ListImages(r.Context())
+	if err != nil {
+		err = fmt.Errorf("error: list images failed: %v", err)
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) removeImageHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	imageID := vars["imageID"]
+
+	id, err := strconv.ParseInt(imageID, 10, 32)
+	if err != nil {
+		err = fmt.Errorf("error: invalid imageID: %v", err)
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.dbQueries.DeleteImage(r.Context(), int32(id))
+	if err != nil {
+		err = fmt.Errorf("error: delete image failed: %v", err)
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
 func (s *Server) addSatelliteHandler(w http.ResponseWriter, r *http.Request) {
@@ -186,6 +276,129 @@ func (s *Server) addSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
+	result, err := s.dbQueries.ListSatellites(r.Context())
+	if err != nil {
+		log.Printf("error: error listing satellites: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) getSatelliteByID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	satelliteID := vars["satellite"]
+	id, err := strconv.ParseInt(satelliteID, 10, 32)
+	if err != nil {
+		log.Printf("error: invalid satellite ID: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	result, err := s.dbQueries.GetSatelliteByID(r.Context(), int32(id))
+	if err != nil {
+		log.Printf("error: error getting satellites: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) deleteSatelliteByID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	satelliteID := vars["satellite"]
+
+	id, err := strconv.ParseInt(satelliteID, 10, 32)
+	if err != nil {
+		log.Printf("error: id is invalid: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.dbQueries.DeleteSatellite(r.Context(), int32(id))
+	if err != nil {
+		log.Printf("error: delete satellite failed: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) assignImageToSatellite(w http.ResponseWriter, r *http.Request) {
+	var req AssignImageToSatelliteParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	params := database.AssignImageToSatelliteParams{
+		SatelliteID: int32(req.SatelliteID),
+		ImageID:     int32(req.ImageID),
+	}
+
+	err := s.dbQueries.AssignImageToSatellite(r.Context(), params)
+	if err != nil {
+		log.Printf("error: failed to assign image to satellite: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.createSatelliteArtifact(r.Context(), req.SatelliteID)
+	if err != nil {
+		log.Printf("error: failed to create satellite state artifact: %v", err)
+		err = &AppError{
+			Message: "Error in State Artifact: Please create project named 'satellite' for storing Satellite State Artifact",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) removeImageFromSatellite(w http.ResponseWriter, r *http.Request) {
+	var req AssignImageToSatelliteParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	params := database.RemoveImageFromSatelliteParams{
+		SatelliteID: int32(req.SatelliteID),
+		ImageID:     int32(req.ImageID),
+	}
+
+	err := s.dbQueries.RemoveImageFromSatellite(r.Context(), params)
+	if err != nil {
+		log.Printf("Error: Failed to delete image from group: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.createSatelliteArtifact(r.Context(), req.SatelliteID)
+	if err != nil {
+		log.Printf("error: failed to create state artifact: %v", err)
+		log.Printf("adding deleted image back to satellite: %v", err)
+		err = s.dbQueries.AssignImageToSatellite(r.Context(), database.AssignImageToSatelliteParams{
+			SatelliteID: int32(req.SatelliteID),
+			ImageID:     int32(req.ImageID),
+		})
+		err = &AppError{
+			Message: "Error in State Artifact: Please create project named 'satellite' in registry for storing Group State Artifact",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
 func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var req AddSatelliteToGroupParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -201,6 +414,28 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	err := s.dbQueries.AddSatelliteToGroup(r.Context(), params)
 	if err != nil {
 		log.Printf("Error: Failed to Add Satellite to Group: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request) {
+	var req AddSatelliteToGroupParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	params := database.RemoveSatelliteFromGroupParams{
+		SatelliteID: int32(req.SatelliteID),
+		GroupID:     int32(req.GroupID),
+	}
+
+	err := s.dbQueries.RemoveSatelliteFromGroup(r.Context(), params)
+	if err != nil {
+		log.Printf("error: failed to remove satellite from group: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -266,7 +501,18 @@ func (s *Server) assignImageToGroup(w http.ResponseWriter, r *http.Request) {
 
 	err := s.dbQueries.AssignImageToGroup(r.Context(), params)
 	if err != nil {
-		log.Printf("Error: Failed to assign image to group: %v", err)
+		log.Printf("error: failed to assign image to group: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.createGroupArtifact(r.Context(), req.GroupID)
+	if err != nil {
+		log.Printf("error: failed to create state artifact: %v", err)
+		err = &AppError{
+			Message: "Error in State Artifact: Please create project named 'satellite' for storing Group State Artifact",
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}
@@ -274,20 +520,89 @@ func (s *Server) assignImageToGroup(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
-func (s *Server) GetImagesForSatellite(w http.ResponseWriter, r *http.Request) {
-	token, err := GetAuthToken(r)
-	if err != nil {
+func (s *Server) deleteImageFromGroup(w http.ResponseWriter, r *http.Request) {
+	var req AssignImageToGroupParams
+	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
 		return
 	}
-	result, err := s.dbQueries.GetImagesForSatellite(r.Context(), token)
+
+	params := database.RemoveImageFromGroupParams{
+		GroupID: int32(req.GroupID),
+		ImageID: int32(req.ImageID),
+	}
+
+	err := s.dbQueries.RemoveImageFromGroup(r.Context(), params)
 	if err != nil {
-		log.Printf("Error: Failed to get image for satellite: %v", err)
+		log.Printf("Error: Failed to delete image from group: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.createGroupArtifact(r.Context(), req.GroupID)
+	if err != nil {
+		log.Printf("error: failed to create state artifact: %v", err)
+		log.Printf("adding deleted image back to group: %v", err)
+		err = s.dbQueries.AssignImageToGroup(r.Context(), database.AssignImageToGroupParams{
+			GroupID: req.GroupID,
+			ImageID: req.ImageID,
+		})
+		err = &AppError{
+			Message: "Error in State Artifact: Please create project named 'satellite' in registry for storing Group State Artifact",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) listGroupImages(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupID := vars["groupID"]
+
+	id, err := strconv.ParseInt(groupID, 10, 32)
+	if err != nil {
+		log.Printf("Error: Invalid groupID: %v", err)
+		err := &AppError{
+			Message: "Error: Invalid GroupID",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	result, err := s.dbQueries.GetImagesForGroup(r.Context(), int32(id))
+	if err != nil {
+		log.Printf("Error: Failed to get image for group: %v", err)
 		HandleAppError(w, err)
 		return
 	}
 
 	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) deleteImageFromLabel(w http.ResponseWriter, r *http.Request) {
+	var req AssignImageToLabelParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	params := database.RemoveImageFromLabelParams{
+		LabelID: int32(req.LabelID),
+		ImageID: int32(req.ImageID),
+	}
+
+	err := s.dbQueries.RemoveImageFromLabel(r.Context(), params)
+	if err != nil {
+		log.Printf("error: failed to remove image from label: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
 func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
@@ -301,18 +616,20 @@ func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) regListHandler(w http.ResponseWriter, r *http.Request) {
-	username := r.URL.Query().Get("username")
-	password := r.URL.Query().Get("password")
-	url := r.URL.Query().Get("url")
+	username := os.Getenv("HARBOR_USERNAME")
+	password := os.Getenv("HARBOR_PASSWORD")
+	url := os.Getenv("HARBOR_URL")
 
 	if url == "" {
 		err := &AppError{
-			Message: "Missing URL in Request",
+			Message: "Missing URL in ENV",
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
 		return
 	}
+
+	url = fmt.Sprintf("https://%s", url)
 
 	result, err := reg.FetchRepos(username, password, url)
 	if err != nil {
@@ -323,11 +640,116 @@ func (s *Server) regListHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+func (s *Server) createSatelliteArtifact(ctx context.Context, id int32) error {
+	url := os.Getenv("HARBOR_URL")
+
+	satellite, err := s.dbQueries.GetSatelliteByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("Error in getting satellite: %v", err)
+	}
+
+	res, err := s.dbQueries.GetImagesForSatellite(ctx, id)
+	if err != nil {
+		return fmt.Errorf("Error in getting images for group: %v", err)
+	}
+
+	groups, err := s.dbQueries.GetGroupsBySatelliteID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("Error in getting images for group: %v", err)
+	}
+
+	var images []reg.Images
+	for _, img := range res {
+		image := reg.Images{
+			Registry:   img.Registry,
+			Repository: img.Repository,
+			Tag:        img.Tag,
+			Digest:     img.Digest,
+		}
+		images = append(images, image)
+	}
+
+	var groupsState []string
+	for _, group := range groups {
+		group := fmt.Sprintf("%s/satellite/groups/%s", url, group)
+		groupsState = append(groupsState, group)
+	}
+
+	State := &reg.SatelliteState{
+		Name:     satellite.Name,
+		Groups:   groups,
+		Registry: url,
+		Images:   images,
+	}
+
+	err = reg.PushStateArtifact(ctx, *State)
+	if err != nil {
+		return fmt.Errorf("error in state artifact: %v", err)
+	}
+
+	return nil
+}
+
+func (s *Server) createGroupArtifact(ctx context.Context, groupID int32) error {
+	url := os.Getenv("HARBOR_URL")
+
+	group, err := s.dbQueries.GetGroupByID(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("Error in getting group: %v", err)
+	}
+	if group.ParentGroupID.Valid {
+		if err := s.createGroupArtifact(ctx, group.ParentGroupID.Int32); err != nil {
+			return fmt.Errorf(
+				"error creating artifact for parent group %d: %v",
+				group.ParentGroupID.Int32,
+				err,
+			)
+		}
+	}
+
+	res, err := s.dbQueries.GetImagesForGroupAndSubgroups(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("Error in getting images for group: %v", err)
+	}
+
+	var images []reg.Images
+
+	for _, img := range res {
+		image := reg.Images{
+			Registry:   img.Registry,
+			Repository: img.Repository,
+			Tag:        img.Tag,
+			Digest:     img.Digest,
+		}
+		images = append(images, image)
+	}
+
+	State := &reg.GroupState{
+		Name:     group.GroupName,
+		Registry: url,
+		Images:   images,
+	}
+
+	err = reg.PushStateArtifact(ctx, *State)
+	if err != nil {
+		return fmt.Errorf("error in state artifact: %v", err)
+	}
+
+	return nil
+}
+
 func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	groupName := vars["group"]
+	groupID := vars["groupID"]
 
-	result, err := s.dbQueries.GetGroupByName(r.Context(), groupName)
+	id, err := strconv.ParseInt(groupID, 10, 32)
+	if err != nil {
+		log.Printf("error: invalid groupID: %v", err)
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	result, err := s.dbQueries.GetGroupByID(r.Context(), int32(id))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return

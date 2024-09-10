@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"container-registry.com/harbor-satellite/internal/replicate"
+	"container-registry.com/harbor-satellite/internal/state"
 	"container-registry.com/harbor-satellite/internal/store"
 	"container-registry.com/harbor-satellite/logger"
 )
@@ -23,6 +24,10 @@ func NewSatellite(ctx context.Context, storer store.Storer, replicator replicate
 
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
+
+  if err := state.PullStateArtifact(ctx, "demo.goharbor.io", "satellite-01", "latest"); err != nil {
+    log.Error().Msgf("error in getting state artifact: %v", err)
+  }
 
 	// Execute the initial operation immediately without waiting for the ticker
 	imgs, err := s.storer.List(ctx)
