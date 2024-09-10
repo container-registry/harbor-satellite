@@ -33,7 +33,9 @@ type LabelRequestParams struct {
 	LabelName string `json:"label_name"`
 }
 type AddSatelliteParams struct {
-	Name string `json:"name"`
+	Name   string   `json:"name"`
+	Groups *[]string `json:"groups,omitempty"`
+	Images *[]string `json:"images,omitempty"`
 }
 type AddSatelliteToGroupParams struct {
 	SatelliteID int `json:"satellite_id"`
@@ -247,6 +249,60 @@ func (s *Server) removeImageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
+	var req AddSatelliteParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	token, err := GenerateRandomToken(32)
+	if err != nil {
+		HandleAppError(w, err)
+	}
+
+	params := database.CreateSatelliteParams{
+		Name:  req.Name,
+		Token: token,
+	}
+
+	result, err := s.dbQueries.CreateSatellite(r.Context(), params)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
+	var req AddSatelliteParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	token, err := GenerateRandomToken(32)
+	if err != nil {
+		HandleAppError(w, err)
+	}
+
+	params := database.CreateSatelliteParams{
+		Name:  req.Name,
+		Token: token,
+	}
+
+	result, err := s.dbQueries.CreateSatellite(r.Context(), params)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
 }
 
 func (s *Server) addSatelliteHandler(w http.ResponseWriter, r *http.Request) {
