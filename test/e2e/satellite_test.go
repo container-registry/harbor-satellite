@@ -1,4 +1,4 @@
-package main
+package e2e
 
 import (
 	"context"
@@ -11,15 +11,6 @@ import (
 
 	"dagger.io/dagger"
 	"github.com/stretchr/testify/assert"
-)
-
-const (
-	appDir                  = "/app"
-	appBinary               = "app"
-	sourceFile              = "main.go"
-	relative_path           = "./testdata/config.toml"
-	absolute_path           = "test/e2e/testdata/config.toml"
-	satellite_ping_endpoint = "/api/v1/satellite/ping"
 )
 
 func TestSatellite(t *testing.T) {
@@ -130,7 +121,12 @@ func buildSatellite(
 	dest *dagger.Service,
 ) {
 	socket := client.Host().UnixSocket("/var/run/docker.sock")
-
+	var PATH_TO_CONFIG string
+	if ABS {
+		PATH_TO_CONFIG = absolute_path
+	} else {
+		PATH_TO_CONFIG = relative_path
+	}
 	// Get the directory
 	parentDir, err := getProjectDir()
 	assert.NoError(t, err, "Failed to get Project Directory")
@@ -139,7 +135,7 @@ func buildSatellite(
 	dir := client.Host().Directory(parentDir)
 
 	// Get configuration file on the host
-	configFile := client.Host().File(absolute_path)
+	configFile := client.Host().File(PATH_TO_CONFIG)
 
 	// Configure and build the Satellite
 	container := client.Container().From("golang:alpine").WithDirectory(appDir, dir).
