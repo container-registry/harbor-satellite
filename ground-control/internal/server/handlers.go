@@ -94,17 +94,17 @@ func (s *Server) createGroupHandler(w http.ResponseWriter, r *http.Request) {
 
 	params := database.CreateGroupParams{
 		GroupName: req.GroupName,
-    CreatedAt: time.Now(),
-    UpdatedAt: time.Now(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
 	// Call the database query to create Group
 	result, err := s.dbQueries.CreateGroup(r.Context(), params)
 	if err != nil {
-    err = &AppError{
-      Message: err.Error(),
-      Code: http.StatusBadRequest,
-    }
+		err = &AppError{
+			Message: err.Error(),
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}

@@ -42,6 +42,49 @@ func ListRobots(ctx context.Context, opts ListRobotParams, client *v2client.Harb
 	return response, nil
 }
 
+func DeleteRobotAccount(ctx context.Context, robotID int64, client *v2client.HarborAPI) (*robot.DeleteRobotOK, error) {
+	response, err := client.Robot.DeleteRobot(
+		ctx,
+		&robot.DeleteRobotParams{
+			RobotID: robotID,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error: deleting robot account: %v", err)
+	}
+	return response, nil
+}
+
+func RefreshRobotAccount(ctx context.Context, secret string, robotID int64, client *v2client.HarborAPI) (*robot.RefreshSecOK, error) {
+	response, err := client.Robot.RefreshSec(
+		ctx,
+		&robot.RefreshSecParams{
+			RobotSec: &models.RobotSec{
+				Secret: secret,
+			},
+			RobotID: robotID,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error: updating robot account: %v", err)
+	}
+	return response, nil
+}
+
+func UpdateRobotAccount(ctx context.Context, opts *models.Robot, client *v2client.HarborAPI) (*robot.UpdateRobotOK, error) {
+	response, err := client.Robot.UpdateRobot(
+		ctx,
+		&robot.UpdateRobotParams{
+			Robot:   opts,
+			RobotID: opts.ID,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error: updating robot account: %v", err)
+	}
+	return response, nil
+}
+
 func CreateRobotAccount(ctx context.Context, opts *models.RobotCreate, client *v2client.HarborAPI) (*robot.CreateRobotCreated, error) {
 	response, err := client.Robot.CreateRobot(
 		ctx,

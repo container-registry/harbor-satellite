@@ -58,7 +58,7 @@ func (m *HarborSatellite) Service(
 		AsService()
 }
 
-/// Would build the project with the source provided. The name should be the name of the project.
+// Would build the project with the source provided. The name should be the name of the project.
 func (m *HarborSatellite) build(source *dagger.Directory, name string) *dagger.Directory {
 	fmt.Printf("Building %s\n", name)
 	gooses := []string{"linux", "darwin"}
@@ -122,12 +122,11 @@ func (m *HarborSatellite) get_release_tag(ctx context.Context, git_container *da
 	return new_tag, nil
 }
 
-
 func generateNewTag(latestTag, suffix, release_type string) (string, error) {
 	if latestTag == "" {
-        // If the latest tag is empty, this is the first release
-        return fmt.Sprintf("v0.0.1-%s", suffix), nil
-    }
+		// If the latest tag is empty, this is the first release
+		return fmt.Sprintf("v0.0.1-%s", suffix), nil
+	}
 	versionWithoutSuffix := strings.TrimSuffix(latestTag, fmt.Sprintf("-%s", suffix))
 	versionWithoutSuffix = strings.TrimPrefix(versionWithoutSuffix, "v")
 	fmt.Println("Version without suffix: ", versionWithoutSuffix)

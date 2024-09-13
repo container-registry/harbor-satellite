@@ -23,18 +23,15 @@ func GetClient() (*v2client.HarborAPI, error) {
 			Username: os.Getenv("HARBOR_USERNAME"),
 			Password: os.Getenv("HARBOR_PASSWORD"),
 		}
-		clientInstance = GetClientByConfig(clientConfig)
-		if clientErr != nil {
-			fmt.Errorf("failed to initialize client: %v", clientErr)
-		}
+		clientInstance, clientErr = GetClientByConfig(clientConfig)
 	})
 	return clientInstance, clientErr
 }
 
-func GetClientByConfig(clientConfig *harbor.ClientSetConfig) *v2client.HarborAPI {
+func GetClientByConfig(clientConfig *harbor.ClientSetConfig) (*v2client.HarborAPI, error) {
 	cs, err := harbor.NewClientSet(clientConfig)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("error: failed to get client by config: %v", err)
 	}
-	return cs.V2()
+	return cs.V2(), nil
 }
