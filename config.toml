@@ -16,4 +16,4 @@ log_level = "info"
 
 # For testing purposes :
 #		 https://demo.goharbor.io/v2/myproject/album-server
-#		 /image-list/images.json
+#		 ./image-list/images.json

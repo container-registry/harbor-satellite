@@ -18,10 +18,11 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 
 		// Log the request
 		log.Printf(
-			"%s %s %s %s",
+			"%s %s %s %s %s",
 			r.RemoteAddr,
 			r.Method,
 			r.URL.Path,
+			r.Response.Status,
 			time.Since(start),
 		)
 	})

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"container-registry.com/harbor-satellite/internal/config"
@@ -24,6 +25,10 @@ func ValidateRegistryAddress(registryAdr, registryPort string) (string, error) {
 	if ip.To4() != nil {
 	} else {
 		return "", errors.New("IP address is IPv6 format and unsupported")
+	}
+	port, err := strconv.Atoi(registryPort)
+	if err != nil || port < 1 || port > 65535 {
+		return "", errors.New("invalid port number")
 	}
 
 	return fmt.Sprintf("%s:%s", registryAdr, registryPort), nil
@@ -91,6 +96,9 @@ func ParseImagesJsonFile(absPath string, imagesList *images.ImageList) error {
 
 // Set registry environment variables
 func SetRegistryEnvVars(imageList images.ImageList) error {
+	if !IsValidURL(imageList.RegistryURL) {
+		return fmt.Errorf("invalid registry url format in images.json")
+	}
 	registryURL := imageList.RegistryURL
 	registryParts := strings.Split(registryURL, "/")
 	if len(registryParts) < 3 {

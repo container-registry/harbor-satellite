@@ -9,39 +9,39 @@ import (
 var AppConfig *Config
 
 type Config struct {
-	logLevel        string
-	ownRegistry     bool
-	ownRegistryAdr  string
-	ownRegistryPort string
-	zotConfigPath   string
-	input           string
-	zot_url         string
-	registry        string
-	repository      string
-	user_input      string
-	scheme          string
-	api_version     string
-	image           string
+	log_level         string
+	own_registry      bool
+	own_registry_adr  string
+	own_registry_port string
+	zot_config_path   string
+	input             string
+	zot_url           string
+	registry          string
+	repository        string
+	user_input        string
+	scheme            string
+	api_version       string
+	image             string
 }
 
 func GetLogLevel() string {
-	return AppConfig.logLevel
+	return AppConfig.log_level
 }
 
 func GetOwnRegistry() bool {
-	return AppConfig.ownRegistry
+	return AppConfig.own_registry
 }
 
 func GetOwnRegistryAdr() string {
-	return AppConfig.ownRegistryAdr
+	return AppConfig.own_registry_adr
 }
 
 func GetOwnRegistryPort() string {
-	return AppConfig.ownRegistryPort
+	return AppConfig.own_registry_port
 }
 
 func GetZotConfigPath() string {
-	return AppConfig.zotConfigPath
+	return AppConfig.zot_config_path
 }
 
 func GetInput() string {
@@ -109,16 +109,16 @@ func LoadConfig() (*Config, error) {
 	viper.SetConfigType("toml")
 	viper.AddConfigPath(".")
 	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("error reading config file: %w", err)
+		return nil, fmt.Errorf("error reading config file at path '%s': %w", viper.ConfigFileUsed(), err)
 	}
 
 	return &Config{
-		logLevel:        viper.GetString("log_level"),
-		ownRegistry:     viper.GetBool("bring_own_registry"),
-		ownRegistryAdr:  viper.GetString("own_registry_adr"),
-		ownRegistryPort: viper.GetString("own_registry_port"),
-		zotConfigPath:   viper.GetString("zotConfigPath"),
-		input:           viper.GetString("url_or_file"),
+		log_level:         viper.GetString("log_level"),
+		own_registry:      viper.GetBool("bring_own_registry"),
+		own_registry_adr:  viper.GetString("own_registry_adr"),
+		own_registry_port: viper.GetString("own_registry_port"),
+		zot_config_path:   viper.GetString("zotConfigPath"),
+		input:             viper.GetString("url_or_file"),
 	}, nil
 }
 

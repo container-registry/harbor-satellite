@@ -19,7 +19,6 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
-	"github.com/spf13/viper"
 )
 
 func main() {
@@ -39,7 +38,8 @@ func run() error {
 	defer cancel()
 
 	g, ctx := errgroup.WithContext(ctx)
-	log := logger.SetupLogger(ctx, config.GetLogLevel())
+	ctx = logger.AddLoggerToContext(ctx, config.GetLogLevel())
+	log := logger.FromContext(ctx)
 	log.Info().Msg("Satellite starting")
 
 	// Set up router and app
@@ -125,8 +125,8 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 }
 
 func processInput(ctx context.Context, log *zerolog.Logger) (store.ImageFetcher, error) {
-	input := viper.GetString("url_or_file")
-	if !utils.IsValidURL(config.GetInput()) {
+	input := config.GetInput()
+	if !utils.IsValidURL(input) {
 		log.Info().Msg("Input is not a valid URL, checking if it is a file path")
 		if err := validateFilePath(config.GetInput(), log); err != nil {
 			return nil, err
