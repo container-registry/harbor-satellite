@@ -7,7 +7,6 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	github.com/opencontainers/image-spec v1.1.0
-	gopkg.in/yaml.v2 v2.4.0
 	oras.land/oras-go/v2 v2.5.0
 )
 
