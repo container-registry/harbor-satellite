@@ -42,6 +42,27 @@ type LabelImage struct {
 	ImageID int32
 }
 
+type Project struct {
+	ID        int32
+	Projects  string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type Robot struct {
+	ID          int32
+	RobotName   string
+	Secret      string
+	SatelliteID sql.NullInt32
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type RobotProject struct {
+	RobotID   int32
+	ProjectID int32
+}
+
 type Satellite struct {
 	ID        int32
 	Name      string
