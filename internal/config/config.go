@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -22,6 +24,10 @@ type Config struct {
 	scheme            string
 	api_version       string
 	image             string
+	harbor_password   string
+	harbor_username   string
+	env               string
+	use_unsecure      bool
 }
 
 func GetLogLevel() string {
@@ -104,12 +110,35 @@ func GetImage() string {
 	return AppConfig.image
 }
 
+func UseUnsecure() bool {
+	return AppConfig.use_unsecure
+}
+
+func GetHarborPassword() string {
+	return AppConfig.harbor_password
+}
+
+func GetHarborUsername() string {
+	return AppConfig.harbor_username
+}
+
 func LoadConfig() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("toml")
 	viper.AddConfigPath(".")
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("error reading config file at path '%s': %w", viper.ConfigFileUsed(), err)
+	}
+
+	// Load environment and start satellite
+	if err := godotenv.Load(); err != nil {
+		return &Config{}, fmt.Errorf("error loading .env file: %w", err)
+	}
+	var use_unsecure bool
+	if os.Getenv("USE_UNSECURE") == "true" {
+		use_unsecure = true
+	} else {
+		use_unsecure = false
 	}
 
 	return &Config{
@@ -119,6 +148,11 @@ func LoadConfig() (*Config, error) {
 		own_registry_port: viper.GetString("own_registry_port"),
 		zot_config_path:   viper.GetString("zotConfigPath"),
 		input:             viper.GetString("url_or_file"),
+		harbor_password:   os.Getenv("HARBOR_PASSWORD"),
+		harbor_username:   os.Getenv("HARBOR_USERNAME"),
+		env:               os.Getenv("ENV"),
+		zot_url:           os.Getenv("ZOT_URL"),
+		use_unsecure:      use_unsecure,
 	}, nil
 }
 
@@ -128,5 +162,17 @@ func InitConfig() error {
 	if err != nil {
 		return err
 	}
+	/// Print all the configuration
+	fmt.Println("Configuration:")
+	fmt.Println("Log Level: ", AppConfig.log_level)
+	fmt.Println("Own Registry: ", AppConfig.own_registry)
+	fmt.Println("Own Registry Address: ", AppConfig.own_registry_adr)
+	fmt.Println("Own Registry Port: ", AppConfig.own_registry_port)
+	fmt.Println("Zot Config Path: ", AppConfig.zot_config_path)
+	fmt.Println("Input: ", AppConfig.input)
+	fmt.Println("Harbor Password: ", AppConfig.harbor_password)
+	fmt.Println("Harbor Username: ", AppConfig.harbor_username)
+	fmt.Println("Environment: ", AppConfig.env)
+	fmt.Println("Use Unsecure: ", AppConfig.use_unsecure)
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/store"
 	"container-registry.com/harbor-satellite/logger"
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -20,7 +21,12 @@ type Replicator interface {
 	DeleteExtraImages(ctx context.Context, imgs []store.Image) error
 }
 
-type BasicReplicator struct{}
+type BasicReplicator struct {
+	username     string
+	password     string
+	use_unsecure bool
+	zot_url      string
+}
 
 type ImageInfo struct {
 	Name string `json:"name"`
@@ -37,7 +43,12 @@ type RegistryInfo struct {
 }
 
 func NewReplicator(context context.Context) Replicator {
-	return &BasicReplicator{}
+	return &BasicReplicator{
+		username:     config.GetHarborUsername(),
+		password:     config.GetHarborPassword(),
+		use_unsecure: config.UseUnsecure(),
+		zot_url:      config.GetZotURL(),
+	}
 }
 
 func (r *BasicReplicator) Replicate(ctx context.Context, image string) error {
@@ -177,9 +188,12 @@ func CopyImage(ctx context.Context, imageName string) error {
 		Username: username,
 		Password: password,
 	})
-
+	options := []crane.Option{crane.WithAuth(auth)}
+	if config.UseUnsecure() {
+		options = append(options, crane.Insecure)
+	}
 	// Pull the image with authentication
-	srcImage, err := crane.Pull(imageName, crane.WithAuth(auth), crane.Insecure)
+	srcImage, err := crane.Pull(imageName, options...)
 	if err != nil {
 		log.Error().Msgf("Failed to pull image: %v", err)
 		return fmt.Errorf("failed to pull image: %w", err)
@@ -188,7 +202,11 @@ func CopyImage(ctx context.Context, imageName string) error {
 	}
 
 	// Push the image to the destination registry
-	err = crane.Push(srcImage, destRef, crane.Insecure)
+	push_options := []crane.Option{}
+	if config.UseUnsecure() {
+		push_options = append(push_options, crane.Insecure)
+	}
+	err = crane.Push(srcImage, destRef, push_options...)
 	if err != nil {
 		log.Error().Msgf("Failed to push image: %v", err)
 		return fmt.Errorf("failed to push image: %w", err)

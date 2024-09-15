@@ -17,7 +17,6 @@ import (
 	"container-registry.com/harbor-satellite/logger"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 )
 
@@ -55,12 +54,6 @@ func run() error {
 	// Process Input (file or URL)
 	fetcher, err := processInput(ctx, log)
 	if err != nil {
-		return err
-	}
-
-	// Load environment and start satellite
-	if err := godotenv.Load(); err != nil {
-		log.Error().Err(err).Msg("Error loading .env file")
 		return err
 	}
 
