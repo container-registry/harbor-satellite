@@ -162,17 +162,5 @@ func InitConfig() error {
 	if err != nil {
 		return err
 	}
-	/// Print all the configuration
-	fmt.Println("Configuration:")
-	fmt.Println("Log Level: ", AppConfig.log_level)
-	fmt.Println("Own Registry: ", AppConfig.own_registry)
-	fmt.Println("Own Registry Address: ", AppConfig.own_registry_adr)
-	fmt.Println("Own Registry Port: ", AppConfig.own_registry_port)
-	fmt.Println("Zot Config Path: ", AppConfig.zot_config_path)
-	fmt.Println("Input: ", AppConfig.input)
-	fmt.Println("Harbor Password: ", AppConfig.harbor_password)
-	fmt.Println("Harbor Username: ", AppConfig.harbor_username)
-	fmt.Println("Environment: ", AppConfig.env)
-	fmt.Println("Use Unsecure: ", AppConfig.use_unsecure)
 	return nil
 }
