@@ -44,14 +44,10 @@ func setupSourceRegistry(
 	client *dagger.Client,
 	ctx context.Context,
 ) (*dagger.Service, error) {
-	// socket to connect to host Docker
-	socket := client.Host().UnixSocket("/var/run/docker.sock")
 
 	container, err := client.Container().
 		From("registry:2").
 		WithExposedPort(5000).
-		WithUnixSocket("/var/run/docker.sock", socket).
-		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		AsService().Start(ctx)
 
@@ -66,14 +62,10 @@ func setupDestinationRegistry(
 	client *dagger.Client,
 	ctx context.Context,
 ) (*dagger.Service, error) {
-	// socket to connect to host Docker
-	socket := client.Host().UnixSocket("/var/run/docker.sock")
 
 	container, err := client.Container().
 		From("registry:2").
 		WithExposedPort(5000).
-		WithUnixSocket("/var/run/docker.sock", socket).
-		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		AsService().Start(ctx)
 
@@ -89,13 +81,9 @@ func pushImageToSourceRegistry(
 	client *dagger.Client,
 	source *dagger.Service,
 ) {
-	// socket to connect to host Docker
-	socket := client.Host().UnixSocket("/var/run/docker.sock")
 
 	container := client.Container().
 		From("docker:dind").
-		WithUnixSocket("/var/run/docker.sock", socket).
-		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithServiceBinding("source", source)
 
@@ -120,7 +108,6 @@ func buildSatellite(
 	source *dagger.Service,
 	dest *dagger.Service,
 ) {
-	socket := client.Host().UnixSocket("/var/run/docker.sock")
 	var PATH_TO_CONFIG string
 	if ABS {
 		PATH_TO_CONFIG = absolute_path
@@ -142,8 +129,6 @@ func buildSatellite(
 		WithWorkdir(appDir).
 		WithServiceBinding("source", source).
 		WithServiceBinding("dest", dest).
-		WithUnixSocket("/var/run/docker.sock", socket).
-		WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithExec([]string{"cat", "config.toml"}).
 		WithFile("./config.toml", configFile).
@@ -152,7 +137,7 @@ func buildSatellite(
 		WithExposedPort(9090).
 		WithExec([]string{"./" + appBinary}).
 		AsService()
-	// Get the response
+
 	satellite_container := client.Container().
 		From("golang:alpine").
 		WithServiceBinding("satellite", container).
