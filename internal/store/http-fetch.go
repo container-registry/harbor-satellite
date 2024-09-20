@@ -11,13 +11,18 @@ import (
 	"strings"
 	"time"
 
+	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/logger"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 )
 
 type RemoteImageList struct {
-	BaseURL string
+	BaseURL      string
+	username     string
+	password     string
+	use_unsecure bool
+	zot_url      string
 }
 
 type TagListResponse struct {
@@ -27,7 +32,11 @@ type TagListResponse struct {
 
 func RemoteImageListFetcher(ctx context.Context, url string) *RemoteImageList {
 	return &RemoteImageList{
-		BaseURL: url,
+		BaseURL:      url,
+		username:     config.GetHarborUsername(),
+		password:     config.GetHarborPassword(),
+		use_unsecure: config.UseUnsecure(),
+		zot_url:      config.GetZotURL(),
 	}
 }
 
@@ -106,15 +115,18 @@ func (client *RemoteImageList) GetDigest(ctx context.Context, tag string) (strin
 	// Encode credentials for Basic Authentication
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
+	auth := &authn.Basic{Username: username, Password: password}
+	// Prepare options for crane.Digest
+	options := []crane.Option{crane.WithAuth(auth)}
+	if client.use_unsecure {
+		options = append(options, crane.Insecure)
+	}
 
 	// Use crane.Digest to get the digest of the image
-	digest, err := crane.Digest(imageRef, crane.WithAuth(&authn.Basic{
-		Username: username,
-		Password: password,
-	}), crane.Insecure)
+	digest, err := crane.Digest(imageRef, options...)
 	if err != nil {
 		log.Error().Msgf("failed to get digest using crane: %v", err)
-		return "", nil
+		return "", err
 	}
 
 	return digest, nil
