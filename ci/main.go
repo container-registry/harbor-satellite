@@ -21,8 +21,13 @@ const (
 type HarborSatellite struct{}
 
 // Build function would start the build process for the name provided. Source should be the path to the main.go file.
-func (m *HarborSatellite) Build(ctx context.Context, source *dagger.Directory, name string) *dagger.Directory {
-	return m.build(source, name)
+func (m *HarborSatellite) Build(
+	ctx context.Context,
+	// +optional
+	// +defaultPath="./"
+	source *dagger.Directory,
+	component string) *dagger.Directory {
+	return m.build(source, component)
 }
 
 // Release function would release the build to the github with the tags provided. Directory should be "." for both the satellite and the ground control.

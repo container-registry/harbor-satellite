@@ -92,7 +92,7 @@ func pushImageToSourceRegistry(
 		WithExec([]string{"crane", "copy", "busybox:1.36", "source:5000/library/busybox:1.36", "--insecure"}).
 		WithExec([]string{"crane", "digest", "source:5000/library/busybox:1.36", "--insecure"})
 
-		// check pushed images exist
+	// check pushed images exist
 	container = container.WithExec([]string{"crane", "catalog", "source:5000", "--insecure"})
 
 	stdOut, err := container.Stdout(ctx)

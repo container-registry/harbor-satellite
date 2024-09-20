@@ -58,12 +58,12 @@ func (m *HarborSatellite) Service(
 		AsService()
 }
 
-/// Would build the project with the source provided. The name should be the name of the project.
-func (m *HarborSatellite) build(source *dagger.Directory, name string) *dagger.Directory {
-	fmt.Printf("Building %s\n", name)
+// / Would build the project with the source provided. The name should be the name of the project.
+func (m *HarborSatellite) build(source *dagger.Directory, component string) *dagger.Directory {
+	fmt.Printf("Building %s\n", component)
 	gooses := []string{"linux", "darwin"}
 	goarches := []string{"amd64", "arm64"}
-	binaryName := name // base name for the binary
+	binaryName := component // base component for the binary
 
 	// create empty directory to put build artifacts
 	outputs := dag.Directory()
@@ -74,17 +74,21 @@ func (m *HarborSatellite) build(source *dagger.Directory, name string) *dagger.D
 		WithWorkdir(PROJ_MOUNT)
 	for _, goos := range gooses {
 		for _, goarch := range goarches {
-			// create the full binary name with OS and architecture
-			outputBinary := fmt.Sprintf("%s/%s-%s-%s", name, binaryName, goos, goarch)
+			// create the full binary component with OS and architecture
+			outputBinary := fmt.Sprintf("%s/%s-%s-%s", component, binaryName, goos, goarch)
 
-			// build artifact with specified binary name
+			// build artifact with specified binary component
 			build := golang.
+				WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
+				WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
+				WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
+				WithEnvVariable("GOCACHE", "/go/build-cache").
 				WithEnvVariable("GOOS", goos).
 				WithEnvVariable("GOARCH", goarch).
 				WithExec([]string{"go", "build", "-o", outputBinary})
 
 			// add build to outputs
-			outputs = outputs.WithDirectory(name, build.Directory(name))
+			outputs = outputs.WithDirectory(component, build.Directory(component))
 		}
 	}
 
@@ -122,12 +126,11 @@ func (m *HarborSatellite) get_release_tag(ctx context.Context, git_container *da
 	return new_tag, nil
 }
 
-
 func generateNewTag(latestTag, suffix, release_type string) (string, error) {
 	if latestTag == "" {
-        // If the latest tag is empty, this is the first release
-        return fmt.Sprintf("v0.0.1-%s", suffix), nil
-    }
+		// If the latest tag is empty, this is the first release
+		return fmt.Sprintf("v0.0.1-%s", suffix), nil
+	}
 	versionWithoutSuffix := strings.TrimSuffix(latestTag, fmt.Sprintf("-%s", suffix))
 	versionWithoutSuffix = strings.TrimPrefix(versionWithoutSuffix, "v")
 	fmt.Println("Version without suffix: ", versionWithoutSuffix)
