@@ -10,6 +10,17 @@ import (
 	"time"
 )
 
+type ImageList struct {
+	RegistryURL  string `json:"registryUrl"`
+	Repositories []struct {
+		Repository string `json:"repository"`
+		Images     []struct {
+			Name string `json:"name"`
+		} `json:"images"`
+	} `json:"repositories"`
+}
+
+
 type Image struct {
 	ID         int       `json:"ID"`
 	Registry   string    `json:"Registry"`
