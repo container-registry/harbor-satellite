@@ -156,7 +156,7 @@ func generateNewTag(latestTag, suffix, release_type string) (string, error) {
 		slog.Error("Failed to convert patch version to integer: ", err.Error(), ".")
 		return "", err
 	}
-	// Increment the version accordin ground-control")g to the release type
+	// Increment the version according to the release type
 	switch release_type {
 	case "major":
 		major++
