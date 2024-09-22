@@ -26,16 +26,20 @@ func (m *HarborSatellite) Build(
 	// +optional
 	// +defaultPath="./"
 	source *dagger.Directory,
-	component string) *dagger.Directory {
-	return m.build(source, component)
+	component string,
+) (*dagger.Directory, error) {
+	if component == "satellite" || component == "ground-control" {
+		return m.build(source, component), nil
+	}
+	return nil, fmt.Errorf("error: please provide component as either satellite or ground-control")
 }
 
 // Release function would release the build to the github with the tags provided. Directory should be "." for both the satellite and the ground control.
 func (m *HarborSatellite) Release(ctx context.Context, directory *dagger.Directory, token, name string,
 	// +optional
 	// +default="patch"
-	release_type string) (string, error) {
-
+	release_type string,
+) (string, error) {
 	container := dag.Container().
 		From("alpine/git").
 		WithEnvVariable("GITHUB_TOKEN", token).
@@ -66,7 +70,6 @@ func (m *HarborSatellite) Release(ctx context.Context, directory *dagger.Directo
 		WithExec([]string{"git", "tag", release_tag}).
 		WithExec([]string{"goreleaser", "release", "-f", pathToMain, "--clean"}).
 		Stderr(ctx)
-
 	if err != nil {
 		slog.Error("Failed to release: ", err, ".")
 		slog.Error("Release Output:", release_output, ".")

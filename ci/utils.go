@@ -58,9 +58,9 @@ func (m *HarborSatellite) Service(
 		AsService()
 }
 
-// Would build the project with the source provided. The name should be the name of the project.
-func (m *HarborSatellite) build(source *dagger.Directory, name string) *dagger.Directory {
-	fmt.Printf("Building %s\n", name)
+// builds given component from source
+func (m *HarborSatellite) build(source *dagger.Directory, component string) *dagger.Directory {
+	fmt.Printf("Building %s\n", component)
 
 	gooses := []string{"linux", "darwin"}
 	goarches := []string{"amd64", "arm64"}
@@ -85,8 +85,13 @@ func (m *HarborSatellite) build(source *dagger.Directory, name string) *dagger.D
 				WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
 				WithEnvVariable("GOCACHE", "/go/build-cache").
 				WithEnvVariable("GOOS", goos).
-				WithEnvVariable("GOARCH", goarch).
-				WithExec([]string{"go", "build", "-o", outputBinary})
+				WithEnvVariable("GOARCH", goarch)
+			if component == "ground-control" {
+				build = build.WithWorkdir("./ground-control/").
+					WithExec([]string{"go", "build", "-o", outputBinary})
+			} else {
+				build = build.WithExec([]string{"go", "build", "-o", outputBinary})
+			}
 
 			// add build to outputs
 			outputs = outputs.WithDirectory(component, build.Directory(component))
@@ -101,7 +106,8 @@ func (m *HarborSatellite) build(source *dagger.Directory, name string) *dagger.D
 func (m *HarborSatellite) get_release_tag(ctx context.Context, git_container *dagger.Container, source *dagger.Directory, name string,
 	// +optional
 	// +default="patch"
-	release_type string) (string, error) {
+	release_type string,
+) (string, error) {
 	/// This would get the last tag that was created. Empty string if no tag was created.
 	getTagsOutput, err := git_container.
 		WithExec([]string{
@@ -109,7 +115,6 @@ func (m *HarborSatellite) get_release_tag(ctx context.Context, git_container *da
 			fmt.Sprintf(`git tag --list "v*%s" | sort -V | tail -n 1`, name),
 		}).
 		Stdout(ctx)
-
 	if err != nil {
 		slog.Error("Failed to get tags: ", err, ".")
 		slog.Error("Get Tags Output:", getTagsOutput, ".")
@@ -151,7 +156,7 @@ func generateNewTag(latestTag, suffix, release_type string) (string, error) {
 		slog.Error("Failed to convert patch version to integer: ", err.Error(), ".")
 		return "", err
 	}
-	// Increment the version according to the release type
+	// Increment the version accordin ground-control")g to the release type
 	switch release_type {
 	case "major":
 		major++
