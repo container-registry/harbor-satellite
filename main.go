@@ -128,8 +128,14 @@ func processInput(ctx context.Context, log *zerolog.Logger) (store.ImageFetcher,
 	}
 
 	log.Info().Msg("Input is a valid URL")
+	config.SetRemoteRegistryURL(input)
+	state_arifact_fetcher := config.NewURLStateArtifactFetcher()
+	if err := state_arifact_fetcher.FetchStateArtifact(); err != nil {
+		log.Error().Err(err).Msg("Error fetching state artifact")
+		return nil, err
+	}
 	fetcher := store.RemoteImageListFetcher(ctx, input)
-	utils.SetUrlConfig(input)
+	// utils.SetUrlConfig(input)
 	return fetcher, nil
 }
 

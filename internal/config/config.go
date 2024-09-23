@@ -11,23 +11,26 @@ import (
 var AppConfig *Config
 
 type Config struct {
-	log_level         string
-	own_registry      bool
-	own_registry_adr  string
-	own_registry_port string
-	zot_config_path   string
-	input             string
-	zot_url           string
-	registry          string
-	repository        string
-	user_input        string
-	scheme            string
-	api_version       string
-	image             string
-	harbor_password   string
-	harbor_username   string
-	env               string
-	use_unsecure      bool
+	log_level           string
+	own_registry        bool
+	own_registry_adr    string
+	own_registry_port   string
+	zot_config_path     string
+	input               string
+	zot_url             string
+	registry            string
+	repository          string
+	user_input          string
+	scheme              string
+	api_version         string
+	image               string
+	harbor_password     string
+	harbor_username     string
+	env                 string
+	use_unsecure        bool
+	remote_registry_url string
+	group_name          string
+	state_artifact_name string
 }
 
 func GetLogLevel() string {
@@ -122,6 +125,22 @@ func GetHarborUsername() string {
 	return AppConfig.harbor_username
 }
 
+func SetRemoteRegistryURL(url string) {
+	AppConfig.remote_registry_url = url
+}
+
+func GetRemoteRegistryURL() string {
+	return AppConfig.remote_registry_url
+}
+
+func GetGroupName() string {
+	return AppConfig.group_name
+}
+
+func GetStateArtifactName() string {
+	return AppConfig.state_artifact_name
+}
+
 func LoadConfig() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("toml")
@@ -142,17 +161,19 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
-		log_level:         viper.GetString("log_level"),
-		own_registry:      viper.GetBool("bring_own_registry"),
-		own_registry_adr:  viper.GetString("own_registry_adr"),
-		own_registry_port: viper.GetString("own_registry_port"),
-		zot_config_path:   viper.GetString("zotConfigPath"),
-		input:             viper.GetString("url_or_file"),
-		harbor_password:   os.Getenv("HARBOR_PASSWORD"),
-		harbor_username:   os.Getenv("HARBOR_USERNAME"),
-		env:               os.Getenv("ENV"),
-		zot_url:           os.Getenv("ZOT_URL"),
-		use_unsecure:      use_unsecure,
+		log_level:           viper.GetString("log_level"),
+		own_registry:        viper.GetBool("bring_own_registry"),
+		own_registry_adr:    viper.GetString("own_registry_adr"),
+		own_registry_port:   viper.GetString("own_registry_port"),
+		zot_config_path:     viper.GetString("zotConfigPath"),
+		input:               viper.GetString("url_or_file"),
+		harbor_password:     os.Getenv("HARBOR_PASSWORD"),
+		harbor_username:     os.Getenv("HARBOR_USERNAME"),
+		env:                 os.Getenv("ENV"),
+		zot_url:             os.Getenv("ZOT_URL"),
+		use_unsecure:        use_unsecure,
+		group_name:          os.Getenv("GROUP_NAME"),
+		state_artifact_name: os.Getenv("STATE_ARTIFACT_NAME"),
 	}, nil
 }
 

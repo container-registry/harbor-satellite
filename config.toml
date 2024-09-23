@@ -6,7 +6,8 @@ own_registry_adr = "127.0.0.1"
 own_registry_port = "8585"
 
 # URL of remote registry OR local file path
-url_or_file = "https://demo.goharbor.io/v2/myproject/album-server"
+# url_or_file = "https://demo.goharbor.io/v2/myproject/album-server"
+url_or_file = "https://demo.goharbor.io"
 
 # Default path for Zot registry config.json
 zotConfigPath = "./registry/config.json"
