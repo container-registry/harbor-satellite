@@ -1,4 +1,4 @@
-package config
+package state
 
 // ArtifactReader defines an interface for reading artifact data
 type ArtifactReader interface {

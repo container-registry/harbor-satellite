@@ -12,6 +12,7 @@ import (
 	"container-registry.com/harbor-satellite/internal/replicate"
 	"container-registry.com/harbor-satellite/internal/satellite"
 	"container-registry.com/harbor-satellite/internal/server"
+	"container-registry.com/harbor-satellite/internal/state"
 	"container-registry.com/harbor-satellite/internal/store"
 	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
@@ -58,7 +59,7 @@ func run() error {
 	}
 
 	ctx, storer := store.NewInMemoryStore(ctx, fetcher)
-	replicator := replicate.NewReplicator(ctx)
+	replicator := replicate.NewReplicator()
 	satelliteService := satellite.NewSatellite(ctx, storer, replicator)
 
 	g.Go(func() error {
@@ -129,8 +130,10 @@ func processInput(ctx context.Context, log *zerolog.Logger) (store.ImageFetcher,
 
 	log.Info().Msg("Input is a valid URL")
 	config.SetRemoteRegistryURL(input)
-	state_arifact_fetcher := config.NewURLStateArtifactFetcher()
-	if err := state_arifact_fetcher.FetchStateArtifact(); err != nil {
+	fmt.Println(config.GetRemoteRegistryURL())
+	state_artifact_fetcher := state.NewURLStateFetcher()
+	_, err := state_artifact_fetcher.FetchStateArtifact()
+	if err != nil {
 		log.Error().Err(err).Msg("Error fetching state artifact")
 		return nil, err
 	}

@@ -137,3 +137,13 @@ func SetUrlConfig(input string) {
 	os.Setenv("IMAGE", registryParts[3])
 	config.SetImage(registryParts[3])
 }
+
+func GetRepositoryAndImageNameFromArtifact(repository string) (string, string, error){
+	parts := strings.Split(repository, "/")
+	if len(parts) < 2 {
+		return "", "", fmt.Errorf("invalid repository format")
+	}
+	repo := parts[0]
+	image := parts[1]
+	return repo, image, nil
+}

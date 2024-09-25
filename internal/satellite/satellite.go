@@ -34,7 +34,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		log.Info().Msg("No images to replicate")
 	} else {
 		for _, img := range imgs {
-			err = s.replicator.Replicate(ctx, img.Name)
+			err = s.replicator.Replicate(ctx)
 			if err != nil {
 				log.Error().Err(err).Msg("Error replicating image")
 				return err
