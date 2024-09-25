@@ -59,8 +59,8 @@ func (m *HarborSatellite) Service(
 }
 
 // Would build the project with the source provided. The name should be the name of the project.
-func (m *HarborSatellite) build(source *dagger.Directory, name string) *dagger.Directory {
-	fmt.Printf("Building %s\n", name)
+func (m *HarborSatellite) build(source *dagger.Directory, component string) *dagger.Directory {
+	fmt.Printf("Building %s\n", component)
 
 	gooses := []string{"linux", "darwin"}
 	goarches := []string{"amd64", "arm64"}
