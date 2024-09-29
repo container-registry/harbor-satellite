@@ -8,6 +8,8 @@ type ArtifactReader interface {
 	GetTag() string
 	// GetHash returns the hash of the artifact
 	GetHash() string
+	// HasChanged returns true if the artifact has changed
+	HasChanged(newArtifact ArtifactReader) bool
 }
 
 // Artifact represents an artifact object in the registry
@@ -31,4 +33,8 @@ func (a *Artifact) GetTag() string {
 
 func (a *Artifact) GetHash() string {
 	return a.Hash
+}
+
+func (a *Artifact) HasChanged(newArtifact ArtifactReader) bool {
+	return a.GetHash() != newArtifact.GetHash()
 }

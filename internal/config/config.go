@@ -31,6 +31,7 @@ type Config struct {
 	remote_registry_url string
 	group_name          string
 	state_artifact_name string
+	state_fetch_period  string
 }
 
 func GetLogLevel() string {
@@ -141,6 +142,10 @@ func GetStateArtifactName() string {
 	return AppConfig.state_artifact_name
 }
 
+func GetStateFetchPeriod() string {
+	return AppConfig.state_fetch_period
+}
+
 func LoadConfig() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("toml")
@@ -174,6 +179,7 @@ func LoadConfig() (*Config, error) {
 		use_unsecure:        use_unsecure,
 		group_name:          os.Getenv("GROUP_NAME"),
 		state_artifact_name: os.Getenv("STATE_ARTIFACT_NAME"),
+		state_fetch_period:  os.Getenv("STATE_FETCH_PERIOD"),
 	}, nil
 }
 

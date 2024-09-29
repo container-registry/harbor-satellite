@@ -23,6 +23,8 @@ type StateReader interface {
 	GetArtifacts() []ArtifactReader
 	// GetArtifactByRepository takes in the repository name and returns the artifact associated with it
 	GetArtifactByRepository(repo string) (ArtifactReader, error)
+	// Compare the state artifact with the new state artifact
+	HasStateChanged(newState StateReader) bool
 }
 
 type State struct {
@@ -65,7 +67,24 @@ func (a *State) GetArtifactByRepository(repo string) (ArtifactReader, error) {
 	return &Artifact{}, fmt.Errorf("artifact not found in the list")
 }
 
-type StateArtifactFetcher interface {
+func (a *State) HasStateChanged(newState StateReader) bool {
+	if a.GetRegistryURL() != newState.GetRegistryURL() {
+		return true
+	}
+	artifacts := a.GetArtifacts()
+	newArtifacts := newState.GetArtifacts()
+	if len(artifacts) != len(newArtifacts) {
+		return true
+	}
+	for i, artifact := range artifacts {
+		if artifact.HasChanged(newArtifacts[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+type StateFetcher interface {
 	// Fetches the state artifact from the registry
 	FetchStateArtifact() (StateReader, error)
 }
@@ -77,7 +96,7 @@ type URLStateFetcher struct {
 	state_artifact_reader StateReader
 }
 
-func NewURLStateFetcher() StateArtifactFetcher {
+func NewURLStateFetcher() StateFetcher {
 	url := config.GetRemoteRegistryURL()
 	// Trim the "https://" or "http://" prefix if present
 	if len(url) >= 8 && url[:8] == "https://" {
@@ -95,7 +114,34 @@ func NewURLStateFetcher() StateArtifactFetcher {
 }
 
 type FileStateArtifactFetcher struct {
-	filePath string
+	filePath              string
+	group_name            string
+	state_artifact_name   string
+	state_artifact_reader StateReader
+}
+
+func NewFileStateFetcher() StateFetcher {
+	filePath := config.GetInput()
+	state_artifact_reader := NewState()
+	return &FileStateArtifactFetcher{
+		filePath:              filePath,
+		group_name:            config.GetGroupName(),
+		state_artifact_name:   config.GetStateArtifactName(),
+		state_artifact_reader: state_artifact_reader,
+	}
+}
+
+func (f *FileStateArtifactFetcher) FetchStateArtifact() (StateReader, error) {
+	/// Read the state artifact file from the file path
+	content, err := os.ReadFile(f.filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the state artifact file: %v", err)
+	}
+	state_reader, err := FromJSON(content, f.state_artifact_reader.(*State))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse the state artifact file: %v", err)
+	}
+	return state_reader, nil
 }
 
 func (f *URLStateFetcher) FetchStateArtifact() (StateReader, error) {

@@ -2,75 +2,44 @@ package satellite
 
 import (
 	"context"
-	"time"
 
-	"container-registry.com/harbor-satellite/internal/replicate"
-	"container-registry.com/harbor-satellite/internal/store"
+	"container-registry.com/harbor-satellite/internal/config"
+	"container-registry.com/harbor-satellite/internal/scheduler"
+	"container-registry.com/harbor-satellite/internal/state"
+	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
 )
 
 type Satellite struct {
-	storer     store.Storer
-	replicator replicate.Replicator
+	stateReader          state.StateReader
+	stateArtifactFetcher state.StateFetcher
+	schedulerKey         scheduler.SchedulerKey
 }
 
-func NewSatellite(ctx context.Context, storer store.Storer, replicator replicate.Replicator) *Satellite {
+func NewSatellite(ctx context.Context, stateArtifactFetcher state.StateFetcher, schedulerKey scheduler.SchedulerKey) *Satellite {
 	return &Satellite{
-		storer:     storer,
-		replicator: replicator,
+		stateArtifactFetcher: stateArtifactFetcher,
+		schedulerKey:         schedulerKey,
 	}
 }
 
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
-
-	// Execute the initial operation immediately without waiting for the ticker
-	imgs, err := s.storer.List(ctx)
+	log.Info().Msg("Starting Satellite")
+	var cronExpr string
+	state_fetch_period := config.GetStateFetchPeriod()
+	cronExpr, err := utils.FormatDuration(state_fetch_period)
 	if err != nil {
-		log.Error().Err(err).Msg("Error listing images")
-		return err
+		log.Warn().Msgf("Error formatting duration in seconds: %v", err)
+		log.Warn().Msgf("Using default duration: %v", state.DefaultFetchAndReplicateStateTimePeriod)
+		cronExpr = state.DefaultFetchAndReplicateStateTimePeriod
 	}
-	if len(imgs) == 0 {
-		log.Info().Msg("No images to replicate")
-	} else {
-		for _, img := range imgs {
-			err = s.replicator.Replicate(ctx)
-			if err != nil {
-				log.Error().Err(err).Msg("Error replicating image")
-				return err
-			}
-		}
-		s.replicator.DeleteExtraImages(ctx, imgs)
-	}
-	log.Info().Msg("--------------------------------\n")
+	// Get the scheduler from the context
+	scheduler := ctx.Value(s.schedulerKey).(scheduler.Scheduler)
+	// Creating a process to fetch and replicate the state
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(scheduler.NextID(), cronExpr, s.stateArtifactFetcher)
+	// Add the process to the scheduler
+	scheduler.Schedule(&fetchAndReplicateStateProcess)
 
-	// Temporarily set to faster tick rate for testing purposes
-	ticker := time.NewTicker(3 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			imgs, err := s.storer.List(ctx)
-			if err != nil {
-				log.Error().Err(err).Msg("Error listing images")
-				return err
-			}
-			if len(imgs) == 0 {
-				log.Info().Msg("No images to replicate")
-			} else {
-				for _, img := range imgs {
-					err = s.replicator.Replicate(ctx, img.Name)
-					if err != nil {
-						log.Error().Err(err).Msg("Error replicating image")
-						return err
-					}
-				}
-				s.replicator.DeleteExtraImages(ctx, imgs)
-			}
-		}
-		log.Info().Msg("--------------------------------\n")
-	}
+	return nil
 }

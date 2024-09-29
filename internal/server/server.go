@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"container-registry.com/harbor-satellite/internal/config"
@@ -62,7 +63,11 @@ func (a *App) SetupServer(g *errgroup.Group) {
 	})
 	g.Go(func() error {
 		<-a.ctx.Done()
-		a.Logger.Info().Msg("Shutting down server")
-		return a.Shutdown(a.ctx)
+		a.Logger.Warn().Msg("Shutting down server")
+		err := a.Shutdown(a.ctx)
+		if err != nil {
+			return fmt.Errorf("error shutting down server: %w", err)
+		}
+		return fmt.Errorf("satellite shutting down")
 	})
 }

@@ -1,16 +1,15 @@
 {
-  "registryUrl": "https://demo.goharbor.io/v2/",
-  "repositories": [
-    {
-      "repository": "myproject",
-      "images": [
-        {
-          "name": "album-server@sha256:39879890008f12c25ea14125aa8e9ec8ef3e167f0b0ed88057e955a8fa32c430"
-        },
-        {
-          "name": "album-server:busybox"
-        }
-      ]
-    }
+  "registry": "http://demo.goharbor.io/",
+   "artifacts": [
+     {
+      "repository": "satellite-test-alpine/alpine",
+      "tag": "latest",
+      "hash": "sha256:9cee2b38"
+    },
+   {
+    "repository": "satellite-test-postgres/postgres",
+    "tag": "latest",
+    "hash": "sha256:9cee2b38"
+   }
   ]
 }

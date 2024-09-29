@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -12,7 +11,6 @@ import (
 	"strings"
 
 	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/images"
 	"container-registry.com/harbor-satellite/registry"
 )
 
@@ -80,65 +78,8 @@ func HasInvalidPathChars(input string) bool {
 	return strings.ContainsAny(input, "\\:*?\"<>|")
 }
 
-// ParseImagesJsonFile parses the images.json file and decodes it into the ImageList struct
-func ParseImagesJsonFile(absPath string, imagesList *images.ImageList) error {
-	file, err := os.Open(absPath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
 
-	if err := json.NewDecoder(file).Decode(imagesList); err != nil {
-		return err
-	}
-	return nil
-}
-
-// Set registry environment variables
-func SetRegistryEnvVars(imageList images.ImageList) error {
-	if !IsValidURL(imageList.RegistryURL) {
-		return fmt.Errorf("invalid registry url format in images.json")
-	}
-	registryURL := imageList.RegistryURL
-	registryParts := strings.Split(registryURL, "/")
-	if len(registryParts) < 3 {
-		return fmt.Errorf("invalid registryUrl format in images.json")
-	}
-
-	os.Setenv("REGISTRY", registryParts[2])
-	config.SetRegistry(registryParts[2])
-
-	if len(imageList.Repositories) > 0 {
-		os.Setenv("REPOSITORY", imageList.Repositories[0].Repository)
-		config.SetRepository(imageList.Repositories[0].Repository)
-	} else {
-		return fmt.Errorf("no repositories found in images.json")
-	}
-
-	return nil
-}
-
-// SetUrlConfig sets the URL configuration for the input URL and sets the environment variables
-func SetUrlConfig(input string) {
-	os.Setenv("USER_INPUT", input)
-	config.SetUserInput(input)
-	parts := strings.SplitN(input, "://", 2)
-	scheme := parts[0] + "://"
-	os.Setenv("SCHEME", scheme)
-	config.SetScheme(scheme)
-	registryAndPath := parts[1]
-	registryParts := strings.Split(registryAndPath, "/")
-	os.Setenv("REGISTRY", registryParts[0])
-	config.SetRegistry(registryParts[0])
-	os.Setenv("API_VERSION", registryParts[1])
-	config.SetAPIVersion(registryParts[1])
-	os.Setenv("REPOSITORY", registryParts[2])
-	config.SetRepository(registryParts[2])
-	os.Setenv("IMAGE", registryParts[3])
-	config.SetImage(registryParts[3])
-}
-
-func GetRepositoryAndImageNameFromArtifact(repository string) (string, string, error){
+func GetRepositoryAndImageNameFromArtifact(repository string) (string, string, error) {
 	parts := strings.Split(repository, "/")
 	if len(parts) < 2 {
 		return "", "", fmt.Errorf("invalid repository format")
@@ -146,4 +87,32 @@ func GetRepositoryAndImageNameFromArtifact(repository string) (string, string, e
 	repo := parts[0]
 	image := parts[1]
 	return repo, image, nil
+}
+
+func FormatDuration(input string) (string , error) {
+	seconds, err := strconv.Atoi(input) // Convert input string to an integer
+	if err != nil {
+		return "", errors.New("invalid input: not a valid number")
+	}
+	if seconds < 0 {
+		return "", errors.New("invalid input: seconds cannot be negative")
+	}
+
+	hours := seconds / 3600
+	minutes := (seconds % 3600) / 60
+	secondsRemaining := seconds % 60
+
+	var result string
+
+	if hours > 0 {
+		result += strconv.Itoa(hours) + "h"
+	}
+	if minutes > 0 {
+		result += strconv.Itoa(minutes) + "m"
+	}
+	if secondsRemaining > 0 || result == "" {
+		result += strconv.Itoa(secondsRemaining) + "s"
+	}
+
+	return result, nil
 }
