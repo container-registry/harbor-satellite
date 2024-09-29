@@ -77,3 +77,18 @@ func (q *Queries) GetImagesForGroup(ctx context.Context, groupID int32) ([]GetIm
 	}
 	return items, nil
 }
+
+const removeImageFromGroup = `-- name: RemoveImageFromGroup :exec
+DELETE FROM group_images
+WHERE group_id = $1 AND image_id = $2
+`
+
+type RemoveImageFromGroupParams struct {
+	GroupID int32
+	ImageID int32
+}
+
+func (q *Queries) RemoveImageFromGroup(ctx context.Context, arg RemoveImageFromGroupParams) error {
+	_, err := q.db.ExecContext(ctx, removeImageFromGroup, arg.GroupID, arg.ImageID)
+	return err
+}

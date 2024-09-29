@@ -7,6 +7,10 @@ RETURNING *;
 SELECT * FROM robot_accounts
 WHERE id = $1;
 
+-- name: GetRobotAccBySatelliteID :one
+SELECT robot_name, robot_secret FROM robot_accounts
+WHERE satellite_id = $1;
+
 -- name: ListRobotAccounts :many
 SELECT * FROM robot_accounts;
 

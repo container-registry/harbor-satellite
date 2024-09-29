@@ -7,7 +7,6 @@ package database
 
 import (
 	"context"
-	"database/sql"
 )
 
 const addRobotAccount = `-- name: AddRobotAccount :one
@@ -19,7 +18,7 @@ RETURNING id, robot_name, robot_secret, satellite_id, created_at, updated_at
 type AddRobotAccountParams struct {
 	RobotName   string
 	RobotSecret string
-	SatelliteID sql.NullInt32
+	SatelliteID int32
 }
 
 func (q *Queries) AddRobotAccount(ctx context.Context, arg AddRobotAccountParams) (RobotAccount, error) {
@@ -44,6 +43,23 @@ WHERE id = $1
 func (q *Queries) DeleteRobotAccount(ctx context.Context, id int32) error {
 	_, err := q.db.ExecContext(ctx, deleteRobotAccount, id)
 	return err
+}
+
+const getRobotAccBySatelliteID = `-- name: GetRobotAccBySatelliteID :one
+SELECT robot_name, robot_secret FROM robot_accounts
+WHERE satellite_id = $1
+`
+
+type GetRobotAccBySatelliteIDRow struct {
+	RobotName   string
+	RobotSecret string
+}
+
+func (q *Queries) GetRobotAccBySatelliteID(ctx context.Context, satelliteID int32) (GetRobotAccBySatelliteIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getRobotAccBySatelliteID, satelliteID)
+	var i GetRobotAccBySatelliteIDRow
+	err := row.Scan(&i.RobotName, &i.RobotSecret)
+	return i, err
 }
 
 const getRobotAccount = `-- name: GetRobotAccount :one
