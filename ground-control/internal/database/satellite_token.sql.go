@@ -29,12 +29,25 @@ func (q *Queries) AddToken(ctx context.Context, arg AddTokenParams) (string, err
 
 const deleteToken = `-- name: DeleteToken :exec
 DELETE FROM satellite_token
-WHERE id = $1
+WHERE token = $1
 `
 
-func (q *Queries) DeleteToken(ctx context.Context, id int32) error {
-	_, err := q.db.ExecContext(ctx, deleteToken, id)
+func (q *Queries) DeleteToken(ctx context.Context, token string) error {
+	_, err := q.db.ExecContext(ctx, deleteToken, token)
 	return err
+}
+
+const getSatelliteIDByToken = `-- name: GetSatelliteIDByToken :one
+SELECT satellite_id
+FROM satellite_token
+WHERE token = $1
+`
+
+func (q *Queries) GetSatelliteIDByToken(ctx context.Context, token string) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getSatelliteIDByToken, token)
+	var satellite_id int32
+	err := row.Scan(&satellite_id)
+	return satellite_id, err
 }
 
 const getToken = `-- name: GetToken :one

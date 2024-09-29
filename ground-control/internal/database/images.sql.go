@@ -77,6 +77,49 @@ func (q *Queries) GetImage(ctx context.Context, id int32) (Image, error) {
 	return i, err
 }
 
+const getReposOfSatellite = `-- name: GetReposOfSatellite :many
+SELECT i.repository
+FROM satellite_groups sg
+JOIN group_images gi
+  ON sg.group_id = gi.group_id
+JOIN images i
+  ON gi.image_id = i.id
+WHERE sg.satellite_id = $1
+
+UNION
+
+SELECT i.repository
+FROM satellite_labels sl
+JOIN label_images li
+  ON sl.label_id = li.label_id
+JOIN images i
+  ON li.image_id = i.id
+WHERE sl.satellite_id = $1
+`
+
+func (q *Queries) GetReposOfSatellite(ctx context.Context, satelliteID int32) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getReposOfSatellite, satelliteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var repository string
+		if err := rows.Scan(&repository); err != nil {
+			return nil, err
+		}
+		items = append(items, repository)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listImages = `-- name: ListImages :many
 SELECT id, registry, repository, tag, digest, created_at, updated_at FROM images
 `

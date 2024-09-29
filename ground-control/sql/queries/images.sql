@@ -14,6 +14,25 @@ RETURNING *;
 DELETE FROM images
 WHERE id = $1;
 
+-- name: GetReposOfSatellite :many
+SELECT i.repository
+FROM satellite_groups sg
+JOIN group_images gi
+  ON sg.group_id = gi.group_id
+JOIN images i
+  ON gi.image_id = i.id
+WHERE sg.satellite_id = $1
+
+UNION
+
+SELECT i.repository
+FROM satellite_labels sl
+JOIN label_images li
+  ON sl.label_id = li.label_id
+JOIN images i
+  ON li.image_id = i.id
+WHERE sl.satellite_id = $1;
+
 -- -- name: GetImagesForSatellite :many
 -- WITH satellite_groups AS (
 --     SELECT group_id FROM satellite_groups WHERE satellite_id = (SELECT id FROM satellites WHERE satellites.token = $1)

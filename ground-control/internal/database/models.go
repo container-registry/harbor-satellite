@@ -63,7 +63,7 @@ type RobotAccount struct {
 	ID          int32
 	RobotName   string
 	RobotSecret string
-	SatelliteID sql.NullInt32
+	SatelliteID int32
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
