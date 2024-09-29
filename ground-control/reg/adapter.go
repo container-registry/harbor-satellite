@@ -16,6 +16,13 @@ type Image struct {
 	Name   string
 }
 
+type Images struct {
+	Registry   string `json:"registry"         yaml:"registry"`
+	Repository string `json:"repository"       yaml:"repository"`
+	Tag        string `json:"tag,omitempty"    yaml:"tag,omitempty"`
+	Digest     string `json:"digest,omitempty" yaml:"digest,omitempty"`
+}
+
 type TagListResponse struct {
 	Name string   `json:"name"`
 	Tags []string `json:"tags"`
