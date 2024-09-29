@@ -70,17 +70,17 @@ func (r *BasicReplicator) Replicate(ctx context.Context) error {
 		}
 		log.Info().Msgf("Pulling image %s from repository %s at registry %s", image, repo, source_registry)
 		// Pull the image at the given repository at the source registry
-		_, err = crane.Pull(fmt.Sprintf("%s/%s/%s", source_registry, repo, image), options...)
+		srcImage, err := crane.Pull(fmt.Sprintf("%s/%s/%s", source_registry, repo, image), options...)
 		if err != nil {
 			logger.FromContext(ctx).Error().Msgf("Failed to pull image: %v", err)
 			return err
 		}
 		// Push the image to the local registry
-		// err = crane.Push(srcImage, fmt.Sprintf("%s/%s", r.zot_url, image), options...)
-		// if err != nil {
-		// 	logger.FromContext(ctx).Error().Msgf("Failed to push image: %v", err)
-		// 	return err
-		// }
+		err = crane.Push(srcImage, fmt.Sprintf("%s/%s", r.zot_url, image), options...)
+		if err != nil {
+			logger.FromContext(ctx).Error().Msgf("Failed to push image: %v", err)
+			return err
+		}
 		log.Info().Msgf("Image %s pushed successfully", image)
 	}
 	// Delete ./local-oci-layout directory

@@ -28,13 +28,21 @@ type Scheduler interface {
 }
 
 type BasicScheduler struct {
+	// name is the key of the scheduler
 	name      SchedulerKey
+	// cron is the cron scheduler
 	cron      *cron.Cron
+	// processes is a map of processes which are attached to the scheduler
 	processes map[string]Process
+	// locks is a map of locks for each process which is used to schedule if the process are interdependent
 	locks     map[string]*sync.Mutex
+	// stopped is a flag to check if the scheduler is stopped
 	stopped   bool
+	// counter is the counter for the unique ID of the process
 	counter   uint64
+	// mu is the mutex for the scheduler
 	mu        sync.Mutex
+	// ctx is the context of the scheduler
 	ctx       context.Context
 }
 
@@ -67,7 +75,6 @@ func (s *BasicScheduler) Schedule(process Process) error {
 			return fmt.Errorf("process with Name %s already exists", process.GetName())
 		}
 	}
-	s.processes[process.GetName()] = process
 	// Add the process to the scheduler
 	_, err := s.cron.AddFunc(process.GetCronExpr(), func() {
 		s.executeProcess(process)
@@ -75,6 +82,7 @@ func (s *BasicScheduler) Schedule(process Process) error {
 	if err != nil {
 		return fmt.Errorf("error adding process to scheduler: %w", err)
 	}
+	s.processes[process.GetName()] = process
 	log.Info().Msgf("Process %s scheduled with cron expression %s", process.GetName(), process.GetCronExpr())
 	return nil
 }
