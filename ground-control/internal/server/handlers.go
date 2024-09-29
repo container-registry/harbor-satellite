@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"container-registry.com/harbor-satellite/ground-control/internal/database"
+	"container-registry.com/harbor-satellite/ground-control/internal/utils"
 	"container-registry.com/harbor-satellite/ground-control/reg"
 	"github.com/gorilla/mux"
 )
@@ -28,7 +29,7 @@ type GroupRequestParams struct {
 type LabelRequestParams struct {
 	LabelName string `json:"label_name"`
 }
-type AddSatelliteParams struct {
+type RegisterSatelliteParams struct {
 	Name   string    `json:"satellite_name"`
 	Groups *[]string `json:"groups,omitempty"`
 	Labels *[]string `json:"labels,omitempty"`
@@ -37,7 +38,7 @@ type AddSatelliteToGroupParams struct {
 	SatelliteID int `json:"satellite_ID"`
 	GroupID     int `json:"group_ID"`
 }
-type AddSatelliteToLabelParams struct {
+type AddLabelToSatelliteParams struct {
 	SatelliteID int `json:"satellite_ID"`
 	LabelID     int `json:"label_ID"`
 }
@@ -50,10 +51,7 @@ type AssignImageToGroupParams struct {
 	ImageID int32 `json:"image_ID"`
 }
 type ImageAddParams struct {
-	Registry   string `json:"registry"`
-	Repository string `json:"repository"`
-	Tag        string `json:"tag"`
-	Digest     string `json:"digest"`
+	Image string `json:"image"`
 }
 type GetGroupRequest struct {
 	GroupName string `json:"group_name"`
@@ -140,15 +138,27 @@ func (s *Server) createLabelHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) addImageHandler(w http.ResponseWriter, r *http.Request) {
 	var req ImageAddParams
 	if err := DecodeRequestBody(r, &req); err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	image, err := utils.ParseArtifactURL(req.Image)
+	if err != nil {
+		log.Println(err)
+		err = &AppError{
+			Message: "Error: Invalid Artifact URL",
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}
 
 	params := database.AddImageParams{
-		Registry:   req.Registry,
-		Repository: req.Repository,
-		Tag:        req.Tag,
-		Digest:     req.Digest,
+		Registry:   image.Registry,
+		Repository: image.Repository,
+		Tag:        image.Tag,
+		Digest:     image.Digest,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
@@ -177,7 +187,7 @@ func (s *Server) listImageHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) removeImageHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	imageID := vars["imageID"]
+	imageID := vars["id"]
 
 	id, err := strconv.ParseInt(imageID, 10, 32)
 	if err != nil {
@@ -194,11 +204,12 @@ func (s *Server) removeImageHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
-	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+	WriteJSONResponse(w, http.StatusNoContent, map[string]string{})
 }
 
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
-	var req AddSatelliteParams
+	var req RegisterSatelliteParams
+
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -316,25 +327,103 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// get projects from images.
+	repos, err := q.GetReposOfSatellite(r.Context(), satellite.ID)
+	if err != nil {
+		log.Println("error in repos")
+		log.Println(err)
+		HandleAppError(w, err)
+		tx.Rollback()
+		return
+	}
+
+	robot, err := utils.CreateRobotAccForSatellite(r.Context(), repos, satellite.Name)
+	if err != nil {
+		log.Println("error in creating robot account")
+		log.Println(err)
+		HandleAppError(w, err)
+		tx.Rollback()
+		return
+	}
+
+	_, err = q.AddRobotAccount(r.Context(), database.AddRobotAccountParams{
+		RobotName:   robot.Name,
+		RobotSecret: robot.Secret,
+		SatelliteID: satellite.ID,
+	})
+	if err != nil {
+		log.Println("error in adding robot account to DB")
+		log.Println(err)
+		HandleAppError(w, err)
+		tx.Rollback()
+		return
+	}
+
 	tx.Commit()
 	WriteJSONResponse(w, http.StatusOK, tk)
 }
 
 func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
-	var req AddSatelliteParams
-	if err := DecodeRequestBody(r, &req); err != nil {
+	vars := mux.Vars(r)
+	token := vars["token"]
+
+	// Start a new transaction
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}
 
-	// result, err := s.dbQueries.CreateSatellite(r.Context(), params)
-	// if err != nil {
-	// 	log.Println(err)
-	// 	HandleAppError(w, err)
-	// 	return
-	// }
-	//
-	// WriteJSONResponse(w, http.StatusOK, result)
+	q := s.dbQueries.WithTx(tx)
+
+	defer func() {
+		if p := recover(); p != nil {
+			// If there's a panic, rollback the transaction
+			tx.Rollback()
+			panic(p) // Re-throw the panic after rolling back
+		} else if err != nil {
+			tx.Rollback() // Rollback transaction on error
+		}
+	}()
+
+	satelliteID, err := q.GetSatelliteIDByToken(r.Context(), token)
+	if err != nil {
+		log.Println("Invalid Satellite Token")
+		log.Println(err)
+		err := &AppError{
+			Message: "Error: Invalid Token",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		tx.Rollback()
+		return
+	}
+
+	err = q.DeleteToken(r.Context(), token)
+	if err != nil {
+		log.Println("error deleting token")
+		log.Println(err)
+		HandleAppError(w, err)
+		tx.Rollback()
+		return
+	}
+
+	robot, err := q.GetRobotAccBySatelliteID(r.Context(), satelliteID)
+	if err != nil {
+		log.Println("Robot Account Not Found")
+		log.Println(err)
+		err := &AppError{
+			Message: "Error: Robot Account Not Found",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		tx.Rollback()
+		return
+	}
+
+	tx.Commit()
+	WriteJSONResponse(w, http.StatusOK, robot)
 }
 
 func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
@@ -367,28 +456,6 @@ func (s *Server) deleteSatelliteByID(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-// // TO-DO: remove this
-// func (s *Server) addSatelliteHandler(w http.ResponseWriter, r *http.Request) {
-// 	var req AddSatelliteParams
-// 	if err := DecodeRequestBody(r, &req); err != nil {
-// 		HandleAppError(w, err)
-// 		return
-// 	}
-//
-// 	params := database.CreateSatelliteParams{
-// 		Name: req.Name,
-// 	}
-//
-// 	result, err := s.dbQueries.CreateSatellite(r.Context(), params)
-// 	if err != nil {
-// 		log.Println(err)
-// 		HandleAppError(w, err)
-// 		return
-// 	}
-//
-// 	WriteJSONResponse(w, http.StatusOK, result)
-// }
-
 func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var req AddSatelliteToGroupParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -411,8 +478,8 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
-func (s *Server) addSatelliteToLabel(w http.ResponseWriter, r *http.Request) {
-	var req AddSatelliteToLabelParams
+func (s *Server) AddLabelToSatellite(w http.ResponseWriter, r *http.Request) {
+	var req AddLabelToSatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
 		return
@@ -475,6 +542,53 @@ func (s *Server) assignImageToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) deleteImageFromGroup(w http.ResponseWriter, r *http.Request) {
+	var req AssignImageToGroupParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	params := database.RemoveImageFromGroupParams{
+		GroupID: int32(req.GroupID),
+		ImageID: int32(req.ImageID),
+	}
+
+	err := s.dbQueries.RemoveImageFromGroup(r.Context(), params)
+	if err != nil {
+		log.Printf("Error: Failed to delete image from group: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) listGroupImages(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupID := vars["groupID"]
+
+	id, err := strconv.ParseInt(groupID, 10, 32)
+	if err != nil {
+		log.Printf("Error: Invalid groupID: %v", err)
+		err := &AppError{
+			Message: "Error: Invalid GroupID",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	result, err := s.dbQueries.GetImagesForGroup(r.Context(), int32(id))
+	if err != nil {
+		log.Printf("Error: Failed to get image for group: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
 }
 
 // func (s *Server) GetImagesForSatellite(w http.ResponseWriter, r *http.Request) {
