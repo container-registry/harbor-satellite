@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"container-registry.com/harbor-satellite/internal/notifier"
 	"container-registry.com/harbor-satellite/logger"
 )
 
@@ -18,15 +19,17 @@ type FetchAndReplicateStateProcess struct {
 	cronExpr             string
 	isRunning            bool
 	stateReader          StateReader
+	notifier             notifier.Notifier
 }
 
-func NewFetchAndReplicateStateProcess(id uint64, cronExpr string, stateFetcher StateFetcher) FetchAndReplicateStateProcess {
+func NewFetchAndReplicateStateProcess(id uint64, cronExpr string, stateFetcher StateFetcher, notifier notifier.Notifier) FetchAndReplicateStateProcess {
 	return FetchAndReplicateStateProcess{
 		id:                   id,
 		name:                 FetchAndReplicateStateProcessName,
 		cronExpr:             cronExpr,
 		isRunning:            false,
 		stateArtifactFetcher: stateFetcher,
+		notifier:             notifier,
 	}
 }
 
@@ -50,6 +53,9 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	if !f.HasStateChanged(newStateFetched) {
 		log.Info().Msg("State has not changed")
 		return nil
+	}
+	if err := f.notifier.Notify(); err != nil {
+		log.Error().Err(err).Msg("Error sending notification")
 	}
 
 	replicator := BasicNewReplicator(newStateFetched)
