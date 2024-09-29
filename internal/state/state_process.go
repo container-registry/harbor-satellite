@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"container-registry.com/harbor-satellite/internal/notifier"
 	"container-registry.com/harbor-satellite/logger"
@@ -20,29 +21,36 @@ type FetchAndReplicateStateProcess struct {
 	isRunning            bool
 	stateReader          StateReader
 	notifier             notifier.Notifier
+	mu                   *sync.Mutex
 }
 
-func NewFetchAndReplicateStateProcess(id uint64, cronExpr string, stateFetcher StateFetcher, notifier notifier.Notifier) FetchAndReplicateStateProcess {
-	return FetchAndReplicateStateProcess{
+func NewFetchAndReplicateStateProcess(id uint64, cronExpr string, stateFetcher StateFetcher, notifier notifier.Notifier) *FetchAndReplicateStateProcess {
+	return &FetchAndReplicateStateProcess{
 		id:                   id,
 		name:                 FetchAndReplicateStateProcessName,
 		cronExpr:             cronExpr,
 		isRunning:            false,
 		stateArtifactFetcher: stateFetcher,
 		notifier:             notifier,
+		mu:                   &sync.Mutex{},
 	}
 }
 
 func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	log := logger.FromContext(ctx)
+	f.mu.Lock()
 	if f.IsRunning() {
+		f.mu.Unlock()
 		log.Warn().Msg("Process is already running")
 		return fmt.Errorf("process %s is already running", f.GetName())
 	}
 	log.Info().Msg("Starting process to fetch and replicate state")
 	f.isRunning = true
+	f.mu.Unlock()
 	defer func() {
+		f.mu.Lock()
 		f.isRunning = false
+		f.mu.Unlock()
 	}()
 
 	newStateFetched, err := f.stateArtifactFetcher.FetchStateArtifact()
@@ -58,11 +66,12 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		log.Error().Err(err).Msg("Error sending notification")
 	}
 
-	replicator := BasicNewReplicator(newStateFetched)
+	replicator := NewBasicReplicator(newStateFetched)
 	if err := replicator.Replicate(ctx); err != nil {
 		log.Error().Err(err).Msg("Error replicating state")
 		return err
 	}
+	f.stateReader = newStateFetched
 	return nil
 }
 

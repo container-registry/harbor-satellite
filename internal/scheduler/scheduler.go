@@ -46,14 +46,14 @@ type BasicScheduler struct {
 	ctx       context.Context
 }
 
-func NewBasicScheduler(ctx *context.Context) Scheduler {
+func NewBasicScheduler(ctx context.Context) Scheduler {
 	return &BasicScheduler{
 		cron:      cron.New(),
 		processes: make(map[string]Process),
 		locks:     make(map[string]*sync.Mutex),
 		mu:        sync.Mutex{},
 		name:      BasicSchedulerKey,
-		ctx:       *ctx,
+		ctx:       ctx,
 	}
 }
 
@@ -70,10 +70,8 @@ func (s *BasicScheduler) Schedule(process Process) error {
 	log.Info().Msgf("Scheduling process %s", process.GetName())
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, processes := range s.processes {
-		if process.GetName() == processes.GetName() {
-			return fmt.Errorf("process with Name %s already exists", process.GetName())
-		}
+	if _, exists := s.processes[process.GetName()]; exists {
+		return fmt.Errorf("process %s already exists", process.GetName())
 	}
 	// Add the process to the scheduler
 	_, err := s.cron.AddFunc(process.GetCronExpr(), func() {

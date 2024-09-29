@@ -48,7 +48,7 @@ func run() error {
 	if err := handleRegistrySetup(g, log, cancel); err != nil {
 		return err
 	}
-	scheduler := scheduler.NewBasicScheduler(&ctx)
+	scheduler := scheduler.NewBasicScheduler(ctx)
 	ctx = context.WithValue(ctx, scheduler.GetSchedulerKey(), scheduler)
 	err := scheduler.Start()
 	if err != nil {

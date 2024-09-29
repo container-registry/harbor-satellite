@@ -82,7 +82,7 @@ func HasInvalidPathChars(input string) bool {
 func GetRepositoryAndImageNameFromArtifact(repository string) (string, string, error) {
 	parts := strings.Split(repository, "/")
 	if len(parts) < 2 {
-		return "", "", fmt.Errorf("invalid repository format")
+		return "", "", fmt.Errorf("invalid repository format: %s. Expected format: repo/image", repository)
 	}
 	repo := parts[0]
 	image := parts[1]

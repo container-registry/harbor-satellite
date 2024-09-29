@@ -42,7 +42,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	// Creating a process to fetch and replicate the state
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(scheduler.NextID(), cronExpr, s.stateArtifactFetcher, notifier)
 	// Add the process to the scheduler
-	scheduler.Schedule(&fetchAndReplicateStateProcess)
+	scheduler.Schedule(fetchAndReplicateStateProcess)
 
 	return nil
 }

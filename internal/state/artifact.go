@@ -19,8 +19,12 @@ type Artifact struct {
 	Hash       string `json:"hash"`
 }
 
-func NewArtifact() ArtifactReader {
-	return &Artifact{}
+func NewArtifact(repository, tag, hash string) ArtifactReader {
+	return &Artifact{
+		Repository: repository,
+		Tag:        tag,
+		Hash:       hash,
+	}
 }
 
 func (a *Artifact) GetRepository() string {

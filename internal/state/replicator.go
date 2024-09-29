@@ -18,34 +18,20 @@ type Replicator interface {
 }
 
 type BasicReplicator struct {
-	username     string
-	password     string
-	use_unsecure bool
-	zot_url      string
-	state_reader StateReader
+	username    string
+	password    string
+	useUnsecure bool
+	zotURL      string
+	stateReader StateReader
 }
 
-type ImageInfo struct {
-	Name string `json:"name"`
-}
-
-type Repository struct {
-	Repository string      `json:"repository"`
-	Images     []ImageInfo `json:"images"`
-}
-
-type RegistryInfo struct {
-	RegistryUrl  string       `json:"registryUrl"`
-	Repositories []Repository `json:"repositories"`
-}
-
-func BasicNewReplicator(state_reader StateReader) Replicator {
+func NewBasicReplicator(state_reader StateReader) Replicator {
 	return &BasicReplicator{
-		username:     config.GetHarborUsername(),
-		password:     config.GetHarborPassword(),
-		use_unsecure: config.UseUnsecure(),
-		zot_url:      config.GetZotURL(),
-		state_reader: state_reader,
+		username:    config.GetHarborUsername(),
+		password:    config.GetHarborPassword(),
+		useUnsecure: config.UseUnsecure(),
+		zotURL:      config.GetZotURL(),
+		stateReader: state_reader,
 	}
 }
 
@@ -57,28 +43,29 @@ func (r *BasicReplicator) Replicate(ctx context.Context) error {
 	})
 
 	options := []crane.Option{crane.WithAuth(auth)}
-	if r.use_unsecure {
+	if r.useUnsecure {
 		options = append(options, crane.Insecure)
 	}
-	source_registry := r.state_reader.GetRegistryURL()
-	for _, artifact := range r.state_reader.GetArtifacts() {
+	sourceRegistry := r.stateReader.GetRegistryURL()
+
+	for _, artifact := range r.stateReader.GetArtifacts() {
 		// Extract the image name from the repository of the artifact
 		repo, image, err := utils.GetRepositoryAndImageNameFromArtifact(artifact.GetRepository())
 		if err != nil {
 			log.Error().Msgf("Error getting repository and image name: %v", err)
 			return err
 		}
-		log.Info().Msgf("Pulling image %s from repository %s at registry %s", image, repo, source_registry)
+		log.Info().Msgf("Pulling image %s from repository %s at registry %s", image, repo, sourceRegistry)
 		// Pull the image at the given repository at the source registry
-		srcImage, err := crane.Pull(fmt.Sprintf("%s/%s/%s", source_registry, repo, image), options...)
+		srcImage, err := crane.Pull(fmt.Sprintf("%s/%s/%s", sourceRegistry, repo, image), options...)
 		if err != nil {
-			logger.FromContext(ctx).Error().Msgf("Failed to pull image: %v", err)
+			log.Error().Msgf("Failed to pull image: %v", err)
 			return err
 		}
 		// Push the image to the local registry
-		err = crane.Push(srcImage, fmt.Sprintf("%s/%s", r.zot_url, image), options...)
+		err = crane.Push(srcImage, fmt.Sprintf("%s/%s", r.zotURL, image), options...)
 		if err != nil {
-			logger.FromContext(ctx).Error().Msgf("Failed to push image: %v", err)
+			log.Error().Msgf("Failed to push image: %v", err)
 			return err
 		}
 		log.Info().Msgf("Image %s pushed successfully", image)

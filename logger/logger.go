@@ -46,7 +46,11 @@ func AddLoggerToContext(ctx context.Context, logLevel string) context.Context {
 			if i == nil {
 				l = colorize("???", 37) // white
 			} else {
-				l = strings.ToUpper(fmt.Sprintf("%s", i))[0:3]
+				lStr := strings.ToUpper(fmt.Sprintf("%s", i))
+				if len(lStr) > 3 {
+					lStr = lStr[:3]
+				}
+				l = lStr 
 			}
 		}
 		return fmt.Sprintf("| %s |", l)
