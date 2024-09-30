@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -199,8 +200,15 @@ func (s *Server) removeImageHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = s.dbQueries.DeleteImage(r.Context(), int32(id))
 	if err != nil {
-		err = fmt.Errorf("error: delete image failed: %v", err)
 		log.Println(err)
+		if err == sql.ErrNoRows {
+			err = &AppError{
+				Message: fmt.Sprintf("Image with ID %d not found", id),
+				Code:    http.StatusNotFound,
+			}
+		} else {
+			err = fmt.Errorf("error: delete image failed: %v", err)
+		}
 		HandleAppError(w, err)
 		return
 	}

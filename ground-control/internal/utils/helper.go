@@ -34,13 +34,11 @@ func ParseArtifactURL(rawURL string) (reg.Images, error) {
 
 	// Validate that repository and registry exist
 	if repo == "" || registry == "" {
-		log.Println("Error: Missing repository or registry.")
 		return reg.Images{}, fmt.Errorf("error: missing repository or registry in URL: %s", rawURL)
 	}
 
 	// Validate that either tag or digest exists
 	if tag == "" && digest == "" {
-		log.Println("Error: Missing tag or digest.")
 		return reg.Images{}, fmt.Errorf("error: missing tag or digest in artifact URL: %s", rawURL)
 	}
 
@@ -81,9 +79,7 @@ func CreateRobotAccForSatellite(ctx context.Context, repos []string, name string
 	// get harbor client
 	harborClient, err := harbor.GetClient()
 	if err != nil {
-		log.Println("error in getting client")
-		log.Println(err)
-		return nil, err
+		return nil, fmt.Errorf("error getting Harbor client: %w", err)
 	}
 
 	var projects []string
@@ -97,9 +93,7 @@ func CreateRobotAccForSatellite(ctx context.Context, repos []string, name string
 
 	robot, err := harbor.CreateRobotAccount(ctx, robotTemp, harborClient)
 	if err != nil {
-		log.Println("error: creating robot account")
-		log.Println(err)
-		return nil, err
+		return nil, fmt.Errorf("error creating robot account: %w", err)
 	}
 
 	return robot.Payload, nil
