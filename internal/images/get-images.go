@@ -20,7 +20,6 @@ type ImageList struct {
 	} `json:"repositories"`
 }
 
-
 type Image struct {
 	ID         int       `json:"ID"`
 	Registry   string    `json:"Registry"`
