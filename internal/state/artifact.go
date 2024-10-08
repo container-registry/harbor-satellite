@@ -74,6 +74,15 @@ func (a *Artifact) HasChanged(newArtifact ArtifactReader) bool {
 		return true
 	}
 
+	if a.GetType() != newArtifact.GetType() {
+		return true
+	}
+
+	// Compare the tags (order-agnostic comparison using reflect.DeepEqual)
+	if !reflect.DeepEqual(a.GetTags(), newArtifact.GetTags()) {
+		return true
+	}
+
 	// No changes detected
 	return false
 }

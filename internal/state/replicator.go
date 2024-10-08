@@ -36,6 +36,7 @@ func NewBasicReplicator(state_reader StateReader) Replicator {
 		stateReader: state_reader,
 	}
 }
+
 // Replicate replicates images from the source registry to the Zot registry.
 func (r *BasicReplicator) Replicate(ctx context.Context) error {
 	log := logger.FromContext(ctx)
@@ -48,7 +49,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context) error {
 	if r.useUnsecure {
 		options = append(options, crane.Insecure)
 	}
-	sourceRegistry := utils.FormatRegistryUrl(config.GetRemoteRegistryURL())
+	sourceRegistry := utils.FormatRegistryURL(config.GetRemoteRegistryURL())
 
 	for _, artifact := range r.stateReader.GetArtifacts() {
 		// Extract the image name and repository from the artifact
@@ -72,7 +73,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context) error {
 
 			// Convert Docker manifest to OCI manifest
 			ociImage := mutate.MediaType(srcImage, types.OCIManifestSchema1)
-			
+
 			// Push the converted OCI image to the Zot registry
 			err = crane.Push(ociImage, fmt.Sprintf("%s/%s", r.zotURL, image), options...)
 			if err != nil {

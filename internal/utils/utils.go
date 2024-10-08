@@ -78,7 +78,6 @@ func HasInvalidPathChars(input string) bool {
 	return strings.ContainsAny(input, "\\:*?\"<>|")
 }
 
-
 func GetRepositoryAndImageNameFromArtifact(repository string) (string, string, error) {
 	parts := strings.Split(repository, "/")
 	if len(parts) < 2 {
@@ -89,7 +88,7 @@ func GetRepositoryAndImageNameFromArtifact(repository string) (string, string, e
 	return repo, image, nil
 }
 
-func FormatDuration(input string) (string , error) {
+func FormatDuration(input string) (string, error) {
 	seconds, err := strconv.Atoi(input) // Convert input string to an integer
 	if err != nil {
 		return "", errors.New("invalid input: not a valid number")
@@ -117,8 +116,8 @@ func FormatDuration(input string) (string , error) {
 	return result, nil
 }
 
-// FormatRegistryUrl formats the registry URL by trimming the "https://" or "http://" prefix if present
-func FormatRegistryUrl(url string) string {
+// FormatRegistryURL formats the registry URL by trimming the "https://" or "http://" prefix if present
+func FormatRegistryURL(url string) string {
 	// Trim the "https://" or "http://" prefix if present
 	url = strings.TrimPrefix(url, "https://")
 	url = strings.TrimPrefix(url, "http://")
