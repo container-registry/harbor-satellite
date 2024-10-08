@@ -116,3 +116,11 @@ func FormatDuration(input string) (string , error) {
 
 	return result, nil
 }
+
+// FormatRegistryUrl formats the registry URL by trimming the "https://" or "http://" prefix if present
+func FormatRegistryUrl(url string) string {
+	// Trim the "https://" or "http://" prefix if present
+	url = strings.TrimPrefix(url, "https://")
+	url = strings.TrimPrefix(url, "http://")
+	return url
+}

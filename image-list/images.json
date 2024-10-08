@@ -1,15 +1,25 @@
 {
-  "registry": "http://demo.goharbor.io/",
-   "artifacts": [
-     {
-      "repository": "satellite-test-alpine/alpine",
-      "tag": "latest",
-      "hash": "sha256:9cee2b38"
+  "registry": "Satellite",
+  "artifacts": [
+    {
+      "repository": "satellite-test-group-state/alpine",
+      "tag": [
+        "latest"
+      ],
+      "labels": null,
+      "type": "IMAGE",
+      "digest": "sha256:9cee2b382fe2412cd77d5d437d15a93da8de373813621f2e4d406e3df0cf0e7c",
+      "deleted": false
     },
-   {
-    "repository": "satellite-test-postgres/postgres",
-    "tag": "latest",
-    "hash": "sha256:9cee2b38"
-   }
+    {
+      "repository": "satellite-test-group-state/postgres",
+      "tag": [
+        "latest"
+      ],
+      "labels": null,
+      "type": "IMAGE",
+      "digest": "sha256:dde924f70bc972261013327c480adf402ea71487b5750e40569a0b74fa90c74a",
+      "deleted": false
+    }
   ]
 }
