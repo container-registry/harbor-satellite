@@ -20,16 +20,17 @@ type Endpoint struct {
 	Method string
 	Path   string
 }
+
 // DefaultRouter
 type DefaultRouter struct {
 	// mux is the default http.ServeMux
-	mux        *http.ServeMux
+	mux *http.ServeMux
 	// middleware is the list of middleware to be applied to default router and all groups inside it
 	middleware []Middleware
 	// rootGroup is the root RouterGroup
-	rootGroup  *RouterGroup
+	rootGroup *RouterGroup
 	// endpoints is the list of all registered endpoints
-	Endpoints  []Endpoint
+	Endpoints []Endpoint
 }
 
 // NewDefaultRouter creates a new DefaultRouter with the given prefix
@@ -39,26 +40,21 @@ func NewDefaultRouter(prefix string) *DefaultRouter {
 	return dr
 }
 
-
 func (r *DefaultRouter) Handle(pattern string, handler http.Handler) {
 	r.mux.Handle(pattern, handler)
 }
-
 
 func (r *DefaultRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mux.ServeHTTP(w, req)
 }
 
-
 func (dr *DefaultRouter) HandleFunc(pattern string, handlerFunc func(http.ResponseWriter, *http.Request)) {
 	dr.Handle(pattern, http.HandlerFunc(handlerFunc))
 }
 
-
 func (dr *DefaultRouter) Use(middleware ...Middleware) {
 	dr.middleware = append(dr.middleware, middleware...)
 }
-
 
 // Group creates a new RouterGroup under the rootGroup with the given prefix
 func (dr *DefaultRouter) Group(prefix string) *RouterGroup {

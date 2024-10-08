@@ -58,7 +58,7 @@ jobs:
           version: latest
           verb: call
           module: github.com/container-registry/harbor-satellite
-          args: build --source=. --name=satellite
+          args: build --source=. --component=satellite
 
       - name: Release on Github
         uses: dagger/dagger-for-github@v5
@@ -93,7 +93,7 @@ jobs:
           version: latest
           verb: call
           module: github.com/container-registry/harbor-satellite
-          args: build --source=./ground-control --name=ground-control
+          args: build --source=./ground-control --component=ground-control
 
       - name: Release on Github
         uses: dagger/dagger-for-github@v5
