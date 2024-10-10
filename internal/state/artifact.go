@@ -1,6 +1,8 @@
 package state
 
-import "reflect"
+import (
+	"reflect"
+)
 
 // ArtifactReader defines an interface for reading artifact data
 type ArtifactReader interface {
@@ -10,15 +12,19 @@ type ArtifactReader interface {
 	GetType() string
 	IsDeleted() bool
 	HasChanged(newArtifact ArtifactReader) bool
+	SetRepository(repository string)
+	SetName(name string)
+	GetName() string
 }
 
 // Artifact represents an artifact object in the registry
 type Artifact struct {
-	Deleted    bool     `json:"deleted"`
-	Repository string   `json:"repository"`
-	Tags       []string `json:"tag"`
-	Digest     string   `json:"digest"`
-	Type       string   `json:"type"`
+	Deleted    bool     `json:"deleted,omitempty"`
+	Repository string   `json:"repository,omitempty"`
+	Tags       []string `json:"tag,omitempty"`
+	Digest     string   `json:"digest,omitempty"`
+	Type       string   `json:"type,omitempty"`
+	Name       string   `json:"name,omitempty"`
 }
 
 // NewArtifact creates a new Artifact object
@@ -50,6 +56,10 @@ func (a *Artifact) GetType() string {
 
 func (a *Artifact) IsDeleted() bool {
 	return a.Deleted
+}
+
+func (a *Artifact) GetName() string {
+	return a.Name
 }
 
 // HasChanged compares the current artifact with another to determine if there are any changes
@@ -85,4 +95,12 @@ func (a *Artifact) HasChanged(newArtifact ArtifactReader) bool {
 
 	// No changes detected
 	return false
+}
+
+func (a *Artifact) SetRepository(repository string) {
+	a.Repository = repository
+}
+
+func (a *Artifact) SetName(name string) {
+	a.Name = name
 }

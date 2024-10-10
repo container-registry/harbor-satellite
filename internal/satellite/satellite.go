@@ -35,12 +35,17 @@ func (s *Satellite) Run(ctx context.Context) error {
 		log.Warn().Msgf("Using default duration: %v", state.DefaultFetchAndReplicateStateTimePeriod)
 		cronExpr = state.DefaultFetchAndReplicateStateTimePeriod
 	}
+	userName := config.GetHarborUsername()
+	password := config.GetHarborPassword()
+	zotURL := config.GetZotURL()
+	sourceRegistry := utils.FormatRegistryURL(config.GetRemoteRegistryURL())
+	useUnsecure := config.UseUnsecure()
 	// Get the scheduler from the context
 	scheduler := ctx.Value(s.schedulerKey).(scheduler.Scheduler)
 	// Create a simple notifier and add it to the process
 	notifier := notifier.NewSimpleNotifier(ctx)
 	// Creating a process to fetch and replicate the state
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(scheduler.NextID(), cronExpr, s.stateArtifactFetcher, notifier)
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(scheduler.NextID(), cronExpr, s.stateArtifactFetcher, notifier, userName, password, zotURL, sourceRegistry, useUnsecure)
 	// Add the process to the scheduler
 	scheduler.Schedule(fetchAndReplicateStateProcess)
 

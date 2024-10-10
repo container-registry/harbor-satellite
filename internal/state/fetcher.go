@@ -63,11 +63,11 @@ func (f *FileStateArtifactFetcher) FetchStateArtifact() (StateReader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the state artifact file: %v", err)
 	}
-	state_reader, err := FromJSON(content, f.state_artifact_reader)
+	err = json.Unmarshal(content, &f.state_artifact_reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse the state artifact file: %v", err)
 	}
-	return state_reader, nil
+	return f.state_artifact_reader, nil
 }
 
 func (f *URLStateFetcher) FetchStateArtifact() (StateReader, error) {
@@ -118,13 +118,29 @@ func (f *URLStateFetcher) FetchStateArtifact() (StateReader, error) {
 	if artifactsJSON == nil {
 		return nil, fmt.Errorf("artifacts.json not found in the state artifact")
 	}
-
 	err = json.Unmarshal(artifactsJSON, &f.state_artifact_reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse the artifacts.json file: %v", err)
 	}
+	
+	state, err := ProcessState(&f.state_artifact_reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process the state: %v", err)
+	}
+	return *state, nil
+}
 
-	return f.state_artifact_reader, nil
+func ProcessState(state *StateReader) (*StateReader, error) {
+	for _, artifact := range (*state).GetArtifacts() {
+		repo, image, err := utils.GetRepositoryAndImageNameFromArtifact(artifact.GetRepository())
+		if err != nil {
+			fmt.Printf("Error in getting repository and image name: %v", err)
+			return nil, err
+		}
+		artifact.SetRepository(repo)
+		artifact.SetName(image)
+	}
+	return state, nil
 }
 
 func FromJSON(data []byte, reg StateReader) (StateReader, error) {
