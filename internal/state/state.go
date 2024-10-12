@@ -15,10 +15,10 @@ type StateReader interface {
 	GetArtifactByRepository(repo string) (ArtifactReader, error)
 	// Compare the state artifact with the new state artifact
 	HasStateChanged(newState StateReader) bool
-	// RemoveAllArtifacts remove all the artifacts from the state which contains null tags and return the new state reader
-	RemoveArtifactsWithNullTags(stateWithNullTagsArtifacts StateReader) StateReader
 	// GetArtifactByName takes in the name of the artifact and returns the artifact associated with it
 	GetArtifactByNameAndTag(name, tag string) ArtifactReader
+	// SetArtifacts sets the artifacts in the state
+	SetArtifacts(artifacts []ArtifactReader)
 }
 
 type State struct {
@@ -73,17 +73,6 @@ func (a *State) HasStateChanged(newState StateReader) bool {
 	return false
 }
 
-func (a *State) RemoveArtifactsWithNullTags(stateWithNullTagsArtifacts StateReader) StateReader {
-	var newArtifactsWithoutNullTags []Artifact
-	for _, artifact := range a.Artifacts {
-		if artifact.Tags != nil || len(artifact.Tags) != 0 {
-			newArtifactsWithoutNullTags = append(newArtifactsWithoutNullTags, artifact)
-		}
-	}
-	stateWithNullTagsArtifacts.(*State).Artifacts = newArtifactsWithoutNullTags
-	return stateWithNullTagsArtifacts
-}
-
 func (a *State) GetArtifactByNameAndTag(name, tag string) ArtifactReader {
 	for i := range a.Artifacts {
 		if a.Artifacts[i].GetName() == name {
@@ -95,4 +84,15 @@ func (a *State) GetArtifactByNameAndTag(name, tag string) ArtifactReader {
 		}
 	}
 	return nil
+}
+
+func (a *State) SetArtifacts(artifacts []ArtifactReader) {
+	// Clear existing artifacts
+	a.Artifacts = []Artifact{}
+
+	// Set new artifacts
+	a.Artifacts = make([]Artifact, len(artifacts))
+	for i, artifact := range artifacts {
+		a.Artifacts[i] = *artifact.(*Artifact)
+	}
 }

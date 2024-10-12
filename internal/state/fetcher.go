@@ -15,7 +15,7 @@ import (
 )
 
 type StateFetcher interface {
-	FetchStateArtifact() (StateReader, error)
+	FetchStateArtifact(state interface{}) error
 }
 
 type baseStateFetcher struct {
@@ -58,19 +58,19 @@ func NewFileStateFetcher() StateFetcher {
 	}
 }
 
-func (f *FileStateArtifactFetcher) FetchStateArtifact() (StateReader, error) {
+func (f *FileStateArtifactFetcher) FetchStateArtifact(state interface{}) error {
 	content, err := os.ReadFile(f.filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read the state artifact file: %v", err)
+		return fmt.Errorf("failed to read the state artifact file: %v", err)
 	}
-	err = json.Unmarshal(content, &f.state_artifact_reader)
+	err = json.Unmarshal(content, state)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse the state artifact file: %v", err)
+		return fmt.Errorf("failed to parse the state artifact file: %v", err)
 	}
-	return f.state_artifact_reader, nil
+	return nil
 }
 
-func (f *URLStateFetcher) FetchStateArtifact() (StateReader, error) {
+func (f *URLStateFetcher) FetchStateArtifact(state interface{}) error {
 	auth := authn.FromConfig(authn.AuthConfig{
 		Username: config.GetHarborUsername(),
 		Password: config.GetHarborPassword(),
@@ -86,12 +86,12 @@ func (f *URLStateFetcher) FetchStateArtifact() (StateReader, error) {
 
 	img, err := crane.Pull(fmt.Sprintf("%s/%s/%s:%s", sourceRegistry, f.group_name, f.state_artifact_name, tag), options...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to pull the state artifact: %v", err)
+		return fmt.Errorf("failed to pull the state artifact: %v", err)
 	}
 
 	tarContent := new(bytes.Buffer)
 	if err := crane.Export(img, tarContent); err != nil {
-		return nil, fmt.Errorf("failed to export the state artifact: %v", err)
+		return fmt.Errorf("failed to export the state artifact: %v", err)
 	}
 
 	tr := tar.NewReader(tarContent)
@@ -103,44 +103,25 @@ func (f *URLStateFetcher) FetchStateArtifact() (StateReader, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("failed to read the tar archive: %v", err)
+			return fmt.Errorf("failed to read the tar archive: %v", err)
 		}
 
 		if hdr.Name == "artifacts.json" {
 			artifactsJSON, err = io.ReadAll(tr)
 			if err != nil {
-				return nil, fmt.Errorf("failed to read the artifacts.json file: %v", err)
+				return fmt.Errorf("failed to read the artifacts.json file: %v", err)
 			}
 			break
 		}
 	}
-
 	if artifactsJSON == nil {
-		return nil, fmt.Errorf("artifacts.json not found in the state artifact")
+		return fmt.Errorf("artifacts.json not found in the state artifact")
 	}
-	err = json.Unmarshal(artifactsJSON, &f.state_artifact_reader)
+	err = json.Unmarshal(artifactsJSON, &state)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse the artifacts.json file: %v", err)
+		return fmt.Errorf("failed to parse the artifacts.json file: %v", err)
 	}
-	
-	state, err := ProcessState(&f.state_artifact_reader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to process the state: %v", err)
-	}
-	return *state, nil
-}
-
-func ProcessState(state *StateReader) (*StateReader, error) {
-	for _, artifact := range (*state).GetArtifacts() {
-		repo, image, err := utils.GetRepositoryAndImageNameFromArtifact(artifact.GetRepository())
-		if err != nil {
-			fmt.Printf("Error in getting repository and image name: %v", err)
-			return nil, err
-		}
-		artifact.SetRepository(repo)
-		artifact.SetName(image)
-	}
-	return state, nil
+	return nil
 }
 
 func FromJSON(data []byte, reg StateReader) (StateReader, error) {

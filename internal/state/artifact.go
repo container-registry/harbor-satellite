@@ -19,11 +19,12 @@ type ArtifactReader interface {
 
 // Artifact represents an artifact object in the registry
 type Artifact struct {
-	Deleted    bool     `json:"deleted,omitempty"`
 	Repository string   `json:"repository,omitempty"`
 	Tags       []string `json:"tag,omitempty"`
-	Digest     string   `json:"digest,omitempty"`
+	Labels     []string `json:"labels"`
 	Type       string   `json:"type,omitempty"`
+	Digest     string   `json:"digest,omitempty"`
+	Deleted    bool     `json:"deleted"`
 	Name       string   `json:"name,omitempty"`
 }
 

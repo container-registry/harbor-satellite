@@ -145,12 +145,6 @@ func processURLInput(input string, log *zerolog.Logger) (state.StateFetcher, err
 
 func processFileInput(log *zerolog.Logger) (state.StateFetcher, error) {
 	stateArtifactFetcher := state.NewFileStateFetcher()
-	stateReader, err := stateArtifactFetcher.FetchStateArtifact()
-	if err != nil {
-		log.Error().Err(err).Msg("Error fetching state artifact from file")
-		return nil, err
-	}
-	config.SetRemoteRegistryURL(stateReader.GetRegistryURL())
 	return stateArtifactFetcher, nil
 }
 
