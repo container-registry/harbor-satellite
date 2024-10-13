@@ -89,6 +89,8 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *zerolog.Logger) ([]ArtifactReader, []ArtifactReader, StateReader) {
 	log.Info().Msg("Getting changes")
+	// Remove artifacts with null tags from the new state
+	newState = f.RemoveNullTagArtifacts(newState)
 
 	var entityToDelete []ArtifactReader
 	var entityToReplicate []ArtifactReader
@@ -97,10 +99,7 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 		log.Warn().Msg("Old state is nil")
 		return entityToDelete, newState.GetArtifacts(), newState
 	}
-
-	// Remove artifacts with null tags from the new state
-	newState = f.RemoveNullTagArtifacts(newState)
-
+	
 	// Create maps for quick lookups
 	oldArtifactsMap := make(map[string]ArtifactReader)
 	for _, oldArtifact := range f.stateReader.GetArtifacts() {
