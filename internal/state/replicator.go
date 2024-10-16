@@ -54,7 +54,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []A
 		log.Info().Msgf("Pulling image %s from repository %s at registry %s with tag %s", replicationEntity.GetName(), replicationEntity.GetRepository(), r.sourceRegistry, replicationEntity.GetTags()[0])
 
 		// Pull the image from the source registry
-		srcImage, err := crane.Pull(fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, replicationEntity.GetName(), replicationEntity.GetName(), replicationEntity.GetTags()[0]), options...)
+		srcImage, err := crane.Pull(fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, replicationEntity.GetName(), replicationEntity.GetRepository(), replicationEntity.GetTags()[0]), options...)
 		if err != nil {
 			log.Error().Msgf("Failed to pull image: %v", err)
 			return err
@@ -64,7 +64,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []A
 		ociImage := mutate.MediaType(srcImage, types.OCIManifestSchema1)
 
 		// Push the converted OCI image to the Zot registry
-		err = crane.Push(ociImage, fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, replicationEntity.GetName(), replicationEntity.GetName(), replicationEntity.GetTags()[0]), options...)
+		err = crane.Push(ociImage, fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, replicationEntity.GetName(), replicationEntity.GetRepository(), replicationEntity.GetTags()[0]), options...)
 		if err != nil {
 			log.Error().Msgf("Failed to push image: %v", err)
 			return err
@@ -90,7 +90,7 @@ func (r *BasicReplicator) DeleteReplicationEntity(ctx context.Context, replicati
 	for _, entity := range replicationEntity {
 		log.Info().Msgf("Deleting image %s from repository %s at registry %s with tag %s", entity.GetName(), entity.GetRepository(), r.remoteRegistryURL, entity.GetTags()[0])
 
-		err := crane.Delete(fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetName(), entity.GetName(), entity.GetTags()[0]), options...)
+		err := crane.Delete(fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetName(), entity.GetRepository(), entity.GetTags()[0]), options...)
 		if err != nil {
 			log.Error().Msgf("Failed to delete image: %v", err)
 			return err
