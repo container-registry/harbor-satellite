@@ -8,6 +8,10 @@ import (
 	"github.com/spf13/viper"
 )
 
+func init(){
+	InitConfig()
+}
+
 var AppConfig *Config
 
 type Config struct {

@@ -3,9 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os/signal"
-	"syscall"
 
+	runtime "container-registry.com/harbor-satellite/cmd/container_runtime"
 	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/satellite"
 	"container-registry.com/harbor-satellite/internal/scheduler"
@@ -22,14 +21,17 @@ func NewRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "harbor-satellite",
 		Short: "Harbor Satellite is a tool to replicate images from source registry to Harbor registry",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return config.InitConfig()
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			config.InitConfig()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run()
+			ctx := cmd.Context()
+			ctx, cancel := utils.SetupContext(ctx)
+			ctx = logger.AddLoggerToContext(ctx, config.GetLogLevel())
+			return run(ctx, cancel)
 		},
 	}
-
+	rootCmd.AddCommand(runtime.NewContainerdCommand())
 	return rootCmd
 }
 
@@ -37,17 +39,8 @@ func Execute() error {
 	return NewRootCommand().Execute()
 }
 
-func run() error {
-	// Initialize Config and Logger
-	if err := initConfig(); err != nil {
-		return err
-	}
-
-	ctx, cancel := setupContext()
-	defer cancel()
-
+func run(ctx context.Context, cancel context.CancelFunc) error {
 	g, ctx := errgroup.WithContext(ctx)
-	ctx = logger.AddLoggerToContext(ctx, config.GetLogLevel())
 	log := logger.FromContext(ctx)
 
 	// Set up router and app
@@ -87,11 +80,6 @@ func initConfig() error {
 		return fmt.Errorf("error initializing config: %w", err)
 	}
 	return nil
-}
-
-func setupContext() (context.Context, context.CancelFunc) {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	return ctx, cancel
 }
 
 func setupServerApp(ctx context.Context, log *zerolog.Logger) *server.App {
