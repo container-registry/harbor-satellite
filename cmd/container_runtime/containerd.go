@@ -69,7 +69,7 @@ func NewContainerdCommand() *cobra.Command {
 				return nil
 			}
 			log.Info().Msg("Generating containerd config file for containerd ...")
-			return generateContainerdConfig(defaultZotConfig, log)
+			return GenerateContainerdConfig(defaultZotConfig, log)
 		},
 	}
 
@@ -78,7 +78,7 @@ func NewContainerdCommand() *cobra.Command {
 	return containerdCmd
 }
 
-func generateContainerdConfig(defaultZotConfig *registry.DefaultZotConfig, log *zerolog.Logger) error {
+func GenerateContainerdConfig(defaultZotConfig *registry.DefaultZotConfig, log *zerolog.Logger) error {
 	containerdConfig := containerd.Config{}
 	containerdConfig.PluginConfig = containerd.DefaultConfig()
 	containerdConfig.PluginConfig.Registry.ConfigPath = ContainerDCertPath
