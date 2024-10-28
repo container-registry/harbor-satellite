@@ -21,6 +21,10 @@ type DefaultZotConfig struct {
 	} `json:"log"`
 }
 
+func (c *DefaultZotConfig) GetLocalRegistryURL() string {
+	return fmt.Sprintf("%s:%s", c.HTTP.Address, c.HTTP.Port)
+}
+
 // ReadConfig reads a JSON file from the specified path and unmarshals it into a Config struct.
 func ReadConfig(filePath string) (*DefaultZotConfig, error) {
 	file, err := os.Open(filePath)

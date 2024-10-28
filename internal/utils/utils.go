@@ -140,16 +140,36 @@ func FormatRegistryURL(url string) string {
 	return url
 }
 
-func ReadFile(path string) error {
+func ReadFile(path string, shouldPrint bool) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	content := string(data)
+	if shouldPrint {
+		PrintData(string(data))
+	}
+	return data, nil
+}
+
+// PrintData prints the content of a file line by line
+func PrintData(content string) {
 	lines := strings.Split(content, "\n")
 	fmt.Print("\n")
 	for i, line := range lines {
 		fmt.Printf("%5d | %s\n", i+1, line)
+	}
+}
+
+// WriteFile takes the path and the data wand write the data to the file
+func WriteFile(path string, data []byte) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("error creating file :%s", err)
+	}
+	defer file.Close()
+	_, err = file.Write(data)
+	if err != nil {
+		return fmt.Errorf("error while write to the file :%s", err)
 	}
 	return nil
 }

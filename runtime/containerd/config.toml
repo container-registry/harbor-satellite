@@ -2,14 +2,14 @@ ContainerdEndpoint = ""
 ContainerdRootDir = ""
 RootDir = ""
 StateDir = ""
-cdi_spec_dirs = ["/etc/cdi", "/var/run/cdi"]
+cdi_spec_dirs = []
 device_ownership_from_security_context = false
 disable_apparmor = false
 disable_cgroup = false
-disable_hugetlb_controller = true
+disable_hugetlb_controller = false
 disable_proc_mount = false
-disable_tcp_service = true
-drain_exec_sync_io_timeout = "0s"
+disable_tcp_service = false
+drain_exec_sync_io_timeout = ""
 enable_cdi = false
 enable_selinux = false
 enable_tls_streaming = false
@@ -17,38 +17,38 @@ enable_unprivileged_icmp = false
 enable_unprivileged_ports = false
 ignore_deprecation_warnings = []
 ignore_image_defined_volumes = false
-image_pull_progress_timeout = "5m0s"
+image_pull_progress_timeout = ""
 image_pull_with_sync_fs = false
-max_concurrent_downloads = 3
-max_container_log_line_size = 16384
+max_concurrent_downloads = 0
+max_container_log_line_size = 0
 netns_mounts_under_state_dir = false
 restrict_oom_score_adj = false
-sandbox_image = "registry.k8s.io/pause:3.8"
-selinux_category_range = 1024
-stats_collect_period = 10
-stream_idle_timeout = "4h0m0s"
-stream_server_address = "127.0.0.1"
-stream_server_port = "0"
+sandbox_image = ""
+selinux_category_range = 0
+stats_collect_period = 0
+stream_idle_timeout = ""
+stream_server_address = ""
+stream_server_port = ""
 systemd_cgroup = false
-tolerate_missing_hugetlb_controller = true
+tolerate_missing_hugetlb_controller = false
 unset_seccomp_profile = ""
 
 [cni]
-  bin_dir = "/opt/cni/bin"
-  conf_dir = "/etc/cni/net.d"
+  bin_dir = ""
+  conf_dir = ""
   conf_template = ""
   ip_pref = ""
-  max_conf_num = 1
+  max_conf_num = 0
   setup_serially = false
 
 [containerd]
-  default_runtime_name = "runc"
-  disable_snapshot_annotations = true
+  default_runtime_name = ""
+  disable_snapshot_annotations = false
   discard_unpacked_layers = false
   ignore_blockio_not_enabled_errors = false
   ignore_rdt_not_enabled_errors = false
   no_pivot = false
-  snapshotter = "overlayfs"
+  snapshotter = ""
 
   [containerd.default_runtime]
     base_runtime_spec = ""
@@ -69,34 +69,6 @@ unset_seccomp_profile = ""
 
   [containerd.runtimes]
 
-    [containerd.runtimes.runc]
-      base_runtime_spec = ""
-      cni_conf_dir = ""
-      cni_max_conf_num = 0
-      container_annotations = []
-      pod_annotations = []
-      privileged_without_host_devices = false
-      privileged_without_host_devices_all_devices_allowed = false
-      runtime_engine = ""
-      runtime_path = ""
-      runtime_root = ""
-      runtime_type = "io.containerd.runc.v2"
-      sandbox_mode = "podsandbox"
-      snapshotter = ""
-
-      [containerd.runtimes.runc.options]
-        BinaryName = ""
-        CriuImagePath = ""
-        CriuPath = ""
-        CriuWorkPath = ""
-        IoGid = 0
-        IoUid = 0
-        NoNewKeyring = false
-        NoPivotRoot = false
-        Root = ""
-        ShimCgroup = ""
-        SystemdCgroup = false
-
   [containerd.untrusted_workload_runtime]
     base_runtime_spec = ""
     cni_conf_dir = ""
@@ -115,7 +87,7 @@ unset_seccomp_profile = ""
     [containerd.untrusted_workload_runtime.options]
 
 [image_decryption]
-  key_model = "node"
+  key_model = ""
 
 [registry]
   config_path = "/etc/containerd/certs.d"
