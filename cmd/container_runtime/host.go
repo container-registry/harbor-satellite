@@ -3,6 +3,7 @@ package runtime
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/utils"
@@ -92,6 +93,9 @@ func GenerateContainerdHostConfig(containerdCertPath, genPath string, log *zerol
 	pathTOWrite := fmt.Sprintf("%s/%s", mirrorGenPath, HostToml)
 	log.Info().Msgf("Writing the host.toml file at path: %s", pathTOWrite)
 	hostData, err := toml.Marshal(dockerContainerdHostConfig)
+	hostStr := string(hostData)
+	hostStr = strings.Replace(hostStr, "[host]\n", "", 1)
+	hostData = []byte(hostStr)
 	if err != nil {
 		log.Err(err).Msg("Error marshalling the host.toml file")
 		return fmt.Errorf("error marshalling the host.toml file: %v", err)
