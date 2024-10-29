@@ -11,7 +11,7 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 )
 
-type ListRobotParams struct {
+type ListParams struct {
 	Page     int64
 	PageSize int64
 	Q        string
@@ -26,7 +26,7 @@ func GetRobotDetails(r *robot.CreateRobotCreated) (int64, string, string) {
 	return id, name, secret
 }
 
-func ListRobots(ctx context.Context, opts ListRobotParams, client *v2client.HarborAPI) (*robot.ListRobotOK, error) {
+func ListRobots(ctx context.Context, opts ListParams, client *v2client.HarborAPI) (*robot.ListRobotOK, error) {
 	response, err := client.Robot.ListRobot(
 		ctx,
 		&robot.ListRobotParams{
@@ -85,6 +85,19 @@ func UpdateRobotAccount(ctx context.Context, opts *models.Robot, client *v2clien
 	return response, nil
 }
 
+func GetRobotAccount(ctx context.Context, id int64, client *v2client.HarborAPI) (*models.Robot, error) {
+	response, err := client.Robot.GetRobotByID(
+		ctx,
+		&robot.GetRobotByIDParams{
+			RobotID: id,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error: getting robot account: %v", err)
+	}
+	return response.Payload, nil
+}
+
 func CreateRobotAccount(ctx context.Context, opts *models.RobotCreate, client *v2client.HarborAPI) (*robot.CreateRobotCreated, error) {
 	response, err := client.Robot.CreateRobot(
 		ctx,
@@ -99,6 +112,20 @@ func CreateRobotAccount(ctx context.Context, opts *models.RobotCreate, client *v
 }
 
 func RobotAccountTemplate(name string, projects []string) *models.RobotCreate {
+	robotPermissions := GenRobotPerms(projects)
+	robotAccount := &models.RobotCreate{
+		Description: "managed by ground-control should not edit",
+		Disable:     false,
+		Duration:    -1,
+		Level:       "system",
+		Name:        name,
+		Permissions: robotPermissions,
+	}
+
+	return robotAccount
+}
+
+func GenRobotPerms(projects []string) []*models.RobotPermission {
 	robotAccess := []*models.Access{
 		{Action: "read", Resource: "artifact"},
 		{Action: "read", Resource: "repository"},
@@ -114,15 +141,5 @@ func RobotAccountTemplate(name string, projects []string) *models.RobotCreate {
 			Namespace: project,
 		})
 	}
-
-	robotAccount := &models.RobotCreate{
-		Description: "managed by ground-control should not edit",
-		Disable:     false,
-		Duration:    -1,
-		Level:       "system",
-		Name:        name,
-		Permissions: robotPermissions,
-	}
-
-	return robotAccount
+	return robotPermissions
 }
