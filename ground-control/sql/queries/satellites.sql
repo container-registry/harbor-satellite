@@ -22,6 +22,10 @@ WHERE name = $1 LIMIT 1;
 SELECT id FROM satellites
 WHERE name = $1 LIMIT 1;
 
+-- name: DeleteSatelliteByName :exec
+DELETE FROM satellites
+WHERE name = $1;
+
 -- name: DeleteSatellite :exec
 DELETE FROM satellites
 WHERE id = $1;

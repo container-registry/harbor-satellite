@@ -20,6 +20,7 @@ type ZtrResult struct {
 }
 
 type Account struct {
-	Name   string `json:"name"`
-	Secret string `json:"secret"`
+	Name     string `json:"name"`
+	Secret   string `json:"secret"`
+	Registry string `json:"registry"`
 }

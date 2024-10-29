@@ -37,6 +37,16 @@ func (q *Queries) DeleteSatellite(ctx context.Context, id int32) error {
 	return err
 }
 
+const deleteSatelliteByName = `-- name: DeleteSatelliteByName :exec
+DELETE FROM satellites
+WHERE name = $1
+`
+
+func (q *Queries) DeleteSatelliteByName(ctx context.Context, name string) error {
+	_, err := q.db.ExecContext(ctx, deleteSatelliteByName, name)
+	return err
+}
+
 const getSatellite = `-- name: GetSatellite :one
 SELECT id, name, created_at, updated_at FROM satellites
 WHERE id = $1 LIMIT 1

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"strconv"
@@ -22,14 +21,23 @@ import (
 
 // GetProjectNames parses artifacts & returns project names
 func GetProjectNames(artifacts *[]m.Artifact) []string {
+	uniqueProjects := make(map[string]struct{}) // Map to track unique project names
 	var projects []string
+
 	for _, artifact := range *artifacts {
 		if artifact.Deleted {
 			continue
 		}
-		project := strings.Split(artifact.Repository, "/")
-		projects = append(projects, project[0])
+		// Extract project name from repository
+		project := strings.Split(artifact.Repository, "/")[0]
+
+		// Check if the project is already added
+		if _, exists := uniqueProjects[project]; !exists {
+			uniqueProjects[project] = struct{}{}
+			projects = append(projects, project)
+		}
 	}
+
 	return projects
 }
 
@@ -96,28 +104,14 @@ func splitRepoTagDigest(path string) (string, string, string) {
 }
 
 // Create robot account for satellites
-func CreateRobotAccForSatellite(ctx context.Context, repos []string, name string) (*models.RobotCreated, error) {
-	// get harbor client
-	harborClient, err := harbor.GetClient()
-	if err != nil {
-		return nil, fmt.Errorf("error getting Harbor client: %w", err)
-	}
-
-	var projects []string
-	// get projects from repos
-	for _, project := range repos {
-		proj := strings.Split(project, "/")
-		projects = append(projects, proj[0])
-	}
-
+func CreateRobotAccForSatellite(ctx context.Context, projects []string, name string) (*models.RobotCreated, error) {
 	robotTemp := harbor.RobotAccountTemplate(name, projects)
-
-	robot, err := harbor.CreateRobotAccount(ctx, robotTemp, harborClient)
+	robt, err := harbor.CreateRobotAccount(ctx, robotTemp)
 	if err != nil {
 		return nil, fmt.Errorf("error creating robot account: %w", err)
 	}
 
-	return robot.Payload, nil
+	return robt.Payload, nil
 }
 
 // Update robot account
@@ -126,20 +120,14 @@ func UpdateRobotProjects(ctx context.Context, projects []string, name string, id
 	if err != nil {
 		return nil, fmt.Errorf("error invalid ID: %w", err)
 	}
-	// get harbor client
-	harborClient, err := harbor.GetClient()
-	if err != nil {
-		return nil, fmt.Errorf("error getting Harbor client: %w", err)
-	}
-
-	robot, err := harbor.GetRobotAccount(ctx, ID, harborClient)
+	robot, err := harbor.GetRobotAccount(ctx, ID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting robot account: %w", err)
 	}
 
 	robot.Permissions = harbor.GenRobotPerms(projects)
 
-	updated, err := harbor.UpdateRobotAccount(ctx, robot, harborClient)
+	updated, err := harbor.UpdateRobotAccount(ctx, robot)
 	if err != nil {
 		return nil, fmt.Errorf("error updating robot account: %w", err)
 	}
@@ -154,29 +142,29 @@ func AssembleGroupState(groupName string) string {
 
 // Create State Artifact for group
 func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
-	result := stateArtifact
-	result.Registry = os.Getenv("HARBOR_URL")
+	// Set the registry URL from environment variable
+	stateArtifact.Registry = os.Getenv("HARBOR_URL")
+	if stateArtifact.Registry == "" {
+		return fmt.Errorf("HARBOR_URL environment variable is not set")
+	}
 
-	data, err := json.Marshal(result)
+	// Marshal the state artifact to JSON format
+	data, err := json.Marshal(stateArtifact)
 	if err != nil {
-		log.Println("failed to marshal state.json")
-		log.Println(err)
-		return nil
+		return fmt.Errorf("failed to marshal state artifact to JSON: %v", err)
 	}
-	// create the state json in registry and make the satellite follow that.
-	img, err := crane.Image(map[string][]byte{
-		"artifacts.json": data,
-	})
+
+	// Create the image with the state artifact JSON
+	img, err := crane.Image(map[string][]byte{"artifacts.json": data})
 	if err != nil {
-		return fmt.Errorf("image create failed: %v", err)
+		return fmt.Errorf("failed to create image: %v", err)
 	}
+
+	// Configure repository and credentials
 	repo := fmt.Sprintf("satellite/%s", stateArtifact.Group)
-
-	// Get credentials from environment variables
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
 	if username == "" || password == "" {
-		log.Fatalln("HARBOR_USERNAME or HARBOR_PASSWORD environment variable is not set")
 		return fmt.Errorf("HARBOR_USERNAME or HARBOR_PASSWORD environment variable is not set")
 	}
 
@@ -185,18 +173,24 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 		Password: password,
 	})
 	options := []crane.Option{crane.WithAuth(auth)}
-	destinationRepo := fmt.Sprintf("%s/%s/%s", result.Registry, repo, "state")
-	err = crane.Push(img, destinationRepo, options...)
-	if err != nil {
-		return fmt.Errorf("push image failed: %v", err)
+
+	// Construct the destination repository and strip protocol, if present
+	destinationRepo := fmt.Sprintf("%s/%s/%s", stateArtifact.Registry, repo, "state")
+	if strings.Contains(destinationRepo, "://") {
+		destinationRepo = strings.SplitN(destinationRepo, "://", 2)[1]
 	}
-	err = crane.Tag(destinationRepo, fmt.Sprintf("%d", time.Now().Unix()), options...)
-	if err != nil {
-		return fmt.Errorf("tag image failed: %v", err)
+
+	// Push the image to the repository
+	if err := crane.Push(img, destinationRepo, options...); err != nil {
+		return fmt.Errorf("failed to push image: %v", err)
 	}
-	err = crane.Tag(destinationRepo, "latest", options...)
-	if err != nil {
-		return fmt.Errorf("tag image failed: %v", err)
+
+	// Tag the image with timestamp and latest tags
+	tags := []string{fmt.Sprintf("%d", time.Now().Unix()), "latest"}
+	for _, tag := range tags {
+		if err := crane.Tag(destinationRepo, tag, options...); err != nil {
+			return fmt.Errorf("failed to tag image with %s: %v", tag, err)
+		}
 	}
 
 	return nil
