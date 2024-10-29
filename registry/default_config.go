@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 type DefaultZotConfig struct {
@@ -22,7 +23,11 @@ type DefaultZotConfig struct {
 }
 
 func (c *DefaultZotConfig) GetLocalRegistryURL() string {
-	return fmt.Sprintf("%s:%s", c.HTTP.Address, c.HTTP.Port)
+	address := c.HTTP.Address
+	if !strings.HasPrefix(address, "http://") && !strings.HasPrefix(address, "https://") {
+		address = "http://" + address
+	}
+	return fmt.Sprintf("%s:%s", address, c.HTTP.Port)
 }
 
 // ReadConfig reads a JSON file from the specified path and unmarshals it into a Config struct.

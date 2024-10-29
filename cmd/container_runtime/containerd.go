@@ -10,7 +10,6 @@ import (
 	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
 	"container-registry.com/harbor-satellite/registry"
-	containerd "github.com/containerd/containerd/pkg/cri/config"
 	toml "github.com/pelletier/go-toml"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -21,6 +20,7 @@ const (
 	DefaultGeneratedTomlName    = "config.toml"
 	ContainerdRuntime           = "containerd"
 	DefaultContainerdConfigPath = "/etc/containerd/config.toml"
+	DefaultConfigVersion        = 2
 )
 
 type ContainerdController interface {
@@ -80,7 +80,12 @@ func NewContainerdCommand() *cobra.Command {
 			if generateConfig {
 				log.Info().Msg("Generating containerd config file for containerd ...")
 				log.Info().Msgf("Fetching containerd config from path path: %s", containerdConfigPath)
-				return GenerateContainerdHostConfig(containerDCertPath, DefaultGenPath, log, *satelliteHostConfig)
+				err := GenerateContainerdHostConfig(containerDCertPath, DefaultGenPath, log, *satelliteHostConfig)
+				if err != nil {
+					log.Err(err).Msg("Error generating containerd config")
+					return fmt.Errorf("could not generate containerd config: %w", err)
+				}
+				return GenerateConfig(defaultZotConfig, log, containerdConfigPath, containerDCertPath)
 			}
 			return nil
 		},
@@ -104,48 +109,32 @@ func GenerateConfig(defaultZotConfig *registry.DefaultZotConfig, log *zerolog.Lo
 		return fmt.Errorf("could not read config file: %w", err)
 	}
 	// Now we marshal the data into the containerd config
-	containerdConfig := &containerd.Config{}
+	containerdConfig := &ContainerdConfigToml{}
 	err = toml.Unmarshal(data, containerdConfig)
 	if err != nil {
 		log.Err(err).Msg("Error unmarshalling config")
 		return fmt.Errorf("could not unmarshal config: %w", err)
 	}
-	// Steps to configure the containerd config:
-	// 1. Set the default registry config cert path
-	//  -- This is the path where the certs of the registry are stored
-	//  -- If the user has already has a cert path then we do not set it rather we would now use the
-	//     user path as the default path
-	if containerdConfig.PluginConfig.Registry.ConfigPath == "" {
-		containerdConfig.PluginConfig.Registry.ConfigPath = containerdCertPath
+	// Add the certs.d path to the config
+	if containerdConfig.Plugins.Cri.Registry.ConfigPath == "" {
+		containerdConfig.Plugins.Cri.Registry.ConfigPath = containerdCertPath
 	}
-	log.Info().Msgf("Setting the registry cert path to: %s", containerdConfig.PluginConfig.Registry.ConfigPath)
-	// Now we add the local registry to the containerd config mirrors
-	registryMirror := map[string]containerd.Mirror{
-		defaultZotConfig.HTTP.Address: {
-			Endpoints: []string{defaultZotConfig.HTTP.Address + ":" + defaultZotConfig.HTTP.Port},
-		},
+	// Set default version
+	if containerdConfig.Version == 0 {
+		containerdConfig.Version = DefaultConfigVersion
 	}
-	if containerdConfig.PluginConfig.Registry.Mirrors == nil {
-		containerdConfig.PluginConfig.Registry.Mirrors = registryMirror
-	} else {
-		for key, value := range registryMirror {
-			containerdConfig.PluginConfig.Registry.Mirrors[key] = value
+	// if config disabled plugins container cri then remove it
+	if len(containerdConfig.DisabledPlugins) > 0 {
+		filteredPlugins := make([]string, len(containerdConfig.DisabledPlugins))
+		for _, plugin := range containerdConfig.DisabledPlugins {
+			if plugin != "cri" {
+				filteredPlugins = append(filteredPlugins, plugin)
+			}
 		}
-	}
-	registryConfig := map[string]containerd.RegistryConfig{
-		defaultZotConfig.HTTP.Address: {
-			TLS: &containerd.TLSConfig{
-				InsecureSkipVerify: config.UseUnsecure(),
-			},
-		},
-	}
-	// Now we add the local registry to the containerd config registry
-	if containerdConfig.PluginConfig.Registry.Configs == nil {
-		containerdConfig.PluginConfig.Registry.Configs = registryConfig
-	} else {
-		for key, value := range registryConfig {
-			containerdConfig.PluginConfig.Registry.Configs[key] = value
+		if len(filteredPlugins) == 0 {
+			containerdConfig.DisabledPlugins = nil
 		}
+		containerdConfig.DisabledPlugins = filteredPlugins
 	}
 	// ToDo: Find a way to remove the unwanted configuration added to the config file while marshalling
 	pathToWrite := filepath.Join(DefaultGenPath, DefaultGeneratedTomlName)
