@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/utils"
@@ -125,14 +126,11 @@ func GenerateConfig(defaultZotConfig *registry.DefaultZotConfig, log *zerolog.Lo
 	}
 	// if config disabled plugins container cri then remove it
 	if len(containerdConfig.DisabledPlugins) > 0 {
-		filteredPlugins := make([]string, len(containerdConfig.DisabledPlugins))
+		filteredPlugins := make([]string, 0, len(containerdConfig.DisabledPlugins))
 		for _, plugin := range containerdConfig.DisabledPlugins {
 			if plugin != "cri" {
 				filteredPlugins = append(filteredPlugins, plugin)
 			}
-		}
-		if len(filteredPlugins) == 0 {
-			containerdConfig.DisabledPlugins = nil
 		}
 		containerdConfig.DisabledPlugins = filteredPlugins
 	}
@@ -141,6 +139,9 @@ func GenerateConfig(defaultZotConfig *registry.DefaultZotConfig, log *zerolog.Lo
 	log.Info().Msgf("Writing the containerd config to path: %s", pathToWrite)
 	// Now we write the config to the file
 	data, err = toml.Marshal(containerdConfig)
+	dataStr := string(data)
+	dataStr = strings.Replace(dataStr, "[plugins]\n", "", 1)
+	data = []byte(dataStr)
 	if err != nil {
 		log.Err(err).Msg("Error marshalling config")
 		return fmt.Errorf("could not marshal config: %w", err)

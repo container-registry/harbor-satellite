@@ -3,11 +3,11 @@ package runtime
 // ContainerdConfigToml provides containerd configuration data for the server
 type ContainerdConfigToml struct {
 	// Version of the config file
-	Version int `toml:"version"`
+	Version int `toml:"version,omitempty"`
 	// Root is the path to a directory where containerd will store persistent data
-	Root string `toml:"root"`
+	Root string `toml:"root,omitempty"`
 	// State is the path to a directory where containerd will store transient data
-	State string `toml:"state"`
+	State string `toml:"state,omitempty"`
 	// TempDir is the path to a directory where to place containerd temporary files
 	TempDir string `toml:"temp,omitempty"`
 	// PluginDir is the directory for dynamic plugins to be stored

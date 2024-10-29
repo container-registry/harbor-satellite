@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	DockerIoConfigPath    = "docker"
+	SatelliteConfigPath    = "satellite"
 	HostToml              = "host_gen.toml"
 	DefaultTomlConfigPath = "_default"
 	DockerURL             = "https://registry-1.docker.io"
@@ -46,13 +46,13 @@ func NewSatelliteHostConfig(localRegistry, sourceRegistry string) *SatelliteHost
 
 // GenerateContainerdHostConfig generates the host.toml file for containerd docker.io and also create a default config.toml file
 func GenerateContainerdHostConfig(containerdCertPath, genPath string, log *zerolog.Logger, satelliteHostConfig SatelliteHostConfig) error {
-	mirrorGenPath := fmt.Sprintf("%s/%s", genPath, DockerIoConfigPath)
+	mirrorGenPath := fmt.Sprintf("%s/%s", genPath, SatelliteConfigPath)
 	err := utils.CreateRuntimeDirectory(mirrorGenPath)
 	if err != nil {
 		log.Err(err).Msgf("Error creating the directory: %s", mirrorGenPath)
 		return fmt.Errorf("error creating the directory: %v", err)
 	}
-	dockerHubHostConfigPath := fmt.Sprintf("%s/%s/%s", containerdCertPath, DockerIoConfigPath, HostToml)
+	dockerHubHostConfigPath := fmt.Sprintf("%s/%s/%s", containerdCertPath, SatelliteConfigPath, HostToml)
 	var dockerContainerdHostConfig ContainerdHostConfig
 
 	// Read the `docker.io/host.toml` file if present

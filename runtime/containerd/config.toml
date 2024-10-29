@@ -1,9 +1,5 @@
-disabled_plugins = [""]
-root = ""
-state = ""
 version = 2
 
-[plugins]
 
   [plugins."io.containerd.grpc.v1.cri"]
 
