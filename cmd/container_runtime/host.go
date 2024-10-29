@@ -3,6 +3,7 @@ package runtime
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"container-registry.com/harbor-satellite/internal/config"
@@ -52,22 +53,22 @@ func GenerateContainerdHostConfig(containerdCertPath, genPath string, log *zerol
 		log.Err(err).Msgf("Error creating the directory: %s", mirrorGenPath)
 		return fmt.Errorf("error creating the directory: %v", err)
 	}
-	dockerHubHostConfigPath := fmt.Sprintf("%s/%s/%s", containerdCertPath, SatelliteConfigPath, HostToml)
-	var dockerContainerdHostConfig ContainerdHostConfig
+	satelliteHubHostConfigPath := fmt.Sprintf("%s/%s/%s", containerdCertPath, SatelliteConfigPath, HostToml)
+	var satelliteContainerdHostConfig ContainerdHostConfig
 
-	// Read the `docker.io/host.toml` file if present
-	data, err := utils.ReadFile(dockerHubHostConfigPath, false)
+	// Read the `satellite/host.toml` file if present
+	data, err := utils.ReadFile(satelliteHubHostConfigPath, false)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Warn().Msgf("The docker.io/host.toml file does not exist at path: %s", dockerHubHostConfigPath)
+			log.Warn().Msgf("The satellite/host.toml file does not exist at path: %s", satelliteHubHostConfigPath)
 		} else {
-			return fmt.Errorf("error reading the docker.io/host.toml file: %v", err)
+			return fmt.Errorf("error reading the satellite/host.toml file: %v", err)
 		}
 	}
-	err = toml.Unmarshal(data, &dockerContainerdHostConfig)
+	err = toml.Unmarshal(data, &satelliteContainerdHostConfig)
 	if err != nil {
-		log.Err(err).Msgf("Error unmarshalling the docker.io/host.toml file at path: %s", dockerHubHostConfigPath)
-		return fmt.Errorf("error unmarshalling the docker.io/host.toml file: %v", err)
+		log.Err(err).Msgf("Error unmarshalling the satellite/host.toml file at path: %s", satelliteHubHostConfigPath)
+		return fmt.Errorf("error unmarshalling the satellite/host.toml file: %v", err)
 	}
 	satelliteHostConfigToAdd := ContainerdHostConfig{
 		Host: map[string]HostConfig{
@@ -78,28 +79,28 @@ func GenerateContainerdHostConfig(containerdCertPath, genPath string, log *zerol
 		},
 	}
 
-	if dockerContainerdHostConfig.Server == "" {
-		dockerContainerdHostConfig.Server = DockerURL
+	if satelliteContainerdHostConfig.Server == "" {
+		satelliteContainerdHostConfig.Server = DockerURL
 	}
-	if dockerContainerdHostConfig.Host == nil {
-		dockerContainerdHostConfig.Host = satelliteHostConfigToAdd.Host
+	if satelliteContainerdHostConfig.Host == nil {
+		satelliteContainerdHostConfig.Host = satelliteHostConfigToAdd.Host
 	} else {
-		for key, value := range dockerContainerdHostConfig.Host {
+		for key, value := range satelliteContainerdHostConfig.Host {
 			satelliteHostConfigToAdd.Host[key] = value
 		}
-		dockerContainerdHostConfig.Host = satelliteHostConfigToAdd.Host
+		satelliteContainerdHostConfig.Host = satelliteHostConfigToAdd.Host
 	}
 
-	pathTOWrite := fmt.Sprintf("%s/%s", mirrorGenPath, HostToml)
+	pathTOWrite := filepath.Join(mirrorGenPath, HostToml)
 	log.Info().Msgf("Writing the host.toml file at path: %s", pathTOWrite)
-	hostData, err := toml.Marshal(dockerContainerdHostConfig)
-	hostStr := string(hostData)
-	hostStr = strings.Replace(hostStr, "[host]\n", "", 1)
-	hostData = []byte(hostStr)
+	hostData, err := toml.Marshal(satelliteContainerdHostConfig)
 	if err != nil {
 		log.Err(err).Msg("Error marshalling the host.toml file")
 		return fmt.Errorf("error marshalling the host.toml file: %v", err)
 	}
+	hostStr := string(hostData)
+	hostStr = strings.Replace(hostStr, "[host]\n", "", 1)
+	hostData = []byte(hostStr)
 	err = utils.WriteFile(pathTOWrite, hostData)
 	if err != nil {
 		log.Err(err).Msg("Error writing the host.toml file")

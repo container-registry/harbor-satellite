@@ -19,9 +19,9 @@ type StateFetcher interface {
 }
 
 type baseStateFetcher struct {
-	group_name            string
-	state_artifact_name   string
-	state_artifact_reader StateReader
+	groupName            string
+	stateArtifactName   string
+	stateArtifactReader StateReader
 }
 
 type URLStateFetcher struct {
@@ -39,9 +39,9 @@ func NewURLStateFetcher() StateFetcher {
 	url = utils.FormatRegistryURL(url)
 	return &URLStateFetcher{
 		baseStateFetcher: baseStateFetcher{
-			group_name:            config.GetGroupName(),
-			state_artifact_name:   config.GetStateArtifactName(),
-			state_artifact_reader: NewState(),
+			groupName:            config.GetGroupName(),
+			stateArtifactName:   config.GetStateArtifactName(),
+			stateArtifactReader: NewState(),
 		},
 		url: url,
 	}
@@ -50,9 +50,9 @@ func NewURLStateFetcher() StateFetcher {
 func NewFileStateFetcher() StateFetcher {
 	return &FileStateArtifactFetcher{
 		baseStateFetcher: baseStateFetcher{
-			group_name:            config.GetGroupName(),
-			state_artifact_name:   config.GetStateArtifactName(),
-			state_artifact_reader: NewState(),
+			groupName:            config.GetGroupName(),
+			stateArtifactName:   config.GetStateArtifactName(),
+			stateArtifactReader: NewState(),
 		},
 		filePath: config.GetInput(),
 	}
@@ -84,7 +84,7 @@ func (f *URLStateFetcher) FetchStateArtifact(state interface{}) error {
 	sourceRegistry := utils.FormatRegistryURL(config.GetRemoteRegistryURL())
 	tag := "latest"
 
-	img, err := crane.Pull(fmt.Sprintf("%s/%s/%s:%s", sourceRegistry, f.group_name, f.state_artifact_name, tag), options...)
+	img, err := crane.Pull(fmt.Sprintf("%s/%s/%s:%s", sourceRegistry, f.groupName, f.stateArtifactName, tag), options...)
 	if err != nil {
 		return fmt.Errorf("failed to pull the state artifact: %v", err)
 	}

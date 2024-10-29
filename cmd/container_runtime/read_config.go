@@ -3,7 +3,7 @@ package runtime
 import (
 	"fmt"
 
-
+	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
 	"github.com/spf13/cobra"
@@ -15,6 +15,7 @@ func NewReadConfigCommand(runtime string) *cobra.Command {
 		Short: fmt.Sprintf("Reads the config file for the %s runtime", runtime),
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			utils.SetupContextForCommand(cmd)
+			config.InitConfig()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			//Parse the flags

@@ -8,8 +8,12 @@ import (
 	"github.com/spf13/viper"
 )
 
-func init(){
-	InitConfig()
+func init() {
+	err := InitConfig()
+	if err != nil {
+		fmt.Printf("Error initializing config: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 var AppConfig *Config

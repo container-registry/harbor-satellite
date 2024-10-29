@@ -64,6 +64,9 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 	if err != nil || stateArtifactFetcher == nil {
 		return fmt.Errorf("error processing input: %w", err)
 	}
+	if stateArtifactFetcher == nil {
+		return fmt.Errorf("state artifact fetcher is nil")
+	}
 
 	satelliteService := satellite.NewSatellite(ctx, stateArtifactFetcher, scheduler.GetSchedulerKey())
 

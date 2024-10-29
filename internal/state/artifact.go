@@ -39,6 +39,10 @@ func NewArtifact(deleted bool, repository string, tags []string, digest, artifac
 	}
 }
 
+func (a *Artifact) GetLabels() []string {
+	return a.Labels
+}
+
 func (a *Artifact) GetRepository() string {
 	return a.Repository
 }

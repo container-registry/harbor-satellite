@@ -35,7 +35,12 @@ func init() {
 	cwd, err := os.Getwd()
 	if err != nil {
 		fmt.Printf("Error getting current working directory: %v\n", err)
-		DefaultGenPath = "/runtime/containerd" // Fallback in case of error
+		if _, err := os.Stat(DefaultGenPath); os.IsNotExist(err) {
+			err := os.MkdirAll(DefaultGenPath, os.ModePerm)
+			if err != nil {
+				fmt.Printf("Error creating default directory: %v\n", err)
+			}
+		}
 	} else {
 		DefaultGenPath = filepath.Join(cwd, "runtime/containerd")
 	}
@@ -53,6 +58,7 @@ func NewContainerdCommand() *cobra.Command {
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			var err error
 			utils.SetupContextForCommand(cmd)
+			config.InitConfig()
 			log := logger.FromContext(cmd.Context())
 			if config.GetOwnRegistry() {
 				log.Info().Msg("Using own registry for config generation")
@@ -67,7 +73,7 @@ func NewContainerdCommand() *cobra.Command {
 			} else {
 				log.Info().Msg("Using default registry for config generation")
 				defaultZotConfig, err = registry.ReadConfig(config.GetZotConfigPath())
-				if err != nil {
+				if err != nil || defaultZotConfig == nil {
 					return fmt.Errorf("could not read config: %w", err)
 				}
 				log.Info().Msgf("Default config read successfully: %v", defaultZotConfig.HTTP.Address+":"+defaultZotConfig.HTTP.Port)
