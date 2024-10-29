@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/url"
 	"os"
-	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -186,7 +185,7 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 		Password: password,
 	})
 	options := []crane.Option{crane.WithAuth(auth)}
-	destinationRepo := fmt.Sprintf("%s/%s", path.Dir(repo), "state")
+	destinationRepo := fmt.Sprintf("%s/%s/%s", result.Registry, repo, "state")
 	err = crane.Push(img, destinationRepo, options...)
 	if err != nil {
 		return fmt.Errorf("push image failed: %v", err)

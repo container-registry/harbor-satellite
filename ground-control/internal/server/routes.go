@@ -15,7 +15,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// r.HandleFunc("/repos/list", s.regListHandler).Methods("GET")
 
 	// Ground Control interface
-	r.HandleFunc("/groups/sync", s.groupsSyncHandler).Methods("GET")
+	r.HandleFunc("/groups/sync", s.groupsSyncHandler).Methods("POST")
 	r.HandleFunc("/groups/list", s.listGroupHandler).Methods("GET")
 	r.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET")
 	r.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("PUT")

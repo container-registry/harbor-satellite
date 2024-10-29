@@ -54,6 +54,7 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("groupsSyncHandler")
 	var req models.StateArtifact
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
@@ -69,11 +70,13 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := s.dbQueries.CreateGroup(r.Context(), params)
 	if err != nil {
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}
 	satellites, err := s.dbQueries.GroupSatelliteList(r.Context(), result.ID)
 	if err != nil {
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}
@@ -81,20 +84,24 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	for _, satellite := range satellites {
 		robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), satellite.SatelliteID)
 		if err != nil {
+			log.Println(err)
 			HandleAppError(w, err)
 			return
 		}
 		// update robot account projects permission
 		_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotName, robotAcc.RobotID)
 		if err != nil {
+			log.Println(err)
 			HandleAppError(w, err)
 			return
 		}
 	}
 
+  log.Println(req.Group)
 	// Create State Artifact for the group
 	err = utils.CreateStateArtifact(&req)
 	if err != nil {
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}
