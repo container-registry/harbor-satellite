@@ -7,26 +7,35 @@ package database
 
 import (
 	"context"
-	"time"
+
+	"github.com/lib/pq"
 )
 
 const createGroup = `-- name: CreateGroup :one
-INSERT INTO groups (group_name, created_at, updated_at)
-VALUES ($1, $2, NOW())
-RETURNING id, group_name, created_at, updated_at
+INSERT INTO groups (group_name, registry_url, projects, created_at, updated_at)
+VALUES ($1, $2, $3, NOW(), NOW())
+  ON CONFLICT (group_name)
+  DO UPDATE SET
+  registry_url = EXCLUDED.registry_url,
+  projects = EXCLUDED.projects,
+  updated_at = NOW()
+RETURNING id, group_name, registry_url, projects, created_at, updated_at
 `
 
 type CreateGroupParams struct {
-	GroupName string
-	CreatedAt time.Time
+	GroupName   string
+	RegistryUrl string
+	Projects    []string
 }
 
 func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Group, error) {
-	row := q.db.QueryRowContext(ctx, createGroup, arg.GroupName, arg.CreatedAt)
+	row := q.db.QueryRowContext(ctx, createGroup, arg.GroupName, arg.RegistryUrl, pq.Array(arg.Projects))
 	var i Group
 	err := row.Scan(
 		&i.ID,
 		&i.GroupName,
+		&i.RegistryUrl,
+		pq.Array(&i.Projects),
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -44,7 +53,7 @@ func (q *Queries) DeleteGroup(ctx context.Context, id int32) error {
 }
 
 const getGroupByID = `-- name: GetGroupByID :one
-SELECT id, group_name, created_at, updated_at FROM groups
+SELECT id, group_name, registry_url, projects, created_at, updated_at FROM groups
 WHERE id = $1
 `
 
@@ -54,6 +63,8 @@ func (q *Queries) GetGroupByID(ctx context.Context, id int32) (Group, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.GroupName,
+		&i.RegistryUrl,
+		pq.Array(&i.Projects),
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -61,7 +72,7 @@ func (q *Queries) GetGroupByID(ctx context.Context, id int32) (Group, error) {
 }
 
 const getGroupByName = `-- name: GetGroupByName :one
-SELECT id, group_name, created_at, updated_at FROM groups
+SELECT id, group_name, registry_url, projects, created_at, updated_at FROM groups
 WHERE group_name = $1
 `
 
@@ -71,6 +82,8 @@ func (q *Queries) GetGroupByName(ctx context.Context, groupName string) (Group, 
 	err := row.Scan(
 		&i.ID,
 		&i.GroupName,
+		&i.RegistryUrl,
+		pq.Array(&i.Projects),
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -78,7 +91,7 @@ func (q *Queries) GetGroupByName(ctx context.Context, groupName string) (Group, 
 }
 
 const listGroups = `-- name: ListGroups :many
-SELECT id, group_name, created_at, updated_at FROM groups
+SELECT id, group_name, registry_url, projects, created_at, updated_at FROM groups
 `
 
 func (q *Queries) ListGroups(ctx context.Context) ([]Group, error) {
@@ -93,6 +106,8 @@ func (q *Queries) ListGroups(ctx context.Context) ([]Group, error) {
 		if err := rows.Scan(
 			&i.ID,
 			&i.GroupName,
+			&i.RegistryUrl,
+			pq.Array(&i.Projects),
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

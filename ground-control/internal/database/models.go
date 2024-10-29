@@ -10,37 +10,12 @@ import (
 )
 
 type Group struct {
-	ID        int32
-	GroupName string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
-type GroupImage struct {
-	GroupID int32
-	ImageID int32
-}
-
-type Image struct {
-	ID         int32
-	Registry   string
-	Repository string
-	Tag        string
-	Digest     string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-}
-
-type Label struct {
-	ID        int32
-	LabelName string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
-type LabelImage struct {
-	LabelID int32
-	ImageID int32
+	ID          int32
+	GroupName   string
+	RegistryUrl string
+	Projects    []string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type Project struct {
@@ -63,6 +38,7 @@ type RobotAccount struct {
 	ID          int32
 	RobotName   string
 	RobotSecret string
+	RobotID     string
 	SatelliteID int32
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
@@ -83,11 +59,6 @@ type Satellite struct {
 type SatelliteGroup struct {
 	SatelliteID int32
 	GroupID     int32
-}
-
-type SatelliteLabel struct {
-	SatelliteID int32
-	LabelID     int32
 }
 
 type SatelliteToken struct {

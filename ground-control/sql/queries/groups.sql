@@ -1,6 +1,11 @@
 -- name: CreateGroup :one
-INSERT INTO groups (group_name, created_at, updated_at)
-VALUES ($1, $2, NOW())
+INSERT INTO groups (group_name, registry_url, projects, created_at, updated_at)
+VALUES ($1, $2, $3, NOW(), NOW())
+  ON CONFLICT (group_name)
+  DO UPDATE SET
+  registry_url = EXCLUDED.registry_url,
+  projects = EXCLUDED.projects,
+  updated_at = NOW()
 RETURNING *;
 
 -- name: ListGroups :many

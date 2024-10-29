@@ -24,3 +24,74 @@ func (q *Queries) AddSatelliteToGroup(ctx context.Context, arg AddSatelliteToGro
 	_, err := q.db.ExecContext(ctx, addSatelliteToGroup, arg.SatelliteID, arg.GroupID)
 	return err
 }
+
+const groupSatelliteList = `-- name: GroupSatelliteList :many
+SELECT satellite_id, group_id FROM satellite_groups
+WHERE group_id = $1
+`
+
+func (q *Queries) GroupSatelliteList(ctx context.Context, groupID int32) ([]SatelliteGroup, error) {
+	rows, err := q.db.QueryContext(ctx, groupSatelliteList, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SatelliteGroup
+	for rows.Next() {
+		var i SatelliteGroup
+		if err := rows.Scan(&i.SatelliteID, &i.GroupID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removeSatelliteFromGroup = `-- name: RemoveSatelliteFromGroup :exec
+DELETE FROM satellite_groups
+WHERE satellite_id = $1 AND group_id = $2
+`
+
+type RemoveSatelliteFromGroupParams struct {
+	SatelliteID int32
+	GroupID     int32
+}
+
+func (q *Queries) RemoveSatelliteFromGroup(ctx context.Context, arg RemoveSatelliteFromGroupParams) error {
+	_, err := q.db.ExecContext(ctx, removeSatelliteFromGroup, arg.SatelliteID, arg.GroupID)
+	return err
+}
+
+const satelliteGroupList = `-- name: SatelliteGroupList :many
+SELECT satellite_id, group_id FROM satellite_groups
+WHERE satellite_id = $1
+`
+
+func (q *Queries) SatelliteGroupList(ctx context.Context, satelliteID int32) ([]SatelliteGroup, error) {
+	rows, err := q.db.QueryContext(ctx, satelliteGroupList, satelliteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SatelliteGroup
+	for rows.Next() {
+		var i SatelliteGroup
+		if err := rows.Scan(&i.SatelliteID, &i.GroupID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
