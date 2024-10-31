@@ -3,28 +3,39 @@ package harbor
 import (
 	"context"
 	"fmt"
+	"log"
 
-	v2client "github.com/goharbor/go-client/pkg/sdk/v2.0/client"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/project"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 )
 
-func ListProjects(ctx context.Context, opts *models.RobotCreate, client *v2client.HarborAPI) ([]string, error) {
-	n := int64(1000)
-	response, err := client.Project.ListProjects(
-		ctx,
-		&project.ListProjectsParams{
-			PageSize: &n,
-		},
-	)
+func GetProject(ctx context.Context, name string) (bool, error) {
+	client := GetClient()
+	proj, err := client.Project.HeadProject(ctx, &project.HeadProjectParams{
+		ProjectName: name,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("error: listing projects: %v", err)
+		return false, fmt.Errorf("error: project head request failed for project: %s, %v", name, err)
 	}
+	return proj.IsSuccess(), nil
+}
 
-  var projects []string
-
-  for _, project := range response.Payload {
-    projects = append(projects, project.Name)
-  }
-	return projects, nil
+func CreateSatelliteProject(ctx context.Context) (bool, error) {
+	client := GetClient()
+	var (
+		public  bool  = true
+		storage int64 = -1
+	)
+	log.Println("creating project satellite")
+	proj, err := client.Project.CreateProject(ctx, &project.CreateProjectParams{
+		Project: &models.ProjectReq{
+			ProjectName:  "satellite",
+			Public:       &public,
+			StorageLimit: &storage,
+		},
+	})
+	if err != nil {
+		return false, fmt.Errorf("error: project create request failed for project: %s, %v", "satellite", err)
+	}
+	return proj.IsSuccess(), nil
 }

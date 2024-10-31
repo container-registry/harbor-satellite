@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	v2client "github.com/goharbor/go-client/pkg/sdk/v2.0/client"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/robot"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 
@@ -26,7 +25,8 @@ func GetRobotDetails(r *robot.CreateRobotCreated) (int64, string, string) {
 	return id, name, secret
 }
 
-func ListRobots(ctx context.Context, opts ListParams, client *v2client.HarborAPI) (*robot.ListRobotOK, error) {
+func ListRobots(ctx context.Context, opts ListParams) (*robot.ListRobotOK, error) {
+	client := GetClient()
 	response, err := client.Robot.ListRobot(
 		ctx,
 		&robot.ListRobotParams{
@@ -42,7 +42,8 @@ func ListRobots(ctx context.Context, opts ListParams, client *v2client.HarborAPI
 	return response, nil
 }
 
-func DeleteRobotAccount(ctx context.Context, robotID int64, client *v2client.HarborAPI) (*robot.DeleteRobotOK, error) {
+func DeleteRobotAccount(ctx context.Context, robotID int64) (*robot.DeleteRobotOK, error) {
+	client := GetClient()
 	response, err := client.Robot.DeleteRobot(
 		ctx,
 		&robot.DeleteRobotParams{
@@ -55,7 +56,8 @@ func DeleteRobotAccount(ctx context.Context, robotID int64, client *v2client.Har
 	return response, nil
 }
 
-func RefreshRobotAccount(ctx context.Context, secret string, robotID int64, client *v2client.HarborAPI) (*robot.RefreshSecOK, error) {
+func RefreshRobotAccount(ctx context.Context, secret string, robotID int64) (*robot.RefreshSecOK, error) {
+	client := GetClient()
 	response, err := client.Robot.RefreshSec(
 		ctx,
 		&robot.RefreshSecParams{
@@ -71,7 +73,8 @@ func RefreshRobotAccount(ctx context.Context, secret string, robotID int64, clie
 	return response, nil
 }
 
-func UpdateRobotAccount(ctx context.Context, opts *models.Robot, client *v2client.HarborAPI) (*robot.UpdateRobotOK, error) {
+func UpdateRobotAccount(ctx context.Context, opts *models.Robot) (*robot.UpdateRobotOK, error) {
+	client := GetClient()
 	response, err := client.Robot.UpdateRobot(
 		ctx,
 		&robot.UpdateRobotParams{
@@ -85,7 +88,8 @@ func UpdateRobotAccount(ctx context.Context, opts *models.Robot, client *v2clien
 	return response, nil
 }
 
-func GetRobotAccount(ctx context.Context, id int64, client *v2client.HarborAPI) (*models.Robot, error) {
+func GetRobotAccount(ctx context.Context, id int64) (*models.Robot, error) {
+	client := GetClient()
 	response, err := client.Robot.GetRobotByID(
 		ctx,
 		&robot.GetRobotByIDParams{
@@ -98,7 +102,8 @@ func GetRobotAccount(ctx context.Context, id int64, client *v2client.HarborAPI) 
 	return response.Payload, nil
 }
 
-func CreateRobotAccount(ctx context.Context, opts *models.RobotCreate, client *v2client.HarborAPI) (*robot.CreateRobotCreated, error) {
+func CreateRobotAccount(ctx context.Context, opts *models.RobotCreate) (*robot.CreateRobotCreated, error) {
+	client := GetClient()
 	response, err := client.Robot.CreateRobot(
 		ctx,
 		&robot.CreateRobotParams{
@@ -106,7 +111,7 @@ func CreateRobotAccount(ctx context.Context, opts *models.RobotCreate, client *v
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error: creating robot account: %v", err)
+		return nil, fmt.Errorf("error: create robot account in adapter: %v", err.Error())
 	}
 	return response, nil
 }
@@ -134,12 +139,14 @@ func GenRobotPerms(projects []string) []*models.RobotPermission {
 
 	// permissions for the provided projects
 	var robotPermissions []*models.RobotPermission
-	for _, project := range projects {
-		robotPermissions = append(robotPermissions, &models.RobotPermission{
-			Access:    robotAccess,
-			Kind:      "project",
-			Namespace: project,
-		})
+	if len(projects) > 0 {
+		for _, project := range projects {
+			robotPermissions = append(robotPermissions, &models.RobotPermission{
+				Access:    robotAccess,
+				Kind:      "project",
+				Namespace: project,
+			})
+		}
 	}
 	return robotPermissions
 }
