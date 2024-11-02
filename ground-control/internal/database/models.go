@@ -5,7 +5,6 @@
 package database
 
 import (
-	"database/sql"
 	"time"
 )
 
@@ -18,22 +17,6 @@ type Group struct {
 	UpdatedAt   time.Time
 }
 
-type Project struct {
-	ID        int32
-	Projects  string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
-type Robot struct {
-	ID          int32
-	RobotName   string
-	Secret      string
-	SatelliteID sql.NullInt32
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-}
-
 type RobotAccount struct {
 	ID          int32
 	RobotName   string
@@ -42,11 +25,6 @@ type RobotAccount struct {
 	SatelliteID int32
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-}
-
-type RobotProject struct {
-	RobotID   int32
-	ProjectID int32
 }
 
 type Satellite struct {
