@@ -94,13 +94,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		if err := f.notifier.Notify(); err != nil {
 			log.Error().Err(err).Msg("Error sending notification")
 		}
-		log.Info().Msg("Replicating state")
-		log.Info().Msg("Replicator config")
-		log.Info().Msgf("Username: %s", f.authConfig.Username)
-		log.Info().Msgf("Password: %s", f.authConfig.Password)
-		log.Info().Msgf("Remote registry URL: %s", f.authConfig.remoteRegistryURL)
-		log.Info().Msgf("Source registry: %s", f.authConfig.sourceRegistry)
-		
+
 		replicator := NewBasicReplicator(f.authConfig.Username, f.authConfig.Password, f.authConfig.remoteRegistryURL, f.authConfig.sourceRegistry, f.authConfig.useUnsecure)
 		// Delete the entities from the remote registry
 		if err := replicator.DeleteReplicationEntity(ctx, deleteEntity); err != nil {
