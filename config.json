@@ -1,0 +1,15 @@
+{
+  "auth": {
+    "name": "admin",
+    "registry": "https://registry.bupd.xyz",
+    "secret": "Harbor12345"
+  },
+  "bring_own_registry": false,
+  "ground_control_url": "http://localhost:8080",
+  "log_level": "info",
+  "own_registry_adr": "127.0.0.1",
+  "own_registry_port": "8585",
+  "states": ["https://registry.bupd.xyz/satellite/group10/state:latest"],
+  "url_or_file": "https://registry.bupd.xyz",
+  "zotconfigpath": "./registry/config.json"
+}

@@ -91,7 +91,6 @@ func setupServerApp(ctx context.Context, log *zerolog.Logger) *server.App {
 		router,
 		ctx,
 		log,
-		config.AppConfig,
 		&server.MetricsRegistrar{},
 		&server.DebugRegistrar{},
 		&satellite.SatelliteRegistrar{},
@@ -131,20 +130,26 @@ func processInput(ctx context.Context, log *zerolog.Logger) (state.StateFetcher,
 		return nil, err
 	}
 
-	return processFileInput(log)
+	return processFileInput(input, log)
 }
 
 func processURLInput(input string, log *zerolog.Logger) (state.StateFetcher, error) {
 	log.Info().Msg("Input is a valid URL")
 	config.SetRemoteRegistryURL(input)
 
-	stateArtifactFetcher := state.NewURLStateFetcher()
+	username := config.GetHarborUsername()
+	password := config.GetHarborPassword()
+
+	stateArtifactFetcher := state.NewURLStateFetcher(input, username, password)
 
 	return stateArtifactFetcher, nil
 }
 
-func processFileInput(log *zerolog.Logger) (state.StateFetcher, error) {
-	stateArtifactFetcher := state.NewFileStateFetcher()
+func processFileInput(input string, log *zerolog.Logger) (state.StateFetcher, error) {
+	log.Info().Msg("Input is a valid file path")
+	username := config.GetHarborUsername()
+	password := config.GetHarborPassword()
+	stateArtifactFetcher := state.NewFileStateFetcher(input, username, password)
 	return stateArtifactFetcher, nil
 }
 

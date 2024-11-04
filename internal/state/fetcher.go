@@ -19,9 +19,8 @@ type StateFetcher interface {
 }
 
 type baseStateFetcher struct {
-	group_name            string
-	state_artifact_name   string
-	state_artifact_reader StateReader
+	username              string
+	password              string
 }
 
 type URLStateFetcher struct {
@@ -34,27 +33,24 @@ type FileStateArtifactFetcher struct {
 	filePath string
 }
 
-func NewURLStateFetcher() StateFetcher {
-	url := config.GetRemoteRegistryURL()
-	url = utils.FormatRegistryURL(url)
+func NewURLStateFetcher(stateURL, userName, password string) StateFetcher {
+	url := utils.FormatRegistryURL(stateURL)
 	return &URLStateFetcher{
 		baseStateFetcher: baseStateFetcher{
-			group_name:            config.GetGroupName(),
-			state_artifact_name:   config.GetStateArtifactName(),
-			state_artifact_reader: NewState(),
+			username:              userName,
+			password:              password,
 		},
 		url: url,
 	}
 }
 
-func NewFileStateFetcher() StateFetcher {
+func NewFileStateFetcher(filePath, userName, password string) StateFetcher {
 	return &FileStateArtifactFetcher{
 		baseStateFetcher: baseStateFetcher{
-			group_name:            config.GetGroupName(),
-			state_artifact_name:   config.GetStateArtifactName(),
-			state_artifact_reader: NewState(),
+			username:              userName,
+			password:              password,
 		},
-		filePath: config.GetInput(),
+		filePath: filePath,
 	}
 }
 
@@ -81,10 +77,7 @@ func (f *URLStateFetcher) FetchStateArtifact(state interface{}) error {
 		options = append(options, crane.Insecure)
 	}
 
-	sourceRegistry := utils.FormatRegistryURL(config.GetRemoteRegistryURL())
-	tag := "latest"
-
-	img, err := crane.Pull(fmt.Sprintf("%s/%s/%s:%s", sourceRegistry, f.group_name, f.state_artifact_name, tag), options...)
+	img, err := crane.Pull(f.url, options...)
 	if err != nil {
 		return fmt.Errorf("failed to pull the state artifact: %v", err)
 	}
