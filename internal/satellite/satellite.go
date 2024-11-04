@@ -12,15 +12,13 @@ import (
 )
 
 type Satellite struct {
-	stateReader          state.StateReader
-	stateArtifactFetcher state.StateFetcher
-	schedulerKey         scheduler.SchedulerKey
+	stateReader  state.StateReader
+	schedulerKey scheduler.SchedulerKey
 }
 
-func NewSatellite(ctx context.Context, stateArtifactFetcher state.StateFetcher, schedulerKey scheduler.SchedulerKey) *Satellite {
+func NewSatellite(ctx context.Context, schedulerKey scheduler.SchedulerKey) *Satellite {
 	return &Satellite{
-		stateArtifactFetcher: stateArtifactFetcher,
-		schedulerKey:         schedulerKey,
+		schedulerKey: schedulerKey,
 	}
 }
 
@@ -45,7 +43,8 @@ func (s *Satellite) Run(ctx context.Context) error {
 	// Create a simple notifier and add it to the process
 	notifier := notifier.NewSimpleNotifier(ctx)
 	// Creating a process to fetch and replicate the state
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(scheduler.NextID(), cronExpr, s.stateArtifactFetcher, notifier, userName, password, zotURL, sourceRegistry, useUnsecure)
+	states := config.GetStates()
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(scheduler.NextID(), cronExpr, notifier, userName, password, zotURL, sourceRegistry, useUnsecure, states)
 	// Add the process to the scheduler
 	scheduler.Schedule(fetchAndReplicateStateProcess)
 

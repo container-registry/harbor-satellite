@@ -11,7 +11,6 @@ import (
 	"container-registry.com/harbor-satellite/internal/satellite"
 	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/server"
-	"container-registry.com/harbor-satellite/internal/state"
 	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
 	"golang.org/x/sync/errgroup"
@@ -55,13 +54,8 @@ func run() error {
 		log.Error().Err(err).Msg("Error starting scheduler")
 		return err
 	}
-	// Process Input (file or URL)
-	stateArtifactFetcher, err := processInput(ctx, log)
-	if err != nil || stateArtifactFetcher == nil {
-		return fmt.Errorf("error processing input: %w", err)
-	}
 
-	satelliteService := satellite.NewSatellite(ctx, stateArtifactFetcher, scheduler.GetSchedulerKey())
+	satelliteService := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey())
 
 	g.Go(func() error {
 		return satelliteService.Run(ctx)
@@ -114,53 +108,6 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 			cancel()
 			return nil
 		})
-	}
-	return nil
-}
-
-func processInput(ctx context.Context, log *zerolog.Logger) (state.StateFetcher, error) {
-	input := config.GetInput()
-
-	if utils.IsValidURL(input) {
-		return processURLInput(input, log)
-	}
-
-	log.Info().Msg("Input is not a valid URL, checking if it is a file path")
-	if err := validateFilePath(input, log); err != nil {
-		return nil, err
-	}
-
-	return processFileInput(input, log)
-}
-
-func processURLInput(input string, log *zerolog.Logger) (state.StateFetcher, error) {
-	log.Info().Msg("Input is a valid URL")
-	config.SetRemoteRegistryURL(input)
-
-	username := config.GetHarborUsername()
-	password := config.GetHarborPassword()
-
-	stateArtifactFetcher := state.NewURLStateFetcher(input, username, password)
-
-	return stateArtifactFetcher, nil
-}
-
-func processFileInput(input string, log *zerolog.Logger) (state.StateFetcher, error) {
-	log.Info().Msg("Input is a valid file path")
-	username := config.GetHarborUsername()
-	password := config.GetHarborPassword()
-	stateArtifactFetcher := state.NewFileStateFetcher(input, username, password)
-	return stateArtifactFetcher, nil
-}
-
-func validateFilePath(path string, log *zerolog.Logger) error {
-	if utils.HasInvalidPathChars(path) {
-		log.Error().Msg("Path contains invalid characters")
-		return fmt.Errorf("invalid file path: %s", path)
-	}
-	if err := utils.GetAbsFilePath(path); err != nil {
-		log.Error().Err(err).Msg("No file found")
-		return fmt.Errorf("no file found: %s", path)
 	}
 	return nil
 }
