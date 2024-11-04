@@ -68,8 +68,8 @@ func (f *FileStateArtifactFetcher) FetchStateArtifact(state interface{}) error {
 
 func (f *URLStateFetcher) FetchStateArtifact(state interface{}) error {
 	auth := authn.FromConfig(authn.AuthConfig{
-		Username: config.GetHarborUsername(),
-		Password: config.GetHarborPassword(),
+		Username: f.username,
+		Password: f.password,
 	})
 
 	options := []crane.Option{crane.WithAuth(auth)}

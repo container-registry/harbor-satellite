@@ -20,9 +20,9 @@ const DefaultFetchAndReplicateStateTimePeriod string = "00h00m010s"
 type FetchAndReplicateAuthConfig struct {
 	Username          string
 	Password          string
-	useUnsecure       bool
-	remoteRegistryURL string
-	sourceRegistry    string
+	UseUnsecure       bool
+	RemoteRegistryURL string
+	SourceRegistry    string
 }
 
 type FetchAndReplicateStateProcess struct {
@@ -61,9 +61,9 @@ func NewFetchAndReplicateStateProcess(id uint64, cronExpr string, notifier notif
 		authConfig: FetchAndReplicateAuthConfig{
 			Username:          username,
 			Password:          password,
-			useUnsecure:       useUnsecure,
-			remoteRegistryURL: remoteRegistryURL,
-			sourceRegistry:    sourceRegistryURL,
+			UseUnsecure:       useUnsecure,
+			RemoteRegistryURL: remoteRegistryURL,
+			SourceRegistry:    sourceRegistryURL,
 		},
 	}
 }
@@ -76,9 +76,9 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	}
 	defer f.stop()
 
-	for _, state := range f.stateMap {
-		log.Info().Msgf("Processing state for %s", state.url)
-		stateFetcher, err := processInput(state.url, f.authConfig.Username, f.authConfig.Password, log)
+	for i := range f.stateMap {
+		log.Info().Msgf("Processing state for %s", f.stateMap[i].url)
+		stateFetcher, err := processInput(f.stateMap[i].url, f.authConfig.Username, f.authConfig.Password, log)
 		if err != nil {
 			log.Error().Err(err).Msg("Error processing input")
 			return err
@@ -88,14 +88,14 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 			log.Error().Err(err).Msg("Error fetching state")
 			return err
 		}
-		log.Info().Msgf("State fetched successfully for %s", state.url)
-		deleteEntity, replicateEntity, newState := f.GetChanges(newStateFetched, log, state.State)
+		log.Info().Msgf("State fetched successfully for %s", f.stateMap[i].url)
+		deleteEntity, replicateEntity, newState := f.GetChanges(newStateFetched, log, f.stateMap[i].State)
 		f.LogChanges(deleteEntity, replicateEntity, log)
 		if err := f.notifier.Notify(); err != nil {
 			log.Error().Err(err).Msg("Error sending notification")
 		}
 
-		replicator := NewBasicReplicator(f.authConfig.Username, f.authConfig.Password, f.authConfig.remoteRegistryURL, f.authConfig.sourceRegistry, f.authConfig.useUnsecure)
+		replicator := NewBasicReplicator(f.authConfig.Username, f.authConfig.Password, f.authConfig.RemoteRegistryURL, f.authConfig.SourceRegistry, f.authConfig.UseUnsecure)
 		// Delete the entities from the remote registry
 		if err := replicator.DeleteReplicationEntity(ctx, deleteEntity); err != nil {
 			log.Error().Err(err).Msg("Error deleting entities")
@@ -106,7 +106,8 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 			log.Error().Err(err).Msg("Error replicating state")
 			return err
 		}
-		state.State = newState
+		// Update the state directly in the slice
+		f.stateMap[i].State = newState
 	}
 	return nil
 }

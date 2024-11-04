@@ -120,12 +120,12 @@ func LoadConfig() (*Config, error) {
 	configData, err := ReadConfigData(DefaultConfigPath)
 	if err != nil {
 		fmt.Printf("Error reading config file: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
 	config, err := ParseConfigFromJson(string(configData))
 	if err != nil {
 		fmt.Printf("Error parsing config file: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
 	return config, nil
 }
