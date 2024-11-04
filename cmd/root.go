@@ -32,6 +32,7 @@ func NewRootCommand() *cobra.Command {
 		},
 	}
 	rootCmd.AddCommand(runtime.NewContainerdCommand())
+	rootCmd.AddCommand(runtime.NewCrioCommand())
 	return rootCmd
 }
 

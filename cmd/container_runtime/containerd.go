@@ -29,20 +29,21 @@ type ContainerdController interface {
 	Generate(ctx context.Context, configPath string, log *zerolog.Logger) error
 }
 
-var DefaultGenPath string
+var DefaultContainerDGenPath string
 
 func init() {
 	cwd, err := os.Getwd()
 	if err != nil {
 		fmt.Printf("Error getting current working directory: %v\n", err)
-		if _, err := os.Stat(DefaultGenPath); os.IsNotExist(err) {
-			err := os.MkdirAll(DefaultGenPath, os.ModePerm)
+		DefaultContainerDGenPath = "/runtime/containerd"
+		if _, err := os.Stat(DefaultContainerDGenPath); os.IsNotExist(err) {
+			err := os.MkdirAll(DefaultContainerDGenPath, os.ModePerm)
 			if err != nil {
 				fmt.Printf("Error creating default directory: %v\n", err)
 			}
 		}
 	} else {
-		DefaultGenPath = filepath.Join(cwd, "runtime/containerd")
+		DefaultContainerDGenPath = filepath.Join(cwd, "runtime/containerd")
 	}
 }
 
@@ -56,29 +57,7 @@ func NewContainerdCommand() *cobra.Command {
 		Use:   "containerd",
 		Short: "Creates the config file for the containerd runtime to fetch the images from the local repository",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			var err error
-			utils.SetupContextForCommand(cmd)
-			config.InitConfig()
-			log := logger.FromContext(cmd.Context())
-			if config.GetOwnRegistry() {
-				log.Info().Msg("Using own registry for config generation")
-				address, err := utils.ValidateRegistryAddress(config.GetOwnRegistryAdr(), config.GetOwnRegistryPort())
-				if err != nil {
-					log.Err(err).Msg("Error validating registry address")
-					return err
-				}
-				log.Info().Msgf("Registry address validated: %s", address)
-				defaultZotConfig.HTTP.Address = config.GetOwnRegistryAdr()
-				defaultZotConfig.HTTP.Port = config.GetOwnRegistryPort()
-			} else {
-				log.Info().Msg("Using default registry for config generation")
-				defaultZotConfig, err = registry.ReadConfig(config.GetZotConfigPath())
-				if err != nil || defaultZotConfig == nil {
-					return fmt.Errorf("could not read config: %w", err)
-				}
-				log.Info().Msgf("Default config read successfully: %v", defaultZotConfig.HTTP.Address+":"+defaultZotConfig.HTTP.Port)
-			}
-			return utils.CreateRuntimeDirectory(DefaultGenPath)
+			return SetupContainerRuntimeCommand(cmd, &defaultZotConfig, DefaultContainerDGenPath)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			log := logger.FromContext(cmd.Context())
@@ -86,13 +65,13 @@ func NewContainerdCommand() *cobra.Command {
 			satelliteHostConfig := NewSatelliteHostConfig(defaultZotConfig.GetLocalRegistryURL(), sourceRegistry)
 			if generateConfig {
 				log.Info().Msg("Generating containerd config file for containerd ...")
-				log.Info().Msgf("Fetching containerd config from path path: %s", containerdConfigPath)
-				err := GenerateContainerdHostConfig(containerDCertPath, DefaultGenPath, log, *satelliteHostConfig)
+				log.Info().Msgf("Fetching containerd config from path: %s", containerdConfigPath)
+				err := GenerateContainerdHostConfig(containerDCertPath, DefaultContainerDGenPath, log, *satelliteHostConfig)
 				if err != nil {
 					log.Err(err).Msg("Error generating containerd config")
 					return fmt.Errorf("could not generate containerd config: %w", err)
 				}
-				return GenerateConfig(defaultZotConfig, log, containerdConfigPath, containerDCertPath)
+				return GenerateContainerdConfig(defaultZotConfig, log, containerdConfigPath, containerDCertPath)
 			}
 			return nil
 		},
@@ -105,10 +84,10 @@ func NewContainerdCommand() *cobra.Command {
 	return containerdCmd
 }
 
-// GenerateConfig generates the containerd config file for the containerd runtime
+// GenerateContainerdConfig generates the containerd config file for the containerd runtime
 // It takes the zot config a logger and the containerd config path
 // It reads the containerd config file and adds the local registry to the config file
-func GenerateConfig(defaultZotConfig *registry.DefaultZotConfig, log *zerolog.Logger, containerdConfigPath, containerdCertPath string) error {
+func GenerateContainerdConfig(defaultZotConfig *registry.DefaultZotConfig, log *zerolog.Logger, containerdConfigPath, containerdCertPath string) error {
 	// First Read the present config file at the configPath
 	data, err := utils.ReadFile(containerdConfigPath, false)
 	if err != nil {
@@ -141,7 +120,7 @@ func GenerateConfig(defaultZotConfig *registry.DefaultZotConfig, log *zerolog.Lo
 		containerdConfig.DisabledPlugins = filteredPlugins
 	}
 	// ToDo: Find a way to remove the unwanted configuration added to the config file while marshalling
-	pathToWrite := filepath.Join(DefaultGenPath, DefaultGeneratedTomlName)
+	pathToWrite := filepath.Join(DefaultContainerDGenPath, DefaultGeneratedTomlName)
 	log.Info().Msgf("Writing the containerd config to path: %s", pathToWrite)
 	// Now we write the config to the file
 	data, err = toml.Marshal(containerdConfig)

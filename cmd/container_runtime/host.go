@@ -16,7 +16,7 @@ const (
 	SatelliteConfigPath    = "satellite"
 	HostToml              = "host_gen.toml"
 	DefaultTomlConfigPath = "_default"
-	DockerURL             = "https://registry-1.docker.io"
+	DockerURL             = "docker.io"
 )
 
 type ContainerdHostConfig struct {
