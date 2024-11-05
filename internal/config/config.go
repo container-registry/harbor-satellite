@@ -84,10 +84,10 @@ func ztr(gcUrl string) (*ZtrResult, error) {
 	token := os.Getenv("TOKEN")
 
 	// Construct the request URL
-	url := fmt.Sprintf("%s/satellites/ztr/%s", gcUrl, token)
+	gcUrl = fmt.Sprintf("%s/satellites/ztr/%s", gcUrl, token)
 
 	// Make the GET request
-	resp, err := http.Get(url)
+	resp, err := http.Get(gcUrl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch data from Ground Control: %v", err)
 	}
@@ -230,6 +230,10 @@ func LoadConfig() (*Config, error) {
 		viper.SetConfigType("toml")
 		viper.AddConfigPath(".")
 
+		if err := viper.ReadInConfig(); err != nil {
+			return nil, fmt.Errorf("error reading config file at path '%s': %w", viper.ConfigFileUsed(), err)
+		}
+
 		gcURL := viper.GetString("ground_control_url")
 		// Call ztr function to fetch and set the necessary configuration
 		_, err := ztr(gcURL)
@@ -238,10 +242,6 @@ func LoadConfig() (*Config, error) {
 		}
 	} else {
 		return nil, fmt.Errorf("Error checking config file: %v\n", err)
-	}
-
-	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("error reading config file at path '%s': %w", viper.ConfigFileUsed(), err)
 	}
 
 	var use_unsecure bool
