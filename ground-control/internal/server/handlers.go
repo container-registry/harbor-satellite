@@ -170,6 +170,26 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+  roboPresent,err := harbor.IsRobotPresent(r.Context(), req.Name)
+	if err != nil {
+		log.Println(err)
+		err := &AppError{
+			Message: fmt.Sprintf("Error querying for robot account: %v", err.Error()),
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+  if roboPresent {
+		err := &AppError{
+			Message: fmt.Sprintf("Error: Robot Account name already present. Try with different name"),
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+    return
+  }
+
 	// Start a new transaction
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {

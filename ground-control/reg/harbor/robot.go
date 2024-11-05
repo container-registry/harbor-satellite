@@ -25,6 +25,27 @@ func GetRobotDetails(r *robot.CreateRobotCreated) (int64, string, string) {
 	return id, name, secret
 }
 
+func IsRobotPresent(ctx context.Context, name string) (bool, error) {
+	client := GetClient()
+
+  name = fmt.Sprintf("name=%s", name)
+	response, err := client.Robot.ListRobot(
+		ctx,
+		&robot.ListRobotParams{
+			Q: &name,
+		},
+	)
+	if err != nil {
+		return false, fmt.Errorf("error: listing robot account: %v", err)
+	}
+
+  if len(response.Payload) > 0 {
+    return true, nil
+  }
+
+	return false, nil
+}
+
 func ListRobots(ctx context.Context, opts ListParams) (*robot.ListRobotOK, error) {
 	client := GetClient()
 	response, err := client.Robot.ListRobot(
