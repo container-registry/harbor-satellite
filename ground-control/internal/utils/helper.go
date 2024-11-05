@@ -51,7 +51,7 @@ func CreateRobotAccForSatellite(ctx context.Context, projects []string, name str
 }
 
 // Update robot account
-func UpdateRobotProjects(ctx context.Context, projects []string, name string, id string) (*robot.UpdateRobotOK, error) {
+func UpdateRobotProjects(ctx context.Context, projects []string, id string) (*robot.UpdateRobotOK, error) {
 	ID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("error invalid ID: %w", err)
@@ -60,6 +60,10 @@ func UpdateRobotProjects(ctx context.Context, projects []string, name string, id
 	if err != nil {
 		return nil, fmt.Errorf("error getting robot account: %w", err)
 	}
+
+	// satellites should always have permission to satellite project by default
+	// to get state artifacts
+	projects = append(projects, "satellite")
 
 	robot.Permissions = harbor.GenRobotPerms(projects)
 

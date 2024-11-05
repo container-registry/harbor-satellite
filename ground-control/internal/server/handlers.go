@@ -56,6 +56,7 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	var req models.StateArtifact
 	if err := DecodeRequestBody(r, &req); err != nil {
+		log.Println("what the fuck")
 		log.Println(err)
 		HandleAppError(w, err)
 		return
@@ -106,7 +107,7 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// update robot account projects permission
-		_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotName, robotAcc.RobotID)
+		_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
 		if err != nil {
 			log.Println(err)
 			HandleAppError(w, err)
@@ -170,7 +171,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-  roboPresent,err := harbor.IsRobotPresent(r.Context(), req.Name)
+	roboPresent, err := harbor.IsRobotPresent(r.Context(), req.Name)
 	if err != nil {
 		log.Println(err)
 		err := &AppError{
@@ -181,14 +182,14 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-  if roboPresent {
+	if roboPresent {
 		err := &AppError{
 			Message: fmt.Sprintf("Error: Robot Account name already present. Try with different name"),
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
-    return
-  }
+		return
+	}
 
 	// Start a new transaction
 	tx, err := s.db.BeginTx(r.Context(), nil)
@@ -491,7 +492,50 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	satellite := vars["satellite"]
 
-	err := s.dbQueries.DeleteSatelliteByName(r.Context(), satellite)
+  sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satellite)
+	if err != nil {
+		log.Printf("error: failed to get satellite by name: %v", err)
+		err := &AppError{
+			Message: "Error: Satellite Not Found",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+  robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("error: robotAcc for satellite does not exist: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to Delete Satellite",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+  robotID, err := strconv.ParseInt(robotAcc.RobotID, 10, 64)
+	if err != nil {
+		log.Printf("error: Invalid robot ID: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to Delete Satellite",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+  _, err = harbor.DeleteRobotAccount(r.Context(), robotID)
+	if err != nil {
+		log.Printf("error: failed to delete robot account: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to Delete Satellite",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	err = s.dbQueries.DeleteSatelliteByName(r.Context(), satellite)
 	if err != nil {
 		log.Printf("error: failed to delete satellite: %v", err)
 		err := &AppError{
@@ -549,6 +593,55 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("Error: Failed to Add permission to robot account: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to Add permission to robot account",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	groupList, err := s.dbQueries.SatelliteGroupList(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("Error: Failed: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to Add satellite to group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	var projects []string
+
+	for _, group := range groupList {
+		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
+		if err != nil {
+			log.Printf("Error: Failed: %v", err)
+			err := &AppError{
+				Message: "Error: Failed to Add satellite to group",
+				Code:    http.StatusInternalServerError,
+			}
+			HandleAppError(w, err)
+			return
+		}
+		projects = append(projects, grp.Projects...)
+	}
+
+	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
+	if err != nil {
+		log.Printf("Error: Failed to Add permission to robot account: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to Add permission to robot account",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
@@ -590,6 +683,55 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		log.Printf("error: failed to remove satellite from group: %v", err)
 		err := &AppError{
 			Message: "Error: Failed to Remove Satellite from Group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("Error: Failed to Add permission to robot account: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to Add permission to robot account",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	groupList, err := s.dbQueries.SatelliteGroupList(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("Error: Failed: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to Add satellite to group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	var projects []string
+
+	for _, group := range groupList {
+		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
+		if err != nil {
+			log.Printf("Error: Failed: %v", err)
+			err := &AppError{
+				Message: "Error: Failed to Add satellite to group",
+				Code:    http.StatusInternalServerError,
+			}
+			HandleAppError(w, err)
+			return
+		}
+		projects = append(projects, grp.Projects...)
+	}
+
+	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
+	if err != nil {
+		log.Printf("Error: Failed to Add permission to robot account: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to Add permission to robot account",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
