@@ -2,14 +2,12 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	runtime "container-registry.com/harbor-satellite/cmd/container_runtime"
 	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/satellite"
 	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/server"
-	"container-registry.com/harbor-satellite/internal/state"
 	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
 	"github.com/rs/zerolog"
@@ -60,16 +58,8 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 		log.Error().Err(err).Msg("Error starting scheduler")
 		return err
 	}
-	// Process Input (file or URL)
-	stateArtifactFetcher, err := processInput(ctx, log)
-	if err != nil || stateArtifactFetcher == nil {
-		return fmt.Errorf("error processing input: %w", err)
-	}
-	if stateArtifactFetcher == nil {
-		return fmt.Errorf("state artifact fetcher is nil")
-	}
 
-	satelliteService := satellite.NewSatellite(ctx, stateArtifactFetcher, scheduler.GetSchedulerKey())
+	satelliteService := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey())
 
 	g.Go(func() error {
 		return satelliteService.Run(ctx)
@@ -77,13 +67,6 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 
 	log.Info().Msg("Startup complete 🚀")
 	return g.Wait()
-}
-
-func initConfig() error {
-	if err := config.InitConfig(); err != nil {
-		return fmt.Errorf("error initializing config: %w", err)
-	}
-	return nil
 }
 
 func setupServerApp(ctx context.Context, log *zerolog.Logger) *server.App {
@@ -94,7 +77,6 @@ func setupServerApp(ctx context.Context, log *zerolog.Logger) *server.App {
 		router,
 		ctx,
 		log,
-		config.AppConfig,
 		&server.MetricsRegistrar{},
 		&server.DebugRegistrar{},
 		&satellite.SatelliteRegistrar{},
@@ -118,47 +100,6 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 			cancel()
 			return nil
 		})
-	}
-	return nil
-}
-
-func processInput(ctx context.Context, log *zerolog.Logger) (state.StateFetcher, error) {
-	input := config.GetInput()
-
-	if utils.IsValidURL(input) {
-		return processURLInput(input, log)
-	}
-
-	log.Info().Msg("Input is not a valid URL, checking if it is a file path")
-	if err := validateFilePath(input, log); err != nil {
-		return nil, err
-	}
-
-	return processFileInput(log)
-}
-
-func processURLInput(input string, log *zerolog.Logger) (state.StateFetcher, error) {
-	log.Info().Msg("Input is a valid URL")
-	config.SetRemoteRegistryURL(input)
-
-	stateArtifactFetcher := state.NewURLStateFetcher()
-
-	return stateArtifactFetcher, nil
-}
-
-func processFileInput(log *zerolog.Logger) (state.StateFetcher, error) {
-	stateArtifactFetcher := state.NewFileStateFetcher()
-	return stateArtifactFetcher, nil
-}
-
-func validateFilePath(path string, log *zerolog.Logger) error {
-	if utils.HasInvalidPathChars(path) {
-		log.Error().Msg("Path contains invalid characters")
-		return fmt.Errorf("invalid file path: %s", path)
-	}
-	if err := utils.GetAbsFilePath(path); err != nil {
-		log.Error().Err(err).Msg("No file found")
-		return fmt.Errorf("no file found: %s", path)
 	}
 	return nil
 }
