@@ -19,9 +19,8 @@ type StateFetcher interface {
 }
 
 type baseStateFetcher struct {
-	groupName            string
-	stateArtifactName   string
-	stateArtifactReader StateReader
+	username              string
+	password              string
 }
 
 type URLStateFetcher struct {
@@ -34,27 +33,24 @@ type FileStateArtifactFetcher struct {
 	filePath string
 }
 
-func NewURLStateFetcher() StateFetcher {
-	url := config.GetRemoteRegistryURL()
-	url = utils.FormatRegistryURL(url)
+func NewURLStateFetcher(stateURL, userName, password string) StateFetcher {
+	url := utils.FormatRegistryURL(stateURL)
 	return &URLStateFetcher{
 		baseStateFetcher: baseStateFetcher{
-			groupName:            config.GetGroupName(),
-			stateArtifactName:   config.GetStateArtifactName(),
-			stateArtifactReader: NewState(),
+			username:              userName,
+			password:              password,
 		},
 		url: url,
 	}
 }
 
-func NewFileStateFetcher() StateFetcher {
+func NewFileStateFetcher(filePath, userName, password string) StateFetcher {
 	return &FileStateArtifactFetcher{
 		baseStateFetcher: baseStateFetcher{
-			groupName:            config.GetGroupName(),
-			stateArtifactName:   config.GetStateArtifactName(),
-			stateArtifactReader: NewState(),
+			username:              userName,
+			password:              password,
 		},
-		filePath: config.GetInput(),
+		filePath: filePath,
 	}
 }
 
@@ -72,8 +68,8 @@ func (f *FileStateArtifactFetcher) FetchStateArtifact(state interface{}) error {
 
 func (f *URLStateFetcher) FetchStateArtifact(state interface{}) error {
 	auth := authn.FromConfig(authn.AuthConfig{
-		Username: config.GetHarborUsername(),
-		Password: config.GetHarborPassword(),
+		Username: f.username,
+		Password: f.password,
 	})
 
 	options := []crane.Option{crane.WithAuth(auth)}
@@ -81,10 +77,7 @@ func (f *URLStateFetcher) FetchStateArtifact(state interface{}) error {
 		options = append(options, crane.Insecure)
 	}
 
-	sourceRegistry := utils.FormatRegistryURL(config.GetRemoteRegistryURL())
-	tag := "latest"
-
-	img, err := crane.Pull(fmt.Sprintf("%s/%s/%s:%s", sourceRegistry, f.groupName, f.stateArtifactName, tag), options...)
+	img, err := crane.Pull(f.url, options...)
 	if err != nil {
 		return fmt.Errorf("failed to pull the state artifact: %v", err)
 	}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"container-registry.com/harbor-satellite/internal/config"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
@@ -22,16 +21,14 @@ type App struct {
 	server     *http.Server
 	ctx        context.Context
 	Logger     *zerolog.Logger
-	config     *config.Config
 }
 
-func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, config *config.Config, registrars ...RouteRegistrar) *App {
+func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, registrars ...RouteRegistrar) *App {
 	return &App{
 		router:     router,
 		registrars: registrars,
 		ctx:        ctx,
 		Logger:     logger,
-		config:     config,
 		server:     &http.Server{Addr: ":9090", Handler: router},
 	}
 }
