@@ -143,8 +143,8 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 
 func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig **registry.DefaultZotConfig, defaultGenPath string) error {
 	var err error
-	utils.SetupContextForCommand(cmd)
 	config.InitConfig()
+	utils.SetupContextForCommand(cmd)
 	log := logger.FromContext(cmd.Context())
 
 	if config.GetOwnRegistry() {
