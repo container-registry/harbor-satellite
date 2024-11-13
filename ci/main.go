@@ -24,7 +24,7 @@ type HarborSatellite struct{}
 func (m *HarborSatellite) BuildDev(
 	ctx context.Context,
 	// +optional
-	// +defaultPath="./ground-control"
+	// +defaultPath="."
 	source *dagger.Directory,
 	component string,
 ) (*dagger.Service, error) {
@@ -36,15 +36,24 @@ func (m *HarborSatellite) BuildDev(
 			WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
 			WithEnvVariable("GOCACHE", "/go/build-cache").
 			WithMountedDirectory(PROJ_MOUNT, source).
-      WithWorkdir(PROJ_MOUNT).
+			WithWorkdir(PROJ_MOUNT).
 			WithExec([]string{"go", "install", "github.com/air-verse/air@latest"})
 
 		if component == "ground-control" {
+			db, err := m.Db(ctx)
+			if err != nil {
+				return nil, err
+			}
+
 			golang = golang.
+				WithWorkdir(PROJ_MOUNT+"/ground-control/sql/schema").
 				WithExec([]string{"ls", "-la"}).
-				// WithWorkdir("./ground-control/").
-				// WithExec([]string{"go", "mod", "download"}).
+				WithServiceBinding("pgservice", db).
+				WithExec([]string{"go", "install", "github.com/pressly/goose/v3/cmd/goose@latest"}).
+				WithExec([]string{"goose", "postgres", "postgres://postgres:password@pgservice:5432/groundcontrol", "up"}).
+				WithWorkdir(PROJ_MOUNT + "/ground-control").
 				WithExec([]string{"ls", "-la"}).
+				WithExec([]string{"go", "mod", "download"}).
 				WithExec([]string{"air", "-c", ".air.toml"}).
 				WithExposedPort(8080)
 		}
@@ -54,6 +63,18 @@ func (m *HarborSatellite) BuildDev(
 	}
 
 	return nil, fmt.Errorf("error: please provide component as either satellite or ground-control")
+}
+
+// starts postgres DB container for ground-control.
+func (m *HarborSatellite) Db(ctx context.Context) (*dagger.Service, error) {
+	return dag.Container().
+		From("postgres:17").
+		WithEnvVariable("POSTGRES_USER", "postgres").
+		WithEnvVariable("POSTGRES_PASSWORD", "password").
+		WithEnvVariable("POSTGRES_HOST_AUTH_METHOD", "trust").
+		WithEnvVariable("POSTGRES_DB", "groundcontrol").
+		WithExposedPort(5432).
+		AsService().Start(ctx)
 }
 
 // Build function would start the build process for the name provided. Source should be the path to the main.go file.
