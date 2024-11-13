@@ -24,7 +24,7 @@ HARBOR_URL=https://demo.goharbor.io
 PORT=8080
 APP_ENV=local
 
-DB_HOST=localhost
+DB_HOST=pgservice
 DB_PORT=5432
 DB_DATABASE=groundcontrol
 DB_USERNAME=postgres       # Customize based on your DB config
@@ -35,7 +35,19 @@ DB_PASSWORD=password       # Customize based on your DB config
 To start the Ground Control service, execute the following Dagger command:
 
 ```bash
-dagger call build-dev --component ground-control up
+dagger call run-ground-control up
+```
+
+You can also build ground-control binary using the below command
+
+```bash
+dagger call build-dev --platform "linux/amd64" --component "ground-control" export --path=./gc-dev
+```
+
+To Run ground-control binary use
+
+```bash
+./gc-dev
 ```
 
 > **Note:** Ensure you have set up Dagger with the latest version before running this command. Ground Control will run on port 8080.
@@ -82,11 +94,16 @@ The response will include a token string. Set this token in the Satellite `.env`
 TOKEN=<string_from_ground_control>
 ```
 
-### 7. Start the Satellite
-Run the following Dagger command to start the Satellite service:
+### 7. Build the Satellite
+Run the following Dagger command to build the Satellite:
 
 ```bash
-dagger call build-dev --component satellite up
+dagger call build-dev --platform "linux/amd64" --component satellite export --path=./satellite-dev
+```
+
+To Run Satellite:
+```bash
+./satellite-dev
 ```
 
 The Satellite service will start on port 9090. Ensure that the `ground_control_url` is correctly set in the Satellite configuration before launching.

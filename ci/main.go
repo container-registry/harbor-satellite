@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
+	"strings"
 
 	"container-registry.com/harbor-satellite/ci/internal/dagger"
 )
@@ -20,15 +22,61 @@ const (
 
 type HarborSatellite struct{}
 
-// build-dev function would start the dev server for the component provided.
+// start the dev server for ground-control.
+func (m *HarborSatellite) RunGroundControl(
+	ctx context.Context,
+	// +optional
+	// +defaultPath="."
+	source *dagger.Directory,
+) (*dagger.Service, error) {
+	golang := dag.Container().
+		From("golang:latest").
+		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
+		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
+		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
+		WithEnvVariable("GOCACHE", "/go/build-cache").
+		WithMountedDirectory(PROJ_MOUNT, source).
+		WithWorkdir(PROJ_MOUNT).
+		WithExec([]string{"go", "install", "github.com/air-verse/air@latest"})
+
+	db, err := m.Db(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	golang = golang.
+		WithWorkdir(PROJ_MOUNT+"/ground-control/sql/schema").
+		WithExec([]string{"ls", "-la"}).
+		WithServiceBinding("pgservice", db).
+		WithExec([]string{"go", "install", "github.com/pressly/goose/v3/cmd/goose@latest"}).
+		WithExec([]string{"goose", "postgres", "postgres://postgres:password@pgservice:5432/groundcontrol", "up"}).
+		WithWorkdir(PROJ_MOUNT + "/ground-control").
+		WithExec([]string{"ls", "-la"}).
+		WithExec([]string{"go", "mod", "download"}).
+		WithExec([]string{"air", "-c", ".air.toml"}).
+		WithExposedPort(8080)
+
+	return golang.AsService(), nil
+}
+
+// quickly build binaries for components for given platform.
 func (m *HarborSatellite) BuildDev(
 	ctx context.Context,
 	// +optional
 	// +defaultPath="."
 	source *dagger.Directory,
+	platform string,
 	component string,
-) (*dagger.Service, error) {
+) (*dagger.File, error) {
+	fmt.Println("🛠️  Building Harbor-Cli with Dagger...")
+	// Define the path for the binary output
+	os, arch, err := parsePlatform(platform)
+	if err != nil {
+		log.Fatalf("Error parsing platform: %v", err)
+	}
+
 	if component == "satellite" || component == "ground-control" {
+		var binaryFile *dagger.File
 		golang := dag.Container().
 			From("golang:latest").
 			WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
@@ -37,29 +85,27 @@ func (m *HarborSatellite) BuildDev(
 			WithEnvVariable("GOCACHE", "/go/build-cache").
 			WithMountedDirectory(PROJ_MOUNT, source).
 			WithWorkdir(PROJ_MOUNT).
-			WithExec([]string{"go", "install", "github.com/air-verse/air@latest"})
+			WithEnvVariable("GOOS", os).
+			WithEnvVariable("GOARCH", arch)
 
 		if component == "ground-control" {
-			db, err := m.Db(ctx)
-			if err != nil {
-				return nil, err
-			}
-
 			golang = golang.
-				WithWorkdir(PROJ_MOUNT+"/ground-control/sql/schema").
-				WithExec([]string{"ls", "-la"}).
-				WithServiceBinding("pgservice", db).
-				WithExec([]string{"go", "install", "github.com/pressly/goose/v3/cmd/goose@latest"}).
-				WithExec([]string{"goose", "postgres", "postgres://postgres:password@pgservice:5432/groundcontrol", "up"}).
 				WithWorkdir(PROJ_MOUNT + "/ground-control").
 				WithExec([]string{"ls", "-la"}).
 				WithExec([]string{"go", "mod", "download"}).
-				WithExec([]string{"air", "-c", ".air.toml"}).
-				WithExposedPort(8080)
-		}
-		// to-do: build else part for the satellite
+				WithExec([]string{"go", "build", "."})
 
-		return golang.AsService(), nil
+			binaryFile = golang.File(PROJ_MOUNT + "/ground-control/ground-control")
+		} else {
+			golang = golang.
+				WithExec([]string{"ls", "-la"}).
+				WithExec([]string{"go", "mod", "download"}).
+				WithExec([]string{"go", "build", "."})
+
+			binaryFile = golang.File(PROJ_MOUNT + "/harbor-satellite")
+		}
+
+		return binaryFile, nil
 	}
 
 	return nil, fmt.Errorf("error: please provide component as either satellite or ground-control")
@@ -134,4 +180,13 @@ func (m *HarborSatellite) Release(ctx context.Context, directory *dagger.Directo
 	}
 
 	return release_output, nil
+}
+
+// Parse the platform string into os and arch
+func parsePlatform(platform string) (string, string, error) {
+	parts := strings.Split(platform, "/")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid platform format: %s. Should be os/arch. E.g. darwin/amd64", platform)
+	}
+	return parts[0], parts[1], nil
 }
