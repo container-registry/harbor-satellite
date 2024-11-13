@@ -11,8 +11,12 @@ url_or_file = "https://demo.goharbor.io/v2/myproject/album-server"
 # Default path for Zot registry config.json
 zotConfigPath = "./registry/config.json"
 
-# Set logging level
-log_level = "info"
+# ground control
+ground_control_url = "http://localhost:8080"
+# eg. ground_control = "https://ground-control.bupd.xyz"
+
+# Set logging level: debug, info, warn, error, fatal, panic
+log_level = "error"
 
 # For testing purposes :
 #		 https://demo.goharbor.io/v2/myproject/album-server

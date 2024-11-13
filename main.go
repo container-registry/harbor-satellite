@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+
 	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/images"
 	"container-registry.com/harbor-satellite/internal/replicate"
@@ -17,6 +18,7 @@ import (
 	"container-registry.com/harbor-satellite/logger"
 	"golang.org/x/sync/errgroup"
 
+	_ "github.com/joho/godotenv/autoload"
 	"github.com/rs/zerolog"
 )
 
@@ -29,8 +31,8 @@ func main() {
 
 func run() error {
 	// Initialize Config and Logger
-	if err := initConfig(); err != nil {
-		return err
+	if err := config.InitConfig(); err != nil {
+		return fmt.Errorf("error initializing config: %w", err)
 	}
 
 	ctx, cancel := setupContext()
@@ -67,13 +69,6 @@ func run() error {
 
 	log.Info().Msg("Satellite running")
 	return g.Wait()
-}
-
-func initConfig() error {
-	if err := config.InitConfig(); err != nil {
-		return fmt.Errorf("error initializing config: %w", err)
-	}
-	return nil
 }
 
 func setupContext() (context.Context, context.CancelFunc) {
