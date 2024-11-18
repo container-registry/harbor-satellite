@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/notifier"
+	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
+	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )
 
@@ -26,14 +29,15 @@ type FetchAndReplicateAuthConfig struct {
 }
 
 type FetchAndReplicateStateProcess struct {
-	id         uint64
-	name       string
-	cronExpr   string
-	isRunning  bool
-	stateMap   []StateMap
-	notifier   notifier.Notifier
-	mu         *sync.Mutex
-	authConfig FetchAndReplicateAuthConfig
+	id          cron.EntryID
+	name        string
+	cronExpr    string
+	isRunning   bool
+	stateMap    []StateMap
+	notifier    notifier.Notifier
+	mu          *sync.Mutex
+	authConfig  FetchAndReplicateAuthConfig
+	eventBroker *scheduler.EventBroker
 }
 
 type StateMap struct {
@@ -49,9 +53,8 @@ func NewStateMap(url []string) []StateMap {
 	return stateMap
 }
 
-func NewFetchAndReplicateStateProcess(id uint64, cronExpr string, notifier notifier.Notifier, username, password, remoteRegistryURL, sourceRegistryURL string, useUnsecure bool, states []string) *FetchAndReplicateStateProcess {
+func NewFetchAndReplicateStateProcess(cronExpr string, notifier notifier.Notifier, username, password, remoteRegistryURL, sourceRegistryURL string, useUnsecure bool, states []string) *FetchAndReplicateStateProcess {
 	return &FetchAndReplicateStateProcess{
-		id:        id,
 		name:      FetchAndReplicateStateProcessName,
 		cronExpr:  cronExpr,
 		isRunning: false,
@@ -69,12 +72,18 @@ func NewFetchAndReplicateStateProcess(id uint64, cronExpr string, notifier notif
 }
 
 func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
+	defer f.stop()
 	log := logger.FromContext(ctx)
 	if !f.start() {
-		log.Warn().Msg("Process already running")
-		return fmt.Errorf("process %s already running", f.GetName())
+		log.Warn().Msgf("Process %s is already running", f.name)
+		return nil
 	}
-	defer f.stop()
+	bool, reason := f.CanExecute(ctx)
+	if !bool {
+		log.Warn().Msgf("Cannot execute process: %s", reason)
+		return nil
+	}
+	log.Info().Msg(reason)
 
 	for i := range f.stateMap {
 		log.Info().Msgf("Processing state for %s", f.stateMap[i].url)
@@ -157,8 +166,12 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 
 	return entityToDelete, entityToReplicate, newState
 }
-func (f *FetchAndReplicateStateProcess) GetID() uint64 {
+func (f *FetchAndReplicateStateProcess) GetID() cron.EntryID {
 	return f.id
+}
+
+func (f *FetchAndReplicateStateProcess) SetID(id cron.EntryID) {
+	f.id = id
 }
 
 func (f *FetchAndReplicateStateProcess) GetName() string {
@@ -171,6 +184,32 @@ func (f *FetchAndReplicateStateProcess) GetCronExpr() string {
 
 func (f *FetchAndReplicateStateProcess) IsRunning() bool {
 	return f.isRunning
+}
+
+func (f *FetchAndReplicateStateProcess) CanExecute(ctx context.Context) (bool, string) {
+	checks := []struct {
+		condition bool
+		message   string
+	}{
+		{f.stateMap == nil, "state map is nil"},
+		{f.authConfig.RemoteRegistryURL == "", "remote registry URL is empty"},
+		{f.authConfig.SourceRegistry == "", "source registry is empty"},
+		{f.authConfig.Username == "", "username is empty"},
+		{f.authConfig.Password == "", "password is empty"},
+	}
+
+	var missingFields []string
+	for _, check := range checks {
+		if check.condition {
+			missingFields = append(missingFields, check.message)
+		}
+	}
+
+	if len(missingFields) > 0 {
+		return false, fmt.Sprintf("missing %s", strings.Join(missingFields, ", "))
+	}
+
+	return true, fmt.Sprintf("Process %s can execute: all conditions fulfilled", f.name)
 }
 
 func (f *FetchAndReplicateStateProcess) start() bool {
@@ -279,4 +318,71 @@ func processFileInput(input, username, password string, log *zerolog.Logger) (St
 	log.Info().Msg("Input is a valid file path")
 	stateArtifactFetcher := NewFileStateFetcher(input, username, password)
 	return stateArtifactFetcher, nil
+}
+
+func (f *FetchAndReplicateStateProcess) AddEventBroker(eventBroker *scheduler.EventBroker, ctx context.Context) {
+	f.eventBroker = eventBroker
+	go f.ListenForUpdatedConfig(ctx)
+}
+
+func (f *FetchAndReplicateStateProcess) ListenForUpdatedConfig(ctx context.Context) {
+	log := logger.FromContext(ctx)
+	log.Info().Msg("Listening for updated config from ground control")
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event := <-f.eventBroker.Subscribe(FetchConfigFromGroundControlEventName):
+			log.Info().Msg("Received updated config from ground control")
+			payload := event.Payload.(GroundControlPayload)
+			PrintPrettyJson(payload, log, "Updated config")
+		case event := <-f.eventBroker.Subscribe(ZeroTouchRegistrationEventName):
+			log.Info().Msgf("Received %s event with source %s", event.Name, event.Source)
+			payload := event.Payload.(ZeroTouchRegistrationEventPayload)
+			f.UpdateFetchProcessConfigFromZtr(payload.StateConfig.Auth.Name, payload.StateConfig.Auth.Secret, payload.StateConfig.Auth.Registry, payload.StateConfig.States)
+		}
+	}
+}
+
+func (f *FetchAndReplicateStateProcess) UpdateFetchProcessConfigFromZtr(username, password, sourceRegistryURL string, states []string) {
+	f.authConfig.Username = username
+	f.authConfig.Password = password
+	f.authConfig.SourceRegistry = utils.FormatRegistryURL(sourceRegistryURL)
+
+	// The states contain all the states that this satellite needs to track thus we would have to add the new states to the state map
+	// also we would have to remove the states that are not in the new states
+	var newStates []string
+	for _, state := range states {
+		found := false
+		for _, stateMap := range f.stateMap {
+			if stateMap.url == state {
+				found = true
+				break
+			}
+		}
+		if !found {
+			newStates = append(newStates, state)
+		}
+	}
+
+	// Remove states that are no longer needed
+	var updatedStateMap []StateMap
+	for _, stateMap := range f.stateMap {
+		if contains(states, stateMap.url) {
+			updatedStateMap = append(updatedStateMap, stateMap)
+		}
+	}
+
+	// Add new states
+	f.stateMap = append(updatedStateMap, NewStateMap(newStates)...)
+}
+
+// contains takes in a slice and checks if the item is in the slice if preset it returns true else false
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
