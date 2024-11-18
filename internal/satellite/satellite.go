@@ -25,13 +25,19 @@ func NewSatellite(ctx context.Context, schedulerKey scheduler.SchedulerKey) *Sat
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
-	var cronExpr string
+	var fetchStateProcessCron string
 	state_fetch_period := config.GetStateFetchPeriod()
-	cronExpr, err := utils.FormatDuration(state_fetch_period)
+	fetchConfigProcessCron, err := utils.FormatDuration(config.GetConfigFetchPeriod())
+	if err != nil {
+		log.Warn().Msgf("Error formatting duration in seconds: %v", err)
+		log.Warn().Msgf("Using default duration: %v", state.DefaultFetchConfigFromGroundControlTimePeriod)
+		fetchConfigProcessCron = state.DefaultFetchConfigFromGroundControlTimePeriod
+	}
+	fetchStateProcessCron, err = utils.FormatDuration(state_fetch_period)
 	if err != nil {
 		log.Warn().Msgf("Error formatting duration in seconds: %v", err)
 		log.Warn().Msgf("Using default duration: %v", state.DefaultFetchAndReplicateStateTimePeriod)
-		cronExpr = state.DefaultFetchAndReplicateStateTimePeriod
+		fetchStateProcessCron = state.DefaultFetchAndReplicateStateTimePeriod
 	}
 	userName := config.GetHarborUsername()
 	password := config.GetHarborPassword()
@@ -44,9 +50,25 @@ func (s *Satellite) Run(ctx context.Context) error {
 	notifier := notifier.NewSimpleNotifier(ctx)
 	// Creating a process to fetch and replicate the state
 	states := config.GetStates()
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(scheduler.NextID(), cronExpr, notifier, userName, password, zotURL, sourceRegistry, useUnsecure, states)
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(fetchStateProcessCron, notifier, userName, password, zotURL, sourceRegistry, useUnsecure, states)
+	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(fetchConfigProcessCron, "", "")
+	err = scheduler.Schedule(configFetchProcess)
+	if err != nil {
+		log.Error().Err(err).Msg("Error scheduling process")
+		return err
+	}
 	// Add the process to the scheduler
-	scheduler.Schedule(fetchAndReplicateStateProcess)
-
+	err = scheduler.Schedule(fetchAndReplicateStateProcess)
+	if err != nil {
+		log.Error().Err(err).Msg("Error scheduling process")
+		return err
+	}
+	// Schedule Register Satellite Process
+	ztrProcess := state.NewZtrProcess(state.DefaultZeroTouchRegistrationCronExpr)
+	err = scheduler.Schedule(ztrProcess)
+	if err != nil {
+		log.Error().Err(err).Msg("Error scheduling process")
+		return err
+	}
 	return nil
 }
