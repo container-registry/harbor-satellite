@@ -11,48 +11,58 @@ var appConfig *Config
 const DefaultConfigPath string = "config.json"
 
 type Auth struct {
-	Name     string `json:"name"`
-	Registry string `json:"registry"`
-	Secret   string `json:"secret"`
+	Name     string `json:"name,omitempty"`
+	Registry string `json:"registry,omitempty"`
+	Secret   string `json:"secret,omitempty"`
+}
+
+// LocalJsonConfig is a struct that holds the configs that are passed as environment variables
+type LocalJsonConfig struct {
+	BringOwnRegistry  bool   `json:"bring_own_registry"`
+	GroundControlURL  string `json:"ground_control_url"`
+	LogLevel          string `json:"log_level"`
+	OwnRegistryAddr   string `json:"own_registry_addr"`
+	OwnRegistryPort   string `json:"own_registry_port"`
+	UseUnsecure       bool   `json:"use_unsecure"`
+	ZotConfigPath     string `json:"zot_config_path"`
+	Token             string `json:"token"`
+	StateFetchPeriod  string `json:"state_fetch_period"`
+	ConfigFetchPeriod string `json:"config_fetch_period"`
+}
+
+type StateConfig struct {
+	Auth   Auth     `json:"auth,omitempty"`
+	States []string `json:"states,omitempty"`
 }
 
 type Config struct {
-	Auth               Auth     `json:"auth"`
-	BringOwnRegistry   bool     `json:"bring_own_registry"`
-	GroundControlURL   string   `json:"ground_control_url"`
-	LogLevel           string   `json:"log_level"`
-	OwnRegistryAddress string   `json:"own_registry_adr"`
-	OwnRegistryPort    string   `json:"own_registry_port"`
-	States             []string `json:"states"`
-	URLOrFile          string   `json:"url_or_file"`
-	ZotConfigPath      string   `json:"zotconfigpath"`
-	UseUnsecure        bool     `json:"use_unsecure"`
-	ZotUrl             string   `json:"zot_url"`
-	StateFetchPeriod   string   `json:"state_fetch_period"`
+	StateConfig     StateConfig     `json:"state_config"`
+	LocalJsonConfig LocalJsonConfig `json:"environment_variables"`
+	ZotUrl          string          `json:"zot_url"`
 }
 
 func GetLogLevel() string {
-	return appConfig.LogLevel
+	return appConfig.LocalJsonConfig.LogLevel
 }
 
 func GetOwnRegistry() bool {
-	return appConfig.BringOwnRegistry
+	return appConfig.LocalJsonConfig.BringOwnRegistry
 }
 
 func GetOwnRegistryAdr() string {
-	return appConfig.OwnRegistryAddress
+	return appConfig.LocalJsonConfig.OwnRegistryAddr
 }
 
 func GetOwnRegistryPort() string {
-	return appConfig.OwnRegistryPort
+	return appConfig.LocalJsonConfig.OwnRegistryPort
 }
 
 func GetZotConfigPath() string {
-	return appConfig.ZotConfigPath
+	return appConfig.LocalJsonConfig.ZotConfigPath
 }
 
 func GetInput() string {
-	return appConfig.URLOrFile
+	return ""
 }
 
 func SetZotURL(url string) {
@@ -64,36 +74,52 @@ func GetZotURL() string {
 }
 
 func UseUnsecure() bool {
-	return appConfig.UseUnsecure
+	return appConfig.LocalJsonConfig.UseUnsecure
 }
 
 func GetHarborPassword() string {
-	return appConfig.Auth.Secret
+	return appConfig.StateConfig.Auth.Secret
 }
 
 func GetHarborUsername() string {
-	return appConfig.Auth.Name
+	return appConfig.StateConfig.Auth.Name
 }
 
 func SetRemoteRegistryURL(url string) {
-	appConfig.Auth.Registry = url
+	appConfig.StateConfig.Auth.Registry = url
 }
 
 func GetRemoteRegistryURL() string {
-	return appConfig.Auth.Registry
+	return appConfig.StateConfig.Auth.Registry
 }
 
 func GetStateFetchPeriod() string {
-	return appConfig.StateFetchPeriod
+	return appConfig.LocalJsonConfig.StateFetchPeriod
+}
+
+func GetConfigFetchPeriod() string {
+	return appConfig.LocalJsonConfig.ConfigFetchPeriod
 }
 
 func GetStates() []string {
-	return appConfig.States
+	return appConfig.StateConfig.States
+}
+
+func GetToken() string {
+	return appConfig.LocalJsonConfig.Token
+}
+
+func GetGroundControlURL() string {
+	return appConfig.LocalJsonConfig.GroundControlURL
+}
+
+func SetGroundControlURL(url string) {
+	appConfig.LocalJsonConfig.GroundControlURL = url
 }
 
 func ParseConfigFromJson(jsonData string) (*Config, error) {
 	var config Config
-	err := json.Unmarshal([]byte(jsonData), &config)
+	err := json.Unmarshal([]byte(jsonData), &config.LocalJsonConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -137,4 +163,11 @@ func InitConfig() error {
 		return err
 	}
 	return nil
+}
+
+func UpdateStateConfig(name, registry, secret string, states []string) {
+	appConfig.StateConfig.Auth.Name = name
+	appConfig.StateConfig.Auth.Registry = registry
+	appConfig.StateConfig.Auth.Secret = secret
+	appConfig.StateConfig.States = states
 }
