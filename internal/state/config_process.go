@@ -70,7 +70,7 @@ func (f *FetchConfigFromGroundControlProcess) Execute(ctx context.Context) error
 	defer f.stop()
 	log.Info().Msg("Fetching config from ground control")
 	event := NewGroundControlConfigEvent([]string{"state1", "state2"})
-	f.eventBroker.Publish(event)
+	f.eventBroker.Publish(event, ctx)
 	return nil
 }
 

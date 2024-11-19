@@ -1,7 +1,10 @@
 package scheduler
 
-import "sync"
-
+import (
+	"context"
+	"fmt"
+	"sync"
+)
 
 const EventBrokerSubscriberDefaultBufferSize = 10
 
@@ -20,7 +23,7 @@ type EventBroker struct {
 	// subscribers is a map of event name and a event channel which would be used to listen to the events
 	subscribers map[string][]chan Event
 	// mu is the mutex for the event broker
-	mu          sync.RWMutex
+	mu sync.RWMutex
 }
 
 // NewEventBroker would return a new instance of the event broker
@@ -42,25 +45,32 @@ func (b *EventBroker) Subscribe(eventName string) <-chan Event {
 	return ch
 }
 
-// Publish would take in the event and would emit the event to all the listeners. Would iterate over the subscribers array of the 
+// Publish would take in the event and would emit the event to all the listeners. Would iterate over the subscribers array of the
 // event name and emit the event to all the listeners
-func (b *EventBroker) Publish(event Event) {
+func (b *EventBroker) Publish(event Event, ctx context.Context) error {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
 	for _, ch := range b.subscribers[event.Name] {
-		ch <- event
+		select {
+		case ch <- event:
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return fmt.Errorf("event %s is not being consumed by the listeners", event.Name)
+		}
 	}
+	return nil
 }
 
 // Close cleans up all channels to prevent leaks.
 func (b *EventBroker) Close() {
-    b.mu.Lock()
-    defer b.mu.Unlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
-    for _, channels := range b.subscribers {
-        for _, ch := range channels {
-            close(ch)
-        }
-    }
+	for _, channels := range b.subscribers {
+		for _, ch := range channels {
+			close(ch)
+		}
+	}
 }

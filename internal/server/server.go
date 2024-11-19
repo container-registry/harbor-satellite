@@ -65,6 +65,6 @@ func (a *App) SetupServer(g *errgroup.Group) {
 		if err != nil {
 			return fmt.Errorf("error shutting down server: %w", err)
 		}
-		return fmt.Errorf("satellite shutting down")
+		return nil
 	})
 }

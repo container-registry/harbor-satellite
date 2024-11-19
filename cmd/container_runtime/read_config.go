@@ -14,8 +14,8 @@ func NewReadConfigCommand(runtime string) *cobra.Command {
 		Use:   "read",
 		Short: fmt.Sprintf("Reads the config file for the %s runtime", runtime),
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			utils.SetupContextForCommand(cmd)
 			config.InitConfig()
+			utils.SetupContextForCommand(cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			//Parse the flags

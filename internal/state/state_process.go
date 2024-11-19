@@ -334,11 +334,19 @@ func (f *FetchAndReplicateStateProcess) ListenForUpdatedConfig(ctx context.Conte
 			return
 		case event := <-f.eventBroker.Subscribe(FetchConfigFromGroundControlEventName):
 			log.Info().Msg("Received updated config from ground control")
-			payload := event.Payload.(GroundControlPayload)
-			PrintPrettyJson(payload, log, "Updated config")
+			payload, ok := event.Payload.(GroundControlPayload)
+			if !ok {
+				log.Error().Msgf("received invalid payload from %s, for process %s", event.Source, FetchConfigFromGroundControlEventName)
+				return
+			}
+			log.Info().Msgf("Received updated config from ground control with states: %v", len(payload.States))
 		case event := <-f.eventBroker.Subscribe(ZeroTouchRegistrationEventName):
 			log.Info().Msgf("Received %s event with source %s", event.Name, event.Source)
-			payload := event.Payload.(ZeroTouchRegistrationEventPayload)
+			payload, ok := event.Payload.(ZeroTouchRegistrationEventPayload)
+			if !ok {
+				log.Error().Msgf("Received invalid payload from %s, for process %s", event.Source, ZeroTouchRegistrationEventName)
+				return
+			}
 			f.UpdateFetchProcessConfigFromZtr(payload.StateConfig.Auth.Name, payload.StateConfig.Auth.Secret, payload.StateConfig.Auth.Registry, payload.StateConfig.States)
 		}
 	}

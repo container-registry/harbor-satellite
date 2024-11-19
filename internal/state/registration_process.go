@@ -79,7 +79,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		},
 		Source: ZeroTouchRegistrationProcessName,
 	}
-	z.eventBroker.Publish(zeroTouchRegistrationEvent)
+	z.eventBroker.Publish(zeroTouchRegistrationEvent, ctx)
 	stopProcessPayload := scheduler.StopProcessEventPayload{
 		ProcessName: z.GetName(),
 		Id:          z.GetID(),
@@ -89,7 +89,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		Payload: stopProcessPayload,
 		Source:  ZeroTouchRegistrationProcessName,
 	}
-	z.eventBroker.Publish(stopProcessEvent)
+	z.eventBroker.Publish(stopProcessEvent, ctx)
 	return nil
 }
 
