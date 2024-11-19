@@ -96,7 +96,7 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 	// If there is a registry with the prefix satellite, update the location to the local registry
 	found = false
 	for _, registries := range crioRegistryConfig.Registries {
-		if registries.Prefix == "satellite" {
+		if registries.Prefix == "satellite.io" {
 			found = true
 			if registries.Location == "" {
 				registries.Location = DockerURL
@@ -112,7 +112,7 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 	if !found {
 		// Add the satellite registry to the registries
 		registry := Registry{
-			Prefix:   "satellite",
+			Prefix:   "satellite.io",
 			Location: DockerURL,
 			Mirrors: []Mirror{
 				{
@@ -143,7 +143,10 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 
 func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig **registry.DefaultZotConfig, defaultGenPath string) error {
 	var err error
-	config.InitConfig()
+	err = config.InitConfig()
+	if err != nil {
+		return fmt.Errorf("could not initialize config: %w", err)
+	}
 	utils.SetupContextForCommand(cmd)
 	log := logger.FromContext(cmd.Context())
 

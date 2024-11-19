@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	SatelliteConfigPath    = "satellite"
+	SatelliteConfigPath    = "satellite.io"
 	HostToml              = "host_gen.toml"
 	DefaultTomlConfigPath = "_default"
 	DockerURL             = "docker.io"
