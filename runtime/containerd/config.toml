@@ -1,7 +1,0 @@
-version = 2
-
-
-  [plugins."io.containerd.grpc.v1.cri"]
-
-    [plugins."io.containerd.grpc.v1.cri".registry]
-      config_path = "/etc/containerd/certs.d"

@@ -96,7 +96,7 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 	// If there is a registry with the prefix satellite, update the location to the local registry
 	found = false
 	for _, registries := range crioRegistryConfig.Registries {
-		if registries.Prefix == "satellite" {
+		if registries.Prefix == "satellite.io" {
 			found = true
 			if registries.Location == "" {
 				registries.Location = DockerURL
@@ -112,7 +112,7 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 	if !found {
 		// Add the satellite registry to the registries
 		registry := Registry{
-			Prefix:   "satellite",
+			Prefix:   "satellite.io",
 			Location: DockerURL,
 			Mirrors: []Mirror{
 				{
