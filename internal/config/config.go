@@ -2,13 +2,14 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 )
 
 var appConfig *Config
 
 const DefaultConfigPath string = "config.json"
+const ReplicateStateJobName string = "replicate_state"
+const UpdateConfigJobName string = "update_config"
 
 type Auth struct {
 	Name     string `json:"name,omitempty"`
@@ -28,6 +29,7 @@ type LocalJsonConfig struct {
 	Token             string `json:"token"`
 	StateFetchPeriod  string `json:"state_fetch_period"`
 	ConfigFetchPeriod string `json:"config_fetch_period"`
+	Jobs              []Job  `json:"jobs"`
 }
 
 type StateConfig struct {
@@ -41,7 +43,20 @@ type Config struct {
 	ZotUrl          string          `json:"zot_url"`
 }
 
+type Job struct {
+	Name       string `json:"name"`
+	Seconds    string `json:"seconds"`
+	Minutes    string `json:"minutes"`
+	Hours      string `json:"hours"`
+	DayOfMonth string `json:"day_of_month"`
+	Month      string `json:"month"`
+	DayOfWeek  string `json:"day_of_week"`
+}
+
 func GetLogLevel() string {
+	if appConfig.LocalJsonConfig.LogLevel == "" {
+		return "info"
+	}
 	return appConfig.LocalJsonConfig.LogLevel
 }
 
@@ -119,7 +134,7 @@ func SetGroundControlURL(url string) {
 
 func ParseConfigFromJson(jsonData string) (*Config, error) {
 	var config Config
-	err := json.Unmarshal([]byte(jsonData), &config.LocalJsonConfig)
+	err := json.Unmarshal([]byte(jsonData), &config)
 	if err != nil {
 		return nil, err
 	}
@@ -142,27 +157,32 @@ func ReadConfigData(configPath string) ([]byte, error) {
 	return data, nil
 }
 
-func LoadConfig() (*Config, error) {
-	configData, err := ReadConfigData(DefaultConfigPath)
+func LoadConfig(configPath string) (*Config, []error, []string) {
+	var checks []error
+	var warnings []string
+	var err error
+	configData, err := ReadConfigData(configPath)
 	if err != nil {
-		fmt.Printf("Error reading config file: %v\n", err)
-		return nil, err
+		checks = append(checks, err)
+		return nil, checks, warnings
 	}
 	config, err := ParseConfigFromJson(string(configData))
 	if err != nil {
-		fmt.Printf("Error parsing config file: %v\n", err)
-		return nil, err
+		checks = append(checks, err)
+		return nil, checks, warnings
 	}
-	return config, nil
+	// Validate the job schedule fields
+	for i := range config.LocalJsonConfig.Jobs {
+		warnings = append(warnings, ValidateJobSchedule(&config.LocalJsonConfig.Jobs[i])...)
+	}
+	return config, checks, warnings
 }
 
-func InitConfig() error {
-	var err error
-	appConfig, err = LoadConfig()
-	if err != nil {
-		return err
-	}
-	return nil
+func InitConfig(configPath string) ([]error, []string) {
+	var err []error
+	var warnings []string
+	appConfig, err, warnings = LoadConfig(configPath)
+	return err, warnings
 }
 
 func UpdateStateConfig(name, registry, secret string, states []string) {

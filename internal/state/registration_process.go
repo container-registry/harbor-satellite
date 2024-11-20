@@ -118,7 +118,16 @@ func (z *ZtrProcess) IsRunning() bool {
 func (z *ZtrProcess) CanExecute(ctx context.Context) (bool, string) {
 	log := logger.FromContext(ctx)
 	log.Info().Msgf("Checking if process %s can execute", z.Name)
-	z.loadConfig(ctx)
+	errors, warnings := z.loadConfig()
+	if len(errors) > 0 || len(warnings) > 0 {
+		for _, warning := range warnings {
+			log.Warn().Msgf("Warning loading config: %v", warning)
+		}
+		for _, err := range errors {
+			log.Error().Msgf("Error loading config: %v", err)
+		}
+		return false, "error loading config"
+	}
 
 	checks := []struct {
 		condition bool
@@ -162,15 +171,8 @@ func (z *ZtrProcess) stop() {
 
 // loadConfig loads the configuration.
 // It returns an error if the configuration cannot be loaded.
-func (z *ZtrProcess) loadConfig(ctx context.Context) error {
-	log := logger.FromContext(ctx)
-	log.Info().Msgf("Reading config from %s", config.DefaultConfigPath)
-	err := config.InitConfig()
-	if err != nil {
-		log.Error().Msgf("Failed to read config: %v", err)
-		return fmt.Errorf("failed to read config: %w", err)
-	}
-	return nil
+func (z *ZtrProcess) loadConfig() ([]error, []string) {
+	return config.InitConfig(config.DefaultConfigPath)
 }
 
 func RegisterSatellite(groundControlURL, path, token string, ctx context.Context) (error, config.StateConfig) {

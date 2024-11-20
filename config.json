@@ -1,12 +1,34 @@
 {
-  "bring_own_registry": false,
-  "ground_control_url": "http://localhost:8080",
-  "log_level": "info",
-  "own_registry_adr": "127.0.0.1",
-  "own_registry_port": "8585",
-  "zot_config_path": "./registry/config.json",
-  "use_unsecure": true,
-  "token": "",
-  "state_fetch_period": "",
-  "config_fetch_period": ""
+  "environment_variables": {
+    "bring_own_registry": false,
+    "ground_control_url": "https://gc.bupd.xyz",
+    "log_level": "info",
+    "own_registry_adr": "127.0.0.1",
+    "own_registry_port": "8585",
+    "zot_config_path": "./registry/config.json",
+    "use_unsecure": true,
+    "token": "187916a603c135d681ef0553752994f3",
+    "state_fetch_period": "",
+    "config_fetch_period": "",
+    "jobs": [
+      {
+        "name": "replicate_state",
+        "seconds": "10",
+        "minutes": "*",
+        "hours": "*",
+        "day_of_month": "*",
+        "month": "*",
+        "day_of_week": "*"
+      },
+      {
+        "name": "update_config",
+        "seconds": "5",
+        "minutes": "asdfasdfsaf",
+        "hours": "asdfas",
+        "day_of_month": "*",
+        "month": "*",
+        "day_of_week": "dsffa"
+      }
+    ]
+  }
 }

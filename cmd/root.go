@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"os"
 
 	runtime "container-registry.com/harbor-satellite/cmd/container_runtime"
 	"container-registry.com/harbor-satellite/internal/config"
@@ -20,7 +21,23 @@ func NewRootCommand() *cobra.Command {
 		Use:   "harbor-satellite",
 		Short: "Harbor Satellite is a tool to replicate images from source registry to Harbor registry",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			config.InitConfig()
+			errors, warnings := config.InitConfig(config.DefaultConfigPath)
+			if len(errors) > 0 || len(warnings) > 0 {
+				ctx := cmd.Context()
+				ctx, cancel := utils.SetupContext(ctx)
+				ctx = logger.AddLoggerToContext(ctx, "info")
+				log := logger.FromContext(ctx)
+				for _, warn := range warnings {
+					log.Warn().Msg(warn)
+				}
+				for _, err := range errors {
+					log.Error().Err(err).Msg("Error initializing config")
+				}
+				if len(errors) > 0 {
+					cancel()
+					os.Exit(1)
+				}
+			}
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

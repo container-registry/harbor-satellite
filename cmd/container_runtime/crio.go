@@ -143,7 +143,17 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 
 func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig **registry.DefaultZotConfig, defaultGenPath string) error {
 	var err error
-	err = config.InitConfig()
+	checks, warnings := config.InitConfig(config.DefaultConfigPath)
+	if len(checks) > 0 || len(warnings) > 0 {
+		log := logger.FromContext(cmd.Context())
+		for _, warn := range warnings {
+			log.Warn().Msg(warn)
+		}
+		for _, err := range checks {
+			log.Error().Err(err).Msg("Error initializing config")
+		}
+		return fmt.Errorf("error initializing config")
+	}
 	if err != nil {
 		return fmt.Errorf("could not initialize config: %w", err)
 	}
