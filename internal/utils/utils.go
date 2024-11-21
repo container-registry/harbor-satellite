@@ -1,19 +1,22 @@
 package utils
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/images"
+	"container-registry.com/harbor-satellite/logger"
 	"container-registry.com/harbor-satellite/registry"
+	"github.com/spf13/cobra"
 )
 
 // / ValidateRegistryAddress validates the registry address and port and returns the URL
@@ -46,6 +49,8 @@ func HandleOwnRegistry() error {
 
 // LaunchDefaultZotRegistry launches the default Zot registry using the Zot config path
 func LaunchDefaultZotRegistry() error {
+	defaultZotURL := fmt.Sprintf("%s:%s", "127.0.0.1", "8585")
+	config.SetZotURL(defaultZotURL)
 	launch, err := registry.LaunchRegistry(config.GetZotConfigPath())
 	if !launch {
 		return fmt.Errorf("error launching registry: %w", err)
@@ -80,60 +85,93 @@ func HasInvalidPathChars(input string) bool {
 	return strings.ContainsAny(input, "\\:*?\"<>|")
 }
 
-// ParseImagesJsonFile parses the images.json file and decodes it into the ImageList struct
-func ParseImagesJsonFile(absPath string, imagesList *images.ImageList) error {
-	file, err := os.Open(absPath)
+func GetRepositoryAndImageNameFromArtifact(repository string) (string, string, error) {
+	parts := strings.Split(repository, "/")
+	if len(parts) < 2 {
+		return "", "", fmt.Errorf("invalid repository format: %s. Expected format: repo/image", repository)
+	}
+	repo := parts[0]
+	image := parts[1]
+	return repo, image, nil
+}
+
+func FormatDuration(input string) (string, error) {
+	seconds, err := strconv.Atoi(input) // Convert input string to an integer
 	if err != nil {
-		return err
+		return "", errors.New("invalid input: not a valid number")
+	}
+	if seconds < 0 {
+		return "", errors.New("invalid input: seconds cannot be negative")
+	}
+
+	hours := seconds / 3600
+	minutes := (seconds % 3600) / 60
+	secondsRemaining := seconds % 60
+
+	var result string
+
+	if hours > 0 {
+		result += strconv.Itoa(hours) + "h"
+	}
+	if minutes > 0 {
+		result += strconv.Itoa(minutes) + "m"
+	}
+	if secondsRemaining > 0 || result == "" {
+		result += strconv.Itoa(secondsRemaining) + "s"
+	}
+
+	return result, nil
+}
+
+func SetupContext(context context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := signal.NotifyContext(context, syscall.SIGTERM, syscall.SIGINT)
+	return ctx, cancel
+}
+
+func SetupContextForCommand(cmd *cobra.Command) {
+	ctx := cmd.Context()
+	ctx = logger.AddLoggerToContext(ctx, config.GetLogLevel())
+	cmd.SetContext(ctx)
+}
+
+// FormatRegistryURL formats the registry URL by trimming the "https://" or "http://" prefix if present
+func FormatRegistryURL(url string) string {
+	// Trim the "https://" or "http://" prefix if present
+	url = strings.TrimPrefix(url, "https://")
+	url = strings.TrimPrefix(url, "http://")
+	return url
+}
+
+func ReadFile(path string, shouldPrint bool) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if shouldPrint {
+		PrintData(string(data))
+	}
+	return data, nil
+}
+
+// PrintData prints the content of a file line by line
+func PrintData(content string) {
+	lines := strings.Split(content, "\n")
+	fmt.Print("\n")
+	for i, line := range lines {
+		fmt.Printf("%5d | %s\n", i+1, line)
+	}
+}
+
+// WriteFile takes the path and the data wand write the data to the file
+func WriteFile(path string, data []byte) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("error creating file :%s", err)
 	}
 	defer file.Close()
-
-	if err := json.NewDecoder(file).Decode(imagesList); err != nil {
-		return err
+	_, err = file.Write(data)
+	if err != nil {
+		return fmt.Errorf("error while write to the file :%s", err)
 	}
 	return nil
-}
-
-// Set registry environment variables
-func SetRegistryEnvVars(imageList images.ImageList) error {
-	if !IsValidURL(imageList.RegistryURL) {
-		return fmt.Errorf("invalid registry url format in images.json")
-	}
-	registryURL := imageList.RegistryURL
-	registryParts := strings.Split(registryURL, "/")
-	if len(registryParts) < 3 {
-		return fmt.Errorf("invalid registryUrl format in images.json")
-	}
-
-	os.Setenv("REGISTRY", registryParts[2])
-	config.SetRegistry(registryParts[2])
-
-	if len(imageList.Repositories) > 0 {
-		os.Setenv("REPOSITORY", imageList.Repositories[0].Repository)
-		config.SetRepository(imageList.Repositories[0].Repository)
-	} else {
-		return fmt.Errorf("no repositories found in images.json")
-	}
-
-	return nil
-}
-
-// SetUrlConfig sets the URL configuration for the input URL and sets the environment variables
-func SetUrlConfig(input string) {
-	os.Setenv("USER_INPUT", input)
-	config.SetUserInput(input)
-	parts := strings.SplitN(input, "://", 2)
-	scheme := parts[0] + "://"
-	os.Setenv("SCHEME", scheme)
-	config.SetScheme(scheme)
-	registryAndPath := parts[1]
-	registryParts := strings.Split(registryAndPath, "/")
-	os.Setenv("REGISTRY", registryParts[0])
-	config.SetRegistry(registryParts[0])
-	os.Setenv("API_VERSION", registryParts[1])
-	config.SetAPIVersion(registryParts[1])
-	os.Setenv("REPOSITORY", registryParts[2])
-	config.SetRepository(registryParts[2])
-	os.Setenv("IMAGE", registryParts[3])
-	config.SetImage(registryParts[3])
 }
