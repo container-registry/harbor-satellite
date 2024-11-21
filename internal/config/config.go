@@ -1,166 +1,193 @@
 package config
 
 import (
-	"fmt"
+	"encoding/json"
 	"os"
-
-	"github.com/joho/godotenv"
-	"github.com/spf13/viper"
 )
 
-var AppConfig *Config
+var appConfig *Config
+
+const DefaultConfigPath string = "config.json"
+const ReplicateStateJobName string = "replicate_state"
+const UpdateConfigJobName string = "update_config"
+
+type Auth struct {
+	Name     string `json:"name,omitempty"`
+	Registry string `json:"registry,omitempty"`
+	Secret   string `json:"secret,omitempty"`
+}
+
+// LocalJsonConfig is a struct that holds the configs that are passed as environment variables
+type LocalJsonConfig struct {
+	BringOwnRegistry  bool   `json:"bring_own_registry"`
+	GroundControlURL  string `json:"ground_control_url"`
+	LogLevel          string `json:"log_level"`
+	OwnRegistryAddr   string `json:"own_registry_addr"`
+	OwnRegistryPort   string `json:"own_registry_port"`
+	UseUnsecure       bool   `json:"use_unsecure"`
+	ZotConfigPath     string `json:"zot_config_path"`
+	Token             string `json:"token"`
+	StateFetchPeriod  string `json:"state_fetch_period"`
+	ConfigFetchPeriod string `json:"config_fetch_period"`
+	Jobs              []Job  `json:"jobs"`
+}
+
+type StateConfig struct {
+	Auth   Auth     `json:"auth,omitempty"`
+	States []string `json:"states,omitempty"`
+}
 
 type Config struct {
-	log_level         string
-	own_registry      bool
-	own_registry_adr  string
-	own_registry_port string
-	zot_config_path   string
-	input             string
-	zot_url           string
-	registry          string
-	repository        string
-	user_input        string
-	scheme            string
-	api_version       string
-	image             string
-	harbor_password   string
-	harbor_username   string
-	env               string
-	use_unsecure      bool
+	StateConfig     StateConfig     `json:"state_config"`
+	LocalJsonConfig LocalJsonConfig `json:"environment_variables"`
+	ZotUrl          string          `json:"zot_url"`
+}
+
+type Job struct {
+	Name       string `json:"name"`
+	Seconds    string `json:"seconds"`
+	Minutes    string `json:"minutes"`
+	Hours      string `json:"hours"`
+	DayOfMonth string `json:"day_of_month"`
+	Month      string `json:"month"`
+	DayOfWeek  string `json:"day_of_week"`
 }
 
 func GetLogLevel() string {
-	return AppConfig.log_level
+	if appConfig.LocalJsonConfig.LogLevel == "" {
+		return "info"
+	}
+	return appConfig.LocalJsonConfig.LogLevel
 }
 
 func GetOwnRegistry() bool {
-	return AppConfig.own_registry
+	return appConfig.LocalJsonConfig.BringOwnRegistry
 }
 
 func GetOwnRegistryAdr() string {
-	return AppConfig.own_registry_adr
+	return appConfig.LocalJsonConfig.OwnRegistryAddr
 }
 
 func GetOwnRegistryPort() string {
-	return AppConfig.own_registry_port
+	return appConfig.LocalJsonConfig.OwnRegistryPort
 }
 
 func GetZotConfigPath() string {
-	return AppConfig.zot_config_path
+	return appConfig.LocalJsonConfig.ZotConfigPath
 }
 
 func GetInput() string {
-	return AppConfig.input
+	return ""
 }
 
 func SetZotURL(url string) {
-	AppConfig.zot_url = url
+	appConfig.ZotUrl = url
 }
 
 func GetZotURL() string {
-	return AppConfig.zot_url
-}
-
-func SetRegistry(registry string) {
-	AppConfig.registry = registry
-}
-
-func GetRegistry() string {
-	return AppConfig.registry
-}
-
-func SetRepository(repository string) {
-	AppConfig.repository = repository
-}
-
-func GetRepository() string {
-	return AppConfig.repository
-}
-
-func SetUserInput(user_input string) {
-	AppConfig.user_input = user_input
-}
-
-func GetUserInput() string {
-	return AppConfig.user_input
-}
-
-func SetScheme(scheme string) {
-	AppConfig.scheme = scheme
-}
-
-func GetScheme() string {
-	return AppConfig.scheme
-}
-
-func SetAPIVersion(api_version string) {
-	AppConfig.api_version = api_version
-}
-
-func GetAPIVersion() string {
-	return AppConfig.api_version
-}
-
-func SetImage(image string) {
-	AppConfig.image = image
-}
-
-func GetImage() string {
-	return AppConfig.image
+	return appConfig.ZotUrl
 }
 
 func UseUnsecure() bool {
-	return AppConfig.use_unsecure
+	return appConfig.LocalJsonConfig.UseUnsecure
 }
 
 func GetHarborPassword() string {
-	return AppConfig.harbor_password
+	return appConfig.StateConfig.Auth.Secret
 }
 
 func GetHarborUsername() string {
-	return AppConfig.harbor_username
+	return appConfig.StateConfig.Auth.Name
 }
 
-func LoadConfig() (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("toml")
-	viper.AddConfigPath(".")
-	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("error reading config file at path '%s': %w", viper.ConfigFileUsed(), err)
-	}
-
-	// Load environment and start satellite
-	if err := godotenv.Load(); err != nil {
-		return &Config{}, fmt.Errorf("error loading .env file: %w", err)
-	}
-	var use_unsecure bool
-	if os.Getenv("USE_UNSECURE") == "true" {
-		use_unsecure = true
-	} else {
-		use_unsecure = false
-	}
-
-	return &Config{
-		log_level:         viper.GetString("log_level"),
-		own_registry:      viper.GetBool("bring_own_registry"),
-		own_registry_adr:  viper.GetString("own_registry_adr"),
-		own_registry_port: viper.GetString("own_registry_port"),
-		zot_config_path:   viper.GetString("zotConfigPath"),
-		input:             viper.GetString("url_or_file"),
-		harbor_password:   os.Getenv("HARBOR_PASSWORD"),
-		harbor_username:   os.Getenv("HARBOR_USERNAME"),
-		env:               os.Getenv("ENV"),
-		zot_url:           os.Getenv("ZOT_URL"),
-		use_unsecure:      use_unsecure,
-	}, nil
+func SetRemoteRegistryURL(url string) {
+	appConfig.StateConfig.Auth.Registry = url
 }
 
-func InitConfig() error {
-	var err error
-	AppConfig, err = LoadConfig()
+func GetRemoteRegistryURL() string {
+	return appConfig.StateConfig.Auth.Registry
+}
+
+func GetStateFetchPeriod() string {
+	return appConfig.LocalJsonConfig.StateFetchPeriod
+}
+
+func GetConfigFetchPeriod() string {
+	return appConfig.LocalJsonConfig.ConfigFetchPeriod
+}
+
+func GetStates() []string {
+	return appConfig.StateConfig.States
+}
+
+func GetToken() string {
+	return appConfig.LocalJsonConfig.Token
+}
+
+func GetGroundControlURL() string {
+	return appConfig.LocalJsonConfig.GroundControlURL
+}
+
+func SetGroundControlURL(url string) {
+	appConfig.LocalJsonConfig.GroundControlURL = url
+}
+
+func ParseConfigFromJson(jsonData string) (*Config, error) {
+	var config Config
+	err := json.Unmarshal([]byte(jsonData), &config)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return &config, nil
+}
+
+func ReadConfigData(configPath string) ([]byte, error) {
+
+	fileInfo, err := os.Stat(configPath)
+	if err != nil {
+		return nil, err
+	}
+	if fileInfo.IsDir() {
+		return nil, os.ErrNotExist
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func LoadConfig(configPath string) (*Config, []error, []string) {
+	var checks []error
+	var warnings []string
+	var err error
+	configData, err := ReadConfigData(configPath)
+	if err != nil {
+		checks = append(checks, err)
+		return nil, checks, warnings
+	}
+	config, err := ParseConfigFromJson(string(configData))
+	if err != nil {
+		checks = append(checks, err)
+		return nil, checks, warnings
+	}
+	// Validate the job schedule fields
+	for i := range config.LocalJsonConfig.Jobs {
+		warnings = append(warnings, ValidateJobSchedule(&config.LocalJsonConfig.Jobs[i])...)
+	}
+	return config, checks, warnings
+}
+
+func InitConfig(configPath string) ([]error, []string) {
+	var err []error
+	var warnings []string
+	appConfig, err, warnings = LoadConfig(configPath)
+	return err, warnings
+}
+
+func UpdateStateConfig(name, registry, secret string, states []string) {
+	appConfig.StateConfig.Auth.Name = name
+	appConfig.StateConfig.Auth.Registry = registry
+	appConfig.StateConfig.Auth.Secret = secret
+	appConfig.StateConfig.States = states
 }

@@ -58,9 +58,7 @@ func (m *HarborSatellite) Service(
 		AsService()
 }
 
-
 // builds given component from source
-
 func (m *HarborSatellite) build(source *dagger.Directory, component string) *dagger.Directory {
 	fmt.Printf("Building %s\n", component)
 
