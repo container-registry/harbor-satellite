@@ -1,0 +1,13 @@
+[build]
+  bin = "main"
+  dir = "."
+  cmd = "go build -o main ."
+  exclude_dir = ["assets", "tmp", "vendor", "testdata"]
+  exclude_regex = ["_test.go"]
+  exclude_unchanged = false
+  follow_symlink = false
+  run_after_build = "chmod +x main"
+  include_ext = ["go"]
+
+[log]
+  level = "debug"

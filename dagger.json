@@ -1,6 +1,6 @@
 {
   "name": "harbor-satellite",
+  "engineVersion": "v0.14.0",
   "sdk": "go",
-  "source": "ci",
-  "engineVersion": "v0.13.3"
+  "source": "ci"
 }
