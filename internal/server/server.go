@@ -3,9 +3,9 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
-	"container-registry.com/harbor-satellite/internal/config"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
@@ -21,16 +21,14 @@ type App struct {
 	server     *http.Server
 	ctx        context.Context
 	Logger     *zerolog.Logger
-	config     *config.Config
 }
 
-func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, config *config.Config, registrars ...RouteRegistrar) *App {
+func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, registrars ...RouteRegistrar) *App {
 	return &App{
 		router:     router,
 		registrars: registrars,
 		ctx:        ctx,
 		Logger:     logger,
-		config:     config,
 		server:     &http.Server{Addr: ":9090", Handler: router},
 	}
 }
@@ -62,7 +60,11 @@ func (a *App) SetupServer(g *errgroup.Group) {
 	})
 	g.Go(func() error {
 		<-a.ctx.Done()
-		a.Logger.Info().Msg("Shutting down server")
-		return a.Shutdown(a.ctx)
+		a.Logger.Warn().Msg("Shutting down server")
+		err := a.Shutdown(a.ctx)
+		if err != nil {
+			return fmt.Errorf("error shutting down server: %w", err)
+		}
+		return fmt.Errorf("satellite shutting down")
 	})
 }

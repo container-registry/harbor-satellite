@@ -8,11 +8,9 @@ import (
 	"syscall"
 
 	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/images"
-	"container-registry.com/harbor-satellite/internal/replicate"
 	"container-registry.com/harbor-satellite/internal/satellite"
+	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/server"
-	"container-registry.com/harbor-satellite/internal/store"
 	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
 	"golang.org/x/sync/errgroup"
@@ -39,7 +37,6 @@ func run() error {
 	g, ctx := errgroup.WithContext(ctx)
 	ctx = logger.AddLoggerToContext(ctx, config.GetLogLevel())
 	log := logger.FromContext(ctx)
-	log.Info().Msg("Satellite starting")
 
 	// Set up router and app
 	app := setupServerApp(ctx, log)
@@ -50,22 +47,21 @@ func run() error {
 	if err := handleRegistrySetup(g, log, cancel); err != nil {
 		return err
 	}
-
-	// Process Input (file or URL)
-	fetcher, err := processInput(ctx, log)
+	scheduler := scheduler.NewBasicScheduler(ctx)
+	ctx = context.WithValue(ctx, scheduler.GetSchedulerKey(), scheduler)
+	err := scheduler.Start()
 	if err != nil {
+		log.Error().Err(err).Msg("Error starting scheduler")
 		return err
 	}
 
-	ctx, storer := store.NewInMemoryStore(ctx, fetcher)
-	replicator := replicate.NewReplicator(ctx)
-	satelliteService := satellite.NewSatellite(ctx, storer, replicator)
+	satelliteService := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey())
 
 	g.Go(func() error {
 		return satelliteService.Run(ctx)
 	})
 
-	log.Info().Msg("Satellite running")
+	log.Info().Msg("Startup complete 🚀")
 	return g.Wait()
 }
 
@@ -89,7 +85,6 @@ func setupServerApp(ctx context.Context, log *zerolog.Logger) *server.App {
 		router,
 		ctx,
 		log,
-		config.AppConfig,
 		&server.MetricsRegistrar{},
 		&server.DebugRegistrar{},
 		&satellite.SatelliteRegistrar{},
@@ -115,46 +110,4 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 		})
 	}
 	return nil
-}
-
-func processInput(ctx context.Context, log *zerolog.Logger) (store.ImageFetcher, error) {
-	input := config.GetInput()
-	if !utils.IsValidURL(input) {
-		log.Info().Msg("Input is not a valid URL, checking if it is a file path")
-		if err := validateFilePath(config.GetInput(), log); err != nil {
-			return nil, err
-		}
-		return setupFileFetcher(ctx, log)
-	}
-
-	log.Info().Msg("Input is a valid URL")
-	fetcher := store.RemoteImageListFetcher(ctx, input)
-	utils.SetUrlConfig(input)
-	return fetcher, nil
-}
-
-func validateFilePath(path string, log *zerolog.Logger) error {
-	if utils.HasInvalidPathChars(path) {
-		log.Error().Msg("Path contains invalid characters")
-		return fmt.Errorf("invalid file path: %s", path)
-	}
-	if err := utils.GetAbsFilePath(path); err != nil {
-		log.Error().Err(err).Msg("No file found")
-		return fmt.Errorf("no file found: %s", path)
-	}
-	return nil
-}
-
-func setupFileFetcher(ctx context.Context, log *zerolog.Logger) (store.ImageFetcher, error) {
-	fetcher := store.FileImageListFetcher(ctx, config.GetInput())
-	var imagesList images.ImageList
-	if err := utils.ParseImagesJsonFile(config.GetInput(), &imagesList); err != nil {
-		log.Error().Err(err).Msg("Error parsing images.json file")
-		return nil, err
-	}
-	if err := utils.SetRegistryEnvVars(imagesList); err != nil {
-		log.Error().Err(err).Msg("Error setting registry environment variables")
-		return nil, err
-	}
-	return fetcher, nil
 }
