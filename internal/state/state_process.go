@@ -2,11 +2,9 @@ package state
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 
-	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/notifier"
 	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
@@ -37,14 +35,15 @@ type FetchAndReplicateStateProcess struct {
 }
 
 type StateMap struct {
-	url   string
-	State StateReader
+	url      string
+	State    StateReader
+	Entities []Entity
 }
 
 func NewStateMap(url []string) []StateMap {
 	var stateMap []StateMap
 	for _, u := range url {
-		stateMap = append(stateMap, StateMap{url: u, State: nil})
+		stateMap = append(stateMap, StateMap{url: u, State: nil, Entities: nil})
 	}
 	return stateMap
 }
@@ -89,7 +88,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 			return err
 		}
 		log.Info().Msgf("State fetched successfully for %s", f.stateMap[i].url)
-		deleteEntity, replicateEntity, newState := f.GetChanges(newStateFetched, log, f.stateMap[i].State)
+		deleteEntity, replicateEntity, newState := f.GetChanges(newStateFetched, log, f.stateMap[i].Entities)
 		f.LogChanges(deleteEntity, replicateEntity, log)
 		if err := f.notifier.Notify(); err != nil {
 			log.Error().Err(err).Msg("Error sending notification")
@@ -108,51 +107,52 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		}
 		// Update the state directly in the slice
 		f.stateMap[i].State = newState
+		f.stateMap[i].Entities = FetchEntitiesFromState(newState)
 	}
 	return nil
 }
 
-func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *zerolog.Logger, oldState StateReader) ([]ArtifactReader, []ArtifactReader, StateReader) {
+func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *zerolog.Logger, oldEntites []Entity) ([]Entity, []Entity, StateReader) {
 	log.Info().Msg("Getting changes")
 	// Remove artifacts with null tags from the new state
 	newState = f.RemoveNullTagArtifacts(newState)
+	newEntites := FetchEntitiesFromState(newState)
 
-	var entityToDelete []ArtifactReader
-	var entityToReplicate []ArtifactReader
+	var entityToDelete []Entity
+	var entityToReplicate []Entity
 
-	if oldState == nil {
-		log.Warn().Msg("Old state is nil")
-		return entityToDelete, newState.GetArtifacts(), newState
+	if oldEntites == nil {
+		log.Warn().Msg("Old state has zero entites, replicating the complete state")
+		return entityToDelete, newEntites, newState
 	}
 
 	// Create maps for quick lookups
-	oldArtifactsMap := make(map[string]ArtifactReader)
-	for _, oldArtifact := range oldState.GetArtifacts() {
-		tag := oldArtifact.GetTags()[0]
-		oldArtifactsMap[oldArtifact.GetName()+"|"+tag] = oldArtifact
+	oldEntityMap := make(map[string]Entity)
+	for _, oldEntity := range oldEntites {
+		oldEntityMap[oldEntity.Name+"|"+oldEntity.Tag] = oldEntity
 	}
 
 	// Check new artifacts and update lists
-	for _, newArtifact := range newState.GetArtifacts() {
-		nameTagKey := newArtifact.GetName() + "|" + newArtifact.GetTags()[0]
-		oldArtifact, exists := oldArtifactsMap[nameTagKey]
+	for _, newEntity := range newEntites {
+		nameTagKey := newEntity.Name + "|" + newEntity.Tag
+		oldEntity, exists := oldEntityMap[nameTagKey]
 
 		if !exists {
 			// New artifact doesn't exist in old state, add to replication list
-			entityToReplicate = append(entityToReplicate, newArtifact)
-		} else if newArtifact.GetDigest() != oldArtifact.GetDigest() {
+			entityToReplicate = append(entityToReplicate, newEntity)
+		} else if newEntity.Digest != oldEntity.Digest {
 			// Artifact exists but has changed, add to both lists
-			entityToReplicate = append(entityToReplicate, newArtifact)
-			entityToDelete = append(entityToDelete, oldArtifact)
+			entityToReplicate = append(entityToReplicate, newEntity)
+			entityToDelete = append(entityToDelete, oldEntity)
 		}
 
 		// Remove processed old artifact from map
-		delete(oldArtifactsMap, nameTagKey)
+		delete(oldEntityMap, nameTagKey)
 	}
 
 	// Remaining artifacts in oldArtifactsMap should be deleted
-	for _, oldArtifact := range oldArtifactsMap {
-		entityToDelete = append(entityToDelete, oldArtifact)
+	for _, oldEntity := range oldEntityMap {
+		entityToDelete = append(entityToDelete, oldEntity)
 	}
 
 	return entityToDelete, entityToReplicate, newState
@@ -200,17 +200,6 @@ func (f *FetchAndReplicateStateProcess) RemoveNullTagArtifacts(state StateReader
 	return state
 }
 
-func PrintPrettyJson(info interface{}, log *zerolog.Logger, message string) error {
-	log.Warn().Msg("Printing pretty JSON")
-	stateJSON, err := json.MarshalIndent(info, "", "  ")
-	if err != nil {
-		log.Error().Err(err).Msg("Error marshalling state to JSON")
-		return err
-	}
-	log.Info().Msgf("%s: %s", message, stateJSON)
-	return nil
-}
-
 func ProcessState(state *StateReader) (*StateReader, error) {
 	for _, artifact := range (*state).GetArtifacts() {
 		repo, image, err := utils.GetRepositoryAndImageNameFromArtifact(artifact.GetRepository())
@@ -235,48 +224,22 @@ func (f *FetchAndReplicateStateProcess) FetchAndProcessState(fetcher StateFetche
 	return state, nil
 }
 
-func (f *FetchAndReplicateStateProcess) LogChanges(deleteEntity, replicateEntity []ArtifactReader, log *zerolog.Logger) {
+func (f *FetchAndReplicateStateProcess) LogChanges(deleteEntity, replicateEntity []Entity, log *zerolog.Logger) {
 	log.Warn().Msgf("Total artifacts to delete: %d", len(deleteEntity))
 	log.Warn().Msgf("Total artifacts to replicate: %d", len(replicateEntity))
 }
 
-func processInput(input, username, password string, log *zerolog.Logger) (StateFetcher, error) {
-
-	if utils.IsValidURL(input) {
-		return processURLInput(utils.FormatRegistryURL(input), username, password, log)
+func FetchEntitiesFromState(state StateReader) []Entity {
+	var entities []Entity
+	for _, artifact := range state.GetArtifacts() {
+		for _, tag := range artifact.GetTags() {
+			entities = append(entities, Entity{
+				Name:       artifact.GetName(),
+				Repository: artifact.GetRepository(),
+				Tag:        tag,
+				Digest:     artifact.GetDigest(),
+			})
+		}
 	}
-
-	log.Info().Msg("Input is not a valid URL, checking if it is a file path")
-	if err := validateFilePath(input, log); err != nil {
-		return nil, err
-	}
-
-	return processFileInput(input, username, password, log)
-}
-
-func validateFilePath(path string, log *zerolog.Logger) error {
-	if utils.HasInvalidPathChars(path) {
-		log.Error().Msg("Path contains invalid characters")
-		return fmt.Errorf("invalid file path: %s", path)
-	}
-	if err := utils.GetAbsFilePath(path); err != nil {
-		log.Error().Err(err).Msg("No file found")
-		return fmt.Errorf("no file found: %s", path)
-	}
-	return nil
-}
-
-func processURLInput(input, username, password string, log *zerolog.Logger) (StateFetcher, error) {
-	log.Info().Msg("Input is a valid URL")
-	config.SetRemoteRegistryURL(input)
-
-	stateArtifactFetcher := NewURLStateFetcher(input, username, password)
-
-	return stateArtifactFetcher, nil
-}
-
-func processFileInput(input, username, password string, log *zerolog.Logger) (StateFetcher, error) {
-	log.Info().Msg("Input is a valid file path")
-	stateArtifactFetcher := NewFileStateFetcher(input, username, password)
-	return stateArtifactFetcher, nil
+	return entities
 }
