@@ -1,164 +1,138 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
-
-	"github.com/joho/godotenv"
-	"github.com/spf13/viper"
 )
 
-var AppConfig *Config
+var appConfig *Config
+
+const DefaultConfigPath string = "config.json"
+
+type Auth struct {
+	Name     string `json:"name"`
+	Registry string `json:"registry"`
+	Secret   string `json:"secret"`
+}
 
 type Config struct {
-	log_level         string
-	own_registry      bool
-	own_registry_adr  string
-	own_registry_port string
-	zot_config_path   string
-	input             string
-	zot_url           string
-	registry          string
-	repository        string
-	user_input        string
-	scheme            string
-	api_version       string
-	image             string
-	harbor_password   string
-	harbor_username   string
-	env               string
-	use_unsecure      bool
+	Auth               Auth     `json:"auth"`
+	BringOwnRegistry   bool     `json:"bring_own_registry"`
+	GroundControlURL   string   `json:"ground_control_url"`
+	LogLevel           string   `json:"log_level"`
+	OwnRegistryAddress string   `json:"own_registry_adr"`
+	OwnRegistryPort    string   `json:"own_registry_port"`
+	States             []string `json:"states"`
+	URLOrFile          string   `json:"url_or_file"`
+	ZotConfigPath      string   `json:"zotconfigpath"`
+	UseUnsecure        bool     `json:"use_unsecure"`
+	ZotUrl             string   `json:"zot_url"`
+	StateFetchPeriod   string   `json:"state_fetch_period"`
 }
 
 func GetLogLevel() string {
-	return AppConfig.log_level
+	return appConfig.LogLevel
 }
 
 func GetOwnRegistry() bool {
-	return AppConfig.own_registry
+	return appConfig.BringOwnRegistry
 }
 
 func GetOwnRegistryAdr() string {
-	return AppConfig.own_registry_adr
+	return appConfig.OwnRegistryAddress
 }
 
 func GetOwnRegistryPort() string {
-	return AppConfig.own_registry_port
+	return appConfig.OwnRegistryPort
 }
 
 func GetZotConfigPath() string {
-	return AppConfig.zot_config_path
+	return appConfig.ZotConfigPath
 }
 
 func GetInput() string {
-	return AppConfig.input
+	return appConfig.URLOrFile
 }
 
 func SetZotURL(url string) {
-	AppConfig.zot_url = url
+	appConfig.ZotUrl = url
 }
 
 func GetZotURL() string {
-	return AppConfig.zot_url
-}
-
-func SetRegistry(registry string) {
-	AppConfig.registry = registry
-}
-
-func GetRegistry() string {
-	return AppConfig.registry
-}
-
-func SetRepository(repository string) {
-	AppConfig.repository = repository
-}
-
-func GetRepository() string {
-	return AppConfig.repository
-}
-
-func SetUserInput(user_input string) {
-	AppConfig.user_input = user_input
-}
-
-func GetUserInput() string {
-	return AppConfig.user_input
-}
-
-func SetScheme(scheme string) {
-	AppConfig.scheme = scheme
-}
-
-func GetScheme() string {
-	return AppConfig.scheme
-}
-
-func SetAPIVersion(api_version string) {
-	AppConfig.api_version = api_version
-}
-
-func GetAPIVersion() string {
-	return AppConfig.api_version
-}
-
-func SetImage(image string) {
-	AppConfig.image = image
-}
-
-func GetImage() string {
-	return AppConfig.image
+	return appConfig.ZotUrl
 }
 
 func UseUnsecure() bool {
-	return AppConfig.use_unsecure
+	return appConfig.UseUnsecure
 }
 
 func GetHarborPassword() string {
-	return AppConfig.harbor_password
+	return appConfig.Auth.Secret
 }
 
 func GetHarborUsername() string {
-	return AppConfig.harbor_username
+	return appConfig.Auth.Name
+}
+
+func SetRemoteRegistryURL(url string) {
+	appConfig.Auth.Registry = url
+}
+
+func GetRemoteRegistryURL() string {
+	return appConfig.Auth.Registry
+}
+
+func GetStateFetchPeriod() string {
+	return appConfig.StateFetchPeriod
+}
+
+func GetStates() []string {
+	return appConfig.States
+}
+
+func ParseConfigFromJson(jsonData string) (*Config, error) {
+	var config Config
+	err := json.Unmarshal([]byte(jsonData), &config)
+	if err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
+func ReadConfigData(configPath string) ([]byte, error) {
+
+	fileInfo, err := os.Stat(configPath)
+	if err != nil {
+		return nil, err
+	}
+	if fileInfo.IsDir() {
+		return nil, os.ErrNotExist
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func LoadConfig() (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("toml")
-	viper.AddConfigPath(".")
-	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("error reading config file at path '%s': %w", viper.ConfigFileUsed(), err)
+	configData, err := ReadConfigData(DefaultConfigPath)
+	if err != nil {
+		fmt.Printf("Error reading config file: %v\n", err)
+		return nil, err
 	}
-
-	// Load environment and start satellite
-	if err := godotenv.Load(); err != nil {
-		return &Config{}, fmt.Errorf("error loading .env file: %w", err)
+	config, err := ParseConfigFromJson(string(configData))
+	if err != nil {
+		fmt.Printf("Error parsing config file: %v\n", err)
+		return nil, err
 	}
-	var use_unsecure bool
-	if os.Getenv("USE_UNSECURE") == "true" {
-		use_unsecure = true
-	} else {
-		use_unsecure = false
-	}
-
-	return &Config{
-		log_level:         viper.GetString("log_level"),
-		own_registry:      viper.GetBool("bring_own_registry"),
-		own_registry_adr:  viper.GetString("own_registry_adr"),
-		own_registry_port: viper.GetString("own_registry_port"),
-		zot_config_path:   viper.GetString("zotConfigPath"),
-		input:             viper.GetString("url_or_file"),
-		harbor_password:   os.Getenv("HARBOR_PASSWORD"),
-		harbor_username:   os.Getenv("HARBOR_USERNAME"),
-		env:               os.Getenv("ENV"),
-		zot_url:           os.Getenv("ZOT_URL"),
-		use_unsecure:      use_unsecure,
-	}, nil
+	return config, nil
 }
 
 func InitConfig() error {
 	var err error
-	AppConfig, err = LoadConfig()
+	appConfig, err = LoadConfig()
 	if err != nil {
 		return err
 	}

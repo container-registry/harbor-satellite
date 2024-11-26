@@ -29,3 +29,6 @@ dist/
 zot/cache.db
 secrets.txt
 __debug_bin1949266242
+
+/zot
+/runtime
