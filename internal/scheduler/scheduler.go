@@ -75,7 +75,10 @@ func (s *BasicScheduler) Schedule(process Process) error {
 	}
 	// Add the process to the scheduler
 	_, err := s.cron.AddFunc(process.GetCronExpr(), func() {
-		s.executeProcess(process)
+		err := s.executeProcess(process)
+		if err != nil {
+			log.Error().Err(err).Msgf("Error executing process %s", process.GetName())
+		}
 	})
 	if err != nil {
 		return fmt.Errorf("error adding process to scheduler: %w", err)
@@ -91,6 +94,8 @@ func (s *BasicScheduler) Start() error {
 }
 
 func (s *BasicScheduler) Stop() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.stopped = true
 	s.cron.Stop()
 	return nil
