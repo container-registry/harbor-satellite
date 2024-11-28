@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-
 	"container-registry.com/harbor-satellite/cmd"
 )
 
