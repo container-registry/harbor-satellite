@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -45,7 +46,7 @@ func NewCrioCommand() *cobra.Command {
 		Use:   "crio",
 		Short: "Creates the config file for the crio runtime to fetch the images from the local repository",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return SetupContainerRuntimeCommand(cmd, &defaultZotConfig, DefaultCrioGenPath)
+			return SetupContainerRuntimeCommand(cmd, defaultZotConfig, DefaultCrioGenPath)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			log := logger.FromContext(cmd.Context())
@@ -71,7 +72,13 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 	// Read the current crio registry config file
 	data, err := utils.ReadFile(crioConfigPath, false)
 	if err != nil {
-		return fmt.Errorf("could not read crio registry config file: %w", err)
+		if os.IsNotExist(err) {
+			log.Warn().Msg("Config file does not exist, proceeding with default values")
+			data = []byte{}
+		} else {
+			log.Err(err).Msg("Error reading config file")
+			return fmt.Errorf("could not read config file: %w", err)
+		}
 	}
 	var crioRegistryConfig CriORegistryConfig
 	err = toml.Unmarshal(data, &crioRegistryConfig)
@@ -82,7 +89,7 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 	// Update the crio registry config file
 	// - Add the local registry to the unqualified search registries if not already present
 	var found bool = false
-	var localRegistry string = utils.FormatRegistryURL(defaultZotConfig.GetLocalRegistryURL())
+	var localRegistry string = utils.FormatRegistryURL(defaultZotConfig.RemoteURL)
 	for _, registry := range crioRegistryConfig.UnqualifiedSearchRegistries {
 		if registry == localRegistry {
 			found = true
@@ -141,42 +148,27 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 	return nil
 }
 
-func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig **registry.DefaultZotConfig, defaultGenPath string) error {
+func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig *registry.DefaultZotConfig, defaultGenPath string) error {
+	utils.CommandRunSetup(cmd)
 	var err error
-	checks, warnings := config.InitConfig(config.DefaultConfigPath)
-	if len(checks) > 0 || len(warnings) > 0 {
-		log := logger.FromContext(cmd.Context())
-		for _, warn := range warnings {
-			log.Warn().Msg(warn)
-		}
-		for _, err := range checks {
-			log.Error().Err(err).Msg("Error initializing config")
-		}
-		return fmt.Errorf("error initializing config")
-	}
-	if err != nil {
-		return fmt.Errorf("could not initialize config: %w", err)
-	}
-	utils.SetupContextForCommand(cmd)
 	log := logger.FromContext(cmd.Context())
 
 	if config.GetOwnRegistry() {
 		log.Info().Msg("Using own registry for config generation")
-		address, err := utils.ValidateRegistryAddress(config.GetOwnRegistryAdr(), config.GetOwnRegistryPort())
+		log.Info().Msgf("Remote registry URL: %s", config.GetRemoteRegistryURL())
+		_, err := url.Parse(config.GetRemoteRegistryURL())
 		if err != nil {
-			log.Err(err).Msg("Error validating registry address")
-			return err
+			return fmt.Errorf("could not parse remote registry URL: %w", err)
 		}
-		log.Info().Msgf("Registry address validated: %s", address)
-		(*defaultZotConfig).HTTP.Address = config.GetOwnRegistryAdr()
-		(*defaultZotConfig).HTTP.Port = config.GetOwnRegistryPort()
+		defaultZotConfig.RemoteURL = config.GetRemoteRegistryURL()
 	} else {
 		log.Info().Msg("Using default registry for config generation")
-		*defaultZotConfig, err = registry.ReadConfig(config.GetZotConfigPath())
-		if err != nil || *defaultZotConfig == nil {
+		defaultZotConfig, err = registry.ReadConfig(config.GetZotConfigPath())
+		if err != nil || defaultZotConfig == nil {
 			return fmt.Errorf("could not read config: %w", err)
 		}
-		log.Info().Msgf("Default config read successfully: %v", (*defaultZotConfig).HTTP.Address+":"+(*defaultZotConfig).HTTP.Port)
+		defaultZotConfig.RemoteURL = defaultZotConfig.GetLocalRegistryURL()
+		log.Info().Msgf("Default config read successfully: %v", defaultZotConfig.HTTP.Address+":"+defaultZotConfig.HTTP.Port)
 	}
 	return utils.CreateRuntimeDirectory(defaultGenPath)
 }

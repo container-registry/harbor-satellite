@@ -2,34 +2,37 @@ package config
 
 import (
 	"encoding/json"
+
 	"os"
 )
 
 var appConfig *Config
 
-const DefaultConfigPath string = "config.json"
-const ReplicateStateJobName string = "replicate_state"
-const UpdateConfigJobName string = "update_config"
+// Warning represents a non-critical issue with configuration.
+type Warning string
 
 type Auth struct {
-	Name     string `json:"name,omitempty"`
-	Registry string `json:"registry,omitempty"`
-	Secret   string `json:"secret,omitempty"`
+	SourceUsername string `json:"name,omitempty"`
+	Registry       string `json:"registry,omitempty"`
+	SourcePassword string `json:"secret,omitempty"`
+}
+
+type LocalRegistryConfig struct {
+	URL              string `json:"url"`
+	UserName         string `json:"username"`
+	Password         string `json:"password"`
+	BringOwnRegistry bool   `json:"bring_own_registry"`
 }
 
 // LocalJsonConfig is a struct that holds the configs that are passed as environment variables
 type LocalJsonConfig struct {
-	BringOwnRegistry  bool   `json:"bring_own_registry"`
-	GroundControlURL  string `json:"ground_control_url"`
-	LogLevel          string `json:"log_level"`
-	OwnRegistryAddr   string `json:"own_registry_addr"`
-	OwnRegistryPort   string `json:"own_registry_port"`
-	UseUnsecure       bool   `json:"use_unsecure"`
-	ZotConfigPath     string `json:"zot_config_path"`
-	Token             string `json:"token"`
-	StateFetchPeriod  string `json:"state_fetch_period"`
-	ConfigFetchPeriod string `json:"config_fetch_period"`
-	Jobs              []Job  `json:"jobs"`
+	GroundControlURL    string              `json:"ground_control_url"`
+	LogLevel            string              `json:"log_level"`
+	UseUnsecure         bool                `json:"use_unsecure"`
+	ZotConfigPath       string              `json:"zot_config_path"`
+	Token               string              `json:"token"`
+	Jobs                []Job               `json:"jobs"`
+	LocalRegistryConfig LocalRegistryConfig `json:"local_registry"`
 }
 
 type StateConfig struct {
@@ -38,100 +41,17 @@ type StateConfig struct {
 }
 
 type Config struct {
-	StateConfig     StateConfig     `json:"state_config"`
-	LocalJsonConfig LocalJsonConfig `json:"environment_variables"`
-	ZotUrl          string          `json:"zot_url"`
+	StateConfig     StateConfig     `json:"state_config,omitempty"`
+	LocalJsonConfig LocalJsonConfig `json:"environment_variables,omitempty"`
+	ZotUrl          string          `json:"zot_url,omitempty"`
 }
 
 type Job struct {
-	Name       string `json:"name"`
-	Seconds    string `json:"seconds"`
-	Minutes    string `json:"minutes"`
-	Hours      string `json:"hours"`
-	DayOfMonth string `json:"day_of_month"`
-	Month      string `json:"month"`
-	DayOfWeek  string `json:"day_of_week"`
+	Name     string `json:"name"`
+	Schedule string `json:"schedule"`
 }
 
-func GetLogLevel() string {
-	if appConfig.LocalJsonConfig.LogLevel == "" {
-		return "info"
-	}
-	return appConfig.LocalJsonConfig.LogLevel
-}
-
-func GetOwnRegistry() bool {
-	return appConfig.LocalJsonConfig.BringOwnRegistry
-}
-
-func GetOwnRegistryAdr() string {
-	return appConfig.LocalJsonConfig.OwnRegistryAddr
-}
-
-func GetOwnRegistryPort() string {
-	return appConfig.LocalJsonConfig.OwnRegistryPort
-}
-
-func GetZotConfigPath() string {
-	return appConfig.LocalJsonConfig.ZotConfigPath
-}
-
-func GetInput() string {
-	return ""
-}
-
-func SetZotURL(url string) {
-	appConfig.ZotUrl = url
-}
-
-func GetZotURL() string {
-	return appConfig.ZotUrl
-}
-
-func UseUnsecure() bool {
-	return appConfig.LocalJsonConfig.UseUnsecure
-}
-
-func GetHarborPassword() string {
-	return appConfig.StateConfig.Auth.Secret
-}
-
-func GetHarborUsername() string {
-	return appConfig.StateConfig.Auth.Name
-}
-
-func SetRemoteRegistryURL(url string) {
-	appConfig.StateConfig.Auth.Registry = url
-}
-
-func GetRemoteRegistryURL() string {
-	return appConfig.StateConfig.Auth.Registry
-}
-
-func GetStateFetchPeriod() string {
-	return appConfig.LocalJsonConfig.StateFetchPeriod
-}
-
-func GetConfigFetchPeriod() string {
-	return appConfig.LocalJsonConfig.ConfigFetchPeriod
-}
-
-func GetStates() []string {
-	return appConfig.StateConfig.States
-}
-
-func GetToken() string {
-	return appConfig.LocalJsonConfig.Token
-}
-
-func GetGroundControlURL() string {
-	return appConfig.LocalJsonConfig.GroundControlURL
-}
-
-func SetGroundControlURL(url string) {
-	appConfig.LocalJsonConfig.GroundControlURL = url
-}
-
+// ParseConfigFromJson parses a JSON string into a Config struct. Returns an error if the JSON is invalid
 func ParseConfigFromJson(jsonData string) (*Config, error) {
 	var config Config
 	err := json.Unmarshal([]byte(jsonData), &config)
@@ -141,6 +61,7 @@ func ParseConfigFromJson(jsonData string) (*Config, error) {
 	return &config, nil
 }
 
+// ReadConfigData reads the data from the specified path. Returns an error if the file does not exist or is a directory
 func ReadConfigData(configPath string) ([]byte, error) {
 
 	fileInfo, err := os.Stat(configPath)
@@ -157,9 +78,17 @@ func ReadConfigData(configPath string) ([]byte, error) {
 	return data, nil
 }
 
-func LoadConfig(configPath string) (*Config, []error, []string) {
+// LoadConfig reads the configuration file from the specified path and returns a Config struct. Returns an error if the file does not exist or is a directory.
+// Also returns a slice of errors and warnings if the configuration is invalid
+// For jobs, we will do the following:
+// 1. Check the jobs provided by the user in the config.json.
+// 2. Validate the jobs provided by the user.
+// 3. If the job cron schedule is not valid, set the default schedule and replace it in the jobs.
+// 4. Once the job is validated, append it to the validJobs slice if the job name is valid, i.e., it is used by the satellite.
+// 5. Finally, check for critical jobs that are not present in the config and manually add them to the validJobs slice.
+func LoadConfig(configPath string) (*Config, []error, []Warning) {
 	var checks []error
-	var warnings []string
+	var warnings []Warning
 	var err error
 	configData, err := ReadConfigData(configPath)
 	if err != nil {
@@ -172,22 +101,47 @@ func LoadConfig(configPath string) (*Config, []error, []string) {
 		return nil, checks, warnings
 	}
 	// Validate the job schedule fields
+	var validJobs []Job
 	for i := range config.LocalJsonConfig.Jobs {
-		warnings = append(warnings, ValidateJobSchedule(&config.LocalJsonConfig.Jobs[i])...)
+		if warning, err := ValidateCronJob(&config.LocalJsonConfig.Jobs[i]); err != nil {
+			checks = append(checks, err)
+		} else {
+			if warning != "" {
+				warnings = append(warnings, warning)
+			}
+			validJobs = append(validJobs, config.LocalJsonConfig.Jobs[i])
+		}
 	}
+	// Add essential jobs if they are not present
+	AddEssentialJobs(&validJobs)
+	config.LocalJsonConfig.Jobs = validJobs
 	return config, checks, warnings
 }
 
-func InitConfig(configPath string) ([]error, []string) {
+// InitConfig reads the configuration file from the specified path and initializes the global appConfig variable.
+func InitConfig(configPath string) ([]error, []Warning) {
 	var err []error
-	var warnings []string
+	var warnings []Warning
 	appConfig, err, warnings = LoadConfig(configPath)
+	WriteConfig(configPath)
 	return err, warnings
 }
 
-func UpdateStateConfig(name, registry, secret string, states []string) {
-	appConfig.StateConfig.Auth.Name = name
+func UpdateStateAuthConfig(name, registry, secret string, states []string) {
+	appConfig.StateConfig.Auth.SourceUsername = name
 	appConfig.StateConfig.Auth.Registry = registry
-	appConfig.StateConfig.Auth.Secret = secret
+	appConfig.StateConfig.Auth.SourcePassword = secret
 	appConfig.StateConfig.States = states
+	WriteConfig(DefaultConfigPath)
+}
+func WriteConfig(configPath string) error {
+	data, err := json.MarshalIndent(appConfig, "", "  ")
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(configPath, data, 0644)
+	if err != nil {
+		return err
+	}
+	return nil
 }

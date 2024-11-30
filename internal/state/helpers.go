@@ -36,7 +36,7 @@ func validateFilePath(path string, log *zerolog.Logger) error {
 
 func processURLInput(input, username, password string, log *zerolog.Logger) (StateFetcher, error) {
 	log.Info().Msg("Input is a valid URL")
-	config.SetRemoteRegistryURL(input)
+	config.SetSourceRegistryURL(input)
 
 	stateArtifactFetcher := NewURLStateFetcher(input, username, password)
 

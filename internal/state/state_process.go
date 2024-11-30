@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/notifier"
 	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/utils"
@@ -14,16 +15,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const FetchAndReplicateStateProcessName string = "fetch-replicate-state-process"
-
-const DefaultFetchAndReplicateStateTimePeriod string = "00h00m010s"
-
 type FetchAndReplicateAuthConfig struct {
-	Username          string
-	Password          string
-	UseUnsecure       bool
-	RemoteRegistryURL string
-	SourceRegistry    string
+	SourceRegistry         string
+	SourceRegistryUserName string
+	SourceRegistryPassword string
+	UseUnsecure            bool
+	RemoteRegistryURL      string
+	RemoteRegistryUserName string
+	RemoteRegistryPassword string
 }
 
 type FetchAndReplicateStateProcess struct {
@@ -36,6 +35,7 @@ type FetchAndReplicateStateProcess struct {
 	mu          *sync.Mutex
 	authConfig  FetchAndReplicateAuthConfig
 	eventBroker *scheduler.EventBroker
+	Replicator  Replicator
 }
 
 type StateMap struct {
@@ -52,21 +52,26 @@ func NewStateMap(url []string) []StateMap {
 	return stateMap
 }
 
-func NewFetchAndReplicateStateProcess(cronExpr string, notifier notifier.Notifier, username, password, remoteRegistryURL, sourceRegistryURL string, useUnsecure bool, states []string) *FetchAndReplicateStateProcess {
+func NewFetchAndReplicateStateProcess(cronExpr string, notifier notifier.Notifier, sourceRegistryURL, sourceRegistryUsername, sourceRegistryPassword, remoteRegistryURL, remoteRegistryUsername, remoteRegistryPassword string, useUnsecure bool, states []string) *FetchAndReplicateStateProcess {
+	sourceURL := utils.FormatRegistryURL(sourceRegistryURL)
+	remoteURL := utils.FormatRegistryURL(remoteRegistryURL)
 	return &FetchAndReplicateStateProcess{
-		name:      FetchAndReplicateStateProcessName,
+		name:      config.ReplicateStateJobName,
 		cronExpr:  cronExpr,
 		isRunning: false,
 		notifier:  notifier,
 		mu:        &sync.Mutex{},
 		stateMap:  NewStateMap(states),
 		authConfig: FetchAndReplicateAuthConfig{
-			Username:          username,
-			Password:          password,
-			UseUnsecure:       useUnsecure,
-			RemoteRegistryURL: remoteRegistryURL,
-			SourceRegistry:    sourceRegistryURL,
+			SourceRegistry:         sourceURL,
+			SourceRegistryUserName: sourceRegistryUsername,
+			SourceRegistryPassword: sourceRegistryPassword,
+			UseUnsecure:            useUnsecure,
+			RemoteRegistryURL:      remoteURL,
+			RemoteRegistryUserName: remoteRegistryUsername,
+			RemoteRegistryPassword: remoteRegistryPassword,
 		},
+		Replicator: NewBasicReplicator(sourceRegistryUsername, sourceRegistryPassword, sourceURL, remoteURL, remoteRegistryUsername, remoteRegistryPassword, useUnsecure),
 	}
 }
 
@@ -77,8 +82,8 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		log.Warn().Msgf("Process %s is already running", f.name)
 		return nil
 	}
-	bool, reason := f.CanExecute(ctx)
-	if !bool {
+	canExecute, reason := f.CanExecute(ctx)
+	if !canExecute {
 		log.Warn().Msgf("Cannot execute process: %s", reason)
 		return nil
 	}
@@ -86,7 +91,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 	for i := range f.stateMap {
 		log.Info().Msgf("Processing state for %s", f.stateMap[i].url)
-		stateFetcher, err := processInput(f.stateMap[i].url, f.authConfig.Username, f.authConfig.Password, log)
+		stateFetcher, err := processInput(f.stateMap[i].url, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, log)
 		if err != nil {
 			log.Error().Err(err).Msg("Error processing input")
 			return err
@@ -102,15 +107,13 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		if err := f.notifier.Notify(); err != nil {
 			log.Error().Err(err).Msg("Error sending notification")
 		}
-
-		replicator := NewBasicReplicator(f.authConfig.Username, f.authConfig.Password, f.authConfig.RemoteRegistryURL, f.authConfig.SourceRegistry, f.authConfig.UseUnsecure)
 		// Delete the entities from the remote registry
-		if err := replicator.DeleteReplicationEntity(ctx, deleteEntity); err != nil {
+		if err := f.Replicator.DeleteReplicationEntity(ctx, deleteEntity); err != nil {
 			log.Error().Err(err).Msg("Error deleting entities")
 			return err
 		}
 		// Replicate the entities to the remote registry
-		if err := replicator.Replicate(ctx, replicateEntity); err != nil {
+		if err := f.Replicator.Replicate(ctx, replicateEntity); err != nil {
 			log.Error().Err(err).Msg("Error replicating state")
 			return err
 		}
@@ -179,7 +182,7 @@ func (f *FetchAndReplicateStateProcess) GetName() string {
 }
 
 func (f *FetchAndReplicateStateProcess) GetCronExpr() string {
-	return fmt.Sprintf("@every %s", f.cronExpr)
+	return f.cronExpr
 }
 
 func (f *FetchAndReplicateStateProcess) IsRunning() bool {
@@ -194,8 +197,8 @@ func (f *FetchAndReplicateStateProcess) CanExecute(ctx context.Context) (bool, s
 		{f.stateMap == nil, "state map is nil"},
 		{f.authConfig.RemoteRegistryURL == "", "remote registry URL is empty"},
 		{f.authConfig.SourceRegistry == "", "source registry is empty"},
-		{f.authConfig.Username == "", "username is empty"},
-		{f.authConfig.Password == "", "password is empty"},
+		{f.authConfig.SourceRegistryUserName == "", "username is empty"},
+		{f.authConfig.SourceRegistryPassword == "", "password is empty"},
 	}
 
 	var missingFields []string
@@ -290,34 +293,41 @@ func (f *FetchAndReplicateStateProcess) AddEventBroker(eventBroker *scheduler.Ev
 
 func (f *FetchAndReplicateStateProcess) ListenForUpdatedConfig(ctx context.Context) {
 	log := logger.FromContext(ctx)
-	log.Info().Msg("Listening for updated config from ground control")
+	log.Info().Msgf("Process %s is listening for updated config", f.name)
+	fetchConfigCh := f.eventBroker.Subscribe(FetchConfigFromGroundControlEventName)
+	zeroTouchRegistrationCh := f.eventBroker.Subscribe(ZeroTouchRegistrationEventName)
+
+	defer func() {
+		log.Info().Msgf("Process %s unsubscribing from %s and %s", f.name, FetchConfigFromGroundControlEventName, ZeroTouchRegistrationEventName)
+		f.eventBroker.Unsubscribe(FetchConfigFromGroundControlEventName, fetchConfigCh)
+		f.eventBroker.Unsubscribe(ZeroTouchRegistrationEventName, zeroTouchRegistrationCh)
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case event := <-f.eventBroker.Subscribe(FetchConfigFromGroundControlEventName):
-			log.Info().Msg("Received updated config from ground control")
-			payload, ok := event.Payload.(GroundControlPayload)
-			if !ok {
-				log.Error().Msgf("received invalid payload from %s, for process %s", event.Source, FetchConfigFromGroundControlEventName)
-				return
-			}
-			log.Info().Msgf("Received updated config from ground control with states: %v", len(payload.States))
-		case event := <-f.eventBroker.Subscribe(ZeroTouchRegistrationEventName):
-			log.Info().Msgf("Received %s event with source %s", event.Name, event.Source)
-			payload, ok := event.Payload.(ZeroTouchRegistrationEventPayload)
-			if !ok {
-				log.Error().Msgf("Received invalid payload from %s, for process %s", event.Source, ZeroTouchRegistrationEventName)
-				return
-			}
-			f.UpdateFetchProcessConfigFromZtr(payload.StateConfig.Auth.Name, payload.StateConfig.Auth.Secret, payload.StateConfig.Auth.Registry, payload.StateConfig.States)
+		case event := <-fetchConfigCh:
+			log.Info().Msgf("Received updated config from ground control from source %s", event.Source)
+		case event := <-zeroTouchRegistrationCh:
+			f.HandelPayloadFromZTR(event, log)
 		}
 	}
 }
 
+func (f *FetchAndReplicateStateProcess) HandelPayloadFromZTR(event scheduler.Event, log *zerolog.Logger) {
+	log.Info().Msgf("Received %s event with source %s", event.Name, event.Source)
+	payload, ok := event.Payload.(ZeroTouchRegistrationEventPayload)
+	if !ok {
+		log.Error().Msgf("Received invalid payload from %s, for process %s", event.Source, ZeroTouchRegistrationEventName)
+		return
+	}
+	f.UpdateFetchProcessConfigFromZtr(payload.StateConfig.Auth.SourceUsername, payload.StateConfig.Auth.SourcePassword, payload.StateConfig.Auth.Registry, payload.StateConfig.States)
+}
+
 func (f *FetchAndReplicateStateProcess) UpdateFetchProcessConfigFromZtr(username, password, sourceRegistryURL string, states []string) {
-	f.authConfig.Username = username
-	f.authConfig.Password = password
+	f.authConfig.SourceRegistryUserName = username
+	f.authConfig.SourceRegistryPassword = password
 	f.authConfig.SourceRegistry = utils.FormatRegistryURL(sourceRegistryURL)
 
 	// The states contain all the states that this satellite needs to track thus we would have to add the new states to the state map

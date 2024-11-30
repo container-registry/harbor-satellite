@@ -7,51 +7,68 @@ import (
 	"container-registry.com/harbor-satellite/internal/notifier"
 	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/state"
-	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
 )
 
-type Satellite struct {
-	stateReader  state.StateReader
-	schedulerKey scheduler.SchedulerKey
+type RegistryConfig struct {
+	URL      string
+	UserName string
+	Password string
 }
 
-func NewSatellite(ctx context.Context, schedulerKey scheduler.SchedulerKey) *Satellite {
+func NewRegistryConfig(url, username, password string) RegistryConfig {
+	return RegistryConfig{
+		URL:      url,
+		UserName: username,
+		Password: password,
+	}
+}
+
+type Satellite struct {
+	schedulerKey          scheduler.SchedulerKey
+	LocalRegistryConfig   RegistryConfig
+	SourcesRegistryConfig RegistryConfig
+	UseUnsecure           bool
+	states                []string
+}
+
+func NewSatellite(ctx context.Context, schedulerKey scheduler.SchedulerKey, localRegistryConfig, sourceRegistryConfig RegistryConfig, useUnsecure bool, states []string) *Satellite {
 	return &Satellite{
-		schedulerKey: schedulerKey,
+		schedulerKey:          schedulerKey,
+		LocalRegistryConfig:   localRegistryConfig,
+		SourcesRegistryConfig: sourceRegistryConfig,
+		UseUnsecure:           useUnsecure,
+		states:                states,
 	}
 }
 
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
-	var fetchStateProcessCron string
-	state_fetch_period := config.GetStateFetchPeriod()
-	fetchConfigProcessCron, err := utils.FormatDuration(config.GetConfigFetchPeriod())
+	replicateStateCron, err := config.GetJobSchedule(config.ReplicateStateJobName)
 	if err != nil {
-		log.Warn().Msgf("Error formatting duration in seconds: %v", err)
-		log.Warn().Msgf("Using default duration: %v", state.DefaultFetchConfigFromGroundControlTimePeriod)
-		fetchConfigProcessCron = state.DefaultFetchConfigFromGroundControlTimePeriod
+		log.Error().Err(err).Msg("Error getting schedule")
+		return err
 	}
-	fetchStateProcessCron, err = utils.FormatDuration(state_fetch_period)
+	updateConfigCron, err := config.GetJobSchedule(config.UpdateConfigJobName)
 	if err != nil {
-		log.Warn().Msgf("Error formatting duration in seconds: %v", err)
-		log.Warn().Msgf("Using default duration: %v", state.DefaultFetchAndReplicateStateTimePeriod)
-		fetchStateProcessCron = state.DefaultFetchAndReplicateStateTimePeriod
+		log.Error().Err(err).Msg("Error getting schedule")
+		return err
 	}
-	userName := config.GetHarborUsername()
-	password := config.GetHarborPassword()
-	zotURL := config.GetZotURL()
-	sourceRegistry := utils.FormatRegistryURL(config.GetRemoteRegistryURL())
-	useUnsecure := config.UseUnsecure()
+	ztrCron, err := config.GetJobSchedule(config.ZTRConfigJobName)
+	if err != nil {
+		log.Error().Err(err).Msg("Error getting schedule")
+		return err
+	}
 	// Get the scheduler from the context
 	scheduler := ctx.Value(s.schedulerKey).(scheduler.Scheduler)
 	// Create a simple notifier and add it to the process
 	notifier := notifier.NewSimpleNotifier(ctx)
 	// Creating a process to fetch and replicate the state
 	states := config.GetStates()
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(fetchStateProcessCron, notifier, userName, password, zotURL, sourceRegistry, useUnsecure, states)
-	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(fetchConfigProcessCron, "", "")
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(replicateStateCron, notifier, s.SourcesRegistryConfig.URL, s.SourcesRegistryConfig.UserName, s.SourcesRegistryConfig.Password, s.LocalRegistryConfig.URL, s.LocalRegistryConfig.UserName, s.LocalRegistryConfig.Password, s.UseUnsecure, states)
+	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(updateConfigCron, "", "")
+	ztrProcess := state.NewZtrProcess(ztrCron)
 	err = scheduler.Schedule(configFetchProcess)
 	if err != nil {
 		log.Error().Err(err).Msg("Error scheduling process")
@@ -64,7 +81,6 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 	// Schedule Register Satellite Process
-	ztrProcess := state.NewZtrProcess(state.DefaultZeroTouchRegistrationCronExpr)
 	err = scheduler.Schedule(ztrProcess)
 	if err != nil {
 		log.Error().Err(err).Msg("Error scheduling process")

@@ -5,14 +5,10 @@ import (
 	"fmt"
 	"sync"
 
+	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/scheduler"
-	"container-registry.com/harbor-satellite/logger"
 	"github.com/robfig/cron/v3"
 )
-
-const FetchConfigFromGroundControlProcessName string = "fetch-config-from-ground-control-process"
-
-const DefaultFetchConfigFromGroundControlTimePeriod string = "00h00m030s"
 
 const FetchConfigFromGroundControlEventName string = "fetch-config-from-ground-control-event"
 
@@ -31,7 +27,7 @@ type FetchConfigFromGroundControlProcess struct {
 
 func NewFetchConfigFromGroundControlProcess(cronExpr string, token string, groundControlURL string) *FetchConfigFromGroundControlProcess {
 	return &FetchConfigFromGroundControlProcess{
-		name:             FetchConfigFromGroundControlProcessName,
+		name:             config.UpdateConfigJobName,
 		cronExpr:         cronExpr,
 		isRunning:        false,
 		token:            token,
@@ -56,21 +52,12 @@ func NewGroundControlConfigEvent(states []string) scheduler.Event {
 		Payload: GroundControlPayload{
 			States: states,
 		},
-		Source: FetchConfigFromGroundControlProcessName,
+		Source: config.UpdateConfigJobName,
 	}
 }
 
 func (f *FetchConfigFromGroundControlProcess) Execute(ctx context.Context) error {
-	log := logger.FromContext(ctx)
-	log.Info().Msgf("Starting process %s", f.name)
-	if !f.start() {
-		log.Warn().Msg("Process is already running")
-		return nil
-	}
-	defer f.stop()
-	log.Info().Msg("Fetching config from ground control")
-	event := NewGroundControlConfigEvent([]string{"state1", "state2"})
-	f.eventBroker.Publish(event, ctx)
+	// TODO: Implement the logic to fetch the configuration from Ground Control one the endpoint is available on the Ground Control side
 	return nil
 }
 
@@ -87,7 +74,7 @@ func (f *FetchConfigFromGroundControlProcess) GetName() string {
 }
 
 func (f *FetchConfigFromGroundControlProcess) GetCronExpr() string {
-	return fmt.Sprintf("@every %s", f.cronExpr)
+	return f.cronExpr
 }
 
 func (f *FetchConfigFromGroundControlProcess) IsRunning() bool {
@@ -95,12 +82,10 @@ func (f *FetchConfigFromGroundControlProcess) IsRunning() bool {
 }
 
 func (f *FetchConfigFromGroundControlProcess) CanExecute(ctx context.Context) (bool, string) {
-	return true, fmt.Sprintf("Process %s can execute all condition fulfilled", f.name)
+	return false, fmt.Sprintf("Process %s can execute all condition fulfilled", f.name)
 }
 
 func (f *FetchConfigFromGroundControlProcess) AddEventBroker(eventBroker *scheduler.EventBroker, ctx context.Context) {
-	log := logger.FromContext(ctx)
-	log.Info().Msgf("Adding event broker to process %s", f.name)
 	f.eventBroker = eventBroker
 }
 

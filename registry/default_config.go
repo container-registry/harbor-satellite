@@ -20,6 +20,7 @@ type DefaultZotConfig struct {
 	Log struct {
 		Level string `json:"level"`
 	} `json:"log"`
+	RemoteURL string
 }
 
 func (c *DefaultZotConfig) GetLocalRegistryURL() string {
@@ -50,6 +51,9 @@ func ReadConfig(filePath string) (*DefaultZotConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not unmarshal JSON: %w", err)
 	}
-
 	return &config, nil
+}
+
+func (c *DefaultZotConfig) SetZotRemoteURL(url string) {
+	c.RemoteURL = url
 }

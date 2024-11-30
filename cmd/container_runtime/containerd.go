@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,11 +23,6 @@ const (
 	DefaultConfigVersion        = 2
 )
 
-type ContainerdController interface {
-	Load(ctx context.Context, log *zerolog.Logger) (*registry.DefaultZotConfig, error)
-	Generate(ctx context.Context, configPath string, log *zerolog.Logger) error
-}
-
 var DefaultContainerDGenPath string
 
 func init() {
@@ -49,7 +43,7 @@ func init() {
 
 func NewContainerdCommand() *cobra.Command {
 	var generateConfig bool
-	var defaultZotConfig *registry.DefaultZotConfig
+	var defaultZotConfig registry.DefaultZotConfig
 	var containerdConfigPath string
 	var containerDCertPath string
 
@@ -61,8 +55,8 @@ func NewContainerdCommand() *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			log := logger.FromContext(cmd.Context())
-			sourceRegistry := config.GetRemoteRegistryURL()
-			satelliteHostConfig := NewSatelliteHostConfig(defaultZotConfig.GetLocalRegistryURL(), sourceRegistry)
+			sourceRegistry := config.GetSourceRegistryURL()
+			satelliteHostConfig := NewSatelliteHostConfig(defaultZotConfig.RemoteURL, sourceRegistry)
 			if generateConfig {
 				log.Info().Msg("Generating containerd config file for containerd ...")
 				log.Info().Msgf("Fetching containerd config from path: %s", containerdConfigPath)
@@ -71,7 +65,7 @@ func NewContainerdCommand() *cobra.Command {
 					log.Err(err).Msg("Error generating containerd config")
 					return fmt.Errorf("could not generate containerd config: %w", err)
 				}
-				return GenerateContainerdConfig(defaultZotConfig, log, containerdConfigPath, containerDCertPath)
+				return GenerateContainerdConfig(log, containerdConfigPath, containerDCertPath)
 			}
 			return nil
 		},
@@ -87,12 +81,17 @@ func NewContainerdCommand() *cobra.Command {
 // GenerateContainerdConfig generates the containerd config file for the containerd runtime
 // It takes the zot config a logger and the containerd config path
 // It reads the containerd config file and adds the local registry to the config file
-func GenerateContainerdConfig(defaultZotConfig *registry.DefaultZotConfig, log *zerolog.Logger, containerdConfigPath, containerdCertPath string) error {
+func GenerateContainerdConfig(log *zerolog.Logger, containerdConfigPath, containerdCertPath string) error {
 	// First Read the present config file at the configPath
 	data, err := utils.ReadFile(containerdConfigPath, false)
 	if err != nil {
-		log.Err(err).Msg("Error reading config file")
-		return fmt.Errorf("could not read config file: %w", err)
+		if os.IsNotExist(err) {
+			log.Warn().Msg("Config file does not exist, proceeding with default values")
+			data = []byte{}
+		} else {
+			log.Err(err).Msg("Error reading config file")
+			return fmt.Errorf("could not read config file: %w", err)
+		}
 	}
 	// Now we marshal the data into the containerd config
 	containerdConfig := &ContainerdConfigToml{}

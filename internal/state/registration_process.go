@@ -10,13 +10,12 @@ import (
 
 	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/scheduler"
+	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
 	"github.com/robfig/cron/v3"
 )
 
 const ZeroTouchRegistrationRoute = "satellites/ztr"
-const ZeroTouchRegistrationProcessName = "zero-touch-registration-process"
-const DefaultZeroTouchRegistrationCronExpr string = "00h00m05s"
 const ZeroTouchRegistrationEventName = "zero-touch-registration-event"
 
 type ZtrProcess struct {
@@ -36,7 +35,7 @@ type ZtrProcess struct {
 
 func NewZtrProcess(cronExpr string) *ZtrProcess {
 	return &ZtrProcess{
-		Name:     ZeroTouchRegistrationProcessName,
+		Name:     config.ZTRConfigJobName,
 		cronExpr: cronExpr,
 		mu:       &sync.Mutex{},
 	}
@@ -66,18 +65,18 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		log.Error().Msgf("Failed to register satellite: %v", err)
 		return err
 	}
-	if stateConfig.Auth.Name == "" || stateConfig.Auth.Secret == "" || stateConfig.Auth.Registry == "" {
-		log.Error().Msgf("Failed to register satellite: %v", err)
-		return fmt.Errorf("failed to register satellite: %w", err)
+	if stateConfig.Auth.SourceUsername == "" || stateConfig.Auth.SourcePassword == "" || stateConfig.Auth.Registry == "" {
+		log.Error().Msgf("Failed to register satellite: invalid state auth config received")
+		return fmt.Errorf("failed to register satellite: invalid state auth config received")
 	}
 	// Update the state config in app config
-	config.UpdateStateConfig(stateConfig.Auth.Name, stateConfig.Auth.Registry, stateConfig.Auth.Secret, stateConfig.States)
+	config.UpdateStateAuthConfig(stateConfig.Auth.SourceUsername, stateConfig.Auth.Registry, stateConfig.Auth.SourcePassword, stateConfig.States)
 	zeroTouchRegistrationEvent := scheduler.Event{
 		Name: ZeroTouchRegistrationEventName,
 		Payload: ZeroTouchRegistrationEventPayload{
 			StateConfig: stateConfig,
 		},
-		Source: ZeroTouchRegistrationProcessName,
+		Source: z.Name,
 	}
 	z.eventBroker.Publish(zeroTouchRegistrationEvent, ctx)
 	stopProcessPayload := scheduler.StopProcessEventPayload{
@@ -87,7 +86,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	stopProcessEvent := scheduler.Event{
 		Name:    scheduler.StopProcessEventName,
 		Payload: stopProcessPayload,
-		Source:  ZeroTouchRegistrationProcessName,
+		Source:  z.Name,
 	}
 	z.eventBroker.Publish(stopProcessEvent, ctx)
 	return nil
@@ -106,7 +105,7 @@ func (z *ZtrProcess) GetName() string {
 }
 
 func (z *ZtrProcess) GetCronExpr() string {
-	return fmt.Sprintf("@every %s", z.cronExpr)
+	return z.cronExpr
 }
 
 func (z *ZtrProcess) IsRunning() bool {
@@ -119,16 +118,10 @@ func (z *ZtrProcess) CanExecute(ctx context.Context) (bool, string) {
 	log := logger.FromContext(ctx)
 	log.Info().Msgf("Checking if process %s can execute", z.Name)
 	errors, warnings := z.loadConfig()
-	if len(errors) > 0 || len(warnings) > 0 {
-		for _, warning := range warnings {
-			log.Warn().Msgf("Warning loading config: %v", warning)
-		}
-		for _, err := range errors {
-			log.Error().Msgf("Error loading config: %v", err)
-		}
-		return false, "error loading config"
+	err := utils.HandleErrorAndWarning(log, errors, warnings)
+	if err != nil {
+		return false, err.Error()
 	}
-
 	checks := []struct {
 		condition bool
 		message   string
@@ -171,7 +164,7 @@ func (z *ZtrProcess) stop() {
 
 // loadConfig loads the configuration.
 // It returns an error if the configuration cannot be loaded.
-func (z *ZtrProcess) loadConfig() ([]error, []string) {
+func (z *ZtrProcess) loadConfig() ([]error, []config.Warning) {
 	return config.InitConfig(config.DefaultConfigPath)
 }
 

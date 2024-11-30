@@ -1,34 +1,39 @@
 {
+  "state_config": {
+    "auth": {
+      "name": "admin",
+      "registry": "https://registry.bupd.xyz",
+      "secret": "Harbor12345"
+    },
+    "states": [
+      "https://registry.bupd.xyz/satellite/mehulsat/state"
+    ]
+  },
   "environment_variables": {
-    "bring_own_registry": false,
     "ground_control_url": "https://gc.bupd.xyz",
     "log_level": "info",
-    "own_registry_adr": "127.0.0.1",
-    "own_registry_port": "8585",
-    "zot_config_path": "./registry/config.json",
     "use_unsecure": true,
-    "token": "187916a603c135d681ef0553752994f3",
-    "state_fetch_period": "",
-    "config_fetch_period": "",
+    "zot_config_path": "./registry/config.json",
+    "token": "",
     "jobs": [
       {
         "name": "replicate_state",
-        "seconds": "10",
-        "minutes": "*",
-        "hours": "*",
-        "day_of_month": "*",
-        "month": "*",
-        "day_of_week": "*"
+        "schedule": "@every 00h00m10s"
       },
       {
         "name": "update_config",
-        "seconds": "5",
-        "minutes": "asdfasdfsaf",
-        "hours": "asdfas",
-        "day_of_month": "*",
-        "month": "*",
-        "day_of_week": "dsffa"
+        "schedule": "@every 00h00m30s"
+      },
+      {
+        "name": "register_satellite",
+        "schedule": "@every 00h00m05s"
       }
-    ]
+    ],
+    "local_registry": {
+      "url": "http://127.0.0.1:8585",
+      "username": "methylisocyanide",
+      "password": "Harbor12345",
+      "bring_own_registry": false
+    }
   }
 }

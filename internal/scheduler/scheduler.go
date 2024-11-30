@@ -13,10 +13,15 @@ type SchedulerKey string
 
 const BasicSchedulerKey SchedulerKey = "basic-scheduler"
 const StopProcessEventName string = "stop-process-event"
+const StopAllProcessesEventName string = "stop-all-processes-event"
 
 type StopProcessEventPayload struct {
 	Id          cron.EntryID
 	ProcessName string
+}
+
+type StopAllProcessesPayload struct {
+	Message string
 }
 
 type Scheduler interface {
@@ -105,6 +110,7 @@ func (s *BasicScheduler) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.stopped = true
+	s.EventBroker.Close()
 	s.cron.Stop()
 	return nil
 }
@@ -127,7 +133,12 @@ func (s *BasicScheduler) ListenForProcessEvent(ctx context.Context) {
 			payload := event.Payload.(StopProcessEventPayload)
 			log.Info().Msgf("Stopping process %s, with cron id %d", payload.ProcessName, payload.Id)
 			s.StopProcess(payload.Id)
+		case event := <-s.EventBroker.Subscribe(StopAllProcessesEventName):
+			payload := event.Payload.(StopAllProcessesPayload)
+			log.Warn().Msgf("Cancelling all processes: %s", payload.Message)
+			s.EventBroker.Close()
 		case <-ctx.Done():
+			s.EventBroker.Close()
 			log.Info().Msg("Scheduler is stopping listening for events ...")
 			return
 		}
