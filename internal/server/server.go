@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"fmt"
 	"net/http"
 
 	"github.com/rs/zerolog"
@@ -23,6 +24,7 @@ type App struct {
 	Logger     *zerolog.Logger
 }
 
+func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, registrars ...RouteRegistrar) *App {
 func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, registrars ...RouteRegistrar) *App {
 	return &App{
 		router:     router,
