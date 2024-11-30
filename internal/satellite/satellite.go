@@ -7,46 +7,84 @@ import (
 	"container-registry.com/harbor-satellite/internal/notifier"
 	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/state"
-	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
 )
 
-type Satellite struct {
-	stateReader  state.StateReader
-	schedulerKey scheduler.SchedulerKey
+type RegistryConfig struct {
+	URL      string
+	UserName string
+	Password string
 }
 
-func NewSatellite(ctx context.Context, schedulerKey scheduler.SchedulerKey) *Satellite {
+func NewRegistryConfig(url, username, password string) RegistryConfig {
+	return RegistryConfig{
+		URL:      url,
+		UserName: username,
+		Password: password,
+	}
+}
+
+type Satellite struct {
+	schedulerKey          scheduler.SchedulerKey
+	LocalRegistryConfig   RegistryConfig
+	SourcesRegistryConfig RegistryConfig
+	UseUnsecure           bool
+	states                []string
+}
+
+func NewSatellite(ctx context.Context, schedulerKey scheduler.SchedulerKey, localRegistryConfig, sourceRegistryConfig RegistryConfig, useUnsecure bool, states []string) *Satellite {
 	return &Satellite{
-		schedulerKey: schedulerKey,
+		schedulerKey:          schedulerKey,
+		LocalRegistryConfig:   localRegistryConfig,
+		SourcesRegistryConfig: sourceRegistryConfig,
+		UseUnsecure:           useUnsecure,
+		states:                states,
 	}
 }
 
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
-	var cronExpr string
-	state_fetch_period := config.GetStateFetchPeriod()
-	cronExpr, err := utils.FormatDuration(state_fetch_period)
+	replicateStateCron, err := config.GetJobSchedule(config.ReplicateStateJobName)
 	if err != nil {
-		log.Warn().Msgf("Error formatting duration in seconds: %v", err)
-		log.Warn().Msgf("Using default duration: %v", state.DefaultFetchAndReplicateStateTimePeriod)
-		cronExpr = state.DefaultFetchAndReplicateStateTimePeriod
+		log.Error().Err(err).Msg("Error getting schedule")
+		return err
 	}
-	userName := config.GetHarborUsername()
-	password := config.GetHarborPassword()
-	zotURL := config.GetZotURL()
-	sourceRegistry := utils.FormatRegistryURL(config.GetRemoteRegistryURL())
-	useUnsecure := config.UseUnsecure()
+	updateConfigCron, err := config.GetJobSchedule(config.UpdateConfigJobName)
+	if err != nil {
+		log.Error().Err(err).Msg("Error getting schedule")
+		return err
+	}
+	ztrCron, err := config.GetJobSchedule(config.ZTRConfigJobName)
+	if err != nil {
+		log.Error().Err(err).Msg("Error getting schedule")
+		return err
+	}
 	// Get the scheduler from the context
 	scheduler := ctx.Value(s.schedulerKey).(scheduler.Scheduler)
 	// Create a simple notifier and add it to the process
 	notifier := notifier.NewSimpleNotifier(ctx)
 	// Creating a process to fetch and replicate the state
 	states := config.GetStates()
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(scheduler.NextID(), cronExpr, notifier, userName, password, zotURL, sourceRegistry, useUnsecure, states)
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(replicateStateCron, notifier, s.SourcesRegistryConfig.URL, s.SourcesRegistryConfig.UserName, s.SourcesRegistryConfig.Password, s.LocalRegistryConfig.URL, s.LocalRegistryConfig.UserName, s.LocalRegistryConfig.Password, s.UseUnsecure, states)
+	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(updateConfigCron, "", "")
+	ztrProcess := state.NewZtrProcess(ztrCron)
+	err = scheduler.Schedule(configFetchProcess)
+	if err != nil {
+		log.Error().Err(err).Msg("Error scheduling process")
+		return err
+	}
 	// Add the process to the scheduler
-	scheduler.Schedule(fetchAndReplicateStateProcess)
-
+	err = scheduler.Schedule(fetchAndReplicateStateProcess)
+	if err != nil {
+		log.Error().Err(err).Msg("Error scheduling process")
+		return err
+	}
+	// Schedule Register Satellite Process
+	err = scheduler.Schedule(ztrProcess)
+	if err != nil {
+		log.Error().Err(err).Msg("Error scheduling process")
+		return err
+	}
 	return nil
 }

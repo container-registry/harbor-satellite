@@ -22,7 +22,6 @@ type App struct {
 	ctx        context.Context
 	Logger     *zerolog.Logger
 }
-
 func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, registrars ...RouteRegistrar) *App {
 	return &App{
 		router:     router,
@@ -65,6 +64,6 @@ func (a *App) SetupServer(g *errgroup.Group) {
 		if err != nil {
 			return fmt.Errorf("error shutting down server: %w", err)
 		}
-		return fmt.Errorf("satellite shutting down")
+		return nil
 	})
 }
