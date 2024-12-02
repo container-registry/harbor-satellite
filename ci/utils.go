@@ -58,28 +58,24 @@ func (m *HarborSatellite) Service(
 		AsService()
 }
 
-
 // builds given component from source
 func (m *HarborSatellite) build(source *dagger.Directory, component string) *dagger.Directory {
 	fmt.Printf("Building %s\n", component)
+	// Fetch supported builds (GOOS and GOARCH combinations)
+	supportedBuilds := getSupportedBuilds()
+	binaryName := component
 
-	gooses := []string{"linux", "darwin"}
-	goarches := []string{"amd64", "arm64"}
-	binaryName := component // base component for the binary
-
-	// create empty directory to put build artifacts
 	outputs := dag.Directory()
 
 	golang := dag.Container().
 		From(DEFAULT_GO).
 		WithDirectory(PROJ_MOUNT, source).
 		WithWorkdir(PROJ_MOUNT)
-	for _, goos := range gooses {
-		for _, goarch := range goarches {
-			// create the full binary component with OS and architecture
-			outputBinary := fmt.Sprintf("%s/%s-%s-%s", component, binaryName, goos, goarch)
 
-			// build artifact with specified binary component
+	// Iterate through supported builds
+	for goos, goarches := range supportedBuilds {
+		for _, goarch := range goarches {
+			outputBinary := fmt.Sprintf("%s/%s-%s-%s", component, binaryName, goos, goarch)
 			build := golang.
 				WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 				WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
@@ -87,6 +83,7 @@ func (m *HarborSatellite) build(source *dagger.Directory, component string) *dag
 				WithEnvVariable("GOCACHE", "/go/build-cache").
 				WithEnvVariable("GOOS", goos).
 				WithEnvVariable("GOARCH", goarch)
+
 			if component == "ground-control" {
 				build = build.WithWorkdir("./ground-control/").
 					WithExec([]string{"go", "build", "-o", outputBinary})
@@ -94,12 +91,10 @@ func (m *HarborSatellite) build(source *dagger.Directory, component string) *dag
 				build = build.WithExec([]string{"go", "build", "-o", outputBinary})
 			}
 
-			// add build to outputs
 			outputs = outputs.WithDirectory(component, build.Directory(component))
 		}
 	}
 
-	// return build directory
 	return outputs
 }
 
