@@ -1,16 +1,16 @@
 {
   "state_config": {
     "auth": {
-      "name": "admin",
-      "registry": "https://registry.bupd.xyz",
-      "secret": "Harbor12345"
+      "name": "",
+      "registry": "",
+      "secret": ""
     },
     "states": [
-      "https://registry.bupd.xyz/satellite/mehulsat/state"
+      ""
     ]
   },
   "environment_variables": {
-    "ground_control_url": "https://gc.bupd.xyz",
+    "ground_control_url": "",
     "log_level": "info",
     "use_unsecure": true,
     "zot_config_path": "./registry/config.json",
@@ -30,9 +30,9 @@
       }
     ],
     "local_registry": {
-      "url": "http://127.0.0.1:8585",
-      "username": "methylisocyanide",
-      "password": "Harbor12345",
+      "url": "",
+      "username": "",
+      "password": "",
       "bring_own_registry": false
     }
   }

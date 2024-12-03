@@ -13,8 +13,6 @@ type StateReader interface {
 	GetArtifacts() []ArtifactReader
 	// GetArtifactByRepository takes in the repository name and returns the artifact associated with it
 	GetArtifactByRepository(repo string) (ArtifactReader, error)
-	// Compare the state artifact with the new state artifact
-	HasStateChanged(newState StateReader) bool
 	// GetArtifactByName takes in the name of the artifact and returns the artifact associated with it
 	GetArtifactByNameAndTag(name, tag string) ArtifactReader
 	// SetArtifacts sets the artifacts in the state
@@ -54,23 +52,6 @@ func (a *State) GetArtifactByRepository(repo string) (ArtifactReader, error) {
 		}
 	}
 	return nil, fmt.Errorf("artifact not found in the list")
-}
-
-func (a *State) HasStateChanged(newState StateReader) bool {
-	if a.GetRegistryURL() != newState.GetRegistryURL() {
-		return true
-	}
-	artifacts := a.GetArtifacts()
-	newArtifacts := newState.GetArtifacts()
-	if len(artifacts) != len(newArtifacts) {
-		return true
-	}
-	for i, artifact := range artifacts {
-		if artifact.HasChanged(newArtifacts[i]) {
-			return true
-		}
-	}
-	return false
 }
 
 func (a *State) GetArtifactByNameAndTag(name, tag string) ArtifactReader {

@@ -162,8 +162,6 @@ func (z *ZtrProcess) stop() {
 	z.isRunning = false
 }
 
-// loadConfig loads the configuration.
-// It returns an error if the configuration cannot be loaded.
 func (z *ZtrProcess) loadConfig() ([]error, []config.Warning) {
 	return config.InitConfig(config.DefaultConfigPath)
 }
