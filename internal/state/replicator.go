@@ -19,20 +19,24 @@ type Replicator interface {
 }
 
 type BasicReplicator struct {
-	username          string
-	password          string
 	useUnsecure       bool
-	remoteRegistryURL string
+	sourceUsername    string
+	sourcePassword    string
 	sourceRegistry    string
+	remoteRegistryURL string
+	remoteUsername    string
+	remotePassword    string
 }
 
-func NewBasicReplicator(username, password, zotURL, sourceRegistry string, useUnsecure bool) Replicator {
+func NewBasicReplicator(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool) Replicator {
 	return &BasicReplicator{
-		username:          username,
-		password:          password,
+		sourceUsername:    sourceUsername,
+		sourcePassword:    sourcePassword,
 		useUnsecure:       useUnsecure,
-		remoteRegistryURL: zotURL,
+		remoteRegistryURL: remoteURL,
 		sourceRegistry:    sourceRegistry,
+		remoteUsername:    remoteUsername,
+		remotePassword:    remotePassword,
 	}
 }
 
@@ -59,22 +63,28 @@ func (e Entity) GetTag() string {
 // Replicate replicates images from the source registry to the Zot registry.
 func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []Entity) error {
 	log := logger.FromContext(ctx)
-	auth := authn.FromConfig(authn.AuthConfig{
-		Username: r.username,
-		Password: r.password,
+	pullAuthConfig := authn.FromConfig(authn.AuthConfig{
+		Username: r.sourceUsername,
+		Password: r.sourcePassword,
+	})
+	pushAuthConfig := authn.FromConfig(authn.AuthConfig{
+		Username: r.remoteUsername,
+		Password: r.remotePassword,
 	})
 
-	options := []crane.Option{crane.WithAuth(auth)}
+	pullOptions := []crane.Option{crane.WithAuth(pullAuthConfig)}
+	pushOptions := []crane.Option{crane.WithAuth(pushAuthConfig)}
+
 	if r.useUnsecure {
-		options = append(options, crane.Insecure)
+		pullOptions = append(pullOptions, crane.Insecure)
+		pushOptions = append(pushOptions, crane.Insecure)
 	}
 
 	for _, replicationEntity := range replicationEntities {
 
 		log.Info().Msgf("Pulling image %s from repository %s at registry %s with tag %s", replicationEntity.GetName(), replicationEntity.GetRepository(), r.sourceRegistry, replicationEntity.GetTag())
-
 		// Pull the image from the source registry
-		srcImage, err := crane.Pull(fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, replicationEntity.GetRepository(), replicationEntity.GetName(), replicationEntity.GetTag()), options...)
+		srcImage, err := crane.Pull(fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, replicationEntity.GetRepository(), replicationEntity.GetName(), replicationEntity.GetTag()), pullOptions...)
 		if err != nil {
 			log.Error().Msgf("Failed to pull image: %v", err)
 			return err
@@ -84,7 +94,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		ociImage := mutate.MediaType(srcImage, types.OCIManifestSchema1)
 
 		// Push the converted OCI image to the Zot registry
-		err = crane.Push(ociImage, fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, replicationEntity.GetRepository(), replicationEntity.GetName(), replicationEntity.GetTag()), options...)
+		err = crane.Push(ociImage, fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, replicationEntity.GetRepository(), replicationEntity.GetName(), replicationEntity.GetTag()), pushOptions...)
 		if err != nil {
 			log.Error().Msgf("Failed to push image: %v", err)
 			return err
@@ -98,8 +108,8 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 func (r *BasicReplicator) DeleteReplicationEntity(ctx context.Context, replicationEntity []Entity) error {
 	log := logger.FromContext(ctx)
 	auth := authn.FromConfig(authn.AuthConfig{
-		Username: r.username,
-		Password: r.password,
+		Username: r.remoteUsername,
+		Password: r.remotePassword,
 	})
 
 	options := []crane.Option{crane.WithAuth(auth)}

@@ -1,16 +1,39 @@
 {
-  "auth": {
-    "name": "admin",
-    "registry": "https://registry.bupd.xyz",
-    "secret": "Harbor12345"
+  "state_config": {
+    "auth": {
+      "name": "",
+      "registry": "",
+      "secret": ""
+    },
+    "states": [
+      ""
+    ]
   },
-  "bring_own_registry": false,
-  "ground_control_url": "http://localhost:8080",
-  "log_level": "info",
-  "own_registry_adr": "127.0.0.1",
-  "own_registry_port": "8585",
-  "states": ["https://registry.bupd.xyz/satellite-test-group-state/state:latest"],
-  "url_or_file": "https://registry.bupd.xyz",
-  "zotconfigpath": "./registry/config.json",
-  "use_unsecure": true
+  "environment_variables": {
+    "ground_control_url": "",
+    "log_level": "info",
+    "use_unsecure": true,
+    "zot_config_path": "./registry/config.json",
+    "token": "",
+    "jobs": [
+      {
+        "name": "replicate_state",
+        "schedule": "@every 00h00m10s"
+      },
+      {
+        "name": "update_config",
+        "schedule": "@every 00h00m30s"
+      },
+      {
+        "name": "register_satellite",
+        "schedule": "@every 00h00m05s"
+      }
+    ],
+    "local_registry": {
+      "url": "",
+      "username": "",
+      "password": "",
+      "bring_own_registry": false
+    }
+  }
 }
