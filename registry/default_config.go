@@ -32,26 +32,25 @@ func (c *DefaultZotConfig) GetLocalRegistryURL() string {
 }
 
 // ReadConfig reads a JSON file from the specified path and unmarshals it into a Config struct.
-func ReadConfig(filePath string) (*DefaultZotConfig, error) {
+func ReadConfig(filePath string, zotConfig *DefaultZotConfig) (error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("could not open file: %w", err)
+		return fmt.Errorf("could not open file: %w", err)
 	}
 	defer file.Close()
 
 	// Read the file contents
 	bytes, err := io.ReadAll(file)
 	if err != nil {
-		return nil, fmt.Errorf("could not read file: %w", err)
+		return fmt.Errorf("could not read file: %w", err)
 	}
 
 	// Unmarshal the JSON into a Config struct
-	var config DefaultZotConfig
-	err = json.Unmarshal(bytes, &config)
+	err = json.Unmarshal(bytes, &zotConfig)
 	if err != nil {
-		return nil, fmt.Errorf("could not unmarshal JSON: %w", err)
+		return fmt.Errorf("could not unmarshal JSON: %w", err)
 	}
-	return &config, nil
+	return nil
 }
 
 func (c *DefaultZotConfig) SetZotRemoteURL(url string) {
