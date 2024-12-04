@@ -13,6 +13,7 @@ import (
 
 const (
 	DEFAULT_GO          = "golang:1.22"
+	GO_VERSION          = "1.22"
 	PROJ_MOUNT          = "/app"
 	DOCKER_PORT         = 2375
 	GORELEASER_VERSION  = "v2.1.0"
