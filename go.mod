@@ -7,7 +7,6 @@ toolchain go1.23.2
 require (
 	dagger.io/dagger v0.10.3
 	github.com/google/go-containerregistry v0.19.2
-	github.com/joho/godotenv v1.5.1
 	github.com/prometheus/client_golang v1.19.1
 	golang.org/x/sync v0.8.0
 	// use go get zotregistry.dev/zot@main to get package
@@ -15,16 +14,14 @@ require (
 )
 
 require (
+	github.com/pelletier/go-toml v1.9.5
 	github.com/rs/zerolog v1.33.0
-	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
 )
 
 require (
-	github.com/blang/semver/v4 v4.0.0 // indirect
-	github.com/pelletier/go-toml v1.9.5 // indirect
+	github.com/spf13/viper v1.19.0 // indirect
 	golang.org/x/oauth2 v0.22.0 // indirect
-	k8s.io/cri-api v0.27.1 // indirect
 )
 
 require (
@@ -129,7 +126,7 @@ require (
 	github.com/cheggaaa/pb/v3 v3.1.5 // indirect
 	github.com/cloudflare/circl v1.3.7 // indirect
 	github.com/containerd/cgroups/v3 v3.0.3 // indirect
-	github.com/containerd/containerd v1.7.18
+	github.com/containerd/containerd v1.7.18 // indirect
 	github.com/containerd/continuity v0.4.3 // indirect
 	github.com/containerd/errdefs v0.1.0 // indirect
 	github.com/containerd/fifo v1.1.0 // indirect
@@ -405,7 +402,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.27.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.27.0
 	go.opentelemetry.io/otel/log v0.7.0
-	go.opentelemetry.io/otel/metric v1.27.0 // indirect
+	go.opentelemetry.io/otel/metric v1.27.0
 	go.opentelemetry.io/otel/sdk v1.27.0
 	go.opentelemetry.io/otel/sdk/log v0.3.0
 	go.opentelemetry.io/otel/sdk/metric v1.27.0
