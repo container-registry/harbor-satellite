@@ -2,7 +2,6 @@ package config
 
 import (
 	"encoding/json"
-
 	"os"
 )
 
@@ -63,7 +62,6 @@ func ParseConfigFromJson(jsonData string) (*Config, error) {
 
 // ReadConfigData reads the data from the specified path. Returns an error if the file does not exist or is a directory
 func ReadConfigData(configPath string) ([]byte, error) {
-
 	fileInfo, err := os.Stat(configPath)
 	if err != nil {
 		return nil, err
@@ -134,6 +132,7 @@ func UpdateStateAuthConfig(name, registry, secret string, states []string) {
 	appConfig.StateConfig.States = states
 	WriteConfig(DefaultConfigPath)
 }
+
 func WriteConfig(configPath string) error {
 	data, err := json.MarshalIndent(appConfig, "", "  ")
 	if err != nil {
