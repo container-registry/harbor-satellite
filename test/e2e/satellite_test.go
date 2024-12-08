@@ -35,7 +35,6 @@ func TestSatellite(t *testing.T) {
 
 	// Build & Run Satellite
 	buildSatellite(t, client, ctx, source, dest)
-	assert.NoError(t, err, "Failed to build and run Satellite")
 }
 
 // Setup Source Registry as a Dagger Service
@@ -130,9 +129,7 @@ func buildSatellite(
 		WithServiceBinding("source", source).
 		WithServiceBinding("dest", dest).
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
-		WithExec([]string{"cat", "config.toml"}).
-		WithFile("./config.toml", configFile).
-		WithExec([]string{"cat", "config.toml"}).
+		WithFile("./config.json", configFile).
 		WithExec([]string{"go", "build", "-o", appBinary, sourceFile}).
 		WithExposedPort(9090).
 		WithExec([]string{"./" + appBinary}).
