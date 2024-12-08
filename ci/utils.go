@@ -61,24 +61,22 @@ func (m *HarborSatellite) Service(
 // builds given component from source
 func (m *HarborSatellite) build(source *dagger.Directory, component string) *dagger.Directory {
 	fmt.Printf("Building %s\n", component)
+	// Fetch supported builds (GOOS and GOARCH combinations)
+	supportedBuilds := getSupportedBuilds()
+	binaryName := component
 
-	gooses := []string{"linux", "darwin"}
-	goarches := []string{"amd64", "arm64"}
-	binaryName := component // base component for the binary
-
-	// create empty directory to put build artifacts
 	outputs := dag.Directory()
 
 	golang := dag.Container().
 		From(DEFAULT_GO).
 		WithDirectory(PROJ_MOUNT, source).
-		WithWorkdir(PROJ_MOUNT)
-	for _, goos := range gooses {
-		for _, goarch := range goarches {
-			// create the full binary component with OS and architecture
-			outputBinary := fmt.Sprintf("%s/%s-%s-%s", component, binaryName, goos, goarch)
+		WithWorkdir(PROJ_MOUNT).
+		WithExec([]string{"ls", "-la"})
 
-			// build artifact with specified binary component
+	// Iterate through supported builds
+	for goos, goarches := range supportedBuilds {
+		for _, goarch := range goarches {
+			outputBinary := fmt.Sprintf("%s/%s-%s-%s", component, binaryName, goos, goarch)
 			build := golang.
 				WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 				WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
@@ -86,19 +84,12 @@ func (m *HarborSatellite) build(source *dagger.Directory, component string) *dag
 				WithEnvVariable("GOCACHE", "/go/build-cache").
 				WithEnvVariable("GOOS", goos).
 				WithEnvVariable("GOARCH", goarch)
-			if component == "ground-control" {
-				build = build.WithWorkdir("./ground-control/").
-					WithExec([]string{"go", "build", "-o", outputBinary})
-			} else {
-				build = build.WithExec([]string{"go", "build", "-o", outputBinary})
-			}
 
-			// add build to outputs
+			build = build.WithExec([]string{"go", "build", "-o", outputBinary})
 			outputs = outputs.WithDirectory(component, build.Directory(component))
 		}
 	}
 
-	// return build directory
 	return outputs
 }
 
@@ -110,17 +101,18 @@ func (m *HarborSatellite) get_release_tag(ctx context.Context, git_container *da
 ) (string, error) {
 	/// This would get the last tag that was created. Empty string if no tag was created.
 	getTagsOutput, err := git_container.
+		WithExec([]string{"git", "fetch", "--tags"}).
 		WithExec([]string{
 			"/bin/sh", "-c",
 			fmt.Sprintf(`git tag --list "v*%s" | sort -V | tail -n 1`, name),
 		}).
 		Stdout(ctx)
 	if err != nil {
-		slog.Error("Failed to get tags: ", err, ".")
-		slog.Error("Get Tags Output:", getTagsOutput, ".")
+		fmt.Println("Failed to get tags: ", err.Error(), ".")
+		fmt.Println("Get Tags Output: ", getTagsOutput, ".")
 		return getTagsOutput, err
 	}
-
+	fmt.Println("Get Tags Output:", getTagsOutput, ".")
 	slog.Info("Get Tags Output:", getTagsOutput, ".")
 	latest_tag := strings.TrimSpace(getTagsOutput)
 	new_tag, err := generateNewTag(latest_tag, name, release_type)
@@ -137,6 +129,7 @@ func generateNewTag(latestTag, suffix, release_type string) (string, error) {
 		// If the latest tag is empty, this is the first release
 		return fmt.Sprintf("v0.0.1-%s", suffix), nil
 	}
+	fmt.Println("Latest tag: ", latestTag)
 	versionWithoutSuffix := strings.TrimSuffix(latestTag, fmt.Sprintf("-%s", suffix))
 	versionWithoutSuffix = strings.TrimPrefix(versionWithoutSuffix, "v")
 	fmt.Println("Version without suffix: ", versionWithoutSuffix)
@@ -178,5 +171,12 @@ func (m *HarborSatellite) getPathToReleaser(name string) (string, error) {
 		return "ground-control/.goreleaser.yaml", nil
 	default:
 		return "", fmt.Errorf("unknown name: %s", name)
+	}
+}
+
+func getSupportedBuilds() map[string][]string {
+	return map[string][]string{
+		"linux":  {"amd64", "arm64", "ppc64le", "s390x", "386", "riscv64"},
+		"darwin": {"amd64", "arm64"},
 	}
 }
