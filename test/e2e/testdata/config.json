@@ -1,0 +1,39 @@
+{
+    "state_config": {
+      "auth": {
+        "name": "",
+        "registry": "",
+        "secret": ""
+      },
+      "states": [
+        ""
+      ]
+    },
+    "environment_variables": {
+      "ground_control_url": "",
+      "log_level": "info",
+      "use_unsecure": true,
+      "zot_config_path": "./registry/config.json",
+      "token": "",
+      "jobs": [
+        {
+          "name": "replicate_state",
+          "schedule": "@every 00h00m10s"
+        },
+        {
+          "name": "update_config",
+          "schedule": "@every 00h00m30s"
+        },
+        {
+          "name": "register_satellite",
+          "schedule": "@every 00h00m05s"
+        }
+      ],
+      "local_registry": {
+        "url": "",
+        "username": "",
+        "password": "",
+        "bring_own_registry": false
+      }
+    }
+  }
