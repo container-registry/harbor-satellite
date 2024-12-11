@@ -1,6 +1,55 @@
 # Harbor Satellite — Software Distribution to the Edge
 
-Harbor Satellite aims to bring Harbor container registries to edge locations, ensuring consistent, available, and integrity-checked images for edge computing environments. The developed sofware of a stateful, standalone satellite registry that can function as a primary registry for edge locations and act as a fallback option if the central Harbor registry is unavailable.
+Harbor Satellite aims to bring Harbor container registries to edge locations, ensuring consistent, available, and integrity-checked images for edge computing environments. 
+The developed sofware of a stateful, standalone satellite registry that can function as a primary registry for edge locations and act as a fallback option if the central Harbor registry is unavailable.
+
+## What Problems Harbor Satellite Addresses
+
+- Edge Registry fleet management and rollout
+- Manage and distribute artifacts to thousands of sites
+- Remotely orchestrate the artifacts for edge location 
+- Predictable behavior in challenging connectivity situations
+- Control edge artifact replication and presence
+- Optimized resource and bandwidth utilization
+- Transparent deployment process
+
+## Use Cases
+
+- EDGE/IOT
+- Environment without permanent connectivity
+  - E.g. Remote Locations, Ships, Satellites, Firewalls
+- High Availability of container images close to workloads
+- Multiple sites
+- Highly isolated sites 
+- Restricted ingress/egress data flow
+- Global image distribution 
+- Container Image CDN
+- Immediate application updates across regions
+
+
+## How Satellite Works
+
+- Satellite acts as Gateway or Proxy for containerized artifacts on site
+- Artifacts are managed and orchestrated remotely
+- Desired artifacts are securely synced with desired state on remote site 
+- Satellite can initiate updates or deployments on site (Hooks)
+- Runs on edge location as a single process in unattended mode
+
+
+## Satellite Components
+
+- Cloud Side
+  - Ground Control
+    -  Devices management
+    -  Onboarding and grouping of sites
+    -  State management and verification
+  - Harbor (with satellite extension)
+- EDGE (Satellite Side)
+  - Satellite
+    - Artifact store and synchronizer
+  - Runtime configuration updater
+  - Downstream event executor
+
 
 ## Background
 
