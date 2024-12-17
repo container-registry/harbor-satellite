@@ -329,6 +329,7 @@ func (f *FetchAndReplicateStateProcess) UpdateFetchProcessConfigFromZtr(username
 	f.authConfig.SourceRegistryUserName = username
 	f.authConfig.SourceRegistryPassword = password
 	f.authConfig.SourceRegistry = utils.FormatRegistryURL(sourceRegistryURL)
+	f.Replicator = NewBasicReplicator(f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.authConfig.SourceRegistry, f.authConfig.RemoteRegistryURL, f.authConfig.RemoteRegistryUserName, f.authConfig.RemoteRegistryPassword, f.authConfig.UseUnsecure)
 
 	// The states contain all the states that this satellite needs to track thus we would have to add the new states to the state map
 	// also we would have to remove the states that are not in the new states

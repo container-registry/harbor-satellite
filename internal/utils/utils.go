@@ -50,13 +50,6 @@ func HandleOwnRegistry() error {
 
 // LaunchDefaultZotRegistry launches the default Zot registry using the Zot config path
 func LaunchDefaultZotRegistry() error {
-	var defaultZotConfig registry.DefaultZotConfig
-	err := registry.ReadConfig(config.GetZotConfigPath(), &defaultZotConfig)
-	if err != nil {
-		return fmt.Errorf("error reading config: %w", err)
-	}
-	defaultZotURL := defaultZotConfig.GetLocalRegistryURL()
-	config.SetRemoteRegistryURL(defaultZotURL)
 	launch, err := registry.LaunchRegistry(config.GetZotConfigPath())
 	if !launch {
 		return fmt.Errorf("error launching registry: %w", err)

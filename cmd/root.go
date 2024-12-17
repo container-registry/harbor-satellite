@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 
 	runtime "container-registry.com/harbor-satellite/cmd/container_runtime"
 	"container-registry.com/harbor-satellite/internal/config"
@@ -10,6 +11,7 @@ import (
 	"container-registry.com/harbor-satellite/internal/server"
 	"container-registry.com/harbor-satellite/internal/utils"
 	"container-registry.com/harbor-satellite/logger"
+	"container-registry.com/harbor-satellite/registry"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
@@ -95,6 +97,13 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 		}
 	} else {
 		log.Info().Msg("Launching default registry")
+		var defaultZotConfig registry.DefaultZotConfig
+		err := registry.ReadConfig(config.GetZotConfigPath(), &defaultZotConfig)
+		if err != nil {
+			return fmt.Errorf("error reading config: %w", err)
+		}
+		defaultZotURL := defaultZotConfig.GetLocalRegistryURL()
+		config.SetRemoteRegistryURL(defaultZotURL)
 		g.Go(func() error {
 			if err := utils.LaunchDefaultZotRegistry(); err != nil {
 				log.Error().Err(err).Msg("Error launching default registry")

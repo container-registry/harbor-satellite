@@ -90,6 +90,34 @@ func (q *Queries) GetGroupByName(ctx context.Context, groupName string) (Group, 
 	return i, err
 }
 
+const getProjectsOfGroup = `-- name: GetProjectsOfGroup :many
+SELECT projects FROM groups
+WHERE group_name = $1
+`
+
+func (q *Queries) GetProjectsOfGroup(ctx context.Context, groupName string) ([][]string, error) {
+	rows, err := q.db.QueryContext(ctx, getProjectsOfGroup, groupName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items [][]string
+	for rows.Next() {
+		var projects []string
+		if err := rows.Scan(pq.Array(&projects)); err != nil {
+			return nil, err
+		}
+		items = append(items, projects)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGroups = `-- name: ListGroups :many
 SELECT id, group_name, registry_url, projects, created_at, updated_at FROM groups
 `
