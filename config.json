@@ -10,7 +10,7 @@
     ]
   },
   "environment_variables": {
-    "ground_control_url": "",
+    "ground_control_url": "http://127.0.0.1:8080",
     "log_level": "info",
     "use_unsecure": true,
     "zot_config_path": "./registry/config.json",

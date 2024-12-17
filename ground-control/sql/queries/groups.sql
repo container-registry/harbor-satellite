@@ -22,3 +22,7 @@ WHERE group_name = $1;
 -- name: DeleteGroup :exec
 DELETE FROM groups
 WHERE id = $1;
+
+-- name: GetProjectsOfGroup :many
+SELECT projects FROM groups
+WHERE group_name = $1;

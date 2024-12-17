@@ -162,9 +162,9 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	if len(req.Name) < 1 {
-		log.Println("name should be atleast one character long.")
+		log.Println("name should be at least one character long.")
 		err := &AppError{
-			Message: fmt.Sprintf("Error: name should be atleast one character long."),
+			Message: "Error: name should be at least one character long.",
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
@@ -184,7 +184,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 
 	if roboPresent {
 		err := &AppError{
-			Message: fmt.Sprintf("Error: Robot Account name already present. Try with different name"),
+			Message: "Error: Robot Account name already present. Try with different name",
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
@@ -322,6 +322,37 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		HandleAppError(w, err)
 		tx.Rollback()
 		return
+	}
+
+	// Give permission to the robot account for the projects present in the group list
+	// fetch all the projects
+	for i := range *req.Groups {
+		projects, err := q.GetProjectsOfGroup(r.Context(), (*req.Groups)[i])
+		if err != nil {
+			log.Println(err)
+			err := &AppError{
+				Message: fmt.Sprintf("Error: fetching projects of group %v", err.Error()),
+				Code:    http.StatusInternalServerError,
+			}
+			HandleAppError(w, err)
+			tx.Rollback()
+			return
+		}
+		project := projects[0]
+
+		// give permission to the robot account for all the projects present in this group
+		_, err = utils.UpdateRobotProjects(r.Context(), project, strconv.FormatInt(rbt.ID, 10))
+		if err != nil {
+			log.Println(err)
+			err := &AppError{
+				Message: fmt.Sprintf("Error: updating robot account %v", err.Error()),
+				Code:    http.StatusInternalServerError,
+			}
+			HandleAppError(w, err)
+			tx.Rollback()
+			return
+		}
+
 	}
 
 	// Add token to DB
