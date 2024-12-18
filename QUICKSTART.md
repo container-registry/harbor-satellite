@@ -16,6 +16,8 @@ In this guide, we'll use a Harbor registry instance.
 ### 3. Configure Ground Control
 Navigate to the `ground-control` directory and set up the following environment variables:
 
+- For running ground control using Dagger
+
 ```bash
 HARBOR_USERNAME=admin
 HARBOR_PASSWORD=Harbor12345
@@ -29,6 +31,23 @@ DB_PORT=5432
 DB_DATABASE=groundcontrol
 DB_USERNAME=postgres       # Customize based on your DB config
 DB_PASSWORD=password       # Customize based on your DB config
+```
+
+- For running ground control without Dagger
+
+```bash
+HARBOR_USERNAME=admin
+HARBOR_PASSWORD=Harbor12345
+HARBOR_URL=https://demo.goharbor.io
+
+PORT=8080
+APP_ENV=local
+
+DB_HOST=127.0.0.1
+DB_PORT=8100
+DB_DATABASE=groundcontrol
+DB_USERNAME=postgres       # Customize based on your DB config and add the same config to the docker-compose file
+DB_PASSWORD=password       # Customize based on your DB config and add the same config to the docker-compose file
 ```
 
 ### 4. Run Ground Control
@@ -52,66 +71,156 @@ To Run ground-control binary use
 
 > **Note:** Ensure you have set up Dagger with the latest version before running this command. Ground Control will run on port 8080.
 
-### 5. Configure Satellite
-Return to the root project directory:
+#### Without Using Dagger
+
+To start the Ground Control service without using Dagger, follow these steps:
+First, move to the ground-control directory
 
 ```bash
 cd ..
 ```
 
-Then navigate to the `satellite` directory and verify that `config.toml` is set up correctly:
+Then add the credentials to the `docker-compose` file for the Postgres service and pgAdmin, and start the services using. Make sure you add the same credentials that you have added in the .env file
 
-```toml
-# Whether to use the built-in Zot registry or not
-bring_own_registry = false
+```bash
+docker compose up
+```
 
-# IP address and port of the registry
-own_registry_adr = "127.0.0.1"
-own_registry_port = "8585"
+Once the services are up, move to the `sql/schema` folder to set up the database required for the ground control
 
-# URL of remote registry or local file path
-url_or_file = "https://demo.goharbor.io/v2/myproject/album-server"
+```bash
+cd sql/schema
+```
 
+Install `goose` to run database migrations if not already installed
 
+```bash
+go install github.com/pressly/goose/v3/cmd/goose@latest
+```
 
-# Default path for Zot registry config.json
-zotConfigPath = "./registry/config.json"
+Now run the below command with the credentials that you have added in the docker-compose file
 
-# Set logging level
-log_level = "info"
+```bash
+goose postgres "postgres://<POSTGRES_USER>:<POSTGRES_PASSWORD>@localhost:8100/groundcontrol?sslmode=disable" up
+```
+
+Now you can start the `ground-control` using the below command by first moving to the directory and running
+
+```bash
+cd ../..
+go run main.go
 ```
 
 ### 6. Register the Satellite with Ground Control
-Using `curl` or Postman, make a `POST` request to register the Satellite with Ground Control:
+
+Once the ground control is up and running, you can check its health status using the following curl command
+
+To test the health of the server, use the following `curl` command:
 
 ```bash
-curl -X POST http://localhost:8080/satellites/register -H "Content-Type: application/json" -d '{ "name": "<satellite_name_here>" }'
+curl --location 'http://localhost:8080/health'
 ```
 
-The response will include a token string. Set this token in the Satellite `.env` file:
-
-```console
-TOKEN=<string_from_ground_control>
+- Now we create a group. To create a group, use the following `curl` command
+> **Note:** Please modify the body given below according to your registry
+``` bash
+curl --location 'http://localhost:8080/groups/sync' \
+--header 'Content-Type: application/json' \
+--data '{
+  "group": "GROUP_NAME",
+  "registry": "YOUR_REGISTRY_URL",
+  "artifacts": [
+    {
+      "repository": "YOUR_PROJECT/YOUR_IMAGE",
+      "tag": ["TAGS OF THE IMAGE"],
+      "type": TYPE_OF_IMAGE,
+      "digest": "DIGEST",
+      "deleted": false
+    }
+  ]
+}
+'
 ```
-
-### 7. Build the Satellite
-Run the following Dagger command to build the Satellite:
-
+Example Curl Command for creating `GROUP`
 ```bash
-dagger call build-dev --platform "linux/amd64" --component satellite export --path=./satellite-dev
+curl --location 'http://localhost:8080/groups/sync' \
+--header 'Content-Type: application/json' \
+--data '{
+  "group": "group1",
+  "registry": "https://demo.goharbor.io",
+  "artifacts": [
+    {
+      "repository": "alpine/alpine",
+      "tag": ["latest"],
+      "type": "docker",
+      "digest": "sha256:3e21c52835bab96cbecb471e3c3eb0e8a012b91ba2f0b934bd0b5394cd570b9f",
+      "deleted": false
+    }
+  ]
+}
+'
 ```
+- Once the group is created, now we would add a satellite to the group so that the satellite would be available to track the images/artifacts present in the group
 
-To Run Satellite:
+Below curl command is used to register a satellite which also provides the authentication token for the satellite
 ```bash
-./satellite-dev
+curl --location 'http://localhost:8080/satellites/register' \
+--header 'Content-Type: application/json' \
+--data '{
+    "name": "SATELLITE_NAME",
+    "groups": ["GROUP_NAME"]
+}'
 ```
+> **Note**: Running the above command would produce a token which is important for the satellite to register itself to the ground control
+- Once you have the token for the satellite, we can move on to the satellite to configure it.
+### 6. Configure Satellite
 
-The Satellite service will start on port 9090. Ensure that the `ground_control_url` is correctly set in the Satellite configuration before launching.
+Return to the root project directory:
 
+In the `config.json` file, add the following configuration
 
-### 8. Finalize and Run
-After setting the token, you can now run the Satellite. This setup will launch the Satellite in a container with the following exposed ports:
-- **9090** for the Satellite service.
-- **8585** for the Zot registry (if configured).
-
-With this setup, your Harbor Satellite should be up and running!
+```json
+{
+  "environment_variables": {
+    "ground_control_url": "http://127.0.0.1:8080", // URL for the ground control server
+    "log_level": "info", // Log level: can be "debug", "info", "warn", or "error"
+    "use_unsecure": true, // Use unsecure connections (set to true for dev environments)
+    "zot_config_path": "./registry/config.json", // Path to Zot registry configuration file
+    "token":"ADD_THE_TOKEN_FROM_THE_ABOVE_STEP", // add the token received while registering satellite from the below step
+    "jobs": [
+      // List of scheduled jobs
+      // Checkout https://pkg.go.dev/github.com/robfig/cron#hdr-Predefined_schedules for more
+      //  details on how to write the cron job config
+      {
+        "name": "replicate_state", // Job to replicate state
+        "schedule": "@every 00h00m10s" // Schedule interval: every 10 seconds
+      },
+      {
+        "name": "update_config", // Job to update configuration
+        "schedule": "@every 00h00m30s" // Schedule interval: every 30 seconds
+      },
+      {
+        "name": "register_satellite", // Job to register satellite
+        "schedule": "@every 00h00m05s" // Schedule interval: every 5 seconds
+      }
+    ],
+    "local_registry": {
+      // Configuration for the local registry
+      "url": "", // Add your own registry URL if bring_own_registry is true else leave blank
+      "username": "", // Add your own registry username if bring_own_registry is true else leave blank
+      "password": "", // Add your own registry password if bring_own_registry is true else leave blank
+      "bring_own_registry": false // Set to true if using an external registry and the above config
+    }
+  }
+}
+```
+- Now start the satellite using the following command
+```bash
+go run main.go
+```
+> **Note**: You can also build the satellite binaries and use them.
+- To build the binary of the satellite, use the following command
+```bash
+dagger call build --source=. --name=satellite export --path=./bin
+```
+- This would generate the binaries for various architectures in the `bin` folder. Choose the binary for your system and use it. Make sure that the `config.json` and the binary directory are the same when running it otherwise it would throw an error.
