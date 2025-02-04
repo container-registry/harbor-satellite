@@ -56,7 +56,6 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	var req models.StateArtifact
 	if err := DecodeRequestBody(r, &req); err != nil {
-		log.Println("what the fuck")
 		log.Println(err)
 		HandleAppError(w, err)
 		return
