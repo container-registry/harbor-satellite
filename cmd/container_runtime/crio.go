@@ -38,7 +38,7 @@ func init() {
 }
 
 func NewCrioCommand() *cobra.Command {
-	var defaultZotConfig registry.DefaultZotConfig
+	var defaultZotConfig registry.ZotConfig
 	var generateConfig bool
 	var crioConfigPath string
 
@@ -67,7 +67,7 @@ func NewCrioCommand() *cobra.Command {
 	return crioCmd
 }
 
-func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, crioConfigPath string, log *zerolog.Logger) error {
+func GenerateCrioRegistryConfig(defaultZotConfig *registry.ZotConfig, crioConfigPath string, log *zerolog.Logger) error {
 	// Read the current crio registry config file
 	data, err := utils.ReadFile(crioConfigPath, false)
 	if err != nil {

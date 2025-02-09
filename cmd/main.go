@@ -89,7 +89,8 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 			return err
 		}
 	} else {
-		var defaultZotConfig registry.DefaultZotConfig
+		log.Info().Msg("Launching default registry")
+		var defaultZotConfig registry.ZotConfig
 		err := registry.ReadConfig(config.GetZotConfigPath(), &defaultZotConfig)
 		if err != nil {
 			return fmt.Errorf("error reading config: %w", err)
