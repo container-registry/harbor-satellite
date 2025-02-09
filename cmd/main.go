@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"container-registry.com/harbor-satellite/internal/config"
+	"container-registry.com/harbor-satellite/internal/logger"
 	"container-registry.com/harbor-satellite/internal/satellite"
 	"container-registry.com/harbor-satellite/internal/server"
 	"container-registry.com/harbor-satellite/internal/utils"
-	"container-registry.com/harbor-satellite/internal/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
@@ -80,7 +80,8 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 			return err
 		}
 	} else {
-		var defaultZotConfig registry.DefaultZotConfig
+		log.Info().Msg("Launching default registry")
+		var defaultZotConfig registry.ZotConfig
 		err := registry.ReadConfig(config.GetZotConfigPath(), &defaultZotConfig)
 		if err != nil {
 			return fmt.Errorf("error reading config: %w", err)
