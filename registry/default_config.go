@@ -8,19 +8,25 @@ import (
 	"strings"
 )
 
-type DefaultZotConfig struct {
-	DistSpecVersion string `json:"distSpecVersion"`
-	Storage         struct {
-		RootDirectory string `json:"rootDirectory"`
-	} `json:"storage"`
-	HTTP struct {
-		Address string `json:"address"`
-		Port    string `json:"port"`
-	} `json:"http"`
-	Log struct {
-		Level string `json:"level"`
-	} `json:"log"`
-	RemoteURL string
+type ZotConfig struct {
+	DistSpecVersion string           `json:"distSpecVersion"`
+	Storage         ZotStorageConfig `json:"storage"`
+	HTTP            ZotHTTPConfig    `json:"http"`
+	Log             ZotLogConfig     `json:"log"`
+	RemoteURL       string           `json:"remoteURL"`
+}
+
+type ZotStorageConfig struct {
+	RootDirectory string `json:"rootDirectory"`
+}
+
+type ZotHTTPConfig struct {
+	Address string `json:"address"`
+	Port    string `json:"port"`
+}
+
+type ZotLogConfig struct {
+	Level string `json:"level"`
 }
 
 func (c *DefaultZotConfig) GetLocalRegistryURL() string {
@@ -32,7 +38,7 @@ func (c *DefaultZotConfig) GetLocalRegistryURL() string {
 }
 
 // ReadConfig reads a JSON file from the specified path and unmarshals it into a Config struct.
-func ReadConfig(filePath string, zotConfig *DefaultZotConfig) (error) {
+func ReadConfig(filePath string, zotConfig *ZotConfig) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("could not open file: %w", err)
@@ -53,6 +59,6 @@ func ReadConfig(filePath string, zotConfig *DefaultZotConfig) (error) {
 	return nil
 }
 
-func (c *DefaultZotConfig) SetZotRemoteURL(url string) {
+func (c *ZotConfig) SetZotRemoteURL(url string) {
 	c.RemoteURL = url
 }
