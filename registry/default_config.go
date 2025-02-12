@@ -6,10 +6,16 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
 )
+
+// Predefined correct extension order.
+var validExtensionsOrder = []string{
+	"sync", "search", "scrub", "metrics", "lint", "ui", "mgmt", "userprefs", "imagetrust",
+}
 
 type ZotConfig struct {
 	DistSpecVersion string           `json:"distSpecVersion"`
@@ -17,12 +23,10 @@ type ZotConfig struct {
 	HTTP            ZotHTTPConfig    `json:"http"`
 	Log             ZotLogConfig     `json:"log"`
 	RemoteURL       string           `json:"remoteURL"`
-	Extensions      ZotExtensions    `json:"extensions"`
+	Extensions      *ZotExtensions   `json:"extensions,omitempty"`
 }
 
 type ZotExtensions struct {
-	// Sync should be specified before Scrub in the list of extensions.
-	// See here: https://github.com/project-zot/zot/blob/main/pkg/extensions/README.md
 	Sync  SyncConfig  `json:"sync"`
 	Scrub ScrubConfig `json:"scrub"`
 }
@@ -124,17 +128,51 @@ func (c *ZotConfig) Validate() error {
 		return err
 	}
 
-	if c.Extensions.Scrub.Enable {
-		if err := validateInterval(c.Extensions.Scrub.Interval); err != nil {
-			return err
+	if c.Extensions != nil {
+		validateExtensionsOrder(c.Extensions)
+
+		if c.Extensions.Scrub.Enable {
+			if err := validateInterval(c.Extensions.Scrub.Interval); err != nil {
+				return err
+			}
+		}
+
+		if c.Extensions.Sync.Enable {
+			if err := validateSyncConfig(c.Extensions.Sync); err != nil {
+				return err
+			}
 		}
 	}
 
-	// Validate SyncConfig if enabled
-	if c.Extensions.Sync.Enable {
-		if err := validateSyncConfig(c.Extensions.Sync); err != nil {
-			return err
+	return nil
+}
+
+// ValidateExtensionsOrder ensures extensions follow the correct order.
+func validateExtensionsOrder(extensions *ZotExtensions) error {
+	// Extract the non-nil extension fields in the order they appear
+	var usedExtensions []string
+
+	val := reflect.ValueOf(extensions)
+	typ := val.Type()
+
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		if !field.IsNil() { // Only include non-nil fields (enabled extensions)
+			usedExtensions = append(usedExtensions, typ.Field(i).Tag.Get("json"))
 		}
+	}
+
+	// Check if used extensions follow the valid order
+	lastIndex := -1
+	for _, ext := range usedExtensions {
+		currentIndex := indexOf(validExtensionsOrder, ext)
+		if currentIndex == -1 {
+			return fmt.Errorf("unknown extension found: %s", ext)
+		}
+		if currentIndex < lastIndex {
+			return fmt.Errorf("extensions are not in the correct order: %v", usedExtensions)
+		}
+		lastIndex = currentIndex
 	}
 
 	return nil
@@ -228,4 +266,14 @@ func validateInterval(interval string) error {
 
 func (c *ZotConfig) SetZotRemoteURL(url string) {
 	c.RemoteURL = url
+}
+
+// Helper function to find the index of a string in a slice
+func indexOf(slice []string, item string) int {
+	for i, v := range slice {
+		if v == item {
+			return i
+		}
+	}
+	return -1
 }
