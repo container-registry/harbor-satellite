@@ -13,25 +13,28 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// what are we testing for?
 func TestSatellite(t *testing.T) {
 	ctx := context.Background()
 
 	// Initialize Dagger client
 	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stderr))
+	defer client.Close()
 	assert.NoError(t, err, "Failed to connect to Dagger")
 	defer client.Close()
 
 	// Set up Source Registry
-	source, err := setupSourceRegistry(t, client, ctx)
+	source, err := setupSourceRegistry(client, ctx)
 	assert.NoError(t, err, "Failed to set up source registry")
 
 	// Set up Destination registry
-	dest, err := setupDestinationRegistry(t, client, ctx)
+	dest, err := setupDestinationRegistry(client, ctx)
 	assert.NoError(t, err, "Failed to set up destination registry")
 
 	// Push images to Source registry
-	pushImageToSourceRegistry(t, ctx, client, source)
-	assert.NoError(t, err, "Failed to upload image to source registry")
+	stdout, err := pushImageToSourceRegistry(t, ctx, client, source)
+	assert.NoError(t, err, "Failed to print stdout of source registry")
+	fmt.Print(stdout)
 
 	// Build & Run Satellite
 	buildSatellite(t, client, ctx, source, dest)
@@ -39,7 +42,6 @@ func TestSatellite(t *testing.T) {
 
 // Setup Source Registry as a Dagger Service
 func setupSourceRegistry(
-	t *testing.T,
 	client *dagger.Client,
 	ctx context.Context,
 ) (*dagger.Service, error) {
@@ -50,14 +52,11 @@ func setupSourceRegistry(
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		AsService().Start(ctx)
 
-	assert.NoError(t, err, "Failed setting up source registry.")
-
-	return container, nil
+	return container, err
 }
 
 // Setup Destination Registry as a Dagger Service
 func setupDestinationRegistry(
-	t *testing.T,
 	client *dagger.Client,
 	ctx context.Context,
 ) (*dagger.Service, error) {
@@ -68,9 +67,7 @@ func setupDestinationRegistry(
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		AsService().Start(ctx)
 
-	assert.NoError(t, err, "Failed setting up destination registry")
-
-	return container, nil
+	return container, err
 }
 
 // Push image to the Source registry
@@ -79,7 +76,7 @@ func pushImageToSourceRegistry(
 	ctx context.Context,
 	client *dagger.Client,
 	source *dagger.Service,
-) {
+) (string, error) {
 
 	container := client.Container().
 		From("docker:dind").
@@ -95,9 +92,8 @@ func pushImageToSourceRegistry(
 	container = container.WithExec([]string{"crane", "catalog", "source:5000", "--insecure"})
 
 	stdOut, err := container.Stdout(ctx)
-	assert.NoError(t, err, "Failed to print stdOut in pushing Image to Source")
 
-	fmt.Println(stdOut)
+	return stdOut, err
 }
 
 func buildSatellite(
@@ -107,12 +103,6 @@ func buildSatellite(
 	source *dagger.Service,
 	dest *dagger.Service,
 ) {
-	var PATH_TO_CONFIG string
-	if ABS {
-		PATH_TO_CONFIG = absolute_path
-	} else {
-		PATH_TO_CONFIG = relative_path
-	}
 	// Get the directory
 	parentDir, err := getProjectDir()
 	assert.NoError(t, err, "Failed to get Project Directory")
@@ -120,8 +110,11 @@ func buildSatellite(
 	// Use the directory path in Dagger
 	dir := client.Host().Directory(parentDir)
 
+	config, err := filepath.Abs(filepath.Join(parentDir, absolute_path))
+	fmt.Println("the new config path: ", config)
+
 	// Get configuration file on the host
-	configFile := client.Host().File(PATH_TO_CONFIG)
+	configFile := client.Host().File(config)
 
 	// Configure and build the Satellite
 	container := client.Container().From("golang:alpine").WithDirectory(appDir, dir).
@@ -141,6 +134,11 @@ func buildSatellite(
 		WithExec([]string{"wget", "-O", "-", "http://satellite:9090" + satellite_ping_endpoint})
 
 	output, err := satellite_container.Stdout(ctx)
+
+	fmt.Println("The following is the stdout of the satellite: ")
+	fmt.Println()
+	fmt.Print(output)
+	fmt.Println()
 	assert.NoError(t, err, "Failed to get output from satellite ping endpoint")
 	// Check the response
 	var response map[string]interface{}
