@@ -82,13 +82,17 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 	} else {
 		log.Info().Msg("Launching default registry")
 		var defaultZotConfig registry.ZotConfig
-        // we can use this function to also validate the config file
-		err := registry.ReadAndValidateZotConfig(config.GetZotConfigPath(), &defaultZotConfig)
-		if err != nil {
-			return fmt.Errorf("error reading config: %w", err)
+
+		if err := registry.ReadZotConfig(config.GetZotConfigPath(), &defaultZotConfig); err != nil {
+			return fmt.Errorf("Error reading default zot registry config: %w", err)
 		}
-		defaultZotURL := defaultZotConfig.GetLocalRegistryURL()
-		config.SetRemoteRegistryURL(defaultZotURL)
+
+		if err := defaultZotConfig.Validate(); err != nil {
+			return fmt.Errorf("Error validating default zot config: %w", err)
+		}
+
+		config.SetRemoteRegistryURL(defaultZotConfig.GetLocalRegistryURL())
+
 		g.Go(func() error {
 			log.Info().Msg("Launching default registry")
 			if err := utils.LaunchDefaultZotRegistry(); err != nil {
