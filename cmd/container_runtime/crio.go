@@ -162,7 +162,7 @@ func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig *registry
 		defaultZotConfig.RemoteURL = config.GetRemoteRegistryURL()
 	} else {
 		log.Info().Msg("Using default registry for config generation")
-		err = registry.ReadConfig(config.GetZotConfigPath(), defaultZotConfig)
+		err = registry.ReadZotConfig(config.GetZotConfigPath(), defaultZotConfig)
 		if err != nil || defaultZotConfig == nil {
 			return fmt.Errorf("could not read config: %w", err)
 		}
