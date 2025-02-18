@@ -38,7 +38,7 @@ func init() {
 }
 
 func NewCrioCommand() *cobra.Command {
-	var defaultZotConfig registry.DefaultZotConfig
+	var defaultZotConfig registry.ZotConfig
 	var generateConfig bool
 	var crioConfigPath string
 
@@ -67,7 +67,7 @@ func NewCrioCommand() *cobra.Command {
 	return crioCmd
 }
 
-func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, crioConfigPath string, log *zerolog.Logger) error {
+func GenerateCrioRegistryConfig(defaultZotConfig *registry.ZotConfig, crioConfigPath string, log *zerolog.Logger) error {
 	// Read the current crio registry config file
 	data, err := utils.ReadFile(crioConfigPath, false)
 	if err != nil {
@@ -147,7 +147,7 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 	return nil
 }
 
-func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig *registry.DefaultZotConfig, defaultGenPath string) error {
+func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig *registry.ZotConfig, defaultGenPath string) error {
 	utils.CommandRunSetup(cmd)
 	var err error
 	log := logger.FromContext(cmd.Context())
@@ -162,7 +162,7 @@ func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig *registry
 		defaultZotConfig.RemoteURL = config.GetRemoteRegistryURL()
 	} else {
 		log.Info().Msg("Using default registry for config generation")
-		err = registry.ReadConfig(config.GetZotConfigPath(), defaultZotConfig)
+		err = registry.ReadZotConfig(config.GetZotConfigPath(), defaultZotConfig)
 		if err != nil || defaultZotConfig == nil {
 			return fmt.Errorf("could not read config: %w", err)
 		}
