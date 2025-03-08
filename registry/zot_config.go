@@ -79,7 +79,7 @@ type ZotLogConfig struct {
 	Level string `json:"level"`
 }
 
-func (c *ZotConfig) GetLocalRegistryURL() string {
+func (c *ZotConfig) GetRegistryURL() string {
 	address := c.HTTP.Address
 	if !strings.HasPrefix(address, "http://") && !strings.HasPrefix(address, "https://") {
 		address = "http://" + address
