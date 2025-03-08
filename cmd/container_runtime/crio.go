@@ -166,7 +166,7 @@ func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig *registry
 		if err != nil || defaultZotConfig == nil {
 			return fmt.Errorf("could not read config: %w", err)
 		}
-		defaultZotConfig.RemoteURL = defaultZotConfig.GetLocalRegistryURL()
+		defaultZotConfig.RemoteURL = defaultZotConfig.GetRegistryURL()
 		log.Info().Msgf("Default config read successfully: %v", defaultZotConfig.HTTP.Address+":"+defaultZotConfig.HTTP.Port)
 	}
 	return utils.CreateRuntimeDirectory(defaultGenPath)
