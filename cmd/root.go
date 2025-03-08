@@ -25,9 +25,8 @@ func NewRootCommand() *cobra.Command {
 			return utils.CommandRunSetup(cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			ctx, cancel := utils.SetupContext(ctx)
-			return run(ctx, cancel)
+			ctx := utils.SetupContext(cmd.Context())
+			return run(ctx)
 		},
 	}
 	rootCmd.AddCommand(runtime.NewContainerdCommand())
@@ -39,7 +38,7 @@ func Execute() error {
 	return NewRootCommand().Execute()
 }
 
-func run(ctx context.Context, cancel context.CancelFunc) error {
+func run(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 	log := logger.FromContext(ctx)
 
@@ -49,7 +48,7 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 	app.SetupServer(g)
 
 	// Handle registry setup
-	if err := handleRegistrySetup(g, log, cancel); err != nil {
+	if err := handleRegistrySetup(g, log); err != nil {
 		return err
 	}
 	scheduler := scheduler.NewBasicScheduler(ctx)
@@ -89,7 +88,7 @@ func setupServerApp(ctx context.Context, log *zerolog.Logger) *server.App {
 	)
 }
 
-func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc) error {
+func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger) error {
 	if config.GetOwnRegistry() {
 		if err := utils.HandleOwnRegistry(); err != nil {
 			log.Error().Err(err).Msg("Error handling own registry")
@@ -108,10 +107,8 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 		g.Go(func() error {
 			if err := registry.LaunchRegistry(config.GetZotConfigPath()); err != nil {
 				log.Error().Err(err).Msg("error launching default zot registry")
-				cancel()
 				return fmt.Errorf("error launching default zot registry: %w", err)
 			}
-			cancel()
 			return nil
 		})
 	}
