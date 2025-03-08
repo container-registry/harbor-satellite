@@ -93,14 +93,13 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 		var defaultZotConfig registry.ZotConfig
 		err := registry.ReadZotConfig(config.GetZotConfigPath(), &defaultZotConfig)
 		if err != nil {
-			log.Error().Err(err).Msg("error launching default zot registry")
+			log.Error().Err(err).Msg("Error launching default zot registry")
 			return fmt.Errorf("error reading config: %w", err)
 		}
-		// The names "Local" and "Remote" are confusing here.
-		config.SetRemoteRegistryURL(defaultZotConfig.GetLocalRegistryURL())
+		config.SetRemoteRegistryURL(defaultZotConfig.GetRegistryURL())
 		g.Go(func() error {
 			if err := registry.LaunchRegistry(config.GetZotConfigPath()); err != nil {
-				log.Error().Err(err).Msg("error launching default zot registry")
+				log.Error().Err(err).Msg("Error launching default zot registry")
 				return fmt.Errorf("error launching default zot registry: %w", err)
 			}
 			return nil
