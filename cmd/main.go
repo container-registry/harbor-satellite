@@ -101,10 +101,8 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 		g.Go(func() error {
 			if err := registry.LaunchRegistry(config.GetZotConfigPath()); err != nil {
 				log.Error().Err(err).Msg("error launching default zot registry")
-				cancel()
 				return fmt.Errorf("error launching default zot registry: %w", err)
 			}
-			cancel()
 			return nil
 		})
 	}
