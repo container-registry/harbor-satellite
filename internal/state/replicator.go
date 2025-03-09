@@ -81,6 +81,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 	}
 
 	for _, replicationEntity := range replicationEntities {
+        // check if image already exists in zot registry/ local registry
 
 		log.Info().Msgf("Pulling image %s from repository %s at registry %s with tag %s", replicationEntity.GetName(), replicationEntity.GetRepository(), r.sourceRegistry, replicationEntity.GetTag())
 		// Pull the image from the source registry
