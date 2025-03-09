@@ -221,6 +221,6 @@ go run main.go
 > **Note**: You can also build the satellite binaries and use them.
 - To build the binary of the satellite, use the following command
 ```bash
-dagger call build --source=. --name=satellite export --path=./bin
+dagger call build --source=. --component=satellite export --path=./bin
 ```
 - This would generate the binaries for various architectures in the `bin` folder. Choose the binary for your system and use it. Make sure that the `config.json` and the binary directory are the same when running it otherwise it would throw an error.
