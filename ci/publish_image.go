@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"container-registry.com/harbor-satellite/ci/internal/dagger"
+	"harbor-satellite/ci/internal/dagger"
 )
 
 // PublishImage publishes a container image to a registry with a specific tag and signs it using Cosign.

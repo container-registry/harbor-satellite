@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"container-registry.com/harbor-satellite/ci/internal/dagger"
+	"harbor-satellite/ci/internal/dagger"
 )
 
 const (

@@ -7,9 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"container-registry.com/harbor-satellite/ci/internal/dagger"
+	"harbor-satellite/ci/internal/dagger"
 )
-
 
 // builds given component from source
 func (m *HarborSatellite) build(source *dagger.Directory, component string) *dagger.Directory {
