@@ -70,6 +70,13 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 	g.Go(func() error {
 		return satelliteService.Run(ctx)
 	})
+	select {
+	case <-ctx.Done(): // Check if context is canceled
+		fmt.Println("\nReceived signal, stopping execution.")
+		return nil
+	default:
+		fmt.Print("din't receive signal")
+	}
 
 	log.Info().Msg("Startup complete 🚀")
 	g.Wait()
@@ -92,7 +99,6 @@ func setupServerApp(ctx context.Context, log *zerolog.Logger) *server.App {
 }
 
 func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc) error {
-	defer fmt.Println("calling cancel func")
 	if config.GetOwnRegistry() {
 		if err := utils.HandleOwnRegistry(); err != nil {
 			log.Error().Err(err).Msg("Error handling own registry")
@@ -100,7 +106,6 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 			return err
 		}
 	} else {
-		defer cancel()
 		log.Info().Msg("Launching default registry")
 		var defaultZotConfig registry.ZotConfig
 		if err := registry.ReadZotConfig(config.GetZotConfigPath(), &defaultZotConfig); err != nil {
@@ -118,8 +123,10 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 		g.Go(func() error {
 			if err := registry.LaunchRegistry(config.GetZotConfigPath()); err != nil {
 				log.Error().Err(err).Msg("Error launching default zot registry")
+				cancel()
 				return fmt.Errorf("error launching default zot registry: %w", err)
 			}
+			cancel()
 			return nil
 		})
 	}
