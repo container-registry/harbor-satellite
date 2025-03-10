@@ -48,15 +48,6 @@ func HandleOwnRegistry() error {
 	return config.SetRemoteRegistryURL(FormatRegistryURL(config.GetRemoteRegistryURL()))
 }
 
-// LaunchDefaultZotRegistry launches the default Zot registry using the Zot config path
-func LaunchDefaultZotRegistry() error {
-	err := registry.LaunchRegistry(config.GetZotConfigPath())
-	if err != nil {
-		return fmt.Errorf("error launching registry: %w", err)
-	}
-	return nil
-}
-
 // Helper function to determine if input is a valid URL
 func IsValidURL(input string) bool {
 	parsedURL, err := url.Parse(input)
