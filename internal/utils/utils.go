@@ -14,9 +14,8 @@ import (
 	"syscall"
 
 	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/logger"
-	"container-registry.com/harbor-satellite/registry"
+	"container-registry.com/harbor-satellite/internal/scheduler"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
