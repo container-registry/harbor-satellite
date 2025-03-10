@@ -86,9 +86,11 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 		log.Info().Msg("Configuring own registry")
 		if err := utils.HandleOwnRegistry(); err != nil {
 			log.Error().Err(err).Msg("Error handling own registry")
+			cancel()
 			return err
 		}
 	} else {
+		defer cancel()
 		log.Info().Msg("Launching default registry")
 		var defaultZotConfig registry.ZotConfig
 		if err := registry.ReadZotConfig(config.GetZotConfigPath(), &defaultZotConfig); err != nil {
