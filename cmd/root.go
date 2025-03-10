@@ -92,13 +92,15 @@ func setupServerApp(ctx context.Context, log *zerolog.Logger) *server.App {
 }
 
 func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc) error {
-	defer cancel()
+	defer fmt.Println("calling cancel func")
 	if config.GetOwnRegistry() {
 		if err := utils.HandleOwnRegistry(); err != nil {
 			log.Error().Err(err).Msg("Error handling own registry")
+			cancel()
 			return err
 		}
 	} else {
+		defer cancel()
 		log.Info().Msg("Launching default registry")
 		var defaultZotConfig registry.ZotConfig
 		if err := registry.ReadZotConfig(config.GetZotConfigPath(), &defaultZotConfig); err != nil {
