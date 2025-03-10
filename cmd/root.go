@@ -25,8 +25,7 @@ func NewRootCommand() *cobra.Command {
 			return utils.CommandRunSetup(cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			ctx, cancel := utils.SetupContext(ctx)
+			ctx, cancel := utils.SetupContext(cmd.Context())
 			return run(ctx, cancel)
 		},
 	}
@@ -59,11 +58,14 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 		log.Error().Err(err).Msg("Error starting scheduler")
 		return err
 	}
-	localRegistryConfig := satellite.NewRegistryConfig(config.GetRemoteRegistryURL(), config.GetRemoteRegistryUsername(), config.GetRemoteRegistryPassword())
-	sourceRegistryConfig := satellite.NewRegistryConfig(config.GetSourceRegistryURL(), config.GetSourceRegistryUsername(), config.GetSourceRegistryPassword())
-	states := config.GetStates()
-	useUnsecure := config.UseUnsecure()
-	satelliteService := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey(), localRegistryConfig, sourceRegistryConfig, useUnsecure, states)
+
+	localRegistryConfig := satellite.NewRegistryConfig(config.GetRemoteRegistryURL(),
+		config.GetRemoteRegistryUsername(), config.GetRemoteRegistryPassword())
+	sourceRegistryConfig := satellite.NewRegistryConfig(config.GetSourceRegistryURL(),
+		config.GetSourceRegistryUsername(), config.GetSourceRegistryPassword())
+
+	satelliteService := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey(), localRegistryConfig,
+		sourceRegistryConfig, config.UseUnsecure(), config.GetStates())
 
 	g.Go(func() error {
 		return satelliteService.Run(ctx)
@@ -93,22 +95,29 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 	if config.GetOwnRegistry() {
 		if err := utils.HandleOwnRegistry(); err != nil {
 			log.Error().Err(err).Msg("Error handling own registry")
+			cancel()
 			return err
 		}
 	} else {
 		log.Info().Msg("Launching default registry")
-		var defaultZotConfig registry.DefaultZotConfig
-		err := registry.ReadConfig(config.GetZotConfigPath(), &defaultZotConfig)
-		if err != nil {
+		var defaultZotConfig registry.ZotConfig
+		if err := registry.ReadZotConfig(config.GetZotConfigPath(), &defaultZotConfig); err != nil {
+			log.Error().Err(err).Msg("Error launching default zot registry")
 			return fmt.Errorf("error reading config: %w", err)
 		}
-		defaultZotURL := defaultZotConfig.GetLocalRegistryURL()
-		config.SetRemoteRegistryURL(defaultZotURL)
+
+		if err := defaultZotConfig.Validate(); err != nil {
+			log.Error().Err(err).Msg("Error launching default zot registry")
+			return fmt.Errorf("invalid zot config: %w", err)
+		}
+
+		config.SetRemoteRegistryURL(defaultZotConfig.GetRegistryURL())
+
 		g.Go(func() error {
-			if err := utils.LaunchDefaultZotRegistry(); err != nil {
-				log.Error().Err(err).Msg("Error launching default registry")
+			if err := registry.LaunchRegistry(config.GetZotConfigPath()); err != nil {
+				log.Error().Err(err).Msg("Error launching default zot registry")
 				cancel()
-				return err
+				return fmt.Errorf("error launching default zot registry: %w", err)
 			}
 			cancel()
 			return nil
