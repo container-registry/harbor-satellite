@@ -129,8 +129,6 @@ func (c *ZotConfig) Validate() error {
 	}
 
 	if c.Extensions != nil {
-		validateExtensionsOrder(c.Extensions)
-
 		if c.Extensions.Scrub.Enable {
 			if err := validateInterval(c.Extensions.Scrub.Interval); err != nil {
 				return err
@@ -142,37 +140,6 @@ func (c *ZotConfig) Validate() error {
 				return err
 			}
 		}
-	}
-
-	return nil
-}
-
-// ValidateExtensionsOrder ensures extensions follow the correct order.
-func validateExtensionsOrder(extensions *ZotExtensions) error {
-	// Extract the non-nil extension fields in the order they appear
-	var usedExtensions []string
-
-	val := reflect.ValueOf(extensions)
-	typ := val.Type()
-
-	for i := 0; i < val.NumField(); i++ {
-		field := val.Field(i)
-		if !field.IsNil() { // Only include non-nil fields (enabled extensions)
-			usedExtensions = append(usedExtensions, typ.Field(i).Tag.Get("json"))
-		}
-	}
-
-	// Check if used extensions follow the valid order
-	lastIndex := -1
-	for _, ext := range usedExtensions {
-		currentIndex := indexOf(validExtensionsOrder, ext)
-		if currentIndex == -1 {
-			return fmt.Errorf("unknown extension found: %s", ext)
-		}
-		if currentIndex < lastIndex {
-			return fmt.Errorf("extensions are not in the correct order: %v", usedExtensions)
-		}
-		lastIndex = currentIndex
 	}
 
 	return nil
