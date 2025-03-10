@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"reflect"
 	"regexp"
 	"strings"
 	"time"

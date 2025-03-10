@@ -15,7 +15,6 @@ import (
 
 	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/logger"
-	"container-registry.com/harbor-satellite/registry"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 )
