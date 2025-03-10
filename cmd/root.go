@@ -70,13 +70,6 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 	g.Go(func() error {
 		return satelliteService.Run(ctx)
 	})
-	select {
-	case <-ctx.Done(): // Check if context is canceled
-		fmt.Println("\nReceived signal, stopping execution.")
-		return nil
-	default:
-		fmt.Print("din't receive signal")
-	}
 
 	log.Info().Msg("Startup complete 🚀")
 	g.Wait()
