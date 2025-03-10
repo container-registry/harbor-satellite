@@ -25,8 +25,8 @@ func NewRootCommand() *cobra.Command {
 			return utils.CommandRunSetup(cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := utils.SetupContext(cmd.Context())
-			return run(ctx)
+			ctx, cancel := utils.SetupContext(cmd.Context())
+			return run(ctx, cancel)
 		},
 	}
 	rootCmd.AddCommand(runtime.NewContainerdCommand())
@@ -38,7 +38,7 @@ func Execute() error {
 	return NewRootCommand().Execute()
 }
 
-func run(ctx context.Context) error {
+func run(ctx context.Context, cancel context.CancelFunc) error {
 	g, ctx := errgroup.WithContext(ctx)
 	log := logger.FromContext(ctx)
 
@@ -48,7 +48,7 @@ func run(ctx context.Context) error {
 	app.SetupServer(g)
 
 	// Handle registry setup
-	if err := handleRegistrySetup(g, log); err != nil {
+	if err := handleRegistrySetup(g, log, cancel); err != nil {
 		return err
 	}
 	scheduler := scheduler.NewBasicScheduler(ctx)
@@ -58,11 +58,14 @@ func run(ctx context.Context) error {
 		log.Error().Err(err).Msg("Error starting scheduler")
 		return err
 	}
-	localRegistryConfig := satellite.NewRegistryConfig(config.GetRemoteRegistryURL(), config.GetRemoteRegistryUsername(), config.GetRemoteRegistryPassword())
-	sourceRegistryConfig := satellite.NewRegistryConfig(config.GetSourceRegistryURL(), config.GetSourceRegistryUsername(), config.GetSourceRegistryPassword())
-	states := config.GetStates()
-	useUnsecure := config.UseUnsecure()
-	satelliteService := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey(), localRegistryConfig, sourceRegistryConfig, useUnsecure, states)
+
+	localRegistryConfig := satellite.NewRegistryConfig(config.GetRemoteRegistryURL(),
+		config.GetRemoteRegistryUsername(), config.GetRemoteRegistryPassword())
+	sourceRegistryConfig := satellite.NewRegistryConfig(config.GetSourceRegistryURL(),
+		config.GetSourceRegistryUsername(), config.GetSourceRegistryPassword())
+
+	satelliteService := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey(), localRegistryConfig,
+		sourceRegistryConfig, config.UseUnsecure(), config.GetStates())
 
 	g.Go(func() error {
 		return satelliteService.Run(ctx)
@@ -88,7 +91,8 @@ func setupServerApp(ctx context.Context, log *zerolog.Logger) *server.App {
 	)
 }
 
-func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger) error {
+func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc) error {
+	defer cancel()
 	if config.GetOwnRegistry() {
 		if err := utils.HandleOwnRegistry(); err != nil {
 			log.Error().Err(err).Msg("Error handling own registry")
