@@ -81,9 +81,9 @@ func GetRepositoryAndImageNameFromArtifact(repository string) (string, string, e
 	return repo, image, nil
 }
 
-func SetupContext(context context.Context) context.Context {
-	ctx, _ := signal.NotifyContext(context, syscall.SIGTERM, syscall.SIGINT)
-	return ctx
+func SetupContext(context context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := signal.NotifyContext(context, syscall.SIGTERM, syscall.SIGINT)
+	return ctx, cancel
 }
 
 // FormatRegistryURL formats the registry URL by trimming the "https://" or "http://" prefix if present
