@@ -18,14 +18,13 @@ func Run() error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 
-	ctx, scheduler, err := utils.Init(ctx)
+	ctx, wg, scheduler, err := utils.Init(ctx)
 	if err != nil {
 		return err
 	}
-
-	wg, ctx := errgroup.WithContext(ctx)
-
 	log := logger.FromContext(ctx)
+
+	go scheduler.ListenForProcessEvent()
 
 	// Set up router and app
 	log.Debug().Msg("Setting up http server")
@@ -55,7 +54,6 @@ func Run() error {
 		return satelliteService.Run(ctx)
 	})
 
-	log.Info().Msg("Startup complete 🚀")
 	wg.Wait()
 	scheduler.Stop()
 	return nil

@@ -18,6 +18,7 @@ import (
 	"container-registry.com/harbor-satellite/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 )
 
 // / ValidateRegistryAddress validates the registry address and port and returns the URL
@@ -154,17 +155,19 @@ func HandleErrorAndWarning(log *zerolog.Logger, errors []error, warnings []confi
 	return nil
 }
 
-func Init(ctx context.Context) (context.Context, scheduler.Scheduler, error) {
+func Init(ctx context.Context) (context.Context, *errgroup.Group, scheduler.Scheduler, error) {
+	wg, ctx := errgroup.WithContext(ctx)
 	errors, warnings := config.InitConfig(config.DefaultConfigPath)
 	log := logger.NewLogger(config.GetLogLevel())
 	if err := HandleErrorAndWarning(log, errors, warnings); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+	ctx = context.WithValue(ctx, logger.LoggerKey, log)
 
+	log.Debug().Msg("Initializing new basic scheduler for cron jobs")
 	scheduler := scheduler.NewBasicScheduler(ctx, log)
 
-    ctx = context.WithValue(ctx, logger.LoggerKey, log)
 	ctx = context.WithValue(ctx, scheduler.GetSchedulerKey(), scheduler)
 
-	return ctx, scheduler, nil
+	return ctx, wg, scheduler, nil
 }
