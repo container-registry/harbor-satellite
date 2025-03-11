@@ -71,3 +71,15 @@ func GetRemoteRegistryPassword() string {
 func GetRemoteRegistryURL() string {
 	return appConfig.LocalJsonConfig.LocalRegistryConfig.URL
 }
+
+func GetRegistrationInterval() string {
+	return appConfig.LocalJsonConfig.RegisterSatelliteInterval
+}
+
+func GetUpdateConfigInterval() string {
+	return appConfig.LocalJsonConfig.UpdateConfigInterval
+}
+
+func GetStateReplicationInterval() string {
+	return appConfig.LocalJsonConfig.StateReplicationInterval
+}

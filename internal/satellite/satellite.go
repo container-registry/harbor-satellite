@@ -45,21 +45,9 @@ func NewSatellite(ctx context.Context, schedulerKey scheduler.SchedulerKey, loca
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
-	replicateStateCron, err := config.GetJobSchedule(config.ReplicateStateJobName)
-	if err != nil {
-		log.Error().Err(err).Msg("Error getting schedule")
-		return err
-	}
-	updateConfigCron, err := config.GetJobSchedule(config.UpdateConfigJobName)
-	if err != nil {
-		log.Error().Err(err).Msg("Error getting schedule")
-		return err
-	}
-	ztrCron, err := config.GetJobSchedule(config.ZTRConfigJobName)
-	if err != nil {
-		log.Error().Err(err).Msg("Error getting schedule")
-		return err
-	}
+	replicateStateCron := config.GetStateReplicationInterval()
+	updateConfigCron := config.GetUpdateConfigInterval()
+	ztrCron := config.GetRegistrationInterval()
 	// Get the scheduler from the context
 	scheduler := ctx.Value(s.schedulerKey).(scheduler.Scheduler)
 	// Create a simple notifier and add it to the process
@@ -69,7 +57,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(replicateStateCron, notifier, s.SourcesRegistryConfig.URL, s.SourcesRegistryConfig.UserName, s.SourcesRegistryConfig.Password, s.LocalRegistryConfig.URL, s.LocalRegistryConfig.UserName, s.LocalRegistryConfig.Password, s.UseUnsecure, states)
 	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(updateConfigCron, "", "")
 	ztrProcess := state.NewZtrProcess(ztrCron)
-	err = scheduler.Schedule(configFetchProcess)
+	err := scheduler.Schedule(configFetchProcess)
 	if err != nil {
 		log.Error().Err(err).Msg("Error scheduling process")
 		return err
