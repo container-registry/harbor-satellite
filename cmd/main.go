@@ -28,12 +28,14 @@ func Run() error {
 	log := logger.FromContext(ctx)
 
 	// Set up router and app
+	log.Debug().Msg("Setting up http server")
 	app := setupServerApp(ctx, log)
 	app.SetupRoutes()
 	app.SetupServer(wg)
 
 	// Handle registry setup
 	if err := handleRegistrySetup(wg, log, cancel); err != nil {
+		log.Error().Err(err).Msg("Error setting up local registry")
 		return err
 	}
 	// the scheduler is started here, but is again used by the satellite.
@@ -74,13 +76,14 @@ func setupServerApp(ctx context.Context, log *zerolog.Logger) *server.App {
 }
 
 func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc) error {
+	log.Debug().Msg("Setting up local registry")
 	if config.GetOwnRegistry() {
+		log.Info().Msg("Configuring own registry")
 		if err := utils.HandleOwnRegistry(); err != nil {
 			log.Error().Err(err).Msg("Error handling own registry")
 			return err
 		}
 	} else {
-		log.Info().Msg("Launching default registry")
 		var defaultZotConfig registry.DefaultZotConfig
 		err := registry.ReadConfig(config.GetZotConfigPath(), &defaultZotConfig)
 		if err != nil {
@@ -89,6 +92,7 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 		defaultZotURL := defaultZotConfig.GetLocalRegistryURL()
 		config.SetRemoteRegistryURL(defaultZotURL)
 		g.Go(func() error {
+			log.Info().Msg("Launching default registry")
 			if err := utils.LaunchDefaultZotRegistry(); err != nil {
 				log.Error().Err(err).Msg("Error launching default registry")
 				cancel()
