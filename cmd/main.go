@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	runtime "container-registry.com/harbor-satellite/cmd/container_runtime"
 	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/satellite"
 	"container-registry.com/harbor-satellite/internal/scheduler"
@@ -16,7 +15,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func run() error {
+func Run() error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	log := logger.FromContext(ctx)
