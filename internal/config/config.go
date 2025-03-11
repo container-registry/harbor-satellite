@@ -2,10 +2,14 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/robfig/cron/v3"
 	"os"
 )
 
 var appConfig *Config
+
+const DefaultSchedule = "@every 00h00m10s"
 
 // Warning represents a non-critical issue with configuration.
 type Warning string
@@ -25,13 +29,15 @@ type LocalRegistryConfig struct {
 
 // LocalJsonConfig is a struct that holds the configs that are passed as environment variables
 type LocalJsonConfig struct {
-	GroundControlURL    string              `json:"ground_control_url"`
-	LogLevel            string              `json:"log_level"`
-	UseUnsecure         bool                `json:"use_unsecure"`
-	ZotConfigPath       string              `json:"zot_config_path"`
-	Token               string              `json:"token"`
-	Jobs                []Job               `json:"jobs"`
-	LocalRegistryConfig LocalRegistryConfig `json:"local_registry"`
+	GroundControlURL          string              `json:"ground_control_url"`
+	LogLevel                  string              `json:"log_level"`
+	UseUnsecure               bool                `json:"use_unsecure"`
+	ZotConfigPath             string              `json:"zot_config_path"`
+	Token                     string              `json:"token"`
+	StateReplicationInterval  string              `json:"state_replication_interval"`
+	UpdateConfigInterval      string              `json:"update_config_interval"`
+	RegisterSatelliteInterval string              `json:"register_satellite_interval"`
+	LocalRegistryConfig       LocalRegistryConfig `json:"local_registry"`
 }
 
 type StateConfig struct {
@@ -98,21 +104,30 @@ func LoadConfig(configPath string) (*Config, []error, []Warning) {
 		checks = append(checks, err)
 		return nil, checks, warnings
 	}
+
 	// Validate the job schedule fields
-	var validJobs []Job
-	for i := range config.LocalJsonConfig.Jobs {
-		if warning, err := ValidateCronJob(&config.LocalJsonConfig.Jobs[i]); err != nil {
-			checks = append(checks, err)
-		} else {
-			if warning != "" {
-				warnings = append(warnings, warning)
-			}
-			validJobs = append(validJobs, config.LocalJsonConfig.Jobs[i])
+	if config.LocalJsonConfig.StateReplicationInterval != "" {
+		if !isValidCronExpression(config.LocalJsonConfig.StateReplicationInterval) {
+			cronWarning := Warning(fmt.Sprintf("no schedule provided for StateReplicationInterval, using default schedule %s", DefaultSchedule))
+			warnings = append(warnings, cronWarning)
+			config.LocalJsonConfig.StateReplicationInterval = DefaultSchedule
 		}
 	}
-	// Add essential jobs if they are not present
-	AddEssentialJobs(&validJobs)
-	config.LocalJsonConfig.Jobs = validJobs
+	if config.LocalJsonConfig.RegisterSatelliteInterval != "" {
+		if !isValidCronExpression(config.LocalJsonConfig.RegisterSatelliteInterval) {
+			cronWarning := Warning(fmt.Sprintf("no schedule provided for RegisterSatelliteInterval, using default schedule %s", DefaultSchedule))
+			warnings = append(warnings, cronWarning)
+			config.LocalJsonConfig.RegisterSatelliteInterval = DefaultSchedule
+		}
+	}
+	if config.LocalJsonConfig.UpdateConfigInterval != "" {
+		if !isValidCronExpression(config.LocalJsonConfig.UpdateConfigInterval) {
+			cronWarning := Warning(fmt.Sprintf("no schedule provided for UpdateConfigInterval, using default schedule %s", DefaultSchedule))
+			warnings = append(warnings, cronWarning)
+			config.LocalJsonConfig.UpdateConfigInterval = DefaultSchedule
+		}
+	}
+
 	return config, checks, warnings
 }
 
@@ -143,4 +158,13 @@ func WriteConfig(configPath string) error {
 		return err
 	}
 	return nil
+}
+
+// validateCronExpression checks the validity of a cron expression.
+func isValidCronExpression(cronExpression string) bool {
+
+	if _, err := cron.ParseStandard(cronExpression); err != nil {
+		return false
+	}
+	return true
 }
