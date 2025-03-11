@@ -161,9 +161,9 @@ func Init(ctx context.Context) (context.Context, scheduler.Scheduler, error) {
 		return nil, nil, err
 	}
 
-	scheduler := scheduler.NewBasicScheduler(ctx)
+	scheduler := scheduler.NewBasicScheduler(ctx, log)
 
-	ctx = context.WithValue(ctx, logger.LoggerKey, log)
+    ctx = context.WithValue(ctx, logger.LoggerKey, log)
 	ctx = context.WithValue(ctx, scheduler.GetSchedulerKey(), scheduler)
 
 	return ctx, scheduler, nil
