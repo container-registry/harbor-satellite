@@ -37,18 +37,16 @@ func Run() error {
 		log.Error().Err(err).Msg("Error setting up local registry")
 		return err
 	}
-	// the scheduler is started here, but is again used by the satellite.
-	// this "starts" the cron runner in its own go routine.
+
 	err = scheduler.Start()
 	if err != nil {
 		log.Error().Err(err).Msg("Error starting scheduler")
 		return err
 	}
+
 	localRegistryConfig := satellite.NewRegistryConfig(config.GetRemoteRegistryURL(), config.GetRemoteRegistryUsername(), config.GetRemoteRegistryPassword())
 	sourceRegistryConfig := satellite.NewRegistryConfig(config.GetSourceRegistryURL(), config.GetSourceRegistryUsername(), config.GetSourceRegistryPassword())
-	states := config.GetStates()
-	useUnsecure := config.UseUnsecure()
-	satelliteService := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey(), localRegistryConfig, sourceRegistryConfig, useUnsecure, states)
+	satelliteService := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey(), localRegistryConfig, sourceRegistryConfig, config.UseUnsecure(), config.GetStates())
 
 	wg.Go(func() error {
 		return satelliteService.Run(ctx)
