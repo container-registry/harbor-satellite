@@ -14,9 +14,8 @@ import (
 	"syscall"
 
 	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/logger"
-	"container-registry.com/harbor-satellite/registry"
+	"container-registry.com/harbor-satellite/internal/scheduler"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
@@ -46,18 +45,6 @@ func HandleOwnRegistry() error {
 		return fmt.Errorf("error parsing URL: %w", err)
 	}
 	config.SetRemoteRegistryURL(FormatRegistryURL(config.GetRemoteRegistryURL()))
-	return nil
-}
-
-// LaunchDefaultZotRegistry launches the default Zot registry using the Zot config path
-func LaunchDefaultZotRegistry() error {
-	launch, err := registry.LaunchRegistry(config.GetZotConfigPath())
-	if !launch {
-		return fmt.Errorf("error launching registry: %w", err)
-	}
-	if err != nil {
-		return fmt.Errorf("error launching registry: %w", err)
-	}
 	return nil
 }
 

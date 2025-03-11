@@ -43,7 +43,7 @@ func init() {
 
 func NewContainerdCommand() *cobra.Command {
 	var generateConfig bool
-	var defaultZotConfig registry.DefaultZotConfig
+	var defaultZotConfig registry.ZotConfig
 	var containerdConfigPath string
 	var containerDCertPath string
 

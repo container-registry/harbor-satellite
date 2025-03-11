@@ -1,10 +1,6 @@
 {
   "state_config": {
-    "auth": {
-      "name": "",
-      "registry": "",
-      "secret": ""
-    },
+    "auth": {},
     "states": [
       ""
     ]
@@ -13,7 +9,7 @@
     "ground_control_url": "http://127.0.0.1:8080",
     "log_level": "info",
     "use_unsecure": true,
-    "zot_config_path": "./registry/config.json",
+    "zot_config_path": "./zot-config.json",
     "token": "",
     "jobs": [
       {
@@ -30,7 +26,7 @@
       }
     ],
     "local_registry": {
-      "url": "",
+      "url": "http://127.0.0.1:8585",
       "username": "",
       "password": "",
       "bring_own_registry": false
