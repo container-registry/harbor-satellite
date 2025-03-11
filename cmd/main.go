@@ -6,9 +6,9 @@ import (
 
 	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/satellite"
-	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/server"
 	"container-registry.com/harbor-satellite/internal/utils"
+	"container-registry.com/harbor-satellite/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
@@ -18,12 +18,14 @@ func Run() error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 
-	log, err := utils.Init(ctx)
+	ctx, scheduler, err := utils.Init(context.Background())
 	if err != nil {
 		return err
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
+
+	log := logger.FromContext(ctx)
 
 	// Set up router and app
 	app := setupServerApp(ctx, log)
@@ -34,8 +36,8 @@ func Run() error {
 	if err := handleRegistrySetup(g, log, cancel); err != nil {
 		return err
 	}
-	scheduler := scheduler.NewBasicScheduler(ctx)
-	ctx = context.WithValue(ctx, scheduler.GetSchedulerKey(), scheduler)
+	// the scheduler is started here, but is again used by the satellite.
+	// this "starts" the cron runner in its own go routine.
 	err = scheduler.Start()
 	if err != nil {
 		log.Error().Err(err).Msg("Error starting scheduler")

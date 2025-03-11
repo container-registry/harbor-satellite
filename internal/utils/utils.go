@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"container-registry.com/harbor-satellite/internal/config"
+	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"github.com/rs/zerolog"
@@ -160,13 +161,16 @@ func HandleErrorAndWarning(log *zerolog.Logger, errors []error, warnings []confi
 	return nil
 }
 
-func Init(ctx context.Context) (*zerolog.Logger, error) {
+func Init(ctx context.Context) (context.Context, scheduler.Scheduler, error) {
 	errors, warnings := config.InitConfig(config.DefaultConfigPath)
 	ctx = logger.AddLoggerToContext(ctx, config.GetLogLevel())
 	log := logger.FromContext(ctx)
 	err := HandleErrorAndWarning(log, errors, warnings)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return log, nil
+	scheduler := scheduler.NewBasicScheduler(ctx)
+	// new context created here again.
+	ctx = context.WithValue(ctx, scheduler.GetSchedulerKey(), scheduler)
+	return ctx, scheduler, nil
 }
