@@ -148,25 +148,25 @@ func WriteFile(path string, data []byte) error {
 }
 
 func HandleErrorAndWarning(log *zerolog.Logger, errors []error, warnings []config.Warning) error {
+	if len(errors) > 0 {
+		return fmt.Errorf("error initializing config")
+	}
 	for i := range warnings {
 		log.Warn().Msg(string(warnings[i]))
 	}
 	for i := range errors {
 		log.Error().Msg(errors[i].Error())
 	}
-	if len(errors) > 0 {
-		return fmt.Errorf("error initializing config")
-	}
 	return nil
 }
 
-func CommandRunSetup(cmd *cobra.Command) error {
+func Init(ctx context.Context) (*zerolog.Logger, error) {
 	errors, warnings := config.InitConfig(config.DefaultConfigPath)
-	SetupContextForCommand(cmd)
-	log := logger.FromContext(cmd.Context())
+	ctx = logger.AddLoggerToContext(ctx, config.GetLogLevel())
+	log := logger.FromContext(ctx)
 	err := HandleErrorAndWarning(log, errors, warnings)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return log, nil
 }

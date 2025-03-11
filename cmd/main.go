@@ -9,7 +9,6 @@ import (
 	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/server"
 	"container-registry.com/harbor-satellite/internal/utils"
-	"container-registry.com/harbor-satellite/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
@@ -17,8 +16,14 @@ import (
 
 func Run() error {
 	ctx, cancel := utils.SetupContext(context.Background())
+	defer cancel()
+
+	log, err := utils.Init(ctx)
+	if err != nil {
+		return err
+	}
+
 	g, ctx := errgroup.WithContext(ctx)
-	log := logger.FromContext(ctx)
 
 	// Set up router and app
 	app := setupServerApp(ctx, log)
@@ -31,7 +36,7 @@ func Run() error {
 	}
 	scheduler := scheduler.NewBasicScheduler(ctx)
 	ctx = context.WithValue(ctx, scheduler.GetSchedulerKey(), scheduler)
-	err := scheduler.Start()
+	err = scheduler.Start()
 	if err != nil {
 		log.Error().Err(err).Msg("Error starting scheduler")
 		return err
