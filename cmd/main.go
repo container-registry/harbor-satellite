@@ -18,7 +18,7 @@ func Run() error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 
-	ctx, scheduler, err := utils.Init(context.Background())
+	ctx, scheduler, err := utils.Init(ctx)
 	if err != nil {
 		return err
 	}
