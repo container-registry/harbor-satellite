@@ -125,7 +125,7 @@ func LoadConfig(configPath string) (*Config, []error, []Warning) {
 		config.LocalJsonConfig.UpdateConfigInterval = DefaultSchedule
 	}
 
-	return config, checks, warnings
+	return config, errors, warnings
 }
 
 // InitConfig reads the configuration file from the specified path and initializes the global appConfig variable.
