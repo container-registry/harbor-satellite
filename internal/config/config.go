@@ -106,26 +106,22 @@ func LoadConfig(configPath string) (*Config, []error, []Warning) {
 	}
 
 	// Validate the job schedule fields
-	if config.LocalJsonConfig.StateReplicationInterval != "" {
-		if !isValidCronExpression(config.LocalJsonConfig.StateReplicationInterval) {
-			cronWarning := Warning(fmt.Sprintf("no schedule provided for StateReplicationInterval, using default schedule %s", DefaultSchedule))
-			warnings = append(warnings, cronWarning)
-			config.LocalJsonConfig.StateReplicationInterval = DefaultSchedule
-		}
+	if !isValidCronExpression(config.LocalJsonConfig.StateReplicationInterval) {
+		cronWarning := Warning(fmt.Sprintf("no schedule provided for StateReplicationInterval, using default schedule %s", DefaultSchedule))
+		warnings = append(warnings, cronWarning)
+		config.LocalJsonConfig.StateReplicationInterval = DefaultSchedule
 	}
-	if config.LocalJsonConfig.RegisterSatelliteInterval != "" {
-		if !isValidCronExpression(config.LocalJsonConfig.RegisterSatelliteInterval) {
-			cronWarning := Warning(fmt.Sprintf("no schedule provided for RegisterSatelliteInterval, using default schedule %s", DefaultSchedule))
-			warnings = append(warnings, cronWarning)
-			config.LocalJsonConfig.RegisterSatelliteInterval = DefaultSchedule
-		}
+
+	if !isValidCronExpression(config.LocalJsonConfig.RegisterSatelliteInterval) {
+		cronWarning := Warning(fmt.Sprintf("no schedule provided for RegisterSatelliteInterval, using default schedule %s", DefaultSchedule))
+		warnings = append(warnings, cronWarning)
+		config.LocalJsonConfig.RegisterSatelliteInterval = DefaultSchedule
 	}
-	if config.LocalJsonConfig.UpdateConfigInterval != "" {
-		if !isValidCronExpression(config.LocalJsonConfig.UpdateConfigInterval) {
-			cronWarning := Warning(fmt.Sprintf("no schedule provided for UpdateConfigInterval, using default schedule %s", DefaultSchedule))
-			warnings = append(warnings, cronWarning)
-			config.LocalJsonConfig.UpdateConfigInterval = DefaultSchedule
-		}
+
+	if !isValidCronExpression(config.LocalJsonConfig.UpdateConfigInterval) {
+		cronWarning := Warning(fmt.Sprintf("no schedule provided for UpdateConfigInterval, using default schedule %s", DefaultSchedule))
+		warnings = append(warnings, cronWarning)
+		config.LocalJsonConfig.UpdateConfigInterval = DefaultSchedule
 	}
 
 	return config, checks, warnings
