@@ -13,33 +13,11 @@ import (
 	"container-registry.com/harbor-satellite/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"github.com/rs/zerolog"
-	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
 
-func NewRootCommand() *cobra.Command {
-	rootCmd := &cobra.Command{
-		Use:   "harbor-satellite",
-		Short: "Harbor Satellite is a tool to replicate images from source registry to Harbor registry",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return utils.CommandRunSetup(cmd)
-		},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			ctx, cancel := utils.SetupContext(ctx)
-			return run(ctx, cancel)
-		},
-	}
-	rootCmd.AddCommand(runtime.NewContainerdCommand())
-	rootCmd.AddCommand(runtime.NewCrioCommand())
-	return rootCmd
-}
-
-func Execute() error {
-	return NewRootCommand().Execute()
-}
-
-func run(ctx context.Context, cancel context.CancelFunc) error {
+func run() error {
+	ctx, cancel := utils.SetupContext(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 	log := logger.FromContext(ctx)
 
