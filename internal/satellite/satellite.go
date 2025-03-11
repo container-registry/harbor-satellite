@@ -7,7 +7,7 @@ import (
 	"container-registry.com/harbor-satellite/internal/notifier"
 	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/state"
-	"container-registry.com/harbor-satellite/logger"
+	"container-registry.com/harbor-satellite/internal/logger"
 )
 
 type RegistryConfig struct {
