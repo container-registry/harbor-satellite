@@ -3,7 +3,7 @@ package notifier
 import (
 	"context"
 
-	"container-registry.com/harbor-satellite/logger"
+	"container-registry.com/harbor-satellite/internal/logger"
 )
 
 type Notifier interface {

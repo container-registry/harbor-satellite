@@ -10,7 +10,7 @@ import (
 	"container-registry.com/harbor-satellite/internal/notifier"
 	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/utils"
-	"container-registry.com/harbor-satellite/logger"
+	"container-registry.com/harbor-satellite/internal/logger"
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )

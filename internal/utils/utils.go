@@ -14,10 +14,11 @@ import (
 	"syscall"
 
 	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/logger"
+	"container-registry.com/harbor-satellite/internal/scheduler"
+	"container-registry.com/harbor-satellite/internal/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"github.com/rs/zerolog"
-	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 )
 
 // / ValidateRegistryAddress validates the registry address and port and returns the URL
@@ -99,12 +100,6 @@ func SetupContext(context context.Context) (context.Context, context.CancelFunc)
 	return ctx, cancel
 }
 
-func SetupContextForCommand(cmd *cobra.Command) {
-	ctx := cmd.Context()
-	ctx = logger.AddLoggerToContext(ctx, config.GetLogLevel())
-	cmd.SetContext(ctx)
-}
-
 // FormatRegistryURL formats the registry URL by trimming the "https://" or "http://" prefix if present
 func FormatRegistryURL(url string) string {
 	// Trim the "https://" or "http://" prefix if present
@@ -160,13 +155,19 @@ func HandleErrorAndWarning(log *zerolog.Logger, errors []error, warnings []confi
 	return nil
 }
 
-func CommandRunSetup(cmd *cobra.Command) error {
+func Init(ctx context.Context) (context.Context, *errgroup.Group, scheduler.Scheduler, error) {
+	wg, ctx := errgroup.WithContext(ctx)
 	errors, warnings := config.InitConfig(config.DefaultConfigPath)
-	SetupContextForCommand(cmd)
-	log := logger.FromContext(cmd.Context())
-	err := HandleErrorAndWarning(log, errors, warnings)
-	if err != nil {
-		return err
+	log := logger.NewLogger(config.GetLogLevel())
+	if err := HandleErrorAndWarning(log, errors, warnings); err != nil {
+		return nil, nil, nil, err
 	}
-	return nil
+	ctx = context.WithValue(ctx, logger.LoggerKey, log)
+
+	log.Debug().Msg("Initializing new basic scheduler for cron jobs")
+	scheduler := scheduler.NewBasicScheduler(ctx, log)
+
+	ctx = context.WithValue(ctx, scheduler.GetSchedulerKey(), scheduler)
+
+	return ctx, wg, scheduler, nil
 }
