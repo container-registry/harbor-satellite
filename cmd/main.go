@@ -23,17 +23,17 @@ func Run() error {
 		return err
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
+	wg, ctx := errgroup.WithContext(ctx)
 
 	log := logger.FromContext(ctx)
 
 	// Set up router and app
 	app := setupServerApp(ctx, log)
 	app.SetupRoutes()
-	app.SetupServer(g)
+	app.SetupServer(wg)
 
 	// Handle registry setup
-	if err := handleRegistrySetup(g, log, cancel); err != nil {
+	if err := handleRegistrySetup(wg, log, cancel); err != nil {
 		return err
 	}
 	// the scheduler is started here, but is again used by the satellite.
@@ -49,12 +49,12 @@ func Run() error {
 	useUnsecure := config.UseUnsecure()
 	satelliteService := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey(), localRegistryConfig, sourceRegistryConfig, useUnsecure, states)
 
-	g.Go(func() error {
+	wg.Go(func() error {
 		return satelliteService.Run(ctx)
 	})
 
 	log.Info().Msg("Startup complete 🚀")
-	g.Wait()
+	wg.Wait()
 	scheduler.Stop()
 	return nil
 }
