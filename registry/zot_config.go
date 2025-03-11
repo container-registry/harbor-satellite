@@ -11,11 +11,6 @@ import (
 	"time"
 )
 
-// Predefined correct extension order.
-var validExtensionsOrder = []string{
-	"sync", "search", "scrub", "metrics", "lint", "ui", "mgmt", "userprefs", "imagetrust",
-}
-
 type ZotConfig struct {
 	DistSpecVersion string           `json:"distSpecVersion"`
 	Storage         ZotStorageConfig `json:"storage"`
