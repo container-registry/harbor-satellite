@@ -18,7 +18,6 @@ import (
 	"container-registry.com/harbor-satellite/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"github.com/rs/zerolog"
-	"github.com/spf13/cobra"
 )
 
 // / ValidateRegistryAddress validates the registry address and port and returns the URL
@@ -100,12 +99,6 @@ func SetupContext(context context.Context) (context.Context, context.CancelFunc)
 	return ctx, cancel
 }
 
-func SetupContextForCommand(cmd *cobra.Command) {
-	ctx := cmd.Context()
-	ctx = logger.AddLoggerToContext(ctx, config.GetLogLevel())
-	cmd.SetContext(ctx)
-}
-
 // FormatRegistryURL formats the registry URL by trimming the "https://" or "http://" prefix if present
 func FormatRegistryURL(url string) string {
 	// Trim the "https://" or "http://" prefix if present
@@ -149,28 +142,29 @@ func WriteFile(path string, data []byte) error {
 }
 
 func HandleErrorAndWarning(log *zerolog.Logger, errors []error, warnings []config.Warning) error {
-	if len(errors) > 0 {
-		return fmt.Errorf("error initializing config")
-	}
 	for i := range warnings {
 		log.Warn().Msg(string(warnings[i]))
 	}
 	for i := range errors {
 		log.Error().Msg(errors[i].Error())
 	}
+	if len(errors) > 0 {
+		return fmt.Errorf("error initializing config")
+	}
 	return nil
 }
 
 func Init(ctx context.Context) (context.Context, scheduler.Scheduler, error) {
 	errors, warnings := config.InitConfig(config.DefaultConfigPath)
-	ctx = logger.AddLoggerToContext(ctx, config.GetLogLevel())
-	log := logger.FromContext(ctx)
-	err := HandleErrorAndWarning(log, errors, warnings)
-	if err != nil {
+	log := logger.NewLogger(config.GetLogLevel())
+	if err := HandleErrorAndWarning(log, errors, warnings); err != nil {
 		return nil, nil, err
 	}
+
 	scheduler := scheduler.NewBasicScheduler(ctx)
-	// new context created here again.
+
+	ctx = context.WithValue(ctx, logger.LoggerKey, log)
 	ctx = context.WithValue(ctx, scheduler.GetSchedulerKey(), scheduler)
+
 	return ctx, scheduler, nil
 }

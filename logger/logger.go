@@ -11,10 +11,10 @@ import (
 
 type contextKey string
 
-const loggerKey contextKey = "logger"
+const LoggerKey contextKey = "logger"
 
 // AddLoggerToContext creates a new context with a zerolog logger for stdout and stderr and sets the global log level.
-func AddLoggerToContext(ctx context.Context, logLevel string) context.Context {
+func NewLogger(logLevel string) *zerolog.Logger {
 	// Set log level to configured value
 	level := getLogLevel(logLevel)
 	zerolog.SetGlobalLevel(level)
@@ -50,21 +50,20 @@ func AddLoggerToContext(ctx context.Context, logLevel string) context.Context {
 				if len(lStr) > 3 {
 					lStr = lStr[:3]
 				}
-				l = lStr 
+				l = lStr
 			}
 		}
 		return fmt.Sprintf("| %s |", l)
 	}
 
 	logger := zerolog.New(output).With().Timestamp().Logger()
-	ctx = context.WithValue(ctx, loggerKey, &logger)
 
-	return ctx
+	return &logger
 }
 
 // FromContext extracts the main logger from the context.
 func FromContext(ctx context.Context) *zerolog.Logger {
-	logger, ok := ctx.Value(loggerKey).(*zerolog.Logger)
+	logger, ok := ctx.Value(LoggerKey).(*zerolog.Logger)
 	if !ok {
 		// Fallback to a default logger if none is found in the context.
 		defaultLogger := zerolog.New(os.Stderr).With().Timestamp().Logger()
