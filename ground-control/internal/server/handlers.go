@@ -493,6 +493,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	satellite, err := q.GetSatellite(r.Context(), satelliteID)
 
+    // For sanity, create (update) the state artifact during the registration process as well.
 	err = utils.CreateSatelliteStateArtifact(satellite.Name, states)
 	if err != nil {
 		log.Println(err)
