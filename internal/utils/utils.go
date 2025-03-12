@@ -172,8 +172,5 @@ func Init(ctx context.Context) (context.Context, *errgroup.Group, scheduler.Sche
 }
 
 func IsZTRDone() bool {
-	if config.GetSourceRegistryURL() == "" {
-		return false
-	}
-	return true
+	return config.GetSourceRegistryURL() != ""
 }
