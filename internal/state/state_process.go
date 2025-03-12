@@ -6,11 +6,11 @@ import (
 	"strings"
 	"sync"
 
-	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/notifier"
-	"container-registry.com/harbor-satellite/internal/scheduler"
-	"container-registry.com/harbor-satellite/internal/utils"
-	"container-registry.com/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/internal/notifier"
+	"github.com/container-registry/harbor-satellite/internal/scheduler"
+	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )
