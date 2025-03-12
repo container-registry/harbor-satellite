@@ -153,6 +153,8 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // There is a CreateStateArtifact that we can try to model after.
+// There is a function called AssembleGroupState that we can readily use while preparing the contents
+// of the satellite state artifact.
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	var req RegisterSatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
