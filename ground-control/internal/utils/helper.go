@@ -115,7 +115,7 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 	options := []crane.Option{crane.WithAuth(auth)}
 
 	// Construct the destination repository and strip protocol, if present
-	destinationRepo := fmt.Sprintf("%s/%s/%s", stateArtifact.Registry, repo, "state")
+	destinationRepo := getStateArtifactDestination(stateArtifact.Registry, repo)
 	if strings.Contains(destinationRepo, "://") {
 		destinationRepo = strings.SplitN(destinationRepo, "://", 2)[1]
 	}
@@ -134,4 +134,8 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 	}
 
 	return nil
+}
+
+func getStateArtifactDestination(registry, repository string) string {
+	return fmt.Sprintf("%s/%s/%s", registry, repository, "state")
 }
