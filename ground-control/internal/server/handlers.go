@@ -152,9 +152,6 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-// There is a CreateStateArtifact that we can try to model after.
-// There is a function called AssembleGroupState that we can readily use while preparing the contents
-// of the satellite state artifact.
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	var req RegisterSatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -227,8 +224,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		tx.Rollback()
 		return
 	}
-
-	var groupStates []string
+    var groupStates []string
 
 	// Check if Groups is nil before dereferencing
 	if req.Groups != nil {
