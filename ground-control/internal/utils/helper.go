@@ -136,28 +136,41 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 	return nil
 }
 
-// Create State Artifact for group
-func CreateSatelliteStateArtifact(stateArtifact *m.StateArtifact) error {
+func CreateSatelliteStateArtifact(satelliteName string, groups []string) error {
+	if len(groups) <= 0 {
+		return nil
+	}
 	// Set the registry URL from environment variable
-	stateArtifact.Registry = os.Getenv("HARBOR_URL")
-	if stateArtifact.Registry == "" {
+	registry := os.Getenv("HARBOR_URL")
+	if registry == "" {
 		return fmt.Errorf("HARBOR_URL environment variable is not set")
 	}
 
-	// Marshal the state artifact to JSON format
-	data, err := json.Marshal(stateArtifact)
-	if err != nil {
-		return fmt.Errorf("failed to marshal state artifact to JSON: %v", err)
+	// Assemble the list of group states
+	var states []string
+	for _, group := range groups {
+		states = append(states, AssembleGroupState(group))
 	}
 
-	// Create the image with the state artifact JSON
+	// Create the state artifact
+	satelliteState := &m.SatelliteStateArtifact{
+		States: states,
+	}
+
+	// Marshal the satellite state artifact to JSON format
+	data, err := json.Marshal(satelliteState)
+	if err != nil {
+		return fmt.Errorf("failed to marshal satellite state artifact to JSON: %v", err)
+	}
+
+	// Create the image with the satellite state artifact JSON
 	img, err := crane.Image(map[string][]byte{"artifacts.json": data})
 	if err != nil {
 		return fmt.Errorf("failed to create image: %v", err)
 	}
 
 	// Configure repository and credentials
-	repo := fmt.Sprintf("satellite/%s", stateArtifact.Group)
+	repo := fmt.Sprintf("satellite/%s", satelliteName)
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
 	if username == "" || password == "" {
@@ -171,7 +184,7 @@ func CreateSatelliteStateArtifact(stateArtifact *m.StateArtifact) error {
 	options := []crane.Option{crane.WithAuth(auth)}
 
 	// Construct the destination repository and strip protocol, if present
-	destinationRepo := getStateArtifactDestination(stateArtifact.Registry, repo)
+	destinationRepo := getStateArtifactDestination(registry, repo)
 	if strings.Contains(destinationRepo, "://") {
 		destinationRepo = strings.SplitN(destinationRepo, "://", 2)[1]
 	}
@@ -192,6 +205,9 @@ func CreateSatelliteStateArtifact(stateArtifact *m.StateArtifact) error {
 	return nil
 }
 
+func AssembleSatelliteState(satelliteName string) string {
+	return fmt.Sprintf("%s/satellite/%s/state:latest", os.Getenv("HARBOR_URL"), satelliteName)
+}
 
 func getStateArtifactDestination(registry, repository string) string {
 	return fmt.Sprintf("%s/%s/%s", registry, repository, "state")

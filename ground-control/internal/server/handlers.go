@@ -364,7 +364,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 
 	// Create the satellite's state artifact
 	// it will need the list of groups that the satellite must follow.
-	err = utils.CreateSatelliteStateArtifact(req.Groups)
+	err = utils.CreateSatelliteStateArtifact(req.Name, *req.Groups)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
