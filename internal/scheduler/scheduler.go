@@ -33,7 +33,7 @@ type Scheduler interface {
 	// Start would start the scheduler
 	Start() error
 	// Stop would stop the scheduler
-	Stop() error
+	Stop()
 	// Listen for events from the processes
 	ListenForProcessEvent()
 }
@@ -50,7 +50,8 @@ type BasicScheduler struct {
 	// stopped is a flag to check if the scheduler is stopped
 	stopped bool
 	// counter is the counter for the unique ID of the process
-	counter uint64
+	// Commented out, since it is not being used currently
+	//	counter uint64
 	// mu is the mutex for the scheduler
 	mu sync.Mutex
 	// ctx is the context of the scheduler
@@ -110,13 +111,12 @@ func (s *BasicScheduler) Start() error {
 	return nil
 }
 
-func (s *BasicScheduler) Stop() error {
+func (s *BasicScheduler) Stop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.stopped = true
 	s.EventBroker.Close()
 	s.cron.Stop()
-	return nil
 }
 
 func (s *BasicScheduler) executeProcess(process Process) error {
