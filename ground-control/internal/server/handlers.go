@@ -395,7 +395,6 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	WriteJSONResponse(w, http.StatusOK, tk)
 }
 
-// we need to update the state here to reflect the satellite's state artifact
 func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	token := vars["token"]
@@ -493,7 +492,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	satellite, err := q.GetSatellite(r.Context(), satelliteID)
 
-    // For sanity, create (update) the state artifact during the registration process as well.
+	// For sanity, create (update) the state artifact during the registration process as well.
 	err = utils.CreateSatelliteStateArtifact(satellite.Name, states)
 	if err != nil {
 		log.Println(err)
@@ -610,6 +609,14 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Delete the corresponding state artifact
+	//err = utils.DeleteSatelliteStateArtifact(satellite)
+	//if err != nil {
+	//		log.Println(err)
+	//		HandleAppError(w, err)
+	//		return
+	//	}
+
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
@@ -681,6 +688,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var projects []string
+	var groupStates []string
 
 	for _, group := range groupList {
 		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
@@ -694,6 +702,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		projects = append(projects, grp.Projects...)
+		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
 	// 1. We need the list of state artifacts for the groups that satellite belongs to
@@ -706,6 +715,14 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 			Message: "Error: Failed to Add permission to robot account",
 			Code:    http.StatusInternalServerError,
 		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Update the state artifact to also track the new group state artifact
+	err = utils.CreateSatelliteStateArtifact(sat.Name, groupStates)
+	if err != nil {
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}
