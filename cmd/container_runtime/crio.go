@@ -8,7 +8,7 @@ import (
 
 	"container-registry.com/harbor-satellite/internal/config"
 	"container-registry.com/harbor-satellite/internal/utils"
-	"container-registry.com/harbor-satellite/logger"
+	"container-registry.com/harbor-satellite/internal/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/rs/zerolog"
