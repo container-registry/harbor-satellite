@@ -214,7 +214,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		}
 	}()
 	// Create satellite
-	satellite, err := q.CreateSatellite(r.Context(), req.Name)
+    satellite, err := q.CreateSatellite(r.Context(), req.Name)
 	if err != nil {
 		log.Println(err)
 		err := &AppError{
@@ -363,7 +363,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create the satellite's state artifact
-	err = utils.CreateSatelliteStateArtifact(req.Name, groupStates)
+	err = utils.CreateOrUpdateSatStateArtifact(req.Name, groupStates)
 	if err != nil {
 		log.Println(err)
 		tx.Rollback()
@@ -493,7 +493,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	satellite, err := q.GetSatellite(r.Context(), satelliteID)
 
 	// For sanity, create (update) the state artifact during the registration process as well.
-	err = utils.CreateSatelliteStateArtifact(satellite.Name, states)
+	err = utils.CreateOrUpdateSatStateArtifact(satellite.Name, states)
 	if err != nil {
 		log.Println(err)
 		tx.Rollback()
@@ -720,7 +720,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateSatelliteStateArtifact(sat.Name, groupStates)
+	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -798,6 +798,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	}
 
 	var projects []string
+	var groupStates []string
 
 	for _, group := range groupList {
 		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
@@ -811,6 +812,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 			return
 		}
 		projects = append(projects, grp.Projects...)
+		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
 	// 1. We need the list of state artifacts for the groups that satellite belongs to
@@ -823,6 +825,14 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 			Message: "Error: Failed to update robot account permissions",
 			Code:    http.StatusInternalServerError,
 		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Update the state artifact to also track the new group state artifact
+	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates)
+	if err != nil {
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}

@@ -136,7 +136,7 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 	return nil
 }
 
-func CreateSatelliteStateArtifact(satelliteName string, states []string) error {
+func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error {
 	if len(states) <= 0 {
 		return nil
 	}
