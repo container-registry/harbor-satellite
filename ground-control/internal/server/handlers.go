@@ -152,7 +152,9 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+// There is a CreateStateArtifact that we can try to model after.
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
+	// The groups, as soon as they are created, already have their own state artifact.
 	var req RegisterSatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
@@ -170,6 +172,10 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// If the robot account is already present, we need to check if the robot account
+	// permissions need to be updated.
+	// i.e, check if the satellite is already connected to the groups in the request body.
+	// if not, then update the robot account.
 	roboPresent, err := harbor.IsRobotPresent(r.Context(), req.Name)
 	if err != nil {
 		log.Println(err)
@@ -377,6 +383,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	WriteJSONResponse(w, http.StatusOK, tk)
 }
 
+// we need to update the state here to reflect the satellite's state artifact
 func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	token := vars["token"]
@@ -472,6 +479,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		states = append(states, state)
 	}
 
+	// we need to update the state here to reflect the satellite's state artifact
 	result := models.ZtrResult{
 		States: states,
 		Auth: models.Account{
@@ -518,11 +526,12 @@ func (s *Server) GetSatelliteByName(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+// The state artifact corresponding to the satellite must be deleted.
 func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	satellite := vars["satellite"]
 
-  sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satellite)
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satellite)
 	if err != nil {
 		log.Printf("error: failed to get satellite by name: %v", err)
 		err := &AppError{
@@ -532,7 +541,7 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
-  robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
 	if err != nil {
 		log.Printf("error: robotAcc for satellite does not exist: %v", err)
 		err := &AppError{
@@ -543,7 +552,7 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-  robotID, err := strconv.ParseInt(robotAcc.RobotID, 10, 64)
+	robotID, err := strconv.ParseInt(robotAcc.RobotID, 10, 64)
 	if err != nil {
 		log.Printf("error: Invalid robot ID: %v", err)
 		err := &AppError{
@@ -554,7 +563,7 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-  _, err = harbor.DeleteRobotAccount(r.Context(), robotID)
+	_, err = harbor.DeleteRobotAccount(r.Context(), robotID)
 	if err != nil {
 		log.Printf("error: failed to delete robot account: %v", err)
 		err := &AppError{
@@ -579,6 +588,7 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
+// Once a satellite is added to the group, the satellite's stateartifact must be updated accordingly.
 func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteGroupParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -661,6 +671,9 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		projects = append(projects, grp.Projects...)
 	}
 
+	// 1. We need the list of state artifacts for the groups that satellite belongs to
+	// 2. Update the satellite state artifact accordingly
+
 	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
 	if err != nil {
 		log.Printf("Error: Failed to Add permission to robot account: %v", err)
@@ -675,6 +688,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
+// If the satellite is removed from the group, the state artifact must be updated accordingly as well.
 func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteGroupParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -734,7 +748,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		log.Printf("Error: Failed: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to Add satellite to group",
+			Message: "Error: Failed to refresh satellite group list",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
@@ -748,7 +762,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		if err != nil {
 			log.Printf("Error: Failed: %v", err)
 			err := &AppError{
-				Message: "Error: Failed to Add satellite to group",
+				Message: "Error: Failed to to refresh satellite group list",
 				Code:    http.StatusInternalServerError,
 			}
 			HandleAppError(w, err)
@@ -757,11 +771,14 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		projects = append(projects, grp.Projects...)
 	}
 
+	// 1. We need the list of state artifacts for the groups that satellite belongs to
+	// 2. Update the satellite state artifact accordingly
+
 	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
 	if err != nil {
 		log.Printf("Error: Failed to Add permission to robot account: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to Add permission to robot account",
+			Message: "Error: Failed to update robot account permissions",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
