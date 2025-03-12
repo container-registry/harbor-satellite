@@ -7,10 +7,10 @@ import (
 	"sync"
 
 	"container-registry.com/harbor-satellite/internal/config"
+	"container-registry.com/harbor-satellite/internal/logger"
 	"container-registry.com/harbor-satellite/internal/notifier"
 	"container-registry.com/harbor-satellite/internal/scheduler"
 	"container-registry.com/harbor-satellite/internal/utils"
-	"container-registry.com/harbor-satellite/internal/logger"
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )
@@ -102,7 +102,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 			return err
 		}
 		log.Info().Msgf("State fetched successfully for %s", f.stateMap[i].url)
-		deleteEntity, replicateEntity, newState := f.GetChanges(newStateFetched, log, f.stateMap[i].Entities)
+		deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, log, f.stateMap[i].Entities)
 		f.LogChanges(deleteEntity, replicateEntity, log)
 		if err := f.notifier.Notify(); err != nil {
 			log.Error().Err(err).Msg("Error sending notification")
@@ -255,15 +255,14 @@ func ProcessState(state *StateReader) (*StateReader, error) {
 	return state, nil
 }
 
-func (f *FetchAndReplicateStateProcess) FetchAndProcessState(fetcher StateFetcher, log *zerolog.Logger) (StateReader, error) {
+func (f *FetchAndReplicateStateProcess) FetchAndProcessState(fetcher StateFetcher, log *zerolog.Logger) (*StateReader, error) {
 	state := NewState()
 	err := fetcher.FetchStateArtifact(&state)
 	if err != nil {
 		log.Error().Err(err).Msg("Error fetching state artifact")
 		return nil, err
 	}
-	ProcessState(&state)
-	return state, nil
+	return ProcessState(&state)
 }
 
 func (f *FetchAndReplicateStateProcess) LogChanges(deleteEntity, replicateEntity []Entity, log *zerolog.Logger) {

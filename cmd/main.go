@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"container-registry.com/harbor-satellite/internal/config"
+	"container-registry.com/harbor-satellite/internal/logger"
 	"container-registry.com/harbor-satellite/internal/satellite"
 	"container-registry.com/harbor-satellite/internal/server"
 	"container-registry.com/harbor-satellite/internal/utils"
-	"container-registry.com/harbor-satellite/internal/logger"
 	"container-registry.com/harbor-satellite/registry"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
@@ -43,6 +43,7 @@ func Run() error {
 		log.Error().Err(err).Msg("Error starting scheduler")
 		return err
 	}
+	defer scheduler.Stop()
 
 	localRegistryConfig := satellite.NewRegistryConfig(config.GetRemoteRegistryURL(), config.GetRemoteRegistryUsername(), config.GetRemoteRegistryPassword())
 	sourceRegistryConfig := satellite.NewRegistryConfig(config.GetSourceRegistryURL(), config.GetSourceRegistryUsername(), config.GetSourceRegistryPassword())
@@ -52,9 +53,7 @@ func Run() error {
 		return satelliteService.Run(ctx)
 	})
 
-	wg.Wait()
-	scheduler.Stop()
-	return nil
+	return wg.Wait()
 }
 
 func setupServerApp(ctx context.Context, log *zerolog.Logger) *server.App {
@@ -86,7 +85,11 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 			return fmt.Errorf("error reading config: %w", err)
 		}
 		defaultZotURL := defaultZotConfig.GetLocalRegistryURL()
-		config.SetRemoteRegistryURL(defaultZotURL)
+		if err := config.SetRemoteRegistryURL(defaultZotURL); err != nil {
+			log.Error().Err(err).Msg("Error writing the remote registry URL")
+			cancel()
+			return err
+		}
 		g.Go(func() error {
 			log.Info().Msg("Launching default registry")
 			if err := utils.LaunchDefaultZotRegistry(); err != nil {
