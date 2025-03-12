@@ -367,6 +367,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	err = utils.CreateSatelliteStateArtifact(req.Name, *req.Groups)
 	if err != nil {
 		log.Println(err)
+		tx.Rollback()
 		HandleAppError(w, err)
 		return
 	}
@@ -375,6 +376,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	token, err := GenerateRandomToken(32)
 	if err != nil {
 		log.Println(err)
+		tx.Rollback()
 		HandleAppError(w, err)
 		return
 	}

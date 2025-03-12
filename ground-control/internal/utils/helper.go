@@ -76,7 +76,7 @@ func UpdateRobotProjects(ctx context.Context, projects []string, id string) (*ro
 }
 
 func AssembleGroupState(groupName string) string {
-	state := fmt.Sprintf("%s/satellite/%s/state:latest", os.Getenv("HARBOR_URL"), groupName)
+	state := fmt.Sprintf("%s/satellite/group-state/%s/state:latest", os.Getenv("HARBOR_URL"), groupName)
 	return state
 }
 
@@ -101,7 +101,7 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 	}
 
 	// Configure repository and credentials
-	repo := fmt.Sprintf("satellite/%s", stateArtifact.Group)
+	repo := fmt.Sprintf("satellite/group-state/%s", stateArtifact.Group)
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
 	if username == "" || password == "" {
@@ -170,7 +170,7 @@ func CreateSatelliteStateArtifact(satelliteName string, groups []string) error {
 	}
 
 	// Configure repository and credentials
-	repo := fmt.Sprintf("satellite/%s", satelliteName)
+	repo := fmt.Sprintf("satellite/satellite-state/%s", satelliteName)
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
 	if username == "" || password == "" {
@@ -206,7 +206,7 @@ func CreateSatelliteStateArtifact(satelliteName string, groups []string) error {
 }
 
 func AssembleSatelliteState(satelliteName string) string {
-	return fmt.Sprintf("%s/satellite/%s/state:latest", os.Getenv("HARBOR_URL"), satelliteName)
+	return fmt.Sprintf("%s/satellite/satellite-state/%s/state:latest", os.Getenv("HARBOR_URL"), satelliteName)
 }
 
 func getStateArtifactDestination(registry, repository string) string {
