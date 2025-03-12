@@ -213,7 +213,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		}
 	}()
 	// Create satellite
-	satellite, err := q.CreateSatellite(r.Context(), req.Name)
+    satellite, err := q.CreateSatellite(r.Context(), req.Name)
 	if err != nil {
 		log.Println(err)
 		err := &AppError{
