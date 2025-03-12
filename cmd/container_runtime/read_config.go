@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"container-registry.com/harbor-satellite/internal/utils"
-	"container-registry.com/harbor-satellite/logger"
+	"container-registry.com/harbor-satellite/internal/logger"
 	"github.com/spf13/cobra"
 )
 
