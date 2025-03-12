@@ -152,8 +152,8 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+// There is a CreateStateArtifact that we can try to model after.
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
-	// The groups, as soon as they are created, already have their own state artifact.
 	var req RegisterSatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
@@ -395,6 +395,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	WriteJSONResponse(w, http.StatusOK, tk)
 }
 
+// we need to update the state here to reflect the satellite's state artifact
 func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	token := vars["token"]
@@ -703,6 +704,9 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		projects = append(projects, grp.Projects...)
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
+
+	// 1. We need the list of state artifacts for the groups that satellite belongs to
+	// 2. Update the satellite state artifact accordingly
 
 	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
 	if err != nil {
