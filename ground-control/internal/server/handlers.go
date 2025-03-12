@@ -491,9 +491,21 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		states = append(states, state)
 	}
 
+	satellite, err := q.GetSatellite(r.Context(), satelliteID)
+
+	err = utils.CreateSatelliteStateArtifact(satellite.Name, states)
+	if err != nil {
+		log.Println(err)
+		tx.Rollback()
+		HandleAppError(w, err)
+		return
+	}
+
+	satelliteState := utils.AssembleSatelliteState(satellite.Name)
+
 	// we need to update the state here to reflect the satellite's state artifact
 	result := models.ZtrResult{
-		States: states,
+		States: []string{satelliteState},
 		Auth: models.Account{
 			Name:     robot.RobotName,
 			Secret:   robot.RobotSecret,
