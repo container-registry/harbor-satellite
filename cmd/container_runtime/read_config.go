@@ -3,8 +3,8 @@ package runtime
 import (
 	"fmt"
 
-	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/spf13/cobra"
 )
 
