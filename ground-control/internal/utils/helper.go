@@ -136,20 +136,14 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 	return nil
 }
 
-func CreateSatelliteStateArtifact(satelliteName string, groups []string) error {
-	if len(groups) <= 0 {
+func CreateSatelliteStateArtifact(satelliteName string, states []string) error {
+	if len(states) <= 0 {
 		return nil
 	}
 	// Set the registry URL from environment variable
 	registry := os.Getenv("HARBOR_URL")
 	if registry == "" {
 		return fmt.Errorf("HARBOR_URL environment variable is not set")
-	}
-
-	// Assemble the list of group states
-	var states []string
-	for _, group := range groups {
-		states = append(states, AssembleGroupState(group))
 	}
 
 	// Create the state artifact
