@@ -177,6 +177,7 @@ func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error
 	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
 	options := []crane.Option{crane.WithAuth(auth)}
 
+	// Construct the destination repository and strip protocol, if present
 	destinationRepo := getStateArtifactDestination(registry, repo)
 	destinationRepo = stripProtocol(destinationRepo)
 
@@ -255,7 +256,6 @@ func tagImage(destination string, options []crane.Option) error {
 	}
 	return nil
 }
-
 func getStateArtifactDestination(registry, repository string) string {
 	return fmt.Sprintf("%s/%s/%s", registry, repository, "state")
 }
