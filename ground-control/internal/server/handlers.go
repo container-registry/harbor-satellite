@@ -704,9 +704,6 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
-	// 1. We need the list of state artifacts for the groups that satellite belongs to
-	// 2. Update the satellite state artifact accordingly
-
 	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
 	if err != nil {
 		log.Printf("Error: Failed to Add permission to robot account: %v", err)
