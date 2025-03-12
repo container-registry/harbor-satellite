@@ -393,7 +393,6 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	WriteJSONResponse(w, http.StatusOK, tk)
 }
 
-// we need to update the state here to reflect the satellite's state artifact
 func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	token := vars["token"]
