@@ -177,7 +177,6 @@ func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error
 	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
 	options := []crane.Option{crane.WithAuth(auth)}
 
-	// Construct the destination repository and strip protocol, if present
 	destinationRepo := getStateArtifactDestination(registry, repo)
 	destinationRepo = stripProtocol(destinationRepo)
 
