@@ -199,6 +199,45 @@ func CreateSatelliteStateArtifact(satelliteName string, states []string) error {
 	return nil
 }
 
+func DeleteSatelliteStateArtifact(satelliteName string) error {
+	// Set the registry URL from environment variable
+	registry := os.Getenv("HARBOR_URL")
+	if registry == "" {
+		return fmt.Errorf("HARBOR_URL environment variable is not set")
+	}
+
+	// Configure repository and credentials
+	repo := fmt.Sprintf("satellite/satellite-state/%s", satelliteName)
+	username := os.Getenv("HARBOR_USERNAME")
+	password := os.Getenv("HARBOR_PASSWORD")
+	if username == "" || password == "" {
+		return fmt.Errorf("HARBOR_USERNAME or HARBOR_PASSWORD environment variable is not set")
+	}
+
+	auth := authn.FromConfig(authn.AuthConfig{
+		Username: username,
+		Password: password,
+	})
+	options := []crane.Option{crane.WithAuth(auth)}
+
+	// Construct the destination repository and strip protocol, if present
+	destinationRepo := getStateArtifactDestination(registry, repo)
+	if strings.Contains(destinationRepo, "://") {
+		destinationRepo = strings.SplitN(destinationRepo, "://", 2)[1]
+	}
+
+	if strings.Contains(destinationRepo, "://") {
+		destinationRepo = strings.SplitN(destinationRepo, "://", 2)[1]
+	}
+
+	// Delete the image from the repository
+	if err := crane.Delete(destinationRepo, options...); err != nil {
+		return fmt.Errorf("failed to delete satellite state artifact: %v", err)
+	}
+
+	return nil
+}
+
 func AssembleSatelliteState(satelliteName string) string {
 	return fmt.Sprintf("%s/satellite/satellite-state/%s/state:latest", os.Getenv("HARBOR_URL"), satelliteName)
 }
