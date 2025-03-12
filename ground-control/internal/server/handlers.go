@@ -214,7 +214,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		}
 	}()
 	// Create satellite
-    satellite, err := q.CreateSatellite(r.Context(), req.Name)
+	satellite, err := q.CreateSatellite(r.Context(), req.Name)
 	if err != nil {
 		log.Println(err)
 		err := &AppError{
@@ -609,13 +609,12 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete the corresponding state artifact
-	//err = utils.DeleteSatelliteStateArtifact(satellite)
-	//if err != nil {
-	//		log.Println(err)
-	//		HandleAppError(w, err)
-	//		return
-	//	}
+	err = utils.DeleteSatelliteStateArtifact(satellite)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }

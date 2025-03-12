@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -206,33 +208,38 @@ func DeleteSatelliteStateArtifact(satelliteName string) error {
 		return fmt.Errorf("HARBOR_URL environment variable is not set")
 	}
 
-	// Configure repository and credentials
-	repo := fmt.Sprintf("satellite/satellite-state/%s", satelliteName)
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
 	if username == "" || password == "" {
 		return fmt.Errorf("HARBOR_USERNAME or HARBOR_PASSWORD environment variable is not set")
 	}
 
-	auth := authn.FromConfig(authn.AuthConfig{
-		Username: username,
-		Password: password,
-	})
-	options := []crane.Option{crane.WithAuth(auth)}
+	// Construct the Harbor API URL for deleting the repository with double encoding
+	projectName := "satellite"
+	repositoryName := fmt.Sprintf("satellite-state/%s/state", satelliteName)
+	doubleEncodedRepoName := url.QueryEscape(url.QueryEscape(repositoryName))
+	deleteURL := fmt.Sprintf("%s/api/v2.0/projects/%s/repositories/%s", registry, projectName, doubleEncodedRepoName)
 
-	// Construct the destination repository and strip protocol, if present
-	destinationRepo := getStateArtifactDestination(registry, repo)
-	if strings.Contains(destinationRepo, "://") {
-		destinationRepo = strings.SplitN(destinationRepo, "://", 2)[1]
+    fmt.Print(deleteURL)
+
+	// Create request
+	req, err := http.NewRequest("DELETE", deleteURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %v", err)
 	}
 
-	if strings.Contains(destinationRepo, "://") {
-		destinationRepo = strings.SplitN(destinationRepo, "://", 2)[1]
+	// Set basic auth headers
+	req.SetBasicAuth(username, password)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %v", err)
 	}
+	defer resp.Body.Close()
 
-	// Delete the image from the repository
-	if err := crane.Delete(destinationRepo, options...); err != nil {
-		return fmt.Errorf("failed to delete satellite state artifact: %v", err)
+	// Check response status
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("failed to delete repository, received status: %d", resp.StatusCode)
 	}
 
 	return nil
