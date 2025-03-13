@@ -48,6 +48,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	log.Info().Msg("Starting Satellite")
 	replicateStateCron := config.GetStateReplicationInterval()
 	updateConfigCron := config.GetUpdateConfigInterval()
+	ztrCron := config.GetRegistrationInterval()
 	// Get the scheduler from the context
 	scheduler := ctx.Value(s.schedulerKey).(scheduler.Scheduler)
 	// Create a simple notifier and add it to the process
@@ -55,6 +56,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	// Creating a process to fetch and replicate the state
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(replicateStateCron, notifier, s.SourcesRegistryConfig.URL, s.SourcesRegistryConfig.UserName, s.SourcesRegistryConfig.Password, s.LocalRegistryConfig.URL, s.LocalRegistryConfig.UserName, s.LocalRegistryConfig.Password, s.UseUnsecure, config.GetState())
 	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(updateConfigCron, "", "")
+	ztrProcess := state.NewZtrProcess(ztrCron)
 	err := scheduler.Schedule(configFetchProcess)
 	if err != nil {
 		log.Error().Err(err).Msg("Error scheduling process")
@@ -66,6 +68,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		log.Error().Err(err).Msg("Error scheduling process")
 		return err
 	}
+
 	// Schedule Register Satellite Process
 	if utils.IsZTRDone() {
 		log.Info().Msg("ZTR already performed, skipping the process")
