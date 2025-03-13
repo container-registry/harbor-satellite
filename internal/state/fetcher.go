@@ -19,8 +19,8 @@ type StateFetcher interface {
 }
 
 type baseStateFetcher struct {
-	username              string
-	password              string
+	username string
+	password string
 }
 
 type URLStateFetcher struct {
@@ -37,8 +37,8 @@ func NewURLStateFetcher(stateURL, userName, password string) StateFetcher {
 	url := utils.FormatRegistryURL(stateURL)
 	return &URLStateFetcher{
 		baseStateFetcher: baseStateFetcher{
-			username:              userName,
-			password:              password,
+			username: userName,
+			password: password,
 		},
 		url: url,
 	}
@@ -47,8 +47,8 @@ func NewURLStateFetcher(stateURL, userName, password string) StateFetcher {
 func NewFileStateFetcher(filePath, userName, password string) StateFetcher {
 	return &FileStateArtifactFetcher{
 		baseStateFetcher: baseStateFetcher{
-			username:              userName,
-			password:              password,
+			username: userName,
+			password: password,
 		},
 		filePath: filePath,
 	}
@@ -66,7 +66,7 @@ func (f *FileStateArtifactFetcher) FetchStateArtifact(state interface{}) error {
 	return nil
 }
 
-func (f *URLStateFetcher) FetchStateArtifact(state interface{}) error {
+func (f *URLStateFetcher) FetchStateArtifact(state *SatelliteState) error {
 	auth := authn.FromConfig(authn.AuthConfig{
 		Username: f.username,
 		Password: f.password,
@@ -110,7 +110,7 @@ func (f *URLStateFetcher) FetchStateArtifact(state interface{}) error {
 	if artifactsJSON == nil {
 		return fmt.Errorf("artifacts.json not found in the state artifact")
 	}
-	err = json.Unmarshal(artifactsJSON, &state)
+	err = json.Unmarshal(artifactsJSON, state)
 	if err != nil {
 		return fmt.Errorf("failed to parse the artifacts.json file: %v", err)
 	}
