@@ -503,7 +503,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	// we need to update the state here to reflect the satellite's state artifact
 	result := models.ZtrResult{
-		States: []string{satelliteState},
+		State: satelliteState,
 		Auth: models.Account{
 			Name:     robot.RobotName,
 			Secret:   robot.RobotSecret,
