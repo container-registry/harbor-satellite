@@ -19,8 +19,8 @@ type Artifact struct {
 }
 
 type ZtrResult struct {
-	States []string `json:"states"`
-	Auth   Account  `json:"auth"`
+	State string  `json:"state"`
+	Auth  Account `json:"auth"`
 }
 
 type Account struct {
