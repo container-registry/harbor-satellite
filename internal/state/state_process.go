@@ -103,9 +103,12 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", f.satelliteState)
 		return err
 	}
-	// Create the statemap of the states that the satellite should track
-	// using the list of states present in the satellite's state
-	f.stateMap = NewStateMap(satelliteState.States)
+
+	if f.stateMap == nil {
+		// Create the statemap of the states that the satellite should track
+		// using the list of states present in the satellite's state
+		f.stateMap = NewStateMap(satelliteState.States)
+	}
 
 	// Loop through each state and reconcile the satellite
 	for i := range f.stateMap {
