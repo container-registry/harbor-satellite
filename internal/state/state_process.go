@@ -26,16 +26,17 @@ type FetchAndReplicateAuthConfig struct {
 }
 
 type FetchAndReplicateStateProcess struct {
-	id          cron.EntryID
-	name        string
-	cronExpr    string
-	isRunning   bool
-	stateMap    []StateMap
-	notifier    notifier.Notifier
-	mu          *sync.Mutex
-	authConfig  FetchAndReplicateAuthConfig
-	eventBroker *scheduler.EventBroker
-	Replicator  Replicator
+	id             cron.EntryID
+	name           string
+	cronExpr       string
+	isRunning      bool
+	satelliteState string
+	stateMap       []StateMap
+	notifier       notifier.Notifier
+	mu             *sync.Mutex
+	authConfig     FetchAndReplicateAuthConfig
+	eventBroker    *scheduler.EventBroker
+	Replicator     Replicator
 }
 
 type StateMap struct {
@@ -52,16 +53,16 @@ func NewStateMap(url []string) []StateMap {
 	return stateMap
 }
 
-func NewFetchAndReplicateStateProcess(cronExpr string, notifier notifier.Notifier, sourceRegistryURL, sourceRegistryUsername, sourceRegistryPassword, remoteRegistryURL, remoteRegistryUsername, remoteRegistryPassword string, useUnsecure bool, states []string) *FetchAndReplicateStateProcess {
+func NewFetchAndReplicateStateProcess(cronExpr string, notifier notifier.Notifier, sourceRegistryURL, sourceRegistryUsername, sourceRegistryPassword, remoteRegistryURL, remoteRegistryUsername, remoteRegistryPassword string, useUnsecure bool, state string) *FetchAndReplicateStateProcess {
 	sourceURL := utils.FormatRegistryURL(sourceRegistryURL)
 	remoteURL := utils.FormatRegistryURL(remoteRegistryURL)
 	return &FetchAndReplicateStateProcess{
-		name:      config.ReplicateStateJobName,
-		cronExpr:  cronExpr,
-		isRunning: false,
-		notifier:  notifier,
-		mu:        &sync.Mutex{},
-		stateMap:  NewStateMap(states),
+		name:           config.ReplicateStateJobName,
+		cronExpr:       cronExpr,
+		isRunning:      false,
+		notifier:       notifier,
+		mu:             &sync.Mutex{},
+		satelliteState: state,
 		authConfig: FetchAndReplicateAuthConfig{
 			SourceRegistry:         sourceURL,
 			SourceRegistryUserName: sourceRegistryUsername,
@@ -89,14 +90,31 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	}
 	log.Info().Msg(reason)
 
+	// Fetch the satellite's state
+	log.Info().Msgf("Processing satellite state from the url: %s", f.satelliteState)
+	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, log)
+	if err != nil {
+		log.Error().Err(err).Msg("Error processing input")
+		return err
+	}
+	satelliteState := &SatelliteState{}
+	if err := satelliteStateFetcher.FetchStateArtifact(&satelliteStateFetcher); err != nil {
+		log.Error().Err(err).Msg("Error fetching state artifact")
+		return err
+	}
+	// Create the statemap of the states that the satellite should track
+	// using the list of states present in the satellite's state
+	f.stateMap = NewStateMap(satelliteState.States)
+
+	// Loop through each state and reconcile the satellite
 	for i := range f.stateMap {
 		log.Info().Msgf("Processing state for %s", f.stateMap[i].url)
-		stateFetcher, err := processInput(f.stateMap[i].url, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, log)
+		groupStateFetcher, err := getStateFetcherForInput(f.stateMap[i].url, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, log)
 		if err != nil {
 			log.Error().Err(err).Msg("Error processing input")
 			return err
 		}
-		newStateFetched, err := f.FetchAndProcessState(stateFetcher, log)
+		newStateFetched, err := f.FetchAndProcessState(groupStateFetcher, log)
 		if err != nil {
 			log.Error().Err(err).Msg("Error fetching state")
 			return err
