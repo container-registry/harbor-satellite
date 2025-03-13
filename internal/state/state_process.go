@@ -97,6 +97,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		log.Error().Err(err).Msg("Error processing input")
 		return err
 	}
+
 	satelliteState := &SatelliteState{}
 	if err := satelliteStateFetcher.FetchStateArtifact(&satelliteStateFetcher); err != nil {
 		log.Error().Err(err).Msg("Error fetching state artifact")
@@ -212,7 +213,7 @@ func (f *FetchAndReplicateStateProcess) CanExecute(ctx context.Context) (bool, s
 		condition bool
 		message   string
 	}{
-		{f.stateMap == nil, "state map is nil"},
+		{f.satelliteState == "", "satelliteState is empty"},
 		{f.authConfig.RemoteRegistryURL == "", "remote registry URL is empty"},
 		{f.authConfig.SourceRegistry == "", "source registry is empty"},
 		{f.authConfig.SourceRegistryUserName == "", "username is empty"},
