@@ -97,7 +97,6 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	log.Info().Msg(reason)
 
 	// Fetch the satellite's state
-	log.Info().Msgf("Processing satellite state from the url: %s", f.satelliteState)
 	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, log)
 	if err != nil {
 		log.Error().Err(err).Msg("Error processing satellite state")
@@ -110,30 +109,8 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return err
 	}
 
-	var newStates []string
-	for _, state := range satelliteState.States {
-		found := false
-		for _, stateMap := range f.stateMap {
-			if stateMap.url == state {
-				found = true
-				break
-			}
-		}
-		if !found {
-			newStates = append(newStates, state)
-		}
-	}
-
-	// Remove states that are no longer needed
-	var updatedStateMap []StateMap
-	for _, stateMap := range f.stateMap {
-		if contains(satelliteState.States, stateMap.url) {
-			updatedStateMap = append(updatedStateMap, stateMap)
-		}
-	}
-
-	// Add new states
-	f.stateMap = append(updatedStateMap, NewStateMap(newStates)...)
+	// Update stateMap
+	f.updateStateMap(satelliteState.States)
 
 	// Loop through each state and reconcile the satellite
 	for i := range f.stateMap {
@@ -169,6 +146,33 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		f.stateMap[i].Entities = FetchEntitiesFromState(newState)
 	}
 	return nil
+}
+
+func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
+	var newStates []string
+	for _, state := range states {
+		found := false
+		for _, stateMap := range f.stateMap {
+			if stateMap.url == state {
+				found = true
+				break
+			}
+		}
+		if !found {
+			newStates = append(newStates, state)
+		}
+	}
+
+	// Remove states that are no longer needed
+	var updatedStateMap []StateMap
+	for _, stateMap := range f.stateMap {
+		if contains(states, stateMap.url) {
+			updatedStateMap = append(updatedStateMap, stateMap)
+		}
+	}
+
+	// Add new states
+	f.stateMap = append(updatedStateMap, NewStateMap(newStates)...)
 }
 
 func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *zerolog.Logger, oldEntites []Entity) ([]Entity, []Entity, StateReader) {
