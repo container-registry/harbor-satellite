@@ -104,6 +104,30 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return err
 	}
 
+	var newStates []string
+	for _, state := range satelliteState.States {
+		found := false
+		for _, stateMap := range f.stateMap {
+			if stateMap.url == state {
+				found = true
+				break
+			}
+		}
+		if !found {
+			newStates = append(newStates, state)
+		}
+	}
+
+	// Remove states that are no longer needed
+	var updatedStateMap []StateMap
+	for _, stateMap := range f.stateMap {
+		if contains(satelliteState.States, stateMap.url) {
+			updatedStateMap = append(updatedStateMap, stateMap)
+		}
+	}
+
+	// Add new states
+	f.stateMap = append(updatedStateMap, NewStateMap(newStates)...)
 
 	// Loop through each state and reconcile the satellite
 	for i := range f.stateMap {
