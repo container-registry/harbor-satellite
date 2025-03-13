@@ -260,11 +260,12 @@ func (f *FetchAndReplicateStateProcess) FetchAndProcessState(fetcher StateFetche
 	satelliteState := &SatelliteState{}
 	// let's first print out the new state config
 	err := fetcher.FetchStateArtifact(satelliteState)
-    fmt.Print("The Satellite State Artifact is: ", satelliteState)
+	fmt.Print("The Satellite State Artifact is: ", satelliteState)
 	if err != nil {
 		log.Error().Err(err).Msg("Error fetching state artifact")
 		return nil, err
 	}
+	// update this function to now fetch the list of states from earlier
 	return ProcessState(&state)
 }
 
