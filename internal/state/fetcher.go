@@ -66,7 +66,11 @@ func (f *FileStateArtifactFetcher) FetchStateArtifact(state interface{}) error {
 	return nil
 }
 
-func (f *URLStateFetcher) FetchStateArtifact(state *SatelliteState) error {
+func (f *URLStateFetcher) FetchStateArtifact(state interface{}) error {
+	state, ok := state.(*SatelliteState)
+	if !ok {
+		return fmt.Errorf("state is not of expected type SatelliteState")
+	}
 	auth := authn.FromConfig(authn.AuthConfig{
 		Username: f.username,
 		Password: f.password,
