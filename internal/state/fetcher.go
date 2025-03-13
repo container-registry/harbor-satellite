@@ -77,7 +77,7 @@ func (f *URLStateFetcher) FetchStateArtifact(state interface{}, log *zerolog.Log
 		return f.fetchGroupState(s, log)
 
 	default:
-		return fmt.Errorf("unexpected state type", s)
+		return fmt.Errorf("unexpected state type: %T", s)
 	}
 }
 
