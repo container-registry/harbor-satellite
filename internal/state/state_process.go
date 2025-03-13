@@ -104,11 +104,6 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return err
 	}
 
-	if f.stateMap == nil {
-		// Create the statemap of the states that the satellite should track
-		// using the list of states present in the satellite's state
-		f.stateMap = NewStateMap(satelliteState.States)
-	}
 
 	// Loop through each state and reconcile the satellite
 	for i := range f.stateMap {
@@ -344,41 +339,14 @@ func (f *FetchAndReplicateStateProcess) HandelPayloadFromZTR(event scheduler.Eve
 		log.Error().Msgf("Received invalid payload from %s, for process %s", event.Source, ZeroTouchRegistrationEventName)
 		return
 	}
-	f.UpdateFetchProcessConfigFromZtr(payload.StateConfig.Auth.SourceUsername, payload.StateConfig.Auth.SourcePassword, payload.StateConfig.Auth.Registry, payload.StateConfig.States)
+	f.UpdateFetchProcessConfigFromZtr(payload.StateConfig.Auth.SourceUsername, payload.StateConfig.Auth.SourcePassword, payload.StateConfig.Auth.Registry)
 }
 
-func (f *FetchAndReplicateStateProcess) UpdateFetchProcessConfigFromZtr(username, password, sourceRegistryURL string, states []string) {
+func (f *FetchAndReplicateStateProcess) UpdateFetchProcessConfigFromZtr(username, password, sourceRegistryURL string) {
 	f.authConfig.SourceRegistryUserName = username
 	f.authConfig.SourceRegistryPassword = password
 	f.authConfig.SourceRegistry = utils.FormatRegistryURL(sourceRegistryURL)
 	f.Replicator = NewBasicReplicator(f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.authConfig.SourceRegistry, f.authConfig.RemoteRegistryURL, f.authConfig.RemoteRegistryUserName, f.authConfig.RemoteRegistryPassword, f.authConfig.UseUnsecure)
-
-	// The states contain all the states that this satellite needs to track thus we would have to add the new states to the state map
-	// also we would have to remove the states that are not in the new states
-	var newStates []string
-	for _, state := range states {
-		found := false
-		for _, stateMap := range f.stateMap {
-			if stateMap.url == state {
-				found = true
-				break
-			}
-		}
-		if !found {
-			newStates = append(newStates, state)
-		}
-	}
-
-	// Remove states that are no longer needed
-	var updatedStateMap []StateMap
-	for _, stateMap := range f.stateMap {
-		if contains(states, stateMap.url) {
-			updatedStateMap = append(updatedStateMap, stateMap)
-		}
-	}
-
-	// Add new states
-	f.stateMap = append(updatedStateMap, NewStateMap(newStates)...)
 }
 
 // contains takes in a slice and checks if the item is in the slice if preset it returns true else false

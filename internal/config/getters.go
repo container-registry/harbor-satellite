@@ -44,8 +44,8 @@ func GetSourceRegistryURL() string {
 	return appConfig.StateConfig.Auth.Registry
 }
 
-func GetStates() []string {
-	return appConfig.StateConfig.States
+func GetState() string {
+	return appConfig.StateConfig.State
 }
 
 func GetToken() string {
