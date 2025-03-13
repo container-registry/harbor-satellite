@@ -78,7 +78,9 @@ func NewFetchAndReplicateStateProcess(cronExpr string, notifier notifier.Notifie
 
 func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	defer f.stop()
+
 	log := logger.FromContext(ctx)
+
 	if !f.start() {
 		log.Warn().Msgf("Process %s is already running", f.name)
 		return nil
@@ -97,15 +99,8 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	log.Info().Msg(reason)
 
 	// Fetch the satellite's state
-	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, log)
+	satelliteState, err := f.fetchSatelliteState(log)
 	if err != nil {
-		log.Error().Err(err).Msg("Error processing satellite state")
-		return err
-	}
-
-	satelliteState := &SatelliteState{}
-	if err := satelliteStateFetcher.FetchStateArtifact(satelliteState, log); err != nil {
-		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", f.satelliteState)
 		return err
 	}
 
@@ -146,6 +141,21 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		f.stateMap[i].Entities = FetchEntitiesFromState(newState)
 	}
 	return nil
+}
+
+func (f *FetchAndReplicateStateProcess) fetchSatelliteState(log *zerolog.Logger) (*SatelliteState, error) {
+	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, log)
+	if err != nil {
+		log.Error().Err(err).Msg("Error processing satellite state")
+		return nil, err
+	}
+
+	satelliteState := &SatelliteState{}
+	if err := satelliteStateFetcher.FetchStateArtifact(satelliteState, log); err != nil {
+		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", f.satelliteState)
+		return nil, err
+	}
+	return satelliteState, nil
 }
 
 func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
