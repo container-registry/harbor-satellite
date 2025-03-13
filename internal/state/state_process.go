@@ -257,7 +257,10 @@ func ProcessState(state *StateReader) (*StateReader, error) {
 
 func (f *FetchAndReplicateStateProcess) FetchAndProcessState(fetcher StateFetcher, log *zerolog.Logger) (*StateReader, error) {
 	state := NewState()
-	err := fetcher.FetchStateArtifact(&state)
+	satelliteState := &SatelliteState{}
+	// let's first print out the new state config
+	err := fetcher.FetchStateArtifact(satelliteState)
+    fmt.Print("The Satellite State Artifact is: ", satelliteState)
 	if err != nil {
 		log.Error().Err(err).Msg("Error fetching state artifact")
 		return nil, err
