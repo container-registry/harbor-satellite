@@ -94,13 +94,13 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	log.Info().Msgf("Processing satellite state from the url: %s", f.satelliteState)
 	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, log)
 	if err != nil {
-		log.Error().Err(err).Msg("Error processing input")
+		log.Error().Err(err).Msg("Error processing satellite state")
 		return err
 	}
 
 	satelliteState := &SatelliteState{}
-	if err := satelliteStateFetcher.FetchStateArtifact(&satelliteStateFetcher); err != nil {
-		log.Error().Err(err).Msg("Error fetching state artifact")
+	if err := satelliteStateFetcher.FetchStateArtifact(satelliteState, log); err != nil {
+		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", f.satelliteState)
 		return err
 	}
 	// Create the statemap of the states that the satellite should track
@@ -276,10 +276,7 @@ func ProcessState(state *StateReader) (*StateReader, error) {
 
 func (f *FetchAndReplicateStateProcess) FetchAndProcessState(fetcher StateFetcher, log *zerolog.Logger) (*StateReader, error) {
 	state := NewState()
-	satelliteState := &SatelliteState{}
-	// let's first print out the new state config
-	err := fetcher.FetchStateArtifact(satelliteState)
-	fmt.Print("The Satellite State Artifact is: ", satelliteState)
+	err := fetcher.FetchStateArtifact(state, log)
 	if err != nil {
 		log.Error().Err(err).Msg("Error fetching state artifact")
 		return nil, err
