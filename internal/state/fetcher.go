@@ -138,9 +138,7 @@ func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out inte
 				log.Error().Msgf("Failed to read the artifacts.json of the state artifact: %s", url)
 				return fmt.Errorf("failed to read the artifacts.json file: %v", err)
 			}
-			err = json.Unmarshal(artifactsJSON, out)
-			log.Info().Msgf("The unmarshalled artifacts.json from the state artifact: %s is %s", url, out)
-			return err
+			return json.Unmarshal(artifactsJSON, out)
 		}
 	}
 	log.Error().Msgf("artifacts.json not present for the state artifact: %s", url)
