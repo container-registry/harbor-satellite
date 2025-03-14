@@ -132,7 +132,8 @@ func InitConfig(configPath string) ([]error, []Warning) {
 	var err []error
 	var warnings []Warning
 	appConfig, err, warnings = LoadConfig(configPath)
-	if writeError := WriteConfig(configPath); err != nil {
+
+	if writeError := WriteConfig(configPath); writeError!= nil {
 		err = append(err, writeError)
 	}
 	return err, warnings

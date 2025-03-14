@@ -8,6 +8,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/internal/logger"
+  "github.com/container-registry/harbor-satellite/internal/utils"
 )
 
 type RegistryConfig struct {
@@ -69,10 +70,16 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 	// Schedule Register Satellite Process
+	if utils.IsZTRDone() {
+		log.Info().Msg("ZTR already performed, skipping the process")
+		return nil
+	}
+
 	err = scheduler.Schedule(ztrProcess)
 	if err != nil {
 		log.Error().Err(err).Msg("Error scheduling process")
 		return err
 	}
+
 	return nil
 }
