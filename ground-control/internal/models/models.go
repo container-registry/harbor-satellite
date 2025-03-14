@@ -1,5 +1,9 @@
 package models
 
+type SatelliteStateArtifact struct {
+	States []string `json:"states,omitempty"`
+}
+
 type StateArtifact struct {
 	Group     string     `json:"group,omitempty"`
 	Registry  string     `json:"registry,omitempty"`

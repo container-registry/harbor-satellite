@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-
+  
 	"github.com/container-registry/harbor-satellite/internal/config"
 	"github.com/container-registry/harbor-satellite/internal/notifier"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
