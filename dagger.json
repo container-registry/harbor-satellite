@@ -4,5 +4,5 @@
   "sdk": {
     "source": "go"
   },
-  "source": "ci"
+  "source": ".dagger"
 }
