@@ -214,9 +214,9 @@ In the `config.json` file, add the following configuration
   }
 }
 ```
-- Now start the satellite using the following command
+- Now start the satellite using the following command from the root directory.
 ```bash
-go run main.go
+go run cmd/main.go
 ```
 > **Note**: You can also build the satellite binaries and use them.
 - To build the binary of the satellite, use the following command
