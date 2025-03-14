@@ -1,20 +1,29 @@
-package cmd
+package main
 
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	"github.com/container-registry/harbor-satellite/internal/server"
 	"github.com/container-registry/harbor-satellite/internal/utils"
-	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/registry"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
 
-func Run() error {
+func main() {
+	err := run()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 
