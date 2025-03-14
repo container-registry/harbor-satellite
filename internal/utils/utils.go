@@ -13,10 +13,10 @@ import (
 	"strings"
 	"syscall"
 
-	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/scheduler"
-	"container-registry.com/harbor-satellite/internal/logger"
-	"container-registry.com/harbor-satellite/registry"
+	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/internal/scheduler"
+	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/registry"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
