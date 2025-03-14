@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"container-registry.com/harbor-satellite/internal/server"
+	"github.com/container-registry/harbor-satellite/internal/server"
 )
 
 type SatelliteRegistrar struct{}

@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/logger"
-	"container-registry.com/harbor-satellite/internal/satellite"
-	"container-registry.com/harbor-satellite/internal/server"
-	"container-registry.com/harbor-satellite/internal/utils"
-	"container-registry.com/harbor-satellite/registry"
+	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/internal/satellite"
+	"github.com/container-registry/harbor-satellite/internal/server"
+	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/registry"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )

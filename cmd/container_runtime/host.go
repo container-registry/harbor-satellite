@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/rs/zerolog"
 )

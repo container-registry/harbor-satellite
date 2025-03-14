@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"container-registry.com/harbor-satellite/ground-control/internal/database"
-	"container-registry.com/harbor-satellite/ground-control/internal/models"
-	"container-registry.com/harbor-satellite/ground-control/internal/utils"
-	"container-registry.com/harbor-satellite/ground-control/reg/harbor"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
+	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
 	"github.com/gorilla/mux"
 )
 

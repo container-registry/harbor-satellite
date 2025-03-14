@@ -1,4 +1,4 @@
-module container-registry.com/harbor-satellite
+module github.com/container-registry/harbor-satellite
 
 go 1.22.5
 

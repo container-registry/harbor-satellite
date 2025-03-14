@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"container-registry.com/harbor-satellite/ground-control/internal/server"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/server"
 	_ "github.com/joho/godotenv/autoload"
 )
 

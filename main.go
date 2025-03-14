@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"container-registry.com/harbor-satellite/cmd"
+	"github.com/container-registry/harbor-satellite/cmd"
 )
 
 func main() {
