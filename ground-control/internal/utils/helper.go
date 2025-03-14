@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	m "container-registry.com/harbor-satellite/ground-control/internal/models"
-	"container-registry.com/harbor-satellite/ground-control/reg/harbor"
+	m "github.com/container-registry/harbor-satellite/ground-control/internal/models"
+	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/robot"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 	"github.com/google/go-containerregistry/pkg/authn"
