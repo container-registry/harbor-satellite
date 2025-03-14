@@ -45,8 +45,7 @@ func HandleOwnRegistry() error {
 	if err != nil {
 		return fmt.Errorf("error parsing URL: %w", err)
 	}
-	config.SetRemoteRegistryURL(FormatRegistryURL(config.GetRemoteRegistryURL()))
-	return nil
+	return config.SetRemoteRegistryURL(FormatRegistryURL(config.GetRemoteRegistryURL()))
 }
 
 // LaunchDefaultZotRegistry launches the default Zot registry using the Zot config path
