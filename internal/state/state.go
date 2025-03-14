@@ -24,9 +24,12 @@ type State struct {
 	Artifacts []Artifact `json:"artifacts"`
 }
 
+type SatelliteState struct {
+	States []string
+}
+
 func NewState() StateReader {
-	state := &State{}
-	return state
+	return &State{}
 }
 
 func (a *State) GetRegistryURL() string {

@@ -15,9 +15,9 @@ func GetZotConfigPath() string {
 	return appConfig.LocalJsonConfig.ZotConfigPath
 }
 
-func SetRemoteRegistryURL(url string) {
+func SetRemoteRegistryURL(url string) error {
 	appConfig.LocalJsonConfig.LocalRegistryConfig.URL = url
-	WriteConfig(DefaultConfigPath)
+	return WriteConfig(DefaultConfigPath)
 }
 
 func GetZotURL() string {
@@ -44,8 +44,8 @@ func GetSourceRegistryURL() string {
 	return appConfig.StateConfig.Auth.Registry
 }
 
-func GetStates() []string {
-	return appConfig.StateConfig.States
+func GetState() string {
+	return appConfig.StateConfig.State
 }
 
 func GetToken() string {

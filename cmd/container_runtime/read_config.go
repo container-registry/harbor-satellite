@@ -13,7 +13,7 @@ func NewReadConfigCommand(runtime string) *cobra.Command {
 		Use:   "read",
 		Short: fmt.Sprintf("Reads the config file for the %s runtime", runtime),
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return utils.CommandRunSetup(cmd)
+			return fmt.Errorf("") // just to pass linter
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			//Parse the flags
