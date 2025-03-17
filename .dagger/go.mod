@@ -1,6 +1,6 @@
 module harbor-satellite/ci
 
-go 1.24.0
+go 1.23.6
 
 require (
 	github.com/99designs/gqlgen v0.17.66
