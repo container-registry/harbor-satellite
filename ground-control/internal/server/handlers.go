@@ -153,7 +153,6 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
-	// The groups, as soon as they are created, already have their own state artifact.
 	var req RegisterSatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
@@ -225,8 +224,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		tx.Rollback()
 		return
 	}
-
-	var groupStates []string
+    var groupStates []string
 
 	// Check if Groups is nil before dereferencing
 	if req.Groups != nil {
@@ -505,7 +503,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	// we need to update the state here to reflect the satellite's state artifact
 	result := models.ZtrResult{
-		States: []string{satelliteState},
+		State: satelliteState,
 		Auth: models.Account{
 			Name:     robot.RobotName,
 			Secret:   robot.RobotSecret,

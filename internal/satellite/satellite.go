@@ -30,16 +30,16 @@ type Satellite struct {
 	LocalRegistryConfig   RegistryConfig
 	SourcesRegistryConfig RegistryConfig
 	UseUnsecure           bool
-	states                []string
+	state                 string
 }
 
-func NewSatellite(ctx context.Context, schedulerKey scheduler.SchedulerKey, localRegistryConfig, sourceRegistryConfig RegistryConfig, useUnsecure bool, states []string) *Satellite {
+func NewSatellite(ctx context.Context, schedulerKey scheduler.SchedulerKey, localRegistryConfig, sourceRegistryConfig RegistryConfig, useUnsecure bool, state string) *Satellite {
 	return &Satellite{
 		schedulerKey:          schedulerKey,
 		LocalRegistryConfig:   localRegistryConfig,
 		SourcesRegistryConfig: sourceRegistryConfig,
 		UseUnsecure:           useUnsecure,
-		states:                states,
+		state:                 state,
 	}
 }
 
@@ -54,8 +54,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	// Create a simple notifier and add it to the process
 	notifier := notifier.NewSimpleNotifier(ctx)
 	// Creating a process to fetch and replicate the state
-	states := config.GetStates()
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(replicateStateCron, notifier, s.SourcesRegistryConfig.URL, s.SourcesRegistryConfig.UserName, s.SourcesRegistryConfig.Password, s.LocalRegistryConfig.URL, s.LocalRegistryConfig.UserName, s.LocalRegistryConfig.Password, s.UseUnsecure, states)
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(replicateStateCron, notifier, s.SourcesRegistryConfig.URL, s.SourcesRegistryConfig.UserName, s.SourcesRegistryConfig.Password, s.LocalRegistryConfig.URL, s.LocalRegistryConfig.UserName, s.LocalRegistryConfig.Password, s.UseUnsecure, config.GetState())
 	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(updateConfigCron, "", "")
 	ztrProcess := state.NewZtrProcess(ztrCron)
 	err := scheduler.Schedule(configFetchProcess)
@@ -69,6 +68,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		log.Error().Err(err).Msg("Error scheduling process")
 		return err
 	}
+
 	// Schedule Register Satellite Process
 	if utils.IsZTRDone() {
 		log.Info().Msg("ZTR already performed, skipping the process")

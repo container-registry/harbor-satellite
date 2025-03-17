@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func processInput(input, username, password string, log *zerolog.Logger) (StateFetcher, error) {
+func getStateFetcherForInput(input, username, password string, log *zerolog.Logger) (StateFetcher, error) {
 
 	if utils.IsValidURL(input) {
 		return processURLInput(utils.FormatRegistryURL(input), username, password, log)

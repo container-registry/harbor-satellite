@@ -41,8 +41,8 @@ type LocalJsonConfig struct {
 }
 
 type StateConfig struct {
-	Auth   Auth     `json:"auth,omitempty"`
-	States []string `json:"states,omitempty"`
+	Auth  Auth   `json:"auth,omitempty"`
+	State string `json:"state,omitempty"`
 }
 
 type Config struct {
@@ -139,11 +139,11 @@ func InitConfig(configPath string) ([]error, []Warning) {
 	return err, warnings
 }
 
-func UpdateStateAuthConfig(name, registry, secret string, states []string) error {
+func UpdateStateAuthConfig(name, registry, secret string, state string) error {
 	appConfig.StateConfig.Auth.SourceUsername = name
 	appConfig.StateConfig.Auth.Registry = registry
 	appConfig.StateConfig.Auth.SourcePassword = secret
-	appConfig.StateConfig.States = states
+	appConfig.StateConfig.State = state
 	return WriteConfig(DefaultConfigPath)
 }
 
