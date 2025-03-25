@@ -76,12 +76,12 @@ T.B.D.
 
 Deploying a complete Harbor instance on edge devices in poor/no coverage areas could prove problematic since:
 
-- Harbor wasn't designed to run on edge devices.(e.g. Multiple processes, no unattended mode)
+- Harbor wasn't designed to run on edge devices (e.g. Multiple processes, no unattended mode).
 - Harbor could behave unexpectedly in poor/no connectivity environments.
 - Managing hundreds or thousands of container registries is not operationally feasible with Harbor.
 - Harbor would be too similar to a simple registry mirror.
 
-Harbor Satellite aims to be resilient, lightweight and will be able to keep functioning independently from Harbor instances.
+Harbor Satellite aims to be resilient, lightweight and will be able to keep functioning independently of Harbor instances.
 
 ## Compatibility
 
@@ -107,7 +107,7 @@ Harbor Satellite may be implemented following 1 or several of 3 different archit
 
 #### Use Case #1: Replicating from a remote registry to a local registry
 
-In this basic use case, the stateless Satellite component pulls container images from a remote registry and pushes them to thelocal OCI-complant registry. This local registry is then accessible to other local edge devices, which can pull the required images directly from it. _Direct access from edge devices to the remote registry is still possible when network conditions permit._ The Satellite component may also handle updating container runtime configurations and fetching image lists from Ground Control, a part of Harbor. The stateful local registry will also need to handle storing and managing data from local volumes. A typical scenario might look lis this:
+In this basic use case, the stateless Satellite component pulls container images from a remote registry and pushes them to the local OCI-compliant registry. This local registry is then accessible to other local edge devices, which can pull the required images directly from it. _Direct access from edge devices to the remote registry is still possible when network conditions permit._ The Satellite component may also handle updating container runtime configurations and fetching image lists from Ground Control, a part of Harbor. The stateful local registry will also need to handle storing and managing data from local volumes. A typical scenario might look like this:
 
 _In an edge computing environment where IoT devices are deployed to a location with limited or no internet connectivity, these devices need to run containerized images but cannot pull from a central Harbor registry. A local Harbor Satellite instance can be deployed and take up this role while Internet connectivity is unreliable and distribute all required images. Once a reliable connection is re-established, the Harbor Satellite instance will be able to pull required images from its central Harbor registry and thus store up-to-date images locally._
 
