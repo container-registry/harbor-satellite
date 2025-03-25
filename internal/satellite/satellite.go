@@ -4,36 +4,22 @@ import (
 	"context"
 
 	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/notifier"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/state"
-	"github.com/container-registry/harbor-satellite/internal/logger"
-  "github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/internal/utils"
 )
-
-type RegistryConfig struct {
-	URL      string
-	UserName string
-	Password string
-}
-
-func NewRegistryConfig(url, username, password string) RegistryConfig {
-	return RegistryConfig{
-		URL:      url,
-		UserName: username,
-		Password: password,
-	}
-}
 
 type Satellite struct {
 	schedulerKey          scheduler.SchedulerKey
-	LocalRegistryConfig   RegistryConfig
-	SourcesRegistryConfig RegistryConfig
+	LocalRegistryConfig   state.RegistryConfig
+	SourcesRegistryConfig state.RegistryConfig
 	UseUnsecure           bool
 	state                 string
 }
 
-func NewSatellite(ctx context.Context, schedulerKey scheduler.SchedulerKey, localRegistryConfig, sourceRegistryConfig RegistryConfig, useUnsecure bool, state string) *Satellite {
+func NewSatellite(ctx context.Context, schedulerKey scheduler.SchedulerKey, localRegistryConfig, sourceRegistryConfig state.RegistryConfig, useUnsecure bool, state string) *Satellite {
 	return &Satellite{
 		schedulerKey:          schedulerKey,
 		LocalRegistryConfig:   localRegistryConfig,
@@ -54,7 +40,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	// Create a simple notifier and add it to the process
 	notifier := notifier.NewSimpleNotifier(ctx)
 	// Creating a process to fetch and replicate the state
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(replicateStateCron, notifier, s.SourcesRegistryConfig.URL, s.SourcesRegistryConfig.UserName, s.SourcesRegistryConfig.Password, s.LocalRegistryConfig.URL, s.LocalRegistryConfig.UserName, s.LocalRegistryConfig.Password, s.UseUnsecure, config.GetState())
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(replicateStateCron, notifier, s.SourcesRegistryConfig, s.LocalRegistryConfig, s.UseUnsecure, config.GetState())
 	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(updateConfigCron, "", "")
 	ztrProcess := state.NewZtrProcess(ztrCron)
 	err := scheduler.Schedule(configFetchProcess)

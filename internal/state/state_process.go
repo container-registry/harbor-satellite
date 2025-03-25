@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-  
+
 	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/notifier"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/utils"
-	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )
@@ -45,6 +45,12 @@ type StateMap struct {
 	Entities []Entity
 }
 
+type RegistryConfig struct {
+	URL      string
+	Username string
+	Password string
+}
+
 func NewStateMap(url []string) []StateMap {
 	var stateMap []StateMap
 	for _, u := range url {
@@ -53,9 +59,17 @@ func NewStateMap(url []string) []StateMap {
 	return stateMap
 }
 
-func NewFetchAndReplicateStateProcess(cronExpr string, notifier notifier.Notifier, sourceRegistryURL, sourceRegistryUsername, sourceRegistryPassword, remoteRegistryURL, remoteRegistryUsername, remoteRegistryPassword string, useUnsecure bool, state string) *FetchAndReplicateStateProcess {
-	sourceURL := utils.FormatRegistryURL(sourceRegistryURL)
-	remoteURL := utils.FormatRegistryURL(remoteRegistryURL)
+func NewRegistryConfig(url, username, password string) RegistryConfig {
+	return RegistryConfig{
+		URL:      url,
+		Username: username,
+		Password: password,
+	}
+}
+
+func NewFetchAndReplicateStateProcess(cronExpr string, notifier notifier.Notifier, sourceRegistryCredentials RegistryConfig, remoteRegistryCredentials RegistryConfig, useUnsecure bool, state string) *FetchAndReplicateStateProcess {
+	sourceURL := utils.FormatRegistryURL(sourceRegistryCredentials.URL)
+	remoteURL := utils.FormatRegistryURL(remoteRegistryCredentials.URL)
 	return &FetchAndReplicateStateProcess{
 		name:           config.ReplicateStateJobName,
 		cronExpr:       cronExpr,
@@ -65,14 +79,14 @@ func NewFetchAndReplicateStateProcess(cronExpr string, notifier notifier.Notifie
 		satelliteState: state,
 		authConfig: FetchAndReplicateAuthConfig{
 			SourceRegistry:         sourceURL,
-			SourceRegistryUserName: sourceRegistryUsername,
-			SourceRegistryPassword: sourceRegistryPassword,
+			SourceRegistryUserName: sourceRegistryCredentials.Username,
+			SourceRegistryPassword: sourceRegistryCredentials.Password,
 			UseUnsecure:            useUnsecure,
 			RemoteRegistryURL:      remoteURL,
-			RemoteRegistryUserName: remoteRegistryUsername,
-			RemoteRegistryPassword: remoteRegistryPassword,
+			RemoteRegistryUserName: remoteRegistryCredentials.Username,
+			RemoteRegistryPassword: remoteRegistryCredentials.Password,
 		},
-		Replicator: NewBasicReplicator(sourceRegistryUsername, sourceRegistryPassword, sourceURL, remoteURL, remoteRegistryUsername, remoteRegistryPassword, useUnsecure),
+		Replicator: NewBasicReplicator(sourceRegistryCredentials.Username, sourceRegistryCredentials.Password, sourceURL, remoteURL, remoteRegistryCredentials.Username, remoteRegistryCredentials.Password, useUnsecure),
 	}
 }
 
