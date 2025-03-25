@@ -255,7 +255,6 @@ func tagImage(destination string, options []crane.Option) error {
 	}
 	return nil
 }
-
 func getStateArtifactDestination(registry, repository string) string {
 	return fmt.Sprintf("%s/%s/%s", registry, repository, "state")
 }
