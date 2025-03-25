@@ -105,7 +105,7 @@ Harbor Satellite, at its most basic, will run in a single container and will be 
 
 Harbor Satellite may be implemented following 1 or several of 3 different architectures depending on its use cases:
 
-1. **Replicating from a remote registry to a local registry.**
+#### Use Case #1: Replicating from a remote registry to a local registry
 
 In this basic use case, the stateless Satellite component pulls container images from a remote registry and pushes them to thelocal OCI-complant registry. This local registry is then accessible to other local edge devices, which can pull the required images directly from it. _Direct access from edge devices to the remote registry is still possible when network conditions permit._ The Satellite component may also handle updating container runtime configurations and fetching image lists from Ground Control, a part of Harbor. The stateful local registry will also need to handle storing and managing data from local volumes. A typical scenario might look lis this:
 
@@ -114,17 +114,17 @@ _In an edge computing environment where IoT devices are deployed to a location w
 ![Use Case #1](docs/images/satellite_use_case_1.svg)
 <p align="center"><em>Use case #1</em></p>
 
-2. **Replicating from a remote registry to a local Spegel registry.**
+#### Use Case #2: Replicating from a remote registry to a local Spegel registry
 
 The stateless Satellite component sends pull instructions to Spegel instances running with each node of a Kubernetes cluster. The node will then directly pull images from a remote registry and share it with other local nodes, removing the need for each of them to individually pull an image from a remote registry.
-The network interfaces (boundaries) represented in this use case should and will be the same as those represented in use case #1. A typical use case would work as follows:
+The network interfaces (boundaries) represented in this use case should and will be the same as those represented in [Use Case #1](#use-case-1-replicating-from-a-remote-registry-to-a-local-registry). A typical use case would work as follows:
 
 _In a larger scale edge computing environment with a significant amount of IoT devices needing to run containerized applications, a single local registry in might not be able to handle the increased amount of demands from edge devices. The solution is to deploy several registries to several nodes who are able to automatically replicate images across each other thanks to Spegel instances running together with each node. The Satellite component will use the same interface to instruct each node when, where and how to pull new images that need to be replicated across the cluster._
 
 ![Use Case #2](docs/images/satellite_use_case_2.svg)
 <p align="center"><em>Use case #2</em></p>
 
-3. **Proxying from a remote registry over the local registry.**
+#### Use Case #3: Proxying from a remote registry over the local registry
 
 The stateless satellite component will be in charge of configuring the local OCI compliant registry, which will be running in proxy mode only. This local registry will then handle pulling necessary images from the remote registry and serving them up for use by local edge devices.
 A typical use case would work as follows:
