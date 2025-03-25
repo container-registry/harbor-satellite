@@ -1,8 +1,9 @@
-package cmd
+package main
 
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/container-registry/harbor-satellite/internal/config"
 	"github.com/container-registry/harbor-satellite/internal/logger"
@@ -15,7 +16,15 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func Run() error {
+func main() {
+	err := run()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 

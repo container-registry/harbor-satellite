@@ -3,8 +3,9 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/robfig/cron/v3"
 	"os"
+
+	"github.com/robfig/cron/v3"
 )
 
 var appConfig *Config
@@ -133,7 +134,7 @@ func InitConfig(configPath string) ([]error, []Warning) {
 	var warnings []Warning
 	appConfig, err, warnings = LoadConfig(configPath)
 
-	if writeError := WriteConfig(configPath); writeError!= nil {
+	if writeError := WriteConfig(configPath); writeError != nil {
 		err = append(err, writeError)
 	}
 	return err, warnings
