@@ -93,7 +93,7 @@ Compatibility with all container registries or edge devices can't be guaranteed.
 
 Harbor Satellite, at its most basic, will run in a single container and will be divided in the following 2 components:
 
-- **Satellite**: Is responsible for moving artifacts from upstream (using Skopeo/Crane/Other), identifying the source and reading the list of images that needs to be replicated. Satellite will also be able to modify and manage the container runtimes. configuration in sync so that container runtime does not fetch images from remote.
+- **Satellite**: Is responsible for moving artifacts from upstream (using Skopeo/Crane/Other), identifying the source, and reading the list of images that need to be replicated. Additionally, it can modify and manage container runtime configuration to prevent unnecessary remote fetches.
 - **OCI Registry**: Is responsible for storing required OCI artifacts locally (using zotregistry or docker registry).
 - **Ground Control**: Is a component of Harbor and is responsible for serving a Harbor Satellite with the list of images it needs.
 
