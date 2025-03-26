@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	DEFAULT_GO          = "golang:1.22"
+	DEFAULT_GO          = "golang:1.24"
 	PROJ_MOUNT          = "/app"
-	GO_VERSION          = "1.22"
+	GO_VERSION          = "1.24"
 	DOCKER_PORT         = 2375
 	GORELEASER_VERSION  = "v2.4.8"
 	GROUND_CONTROL_PATH = "./ground-control"
