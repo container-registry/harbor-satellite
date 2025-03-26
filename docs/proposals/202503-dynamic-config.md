@@ -25,6 +25,12 @@ Static config is fine, but in the long run, the needs of the user might change a
 - Not meant as a technical guide for implementation
 
 ## How
+This change will be in multiple phases:
+1. How the config.json is stored upstream
+2. How the config is updated by ground control
+3. How the satellite updates itself with the newest config
+4. How the satellite handles failed/wrong configurations
+5. How the satellite starts up (if the config is stored upstream, we need another way to do ztr)
 
 ## Alternatives
 
