@@ -92,18 +92,18 @@ func ReadConfigData(configPath string) ([]byte, error) {
 // 4. Once the job is validated, append it to the validJobs slice if the job name is valid, i.e., it is used by the satellite.
 // 5. Finally, check for critical jobs that are not present in the config and manually add them to the validJobs slice.
 func LoadConfig(configPath string) (*Config, []error, []Warning) {
-	var checks []error
+	var errors []error
 	var warnings []Warning
 	var err error
 	configData, err := ReadConfigData(configPath)
 	if err != nil {
-		checks = append(checks, err)
-		return nil, checks, warnings
+		errors = append(errors, fmt.Errorf("could not find config.json: %w", err))
+		return nil, errors, warnings
 	}
 	config, err := ParseConfigFromJson(string(configData))
 	if err != nil {
-		checks = append(checks, err)
-		return nil, checks, warnings
+		errors = append(errors, fmt.Errorf("could not parse config: %w", err))
+		return nil, errors, warnings
 	}
 
 	// Validate the job schedule fields
@@ -125,7 +125,7 @@ func LoadConfig(configPath string) (*Config, []error, []Warning) {
 		config.LocalJsonConfig.UpdateConfigInterval = DefaultSchedule
 	}
 
-	return config, checks, warnings
+	return config, errors, warnings
 }
 
 // InitConfig reads the configuration file from the specified path and initializes the global appConfig variable.
