@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/project"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
@@ -17,7 +16,7 @@ func GetProject(ctx context.Context, name string) (bool, error) {
 	})
 
 	if err != nil {
-		if strings.Contains(err.Error(), "404") {
+		if _, ok := err.(*project.HeadProjectNotFound); ok {
 			return false, nil
 		}
 		return false, fmt.Errorf("error: project head request failed for project: %s, %v", name, err)
