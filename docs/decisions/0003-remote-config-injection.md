@@ -213,7 +213,7 @@ curl --location 'http://localhost:8080/satellites/register' \
 --header 'Content-Type: application/json' \
 --data '{
     "name": "SATELLITE_NAME",
-    "groups": ["GROUP_NAME"]
+    "groups": ["GROUP_NAME"],
     "config": "CONFIG_NAME"
 }'
 ```
