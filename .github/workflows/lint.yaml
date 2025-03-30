@@ -21,9 +21,9 @@ jobs:
 
     # Run vet and cli-lint for static linting 
     - name: golangci-lint
-      uses: golangci/golangci-lint-action@v3
+      uses: golangci/golangci-lint-action@v7
       with:
-        version: v1.54
+        version: v2.0.2
     
     - name: Run go vet
       run: go vet ./...

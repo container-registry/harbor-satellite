@@ -60,7 +60,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	log.Info().Msgf("Executing process %s", z.Name)
 
 	// Register the satellite
-	err, stateConfig := RegisterSatellite(config.GetGroundControlURL(), ZeroTouchRegistrationRoute, config.GetToken(), ctx)
+	stateConfig, err := RegisterSatellite(config.GetGroundControlURL(), ZeroTouchRegistrationRoute, config.GetToken(), ctx)
 	if err != nil {
 		log.Error().Msgf("Failed to register satellite: %v", err)
 		return err
@@ -176,27 +176,27 @@ func (z *ZtrProcess) loadConfig() ([]error, []config.Warning) {
 	return config.InitConfig(config.DefaultConfigPath)
 }
 
-func RegisterSatellite(groundControlURL, path, token string, ctx context.Context) (error, config.StateConfig) {
+func RegisterSatellite(groundControlURL, path, token string, ctx context.Context) (config.StateConfig, error) {
 	ztrURL := fmt.Sprintf("%s/%s/%s", groundControlURL, path, token)
 	client := &http.Client{}
 
 	// Create a new request for the Zero Touch Registration of satellite
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ztrURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err), config.StateConfig{}
+		return config.StateConfig{}, fmt.Errorf("failed to create request: %w", err)
 	}
 	response, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err), config.StateConfig{}
+		return config.StateConfig{}, fmt.Errorf("failed to send request: %w", err)
 	}
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to register satellite: %s", response.Status), config.StateConfig{}
+		return config.StateConfig{}, fmt.Errorf("failed to register satellite: %s", response.Status)
 	}
 
 	var authResponse config.StateConfig
 	if err := json.NewDecoder(response.Body).Decode(&authResponse); err != nil {
-		return fmt.Errorf("failed to decode response: %w", err), config.StateConfig{}
+		return config.StateConfig{}, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return nil, authResponse
+	return authResponse, nil
 }
