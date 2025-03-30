@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,7 +20,12 @@ func TestSatellite(t *testing.T) {
 	// Initialize Dagger client
 	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stderr))
 	assert.NoError(t, err, "Failed to connect to Dagger")
-	defer client.Close()
+
+	defer func() {
+		if err := client.Close(); err != nil {
+			log.Printf("Error closing client: %v", err)
+		}
+	}()
 
 	// Set up Source Registry
 	source, err := setupSourceRegistry(t, client, ctx)

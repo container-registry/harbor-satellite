@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 )
@@ -32,12 +33,16 @@ func (c *DefaultZotConfig) GetLocalRegistryURL() string {
 }
 
 // ReadConfig reads a JSON file from the specified path and unmarshals it into a Config struct.
-func ReadConfig(filePath string, zotConfig *DefaultZotConfig) (error) {
+func ReadConfig(filePath string, zotConfig *DefaultZotConfig) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("could not open file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("error closing file: %v", err)
+		}
+	}()
 
 	// Read the file contents
 	bytes, err := io.ReadAll(file)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"os"
@@ -133,7 +134,11 @@ func WriteFile(path string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("error creating file :%s", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("error closing file: %v", err)
+		}
+	}()
 	_, err = file.Write(data)
 	if err != nil {
 		return fmt.Errorf("error while write to the file :%s", err)

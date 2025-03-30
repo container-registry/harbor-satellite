@@ -87,8 +87,8 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 	}
 	// Update the crio registry config file
 	// - Add the local registry to the unqualified search registries if not already present
-	var found bool = false
-	var localRegistry string = utils.FormatRegistryURL(defaultZotConfig.RemoteURL)
+	var found = false
+	var localRegistry = utils.FormatRegistryURL(defaultZotConfig.RemoteURL)
 	for _, registry := range crioRegistryConfig.UnqualifiedSearchRegistries {
 		if registry == localRegistry {
 			found = true
