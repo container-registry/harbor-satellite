@@ -8,10 +8,10 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/config"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
-	"github.com/container-registry/harbor-satellite/internal/server"
 	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/registry"
+
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
@@ -36,12 +36,6 @@ func run() error {
 
 	go scheduler.ListenForProcessEvent()
 
-	// Set up router and app
-	log.Debug().Msg("Setting up http server")
-	app := setupServerApp(ctx, log)
-	app.SetupRoutes()
-	app.SetupServer(wg)
-
 	// Handle registry setup
 	if err := handleRegistrySetup(wg, log, cancel); err != nil {
 		log.Error().Err(err).Msg("Error setting up local registry")
@@ -64,20 +58,6 @@ func run() error {
 	})
 
 	return wg.Wait()
-}
-
-func setupServerApp(ctx context.Context, log *zerolog.Logger) *server.App {
-	router := server.NewDefaultRouter("/api/v1")
-	router.Use(server.LoggingMiddleware)
-
-	return server.NewApp(
-		router,
-		ctx,
-		log,
-		&server.MetricsRegistrar{},
-		&server.DebugRegistrar{},
-		&satellite.SatelliteRegistrar{},
-	)
 }
 
 func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc) error {
