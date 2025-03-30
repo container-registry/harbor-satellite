@@ -8,19 +8,21 @@ import (
 	"io"
 	"os"
 
-	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/rs/zerolog"
 )
 
 type StateFetcher interface {
-	FetchStateArtifact(state interface{}) error
+	FetchStateArtifact(state interface{}, log *zerolog.Logger) error
 }
 
 type baseStateFetcher struct {
-	username              string
-	password              string
+	username string
+	password string
 }
 
 type URLStateFetcher struct {
@@ -37,8 +39,8 @@ func NewURLStateFetcher(stateURL, userName, password string) StateFetcher {
 	url := utils.FormatRegistryURL(stateURL)
 	return &URLStateFetcher{
 		baseStateFetcher: baseStateFetcher{
-			username:              userName,
-			password:              password,
+			username: userName,
+			password: password,
 		},
 		url: url,
 	}
@@ -47,14 +49,14 @@ func NewURLStateFetcher(stateURL, userName, password string) StateFetcher {
 func NewFileStateFetcher(filePath, userName, password string) StateFetcher {
 	return &FileStateArtifactFetcher{
 		baseStateFetcher: baseStateFetcher{
-			username:              userName,
-			password:              password,
+			username: userName,
+			password: password,
 		},
 		filePath: filePath,
 	}
 }
 
-func (f *FileStateArtifactFetcher) FetchStateArtifact(state interface{}) error {
+func (f *FileStateArtifactFetcher) FetchStateArtifact(state interface{}, log *zerolog.Logger) error {
 	content, err := os.ReadFile(f.filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read the state artifact file: %v", err)
@@ -66,55 +68,81 @@ func (f *FileStateArtifactFetcher) FetchStateArtifact(state interface{}) error {
 	return nil
 }
 
-func (f *URLStateFetcher) FetchStateArtifact(state interface{}) error {
+func (f *URLStateFetcher) FetchStateArtifact(state interface{}, log *zerolog.Logger) error {
+	switch s := state.(type) {
+	case *SatelliteState:
+		return f.fetchSatelliteState(s, log)
+
+	case *State:
+		return f.fetchGroupState(s, log)
+
+	default:
+		return fmt.Errorf("unexpected state type: %T", s)
+	}
+}
+
+func (f *URLStateFetcher) fetchSatelliteState(state *SatelliteState, log *zerolog.Logger) error {
+	log.Info().Msgf("Fetching satellite state artifact: %s", f.url)
+	img, err := f.pullImage(log)
+	if err != nil {
+		return err
+	}
+	return f.extractArtifactJSON(f.url, img, state, log)
+}
+
+func (f *URLStateFetcher) fetchGroupState(state *State, log *zerolog.Logger) error {
+	log.Info().Msgf("Fetching group state artifact: %s", f.url)
+	img, err := f.pullImage(log)
+	if err != nil {
+		return err
+	}
+	return f.extractArtifactJSON(f.url, img, state, log)
+}
+
+func (f *URLStateFetcher) pullImage(log *zerolog.Logger) (v1.Image, error) {
+	log.Debug().Msgf("Pulling state artifact: %s", f.url)
 	auth := authn.FromConfig(authn.AuthConfig{
 		Username: f.username,
 		Password: f.password,
 	})
-
 	options := []crane.Option{crane.WithAuth(auth)}
 	if config.UseUnsecure() {
 		options = append(options, crane.Insecure)
 	}
+	return crane.Pull(f.url, options...)
+}
 
-	img, err := crane.Pull(f.url, options...)
-	if err != nil {
-		return fmt.Errorf("failed to pull the state artifact: %v", err)
-	}
+func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out interface{}, log *zerolog.Logger) error {
+	log.Debug().Msgf("Extracting artifact.json from the state artifact: %s", url)
 
 	tarContent := new(bytes.Buffer)
 	if err := crane.Export(img, tarContent); err != nil {
+		log.Error().Msgf("Error exporting the fs contents of the state artifact: %s", url)
 		return fmt.Errorf("failed to export the state artifact: %v", err)
 	}
 
 	tr := tar.NewReader(tarContent)
-	var artifactsJSON []byte
-
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
+			log.Error().Msgf("Failed to read the tar archive of the state artifact: %s", url)
 			return fmt.Errorf("failed to read the tar archive: %v", err)
 		}
 
 		if hdr.Name == "artifacts.json" {
-			artifactsJSON, err = io.ReadAll(tr)
+			artifactsJSON, err := io.ReadAll(tr)
 			if err != nil {
+				log.Error().Msgf("Failed to read the artifacts.json of the state artifact: %s", url)
 				return fmt.Errorf("failed to read the artifacts.json file: %v", err)
 			}
-			break
+			return json.Unmarshal(artifactsJSON, out)
 		}
 	}
-	if artifactsJSON == nil {
-		return fmt.Errorf("artifacts.json not found in the state artifact")
-	}
-	err = json.Unmarshal(artifactsJSON, &state)
-	if err != nil {
-		return fmt.Errorf("failed to parse the artifacts.json file: %v", err)
-	}
-	return nil
+	log.Error().Msgf("artifacts.json not present for the state artifact: %s", url)
+	return fmt.Errorf("artifacts.json not found in the state artifact")
 }
 
 func FromJSON(data []byte, reg StateReader) (StateReader, error) {

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/scheduler"
+	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/robfig/cron/v3"
 )
 
@@ -89,18 +89,20 @@ func (f *FetchConfigFromGroundControlProcess) AddEventBroker(eventBroker *schedu
 	f.eventBroker = eventBroker
 }
 
-func (f *FetchConfigFromGroundControlProcess) start() bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.isRunning {
-		return false
-	}
-	f.isRunning = true
-	return true
-}
+// comment out unused functions to ignore linter warnings. nolint isn't working for some reason.
 
-func (f *FetchConfigFromGroundControlProcess) stop() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.isRunning = false
-}
+//func (f *FetchConfigFromGroundControlProcess) start() bool {
+//	f.mu.Lock()
+//	defer f.mu.Unlock()
+//	if f.isRunning {
+//	return false
+//}
+//f.isRunning = true
+//return true
+//}
+
+//func (f *FetchConfigFromGroundControlProcess) stop() {
+//f.mu.Lock()
+//defer f.mu.Unlock()
+//f.isRunning = false
+//}

@@ -3,12 +3,12 @@ package state
 import (
 	"fmt"
 
-	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/rs/zerolog"
 )
 
-func processInput(input, username, password string, log *zerolog.Logger) (StateFetcher, error) {
+func getStateFetcherForInput(input, username, password string, log *zerolog.Logger) (StateFetcher, error) {
 
 	if utils.IsValidURL(input) {
 		return processURLInput(utils.FormatRegistryURL(input), username, password, log)

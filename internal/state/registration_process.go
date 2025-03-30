@@ -8,10 +8,10 @@ import (
 	"strings"
 	"sync"
 
-	"container-registry.com/harbor-satellite/internal/config"
-	"container-registry.com/harbor-satellite/internal/scheduler"
-	"container-registry.com/harbor-satellite/internal/utils"
-	"container-registry.com/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/scheduler"
+	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/robfig/cron/v3"
 )
 
@@ -70,7 +70,10 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		return fmt.Errorf("failed to register satellite: invalid state auth config received")
 	}
 	// Update the state config in app config
-	config.UpdateStateAuthConfig(stateConfig.Auth.SourceUsername, stateConfig.Auth.Registry, stateConfig.Auth.SourcePassword, stateConfig.States)
+	if err := config.UpdateStateAuthConfig(stateConfig.Auth.SourceUsername, stateConfig.Auth.Registry, stateConfig.Auth.SourcePassword, stateConfig.State); err != nil {
+		log.Error().Msgf("Failed to register satellite: could not update state auth config")
+		return fmt.Errorf("failed to register satellite: could not update state auth config")
+	}
 	zeroTouchRegistrationEvent := scheduler.Event{
 		Name: ZeroTouchRegistrationEventName,
 		Payload: ZeroTouchRegistrationEventPayload{
@@ -78,7 +81,10 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		},
 		Source: z.Name,
 	}
-	z.eventBroker.Publish(zeroTouchRegistrationEvent, ctx)
+	if err := z.eventBroker.Publish(zeroTouchRegistrationEvent, ctx); err != nil {
+		log.Error().Msgf("Failed to register satellite: could not emit ztr event")
+		return fmt.Errorf("failed to register satellite: could not emit ztr event")
+	}
 	stopProcessPayload := scheduler.StopProcessEventPayload{
 		ProcessName: z.GetName(),
 		Id:          z.GetID(),
@@ -88,7 +94,11 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		Payload: stopProcessPayload,
 		Source:  z.Name,
 	}
-	z.eventBroker.Publish(stopProcessEvent, ctx)
+	if err := z.eventBroker.Publish(stopProcessEvent, ctx); err != nil {
+		log.Error().Msgf("Failed to register satellite: could not emit stop process event")
+		return fmt.Errorf("failed to register satellite: could not emit stop process event")
+	}
+
 	return nil
 }
 

@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"container-registry.com/harbor-satellite/ground-control/internal/database"
-	"container-registry.com/harbor-satellite/ground-control/internal/models"
-	"container-registry.com/harbor-satellite/ground-control/internal/utils"
-	"container-registry.com/harbor-satellite/ground-control/reg/harbor"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
+	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
 	"github.com/gorilla/mux"
 )
 
@@ -170,6 +170,10 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// If the robot account is already present, we need to check if the robot account
+	// permissions need to be updated.
+	// i.e, check if the satellite is already connected to the groups in the request body.
+	// if not, then update the robot account.
 	roboPresent, err := harbor.IsRobotPresent(r.Context(), req.Name)
 	if err != nil {
 		log.Println(err)
@@ -220,6 +224,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		tx.Rollback()
 		return
 	}
+    var groupStates []string
 
 	// Check if Groups is nil before dereferencing
 	if req.Groups != nil {
@@ -262,6 +267,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 				tx.Rollback()
 				return
 			}
+			groupStates = append(groupStates, utils.AssembleGroupState(groupName))
 		}
 	}
 
@@ -354,10 +360,20 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 
 	}
 
+	// Create the satellite's state artifact
+	err = utils.CreateOrUpdateSatStateArtifact(req.Name, groupStates)
+	if err != nil {
+		log.Println(err)
+		tx.Rollback()
+		HandleAppError(w, err)
+		return
+	}
+
 	// Add token to DB
 	token, err := GenerateRandomToken(32)
 	if err != nil {
 		log.Println(err)
+		tx.Rollback()
 		HandleAppError(w, err)
 		return
 	}
@@ -472,8 +488,22 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		states = append(states, state)
 	}
 
+	satellite, err := q.GetSatellite(r.Context(), satelliteID)
+
+	// For sanity, create (update) the state artifact during the registration process as well.
+	err = utils.CreateOrUpdateSatStateArtifact(satellite.Name, states)
+	if err != nil {
+		log.Println(err)
+		tx.Rollback()
+		HandleAppError(w, err)
+		return
+	}
+
+	satelliteState := utils.AssembleSatelliteState(satellite.Name)
+
+	// we need to update the state here to reflect the satellite's state artifact
 	result := models.ZtrResult{
-		States: states,
+		State: satelliteState,
 		Auth: models.Account{
 			Name:     robot.RobotName,
 			Secret:   robot.RobotSecret,
@@ -518,11 +548,12 @@ func (s *Server) GetSatelliteByName(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+// The state artifact corresponding to the satellite must be deleted.
 func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	satellite := vars["satellite"]
 
-  sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satellite)
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satellite)
 	if err != nil {
 		log.Printf("error: failed to get satellite by name: %v", err)
 		err := &AppError{
@@ -532,7 +563,7 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
-  robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
 	if err != nil {
 		log.Printf("error: robotAcc for satellite does not exist: %v", err)
 		err := &AppError{
@@ -543,7 +574,7 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-  robotID, err := strconv.ParseInt(robotAcc.RobotID, 10, 64)
+	robotID, err := strconv.ParseInt(robotAcc.RobotID, 10, 64)
 	if err != nil {
 		log.Printf("error: Invalid robot ID: %v", err)
 		err := &AppError{
@@ -554,7 +585,7 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-  _, err = harbor.DeleteRobotAccount(r.Context(), robotID)
+	_, err = harbor.DeleteRobotAccount(r.Context(), robotID)
 	if err != nil {
 		log.Printf("error: failed to delete robot account: %v", err)
 		err := &AppError{
@@ -576,9 +607,17 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	err = utils.DeleteSatelliteStateArtifact(satellite)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
+// Once a satellite is added to the group, the satellite's stateartifact must be updated accordingly.
 func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteGroupParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -646,6 +685,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var projects []string
+	var groupStates []string
 
 	for _, group := range groupList {
 		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
@@ -659,6 +699,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		projects = append(projects, grp.Projects...)
+		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
 	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
@@ -672,9 +713,18 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update the state artifact to also track the new group state artifact
+	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
+// If the satellite is removed from the group, the state artifact must be updated accordingly as well.
 func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteGroupParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -734,7 +784,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		log.Printf("Error: Failed: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to Add satellite to group",
+			Message: "Error: Failed to refresh satellite group list",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
@@ -742,28 +792,41 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	}
 
 	var projects []string
+	var groupStates []string
 
 	for _, group := range groupList {
 		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
 		if err != nil {
 			log.Printf("Error: Failed: %v", err)
 			err := &AppError{
-				Message: "Error: Failed to Add satellite to group",
+				Message: "Error: Failed to to refresh satellite group list",
 				Code:    http.StatusInternalServerError,
 			}
 			HandleAppError(w, err)
 			return
 		}
 		projects = append(projects, grp.Projects...)
+		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
+
+	// 1. We need the list of state artifacts for the groups that satellite belongs to
+	// 2. Update the satellite state artifact accordingly
 
 	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
 	if err != nil {
 		log.Printf("Error: Failed to Add permission to robot account: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to Add permission to robot account",
+			Message: "Error: Failed to update robot account permissions",
 			Code:    http.StatusInternalServerError,
 		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Update the state artifact to also track the new group state artifact
+	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates)
+	if err != nil {
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}

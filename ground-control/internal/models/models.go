@@ -1,5 +1,9 @@
 package models
 
+type SatelliteStateArtifact struct {
+	States []string `json:"states,omitempty"`
+}
+
 type StateArtifact struct {
 	Group     string     `json:"group,omitempty"`
 	Registry  string     `json:"registry,omitempty"`
@@ -15,8 +19,8 @@ type Artifact struct {
 }
 
 type ZtrResult struct {
-	States []string `json:"states"`
-	Auth   Account  `json:"auth"`
+	State string  `json:"state"`
+	Auth  Account `json:"auth"`
 }
 
 type Account struct {
