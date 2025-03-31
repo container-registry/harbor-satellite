@@ -3,12 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"harbor-satellite/ci/internal/dagger"
 	"log"
 	"log/slog"
 	"os"
 	"strings"
-
-	"harbor-satellite/ci/internal/dagger"
 )
 
 const (
@@ -18,6 +17,7 @@ const (
 	DOCKER_PORT         = 2375
 	GORELEASER_VERSION  = "v2.4.8"
 	GROUND_CONTROL_PATH = "./ground-control"
+	MIGRATOR_PATH       = GROUND_CONTROL_PATH + "/migrator"
 	SATELLITE_PATH      = "."
 	DOCKER_VERSION      = "24.0"
 )
