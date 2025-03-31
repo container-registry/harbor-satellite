@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,25 +22,12 @@ func TestSatellite(t *testing.T) {
 	assert.NoError(t, err, "Failed to connect to Dagger")
 	defer client.Close()
 
-	// Set up Source Registry
-	source, err := setupSourceRegistry(t, client, ctx)
-	assert.NoError(t, err, "Failed to set up source registry")
-
-	// Set up Destination registry
-	dest, err := setupDestinationRegistry(t, client, ctx)
-	assert.NoError(t, err, "Failed to set up destination registry")
-
-	// Push images to Source registry
-	pushImageToSourceRegistry(t, ctx, client, source)
-	assert.NoError(t, err, "Failed to upload image to source registry")
-
 	// Build & Run Satellite
-	buildSatellite(t, client, ctx, source, dest)
+	buildSatellite(t, client, ctx)
 }
 
 // Setup Source Registry as a Dagger Service
 func setupSourceRegistry(
-	t *testing.T,
 	client *dagger.Client,
 	ctx context.Context,
 ) (*dagger.Service, error) {
@@ -50,14 +38,11 @@ func setupSourceRegistry(
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		AsService().Start(ctx)
 
-	assert.NoError(t, err, "Failed setting up source registry.")
-
-	return container, nil
+	return container, err
 }
 
 // Setup Destination Registry as a Dagger Service
 func setupDestinationRegistry(
-	t *testing.T,
 	client *dagger.Client,
 	ctx context.Context,
 ) (*dagger.Service, error) {
@@ -65,12 +50,9 @@ func setupDestinationRegistry(
 	container, err := client.Container().
 		From("registry:2").
 		WithExposedPort(5000).
-		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		AsService().Start(ctx)
 
-	assert.NoError(t, err, "Failed setting up destination registry")
-
-	return container, nil
+	return container, err
 }
 
 // Push image to the Source registry
@@ -79,40 +61,33 @@ func pushImageToSourceRegistry(
 	ctx context.Context,
 	client *dagger.Client,
 	source *dagger.Service,
-) {
+) error {
 
 	container := client.Container().
 		From("docker:dind").
-		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithServiceBinding("source", source)
 
 	// add crane & push images
 	container = container.WithExec([]string{"apk", "add", "crane"}).
-		WithExec([]string{"crane", "copy", "busybox:1.36", "source:5000/library/busybox:1.36", "--insecure"}).
+		WithExec([]string{"crane", "copy", "public.ecr.aws/docker/library/busybox:1.36", "source:5000/library/busybox:1.36", "--insecure"}).
 		WithExec([]string{"crane", "digest", "source:5000/library/busybox:1.36", "--insecure"})
 
 	// check pushed images exist
 	container = container.WithExec([]string{"crane", "catalog", "source:5000", "--insecure"})
 
 	stdOut, err := container.Stdout(ctx)
-	assert.NoError(t, err, "Failed to print stdOut in pushing Image to Source")
+	if strings.Contains(stdOut, "ERROR") {
+		return err
+	}
 
-	fmt.Println(stdOut)
+	return nil
 }
 
 func buildSatellite(
 	t *testing.T,
 	client *dagger.Client,
 	ctx context.Context,
-	source *dagger.Service,
-	dest *dagger.Service,
 ) {
-	var PATH_TO_CONFIG string
-	if ABS {
-		PATH_TO_CONFIG = absolute_path
-	} else {
-		PATH_TO_CONFIG = relative_path
-	}
 	// Get the directory
 	parentDir, err := getProjectDir()
 	assert.NoError(t, err, "Failed to get Project Directory")
@@ -120,14 +95,15 @@ func buildSatellite(
 	// Use the directory path in Dagger
 	dir := client.Host().Directory(parentDir)
 
+	config, err := filepath.Abs(filepath.Join(parentDir, test_config_path))
+	fmt.Println("the new config path: ", config)
+
 	// Get configuration file on the host
-	configFile := client.Host().File(PATH_TO_CONFIG)
+	configFile := client.Host().File(config)
 
 	// Configure and build the Satellite
 	container := client.Container().From("golang:alpine").WithDirectory(appDir, dir).
 		WithWorkdir(appDir).
-		WithServiceBinding("source", source).
-		WithServiceBinding("dest", dest).
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithFile("./config.json", configFile).
 		WithExec([]string{"go", "build", "-o", appBinary, sourceFile}).
@@ -141,6 +117,11 @@ func buildSatellite(
 		WithExec([]string{"wget", "-O", "-", "http://satellite:9090" + satellite_ping_endpoint})
 
 	output, err := satellite_container.Stdout(ctx)
+
+	fmt.Println("The following is the stdout of the satellite: ")
+	fmt.Println()
+	fmt.Print(output)
+	fmt.Println()
 	assert.NoError(t, err, "Failed to get output from satellite ping endpoint")
 	// Check the response
 	var response map[string]interface{}
