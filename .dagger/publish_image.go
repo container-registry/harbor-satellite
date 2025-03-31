@@ -3,10 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"harbor-satellite/ci/internal/dagger"
 	"strings"
 	"time"
-
-	"harbor-satellite/ci/internal/dagger"
 )
 
 // PublishImage publishes a container image to a registry with a specific tag and signs it using Cosign.
@@ -27,6 +26,8 @@ func (m *HarborSatellite) PublishImage(
 	case component == "satellite":
 		directory = source
 	case component == "ground-control":
+		directory = source.Directory(GROUND_CONTROL_PATH)
+	case component == "db-migrator":
 		directory = source.Directory(GROUND_CONTROL_PATH)
 	default:
 		panic(fmt.Sprintf("unknown component: %s", component))
@@ -62,8 +63,21 @@ func (m *HarborSatellite) PublishImage(
 
 		ctr := dag.Container(dagger.ContainerOpts{Platform: dagger.Platform(os + "/" + arch)}).
 			From("alpine:latest").
+			WithWorkdir("/").
 			WithFile(component, builder.File(component)).
-			WithEntrypoint([]string{"./" + component})
+			WithEntrypoint([]string{"/" + component})
+
+		if component == "db-migrator" {
+			// ctr = ctr.From("golang:"+GO_VERSION).
+			ctr = ctr.
+				WithExec([]string{"apk", "add", "--no-cache", "postgresql-client"}).
+				WithExec([]string{"apk", "add", "--no-cache", "curl"}).
+				WithExec([]string{"curl", "-L", "https://github.com/pressly/goose/releases/download/v3.24.1/goose_linux_x86_64", "-o", "/bin/goose"}).
+				WithExec([]string{"chmod", "777", "/bin/goose"}).
+				WithDirectory("/migrations", source.Directory("./ground-control/sql/schema")).
+				WithWorkdir("/migrations")
+			// WithExec([]string{"go", "install", "github.com/pressly/goose/v3/cmd/goose@latest"})
+		}
 		releaseImages = append(releaseImages, ctr)
 	}
 	imageAddrs := []string{}
@@ -184,7 +198,8 @@ func (m *HarborSatellite) Sign(ctx context.Context,
 	}
 	return cosing_ctr.WithEnvVariable("REGISTRY_PASSWORD", registryPasswordPlain).
 		WithExec([]string{"cosign", "env"}).
-		WithExec([]string{"cosign", "sign", "--yes", "--recursive",
+		WithExec([]string{
+			"cosign", "sign", "--yes", "--recursive",
 			"--registry-username", registryUsername,
 			"--registry-password", registryPasswordPlain,
 			imageAddr,
@@ -204,7 +219,7 @@ func (m *HarborSatellite) getBuildContainer(
 	for goos, arches := range supportedBuilds {
 		for _, goarch := range arches {
 			bin_path := fmt.Sprintf("build/%s/%s/", goos, goarch)
-			builder := dag.Container().
+			bldr := dag.Container().
 				From(DEFAULT_GO+"-alpine").
 				WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod-"+GO_VERSION)).
 				WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
@@ -213,8 +228,14 @@ func (m *HarborSatellite) getBuildContainer(
 				WithMountedDirectory(PROJ_MOUNT, source).
 				WithWorkdir(PROJ_MOUNT).
 				WithEnvVariable("GOOS", goos).
-				WithEnvVariable("GOARCH", goarch).
-				WithExec([]string{"go", "build", "-o", bin_path + component, "."}).
+				WithEnvVariable("GOARCH", goarch)
+
+			if component == "db-migrator" {
+				bldr = bldr.WithExec([]string{"go", "build", "-o", bin_path + component, "./migrator/main.go"})
+			} else {
+				bldr = bldr.WithExec([]string{"go", "build", "-o", bin_path + component, "."})
+			}
+			builder := bldr.
 				WithWorkdir(bin_path).
 				WithExec([]string{"ls"}).
 				WithEntrypoint([]string{"./" + component})
