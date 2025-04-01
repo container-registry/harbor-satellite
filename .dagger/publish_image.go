@@ -232,6 +232,8 @@ func (m *HarborSatellite) getBuildContainer(
 
 			if component == "db-migrator" {
 				bldr = bldr.WithExec([]string{"go", "build", "-o", bin_path + component, "./migrator/main.go"})
+			} else if component == "satellite" {
+				bldr = bldr.WithExec([]string{"go", "build", "-o", bin_path + component, "./cmd/main.go"})
 			} else {
 				bldr = bldr.WithExec([]string{"go", "build", "-o", bin_path + component, "."})
 			}
