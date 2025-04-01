@@ -6,10 +6,10 @@
     ]
   },
   "environment_variables": {
-    "ground_control_url": "http://127.0.0.1:8080",
+    "ground_control_url": "http://gcc.kube.bupd.xyz",
     "log_level": "info",
     "use_unsecure": true,
-    "zot_config_path": "./zot-config.json",
+    "zot_config_path": "./registry_config.json",
     "token": "",
     "jobs": [
       {
