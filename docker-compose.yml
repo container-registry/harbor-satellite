@@ -1,0 +1,15 @@
+services:
+  satellite:
+    image: 8gears.container-registry.com/harbor-satellite/satellite:latest
+    container_name: satellite
+    volumes:
+      - ~/.harbor-satellite/config.json:/config.json
+      - ~/.harbor-satellite/registry_config.json:/registry_config.json
+    environment:
+      - ENV_VAR1=value1
+      - ENV_VAR2=value2
+      - ENV_VAR3=value3
+    ports:
+      - "8080:8080"  # Expose ports as needed
+      - "8585:8585"  # Expose ports as needed
+    restart: always
