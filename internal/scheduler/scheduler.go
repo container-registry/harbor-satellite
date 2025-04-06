@@ -104,6 +104,9 @@ func (s *BasicScheduler) Schedule(process Process) error {
 	s.logger.Info().Msgf("Process %s scheduled with cron expression %s", process.GetName(), process.GetCronExpr())
 	process.SetID(cronEntryId)
 
+    // TODO: a more comprehensive fix to running the process at startup would require a
+    // large refactor of the process scheduling logic, to ensure that ZTR is performed before
+    // attempting to execute any of the other processes.
 	go func() {
 		if !process.IsRunning() {
 			if err := s.executeProcess(process); err != nil {
