@@ -95,11 +95,6 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 	log := logger.FromContext(ctx)
 
-	if !f.start() {
-		log.Warn().Msgf("Process %s is already running", f.name)
-		return nil
-	}
-
 	// To get the satellite state, we need to perform ZTR. However, the outcome of this process is non-deterministic.
 	// So we may be initializing the FetchAndReplicateProcess with an empty satelliteState
 	// As a sanity check, we need to update the satelliteState.

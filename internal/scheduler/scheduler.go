@@ -91,6 +91,9 @@ func (s *BasicScheduler) Schedule(process Process) error {
 	process.AddEventBroker(s.EventBroker, s.ctx)
 	// Add the process to the scheduler
 	cronEntryId, err := s.cron.AddFunc(process.GetCronExpr(), func() {
+		if process.IsRunning() {
+			return
+		}
 		err := s.executeProcess(process)
 		if err != nil {
 			s.logger.Error().Err(err).Msgf("Error executing process %s", process.GetName())
