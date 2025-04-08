@@ -9,14 +9,14 @@ VALUES ($1, $2, NOW(), NOW())
 RETURNING *;
 
 -- name: ListConfigs :many
-SELECT * FROM configs;
+SELECT id, config_name, registry_url, created_at, updated_at FROM configs;
 
 -- name: GetConfigByID :one
-SELECT * FROM configs
+SELECT id, config_name, registry_url, created_at, updated_at FROM configs
 WHERE id = $1;
 
 -- name: GetConfigByName :one
-SELECT * FROM configs
+SELECT id, config_name, registry_url, created_at, updated_at FROM configs
 WHERE config_name = $1;
 
 -- name: DeleteConfig :exec
