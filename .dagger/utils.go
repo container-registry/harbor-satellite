@@ -37,7 +37,7 @@ func (m *HarborSatellite) build(source *dagger.Directory, component string) *dag
 				WithEnvVariable("GOOS", goos).
 				WithEnvVariable("GOARCH", goarch)
 
-			build = build.WithExec([]string{"go", "build", "-o", outputBinary})
+			build = build.WithExec([]string{"go", "build", "-o", outputBinary, "./cmd/main.go"})
 			outputs = outputs.WithDirectory(component, build.Directory(component))
 		}
 	}
