@@ -5,8 +5,18 @@
 package database
 
 import (
+	"encoding/json"
 	"time"
 )
+
+type Config struct {
+	ID          int32
+	ConfigName  string
+	RegistryUrl string
+	Config      json.RawMessage
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
 
 type Group struct {
 	ID          int32
@@ -32,6 +42,11 @@ type Satellite struct {
 	Name      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+type SatelliteConfig struct {
+	SatelliteID int32
+	ConfigID    int32
 }
 
 type SatelliteGroup struct {
