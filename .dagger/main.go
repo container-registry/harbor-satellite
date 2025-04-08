@@ -3,23 +3,24 @@ package main
 import (
 	"context"
 	"fmt"
+	"harbor-satellite/ci/internal/dagger"
 	"log"
 	"log/slog"
 	"os"
 	"strings"
-
-	"harbor-satellite/ci/internal/dagger"
 )
 
 const (
-	DEFAULT_GO          = "golang:1.22"
-	PROJ_MOUNT          = "/app"
-	GO_VERSION          = "1.22"
-	DOCKER_PORT         = 2375
-	GORELEASER_VERSION  = "v2.4.8"
-	GROUND_CONTROL_PATH = "./ground-control"
-	SATELLITE_PATH      = "."
-	DOCKER_VERSION      = "24.0"
+	DEFAULT_GO           = "golang:1.24"
+	PROJ_MOUNT           = "/app"
+	GO_VERSION           = "1.24"
+	DOCKER_PORT          = 2375
+	GORELEASER_VERSION   = "v2.4.8"
+	GOLANGCILINT_VERSION = "v2.0.2"
+	GROUND_CONTROL_PATH  = "./ground-control"
+	MIGRATOR_PATH        = GROUND_CONTROL_PATH + "/migrator"
+	SATELLITE_PATH       = "."
+	DOCKER_VERSION       = "24.0"
 )
 
 func New(
@@ -115,9 +116,10 @@ func (m *HarborSatellite) BuildDev(
 			binaryFile = golang.File(PROJ_MOUNT + "/ground-control/ground-control")
 		} else {
 			golang = golang.
+				WithWorkdir(PROJ_MOUNT + "/cmd").
 				WithExec([]string{"ls", "-la"}).
 				WithExec([]string{"go", "mod", "download"}).
-				WithExec([]string{"go", "build", "."})
+				WithExec([]string{"go", "build", "-o", PROJ_MOUNT + "/harbor-satellite", "main.go"})
 
 			binaryFile = golang.File(PROJ_MOUNT + "/harbor-satellite")
 		}
@@ -215,6 +217,32 @@ func (m *HarborSatellite) Release(ctx context.Context,
 	}
 
 	return release_output, nil
+}
+
+// Executes Linter and writes results to a file golangci-lint.report
+func (m *HarborSatellite) LintReport(ctx context.Context) *dagger.File {
+	report := "golangci-lint.report"
+	return m.lint(ctx).WithExec([]string{
+		"golangci-lint", "run", "-v",
+		"--output.tab.path=" + report,
+		"--issues-exit-code", "0",
+	}).File(report)
+}
+
+// Lint Run the linter golangci-lint
+func (m *HarborSatellite) Lint(ctx context.Context) (string, error) {
+	return m.lint(ctx).WithExec([]string{"golangci-lint", "run"}).Stderr(ctx)
+}
+
+func (m *HarborSatellite) lint(_ context.Context) *dagger.Container {
+	fmt.Println("👀 Running linter and printing results to file golangci-lint.txt.")
+	linter := dag.Container().
+		From("golangci/golangci-lint:"+GOLANGCILINT_VERSION+"-alpine").
+		WithMountedCache("/lint-cache", dag.CacheVolume("/lint-cache")).
+		WithEnvVariable("GOLANGCI_LINT_CACHE", "/lint-cache").
+		WithMountedDirectory("/src", m.Source).
+		WithWorkdir("/src")
+	return linter
 }
 
 // Parse the platform string into os and arch

@@ -1,30 +1,16 @@
 {
   "state_config": {
-    "auth": {},
-    "states": [
-      ""
-    ]
+    "auth": {}
   },
   "environment_variables": {
-    "ground_control_url": "http://127.0.0.1:8080",
+    "ground_control_url": "http://gcc.kube.bupd.xyz",
     "log_level": "info",
     "use_unsecure": true,
-    "zot_config_path": "./zot-config.json",
+    "zot_config_path": "./registry_config.json",
     "token": "",
-    "jobs": [
-      {
-        "name": "replicate_state",
-        "schedule": "@every 00h00m10s"
-      },
-      {
-        "name": "update_config",
-        "schedule": "@every 00h00m30s"
-      },
-      {
-        "name": "register_satellite",
-        "schedule": "@every 00h00m05s"
-      }
-    ],
+    "state_replication_interval": "@every 00h00m10s",
+    "update_config_interval": "@every 00h00m10s",
+    "register_satellite_interval": "@every 00h00m10s",
     "local_registry": {
       "url": "http://127.0.0.1:8585",
       "username": "",
