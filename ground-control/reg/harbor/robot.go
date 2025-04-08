@@ -3,6 +3,8 @@ package harbor
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/robot"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
@@ -28,7 +30,7 @@ func GetRobotDetails(r *robot.CreateRobotCreated) (int64, string, string) {
 func IsRobotPresent(ctx context.Context, name string) (bool, error) {
 	client := GetClient()
 
-  name = fmt.Sprintf("name=%s", name)
+	name = fmt.Sprintf("name=%s", name)
 	response, err := client.Robot.ListRobot(
 		ctx,
 		&robot.ListRobotParams{
@@ -39,9 +41,9 @@ func IsRobotPresent(ctx context.Context, name string) (bool, error) {
 		return false, fmt.Errorf("error: listing robot account: %v", err)
 	}
 
-  if len(response.Payload) > 0 {
-    return true, nil
-  }
+	if len(response.Payload) > 0 {
+		return true, nil
+	}
 
 	return false, nil
 }
