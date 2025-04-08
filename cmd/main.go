@@ -49,12 +49,16 @@ func run() error {
 	}
 	defer scheduler.Stop()
 
+	cfg := &config.Config{
+		TransferLimits: config.GetTransferLimits(),
+	}
+
 	localRegistryConfig := state.NewRegistryConfig(config.GetRemoteRegistryURL(), config.GetRemoteRegistryUsername(), config.GetRemoteRegistryPassword())
 	sourceRegistryConfig := state.NewRegistryConfig(config.GetSourceRegistryURL(), config.GetSourceRegistryUsername(), config.GetSourceRegistryPassword())
-	satelliteService := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey(), localRegistryConfig, sourceRegistryConfig, config.UseUnsecure(), config.GetState())
+	satelliteService, _ := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey(), localRegistryConfig, sourceRegistryConfig, config.UseUnsecure(), config.GetState(), cfg)
 
 	wg.Go(func() error {
-		return satelliteService.Run(ctx)
+		return satelliteService.Start(ctx)
 	})
 
 	return wg.Wait()

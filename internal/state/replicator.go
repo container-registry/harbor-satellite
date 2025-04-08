@@ -5,10 +5,9 @@ import (
 	"fmt"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/transfer"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
-	"github.com/google/go-containerregistry/pkg/v1/mutate"
-	"github.com/google/go-containerregistry/pkg/v1/types"
 )
 
 type Replicator interface {
@@ -26,9 +25,10 @@ type BasicReplicator struct {
 	remoteRegistryURL string
 	remoteUsername    string
 	remotePassword    string
+	transferMeter     *transfer.TransferMeter
 }
 
-func NewBasicReplicator(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool) Replicator {
+func NewBasicReplicator(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool, transferMeter *transfer.TransferMeter) Replicator {
 	return &BasicReplicator{
 		sourceUsername:    sourceUsername,
 		sourcePassword:    sourcePassword,
@@ -37,6 +37,7 @@ func NewBasicReplicator(sourceUsername, sourcePassword, sourceRegistry, remoteUR
 		sourceRegistry:    sourceRegistry,
 		remoteUsername:    remoteUsername,
 		remotePassword:    remotePassword,
+		transferMeter:     transferMeter,
 	}
 }
 
@@ -63,69 +64,76 @@ func (e Entity) GetTag() string {
 // Replicate replicates images from the source registry to the Zot registry.
 func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []Entity) error {
 	log := logger.FromContext(ctx)
-	pullAuthConfig := authn.FromConfig(authn.AuthConfig{
-		Username: r.sourceUsername,
-		Password: r.sourcePassword,
-	})
-	pushAuthConfig := authn.FromConfig(authn.AuthConfig{
-		Username: r.remoteUsername,
-		Password: r.remotePassword,
-	})
+	for _, entity := range replicationEntities {
+		sourceImage := fmt.Sprintf("%s/%s:%s", r.sourceRegistry, entity.Repository, entity.Tag)
+		destinationImage := fmt.Sprintf("%s/%s:%s", r.remoteRegistryURL, entity.Repository, entity.Tag)
 
-	pullOptions := []crane.Option{crane.WithAuth(pullAuthConfig)}
-	pushOptions := []crane.Option{crane.WithAuth(pushAuthConfig)}
-
-	if r.useUnsecure {
-		pullOptions = append(pullOptions, crane.Insecure)
-		pushOptions = append(pushOptions, crane.Insecure)
-	}
-
-	for _, replicationEntity := range replicationEntities {
-
-		log.Info().Msgf("Pulling image %s from repository %s at registry %s with tag %s", replicationEntity.GetName(), replicationEntity.GetRepository(), r.sourceRegistry, replicationEntity.GetTag())
-		// Pull the image from the source registry
-		srcImage, err := crane.Pull(fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, replicationEntity.GetRepository(), replicationEntity.GetName(), replicationEntity.GetTag()), pullOptions...)
+		// Get image size before transfer
+		img, err := crane.Pull(sourceImage, crane.WithAuth(authn.FromConfig(authn.AuthConfig{
+			Username: r.sourceUsername,
+			Password: r.sourcePassword,
+		})))
 		if err != nil {
-			log.Error().Msgf("Failed to pull image: %v", err)
-			return err
+			return fmt.Errorf("failed to pull image %s: %v", sourceImage, err)
 		}
 
-		// Convert Docker manifest to OCI manifest
-		ociImage := mutate.MediaType(srcImage, types.OCIManifestSchema1)
-
-		// Push the converted OCI image to the Zot registry
-		err = crane.Push(ociImage, fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, replicationEntity.GetRepository(), replicationEntity.GetName(), replicationEntity.GetTag()), pushOptions...)
+		// Calculate total size of all layers
+		layers, err := img.Layers()
 		if err != nil {
-			log.Error().Msgf("Failed to push image: %v", err)
-			return err
+			return fmt.Errorf("failed to get layers for image %s: %v", sourceImage, err)
 		}
-		log.Info().Msgf("Image %s pushed successfully", replicationEntity.GetName())
 
+		var totalSize int64
+		for _, layer := range layers {
+			size, err := layer.Size()
+			if err != nil {
+				return fmt.Errorf("failed to get layer size: %v", err)
+			}
+			totalSize += size
+		}
+
+		// Check transfer limits before proceeding
+		if r.transferMeter != nil {
+			if err := r.transferMeter.RecordTransfer(totalSize); err != nil {
+				return fmt.Errorf("transfer limit exceeded: %v", err)
+			}
+		}
+
+		// Push the image to destination
+		err = crane.Push(img, destinationImage, crane.WithAuth(authn.FromConfig(authn.AuthConfig{
+			Username: r.remoteUsername,
+			Password: r.remotePassword,
+		})))
+		if err != nil {
+			return fmt.Errorf("failed to push image %s: %v", destinationImage, err)
+		}
+
+		log.Info().
+			Str("source", sourceImage).
+			Str("destination", destinationImage).
+			Int64("size", totalSize).
+			Msg("Successfully replicated image")
 	}
+
 	return nil
 }
 
-func (r *BasicReplicator) DeleteReplicationEntity(ctx context.Context, replicationEntity []Entity) error {
+// DeleteReplicationEntity deletes the image from the local registry.
+func (r *BasicReplicator) DeleteReplicationEntity(ctx context.Context, replicationEntities []Entity) error {
 	log := logger.FromContext(ctx)
-	auth := authn.FromConfig(authn.AuthConfig{
-		Username: r.remoteUsername,
-		Password: r.remotePassword,
-	})
-
-	options := []crane.Option{crane.WithAuth(auth)}
-	if r.useUnsecure {
-		options = append(options, crane.Insecure)
-	}
-
-	for _, entity := range replicationEntity {
-		log.Info().Msgf("Deleting image %s from repository %s at registry %s with tag %s", entity.GetName(), entity.GetRepository(), r.remoteRegistryURL, entity.GetTag())
-
-		err := crane.Delete(fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag()), options...)
+	for _, entity := range replicationEntities {
+		destinationImage := fmt.Sprintf("%s/%s:%s", r.remoteRegistryURL, entity.Repository, entity.Tag)
+		err := crane.Delete(destinationImage, crane.WithAuth(authn.FromConfig(authn.AuthConfig{
+			Username: r.remoteUsername,
+			Password: r.remotePassword,
+		})))
 		if err != nil {
-			log.Error().Msgf("Failed to delete image: %v", err)
-			return err
+			return fmt.Errorf("failed to delete image %s: %v", destinationImage, err)
 		}
-		log.Info().Msgf("Image %s deleted successfully", entity.GetName())
+
+		log.Info().
+			Str("image", destinationImage).
+			Msg("Successfully deleted image")
 	}
 
 	return nil

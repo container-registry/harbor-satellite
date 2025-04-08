@@ -146,7 +146,10 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 }
 
 func AssembleSatelliteState(satelliteName string) string {
-	return fmt.Sprintf("%s/satellite/satellite-state/%s/state:latest", os.Getenv("HARBOR_URL"), satelliteName)
+	registry = strings.TrimPrefix(registry, "https://")
+	registry = strings.TrimPrefix(registry, "http://")
+	registry = strings.TrimSuffix(registry, "/")
+	return fmt.Sprintf("%s/satellite/satellite-state/%s:latest", registry, satelliteName)
 }
 
 func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error {
@@ -173,18 +176,21 @@ func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error
 		return fmt.Errorf("failed to create image: %v", err)
 	}
 
+	registry = strings.TrimPrefix(registry, "https://")
+	registry = strings.TrimPrefix(registry, "http://")
+	registry = strings.TrimSuffix(registry, "/")
+
 	repo := fmt.Sprintf("satellite/satellite-state/%s", satelliteName)
 	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
 	options := []crane.Option{crane.WithAuth(auth)}
 
-	destinationRepo := getStateArtifactDestination(registry, repo)
-	destinationRepo = stripProtocol(destinationRepo)
+	destinationRepo := fmt.Sprintf("%s/%s:latest", registry, repo)
 
 	if err := pushImage(img, destinationRepo, options); err != nil {
 		return err
 	}
 
-	return tagImage(destinationRepo, options)
+	return nil
 }
 
 func DeleteSatelliteStateArtifact(satelliteName string) error {
@@ -219,7 +225,7 @@ func DeleteSatelliteStateArtifact(satelliteName string) error {
 }
 
 func constructHarborDeleteURL(satelliteName string) string {
-	repositoryName := fmt.Sprintf("satellite-state/%s/state", satelliteName)
+	repositoryName := fmt.Sprintf("satellite-state/%s", satelliteName)
 	doubleEncodedRepoName := url.QueryEscape(url.QueryEscape(repositoryName))
 	return fmt.Sprintf("%s/api/v2.0/projects/satellite/repositories/%s", registry, doubleEncodedRepoName)
 }
@@ -255,8 +261,13 @@ func tagImage(destination string, options []crane.Option) error {
 	}
 	return nil
 }
+
 func getStateArtifactDestination(registry, repository string) string {
-	return fmt.Sprintf("%s/%s/%s", registry, repository, "state")
+	// Ensure registry has no protocol prefix
+	registry = strings.TrimPrefix(registry, "https://")
+	registry = strings.TrimPrefix(registry, "http://")
+	registry = strings.TrimSuffix(registry, "/")
+	return fmt.Sprintf("%s/%s", registry, repository)
 }
 
 func envSanityCheck() error {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/robfig/cron/v3"
 )
@@ -46,15 +47,43 @@ type StateConfig struct {
 	State string `json:"state,omitempty"`
 }
 
+type TransferLimits struct {
+	HourlyLimit  int64
+	DailyLimit   int64
+	WeeklyLimit  int64
+	MonthlyLimit int64
+}
+
 type Config struct {
 	StateConfig     StateConfig     `json:"state_config,omitempty"`
 	LocalJsonConfig LocalJsonConfig `json:"environment_variables,omitempty"`
 	ZotUrl          string          `json:"zot_url,omitempty"`
+	TransferLimits  TransferLimits
 }
 
 type Job struct {
 	Name     string `json:"name"`
 	Schedule string `json:"schedule"`
+}
+
+// GetTransferLimits returns the configured transfer limits
+func GetTransferLimits() TransferLimits {
+	return TransferLimits{
+		HourlyLimit:  getEnvInt64("TRANSFER_HOURLY_LIMIT", 1024*1024*1024),      // 1GB default
+		DailyLimit:   getEnvInt64("TRANSFER_DAILY_LIMIT", 10*1024*1024*1024),    // 10GB default
+		WeeklyLimit:  getEnvInt64("TRANSFER_WEEKLY_LIMIT", 50*1024*1024*1024),   // 50GB default
+		MonthlyLimit: getEnvInt64("TRANSFER_MONTHLY_LIMIT", 200*1024*1024*1024), // 200GB default
+	}
+}
+
+// getEnvInt64 gets an environment variable as an int64
+func getEnvInt64(key string, defaultValue int64) int64 {
+	if value, exists := os.LookupEnv(key); exists {
+		if intValue, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
 }
 
 // ParseConfigFromJson parses a JSON string into a Config struct. Returns an error if the JSON is invalid
