@@ -1,8 +1,9 @@
 name: Lint
 on:
-  pull_request_review:
-    branches:
-      - main
+  pull_request:
+    paths-ignore:
+      - "*.md"
+      - "assets/**"
 jobs:
   lint:
     runs-on: ubuntu-latest
