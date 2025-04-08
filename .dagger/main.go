@@ -11,16 +11,16 @@ import (
 )
 
 const (
-	DEFAULT_GO          = "golang:1.24"
-	PROJ_MOUNT          = "/app"
-	GO_VERSION          = "1.24"
-	DOCKER_PORT         = 2375
-	GORELEASER_VERSION  = "v2.4.8"
+	DEFAULT_GO           = "golang:1.24"
+	PROJ_MOUNT           = "/app"
+	GO_VERSION           = "1.24"
+	DOCKER_PORT          = 2375
+	GORELEASER_VERSION   = "v2.4.8"
 	GOLANGCILINT_VERSION = "v2.0.2"
-	GROUND_CONTROL_PATH = "./ground-control"
-	MIGRATOR_PATH       = GROUND_CONTROL_PATH + "/migrator"
-	SATELLITE_PATH      = "."
-	DOCKER_VERSION      = "24.0"
+	GROUND_CONTROL_PATH  = "./ground-control"
+	MIGRATOR_PATH        = GROUND_CONTROL_PATH + "/migrator"
+	SATELLITE_PATH       = "."
+	DOCKER_VERSION       = "24.0"
 )
 
 func New(
@@ -224,7 +224,7 @@ func (m *HarborSatellite) LintReport(ctx context.Context) *dagger.File {
 	report := "golangci-lint.report"
 	return m.lint(ctx).WithExec([]string{
 		"golangci-lint", "run", "-v",
-		"--out-format", "github-actions:" + report,
+		"--output.text.path=" + report,
 		"--issues-exit-code", "0",
 	}).File(report)
 }
