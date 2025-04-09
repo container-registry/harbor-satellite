@@ -22,7 +22,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/configs/sync", s.configsSyncHandler).Methods("POST")
 	r.HandleFunc("/configs/list", s.listConfigsHandler).Methods("GET")
 	r.HandleFunc("/configs/{config}", s.getConfigHandler).Methods("GET")
-	//  r.HandleFunc("/configs/satellite", s.addSatelliteToConfig).Methods("POST")
+	r.HandleFunc("/configs/satellite", s.addSatelliteToConfig).Methods("POST")
 	//  r.HandleFunc("/configs/satellite", s.removeSatelliteFromConfig).Methods("DELETE")
 
 	// to-do: listing functionality to list satellites attached to group
@@ -30,7 +30,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// r.HandleFunc("/groups/{group}/list", s.groupSatelliteHandler).Methods("GET")
 
 	// Ground Control interface
-    // TODO: Register satellite handler needs to be updated accordingly
+	// TODO: Register satellite handler needs to be updated accordingly
 	r.HandleFunc("/satellites/register", s.registerSatelliteHandler).Methods("POST")
 	r.HandleFunc("/satellites/ztr/{token}", s.ztrHandler).Methods("GET")
 	r.HandleFunc("/satellites/list", s.listSatelliteHandler).Methods("GET")
