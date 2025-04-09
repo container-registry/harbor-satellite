@@ -266,7 +266,7 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	configSatellites, err := s.dbQueries.ConfigSatelliteList(r.Context(), configObject.ID)
+	configSatellites, err := q.ConfigSatelliteList(r.Context(), configObject.ID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		log.Printf("Error: Failed to get Satellites that use this Config: %v", err)
 		err := &AppError{
@@ -289,7 +289,7 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.dbQueries.DeleteConfig(r.Context(), configObject.ID); err != nil {
+	if err := q.DeleteConfig(r.Context(), configObject.ID); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
 		tx.Rollback()
