@@ -147,14 +147,6 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 
 // Create State Artifact for group
 func CreateConfigStateArtifact(configObject *m.ConfigObject) error {
-	// Set the registry URL from environment variable
-	configObject.Registry = os.Getenv("HARBOR_URL")
-
-	// TODO: this check should not happen this late into execution.
-	if configObject.Registry == "" {
-		return fmt.Errorf("HARBOR_URL environment variable is not set")
-	}
-
 	// Marshal the state artifact to JSON format
 	configData, err := json.Marshal(configObject.Config)
 	if err != nil {
@@ -167,8 +159,6 @@ func CreateConfigStateArtifact(configObject *m.ConfigObject) error {
 		return fmt.Errorf("failed to create image: %v", err)
 	}
 
-	// Configure repository and credentials
-	repo := fmt.Sprintf("satellite/config-state/%s", configObject.ConfigName)
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
 	if username == "" || password == "" {
@@ -182,7 +172,7 @@ func CreateConfigStateArtifact(configObject *m.ConfigObject) error {
 	options := []crane.Option{crane.WithAuth(auth)}
 
 	// Construct the destination repository and strip protocol, if present
-	destinationRepo := getStateArtifactDestination(configObject.Registry, repo)
+	destinationRepo := AssembleConfigState(configObject.ConfigName)
 	if strings.Contains(destinationRepo, "://") {
 		destinationRepo = strings.SplitN(destinationRepo, "://", 2)[1]
 	}
@@ -207,6 +197,10 @@ func AssembleSatelliteState(satelliteName string) string {
 	return fmt.Sprintf("%s/satellite/satellite-state/%s/state:latest", os.Getenv("HARBOR_URL"), satelliteName)
 }
 
+func AssembleConfigState(configName string) string {
+	return fmt.Sprintf("%s/satellite/config-state/%s/state:latest", os.Getenv("HARBOR_URL"), configName)
+}
+
 func CreateOrUpdateSatStateArtifact(satelliteName string, states []string, config string) error {
 	if satelliteName == "" {
 		return fmt.Errorf("the satellite name must be atleast one character long")
@@ -220,7 +214,7 @@ func CreateOrUpdateSatStateArtifact(satelliteName string, states []string, confi
 		return err
 	}
 
-	satelliteState := &m.SatelliteStateArtifact{States: states}
+	satelliteState := &m.SatelliteStateArtifact{States: states, Config: config}
 	data, err := json.Marshal(satelliteState)
 	if err != nil {
 		return fmt.Errorf("failed to marshal satellite state artifact to JSON: %v", err)
@@ -231,11 +225,10 @@ func CreateOrUpdateSatStateArtifact(satelliteName string, states []string, confi
 		return fmt.Errorf("failed to create image: %v", err)
 	}
 
-	repo := fmt.Sprintf("satellite/satellite-state/%s", satelliteName)
 	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
 	options := []crane.Option{crane.WithAuth(auth)}
 
-	destinationRepo := getStateArtifactDestination(registry, repo)
+	destinationRepo := AssembleSatelliteState(satelliteName)
 	destinationRepo = stripProtocol(destinationRepo)
 
 	if err := pushImage(img, destinationRepo, options); err != nil {
