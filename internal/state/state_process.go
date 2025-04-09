@@ -10,6 +10,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/notifier"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
+	"github.com/container-registry/harbor-satellite/internal/transfer"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
@@ -70,6 +71,10 @@ func NewRegistryConfig(url, username, password string) RegistryConfig {
 func NewFetchAndReplicateStateProcess(cronExpr string, notifier notifier.Notifier, sourceRegistryCredentials RegistryConfig, remoteRegistryCredentials RegistryConfig, useUnsecure bool, state string) *FetchAndReplicateStateProcess {
 	sourceURL := utils.FormatRegistryURL(sourceRegistryCredentials.URL)
 	remoteURL := utils.FormatRegistryURL(remoteRegistryCredentials.URL)
+
+	// Create a new transfer meter with default limits
+		transferMeter := createDefaultTransferMeter()
+
 	return &FetchAndReplicateStateProcess{
 		name:           config.ReplicateStateJobName,
 		cronExpr:       cronExpr,
@@ -86,7 +91,16 @@ func NewFetchAndReplicateStateProcess(cronExpr string, notifier notifier.Notifie
 			RemoteRegistryUserName: remoteRegistryCredentials.Username,
 			RemoteRegistryPassword: remoteRegistryCredentials.Password,
 		},
-		Replicator: NewBasicReplicator(sourceRegistryCredentials.Username, sourceRegistryCredentials.Password, sourceURL, remoteURL, remoteRegistryCredentials.Username, remoteRegistryCredentials.Password, useUnsecure),
+		Replicator: NewBasicReplicator(
+			sourceRegistryCredentials.Username,
+			sourceRegistryCredentials.Password,
+			sourceURL,
+			remoteURL,
+			remoteRegistryCredentials.Username,
+			remoteRegistryCredentials.Password,
+			useUnsecure,
+			transferMeter,
+		),
 	}
 }
 
@@ -394,12 +408,32 @@ func (f *FetchAndReplicateStateProcess) HandelPayloadFromZTR(event scheduler.Eve
 	}
 	f.UpdateFetchProcessConfigFromZtr(payload.StateConfig.Auth.SourceUsername, payload.StateConfig.Auth.SourcePassword, payload.StateConfig.Auth.Registry)
 }
+func createDefaultTransferMeter() *transfer.TransferMeter {
+	return transfer.NewTransferMeter(
+		1024*1024*1024,     // 1GB hourly limit
+		10*1024*1024*1024,  // 10GB daily limit
+		50*1024*1024*1024,  // 50GB weekly limit
+		200*1024*1024*1024, // 200GB monthly limit
+	)
+}
 
 func (f *FetchAndReplicateStateProcess) UpdateFetchProcessConfigFromZtr(username, password, sourceRegistryURL string) {
 	f.authConfig.SourceRegistryUserName = username
 	f.authConfig.SourceRegistryPassword = password
 	f.authConfig.SourceRegistry = utils.FormatRegistryURL(sourceRegistryURL)
-	f.Replicator = NewBasicReplicator(f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.authConfig.SourceRegistry, f.authConfig.RemoteRegistryURL, f.authConfig.RemoteRegistryUserName, f.authConfig.RemoteRegistryPassword, f.authConfig.UseUnsecure)
+
+	// Create a new transfer meter with default limits
+	transferMeter := createDefaultTransferMeter()
+	f.Replicator = NewBasicReplicator(
+		f.authConfig.SourceRegistryUserName,
+		f.authConfig.SourceRegistryPassword,
+		f.authConfig.SourceRegistry,
+		f.authConfig.RemoteRegistryURL,
+		f.authConfig.RemoteRegistryUserName,
+		f.authConfig.RemoteRegistryPassword,
+		f.authConfig.UseUnsecure,
+		transferMeter,
+	)
 }
 
 // contains takes in a slice and checks if the item is in the slice if preset it returns true else false
