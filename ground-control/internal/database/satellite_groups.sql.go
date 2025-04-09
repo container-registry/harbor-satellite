@@ -75,11 +75,16 @@ func (q *Queries) GroupSatelliteList(ctx context.Context, groupID int32) ([]Sate
 
 const removeSatelliteFromGroup = `-- name: RemoveSatelliteFromGroup :exec
 DELETE FROM satellite_groups
-WHERE satellite_id = $1
+WHERE satellite_id = $1 AND group_id = $2
 `
 
-func (q *Queries) RemoveSatelliteFromGroup(ctx context.Context, satelliteID int32) error {
-	_, err := q.db.ExecContext(ctx, removeSatelliteFromGroup, satelliteID)
+type RemoveSatelliteFromGroupParams struct {
+	SatelliteID int32
+	GroupID     int32
+}
+
+func (q *Queries) RemoveSatelliteFromGroup(ctx context.Context, arg RemoveSatelliteFromGroupParams) error {
+	_, err := q.db.ExecContext(ctx, removeSatelliteFromGroup, arg.SatelliteID, arg.GroupID)
 	return err
 }
 
