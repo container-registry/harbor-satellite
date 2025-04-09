@@ -39,6 +39,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
+
 	q := s.dbQueries.WithTx(tx)
 
 	configJson, err := json.Marshal(req.Config)
@@ -109,6 +110,7 @@ func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 		tx.Rollback()
 		return
 	}
+
 	q := s.dbQueries.WithTx(tx)
 
 	result, err := q.ListConfigs(r.Context())
@@ -118,6 +120,7 @@ func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tx.Commit()
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
@@ -129,7 +132,9 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 		tx.Rollback()
 		return
 	}
+
 	q := s.dbQueries.WithTx(tx)
+
 	vars := mux.Vars(r)
 	configName := vars["config"]
 
@@ -140,6 +145,7 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tx.Commit()
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
@@ -159,6 +165,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 		tx.Rollback()
 		return
 	}
+
 	q := s.dbQueries.WithTx(tx)
 
 	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
@@ -237,6 +244,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tx.Commit()
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
@@ -249,9 +257,9 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
+
 	q := s.dbQueries.WithTx(tx)
 
 	configObject, err := q.GetConfigByName(r.Context(), configName)
@@ -288,6 +296,7 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		tx.Rollback()
 		return
 	}
+	log.Println(configObject.ID)
 
 	if err := q.DeleteConfig(r.Context(), configObject.ID); err != nil {
 		log.Println(err)
@@ -306,6 +315,7 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tx.Commit()
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
