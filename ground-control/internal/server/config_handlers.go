@@ -1,19 +1,59 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
+	"github.com/gorilla/mux"
+	"github.com/robfig/cron/v3"
 )
 
+type SatelliteConfigParams struct {
+	Satellite  string `json:"satellite,omitempty"`
+	ConfigName string `json:"config_name,omitempty"`
+}
+
+// validateCronExpression checks the validity of a cron expression.
+func isValidCronExpression(cronExpression string) bool {
+	if _, err := cron.ParseStandard(cronExpression); err != nil {
+		return false
+	}
+	return true
+}
+
+func isValidConfig(config models.SatelliteConfig) error {
+	if _, err := url.Parse(config.GroundControlURL); err != nil {
+		return fmt.Errorf("The provided ground_control_url %s is invalid", config.GroundControlURL)
+	}
+
+	if _, err := url.Parse(config.LocalRegistryConfig.URL); err != nil {
+		return fmt.Errorf("The provided local_registry.url %s is invalid", config.LocalRegistryConfig.URL)
+	}
+
+	if !isValidCronExpression(config.UpdateConfigInterval) {
+		return fmt.Errorf("The provided update_config_interval %s is not a valid cron expression")
+	}
+
+	if !isValidCronExpression(config.StateReplicationInterval) {
+		return fmt.Errorf("The provided state_replication_interval %s is not a valid cron expression")
+	}
+
+	if !isValidCronExpression(config.RegisterSatelliteInterval) {
+		return fmt.Errorf("The provided register_satellite_interval %s is not a valid cron expression")
+	}
+	return nil
+}
+
 func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
-	var req models.StateArtifact
+	var req models.ConfigObject
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -35,46 +75,24 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Validate the config statically
-	if err := utils.ValidateConfig(req.Artifacts); err != nil {
-		log.Println("Invalid config:", err)
+	configJson, err := json.Marshal(req.Config)
+	if err != nil {
+		log.Println(err)
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
 	params := database.CreateConfigParams{
-		ConfigName:  req.Group,
+		ConfigName:  req.ConfigName,
 		RegistryUrl: os.Getenv("HARBOR_URL"),
-		Projects:    utils.GetProjectNames(&req.Artifacts),
+		Config:      configJson,
 	}
+
 	result, err := q.CreateConfig(r.Context(), params)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
 		return
-	}
-
-	satellites, err := q.ConfigSatelliteList(r.Context(), result.ID)
-	if err != nil {
-		log.Println(err)
-		HandleAppError(w, err)
-		return
-	}
-
-	for _, satellite := range satellites {
-		robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), satellite.SatelliteID)
-		if err != nil {
-			log.Println(err)
-			HandleAppError(w, err)
-			return
-		}
-		_, err = utils.UpdateRobotProjects(r.Context(), params.Projects, robotAcc.RobotID)
-		if err != nil {
-			log.Println(err)
-			HandleAppError(w, err)
-			return
-		}
 	}
 
 	satExist, err := harbor.GetProject(r.Context(), "satellite")
@@ -103,7 +121,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Upload config as OCI artifact
-	err = utils.CreateStateArtifact(&req)
+	err = utils.CreateConfigStateArtifact(&req)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -112,4 +130,82 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 
 	tx.Commit()
 	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
+	result, err := s.dbQueries.ListConfigs(r.Context())
+	if err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	configName := vars["config"]
+
+	result, err := s.dbQueries.GetConfigByName(r.Context(), configName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
+	var req SatelliteConfigParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), req.Satellite)
+	if err != nil {
+		log.Printf("Error: Satellite Not Found: %v", err)
+		err := &AppError{
+			Message: "Error: Satellite Not Found",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+	configObject, err := s.dbQueries.GetConfigByName(r.Context(), req.ConfigName)
+	if err != nil {
+		log.Printf("Error: Config Not Found: %v", err)
+		err := &AppError{
+			Message: "Error: Config Not Found",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	params := database.SetSatelliteConfigParams{
+		SatelliteID: int32(sat.ID),
+		ConfigID:    int32(configObject.ID),
+	}
+
+	err = s.dbQueries.SetSatelliteConfig(r.Context(), params)
+	if err != nil {
+		log.Printf("Error: Failed to set Satellite to Config: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to set Satellite to Config",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Update the state artifact to also track the new group state artifact
+	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
