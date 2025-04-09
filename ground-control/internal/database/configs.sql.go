@@ -8,27 +8,27 @@ package database
 import (
 	"context"
 	"encoding/json"
-	"time"
 )
 
 const createConfig = `-- name: CreateConfig :one
-INSERT INTO configs (config_name, registry_url, created_at, updated_at)
-VALUES ($1, $2, NOW(), NOW())
-  ON CONFLICT (config_name)
-  DO UPDATE SET
-    registry_url = EXCLUDED.registry_url,
-    config = EXCLUDED.config,
-    updated_at = NOW()
+INSERT INTO configs (config_name, registry_url, config, created_at, updated_at)
+VALUES ($1, $2, $3, NOW(), NOW())
+ON CONFLICT (config_name)
+DO UPDATE SET
+  registry_url = EXCLUDED.registry_url,
+  config = EXCLUDED.config,
+  updated_at = NOW()
 RETURNING id, config_name, registry_url, config, created_at, updated_at
 `
 
 type CreateConfigParams struct {
 	ConfigName  string
 	RegistryUrl string
+	Config      json.RawMessage
 }
 
 func (q *Queries) CreateConfig(ctx context.Context, arg CreateConfigParams) (Config, error) {
-	row := q.db.QueryRowContext(ctx, createConfig, arg.ConfigName, arg.RegistryUrl)
+	row := q.db.QueryRowContext(ctx, createConfig, arg.ConfigName, arg.RegistryUrl, arg.Config)
 	var i Config
 	err := row.Scan(
 		&i.ID,
@@ -52,25 +52,18 @@ func (q *Queries) DeleteConfig(ctx context.Context, id int32) error {
 }
 
 const getConfigByID = `-- name: GetConfigByID :one
-SELECT id, config_name, registry_url, created_at, updated_at FROM configs
+SELECT id, config_name, registry_url, config, created_at, updated_at FROM configs
 WHERE id = $1
 `
 
-type GetConfigByIDRow struct {
-	ID          int32
-	ConfigName  string
-	RegistryUrl string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-}
-
-func (q *Queries) GetConfigByID(ctx context.Context, id int32) (GetConfigByIDRow, error) {
+func (q *Queries) GetConfigByID(ctx context.Context, id int32) (Config, error) {
 	row := q.db.QueryRowContext(ctx, getConfigByID, id)
-	var i GetConfigByIDRow
+	var i Config
 	err := row.Scan(
 		&i.ID,
 		&i.ConfigName,
 		&i.RegistryUrl,
+		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -78,25 +71,18 @@ func (q *Queries) GetConfigByID(ctx context.Context, id int32) (GetConfigByIDRow
 }
 
 const getConfigByName = `-- name: GetConfigByName :one
-SELECT id, config_name, registry_url, created_at, updated_at FROM configs
+SELECT id, config_name, registry_url, config, created_at, updated_at FROM configs
 WHERE config_name = $1
 `
 
-type GetConfigByNameRow struct {
-	ID          int32
-	ConfigName  string
-	RegistryUrl string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-}
-
-func (q *Queries) GetConfigByName(ctx context.Context, configName string) (GetConfigByNameRow, error) {
+func (q *Queries) GetConfigByName(ctx context.Context, configName string) (Config, error) {
 	row := q.db.QueryRowContext(ctx, getConfigByName, configName)
-	var i GetConfigByNameRow
+	var i Config
 	err := row.Scan(
 		&i.ID,
 		&i.ConfigName,
 		&i.RegistryUrl,
+		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -128,30 +114,23 @@ func (q *Queries) GetRawConfigByName(ctx context.Context, configName string) (js
 }
 
 const listConfigs = `-- name: ListConfigs :many
-SELECT id, config_name, registry_url, created_at, updated_at FROM configs
+SELECT id, config_name, registry_url, config, created_at, updated_at FROM configs
 `
 
-type ListConfigsRow struct {
-	ID          int32
-	ConfigName  string
-	RegistryUrl string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-}
-
-func (q *Queries) ListConfigs(ctx context.Context) ([]ListConfigsRow, error) {
+func (q *Queries) ListConfigs(ctx context.Context) ([]Config, error) {
 	rows, err := q.db.QueryContext(ctx, listConfigs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListConfigsRow
+	var items []Config
 	for rows.Next() {
-		var i ListConfigsRow
+		var i Config
 		if err := rows.Scan(
 			&i.ID,
 			&i.ConfigName,
 			&i.RegistryUrl,
+			&i.Config,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
