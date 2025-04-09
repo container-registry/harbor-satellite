@@ -91,10 +91,14 @@ func (s *BasicScheduler) Schedule(process Process) error {
 	process.AddEventBroker(s.EventBroker, s.ctx)
 	// Add the process to the scheduler
 	cronEntryId, err := s.cron.AddFunc(process.GetCronExpr(), func() {
+		if process.IsRunning() {
+			return
+		}
 		err := s.executeProcess(process)
 		if err != nil {
 			s.logger.Error().Err(err).Msgf("Error executing process %s", process.GetName())
 		}
+
 	})
 	if err != nil {
 		return fmt.Errorf("error adding process to scheduler: %w", err)
@@ -102,6 +106,18 @@ func (s *BasicScheduler) Schedule(process Process) error {
 	s.processes[process.GetName()] = process
 	s.logger.Info().Msgf("Process %s scheduled with cron expression %s", process.GetName(), process.GetCronExpr())
 	process.SetID(cronEntryId)
+
+    // TODO: a more comprehensive fix to running the process at startup would require a
+    // large refactor of the process scheduling logic, to ensure that ZTR is performed before
+    // attempting to execute any of the other processes.
+	go func() {
+		if !process.IsRunning() {
+			if err := s.executeProcess(process); err != nil {
+				s.logger.Error().Err(err).Msgf("Error executing process %s at startup", process.GetName())
+			}
+		}
+	}()
+
 	return nil
 }
 
