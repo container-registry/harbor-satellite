@@ -39,6 +39,12 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
+    committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
 
 	q := s.dbQueries.WithTx(tx)
 
@@ -46,7 +52,6 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -60,7 +65,6 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -72,7 +76,6 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Println(err)
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 	if !satExist {
@@ -84,7 +87,6 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			log.Println(err)
 			HandleAppError(w, err)
-			tx.Rollback()
 			return
 		}
 	}
@@ -94,11 +96,18 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		log.Printf("Commit failed: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	committed = true
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
@@ -110,6 +119,12 @@ func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 		tx.Rollback()
 		return
 	}
+    committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
 
 	q := s.dbQueries.WithTx(tx)
 
@@ -120,7 +135,15 @@ func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		log.Printf("Commit failed: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	committed = true
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
@@ -132,6 +155,12 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 		tx.Rollback()
 		return
 	}
+    committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
 
 	q := s.dbQueries.WithTx(tx)
 
@@ -145,7 +174,15 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		log.Printf("Commit failed: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	committed = true
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
@@ -166,7 +203,15 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+    committed := false
+    defer func() {
+        if !committed {
+            tx.Rollback()
+        }
+    }()
+
 	q := s.dbQueries.WithTx(tx)
+
 
 	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
 	if err != nil {
@@ -244,11 +289,21 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		log.Printf("Commit failed: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	committed = true
+
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
 // Deletes the config, given that the config is not currently used by any satellite.
+// TODO: The defer func approach.
 func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	configName := vars["config"]
@@ -259,6 +314,13 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
+
+    committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
 
 	q := s.dbQueries.WithTx(tx)
 
@@ -296,7 +358,6 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		tx.Rollback()
 		return
 	}
-	log.Println(configObject.ID)
 
 	if err := q.DeleteConfig(r.Context(), configObject.ID); err != nil {
 		log.Println(err)
@@ -315,7 +376,16 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		log.Printf("Commit failed: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	committed = true
+
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
