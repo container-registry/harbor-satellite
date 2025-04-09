@@ -13,4 +13,4 @@ WHERE satellite_id = $1;
 
 -- name: RemoveSatelliteFromGroup :exec
 DELETE FROM satellite_groups
-WHERE satellite_id = $1;
+WHERE satellite_id = $1 AND group_id = $2;
