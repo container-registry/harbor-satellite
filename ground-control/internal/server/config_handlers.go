@@ -25,39 +25,10 @@ type SatelliteConfigParams struct {
 	ConfigName string `json:"config_name,omitempty"`
 }
 
-// validateCronExpression checks the validity of a cron expression.
-func isValidCronExpression(cronExpression string) bool {
-	if _, err := cron.ParseStandard(cronExpression); err != nil {
-		return false
-	}
-	return true
-}
-
-func isValidConfig(config models.SatelliteConfig) error {
-	if _, err := url.Parse(config.GroundControlURL); err != nil {
-		return fmt.Errorf("The provided ground_control_url %s is invalid", config.GroundControlURL)
-	}
-
-	if _, err := url.Parse(config.LocalRegistryConfig.URL); err != nil {
-		return fmt.Errorf("The provided local_registry.url %s is invalid", config.LocalRegistryConfig.URL)
-	}
-
-	if !isValidCronExpression(config.UpdateConfigInterval) {
-		return fmt.Errorf("The provided update_config_interval %s is not a valid cron expression")
-	}
-
-	if !isValidCronExpression(config.StateReplicationInterval) {
-		return fmt.Errorf("The provided state_replication_interval %s is not a valid cron expression")
-	}
-
-	if !isValidCronExpression(config.RegisterSatelliteInterval) {
-		return fmt.Errorf("The provided register_satellite_interval %s is not a valid cron expression")
-	}
-	return nil
-}
-
 func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	var req models.ConfigObject
+	var err error
+
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -137,9 +108,18 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
-	result, err := s.dbQueries.ListConfigs(r.Context())
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+	q := s.dbQueries.WithTx(tx)
+
+	result, err := q.ListConfigs(r.Context())
 	if err != nil {
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 
@@ -147,12 +127,20 @@ func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+	q := s.dbQueries.WithTx(tx)
 	vars := mux.Vars(r)
 	configName := vars["config"]
 
-	result, err := s.dbQueries.GetConfigByName(r.Context(), configName)
+	result, err := q.GetConfigByName(r.Context(), configName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
+		tx.Rollback()
 		return
 	}
 
@@ -161,12 +149,30 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteConfigParams
+	var err error
+
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
 		return
 	}
 
-	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), req.Satellite)
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+	q := s.dbQueries.WithTx(tx)
+
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback()
+		} else if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
 	if err != nil {
 		log.Printf("Error: Satellite Not Found: %v", err)
 		err := &AppError{
@@ -176,7 +182,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
-	configObject, err := s.dbQueries.GetConfigByName(r.Context(), req.ConfigName)
+	configObject, err := q.GetConfigByName(r.Context(), req.ConfigName)
 	if err != nil {
 		log.Printf("Error: Config Not Found: %v", err)
 		err := &AppError{
@@ -192,7 +198,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 		ConfigID:    int32(configObject.ID),
 	}
 
-	err = s.dbQueries.SetSatelliteConfig(r.Context(), params)
+	err = q.SetSatelliteConfig(r.Context(), params)
 	if err != nil {
 		log.Printf("Error: Failed to Set Satellite Config: %v", err)
 		err := &AppError{
@@ -203,7 +209,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groupList, err := s.dbQueries.SatelliteGroupList(r.Context(), sat.ID)
+	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
 	if err != nil {
 		log.Printf("Error: Failed: %v", err)
 		err := &AppError{
@@ -217,7 +223,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 	// TODO: maybe we should store the current list of states in the DB?
 	var groupStates []string
 	for _, group := range groupList {
-		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
+		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
 		if err != nil {
 			log.Printf("Error: Failed: %v", err)
 			err := &AppError{
@@ -242,10 +248,25 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 
 // Deletes the config, given that the config is not currently used by any satellite.
 func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
 	vars := mux.Vars(r)
 	configName := vars["config"]
 
-	configObject, err := s.dbQueries.GetConfigByName(r.Context(), configName)
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+	q := s.dbQueries.WithTx(tx)
+
+	defer func() {
+		if p := recover(); p != nil || err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	configObject, err := q.GetConfigByName(r.Context(), configName)
 	if err != nil {
 		log.Printf("Error: Failed to get Config: %v", err)
 		err := &AppError{
@@ -296,4 +317,35 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+// validateCronExpression checks the validity of a cron expression.
+func isValidCronExpression(cronExpression string) bool {
+	if _, err := cron.ParseStandard(cronExpression); err != nil {
+		return false
+	}
+	return true
+}
+
+func isValidConfig(config models.SatelliteConfig) error {
+	if _, err := url.Parse(config.GroundControlURL); err != nil {
+		return fmt.Errorf("The provided ground_control_url %s is invalid", config.GroundControlURL)
+	}
+
+	if _, err := url.Parse(config.LocalRegistryConfig.URL); err != nil {
+		return fmt.Errorf("The provided local_registry.url %s is invalid", config.LocalRegistryConfig.URL)
+	}
+
+	if !isValidCronExpression(config.UpdateConfigInterval) {
+		return fmt.Errorf("The provided update_config_interval %s is not a valid cron expression")
+	}
+
+	if !isValidCronExpression(config.StateReplicationInterval) {
+		return fmt.Errorf("The provided state_replication_interval %s is not a valid cron expression")
+	}
+
+	if !isValidCronExpression(config.RegisterSatelliteInterval) {
+		return fmt.Errorf("The provided register_satellite_interval %s is not a valid cron expression")
+	}
+	return nil
 }
