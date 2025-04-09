@@ -14,8 +14,6 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
-	"github.com/google/go-containerregistry/pkg/authn"
-	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/gorilla/mux"
 	"github.com/robfig/cron/v3"
 )
@@ -42,18 +40,12 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := s.dbQueries.WithTx(tx)
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-		} else if err != nil {
-			tx.Rollback()
-		}
-	}()
 
 	configJson, err := json.Marshal(req.Config)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 
@@ -67,6 +59,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 
@@ -100,6 +93,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 
@@ -112,6 +106,7 @@ func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 	q := s.dbQueries.WithTx(tx)
@@ -131,6 +126,7 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 	q := s.dbQueries.WithTx(tx)
@@ -160,17 +156,10 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 	q := s.dbQueries.WithTx(tx)
-
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-		} else if err != nil {
-			tx.Rollback()
-		}
-	}()
 
 	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
 	if err != nil {
@@ -180,6 +169,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 	configObject, err := q.GetConfigByName(r.Context(), req.ConfigName)
@@ -190,6 +180,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 
@@ -206,6 +197,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 
@@ -217,6 +209,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 
@@ -240,6 +233,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 
@@ -248,7 +242,6 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 
 // Deletes the config, given that the config is not currently used by any satellite.
 func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
 	vars := mux.Vars(r)
 	configName := vars["config"]
 
@@ -256,15 +249,10 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 	q := s.dbQueries.WithTx(tx)
-
-	defer func() {
-		if p := recover(); p != nil || err != nil {
-			tx.Rollback()
-		}
-	}()
 
 	configObject, err := q.GetConfigByName(r.Context(), configName)
 	if err != nil {
@@ -274,6 +262,7 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 
@@ -285,6 +274,7 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 
@@ -295,24 +285,24 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 
 	if err := s.dbQueries.DeleteConfig(r.Context(), configObject.ID); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
 	}
 
-	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
-	options := []crane.Option{crane.WithAuth(auth)}
-
-	if err := crane.Delete(utils.AssembleConfigState(configObject.ConfigName), options...); err != nil {
-		log.Println("Could not delete config state artifact: %w", err)
+	if err := utils.DeleteConfigStateArtifact(configName); err != nil {
+		log.Printf("Could not delete config state artifact: %v", err)
 		HandleAppError(w, &AppError{
 			Message: "Error: Could not delete config state artifact",
 			Code:    http.StatusInternalServerError,
 		})
+		tx.Rollback()
 		return
 	}
 
