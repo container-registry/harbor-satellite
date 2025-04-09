@@ -190,17 +190,43 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 
 	err = s.dbQueries.SetSatelliteConfig(r.Context(), params)
 	if err != nil {
-		log.Printf("Error: Failed to set Satellite to Config: %v", err)
+		log.Printf("Error: Failed to Set Satellite Config: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to set Satellite to Config",
+			Message: "Error: Failed to Set Satellite Group",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
 		return
 	}
 
-	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates)
+	groupList, err := s.dbQueries.SatelliteGroupList(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("Error: Failed: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to Add satellite to group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// TODO: maybe we should store the current list of states in the DB?
+	var groupStates []string
+	for _, group := range groupList {
+		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
+		if err != nil {
+			log.Printf("Error: Failed: %v", err)
+			err := &AppError{
+				Message: "Error: Failed to Add satellite to group",
+				Code:    http.StatusInternalServerError,
+			}
+			HandleAppError(w, err)
+			return
+		}
+		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
+	}
+
+	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates, utils.AssembleConfigState(configObject.ConfigName))
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
