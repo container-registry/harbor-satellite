@@ -1,7 +1,9 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +14,8 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/gorilla/mux"
 	"github.com/robfig/cron/v3"
 )
@@ -192,7 +196,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error: Failed to Set Satellite Config: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to Set Satellite Group",
+			Message: "Error: Failed to Set Satellite config",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
@@ -203,7 +207,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error: Failed: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to Add satellite to group",
+			Message: "Error: Failed to Add satellite to config",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
@@ -217,7 +221,7 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Printf("Error: Failed: %v", err)
 			err := &AppError{
-				Message: "Error: Failed to Add satellite to group",
+				Message: "Error: Failed to Add satellite to config",
 				Code:    http.StatusInternalServerError,
 			}
 			HandleAppError(w, err)
@@ -230,6 +234,64 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+// Deletes the config, given that the config is not currently used by any satellite.
+func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	configName := vars["config"]
+
+	configObject, err := s.dbQueries.GetConfigByName(r.Context(), configName)
+	if err != nil {
+		log.Printf("Error: Failed to get Config: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to get Config",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	configSatellites, err := s.dbQueries.ConfigSatelliteList(r.Context(), configObject.ID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		log.Printf("Error: Failed to get Satellites that use this Config: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to get Satellites that use this Config",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	if len(configSatellites) > 0 {
+		log.Println("Cannot delete config %s: it is currently in use", configName)
+		err := &AppError{
+			Message: "Error: Cannot delete a config that is currently in use",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	if err := s.dbQueries.DeleteConfig(r.Context(), configObject.ID); err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
+	options := []crane.Option{crane.WithAuth(auth)}
+
+	if err := crane.Delete(utils.AssembleConfigState(configObject.ConfigName), options...); err != nil {
+		log.Println("Could not delete config state artifact: %w", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not delete config state artifact",
+			Code:    http.StatusInternalServerError,
+		})
 		return
 	}
 
