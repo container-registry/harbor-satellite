@@ -2,6 +2,7 @@ package models
 
 type SatelliteStateArtifact struct {
 	States []string `json:"states,omitempty"`
+	Config string   `json:"config,omitempty"`
 }
 
 type StateArtifact struct {
@@ -10,7 +11,13 @@ type StateArtifact struct {
 	Artifacts []Artifact `json:"artifacts,omitempty"`
 }
 
-//TODO: move config to a common pkg for both satellite and ground control
+type ConfigObject struct {
+	ConfigName string          `json:"config_name,omitempty"`
+	Registry   string          `json:"registry,omitempty"`
+	Config     SatelliteConfig `json:"config,omitempty"`
+}
+
+// TODO: move config to a common pkg for both satellite and ground control
 type LocalRegistryConfig struct {
 	URL              string `json:"url"`
 	UserName         string `json:"username"`
@@ -19,7 +26,7 @@ type LocalRegistryConfig struct {
 }
 
 // LocalJsonConfig is a struct that holds the configs that are passed as environment variables
-type LocalJsonConfig struct {
+type SatelliteConfig struct {
 	GroundControlURL          string              `json:"ground_control_url"`
 	LogLevel                  string              `json:"log_level"`
 	UseUnsecure               bool                `json:"use_unsecure"`
