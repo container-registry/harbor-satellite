@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -224,7 +225,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		tx.Rollback()
 		return
 	}
-    var groupStates []string
+	var groupStates []string
 
 	// Check if Groups is nil before dereferencing
 	if req.Groups != nil {
@@ -360,8 +361,15 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 
 	}
 
+	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satellite.ID)
+	if err != nil {
+		log.Printf("Error: Failed to fetch Satellite config: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
 	// Create the satellite's state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(req.Name, groupStates)
+	err = utils.CreateOrUpdateSatStateArtifact(req.Name, groupStates, utils.AssembleConfigState(configObject.ConfigName))
 	if err != nil {
 		log.Println(err)
 		tx.Rollback()
@@ -490,8 +498,15 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	satellite, err := q.GetSatellite(r.Context(), satelliteID)
 
+	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satelliteID)
+	if err != nil {
+		log.Printf("Error: Failed to fetch Satellite config: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
 	// For sanity, create (update) the state artifact during the registration process as well.
-	err = utils.CreateOrUpdateSatStateArtifact(satellite.Name, states)
+	err = utils.CreateOrUpdateSatStateArtifact(satellite.Name, states, utils.AssembleConfigState(configObject.ConfigName))
 	if err != nil {
 		log.Println(err)
 		tx.Rollback()
@@ -702,6 +717,13 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
+	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, sat.ID)
+	if err != nil {
+		log.Printf("Error: Failed to fetch Satellite config: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
 	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
 	if err != nil {
 		log.Printf("Error: Failed to Add permission to robot account: %v", err)
@@ -714,7 +736,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates)
+	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates, utils.AssembleConfigState(configObject.ConfigName))
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -722,6 +744,27 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, satelliteID int32) (database.Config, error) {
+	satelliteConfig, err := dbQueries.SatelliteConfig(ctx, satelliteID)
+	if err != nil {
+		log.Printf("Error: Failed to fetch satellite config: %v", err)
+		return database.Config{}, &AppError{
+			Message: "Error: Failed to fetch satellite config",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+
+	configObject, err := dbQueries.GetConfigByID(ctx, satelliteConfig.ConfigID)
+	if err != nil {
+		log.Printf("Error: Failed to fetch satellite config: %v", err)
+		return database.Config{}, &AppError{
+			Message: "Error: Failed to fetch satellite config",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+	return configObject, nil
 }
 
 // If the satellite is removed from the group, the state artifact must be updated accordingly as well.
@@ -823,8 +866,15 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, sat.ID)
+	if err != nil {
+		log.Printf("Error: Failed to fetch Satellite config: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
 	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates)
+	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates, utils.AssembleConfigState(configObject.ConfigName))
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
