@@ -18,6 +18,10 @@ import (
 	"github.com/gorilla/mux"
 )
 
+const (
+	invalidNameMessage = "Invalid %s name: must be 1-255 chars, start with letter/number, and contain only lowercase letters, numbers, and ._-"
+)
+
 type RegisterSatelliteParams struct {
 	Name   string    `json:"name"`
 	Groups *[]string `json:"groups,omitempty"`
@@ -57,6 +61,15 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	var req models.StateArtifact
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	if !utils.IsValidName(req.Group) {
+		err := &AppError{
+			Message: fmt.Sprintf(invalidNameMessage, "group"),
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}
@@ -161,10 +174,9 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if len(req.Name) < 1 {
-		log.Println("name should be at least one character long.")
+	if !utils.IsValidName(req.Name) {
 		err := &AppError{
-			Message: "Error: name should be at least one character long.",
+			Message: fmt.Sprintf(invalidNameMessage, "satellite"),
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
