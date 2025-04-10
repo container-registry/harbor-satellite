@@ -126,6 +126,7 @@ func WriteFile(path string, data []byte) error {
 			log.Printf("error closing file: %v", err)
 		}
 	}()
+
 	_, err = file.Write(data)
 	if err != nil {
 		return fmt.Errorf("error while write to the file :%s", err)

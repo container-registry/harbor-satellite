@@ -20,10 +20,9 @@ func TestSatellite(t *testing.T) {
 	// Initialize Dagger client
 	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stderr))
 	assert.NoError(t, err, "Failed to connect to Dagger")
-
 	defer func() {
 		if err := client.Close(); err != nil {
-			log.Printf("Error closing client: %v", err)
+			log.Printf("error closing client: %v", err)
 		}
 	}()
 
