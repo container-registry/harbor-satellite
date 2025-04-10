@@ -224,7 +224,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		tx.Rollback()
 		return
 	}
-    var groupStates []string
+	var groupStates []string
 
 	// Check if Groups is nil before dereferencing
 	if req.Groups != nil {
