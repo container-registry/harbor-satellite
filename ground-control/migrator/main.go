@@ -61,7 +61,7 @@ func createDatabase(dbName, dbUser, dbPassword string) error {
 func runMigrations(dbName, dbUser, dbPassword, dbHost, dbPort string) error {
 	gooseCmd := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", dbUser, dbPassword, dbHost, dbPort, dbName)
 	cmd := exec.Command("goose", "postgres", gooseCmd, "up")
-  fmt.Println(cmd)
+	fmt.Println(cmd)
 	return cmd.Run()
 }
 

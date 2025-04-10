@@ -11,7 +11,7 @@ type Notifier interface {
 	Notify() error
 }
 
-type SimpleNotifier struct{
+type SimpleNotifier struct {
 	ctx context.Context
 }
 

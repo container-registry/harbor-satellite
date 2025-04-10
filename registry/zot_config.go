@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 )
@@ -72,7 +73,12 @@ func ReadZotConfig(filePath string, zotConfig *ZotConfig) error {
 	if err != nil {
 		return fmt.Errorf("could not open file: %w", err)
 	}
-	defer file.Close()
+
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("error closing file: %v", err)
+		}
+	}()
 
 	// Read the file contents
 	bytes, err := io.ReadAll(file)

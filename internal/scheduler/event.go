@@ -48,22 +48,22 @@ func (b *EventBroker) Subscribe(eventName string) <-chan Event {
 // Publish would take in the event and would emit the event to all the listeners. Would iterate over the subscribers array of the
 // event name and emit the event to all the listeners
 func (b *EventBroker) Publish(event Event, ctx context.Context) error {
-    b.mu.RLock()
-    defer b.mu.RUnlock()
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 
-    if subscribers, found := b.subscribers[event.Name]; found {
-        for _, ch := range subscribers {
-            select {
-            case ch <- event:
-                // Successfully sent the event.
-            case <-ctx.Done():
-                return ctx.Err()
-            default:
-                fmt.Printf("Warning: Subscriber not consuming event %s\n", event.Name)
-            }
-        }
-    }
-    return nil
+	if subscribers, found := b.subscribers[event.Name]; found {
+		for _, ch := range subscribers {
+			select {
+			case ch <- event:
+				// Successfully sent the event.
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+				fmt.Printf("Warning: Subscriber not consuming event %s\n", event.Name)
+			}
+		}
+	}
+	return nil
 }
 
 // Close cleans up all channels to prevent leaks.
@@ -85,16 +85,16 @@ func (b *EventBroker) Close() {
 }
 
 func (b *EventBroker) Unsubscribe(eventName string, ch <-chan Event) {
-    b.mu.Lock()
-    defer b.mu.Unlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
-    if subscribers, found := b.subscribers[eventName]; found {
-        for i, subscriber := range subscribers {
-            if subscriber == ch {
-                b.subscribers[eventName] = append(subscribers[:i], subscribers[i+1:]...)
+	if subscribers, found := b.subscribers[eventName]; found {
+		for i, subscriber := range subscribers {
+			if subscriber == ch {
+				b.subscribers[eventName] = append(subscribers[:i], subscribers[i+1:]...)
 				close(subscriber)
-                break
-            }
-        }
-    }
+				break
+			}
+		}
+	}
 }
