@@ -20,7 +20,7 @@ import (
 
 type SatelliteConfigParams struct {
 	Satellite  string `json:"satellite,omitempty"`
-	ConfigName string `json:"config_name,omitempty"`
+	ConfigName string `json:"config_name"`
 }
 
 func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +182,7 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
+func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteConfigParams
 	var err error
 
