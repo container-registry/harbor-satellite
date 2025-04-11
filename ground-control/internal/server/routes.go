@@ -28,7 +28,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/groups/{group}/satellites", s.groupSatelliteListHandler).Methods("GET")
 
 	// Ground Control interface
-	// TODO: Register satellite handler needs to be updated accordingly
 	r.HandleFunc("/satellites/register", s.registerSatelliteHandler).Methods("POST")
 	r.HandleFunc("/satellites/ztr/{token}", s.ztrHandler).Methods("GET")
 	r.HandleFunc("/satellites/list", s.listSatelliteHandler).Methods("GET")
