@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -257,6 +258,20 @@ func tagImage(destination string, options []crane.Option) error {
 }
 func getStateArtifactDestination(registry, repository string) string {
 	return fmt.Sprintf("%s/%s/%s", registry, repository, "state")
+}
+
+// IsValidName validates if a name meets the requirements:
+// 1. 1-255 characters long
+// 2. Only lowercase characters, numbers, and ._- are allowed
+// 3. Must start with a letter or number
+func IsValidName(name string) bool {
+	if len(name) < 1 || len(name) > 255 {
+		return false
+	}
+
+	pattern := `^[a-z0-9][a-z0-9._-]*$`
+	matched, _ := regexp.MatchString(pattern, name)
+	return matched
 }
 
 func envSanityCheck() error {
