@@ -116,7 +116,6 @@ func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
     committed := false
@@ -131,7 +130,6 @@ func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := q.ListConfigs(r.Context())
 	if err != nil {
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -152,7 +150,6 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
     committed := false
@@ -170,7 +167,6 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := q.GetConfigByName(r.Context(), configName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
-		tx.Rollback()
 		return
 	}
 
@@ -199,7 +195,6 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -221,7 +216,6 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 	configObject, err := q.GetConfigByName(r.Context(), req.ConfigName)
@@ -232,7 +226,6 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -249,7 +242,6 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -261,7 +253,6 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -285,7 +276,6 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -303,7 +293,6 @@ func (s *Server) addSatelliteToConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 // Deletes the config, given that the config is not currently used by any satellite.
-// TODO: The defer func approach.
 func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	configName := vars["config"]
@@ -332,7 +321,6 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -344,7 +332,6 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -355,14 +342,12 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
 	if err := q.DeleteConfig(r.Context(), configObject.ID); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -372,7 +357,6 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 			Message: "Error: Could not delete config state artifact",
 			Code:    http.StatusInternalServerError,
 		})
-		tx.Rollback()
 		return
 	}
 
