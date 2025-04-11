@@ -20,8 +20,9 @@ import (
 )
 
 type RegisterSatelliteParams struct {
-	Name   string    `json:"name"`
-	Groups *[]string `json:"groups,omitempty"`
+	Name       string    `json:"name"`
+	Groups     *[]string `json:"groups,omitempty"`
+	ConfigName string    `json:"config_name"`
 }
 type SatelliteGroupParams struct {
 	Satellite string `json:"satellite"`
@@ -215,16 +216,12 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}()
 	// Create satellite
 	satellite, err := q.CreateSatellite(r.Context(), req.Name)
-	if err != nil {
-		log.Println(err)
-		err := &AppError{
-			Message: fmt.Sprintf("Error: %v", err.Error()),
-			Code:    http.StatusBadRequest,
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
 		}
-		HandleAppError(w, err)
-		tx.Rollback()
-		return
-	}
+	}()
 	var groupStates []string
 
 	// Check if Groups is nil before dereferencing
@@ -243,7 +240,6 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 						Code:    http.StatusBadRequest,
 					}
 					HandleAppError(w, err)
-					tx.Rollback()
 					return
 				}
 			}
@@ -255,7 +251,6 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 					Code:    http.StatusBadRequest,
 				}
 				HandleAppError(w, err)
-				tx.Rollback()
 				return
 			}
 			err = q.AddSatelliteToGroup(r.Context(), database.AddSatelliteToGroupParams{
@@ -265,7 +260,6 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 			if err != nil {
 				log.Println(err)
 				HandleAppError(w, err)
-				tx.Rollback()
 				return
 			}
 			groupStates = append(groupStates, utils.AssembleGroupState(groupName))
@@ -281,7 +275,6 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 			Code:    http.StatusBadGateway,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 	if !satExist {
@@ -293,7 +286,6 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 				Code:    http.StatusBadGateway,
 			}
 			HandleAppError(w, err)
-			tx.Rollback()
 			return
 		}
 	}
@@ -308,7 +300,6 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 	// Add Robot Account to database
@@ -326,7 +317,6 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -341,7 +331,6 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 				Code:    http.StatusInternalServerError,
 			}
 			HandleAppError(w, err)
-			tx.Rollback()
 			return
 		}
 		project := projects[0]
@@ -355,13 +344,13 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 				Code:    http.StatusInternalServerError,
 			}
 			HandleAppError(w, err)
-			tx.Rollback()
 			return
 		}
 
 	}
 
-	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satellite.ID)
+	// TODO: Update this logic to fetch the config from upstream. To be done while updating Satellite code.
+	configObject, err := q.GetConfigByName(r.Context(), req.ConfigName)
 	if err != nil {
 		log.Printf("Error: Failed to fetch Satellite config: %v", err)
 		HandleAppError(w, err)
@@ -372,7 +361,6 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	err = utils.CreateOrUpdateSatStateArtifact(req.Name, groupStates, utils.AssembleConfigState(configObject.ConfigName))
 	if err != nil {
 		log.Println(err)
-		tx.Rollback()
 		HandleAppError(w, err)
 		return
 	}
@@ -381,7 +369,6 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	token, err := GenerateRandomToken(32)
 	if err != nil {
 		log.Println(err)
-		tx.Rollback()
 		HandleAppError(w, err)
 		return
 	}
@@ -393,11 +380,19 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		log.Println("error in token")
 		log.Println(err)
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		log.Printf("Commit failed: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	committed = true
+
 	WriteJSONResponse(w, http.StatusOK, tk)
 }
 
