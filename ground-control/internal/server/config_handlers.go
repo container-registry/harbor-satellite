@@ -39,7 +39,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
-    committed := false
+	committed := false
 	defer func() {
 		if !committed {
 			tx.Rollback()
@@ -92,7 +92,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Upload config as OCI artifact
-	err = utils.CreateConfigStateArtifact(&req)
+	err = utils.CreateConfigStateArtifact(r.Context(), &req)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -118,7 +118,7 @@ func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
-    committed := false
+	committed := false
 	defer func() {
 		if !committed {
 			tx.Rollback()
@@ -152,7 +152,7 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
-    committed := false
+	committed := false
 	defer func() {
 		if !committed {
 			tx.Rollback()
@@ -198,15 +198,14 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-    committed := false
-    defer func() {
-        if !committed {
-            tx.Rollback()
-        }
-    }()
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
 
 	q := s.dbQueries.WithTx(tx)
-
 
 	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
 	if err != nil {
@@ -304,7 +303,7 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-    committed := false
+	committed := false
 	defer func() {
 		if !committed {
 			tx.Rollback()

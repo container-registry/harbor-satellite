@@ -146,8 +146,8 @@ func CreateStateArtifact(ctx context.Context, stateArtifact *m.StateArtifact) er
 	return nil
 }
 
-// Create State Artifact for group
-func CreateConfigStateArtifact(configObject *m.ConfigObject) error {
+// Create State Artifact for Config
+func CreateConfigStateArtifact(ctx context.Context, configObject *m.ConfigObject) error {
 	// Marshal the state artifact to JSON format
 	configData, err := json.Marshal(configObject.Config)
 	if err != nil {
@@ -170,7 +170,7 @@ func CreateConfigStateArtifact(configObject *m.ConfigObject) error {
 		Username: username,
 		Password: password,
 	})
-	options := []crane.Option{crane.WithAuth(auth)}
+	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 
 	// Construct the destination repository and strip protocol, if present
 	destinationRepo := AssembleConfigState(configObject.ConfigName)
