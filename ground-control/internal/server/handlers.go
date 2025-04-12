@@ -343,42 +343,45 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 
 	// Give permission to the robot account for the projects present in the group list
 	// fetch all the projects
-	for i := range *req.Groups {
-		projects, err := q.GetProjectsOfGroup(r.Context(), (*req.Groups)[i])
-		if err != nil {
-			log.Println(err)
-			err := &AppError{
-				Message: fmt.Sprintf("Error: fetching projects of group %v", err.Error()),
-				Code:    http.StatusInternalServerError,
+	if req.Groups != nil {
+		for i := range *req.Groups {
+			projects, err := q.GetProjectsOfGroup(r.Context(), (*req.Groups)[i])
+			if err != nil {
+				log.Println(err)
+				err := &AppError{
+					Message: fmt.Sprintf("Error: fetching projects of group %v", err.Error()),
+					Code:    http.StatusInternalServerError,
+				}
+				HandleAppError(w, err)
+				tx.Rollback()
+				return
 			}
-			HandleAppError(w, err)
-			tx.Rollback()
-			return
-		}
-		project := projects[0]
+			project := projects[0]
 
-		// give permission to the robot account for all the projects present in this group
-		_, err = utils.UpdateRobotProjects(r.Context(), project, strconv.FormatInt(rbt.ID, 10))
-		if err != nil {
-			log.Println(err)
-			err := &AppError{
-				Message: fmt.Sprintf("Error: updating robot account %v", err.Error()),
-				Code:    http.StatusInternalServerError,
+			// give permission to the robot account for all the projects present in this group
+			_, err = utils.UpdateRobotProjects(r.Context(), project, strconv.FormatInt(rbt.ID, 10))
+			if err != nil {
+				log.Println(err)
+				err := &AppError{
+					Message: fmt.Sprintf("Error: updating robot account %v", err.Error()),
+					Code:    http.StatusInternalServerError,
+				}
+				HandleAppError(w, err)
+				tx.Rollback()
+				return
 			}
-			HandleAppError(w, err)
-			tx.Rollback()
-			return
 		}
-
 	}
 
 	// Create the satellite's state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(req.Name, groupStates)
-	if err != nil {
-		log.Println(err)
-		tx.Rollback()
-		HandleAppError(w, err)
-		return
+	if len(groupStates) > 0 {
+		err = utils.CreateOrUpdateSatStateArtifact(req.Name, groupStates)
+		if err != nil {
+			log.Println(err)
+			tx.Rollback()
+			HandleAppError(w, err)
+			return
+		}
 	}
 
 	// Add token to DB
