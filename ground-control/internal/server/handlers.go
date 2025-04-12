@@ -154,7 +154,7 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create State Artifact for the group
-	err = utils.CreateStateArtifact(&req)
+	err = utils.CreateStateArtifact(r.Context(), &req)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -373,7 +373,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create the satellite's state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(req.Name, groupStates)
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates)
 	if err != nil {
 		log.Println(err)
 		tx.Rollback()
@@ -503,7 +503,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	satellite, err := q.GetSatellite(r.Context(), satelliteID)
 
 	// For sanity, create (update) the state artifact during the registration process as well.
-	err = utils.CreateOrUpdateSatStateArtifact(satellite.Name, states)
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states)
 	if err != nil {
 		log.Println(err)
 		tx.Rollback()
@@ -726,7 +726,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates)
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -836,7 +836,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	}
 
 	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates)
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)

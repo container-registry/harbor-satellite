@@ -91,7 +91,7 @@ func AssembleGroupState(groupName string) string {
 }
 
 // Create State Artifact for group
-func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
+func CreateStateArtifact(ctx context.Context, stateArtifact *m.StateArtifact) error {
 	// Set the registry URL from environment variable
 	stateArtifact.Registry = os.Getenv("HARBOR_URL")
 	if stateArtifact.Registry == "" {
@@ -122,7 +122,7 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 		Username: username,
 		Password: password,
 	})
-	options := []crane.Option{crane.WithAuth(auth)}
+	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 
 	// Construct the destination repository and strip protocol, if present
 	destinationRepo := getStateArtifactDestination(stateArtifact.Registry, repo)
@@ -150,7 +150,7 @@ func AssembleSatelliteState(satelliteName string) string {
 	return fmt.Sprintf("%s/satellite/satellite-state/%s/state:latest", os.Getenv("HARBOR_URL"), satelliteName)
 }
 
-func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error {
+func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, states []string) error {
 	if satelliteName == "" {
 		return fmt.Errorf("the satellite name must be atleast one character long")
 	}
@@ -176,7 +176,7 @@ func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error
 
 	repo := fmt.Sprintf("satellite/satellite-state/%s", satelliteName)
 	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
-	options := []crane.Option{crane.WithAuth(auth)}
+	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 
 	destinationRepo := getStateArtifactDestination(registry, repo)
 	destinationRepo = stripProtocol(destinationRepo)
