@@ -938,21 +938,18 @@ func (s *Server) groupSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	// Get all satellite IDs attached to this group
 	satelliteGroups, err := s.dbQueries.GroupSatelliteList(r.Context(), group.ID)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			log.Printf("error: satellite not found for group: %v", err)
-			err := &AppError{
-				Message: "error: satellite not found for group ",
-				Code:    http.StatusNotFound,
-			}
-			HandleAppError(w, err)
-			return
-		}
 		log.Printf("error: failed to list satellites for group: %v", err)
 		err := &AppError{
 			Message: "error: failed to list satellites for group",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
+		return
+	}
+
+	if len(satelliteGroups) == 0 {
+		log.Printf("satellite not found for group")
+		WriteJSONResponse(w, http.StatusNotFound, []database.Satellite{})
 		return
 	}
 
