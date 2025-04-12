@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -906,4 +907,65 @@ func GetAuthToken(r *http.Request) (string, error) {
 	token := parts[1]
 
 	return token, nil
+}
+
+// groupSatelliteHandler lists all satellites attached to a specific group
+func (s *Server) groupSatelliteHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupName := vars["group"]
+
+	// Get the group by name
+	group, err := s.dbQueries.GetGroupByName(r.Context(), groupName)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("error: group not found: %v", err)
+			err := &AppError{
+				Message: "error: group not found",
+				Code:    http.StatusNotFound,
+			}
+			HandleAppError(w, err)
+			return
+		}
+		log.Printf("error: failed to get group : %v", err)
+		err := &AppError{
+			Message: "error: failed to get group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Get all satellite IDs attached to this group
+	satelliteGroups, err := s.dbQueries.GroupSatelliteList(r.Context(), group.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("error: satellite not found for group: %v", err)
+			err := &AppError{
+				Message: "error: satellite not found for group ",
+				Code:    http.StatusNotFound,
+			}
+			HandleAppError(w, err)
+			return
+		}
+		log.Printf("error: failed to list satellites for group: %v", err)
+		err := &AppError{
+			Message: "error: failed to list satellites for group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Get details for each satellite
+	var satellites []database.Satellite
+	for _, sg := range satelliteGroups {
+		satellite, err := s.dbQueries.GetSatellite(r.Context(), sg.SatelliteID)
+		if err != nil {
+			log.Printf("error: failed to get satellite details: %v", err)
+			continue // Skip this satellite if we can't get its details
+		}
+		satellites = append(satellites, satellite)
+	}
+
+	WriteJSONResponse(w, http.StatusOK, satellites)
 }
