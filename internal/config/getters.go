@@ -56,6 +56,10 @@ func GetGroundControlURL() string {
 	return appConfig.LocalJsonConfig.GroundControlURL
 }
 
+func GetSatelliteName() string {
+	return appConfig.StateConfig.SatelliteName
+}
+
 func SetGroundControlURL(url string) {
 	appConfig.LocalJsonConfig.GroundControlURL = url
 }
