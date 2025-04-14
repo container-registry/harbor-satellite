@@ -637,7 +637,42 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), req.Satellite)
+	if req.Satellite == "" || req.Group == "" {
+		err := &AppError{
+			Message: "Error: Satellite and Group names cannot be empty",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Start a transaction
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("Error starting transaction: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to start database transaction",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Create a new Queries object bound to the transaction
+	q := s.dbQueries.WithTx(tx)
+
+	// Ensure proper transaction handling with defer
+	defer func() {
+		if p := recover(); p != nil {
+			// If there's a panic, rollback the transaction
+			tx.Rollback()
+		} else if err != nil {
+			tx.Rollback() // Rollback transaction on error
+		}
+	}()
+
+	// Get satellite by name
+	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
 	if err != nil {
 		log.Printf("Error: Satellite Not Found: %v", err)
 		err := &AppError{
@@ -647,7 +682,9 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
-	grp, err := s.dbQueries.GetGroupByName(r.Context(), req.Group)
+
+	// Get group by name
+	grp, err := q.GetGroupByName(r.Context(), req.Group)
 	if err != nil {
 		log.Printf("Error: Group Not Found: %v", err)
 		err := &AppError{
@@ -658,38 +695,67 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if satellite is already in the group
+	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("Error: Failed to get satellite group list: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to get satellite group list",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	alreadyInGroup := false
+	for _, group := range groupList {
+		if group.GroupID == grp.ID {
+			alreadyInGroup = true
+			break
+		}
+	}
+
+	if alreadyInGroup {
+		log.Printf("Satellite %s is already in group %s, no changes needed", req.Satellite, req.Group)
+		WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite is already in the group"})
+		return
+	}
+
+	// Add satellite to group
 	params := database.AddSatelliteToGroupParams{
 		SatelliteID: int32(sat.ID),
 		GroupID:     int32(grp.ID),
 	}
 
-	err = s.dbQueries.AddSatelliteToGroup(r.Context(), params)
+	err = q.AddSatelliteToGroup(r.Context(), params)
 	if err != nil {
-		log.Printf("Error: Failed to Add Satellite to Group: %v", err)
+		log.Printf("Error: Failed to add satellite to group: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to Add Satellite to Group",
+			Message: "Error: Failed to add satellite to group",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
 		return
 	}
 
-	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	// Get robot account for the satellite
+	robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), sat.ID)
 	if err != nil {
-		log.Printf("Error: Failed to Add permission to robot account: %v", err)
+		log.Printf("Error: Failed to get robot account for satellite: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to Add permission to robot account",
+			Message: "Error: Failed to get robot account for satellite",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
 		return
 	}
 
-	groupList, err := s.dbQueries.SatelliteGroupList(r.Context(), sat.ID)
+	// Get updated group list after adding the new group
+	groupList, err = q.SatelliteGroupList(r.Context(), sat.ID)
 	if err != nil {
-		log.Printf("Error: Failed: %v", err)
+		log.Printf("Error: Failed to get updated satellite group list: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to Add satellite to group",
+			Message: "Error: Failed to get updated satellite group list",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
@@ -700,11 +766,11 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var groupStates []string
 
 	for _, group := range groupList {
-		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
+		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
 		if err != nil {
-			log.Printf("Error: Failed: %v", err)
+			log.Printf("Error: Failed to get group by ID %d: %v", group.GroupID, err)
 			err := &AppError{
-				Message: "Error: Failed to Add satellite to group",
+				Message: "Error: Failed to get group details",
 				Code:    http.StatusInternalServerError,
 			}
 			HandleAppError(w, err)
@@ -714,11 +780,12 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
+	// Update robot account permissions
 	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
 	if err != nil {
-		log.Printf("Error: Failed to Add permission to robot account: %v", err)
+		log.Printf("Error: Failed to update robot account permissions: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to Add permission to robot account",
+			Message: "Error: Failed to update robot account permissions",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
@@ -728,12 +795,13 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	// Update the state artifact to also track the new group state artifact
 	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates)
 	if err != nil {
-		log.Println(err)
+		log.Printf("Error: Failed to update satellite state artifact: %v", err)
 		HandleAppError(w, err)
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+	tx.Commit()
+	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite successfully added to group"})
 }
 
 // If the satellite is removed from the group, the state artifact must be updated accordingly as well.
