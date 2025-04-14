@@ -19,12 +19,17 @@ type Artifact struct {
 }
 
 type ZtrResult struct {
-	State string  `json:"state"`
-	Auth  Account `json:"auth"`
+	State         string  `json:"state"`
+	SatelliteName string  `json:"satellite_name"`
+	Auth          Account `json:"auth"`
 }
 
 type Account struct {
 	Name     string `json:"name"`
 	Secret   string `json:"secret"`
 	Registry string `json:"registry"`
+}
+
+type GroundControlPayload struct {
+	States []string `json:"states"`
 }

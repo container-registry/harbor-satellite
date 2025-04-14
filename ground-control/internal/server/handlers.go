@@ -521,6 +521,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 			Secret:   robot.RobotSecret,
 			Registry: os.Getenv("HARBOR_URL"),
 		},
+		SatelliteName: satellite.Name,
 	}
 
 	tx.Commit()
@@ -906,4 +907,41 @@ func GetAuthToken(r *http.Request) (string, error) {
 	token := parts[1]
 
 	return token, nil
+}
+
+func (s *Server) satelliteSyncHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	satelliteName := vars["satellite"]
+	if satelliteName == "" {
+		http.Error(w, "Satellite name is required", http.StatusBadRequest)
+		return
+	}
+
+	satellite, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
+	if err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	groups, err := s.dbQueries.SatelliteGroupList(r.Context(), satellite.ID)
+	if err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	var states []string
+	for _, group := range groups {
+		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
+		if err != nil {
+			HandleAppError(w, err)
+			return
+		}
+		state := utils.AssembleGroupState(grp.GroupName)
+		states = append(states, state)
+	}
+
+	response := models.GroundControlPayload{
+		States: states,
+	}
+	WriteJSONResponse(w, http.StatusOK, response)
 }
