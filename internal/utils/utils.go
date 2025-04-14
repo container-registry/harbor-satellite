@@ -77,8 +77,9 @@ func GetRepositoryAndImageNameFromArtifact(repository string) (string, string, e
 	if len(parts) < 2 {
 		return "", "", fmt.Errorf("invalid repository format: %s. Expected format: repo/image", repository)
 	}
+
 	repo := parts[0]
-	image := parts[1]
+	image := strings.Join(parts[1:], "/")
 	return repo, image, nil
 }
 
