@@ -1,22 +1,15 @@
 package server
 
 import (
-	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
-	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
 	"github.com/gorilla/mux"
-	"github.com/robfig/cron/v3"
 )
 
 type SatelliteConfigParams struct {
@@ -40,6 +33,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
+
 	committed := false
 	defer func() {
 		if !committed {
@@ -69,27 +63,10 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	satExist, err := harbor.GetProject(r.Context(), "satellite")
-	if err != nil {
-		err := &AppError{
-			Message: fmt.Sprintf("Error: Checking satellite project: %v", err),
-			Code:    http.StatusBadGateway,
-		}
-		log.Println(err)
+	if err := ensureSatelliteProjectExists(r.Context()); err != nil {
 		HandleAppError(w, err)
+		tx.Rollback()
 		return
-	}
-	if !satExist {
-		_, err := harbor.CreateSatelliteProject(r.Context())
-		if err != nil {
-			err := &AppError{
-				Message: fmt.Sprintf("Error: creating satellite project: %v", err),
-				Code:    http.StatusBadGateway,
-			}
-			log.Println(err)
-			HandleAppError(w, err)
-			return
-		}
 	}
 
 	// Upload config as OCI artifact
@@ -208,39 +185,9 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 
 	q := s.dbQueries.WithTx(tx)
 
-	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
+	sat, err := updateSatelliteConfig(r.Context(), q, req.Satellite, req.ConfigName)
 	if err != nil {
-		log.Printf("Error: Satellite Not Found: %v", err)
-		err := &AppError{
-			Message: "Error: Satellite Not Found",
-			Code:    http.StatusBadRequest,
-		}
-		HandleAppError(w, err)
-		return
-	}
-	configObject, err := q.GetConfigByName(r.Context(), req.ConfigName)
-	if err != nil {
-		log.Printf("Error: Config Not Found: %v", err)
-		err := &AppError{
-			Message: "Error: Config Not Found",
-			Code:    http.StatusBadRequest,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	params := database.SetSatelliteConfigParams{
-		SatelliteID: int32(sat.ID),
-		ConfigID:    int32(configObject.ID),
-	}
-
-	err = q.SetSatelliteConfig(r.Context(), params)
-	if err != nil {
-		log.Printf("Error: Failed to Set Satellite Config: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to Set Satellite config",
-			Code:    http.StatusInternalServerError,
-		}
+		log.Printf("Error: Could not set satellite config: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -272,7 +219,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, utils.AssembleConfigState(configObject.ConfigName))
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, utils.AssembleConfigState(req.ConfigName))
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -356,58 +303,4 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
-}
-
-func isConfigInUse(ctx context.Context, q *database.Queries, configObject database.Config) error {
-	configSatellites, err := q.ConfigSatelliteList(ctx, configObject.ID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		log.Printf("Failed to get the list of Satellites that use this Config: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to get Satellites that use this Config",
-			Code:    http.StatusInternalServerError,
-		}
-		return err
-	}
-
-	if len(configSatellites) > 0 {
-		log.Println("Cannot delete config %s: it is currently in use", configObject.ConfigName)
-		err := &AppError{
-			Message: "Cannot delete a config that is currently in use",
-			Code:    http.StatusInternalServerError,
-		}
-		return err
-	}
-
-	return nil
-}
-
-// validateCronExpression checks the validity of a cron expression.
-func isValidCronExpression(cronExpression string) bool {
-	if _, err := cron.ParseStandard(cronExpression); err != nil {
-		return false
-	}
-	return true
-}
-
-func isValidConfig(config models.SatelliteConfig) error {
-	if _, err := url.Parse(config.GroundControlURL); err != nil {
-		return fmt.Errorf("The provided ground_control_url %s is invalid", config.GroundControlURL)
-	}
-
-	if _, err := url.Parse(config.LocalRegistryConfig.URL); err != nil {
-		return fmt.Errorf("The provided local_registry.url %s is invalid", config.LocalRegistryConfig.URL)
-	}
-
-	if !isValidCronExpression(config.UpdateConfigInterval) {
-		return fmt.Errorf("The provided update_config_interval %s is not a valid cron expression")
-	}
-
-	if !isValidCronExpression(config.StateReplicationInterval) {
-		return fmt.Errorf("The provided state_replication_interval %s is not a valid cron expression")
-	}
-
-	if !isValidCronExpression(config.RegisterSatelliteInterval) {
-		return fmt.Errorf("The provided register_satellite_interval %s is not a valid cron expression")
-	}
-	return nil
 }
