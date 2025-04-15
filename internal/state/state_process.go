@@ -280,18 +280,6 @@ func (f *FetchAndReplicateStateProcess) CanExecute(ctx context.Context) (bool, s
 	return true, fmt.Sprintf("Process %s can execute: all conditions fulfilled", f.name)
 }
 
-<<<<<<< HEAD
-// unused method
-// func (f *FetchAndReplicateStateProcess) start() bool {
-// 	f.mu.Lock()
-// 	defer f.mu.Unlock()
-// 	if f.isRunning {
-// 		return false
-// 	}
-// 	f.isRunning = true
-// 	return true
-// }
-=======
 //func (f *FetchAndReplicateStateProcess) start() bool {
 ////f.mu.Lock()
 ////defer f.mu.Unlock()
@@ -301,7 +289,6 @@ func (f *FetchAndReplicateStateProcess) CanExecute(ctx context.Context) (bool, s
 ////f.isRunning = true
 ////return true
 //}
->>>>>>> 2ce0f02 (fix lint errors)
 
 func (f *FetchAndReplicateStateProcess) stop() {
 	f.mu.Lock()
