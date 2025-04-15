@@ -101,7 +101,7 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create State Artifact for the group
-	err = utils.CreateStateArtifact(&req)
+	err = utils.CreateStateArtifact(r.Context(), &req)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
