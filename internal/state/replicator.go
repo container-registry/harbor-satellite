@@ -72,8 +72,8 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		Password: r.remotePassword,
 	})
 
-	pullOptions := []crane.Option{crane.WithAuth(pullAuthConfig)}
-	pushOptions := []crane.Option{crane.WithAuth(pushAuthConfig)}
+	pullOptions := []crane.Option{crane.WithAuth(pullAuthConfig), crane.WithContext(ctx)}
+	pushOptions := []crane.Option{crane.WithAuth(pushAuthConfig), crane.WithContext(ctx)}
 
 	if r.useUnsecure {
 		pullOptions = append(pullOptions, crane.Insecure)
@@ -112,7 +112,7 @@ func (r *BasicReplicator) DeleteReplicationEntity(ctx context.Context, replicati
 		Password: r.remotePassword,
 	})
 
-	options := []crane.Option{crane.WithAuth(auth)}
+	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 	if r.useUnsecure {
 		options = append(options, crane.Insecure)
 	}

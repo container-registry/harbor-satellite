@@ -3,6 +3,7 @@ package state
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,7 +18,7 @@ import (
 )
 
 type StateFetcher interface {
-	FetchStateArtifact(state interface{}, log *zerolog.Logger) error
+	FetchStateArtifact(ctx context.Context, state interface{}, log *zerolog.Logger) error
 }
 
 type baseStateFetcher struct {
@@ -56,7 +57,8 @@ func NewFileStateFetcher(filePath, userName, password string) StateFetcher {
 	}
 }
 
-func (f *FileStateArtifactFetcher) FetchStateArtifact(state interface{}, log *zerolog.Logger) error {
+// TODO: Do we need the file state artifact fetcher?
+func (f *FileStateArtifactFetcher) FetchStateArtifact(ctx context.Context, state interface{}, log *zerolog.Logger) error {
 	content, err := os.ReadFile(f.filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read the state artifact file: %v", err)
@@ -68,44 +70,44 @@ func (f *FileStateArtifactFetcher) FetchStateArtifact(state interface{}, log *ze
 	return nil
 }
 
-func (f *URLStateFetcher) FetchStateArtifact(state interface{}, log *zerolog.Logger) error {
+func (f *URLStateFetcher) FetchStateArtifact(ctx context.Context, state interface{}, log *zerolog.Logger) error {
 	switch s := state.(type) {
 	case *SatelliteState:
-		return f.fetchSatelliteState(s, log)
+		return f.fetchSatelliteState(ctx, s, log)
 
 	case *State:
-		return f.fetchGroupState(s, log)
+		return f.fetchGroupState(ctx, s, log)
 
 	default:
 		return fmt.Errorf("unexpected state type: %T", s)
 	}
 }
 
-func (f *URLStateFetcher) fetchSatelliteState(state *SatelliteState, log *zerolog.Logger) error {
+func (f *URLStateFetcher) fetchSatelliteState(ctx context.Context, state *SatelliteState, log *zerolog.Logger) error {
 	log.Info().Msgf("Fetching satellite state artifact: %s", f.url)
-	img, err := f.pullImage(log)
+	img, err := f.pullImage(ctx, log)
 	if err != nil {
 		return err
 	}
 	return f.extractArtifactJSON(f.url, img, state, log)
 }
 
-func (f *URLStateFetcher) fetchGroupState(state *State, log *zerolog.Logger) error {
+func (f *URLStateFetcher) fetchGroupState(ctx context.Context, state *State, log *zerolog.Logger) error {
 	log.Info().Msgf("Fetching group state artifact: %s", f.url)
-	img, err := f.pullImage(log)
+	img, err := f.pullImage(ctx, log)
 	if err != nil {
 		return err
 	}
 	return f.extractArtifactJSON(f.url, img, state, log)
 }
 
-func (f *URLStateFetcher) pullImage(log *zerolog.Logger) (v1.Image, error) {
+func (f *URLStateFetcher) pullImage(ctx context.Context, log *zerolog.Logger) (v1.Image, error) {
 	log.Debug().Msgf("Pulling state artifact: %s", f.url)
 	auth := authn.FromConfig(authn.AuthConfig{
 		Username: f.username,
 		Password: f.password,
 	})
-	options := []crane.Option{crane.WithAuth(auth)}
+	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 	if config.UseUnsecure() {
 		options = append(options, crane.Insecure)
 	}

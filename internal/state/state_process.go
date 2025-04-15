@@ -108,7 +108,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	log.Info().Msg(reason)
 
 	// Fetch the satellite's state
-	satelliteState, err := f.fetchSatelliteState(log)
+	satelliteState, err := f.fetchSatelliteState(ctx, log)
 	if err != nil {
 		return err
 	}
@@ -124,7 +124,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 			log.Error().Err(err).Msg("Error processing input")
 			return err
 		}
-		newStateFetched, err := f.FetchAndProcessState(groupStateFetcher, log)
+		newStateFetched, err := f.FetchAndProcessState(ctx, groupStateFetcher, log)
 		if err != nil {
 			log.Error().Err(err).Msg("Error fetching state")
 			return err
@@ -152,7 +152,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	return nil
 }
 
-func (f *FetchAndReplicateStateProcess) fetchSatelliteState(log *zerolog.Logger) (*SatelliteState, error) {
+func (f *FetchAndReplicateStateProcess) fetchSatelliteState(ctx context.Context, log *zerolog.Logger) (*SatelliteState, error) {
 	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, log)
 	if err != nil {
 		log.Error().Err(err).Msg("Error processing satellite state")
@@ -160,7 +160,7 @@ func (f *FetchAndReplicateStateProcess) fetchSatelliteState(log *zerolog.Logger)
 	}
 
 	satelliteState := &SatelliteState{}
-	if err := satelliteStateFetcher.FetchStateArtifact(satelliteState, log); err != nil {
+	if err := satelliteStateFetcher.FetchStateArtifact(ctx, satelliteState, log); err != nil {
 		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", f.satelliteState)
 		return nil, err
 	}
@@ -326,9 +326,9 @@ func ProcessState(state *StateReader) (*StateReader, error) {
 	return state, nil
 }
 
-func (f *FetchAndReplicateStateProcess) FetchAndProcessState(fetcher StateFetcher, log *zerolog.Logger) (*StateReader, error) {
+func (f *FetchAndReplicateStateProcess) FetchAndProcessState(ctx context.Context, fetcher StateFetcher, log *zerolog.Logger) (*StateReader, error) {
 	state := NewState()
-	err := fetcher.FetchStateArtifact(state, log)
+	err := fetcher.FetchStateArtifact(ctx, state, log)
 	if err != nil {
 		log.Error().Err(err).Msg("Error fetching state artifact")
 		return nil, err
