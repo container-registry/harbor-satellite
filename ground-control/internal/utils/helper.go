@@ -202,7 +202,7 @@ func AssembleConfigState(configName string) string {
 	return fmt.Sprintf("%s/satellite/config-state/%s/state:latest", os.Getenv("HARBOR_URL"), configName)
 }
 
-func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, states []string) error {
+func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, states []string, config string) error {
 	if satelliteName == "" {
 		return fmt.Errorf("the satellite name must be atleast one character long")
 	}

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -271,7 +272,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
-	err = utils.CreateOrUpdateSatStateArtifact(sat.Name, groupStates, utils.AssembleConfigState(configObject.ConfigName))
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, utils.AssembleConfigState(configObject.ConfigName))
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -323,23 +324,8 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	configSatellites, err := q.ConfigSatelliteList(r.Context(), configObject.ID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		log.Printf("Error: Failed to get Satellites that use this Config: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to get Satellites that use this Config",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	if len(configSatellites) > 0 {
-		log.Println("Cannot delete config %s: it is currently in use", configName)
-		err := &AppError{
-			Message: "Error: Cannot delete a config that is currently in use",
-			Code:    http.StatusInternalServerError,
-		}
+	if err := isConfigInUse(r.Context(), q, configObject); err != nil {
+		log.Printf("Error: Could not delete config: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -370,6 +356,29 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func isConfigInUse(ctx context.Context, q *database.Queries, configObject database.Config) error {
+	configSatellites, err := q.ConfigSatelliteList(ctx, configObject.ID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		log.Printf("Failed to get the list of Satellites that use this Config: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to get Satellites that use this Config",
+			Code:    http.StatusInternalServerError,
+		}
+		return err
+	}
+
+	if len(configSatellites) > 0 {
+		log.Println("Cannot delete config %s: it is currently in use", configObject.ConfigName)
+		err := &AppError{
+			Message: "Cannot delete a config that is currently in use",
+			Code:    http.StatusInternalServerError,
+		}
+		return err
+	}
+
+	return nil
 }
 
 // validateCronExpression checks the validity of a cron expression.
