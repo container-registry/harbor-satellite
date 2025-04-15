@@ -309,6 +309,35 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	// Create the satellite's state artifact
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates)
+	if err != nil {
+		log.Println(err)
+		tx.Rollback()
+		HandleAppError(w, err)
+		return
+	}
+
+	// Add token to DB
+	token, err := GenerateRandomToken(32)
+	if err != nil {
+		log.Println(err)
+		tx.Rollback()
+		HandleAppError(w, err)
+		return
+	}
+	tk, err := q.AddToken(r.Context(), database.AddTokenParams{
+		SatelliteID: satellite.ID,
+		Token:       token,
+	})
+	if err != nil {
+		log.Println("error in token")
+		log.Println(err)
+		HandleAppError(w, err)
+		tx.Rollback()
+		return
+	}
+
 	// Create Robot Account for Satellite
 	projects := []string{"satellite"}
 	rbt, err := utils.CreateRobotAccForSatellite(r.Context(), projects, satellite.Name)
@@ -322,11 +351,23 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		tx.Rollback()
 		return
 	}
+
+	// Track transaction success
+	transactionSuccess := false
+	defer func() {
+		if !transactionSuccess && rbt != nil {
+			// If transaction failed, delete the robot account from Harbor
+			if _, delErr := harbor.DeleteRobotAccount(r.Context(), rbt.ID); delErr != nil {
+				log.Printf("Warning: Failed to cleanup robot account after transaction failure: %v", delErr)
+			}
+		}
+	}()
+
 	// Add Robot Account to database
 	params := database.AddRobotAccountParams{
 		RobotName:   rbt.Name,
 		RobotSecret: rbt.Secret,
-		RobotID:     strconv.Itoa(int(rbt.ID)),
+		RobotID:     strconv.FormatInt(rbt.ID, 10),
 		SatelliteID: satellite.ID,
 	}
 	_, err = q.AddRobotAccount(r.Context(), params)
@@ -369,39 +410,15 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 			tx.Rollback()
 			return
 		}
-
 	}
 
-	// Create the satellite's state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates)
-	if err != nil {
-		log.Println(err)
-		tx.Rollback()
+	transactionSuccess = true
+	if err = tx.Commit(); err != nil {
+		log.Println("Commit failed:", err)
 		HandleAppError(w, err)
 		return
 	}
 
-	// Add token to DB
-	token, err := GenerateRandomToken(32)
-	if err != nil {
-		log.Println(err)
-		tx.Rollback()
-		HandleAppError(w, err)
-		return
-	}
-	tk, err := q.AddToken(r.Context(), database.AddTokenParams{
-		SatelliteID: satellite.ID,
-		Token:       token,
-	})
-	if err != nil {
-		log.Println("error in token")
-		log.Println(err)
-		HandleAppError(w, err)
-		tx.Rollback()
-		return
-	}
-
-	tx.Commit()
 	WriteJSONResponse(w, http.StatusOK, tk)
 }
 
@@ -718,7 +735,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error: Failed to Add permission to robot account: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to Add permission to robot account",
+			Message: "Error: Failed to update robot account permissions",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
