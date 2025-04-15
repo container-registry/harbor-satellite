@@ -115,15 +115,15 @@ func isValidConfig(config models.SatelliteConfig) error {
 	}
 
 	if !isValidCronExpression(config.UpdateConfigInterval) {
-		return fmt.Errorf("The provided update_config_interval %s is not a valid cron expression")
+		return fmt.Errorf("The provided update_config_interval %s is not a valid cron expression", config.UpdateConfigInterval)
 	}
 
 	if !isValidCronExpression(config.StateReplicationInterval) {
-		return fmt.Errorf("The provided state_replication_interval %s is not a valid cron expression")
+		return fmt.Errorf("The provided state_replication_interval %s is not a valid cron expression", config.StateReplicationInterval)
 	}
 
 	if !isValidCronExpression(config.RegisterSatelliteInterval) {
-		return fmt.Errorf("The provided register_satellite_interval %s is not a valid cron expression")
+		return fmt.Errorf("The provided register_satellite_interval %s is not a valid cron expression", config.RegisterSatelliteInterval)
 	}
 	return nil
 }

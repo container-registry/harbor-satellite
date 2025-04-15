@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -144,7 +145,10 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := q.GetConfigByName(r.Context(), configName)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		HandleAppError(w, &AppError{
+			Message: fmt.Sprintf("Config not found: %v", err),
+			Code:    http.StatusNotFound,
+		})
 		return
 	}
 
