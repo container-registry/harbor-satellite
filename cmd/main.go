@@ -77,9 +77,9 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 			return fmt.Errorf("error reading config: %w", err)
 		}
 
-		err := config.SetRemoteRegistryURL(defaultZotConfig.GetRegistryURL())
-		if err != nil {
-			return fmt.Errorf("error setting RemoteRegistryURL")
+		if err := config.SetRemoteRegistryURL(defaultZotConfig.GetRegistryURL()); err != nil {
+			log.Error().Err(err).Msg("Error setting remote registry URL")
+			return fmt.Errorf("error setting remote registry URL: %w", err)
 		}
 
 		g.Go(func() error {
