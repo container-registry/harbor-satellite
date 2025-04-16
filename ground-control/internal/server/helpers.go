@@ -89,7 +89,7 @@ func isConfigInUse(ctx context.Context, q *database.Queries, configObject databa
 		log.Println("Cannot delete config %s: it is currently in use", configObject.ConfigName)
 		err := &AppError{
 			Message: "Cannot delete a config that is currently in use",
-			Code:    http.StatusInternalServerError,
+			Code:    http.StatusBadRequest,
 		}
 		return err
 	}

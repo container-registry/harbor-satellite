@@ -287,7 +287,7 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := utils.DeleteConfigStateArtifact(configName); err != nil {
+	if err := utils.DeleteArtifact(utils.ConstructHarborDeleteURL(fmt.Sprintf("config-state/%s/state", configName))); err != nil {
 		log.Printf("Could not delete config state artifact: %v", err)
 		HandleAppError(w, &AppError{
 			Message: "Error: Could not delete config state artifact",

@@ -239,16 +239,10 @@ func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, s
 	return tagImage(destinationRepo, options)
 }
 
-func DeleteSatelliteStateArtifact(satelliteName string) error {
-	if satelliteName == "" {
-		return fmt.Errorf("the satellite name must be atleast one character long")
-	}
-
+func DeleteArtifact(deleteURL string) error {
 	if err := envSanityCheck(); err != nil {
 		return err
 	}
-
-	deleteURL := constructHarborDeleteURL(fmt.Sprintf("satellite-state/%s/state", satelliteName))
 
 	req, err := http.NewRequest("DELETE", deleteURL, nil)
 	if err != nil {
@@ -270,35 +264,7 @@ func DeleteSatelliteStateArtifact(satelliteName string) error {
 	return nil
 }
 
-// TODO: we could refactor the two delete artifact functions
-func DeleteConfigStateArtifact(configName string) error {
-	if err := envSanityCheck(); err != nil {
-		return err
-	}
-
-	deleteURL := constructHarborDeleteURL(fmt.Sprintf("config-state/%s/state", configName))
-
-	req, err := http.NewRequest("DELETE", deleteURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %v", err)
-	}
-
-	req.SetBasicAuth(username, password)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("failed to delete repository, received status: %d", resp.StatusCode)
-	}
-
-	return nil
-}
-
-func constructHarborDeleteURL(repo string) string {
+func ConstructHarborDeleteURL(repo string) string {
 	doubleEncodedRepoName := url.QueryEscape(url.QueryEscape(repo))
 	return fmt.Sprintf("%s/api/v2.0/projects/satellite/repositories/%s", registry, doubleEncodedRepoName)
 }
