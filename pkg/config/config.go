@@ -97,13 +97,6 @@ func (cm *ConfigManager) SetStateAuthConfig(username, registryURL, password, sta
 	cm.config.StateConfig.StateURL = stateURL
 }
 
-func (cm *ConfigManager) SetGroundControlURL(groundControlURL string) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	cm.config.AppConfig.GroundControlURL = groundControlURL
-}
-
 func (cm *ConfigManager) WriteConfig() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -127,4 +120,13 @@ func isValidCronExpression(cronExpression string) bool {
 		return false
 	}
 	return true
+}
+
+func (cm *ConfigManager) With(mutators ...func(*Config)) *ConfigManager {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	for _, mutate := range mutators {
+		mutate(cm.config)
+	}
+	return cm
 }
