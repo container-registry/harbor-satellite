@@ -869,6 +869,41 @@ func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupName := vars["group"]
+
+	group, err := s.dbQueries.GetGroupByName(r.Context(), groupName)
+	if err != nil {
+		http.Error(w, "group not found", http.StatusNotFound)
+		return
+	}
+
+	// Remove the group from all associated satellites
+	satellites, err := s.dbQueries.GroupSatelliteList(r.Context(), group.ID)
+	if err != nil {
+		http.Error(w, "failed to get satellites", http.StatusInternalServerError)
+		return
+	}
+
+	for _, satellite := range satellites {
+		if err := s.dbQueries.RemoveSatelliteFromGroup(r.Context(), database.RemoveSatelliteFromGroupParams{
+			SatelliteID: satellite.SatelliteID,
+			GroupID:     group.ID,
+		}); err != nil {
+			http.Error(w, "failed to remove group from satellites", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if err := s.dbQueries.DeleteGroup(r.Context(), group.ID); err != nil {
+		http.Error(w, "failed to delete group", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 // creates a unique random API token of the specified length in bytes.
 func GenerateRandomToken(charLength int) (string, error) {
 	// The number of bytes needed to generate a token with the required number of hex characters
