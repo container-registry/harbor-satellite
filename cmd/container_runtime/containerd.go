@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/container-registry/harbor-satellite/internal/config"
-	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/registry"
 	toml "github.com/pelletier/go-toml"
 	"github.com/rs/zerolog"
@@ -43,7 +43,7 @@ func init() {
 
 func NewContainerdCommand() *cobra.Command {
 	var generateConfig bool
-	var defaultZotConfig registry.DefaultZotConfig
+	var defaultZotConfig registry.ZotConfig
 	var containerdConfigPath string
 	var containerDCertPath string
 

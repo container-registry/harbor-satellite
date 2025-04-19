@@ -1,29 +1,36 @@
 name: Lint
 on:
-  pull_request_review:
-    branches:
-      - main
-    types: [submitted]
+  pull_request:
+    paths-ignore:
+      - "*.md"
+      - "assets/**"
 jobs:
   lint:
-    # the ON keyword is ANY not AND for conditions regarding path. Need to work around with labelling for PRs. 
-    if: contains(github.event.pull_request.labels.*.name, 'golang') && github.event.review.state == 'approved'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '>=1.22'
-        cache: false
+    - name: Dagger Version
+      uses: sagikazarmark/dagger-version-action@v0.0.1
 
-    # Run vet and cli-lint for static linting 
-    - name: golangci-lint
-      uses: golangci/golangci-lint-action@v3
+    - name: Run Dagger golangci-lint
+      uses: dagger/dagger-for-github@v7
       with:
-        version: v1.54
-    
-    - name: Run go vet
-      run: go vet ./...
+        version: ${{ steps.dagger_version.outputs.version }}
+        verb: call
+        args: lint-report export --path=golangci-lint.report
+
+    - name: Generate lint summary
+      run: |
+        echo "<h2> 📝 Lint results</h2>" >> $GITHUB_STEP_SUMMARY
+        cat golangci-lint.report >> $GITHUB_STEP_SUMMARY
+        # Check if the lint report contains any content (error or issues)
+        if [ -s golangci-lint.report ]; then
+            # If the file contains content, output an error message and exit with code 1
+            echo "⚠️ Linting issues found!" >> $GITHUB_STEP_SUMMARY
+            exit 1
+        fi

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/container-registry/harbor-satellite/internal/config"
-	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/registry"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/rs/zerolog"
@@ -38,7 +38,7 @@ func init() {
 }
 
 func NewCrioCommand() *cobra.Command {
-	var defaultZotConfig registry.DefaultZotConfig
+	var defaultZotConfig registry.ZotConfig
 	var generateConfig bool
 	var crioConfigPath string
 
@@ -67,7 +67,7 @@ func NewCrioCommand() *cobra.Command {
 	return crioCmd
 }
 
-func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, crioConfigPath string, log *zerolog.Logger) error {
+func GenerateCrioRegistryConfig(defaultZotConfig *registry.ZotConfig, crioConfigPath string, log *zerolog.Logger) error {
 	// Read the current crio registry config file
 	data, err := utils.ReadFile(crioConfigPath, false)
 	if err != nil {
@@ -87,8 +87,8 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 	}
 	// Update the crio registry config file
 	// - Add the local registry to the unqualified search registries if not already present
-	var found bool = false
-	var localRegistry string = utils.FormatRegistryURL(defaultZotConfig.RemoteURL)
+	found := false
+	localRegistry := utils.FormatRegistryURL(defaultZotConfig.RemoteURL)
 	for _, registry := range crioRegistryConfig.UnqualifiedSearchRegistries {
 		if registry == localRegistry {
 			found = true
@@ -147,7 +147,7 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.DefaultZotConfig, cri
 	return nil
 }
 
-func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig *registry.DefaultZotConfig, defaultGenPath string) error {
+func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig *registry.ZotConfig, defaultGenPath string) error {
 	//	utils.CommandRunSetup(cmd)
 	var err error
 	log := logger.FromContext(cmd.Context())
@@ -162,11 +162,11 @@ func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig *registry
 		defaultZotConfig.RemoteURL = config.GetRemoteRegistryURL()
 	} else {
 		log.Info().Msg("Using default registry for config generation")
-		err = registry.ReadConfig(config.GetZotConfigPath(), defaultZotConfig)
+		err = registry.ReadZotConfig(config.GetZotConfigPath(), defaultZotConfig)
 		if err != nil || defaultZotConfig == nil {
 			return fmt.Errorf("could not read config: %w", err)
 		}
-		defaultZotConfig.RemoteURL = defaultZotConfig.GetLocalRegistryURL()
+		defaultZotConfig.RemoteURL = defaultZotConfig.GetRegistryURL()
 		log.Info().Msgf("Default config read successfully: %v", defaultZotConfig.HTTP.Address+":"+defaultZotConfig.HTTP.Port)
 	}
 	return utils.CreateRuntimeDirectory(defaultGenPath)

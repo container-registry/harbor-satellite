@@ -3,8 +3,9 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/robfig/cron/v3"
 	"os"
+
+	"github.com/robfig/cron/v3"
 )
 
 var appConfig *Config
@@ -41,8 +42,8 @@ type LocalJsonConfig struct {
 }
 
 type StateConfig struct {
-	Auth   Auth     `json:"auth,omitempty"`
-	States []string `json:"states,omitempty"`
+	Auth  Auth   `json:"auth,omitempty"`
+	State string `json:"state,omitempty"`
 }
 
 type Config struct {
@@ -91,18 +92,18 @@ func ReadConfigData(configPath string) ([]byte, error) {
 // 4. Once the job is validated, append it to the validJobs slice if the job name is valid, i.e., it is used by the satellite.
 // 5. Finally, check for critical jobs that are not present in the config and manually add them to the validJobs slice.
 func LoadConfig(configPath string) (*Config, []error, []Warning) {
-	var checks []error
+	var errors []error
 	var warnings []Warning
 	var err error
 	configData, err := ReadConfigData(configPath)
 	if err != nil {
-		checks = append(checks, err)
-		return nil, checks, warnings
+		errors = append(errors, fmt.Errorf("could not find config.json: %w", err))
+		return nil, errors, warnings
 	}
 	config, err := ParseConfigFromJson(string(configData))
 	if err != nil {
-		checks = append(checks, err)
-		return nil, checks, warnings
+		errors = append(errors, fmt.Errorf("could not parse config: %w", err))
+		return nil, errors, warnings
 	}
 
 	// Validate the job schedule fields
@@ -124,7 +125,7 @@ func LoadConfig(configPath string) (*Config, []error, []Warning) {
 		config.LocalJsonConfig.UpdateConfigInterval = DefaultSchedule
 	}
 
-	return config, checks, warnings
+	return config, errors, warnings
 }
 
 // InitConfig reads the configuration file from the specified path and initializes the global appConfig variable.
@@ -133,17 +134,17 @@ func InitConfig(configPath string) ([]error, []Warning) {
 	var warnings []Warning
 	appConfig, err, warnings = LoadConfig(configPath)
 
-	if writeError := WriteConfig(configPath); writeError!= nil {
+	if writeError := WriteConfig(configPath); writeError != nil {
 		err = append(err, writeError)
 	}
 	return err, warnings
 }
 
-func UpdateStateAuthConfig(name, registry, secret string, states []string) error {
+func UpdateStateAuthConfig(name, registry, secret string, state string) error {
 	appConfig.StateConfig.Auth.SourceUsername = name
 	appConfig.StateConfig.Auth.Registry = registry
 	appConfig.StateConfig.Auth.SourcePassword = secret
-	appConfig.StateConfig.States = states
+	appConfig.StateConfig.State = state
 	return WriteConfig(DefaultConfigPath)
 }
 

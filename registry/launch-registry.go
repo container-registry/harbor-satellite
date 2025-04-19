@@ -4,7 +4,7 @@ import (
 	"zotregistry.dev/zot/pkg/cli/server"
 )
 
-func LaunchRegistry(zotConfigPath string) (bool, error) {
+func LaunchRegistry(zotConfigPath string) error {
 
 	// Create the root command for the server
 	rootCmd := server.NewServerRootCmd()
@@ -15,8 +15,8 @@ func LaunchRegistry(zotConfigPath string) (bool, error) {
 	// Execute the root command
 	err := rootCmd.Execute()
 	if err != nil {
-		return false, err
+		return err
 	}
 
-	return true, err
+	return nil
 }

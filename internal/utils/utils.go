@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"os"
@@ -14,9 +15,8 @@ import (
 	"syscall"
 
 	"github.com/container-registry/harbor-satellite/internal/config"
-	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/logger"
-	"github.com/container-registry/harbor-satellite/registry"
+	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
@@ -46,18 +46,6 @@ func HandleOwnRegistry() error {
 		return fmt.Errorf("error parsing URL: %w", err)
 	}
 	return config.SetRemoteRegistryURL(FormatRegistryURL(config.GetRemoteRegistryURL()))
-}
-
-// LaunchDefaultZotRegistry launches the default Zot registry using the Zot config path
-func LaunchDefaultZotRegistry() error {
-	launch, err := registry.LaunchRegistry(config.GetZotConfigPath())
-	if !launch {
-		return fmt.Errorf("error launching registry: %w", err)
-	}
-	if err != nil {
-		return fmt.Errorf("error launching registry: %w", err)
-	}
-	return nil
 }
 
 // Helper function to determine if input is a valid URL
@@ -133,7 +121,12 @@ func WriteFile(path string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("error creating file :%s", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("error closing file: %v", err)
+		}
+	}()
+
 	_, err = file.Write(data)
 	if err != nil {
 		return fmt.Errorf("error while write to the file :%s", err)

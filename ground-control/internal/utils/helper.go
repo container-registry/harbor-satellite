@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -90,7 +91,7 @@ func AssembleGroupState(groupName string) string {
 }
 
 // Create State Artifact for group
-func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
+func CreateStateArtifact(ctx context.Context, stateArtifact *m.StateArtifact) error {
 	// Set the registry URL from environment variable
 	stateArtifact.Registry = os.Getenv("HARBOR_URL")
 	if stateArtifact.Registry == "" {
@@ -121,7 +122,7 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 		Username: username,
 		Password: password,
 	})
-	options := []crane.Option{crane.WithAuth(auth)}
+	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 
 	// Construct the destination repository and strip protocol, if present
 	destinationRepo := getStateArtifactDestination(stateArtifact.Registry, repo)
@@ -149,7 +150,7 @@ func AssembleSatelliteState(satelliteName string) string {
 	return fmt.Sprintf("%s/satellite/satellite-state/%s/state:latest", os.Getenv("HARBOR_URL"), satelliteName)
 }
 
-func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error {
+func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, states []string) error {
 	if satelliteName == "" {
 		return fmt.Errorf("the satellite name must be atleast one character long")
 	}
@@ -175,7 +176,7 @@ func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error
 
 	repo := fmt.Sprintf("satellite/satellite-state/%s", satelliteName)
 	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
-	options := []crane.Option{crane.WithAuth(auth)}
+	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 
 	destinationRepo := getStateArtifactDestination(registry, repo)
 	destinationRepo = stripProtocol(destinationRepo)
@@ -255,9 +256,22 @@ func tagImage(destination string, options []crane.Option) error {
 	}
 	return nil
 }
-
 func getStateArtifactDestination(registry, repository string) string {
 	return fmt.Sprintf("%s/%s/%s", registry, repository, "state")
+}
+
+// IsValidName validates if a name meets the requirements:
+// 1. 1-255 characters long
+// 2. Only lowercase characters, numbers, and ._- are allowed
+// 3. Must start with a letter or number
+func IsValidName(name string) bool {
+	if len(name) < 1 || len(name) > 255 {
+		return false
+	}
+
+	pattern := `^[a-z0-9][a-z0-9._-]*$`
+	matched, _ := regexp.MatchString(pattern, name)
+	return matched
 }
 
 func envSanityCheck() error {
