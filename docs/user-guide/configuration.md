@@ -27,20 +27,9 @@ Harbor Satellite uses a JSON configuration file (`config.json`) for its settings
     "use_unsecure": true,                           // Use unsecure connections
     "zot_config_path": "./registry/config.json",    // Path to Zot registry config
     "token": "",                                    // Authentication token
-    "jobs": [
-      {
-        "name": "replicate_state",                  // State replication job
-        "schedule": "@every 00h00m10s"             // Cron schedule
-      },
-      {
-        "name": "update_config",                    // Configuration update job
-        "schedule": "@every 00h00m30s"             // Cron schedule
-      },
-      {
-        "name": "register_satellite",               // Satellite registration job
-        "schedule": "@every 00h00m05s"             // Cron schedule
-      }
-    ],
+    "state_replication_interval": "@every 00h00m10s", // // Job to replicate state
+    "update_config_interval": "@every 00h00m10s", // Job to update configuration  
+    "register_satellite_interval": "@every 00h00m10s", // Job to register satellite
     "local_registry": {
       "url": "",                                   // Custom registry URL
       "username": "",                              // Registry username
@@ -68,17 +57,10 @@ Harbor Satellite uses a JSON configuration file (`config.json`) for its settings
 - `use_unsecure`: Enable/disable secure connections
 - `zot_config_path`: Path to Zot registry configuration
 - `token`: Authentication token for Ground Control
+- `replicate_state`: Synchronizes state with Ground Control
+- `update_config`: Updates satellite configuration
+- `register_satellite`: Handles satellite registration
 
-### Jobs Configuration
-
-Three main jobs are implemented:
-1. `replicate_state`: Synchronizes state with Ground Control
-2. `update_config`: Updates satellite configuration
-3. `register_satellite`: Handles satellite registration
-
-Each job requires:
-- `name`: Job identifier
-- `schedule`: Cron-style schedule
 
 ### Local Registry Configuration
 
@@ -99,7 +81,7 @@ The local registry uses Zot with the following configuration:
   },
   "http": {
     "address": "127.0.0.1",
-    "port": "5000"
+    "port": "8585"
   },
   "log": {
     "level": "info"
