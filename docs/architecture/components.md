@@ -14,31 +14,25 @@ Ground Control is the central management component that orchestrates the Harbor 
 - Maintains desired state
 - Provides API endpoints for management
 
-### Configuration
-
-```json
-{
-  "satellite": {
-    "name": "edge-registry",
-    "group": "production",
-    "registry": {
-      "url": "http://localhost:5000",
-      "auth": {
-        "username": "admin",
-        "password": "password"
-      }
-    }
-  }
-}
-```
 
 ### API Endpoints
 
-- `GET /api/v1/satellites` - List satellites
-- `POST /api/v1/satellites` - Register satellite
-- `GET /api/v1/satellites/{name}` - Get satellite details
-- `PUT /api/v1/satellites/{name}` - Update satellite configuration
-- `DELETE /api/v1/satellites/{name}` - Remove satellite
+#### Health and Status
+- `GET /health` - Check service health status
+
+#### Groups Management
+- `POST /groups/sync` - Synchronize groups
+- `GET /groups/list` - List all groups
+- `GET /groups/{group}` - Get group details
+- `POST /groups/satellite` - Add satellite to group
+- `DELETE /groups/satellite` - Remove satellite from group
+
+#### Satellite Management
+- `POST /satellites/register` - Register a new satellite
+- `GET /satellites/ztr/{token}` - Zero-touch registration endpoint
+- `GET /satellites/list` - List all satellites
+- `GET /satellites/{satellite}` - Get satellite details
+- `DELETE /satellites/{satellite}` - Remove satellite
 
 ## Satellite
 
@@ -52,26 +46,6 @@ The Satellite component runs at edge locations and manages local container image
 - Handles image distribution
 - Maintains local state
 
-### Configuration
-
-```json
-{
-  "state": {
-    "type": "file",
-    "config": {
-      "path": "/var/lib/harbor-satellite/state.json"
-    }
-  },
-  "registry": {
-    "url": "http://localhost:5000",
-    "auth": {
-      "username": "admin",
-      "password": "password"
-    }
-  }
-}
-```
-
 ### State Management
 
 The Satellite maintains state in a JSON file containing:
@@ -79,9 +53,9 @@ The Satellite maintains state in a JSON file containing:
 - Registry URLs
 - Configuration settings
 
-## Registry
+## Registry (Zot)
 
-The Registry component (using Zot) is responsible for storing and serving container images.
+The Registry component uses Zot as the local container registry. For more information about the choice of Zot, see [Zot vs Docker Registries ADR](../decisions/0002-zot-vs-docker-registries.md).
 
 ### Responsibilities
 
@@ -89,25 +63,6 @@ The Registry component (using Zot) is responsible for storing and serving contai
 - Serving images to local workloads
 - Managing image metadata
 - Handling image operations
-
-### Configuration
-
-```json
-{
-  "storage": {
-    "rootDirectory": "/var/lib/hotshot",
-    "gc": true,
-    "dedupe": true
-  },
-  "http": {
-    "address": "0.0.0.0",
-    "port": "5000"
-  },
-  "log": {
-    "level": "debug"
-  }
-}
-```
 
 ## Component Interactions
 
@@ -151,61 +106,3 @@ The Registry component (using Zot) is responsible for storing and serving contai
    - Workloads report health
    - Satellite aggregates reports
    - Status is forwarded to Ground Control
-
-## Security Considerations
-
-### Authentication
-
-- Token-based authentication
-- Secure communication
-- Certificate management
-
-### Authorization
-
-- Basic access control
-- Resource permissions
-- Group-based policies
-
-### Network Security
-
-- TLS encryption
-- Network isolation
-- Firewall rules
-
-## Monitoring and Maintenance
-
-### Metrics
-
-- System performance
-- Resource utilization
-- Synchronization status
-- Health indicators
-
-### Logging
-
-- Operation logs
-- Error tracking
-- Debug information
-
-### Alerts
-
-- Health alerts
-- Performance alerts
-- Security alerts
-
-## Planned Features
-
-### 1. Spegel Integration
-- Peer-to-peer distribution
-- Bandwidth optimization
-- Cluster-wide caching
-
-### 2. Proxy Mode
-- Request forwarding
-- Access control
-- Network isolation
-
-### 3. Enhanced Security
-- Advanced authentication
-- Role-based access control
-- Audit logging

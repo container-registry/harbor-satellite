@@ -81,5 +81,4 @@ State synchronization ensures that:
 ## Next Steps
 
 1. [Configuration Guide](../user-guide/configuration.md) - Configure your deployment
-2. [User Guide](../user-guide/README.md) - Learn how to use Harbor Satellite
-3. [Architecture Guide](../architecture/overview.md) - Understand the system architecture 
+2. [Architecture Guide](../architecture/overview.md) - Understand the system architecture 

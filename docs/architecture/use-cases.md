@@ -7,48 +7,7 @@ This document outlines the current use cases and deployment patterns for Harbor 
 ### Basic Edge Registry
 
 #### Configuration
-```json
-{
-  "state_config": {
-    "auth": {
-      "name": "your_username",
-      "registry": "https://harbor.example.com",
-      "secret": "your_password"
-    },
-    "states": [
-      "project1",
-      "project2"
-    ]
-  },
-  "environment_variables": {
-    "ground_control_url": "http://localhost:8080",
-    "log_level": "info",
-    "use_unsecure": false,
-    "zot_config_path": "./registry/config.json",
-    "token": "your_satellite_token",
-    "jobs": [
-      {
-        "name": "replicate_state",
-        "schedule": "@every 00h00m10s"
-      },
-      {
-        "name": "update_config",
-        "schedule": "@every 00h00m30s"
-      },
-      {
-        "name": "register_satellite",
-        "schedule": "@every 00h00m05s"
-      }
-    ],
-    "local_registry": {
-      "url": "http://localhost:5000",
-      "username": "admin",
-      "password": "password",
-      "bring_own_registry": false
-    }
-  }
-}
-```
+For detailed configuration information, see [Configuration Reference](../user-guide/configuration.md).
 
 #### Use Cases
 - Remote deployments
@@ -111,4 +70,3 @@ docker run -d \
 ## Next Steps
 
 1. [Components Guide](components.md) - Detailed component documentation
-2. [Configuration Guide](../user-guide/configuration.md) - System configuration

@@ -8,7 +8,7 @@ This documentation provides accurate information about the Harbor Satellite syst
    - Installation and setup
    - Basic usage
 
-2. [User Guide](./user-guide/README.md)
+2. [User Guide](./user-guide/configuration.md)
    - Configuration options
 
 
@@ -35,6 +35,5 @@ This documentation reflects the current state of the implementation. Features no
 If you find any discrepancies between the documentation and the actual implementation, please report them by opening an issue in the project repository.
 
 ## Quick Links
-- [GitHub Repository](https://github.com/goharbor/harbor-satellite)
-- [Issue Tracker](https://github.com/goharbor/harbor-satellite/issues)
-- [Community Chat](https://cloud-native.slack.com/archives/C06NE6EJBU1) 
+- [GitHub Repository](https://github.com/container-registry/harbor-satellite)
+- [Issue Tracker](https://github.com/container-registry/harbor-satellite/issues)

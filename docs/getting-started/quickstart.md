@@ -149,43 +149,7 @@ curl --location 'http://localhost:8080/satellites/register' \
 
 ### 4. Configure Satellite
 
-Create a `config.json` file with the following content:
-
-```json
-{
-  "environment_variables": {
-    "ground_control_url": "http://127.0.0.1:8080", // URL for the ground control server
-    "log_level": "info", // Log level: can be "debug", "info", "warn", or "error"
-    "use_unsecure": true, // Use unsecure connections (set to true for dev environments)
-    "zot_config_path": "./registry/config.json", // Path to Zot registry configuration file
-    "token": "ADD_THE_TOKEN_FROM_THE_ABOVE_STEP", // add the token received while registering satellite
-    "jobs": [
-      // List of scheduled jobs
-      // Checkout https://pkg.go.dev/github.com/robfig/cron#hdr-Predefined_schedules for more
-      //  details on how to write the cron job config
-      {
-        "name": "replicate_state", // Job to replicate state
-        "schedule": "@every 00h00m10s" // Schedule interval: every 10 seconds
-      },
-      {
-        "name": "update_config", // Job to update configuration
-        "schedule": "@every 00h00m30s" // Schedule interval: every 30 seconds
-      },
-      {
-        "name": "register_satellite", // Job to register satellite
-        "schedule": "@every 00h00m05s" // Schedule interval: every 5 seconds
-      }
-    ],
-    "local_registry": {
-      // Configuration for the local registry
-      "url": "", // Add your own registry URL if bring_own_registry is true else leave blank
-      "username": "", // Add your own registry username if bring_own_registry is true else leave blank
-      "password": "", // Add your own registry password if bring_own_registry is true else leave blank
-      "bring_own_registry": false // Set to true if using an external registry and the above config
-    }
-  }
-}
-```
+For detailed configuration information, see [Configuration Reference](../user-guide/configuration.md).
 
 ### 5. Start Satellite
 
@@ -229,5 +193,4 @@ dagger call build --source=. --component=satellite export --path=./bin
 ## Next Steps
 
 For more detailed information, see:
-- [User Guide](../user-guide/README.md) - For detailed usage instructions
 - [Architecture Guide](../architecture/README.md) - For system design details

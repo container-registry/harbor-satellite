@@ -1,6 +1,6 @@
-# Configuration Guide
+# Harbor Satellite Configuration Guide
 
-This guide explains the actual configuration options available in Harbor Satellite based on the current implementation.
+This guide provides a complete reference for all configuration options in Harbor Satellite, explaining both the structure and practical usage of the configuration system.
 
 ## Configuration Overview
 
@@ -9,7 +9,7 @@ Harbor Satellite uses a JSON configuration file (`config.json`) for its settings
 1. `state_config` - Configuration for state management
 2. `environment_variables` - Main satellite configuration
 
-## Configuration Structure
+## Complete Configuration Example
 
 ```json
 {
@@ -86,6 +86,26 @@ Each job requires:
 - `username`: Registry username
 - `password`: Registry password
 - `bring_own_registry`: Enable external registry usage
+
+## Zot Registry Configuration
+
+The local registry uses Zot with the following configuration:
+
+```json
+{
+  "distSpecVersion": "1.1.0",
+  "storage": {
+    "rootDirectory": "./zot"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "5000"
+  },
+  "log": {
+    "level": "info"
+  }
+}
+```
 
 ## Container Runtime Integration
 

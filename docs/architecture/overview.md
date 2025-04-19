@@ -1,37 +1,16 @@
 # System Architecture Overview
 
-This document provides a comprehensive overview of the Harbor Satellite architecture, including its components, interactions, and design principles.
+This document provides a high-level overview of the Harbor Satellite architecture, its design principles, and deployment patterns. For detailed technical specifications, see the [Components Guide](components.md).
 
 ## System Components
 
-### 1. Ground Control
+The Harbor Satellite system consists of three main components:
 
-Ground Control is the central management component that orchestrates the Harbor Satellite system. It:
+1. **Ground Control** - Central management component
+2. **Satellite** - Edge deployment component
+3. **Registry** - Local container registry (Zot)
 
-- Manages satellite configurations
-- Controls artifact distribution
-- Handles satellite registration
-- Maintains desired state
-- Provides API endpoints for management
-
-### 2. Satellite
-
-The Satellite component runs at edge locations and:
-
-- Acts as a local container registry using Zot
-- Synchronizes with central Harbor
-- Manages local container images
-- Handles image distribution
-- Maintains local state
-
-### 3. Registry
-
-The Registry component (using Zot) is responsible for:
-
-- Storing container images locally
-- Serving images to local workloads
-- Managing image metadata
-- Handling image operations
+For detailed technical specifications of each component, see [Components Guide](components.md).
 
 ## System Architecture
 
@@ -48,24 +27,6 @@ The Registry component (using Zot) is responsible for:
     ↓
 [Local Workloads]
 ```
-
-### Component Interactions
-
-1. **Ground Control to Satellite**
-   - Configuration updates
-   - State synchronization
-   - Health monitoring
-   - Registration management
-
-2. **Satellite to Registry**
-   - Image storage and retrieval
-   - Metadata management
-   - Layer management
-
-3. **Satellite to Local Workloads**
-   - Image serving
-   - Pull request handling
-   - Health reporting
 
 ## Design Principles
 
@@ -92,7 +53,7 @@ The Registry component (using Zot) is responsible for:
 - Automatic recovery
 - Fault tolerance
 
-## Deployment Pattern
+## Deployment Patterns
 
 ### Basic Edge Registry
 ```
@@ -101,11 +62,10 @@ The Registry component (using Zot) is responsible for:
 - Simple deployment
 - Direct image serving
 - Basic synchronization
-- Uses Zot as local registry
 
-## Planned Deployment Patterns
+### Planned Deployment Patterns
 
-### 1. Spegel Registry Pattern (Planned)
+#### 1. Spegel Registry Pattern
 ```
 [Central Harbor] <-> [Satellite] <-> [Spegel Nodes] <-> [Local Workloads]
 ```
@@ -113,7 +73,7 @@ The Registry component (using Zot) is responsible for:
 - Bandwidth optimization
 - Cluster-wide caching
 
-### 2. Proxy Registry Pattern (Planned)
+#### 2. Proxy Registry Pattern
 ```
 [Central Harbor] <-> [Satellite (Proxy)] <-> [Local Workloads]
 ```
@@ -138,8 +98,8 @@ The Registry component (using Zot) is responsible for:
 [Satellite] → [Ground Control]
 ```
 
-## Next Steps
+## Related Documentation
 
-1. [Components Guide](components.md) - Detailed component documentation
-2. [Use Cases Guide](use-cases.md) - Deployment patterns
-3. [Configuration Guide](../user-guide/configuration.md) - System configuration
+1. [Components Guide](components.md) - Detailed components specifications
+2. [Configuration Guide](../user-guide/configuration.md) - System configuration
+3. [Use Cases Guide](use-cases.md) - Deployment patterns and examples
