@@ -56,7 +56,7 @@ func NewLogger(logLevel string) *zerolog.Logger {
 		return fmt.Sprintf("| %s |", l)
 	}
 
-	logger := zerolog.New(output).With().Timestamp().Logger()
+	logger := zerolog.New(output).Level(level).With().Timestamp().Logger()
 
 	return &logger
 }
