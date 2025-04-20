@@ -6,11 +6,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/container-registry/harbor-satellite/internal/config"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/notifier"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )
@@ -37,18 +37,13 @@ type FetchAndReplicateStateProcess struct {
 	authConfig     FetchAndReplicateAuthConfig
 	eventBroker    *scheduler.EventBroker
 	Replicator     Replicator
+	cm             *config.ConfigManager
 }
 
 type StateMap struct {
 	url      string
 	State    StateReader
 	Entities []Entity
-}
-
-type RegistryConfig struct {
-	URL      string
-	Username string
-	Password string
 }
 
 func NewStateMap(url []string) []StateMap {
@@ -59,34 +54,33 @@ func NewStateMap(url []string) []StateMap {
 	return stateMap
 }
 
-func NewRegistryConfig(url, username, password string) RegistryConfig {
-	return RegistryConfig{
-		URL:      url,
-		Username: username,
-		Password: password,
-	}
-}
+func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, notifier notifier.Notifier) *FetchAndReplicateStateProcess {
+	sourceURL := utils.FormatRegistryURL(cm.GetSourceRegistryURL())
+	remoteURL := utils.FormatRegistryURL(cm.GetRemoteRegistryURL())
 
-func NewFetchAndReplicateStateProcess(cronExpr string, notifier notifier.Notifier, sourceRegistryCredentials RegistryConfig, remoteRegistryCredentials RegistryConfig, useUnsecure bool, state string) *FetchAndReplicateStateProcess {
-	sourceURL := utils.FormatRegistryURL(sourceRegistryCredentials.URL)
-	remoteURL := utils.FormatRegistryURL(remoteRegistryCredentials.URL)
+	srcUsername := cm.GetSourceRegistryUsername()
+	srcPassword := cm.GetSourceRegistryPassword()
+	remoteUsername := cm.GetRemoteRegistryUsername()
+	remotePassword := cm.GetRemoteRegistryPassword()
+
 	return &FetchAndReplicateStateProcess{
 		name:           config.ReplicateStateJobName,
-		cronExpr:       cronExpr,
+		cronExpr:       cm.GetStateReplicationInterval(),
 		isRunning:      false,
 		notifier:       notifier,
 		mu:             &sync.Mutex{},
-		satelliteState: state,
+		satelliteState: cm.GetStateURL(),
 		authConfig: FetchAndReplicateAuthConfig{
 			SourceRegistry:         sourceURL,
-			SourceRegistryUserName: sourceRegistryCredentials.Username,
-			SourceRegistryPassword: sourceRegistryCredentials.Password,
-			UseUnsecure:            useUnsecure,
+			SourceRegistryUserName: srcUsername,
+			SourceRegistryPassword: srcPassword,
+			UseUnsecure:            cm.UseUnsecure(),
 			RemoteRegistryURL:      remoteURL,
-			RemoteRegistryUserName: remoteRegistryCredentials.Username,
-			RemoteRegistryPassword: remoteRegistryCredentials.Password,
+			RemoteRegistryUserName: remoteUsername,
+			RemoteRegistryPassword: remotePassword,
 		},
-		Replicator: NewBasicReplicator(sourceRegistryCredentials.Username, sourceRegistryCredentials.Password, sourceURL, remoteURL, remoteRegistryCredentials.Username, remoteRegistryCredentials.Password, useUnsecure),
+		Replicator: NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, cm.UseUnsecure()),
+		cm:         cm,
 	}
 }
 
@@ -98,7 +92,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	// To get the satellite state, we need to perform ZTR. However, the outcome of this process is non-deterministic.
 	// So we may be initializing the FetchAndReplicateProcess with an empty satelliteState
 	// As a sanity check, we need to update the satelliteState.
-	f.satelliteState = config.GetState()
+	f.satelliteState = f.cm.GetStateURL()
 
 	canExecute, reason := f.CanExecute(ctx)
 	if !canExecute {
