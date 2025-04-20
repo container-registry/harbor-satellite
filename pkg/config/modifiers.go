@@ -9,20 +9,20 @@ func SetStateURL(url string) func(*Config) {
 func SetStateAuth(username, registryURL, password string) func(*Config) {
 	return func(cfg *Config) {
 		cfg.StateConfig.RegistryCredentials.Username = username
-		cfg.StateConfig.RegistryCredentials.URL = registryURL
+		cfg.StateConfig.RegistryCredentials.URL = URL(registryURL)
 		cfg.StateConfig.RegistryCredentials.Password = password
 	}
 }
 
 func SetGroundControlURL(url string) func(*Config) {
 	return func(cfg *Config) {
-		cfg.AppConfig.GroundControlURL = url
+		cfg.AppConfig.GroundControlURL = URL(url)
 	}
 }
 
 func SetLogLevel(level string) func(*Config) {
 	return func(cfg *Config) {
-		cfg.AppConfig.LogLevel = level
+		cfg.AppConfig.LogLevel = LogLevel(level)
 	}
 }
 

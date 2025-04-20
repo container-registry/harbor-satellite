@@ -3,7 +3,9 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/robfig/cron/v3"
@@ -15,14 +17,14 @@ const DefaultSchedule = "@every 00h00m10s"
 type Warning string
 
 type RegistryCredentials struct {
-	URL      string `json:"url,omitempty"`
+	URL      URL    `json:"url,omitempty"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
 }
 
 type AppConfig struct {
-	GroundControlURL          string              `json:"ground_control_url"`
-	LogLevel                  string              `json:"log_level,omitempty"`
+	GroundControlURL          URL                 `json:"ground_control_url"`
+	LogLevel                  LogLevel            `json:"log_level,omitempty"`
 	UseUnsecure               bool                `json:"use_unsecure,omitempty"`
 	ZotConfigPath             string              `json:"zot_config_path,omitempty"`
 	StateReplicationInterval  string              `json:"state_replication_interval,omitempty"`
@@ -41,6 +43,41 @@ type StateConfig struct {
 type Config struct {
 	StateConfig StateConfig `json:"state_config,omitempty"`
 	AppConfig   AppConfig   `json:"app_config,omitempty"`
+}
+
+type URL string
+
+func (v *URL) UnmarshalJSON(data []byte) error {
+	var raw string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if _, err := url.ParseRequestURI(raw); err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	*v = URL(raw)
+	return nil
+}
+
+type LogLevel string
+
+var validLogLevels = map[string]bool{
+	"debug": true,
+	"info":  true,
+	"warn":  true,
+	"error": true,
+}
+
+func (l *LogLevel) UnmarshalJSON(data []byte) error {
+	var raw string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw != "" && !validLogLevels[strings.ToLower(raw)] {
+		return fmt.Errorf("invalid log_level: %s", raw)
+	}
+	*l = LogLevel(raw)
+	return nil
 }
 
 type ConfigManager struct {
@@ -85,16 +122,6 @@ func ValidateConfig(config Config) []string {
 	}
 
 	return warnings
-}
-
-func (cm *ConfigManager) SetStateAuthConfig(username, registryURL, password, stateURL string) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	cm.config.StateConfig.RegistryCredentials.Username = username
-	cm.config.StateConfig.RegistryCredentials.URL = registryURL
-	cm.config.StateConfig.RegistryCredentials.Password = password
-	cm.config.StateConfig.StateURL = stateURL
 }
 
 func (cm *ConfigManager) WriteConfig() error {
