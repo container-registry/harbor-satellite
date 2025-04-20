@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/container-registry/harbor-satellite/internal/config"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/registry"
 
 	"github.com/rs/zerolog"
@@ -27,17 +27,21 @@ func main() {
 func run() error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
+	wg, ctx := errgroup.WithContext(ctx)
 
-	ctx, wg, scheduler, err := utils.Init(ctx)
+	cm, warnings, err := utils.InitConfig(config.DefaultConfigPath)
 	if err != nil {
 		return err
 	}
-	log := logger.FromContext(ctx)
+
+	ctx, log := utils.InitLogger(ctx, warnings)
+
+	ctx, scheduler := utils.InitScheduler(ctx)
 
 	go scheduler.ListenForProcessEvent()
 
 	// Handle registry setup
-	if err := handleRegistrySetup(wg, log, cancel); err != nil {
+	if err := handleRegistrySetup(wg, log, cancel, cm); err != nil {
 		log.Error().Err(err).Msg("Error setting up local registry")
 		return err
 	}
@@ -53,14 +57,21 @@ func run() error {
 	sourceRegistryConfig := state.NewRegistryConfig(config.GetSourceRegistryURL(), config.GetSourceRegistryUsername(), config.GetSourceRegistryPassword())
 	satelliteService := satellite.NewSatellite(ctx, scheduler.GetSchedulerKey(), localRegistryConfig, sourceRegistryConfig, config.UseUnsecure(), config.GetState())
 
+    // Write the config to disk, in case any values were enforced at runtime
+    if err := cm.WriteConfig(); err != nil {
+        log.Error().Err(err).Msg("Error writing config to disk")
+        return err
+    }
+
 	wg.Go(func() error {
 		return satelliteService.Run(ctx)
 	})
 
+
 	return wg.Wait()
 }
 
-func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc) error {
+func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc, cm *config.ConfigManager) error {
 	log.Debug().Msg("Setting up local registry")
 	if config.GetOwnRegistry() {
 		log.Info().Msg("Configuring own registry")
@@ -77,7 +88,8 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 			return fmt.Errorf("error reading config: %w", err)
 		}
 
-		err := config.SetRemoteRegistryURL(defaultZotConfig.GetRegistryURL())
+		// TODO: Is this code block necessary?
+		err := cm.With(config.SetLocalRegistryCredentials(config.RegistryCredentials{URL: config.URL(defaultZotConfig.GetRegistryURL())}))
 		if err != nil {
 			return fmt.Errorf("error setting RemoteRegistryURL")
 		}

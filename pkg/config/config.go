@@ -13,9 +13,6 @@ import (
 
 const DefaultSchedule = "@every 00h00m10s"
 
-// Warning represents a non-critical issue with configuration.
-type Warning string
-
 type RegistryCredentials struct {
 	URL      URL    `json:"url,omitempty"`
 	Username string `json:"username,omitempty"`
@@ -86,8 +83,16 @@ type ConfigManager struct {
 	mu         sync.RWMutex
 }
 
-func NewConfigManager(path string) (*ConfigManager, error) {
-	data, err := os.ReadFile(path)
+func NewConfigManager(path string, config *Config) (*ConfigManager, error) {
+	return &ConfigManager{
+		config:     config,
+		configPath: path,
+	}, nil
+}
+
+// Reads the config at the given path and loads it in the given config variable
+func ReadConfig(path string) (*Config, error) {
+	data, err := os.ReadFile(DefaultConfigPath)
 	if err != nil {
 		return nil, err
 	}
@@ -97,13 +102,10 @@ func NewConfigManager(path string) (*ConfigManager, error) {
 		return nil, err
 	}
 
-	return &ConfigManager{
-		config:     cfg,
-		configPath: path,
-	}, nil
+	return cfg, nil
 }
 
-func ValidateConfig(config Config) []string {
+func ValidateConfig(config *Config) []string {
 	var warnings []string
 
 	if !isValidCronExpression(config.AppConfig.StateReplicationInterval) {
