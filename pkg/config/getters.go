@@ -1,72 +1,111 @@
 package config
 
-func GetLogLevel() string {
-	if appConfig == nil || appConfig.LocalJsonConfig.LogLevel == "" {
-		return "info"
-	}
-	return appConfig.LocalJsonConfig.LogLevel
+import "github.com/container-registry/harbor-satellite/pkg/config"
+
+func (cm *ConfigManager) GetLogLevel() LogLevel {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.LogLevel
 }
 
-func GetOwnRegistry() bool {
-	return appConfig.LocalJsonConfig.LocalRegistryConfig.BringOwnRegistry
+func (cm *ConfigManager) GetOwnRegistry() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.BringOwnRegistry
 }
 
-func GetZotConfigPath() string {
-	return appConfig.LocalJsonConfig.ZotConfigPath
+func (cm *ConfigManager) GetZotConfigPath() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.ZotConfigPath
 }
 
-func GetZotURL() string {
-	return appConfig.ZotUrl
+func (cm *ConfigManager) GetZotURL() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return string(cm.config.AppConfig.LocalRegistryCredentials.URL)
 }
 
-func UseUnsecure() bool {
-	return appConfig.LocalJsonConfig.UseUnsecure
+func (cm *ConfigManager) UseUnsecure() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.UseUnsecure
 }
 
-func GetSourceRegistryPassword() string {
-	return appConfig.StateConfig.Auth.SourcePassword
+func (cm *ConfigManager) GetSourceRegistryPassword() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.StateConfig.RegistryCredentials.Password
 }
 
-func GetSourceRegistryUsername() string {
-	return appConfig.StateConfig.Auth.SourceUsername
+func (cm *ConfigManager) GetSourceRegistryUsername() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.StateConfig.RegistryCredentials.Username
 }
 
-func GetSourceRegistryURL() string {
-	return appConfig.StateConfig.Auth.Registry
+func (cm *ConfigManager) GetSourceRegistryURL() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return string(cm.config.StateConfig.RegistryCredentials.URL)
 }
 
-func GetState() string {
-	return appConfig.StateConfig.State
+func (cm *ConfigManager) GetSourceCredentials() config.RegistryCredentials {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.StateConfig.RegistryCredentials
 }
 
-func GetToken() string {
-	return appConfig.LocalJsonConfig.Token
+func (cm *ConfigManager) GetStateURL() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.StateConfig.StateURL
 }
 
-func GetGroundControlURL() string {
-	return appConfig.LocalJsonConfig.GroundControlURL
+func (cm *ConfigManager) GetGroundControlURL() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return string(cm.config.AppConfig.GroundControlURL)
 }
 
-func GetRemoteRegistryUsername() string {
-	return appConfig.LocalJsonConfig.LocalRegistryConfig.UserName
+func (cm *ConfigManager) GetRemoteRegistryUsername() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.LocalRegistryCredentials.Username
 }
 
-func GetRemoteRegistryPassword() string {
-	return appConfig.LocalJsonConfig.LocalRegistryConfig.Password
+func (cm *ConfigManager) GetRemoteRegistryPassword() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.LocalRegistryCredentials.Password
 }
 
-func GetRemoteRegistryURL() string {
-	return appConfig.LocalJsonConfig.LocalRegistryConfig.URL
+func (cm *ConfigManager) GetRemoteRegistryURL() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return string(cm.config.AppConfig.LocalRegistryCredentials.URL)
 }
 
-func GetRegistrationInterval() string {
-	return appConfig.LocalJsonConfig.RegisterSatelliteInterval
+func (cm *ConfigManager) GetRemoteCredentials() config.RegistryCredentials {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.LocalRegistryCredentials
 }
 
-func GetUpdateConfigInterval() string {
-	return appConfig.LocalJsonConfig.UpdateConfigInterval
+func (cm *ConfigManager) GetRegistrationInterval() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.RegisterSatelliteInterval
 }
 
-func GetStateReplicationInterval() string {
-	return appConfig.LocalJsonConfig.StateReplicationInterval
+func (cm *ConfigManager) GetUpdateConfigInterval() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.UpdateConfigInterval
+}
+
+func (cm *ConfigManager) GetStateReplicationInterval() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.StateReplicationInterval
 }

@@ -74,6 +74,24 @@ func SetBringOwnRegistry(flag bool) func(*Config) {
 	}
 }
 
+ func SetLocalRegistryURL(url string) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.LocalRegistryCredentials.URL = URL(url)
+	}
+}
+
+func SetLocalRegistryUsername(username string) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.LocalRegistryCredentials.Username = username
+	}
+}
+
+func SetLocalRegistryPassword(password string) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.LocalRegistryCredentials.Password = password
+	}
+}
+
 func SetLocalRegistryCredentials(creds RegistryCredentials) func(*Config) {
 	return func(cfg *Config) {
 		cfg.AppConfig.LocalRegistryCredentials = creds
