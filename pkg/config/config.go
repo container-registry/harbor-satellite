@@ -159,3 +159,7 @@ func (cm *ConfigManager) With(mutators ...func(*Config)) *ConfigManager {
 	}
 	return cm
 }
+
+func (cm *ConfigManager) IsZTRDone() bool {
+	return cm.GetSourceRegistryURL() != ""
+}

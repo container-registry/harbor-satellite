@@ -3,7 +3,7 @@ package state
 import (
 	"fmt"
 
-	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/rs/zerolog"
 )

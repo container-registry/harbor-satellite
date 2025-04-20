@@ -1,11 +1,9 @@
 package config
 
-import "github.com/container-registry/harbor-satellite/pkg/config"
-
-func (cm *ConfigManager) GetLogLevel() LogLevel {
+func (cm *ConfigManager) GetLogLevel() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return cm.config.AppConfig.LogLevel
+	return string(cm.config.AppConfig.LogLevel)
 }
 
 func (cm *ConfigManager) GetOwnRegistry() bool {
@@ -50,7 +48,7 @@ func (cm *ConfigManager) GetSourceRegistryURL() string {
 	return string(cm.config.StateConfig.RegistryCredentials.URL)
 }
 
-func (cm *ConfigManager) GetSourceCredentials() config.RegistryCredentials {
+func (cm *ConfigManager) GetSourceRegistryCredentials() RegistryCredentials {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.config.StateConfig.RegistryCredentials
@@ -86,7 +84,7 @@ func (cm *ConfigManager) GetRemoteRegistryURL() string {
 	return string(cm.config.AppConfig.LocalRegistryCredentials.URL)
 }
 
-func (cm *ConfigManager) GetRemoteCredentials() config.RegistryCredentials {
+func (cm *ConfigManager) GetRemoteRegistryCredentials() RegistryCredentials {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.config.AppConfig.LocalRegistryCredentials

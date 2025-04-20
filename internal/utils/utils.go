@@ -18,7 +18,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
 )
 
 // / ValidateRegistryAddress validates the registry address and port and returns the URL
@@ -142,10 +141,6 @@ func HandleWarnings(log *zerolog.Logger, warnings []string) {
 	}
 }
 
-func IsZTRDone() bool {
-	return config.GetSourceRegistryURL() != ""
-}
-
 func InitConfig(path string) (*config.ConfigManager, []string, error) {
 	cfg, err := config.ReadConfig(path)
 	if err != nil {
@@ -162,8 +157,8 @@ func InitConfig(path string) (*config.ConfigManager, []string, error) {
 	return cm, warnings, nil
 }
 
-func InitLogger(ctx context.Context, warnings []string) (context.Context, *zerolog.Logger) {
-	log := logger.NewLogger(config.GetLogLevel())
+func InitLogger(ctx context.Context, logLevel string, warnings []string) (context.Context, *zerolog.Logger) {
+	log := logger.NewLogger(logLevel)
 	HandleWarnings(log, warnings)
 	ctx = context.WithValue(ctx, logger.LoggerKey, log)
 	return ctx, log
@@ -177,17 +172,4 @@ func InitScheduler(ctx context.Context) (context.Context, scheduler.Scheduler) {
 	ctx = context.WithValue(ctx, s.GetSchedulerKey(), s)
 
 	return ctx, s
-}
-
-func InitAppContext(ctx context.Context, warnings []string) (context.Context, *errgroup.Group, scheduler.Scheduler, error) {
-	wg, ctx := errgroup.WithContext(ctx)
-
-	ctx, err := InitLogger(ctx, warnings)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	ctx, s := InitScheduler(ctx)
-
-	return ctx, wg, s, nil
 }

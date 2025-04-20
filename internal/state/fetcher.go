@@ -9,7 +9,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"

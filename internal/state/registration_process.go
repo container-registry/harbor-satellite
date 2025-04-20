@@ -8,10 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/container-registry/harbor-satellite/internal/config"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
-	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/robfig/cron/v3"
 )
 
@@ -31,6 +30,8 @@ type ZtrProcess struct {
 	eventBroker *scheduler.EventBroker
 	// cronExpr is the cron expression for the process
 	cronExpr string
+	// Config manager to interact with the satellite config
+	cm *config.ConfigManager
 }
 
 func NewZtrProcess(cronExpr string) *ZtrProcess {
@@ -60,7 +61,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	log.Info().Msgf("Executing process %s", z.Name)
 
 	// Register the satellite
-	stateConfig, err := RegisterSatellite(config.GetGroundControlURL(), ZeroTouchRegistrationRoute, config.GetToken(), ctx)
+	stateConfig, err := RegisterSatellite(z.cm.GetGroundControlURL(), ZeroTouchRegistrationRoute, config.GetToken(), ctx)
 	if err != nil {
 		log.Error().Msgf("Failed to register satellite: %v", err)
 		return err
@@ -127,11 +128,7 @@ func (z *ZtrProcess) IsRunning() bool {
 func (z *ZtrProcess) CanExecute(ctx context.Context) (bool, string) {
 	log := logger.FromContext(ctx)
 	log.Info().Msgf("Checking if process %s can execute", z.Name)
-	errors, warnings := z.loadConfig()
-	err := utils.HandleErrorAndWarning(log, errors, warnings)
-	if err != nil {
-		return false, err.Error()
-	}
+
 	checks := []struct {
 		condition bool
 		message   string
