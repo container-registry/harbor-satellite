@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 
@@ -61,7 +62,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	log.Info().Msgf("Executing process %s", z.Name)
 
 	// Register the satellite
-	stateConfig, err := RegisterSatellite(z.cm.GetGroundControlURL(), ZeroTouchRegistrationRoute, config.GetToken(), ctx)
+	stateConfig, err := RegisterSatellite(z.cm.GetGroundControlURL(), ZeroTouchRegistrationRoute, os.Getenv("TOKEN"), ctx)
 	if err != nil {
 		log.Error().Msgf("Failed to register satellite: %v", err)
 		return err
