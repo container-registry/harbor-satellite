@@ -78,15 +78,19 @@ func (l *LogLevel) UnmarshalJSON(data []byte) error {
 }
 
 type ConfigManager struct {
-	config     *Config
-	configPath string
-	mu         sync.RWMutex
+	config                  *Config
+	Token                   string
+	DefaultGroundControlURL string
+	configPath              string
+	mu                      sync.RWMutex
 }
 
-func NewConfigManager(path string, config *Config) (*ConfigManager, error) {
+func NewConfigManager(path, token, defaultGroundControlURL string, config *Config) (*ConfigManager, error) {
 	return &ConfigManager{
-		config:     config,
-		configPath: path,
+		config:                  config,
+		configPath:              path,
+		Token:                   token,
+		DefaultGroundControlURL: defaultGroundControlURL,
 	}, nil
 }
 

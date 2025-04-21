@@ -149,7 +149,10 @@ func InitConfig(path string) (*config.ConfigManager, []string, error) {
 
 	warnings := config.ValidateConfig(cfg)
 
-	cm, err := config.NewConfigManager(path, cfg)
+	token := os.Getenv("TOKEN")
+	defaultGroundControlURL := os.Getenv("GROUND_CONTROL_URL")
+
+	cm, err := config.NewConfigManager(path, token, defaultGroundControlURL, cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create config manager: %w", err)
 	}

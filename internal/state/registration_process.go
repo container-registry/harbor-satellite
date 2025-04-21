@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 
@@ -63,7 +62,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	log.Info().Msgf("Executing process %s", z.Name)
 
 	// Register the satellite
-	stateConfig, err := RegisterSatellite(z.cm.GetGroundControlURL(), ZeroTouchRegistrationRoute, os.Getenv("TOKEN"), ctx)
+	stateConfig, err := RegisterSatellite(z.cm.GetGroundControlURL(), ZeroTouchRegistrationRoute, z.cm.Token, ctx)
 	if err != nil {
 		log.Error().Msgf("Failed to register satellite: %v", err)
 		return err
@@ -139,8 +138,8 @@ func (z *ZtrProcess) CanExecute(ctx context.Context) (bool, string) {
 		condition bool
 		message   string
 	}{
-		{os.Getenv("TOKEN") == "", "token"},
-		{os.Getenv("GROUND_CONTROL_URL") == "", "ground control URL"},
+		{z.cm.Token == "", "token"},
+		{z.cm.ResolveGroundControlURL() == "", "ground control URL"},
 	}
 	var missing []string
 	for _, check := range checks {
