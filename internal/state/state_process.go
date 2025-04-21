@@ -387,7 +387,7 @@ func (f *FetchAndReplicateStateProcess) HandelPayloadFromZTR(event scheduler.Eve
 		log.Error().Msgf("Received invalid payload from %s, for process %s", event.Source, ZeroTouchRegistrationEventName)
 		return
 	}
-	f.UpdateFetchProcessConfigFromZtr(payload.StateConfig.Auth.SourceUsername, payload.StateConfig.Auth.SourcePassword, payload.StateConfig.Auth.Registry)
+	f.UpdateFetchProcessConfigFromZtr(payload.StateConfig.RegistryCredentials.Username, payload.StateConfig.RegistryCredentials.Password, string(payload.StateConfig.RegistryCredentials.URL))
 }
 
 func (f *FetchAndReplicateStateProcess) UpdateFetchProcessConfigFromZtr(username, password, sourceRegistryURL string) {
