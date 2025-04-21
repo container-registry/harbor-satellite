@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/rs/zerolog"
@@ -74,7 +73,7 @@ func GenerateContainerdHostConfig(containerdCertPath, genPath string, log *zerol
 		Host: map[string]HostConfig{
 			satelliteHostConfig.LocalRegistry: {
 				Capabilities: []string{"pull", "push", "resolve"},
-				SkipVerify:   config.UseUnsecure(),
+				//SkipVerify:   config.UseUnsecure(),
 			},
 		},
 	}

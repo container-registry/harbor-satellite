@@ -29,6 +29,7 @@ func run() error {
 
 	cm, warnings, err := utils.InitConfig(config.DefaultConfigPath)
 	if err != nil {
+		fmt.Printf("Error initiating the config: %v", err)
 		return err
 	}
 

@@ -10,7 +10,6 @@ import (
 	"os"
 
 	"github.com/container-registry/harbor-satellite/internal/utils"
-	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -44,8 +43,8 @@ func NewURLStateFetcher(stateURL, userName, password string, insecure bool) Stat
 			username: userName,
 			password: password,
 		},
-		url: url,
-        insecure: insecure,
+		url:      url,
+		insecure: insecure,
 	}
 }
 
@@ -110,7 +109,7 @@ func (f *URLStateFetcher) pullImage(ctx context.Context, log *zerolog.Logger) (v
 		Password: f.password,
 	})
 	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
-	if config.UseUnsecure() {
+	if f.insecure {
 		options = append(options, crane.Insecure)
 	}
 	return crane.Pull(f.url, options...)

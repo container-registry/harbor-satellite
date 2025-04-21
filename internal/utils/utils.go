@@ -45,7 +45,7 @@ func HandleOwnRegistry(cm *config.ConfigManager) error {
 	if err != nil {
 		return fmt.Errorf("error parsing URL: %w", err)
 	}
-	cm = cm.With(config.SetLocalRegistryURL(FormatRegistryURL(remoteRegistryURL)))
+	cm.With(config.SetLocalRegistryURL(FormatRegistryURL(remoteRegistryURL)))
 	return nil
 }
 
@@ -142,7 +142,7 @@ func HandleWarnings(log *zerolog.Logger, warnings []string) {
 }
 
 func InitConfig(path string) (*config.ConfigManager, []string, error) {
-	cfg, err := config.ReadConfig(path)
+	cfg, err := config.ReadAndReturnConfig(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read config: %w", err)
 	}

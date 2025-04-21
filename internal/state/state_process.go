@@ -113,7 +113,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	// Loop through each state and reconcile the satellite
 	for i := range f.stateMap {
 		log.Info().Msgf("Processing state for %s", f.stateMap[i].url)
-		groupStateFetcher, err := getStateFetcherForInput(f.stateMap[i].url, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, log)
+		groupStateFetcher, err := getStateFetcherForInput(f.stateMap[i].url, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
 		if err != nil {
 			log.Error().Err(err).Msg("Error processing input")
 			return err
