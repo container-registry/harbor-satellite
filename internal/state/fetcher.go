@@ -9,8 +9,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -28,7 +28,8 @@ type baseStateFetcher struct {
 
 type URLStateFetcher struct {
 	baseStateFetcher
-	url string
+	url      string
+	insecure bool
 }
 
 type FileStateArtifactFetcher struct {
@@ -36,7 +37,7 @@ type FileStateArtifactFetcher struct {
 	filePath string
 }
 
-func NewURLStateFetcher(stateURL, userName, password string) StateFetcher {
+func NewURLStateFetcher(stateURL, userName, password string, insecure bool) StateFetcher {
 	url := utils.FormatRegistryURL(stateURL)
 	return &URLStateFetcher{
 		baseStateFetcher: baseStateFetcher{
@@ -44,6 +45,7 @@ func NewURLStateFetcher(stateURL, userName, password string) StateFetcher {
 			password: password,
 		},
 		url: url,
+        insecure: insecure,
 	}
 }
 

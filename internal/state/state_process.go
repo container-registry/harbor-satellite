@@ -147,7 +147,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 }
 
 func (f *FetchAndReplicateStateProcess) fetchSatelliteState(ctx context.Context, log *zerolog.Logger) (*SatelliteState, error) {
-	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, log)
+	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
 	if err != nil {
 		log.Error().Err(err).Msg("Error processing satellite state")
 		return nil, err
