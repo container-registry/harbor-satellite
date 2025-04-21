@@ -6,11 +6,17 @@ func SetStateURL(url string) func(*Config) {
 	}
 }
 
-func SetStateAuth(username, registryURL, password string) func(*Config) {
+func SetStateAuth(username, password string, registryURL URL) func(*Config) {
 	return func(cfg *Config) {
 		cfg.StateConfig.RegistryCredentials.Username = username
-		cfg.StateConfig.RegistryCredentials.URL = URL(registryURL)
+		cfg.StateConfig.RegistryCredentials.URL = registryURL
 		cfg.StateConfig.RegistryCredentials.Password = password
+	}
+}
+
+func SetStateConfig(sc StateConfig) func(*Config) {
+	return func(cfg *Config) {
+		cfg.StateConfig = sc
 	}
 }
 
@@ -74,7 +80,7 @@ func SetBringOwnRegistry(flag bool) func(*Config) {
 	}
 }
 
- func SetLocalRegistryURL(url string) func(*Config) {
+func SetLocalRegistryURL(url string) func(*Config) {
 	return func(cfg *Config) {
 		cfg.AppConfig.LocalRegistryCredentials.URL = URL(url)
 	}
@@ -95,11 +101,5 @@ func SetLocalRegistryPassword(password string) func(*Config) {
 func SetLocalRegistryCredentials(creds RegistryCredentials) func(*Config) {
 	return func(cfg *Config) {
 		cfg.AppConfig.LocalRegistryCredentials = creds
-	}
-}
-
-func SetStateRegistryCredentials(creds RegistryCredentials) func(*Config) {
-	return func(cfg *Config) {
-		cfg.StateConfig.RegistryCredentials = creds
 	}
 }
