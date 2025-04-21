@@ -101,12 +101,12 @@ func ReadAndReturnConfig(path string) (*Config, error) {
 		return nil, err
 	}
 
-	var cfg *Config
-	if err := json.Unmarshal(data, cfg); err != nil {
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
 
-	return cfg, nil
+	return &cfg, nil
 }
 
 func ValidateConfig(config *Config) []string {
