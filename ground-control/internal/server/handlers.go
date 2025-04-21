@@ -513,7 +513,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	satelliteState := utils.AssembleSatelliteState(satellite.Name)
 
-	// we need to update the state here to reflect the satellite's state artifact
+	// TODO: we need to update the state here to reflect the satellite's state artifact
 	result := models.ZtrResult{
 		State: satelliteState,
 		Auth: models.Account{
