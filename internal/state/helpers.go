@@ -3,7 +3,6 @@ package state
 import (
 	"fmt"
 
-	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/rs/zerolog"
 )
@@ -36,7 +35,6 @@ func validateFilePath(path string, log *zerolog.Logger) error {
 
 func processURLInput(input, username, password string, log *zerolog.Logger) (StateFetcher, error) {
 	log.Info().Msg("Input is a valid URL")
-	config.SetSourceRegistryURL(input)
 
 	stateArtifactFetcher := NewURLStateFetcher(input, username, password)
 
