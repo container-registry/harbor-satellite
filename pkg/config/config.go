@@ -95,6 +95,7 @@ func NewConfigManager(path, token, defaultGroundControlURL string, config *Confi
 }
 
 // Reads the config at the given path and loads it in the given config variable
+// TODO: Improve error handling for config initation.
 func ReadAndReturnConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(DefaultConfigPath)
 	if err != nil {
