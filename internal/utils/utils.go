@@ -14,8 +14,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/container-registry/harbor-satellite/internal/logger"
-	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 )
@@ -139,40 +137,4 @@ func HandleWarnings(log *zerolog.Logger, warnings []string) {
 	for i := range warnings {
 		log.Warn().Msg(string(warnings[i]))
 	}
-}
-
-func InitConfig(path string) (*config.ConfigManager, []string, error) {
-	cfg, err := config.ReadAndReturnConfig(path)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read config: %w", err)
-	}
-
-	warnings := config.ValidateConfig(cfg)
-
-	token := os.Getenv("TOKEN")
-	defaultGroundControlURL := os.Getenv("GROUND_CONTROL_URL")
-
-	cm, err := config.NewConfigManager(path, token, defaultGroundControlURL, cfg)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create config manager: %w", err)
-	}
-
-	return cm, warnings, nil
-}
-
-func InitLogger(ctx context.Context, logLevel string, warnings []string) (context.Context, *zerolog.Logger) {
-	log := logger.NewLogger(logLevel)
-	HandleWarnings(log, warnings)
-	ctx = context.WithValue(ctx, logger.LoggerKey, log)
-	return ctx, log
-}
-
-func InitScheduler(ctx context.Context) (context.Context, scheduler.Scheduler) {
-	log := logger.FromContext(ctx)
-	log.Debug().Msg("Initializing new basic scheduler for cron jobs")
-
-	s := scheduler.NewBasicScheduler(ctx, log)
-	ctx = context.WithValue(ctx, s.GetSchedulerKey(), s)
-
-	return ctx, s
 }

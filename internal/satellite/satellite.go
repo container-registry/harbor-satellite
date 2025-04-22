@@ -36,19 +36,15 @@ func (s *Satellite) Run(ctx context.Context) error {
 	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(s.cm.GetUpdateConfigInterval(), "", "")
 	ztrProcess := state.NewZtrProcess(s.cm)
 
-	// Schedule Register Satellite Process
-	if s.cm.IsZTRDone() {
-		log.Info().Msg("ZTR already performed, skipping the process")
-		return nil
+	if !s.cm.IsZTRDone() {
+		err := scheduler.Schedule(ztrProcess)
+		if err != nil {
+			log.Error().Err(err).Msg("Error scheduling process")
+			return err
+		}
 	}
 
-	err := scheduler.Schedule(ztrProcess)
-	if err != nil {
-		log.Error().Err(err).Msg("Error scheduling process")
-		return err
-	}
-
-	err = scheduler.Schedule(configFetchProcess)
+	err := scheduler.Schedule(configFetchProcess)
 	if err != nil {
 		log.Error().Err(err).Msg("Error scheduling process")
 		return err

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
+	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/registry"
@@ -27,15 +29,15 @@ func run() error {
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := utils.InitConfig(config.DefaultConfigPath)
+	cm, warnings, err := config.InitConfigManager(config.DefaultConfigPath)
 	if err != nil {
 		fmt.Printf("Error initiating the config: %v", err)
 		return err
 	}
 
-	ctx, log := utils.InitLogger(ctx, cm.GetLogLevel(), warnings)
+	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), warnings)
 
-	ctx, scheduler := utils.InitScheduler(ctx)
+	ctx, scheduler := scheduler.InitBasicScheduler(ctx, log)
 
 	go scheduler.ListenForProcessEvent()
 
@@ -85,10 +87,7 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 		}
 
 		// TODO: Is this code block necessary?
-		err := cm.With(config.SetLocalRegistryURL(defaultZotConfig.GetRegistryURL()))
-		if err != nil {
-			return fmt.Errorf("error setting RemoteRegistryURL")
-		}
+		cm.With(config.SetLocalRegistryURL(defaultZotConfig.GetRegistryURL()))
 
 		g.Go(func() error {
 			if err := registry.LaunchRegistry(cm.GetZotConfigPath()); err != nil {

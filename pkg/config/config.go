@@ -94,6 +94,25 @@ func NewConfigManager(path, token, defaultGroundControlURL string, config *Confi
 	}, nil
 }
 
+func InitConfigManager(path string) (*ConfigManager, []string, error) {
+	cfg, err := ReadAndReturnConfig(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read config %w", err)
+	}
+
+	warnings := ValidateConfig(cfg)
+
+	token := os.Getenv("TOKEN")
+	defaultGroundControlURL := os.Getenv("GROUND_CONTROL_URL")
+
+	cm, err := NewConfigManager(path, token, defaultGroundControlURL, cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create manager: %w", err)
+	}
+
+	return cm, warnings, nil
+}
+
 // Reads the config at the given path and loads it in the given config variable
 // TODO: Improve error handling for config initation.
 func ReadAndReturnConfig(path string) (*Config, error) {
@@ -166,5 +185,5 @@ func (cm *ConfigManager) With(mutators ...func(*Config)) *ConfigManager {
 }
 
 func (cm *ConfigManager) IsZTRDone() bool {
-	return cm.GetSourceRegistryURL() != ""
+	return cm.GetSourceRegistryUsername() != ""
 }
