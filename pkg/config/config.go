@@ -63,6 +63,8 @@ var validLogLevels = map[string]bool{
 	"info":  true,
 	"warn":  true,
 	"error": true,
+	"fatal": true,
+	"panic": true,
 }
 
 func (l *LogLevel) UnmarshalJSON(data []byte) error {
@@ -71,7 +73,7 @@ func (l *LogLevel) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if raw != "" && !validLogLevels[strings.ToLower(raw)] {
-		return fmt.Errorf("invalid log_level: %s", raw)
+		return fmt.Errorf("invalid log_level: '%s'", raw)
 	}
 	*l = LogLevel(raw)
 	return nil
@@ -97,7 +99,7 @@ func NewConfigManager(path, token, defaultGroundControlURL string, config *Confi
 func InitConfigManager(path string) (*ConfigManager, []string, error) {
 	cfg, err := ReadAndReturnConfig(path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read config %w", err)
+		return nil, nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
 	warnings := ValidateConfig(cfg)
