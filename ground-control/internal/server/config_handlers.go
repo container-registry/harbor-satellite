@@ -91,59 +91,20 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		log.Println(err)
-		HandleAppError(w, err)
-		return
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			tx.Rollback()
-		}
-	}()
-
-	q := s.dbQueries.WithTx(tx)
-
-	result, err := q.ListConfigs(r.Context())
+	result, err := s.dbQueries.ListConfigs(r.Context())
 	if err != nil {
 		HandleAppError(w, err)
 		return
 	}
 
-	if err := tx.Commit(); err != nil {
-		log.Printf("Commit failed: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Could not commit transaction",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-	committed = true
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
 func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		log.Println(err)
-		HandleAppError(w, err)
-		return
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			tx.Rollback()
-		}
-	}()
-
-	q := s.dbQueries.WithTx(tx)
-
 	vars := mux.Vars(r)
 	configName := vars["config"]
 
-	result, err := q.GetConfigByName(r.Context(), configName)
+	result, err := s.dbQueries.GetConfigByName(r.Context(), configName)
 	if err != nil {
 		HandleAppError(w, &AppError{
 			Message: fmt.Sprintf("Config not found: %v", err),
@@ -152,15 +113,6 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := tx.Commit(); err != nil {
-		log.Printf("Commit failed: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Could not commit transaction",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-	committed = true
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
