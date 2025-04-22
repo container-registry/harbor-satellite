@@ -637,12 +637,65 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Satellite == "" || req.Group == "" {
+	//Validate satellie and group
+	if !utils.IsValidName(req.Satellite) {
+		HandleAppError(w, &AppError{
+			Message: fmt.Sprintf(invalidNameMessage, "satellite"),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	if !utils.IsValidName(req.Group) {
+		HandleAppError(w, &AppError{
+			Message: fmt.Sprintf(invalidNameMessage, "group"),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	// Get satellite by name
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), req.Satellite)
+	if err != nil {
+		log.Printf("Error: Satellite Not Found: %v", err)
 		err := &AppError{
-			Message: "Error: Satellite and Group names cannot be empty",
+			Message: "Error: Satellite Not Found",
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
+		return
+	}
+
+	// Get group by name
+	grp, err := s.dbQueries.GetGroupByName(r.Context(), req.Group)
+	if err != nil {
+		log.Printf("Error: Group Not Found: %v", err)
+		err := &AppError{
+			Message: "Error: Group Not Found",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Check if satellite is already in the group
+	alreadyInGroup, err := s.dbQueries.CheckSatelliteInGroup(r.Context(), database.CheckSatelliteInGroupParams{
+		SatelliteID: int32(sat.ID),
+		GroupID:     int32(grp.ID),
+	})
+	if err != nil {
+		log.Printf("Error: Failed to check satellite in group %v", err)
+		err := &AppError{
+			Message: "Error: Failed to check satellite in group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	if alreadyInGroup {
+		log.Printf("Satellite %s is already in group %s, no changes needed", req.Satellite, req.Group)
+		WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite is already in the group"})
 		return
 	}
 
@@ -671,56 +724,6 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Get satellite by name
-	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
-	if err != nil {
-		log.Printf("Error: Satellite Not Found: %v", err)
-		err := &AppError{
-			Message: "Error: Satellite Not Found",
-			Code:    http.StatusBadRequest,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	// Get group by name
-	grp, err := q.GetGroupByName(r.Context(), req.Group)
-	if err != nil {
-		log.Printf("Error: Group Not Found: %v", err)
-		err := &AppError{
-			Message: "Error: Group Not Found",
-			Code:    http.StatusBadRequest,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	// Check if satellite is already in the group
-	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
-	if err != nil {
-		log.Printf("Error: Failed to get satellite group list: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to get satellite group list",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	alreadyInGroup := false
-	for _, group := range groupList {
-		if group.GroupID == grp.ID {
-			alreadyInGroup = true
-			break
-		}
-	}
-
-	if alreadyInGroup {
-		log.Printf("Satellite %s is already in group %s, no changes needed", req.Satellite, req.Group)
-		WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite is already in the group"})
-		return
-	}
-
 	// Add satellite to group
 	params := database.AddSatelliteToGroupParams{
 		SatelliteID: int32(sat.ID),
@@ -738,20 +741,8 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get robot account for the satellite
-	robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), sat.ID)
-	if err != nil {
-		log.Printf("Error: Failed to get robot account for satellite: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to get robot account for satellite",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
 	// Get updated group list after adding the new group
-	groupList, err = q.SatelliteGroupList(r.Context(), sat.ID)
+	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
 	if err != nil {
 		log.Printf("Error: Failed to get updated satellite group list: %v", err)
 		err := &AppError{
@@ -766,7 +757,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var groupStates []string
 
 	for _, group := range groupList {
-		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
+		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
 		if err != nil {
 			log.Printf("Error: Failed to get group by ID %d: %v", group.GroupID, err)
 			err := &AppError{
@@ -778,6 +769,18 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		}
 		projects = append(projects, grp.Projects...)
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
+	}
+
+	// Get robot account permissions
+	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("Error: Failed to get robot account for satellite: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to get robot account for satellite",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
 	}
 
 	// Update robot account permissions
@@ -800,7 +803,14 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		log.Printf("Commit failed: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
 	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite successfully added to group"})
 }
 
