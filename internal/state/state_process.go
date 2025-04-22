@@ -96,7 +96,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 	canExecute, reason := f.CanExecute(ctx)
 	if !canExecute {
-		log.Warn().Msgf("Cannot execute process: %s", reason)
+		log.Warn().Msgf("Process %s cannot execute: %s", f.name, reason)
 		return nil
 	}
 	log.Info().Msg(reason)
@@ -209,6 +209,7 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 	}
 
 	// Check new artifacts and update lists
+    // TODO: add debug logs here
 	for _, newEntity := range newEntites {
 		nameTagKey := newEntity.Name + "|" + newEntity.Tag
 		oldEntity, exists := oldEntityMap[nameTagKey]

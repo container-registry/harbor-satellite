@@ -148,7 +148,7 @@ func (z *ZtrProcess) CanExecute(ctx context.Context) (bool, string) {
 		}
 	}
 	if len(missing) > 0 {
-		return false, fmt.Sprintf("missing %s, please update config present at %s", strings.Join(missing, ", "), config.DefaultConfigPath)
+		return false, fmt.Sprintf("missing %s, please include the required environment variables present in .env", strings.Join(missing, ", "))
 	}
 
 	return true, fmt.Sprintf("Process %s can execute all conditions fulfilled", z.Name)
