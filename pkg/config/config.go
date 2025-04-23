@@ -187,5 +187,7 @@ func (cm *ConfigManager) With(mutators ...func(*Config)) *ConfigManager {
 }
 
 func (cm *ConfigManager) IsZTRDone() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
 	return cm.GetSourceRegistryUsername() != ""
 }

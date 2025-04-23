@@ -114,8 +114,14 @@ func (cm *ConfigManager) ResolveGroundControlURL() string {
 	defer cm.mu.RUnlock()
 
 	if cm.GetGroundControlURL() != "" {
-		return (cm.GetGroundControlURL())
+		return cm.GetGroundControlURL()
 	}
 
-	return (cm.DefaultGroundControlURL)
+	return cm.DefaultGroundControlURL
+}
+
+func (cm *ConfigManager) GetToken() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.Token
 }

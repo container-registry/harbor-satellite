@@ -62,7 +62,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	log.Info().Msgf("Executing process %s", z.Name)
 
 	// Register the satellite
-	stateConfig, err := RegisterSatellite(z.cm.GetGroundControlURL(), ZeroTouchRegistrationRoute, z.cm.Token, ctx)
+	stateConfig, err := RegisterSatellite(z.cm.GetGroundControlURL(), ZeroTouchRegistrationRoute, z.cm.GetToken(), ctx)
 	if err != nil {
 		log.Error().Msgf("Failed to register satellite: %v", err)
 		return err
@@ -138,7 +138,7 @@ func (z *ZtrProcess) CanExecute(ctx context.Context) (bool, string) {
 		condition bool
 		message   string
 	}{
-		{z.cm.Token == "", "token"},
+		{z.cm.GetToken() == "", "token"},
 		{z.cm.ResolveGroundControlURL() == "", "ground control URL"},
 	}
 	var missing []string
