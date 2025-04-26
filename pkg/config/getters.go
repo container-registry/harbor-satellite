@@ -3,7 +3,7 @@ package config
 func (cm *ConfigManager) GetLogLevel() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return string(cm.config.AppConfig.LogLevel)
+	return cm.config.AppConfig.LogLevel
 }
 
 func (cm *ConfigManager) GetOwnRegistry() bool {

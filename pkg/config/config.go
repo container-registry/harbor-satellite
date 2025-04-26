@@ -9,19 +9,22 @@ import (
 	"sync"
 
 	"github.com/robfig/cron/v3"
+	"github.com/rs/zerolog"
 )
 
 const DefaultSchedule = "@every 00h00m10s"
 
+type URL string
+
 type RegistryCredentials struct {
-	URL      URL    `json:"url,omitempty"`
+	URL      `json:"url,omitempty"`
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
 }
 
 type AppConfig struct {
 	GroundControlURL          URL                 `json:"ground_control_url"`
-	LogLevel                  LogLevel            `json:"log_level,omitempty"`
+	LogLevel                  string              `json:"log_level,omitempty"`
 	UseUnsecure               bool                `json:"use_unsecure,omitempty"`
 	ZotConfigPath             string              `json:"zot_config_path,omitempty"`
 	StateReplicationInterval  string              `json:"state_replication_interval,omitempty"`
@@ -42,41 +45,13 @@ type Config struct {
 	AppConfig   AppConfig   `json:"app_config,omitempty"`
 }
 
-type URL string
-
-func (v *URL) UnmarshalJSON(data []byte) error {
-	var raw string
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	if _, err := url.ParseRequestURI(raw); err != nil {
-		return fmt.Errorf("invalid URL: %w", err)
-	}
-	*v = URL(raw)
-	return nil
-}
-
-type LogLevel string
-
 var validLogLevels = map[string]bool{
-	"debug": true,
-	"info":  true,
-	"warn":  true,
-	"error": true,
-	"fatal": true,
-	"panic": true,
-}
-
-func (l *LogLevel) UnmarshalJSON(data []byte) error {
-	var raw string
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	if raw != "" && !validLogLevels[strings.ToLower(raw)] {
-		return fmt.Errorf("invalid log_level: '%s'", raw)
-	}
-	*l = LogLevel(raw)
-	return nil
+	zerolog.LevelDebugValue: true,
+	zerolog.LevelInfoValue:  true,
+	zerolog.LevelWarnValue:  true,
+	zerolog.LevelErrorValue: true,
+	zerolog.LevelFatalValue: true,
+	zerolog.LevelPanicValue: true,
 }
 
 type ConfigManager struct {
@@ -102,7 +77,10 @@ func InitConfigManager(path string) (*ConfigManager, []string, error) {
 		return nil, nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	warnings := ValidateConfig(cfg)
+	warnings, err := ValidateConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid config: %w", err)
+	}
 
 	token := os.Getenv("TOKEN")
 	defaultGroundControlURL := os.Getenv("GROUND_CONTROL_URL")
@@ -116,7 +94,6 @@ func InitConfigManager(path string) (*ConfigManager, []string, error) {
 }
 
 // Reads the config at the given path and loads it in the given config variable
-// TODO: Improve error handling for config initation.
 func ReadAndReturnConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(DefaultConfigPath)
 	if err != nil {
@@ -131,8 +108,17 @@ func ReadAndReturnConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-func ValidateConfig(config *Config) []string {
+func ValidateConfig(config *Config) ([]string, error) {
 	var warnings []string
+
+	if _, err := url.ParseRequestURI(string(config.AppConfig.GroundControlURL)); err != nil {
+		return nil, fmt.Errorf("invalid URL provided for ground_control_url: %w", err)
+	}
+
+	if config.AppConfig.LogLevel != "" && !validLogLevels[strings.ToLower(config.AppConfig.LogLevel)] {
+		config.AppConfig.LogLevel = zerolog.LevelInfoValue
+		warnings = append(warnings, fmt.Sprintf("invalid log_level '%s' provided. Valid options are: info, debug, panic, error, warn, fatal. Defaulting to 'info'.", config.AppConfig.LogLevel))
+	}
 
 	if !isValidCronExpression(config.AppConfig.StateReplicationInterval) {
 		config.AppConfig.StateReplicationInterval = DefaultSchedule
@@ -149,7 +135,7 @@ func ValidateConfig(config *Config) []string {
 		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for StateReplicationInterval, using default schedule %s", DefaultSchedule))
 	}
 
-	return warnings
+	return warnings, nil
 }
 
 func (cm *ConfigManager) WriteConfig() error {

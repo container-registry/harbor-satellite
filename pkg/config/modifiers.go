@@ -28,7 +28,7 @@ func SetGroundControlURL(url string) func(*Config) {
 
 func SetLogLevel(level string) func(*Config) {
 	return func(cfg *Config) {
-		cfg.AppConfig.LogLevel = LogLevel(level)
+		cfg.AppConfig.LogLevel = level
 	}
 }
 
