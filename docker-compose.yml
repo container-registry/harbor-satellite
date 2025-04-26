@@ -4,7 +4,6 @@ services:
     container_name: satellite
     volumes:
       - ~/.harbor-satellite/config.json:/config.json
-      - ~/.harbor-satellite/registry_config.json:/registry_config.json
     environment:
       - ENV_VAR1=value1
       - ENV_VAR2=value2

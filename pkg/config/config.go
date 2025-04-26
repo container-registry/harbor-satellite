@@ -26,7 +26,6 @@ type AppConfig struct {
 	GroundControlURL          URL                 `json:"ground_control_url"`
 	LogLevel                  string              `json:"log_level,omitempty"`
 	UseUnsecure               bool                `json:"use_unsecure,omitempty"`
-	ZotConfigPath             string              `json:"zot_config_path,omitempty"`
 	StateReplicationInterval  string              `json:"state_replication_interval,omitempty"`
 	UpdateConfigInterval      string              `json:"update_config_interval,omitempty"`
 	RegisterSatelliteInterval string              `json:"register_satellite_interval,omitempty"`
@@ -41,8 +40,9 @@ type StateConfig struct {
 }
 
 type Config struct {
-	StateConfig StateConfig `json:"state_config,omitempty"`
-	AppConfig   AppConfig   `json:"app_config,omitempty"`
+	StateConfig  StateConfig     `json:"state_config,omitempty"`
+	AppConfig    AppConfig       `json:"app_config,omitempty"`
+	ZotConfigRaw json.RawMessage `json:"zot_config"`
 }
 
 var validLogLevels = map[string]bool{
@@ -115,6 +115,10 @@ func ValidateConfig(config *Config) ([]string, error) {
 		return nil, fmt.Errorf("invalid URL provided for ground_control_url: %w", err)
 	}
 
+	if len(config.ZotConfigRaw) == 0 {
+		return nil, fmt.Errorf("invalid zot_config. zot_config cannot be empty")
+	}
+
 	if config.AppConfig.LogLevel != "" && !validLogLevels[strings.ToLower(config.AppConfig.LogLevel)] {
 		config.AppConfig.LogLevel = zerolog.LevelInfoValue
 		warnings = append(warnings, fmt.Sprintf("invalid log_level '%s' provided. Valid options are: info, debug, panic, error, warn, fatal. Defaulting to 'info'.", config.AppConfig.LogLevel))
@@ -176,4 +180,30 @@ func (cm *ConfigManager) IsZTRDone() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.GetSourceRegistryUsername() != ""
+}
+
+// Create a temp file and write the zot config to it.
+func (cm *ConfigManager) WriteTempZotConfig() (string, error) {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	tmpFile, err := os.CreateTemp("", "zot-*.json")
+	if err != nil {
+		return "", err
+	}
+	defer tmpFile.Close()
+
+	if _, err := tmpFile.Write(cm.config.ZotConfigRaw); err != nil {
+		return "", err
+	}
+
+	return tmpFile.Name(), nil
+}
+
+func (cm *ConfigManager) RemoveTempZotConfig(tmpPath string) error {
+	if err := os.Remove(tmpPath); err != nil {
+		return fmt.Errorf("failed to delete temp zot_config file: %w", err)
+	}
+
+	return nil
 }

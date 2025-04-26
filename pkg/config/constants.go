@@ -11,7 +11,6 @@ const ZTRConfigJobName string = "register_satellite"
 
 // Default config.json path for the satellite, used if the user does not provide any config path
 const DefaultConfigPath string = "config.json"
-const DefaultZotConfigPath string = "./zot-config.json"
 
 // Below are the default values of the job schedules that would be used if the user does not provide any schedule or
 // if there is any error while parsing the cron expression

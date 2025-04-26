@@ -38,12 +38,6 @@ func SetUseUnsecure(use bool) func(*Config) {
 	}
 }
 
-func SetZotConfigPath(path string) func(*Config) {
-	return func(cfg *Config) {
-		cfg.AppConfig.ZotConfigPath = path
-	}
-}
-
 func SetReplicationInterval(cronExpr string) func(*Config) {
 	return func(cfg *Config) {
 		cfg.AppConfig.StateReplicationInterval = cronExpr

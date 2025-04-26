@@ -79,22 +79,30 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 		}
 	} else {
 		log.Info().Msg("Launching default registry")
-		var defaultZotConfig registry.ZotConfig
-		if err := registry.ReadZotConfig(cm.GetZotConfigPath(), &defaultZotConfig); err != nil {
-			log.Error().Err(err).Msg("Error launching default zot registry")
-			return fmt.Errorf("error reading config: %w", err)
+
+		tmpConfigPath, err := cm.WriteTempZotConfig()
+		if err != nil {
+			log.Error().Err(err).Msg("Error writing temp zot config to disk")
+			return fmt.Errorf("error writing temp zot config to disk: %w", err)
 		}
 
-		// TODO: Is this code block necessary?
-		cm.With(config.SetLocalRegistryURL(defaultZotConfig.GetRegistryURL()))
-
 		g.Go(func() error {
-			if err := registry.LaunchRegistry(cm.GetZotConfigPath()); err != nil {
+			defer func() {
+				err := cm.RemoveTempZotConfig(tmpConfigPath)
+				if err != nil {
+					log.Warn().Err(err).Msg("Failed to remove temp zot config")
+				} else {
+					log.Debug().Str("path", tmpConfigPath).Msg("Temp zot config removed")
+				}
+			}()
+
+			if err := registry.LaunchRegistry(tmpConfigPath); err != nil {
 				log.Error().Err(err).Msg("Error launching default zot registry")
 				cancel()
 				return fmt.Errorf("error launching default zot registry: %w", err)
 			}
 			cancel()
+
 			return nil
 		})
 	}

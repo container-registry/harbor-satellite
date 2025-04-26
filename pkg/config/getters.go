@@ -12,12 +12,6 @@ func (cm *ConfigManager) GetOwnRegistry() bool {
 	return cm.config.AppConfig.BringOwnRegistry
 }
 
-func (cm *ConfigManager) GetZotConfigPath() string {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-	return cm.config.AppConfig.ZotConfigPath
-}
-
 func (cm *ConfigManager) GetZotURL() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
