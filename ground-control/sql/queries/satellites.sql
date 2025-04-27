@@ -6,6 +6,10 @@ RETURNING *;
 -- name: ListSatellites :many
 SELECT * FROM satellites;
 
+-- name: ListSatellitesByIDs :many
+SELECT * FROM satellites
+WHERE id = ANY($1::int[]);
+
 -- name: GetSatellite :one
 SELECT * FROM satellites
 WHERE id = $1 LIMIT 1;

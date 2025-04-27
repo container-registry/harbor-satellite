@@ -953,16 +953,20 @@ func (s *Server) groupSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get details for each satellite
-	var satellites []database.Satellite
+	var satelliteIDs []int32
 	for _, sg := range satelliteGroups {
-		satellite, err := s.dbQueries.GetSatellite(r.Context(), sg.SatelliteID)
-		if err != nil {
-			log.Printf("error: failed to get satellite details: %v", err)
-			continue // Skip this satellite if we can't get its details
-		}
-		satellites = append(satellites, satellite)
+		satelliteIDs = append(satelliteIDs, sg.SatelliteID)
 	}
 
+	satellites, err := s.dbQueries.ListSatellitesByIDs(r.Context(), satelliteIDs)
+	if err != nil {
+		log.Printf("error: failed to list satellites : %v", err)
+		err := &AppError{
+			Message: "error: failed to list satellites",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
 	WriteJSONResponse(w, http.StatusOK, satellites)
 }
