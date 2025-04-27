@@ -10,6 +10,10 @@ import (
 )
 
 func validateConfig(config *Config) ([]string, error) {
+	if config == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
+
 	var warnings []string
 
 	if _, err := url.ParseRequestURI(string(config.AppConfig.GroundControlURL)); err != nil {
@@ -20,9 +24,14 @@ func validateConfig(config *Config) ([]string, error) {
 		return nil, fmt.Errorf("invalid zot_config. zot_config cannot be empty")
 	}
 
-	if config.AppConfig.LogLevel != "" && !validLogLevels[strings.ToLower(config.AppConfig.LogLevel)] {
+	if config.AppConfig.LogLevel == "" {
 		config.AppConfig.LogLevel = zerolog.LevelInfoValue
-		warnings = append(warnings, fmt.Sprintf("invalid log_level '%s' provided. Valid options are: info, debug, panic, error, warn, fatal. Defaulting to 'info'.", config.AppConfig.LogLevel))
+	} else if !validLogLevels[strings.ToLower(config.AppConfig.LogLevel)] {
+		warnings = append(warnings, fmt.Sprintf(
+			"invalid log_level '%s' provided. Valid options are: info, debug, panic, error, warn, fatal. Defaulting to 'info'.",
+			config.AppConfig.LogLevel,
+		))
+		config.AppConfig.LogLevel = zerolog.LevelInfoValue
 	}
 
 	if !isValidCronExpression(config.AppConfig.StateReplicationInterval) {
