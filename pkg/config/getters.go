@@ -1,5 +1,7 @@
 package config
 
+import "encoding/json"
+
 func (cm *ConfigManager) GetLogLevel() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -118,4 +120,10 @@ func (cm *ConfigManager) GetToken() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.Token
+}
+
+func (cm *ConfigManager) GetRawZotConfig() json.RawMessage {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.ZotConfigRaw
 }

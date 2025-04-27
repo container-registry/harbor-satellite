@@ -181,29 +181,3 @@ func (cm *ConfigManager) IsZTRDone() bool {
 	defer cm.mu.RUnlock()
 	return cm.GetSourceRegistryUsername() != ""
 }
-
-// Create a temp file and write the zot config to it.
-func (cm *ConfigManager) WriteTempZotConfig() (string, error) {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-
-	tmpFile, err := os.CreateTemp("", "zot-*.json")
-	if err != nil {
-		return "", err
-	}
-	defer tmpFile.Close()
-
-	if _, err := tmpFile.Write(cm.config.ZotConfigRaw); err != nil {
-		return "", err
-	}
-
-	return tmpFile.Name(), nil
-}
-
-func (cm *ConfigManager) RemoveTempZotConfig(tmpPath string) error {
-	if err := os.Remove(tmpPath); err != nil {
-		return fmt.Errorf("failed to delete temp zot_config file: %w", err)
-	}
-
-	return nil
-}

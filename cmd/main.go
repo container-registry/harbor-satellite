@@ -80,31 +80,9 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 	} else {
 		log.Info().Msg("Launching default registry")
 
-		tmpConfigPath, err := cm.WriteTempZotConfig()
-		if err != nil {
-			log.Error().Err(err).Msg("Error writing temp zot config to disk")
-			return fmt.Errorf("error writing temp zot config to disk: %w", err)
-		}
+		zm := registry.NewZotManager(log, cm.GetRawZotConfig())
 
-		g.Go(func() error {
-			defer func() {
-				err := cm.RemoveTempZotConfig(tmpConfigPath)
-				if err != nil {
-					log.Warn().Err(err).Msg("Failed to remove temp zot config")
-				} else {
-					log.Debug().Str("path", tmpConfigPath).Msg("Temp zot config removed")
-				}
-			}()
-
-			if err := registry.LaunchRegistry(tmpConfigPath); err != nil {
-				log.Error().Err(err).Msg("Error launching default zot registry")
-				cancel()
-				return fmt.Errorf("error launching default zot registry: %w", err)
-			}
-			cancel()
-
-			return nil
-		})
+		return zm.HandleRegistrySetup(g, cancel)
 	}
 	return nil
 }
