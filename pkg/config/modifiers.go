@@ -1,5 +1,7 @@
 package config
 
+// Threadsafe setter functions to modify config data.
+
 func SetStateURL(url string) func(*Config) {
 	return func(cfg *Config) {
 		cfg.StateConfig.StateURL = url
@@ -97,3 +99,4 @@ func SetLocalRegistryCredentials(creds RegistryCredentials) func(*Config) {
 		cfg.AppConfig.LocalRegistryCredentials = creds
 	}
 }
+

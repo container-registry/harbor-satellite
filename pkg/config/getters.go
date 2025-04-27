@@ -2,6 +2,14 @@ package config
 
 import "encoding/json"
 
+// Threadsafe getter functions to fetch config data.
+
+func (cm *ConfigManager) IsZTRDone() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.GetSourceRegistryUsername() != ""
+}
+
 func (cm *ConfigManager) GetLogLevel() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
