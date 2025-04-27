@@ -74,7 +74,7 @@ func InitConfigManager(path string) (*ConfigManager, []string, error) {
 
 // Reads the config at the given path and loads it in the given config variable
 func readAndReturnConfig(path string) (*Config, error) {
-	data, err := os.ReadFile(DefaultConfigPath)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
