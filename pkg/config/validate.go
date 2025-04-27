@@ -14,6 +14,10 @@ func validateConfig(config *Config) ([]string, error) {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
+	if config.AppConfig.GroundControlURL == "" {
+		return nil, fmt.Errorf("config cannot be empty")
+	}
+
 	var warnings []string
 
 	if _, err := url.ParseRequestURI(string(config.AppConfig.GroundControlURL)); err != nil {

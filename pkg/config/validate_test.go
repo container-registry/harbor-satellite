@@ -9,14 +9,14 @@ import (
 func TestValidateConfig(t *testing.T) {
 	tests := []struct {
 		name           string
-		config         Config
+		config         *Config
 		expectError    bool
 		expectedErrMsg string
 		expectWarnings bool
 	}{
 		{
 			name: "valid config",
-			config: Config{
+			config: &Config{
 				AppConfig: AppConfig{
 					GroundControlURL:          URL("https://example.com"),
 					LogLevel:                  "info",
@@ -30,8 +30,22 @@ func TestValidateConfig(t *testing.T) {
 			expectWarnings: false,
 		},
 		{
+			name:           "nil config",
+			config:         nil,
+			expectError:    true,
+			expectedErrMsg: "config cannot be nil",
+			expectWarnings: false,
+		},
+		{
+			name:           "empty config",
+			config:         &Config{},
+			expectError:    true,
+			expectedErrMsg: "config cannot be empty",
+			expectWarnings: false,
+		},
+		{
 			name: "invalid ground control URL",
-			config: Config{
+			config: &Config{
 				AppConfig: AppConfig{
 					GroundControlURL:          URL("ht@tp://bad-url"),
 					LogLevel:                  "info",
@@ -46,7 +60,7 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "empty zot config",
-			config: Config{
+			config: &Config{
 				AppConfig: AppConfig{
 					GroundControlURL:          URL("https://example.com"),
 					LogLevel:                  "info",
@@ -61,7 +75,7 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "invalid log level",
-			config: Config{
+			config: &Config{
 				AppConfig: AppConfig{
 					GroundControlURL:          URL("https://example.com"),
 					LogLevel:                  "badlevel",
@@ -76,7 +90,7 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "invalid cron expressions",
-			config: Config{
+			config: &Config{
 				AppConfig: AppConfig{
 					GroundControlURL:          URL("https://example.com"),
 					LogLevel:                  "info",
@@ -93,7 +107,7 @@ func TestValidateConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			warnings, err := validateConfig(&tt.config)
+			warnings, err := validateConfig(tt.config)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -111,4 +125,3 @@ func TestValidateConfig(t *testing.T) {
 		})
 	}
 }
-
