@@ -2,7 +2,6 @@ package server
 
 import (
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -910,22 +909,13 @@ func GetAuthToken(r *http.Request) (string, error) {
 }
 
 // groupSatelliteHandler lists all satellites attached to a specific group
-func (s *Server) groupSatelliteHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) groupSatelliteListHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	groupName := vars["group"]
 
 	// Get the group by name
-	group, err := s.dbQueries.GetGroupByName(r.Context(), groupName)
+	exists, err := s.dbQueries.CheckGroupExists(r.Context(), groupName)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			log.Printf("error: group not found: %v", err)
-			err := &AppError{
-				Message: "error: group not found",
-				Code:    http.StatusNotFound,
-			}
-			HandleAppError(w, err)
-			return
-		}
 		log.Printf("error: failed to get group : %v", err)
 		err := &AppError{
 			Message: "error: failed to get group",
@@ -935,38 +925,32 @@ func (s *Server) groupSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get all satellite IDs attached to this group
-	satelliteGroups, err := s.dbQueries.GroupSatelliteList(r.Context(), group.ID)
-	if err != nil {
-		log.Printf("error: failed to list satellites for group: %v", err)
+	if !exists {
 		err := &AppError{
-			Message: "error: failed to list satellites for group",
+			Message: "error: group not found",
+			Code:    http.StatusNotFound,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Get all satellites attached to this group
+	satellites, err := s.dbQueries.GetSatellitesByGroupName(r.Context(), groupName)
+	if err != nil {
+		log.Printf("error: failed to get satellites for group: %v", err)
+		err := &AppError{
+			Message: "error: failed to get satellites for group",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
 		return
 	}
 
-	if len(satelliteGroups) == 0 {
-		log.Printf("satellite not found for group")
-		WriteJSONResponse(w, http.StatusNotFound, []database.Satellite{})
+	// Return empty array if no satellites in group
+	if len(satellites) == 0 {
+		WriteJSONResponse(w, http.StatusOK, []database.Satellite{})
 		return
 	}
 
-	var satelliteIDs []int32
-	for _, sg := range satelliteGroups {
-		satelliteIDs = append(satelliteIDs, sg.SatelliteID)
-	}
-
-	satellites, err := s.dbQueries.ListSatellitesByIDs(r.Context(), satelliteIDs)
-	if err != nil {
-		log.Printf("error: failed to list satellites : %v", err)
-		err := &AppError{
-			Message: "error: failed to list satellites",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
 	WriteJSONResponse(w, http.StatusOK, satellites)
 }

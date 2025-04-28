@@ -7,8 +7,6 @@ package database
 
 import (
 	"context"
-
-	"github.com/lib/pq"
 )
 
 const createSatellite = `-- name: CreateSatellite :one
@@ -99,12 +97,16 @@ func (q *Queries) GetSatelliteID(ctx context.Context, name string) (int32, error
 	return id, err
 }
 
-const listSatellites = `-- name: ListSatellites :many
-SELECT id, name, created_at, updated_at FROM satellites
+const getSatellitesByGroupName = `-- name: GetSatellitesByGroupName :many
+SELECT s.id, s.name, s.created_at, s.updated_at
+FROM satellites s
+JOIN satellite_groups sg ON sg.satellite_id = s.id
+JOIN groups g ON g.id = sg.group_id
+WHERE g.group_name = $1
 `
 
-func (q *Queries) ListSatellites(ctx context.Context) ([]Satellite, error) {
-	rows, err := q.db.QueryContext(ctx, listSatellites)
+func (q *Queries) GetSatellitesByGroupName(ctx context.Context, groupName string) ([]Satellite, error) {
+	rows, err := q.db.QueryContext(ctx, getSatellitesByGroupName, groupName)
 	if err != nil {
 		return nil, err
 	}
@@ -131,13 +133,12 @@ func (q *Queries) ListSatellites(ctx context.Context) ([]Satellite, error) {
 	return items, nil
 }
 
-const listSatellitesByIDs = `-- name: ListSatellitesByIDs :many
+const listSatellites = `-- name: ListSatellites :many
 SELECT id, name, created_at, updated_at FROM satellites
-WHERE id = ANY($1::int[])
 `
 
-func (q *Queries) ListSatellitesByIDs(ctx context.Context, dollar_1 []int32) ([]Satellite, error) {
-	rows, err := q.db.QueryContext(ctx, listSatellitesByIDs, pq.Array(dollar_1))
+func (q *Queries) ListSatellites(ctx context.Context) ([]Satellite, error) {
+	rows, err := q.db.QueryContext(ctx, listSatellites)
 	if err != nil {
 		return nil, err
 	}

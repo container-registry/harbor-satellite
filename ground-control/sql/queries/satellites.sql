@@ -6,9 +6,12 @@ RETURNING *;
 -- name: ListSatellites :many
 SELECT * FROM satellites;
 
--- name: ListSatellitesByIDs :many
-SELECT * FROM satellites
-WHERE id = ANY($1::int[]);
+-- name: GetSatellitesByGroupName :many
+SELECT s.id, s.name, s.created_at, s.updated_at
+FROM satellites s
+JOIN satellite_groups sg ON sg.satellite_id = s.id
+JOIN groups g ON g.id = sg.group_id
+WHERE g.group_name = $1;
 
 -- name: GetSatellite :one
 SELECT * FROM satellites

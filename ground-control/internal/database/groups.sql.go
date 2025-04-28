@@ -11,6 +11,17 @@ import (
 	"github.com/lib/pq"
 )
 
+const checkGroupExists = `-- name: CheckGroupExists :one
+SELECT EXISTS(SELECT 1 FROM groups WHERE group_name = $1)
+`
+
+func (q *Queries) CheckGroupExists(ctx context.Context, groupName string) (bool, error) {
+	row := q.db.QueryRowContext(ctx, checkGroupExists, groupName)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const createGroup = `-- name: CreateGroup :one
 INSERT INTO groups (group_name, registry_url, projects, created_at, updated_at)
 VALUES ($1, $2, $3, NOW(), NOW())
