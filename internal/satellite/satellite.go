@@ -41,7 +41,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	notifier := notifier.NewSimpleNotifier(ctx)
 	// Creating a process to fetch and replicate the state
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(replicateStateCron, notifier, s.SourcesRegistryConfig, s.LocalRegistryConfig, s.UseUnsecure, config.GetState())
-	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(updateConfigCron, "", "")
+	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(updateConfigCron, config.GetToken(), config.GetGroundControlURL(), config.GetSatelliteName())
 	ztrProcess := state.NewZtrProcess(ztrCron)
 	err := scheduler.Schedule(configFetchProcess)
 	if err != nil {

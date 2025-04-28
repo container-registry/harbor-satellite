@@ -70,7 +70,12 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		return fmt.Errorf("failed to register satellite: invalid state auth config received")
 	}
 	// Update the state config in app config
-	if err := config.UpdateStateAuthConfig(stateConfig.Auth.SourceUsername, stateConfig.Auth.Registry, stateConfig.Auth.SourcePassword, stateConfig.State); err != nil {
+	if err := config.UpdateStateAuthConfig(
+		stateConfig.Auth.SourceUsername,
+		stateConfig.Auth.Registry,
+		stateConfig.Auth.SourcePassword,
+		stateConfig.State,
+		stateConfig.SatelliteName); err != nil {
 		log.Error().Msgf("Failed to register satellite: could not update state auth config")
 		return fmt.Errorf("failed to register satellite: could not update state auth config")
 	}
@@ -138,6 +143,8 @@ func (z *ZtrProcess) CanExecute(ctx context.Context) (bool, string) {
 	}{
 		{config.GetToken() == "", "token"},
 		{config.GetGroundControlURL() == "", "ground control URL"},
+		{config.GetState() == "", "state"},
+		{config.GetSatelliteName() == "", "satellite name"},
 	}
 	var missing []string
 	for _, check := range checks {
