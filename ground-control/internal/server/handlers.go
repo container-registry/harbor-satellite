@@ -907,3 +907,50 @@ func GetAuthToken(r *http.Request) (string, error) {
 
 	return token, nil
 }
+
+// groupSatelliteHandler lists all satellites attached to a specific group
+func (s *Server) groupSatelliteListHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupName := vars["group"]
+
+	// Get the group by name
+	exists, err := s.dbQueries.CheckGroupExists(r.Context(), groupName)
+	if err != nil {
+		log.Printf("error: failed to get group : %v", err)
+		err := &AppError{
+			Message: "error: failed to get group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	if !exists {
+		err := &AppError{
+			Message: "error: group not found",
+			Code:    http.StatusNotFound,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Get all satellites attached to this group
+	satellites, err := s.dbQueries.GetSatellitesByGroupName(r.Context(), groupName)
+	if err != nil {
+		log.Printf("error: failed to get satellites for group: %v", err)
+		err := &AppError{
+			Message: "error: failed to get satellites for group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Return empty array if no satellites in group
+	if len(satellites) == 0 {
+		WriteJSONResponse(w, http.StatusOK, []database.Satellite{})
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, satellites)
+}

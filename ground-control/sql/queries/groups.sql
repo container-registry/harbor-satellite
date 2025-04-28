@@ -26,3 +26,6 @@ WHERE id = $1;
 -- name: GetProjectsOfGroup :many
 SELECT projects FROM groups
 WHERE group_name = $1;
+
+-- name: CheckGroupExists :one
+SELECT EXISTS(SELECT 1 FROM groups WHERE group_name = $1);
