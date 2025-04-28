@@ -68,11 +68,15 @@ func (zm *ZotManager) WriteTempZotConfig() (string, error) {
 		zm.log.Error().Err(err).Msg("Failed to create temporary zot config file")
 		return "", fmt.Errorf("failed to create temp zot config file: %w", err)
 	}
-	defer tmpFile.Close()
 
 	if _, err := tmpFile.Write(zm.zotConfig); err != nil {
 		zm.log.Error().Err(err).Str("path", tmpFile.Name()).Msg("Failed to write to temp zot config file")
 		return "", fmt.Errorf("failed to write to temp zot file present at %s: %w", tmpFile.Name(), err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		zm.log.Error().Err(err).Str("path", tmpFile.Name()).Msg("Failed to close temp zot config file")
+		return "", fmt.Errorf("failed to close temp zot config file %s: %w", tmpFile.Name(), err)
 	}
 
 	zm.log.Debug().Str("path", tmpFile.Name()).Msg("Temporary zot config file created successfully")
