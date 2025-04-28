@@ -10,7 +10,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
-	"github.com/container-registry/harbor-satellite/registry"
+	"github.com/container-registry/harbor-satellite/internal/registry"
 
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
