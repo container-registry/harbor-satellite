@@ -20,7 +20,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")
 
 	// to-do: listing functionality to list satellites attached to group
-  // for ground control admins
+	// for ground control admins
 	// r.HandleFunc("/groups/{group}/list", s.groupSatelliteHandler).Methods("GET")
 
 	// Ground Control interface

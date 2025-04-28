@@ -1,4 +1,4 @@
-# original version from https://gist.github.com/maratori/47a4d00457a92aa426dbd48a18776322 
+# original version from https://gist.github.com/maratori/47a4d00457a92aa426dbd48a18776322
 
 run:
   # Timeout for analysis, e.g. 30s, 5m.
@@ -189,6 +189,8 @@ linters-settings:
 linters:
   disable-all: true
   enable:
+    # - goheader # should add headers soon
+    - misspell
     ## enabled by default
     - errcheck # checking for unchecked errors, these unchecked errors can be critical bugs in some cases
     - gosimple # specializes in simplifying a code
@@ -224,6 +226,8 @@ linters:
     - gocyclo # computes and checks the cyclomatic complexity of functions
     - godot # checks if comments end in a period
     - goimports # in addition to fixing imports, goimports also formats your code in the same style as gofmt
+    - gofmt
+    - gofumpt
     - gomnd # detects magic numbers
     - gomoddirectives # manages the use of 'replace', 'retract', and 'excludes' directives in go.mod
     - gomodguard # allow and block lists linter for direct Go module dependencies. This is different from depguard where there are different block types for example version constraints and module recommendations

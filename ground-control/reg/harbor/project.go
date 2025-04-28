@@ -14,7 +14,11 @@ func GetProject(ctx context.Context, name string) (bool, error) {
 	proj, err := client.Project.HeadProject(ctx, &project.HeadProjectParams{
 		ProjectName: name,
 	})
+
 	if err != nil {
+		if _, ok := err.(*project.HeadProjectNotFound); ok {
+			return false, nil
+		}
 		return false, fmt.Errorf("error: project head request failed for project: %s, %v", name, err)
 	}
 	return proj.IsSuccess(), nil

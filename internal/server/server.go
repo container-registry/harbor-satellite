@@ -22,6 +22,7 @@ type App struct {
 	ctx        context.Context
 	Logger     *zerolog.Logger
 }
+
 func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, registrars ...RouteRegistrar) *App {
 	return &App{
 		router:     router,
