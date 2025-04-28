@@ -2,11 +2,9 @@ package runtime
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 
-	"github.com/container-registry/harbor-satellite/internal/config"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/registry"
@@ -46,7 +44,8 @@ func NewCrioCommand() *cobra.Command {
 		Use:   "crio",
 		Short: "Creates the config file for the crio runtime to fetch the images from the local repository",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return SetupContainerRuntimeCommand(cmd, &defaultZotConfig, DefaultCrioGenPath)
+			//return SetupContainerRuntimeCommand(cmd, &defaultZotConfig, DefaultCrioGenPath)
+			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			log := logger.FromContext(cmd.Context())
@@ -110,7 +109,7 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.ZotConfig, crioConfig
 			// Add the local registry to the first position in the mirrors
 			mirror := Mirror{
 				Location: localRegistry,
-				Insecure: config.UseUnsecure(),
+				//Insecure: config.UseUnsecure(),
 			}
 			registries.Mirrors = append([]Mirror{mirror}, registries.Mirrors...)
 		}
@@ -123,7 +122,7 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.ZotConfig, crioConfig
 			Mirrors: []Mirror{
 				{
 					Location: localRegistry,
-					Insecure: config.UseUnsecure(),
+					//	Insecure: config.UseUnsecure(),
 				},
 			},
 		}
@@ -147,27 +146,27 @@ func GenerateCrioRegistryConfig(defaultZotConfig *registry.ZotConfig, crioConfig
 	return nil
 }
 
-func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig *registry.ZotConfig, defaultGenPath string) error {
-	//	utils.CommandRunSetup(cmd)
-	var err error
-	log := logger.FromContext(cmd.Context())
+//func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig *registry.ZotConfig, defaultGenPath string) error {
+//	utils.CommandRunSetup(cmd)
+//	var err error
+//	log := logger.FromContext(cmd.Context())
 
-	if config.GetOwnRegistry() {
-		log.Info().Msg("Using own registry for config generation")
-		log.Info().Msgf("Remote registry URL: %s", config.GetRemoteRegistryURL())
-		_, err := url.Parse(config.GetRemoteRegistryURL())
-		if err != nil {
-			return fmt.Errorf("could not parse remote registry URL: %w", err)
-		}
-		defaultZotConfig.RemoteURL = config.GetRemoteRegistryURL()
-	} else {
-		log.Info().Msg("Using default registry for config generation")
-		err = registry.ReadZotConfig(config.GetZotConfigPath(), defaultZotConfig)
-		if err != nil || defaultZotConfig == nil {
-			return fmt.Errorf("could not read config: %w", err)
-		}
-		defaultZotConfig.RemoteURL = defaultZotConfig.GetRegistryURL()
-		log.Info().Msgf("Default config read successfully: %v", defaultZotConfig.HTTP.Address+":"+defaultZotConfig.HTTP.Port)
-	}
-	return utils.CreateRuntimeDirectory(defaultGenPath)
-}
+// //if config.GetOwnRegistry() {
+// //	log.Info().Msg("Using own registry for config generation")
+// //	log.Info().Msgf("Remote registry URL: %s", config.GetRemoteRegistryURL())
+// //	_, err := url.Parse(config.GetRemoteRegistryURL())
+// //	if err != nil {
+// //		return fmt.Errorf("could not parse remote registry URL: %w", err)
+// //	}
+// //	defaultZotConfig.RemoteURL = config.GetRemoteRegistryURL()
+// //} else {
+// //	log.Info().Msg("Using default registry for config generation")
+// //	err = registry.ReadZotConfig(config.GetZotConfigPath(), defaultZotConfig)
+// //	if err != nil || defaultZotConfig == nil {
+// //		return fmt.Errorf("could not read config: %w", err)
+// //	}
+// //	defaultZotConfig.RemoteURL = defaultZotConfig.GetRegistryURL()
+// //	log.Info().Msgf("Default config read successfully: %v", defaultZotConfig.HTTP.Address+":"+defaultZotConfig.HTTP.Port)
+// //}
+// //return utils.CreateRuntimeDirectory(defaultGenPath)
+//}

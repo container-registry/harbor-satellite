@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/container-registry/harbor-satellite/internal/config"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/registry"
@@ -51,12 +50,13 @@ func NewContainerdCommand() *cobra.Command {
 		Use:   "containerd",
 		Short: "Creates the config file for the containerd runtime to fetch the images from the local repository",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return SetupContainerRuntimeCommand(cmd, &defaultZotConfig, DefaultContainerDGenPath)
+			//return SetupContainerRuntimeCommand(cmd, &defaultZotConfig, DefaultContainerDGenPath)
+			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			log := logger.FromContext(cmd.Context())
-			sourceRegistry := config.GetSourceRegistryURL()
-			satelliteHostConfig := NewSatelliteHostConfig(defaultZotConfig.RemoteURL, sourceRegistry)
+			//			sourceRegistry := config.GetSourceRegistryURL()
+			satelliteHostConfig := NewSatelliteHostConfig(defaultZotConfig.RemoteURL, "")
 			if generateConfig {
 				log.Info().Msg("Generating containerd config file for containerd ...")
 				log.Info().Msgf("Fetching containerd config from path: %s", containerdConfigPath)

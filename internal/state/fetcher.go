@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/container-registry/harbor-satellite/internal/config"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
@@ -28,7 +27,8 @@ type baseStateFetcher struct {
 
 type URLStateFetcher struct {
 	baseStateFetcher
-	url string
+	url      string
+	insecure bool
 }
 
 type FileStateArtifactFetcher struct {
@@ -36,14 +36,15 @@ type FileStateArtifactFetcher struct {
 	filePath string
 }
 
-func NewURLStateFetcher(stateURL, userName, password string) StateFetcher {
+func NewURLStateFetcher(stateURL, userName, password string, insecure bool) StateFetcher {
 	url := utils.FormatRegistryURL(stateURL)
 	return &URLStateFetcher{
 		baseStateFetcher: baseStateFetcher{
 			username: userName,
 			password: password,
 		},
-		url: url,
+		url:      url,
+		insecure: insecure,
 	}
 }
 
@@ -108,7 +109,7 @@ func (f *URLStateFetcher) pullImage(ctx context.Context, log *zerolog.Logger) (v
 		Password: f.password,
 	})
 	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
-	if config.UseUnsecure() {
+	if f.insecure {
 		options = append(options, crane.Insecure)
 	}
 	return crane.Pull(f.url, options...)

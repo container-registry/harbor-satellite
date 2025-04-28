@@ -14,11 +14,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/container-registry/harbor-satellite/internal/config"
-	"github.com/container-registry/harbor-satellite/internal/logger"
-	"github.com/container-registry/harbor-satellite/internal/scheduler"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
 )
 
 // / ValidateRegistryAddress validates the registry address and port and returns the URL
@@ -40,12 +37,14 @@ func ValidateRegistryAddress(registryAdr, registryPort string) (string, error) {
 }
 
 // / HandleOwnRegistry handles the own registry address and port and sets the Zot URL
-func HandleOwnRegistry() error {
-	_, err := url.Parse(config.GetRemoteRegistryURL())
+func HandleOwnRegistry(cm *config.ConfigManager) error {
+	remoteRegistryURL := string(cm.GetRemoteRegistryURL())
+	_, err := url.Parse(remoteRegistryURL)
 	if err != nil {
 		return fmt.Errorf("error parsing URL: %w", err)
 	}
-	return config.SetRemoteRegistryURL(FormatRegistryURL(config.GetRemoteRegistryURL()))
+	cm.With(config.SetLocalRegistryURL(FormatRegistryURL(remoteRegistryURL)))
+	return nil
 }
 
 // Helper function to determine if input is a valid URL
@@ -134,36 +133,8 @@ func WriteFile(path string, data []byte) error {
 	return nil
 }
 
-func HandleErrorAndWarning(log *zerolog.Logger, errors []error, warnings []config.Warning) error {
+func HandleWarnings(log *zerolog.Logger, warnings []string) {
 	for i := range warnings {
 		log.Warn().Msg(string(warnings[i]))
 	}
-	for i := range errors {
-		log.Error().Msg(errors[i].Error())
-	}
-	if len(errors) > 0 {
-		return fmt.Errorf("error initializing config")
-	}
-	return nil
-}
-
-func Init(ctx context.Context) (context.Context, *errgroup.Group, scheduler.Scheduler, error) {
-	wg, ctx := errgroup.WithContext(ctx)
-	errors, warnings := config.InitConfig(config.DefaultConfigPath)
-	log := logger.NewLogger(config.GetLogLevel())
-	if err := HandleErrorAndWarning(log, errors, warnings); err != nil {
-		return nil, nil, nil, err
-	}
-	ctx = context.WithValue(ctx, logger.LoggerKey, log)
-
-	log.Debug().Msg("Initializing new basic scheduler for cron jobs")
-	scheduler := scheduler.NewBasicScheduler(ctx, log)
-
-	ctx = context.WithValue(ctx, scheduler.GetSchedulerKey(), scheduler)
-
-	return ctx, wg, scheduler, nil
-}
-
-func IsZTRDone() bool {
-	return config.GetSourceRegistryURL() != ""
 }

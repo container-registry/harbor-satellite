@@ -80,6 +80,15 @@ func (s *BasicScheduler) GetSchedulerKey() SchedulerKey {
 	return s.name
 }
 
+func InitBasicScheduler(ctx context.Context, log *zerolog.Logger) (context.Context, Scheduler) {
+	log.Debug().Msg("Initializing scheduler for Cronjobs")
+
+	s := NewBasicScheduler(ctx, log)
+	ctx = context.WithValue(ctx, s.GetSchedulerKey(), s)
+
+	return ctx, s
+}
+
 func (s *BasicScheduler) Schedule(process Process) error {
 	s.logger.Info().Msgf("Scheduling process %s", process.GetName())
 	s.mu.Lock()
