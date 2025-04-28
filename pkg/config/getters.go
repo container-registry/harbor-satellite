@@ -7,7 +7,7 @@ import "encoding/json"
 func (cm *ConfigManager) IsZTRDone() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return cm.GetSourceRegistryUsername() != ""
+	return cm.config.StateConfig.RegistryCredentials.Username != ""
 }
 
 func (cm *ConfigManager) GetLogLevel() string {
