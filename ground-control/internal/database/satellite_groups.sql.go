@@ -25,6 +25,26 @@ func (q *Queries) AddSatelliteToGroup(ctx context.Context, arg AddSatelliteToGro
 	return err
 }
 
+const checkSatelliteInGroup = `-- name: CheckSatelliteInGroup :one
+SELECT EXISTS (
+    SELECT 1
+    FROM satellite_groups
+    WHERE satellite_id = $1 AND group_id = $2
+)
+`
+
+type CheckSatelliteInGroupParams struct {
+	SatelliteID int32
+	GroupID     int32
+}
+
+func (q *Queries) CheckSatelliteInGroup(ctx context.Context, arg CheckSatelliteInGroupParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, checkSatelliteInGroup, arg.SatelliteID, arg.GroupID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const groupSatelliteList = `-- name: GroupSatelliteList :many
 SELECT satellite_id, group_id FROM satellite_groups
 WHERE group_id = $1
