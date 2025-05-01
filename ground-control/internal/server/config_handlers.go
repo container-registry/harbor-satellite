@@ -20,17 +20,16 @@ type SatelliteConfigParams struct {
 
 func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	var req models.ConfigObject
-	var err error
 
 	if err := DecodeRequestBody(r, &req); err != nil {
-		log.Println(err)
+		log.Println("Error decoding request body: ", err)
 		HandleAppError(w, err)
 		return
 	}
 
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
-		log.Println(err)
+		log.Println("Could not begin transaction:", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -54,7 +53,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 
 	configJson, err := json.Marshal(req.Config)
 	if err != nil {
-		log.Println(err)
+		log.Println("Could not marshal JSON: ", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -67,12 +66,13 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := q.CreateConfig(r.Context(), params)
 	if err != nil {
-		log.Println(err)
+		log.Println("Error persisting config object to database: ", err)
 		HandleAppError(w, err)
 		return
 	}
 
 	if err := ensureSatelliteProjectExists(r.Context()); err != nil {
+		log.Println("Error while ensuring project satellite: ", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -80,7 +80,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	// Upload config as OCI artifact
 	err = utils.CreateConfigStateArtifact(r.Context(), &req)
 	if err != nil {
-		log.Println(err)
+		log.Println("Error while creating config state artifact: ", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -101,6 +101,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListConfigs(r.Context())
 	if err != nil {
+		fmt.Println("Could not list configs: ", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -114,6 +115,7 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.dbQueries.GetConfigByName(r.Context(), configName)
 	if err != nil {
+		fmt.Println("Could not get config: ", err)
 		HandleAppError(w, &AppError{
 			Message: fmt.Sprintf("Config not found: %v", err),
 			Code:    http.StatusNotFound,
@@ -129,13 +131,14 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	if err := DecodeRequestBody(r, &req); err != nil {
+		log.Println("Error decoding request body: ", err)
 		HandleAppError(w, err)
 		return
 	}
 
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
-		log.Println(err)
+		log.Println("Could not begin transaction:", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -166,7 +169,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 
 	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
 	if err != nil {
-		log.Printf("Error: Failed: %v", err)
+		log.Printf("Could not get satellite group list: %v", err)
 		err := &AppError{
 			Message: "Error: Failed to Add satellite to config",
 			Code:    http.StatusInternalServerError,
@@ -193,7 +196,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 
 	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, utils.AssembleConfigState(req.ConfigName))
 	if err != nil {
-		log.Println(err)
+		log.Printf("Could not update satellite state artifact: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -218,7 +221,7 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
-		log.Println(err)
+		log.Println("Could not begin transaction:", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -258,7 +261,7 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := q.DeleteConfig(r.Context(), configObject.ID); err != nil {
-		log.Println(err)
+		log.Println("Error: Could not delete config: ", err)
 		HandleAppError(w, err)
 		return
 	}
