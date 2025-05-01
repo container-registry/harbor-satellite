@@ -85,25 +85,14 @@ This spawns a few more decisions to consider regarding the handling of the confi
 We will deal with the configuration as a different kind of state too, this means that we also need to create a configuration state before we reference
 it within a satellite state. For this, we will send a request to ground-control that looks like so:
 ```bash
- curl --location 'http://localhost:8080/groups/sync' \
+ curl --location 'http://localhost:8080/configs/sync' \
 --header 'Content-Type: application/json' \
 --data '{
   "config_name": "CONFIG_NAME",
   "registry": "YOUR_REGISTRY_URL",
   "config":
     {
-	   "ground_control_url": "http://127.0.0.1:8080",
-	   "log_level": "info",
-	   "use_unsecure": true,
-	   "zot_config_path": "./registry/config.json",
-	   "state_replication_interval": "@every 00h00m10s",
-	   "update_config_interval": "@every 00h00m10s",
-	   "register_satellite_interval": "@every 00h00m10s",
-	   "bring_own_registry": false,
-	   "local_registry": {
-	       "url": "http://127.0.0.1:8585",
-	       "username": "",
-	       "password": ""
+<JSON formatted satellite config>
     }
 
 }
@@ -211,7 +200,6 @@ after the initial deployment.
     "ground_control_url": "http://127.0.0.1:8080",
     "log_level": "info",
     "use_unsecure": true,
-    "zot_config_path": "./registry/config.json",
     "state_replication_interval": "@every 00h00m10s",
     "update_config_interval": "@every 00h00m10s",
     "register_satellite_interval": "@every 00h00m10s",
