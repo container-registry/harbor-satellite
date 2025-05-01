@@ -132,7 +132,7 @@ func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.dbQueries.GetGroupByName(r.Context(), group)
 	if err != nil {
-        log.Printf("Could not get group: ", err)
+		log.Printf("Could not get group: ", err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -143,10 +143,59 @@ func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListGroups(r.Context())
 	if err != nil {
-        log.Printf("Could not list groups: ", err)
+		log.Printf("Could not list groups: ", err)
 		HandleAppError(w, err)
 		return
 	}
 
 	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+// groupSatelliteHandler lists all satellites attached to a specific group
+func (s *Server) groupSatelliteListHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupName := vars["group"]
+
+	q := s.dbQueries
+
+	// Get the group by name
+	exists, err := q.CheckGroupExists(r.Context(), groupName)
+	if err != nil {
+		log.Printf("error: failed to get group : %v", err)
+		err := &AppError{
+			Message: "error: failed to get group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	if !exists {
+		err := &AppError{
+			Message: "error: group not found",
+			Code:    http.StatusNotFound,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Get all satellites attached to this group
+	satellites, err := q.GetSatellitesByGroupName(r.Context(), groupName)
+	if err != nil {
+		log.Printf("error: failed to get satellites for group: %v", err)
+		err := &AppError{
+			Message: "error: failed to get satellites for group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Return empty array if no satellites in group
+	if len(satellites) == 0 {
+		WriteJSONResponse(w, http.StatusOK, []database.Satellite{})
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, satellites)
 }
