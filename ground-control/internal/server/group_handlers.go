@@ -132,7 +132,7 @@ func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.dbQueries.GetGroupByName(r.Context(), group)
 	if err != nil {
-		log.Printf("Could not get group: ", err)
+		log.Printf("Could not get group: %v", err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -143,7 +143,7 @@ func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListGroups(r.Context())
 	if err != nil {
-		log.Printf("Could not list groups: ", err)
+		log.Printf("Could not list groups: %v", err)
 		HandleAppError(w, err)
 		return
 	}

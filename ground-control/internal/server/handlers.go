@@ -6,10 +6,6 @@ import (
 	"net/http"
 )
 
-const (
-	invalidNameMessage = "Invalid %s name: must be 1-255 chars, start with letter/number, and contain only lowercase letters, numbers, and ._-"
-)
-
 func (s *Server) Ping(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("pong"))
 }
