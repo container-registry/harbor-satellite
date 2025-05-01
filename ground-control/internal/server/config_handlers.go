@@ -38,7 +38,15 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	committed := false
 	defer func() {
 		if !committed {
-			tx.Rollback()
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
+				err := &AppError{
+					Message: "Error: Failed to rollback transaction",
+					Code:    http.StatusInternalServerError,
+				}
+				HandleAppError(w, err)
+				return
+			}
 		}
 	}()
 
@@ -66,7 +74,6 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := ensureSatelliteProjectExists(r.Context()); err != nil {
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -87,6 +94,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	committed = true
+
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
@@ -135,7 +143,15 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 	committed := false
 	defer func() {
 		if !committed {
-			tx.Rollback()
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
+				err := &AppError{
+					Message: "Error: Failed to rollback transaction",
+					Code:    http.StatusInternalServerError,
+				}
+				HandleAppError(w, err)
+				return
+			}
 		}
 	}()
 
@@ -210,7 +226,15 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 	committed := false
 	defer func() {
 		if !committed {
-			tx.Rollback()
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
+				err := &AppError{
+					Message: "Error: Failed to rollback transaction",
+					Code:    http.StatusInternalServerError,
+				}
+				HandleAppError(w, err)
+				return
+			}
 		}
 	}()
 
