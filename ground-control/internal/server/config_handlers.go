@@ -27,46 +27,11 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		log.Println("Could not begin transaction:", err)
-		HandleAppError(w, err)
-		return
-	}
-
-	committed := false
-	defer func() {
-		if !committed {
-			if err := tx.Rollback(); err != nil {
-				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
-				err := &AppError{
-					Message: "Error: Failed to rollback transaction",
-					Code:    http.StatusInternalServerError,
-				}
-				HandleAppError(w, err)
-				return
-			}
-		}
-	}()
-
-	q := s.dbQueries.WithTx(tx)
+	q := s.dbQueries
 
 	configJson, err := json.Marshal(req.Config)
 	if err != nil {
 		log.Println("Could not marshal JSON: ", err)
-		HandleAppError(w, err)
-		return
-	}
-
-	params := database.CreateConfigParams{
-		ConfigName:  req.ConfigName,
-		RegistryUrl: os.Getenv("HARBOR_URL"),
-		Config:      configJson,
-	}
-
-	result, err := q.CreateConfig(r.Context(), params)
-	if err != nil {
-		log.Println("Error persisting config object to database: ", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -85,15 +50,18 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := tx.Commit(); err != nil {
-		log.Printf("Commit failed: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Could not commit transaction",
-			Code:    http.StatusInternalServerError,
-		})
+	params := database.CreateConfigParams{
+		ConfigName:  req.ConfigName,
+		RegistryUrl: os.Getenv("HARBOR_URL"),
+		Config:      configJson,
+	}
+
+	result, err := q.CreateConfig(r.Context(), params)
+	if err != nil {
+		log.Println("Error persisting config object to database: ", err)
+		HandleAppError(w, err)
 		return
 	}
-	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, result)
 }
@@ -201,16 +169,6 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := tx.Commit(); err != nil {
-		log.Printf("Commit failed: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Could not commit transaction",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-	committed = true
-
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
@@ -219,29 +177,7 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	configName := vars["config"]
 
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		log.Println("Could not begin transaction:", err)
-		HandleAppError(w, err)
-		return
-	}
-
-	committed := false
-	defer func() {
-		if !committed {
-			if err := tx.Rollback(); err != nil {
-				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
-				err := &AppError{
-					Message: "Error: Failed to rollback transaction",
-					Code:    http.StatusInternalServerError,
-				}
-				HandleAppError(w, err)
-				return
-			}
-		}
-	}()
-
-	q := s.dbQueries.WithTx(tx)
+	q := s.dbQueries
 
 	configObject, err := q.GetConfigByName(r.Context(), configName)
 	if err != nil {
@@ -260,12 +196,6 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := q.DeleteConfig(r.Context(), configObject.ID); err != nil {
-		log.Println("Error: Could not delete config: ", err)
-		HandleAppError(w, err)
-		return
-	}
-
 	if err := utils.DeleteArtifact(utils.ConstructHarborDeleteURL(fmt.Sprintf("config-state/%s/state", configName))); err != nil {
 		log.Printf("Could not delete config state artifact: %v", err)
 		HandleAppError(w, &AppError{
@@ -275,15 +205,11 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := tx.Commit(); err != nil {
-		log.Printf("Commit failed: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Could not commit transaction",
-			Code:    http.StatusInternalServerError,
-		})
+	if err := q.DeleteConfig(r.Context(), configObject.ID); err != nil {
+		log.Println("Error: Could not delete config: ", err)
+		HandleAppError(w, err)
 		return
 	}
-	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
