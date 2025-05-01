@@ -169,6 +169,16 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := tx.Commit(); err != nil {
+		log.Printf("Failed to commit transaction: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Failed to commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+    committed = true
+
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
