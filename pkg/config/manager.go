@@ -56,7 +56,7 @@ func InitConfigManager(path string) (*ConfigManager, []string, error) {
 		return nil, nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	warnings, err := validateConfig(cfg)
+	warnings, err := ValidateConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid config: %w", err)
 	}
