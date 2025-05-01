@@ -370,7 +370,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create the satellite's state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates)
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates, configObject.ConfigName)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -513,7 +513,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// For sanity, create (update) the state artifact during the registration process as well.
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states)
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
 	if err != nil {
 		log.Println(err)
 		tx.Rollback()
@@ -813,7 +813,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates)
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
 	if err != nil {
 		log.Printf("Error: Failed to update satellite state artifact: %v", err)
 		HandleAppError(w, err)
@@ -830,27 +830,6 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite successfully added to group"})
-}
-
-func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, satelliteID int32) (database.Config, error) {
-	satelliteConfig, err := dbQueries.SatelliteConfig(ctx, satelliteID)
-	if err != nil {
-		log.Printf("Error: Failed to fetch satellite config: %v", err)
-		return database.Config{}, &AppError{
-			Message: "Error: Failed to fetch satellite config",
-			Code:    http.StatusInternalServerError,
-		}
-	}
-
-	configObject, err := dbQueries.GetConfigByID(ctx, satelliteConfig.ConfigID)
-	if err != nil {
-		log.Printf("Error: Failed to fetch satellite config: %v", err)
-		return database.Config{}, &AppError{
-			Message: "Error: Failed to fetch satellite config",
-			Code:    http.StatusInternalServerError,
-		}
-	}
-	return configObject, nil
 }
 
 func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, satelliteID int32) (database.Config, error) {
@@ -981,7 +960,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	}
 
 	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates)
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
