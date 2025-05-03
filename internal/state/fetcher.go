@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -79,6 +80,9 @@ func (f *URLStateFetcher) FetchStateArtifact(ctx context.Context, state interfac
 	case *State:
 		return f.fetchGroupState(ctx, s, log)
 
+	case *config.Config:
+		return f.fetchConfigState(ctx, s, log)
+
 	default:
 		return fmt.Errorf("unexpected state type: %T", s)
 	}
@@ -102,6 +106,15 @@ func (f *URLStateFetcher) fetchGroupState(ctx context.Context, state *State, log
 	return f.extractArtifactJSON(f.url, img, state, log)
 }
 
+func (f *URLStateFetcher) fetchConfigState(ctx context.Context, config *config.Config, log *zerolog.Logger) error {
+	log.Info().Msgf("Fetching config state artifact: %s", f.url)
+	img, err := f.pullImage(ctx, log)
+	if err != nil {
+		return err
+	}
+	return f.extractArtifactJSON(f.url, img, config, log)
+}
+
 func (f *URLStateFetcher) pullImage(ctx context.Context, log *zerolog.Logger) (v1.Image, error) {
 	log.Debug().Msgf("Pulling state artifact: %s", f.url)
 	auth := authn.FromConfig(authn.AuthConfig{
@@ -116,7 +129,7 @@ func (f *URLStateFetcher) pullImage(ctx context.Context, log *zerolog.Logger) (v
 }
 
 func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out interface{}, log *zerolog.Logger) error {
-	log.Debug().Msgf("Extracting artifact.json from the state artifact: %s", url)
+	log.Debug().Msgf("Extracting artifacts.json from the state artifact: %s", url)
 
 	tarContent := new(bytes.Buffer)
 	if err := crane.Export(img, tarContent); err != nil {
