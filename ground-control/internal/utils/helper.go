@@ -215,7 +215,7 @@ func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, s
 		return err
 	}
 
-	satelliteState := &m.SatelliteStateArtifact{States: states, Config: config}
+	satelliteState := &m.SatelliteStateArtifact{States: states, Config: AssembleConfigState(config)}
 	data, err := json.Marshal(satelliteState)
 	if err != nil {
 		return fmt.Errorf("failed to marshal satellite state artifact to JSON: %v", err)
