@@ -101,6 +101,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	}
 	log.Info().Msg(reason)
 
+	// TODO: Refactor state fetcher logic
 	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
 	if err != nil {
 		log.Error().Err(err).Msg("Error processing satellite state")
@@ -116,13 +117,16 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	f.updateStateMap(satelliteState.States)
 
 	if satelliteState.Config != "" {
+		satelliteStateFetcher, err := getStateFetcherForInput(satelliteState.Config, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
+		if err != nil {
+			log.Error().Err(err).Msg("Error processing satellite state")
+			return err
+		}
 		config := config.Config{}
 		if err := satelliteStateFetcher.FetchStateArtifact(ctx, &config, log); err != nil {
 			log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteState.Config)
 			return err
 		}
-
-		fmt.Println("The config is: ", config.AppConfig)
 	}
 
 	// Loop through each state and reconcile the satellite
