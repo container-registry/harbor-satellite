@@ -355,6 +355,23 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 
 	}
 
+	config, err := q.GetConfigByName(r.Context(), req.ConfigName)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	setSatelliteConfigParams := database.SetSatelliteConfigParams{
+		SatelliteID: satellite.ID,
+		ConfigID:    config.ID,
+	}
+	if err := q.SetSatelliteConfig(r.Context(), setSatelliteConfigParams); err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
 	// Create the satellite's state artifact
 	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates, req.ConfigName)
 	if err != nil {
