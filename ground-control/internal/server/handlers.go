@@ -448,19 +448,6 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = q.DeleteToken(r.Context(), token)
-	if err != nil {
-		log.Println("error deleting token")
-		log.Println(err)
-		err := &AppError{
-			Message: "Error: Error deleting token",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		tx.Rollback()
-		return
-	}
-
 	robot, err := q.GetRobotAccBySatelliteID(r.Context(), satelliteID)
 	if err != nil {
 		log.Println("Robot Account Not Found")
@@ -526,7 +513,6 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	satelliteState := utils.AssembleSatelliteState(satellite.Name)
 
-	// TODO: we need to update the state here to reflect the satellite's state artifact
 	result := models.ZtrResult{
 		State: satelliteState,
 		Auth: models.Account{
@@ -534,6 +520,19 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 			Secret:   robot.RobotSecret,
 			Registry: os.Getenv("HARBOR_URL"),
 		},
+	}
+
+	err = q.DeleteToken(r.Context(), token)
+	if err != nil {
+		log.Println("error deleting token")
+		log.Println(err)
+		err := &AppError{
+			Message: "Error: Error deleting token",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		tx.Rollback()
+		return
 	}
 
 	tx.Commit()
