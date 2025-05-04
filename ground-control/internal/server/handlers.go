@@ -217,23 +217,17 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 	// Create a new Queries object bound to the transaction
 	q := s.dbQueries.WithTx(tx)
-	// Ensure proper transaction handling with defer
-	defer func() {
-		if p := recover(); p != nil {
-			// If there's a panic, rollback the transaction
-			tx.Rollback()
-		} else if err != nil {
-			tx.Rollback() // Rollback transaction on error
-		}
-	}()
-	// Create satellite
-	satellite, err := q.CreateSatellite(r.Context(), req.Name)
 	committed := false
+
+	// Ensure proper transaction handling with defer
 	defer func() {
 		if !committed {
 			tx.Rollback()
 		}
 	}()
+
+	// Create satellite
+	satellite, err := q.CreateSatellite(r.Context(), req.Name)
 	var groupStates []string
 
 	// Check if Groups is nil before dereferencing
@@ -361,16 +355,8 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 
 	}
 
-	// TODO: Update this logic to fetch the config from upstream. To be done while updating Satellite code.
-	configObject, err := q.GetConfigByName(r.Context(), req.ConfigName)
-	if err != nil {
-		log.Printf("Error: Failed to fetch Satellite config: %v", err)
-		HandleAppError(w, err)
-		return
-	}
-
 	// Create the satellite's state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates, configObject.ConfigName)
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates, req.ConfigName)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
