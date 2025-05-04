@@ -16,6 +16,7 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/gorilla/mux"
 )
 
@@ -513,12 +514,12 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	satelliteState := utils.AssembleSatelliteState(satellite.Name)
 
-	result := models.ZtrResult{
-		State: satelliteState,
-		Auth: models.Account{
-			Name:     robot.RobotName,
-			Secret:   robot.RobotSecret,
-			Registry: os.Getenv("HARBOR_URL"),
+	result := config.StateConfig{
+		StateURL: satelliteState,
+		RegistryCredentials: config.RegistryCredentials{
+			Username: robot.RobotName,
+			Password: robot.RobotSecret,
+			URL:      config.URL(os.Getenv("HARBOR_URL")),
 		},
 	}
 

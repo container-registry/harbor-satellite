@@ -30,8 +30,8 @@ type Artifact struct {
 }
 
 type ZtrResult struct {
-	State string  `json:"state"`
-	Auth  Account `json:"auth"`
+	State string                     `json:"state"`
+	Auth  config.RegistryCredentials `json:"auth"`
 }
 
 type Account struct {
