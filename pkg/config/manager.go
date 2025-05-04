@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"sync"
 )
@@ -63,6 +64,10 @@ func InitConfigManager(path string) (*ConfigManager, []string, error) {
 
 	token := os.Getenv("TOKEN")
 	defaultGroundControlURL := os.Getenv("GROUND_CONTROL_URL")
+
+	if _, err := url.Parse(defaultGroundControlURL); err != nil {
+		return nil, nil, fmt.Errorf("invalid ground control url %s: %w", defaultGroundControlURL, err)
+	}
 
 	cm, err := NewConfigManager(path, token, defaultGroundControlURL, cfg)
 	if err != nil {
