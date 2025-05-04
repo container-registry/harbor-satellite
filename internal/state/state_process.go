@@ -101,14 +101,33 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	}
 	log.Info().Msg(reason)
 
-	// Fetch the satellite's state
-	satelliteState, err := f.fetchSatelliteState(ctx, log)
+	// TODO: Refactor state fetcher logic
+	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
 	if err != nil {
+		log.Error().Err(err).Msg("Error processing satellite state")
+		return err
+	}
+	satelliteState := &SatelliteState{}
+	if err := satelliteStateFetcher.FetchStateArtifact(ctx, satelliteState, log); err != nil {
+		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", f.satelliteState)
 		return err
 	}
 
 	// Update stateMap
 	f.updateStateMap(satelliteState.States)
+
+	if satelliteState.Config != "" {
+		satelliteStateFetcher, err := getStateFetcherForInput(satelliteState.Config, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
+		if err != nil {
+			log.Error().Err(err).Msg("Error processing satellite state")
+			return err
+		}
+		config := config.Config{}
+		if err := satelliteStateFetcher.FetchStateArtifact(ctx, &config, log); err != nil {
+			log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteState.Config)
+			return err
+		}
+	}
 
 	// Loop through each state and reconcile the satellite
 	for i := range f.stateMap {
@@ -144,21 +163,6 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		f.stateMap[i].Entities = FetchEntitiesFromState(newState)
 	}
 	return nil
-}
-
-func (f *FetchAndReplicateStateProcess) fetchSatelliteState(ctx context.Context, log *zerolog.Logger) (*SatelliteState, error) {
-	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
-	if err != nil {
-		log.Error().Err(err).Msg("Error processing satellite state")
-		return nil, err
-	}
-
-	satelliteState := &SatelliteState{}
-	if err := satelliteStateFetcher.FetchStateArtifact(ctx, satelliteState, log); err != nil {
-		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", f.satelliteState)
-		return nil, err
-	}
-	return satelliteState, nil
 }
 
 func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
@@ -209,7 +213,7 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 	}
 
 	// Check new artifacts and update lists
-    // TODO: add debug logs here
+	// TODO: add debug logs here
 	for _, newEntity := range newEntites {
 		nameTagKey := newEntity.Name + "|" + newEntity.Tag
 		oldEntity, exists := oldEntityMap[nameTagKey]

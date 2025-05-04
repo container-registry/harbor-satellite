@@ -11,6 +11,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/registry"
+	_ "github.com/joho/godotenv/autoload"
 
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
