@@ -116,13 +116,13 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	f.updateStateMap(satelliteState.States)
 
 	if satelliteState.Config != "" {
-		var config *config.Config
-		if err := satelliteStateFetcher.FetchStateArtifact(ctx, config, log); err != nil {
-			log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", f.satelliteState)
+		config := config.Config{}
+		if err := satelliteStateFetcher.FetchStateArtifact(ctx, &config, log); err != nil {
+			log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteState.Config)
 			return err
 		}
 
-		fmt.Println("The config is: ", config)
+		fmt.Println("The config is: ", config.AppConfig)
 	}
 
 	// Loop through each state and reconcile the satellite
