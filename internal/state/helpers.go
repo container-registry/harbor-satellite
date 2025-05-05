@@ -3,15 +3,14 @@ package state
 import (
 	"fmt"
 
-	"github.com/container-registry/harbor-satellite/internal/config"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/rs/zerolog"
 )
 
-func getStateFetcherForInput(input, username, password string, log *zerolog.Logger) (StateFetcher, error) {
-
+func getStateFetcherForInput(input, username, password string, useInsecure bool, log *zerolog.Logger) (StateFetcher, error) {
 	if utils.IsValidURL(input) {
-		return processURLInput(utils.FormatRegistryURL(input), username, password, log)
+		log.Info().Msg("Input is a valid URL")
+		return NewURLStateFetcher(input, username, password, useInsecure), nil
 	}
 
 	log.Info().Msg("Input is not a valid URL, checking if it is a file path")
@@ -32,15 +31,6 @@ func validateFilePath(path string, log *zerolog.Logger) error {
 		return fmt.Errorf("no file found: %s", path)
 	}
 	return nil
-}
-
-func processURLInput(input, username, password string, log *zerolog.Logger) (StateFetcher, error) {
-	log.Info().Msg("Input is a valid URL")
-	config.SetSourceRegistryURL(input)
-
-	stateArtifactFetcher := NewURLStateFetcher(input, username, password)
-
-	return stateArtifactFetcher, nil
 }
 
 func processFileInput(input, username, password string, log *zerolog.Logger) (StateFetcher, error) {
