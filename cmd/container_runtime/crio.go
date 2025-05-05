@@ -7,7 +7,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/utils"
-	"github.com/container-registry/harbor-satellite/registry"
+	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
