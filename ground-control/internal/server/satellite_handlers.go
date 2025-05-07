@@ -344,7 +344,21 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	satellite := vars["satellite"]
 
-	q := s.dbQueries
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	q := s.dbQueries.WithTx(tx)
+
+	committed := false
+	defer func() {
+		if !committed {
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction: %v", err)
+				HandleAppError(w, &AppError{
+					Message: "Error: Failed to rollback transaction",
+					Code:    http.StatusInternalServerError,
+				})
+			}
+		}
+	}()
 
 	sat, err := q.GetSatelliteByName(r.Context(), satellite)
 	if err != nil {
@@ -378,9 +392,9 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = harbor.DeleteRobotAccount(r.Context(), robotID)
+	err = q.DeleteSatelliteByName(r.Context(), satellite)
 	if err != nil {
-		log.Printf("error: failed to delete robot account: %v", err)
+		log.Printf("error: failed to delete satellite: %v", err)
 		err := &AppError{
 			Message: "Error: Failed to Delete Satellite",
 			Code:    http.StatusInternalServerError,
@@ -389,9 +403,9 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = q.DeleteSatelliteByName(r.Context(), satellite)
+	_, err = harbor.DeleteRobotAccount(r.Context(), robotID)
 	if err != nil {
-		log.Printf("error: failed to delete satellite: %v", err)
+		log.Printf("error: failed to delete robot account: %v", err)
 		err := &AppError{
 			Message: "Error: Failed to Delete Satellite",
 			Code:    http.StatusInternalServerError,
@@ -406,6 +420,16 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Commit failed: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
@@ -614,7 +638,34 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), req.Satellite)
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("Error starting transaction: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to start database transaction",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Create a new Queries object bound to the transaction
+	q := s.dbQueries.WithTx(tx)
+
+	committed := false
+	defer func() {
+		if !committed {
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction: %v", err)
+				HandleAppError(w, &AppError{
+					Message: "Error: Failed to rollback transaction",
+					Code:    http.StatusInternalServerError,
+				})
+			}
+		}
+	}()
+
+	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
 	if err != nil {
 		log.Printf("Error: Satellite Not Found: %v", err)
 		err := &AppError{
@@ -625,7 +676,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	grp, err := s.dbQueries.GetGroupByName(r.Context(), req.Group)
+	grp, err := q.GetGroupByName(r.Context(), req.Group)
 	if err != nil {
 		log.Printf("Error: Group Not Found: %v", err)
 		err := &AppError{
@@ -641,7 +692,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		GroupID:     int32(grp.ID),
 	}
 
-	err = s.dbQueries.RemoveSatelliteFromGroup(r.Context(), params)
+	err = q.RemoveSatelliteFromGroup(r.Context(), params)
 	if err != nil {
 		log.Printf("error: failed to remove satellite from group: %v", err)
 		err := &AppError{
@@ -652,7 +703,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), sat.ID)
 	if err != nil {
 		log.Printf("Error: Failed to Add permission to robot account: %v", err)
 		err := &AppError{
@@ -663,7 +714,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	groupList, err := s.dbQueries.SatelliteGroupList(r.Context(), sat.ID)
+	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
 	if err != nil {
 		log.Printf("Error: Failed: %v", err)
 		err := &AppError{
@@ -678,7 +729,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	var groupStates []string
 
 	for _, group := range groupList {
-		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
+		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
 		if err != nil {
 			log.Printf("Error: Failed: %v", err)
 			err := &AppError{
@@ -706,7 +757,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, sat.ID)
+	configObject, err := fetchSatelliteConfig(r.Context(), q, sat.ID)
 	if err != nil {
 		log.Printf("Error: Failed to fetch Satellite config: %v", err)
 		HandleAppError(w, err)
@@ -720,6 +771,16 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		HandleAppError(w, err)
 		return
 	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Commit failed: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
