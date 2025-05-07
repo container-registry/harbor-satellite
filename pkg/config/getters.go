@@ -64,12 +64,6 @@ func (cm *ConfigManager) GetStateURL() string {
 	return cm.config.StateConfig.StateURL
 }
 
-func (cm *ConfigManager) GetGroundControlURL() string {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-	return string(cm.config.AppConfig.GroundControlURL)
-}
-
 func (cm *ConfigManager) GetRemoteRegistryUsername() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
