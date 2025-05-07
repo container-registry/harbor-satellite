@@ -226,9 +226,19 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := isConfigInUse(r.Context(), q, configObject); err != nil {
+	isConfigInUse, err := isConfigInUse(r.Context(), q, configObject)
+	if err != nil {
 		log.Printf("Error: Could not delete config: %v", err)
 		HandleAppError(w, err)
+		return
+	}
+
+	if isConfigInUse {
+		log.Printf("Cannot delete config that is in use")
+		HandleAppError(w, &AppError{
+			Message: "Cannot delete config that is in use",
+			Code:    http.StatusBadRequest,
+		})
 		return
 	}
 

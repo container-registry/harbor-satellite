@@ -17,6 +17,17 @@ import (
 	goharbormodels "github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 )
 
+func isConfigInUse(ctx context.Context, q *database.Queries, config database.Config) (bool, error) {
+	// Check if any satellite is using this config
+	satellites, err := q.ConfigSatelliteList(ctx, config.ID)
+	if err != nil {
+		return false, err
+	}
+
+	// If any entries exist, config is in use
+	return len(satellites) > 0, nil
+}
+
 func setSatelliteConfig(ctx context.Context, q *database.Queries, satelliteName string, configName string) (*database.Satellite, error) {
 	sat, err := q.GetSatelliteByName(ctx, satelliteName)
 	if err != nil {
