@@ -117,8 +117,8 @@ func (cm *ConfigManager) ResolveGroundControlURL() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
-	if cm.GetGroundControlURL() != "" {
-		return cm.GetGroundControlURL()
+	if string(cm.config.AppConfig.GroundControlURL) != "" {
+		return string(cm.config.AppConfig.GroundControlURL)
 	}
 
 	return cm.DefaultGroundControlURL
