@@ -128,7 +128,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 
 	q := s.dbQueries.WithTx(tx)
 
-	sat, err := updateSatelliteConfig(r.Context(), q, req.Satellite, req.ConfigName)
+	sat, err := setSatelliteConfig(r.Context(), q, req.Satellite, req.ConfigName)
 	if err != nil {
 		log.Printf("Error: Could not set satellite config: %v", err)
 		HandleAppError(w, err)
