@@ -42,6 +42,14 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if !utils.IsValidName(req.ConfigName) {
+		HandleAppError(w, &AppError{
+			Message: "invalid or empty config_name",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
 	// If the robot account is already present, we need to check if the robot account
 	// permissions need to be updated.
 	// i.e, check if the satellite is already connected to the groups in the request body.
@@ -252,6 +260,10 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	satellite, err := q.GetSatellite(r.Context(), satelliteID)
+	if err != nil {
+		HandleAppError(w, &AppError{Message: "satellite not found", Code: http.StatusNotFound})
+		return
+	}
 
 	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satelliteID)
 	if err != nil {

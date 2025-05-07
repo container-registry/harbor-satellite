@@ -27,7 +27,23 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	q := s.dbQueries
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	q := s.dbQueries.WithTx(tx)
+
+	committed := false
+	defer func() {
+		if !committed {
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
+				err := &AppError{
+					Message: "Error: Failed to rollback transaction",
+					Code:    http.StatusInternalServerError,
+				}
+				HandleAppError(w, err)
+				return
+			}
+		}
+	}()
 
 	configJson, err := json.Marshal(req.Config)
 	if err != nil {
@@ -38,14 +54,6 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := ensureSatelliteProjectExists(r.Context()); err != nil {
 		log.Println("Error while ensuring project satellite: ", err)
-		HandleAppError(w, err)
-		return
-	}
-
-	// Upload config as OCI artifact
-	err = utils.CreateConfigStateArtifact(r.Context(), &req)
-	if err != nil {
-		log.Println("Error while creating config state artifact: ", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -62,6 +70,24 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
+
+	// Upload config as OCI artifact
+	err = utils.CreateConfigStateArtifact(r.Context(), &req)
+	if err != nil {
+		log.Println("Error while creating config state artifact: ", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Failed to commit transaction: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Failed to commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, result)
 }
@@ -162,7 +188,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, utils.AssembleConfigState(req.ConfigName))
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, req.ConfigName)
 	if err != nil {
 		log.Printf("Could not update satellite state artifact: %v", err)
 		HandleAppError(w, err)
@@ -177,7 +203,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-    committed = true
+	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
