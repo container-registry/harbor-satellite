@@ -6,12 +6,13 @@ import (
 	"os"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
-	"github.com/container-registry/harbor-satellite/internal/registry"
 
+	_ "github.com/joho/godotenv/autoload"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )

@@ -17,6 +17,52 @@ import (
 	goharbormodels "github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 )
 
+func isConfigInUse(ctx context.Context, q *database.Queries, config database.Config) (bool, error) {
+	// Check if any satellite is using this config
+	satellites, err := q.ConfigSatelliteList(ctx, config.ID)
+	if err != nil {
+		return false, err
+	}
+
+	// If any entries exist, config is in use
+	return len(satellites) > 0, nil
+}
+
+func setSatelliteConfig(ctx context.Context, q *database.Queries, satelliteName string, configName string) (*database.Satellite, error) {
+	sat, err := q.GetSatelliteByName(ctx, satelliteName)
+	if err != nil {
+		log.Printf("Error: Satellite Not Found: %v", err)
+		return nil, &AppError{
+			Message: "Error: Satellite Not Found",
+			Code:    http.StatusBadRequest,
+		}
+	}
+
+	configObject, err := q.GetConfigByName(ctx, configName)
+	if err != nil {
+		log.Printf("Error: Config Not Found: %v", err)
+		return nil, &AppError{
+			Message: "Error: Config Not Found",
+			Code:    http.StatusBadRequest,
+		}
+	}
+
+	params := database.SetSatelliteConfigParams{
+		SatelliteID: int32(sat.ID),
+		ConfigID:    int32(configObject.ID),
+	}
+
+	err = q.SetSatelliteConfig(ctx, params)
+	if err != nil {
+		log.Printf("Error: Failed to Set Satellite Config: %v", err)
+		return nil, &AppError{
+			Message: "Error: Failed to Set Satellite config",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+	return &sat, nil
+}
+
 func validateRequestBody(w http.ResponseWriter, req RegisterSatelliteParams) error {
 	if len(req.Name) < 1 {
 		log.Println("name should be at least one character long.")
@@ -221,4 +267,25 @@ func GetAuthToken(r *http.Request) (string, error) {
 	token := parts[1]
 
 	return token, nil
+}
+
+func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, satelliteID int32) (database.Config, error) {
+	satelliteConfig, err := dbQueries.SatelliteConfig(ctx, satelliteID)
+	if err != nil {
+		log.Printf("Error: Failed to fetch satellite config: %v", err)
+		return database.Config{}, &AppError{
+			Message: "Error: Failed to fetch satellite config",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+
+	configObject, err := dbQueries.GetConfigByID(ctx, satelliteConfig.ConfigID)
+	if err != nil {
+		log.Printf("Error: Failed to fetch satellite config: %v", err)
+		return database.Config{}, &AppError{
+			Message: "Error: Failed to fetch satellite config",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+	return configObject, nil
 }

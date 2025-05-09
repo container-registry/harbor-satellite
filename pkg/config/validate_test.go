@@ -107,7 +107,7 @@ func TestValidateConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			warnings, err := validateConfig(tt.config)
+			warnings, err := ValidateConfig(tt.config)
 
 			if tt.expectError {
 				require.Error(t, err)

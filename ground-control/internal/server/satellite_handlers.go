@@ -1,7 +1,6 @@
 package server
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,13 +8,11 @@ import (
 	"strconv"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/gorilla/mux"
 )
-
-// TODO: Multiple network operations are currently done within a db transaction. There might be a better way to do this.
 
 type SatelliteGroupParams struct {
 	Satellite string `json:"satellite"`
@@ -23,62 +20,85 @@ type SatelliteGroupParams struct {
 }
 
 type RegisterSatelliteParams struct {
-	Name   string    `json:"name"`
-	Groups *[]string `json:"groups,omitempty"`
-}
-
-// Start a new transaction. Returns a tx object and a queries object tied to the transaction.
-func (s *Server) initTransaction(r *http.Request) (*sql.Tx, *database.Queries, error) {
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	return tx, s.dbQueries.WithTx(tx), nil
+	Name       string    `json:"name"`
+	Groups     *[]string `json:"groups,omitempty"`
+	ConfigName string    `json:"config_name"`
 }
 
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	var req RegisterSatelliteParams
-	var err error
-
 	if err := DecodeRequestBody(r, &req); err != nil {
-		log.Println("Error decoding request body:", err)
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}
 
-	if err := validateRequestBody(w, req); err != nil {
-		log.Println("Error validating request body:", err)
+	if !utils.IsValidName(req.Name) {
+		err := &AppError{
+			Message: fmt.Sprintf(invalidNameMessage, "satellite"),
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}
 
-	if err := checkRobotAccountExistence(r.Context(), req.Name); err != nil {
-		HandleAppError(w, err)
+	if !utils.IsValidName(req.ConfigName) {
+		HandleAppError(w, &AppError{
+			Message: "invalid or empty config_name",
+			Code:    http.StatusBadRequest,
+		})
 		return
 	}
 
-	tx, q, err := s.initTransaction(r)
+	// If the robot account is already present, we need to check if the robot account
+	// permissions need to be updated.
+	// i.e, check if the satellite is already connected to the groups in the request body.
+	// if not, then update the robot account.
+	roboPresent, err := harbor.IsRobotPresent(r.Context(), req.Name)
 	if err != nil {
-		log.Println("Error starting transaction:", err)
+		log.Println(err)
+		err := &AppError{
+			Message: fmt.Sprintf("Error querying for robot account: %v", err.Error()),
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}
 
+	if roboPresent {
+		err := &AppError{
+			Message: "Error: Robot Account name already present. Try with different name",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Start a new transaction
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+	// Create a new Queries object bound to the transaction
+	q := s.dbQueries.WithTx(tx)
 	committed := false
+
+	// Ensure proper transaction handling with defer
 	defer func() {
 		if !committed {
 			if err := tx.Rollback(); err != nil {
-				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
-				err := &AppError{
+				log.Printf("Error: Failed to rollback transaction: %v", err)
+				HandleAppError(w, &AppError{
 					Message: "Error: Failed to rollback transaction",
 					Code:    http.StatusInternalServerError,
-				}
-				HandleAppError(w, err)
-				return
+				})
 			}
 		}
 	}()
 
+	// Create satellite
 	satellite, err := q.CreateSatellite(r.Context(), req.Name)
 	if err != nil {
 		log.Println("Error creating satellite:", err)
@@ -103,14 +123,16 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Create Robot Account for Satellite
 	projects := []string{"satellite"}
 	rbt, err := utils.CreateRobotAccForSatellite(r.Context(), projects, satellite.Name)
 	if err != nil {
-		log.Println("Error creating robot account for satellite:", err)
-		HandleAppError(w, &AppError{
+		log.Println(err)
+		err := &AppError{
 			Message: fmt.Sprintf("Error: creating robot account %v", err),
 			Code:    http.StatusBadRequest,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
@@ -126,15 +148,36 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates); err != nil {
-		log.Println("Error creating/updating satellite state artifact:", err)
+	config, err := q.GetConfigByName(r.Context(), req.ConfigName)
+	if err != nil {
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}
 
+	setSatelliteConfigParams := database.SetSatelliteConfigParams{
+		SatelliteID: satellite.ID,
+		ConfigID:    config.ID,
+	}
+
+	if err := q.SetSatelliteConfig(r.Context(), setSatelliteConfigParams); err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	// Create the satellite's state artifact
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates, req.ConfigName)
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	// Add token to DB
 	token, err := GenerateRandomToken(32)
 	if err != nil {
-		log.Println("Error generating random token:", err)
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}
@@ -144,7 +187,8 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		Token:       token,
 	})
 	if err != nil {
-		log.Println("Error adding token to database:", err)
+		log.Println("error in token")
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}
@@ -170,31 +214,38 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	satelliteID, err := q.GetSatelliteIDByToken(r.Context(), token)
 	if err != nil {
-		log.Println("Error retrieving satellite ID by token:", err)
-		HandleAppError(w, &AppError{
+		log.Println("Invalid Satellite Token")
+		log.Println(err)
+		err := &AppError{
 			Message: "Error: Invalid Token",
 			Code:    http.StatusBadRequest,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
 	robot, err := q.GetRobotAccBySatelliteID(r.Context(), satelliteID)
 	if err != nil {
-		log.Println("Error retrieving robot account for satellite:", err)
-		HandleAppError(w, &AppError{
+		log.Println("Robot Account Not Found")
+		log.Println(err)
+		err := &AppError{
 			Message: "Error: Robot Account Not Found for Satellite",
 			Code:    http.StatusInternalServerError,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
+	// groups attached to satellite
 	groups, err := q.SatelliteGroupList(r.Context(), satelliteID)
 	if err != nil {
-		log.Printf("Error listing groups for satellite %v: %v", satelliteID, err)
-		HandleAppError(w, &AppError{
+		log.Printf("failed to list groups for satellite: %v, %v", satelliteID, err)
+		log.Println(err)
+		err := &AppError{
 			Message: "Error: Satellite Groups List Failed",
 			Code:    http.StatusInternalServerError,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
@@ -210,35 +261,45 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	satellite, err := q.GetSatellite(r.Context(), satelliteID)
 	if err != nil {
-		log.Println("Error retrieving satellite:", err)
+		HandleAppError(w, &AppError{Message: "satellite not found", Code: http.StatusNotFound})
+		return
+	}
+
+	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satelliteID)
+	if err != nil {
+		log.Printf("Error: Failed to fetch Satellite config: %v", err)
 		HandleAppError(w, err)
 		return
 	}
 
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states)
+	// For sanity, create (update) the state artifact during the registration process as well.
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
 	if err != nil {
-		log.Println("Error creating/updating satellite state artifact:", err)
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}
 
 	satelliteState := utils.AssembleSatelliteState(satellite.Name)
 
-	result := models.ZtrResult{
-		State: satelliteState,
-		Auth: models.Account{
-			Name:     robot.RobotName,
-			Secret:   robot.RobotSecret,
-			Registry: os.Getenv("HARBOR_URL"),
+	result := config.StateConfig{
+		StateURL: satelliteState,
+		RegistryCredentials: config.RegistryCredentials{
+			Username: robot.RobotName,
+			Password: robot.RobotSecret,
+			URL:      config.URL(os.Getenv("HARBOR_URL")),
 		},
 	}
 
-	if err := q.DeleteToken(r.Context(), token); err != nil {
-		log.Println("Error deleting token:", err)
-		HandleAppError(w, &AppError{
+	err = q.DeleteToken(r.Context(), token)
+	if err != nil {
+		log.Println("error deleting token")
+		log.Println(err)
+		err := &AppError{
 			Message: "Error: Error deleting token",
 			Code:    http.StatusInternalServerError,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
@@ -283,7 +344,21 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	satellite := vars["satellite"]
 
-	q := s.dbQueries
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	q := s.dbQueries.WithTx(tx)
+
+	committed := false
+	defer func() {
+		if !committed {
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction: %v", err)
+				HandleAppError(w, &AppError{
+					Message: "Error: Failed to rollback transaction",
+					Code:    http.StatusInternalServerError,
+				})
+			}
+		}
+	}()
 
 	sat, err := q.GetSatelliteByName(r.Context(), satellite)
 	if err != nil {
@@ -317,24 +392,6 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = harbor.DeleteRobotAccount(r.Context(), robotID)
-	if err != nil {
-		log.Printf("error: failed to delete robot account: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to Delete Satellite",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	err = utils.DeleteSatelliteStateArtifact(satellite)
-	if err != nil {
-		log.Println(err)
-		HandleAppError(w, err)
-		return
-	}
-
 	err = q.DeleteSatelliteByName(r.Context(), satellite)
 	if err != nil {
 		log.Printf("error: failed to delete satellite: %v", err)
@@ -346,10 +403,37 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, err = harbor.DeleteRobotAccount(r.Context(), robotID)
+	if err != nil {
+		log.Printf("error: failed to delete robot account: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to Delete Satellite",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(fmt.Sprintf("satellite-state/%s/state", sat.Name)))
+	if err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Commit failed: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	committed = true
+
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
-// Once a satellite is added to the group, the satellite's stateartifact must be updated accordingly.
 func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteGroupParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -357,12 +441,81 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := s.db.BeginTx(r.Context(), nil)
+	//Validate satellite and group
+	if !utils.IsValidName(req.Satellite) {
+		HandleAppError(w, &AppError{
+			Message: fmt.Sprintf(invalidNameMessage, "satellite"),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	if !utils.IsValidName(req.Group) {
+		HandleAppError(w, &AppError{
+			Message: fmt.Sprintf(invalidNameMessage, "group"),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	// Get satellite by name
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), req.Satellite)
 	if err != nil {
-		log.Println("Error: Could not begin transaction:", err)
+		log.Printf("Error: Satellite Not Found: %v", err)
+		err := &AppError{
+			Message: "Error: Satellite Not Found",
+			Code:    http.StatusBadRequest,
+		}
 		HandleAppError(w, err)
 		return
 	}
+
+	// Get group by name
+	grp, err := s.dbQueries.GetGroupByName(r.Context(), req.Group)
+	if err != nil {
+		log.Printf("Error: Group Not Found: %v", err)
+		err := &AppError{
+			Message: "Error: Group Not Found",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Check if satellite is already in the group
+	alreadyInGroup, err := s.dbQueries.CheckSatelliteInGroup(r.Context(), database.CheckSatelliteInGroupParams{
+		SatelliteID: int32(sat.ID),
+		GroupID:     int32(grp.ID),
+	})
+	if err != nil {
+		log.Printf("Error: Failed to check satellite in group %v", err)
+		err := &AppError{
+			Message: "Error: Failed to check satellite in group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	if alreadyInGroup {
+		log.Printf("Satellite %s is already in group %s, no changes needed", req.Satellite, req.Group)
+		WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite is already in the group"})
+		return
+	}
+
+	// Start a transaction
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("Error starting transaction: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to start database transaction",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Create a new Queries object bound to the transaction
 	q := s.dbQueries.WithTx(tx)
 
 	committed := false
@@ -378,57 +531,32 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
-	if err != nil {
-		log.Printf("Error: Satellite Not Found: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Satellite Not Found",
-			Code:    http.StatusBadRequest,
-		})
-		return
-	}
-
-	grp, err := q.GetGroupByName(r.Context(), req.Group)
-	if err != nil {
-		log.Printf("Error: Group Not Found: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Group Not Found",
-			Code:    http.StatusBadRequest,
-		})
-		return
-	}
-
+	// Add satellite to group
 	params := database.AddSatelliteToGroupParams{
 		SatelliteID: int32(sat.ID),
 		GroupID:     int32(grp.ID),
 	}
 
-	if err := q.AddSatelliteToGroup(r.Context(), params); err != nil {
-		log.Printf("Error: Failed to add satellite to group: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Failed to Add Satellite to Group",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
-	robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	err = q.AddSatelliteToGroup(r.Context(), params)
 	if err != nil {
-		log.Printf("Error: Failed to get robot account: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Failed to Add permission to robot account",
+		log.Printf("Error: Failed to add satellite to group: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to add satellite to group",
 			Code:    http.StatusInternalServerError,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
+	// Get updated group list after adding the new group
 	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
 	if err != nil {
-		log.Printf("Error: Failed to list satellite groups: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Failed to Add satellite to group",
+		log.Printf("Error: Failed to get updated satellite group list: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to get updated satellite group list",
 			Code:    http.StatusInternalServerError,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
@@ -436,36 +564,61 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var groupStates []string
 
 	for _, group := range groupList {
-		g, err := q.GetGroupByID(r.Context(), group.GroupID)
+		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
 		if err != nil {
-			log.Printf("Error: Failed to fetch group details: %v", err)
-			HandleAppError(w, &AppError{
-				Message: "Error: Failed to Add satellite to group",
+			log.Printf("Error: Failed to get group by ID %d: %v", group.GroupID, err)
+			err := &AppError{
+				Message: "Error: Failed to get group details",
 				Code:    http.StatusInternalServerError,
-			})
+			}
+			HandleAppError(w, err)
 			return
 		}
-		projects = append(projects, g.Projects...)
-		groupStates = append(groupStates, utils.AssembleGroupState(g.GroupName))
+		projects = append(projects, grp.Projects...)
+		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
-	if _, err := utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID); err != nil {
-		log.Printf("Error: Failed to update robot account projects: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Failed to Add permission to robot account",
-			Code:    http.StatusInternalServerError,
-		})
+	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, sat.ID)
+	if err != nil {
+		log.Printf("Error: Failed to fetch Satellite config: %v", err)
+		HandleAppError(w, err)
 		return
 	}
 
-	if err := utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates); err != nil {
-		log.Printf("Error: Failed to update state artifact: %v", err)
+	// Get robot account permissions
+	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("Error: Failed to get robot account for satellite: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to get robot account for satellite",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Update robot account permissions
+	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
+	if err != nil {
+		log.Printf("Error: Failed to update robot account permissions: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to update robot account permissions",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Update the state artifact to also track the new group state artifact
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
+	if err != nil {
+		log.Printf("Error: Failed to update satellite state artifact: %v", err)
 		HandleAppError(w, err)
 		return
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Printf("Error: Transaction commit failed: %v", err)
+		log.Printf("Commit failed: %v", err)
 		HandleAppError(w, &AppError{
 			Message: "Error: Could not commit transaction",
 			Code:    http.StatusInternalServerError,
@@ -474,7 +627,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite successfully added to group"})
 }
 
 // If the satellite is removed from the group, the state artifact must be updated accordingly as well.
@@ -487,10 +640,16 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
-		log.Println("Error: Could not begin transaction:", err)
+		log.Printf("Error starting transaction: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to start database transaction",
+			Code:    http.StatusInternalServerError,
+		}
 		HandleAppError(w, err)
 		return
 	}
+
+	// Create a new Queries object bound to the transaction
 	q := s.dbQueries.WithTx(tx)
 
 	committed := false
@@ -509,20 +668,22 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
 	if err != nil {
 		log.Printf("Error: Satellite Not Found: %v", err)
-		HandleAppError(w, &AppError{
+		err := &AppError{
 			Message: "Error: Satellite Not Found",
 			Code:    http.StatusBadRequest,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
 	grp, err := q.GetGroupByName(r.Context(), req.Group)
 	if err != nil {
 		log.Printf("Error: Group Not Found: %v", err)
-		HandleAppError(w, &AppError{
+		err := &AppError{
 			Message: "Error: Group Not Found",
 			Code:    http.StatusBadRequest,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
@@ -531,32 +692,36 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		GroupID:     int32(grp.ID),
 	}
 
-	if err := q.RemoveSatelliteFromGroup(r.Context(), params); err != nil {
-		log.Printf("Error: Failed to remove satellite from group: %v", err)
-		HandleAppError(w, &AppError{
+	err = q.RemoveSatelliteFromGroup(r.Context(), params)
+	if err != nil {
+		log.Printf("error: failed to remove satellite from group: %v", err)
+		err := &AppError{
 			Message: "Error: Failed to Remove Satellite from Group",
 			Code:    http.StatusInternalServerError,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
 	robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), sat.ID)
 	if err != nil {
-		log.Printf("Error: Failed to fetch robot account: %v", err)
-		HandleAppError(w, &AppError{
+		log.Printf("Error: Failed to Add permission to robot account: %v", err)
+		err := &AppError{
 			Message: "Error: Failed to Add permission to robot account",
 			Code:    http.StatusInternalServerError,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
 	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
 	if err != nil {
-		log.Printf("Error: Failed to list satellite groups: %v", err)
-		HandleAppError(w, &AppError{
+		log.Printf("Error: Failed: %v", err)
+		err := &AppError{
 			Message: "Error: Failed to refresh satellite group list",
 			Code:    http.StatusInternalServerError,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
@@ -564,36 +729,51 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	var groupStates []string
 
 	for _, group := range groupList {
-		g, err := q.GetGroupByID(r.Context(), group.GroupID)
+		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
 		if err != nil {
-			log.Printf("Error: Failed to fetch group details: %v", err)
-			HandleAppError(w, &AppError{
-				Message: "Error: Failed to refresh satellite group list",
+			log.Printf("Error: Failed: %v", err)
+			err := &AppError{
+				Message: "Error: Failed to to refresh satellite group list",
 				Code:    http.StatusInternalServerError,
-			})
+			}
+			HandleAppError(w, err)
 			return
 		}
-		projects = append(projects, g.Projects...)
-		groupStates = append(groupStates, utils.AssembleGroupState(g.GroupName))
+		projects = append(projects, grp.Projects...)
+		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
-	if _, err := utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID); err != nil {
-		log.Printf("Error: Failed to update robot account permissions: %v", err)
-		HandleAppError(w, &AppError{
+	// 1. We need the list of state artifacts for the groups that satellite belongs to
+	// 2. Update the satellite state artifact accordingly
+
+	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
+	if err != nil {
+		log.Printf("Error: Failed to Add permission to robot account: %v", err)
+		err := &AppError{
 			Message: "Error: Failed to update robot account permissions",
 			Code:    http.StatusInternalServerError,
-		})
+		}
+		HandleAppError(w, err)
 		return
 	}
 
-	if err := utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates); err != nil {
-		log.Printf("Error: Failed to update state artifact: %v", err)
+	configObject, err := fetchSatelliteConfig(r.Context(), q, sat.ID)
+	if err != nil {
+		log.Printf("Error: Failed to fetch Satellite config: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	// Update the state artifact to also track the new group state artifact
+	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
+	if err != nil {
+		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}
 
 	if err := tx.Commit(); err != nil {
-		log.Printf("Error: Transaction commit failed: %v", err)
+		log.Printf("Commit failed: %v", err)
 		HandleAppError(w, &AppError{
 			Message: "Error: Could not commit transaction",
 			Code:    http.StatusInternalServerError,

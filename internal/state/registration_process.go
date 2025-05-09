@@ -62,7 +62,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	log.Info().Msgf("Executing process %s", z.Name)
 
 	// Register the satellite
-	stateConfig, err := RegisterSatellite(z.cm.GetGroundControlURL(), ZeroTouchRegistrationRoute, z.cm.GetToken(), ctx)
+	stateConfig, err := RegisterSatellite(z.cm.ResolveGroundControlURL(), ZeroTouchRegistrationRoute, z.cm.GetToken(), ctx)
 	if err != nil {
 		log.Error().Msgf("Failed to register satellite: %v", err)
 		return err

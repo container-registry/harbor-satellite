@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func validateConfig(config *Config) ([]string, error) {
+func ValidateConfig(config *Config) ([]string, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}

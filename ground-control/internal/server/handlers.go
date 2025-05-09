@@ -1,9 +1,16 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+
+	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+)
+
+const (
+	invalidNameMessage = "Invalid %s name: must be 1-255 chars, start with letter/number, and contain only lowercase letters, numbers, and ._-"
 )
 
 func (s *Server) Ping(w http.ResponseWriter, r *http.Request) {
