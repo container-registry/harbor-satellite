@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"harbor-satellite/ci/internal/dagger"
 	"log"
-	"log/slog"
-	"os"
 	"strings"
 )
 
@@ -160,63 +158,6 @@ func (m *HarborSatellite) Build(
 		return nil, fmt.Errorf("unknown component: %s", component)
 	}
 	return m.build(directory, component), nil
-}
-
-// Release function would release the build to the github with the tags provided.
-func (m *HarborSatellite) Release(ctx context.Context,
-	// +optional
-	// +defaultPath="./"
-	source *dagger.Directory,
-	githubToken *dagger.Secret,
-	component string,
-	// +optional
-	// +default="patch"
-	release_type string,
-) (string, error) {
-	token, err := githubToken.Plaintext(ctx)
-	if err != nil {
-		fmt.Println("Failed to get github token: ", err)
-		os.Exit(1)
-	}
-	// trim any whitespace from the token, found a few problems with using the token directly from the secret.
-	token = strings.TrimSpace(token)
-	container := dag.Container().
-		From("alpine/git").
-		WithEnvVariable("GITHUB_TOKEN", token).
-		WithMountedDirectory(PROJ_MOUNT, source).
-		WithWorkdir(PROJ_MOUNT).
-		WithExec([]string{"git", "config", "--global", "url.https://github.com/.insteadOf", "git@github.com:"}).
-		WithExec([]string{"git", "fetch", "--tags"})
-	// Prepare the tags for the release
-	release_tag, err := m.get_release_tag(ctx, container, source, component, release_type)
-	if err != nil {
-		fmt.Println("Failed to get release tag: ", err)
-		fmt.Println("Release Tag Output:", release_tag)
-		os.Exit(1)
-	}
-	slog.Info("Tag Release Output:", release_tag, ".")
-	pathToMain, err := m.getPathToReleaser(component)
-	if err != nil {
-		fmt.Println("Failed to get path to main: ", err)
-		os.Exit(1)
-	}
-	release_output, err := container.
-		From(fmt.Sprintf("goreleaser/goreleaser:%s", GORELEASER_VERSION)).
-		WithMountedDirectory(PROJ_MOUNT, source).
-		WithWorkdir(PROJ_MOUNT).
-		WithEnvVariable("GITHUB_TOKEN", token).
-		WithEnvVariable("PATH_TO_MAIN", pathToMain).
-		WithEnvVariable("APP_NAME", component).
-		WithExec([]string{"git", "tag", release_tag}).
-		WithExec([]string{"goreleaser", "release", "-f", pathToMain, "--clean"}).
-		Stderr(ctx)
-	if err != nil {
-		fmt.Println("Failed to release: ", err)
-		fmt.Println("Release Output:", release_output)
-		os.Exit(1)
-	}
-
-	return release_output, nil
 }
 
 // Executes Linter and writes results to a file golangci-lint.report
