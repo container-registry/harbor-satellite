@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -19,6 +18,7 @@ import (
 
 type StateFetcher interface {
 	FetchStateArtifact(ctx context.Context, state interface{}, log *zerolog.Logger) error
+	FetchDigest(ctx context.Context, log *zerolog.Logger) (string, error)
 }
 
 type baseStateFetcher struct {
@@ -32,11 +32,6 @@ type URLStateFetcher struct {
 	insecure bool
 }
 
-type FileStateArtifactFetcher struct {
-	baseStateFetcher
-	filePath string
-}
-
 func NewURLStateFetcher(stateURL, userName, password string, insecure bool) StateFetcher {
 	url := utils.FormatRegistryURL(stateURL)
 	return &URLStateFetcher{
@@ -47,29 +42,6 @@ func NewURLStateFetcher(stateURL, userName, password string, insecure bool) Stat
 		url:      url,
 		insecure: insecure,
 	}
-}
-
-func NewFileStateFetcher(filePath, userName, password string) StateFetcher {
-	return &FileStateArtifactFetcher{
-		baseStateFetcher: baseStateFetcher{
-			username: userName,
-			password: password,
-		},
-		filePath: filePath,
-	}
-}
-
-// TODO: Do we need the file state artifact fetcher?
-func (f *FileStateArtifactFetcher) FetchStateArtifact(ctx context.Context, state interface{}, log *zerolog.Logger) error {
-	content, err := os.ReadFile(f.filePath)
-	if err != nil {
-		return fmt.Errorf("failed to read the state artifact file: %v", err)
-	}
-	err = json.Unmarshal(content, state)
-	if err != nil {
-		return fmt.Errorf("failed to parse the state artifact file: %v", err)
-	}
-	return nil
 }
 
 func (f *URLStateFetcher) FetchStateArtifact(ctx context.Context, state interface{}, log *zerolog.Logger) error {
@@ -113,6 +85,19 @@ func (f *URLStateFetcher) fetchConfigState(ctx context.Context, config *config.C
 		return err
 	}
 	return f.extractArtifactJSON(f.url, img, config, log)
+}
+
+func (f *URLStateFetcher) FetchDigest(ctx context.Context, log *zerolog.Logger) (string, error) {
+	log.Debug().Msgf("Fetching digest for state artifact: %s", f.url)
+	auth := authn.FromConfig(authn.AuthConfig{
+		Username: f.username,
+		Password: f.password,
+	})
+	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
+	if f.insecure {
+		options = append(options, crane.Insecure)
+	}
+	return crane.Digest(f.url, options...)
 }
 
 func (f *URLStateFetcher) pullImage(ctx context.Context, log *zerolog.Logger) (v1.Image, error) {
