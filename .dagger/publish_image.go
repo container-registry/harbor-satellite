@@ -105,12 +105,10 @@ func (m *HarborSatellite) PublishImage(
 // PublishImageAndSign builds and publishes container images to a registry with a specific tags and then signs them using Cosign.
 func (m *HarborSatellite) PublishImageAndSign(
 	ctx context.Context,
-	component, projectName string,
 	registry string,
 	registryUsername string,
 	registryPassword *dagger.Secret,
-	// +optional
-	// +default=["latest"]
+	component, projectName string,
 	imageTags []string,
 	// +optional
 	githubToken *dagger.Secret,
@@ -118,32 +116,22 @@ func (m *HarborSatellite) PublishImageAndSign(
 	actionsIdTokenRequestToken *dagger.Secret,
 	// +optional
 	actionsIdTokenRequestUrl string,
-	// +optional
-	// +defaultPath="."
-	source *dagger.Directory,
-	// +optional
-	// +default=true
-	useRegistryPassword bool,
 ) (string, error) {
-	imageAddrs := m.PublishImage(ctx, registry, registryUsername, imageTags, registryPassword, component, projectName, source)
-
-	for i := range imageAddrs {
-		_, err := m.Sign(
-			ctx,
-			githubToken,
-			actionsIdTokenRequestUrl,
-			actionsIdTokenRequestToken,
-			registryUsername,
-			registryPassword,
-			imageAddrs[i],
-			useRegistryPassword,
-		)
-		if err != nil {
-			return "", fmt.Errorf("failed to sign image: %w", err)
-		}
-		fmt.Printf("Signed image: %s\n", imageAddrs[i])
+	imageAddrs := m.PublishImage(ctx, registry, registryUsername, imageTags, registryPassword, component, projectName, m.Source)
+	_, err := m.Sign(
+		ctx,
+		githubToken,
+		actionsIdTokenRequestUrl,
+		actionsIdTokenRequestToken,
+		registryUsername,
+		registryPassword,
+		imageAddrs[0],
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign image: %w", err)
 	}
 
+	fmt.Printf("Signed image: %s\n", imageAddrs)
 	return imageAddrs[0], nil
 }
 
@@ -158,45 +146,23 @@ func (m *HarborSatellite) Sign(ctx context.Context,
 	registryUsername string,
 	registryPassword *dagger.Secret,
 	imageAddr string,
-	// +optional
-	// +default=true
-	useRegistryPassword bool,
 ) (string, error) {
-	// set the context deadline to 5 minutes to avoid the error of "context deadline exceeded" when signing the image
-	// setting it to 5 minutes because the signing process may take a while also the token is valid for 5 minutes
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-	registryPasswordPlain, err := registryPassword.Plaintext(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to get password: %w", err)
-	}
-	registryPasswordPlain = strings.TrimSpace(registryPasswordPlain)
+	registryPasswordPlain, _ := registryPassword.Plaintext(ctx)
+
 	cosing_ctr := dag.Container().From("cgr.dev/chainguard/cosign")
 
-	if !useRegistryPassword {
-		// If githubToken is provided, use it to sign the image
-		if githubToken != nil {
-			if actionsIdTokenRequestUrl == "" || actionsIdTokenRequestToken == nil {
-				return "", fmt.Errorf("actionsIdTokenRequestUrl (exist=%s) and actionsIdTokenRequestToken (exist=%t) must be provided when githubToken is provided", actionsIdTokenRequestUrl, actionsIdTokenRequestToken != nil)
-			}
-			githubTokenPlain, err := githubToken.Plaintext(ctx)
-			if err != nil {
-				return "", fmt.Errorf("failed to get github token: %w", err)
-			}
-			githubTokenPlain = strings.TrimSpace(githubTokenPlain)
-
-			actionsIdTokenRequestTokenPlain, err := actionsIdTokenRequestToken.Plaintext(ctx)
-			if err != nil {
-				return "", fmt.Errorf("failed to get actionsIdTokenRequestToken: %w", err)
-			}
-			actionsIdTokenRequestTokenPlain = strings.TrimSpace(actionsIdTokenRequestTokenPlain)
-			fmt.Printf("Setting the ENV Vars GITHUB_TOKEN, ACTIONS_ID_TOKEN_REQUEST_URL, ACTIONS_ID_TOKEN_REQUEST_TOKEN to sign with GitHub Token")
-			cosing_ctr = cosing_ctr.WithEnvVariable("GITHUB_TOKEN", githubTokenPlain).
-				WithEnvVariable("ACTIONS_ID_TOKEN_REQUEST_URL", actionsIdTokenRequestUrl).
-				WithEnvVariable("ACTIONS_ID_TOKEN_REQUEST_TOKEN", actionsIdTokenRequestTokenPlain)
+	// If githubToken is provided, use it to sign the image
+	if githubToken != nil {
+		if actionsIdTokenRequestUrl == "" || actionsIdTokenRequestToken == nil {
+			return "", fmt.Errorf("actionsIdTokenRequestUrl (exist=%s) and actionsIdTokenRequestToken (exist=%t) must be provided when githubToken is provided", actionsIdTokenRequestUrl, actionsIdTokenRequestToken != nil)
 		}
+		fmt.Printf("Setting the ENV Vars GITHUB_TOKEN, ACTIONS_ID_TOKEN_REQUEST_URL, ACTIONS_ID_TOKEN_REQUEST_TOKEN to sign with GitHub Token")
+		cosing_ctr = cosing_ctr.WithSecretVariable("GITHUB_TOKEN", githubToken).
+			WithEnvVariable("ACTIONS_ID_TOKEN_REQUEST_URL", actionsIdTokenRequestUrl).
+			WithSecretVariable("ACTIONS_ID_TOKEN_REQUEST_TOKEN", actionsIdTokenRequestToken)
 	}
-	return cosing_ctr.WithEnvVariable("REGISTRY_PASSWORD", registryPasswordPlain).
+
+	return cosing_ctr.WithSecretVariable("REGISTRY_PASSWORD", registryPassword).
 		WithExec([]string{"cosign", "env"}).
 		WithExec([]string{
 			"cosign", "sign", "--yes", "--recursive",
