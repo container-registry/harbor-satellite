@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/container-registry/harbor-satellite/internal/config"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/robfig/cron/v3"
 )

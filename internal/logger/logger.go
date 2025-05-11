@@ -6,12 +6,20 @@ import (
 	"os"
 	"strings"
 
+	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/rs/zerolog"
 )
 
 type contextKey string
 
 const LoggerKey contextKey = "logger"
+
+func InitLogger(ctx context.Context, logLevel string, warnings []string) (context.Context, *zerolog.Logger) {
+	log := NewLogger(logLevel)
+	utils.HandleWarnings(log, warnings)
+	ctx = context.WithValue(ctx, LoggerKey, log)
+	return ctx, log
+}
 
 // AddLoggerToContext creates a new context with a zerolog logger for stdout and stderr and sets the global log level.
 func NewLogger(logLevel string) *zerolog.Logger {

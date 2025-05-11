@@ -8,10 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/container-registry/harbor-satellite/internal/config"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
-	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/robfig/cron/v3"
 )
 
@@ -31,13 +30,16 @@ type ZtrProcess struct {
 	eventBroker *scheduler.EventBroker
 	// cronExpr is the cron expression for the process
 	cronExpr string
+	// Config manager to interact with the satellite config
+	cm *config.ConfigManager
 }
 
-func NewZtrProcess(cronExpr string) *ZtrProcess {
+func NewZtrProcess(cm *config.ConfigManager) *ZtrProcess {
 	return &ZtrProcess{
 		Name:     config.ZTRConfigJobName,
-		cronExpr: cronExpr,
+		cronExpr: cm.GetRegistrationInterval(),
 		mu:       &sync.Mutex{},
+		cm:       cm,
 	}
 }
 
@@ -60,20 +62,23 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	log.Info().Msgf("Executing process %s", z.Name)
 
 	// Register the satellite
-	stateConfig, err := RegisterSatellite(config.GetGroundControlURL(), ZeroTouchRegistrationRoute, config.GetToken(), ctx)
+	stateConfig, err := RegisterSatellite(z.cm.ResolveGroundControlURL(), ZeroTouchRegistrationRoute, z.cm.GetToken(), ctx)
 	if err != nil {
 		log.Error().Msgf("Failed to register satellite: %v", err)
 		return err
 	}
-	if stateConfig.Auth.SourceUsername == "" || stateConfig.Auth.SourcePassword == "" || stateConfig.Auth.Registry == "" {
+	if stateConfig.RegistryCredentials.Username == "" || stateConfig.RegistryCredentials.Password == "" || stateConfig.RegistryCredentials.URL == "" || stateConfig.StateURL == "" {
 		log.Error().Msgf("Failed to register satellite: invalid state auth config received")
 		return fmt.Errorf("failed to register satellite: invalid state auth config received")
 	}
+
 	// Update the state config in app config
-	if err := config.UpdateStateAuthConfig(stateConfig.Auth.SourceUsername, stateConfig.Auth.Registry, stateConfig.Auth.SourcePassword, stateConfig.State); err != nil {
+	z.cm.With(config.SetStateConfig(stateConfig))
+	if err := z.cm.WriteConfig(); err != nil {
 		log.Error().Msgf("Failed to register satellite: could not update state auth config")
 		return fmt.Errorf("failed to register satellite: could not update state auth config")
 	}
+
 	zeroTouchRegistrationEvent := scheduler.Event{
 		Name: ZeroTouchRegistrationEventName,
 		Payload: ZeroTouchRegistrationEventPayload{
@@ -85,6 +90,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		log.Error().Msgf("Failed to register satellite: could not emit ztr event")
 		return fmt.Errorf("failed to register satellite: could not emit ztr event")
 	}
+
 	stopProcessPayload := scheduler.StopProcessEventPayload{
 		ProcessName: z.GetName(),
 		Id:          z.GetID(),
@@ -127,17 +133,13 @@ func (z *ZtrProcess) IsRunning() bool {
 func (z *ZtrProcess) CanExecute(ctx context.Context) (bool, string) {
 	log := logger.FromContext(ctx)
 	log.Info().Msgf("Checking if process %s can execute", z.Name)
-	errors, warnings := z.loadConfig()
-	err := utils.HandleErrorAndWarning(log, errors, warnings)
-	if err != nil {
-		return false, err.Error()
-	}
+
 	checks := []struct {
 		condition bool
 		message   string
 	}{
-		{config.GetToken() == "", "token"},
-		{config.GetGroundControlURL() == "", "ground control URL"},
+		{z.cm.GetToken() == "", "token"},
+		{z.cm.ResolveGroundControlURL() == "", "ground control URL"},
 	}
 	var missing []string
 	for _, check := range checks {
@@ -146,7 +148,7 @@ func (z *ZtrProcess) CanExecute(ctx context.Context) (bool, string) {
 		}
 	}
 	if len(missing) > 0 {
-		return false, fmt.Sprintf("missing %s, please update config present at %s", strings.Join(missing, ", "), config.DefaultConfigPath)
+		return false, fmt.Sprintf("missing %s, please include the required environment variables present in .env", strings.Join(missing, ", "))
 	}
 
 	return true, fmt.Sprintf("Process %s can execute all conditions fulfilled", z.Name)
@@ -170,10 +172,6 @@ func (z *ZtrProcess) stop() {
 	z.mu.Lock()
 	defer z.mu.Unlock()
 	z.isRunning = false
-}
-
-func (z *ZtrProcess) loadConfig() ([]error, []config.Warning) {
-	return config.InitConfig(config.DefaultConfigPath)
 }
 
 func RegisterSatellite(groundControlURL, path, token string, ctx context.Context) (config.StateConfig, error) {

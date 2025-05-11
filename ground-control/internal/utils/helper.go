@@ -91,7 +91,7 @@ func AssembleGroupState(groupName string) string {
 }
 
 // Create State Artifact for group
-func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
+func CreateStateArtifact(ctx context.Context, stateArtifact *m.StateArtifact) error {
 	// Set the registry URL from environment variable
 	stateArtifact.Registry = os.Getenv("HARBOR_URL")
 	if stateArtifact.Registry == "" {
@@ -122,10 +122,58 @@ func CreateStateArtifact(stateArtifact *m.StateArtifact) error {
 		Username: username,
 		Password: password,
 	})
-	options := []crane.Option{crane.WithAuth(auth)}
+	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 
 	// Construct the destination repository and strip protocol, if present
 	destinationRepo := getStateArtifactDestination(stateArtifact.Registry, repo)
+	if strings.Contains(destinationRepo, "://") {
+		destinationRepo = strings.SplitN(destinationRepo, "://", 2)[1]
+	}
+
+	// Push the image to the repository
+	if err := crane.Push(img, destinationRepo, options...); err != nil {
+		return fmt.Errorf("failed to push image: %v", err)
+	}
+
+	// Tag the image with timestamp and latest tags
+	tags := []string{fmt.Sprintf("%d", time.Now().Unix()), "latest"}
+	for _, tag := range tags {
+		if err := crane.Tag(destinationRepo, tag, options...); err != nil {
+			return fmt.Errorf("failed to tag image with %s: %v", tag, err)
+		}
+	}
+
+	return nil
+}
+
+// Create State Artifact for Config
+func CreateConfigStateArtifact(ctx context.Context, configObject *m.ConfigObject) error {
+	// Marshal the state artifact to JSON format
+	configData, err := json.Marshal(configObject.Config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal state artifact to JSON: %v", err)
+	}
+
+	// Create the image with the state artifact JSON
+	img, err := crane.Image(map[string][]byte{"artifacts.json": configData})
+	if err != nil {
+		return fmt.Errorf("failed to create image: %v", err)
+	}
+
+	username := os.Getenv("HARBOR_USERNAME")
+	password := os.Getenv("HARBOR_PASSWORD")
+	if username == "" || password == "" {
+		return fmt.Errorf("HARBOR_USERNAME or HARBOR_PASSWORD environment variable is not set")
+	}
+
+	auth := authn.FromConfig(authn.AuthConfig{
+		Username: username,
+		Password: password,
+	})
+	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
+
+	// Construct the destination repository and strip protocol, if present
+	destinationRepo := AssembleConfigState(configObject.ConfigName)
 	if strings.Contains(destinationRepo, "://") {
 		destinationRepo = strings.SplitN(destinationRepo, "://", 2)[1]
 	}
@@ -150,7 +198,11 @@ func AssembleSatelliteState(satelliteName string) string {
 	return fmt.Sprintf("%s/satellite/satellite-state/%s/state:latest", os.Getenv("HARBOR_URL"), satelliteName)
 }
 
-func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error {
+func AssembleConfigState(configName string) string {
+	return fmt.Sprintf("%s/satellite/config-state/%s/state:latest", os.Getenv("HARBOR_URL"), configName)
+}
+
+func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, states []string, config string) error {
 	if satelliteName == "" {
 		return fmt.Errorf("the satellite name must be atleast one character long")
 	}
@@ -163,7 +215,7 @@ func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error
 		return err
 	}
 
-	satelliteState := &m.SatelliteStateArtifact{States: states}
+	satelliteState := &m.SatelliteStateArtifact{States: states, Config: AssembleConfigState(config)}
 	data, err := json.Marshal(satelliteState)
 	if err != nil {
 		return fmt.Errorf("failed to marshal satellite state artifact to JSON: %v", err)
@@ -174,11 +226,10 @@ func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error
 		return fmt.Errorf("failed to create image: %v", err)
 	}
 
-	repo := fmt.Sprintf("satellite/satellite-state/%s", satelliteName)
 	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
-	options := []crane.Option{crane.WithAuth(auth)}
+	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 
-	destinationRepo := getStateArtifactDestination(registry, repo)
+	destinationRepo := AssembleSatelliteState(satelliteName)
 	destinationRepo = stripProtocol(destinationRepo)
 
 	if err := pushImage(img, destinationRepo, options); err != nil {
@@ -188,16 +239,10 @@ func CreateOrUpdateSatStateArtifact(satelliteName string, states []string) error
 	return tagImage(destinationRepo, options)
 }
 
-func DeleteSatelliteStateArtifact(satelliteName string) error {
-	if satelliteName == "" {
-		return fmt.Errorf("the satellite name must be atleast one character long")
-	}
-
+func DeleteArtifact(deleteURL string) error {
 	if err := envSanityCheck(); err != nil {
 		return err
 	}
-
-	deleteURL := constructHarborDeleteURL(satelliteName)
 
 	req, err := http.NewRequest("DELETE", deleteURL, nil)
 	if err != nil {
@@ -205,11 +250,15 @@ func DeleteSatelliteStateArtifact(satelliteName string) error {
 	}
 
 	req.SetBasicAuth(username, password)
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %v", err)
 	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
@@ -219,9 +268,8 @@ func DeleteSatelliteStateArtifact(satelliteName string) error {
 	return nil
 }
 
-func constructHarborDeleteURL(satelliteName string) string {
-	repositoryName := fmt.Sprintf("satellite-state/%s/state", satelliteName)
-	doubleEncodedRepoName := url.QueryEscape(url.QueryEscape(repositoryName))
+func ConstructHarborDeleteURL(repo string) string {
+	doubleEncodedRepoName := url.QueryEscape(url.QueryEscape(repo))
 	return fmt.Sprintf("%s/api/v2.0/projects/satellite/repositories/%s", registry, doubleEncodedRepoName)
 }
 

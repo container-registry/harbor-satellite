@@ -19,9 +19,13 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")
 	r.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")
 
-	// to-do: listing functionality to list satellites attached to group
-	// for ground control admins
-	// r.HandleFunc("/groups/{group}/list", s.groupSatelliteHandler).Methods("GET")
+	r.HandleFunc("/configs/sync", s.configsSyncHandler).Methods("POST")
+	r.HandleFunc("/configs/list", s.listConfigsHandler).Methods("GET")
+	r.HandleFunc("/configs/{config}", s.getConfigHandler).Methods("GET")
+	r.HandleFunc("/configs/{config}", s.deleteConfigHandler).Methods("DELETE")
+	r.HandleFunc("/configs/satellite", s.setSatelliteConfig).Methods("POST")
+
+	r.HandleFunc("/groups/{group}/satellites", s.groupSatelliteListHandler).Methods("GET")
 
 	// Ground Control interface
 	r.HandleFunc("/satellites/register", s.registerSatelliteHandler).Methods("POST")
