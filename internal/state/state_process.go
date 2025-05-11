@@ -167,20 +167,25 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		log.Info().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("The upstream config has changes, reconciling the satellite accordingly")
 		remoteConfig := config.Config{}
 		if err := configStateFetcher.FetchStateArtifact(ctx, &remoteConfig, log); err != nil {
-			log.Error().Err(err).Msgf("Error fetching new config's state artifact from url: %s, continuing with the old config with digest %s", satelliteState.Config, f.currentConfigDigest)
+			log.Error().Err(err).
+				Msgf("Error fetching new config's state artifact from url: %s, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
 			return nil
 		}
 
+		remoteConfig.StateConfig = f.cm.GetStateConfig()
+
 		warnings, err := config.ValidateConfig(&remoteConfig)
 		if err != nil {
-			log.Error().Err(err).Msgf("Error validating config state artifact digest from url: %s, continuing with the old config with digest %s", satelliteState.Config, f.currentConfigDigest)
+			log.Error().Err(err).
+				Msgf("Error validating config state artifact digest from url: %s, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
 			return nil
 		}
 
 		utils.HandleNewConfigWarnings(log, warnings)
 
 		if err := f.cm.WriteConfigToDisk(&remoteConfig); err != nil {
-			log.Error().Err(err).Msgf("Error writing the newly fetched remote config from %s to disk, continuing with the old config with digest %s", satelliteState.Config, f.currentConfigDigest)
+			log.Error().Err(err).
+				Msgf("Error writing the newly fetched remote config from %s to disk, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
 			return nil
 		}
 
