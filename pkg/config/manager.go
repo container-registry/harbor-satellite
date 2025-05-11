@@ -6,6 +6,9 @@ import (
 	"net/url"
 	"os"
 	"sync"
+
+	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/rs/zerolog"
 )
 
 type ConfigManager struct {
@@ -25,6 +28,22 @@ func NewConfigManager(path, token, defaultGroundControlURL string, config *Confi
 	}, nil
 }
 
+func (cm *ConfigManager) SetConfig(log *zerolog.Logger, config *Config) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	warnings, err := ValidateConfig(config)
+	if err != nil {
+		return fmt.Errorf("invalid config: %w", err)
+	}
+
+	cm.config = config
+
+	utils.HandleWarnings(log, warnings)
+
+	return nil
+}
+
 func (cm *ConfigManager) With(mutators ...func(*Config)) *ConfigManager {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -34,7 +53,26 @@ func (cm *ConfigManager) With(mutators ...func(*Config)) *ConfigManager {
 	return cm
 }
 
+// Writes the cm's config to disk
 func (cm *ConfigManager) WriteConfig() error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	data, err := json.MarshalIndent(cm.config, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(cm.configPath, data, 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Writes the given config to disk
+func (cm *ConfigManager) WriteConfigToDisk(config *Config) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -69,7 +107,7 @@ func InitConfigManager(path string) (*ConfigManager, []string, error) {
 
 	defaultGroundControlURL, isPresent := os.LookupEnv("GROUND_CONTROL_URL")
 	if !isPresent {
-        return nil, nil, fmt.Errorf("satellite ground control URL not present as environment variable")
+		return nil, nil, fmt.Errorf("satellite ground control URL not present as environment variable")
 	}
 
 	if _, err := url.Parse(defaultGroundControlURL); err != nil {
