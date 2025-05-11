@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -75,33 +76,27 @@ func InitConfigManager(path string) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
 
-	// Mandatory ENV vars
 	token, ok := os.LookupEnv("TOKEN")
 	if !ok {
-		return nil, nil, fmt.Errorf("satellite token not present as environment variable")
+		return nil, nil, fmt.Errorf("TOKEN env var not defined as environment variable")
 	}
 
 	gcURL, ok := os.LookupEnv("GROUND_CONTROL_URL")
 	if !ok {
-		return nil, nil, fmt.Errorf("satellite ground control URL not present as environment variable")
+		return nil, nil, fmt.Errorf("GROUND_CONTROL_URL not defined as environment variable")
+	}
+	if _, err := url.ParseRequestURI(gcURL); err != nil {
+		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url env var: %w", err)
 	}
 
 	cfg, err = readAndReturnConfig(path)
 	if errors.Is(err, os.ErrNotExist) {
-		// config.json doesn't exist, create with sane defaults
-		cfg = &Config{
-			AppConfig: AppConfig{
-				GroundControlURL: URL(gcURL),
-			},
-			ZotConfigRaw: json.RawMessage(DefaultZotConfigJSON),
-		}
+		cfg = &Config{}
 	} else if err != nil {
-		// config.json exists but is malformed
 		return nil, nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	// Validate config and collect non-fatal warnings
-	warnings, err := ValidateConfig(cfg)
+	warnings, err := ValidateAndEnforceDefaults(cfg, gcURL)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("invalid config: %w", err)
 	}
@@ -115,7 +110,6 @@ func InitConfigManager(path string) (*ConfigManager, []string, error) {
 }
 
 // Reads the config at the given path and returns the parsed Config.
-// Returns a DNE error if the config.json is present but empty i.e, "{}" or ""
 func readAndReturnConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
