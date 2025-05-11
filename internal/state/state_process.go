@@ -80,8 +80,9 @@ func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, notifier notifie
 			RemoteRegistryUserName: remoteUsername,
 			RemoteRegistryPassword: remotePassword,
 		},
-		Replicator: NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, cm.UseUnsecure()),
-		cm:         cm,
+		Replicator:          NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, cm.UseUnsecure()),
+		currentConfigDigest: "",
+		cm:                  cm,
 	}
 }
 
