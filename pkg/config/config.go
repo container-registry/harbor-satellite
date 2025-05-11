@@ -44,3 +44,17 @@ var validLogLevels = map[string]bool{
 	zerolog.LevelFatalValue: true,
 	zerolog.LevelPanicValue: true,
 }
+
+const DefaultZotConfigJSON = `{
+  "distSpecVersion": "1.1.0",
+  "storage": {
+    "rootDirectory": "./zot"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8585"
+  },
+  "log": {
+    "level": "info"
+  }
+}`

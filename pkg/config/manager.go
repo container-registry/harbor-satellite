@@ -2,8 +2,8 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"sync"
 )
@@ -71,33 +71,43 @@ func (cm *ConfigManager) WriteConfigToDisk(config *Config) error {
 }
 
 func InitConfigManager(path string) (*ConfigManager, []string, error) {
-	cfg, err := readAndReturnConfig(path)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read config: %w", err)
-	}
+	var cfg *Config
+	var err error
 
-	warnings, err := ValidateConfig(cfg)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid config: %w", err)
-	}
-
-	token, isPresent := os.LookupEnv("TOKEN")
-	if !isPresent {
+	// Mandatory ENV vars
+	token, ok := os.LookupEnv("TOKEN")
+	if !ok {
 		return nil, nil, fmt.Errorf("satellite token not present as environment variable")
 	}
 
-	defaultGroundControlURL, isPresent := os.LookupEnv("GROUND_CONTROL_URL")
-	if !isPresent {
+	gcURL, ok := os.LookupEnv("GROUND_CONTROL_URL")
+	if !ok {
 		return nil, nil, fmt.Errorf("satellite ground control URL not present as environment variable")
 	}
 
-	if _, err := url.Parse(defaultGroundControlURL); err != nil {
-		return nil, nil, fmt.Errorf("invalid ground control url %s: %w", defaultGroundControlURL, err)
+	cfg, err = readAndReturnConfig(path)
+	if errors.Is(err, os.ErrNotExist) {
+		// config.json doesn't exist, create with sane defaults
+		cfg = &Config{
+			AppConfig: AppConfig{
+				GroundControlURL: URL(gcURL),
+			},
+			ZotConfigRaw: json.RawMessage(DefaultZotConfigJSON),
+		}
+	} else if err != nil {
+		// config.json exists but is malformed
+		return nil, nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	cm, err := NewConfigManager(path, token, defaultGroundControlURL, cfg)
+	// Validate config and collect non-fatal warnings
+	warnings, err := ValidateConfig(cfg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create manager: %w", err)
+		return nil, warnings, fmt.Errorf("invalid config: %w", err)
+	}
+
+	cm, err := NewConfigManager(path, token, gcURL, cfg)
+	if err != nil {
+		return nil, warnings, fmt.Errorf("failed to create config manager: %w", err)
 	}
 
 	return cm, warnings, nil
