@@ -57,7 +57,7 @@ func (cm *ConfigManager) WriteConfigToDisk(config *Config) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	data, err := json.MarshalIndent(cm.config, "", "  ")
+	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err
 	}
