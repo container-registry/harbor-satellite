@@ -56,7 +56,7 @@ func run() error {
 
 	satelliteService := satellite.NewSatellite(scheduler.GetSchedulerKey(), cm)
 
-	// Write the config to disk, in case any values were enforced at runtime
+	// Write the config to disk, in case any defaults were enforced at runtime
 	if err := cm.WriteConfig(); err != nil {
 		log.Error().Err(err).Msg("Error writing config to disk")
 		return err
