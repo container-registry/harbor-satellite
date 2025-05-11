@@ -1,12 +1,9 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
-
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 )
 
 const (
