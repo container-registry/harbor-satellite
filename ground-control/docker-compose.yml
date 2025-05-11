@@ -22,3 +22,34 @@ services:
     networks:
       - default  # connects pgAdmin and PostgreSQL on the same Docker network
 
+  db-migrator:
+    image: 8gears.container-registry.com/harbor-satellite/db-migrator:test
+    container_name: db-migrator
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: groundcontrol
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+    depends_on:
+      - postgres
+
+  groundcontrol:
+    image: 8gears.container-registry.com/harbor-satellite/groundcontrol:test
+    container_name: groundcontrol
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: groundcontrol
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      HARBOR_USERNAME: admin
+      HARBOR_PASSWORD: Harbor12345
+      HARBOR_URL: harbor-sat.kube.bupd.xyz
+      PORT: 8080
+      APP_ENV: local
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - db-migrator
