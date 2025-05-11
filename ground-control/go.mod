@@ -2,6 +2,8 @@ module github.com/container-registry/harbor-satellite/ground-control
 
 go 1.24.1
 
+toolchain go1.24.2
+
 require (
 	github.com/container-registry/harbor-satellite v0.0.0-20250428155801-b2a3f5a849f9
 	github.com/goharbor/go-client v0.210.0
@@ -9,7 +11,6 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
-	github.com/robfig/cron/v3 v3.0.1
 )
 
 require (
@@ -43,6 +44,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/vbatts/tar-split v0.12.1 // indirect
