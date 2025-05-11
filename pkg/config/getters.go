@@ -106,6 +106,12 @@ func (cm *ConfigManager) GetStateReplicationInterval() string {
 	return cm.config.AppConfig.StateReplicationInterval
 }
 
+func (cm *ConfigManager) GetStateConfig() StateConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.StateConfig
+}
+
 // You MUST use ResolveGroundControlURL to get the ground control URL.
 func (cm *ConfigManager) ResolveGroundControlURL() string {
 	cm.mu.RLock()
