@@ -1,6 +1,11 @@
 {
   "state_config": {
-    "auth": {}
+    "auth": {
+      "url": "http://127.0.0.1:5454",
+      "username": "robot$satellite_1",
+      "password": "ahRLvxgcQVYxqfbaTMa8utjxccZDaWHS"
+    },
+    "state": "http://127.0.0.1:5454/satellite/satellite-state/satellite_1/state:latest"
   },
   "app_config": {
     "ground_control_url": "http://127.0.0.1:8080",
