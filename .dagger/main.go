@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	DEFAULT_GO           = "golang:1.24"
+	DEFAULT_GO           = "golang:1.24.2"
 	PROJ_MOUNT           = "/app"
-	GO_VERSION           = "1.24"
+	GO_VERSION           = "1.24.2"
 	DOCKER_PORT          = 2375
 	GORELEASER_VERSION   = "v2.9.0"
 	GOLANGCILINT_VERSION = "v2.0.2"
