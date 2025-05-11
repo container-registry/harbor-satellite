@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -113,11 +114,17 @@ func InitConfigManager(path string) (*ConfigManager, []string, error) {
 	return cm, warnings, nil
 }
 
-// Reads the config at the given path and returns the parsed Config
+// Reads the config at the given path and returns the parsed Config.
+// Returns a DNE error if the config.json is present but empty i.e, "{}" or ""
 func readAndReturnConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
+	}
+
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "{}" {
+		return nil, os.ErrNotExist
 	}
 
 	var cfg Config
