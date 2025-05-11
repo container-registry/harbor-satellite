@@ -6,9 +6,6 @@ import (
 	"net/url"
 	"os"
 	"sync"
-
-	"github.com/container-registry/harbor-satellite/internal/utils"
-	"github.com/rs/zerolog"
 )
 
 type ConfigManager struct {
@@ -26,22 +23,6 @@ func NewConfigManager(path, token, defaultGroundControlURL string, config *Confi
 		Token:                   token,
 		DefaultGroundControlURL: defaultGroundControlURL,
 	}, nil
-}
-
-func (cm *ConfigManager) SetConfig(log *zerolog.Logger, config *Config) error {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	warnings, err := ValidateConfig(config)
-	if err != nil {
-		return fmt.Errorf("invalid config: %w", err)
-	}
-
-	cm.config = config
-
-	utils.HandleWarnings(log, warnings)
-
-	return nil
 }
 
 func (cm *ConfigManager) With(mutators ...func(*Config)) *ConfigManager {

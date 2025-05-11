@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// TODO: validate config should enforce defaults
 func ValidateConfig(config *Config) ([]string, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
