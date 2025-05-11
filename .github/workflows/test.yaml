@@ -1,10 +1,12 @@
-name: Test
+name: Test Pipeline
+
 on:
   pull_request:
     paths-ignore:
       - "*.md"
       - "assets/**"
 
+jobs:
   vulnerability-check:
     runs-on: ubuntu-latest
     steps:
