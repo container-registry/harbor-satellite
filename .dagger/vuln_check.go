@@ -31,6 +31,6 @@ func (m *HarborSatellite) VulnerabilityCheckReport(ctx context.Context) *dagger.
 	report := "vulnerability-check.report"
 	return m.vulnerabilityCheck(ctx).
 		WithExec([]string{
-			"sh", "-c", fmt.Sprintf("govulncheck ./... > %s", report),
+			"sh", "-c", fmt.Sprintf("govulncheck ./... > %s 2>&1 || true", report),
 		}).File(report)
 }
