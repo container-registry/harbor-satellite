@@ -111,17 +111,17 @@ func (m *HarborSatellite) BuildDev(
 				WithWorkdir(PROJ_MOUNT + "/ground-control").
 				WithExec([]string{"ls", "-la"}).
 				WithExec([]string{"go", "mod", "download"}).
-				WithExec([]string{"go", "build", "."})
+				WithExec([]string{"go", "build", "-o", "/ground-control", "./main.go"})
 
-			binaryFile = golang.File(PROJ_MOUNT + "/ground-control/ground-control")
+			binaryFile = golang.File("/ground-control")
 		} else {
 			golang = golang.
 				WithWorkdir(PROJ_MOUNT + "/cmd").
 				WithExec([]string{"ls", "-la"}).
 				WithExec([]string{"go", "mod", "download"}).
-				WithExec([]string{"go", "build", "-o", PROJ_MOUNT + "/harbor-satellite", "main.go"})
+				WithExec([]string{"go", "build", "-o", "/harbor-satellite", "./main.go"})
 
-			binaryFile = golang.File(PROJ_MOUNT + "/harbor-satellite")
+			binaryFile = golang.File("/harbor-satellite")
 		}
 
 		return binaryFile, nil
