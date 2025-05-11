@@ -162,25 +162,26 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return err
 	}
 
+	// If there is an error in processing the new config, we must roll-back instead of returning an error
 	if configDigest != f.currentConfigDigest {
-		log.Info().Msgf("The upstream config has changes, reconciling the satellite accordingly")
+		log.Info().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("The upstream config has changes, reconciling the satellite accordingly")
 		remoteConfig := config.Config{}
 		if err := configStateFetcher.FetchStateArtifact(ctx, &remoteConfig, log); err != nil {
-			log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteState.Config)
-			return err
+			log.Error().Err(err).Msgf("Error fetching new config's state artifact from url: %s, continuing with the old config with digest %s", satelliteState.Config, f.currentConfigDigest)
+			return nil
 		}
 
 		warnings, err := config.ValidateConfig(&remoteConfig)
 		if err != nil {
-			log.Error().Err(err).Msgf("Error validating config state artifact digest from url: %s", satelliteState.Config)
-			return fmt.Errorf("error setting satellite config to the one present at %s: %w", satelliteState.Config, err)
+			log.Error().Err(err).Msgf("Error validating config state artifact digest from url: %s, continuing with the old config with digest %s", satelliteState.Config, f.currentConfigDigest)
+			return nil
 		}
 
 		utils.HandleNewConfigWarnings(log, warnings)
 
 		if err := f.cm.WriteConfigToDisk(&remoteConfig); err != nil {
-			log.Error().Err(err).Msgf("Error writing the newly fetched remote config from %s to disk", satelliteState.Config)
-			return fmt.Errorf("error writing the newly fetched remote config from %s to disk: %w", satelliteState.Config, err)
+			log.Error().Err(err).Msgf("Error writing the newly fetched remote config from %s to disk, continuing with the old config with digest %s", satelliteState.Config, f.currentConfigDigest)
+			return nil
 		}
 
 		f.currentConfigDigest = configDigest
