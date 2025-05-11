@@ -7,7 +7,7 @@ var (
 	GitCommit      = ""
 	BuildTime      = ""
 	ReleaseChannel = "dev"
-	GoVersion      = ""
+	GoVersion      = "1.24"
 	OS             = func() string {
 		if info, ok := debug.ReadBuildInfo(); ok {
 			for _, setting := range info.Settings {
