@@ -62,8 +62,15 @@ func InitConfigManager(path string) (*ConfigManager, []string, error) {
 		return nil, nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	token := os.Getenv("TOKEN")
-	defaultGroundControlURL := os.Getenv("GROUND_CONTROL_URL")
+	token, isPresent := os.LookupEnv("TOKEN")
+	if !isPresent {
+		return nil, nil, fmt.Errorf("satellite token not present as environment variable")
+	}
+
+	defaultGroundControlURL, isPresent := os.LookupEnv("GROUND_CONTROL_URL")
+	if !isPresent {
+        return nil, nil, fmt.Errorf("satellite ground control URL not present as environment variable")
+	}
 
 	if _, err := url.Parse(defaultGroundControlURL); err != nil {
 		return nil, nil, fmt.Errorf("invalid ground control url %s: %w", defaultGroundControlURL, err)
@@ -77,7 +84,7 @@ func InitConfigManager(path string) (*ConfigManager, []string, error) {
 	return cm, warnings, nil
 }
 
-// Reads the config at the given path and loads it in the given config variable
+// Reads the config at the given path and returns the parsed Config
 func readAndReturnConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
