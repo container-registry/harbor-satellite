@@ -163,6 +163,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	}
 
 	if configDigest != f.currentConfigDigest {
+		log.Info().Msgf("The upstream config has changes, reconciling the satellite accordingly")
 		remoteConfig := config.Config{}
 		if err := configStateFetcher.FetchStateArtifact(ctx, &remoteConfig, log); err != nil {
 			log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteState.Config)
