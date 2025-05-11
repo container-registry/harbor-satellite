@@ -19,3 +19,20 @@ const DefaultZTRCronExpr string = "@every 00h00m05s"
 const DefaultFetchAndReplicateCronExpr string = "@every 00h05m00s"
 
 const BringOwnRegistry bool = false
+
+const DefaultZotConfigJSON = `{
+  "distSpecVersion": "1.1.0",
+  "storage": {
+    "rootDirectory": "./zot"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8585"
+  },
+  "log": {
+    "level": "info"
+  }
+}`
+
+const DefaultRemoteRegistryURL = "http://127.0.0.1:8585"
+const DefaultGroundControlURL = "http://127.0.0.1:8080"
