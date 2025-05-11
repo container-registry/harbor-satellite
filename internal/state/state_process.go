@@ -26,18 +26,19 @@ type FetchAndReplicateAuthConfig struct {
 }
 
 type FetchAndReplicateStateProcess struct {
-	id             cron.EntryID
-	name           string
-	cronExpr       string
-	isRunning      bool
-	satelliteState string
-	stateMap       []StateMap
-	notifier       notifier.Notifier
-	mu             *sync.Mutex
-	authConfig     FetchAndReplicateAuthConfig
-	eventBroker    *scheduler.EventBroker
-	Replicator     Replicator
-	cm             *config.ConfigManager
+	id                  cron.EntryID
+	name                string
+	cronExpr            string
+	isRunning           bool
+	satelliteState      string
+	stateMap            []StateMap
+	notifier            notifier.Notifier
+	mu                  *sync.Mutex
+	authConfig          FetchAndReplicateAuthConfig
+	eventBroker         *scheduler.EventBroker
+	Replicator          Replicator
+	currentConfigDigest string
+	cm                  *config.ConfigManager
 }
 
 type StateMap struct {
@@ -101,7 +102,6 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	}
 	log.Info().Msg(reason)
 
-	// TODO: Refactor state fetcher logic
 	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
 	if err != nil {
 		log.Error().Err(err).Msg("Error processing satellite state")
@@ -115,19 +115,6 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 	// Update stateMap
 	f.updateStateMap(satelliteState.States)
-
-	if satelliteState.Config != "" {
-		satelliteStateFetcher, err := getStateFetcherForInput(satelliteState.Config, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
-		if err != nil {
-			log.Error().Err(err).Msg("Error processing satellite state")
-			return err
-		}
-		config := config.Config{}
-		if err := satelliteStateFetcher.FetchStateArtifact(ctx, &config, log); err != nil {
-			log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteState.Config)
-			return err
-		}
-	}
 
 	// Loop through each state and reconcile the satellite
 	for i := range f.stateMap {
@@ -162,6 +149,42 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		f.stateMap[i].State = newState
 		f.stateMap[i].Entities = FetchEntitiesFromState(newState)
 	}
+
+	configStateFetcher, err := getStateFetcherForInput(satelliteState.Config, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
+	if err != nil {
+		log.Error().Err(err).Msg("Error processing satellite state")
+		return err
+	}
+
+	configDigest, err := configStateFetcher.FetchDigest(ctx, log)
+	if err != nil {
+		log.Error().Err(err).Msgf("Error fetching state artifact digest from url: %s", satelliteState.Config)
+		return err
+	}
+
+	if configDigest != f.currentConfigDigest {
+		remoteConfig := config.Config{}
+		if err := configStateFetcher.FetchStateArtifact(ctx, &remoteConfig, log); err != nil {
+			log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteState.Config)
+			return err
+		}
+
+		warnings, err := config.ValidateConfig(&remoteConfig)
+		if err != nil {
+			log.Error().Err(err).Msgf("Error validating config state artifact digest from url: %s", satelliteState.Config)
+			return fmt.Errorf("error setting satellite config to the one present at %s: %w", satelliteState.Config, err)
+		}
+
+		utils.HandleNewConfigWarnings(log, warnings)
+
+		if err := f.cm.WriteConfigToDisk(&remoteConfig); err != nil {
+			log.Error().Err(err).Msgf("Error writing the newly fetched remote config from %s to disk", satelliteState.Config)
+			return fmt.Errorf("error writing the newly fetched remote config from %s to disk: %w", satelliteState.Config, err)
+		}
+
+		f.currentConfigDigest = configDigest
+	}
+
 	return nil
 }
 
