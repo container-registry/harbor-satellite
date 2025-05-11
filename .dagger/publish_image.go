@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"harbor-satellite/ci/internal/dagger"
 	"strings"
-	"time"
 )
 
 // PublishImage publishes a container image to a registry with a specific tag and signs it using Cosign.
