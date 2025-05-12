@@ -214,8 +214,11 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	satelliteID, err := q.GetSatelliteIDByToken(r.Context(), token)
 	if err != nil {
-        log.Printf("Invalid Satellite Token %s", token)
-		log.Println(err)
+		masked := fmt.Sprintf("%s…%s",
+			token[:4],
+			token[len(token)-4:],
+		)
+        log.Printf("Invalid Satellite Token %s: %v", masked, err)
 		err := &AppError{
 			Message: "Error: Invalid Token",
 			Code:    http.StatusBadRequest,
