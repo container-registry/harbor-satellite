@@ -10,6 +10,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -62,6 +63,11 @@ func run() error {
 		log.Error().Err(err).Msg("Error writing config to disk")
 		return err
 	}
+
+    // Watch for changes in the config file
+	wg.Go(func() error {
+		return watcher.WatchChanges(ctx, config.DefaultConfigPath)
+	})
 
 	wg.Go(func() error {
 		return satelliteService.Run(ctx)
