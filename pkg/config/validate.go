@@ -15,7 +15,7 @@ import (
 // It applies default values where required, verifies URLs, cron expressions,
 // and handles the logic for bring-your-own-registry vs default registry setup.
 // Returns warnings for any defaulted or ignored fields and a fatal error for critical misconfigurations.
-func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) ([]string, error) {
+func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) (*Config, []string, error) {
 	if config == nil {
 		config = &Config{}
 	}
@@ -30,7 +30,7 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	}
 
 	if _, err := url.ParseRequestURI(string(config.AppConfig.GroundControlURL)); err != nil {
-		return nil, fmt.Errorf("invalid URL provided for ground_control_url: %w", err)
+		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url: %w", err)
 	}
 
 	if config.AppConfig.LogLevel == "" {
@@ -47,11 +47,11 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 
 	if bringOwnRegistry {
 		if config.AppConfig.LocalRegistryCredentials.URL == "" {
-			return nil, fmt.Errorf("custom registry URL is required when BringOwnRegistry is enabled")
+			return nil, nil, fmt.Errorf("custom registry URL is required when BringOwnRegistry is enabled")
 		}
 
 		if _, err := url.ParseRequestURI(string(config.AppConfig.LocalRegistryCredentials.URL)); err != nil {
-			return nil, fmt.Errorf("invalid custom registry URL: %w", err)
+			return nil, nil, fmt.Errorf("invalid custom registry URL: %w", err)
 		}
 
 		if config.AppConfig.LocalRegistryCredentials.Username == "" || config.AppConfig.LocalRegistryCredentials.Password == "" {
@@ -75,7 +75,7 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 
 	var zotConfig registry.ZotConfig
 	if err := json.Unmarshal(config.ZotConfigRaw, &zotConfig); err != nil {
-		return nil, fmt.Errorf("invalid zot_config: %w", err)
+		return nil, nil, fmt.Errorf("invalid zot_config: %w", err)
 	}
 
 	if !bringOwnRegistry && config.AppConfig.LocalRegistryCredentials.URL == "" {
@@ -101,7 +101,7 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for StateReplicationInterval, using default schedule %s", DefaultFetchConfigCronExpr))
 	}
 
-	return warnings, nil
+	return config, warnings, nil
 }
 
 // validateCronExpression checks the validity of a cron expression.

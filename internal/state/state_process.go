@@ -175,7 +175,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 		remoteConfig.StateConfig = f.cm.GetStateConfig()
 
-		warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
+		validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
 		if err != nil {
 			log.Error().Err(err).
 				Msgf("Error validating config state artifact digest from url: %s, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
@@ -186,8 +186,8 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 			utils.HandleNewConfigWarnings(log, warnings)
 		}
 
-		log.Info().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("Writing new config to disk")
-		if err := f.cm.WriteConfigToDisk(&remoteConfig); err != nil {
+		log.Debug().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("Writing new config to disk")
+		if err := f.cm.WriteConfigToDisk(validatedRemoteConfig); err != nil {
 			log.Error().Err(err).
 				Msgf("Error writing the newly fetched remote config from %s to disk, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
 			return nil

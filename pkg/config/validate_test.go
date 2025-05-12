@@ -123,7 +123,7 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			warnings, err := ValidateAndEnforceDefaults(tt.config, DefaultGroundControlURL)
+			config, warnings, err := ValidateAndEnforceDefaults(tt.config, DefaultGroundControlURL)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -143,7 +143,7 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 
 			if tt.expectedConfig != nil {
 				exp := tt.expectedConfig.AppConfig
-				got := tt.config.AppConfig
+				got := config.AppConfig
 				if exp.LogLevel != "" {
 					require.Equal(t, exp.LogLevel, got.LogLevel)
 				}
@@ -157,7 +157,7 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 					require.Equal(t, exp.UpdateConfigInterval, got.UpdateConfigInterval)
 				}
 				if len(tt.expectedConfig.ZotConfigRaw) > 0 {
-					require.JSONEq(t, string(tt.expectedConfig.ZotConfigRaw), string(tt.config.ZotConfigRaw))
+					require.JSONEq(t, string(tt.expectedConfig.ZotConfigRaw), string(config.ZotConfigRaw))
 				}
 			}
 		})
