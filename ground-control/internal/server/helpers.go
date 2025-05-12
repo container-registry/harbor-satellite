@@ -32,19 +32,13 @@ func setSatelliteConfig(ctx context.Context, q *database.Queries, satelliteName 
 	sat, err := q.GetSatelliteByName(ctx, satelliteName)
 	if err != nil {
 		log.Printf("Error: Satellite Not Found: %v", err)
-		return nil, &AppError{
-			Message: "Error: Satellite Not Found",
-			Code:    http.StatusBadRequest,
-		}
+		return nil, NotFoundError("Satellite", satelliteName, err)
 	}
 
 	configObject, err := q.GetConfigByName(ctx, configName)
 	if err != nil {
 		log.Printf("Error: Config Not Found: %v", err)
-		return nil, &AppError{
-			Message: "Error: Config Not Found",
-			Code:    http.StatusBadRequest,
-		}
+		return nil, NotFoundError("Config", configName, err)
 	}
 
 	params := database.SetSatelliteConfigParams{
@@ -55,10 +49,7 @@ func setSatelliteConfig(ctx context.Context, q *database.Queries, satelliteName 
 	err = q.SetSatelliteConfig(ctx, params)
 	if err != nil {
 		log.Printf("Error: Failed to Set Satellite Config: %v", err)
-		return nil, &AppError{
-			Message: "Error: Failed to Set Satellite config",
-			Code:    http.StatusInternalServerError,
-		}
+		return nil, DatabaseError("set satellite config", err)
 	}
 	return &sat, nil
 }
@@ -66,10 +57,7 @@ func setSatelliteConfig(ctx context.Context, q *database.Queries, satelliteName 
 func validateRequestBody(w http.ResponseWriter, req RegisterSatelliteParams) error {
 	if len(req.Name) < 1 {
 		log.Println("name should be at least one character long.")
-		return &AppError{
-			Message: "Error: name should be at least one character long.",
-			Code:    http.StatusBadRequest,
-		}
+		return ValidationError("name should be at least one character long", nil)
 	}
 	return nil
 }
@@ -82,16 +70,11 @@ func checkRobotAccountExistence(ctx context.Context, name string) error {
 	roboPresent, err := harbor.IsRobotPresent(ctx, name)
 	if err != nil {
 		log.Println(err)
-		return &AppError{
-			Message: fmt.Sprintf("Error querying for robot account: %v", err.Error()),
-			Code:    http.StatusBadRequest,
-		}
+		return ExternalAPIError("Harbor", "querying for robot account", err)
 	}
 	if roboPresent {
-		return &AppError{
-			Message: "Error: Robot Account name already present. Try with a different name.",
-			Code:    http.StatusBadRequest,
-		}
+		return ValidationError("Robot Account name already present", nil).
+			WithSuggestion("Try with a different name")
 	}
 	return nil
 }
@@ -107,25 +90,22 @@ func addSatelliteToGroups(ctx context.Context, q *database.Queries, groups *[]st
 			if len(replications) < 1 {
 				if err != nil {
 					log.Println(err)
-					return nil, &AppError{
-						Message: fmt.Sprintf("Error: Group Name: %s, does not exist in replication, Please give a Valid Group Name", groupName),
-						Code:    http.StatusBadRequest,
-					}
+					return nil, ValidationError(
+						fmt.Sprintf("Group Name '%s' does not exist in replication", groupName),
+						err,
+					).WithSuggestion("Please provide a valid group name")
 				}
 			}
 			group, err := q.GetGroupByName(ctx, groupName)
 			if err != nil {
-				return nil, &AppError{
-					Message: fmt.Sprintf("Error: Invalid Group Name: %v", groupName),
-					Code:    http.StatusBadRequest,
-				}
+				return nil, NotFoundError("Group", groupName, err)
 			}
 			// TODO: we just need the group id here.
 			if err := q.AddSatelliteToGroup(ctx, database.AddSatelliteToGroupParams{
 				SatelliteID: satelliteID,
 				GroupID:     group.ID,
 			}); err != nil {
-				return nil, err
+				return nil, DatabaseError("add satellite to group", err)
 			}
 
 			groupStates = append(groupStates, utils.AssembleGroupState(groupName))
@@ -139,19 +119,13 @@ func ensureSatelliteProjectExists(ctx context.Context) error {
 	satExist, err := harbor.GetProject(ctx, "satellite")
 	if err != nil {
 		log.Println(err)
-		return &AppError{
-			Message: fmt.Sprintf("Error: Checking satellite project: %v", err),
-			Code:    http.StatusBadGateway,
-		}
+		return ExternalAPIError("Harbor", "checking satellite project", err)
 	}
 	if !satExist {
 		_, err := harbor.CreateSatelliteProject(ctx)
 		if err != nil {
 			log.Println(err)
-			return &AppError{
-				Message: fmt.Sprintf("Error: creating satellite project: %v", err),
-				Code:    http.StatusBadGateway,
-			}
+			return ExternalAPIError("Harbor", "creating satellite project", err)
 		}
 	}
 	return nil
@@ -167,10 +141,7 @@ func storeRobotAccountInDB(ctx context.Context, q *database.Queries, rbt *goharb
 	}
 	if _, err := q.AddRobotAccount(ctx, params); err != nil {
 		log.Println(err)
-		return &AppError{
-			Message: fmt.Sprintf("Error: adding robot account to DB %v", err.Error()),
-			Code:    http.StatusInternalServerError,
-		}
+		return DatabaseError("adding robot account to database", err)
 	}
 	return nil
 }
@@ -181,10 +152,7 @@ func assignPermissionsToRobot(ctx context.Context, q *database.Queries, groups *
 			projects, err := q.GetProjectsOfGroup(ctx, groupName)
 			if err != nil {
 				log.Println(err)
-				return &AppError{
-					Message: fmt.Sprintf("Error: fetching projects of group %v", err.Error()),
-					Code:    http.StatusInternalServerError,
-				}
+				return DatabaseError("fetching projects of group", err)
 			}
 
 			project := projects[0]
@@ -192,10 +160,7 @@ func assignPermissionsToRobot(ctx context.Context, q *database.Queries, groups *
 			_, err = utils.UpdateRobotProjects(ctx, project, strconv.FormatInt(robotID, 10))
 			if err != nil {
 				log.Println(err)
-				return &AppError{
-					Message: fmt.Sprintf("Error: updating robot account %v", err.Error()),
-					Code:    http.StatusInternalServerError,
-				}
+				return ExternalAPIError("Harbor", "updating robot account permissions", err)
 			}
 
 		}
@@ -209,10 +174,7 @@ func getGroupStates(ctx context.Context, groups []database.SatelliteGroup, q *da
 		grp, err := q.GetGroupByID(ctx, group.GroupID)
 		if err != nil {
 			log.Printf("failed to get group by ID: %v, %v", group.GroupID, err)
-			return nil, &AppError{
-				Message: "Error: Get Group By ID Failed",
-				Code:    http.StatusInternalServerError,
-			}
+			return nil, DatabaseError("get group by ID", err)
 		}
 		state := utils.AssembleGroupState(grp.GroupName)
 		states = append(states, state)
@@ -222,10 +184,7 @@ func getGroupStates(ctx context.Context, groups []database.SatelliteGroup, q *da
 
 func DecodeRequestBody(r *http.Request, v interface{}) error {
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
-		return &AppError{
-			Message: "Invalid request body",
-			Code:    http.StatusBadRequest,
-		}
+		return ValidationError("Invalid request body", err)
 	}
 	return nil
 }
@@ -249,20 +208,22 @@ func GenerateRandomToken(charLength int) (string, error) {
 func GetAuthToken(r *http.Request) (string, error) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		err := &AppError{
-			Message: "Authorization header missing",
-			Code:    http.StatusUnauthorized,
-		}
-		return "", err
+		return "", NewAppError(
+			"Authorization header missing",
+			http.StatusUnauthorized,
+			CategorySecurity,
+			nil,
+		)
 	}
 
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-		err := &AppError{
-			Message: "Invalid Authorization header format",
-			Code:    http.StatusUnauthorized,
-		}
-		return "", err
+		return "", NewAppError(
+			"Invalid Authorization header format",
+			http.StatusUnauthorized,
+			CategorySecurity,
+			nil,
+		).WithSuggestion("Use format: 'Bearer TOKEN'")
 	}
 	token := parts[1]
 
@@ -273,19 +234,53 @@ func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, sate
 	satelliteConfig, err := dbQueries.SatelliteConfig(ctx, satelliteID)
 	if err != nil {
 		log.Printf("Error: Failed to fetch satellite config: %v", err)
-		return database.Config{}, &AppError{
-			Message: "Error: Failed to fetch satellite config",
-			Code:    http.StatusInternalServerError,
-		}
+		return database.Config{}, DatabaseError("fetch satellite config", err)
 	}
 
 	configObject, err := dbQueries.GetConfigByID(ctx, satelliteConfig.ConfigID)
 	if err != nil {
 		log.Printf("Error: Failed to fetch satellite config: %v", err)
-		return database.Config{}, &AppError{
-			Message: "Error: Failed to fetch satellite config",
-			Code:    http.StatusInternalServerError,
-		}
+		return database.Config{}, DatabaseError("fetch config by ID", err)
 	}
 	return configObject, nil
+}
+
+// ValidationError creates a new validation error
+func ValidationError(message string, err error) *AppError {
+	return NewAppError(
+		message,
+		http.StatusBadRequest,
+		CategoryValidation,
+		err,
+	).WithSuggestion("Please check your input and try again")
+}
+
+// NotFoundError creates a new not found error
+func NotFoundError(resourceType string, identifier string, err error) *AppError {
+	return NewAppError(
+		fmt.Sprintf("%s not found: %s", resourceType, identifier),
+		http.StatusNotFound,
+		CategoryNotFound,
+		err,
+	)
+}
+
+// DatabaseError creates a new database error
+func DatabaseError(operation string, err error) *AppError {
+	return NewAppError(
+		fmt.Sprintf("Database operation failed: %s", operation),
+		http.StatusInternalServerError,
+		CategoryDatabase,
+		err,
+	)
+}
+
+// ExternalAPIError creates a new external API error
+func ExternalAPIError(service string, operation string, err error) *AppError {
+	return NewAppError(
+		fmt.Sprintf("%s operation failed", operation),
+		http.StatusBadGateway,
+		CategoryExternalAPI,
+		err,
+	).WithSuggestion(fmt.Sprintf("Please try again later or check the %s service", service))
 }

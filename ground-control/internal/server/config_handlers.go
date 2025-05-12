@@ -35,11 +35,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		if !committed {
 			if err := tx.Rollback(); err != nil {
 				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
-				err := &AppError{
-					Message: "Error: Failed to rollback transaction",
-					Code:    http.StatusInternalServerError,
-				}
-				HandleAppError(w, err)
+				HandleAppError(w, DatabaseError("rollback transaction", err))
 				return
 			}
 		}
@@ -48,7 +44,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	configJson, err := json.Marshal(req.Config)
 	if err != nil {
 		log.Println("Could not marshal JSON: ", err)
-		HandleAppError(w, err)
+		HandleAppError(w, ValidationError("Invalid configuration format", err))
 		return
 	}
 
@@ -67,7 +63,7 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := q.CreateConfig(r.Context(), params)
 	if err != nil {
 		log.Println("Error persisting config object to database: ", err)
-		HandleAppError(w, err)
+		HandleAppError(w, DatabaseError("create config", err))
 		return
 	}
 
@@ -75,16 +71,13 @@ func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	err = utils.CreateConfigStateArtifact(r.Context(), &req)
 	if err != nil {
 		log.Println("Error while creating config state artifact: ", err)
-		HandleAppError(w, err)
+		HandleAppError(w, ExternalAPIError("Harbor", "create config state artifact", err))
 		return
 	}
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("Failed to commit transaction: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Failed to commit transaction",
-			Code:    http.StatusInternalServerError,
-		})
+		HandleAppError(w, DatabaseError("commit transaction", err))
 		return
 	}
 	committed = true
@@ -96,7 +89,7 @@ func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListConfigs(r.Context())
 	if err != nil {
 		fmt.Println("Could not list configs: ", err)
-		HandleAppError(w, err)
+		HandleAppError(w, DatabaseError("list configs", err))
 		return
 	}
 
@@ -110,10 +103,7 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.GetConfigByName(r.Context(), configName)
 	if err != nil {
 		fmt.Println("Could not get config: ", err)
-		HandleAppError(w, &AppError{
-			Message: fmt.Sprintf("Config not found: %v", err),
-			Code:    http.StatusNotFound,
-		})
+		HandleAppError(w, NotFoundError("Config", configName, err))
 		return
 	}
 
@@ -133,7 +123,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		log.Println("Could not begin transaction:", err)
-		HandleAppError(w, err)
+		HandleAppError(w, DatabaseError("begin transaction", err))
 		return
 	}
 
@@ -142,11 +132,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		if !committed {
 			if err := tx.Rollback(); err != nil {
 				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
-				err := &AppError{
-					Message: "Error: Failed to rollback transaction",
-					Code:    http.StatusInternalServerError,
-				}
-				HandleAppError(w, err)
+				HandleAppError(w, DatabaseError("rollback transaction", err))
 				return
 			}
 		}
@@ -164,11 +150,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
 	if err != nil {
 		log.Printf("Could not get satellite group list: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to Add satellite to config",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
+		HandleAppError(w, DatabaseError("get satellite group list", err))
 		return
 	}
 
@@ -178,11 +160,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
 		if err != nil {
 			log.Printf("Error: Failed: %v", err)
-			err := &AppError{
-				Message: "Error: Failed to Add satellite to config",
-				Code:    http.StatusInternalServerError,
-			}
-			HandleAppError(w, err)
+			HandleAppError(w, DatabaseError("get group by ID", err))
 			return
 		}
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
@@ -191,16 +169,13 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, req.ConfigName)
 	if err != nil {
 		log.Printf("Could not update satellite state artifact: %v", err)
-		HandleAppError(w, err)
+		HandleAppError(w, ExternalAPIError("Harbor", "update satellite state artifact", err))
 		return
 	}
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("Failed to commit transaction: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Failed to commit transaction",
-			Code:    http.StatusInternalServerError,
-		})
+		HandleAppError(w, DatabaseError("commit transaction", err))
 		return
 	}
 	committed = true
@@ -218,42 +193,33 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 	configObject, err := q.GetConfigByName(r.Context(), configName)
 	if err != nil {
 		log.Printf("Error: Failed to get Config: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to get Config",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
+		HandleAppError(w, DatabaseError("get config by name", err))
 		return
 	}
 
 	isConfigInUse, err := isConfigInUse(r.Context(), q, configObject)
 	if err != nil {
 		log.Printf("Error: Could not delete config: %v", err)
-		HandleAppError(w, err)
+		HandleAppError(w, DatabaseError("check config usage", err))
 		return
 	}
 
 	if isConfigInUse {
 		log.Printf("Cannot delete config that is in use")
-		HandleAppError(w, &AppError{
-			Message: "Cannot delete config that is in use",
-			Code:    http.StatusBadRequest,
-		})
+		HandleAppError(w, ValidationError("Cannot delete config that is in use", nil).
+			WithSuggestion("First remove this config from all satellites that use it"))
 		return
 	}
 
 	if err := utils.DeleteArtifact(utils.ConstructHarborDeleteURL(fmt.Sprintf("config-state/%s/state", configName))); err != nil {
 		log.Printf("Could not delete config state artifact: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Could not delete config state artifact",
-			Code:    http.StatusInternalServerError,
-		})
+		HandleAppError(w, ExternalAPIError("Harbor", "delete config state artifact", err))
 		return
 	}
 
 	if err := q.DeleteConfig(r.Context(), configObject.ID); err != nil {
 		log.Println("Error: Could not delete config: ", err)
-		HandleAppError(w, err)
+		HandleAppError(w, DatabaseError("delete config", err))
 		return
 	}
 
