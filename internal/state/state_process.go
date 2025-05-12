@@ -26,18 +26,19 @@ type FetchAndReplicateAuthConfig struct {
 }
 
 type FetchAndReplicateStateProcess struct {
-	id             cron.EntryID
-	name           string
-	cronExpr       string
-	isRunning      bool
-	satelliteState string
-	stateMap       []StateMap
-	notifier       notifier.Notifier
-	mu             *sync.Mutex
-	authConfig     FetchAndReplicateAuthConfig
-	eventBroker    *scheduler.EventBroker
-	Replicator     Replicator
-	cm             *config.ConfigManager
+	id                  cron.EntryID
+	name                string
+	cronExpr            string
+	isRunning           bool
+	satelliteState      string
+	stateMap            []StateMap
+	notifier            notifier.Notifier
+	mu                  *sync.Mutex
+	authConfig          FetchAndReplicateAuthConfig
+	eventBroker         *scheduler.EventBroker
+	Replicator          Replicator
+	currentConfigDigest string
+	cm                  *config.ConfigManager
 }
 
 type StateMap struct {
@@ -79,8 +80,9 @@ func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, notifier notifie
 			RemoteRegistryUserName: remoteUsername,
 			RemoteRegistryPassword: remotePassword,
 		},
-		Replicator: NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, cm.UseUnsecure()),
-		cm:         cm,
+		Replicator:          NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, cm.UseUnsecure()),
+		currentConfigDigest: "",
+		cm:                  cm,
 	}
 }
 
@@ -101,9 +103,14 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	}
 	log.Info().Msg(reason)
 
-	// Fetch the satellite's state
-	satelliteState, err := f.fetchSatelliteState(ctx, log)
+	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
 	if err != nil {
+		log.Error().Err(err).Msg("Error processing satellite state")
+		return err
+	}
+	satelliteState := &SatelliteState{}
+	if err := satelliteStateFetcher.FetchStateArtifact(ctx, satelliteState, log); err != nil {
+		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", f.satelliteState)
 		return err
 	}
 
@@ -143,22 +150,59 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		f.stateMap[i].State = newState
 		f.stateMap[i].Entities = FetchEntitiesFromState(newState)
 	}
-	return nil
-}
 
-func (f *FetchAndReplicateStateProcess) fetchSatelliteState(ctx context.Context, log *zerolog.Logger) (*SatelliteState, error) {
-	satelliteStateFetcher, err := getStateFetcherForInput(f.satelliteState, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
+	configStateFetcher, err := getStateFetcherForInput(satelliteState.Config, f.authConfig.SourceRegistryUserName, f.authConfig.SourceRegistryPassword, f.cm.UseUnsecure(), log)
 	if err != nil {
 		log.Error().Err(err).Msg("Error processing satellite state")
-		return nil, err
+		return err
 	}
 
-	satelliteState := &SatelliteState{}
-	if err := satelliteStateFetcher.FetchStateArtifact(ctx, satelliteState, log); err != nil {
-		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", f.satelliteState)
-		return nil, err
+	configDigest, err := configStateFetcher.FetchDigest(ctx, log)
+	if err != nil {
+		log.Error().Err(err).Msgf("Error fetching state artifact digest from url: %s", satelliteState.Config)
+		return err
 	}
-	return satelliteState, nil
+
+	// If there is an error in processing the new config, we must roll-back instead of returning an error
+	if configDigest != f.currentConfigDigest {
+		log.Info().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("The upstream config has changes, reconciling the satellite accordingly")
+		remoteConfig := config.Config{}
+		if err := configStateFetcher.FetchStateArtifact(ctx, &remoteConfig, log); err != nil {
+			log.Error().Err(err).
+				Msgf("Error fetching new config's state artifact from url: %s, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
+			return nil
+		}
+
+		remoteConfig.StateConfig = f.cm.GetStateConfig()
+
+		validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
+		if err != nil {
+			log.Error().Err(err).
+				Msgf("Error validating config state artifact digest from url: %s, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
+			return nil
+		}
+
+		if len(warnings) != 0 {
+			utils.HandleNewConfigWarnings(log, warnings)
+		}
+
+		if err := f.cm.WritePrevConfigToDisk(f.cm.GetConfig()); err != nil {
+			log.Error().Err(err).
+				Msg("Error writing the prev config to disk while reconciling remote config, continuing execution with the same previous config with digest %s")
+			return nil
+		}
+
+		log.Debug().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("Writing new config to disk")
+		if err := f.cm.WriteConfigToDisk(validatedRemoteConfig); err != nil {
+			log.Error().Err(err).
+				Msgf("Error writing the newly fetched remote config from %s to disk, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
+			return nil
+		}
+
+		f.currentConfigDigest = configDigest
+	}
+
+	return nil
 }
 
 func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
@@ -209,7 +253,7 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 	}
 
 	// Check new artifacts and update lists
-    // TODO: add debug logs here
+	// TODO: add debug logs here
 	for _, newEntity := range newEntites {
 		nameTagKey := newEntity.Name + "|" + newEntity.Tag
 		oldEntity, exists := oldEntityMap[nameTagKey]

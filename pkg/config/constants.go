@@ -11,6 +11,7 @@ const ZTRConfigJobName string = "register_satellite"
 
 // Default config.json path for the satellite, used if the user does not provide any config path
 const DefaultConfigPath string = "config.json"
+const DefaultPrevConfigPath string = "prev_config.json"
 
 // Below are the default values of the job schedules that would be used if the user does not provide any schedule or
 // if there is any error while parsing the cron expression
@@ -19,3 +20,20 @@ const DefaultZTRCronExpr string = "@every 00h00m05s"
 const DefaultFetchAndReplicateCronExpr string = "@every 00h05m00s"
 
 const BringOwnRegistry bool = false
+
+const DefaultZotConfigJSON = `{
+  "distSpecVersion": "1.1.0",
+  "storage": {
+    "rootDirectory": "./zot"
+  },
+  "http": {
+    "address": "127.0.0.1",
+    "port": "8585"
+  },
+  "log": {
+    "level": "info"
+  }
+}`
+
+const DefaultRemoteRegistryURL = "http://127.0.0.1:8585"
+const DefaultGroundControlURL = "http://127.0.0.1:8080"

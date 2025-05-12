@@ -44,3 +44,4 @@ var validLogLevels = map[string]bool{
 	zerolog.LevelFatalValue: true,
 	zerolog.LevelPanicValue: true,
 }
+

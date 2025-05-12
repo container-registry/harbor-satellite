@@ -29,9 +29,10 @@ func run() error {
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := config.InitConfigManager(config.DefaultConfigPath)
+	// TODO: make this configurable using args
+	cm, warnings, err := config.InitConfigManager(config.DefaultConfigPath, config.DefaultPrevConfigPath)
 	if err != nil {
-		fmt.Printf("Error initiating the config: %v", err)
+		fmt.Printf("Error initiating the config manager: %v", err)
 		return err
 	}
 
@@ -56,7 +57,7 @@ func run() error {
 
 	satelliteService := satellite.NewSatellite(scheduler.GetSchedulerKey(), cm)
 
-	// Write the config to disk, in case any values were enforced at runtime
+	// Write the config to disk, in case any defaults were enforced at runtime
 	if err := cm.WriteConfig(); err != nil {
 		log.Error().Err(err).Msg("Error writing config to disk")
 		return err
