@@ -15,13 +15,15 @@ type ConfigManager struct {
 	Token                   string
 	DefaultGroundControlURL string
 	configPath              string
+	prevConfigPath          string
 	mu                      sync.RWMutex
 }
 
-func NewConfigManager(path, token, defaultGroundControlURL string, config *Config) (*ConfigManager, error) {
+func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, config *Config) (*ConfigManager, error) {
 	return &ConfigManager{
 		config:                  config,
-		configPath:              path,
+		configPath:              configPath,
+		prevConfigPath:          prevConfigPath,
 		Token:                   token,
 		DefaultGroundControlURL: defaultGroundControlURL,
 	}, nil
@@ -54,7 +56,7 @@ func (cm *ConfigManager) WriteConfig() error {
 	return nil
 }
 
-// Writes the given config to disk
+// Writes the given config to disk at the configPath
 func (cm *ConfigManager) WriteConfigToDisk(config *Config) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -72,7 +74,25 @@ func (cm *ConfigManager) WriteConfigToDisk(config *Config) error {
 	return nil
 }
 
-func InitConfigManager(path string) (*ConfigManager, []string, error) {
+// Writes the given config to disk at the prevConfigPath
+func (cm *ConfigManager) WritePrevConfigToDisk(config *Config) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(cm.prevConfigPath, data, 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func InitConfigManager(configPath, prevConfigPath string) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
 
@@ -89,19 +109,19 @@ func InitConfigManager(path string) (*ConfigManager, []string, error) {
 		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url env var: %w", err)
 	}
 
-	cfg, err = readAndReturnConfig(path)
+	cfg, err = readAndReturnConfig(configPath)
 	if errors.Is(err, os.ErrNotExist) {
 		cfg = &Config{}
 	} else if err != nil {
 		return nil, nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	warnings, err := ValidateAndEnforceDefaults(cfg, gcURL)
+	cfg, warnings, err := ValidateAndEnforceDefaults(cfg, gcURL)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("invalid config: %w", err)
 	}
 
-	cm, err := NewConfigManager(path, token, gcURL, cfg)
+	cm, err := NewConfigManager(configPath, prevConfigPath, token, gcURL, cfg)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to create config manager: %w", err)
 	}

@@ -29,9 +29,10 @@ func run() error {
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := config.InitConfigManager(config.DefaultConfigPath)
+	// TODO: make this configurable using args
+	cm, warnings, err := config.InitConfigManager(config.DefaultConfigPath, config.DefaultPrevConfigPath)
 	if err != nil {
-		fmt.Printf("Error initiating the config: %v", err)
+		fmt.Printf("Error initiating the config manager: %v", err)
 		return err
 	}
 

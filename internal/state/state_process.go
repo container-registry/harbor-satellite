@@ -186,6 +186,12 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 			utils.HandleNewConfigWarnings(log, warnings)
 		}
 
+		if err := f.cm.WritePrevConfigToDisk(f.cm.GetConfig()); err != nil {
+			log.Error().Err(err).
+				Msg("Error writing the prev config to disk while reconciling remote config, continuing execution with the same previous config with digest %s")
+			return nil
+		}
+
 		log.Debug().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("Writing new config to disk")
 		if err := f.cm.WriteConfigToDisk(validatedRemoteConfig); err != nil {
 			log.Error().Err(err).
