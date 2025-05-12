@@ -135,3 +135,9 @@ func (cm *ConfigManager) GetRawZotConfig() json.RawMessage {
 	defer cm.mu.RUnlock()
 	return cm.config.ZotConfigRaw
 }
+
+func (cm *ConfigManager) GetConfig() *Config {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config
+}
