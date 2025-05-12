@@ -16,7 +16,7 @@ func (m *HarborSatellite) PublishImage(
 	// +default=["latest"]
 	imageTags []string,
 	registryPassword *dagger.Secret,
-	component string,
+	component, projectName string,
 	// +optional
 	// +defaultPath="./"
 	source *dagger.Directory,
@@ -89,7 +89,7 @@ func (m *HarborSatellite) PublishImage(
 	for _, imageTag := range imageTags {
 		addr, err := dag.Container().WithRegistryAuth(registry, registryUsername, dag.SetSecret("password", password)).
 			Publish(ctx,
-				fmt.Sprintf("%s/%s/%s:%s", registry, "harbor-satellite", component, imageTag),
+				fmt.Sprintf("%s/%s/%s:%s", registry, projectName, component, imageTag),
 				dagger.ContainerPublishOpts{PlatformVariants: releaseImages},
 			)
 		if err != nil {
@@ -105,6 +105,7 @@ func (m *HarborSatellite) PublishImage(
 // PublishImageAndSign builds and publishes container images to a registry with a specific tags and then signs them using Cosign.
 func (m *HarborSatellite) PublishImageAndSign(
 	ctx context.Context,
+	component, projectName string,
 	registry string,
 	registryUsername string,
 	registryPassword *dagger.Secret,
@@ -117,7 +118,6 @@ func (m *HarborSatellite) PublishImageAndSign(
 	actionsIdTokenRequestToken *dagger.Secret,
 	// +optional
 	actionsIdTokenRequestUrl string,
-	component string,
 	// +optional
 	// +defaultPath="."
 	source *dagger.Directory,
@@ -125,7 +125,7 @@ func (m *HarborSatellite) PublishImageAndSign(
 	// +default=true
 	useRegistryPassword bool,
 ) (string, error) {
-	imageAddrs := m.PublishImage(ctx, registry, registryUsername, imageTags, registryPassword, component, source)
+	imageAddrs := m.PublishImage(ctx, registry, registryUsername, imageTags, registryPassword, component, projectName, source)
 
 	for i := range imageAddrs {
 		_, err := m.Sign(
