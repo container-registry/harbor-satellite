@@ -84,7 +84,7 @@ func (m *HarborSatellite) BuildDev(
 	platform string,
 	component string,
 ) (*dagger.File, error) {
-	fmt.Println("🛠️  Building Harbor-Cli with Dagger...")
+	fmt.Println("🛠️  Building Harbor-Satellite with Dagger...")
 	// Define the path for the binary output
 	os, arch, err := parsePlatform(platform)
 	if err != nil {
