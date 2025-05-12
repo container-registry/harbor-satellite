@@ -75,7 +75,7 @@ snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
 release:
-  name_template: "HarborCLI {{.Tag}}"
+  name_template: "harbor-satellite {{.Tag}}"
   draft: true                 # Set to false to ensure that releases are published, not kept as drafts
   prerelease: auto            # Auto-detect prereleases based on tag
   replace_existing_draft: true
@@ -84,7 +84,6 @@ release:
   github:
     owner: container-registry       # Your GitHub repository owner
     name: harbor-satellite          # Your GitHub repository name
-
 changelog:
   use: github
   filters:
