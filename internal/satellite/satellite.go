@@ -32,6 +32,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	if !s.cm.IsZTRDone() {
 		// schedule ztr
+        // TODO: stop trying to do ztr once it is done.
 		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess)
 	}
 
