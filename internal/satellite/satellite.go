@@ -2,60 +2,71 @@ package satellite
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
-	"github.com/container-registry/harbor-satellite/internal/notifier"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/rs/zerolog"
 )
 
 type Satellite struct {
-	schedulerKey scheduler.SchedulerKey
-	cm           *config.ConfigManager
+	cm *config.ConfigManager
 }
 
-func NewSatellite(schedulerKey scheduler.SchedulerKey, cm *config.ConfigManager) *Satellite {
+func NewSatellite(cm *config.ConfigManager) *Satellite {
 	return &Satellite{
-		schedulerKey: schedulerKey,
-		cm:           cm,
+		cm: cm,
 	}
 }
 
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
-	// Get the scheduler from the context
-	scheduler := ctx.Value(s.schedulerKey).(scheduler.Scheduler)
 
-	// Create a simple notifier and add it to the process
-	notifier := notifier.NewSimpleNotifier(ctx)
-
-	// Creating a process to fetch and replicate the state
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, notifier)
-	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(s.cm.GetUpdateConfigInterval(), "", "")
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm)
 	ztrProcess := state.NewZtrProcess(s.cm)
 
 	if !s.cm.IsZTRDone() {
-		err := scheduler.Schedule(ztrProcess)
-		if err != nil {
-			log.Error().Err(err).Msg("Error scheduling process")
-			return err
-		}
+		// schedule ztr
+		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess)
 	}
 
-	err := scheduler.Schedule(configFetchProcess)
-	if err != nil {
-		log.Error().Err(err).Msg("Error scheduling process")
-		return err
-	}
-
-	// Add the process to the scheduler
-	err = scheduler.Schedule(fetchAndReplicateStateProcess)
-	if err != nil {
-		log.Error().Err(err).Msg("Error scheduling process")
-		return err
-	}
+	// schedule ztr
+	go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), fetchAndReplicateStateProcess)
 
 	return nil
+}
+
+// ScheduleFunc runs the given function on a fixed interval until context is canceled.
+func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, process scheduler.Process) {
+	log.Info().Str("interval", interval).Msg("Starting simple scheduler")
+	duration, _ := parseEveryExpr(interval)
+	ticker := time.NewTicker(duration)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info().Msg("Scheduler received cancellation signal. Exiting...")
+			return
+		case <-ticker.C:
+			if !process.IsRunning() {
+				log.Debug().Msg("Scheduler triggering task execution")
+				go process.Execute(ctx)
+			}
+			log.Debug().Str("Name", process.Name()).Msg("Process already executing")
+		}
+	}
+}
+
+func parseEveryExpr(expr string) (time.Duration, error) {
+	const prefix = "@every "
+	if !strings.HasPrefix(expr, prefix) {
+		return 0, fmt.Errorf("unsupported format: must start with %q", prefix)
+	}
+	return time.ParseDuration(strings.TrimPrefix(expr, prefix))
 }
