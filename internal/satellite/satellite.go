@@ -30,24 +30,25 @@ func (s *Satellite) Run(ctx context.Context) error {
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm)
 	ztrProcess := state.NewZtrProcess(s.cm)
 
-	ztrErrChan := make(chan<- error)
-	stateErrChan := make(chan<- error)
-
 	if !s.cm.IsZTRDone() {
 		// schedule ztr
-		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess, ztrErrChan)
+		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess)
 	}
 
 	// schedule ztr
-	go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), fetchAndReplicateStateProcess, stateErrChan)
+	go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), fetchAndReplicateStateProcess)
 
 	return nil
 }
 
-func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, process scheduler.Process, errChan chan<- error) {
+// TODO: lets pass the ticker directly to the scheduler. We can reset the ticker which streamlines everything.
+func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, process scheduler.Process) {
 	duration, _ := parseEveryExpr(interval)
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
+
+	// Run once immediately
+	launchProcess(ctx, log, process)
 
 	for {
 		select {
@@ -55,21 +56,21 @@ func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, pro
 			log.Info().Msg("Scheduler received cancellation signal. Exiting...")
 			return
 		case <-ticker.C:
-			if !process.IsRunning() {
-				log.Info().Str("Process Name", process.Name()).Msg("Scheduler triggering task execution")
-				go func() {
-					if err := process.Execute(ctx); err != nil {
-						select {
-						case errChan <- fmt.Errorf("%s failed: %w", process.Name(), err):
-						default:
-							log.Error().Err(err).Str("name", process.Name()).Msg("Dropped process error")
-						}
-					}
-				}()
-			} else {
-				log.Debug().Str("Process Name", process.Name()).Msg("Process already executing")
-			}
+			launchProcess(ctx, log, process)
 		}
+	}
+}
+
+func launchProcess(ctx context.Context, log *zerolog.Logger, process scheduler.Process) {
+	if !process.IsRunning() {
+		log.Info().Str("Process", process.Name()).Msg("Scheduler triggering task execution")
+		go func() {
+			if err := process.Execute(ctx); err != nil {
+                log.Error().Err(err).Str("name", process.Name()).Msgf("Process failed with error: %v", err)
+			}
+		}()
+	} else {
+		log.Debug().Str("Process", process.Name()).Msg("Process already executing")
 	}
 }
 
