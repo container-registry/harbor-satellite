@@ -95,7 +95,7 @@ func (z *ZtrProcess) CanExecute(log *zerolog.Logger) (bool, string) {
 	return true, fmt.Sprintf("Process %s can execute all conditions fulfilled", z.name)
 }
 
-func (z *ZtrProcess) GetName() string {
+func (z *ZtrProcess) Name() string {
 	z.mu.Lock()
 	defer z.mu.Unlock()
 	return z.name
