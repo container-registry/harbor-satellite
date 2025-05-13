@@ -30,20 +30,23 @@ func (s *Satellite) Run(ctx context.Context) error {
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm)
 	ztrProcess := state.NewZtrProcess(s.cm)
 
+	ztrErrChan := make(chan<- error)
+	stateErrChan := make(chan<- error)
+
 	if !s.cm.IsZTRDone() {
 		// schedule ztr
-		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess)
+		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess, ztrErrChan)
 	}
 
 	// schedule ztr
-	go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), fetchAndReplicateStateProcess)
+	go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), fetchAndReplicateStateProcess, stateErrChan)
 
 	return nil
 }
 
-// ScheduleFunc runs the given function on a fixed interval until context is canceled.
-func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, process scheduler.Process) {
+func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, process scheduler.Process, errChan chan<- error) {
 	log.Info().Str("interval", interval).Msg("Starting simple scheduler")
+
 	duration, _ := parseEveryExpr(interval)
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
@@ -55,10 +58,19 @@ func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, pro
 			return
 		case <-ticker.C:
 			if !process.IsRunning() {
-				log.Debug().Msg("Scheduler triggering task execution")
-				go process.Execute(ctx)
+				log.Debug().Str("Name", process.Name()).Msg("Scheduler triggering task execution")
+				go func() {
+					if err := process.Execute(ctx); err != nil {
+						select {
+						case errChan <- fmt.Errorf("%s failed: %w", process.Name(), err):
+						default:
+							log.Error().Err(err).Str("name", process.Name()).Msg("Dropped process error")
+						}
+					}
+				}()
+			} else {
+				log.Debug().Str("Name", process.Name()).Msg("Process already executing")
 			}
-			log.Debug().Str("Name", process.Name()).Msg("Process already executing")
 		}
 	}
 }

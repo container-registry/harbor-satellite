@@ -8,7 +8,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
-	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -39,24 +38,13 @@ func run() error {
 
 	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), warnings)
 
-	ctx, scheduler := scheduler.InitBasicScheduler(ctx, log)
-
-	go scheduler.ListenForProcessEvent()
-
 	// Handle registry setup
 	if err := handleRegistrySetup(wg, log, cancel, cm); err != nil {
 		log.Error().Err(err).Msg("Error setting up local registry")
 		return err
 	}
 
-	err = scheduler.Start()
-	if err != nil {
-		log.Error().Err(err).Msg("Error starting scheduler")
-		return err
-	}
-	defer scheduler.Stop()
-
-	satelliteService := satellite.NewSatellite(scheduler.GetSchedulerKey(), cm)
+	satelliteService := satellite.NewSatellite(cm)
 
 	// Write the config to disk, in case any defaults were enforced at runtime
 	if err := cm.WriteConfig(); err != nil {
