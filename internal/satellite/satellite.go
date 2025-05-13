@@ -45,8 +45,6 @@ func (s *Satellite) Run(ctx context.Context) error {
 }
 
 func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, process scheduler.Process, errChan chan<- error) {
-	log.Info().Str("interval", interval).Msg("Starting simple scheduler")
-
 	duration, _ := parseEveryExpr(interval)
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
@@ -58,7 +56,7 @@ func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, pro
 			return
 		case <-ticker.C:
 			if !process.IsRunning() {
-				log.Debug().Str("Name", process.Name()).Msg("Scheduler triggering task execution")
+				log.Info().Str("Process Name", process.Name()).Msg("Scheduler triggering task execution")
 				go func() {
 					if err := process.Execute(ctx); err != nil {
 						select {
@@ -69,7 +67,7 @@ func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, pro
 					}
 				}()
 			} else {
-				log.Debug().Str("Name", process.Name()).Msg("Process already executing")
+				log.Debug().Str("Process Name", process.Name()).Msg("Process already executing")
 			}
 		}
 	}
