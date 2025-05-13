@@ -13,6 +13,42 @@ In this guide, we'll use a Harbor registry instance.
 
 - **Registry Login**: Obtain the username and password for your registry, ensuring it has appropriate permissions.
 
+### 2.1 Create Robot Account for Ground Control (Recommended)
+
+Instead of using Harbor admin credentials for Ground Control operations, it's recommended to create a dedicated robot account with limited permissions. This approach is more secure because:
+
+1. It follows the principle of least privilege
+2. It isolates Ground Control's access from administrator privileges
+3. If compromised, the robot account has restricted capabilities
+
+#### One-time setup with admin credentials:
+
+Admin credentials are needed **only once** to create the robot account:
+
+```bash
+# Set your Harbor admin credentials (used only for robot account creation)
+export HARBOR_URL=https://your-harbor-instance
+export HARBOR_USERNAME=admin
+export HARBOR_PASSWORD=your-admin-password
+
+# Make the script executable (required for Linux/macOS)
+chmod +x scripts/harbor-robot/create-gc-robot.sh
+
+# Run the script to create the robot account
+./scripts/harbor-robot/create-gc-robot.sh
+```
+
+After running the script, you'll see output similar to:
+
+```
+✅ Robot account created successfully!
+Robot ID: 42
+Robot Name: robot$ground-control-robot
+Robot Secret: eyJhbGciOiJIUzI1NiIsIn...
+```
+
+Copy these credentials and use them in the Ground Control configurations in the next step instead of admin credentials
+
 ### 3. Configure Ground Control
 Navigate to the `ground-control` directory and set up the following environment variables:
 
