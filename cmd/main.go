@@ -64,9 +64,23 @@ func run() error {
 		return err
 	}
 
-    // Watch for changes in the config file
+	eventChan := make(chan struct{})
+
+	// Watch for changes in the config file
 	wg.Go(func() error {
-		return watcher.WatchChanges(ctx, config.DefaultConfigPath)
+		return watcher.WatchChanges(ctx, log.With().Str("component", "file watcher").Logger(), config.DefaultConfigPath, eventChan)
+	})
+
+	// Watch for changes in the config file
+	wg.Go(func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-eventChan:
+				log.Info().Msg("Event chan event received")
+			}
+		}
 	})
 
 	wg.Go(func() error {
