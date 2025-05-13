@@ -1,64 +1,61 @@
-# This is an example .goreleaser.yml file with some sensible defaults.
-# Make sure to check the documentation at https://goreleaser.com
-
-# The lines below are called `modelines`. See `:help modeline`
-# Feel free to remove those if you don't want/need to use them.
-# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# vim: set ts=2 sw=2 tw=0 fo=cnqoj
-
 version: 2
 project_name: harbor-satellite
 
-git:
-  ignore_tags:
-    - "*-ground-control"
-builds:
-  - main: "./main.go"
-    binary: "{{ .Env.APP_NAME }}"
-    env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -w -s -X github.com/container-registry/harbor-satellite/internal/version.GitCommit={{.FullCommit}}
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-      - ppc64le
-      - s390x
-      - "386"
-      - loong64
-      - mips64
-      - mips64le
-      - mips
-      - mipsle
-      - riscv64
-    ignore:
-      - goos: darwin
-        goarch: ppc64le
-      - goos: darwin
-        goarch: s390x
-      - goos: darwin
-        goarch: "386"
-      - goos: darwin
-        goarch: loong64
-      - goos: darwin
-        goarch: mips64
-      - goos: darwin
-        goarch: mips64le
-      - goos: darwin
-        goarch: mips
-      - goos: darwin
-        goarch: mipsle
-      - goos: darwin
-        goarch: riscv64
-    mod_timestamp: "{{ .CommitTimestamp }}"
-    tags:
-      - "{{ .ProjectName }}-{{ .ShortCommit}}"
+before:
+  hooks:
+    - go mod tidy
 
+builds:
+- main: ./cmd/main.go
+  env:
+    - CGO_ENABLED=0
+  ldflags:
+    - -w -s -X github.com/container-registry/harbor-satellite/internal/version.GitCommit={{.FullCommit}}
+    - -X github.com/container-registry/harbor-satellite/internal/version.Version={{.Tag}}
+  goos:
+    - linux
+    - darwin
+  goarch:
+    - amd64
+    - arm64
+    - ppc64le
+    - s390x
+    - "386"
+    - loong64
+    - mips64
+    - mips64le
+    - mips
+    - mipsle
+    - riscv64
+  ignore:
+    - goos: darwin
+      goarch: ppc64le
+    - goos: darwin
+      goarch: s390x
+    - goos: darwin
+      goarch: "386"
+    - goos: darwin
+      goarch: loong64
+    - goos: darwin
+      goarch: mips64
+    - goos: darwin
+      goarch: mips64le
+    - goos: darwin
+      goarch: mips
+    - goos: darwin
+      goarch: mipsle
+    - goos: darwin
+      goarch: riscv64
+  mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
 nfpms:
-  - homepage: https://github.com/container-registry/harbor-satellite
+  -
+    homepage: https://github.com/container-registry/harbor-satellite
     maintainer: Harbor Community
     description: |-
       Harbor Satellite is a lightweight, secure, and easy-to-use container registry that can be deployed in a few minutes on remote edge locations.
@@ -71,30 +68,22 @@ nfpms:
 sboms:
   - artifacts: archive
 
-release:
-  name_template: "{{ .Tag }}"
-
 checksum:
-  name_template: "checksums.txt"
+  name_template: 'checksums.txt'
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
-archives:
-  - format: tar.gz
-    # this name template makes the OS and Arch compatible with the results of `uname`.
-    name_template: >-
-      {{ .Env.APP_NAME }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}{{ end }}
-      {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
-    format_overrides:
-      - goos: windows
-        format: zip
-
+release:
+  name_template: "harbor-satellite {{.Tag}}"
+  draft: true                 # Set to false to ensure that releases are published, not kept as drafts
+  prerelease: auto            # Auto-detect prereleases based on tag
+  replace_existing_draft: true
+  replace_existing_artifacts: true
+  disable: false              # Ensure release publishing is enabled
+  github:
+    owner: container-registry       # Your GitHub repository owner
+    name: harbor-satellite          # Your GitHub repository name
 changelog:
   use: github
   filters:
