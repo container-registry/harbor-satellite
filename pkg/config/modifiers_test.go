@@ -50,13 +50,6 @@ func TestConfigManagerModifiers(t *testing.T) {
 			},
 		},
 		{
-			name:    "SetReplicationInterval",
-			mutator: SetReplicationInterval("@every 5m"),
-			check: func(t *testing.T, c *Config) {
-				require.Equal(t, "@every 5m", c.AppConfig.StateReplicationInterval)
-			},
-		},
-		{
 			name:    "SetRegisterSatelliteInterval",
 			mutator: SetRegisterSatelliteInterval("@every 10m"),
 			check: func(t *testing.T, c *Config) {

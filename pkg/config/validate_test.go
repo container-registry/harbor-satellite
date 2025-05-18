@@ -26,7 +26,6 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 					LogLevel:                  "info",
 					StateReplicationInterval:  "0 * * * *",
 					RegisterSatelliteInterval: "*/5 * * * *",
-					UpdateConfigInterval:      "0 0 * * *",
 				},
 				ZotConfigRaw: []byte(`{"distSpecVersion":"1.1.0"}`),
 			},
@@ -51,7 +50,6 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 					LogLevel:                  zerolog.LevelInfoValue,
 					StateReplicationInterval:  DefaultFetchAndReplicateCronExpr,
 					RegisterSatelliteInterval: DefaultZTRCronExpr,
-					UpdateConfigInterval:      DefaultFetchConfigCronExpr,
 				},
 				ZotConfigRaw: []byte(DefaultZotConfigJSON),
 			},
@@ -105,7 +103,6 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 					GroundControlURL:          URL("https://example.com"),
 					StateReplicationInterval:  "bad cron",
 					RegisterSatelliteInterval: "also bad",
-					UpdateConfigInterval:      "nope",
 				},
 				ZotConfigRaw: []byte(DefaultZotConfigJSON),
 			},
@@ -115,7 +112,6 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 				AppConfig: AppConfig{
 					StateReplicationInterval:  DefaultFetchAndReplicateCronExpr,
 					RegisterSatelliteInterval: DefaultZTRCronExpr,
-					UpdateConfigInterval:      DefaultFetchConfigCronExpr,
 				},
 			},
 		},
@@ -152,9 +148,6 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 				}
 				if exp.RegisterSatelliteInterval != "" {
 					require.Equal(t, exp.RegisterSatelliteInterval, got.RegisterSatelliteInterval)
-				}
-				if exp.UpdateConfigInterval != "" {
-					require.Equal(t, exp.UpdateConfigInterval, got.UpdateConfigInterval)
 				}
 				if len(tt.expectedConfig.ZotConfigRaw) > 0 {
 					require.JSONEq(t, string(tt.expectedConfig.ZotConfigRaw), string(config.ZotConfigRaw))

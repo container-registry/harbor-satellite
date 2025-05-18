@@ -88,17 +88,12 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 
 	if !isValidCronExpression(config.AppConfig.StateReplicationInterval) {
 		config.AppConfig.StateReplicationInterval = DefaultFetchAndReplicateCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for StateReplicationInterval, using default schedule %s", DefaultFetchAndReplicateCronExpr))
+		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for state_replication_interval, using default schedule %s", DefaultFetchAndReplicateCronExpr))
 	}
 
 	if !isValidCronExpression(config.AppConfig.RegisterSatelliteInterval) {
 		config.AppConfig.RegisterSatelliteInterval = DefaultZTRCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for StateReplicationInterval, using default schedule %s", DefaultZTRCronExpr))
-	}
-
-	if !isValidCronExpression(config.AppConfig.UpdateConfigInterval) {
-		config.AppConfig.UpdateConfigInterval = DefaultFetchConfigCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for StateReplicationInterval, using default schedule %s", DefaultFetchConfigCronExpr))
+		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for register_satellite_interval, using default schedule %s", DefaultZTRCronExpr))
 	}
 
 	return config, warnings, nil

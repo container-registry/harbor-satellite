@@ -2,7 +2,6 @@ package config
 
 // Job names that the user is expected to provide in the config.json file
 const ReplicateStateJobName string = "replicate_state"
-const UpdateConfigJobName string = "update_config"
 const ZTRConfigJobName string = "register_satellite"
 
 // The values below contain the default values of the constants used in the satellite. The user is allowed to override them
@@ -15,7 +14,6 @@ const DefaultPrevConfigPath string = "prev_config.json"
 
 // Below are the default values of the job schedules that would be used if the user does not provide any schedule or
 // if there is any error while parsing the cron expression
-const DefaultFetchConfigCronExpr string = "@every 00h00m30s"
 const DefaultZTRCronExpr string = "@every 00h00m05s"
 const DefaultFetchAndReplicateCronExpr string = "@every 00h05m00s"
 

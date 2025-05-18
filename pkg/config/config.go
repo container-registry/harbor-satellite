@@ -18,7 +18,6 @@ type AppConfig struct {
 	LogLevel                  string              `json:"log_level,omitempty"`
 	UseUnsecure               bool                `json:"use_unsecure,omitempty"`
 	StateReplicationInterval  string              `json:"state_replication_interval,omitempty"`
-	UpdateConfigInterval      string              `json:"update_config_interval,omitempty"`
 	RegisterSatelliteInterval string              `json:"register_satellite_interval,omitempty"`
 	BringOwnRegistry          bool                `json:"bring_own_registry,omitempty"`
 	LocalRegistryCredentials  RegistryCredentials `json:"local_registry"`
