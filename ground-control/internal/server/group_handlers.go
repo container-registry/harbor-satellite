@@ -152,7 +152,7 @@ func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // groupSatelliteHandler lists all satellites attached to a specific group
-func (s *Server) groupSatelliteListHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) groupSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	groupName := vars["group"]
 

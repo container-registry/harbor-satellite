@@ -14,9 +14,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type SatelliteGroupParams struct {
+type SatelliteParams struct {
 	Satellite string `json:"satellite"`
-	Group     string `json:"group"`
 }
 
 type RegisterSatelliteParams struct {
@@ -435,7 +434,18 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
-	var req SatelliteGroupParams
+	vars := mux.Vars(r)
+	groupName := vars["group"]
+
+	if !utils.IsValidName(groupName) {
+		HandleAppError(w, &AppError{
+			Message: fmt.Sprintf(invalidNameMessage, "group"),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	var req SatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
 		return
@@ -445,14 +455,6 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	if !utils.IsValidName(req.Satellite) {
 		HandleAppError(w, &AppError{
 			Message: fmt.Sprintf(invalidNameMessage, "satellite"),
-			Code:    http.StatusBadRequest,
-		})
-		return
-	}
-
-	if !utils.IsValidName(req.Group) {
-		HandleAppError(w, &AppError{
-			Message: fmt.Sprintf(invalidNameMessage, "group"),
 			Code:    http.StatusBadRequest,
 		})
 		return
@@ -471,7 +473,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get group by name
-	grp, err := s.dbQueries.GetGroupByName(r.Context(), req.Group)
+	grp, err := s.dbQueries.GetGroupByName(r.Context(), groupName)
 	if err != nil {
 		log.Printf("Error: Group Not Found: %v", err)
 		err := &AppError{
@@ -498,7 +500,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if alreadyInGroup {
-		log.Printf("Satellite %s is already in group %s, no changes needed", req.Satellite, req.Group)
+		log.Printf("Satellite %s is already in group %s, no changes needed", req.Satellite, groupName)
 		WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite is already in the group"})
 		return
 	}
@@ -632,11 +634,9 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 
 // If the satellite is removed from the group, the state artifact must be updated accordingly as well.
 func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request) {
-	var req SatelliteGroupParams
-	if err := DecodeRequestBody(r, &req); err != nil {
-		HandleAppError(w, err)
-		return
-	}
+	vars := mux.Vars(r)
+	groupName := vars["group"]
+	satelliteName := vars["satellite"]
 
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -665,7 +665,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		}
 	}()
 
-	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
+	sat, err := q.GetSatelliteByName(r.Context(), satelliteName)
 	if err != nil {
 		log.Printf("Error: Satellite Not Found: %v", err)
 		err := &AppError{
@@ -676,7 +676,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	grp, err := q.GetGroupByName(r.Context(), req.Group)
+	grp, err := q.GetGroupByName(r.Context(), groupName)
 	if err != nil {
 		log.Printf("Error: Group Not Found: %v", err)
 		err := &AppError{
