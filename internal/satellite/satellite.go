@@ -35,10 +35,10 @@ func (s *Satellite) Run(ctx context.Context) error {
 		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess)
 	}
 
-	// schedule ztr
-	go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), fetchAndReplicateStateProcess)
+	// schedule state replication
+	go ScheduleFunc(ctx, log, s.cm.GetStateReplicationInterval(), fetchAndReplicateStateProcess)
 
-	return nil
+	return ctx.Err()
 }
 
 // TODO: lets pass the ticker directly to the scheduler. We can reset the ticker which streamlines everything.
@@ -47,13 +47,15 @@ func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, pro
 	ticker := time.NewTicker(duration)
 	defer ticker.Stop()
 
+	log.Info().Str("Process", process.Name()).Msgf("Task will be performed at every %s", interval)
+
 	// Run once immediately
 	launchProcess(ctx, log, process)
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Info().Msg("Scheduler received cancellation signal. Exiting...")
+			log.Info().Str("Process", process.Name()).Msg("Scheduler received cancellation signal. Exiting...")
 			return
 		case <-ticker.C:
 			if process.IsComplete() {
@@ -70,7 +72,7 @@ func launchProcess(ctx context.Context, log *zerolog.Logger, process scheduler.P
 		log.Info().Str("Process", process.Name()).Msg("Scheduler triggering task execution")
 		go func() {
 			if err := process.Execute(ctx); err != nil {
-				log.Error().Err(err).Str("name", process.Name()).Msgf("Process failed with error: %v", err)
+				log.Warn().Str("Process", process.Name()).Err(err).Msg("Error occurred while executing process.")
 			}
 		}()
 	} else {
