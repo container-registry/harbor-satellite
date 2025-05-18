@@ -32,7 +32,6 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	if !s.cm.IsZTRDone() {
 		// schedule ztr
-        // TODO: stop trying to do ztr once it is done.
 		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess)
 	}
 
@@ -57,6 +56,10 @@ func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, pro
 			log.Info().Msg("Scheduler received cancellation signal. Exiting...")
 			return
 		case <-ticker.C:
+			if process.IsComplete() {
+				log.Info().Str("Process", process.Name()).Msg("Process marked as complete. Stopping scheduling.")
+				return
+			}
 			launchProcess(ctx, log, process)
 		}
 	}
@@ -67,7 +70,7 @@ func launchProcess(ctx context.Context, log *zerolog.Logger, process scheduler.P
 		log.Info().Str("Process", process.Name()).Msg("Scheduler triggering task execution")
 		go func() {
 			if err := process.Execute(ctx); err != nil {
-                log.Error().Err(err).Str("name", process.Name()).Msgf("Process failed with error: %v", err)
+				log.Error().Err(err).Str("name", process.Name()).Msgf("Process failed with error: %v", err)
 			}
 		}()
 	} else {

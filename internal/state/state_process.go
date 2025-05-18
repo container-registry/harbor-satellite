@@ -254,6 +254,12 @@ func (f *FetchAndReplicateStateProcess) Name() string {
 	return f.name
 }
 
+// The state fetch process is prepetual, the only criteria for completion is
+// if the statellite is shut down.
+func (f *FetchAndReplicateStateProcess) IsComplete() bool {
+	return false
+}
+
 func (f *FetchAndReplicateStateProcess) CanExecute(satelliteStateURL, remoteURL, srcURL, srcUsername, srcPassword string) (bool, string) {
 	checks := []struct {
 		condition bool

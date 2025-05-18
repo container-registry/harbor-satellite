@@ -107,6 +107,12 @@ func (z *ZtrProcess) IsRunning() bool {
 	return z.isRunning
 }
 
+func (z *ZtrProcess) IsComplete() bool {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	return z.cm.IsZTRDone()
+}
+
 func (z *ZtrProcess) start() bool {
 	z.mu.Lock()
 	defer z.mu.Unlock()
