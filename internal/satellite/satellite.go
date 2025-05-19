@@ -82,6 +82,10 @@ func launchProcess(ctx context.Context, log *zerolog.Logger, process scheduler.P
 
 func parseEveryExpr(expr string) (time.Duration, error) {
 	const prefix = "@every "
+	if expr == "" {
+		return 0, fmt.Errorf("empty expression provided")
+	}
+
 	if !strings.HasPrefix(expr, prefix) {
 		return 0, fmt.Errorf("unsupported format: must start with %q", prefix)
 	}

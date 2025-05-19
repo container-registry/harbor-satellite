@@ -151,7 +151,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 		if err := f.cm.WritePrevConfigToDisk(f.cm.GetConfig()); err != nil {
 			log.Error().Err(err).
-				Msg("Error writing the prev config to disk while reconciling remote config, continuing execution with the same previous config with digest %s")
+				Msgf("Error writing the prev config to disk while reconciling remote config, continuing execution with the same previous config with digest %s", f.currentConfigDigest)
 			return nil
 		}
 
