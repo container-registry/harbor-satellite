@@ -68,7 +68,7 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 
 	if !bringOwnRegistry && len(config.ZotConfigRaw) == 0 {
 		warnings = append(warnings, fmt.Sprintf(
-			"empty zot_config provided. Defaulting to default zot_config: %v", json.RawMessage(DefaultZotConfigJSON),
+			"empty zot_config provided. Defaulting to: %v", DefaultZotConfigJSON,
 		))
 		config.ZotConfigRaw = json.RawMessage(DefaultZotConfigJSON)
 	}
