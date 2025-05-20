@@ -23,7 +23,6 @@ type AppConfig struct {
 	LocalRegistryCredentials  RegistryCredentials `json:"local_registry"`
 }
 
-// TODO: Might need to update ground control code for this to work.
 type StateConfig struct {
 	RegistryCredentials RegistryCredentials `json:"auth,omitempty"`
 	StateURL            string              `json:"state,omitempty"`

@@ -197,7 +197,6 @@ func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
 
 func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *zerolog.Logger, oldEntites []Entity) ([]Entity, []Entity, StateReader) {
 	log.Info().Msg("Getting changes")
-	// Remove artifacts with null tags from the new state
 	newState = f.RemoveNullTagArtifacts(newState)
 	newEntites := FetchEntitiesFromState(newState)
 
@@ -209,33 +208,36 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 		return entityToDelete, newEntites, newState
 	}
 
-	// Create maps for quick lookups
 	oldEntityMap := make(map[string]Entity)
 	for _, oldEntity := range oldEntites {
-		oldEntityMap[oldEntity.Name+"|"+oldEntity.Tag] = oldEntity
+		key := oldEntity.Name + "|" + oldEntity.Tag
+		oldEntityMap[key] = oldEntity
+		log.Debug().Str("entity", key).Str("digest", oldEntity.Digest).Msg("Added old entity to lookup map")
 	}
 
-	// Check new artifacts and update lists
-	// TODO: add debug logs here
 	for _, newEntity := range newEntites {
-		nameTagKey := newEntity.Name + "|" + newEntity.Tag
-		oldEntity, exists := oldEntityMap[nameTagKey]
+		key := newEntity.Name + "|" + newEntity.Tag
+		oldEntity, exists := oldEntityMap[key]
 
 		if !exists {
-			// New artifact doesn't exist in old state, add to replication list
+			log.Debug().Str("entity", key).Msg("New entity not found in old state, scheduling for replication")
 			entityToReplicate = append(entityToReplicate, newEntity)
 		} else if newEntity.Digest != oldEntity.Digest {
-			// Artifact exists but has changed, add to both lists
+			log.Debug().Str("entity", key).
+				Str("old_digest", oldEntity.Digest).
+				Str("new_digest", newEntity.Digest).
+				Msg("Entity digest changed, scheduling old for delete and new for replicate")
 			entityToReplicate = append(entityToReplicate, newEntity)
 			entityToDelete = append(entityToDelete, oldEntity)
+		} else {
+			log.Debug().Str("entity", key).Msg("Entity unchanged, skipping")
 		}
-
-		// Remove processed old artifact from map
-		delete(oldEntityMap, nameTagKey)
+		delete(oldEntityMap, key)
 	}
 
-	// Remaining artifacts in oldArtifactsMap should be deleted
 	for _, oldEntity := range oldEntityMap {
+		key := oldEntity.Name + "|" + oldEntity.Tag
+		log.Debug().Str("entity", key).Msg("Old entity no longer present, scheduling for deletion")
 		entityToDelete = append(entityToDelete, oldEntity)
 	}
 
