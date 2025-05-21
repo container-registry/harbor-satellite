@@ -92,20 +92,11 @@ func (cm *ConfigManager) WritePrevConfigToDisk(config *Config) error {
 	return nil
 }
 
-func InitConfigManager(configPath, prevConfigPath string) (*ConfigManager, []string, error) {
+func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
 
-	token, ok := os.LookupEnv("TOKEN")
-	if !ok {
-		return nil, nil, fmt.Errorf("TOKEN env var not defined as environment variable")
-	}
-
-	gcURL, ok := os.LookupEnv("GROUND_CONTROL_URL")
-	if !ok {
-		return nil, nil, fmt.Errorf("GROUND_CONTROL_URL not defined as environment variable")
-	}
-	if _, err := url.ParseRequestURI(gcURL); err != nil {
+	if _, err := url.ParseRequestURI(groundControlURL); err != nil {
 		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url env var: %w", err)
 	}
 
@@ -116,12 +107,12 @@ func InitConfigManager(configPath, prevConfigPath string) (*ConfigManager, []str
 		return nil, nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	cfg, warnings, err := ValidateAndEnforceDefaults(cfg, gcURL)
+	cfg, warnings, err := ValidateAndEnforceDefaults(cfg, groundControlURL)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("invalid config: %w", err)
 	}
 
-	cm, err := NewConfigManager(configPath, prevConfigPath, token, gcURL, cfg)
+	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, cfg)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to create config manager: %w", err)
 	}

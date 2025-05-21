@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 
@@ -18,19 +19,37 @@ import (
 )
 
 func main() {
-	err := run()
+	var groundControlURL string
+	var token string
+
+	flag.StringVar(&groundControlURL, "ground-control-url", "", "URL to ground control")
+	flag.StringVar(&token, "token", "", "Satellite token")
+	flag.Parse()
+
+	if token == "" {
+		token = os.Getenv("TOKEN")
+	}
+	if groundControlURL == "" {
+		groundControlURL = os.Getenv("GROUND_CONTROL_URL")
+	}
+
+	if token == "" || groundControlURL == "" {
+		fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars.")
+		os.Exit(1)
+	}
+
+	err := run(token, groundControlURL)
 	if err != nil {
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(token, groundControlURL string) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	// TODO: make this configurable using args
-	cm, warnings, err := config.InitConfigManager(config.DefaultConfigPath, config.DefaultPrevConfigPath)
+	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		return err
