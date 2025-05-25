@@ -17,9 +17,10 @@ import (
 )
 
 func main() {
-	ctx, cancel := utils.SetupContext(context.Background())
-	defer cancel()
-	wg, ctx := errgroup.WithContext(ctx)
+	// Global context for the entire application
+	globalCtx, globalCancel := utils.SetupContext(context.Background())
+	defer globalCancel()
+
 	var groundControlURL string
 	var token string
 
@@ -39,34 +40,65 @@ func main() {
 		os.Exit(1)
 	}
 
+	satelliteRestartCount := 0
+
+	// Initialize config manager once
 	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath)
-	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), warnings)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		os.Exit(1)
 	}
 
-	eventChan := make(chan struct{})
+	// Initialize logger with initial config
+	globalCtx, log := logger.InitLogger(globalCtx, cm.GetLogLevel(), warnings)
 
-	// Watch for changes in the config file
-	wg.Go(func() error {
-		return watcher.WatchChanges(ctx, log.With().Str("component", "file watcher").Logger(), config.DefaultConfigPath, eventChan)
-	})
+	// Create channel for config change events
+	configChangeEventChan := make(chan struct{}, 1)
 
-	// Watch for changes in the config file
-	wg.Go(func() error {
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-eventChan:
-				log.Info().Msg("Event chan event received")
+	// Start file watcher in a separate goroutine
+	go func() {
+		if err := watcher.WatchChanges(globalCtx, log.With().Str("component", "file watcher").Logger(), config.DefaultConfigPath, configChangeEventChan); err != nil {
+			log.Error().Err(err).Msg("File watcher failed")
+		}
+	}()
+
+	// Hot-reload main loop
+	for {
+		log.Info().Int("restart_count", satelliteRestartCount).Msg("Starting satellite instance")
+
+		// Create a new context for this satellite run
+		runCtx, runCancel := context.WithCancel(globalCtx)
+		wg, runCtx := errgroup.WithContext(runCtx)
+
+		runCtx, log := logger.InitLogger(runCtx, cm.GetLogLevel(), warnings)
+
+		// Run satellite - this will block until cancelled or error
+		if err := satellite.Run(runCtx, wg, runCancel, cm, log); err != nil {
+			log.Error().Err(err).Msg("Satellite ran into an error")
+		}
+
+		// Check if we should restart or exit
+		select {
+		case <-globalCtx.Done():
+			log.Info().Msg("Shutting down satellite")
+			runCancel()
+			return
+
+		case <-configChangeEventChan:
+			log.Info().Msg("Config change detected, restarting satellite...")
+			runCancel()
+			satelliteRestartCount++
+			continue
+
+		case <-runCtx.Done():
+			runCancel()
+			return
+
+		default:
+			if err != nil {
+				log.Error().Err(err).Msg("Satellite instance failed")
+				os.Exit(1)
 			}
 		}
-	})
-
-	err = satellite.Run(ctx, wg, cancel, cm, log)
-	if err != nil {
-		os.Exit(1)
 	}
 }
