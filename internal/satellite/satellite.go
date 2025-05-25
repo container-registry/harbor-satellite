@@ -27,7 +27,7 @@ func NewSatellite(cm *config.ConfigManager) *Satellite {
 
 func Run(ctx context.Context, wg *errgroup.Group, cancel context.CancelFunc, cm *config.ConfigManager, log *zerolog.Logger) error {
 	// Handle registry setup
-	if err := handleRegistrySetup(wg, log, cancel, cm); err != nil {
+	if err := handleRegistrySetup(ctx, wg, log, cancel, cm); err != nil {
 		log.Error().Err(err).Msg("Error setting up local registry")
 		return err
 	}
@@ -103,7 +103,7 @@ func parseEveryExpr(expr string) (time.Duration, error) {
 	return time.ParseDuration(strings.TrimPrefix(expr, prefix))
 }
 
-func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc, cm *config.ConfigManager) error {
+func handleRegistrySetup(ctx context.Context, g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc, cm *config.ConfigManager) error {
 	log.Debug().Msg("Setting up local registry")
 	if cm.GetOwnRegistry() {
 		log.Info().Msg("Configuring own registry")
@@ -117,7 +117,7 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 
 		zm := registry.NewZotManager(log, cm.GetRawZotConfig())
 
-		return zm.HandleRegistrySetup(g, cancel)
+		return zm.HandleRegistrySetup(ctx, g, cancel)
 	}
 	return nil
 }
