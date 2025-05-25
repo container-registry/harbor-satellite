@@ -10,44 +10,8 @@ import (
 )
 
 type ZotConfig struct {
-	DistSpecVersion string           `json:"distSpecVersion"`
-	Storage         ZotStorageConfig `json:"storage"`
-	HTTP            ZotHTTPConfig    `json:"http"`
-	Log             ZotLogConfig     `json:"log"`
-	RemoteURL       string           `json:"remoteURL"`
-}
-
-type RegistryConfig struct {
-	URLs         []string        `json:"urls"`
-	OnDemand     bool            `json:"onDemand"`
-	PollInterval string          `json:"pollInterval"`
-	TLSVerify    bool            `json:"tlsVerify"`
-	CertDir      string          `json:"certDir"`
-	MaxRetries   int             `json:"maxRetries"`
-	RetryDelay   string          `json:"retryDelay"`
-	OnlySigned   bool            `json:"onlySigned"`
-	Content      []ContentConfig `json:"content"`
-}
-
-type ContentConfig struct {
-	Prefix      string      `json:"prefix"`
-	Destination string      `json:"destination"`
-	StripPrefix bool        `json:"stripPrefix"`
-	Tags        *TagsConfig `json:"tags"`
-}
-
-type TagsConfig struct {
-	Regex  string `json:"regex"`
-	Semver bool   `json:"semver"`
-}
-
-type ScrubConfig struct {
-	Enable   bool   `json:"enable"`
-	Interval string `json:"interval"`
-}
-
-type ZotStorageConfig struct {
-	RootDirectory string `json:"rootDirectory"`
+	HTTP ZotHTTPConfig `json:"http"`
+	Log  ZotLogConfig  `json:"log"`
 }
 
 type ZotHTTPConfig struct {
@@ -92,8 +56,4 @@ func ReadZotConfig(filePath string, zotConfig *ZotConfig) error {
 		return fmt.Errorf("could not unmarshal JSON: %w", err)
 	}
 	return nil
-}
-
-func (c *ZotConfig) SetZotRemoteURL(url string) {
-	c.RemoteURL = url
 }

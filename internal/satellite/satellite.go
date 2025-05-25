@@ -2,60 +2,122 @@ package satellite
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/logger"
-	"github.com/container-registry/harbor-satellite/internal/notifier"
+	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/state"
+	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 )
 
 type Satellite struct {
-	schedulerKey scheduler.SchedulerKey
-	cm           *config.ConfigManager
+	cm *config.ConfigManager
 }
 
-func NewSatellite(schedulerKey scheduler.SchedulerKey, cm *config.ConfigManager) *Satellite {
+func NewSatellite(cm *config.ConfigManager) *Satellite {
 	return &Satellite{
-		schedulerKey: schedulerKey,
-		cm:           cm,
+		cm: cm,
 	}
 }
 
-func (s *Satellite) Run(ctx context.Context) error {
-	log := logger.FromContext(ctx)
-	log.Info().Msg("Starting Satellite")
-	// Get the scheduler from the context
-	scheduler := ctx.Value(s.schedulerKey).(scheduler.Scheduler)
+func Run(ctx context.Context, wg *errgroup.Group, cancel context.CancelFunc, cm *config.ConfigManager, log *zerolog.Logger) error {
+	// Handle registry setup
+	if err := handleRegistrySetup(ctx, wg, log, cancel, cm); err != nil {
+		log.Error().Err(err).Msg("Error setting up local registry")
+		return err
+	}
 
-	// Create a simple notifier and add it to the process
-	notifier := notifier.NewSimpleNotifier(ctx)
+	// Write the config to disk, in case any defaults were enforced at runtime
+	if err := cm.WriteConfig(); err != nil {
+		log.Error().Err(err).Msg("Error writing config to disk")
+		return err
+	}
 
-	// Creating a process to fetch and replicate the state
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, notifier)
-	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(s.cm.GetUpdateConfigInterval(), "", "")
-	ztrProcess := state.NewZtrProcess(s.cm)
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(cm)
+	ztrProcess := state.NewZtrProcess(cm)
 
-	if !s.cm.IsZTRDone() {
-		err := scheduler.Schedule(ztrProcess)
-		if err != nil {
-			log.Error().Err(err).Msg("Error scheduling process")
-			return err
+	if !cm.IsZTRDone() {
+		// schedule ztr
+		go ScheduleFunc(ctx, log, cm.GetRegistrationInterval(), ztrProcess)
+	}
+
+	// schedule state replication
+	go ScheduleFunc(ctx, log, cm.GetStateReplicationInterval(), fetchAndReplicateStateProcess)
+
+	return nil
+}
+
+// TODO: lets pass the ticker directly to the scheduler. We can reset the ticker which streamlines everything.
+func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, process scheduler.Process) {
+	duration, _ := parseEveryExpr(interval)
+	ticker := time.NewTicker(duration)
+	defer ticker.Stop()
+
+	log.Info().Str("Process", process.Name()).Msgf("Task will be performed at every %s", interval)
+
+	// Run once immediately
+	launchProcess(ctx, log, process)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info().Str("Process", process.Name()).Msg("Scheduler received cancellation signal. Exiting...")
+			return
+		case <-ticker.C:
+			if process.IsComplete() {
+				log.Info().Str("Process", process.Name()).Msg("Process marked as complete. Stopping scheduling.")
+				return
+			}
+			launchProcess(ctx, log, process)
 		}
 	}
+}
 
-	err := scheduler.Schedule(configFetchProcess)
-	if err != nil {
-		log.Error().Err(err).Msg("Error scheduling process")
-		return err
+func launchProcess(ctx context.Context, log *zerolog.Logger, process scheduler.Process) {
+	if !process.IsRunning() {
+		log.Info().Str("Process", process.Name()).Msg("Scheduler triggering task execution")
+		go func() {
+			if err := process.Execute(ctx); err != nil {
+				log.Warn().Str("Process", process.Name()).Err(err).Msg("Error occurred while executing process.")
+			}
+		}()
+	} else {
+		log.Debug().Str("Process", process.Name()).Msg("Process already executing")
+	}
+}
+
+func parseEveryExpr(expr string) (time.Duration, error) {
+	const prefix = "@every "
+	if expr == "" {
+		return 0, fmt.Errorf("empty expression provided")
 	}
 
-	// Add the process to the scheduler
-	err = scheduler.Schedule(fetchAndReplicateStateProcess)
-	if err != nil {
-		log.Error().Err(err).Msg("Error scheduling process")
-		return err
+	if !strings.HasPrefix(expr, prefix) {
+		return 0, fmt.Errorf("unsupported format: must start with %q", prefix)
 	}
+	return time.ParseDuration(strings.TrimPrefix(expr, prefix))
+}
 
+func handleRegistrySetup(ctx context.Context, g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc, cm *config.ConfigManager) error {
+	log.Debug().Msg("Setting up local registry")
+	if cm.GetOwnRegistry() {
+		log.Info().Msg("Configuring own registry")
+		if err := utils.HandleOwnRegistry(cm); err != nil {
+			log.Error().Err(err).Msg("Error handling own registry")
+			cancel()
+			return err
+		}
+	} else {
+		log.Info().Msg("Launching default registry")
+
+		zm := registry.NewZotManager(log, cm.GetRawZotConfig())
+
+		return zm.HandleRegistrySetup(ctx, g, cancel)
+	}
 	return nil
 }

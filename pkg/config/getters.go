@@ -94,16 +94,16 @@ func (cm *ConfigManager) GetRegistrationInterval() string {
 	return cm.config.AppConfig.RegisterSatelliteInterval
 }
 
-func (cm *ConfigManager) GetUpdateConfigInterval() string {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-	return cm.config.AppConfig.UpdateConfigInterval
-}
-
 func (cm *ConfigManager) GetStateReplicationInterval() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.config.AppConfig.StateReplicationInterval
+}
+
+func (cm *ConfigManager) GetStateConfig() StateConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.StateConfig
 }
 
 // You MUST use ResolveGroundControlURL to get the ground control URL.
@@ -128,4 +128,10 @@ func (cm *ConfigManager) GetRawZotConfig() json.RawMessage {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.config.ZotConfigRaw
+}
+
+func (cm *ConfigManager) GetConfig() *Config {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config
 }

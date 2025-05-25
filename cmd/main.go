@@ -2,88 +2,111 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
-	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
-	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 
 	_ "github.com/joho/godotenv/autoload"
-	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
 
 func main() {
-	err := run()
-	if err != nil {
+	// Global context for the entire application
+	globalCtx, globalCancel := utils.SetupContext(context.Background())
+	defer globalCancel()
+
+	var groundControlURL string
+	var token string
+
+	flag.StringVar(&groundControlURL, "ground-control-url", "", "URL to ground control")
+	flag.StringVar(&token, "token", "", "Satellite token")
+	flag.Parse()
+
+	if token == "" {
+		token = os.Getenv("TOKEN")
+	}
+	if groundControlURL == "" {
+		groundControlURL = os.Getenv("GROUND_CONTROL_URL")
+	}
+
+	if token == "" || groundControlURL == "" {
+		fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars.")
 		os.Exit(1)
 	}
-}
 
-func run() error {
-	ctx, cancel := utils.SetupContext(context.Background())
-	defer cancel()
-	wg, ctx := errgroup.WithContext(ctx)
+	satelliteRestartCount := 0
 
-	cm, warnings, err := config.InitConfigManager(config.DefaultConfigPath)
+	// Initialize config manager once
+	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath)
 	if err != nil {
-		fmt.Printf("Error initiating the config: %v", err)
-		return err
+		fmt.Printf("Error initiating the config manager: %v", err)
+		os.Exit(1)
 	}
 
-	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), warnings)
+	// Initialize logger with initial config
+	globalCtx, log := logger.InitLogger(globalCtx, cm.GetLogLevel(), warnings)
 
-	ctx, scheduler := scheduler.InitBasicScheduler(ctx, log)
+	// Create channel for config change events
+	configChangeEventChan := make(chan struct{}, 1)
 
-	go scheduler.ListenForProcessEvent()
-
-	// Handle registry setup
-	if err := handleRegistrySetup(wg, log, cancel, cm); err != nil {
-		log.Error().Err(err).Msg("Error setting up local registry")
-		return err
-	}
-
-	err = scheduler.Start()
-	if err != nil {
-		log.Error().Err(err).Msg("Error starting scheduler")
-		return err
-	}
-	defer scheduler.Stop()
-
-	satelliteService := satellite.NewSatellite(scheduler.GetSchedulerKey(), cm)
-
-	// Write the config to disk, in case any values were enforced at runtime
-	if err := cm.WriteConfig(); err != nil {
-		log.Error().Err(err).Msg("Error writing config to disk")
-		return err
-	}
-
-	wg.Go(func() error {
-		return satelliteService.Run(ctx)
-	})
-
-	return wg.Wait()
-}
-
-func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc, cm *config.ConfigManager) error {
-	log.Debug().Msg("Setting up local registry")
-	if cm.GetOwnRegistry() {
-		log.Info().Msg("Configuring own registry")
-		if err := utils.HandleOwnRegistry(cm); err != nil {
-			log.Error().Err(err).Msg("Error handling own registry")
-			cancel()
-			return err
+	// Start file watcher in a separate goroutine
+	go func() {
+		if err := watcher.WatchChanges(globalCtx, log.With().Str("component", "file watcher").Logger(), config.DefaultConfigPath, configChangeEventChan); err != nil {
+			log.Error().Err(err).Msg("File watcher failed")
 		}
-	} else {
-		log.Info().Msg("Launching default registry")
+	}()
 
-		zm := registry.NewZotManager(log, cm.GetRawZotConfig())
+	// Hot-reload main loop
+	for {
+		if globalCtx.Err() != nil {
+			log.Info().Msg("Global context cancelled. Exiting main loop.")
+			return
+		}
 
-		return zm.HandleRegistrySetup(g, cancel)
+		log.Info().Int("restart_count", satelliteRestartCount).Msg("Starting satellite instance")
+
+		// Create a new context for this satellite run
+		runCtx, runCancel := context.WithCancel(globalCtx)
+		wg, runCtx := errgroup.WithContext(runCtx)
+
+		runCtx, log := logger.InitLogger(runCtx, cm.GetLogLevel(), warnings)
+
+		wg.Go(func() error {
+			return satellite.Run(runCtx, wg, runCancel, cm, log)
+		})
+
+		// Check if we should restart or exit
+		select {
+		case <-globalCtx.Done():
+			log.Info().Msg("Shutting down satellite")
+			globalCancel()
+			_ = wg.Wait()
+			return
+
+		case <-configChangeEventChan:
+			log.Info().Msg("Config change detected, restarting satellite...")
+			runCancel()
+			satelliteRestartCount++
+			_ = wg.Wait()
+			continue
+
+		case <-runCtx.Done():
+			log.Info().Msg("Shutting down satellite")
+			globalCancel()
+			_ = wg.Wait()
+			return
+
+		default:
+			if err != nil {
+				log.Error().Err(err).Msg("Satellite instance failed")
+				os.Exit(1)
+			}
+		}
 	}
-	return nil
 }

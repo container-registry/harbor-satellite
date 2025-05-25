@@ -23,7 +23,7 @@ func NewZotManager(log *zerolog.Logger, zotConfig json.RawMessage) *ZotManager {
 	}
 }
 
-func (zm *ZotManager) HandleRegistrySetup(g *errgroup.Group, cancel context.CancelFunc) error {
+func (zm *ZotManager) HandleRegistrySetup(ctx context.Context, g *errgroup.Group, cancel context.CancelFunc) error {
 	tmpConfigPath, err := zm.WriteTempZotConfig()
 	if err != nil {
 		zm.log.Error().Err(err).Msg("Error writing temp zot config to disk")
@@ -40,13 +40,13 @@ func (zm *ZotManager) HandleRegistrySetup(g *errgroup.Group, cancel context.Canc
 			}
 		}()
 
-		if err := zm.VerifyRegistryConfig(tmpConfigPath); err != nil {
+		if err := zm.VerifyRegistryConfig(ctx, tmpConfigPath); err != nil {
 			zm.log.Error().Err(err).Msg("Error launching default zot registry")
 			cancel()
 			return fmt.Errorf("error launching default zot registry: %w", err)
 		}
 
-		if err := zm.LaunchZotRegistry(tmpConfigPath); err != nil {
+		if err := zm.LaunchZotRegistry(ctx, tmpConfigPath); err != nil {
 			zm.log.Error().Err(err).Msg("Error launching default zot registry")
 			cancel()
 			return fmt.Errorf("error launching default zot registry: %w", err)
@@ -97,13 +97,13 @@ func (zm *ZotManager) RemoveTempZotConfig(tmpPath string) error {
 }
 
 // LaunchZotRegistry launches the zot registry using the given config path.
-func (zm *ZotManager) LaunchZotRegistry(zotConfigPath string) error {
+func (zm *ZotManager) LaunchZotRegistry(ctx context.Context, zotConfigPath string) error {
 	zm.log.Info().Str("configPath", zotConfigPath).Msg("Launching zot registry")
 
 	rootCmd := server.NewServerRootCmd()
 	rootCmd.SetArgs([]string{"serve", zotConfigPath})
 
-	if err := rootCmd.Execute(); err != nil {
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		zm.log.Error().Err(err).Str("configPath", zotConfigPath).Msg("Failed to launch zot registry")
 		return fmt.Errorf("failed to launch zot registry with config present at %s: %w", zotConfigPath, err)
 	}
@@ -113,13 +113,13 @@ func (zm *ZotManager) LaunchZotRegistry(zotConfigPath string) error {
 }
 
 // ValidateRegistryConfig validates the zot registry configuration file.
-func (zm *ZotManager) VerifyRegistryConfig(zotConfigPath string) error {
+func (zm *ZotManager) VerifyRegistryConfig(ctx context.Context, zotConfigPath string) error {
 	zm.log.Info().Str("configPath", zotConfigPath).Msg("Validating zot config")
 
 	rootCmd := server.NewServerRootCmd()
 	rootCmd.SetArgs([]string{"verify", zotConfigPath})
 
-	if err := rootCmd.Execute(); err != nil {
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		zm.log.Error().Err(err).Str("configPath", zotConfigPath).Msg("Failed to validate zot config")
 		return fmt.Errorf("failed to validate zot config at %s: %w", zotConfigPath, err)
 	}
