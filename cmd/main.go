@@ -7,18 +7,19 @@ import (
 	"os"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
-	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 
 	_ "github.com/joho/godotenv/autoload"
-	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
 
 func main() {
+	ctx, cancel := utils.SetupContext(context.Background())
+	defer cancel()
+	wg, ctx := errgroup.WithContext(ctx)
 	var groundControlURL string
 	var token string
 
@@ -38,37 +39,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	err := run(token, groundControlURL)
-	if err != nil {
-		os.Exit(1)
-	}
-}
-
-func run(token, groundControlURL string) error {
-	ctx, cancel := utils.SetupContext(context.Background())
-	defer cancel()
-	wg, ctx := errgroup.WithContext(ctx)
-
 	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath)
+	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), warnings)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
-		return err
-	}
-
-	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), warnings)
-
-	// Handle registry setup
-	if err := handleRegistrySetup(wg, log, cancel, cm); err != nil {
-		log.Error().Err(err).Msg("Error setting up local registry")
-		return err
-	}
-
-	satelliteService := satellite.NewSatellite(cm)
-
-	// Write the config to disk, in case any defaults were enforced at runtime
-	if err := cm.WriteConfig(); err != nil {
-		log.Error().Err(err).Msg("Error writing config to disk")
-		return err
+		os.Exit(1)
 	}
 
 	eventChan := make(chan struct{})
@@ -90,28 +65,8 @@ func run(token, groundControlURL string) error {
 		}
 	})
 
-	wg.Go(func() error {
-		return satelliteService.Run(ctx)
-	})
-
-	return wg.Wait()
-}
-
-func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc, cm *config.ConfigManager) error {
-	log.Debug().Msg("Setting up local registry")
-	if cm.GetOwnRegistry() {
-		log.Info().Msg("Configuring own registry")
-		if err := utils.HandleOwnRegistry(cm); err != nil {
-			log.Error().Err(err).Msg("Error handling own registry")
-			cancel()
-			return err
-		}
-	} else {
-		log.Info().Msg("Launching default registry")
-
-		zm := registry.NewZotManager(log, cm.GetRawZotConfig())
-
-		return zm.HandleRegistrySetup(g, cancel)
+	err = satellite.Run(ctx, wg, cancel, cm, log)
+	if err != nil {
+		os.Exit(1)
 	}
-	return nil
 }
