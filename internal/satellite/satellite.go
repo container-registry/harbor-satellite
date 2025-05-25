@@ -6,11 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/state"
+	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 )
 
 type Satellite struct {
@@ -23,22 +25,31 @@ func NewSatellite(cm *config.ConfigManager) *Satellite {
 	}
 }
 
-func (s *Satellite) Run(ctx context.Context) error {
-	log := logger.FromContext(ctx)
-	log.Info().Msg("Starting Satellite")
+func Run(ctx context.Context, wg *errgroup.Group, cancel context.CancelFunc, cm *config.ConfigManager, log *zerolog.Logger) error {
+	// Handle registry setup
+	if err := handleRegistrySetup(wg, log, cancel, cm); err != nil {
+		log.Error().Err(err).Msg("Error setting up local registry")
+		return err
+	}
 
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm)
-	ztrProcess := state.NewZtrProcess(s.cm)
+	// Write the config to disk, in case any defaults were enforced at runtime
+	if err := cm.WriteConfig(); err != nil {
+		log.Error().Err(err).Msg("Error writing config to disk")
+		return err
+	}
 
-	if !s.cm.IsZTRDone() {
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(cm)
+	ztrProcess := state.NewZtrProcess(cm)
+
+	if !cm.IsZTRDone() {
 		// schedule ztr
-		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess)
+		go ScheduleFunc(ctx, log, cm.GetRegistrationInterval(), ztrProcess)
 	}
 
 	// schedule state replication
-	go ScheduleFunc(ctx, log, s.cm.GetStateReplicationInterval(), fetchAndReplicateStateProcess)
+	go ScheduleFunc(ctx, log, cm.GetStateReplicationInterval(), fetchAndReplicateStateProcess)
 
-	return ctx.Err()
+	return wg.Wait()
 }
 
 // TODO: lets pass the ticker directly to the scheduler. We can reset the ticker which streamlines everything.
@@ -90,4 +101,23 @@ func parseEveryExpr(expr string) (time.Duration, error) {
 		return 0, fmt.Errorf("unsupported format: must start with %q", prefix)
 	}
 	return time.ParseDuration(strings.TrimPrefix(expr, prefix))
+}
+
+func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc, cm *config.ConfigManager) error {
+	log.Debug().Msg("Setting up local registry")
+	if cm.GetOwnRegistry() {
+		log.Info().Msg("Configuring own registry")
+		if err := utils.HandleOwnRegistry(cm); err != nil {
+			log.Error().Err(err).Msg("Error handling own registry")
+			cancel()
+			return err
+		}
+	} else {
+		log.Info().Msg("Launching default registry")
+
+		zm := registry.NewZotManager(log, cm.GetRawZotConfig())
+
+		return zm.HandleRegistrySetup(g, cancel)
+	}
+	return nil
 }
