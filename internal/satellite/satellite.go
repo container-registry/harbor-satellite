@@ -49,7 +49,7 @@ func Run(ctx context.Context, wg *errgroup.Group, cancel context.CancelFunc, cm 
 	// schedule state replication
 	go ScheduleFunc(ctx, log, cm.GetStateReplicationInterval(), fetchAndReplicateStateProcess)
 
-	return wg.Wait()
+	return nil
 }
 
 // TODO: lets pass the ticker directly to the scheduler. We can reset the ticker which streamlines everything.

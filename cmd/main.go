@@ -64,6 +64,11 @@ func main() {
 
 	// Hot-reload main loop
 	for {
+		if globalCtx.Err() != nil {
+			log.Info().Msg("Global context cancelled. Exiting main loop.")
+			return
+		}
+
 		log.Info().Int("restart_count", satelliteRestartCount).Msg("Starting satellite instance")
 
 		// Create a new context for this satellite run
@@ -72,26 +77,29 @@ func main() {
 
 		runCtx, log := logger.InitLogger(runCtx, cm.GetLogLevel(), warnings)
 
-		// Run satellite - this will block until cancelled or error
-		if err := satellite.Run(runCtx, wg, runCancel, cm, log); err != nil {
-			log.Error().Err(err).Msg("Satellite ran into an error")
-		}
+		wg.Go(func() error {
+			return satellite.Run(runCtx, wg, runCancel, cm, log)
+		})
 
 		// Check if we should restart or exit
 		select {
 		case <-globalCtx.Done():
 			log.Info().Msg("Shutting down satellite")
-			runCancel()
+			globalCancel()
+			_ = wg.Wait()
 			return
 
 		case <-configChangeEventChan:
 			log.Info().Msg("Config change detected, restarting satellite...")
 			runCancel()
 			satelliteRestartCount++
+			_ = wg.Wait()
 			continue
 
 		case <-runCtx.Done():
-			runCancel()
+			log.Info().Msg("Shutting down satellite")
+			globalCancel()
+			_ = wg.Wait()
 			return
 
 		default:
