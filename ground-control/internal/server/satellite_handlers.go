@@ -414,7 +414,7 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(fmt.Sprintf("satellite-state/%s/state", sat.Name)))
+	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(sat.Name, "satellite"))
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
