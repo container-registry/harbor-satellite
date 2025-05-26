@@ -89,18 +89,18 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	// Ensure proper transaction handling with defer
 	defer func() {
 		if !committed {
+			// Cleanup robot account if transaction failed
+			if robotID != 0 {
+				if _, delErr := harbor.DeleteRobotAccount(r.Context(), robotID); delErr != nil {
+					log.Printf("Warning: Failed to cleanup robot account: %v", delErr)
+				}
+			}
 			if err := tx.Rollback(); err != nil {
 				log.Printf("Error: Failed to rollback transaction: %v", err)
 				HandleAppError(w, &AppError{
 					Message: "Error: Failed to rollback transaction",
 					Code:    http.StatusInternalServerError,
 				})
-			}
-		}
-		// Cleanup robot account if transaction failed
-		if !committed && robotID != 0 {
-			if _, delErr := harbor.DeleteRobotAccount(r.Context(), robotID); delErr != nil {
-				log.Printf("Warning: Failed to cleanup robot account after transaction failure: %v", delErr)
 			}
 		}
 	}()
