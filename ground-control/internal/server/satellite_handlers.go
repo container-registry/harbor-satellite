@@ -84,6 +84,8 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	// Create a new Queries object bound to the transaction
 	q := s.dbQueries.WithTx(tx)
 	committed := false
+	transactionSuccess := false
+	var robotID int64
 
 	// Ensure proper transaction handling with defer
 	defer func() {
@@ -94,6 +96,12 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 					Message: "Error: Failed to rollback transaction",
 					Code:    http.StatusInternalServerError,
 				})
+			}
+		}
+		// Cleanup robot account if transaction failed
+		if !transactionSuccess && robotID != 0 {
+			if _, delErr := harbor.DeleteRobotAccount(r.Context(), robotID); delErr != nil {
+				log.Printf("Warning: Failed to cleanup robot account after transaction failure: %v", delErr)
 			}
 		}
 	}()
@@ -135,6 +143,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		HandleAppError(w, err)
 		return
 	}
+	robotID = rbt.ID
 
 	if err := storeRobotAccountInDB(r.Context(), q, rbt, satellite.ID); err != nil {
 		log.Println("Error storing robot account in DB:", err)
@@ -202,6 +211,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	committed = true
+	transactionSuccess = true
 
 	WriteJSONResponse(w, http.StatusOK, tk)
 }
