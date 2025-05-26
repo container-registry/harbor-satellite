@@ -14,18 +14,20 @@ type ConfigManager struct {
 	config                  *Config
 	Token                   string
 	DefaultGroundControlURL string
+	JsonLog                 bool
 	configPath              string
 	prevConfigPath          string
 	mu                      sync.RWMutex
 }
 
-func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, config *Config) (*ConfigManager, error) {
+func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config) (*ConfigManager, error) {
 	return &ConfigManager{
 		config:                  config,
 		configPath:              configPath,
 		prevConfigPath:          prevConfigPath,
 		Token:                   token,
 		DefaultGroundControlURL: defaultGroundControlURL,
+		JsonLog:                 jsonLog,
 	}, nil
 }
 
@@ -56,35 +58,8 @@ func (cm *ConfigManager) WriteConfig() error {
 	return nil
 }
 
-// Writes the given config to disk at the configPath
-func (cm *ConfigManager) WriteConfigToDisk(config *Config) error {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(cm.configPath, data, 0644)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Writes the given config to disk at the prevConfigPath
-func (cm *ConfigManager) WritePrevConfigToDisk(config *Config) error {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(cm.prevConfigPath, data, 0644)
+func InitConfigManager(path string, jsonLog bool) (*ConfigManager, []string, error) {
+	cfg, err := readAndReturnConfig(path)
 	if err != nil {
 		return err
 	}

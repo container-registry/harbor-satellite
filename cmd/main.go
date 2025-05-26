@@ -19,6 +19,10 @@ import (
 )
 
 func main() {
+	var jsonLogging bool
+	flag.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
+	flag.Parse()
+
 	var groundControlURL string
 	var token string
 
@@ -38,18 +42,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	err := run(token, groundControlURL)
+	err := run(jsonLogging, token, groundControlURL)
 	if err != nil {
 		os.Exit(1)
 	}
 }
 
-func run(token, groundControlURL string) error {
+func run(jsonLogging bool, token, groundControlURL string) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath)
+	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		return err

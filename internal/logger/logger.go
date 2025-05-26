@@ -14,57 +14,64 @@ type contextKey string
 
 const LoggerKey contextKey = "logger"
 
-func InitLogger(ctx context.Context, logLevel string, warnings []string) (context.Context, *zerolog.Logger) {
-	log := NewLogger(logLevel)
+func InitLogger(ctx context.Context, logLevel string, isJson bool, warnings []string) (context.Context, *zerolog.Logger) {
+	log := NewLogger(logLevel, isJson)
 	utils.HandleWarnings(log, warnings)
 	ctx = context.WithValue(ctx, LoggerKey, log)
 	return ctx, log
 }
 
 // AddLoggerToContext creates a new context with a zerolog logger for stdout and stderr and sets the global log level.
-func NewLogger(logLevel string) *zerolog.Logger {
+func NewLogger(logLevel string, isJson bool) *zerolog.Logger {
 	// Set log level to configured value
 	level := getLogLevel(logLevel)
 	zerolog.SetGlobalLevel(level)
 
-	// Create a custom console writer
-	output := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"}
+	var logger zerolog.Logger
 
-	// Customize the output for each log level
-	output.FormatLevel = func(i interface{}) string {
-		var l string
-		if ll, ok := i.(string); ok {
-			switch ll {
-			case "debug":
-				l = colorize(ll, 36) // cyan
-			case "info":
-				l = colorize(ll, 34) // blue
-			case "warn":
-				l = colorize(ll, 33) // yellow
-			case "error":
-				l = colorize(ll, 31) // red
-			case "fatal":
-				l = colorize(ll, 35) // magenta
-			case "panic":
-				l = colorize(ll, 41) // white on red background
-			default:
-				l = colorize(ll, 37) // white
-			}
-		} else {
-			if i == nil {
-				l = colorize("???", 37) // white
-			} else {
-				lStr := strings.ToUpper(fmt.Sprintf("%s", i))
-				if len(lStr) > 3 {
-					lStr = lStr[:3]
+	if isJson {
+		// JSON logging
+		logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
+	} else {
+		// Create a custom console writer
+		output := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"}
+
+		// Customize the output for each log level
+		output.FormatLevel = func(i interface{}) string {
+			var l string
+			if ll, ok := i.(string); ok {
+				switch ll {
+				case "debug":
+					l = colorize(ll, 36) // cyan
+				case "info":
+					l = colorize(ll, 34) // blue
+				case "warn":
+					l = colorize(ll, 33) // yellow
+				case "error":
+					l = colorize(ll, 31) // red
+				case "fatal":
+					l = colorize(ll, 35) // magenta
+				case "panic":
+					l = colorize(ll, 41) // white on red background
+				default:
+					l = colorize(ll, 37) // white
 				}
-				l = lStr
+			} else {
+				if i == nil {
+					l = colorize("???", 37) // white
+				} else {
+					lStr := strings.ToUpper(fmt.Sprintf("%s", i))
+					if len(lStr) > 3 {
+						lStr = lStr[:3]
+					}
+					l = lStr
+				}
 			}
+			return fmt.Sprintf("| %s |", l)
 		}
-		return fmt.Sprintf("| %s |", l)
-	}
 
-	logger := zerolog.New(output).With().Timestamp().Logger()
+		logger = zerolog.New(output).With().Timestamp().Logger()
+	}
 
 	return &logger
 }
