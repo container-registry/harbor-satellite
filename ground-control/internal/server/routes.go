@@ -16,6 +16,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/groups/sync", s.groupsSyncHandler).Methods("POST")
 	r.HandleFunc("/groups/list", s.listGroupHandler).Methods("GET")
 	r.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET")
+	r.HandleFunc("/groups/{group}", s.deleteGroupHandler).Methods("DELETE")
 	r.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")
 	r.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")
 

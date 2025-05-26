@@ -268,8 +268,9 @@ func DeleteArtifact(deleteURL string) error {
 	return nil
 }
 
-func ConstructHarborDeleteURL(repo string) string {
-	doubleEncodedRepoName := url.QueryEscape(url.QueryEscape(repo))
+func ConstructHarborDeleteURL(repo string, repoType string) string {
+	repositoryName := fmt.Sprintf("%s-state/%s/state", repoType, repo)
+	doubleEncodedRepoName := url.QueryEscape(url.QueryEscape(repositoryName))
 	return fmt.Sprintf("%s/api/v2.0/projects/satellite/repositories/%s", registry, doubleEncodedRepoName)
 }
 
