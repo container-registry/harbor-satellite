@@ -33,7 +33,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	// Creating a process to fetch and replicate the state
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, notifier)
-	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(s.cm.GetUpdateConfigInterval(), "", "")
+	configFetchProcess := state.NewFetchConfigFromGroundControlProcess(s.cm.GetUpdateConfigInterval(), s.cm.GetToken(), s.cm.ResolveGroundControlURL())
 	ztrProcess := state.NewZtrProcess(s.cm)
 
 	if !s.cm.IsZTRDone() {
