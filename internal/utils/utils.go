@@ -134,6 +134,11 @@ func WriteFile(path string, data []byte) error {
 	return nil
 }
 
+func HandleNewConfigWarnings(log *zerolog.Logger, warnings []string) {
+	log.Info().Msg("The newly fetched remote config has the following warnings")
+	HandleWarnings(log, warnings)
+}
+
 func HandleWarnings(log *zerolog.Logger, warnings []string) {
 	for i := range warnings {
 		log.Warn().Msg(string(warnings[i]))

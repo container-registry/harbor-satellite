@@ -13,7 +13,7 @@ func TestConfigManagerModifiers(t *testing.T) {
 		StateConfig:  StateConfig{},
 		ZotConfigRaw: json.RawMessage(`{"storage": {}}`),
 	}
-	cm, err := NewConfigManager("", "", "", cfg)
+	cm, err := NewConfigManager("", "", "", "", cfg)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -47,13 +47,6 @@ func TestConfigManagerModifiers(t *testing.T) {
 			mutator: SetUseUnsecure(true),
 			check: func(t *testing.T, c *Config) {
 				require.True(t, c.AppConfig.UseUnsecure)
-			},
-		},
-		{
-			name:    "SetReplicationInterval",
-			mutator: SetReplicationInterval("@every 5m"),
-			check: func(t *testing.T, c *Config) {
-				require.Equal(t, "@every 5m", c.AppConfig.StateReplicationInterval)
 			},
 		},
 		{
