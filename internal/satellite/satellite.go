@@ -2,24 +2,22 @@ package satellite
 
 import (
 	"context"
-	"fmt"
-	"strings"
-	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/pkg/config"
-	"github.com/rs/zerolog"
 )
 
 type Satellite struct {
-	cm *config.ConfigManager
+	cm         *config.ConfigManager
+	schedulers []*scheduler.Scheduler
 }
 
 func NewSatellite(cm *config.ConfigManager) *Satellite {
 	return &Satellite{
-		cm: cm,
+		cm:         cm,
+		schedulers: make([]*scheduler.Scheduler, 0),
 	}
 }
 
@@ -30,64 +28,50 @@ func (s *Satellite) Run(ctx context.Context) error {
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm)
 	ztrProcess := state.NewZtrProcess(s.cm)
 
+	// Create schedulers instead of using ScheduleFunc
 	if !s.cm.IsZTRDone() {
-		// schedule ztr
-		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess)
+		ztrScheduler, err := scheduler.NewSchedulerWithInterval(
+			s.cm.GetRegistrationInterval(),
+			ztrProcess,
+			log,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to create ZTR scheduler")
+			return err
+		}
+		s.schedulers = append(s.schedulers, ztrScheduler)
+		go ztrScheduler.Run(ctx)
 	}
 
-	// schedule state replication
-	go ScheduleFunc(ctx, log, s.cm.GetStateReplicationInterval(), fetchAndReplicateStateProcess)
+	// Create state replication scheduler
+	stateScheduler, err := scheduler.NewSchedulerWithInterval(
+		s.cm.GetStateReplicationInterval(),
+		fetchAndReplicateStateProcess,
+		log,
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create state replication scheduler")
+		return err
+	}
+	s.schedulers = append(s.schedulers, stateScheduler)
+	go stateScheduler.Run(ctx)
 
 	return ctx.Err()
 }
 
-// TODO: lets pass the ticker directly to the scheduler. We can reset the ticker which streamlines everything.
-func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, process scheduler.Process) {
-	duration, _ := parseEveryExpr(interval)
-	ticker := time.NewTicker(duration)
-	defer ticker.Stop()
-
-	log.Info().Str("Process", process.Name()).Msgf("Task will be performed at every %s", interval)
-
-	// Run once immediately
-	launchProcess(ctx, log, process)
-
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info().Str("Process", process.Name()).Msg("Scheduler received cancellation signal. Exiting...")
-			return
-		case <-ticker.C:
-			if process.IsComplete() {
-				log.Info().Str("Process", process.Name()).Msg("Process marked as complete. Stopping scheduling.")
-				return
-			}
-			launchProcess(ctx, log, process)
+// UpdateSchedulerInterval allows dynamic interval updates
+func (s *Satellite) UpdateSchedulerInterval(processName, newInterval string) error {
+	for _, scheduler := range s.schedulers {
+		if scheduler.Name() == processName {
+			return scheduler.ResetIntervalFromExpr(newInterval)
 		}
 	}
+	return nil
 }
 
-func launchProcess(ctx context.Context, log *zerolog.Logger, process scheduler.Process) {
-	if !process.IsRunning() {
-		log.Info().Str("Process", process.Name()).Msg("Scheduler triggering task execution")
-		go func() {
-			if err := process.Execute(ctx); err != nil {
-				log.Warn().Str("Process", process.Name()).Err(err).Msg("Error occurred while executing process.")
-			}
-		}()
-	} else {
-		log.Debug().Str("Process", process.Name()).Msg("Process already executing")
+// Stop gracefully stops all schedulers
+func (s *Satellite) Stop() {
+	for _, scheduler := range s.schedulers {
+		scheduler.Stop()
 	}
-}
-
-func parseEveryExpr(expr string) (time.Duration, error) {
-	const prefix = "@every "
-	if expr == "" {
-		return 0, fmt.Errorf("empty expression provided")
-	}
-
-	if !strings.HasPrefix(expr, prefix) {
-		return 0, fmt.Errorf("unsupported format: must start with %q", prefix)
-	}
-	return time.ParseDuration(strings.TrimPrefix(expr, prefix))
 }
