@@ -291,10 +291,10 @@ func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, sate
 	return configObject, nil
 }
 
-func checkTokenConsumption(isZtrConsumed bool, mu *sync.Mutex) bool{
+func checkTokenConsumption(isZtrConsumed *bool, mu *sync.Mutex) bool{
 	mu.Lock()
 	defer mu.Unlock()
-	return isZtrConsumed
+	return *isZtrConsumed
 }
 
 func updateTokenConsumption(isZtrConsumed *bool, mu *sync.Mutex) {

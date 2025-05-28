@@ -28,7 +28,7 @@ type RegisterSatelliteParams struct {
 
 var (
 	isTokenConsumed bool
-	mu              *sync.Mutex
+	mu              = &sync.Mutex{}
 )
 
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {

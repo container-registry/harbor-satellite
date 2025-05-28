@@ -140,7 +140,6 @@ func registerSatellite(groundControlURL, path, token string, ctx context.Context
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return config.StateConfig{}, fmt.Errorf("failed to register satellite: %s", response.Status)
 	}
