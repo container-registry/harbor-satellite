@@ -128,6 +128,7 @@ func (z *ZtrProcess) stop() {
 
 func registerSatellite(groundControlURL, path, token string, ctx context.Context) (config.StateConfig, error) {
 	ztrURL := fmt.Sprintf("%s/%s/%s", groundControlURL, path, token)
+	tokenStatusURL := fmt.Sprintf("%s/satellites/ztr/status", groundControlURL)
 	client := &http.Client{}
 
 	// Create a new request for the Zero Touch Registration of satellite
@@ -139,6 +140,7 @@ func registerSatellite(groundControlURL, path, token string, ctx context.Context
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("failed to send request: %w", err)
 	}
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return config.StateConfig{}, fmt.Errorf("failed to register satellite: %s", response.Status)
 	}
@@ -146,6 +148,15 @@ func registerSatellite(groundControlURL, path, token string, ctx context.Context
 	var authResponse config.StateConfig
 	if err := json.NewDecoder(response.Body).Decode(&authResponse); err != nil {
 		return config.StateConfig{}, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	tokenUpdateRequest, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenStatusURL, nil)
+	if err != nil {
+		return config.StateConfig{}, fmt.Errorf("failed to create token update request: %w", err)
+	}
+	_, err = client.Do(tokenUpdateRequest)
+	if err != nil {
+		return config.StateConfig{}, fmt.Errorf("failed to update token status: %w", err)
 	}
 
 	return authResponse, nil

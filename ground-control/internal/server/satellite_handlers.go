@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
@@ -24,6 +25,11 @@ type RegisterSatelliteParams struct {
 	Groups     *[]string `json:"groups,omitempty"`
 	ConfigName string    `json:"config_name"`
 }
+
+var (
+	isTokenConsumed bool
+	mu              *sync.Mutex
+)
 
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	var req RegisterSatelliteParams
@@ -218,7 +224,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 			token[:4],
 			token[len(token)-4:],
 		)
-        log.Printf("Invalid Satellite Token %s: %v", masked, err)
+		log.Printf("Invalid Satellite Token %s: %v", masked, err)
 		err := &AppError{
 			Message: "Error: Invalid Token",
 			Code:    http.StatusBadRequest,
@@ -786,4 +792,16 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) checkOrUpdateZtrConsumption(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		checkTokenConsumption(isTokenConsumed, mu)
+		WriteJSONResponse(w, http.StatusOK, map[string]bool{"is_token_consumed": isTokenConsumed})
+	case http.MethodPost:
+		updateTokenConsumption(&isTokenConsumed, mu)
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
@@ -288,4 +289,16 @@ func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, sate
 		}
 	}
 	return configObject, nil
+}
+
+func checkTokenConsumption(isZtrConsumed bool, mu *sync.Mutex) bool{
+	mu.Lock()
+	defer mu.Unlock()
+	return isZtrConsumed
+}
+
+func updateTokenConsumption(isZtrConsumed *bool, mu *sync.Mutex) {
+	mu.Lock()
+	defer mu.Unlock()
+	*isZtrConsumed = true
 }

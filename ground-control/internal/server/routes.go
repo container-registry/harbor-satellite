@@ -32,6 +32,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/satellites/ztr/{token}", s.ztrHandler).Methods("GET")
 	r.HandleFunc("/satellites/list", s.listSatelliteHandler).Methods("GET")
 	r.HandleFunc("/satellites/{satellite}", s.GetSatelliteByName).Methods("GET")
+	r.HandleFunc("/satellites/ztr/status", s.checkOrUpdateZtrConsumption).Methods("GET")
+	r.HandleFunc("/satellites/ztr/status", s.checkOrUpdateZtrConsumption).Methods("POST")
 	r.HandleFunc("/satellites/{satellite}", s.DeleteSatelliteByName).Methods("DELETE")
 	// r.HandleFunc("/satellites/{satellite}/images", s.GetImagesForSatellite).Methods("GET")
 
