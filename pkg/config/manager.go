@@ -58,8 +58,17 @@ func (cm *ConfigManager) WriteConfig() error {
 	return nil
 }
 
-func InitConfigManager(path string, jsonLog bool) (*ConfigManager, []string, error) {
-	cfg, err := readAndReturnConfig(path)
+// Writes the given config to disk at the configPath
+func (cm *ConfigManager) WriteConfigToDisk(config *Config) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(cm.configPath, data, 0644)
 	if err != nil {
 		return err
 	}
@@ -67,7 +76,25 @@ func InitConfigManager(path string, jsonLog bool) (*ConfigManager, []string, err
 	return nil
 }
 
-func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string) (*ConfigManager, []string, error) {
+// Writes the given config to disk at the prevConfigPath
+func (cm *ConfigManager) WritePrevConfigToDisk(config *Config) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(cm.prevConfigPath, data, 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging bool) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
 
@@ -87,7 +114,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 		return nil, warnings, fmt.Errorf("invalid config: %w", err)
 	}
 
-	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, cfg)
+	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, jsonLogging, cfg)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to create config manager: %w", err)
 	}

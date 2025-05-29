@@ -59,7 +59,7 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 		return err
 	}
 
-	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), warnings)
+	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), jsonLogging,  warnings)
 
 	// Handle registry setup
 	if err := handleRegistrySetup(wg, log, cancel, cm); err != nil {
