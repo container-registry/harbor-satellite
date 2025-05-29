@@ -59,10 +59,10 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 		return err
 	}
 
-	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), jsonLogging,  warnings)
+	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), jsonLogging, warnings)
 
 	// Handle registry setup
-	if err := handleRegistrySetup(wg, log, cancel, cm); err != nil {
+	if err := handleRegistrySetup(wg, ctx, log, cm); err != nil {
 		log.Error().Err(err).Msg("Error setting up local registry")
 		return err
 	}
@@ -101,13 +101,12 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 	return wg.Wait()
 }
 
-func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.CancelFunc, cm *config.ConfigManager) error {
+func handleRegistrySetup(g *errgroup.Group, ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager) error {
 	log.Debug().Msg("Setting up local registry")
 	if cm.GetOwnRegistry() {
 		log.Info().Msg("Configuring own registry")
 		if err := utils.HandleOwnRegistry(cm); err != nil {
 			log.Error().Err(err).Msg("Error handling own registry")
-			cancel()
 			return err
 		}
 	} else {
@@ -115,7 +114,7 @@ func handleRegistrySetup(g *errgroup.Group, log *zerolog.Logger, cancel context.
 
 		zm := registry.NewZotManager(log, cm.GetRawZotConfig())
 
-		return zm.HandleRegistrySetup(g, cancel)
+		return zm.HandleRegistrySetup(g, ctx)
 	}
 	return nil
 }
