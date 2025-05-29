@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/rs/zerolog"
+	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 	"zotregistry.dev/zot/pkg/cli/server"
 )
@@ -49,7 +50,7 @@ func (zm *ZotManager) HandleRegistrySetup(g *errgroup.Group, ctx context.Context
 			return fmt.Errorf("error launching default zot registry: %w", err)
 		}
 
-		zm.LaunchZotRegistry(tmpConfigPath, shutDownChan, errChan)
+		zm.LaunchZotRegistry(ctx, tmpConfigPath, shutDownChan, errChan)
 
 		select {
 		case <-ctx.Done():
@@ -111,7 +112,7 @@ func (zm *ZotManager) RemoveTempZotConfig(tmpPath string) error {
 }
 
 // LaunchZotRegistry launches the zot registry by running `zot serve {zotConfigPath}` in a go routine.
-func (zm *ZotManager) LaunchZotRegistry(zotConfigPath string, shutdownChan chan struct{}, errChan chan error) {
+func (zm *ZotManager) LaunchZotRegistry(ctx context.Context, zotConfigPath string, shutdownChan chan struct{}, errChan chan error) {
 	zm.log.Info().Str("configPath", zotConfigPath).Msg("Launching zot registry")
 
 	rootCmd := server.NewServerRootCmd()
