@@ -25,7 +25,6 @@ func NewSatellite(cm *config.ConfigManager) *Satellite {
 	}
 }
 
-
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
@@ -49,15 +48,15 @@ func (s *Satellite) Run(ctx context.Context) error {
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("failed to register satellite: %s", response.Status)
 	}
-	
+
 	var respBody struct {
 		TokenConsumed bool `json:"token_consumed"`
 	}
-	
+
 	if err := json.NewDecoder(response.Body).Decode(&respBody); err != nil {
 		return fmt.Errorf("failed to decode response: %w", err)
 	}
-	
+
 	if !respBody.TokenConsumed {
 		// schedule ztr
 		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess)

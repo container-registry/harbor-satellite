@@ -10,7 +10,6 @@ import (
 	"strconv"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
-
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
 	"github.com/container-registry/harbor-satellite/pkg/config"
