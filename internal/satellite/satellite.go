@@ -2,7 +2,9 @@ package satellite
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -23,14 +25,40 @@ func NewSatellite(cm *config.ConfigManager) *Satellite {
 	}
 }
 
+
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm)
 	ztrProcess := state.NewZtrProcess(s.cm)
+	path := "satellites/status"
 
-	if !s.cm.IsZTRDone() {
+	tokenStatusURL := fmt.Sprintf("%s/%s/%s", s.cm.ResolveGroundControlURL(), path, s.cm.Token)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenStatusURL, nil)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create request for token status")
+		return err
+	}
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to check token status")
+		return err
+	}
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to register satellite: %s", response.Status)
+	}
+	
+	var respBody struct {
+		TokenConsumed bool `json:"token_consumed"`
+	}
+	
+	if err := json.NewDecoder(response.Body).Decode(&respBody); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+	
+	if !respBody.TokenConsumed {
 		// schedule ztr
 		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess)
 	}

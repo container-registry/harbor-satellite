@@ -1,6 +1,8 @@
 package server
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -307,6 +310,35 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) ztrStatusHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	token := vars["token"]
+	isTokenConsumed := false
+
+	q := s.dbQueries
+	_, err := q.GetSatelliteIDByToken(r.Context(), token)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// If the token is not found, it means it has already been consumed (or maybe invalid)
+			isTokenConsumed = true
+		} else {
+			masked := fmt.Sprintf("%s…%s", token[:4], token[len(token)-4:])
+			log.Printf("Error fetching satellite by token %s: %v", masked, err)
+			appErr := &AppError{
+				Message: "Error: Invalid Token",
+				Code:    http.StatusBadRequest,
+			}
+			HandleAppError(w, appErr)
+			return
+		}
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]bool{
+		"token_consumed": isTokenConsumed,
+	})
 }
 
 func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
