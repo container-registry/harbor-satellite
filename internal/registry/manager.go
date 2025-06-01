@@ -24,7 +24,7 @@ func NewZotManager(log zerolog.Logger, zotConfig json.RawMessage) *ZotManager {
 	}
 }
 
-func (zm *ZotManager) HandleRegistrySetup(ctx context.Context, errChan chan error) error {
+func (zm *ZotManager) HandleRegistrySetup(ctx context.Context, errChan chan error) {
 	tmpConfigPath, err := zm.WriteTempZotConfig()
 	if err != nil {
 		zm.log.Error().Err(err).Msg("Error writing temp zot config to disk")
@@ -47,7 +47,6 @@ func (zm *ZotManager) HandleRegistrySetup(ctx context.Context, errChan chan erro
 	if err := zm.LaunchZotRegistry(ctx, tmpConfigPath); err != nil {
 		errChan <- fmt.Errorf("error launching default zot registry: %w", err)
 	}
-	return nil
 }
 
 // WriteTempZotConfig creates a temp file and writes the zot config to it.
