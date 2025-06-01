@@ -31,7 +31,7 @@ func NewLogger(logLevel string, isJson bool) *zerolog.Logger {
 
 	if isJson {
 		// JSON logging
-		logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
+		logger = zerolog.New(os.Stdout).With().Caller().Timestamp().Logger()
 	} else {
 		// Create a custom console writer
 		output := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"}
