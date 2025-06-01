@@ -220,7 +220,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 			token[:4],
 			token[len(token)-4:],
 		)
-        log.Printf("Invalid Satellite Token %s: %v", masked, err)
+		log.Printf("Invalid Satellite Token %s: %v", masked, err)
 		err := &AppError{
 			Message: "Error: Invalid Token",
 			Code:    http.StatusBadRequest,
@@ -324,7 +324,12 @@ func (s *Server) ztrStatusHandler(w http.ResponseWriter, r *http.Request) {
 			// If the token is not found, it means it has already been consumed (or maybe invalid)
 			isTokenConsumed = true
 		} else {
-			masked := fmt.Sprintf("%s…%s", token[:4], token[len(token)-4:])
+			var masked string
+			if len(token) >= 8 {
+				masked = fmt.Sprintf("%s…%s", token[:4], token[len(token)-4:])
+			} else {
+				masked = "***"
+			}
 			log.Printf("Error fetching satellite by token %s: %v", masked, err)
 			appErr := &AppError{
 				Message: "Error: Invalid Token",

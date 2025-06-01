@@ -46,7 +46,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to register satellite: %s", response.Status)
+		return fmt.Errorf("failed to check token status: %s", response.Status)
 	}
 
 	var respBody struct {
