@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/rs/zerolog"
-	"golang.org/x/sync/errgroup"
 	"zotregistry.dev/zot/pkg/api"
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/cli/server"
@@ -25,30 +24,29 @@ func NewZotManager(log zerolog.Logger, zotConfig json.RawMessage) *ZotManager {
 	}
 }
 
-func (zm *ZotManager) HandleRegistrySetup(g *errgroup.Group, ctx context.Context) error {
+func (zm *ZotManager) HandleRegistrySetup(ctx context.Context, errChan chan error) error {
 	tmpConfigPath, err := zm.WriteTempZotConfig()
 	if err != nil {
 		zm.log.Error().Err(err).Msg("Error writing temp zot config to disk")
-		return fmt.Errorf("error writing temp zot config to disk: %w", err)
+		errChan <- fmt.Errorf("error writing temp zot config to disk: %w", err)
 	}
 
-	g.Go(func() error {
-		defer func() {
-			err := zm.RemoveTempZotConfig(tmpConfigPath)
-			if err != nil {
-				zm.log.Warn().Err(err).Msg("Failed to remove temp zot config")
-			} else {
-				zm.log.Debug().Str("path", tmpConfigPath).Msg("Temp zot config removed")
-			}
-		}()
-
-		if err := zm.VerifyRegistryConfig(tmpConfigPath); err != nil {
-			return fmt.Errorf("error launching default zot registry: %w", err)
+	defer func() {
+		err := zm.RemoveTempZotConfig(tmpConfigPath)
+		if err != nil {
+			zm.log.Warn().Err(err).Msg("Failed to remove temp zot config")
+		} else {
+			zm.log.Debug().Str("path", tmpConfigPath).Msg("Temp zot config removed")
 		}
+	}()
 
-		return zm.LaunchZotRegistry(ctx, tmpConfigPath)
-	})
+	if err := zm.VerifyRegistryConfig(tmpConfigPath); err != nil {
+		errChan <- fmt.Errorf("error launching default zot registry: %w", err)
+	}
 
+	if err := zm.LaunchZotRegistry(ctx, tmpConfigPath); err != nil {
+		errChan <- fmt.Errorf("error launching default zot registry: %w", err)
+	}
 	return nil
 }
 

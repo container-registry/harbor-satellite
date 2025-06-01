@@ -44,6 +44,7 @@ func main() {
 
 	err := run(jsonLogging, token, groundControlURL)
 	if err != nil {
+        fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -62,10 +63,7 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), jsonLogging, warnings)
 
 	// Handle registry setup
-	if err := handleRegistrySetup(wg, ctx, log, cm); err != nil {
-		log.Error().Err(err).Msg("Error setting up local registry")
-		return err
-	}
+	wg.Go(func() error { return handleRegistrySetup(ctx, log, cm) })
 
 	satelliteService := satellite.NewSatellite(cm)
 
@@ -101,7 +99,7 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 	return wg.Wait()
 }
 
-func handleRegistrySetup(g *errgroup.Group, ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager) error {
+func handleRegistrySetup(ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager) error {
 	log.Debug().Msg("Setting up local registry")
 	if cm.GetOwnRegistry() {
 		log.Info().Msg("Configuring own registry")
@@ -112,9 +110,13 @@ func handleRegistrySetup(g *errgroup.Group, ctx context.Context, log *zerolog.Lo
 	} else {
 		log.Info().Msg("Launching default registry")
 
-		zm := registry.NewZotManager(log, cm.GetRawZotConfig())
+		zm := registry.NewZotManager(log.With().Str("component", "zot manager").Logger(), cm.GetRawZotConfig())
 
-		return zm.HandleRegistrySetup(g, ctx)
+		errChan := make(chan error, 1)
+
+		go zm.HandleRegistrySetup(ctx, errChan)
+
+		return <-errChan
 	}
 	return nil
 }
