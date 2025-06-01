@@ -7,17 +7,18 @@ import (
 	"os"
 
 	"github.com/rs/zerolog"
-	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
+	"zotregistry.dev/zot/pkg/api"
+	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/cli/server"
 )
 
 type ZotManager struct {
 	zotConfig json.RawMessage
-	log       *zerolog.Logger
+	log       zerolog.Logger
 }
 
-func NewZotManager(log *zerolog.Logger, zotConfig json.RawMessage) *ZotManager {
+func NewZotManager(log zerolog.Logger, zotConfig json.RawMessage) *ZotManager {
 	return &ZotManager{
 		zotConfig: zotConfig,
 		log:       log,
@@ -31,10 +32,6 @@ func (zm *ZotManager) HandleRegistrySetup(g *errgroup.Group, ctx context.Context
 		return fmt.Errorf("error writing temp zot config to disk: %w", err)
 	}
 
-	errChan := make(chan error, 1)
-
-	shutDownChan := make(chan struct{}, 1)
-
 	g.Go(func() error {
 		defer func() {
 			err := zm.RemoveTempZotConfig(tmpConfigPath)
@@ -46,29 +43,10 @@ func (zm *ZotManager) HandleRegistrySetup(g *errgroup.Group, ctx context.Context
 		}()
 
 		if err := zm.VerifyRegistryConfig(tmpConfigPath); err != nil {
-			zm.log.Error().Err(err).Msg("Error launching default zot registry")
 			return fmt.Errorf("error launching default zot registry: %w", err)
 		}
 
-		zm.LaunchZotRegistry(ctx, tmpConfigPath, shutDownChan, errChan)
-
-		select {
-		case <-ctx.Done():
-			zm.log.Warn().Msg("Context cancelled, zot registry will be terminated")
-			return ctx.Err()
-
-		case err := <-errChan:
-			if err != nil {
-				zm.log.Error().Err(err).Msg("Error launching default zot registry")
-				return fmt.Errorf("error launching default zot registry: %w", err)
-			}
-
-		case <-shutDownChan:
-			zm.log.Warn().Err(err).Msg("Zot registry received a shutdown signal, shutting it down...")
-			return fmt.Errorf("zot registry is shutting down due to a shut down signal")
-		}
-
-		return nil
+		return zm.LaunchZotRegistry(ctx, tmpConfigPath)
 	})
 
 	return nil
@@ -111,21 +89,48 @@ func (zm *ZotManager) RemoveTempZotConfig(tmpPath string) error {
 	return nil
 }
 
-// LaunchZotRegistry launches the zot registry by running `zot serve {zotConfigPath}` in a go routine.
-func (zm *ZotManager) LaunchZotRegistry(ctx context.Context, zotConfigPath string, shutdownChan chan struct{}, errChan chan error) {
+func (zm *ZotManager) LaunchZotRegistry(ctx context.Context, zotConfigPath string) error {
 	zm.log.Info().Str("configPath", zotConfigPath).Msg("Launching zot registry")
 
-	rootCmd := server.NewServerRootCmd()
-	rootCmd.SetArgs([]string{"serve", zotConfigPath})
+	conf := config.New()
+
+	if err := server.LoadConfiguration(conf, zotConfigPath); err != nil {
+		zm.log.Error().Err(err).Msg("Failed to load configuration")
+		return fmt.Errorf("failed to load zot configuration from %s: %w", zotConfigPath, err)
+	}
+
+	ctlr := api.NewController(conf)
+
+	var ldapCredentials string
+	if conf.HTTP.Auth != nil && conf.HTTP.Auth.LDAP != nil {
+		ldapCredentials = conf.HTTP.Auth.LDAP.CredentialsFile
+	}
+
+	hotReloader, err := server.NewHotReloader(ctlr, zotConfigPath, ldapCredentials)
+	if err != nil {
+		zm.log.Error().Err(err).Msg("Failed to create a new hot reloader")
+		return fmt.Errorf("failed to create hot reloader: %w", err)
+	}
+
+	hotReloader.Start()
+
+	if err := ctlr.Init(); err != nil {
+		zm.log.Error().Err(err).Msg("Failed to init controller")
+		return fmt.Errorf("failed to initialize controller: %w", err)
+	}
 
 	go func() {
-		err := rootCmd.Execute()
-		if err != nil {
-			errChan <- fmt.Errorf("failed to launch zot registry with config present at %s: %w", zotConfigPath, err)
-		} else {
-			shutdownChan <- struct{}{}
-		}
+		<-ctx.Done()
+		zm.log.Warn().Msg("Context cancelled, shutting down zot registry")
+		ctlr.Shutdown() // nolint: contextcheck
 	}()
+
+	if err := ctlr.Run(); err != nil {
+		zm.log.Error().Err(err).Msg("Failed to start zot registry, exiting")
+		return fmt.Errorf("zot registry run failure: %w", err)
+	}
+
+	return nil
 }
 
 // ValidateRegistryConfig validates the zot registry configuration file.
