@@ -9,6 +9,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
+	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -44,7 +45,7 @@ func main() {
 
 	err := run(jsonLogging, token, groundControlURL)
 	if err != nil {
-        fmt.Printf("fatal: %v\n", err)
+		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -60,12 +61,10 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 		return err
 	}
 
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(cm)
+	ztrProcess := state.NewZtrProcess(cm)
+
 	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), jsonLogging, warnings)
-
-	// Handle registry setup
-	wg.Go(func() error { return handleRegistrySetup(ctx, log, cm) })
-
-	satelliteService := satellite.NewSatellite(cm)
 
 	// Write the config to disk, in case any defaults were enforced at runtime
 	if err := cm.WriteConfig(); err != nil {
@@ -74,6 +73,9 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 	}
 
 	eventChan := make(chan struct{})
+
+	// Handle registry setup
+	wg.Go(func() error { return handleRegistrySetup(ctx, log, cm) })
 
 	// Watch for changes in the config file
 	wg.Go(func() error {
@@ -92,9 +94,26 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 		}
 	})
 
-	wg.Go(func() error {
-		return satelliteService.Run(ctx)
-	})
+
+	if !cm.IsZTRDone() {
+		// schedule ztr
+		go satellite.ScheduleFunc(ctx, log, cm.GetRegistrationInterval(), ztrProcess)
+
+		select {
+		case <-ztrProcess.Done:
+			log.Info().Msg("ZTR process completed, scheduling the other processes...")
+		case <-ctx.Done():
+			log.Info().Msg("Satellite context cancelled, shutting down...")
+			return ctx.Err()
+		}
+	}
+
+	// schedule state replication
+	go satellite.ScheduleFunc(ctx, log, cm.GetStateReplicationInterval(), fetchAndReplicateStateProcess)
+
+	// Wait until context is cancelled
+	<-ctx.Done()
+	log.Info().Msg("Satellite context cancelled, shutting down...")
 
 	return wg.Wait()
 }

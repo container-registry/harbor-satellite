@@ -6,52 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
-	"github.com/container-registry/harbor-satellite/internal/state"
-	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 )
-
-type Satellite struct {
-	cm *config.ConfigManager
-}
-
-func NewSatellite(cm *config.ConfigManager) *Satellite {
-	return &Satellite{
-		cm: cm,
-	}
-}
-
-func (s *Satellite) Run(ctx context.Context) error {
-	log := logger.FromContext(ctx)
-	log.Info().Msg("Starting Satellite")
-
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm)
-	ztrProcess := state.NewZtrProcess(s.cm)
-
-	if !s.cm.IsZTRDone() {
-		// schedule ztr
-		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess)
-
-		select {
-		case <-ztrProcess.Done:
-			log.Info().Msg("ZTR process completed, scheduling the other processes...")
-		case <-ctx.Done():
-			log.Info().Msg("Satellite context cancelled, shutting down...")
-			return ctx.Err()
-		}
-	}
-
-	// schedule state replication
-	go ScheduleFunc(ctx, log, s.cm.GetStateReplicationInterval(), fetchAndReplicateStateProcess)
-
-	// Wait until context is cancelled
-	<-ctx.Done()
-	log.Info().Msg("Satellite context cancelled, shutting down...")
-
-	return ctx.Err()
-}
 
 // TODO: lets pass the ticker directly to the scheduler. We can reset the ticker which streamlines everything.
 func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, process scheduler.Process) {
