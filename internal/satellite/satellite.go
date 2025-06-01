@@ -33,10 +33,22 @@ func (s *Satellite) Run(ctx context.Context) error {
 	if !s.cm.IsZTRDone() {
 		// schedule ztr
 		go ScheduleFunc(ctx, log, s.cm.GetRegistrationInterval(), ztrProcess)
+
+		select {
+		case <-ztrProcess.Done:
+			log.Info().Msg("ZTR process completed, scheduling the other processes...")
+		case <-ctx.Done():
+			log.Info().Msg("Satellite context cancelled, shutting down...")
+			return ctx.Err()
+		}
 	}
 
 	// schedule state replication
 	go ScheduleFunc(ctx, log, s.cm.GetStateReplicationInterval(), fetchAndReplicateStateProcess)
+
+	// Wait until context is cancelled
+	<-ctx.Done()
+	log.Info().Msg("Satellite context cancelled, shutting down...")
 
 	return ctx.Err()
 }
@@ -45,38 +57,39 @@ func (s *Satellite) Run(ctx context.Context) error {
 func ScheduleFunc(ctx context.Context, log *zerolog.Logger, interval string, process scheduler.Process) {
 	duration, _ := parseEveryExpr(interval)
 	ticker := time.NewTicker(duration)
+	schedulerLogger := log.With().Str("component", "process scheduler").Str("Process", process.Name()).Logger()
 	defer ticker.Stop()
 
-	log.Info().Str("Process", process.Name()).Msgf("Task will be performed at every %s", interval)
+	log.Info().Msgf("Task will be performed at every %s", interval)
 
 	// Run once immediately
-	launchProcess(ctx, log, process)
+	launchProcess(ctx, schedulerLogger, process)
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Info().Str("Process", process.Name()).Msg("Scheduler received cancellation signal. Exiting...")
+			log.Info().Msg("Scheduler received cancellation signal. Exiting...")
 			return
 		case <-ticker.C:
 			if process.IsComplete() {
-				log.Info().Str("Process", process.Name()).Msg("Process marked as complete. Stopping scheduling.")
+				log.Info().Msg("Process marked as complete. Stopping scheduling.")
 				return
 			}
-			launchProcess(ctx, log, process)
+			launchProcess(ctx, schedulerLogger, process)
 		}
 	}
 }
 
-func launchProcess(ctx context.Context, log *zerolog.Logger, process scheduler.Process) {
+func launchProcess(ctx context.Context, log zerolog.Logger, process scheduler.Process) {
 	if !process.IsRunning() {
-		log.Info().Str("Process", process.Name()).Msg("Scheduler triggering task execution")
+		log.Info().Msg("Scheduler triggering task execution")
 		go func() {
 			if err := process.Execute(ctx); err != nil {
 				log.Warn().Str("Process", process.Name()).Err(err).Msg("Error occurred while executing process.")
 			}
 		}()
 	} else {
-		log.Debug().Str("Process", process.Name()).Msg("Process already executing")
+		log.Debug().Msg("Skipping execution of process since a previous execution cycle is still running")
 	}
 }
 

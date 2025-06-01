@@ -23,6 +23,8 @@ type ZtrProcess struct {
 	isRunning bool
 	// mu is the mutex to protect the process
 	mu *sync.Mutex
+	// done chan is used to communicate about the success of the ZtrProcess
+	Done chan struct{}
 	// Config manager to interact with the satellite config
 	cm *config.ConfigManager
 }
@@ -32,6 +34,7 @@ func NewZtrProcess(cm *config.ConfigManager) *ZtrProcess {
 		name: config.ZTRConfigJobName,
 		mu:   &sync.Mutex{},
 		cm:   cm,
+		Done: make(chan struct{}, 1),
 	}
 }
 
