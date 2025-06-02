@@ -48,7 +48,9 @@ func NewStateMap(url []string) []StateMap {
 func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	f.start()
 	defer f.stop()
-	log := logger.FromContext(ctx)
+
+	// Top level logger with process name
+	log := logger.FromContext(ctx).With().Str("process", f.name).Logger()
 
 	sourceURL := utils.FormatRegistryURL(f.cm.GetSourceRegistryURL())
 	remoteURL := utils.FormatRegistryURL(f.cm.GetRemoteRegistryURL())
@@ -70,13 +72,13 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	}
 	log.Info().Msg(reason)
 
-	satelliteStateFetcher, err := getStateFetcherForInput(satelliteStateURL, srcUsername, srcPassword, useUnsecure, log)
+	satelliteStateFetcher, err := getStateFetcherForInput(satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
 	if err != nil {
 		log.Error().Err(err).Msg("Error processing satellite state")
 		return err
 	}
 	satelliteState := &SatelliteState{}
-	if err := satelliteStateFetcher.FetchStateArtifact(ctx, satelliteState, log); err != nil {
+	if err := satelliteStateFetcher.FetchStateArtifact(ctx, satelliteState, &log); err != nil {
 		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteStateURL)
 		return err
 	}
@@ -89,44 +91,51 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	var allErrors []string
 
 	// State fetching
+    // TODO: ensure no goroutine leaks.
 	for i := range f.stateMap {
 		i := i
 		g.Go(func() error {
-			log.Info().Msgf("Processing state for %s", f.stateMap[i].url)
-			groupStateFetcher, err := getStateFetcherForInput(f.stateMap[i].url, srcUsername, srcPassword, useUnsecure, log)
+			// Create sub-process logger for each state fetcher goroutine
+			stateFetcherLog := log.With().
+				Str("sub-process", "state-fetcher").
+				Int("goroutine-id", i).
+				Logger()
+
+			stateFetcherLog.Info().Msgf("Processing state for %s", f.stateMap[i].url)
+			groupStateFetcher, err := getStateFetcherForInput(f.stateMap[i].url, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
 			if err != nil {
 				errMutex.Lock()
 				allErrors = append(allErrors, err.Error())
 				errMutex.Unlock()
-				log.Error().Err(err).Msg("Error processing input")
+				stateFetcherLog.Error().Err(err).Msg("Error processing input")
 				return nil
 			}
 
-			newStateFetched, err := f.FetchAndProcessState(ctx, groupStateFetcher, log)
+			newStateFetched, err := f.FetchAndProcessState(ctx, groupStateFetcher, &stateFetcherLog)
 			if err != nil {
 				errMutex.Lock()
 				allErrors = append(allErrors, err.Error())
 				errMutex.Unlock()
-				log.Error().Err(err).Msg("Error fetching state")
+				stateFetcherLog.Error().Err(err).Msg("Error fetching state")
 				return nil
 			}
-			log.Info().Msgf("State fetched successfully for %s", f.stateMap[i].url)
+			stateFetcherLog.Info().Msgf("State fetched successfully for %s", f.stateMap[i].url)
 
-			deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, log, f.stateMap[i].Entities)
-			f.LogChanges(deleteEntity, replicateEntity, log)
+			deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, &stateFetcherLog, f.stateMap[i].Entities)
+			f.LogChanges(deleteEntity, replicateEntity, &stateFetcherLog)
 
 			if err := replicator.DeleteReplicationEntity(ctx, deleteEntity); err != nil {
 				errMutex.Lock()
 				allErrors = append(allErrors, err.Error())
 				errMutex.Unlock()
-				log.Error().Err(err).Msg("Error deleting entities")
+				stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
 				return nil
 			}
 			if err := replicator.Replicate(ctx, replicateEntity); err != nil {
 				errMutex.Lock()
 				allErrors = append(allErrors, err.Error())
 				errMutex.Unlock()
-				log.Error().Err(err).Msg("Error replicating state")
+				stateFetcherLog.Error().Err(err).Msg("Error replicating state")
 				return nil
 			}
 
@@ -143,50 +152,56 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		configStateFetcher, err := getStateFetcherForInput(satelliteState.Config, srcUsername, srcPassword, useUnsecure, log)
+
+		// Create sub-process logger for config fetcher
+		configFetcherLog := log.With().
+			Str("sub-process", "config-fetcher").
+			Logger()
+
+		configStateFetcher, err := getStateFetcherForInput(satelliteState.Config, srcUsername, srcPassword, useUnsecure, &configFetcherLog)
 		if err != nil {
 			errMutex.Lock()
 			allErrors = append(allErrors, err.Error())
 			errMutex.Unlock()
-			log.Error().Err(err).Msg("Error processing satellite state")
+			configFetcherLog.Error().Err(err).Msg("Error processing satellite state")
 			return
 		}
 
-		configDigest, err := configStateFetcher.FetchDigest(ctx, log)
+		configDigest, err := configStateFetcher.FetchDigest(ctx, &configFetcherLog)
 		if err != nil {
 			errMutex.Lock()
 			allErrors = append(allErrors, err.Error())
 			errMutex.Unlock()
-			log.Error().Err(err).Msgf("Error fetching state artifact digest from url: %s", satelliteState.Config)
+			configFetcherLog.Error().Err(err).Msgf("Error fetching state artifact digest from url: %s", satelliteState.Config)
 			return
 		}
 
 		if configDigest != f.currentConfigDigest {
-			log.Info().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("The upstream config has changes, reconciling the satellite accordingly")
+			configFetcherLog.Info().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("The upstream config has changes, reconciling the satellite accordingly")
 			remoteConfig := config.Config{}
-			if err := configStateFetcher.FetchStateArtifact(ctx, &remoteConfig, log); err != nil {
-				log.Error().Err(err).
+			if err := configStateFetcher.FetchStateArtifact(ctx, &remoteConfig, &configFetcherLog); err != nil {
+				configFetcherLog.Error().Err(err).
 					Msgf("Error fetching new config's state artifact from url: %s, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
 				return
 			}
 			remoteConfig.StateConfig = f.cm.GetStateConfig()
 			validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
 			if err != nil {
-				log.Error().Err(err).
+				configFetcherLog.Error().Err(err).
 					Msgf("Error validating config state artifact digest from url: %s, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
 				return
 			}
 			if len(warnings) != 0 {
-				utils.HandleNewConfigWarnings(log, warnings)
+				utils.HandleNewConfigWarnings(&configFetcherLog, warnings)
 			}
 			if err := f.cm.WritePrevConfigToDisk(f.cm.GetConfig()); err != nil {
-				log.Error().Err(err).
+				configFetcherLog.Error().Err(err).
 					Msgf("Error writing the prev config to disk while reconciling remote config, continuing execution with the same previous config with digest %s", f.currentConfigDigest)
 				return
 			}
-			log.Debug().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("Writing new config to disk")
+			configFetcherLog.Debug().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("Writing new config to disk")
 			if err := f.cm.WriteConfigToDisk(validatedRemoteConfig); err != nil {
-				log.Error().Err(err).
+				configFetcherLog.Error().Err(err).
 					Msgf("Error writing the newly fetched remote config from %s to disk, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
 				return
 			}
@@ -194,7 +209,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		}
 	}()
 
-    // No need to check the error here, as we accumulate all the errors in the end.
+	// No need to check the error here, as we accumulate all the errors in the end.
 	_ = g.Wait()
 	<-done
 
@@ -204,6 +219,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 	return nil
 }
+
 func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
 	var newStates []string
 	for _, state := range states {
