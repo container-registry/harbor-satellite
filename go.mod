@@ -1,6 +1,6 @@
 module github.com/container-registry/harbor-satellite
 
-go 1.24.3
+go 1.24.2
 
 require (
 	dagger.io/dagger v0.10.3

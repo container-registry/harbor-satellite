@@ -1,6 +1,6 @@
 module github.com/container-registry/harbor-satellite/ground-control
 
-go 1.24.3
+go 1.24.2
 
 require (
 	github.com/container-registry/harbor-satellite v0.0.0-20250526151501-fb8885835a33
