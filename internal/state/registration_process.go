@@ -70,6 +70,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		return fmt.Errorf("failed to register satellite: could not update state auth config")
 	}
 
+	close(z.Done)
 	return nil
 }
 
