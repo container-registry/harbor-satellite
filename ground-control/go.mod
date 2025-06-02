@@ -464,4 +464,4 @@ require (
 	zotregistry.dev/zot v1.4.4-0.20240604183918-a4b6892a9c27 // indirect
 )
 
-replace github.com/ThalesIgnite/crypto11 => github.com/ThalesGroup/crypto11 v1.4.1
+replace github.com/ThalesIgnite/crypto11 => github.com/ThalesGroup/crypto11 v1.2.5
