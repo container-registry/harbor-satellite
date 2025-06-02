@@ -29,24 +29,31 @@ func (zm *ZotManager) HandleRegistrySetup(ctx context.Context, errChan chan erro
 	if err != nil {
 		zm.log.Error().Err(err).Msg("Error writing temp zot config to disk")
 		errChan <- fmt.Errorf("error writing temp zot config to disk: %w", err)
+		return
 	}
 
 	defer func() {
 		err := zm.RemoveTempZotConfig(tmpConfigPath)
 		if err != nil {
 			zm.log.Warn().Err(err).Msg("Failed to remove temp zot config")
+			return
 		} else {
 			zm.log.Debug().Str("path", tmpConfigPath).Msg("Temp zot config removed")
+			return
 		}
 	}()
 
 	if err := zm.VerifyRegistryConfig(tmpConfigPath); err != nil {
 		errChan <- fmt.Errorf("error launching default zot registry: %w", err)
+		return
 	}
 
 	if err := zm.LaunchZotRegistry(ctx, tmpConfigPath); err != nil {
 		errChan <- fmt.Errorf("error launching default zot registry: %w", err)
+		return
 	}
+
+    return
 }
 
 // WriteTempZotConfig creates a temp file and writes the zot config to it.
