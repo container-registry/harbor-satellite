@@ -24,8 +24,10 @@ type State struct {
 	Artifacts []Artifact `json:"artifacts"`
 }
 
+// TODO: This information should come from the ground-control package
 type SatelliteState struct {
-	States []string
+	States []string `json:"states,omitempty"`
+	Config string   `json:"config,omitempty"`
 }
 
 func NewState() StateReader {
