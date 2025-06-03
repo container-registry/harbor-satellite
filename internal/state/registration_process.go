@@ -42,19 +42,19 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	z.start()
 	defer z.stop()
 
-	log := logger.FromContext(ctx)
+	log := logger.FromContext(ctx).With().Str("process", z.name).Logger()
 
-	canExecute, reason := z.CanExecute(log)
+	canExecute, reason := z.CanExecute(&log)
 	if !canExecute {
 		log.Warn().Msgf("Process %s cannot execute: %s", z.name, reason)
 		return nil
 	}
-	log.Info().Msgf("Executing process %s", z.name)
+	log.Info().Msgf("Executing process")
 
 	// Register the satellite
 	stateConfig, err := registerSatellite(z.cm.ResolveGroundControlURL(), ZeroTouchRegistrationRoute, z.cm.GetToken(), ctx)
 	if err != nil {
-		log.Error().Msgf("Failed to register satellite: %v", err)
+		log.Error().Err(err).Msgf("Failed to register satellite")
 		return err
 	}
 
@@ -70,6 +70,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		return fmt.Errorf("failed to register satellite: could not update state auth config")
 	}
 
+    // Close the z.Done channel on successful ZTR alone.
 	close(z.Done)
 	return nil
 }
