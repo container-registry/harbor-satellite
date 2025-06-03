@@ -52,8 +52,6 @@ func (zm *ZotManager) HandleRegistrySetup(ctx context.Context, errChan chan erro
 		errChan <- fmt.Errorf("error launching default zot registry: %w", err)
 		return
 	}
-
-    return
 }
 
 // WriteTempZotConfig creates a temp file and writes the zot config to it.
