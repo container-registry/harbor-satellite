@@ -2,7 +2,6 @@ package models
 
 import "github.com/container-registry/harbor-satellite/pkg/config"
 
-// TODO: the satellite must now expect this state artifact
 type SatelliteStateArtifact struct {
 	States []string `json:"states,omitempty"`
 	Config string   `json:"config,omitempty"`

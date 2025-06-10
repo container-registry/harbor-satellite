@@ -16,6 +16,12 @@ func (cm *ConfigManager) GetLogLevel() string {
 	return cm.config.AppConfig.LogLevel
 }
 
+func (cm *ConfigManager) IsJSONLog() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.JsonLog
+}
+
 func (cm *ConfigManager) GetOwnRegistry() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
