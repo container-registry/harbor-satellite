@@ -66,7 +66,8 @@ Harbor Satellite will synchronize with the central Harbor registry, when Interne
 Harbor Satellite will also include a toolset enabling the monitoring and management of local decentralized registries.
 
 ## QuickStart
-Please refer to the latest setup instructions in `QUICKSTART.md` file for detailed steps on setting up Harbor Satellite locally.
+Please refer to the latest setup instructions in [Quickstart Guide](docs/getting-started/quickstart.md)
+ file for detailed steps on setting up Harbor Satellite locally.
 
 ## Non-Goals
 
