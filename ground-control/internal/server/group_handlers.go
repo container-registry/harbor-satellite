@@ -157,9 +157,9 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
-		log.Println(err)
+		log.Printf("Error starting transaction: %v", err)
 		err := &AppError{
-			Message: "Error: Failed to delete group",
+			Message: "Error: Failed to start database transaction",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
@@ -168,11 +168,12 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 
 	q := s.dbQueries.WithTx(tx)
 
+	committed := false
 	defer func() {
 		if p := recover(); p != nil {
 			tx.Rollback()
 			panic(p)
-		} else if err != nil {
+		} else if !committed {
 			tx.Rollback()
 		}
 	}()
@@ -186,7 +187,6 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -201,23 +201,10 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 				Code:    http.StatusInternalServerError,
 			}
 			HandleAppError(w, err)
-			tx.Rollback()
 			return
 		}
 
 		// Update robot permissions and state artifact for each satellite
-		sat, err := q.GetSatellite(r.Context(), satellite.SatelliteID)
-		if err != nil {
-			log.Println(err)
-			err := &AppError{
-				Message: "Error: Failed to update satellite state",
-				Code:    http.StatusInternalServerError,
-			}
-			HandleAppError(w, err)
-			tx.Rollback()
-			return
-		}
-
 		robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), satellite.SatelliteID)
 		if err != nil {
 			log.Println(err)
@@ -226,7 +213,6 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 				Code:    http.StatusInternalServerError,
 			}
 			HandleAppError(w, err)
-			tx.Rollback()
 			return
 		}
 
@@ -239,7 +225,6 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 				Code:    http.StatusInternalServerError,
 			}
 			HandleAppError(w, err)
-			tx.Rollback()
 			return
 		}
 
@@ -255,7 +240,6 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 					Code:    http.StatusInternalServerError,
 				}
 				HandleAppError(w, err)
-				tx.Rollback()
 				return
 			}
 			projects = append(projects, grp.Projects...)
@@ -271,12 +255,10 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 				Code:    http.StatusInternalServerError,
 			}
 			HandleAppError(w, err)
-			tx.Rollback()
 			return
 		}
 
-		// Update state artifact
-		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates)
+		sat, err := q.GetSatellite(r.Context(), satellite.SatelliteID)
 		if err != nil {
 			log.Println(err)
 			err := &AppError{
@@ -284,19 +266,36 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 				Code:    http.StatusInternalServerError,
 			}
 			HandleAppError(w, err)
-			tx.Rollback()
+			return
+		}
+
+		configObject, err := fetchSatelliteConfig(r.Context(), q, sat.ID)
+		if err != nil {
+			log.Printf("Error: Failed to fetch Satellite config: %v", err)
+			HandleAppError(w, err)
+			return
+		}
+
+		// Update state artifact
+		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
+		if err != nil {
+			log.Println(err)
+			err := &AppError{
+				Message: "Error: Failed to update satellite state",
+				Code:    http.StatusInternalServerError,
+			}
+			HandleAppError(w, err)
 			return
 		}
 	}
 
-	if err := s.dbQueries.DeleteGroup(r.Context(), group.ID); err != nil {
+	if err := q.DeleteGroup(r.Context(), group.ID); err != nil {
 		log.Println(err)
 		err := &AppError{
 			Message: "Error: Failed to delete group",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
@@ -308,11 +307,19 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
-		tx.Rollback()
 		return
 	}
 
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		log.Printf("Commit failed: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+
+	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
