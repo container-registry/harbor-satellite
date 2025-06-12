@@ -18,7 +18,7 @@ type SatelliteConfigParams struct {
 	ConfigName string `json:"config_name"`
 }
 
-func (s *Server) configsSyncHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 	var req models.ConfigObject
 
 	if err := DecodeRequestBody(r, &req); err != nil {
