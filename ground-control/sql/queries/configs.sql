@@ -1,11 +1,14 @@
 -- name: CreateConfig :one
 INSERT INTO configs (config_name, registry_url, config, created_at, updated_at)
 VALUES ($1, $2, $3, NOW(), NOW())
-ON CONFLICT (config_name)
-DO UPDATE SET
-  registry_url = EXCLUDED.registry_url,
-  config = EXCLUDED.config,
-  updated_at = NOW()
+RETURNING id, config_name, registry_url, config, created_at, updated_at;
+
+-- name: UpdateConfig :one
+UPDATE configs
+SET registry_url = $2,
+    config = $3,
+    updated_at = NOW()
+WHERE config_name = $1
 RETURNING id, config_name, registry_url, config, created_at, updated_at;
 
 -- name: ListConfigs :many
@@ -30,3 +33,7 @@ WHERE id = $1;
 -- name: GetRawConfigByName :one
 SELECT config FROM configs
 WHERE config_name = $1;
+
+-- name: CheckConfigExists :one
+SELECT EXISTS(SELECT 1 FROM configs WHERE config_name = $1);
+

@@ -1,7 +1,9 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +12,8 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
+	"github.com/container-registry/harbor-satellite/pkg/config"
+	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/gorilla/mux"
 )
 
@@ -23,6 +27,34 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println("Error decoding request body: ", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	if !utils.IsValidName(req.ConfigName) {
+		HandleAppError(w, &AppError{
+			Message: "invalid or empty config_name",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	exists, err := s.dbQueries.CheckConfigExists(r.Context(), req.ConfigName)
+	if err != nil {
+		log.Printf("error: failed to get config : %v", err)
+		err := &AppError{
+			Message: "error: failed to get config",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	if exists {
+		err := &AppError{
+			Message: "config already exists",
+			Code:    http.StatusConflict,
+		}
 		HandleAppError(w, err)
 		return
 	}
@@ -71,8 +103,152 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Upload config as OCI artifact
-	err = utils.CreateConfigStateArtifact(r.Context(), &req)
+	// Push config as OCI artifact
+	err = utils.CreateAndPushConfigStateArtifact(r.Context(), configJson, req.ConfigName)
+	if err != nil {
+		log.Println("Error while creating config state artifact: ", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Failed to commit transaction: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Failed to commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+	committed = true
+
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
+	var req config.Config
+
+	vars := mux.Vars(r)
+	configName := vars["config"]
+
+	if err := DecodeRequestBody(r, &req); err != nil {
+		log.Println("Error decoding request body: ", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	if !utils.IsValidName(configName) {
+		HandleAppError(w, &AppError{
+			Message: "invalid or empty config_name",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	existing, err := s.dbQueries.GetConfigByName(r.Context(), configName)
+	if err != nil {
+		//If config not found, send StatusNotFound
+		if errors.Is(err, sql.ErrNoRows) {
+			log.Printf("error: config not found : %s", configName)
+			err := &AppError{
+				Message: "error: config not found",
+				Code:    http.StatusNotFound,
+			}
+			HandleAppError(w, err)
+			return
+		}
+		// If any other errors send 500
+		err := &AppError{
+			Message: "error: failed to get config",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	q := s.dbQueries.WithTx(tx)
+
+	committed := false
+	defer func() {
+		if !committed {
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
+				err := &AppError{
+					Message: "Error: Failed to rollback transaction",
+					Code:    http.StatusInternalServerError,
+				}
+				HandleAppError(w, err)
+				return
+			}
+		}
+	}()
+
+	configJson, err := json.Marshal(req)
+	if err != nil {
+		log.Println("Could not marshal JSON: ", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	//test
+	//ExistingJson
+
+	var eformattedJSON []byte
+	eformattedJSON, err = json.MarshalIndent(json.RawMessage(existing.Config), "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("exisiting %+v\n", string(eformattedJSON))
+
+	//ConfigJson
+	var cformattedJSON []byte
+	cformattedJSON, err = json.MarshalIndent(json.RawMessage(configJson), "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("configJson %+v\n", string(cformattedJSON))
+
+	//PatchJson
+
+	patchedJson, err := jsonpatch.MergePatch(existing.Config, configJson)
+	var formattedJSON []byte
+	formattedJSON, err = json.MarshalIndent(json.RawMessage(patchedJson), "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("PatchJson %s\n", string(formattedJSON))
+
+	//test
+	if err != nil {
+		log.Printf("error: unable to apply patch %v", err)
+		err := &AppError{
+			Message: "error: unable to apply patch",
+			Code:    http.StatusBadRequest,
+		}
+		HandleAppError(w, err)
+		return
+	}
+	if err := ensureSatelliteProjectExists(r.Context()); err != nil {
+		log.Println("Error while ensuring project satellite: ", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	params := database.UpdateConfigParams{
+		ConfigName:  configName,
+		RegistryUrl: os.Getenv("HARBOR_URL"),
+		Config:      patchedJson,
+	}
+
+	result, err := q.UpdateConfig(r.Context(), params)
+	if err != nil {
+		log.Println("Error persisting config object to database: ", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	// Push config as OCI artifact
+	err = utils.CreateAndPushConfigStateArtifact(r.Context(), patchedJson, configName)
 	if err != nil {
 		log.Println("Error while creating config state artifact: ", err)
 		HandleAppError(w, err)
