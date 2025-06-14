@@ -190,35 +190,7 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//test
-	//ExistingJson
-
-	var eformattedJSON []byte
-	eformattedJSON, err = json.MarshalIndent(json.RawMessage(existing.Config), "", "  ")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("exisiting %+v\n", string(eformattedJSON))
-
-	//ConfigJson
-	var cformattedJSON []byte
-	cformattedJSON, err = json.MarshalIndent(json.RawMessage(configJson), "", "  ")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("configJson %+v\n", string(cformattedJSON))
-
-	//PatchJson
-
 	patchedJson, err := jsonpatch.MergePatch(existing.Config, configJson)
-	var formattedJSON []byte
-	formattedJSON, err = json.MarshalIndent(json.RawMessage(patchedJson), "", "  ")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("PatchJson %s\n", string(formattedJSON))
-
-	//test
 	if err != nil {
 		log.Printf("error: unable to apply patch %v", err)
 		err := &AppError{
@@ -228,6 +200,7 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
+
 	if err := ensureSatelliteProjectExists(r.Context()); err != nil {
 		log.Println("Error while ensuring project satellite: ", err)
 		HandleAppError(w, err)
