@@ -37,4 +37,4 @@ __debug_bin1949266242
 .env
 config.json
 ground-control/.env
-ground-control/.gc-dev
+ground-control/gc-dev
