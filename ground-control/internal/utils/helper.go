@@ -146,13 +146,14 @@ func CreateStateArtifact(ctx context.Context, stateArtifact *m.StateArtifact) er
 	return nil
 }
 
-// Create State Artifact for Config
-func CreateConfigStateArtifact(ctx context.Context, configObject *m.ConfigObject) error {
+// Create and Push State Artifact for Config
+func CreateAndPushConfigStateArtifact(ctx context.Context, configData []byte, configName string) error {
+	// func CreateAndPushConfigStateArtifact(ctx context.Context, configObject *m.ConfigObject) error {
 	// Marshal the state artifact to JSON format
-	configData, err := json.Marshal(configObject.Config)
-	if err != nil {
-		return fmt.Errorf("failed to marshal state artifact to JSON: %v", err)
-	}
+	// configData, err := json.Marshal(configObject.Config)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to marshal state artifact to JSON: %v", err)
+	// }
 
 	// Create the image with the state artifact JSON
 	img, err := crane.Image(map[string][]byte{"artifacts.json": configData})
@@ -160,10 +161,8 @@ func CreateConfigStateArtifact(ctx context.Context, configObject *m.ConfigObject
 		return fmt.Errorf("failed to create image: %v", err)
 	}
 
-	username := os.Getenv("HARBOR_USERNAME")
-	password := os.Getenv("HARBOR_PASSWORD")
-	if username == "" || password == "" {
-		return fmt.Errorf("HARBOR_USERNAME or HARBOR_PASSWORD environment variable is not set")
+	if err := envSanityCheck(); err != nil {
+		return err
 	}
 
 	auth := authn.FromConfig(authn.AuthConfig{
@@ -173,25 +172,15 @@ func CreateConfigStateArtifact(ctx context.Context, configObject *m.ConfigObject
 	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 
 	// Construct the destination repository and strip protocol, if present
-	destinationRepo := AssembleConfigState(configObject.ConfigName)
-	if strings.Contains(destinationRepo, "://") {
-		destinationRepo = strings.SplitN(destinationRepo, "://", 2)[1]
-	}
+	destinationRepo := AssembleConfigState(configName)
+	destinationRepo = stripProtocol(destinationRepo)
 
 	// Push the image to the repository
 	if err := crane.Push(img, destinationRepo, options...); err != nil {
 		return fmt.Errorf("failed to push image: %v", err)
 	}
 
-	// Tag the image with timestamp and latest tags
-	tags := []string{fmt.Sprintf("%d", time.Now().Unix()), "latest"}
-	for _, tag := range tags {
-		if err := crane.Tag(destinationRepo, tag, options...); err != nil {
-			return fmt.Errorf("failed to tag image with %s: %v", tag, err)
-		}
-	}
-
-	return nil
+	return tagImage(destinationRepo, options)
 }
 
 func AssembleSatelliteState(satelliteName string) string {

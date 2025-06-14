@@ -10,14 +10,20 @@ import (
 	"encoding/json"
 )
 
+const checkConfigExists = `-- name: CheckConfigExists :one
+SELECT EXISTS(SELECT 1 FROM configs WHERE config_name = $1)
+`
+
+func (q *Queries) CheckConfigExists(ctx context.Context, configName string) (bool, error) {
+	row := q.db.QueryRowContext(ctx, checkConfigExists, configName)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const createConfig = `-- name: CreateConfig :one
 INSERT INTO configs (config_name, registry_url, config, created_at, updated_at)
 VALUES ($1, $2, $3, NOW(), NOW())
-ON CONFLICT (config_name)
-DO UPDATE SET
-  registry_url = EXCLUDED.registry_url,
-  config = EXCLUDED.config,
-  updated_at = NOW()
 RETURNING id, config_name, registry_url, config, created_at, updated_at
 `
 
@@ -145,4 +151,33 @@ func (q *Queries) ListConfigs(ctx context.Context) ([]Config, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateConfig = `-- name: UpdateConfig :one
+UPDATE configs
+SET registry_url = $2,
+    config = $3,
+    updated_at = NOW()
+WHERE config_name = $1
+RETURNING id, config_name, registry_url, config, created_at, updated_at
+`
+
+type UpdateConfigParams struct {
+	ConfigName  string
+	RegistryUrl string
+	Config      json.RawMessage
+}
+
+func (q *Queries) UpdateConfig(ctx context.Context, arg UpdateConfigParams) (Config, error) {
+	row := q.db.QueryRowContext(ctx, updateConfig, arg.ConfigName, arg.RegistryUrl, arg.Config)
+	var i Config
+	err := row.Scan(
+		&i.ID,
+		&i.ConfigName,
+		&i.RegistryUrl,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
