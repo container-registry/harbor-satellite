@@ -34,6 +34,3 @@ WHERE id = $1;
 SELECT config FROM configs
 WHERE config_name = $1;
 
--- name: CheckConfigExists :one
-SELECT EXISTS(SELECT 1 FROM configs WHERE config_name = $1);
-

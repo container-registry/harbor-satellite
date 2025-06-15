@@ -15,6 +15,7 @@ import (
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/gorilla/mux"
+	"github.com/lib/pq"
 )
 
 type SatelliteConfigParams struct {
@@ -39,27 +40,16 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exists, err := s.dbQueries.CheckConfigExists(r.Context(), req.ConfigName)
+	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
-		log.Printf("error: failed to get config : %v", err)
+		log.Printf("error starting transaction: %v", err)
 		err := &AppError{
-			Message: "error: failed to get config",
+			Message: "error: failed to start database transaction",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
 		return
 	}
-
-	if exists {
-		err := &AppError{
-			Message: "config already exists",
-			Code:    http.StatusConflict,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	tx, err := s.db.BeginTx(r.Context(), nil)
 	q := s.dbQueries.WithTx(tx)
 
 	committed := false
@@ -96,8 +86,17 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 		Config:      configJson,
 	}
 
-	result, err := q.CreateConfig(r.Context(), params)
+	_, err = q.CreateConfig(r.Context(), params)
 	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			log.Printf("error: config with name '%s' already exists", req.ConfigName)
+			HandleAppError(w, &AppError{
+				Message: "error: config already exists",
+				Code:    http.StatusConflict,
+			})
+			return
+		}
 		log.Println("Error persisting config object to database: ", err)
 		HandleAppError(w, err)
 		return
@@ -121,7 +120,7 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	WriteJSONResponse(w, http.StatusOK, result)
+	w.WriteHeader(http.StatusCreated)
 }
 
 func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
@@ -166,6 +165,15 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("error starting transaction: %v", err)
+		err := &AppError{
+			Message: "error: failed to start database transaction",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
 	q := s.dbQueries.WithTx(tx)
 
 	committed := false

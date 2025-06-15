@@ -10,17 +10,6 @@ import (
 	"encoding/json"
 )
 
-const checkConfigExists = `-- name: CheckConfigExists :one
-SELECT EXISTS(SELECT 1 FROM configs WHERE config_name = $1)
-`
-
-func (q *Queries) CheckConfigExists(ctx context.Context, configName string) (bool, error) {
-	row := q.db.QueryRowContext(ctx, checkConfigExists, configName)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const createConfig = `-- name: CreateConfig :one
 INSERT INTO configs (config_name, registry_url, config, created_at, updated_at)
 VALUES ($1, $2, $3, NOW(), NOW())
