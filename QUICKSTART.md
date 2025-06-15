@@ -164,7 +164,7 @@ curl --location 'http://localhost:8080/groups/sync' \
 
 Below curl command is used to register a satellite which also provides the authentication token for the satellite
 ```bash
-curl --location 'http://localhost:8080/satellites/register' \
+curl --location 'http://localhost:8080/satellites' \
 --header 'Content-Type: application/json' \
 --data '{
     "name": "SATELLITE_NAME",
