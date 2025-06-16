@@ -2,6 +2,8 @@ module github.com/container-registry/harbor-satellite
 
 go 1.24.11
 
+toolchain go1.24.3
+
 require (
 	github.com/google/go-containerregistry v0.20.6
 	github.com/prometheus/client_golang v1.23.2
