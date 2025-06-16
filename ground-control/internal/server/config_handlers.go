@@ -329,7 +329,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: maybe we should store the current list of states in the DB?
+    // TODO: Store the groupStates in memory to survive hot reloads
 	var groupStates []string
 	for _, group := range groupList {
 		grp, err := q.GetGroupByID(r.Context(), group.GroupID)

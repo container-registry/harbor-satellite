@@ -83,10 +83,17 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	// Create a new Queries object bound to the transaction
 	q := s.dbQueries.WithTx(tx)
 	committed := false
+	var robotID int64
 
 	// Ensure proper transaction handling with defer
 	defer func() {
 		if !committed {
+			// Cleanup robot account if transaction failed
+			if robotID != 0 {
+				if _, delErr := harbor.DeleteRobotAccount(r.Context(), robotID); delErr != nil {
+					log.Printf("Warning: Failed to cleanup robot account: %v", delErr)
+				}
+			}
 			if err := tx.Rollback(); err != nil {
 				log.Printf("Error: Failed to rollback transaction: %v", err)
 				HandleAppError(w, &AppError{
@@ -134,6 +141,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		HandleAppError(w, err)
 		return
 	}
+	robotID = rbt.ID
 
 	if err := storeRobotAccountInDB(r.Context(), q, rbt, satellite.ID); err != nil {
 		log.Println("Error storing robot account in DB:", err)
@@ -213,8 +221,11 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	satelliteID, err := q.GetSatelliteIDByToken(r.Context(), token)
 	if err != nil {
-		log.Println("Invalid Satellite Token")
-		log.Println(err)
+		masked := fmt.Sprintf("%s…%s",
+			token[:4],
+			token[len(token)-4:],
+		)
+        log.Printf("Invalid Satellite Token %s: %v", masked, err)
 		err := &AppError{
 			Message: "Error: Invalid Token",
 			Code:    http.StatusBadRequest,

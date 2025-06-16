@@ -45,12 +45,12 @@ func TestInitConfigManager(t *testing.T) {
 		{name: "InvalidJSON", path: invalidConfigPath, wantErr: true},
 	}
 
-	t.Setenv("TOKEN", "dummy-token")
-	t.Setenv("GROUND_CONTROL_URL", "http://groundcontrol")
+	token := "dummy-token"
+	ground_control_url := "http://groundcontrol"
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := InitConfigManager(tt.path)
+			_, _, err := InitConfigManager(token, ground_control_url, tt.path, "", false)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
@@ -68,7 +68,7 @@ func TestConfigManager_WriteConfig(t *testing.T) {
 		ZotConfigRaw: json.RawMessage(`{"storage": {}}`),
 	}
 	path := filepath.Join(t.TempDir(), "config.json")
-	cm, err := NewConfigManager(path, "", "", cfg)
+	cm, err := NewConfigManager(path, "", "", "", false, cfg)
 	require.NoError(t, err)
 
 	t.Run("SuccessfulWrite", func(t *testing.T) {
