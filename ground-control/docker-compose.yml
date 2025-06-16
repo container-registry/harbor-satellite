@@ -9,19 +9,6 @@ services:
     ports:
       - "8100:5432"
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
-      - "8200:80"
-    depends_on:
-      - postgres
-    networks:
-      - default  # connects pgAdmin and PostgreSQL on the same Docker network
-
   db-migrator:
     image: 8gears.container-registry.com/harbor-satellite/db-migrator:test
     container_name: db-migrator
