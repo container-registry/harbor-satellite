@@ -9,16 +9,14 @@ import (
 )
 
 const (
-	DEFAULT_GO           = "golang:1.24.2"
+	DEFAULT_GO           = "golang:1.24.3"
 	PROJ_MOUNT           = "/app"
-	GO_VERSION           = "1.24.2"
+	GO_VERSION           = "1.24.3"
 	DOCKER_PORT          = 2375
 	GORELEASER_VERSION   = "v2.9.0"
 	GOLANGCILINT_VERSION = "v2.0.2"
 	GROUND_CONTROL_PATH  = "./ground-control"
 	MIGRATOR_PATH        = GROUND_CONTROL_PATH + "/migrator"
-	SATELLITE_PATH       = "."
-	DOCKER_VERSION       = "24.0"
 )
 
 func New(
