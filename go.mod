@@ -2,6 +2,8 @@ module github.com/container-registry/harbor-satellite
 
 go 1.24.2
 
+toolchain go1.24.3
+
 require (
 	dagger.io/dagger v0.10.3
 	github.com/google/go-containerregistry v0.20.5

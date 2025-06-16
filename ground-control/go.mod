@@ -2,6 +2,8 @@ module github.com/container-registry/harbor-satellite/ground-control
 
 go 1.24.2
 
+toolchain go1.24.3
+
 require (
 	github.com/container-registry/harbor-satellite v0.0.0-20250526151501-fb8885835a33
 	github.com/goharbor/go-client v0.210.0
