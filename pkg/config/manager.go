@@ -14,18 +14,20 @@ type ConfigManager struct {
 	config                  *Config
 	Token                   string
 	DefaultGroundControlURL string
+	JsonLog                 bool
 	configPath              string
 	prevConfigPath          string
 	mu                      sync.RWMutex
 }
 
-func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, config *Config) (*ConfigManager, error) {
+func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config) (*ConfigManager, error) {
 	return &ConfigManager{
 		config:                  config,
 		configPath:              configPath,
 		prevConfigPath:          prevConfigPath,
 		Token:                   token,
 		DefaultGroundControlURL: defaultGroundControlURL,
+		JsonLog:                 jsonLog,
 	}, nil
 }
 
@@ -92,7 +94,7 @@ func (cm *ConfigManager) WritePrevConfigToDisk(config *Config) error {
 	return nil
 }
 
-func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string) (*ConfigManager, []string, error) {
+func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging bool) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
 
@@ -112,7 +114,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 		return nil, warnings, fmt.Errorf("invalid config: %w", err)
 	}
 
-	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, cfg)
+	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, jsonLogging, cfg)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to create config manager: %w", err)
 	}
