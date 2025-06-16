@@ -30,7 +30,7 @@ func TestWriteTempZotConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			zm := NewZotManager(&log, tt.config)
+			zm := NewZotManager(log, tt.config)
 			tmpPath, err := zm.WriteTempZotConfig()
 			if tt.expectErr {
 				require.Error(t, err)
@@ -48,7 +48,7 @@ func TestWriteTempZotConfig(t *testing.T) {
 
 func TestRemoveTempZotConfig(t *testing.T) {
 	log := zerolog.Nop()
-	zm := NewZotManager(&log, nil)
+	zm := NewZotManager(log, nil)
 
 	tests := []struct {
 		name        string
@@ -95,7 +95,7 @@ func TestRemoveTempZotConfig(t *testing.T) {
 
 func TestVerifyRegistryConfig(t *testing.T) {
 	log := zerolog.Nop()
-	zm := NewZotManager(&log, nil)
+	zm := NewZotManager(log, nil)
 
 	tests := []struct {
 		name        string

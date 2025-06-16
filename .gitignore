@@ -34,4 +34,7 @@ __debug_bin1949266242
 /runtime
 /value
 
+.env
+config.json
 ground-control/.env
+ground-control/.gc-dev
