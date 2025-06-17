@@ -144,17 +144,6 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	groupName := vars["group"]
 
-	group, err := s.dbQueries.GetGroupByName(r.Context(), groupName)
-	if err != nil {
-		log.Println(err)
-		err := &AppError{
-			Message: "Error: Group Not Found",
-			Code:    http.StatusNotFound,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		log.Printf("Error starting transaction: %v", err)
@@ -183,8 +172,19 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	group, err := q.GetGroupByName(r.Context(), groupName)
+	if err != nil {
+		log.Println(err)
+		err := &AppError{
+			Message: "Error: Group Not Found",
+			Code:    http.StatusNotFound,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
 	// Remove the group from all associated satellites
-	satellites, err := s.dbQueries.GroupSatelliteList(r.Context(), group.ID)
+	satellites, err := q.GroupSatelliteList(r.Context(), group.ID)
 	if err != nil {
 		log.Println(err)
 		err := &AppError{
