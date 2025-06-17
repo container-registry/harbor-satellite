@@ -171,10 +171,15 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 	committed := false
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback()
-			panic(p)
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
+				return
+			}
 		} else if !committed {
-			tx.Rollback()
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
+				return
+			}
 		}
 	}()
 
@@ -299,17 +304,6 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(groupName, "group"))
-	if err != nil {
-		log.Println(err)
-		err := &AppError{
-			Message: "Error: Failed to delete group state",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
 	if err := tx.Commit(); err != nil {
 		log.Printf("Commit failed: %v", err)
 		HandleAppError(w, &AppError{
@@ -320,6 +314,17 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	committed = true
+
+	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(groupName, "group"))
+	if err != nil {
+		log.Println(err)
+		err := &AppError{
+			Message: "Error: Failed to delete group state",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
