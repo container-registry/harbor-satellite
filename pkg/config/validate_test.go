@@ -3,17 +3,21 @@ package config
 import (
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
-func TestValidateConfig(t *testing.T) {
-	tests := []struct {
-		name           string
-		config         *Config
-		expectError    bool
-		expectedErrMsg string
-		expectWarnings bool
-	}{
+type validateTestCase struct {
+	name           string
+	config         *Config
+	expectError    bool
+	expectedErrMsg string
+	expectWarnings bool
+	expectedConfig *Config
+}
+
+func TestValidateAndEnforceDefaults(t *testing.T) {
+	tests := []validateTestCase{
 		{
 			name: "valid config",
 			config: &Config{
@@ -22,105 +26,132 @@ func TestValidateConfig(t *testing.T) {
 					LogLevel:                  "info",
 					StateReplicationInterval:  "0 * * * *",
 					RegisterSatelliteInterval: "*/5 * * * *",
-					UpdateConfigInterval:      "0 0 * * *",
 				},
-				ZotConfigRaw: []byte("{}"),
+				ZotConfigRaw: []byte(`{"distSpecVersion":"1.1.0"}`),
 			},
 			expectError:    false,
-			expectWarnings: false,
+			expectWarnings: true,
 		},
 		{
 			name:           "nil config",
 			config:         nil,
-			expectError:    true,
-			expectedErrMsg: "config cannot be nil",
-			expectWarnings: false,
+			expectError:    false,
+			expectedErrMsg: "nil config",
+			expectWarnings: true,
 		},
 		{
-			name:           "empty config",
+			name:           "empty config - defaults applied",
 			config:         &Config{},
-			expectError:    true,
-			expectedErrMsg: "config cannot be empty",
-			expectWarnings: false,
+			expectError:    false,
+			expectWarnings: true,
+			expectedConfig: &Config{
+				AppConfig: AppConfig{
+					GroundControlURL:          URL(DefaultGroundControlURL),
+					LogLevel:                  zerolog.LevelInfoValue,
+					StateReplicationInterval:  DefaultFetchAndReplicateCronExpr,
+					RegisterSatelliteInterval: DefaultZTRCronExpr,
+				},
+				ZotConfigRaw: []byte(DefaultZotConfigJSON),
+			},
 		},
 		{
 			name: "invalid ground control URL",
 			config: &Config{
 				AppConfig: AppConfig{
-					GroundControlURL:          URL("ht@tp://bad-url"),
-					LogLevel:                  "info",
-					StateReplicationInterval:  "0 * * * *",
-					RegisterSatelliteInterval: "*/5 * * * *",
-					UpdateConfigInterval:      "0 0 * * *",
+					GroundControlURL: URL("ht@tp://bad-url"),
 				},
-				ZotConfigRaw: []byte("{}"),
+				ZotConfigRaw: []byte(DefaultZotConfigJSON),
 			},
 			expectError:    true,
 			expectedErrMsg: "invalid URL provided",
 		},
 		{
-			name: "empty zot config",
+			name: "empty zot config - fallback to default",
 			config: &Config{
 				AppConfig: AppConfig{
-					GroundControlURL:          URL("https://example.com"),
-					LogLevel:                  "info",
-					StateReplicationInterval:  "0 * * * *",
-					RegisterSatelliteInterval: "*/5 * * * *",
-					UpdateConfigInterval:      "0 0 * * *",
+					GroundControlURL: URL("https://example.com"),
 				},
 				ZotConfigRaw: []byte(""),
 			},
-			expectError:    true,
-			expectedErrMsg: "invalid zot_config",
+			expectError:    false,
+			expectWarnings: true,
+			expectedConfig: &Config{
+				ZotConfigRaw: []byte(DefaultZotConfigJSON),
+			},
 		},
 		{
 			name: "invalid log level",
 			config: &Config{
 				AppConfig: AppConfig{
-					GroundControlURL:          URL("https://example.com"),
-					LogLevel:                  "badlevel",
-					StateReplicationInterval:  "0 * * * *",
-					RegisterSatelliteInterval: "*/5 * * * *",
-					UpdateConfigInterval:      "0 0 * * *",
+					GroundControlURL: URL("https://example.com"),
+					LogLevel:         "badlevel",
 				},
-				ZotConfigRaw: []byte("{}"),
+				ZotConfigRaw: []byte(DefaultZotConfigJSON),
 			},
 			expectError:    false,
 			expectWarnings: true,
+			expectedConfig: &Config{
+				AppConfig: AppConfig{
+					LogLevel: zerolog.LevelInfoValue,
+				},
+			},
 		},
 		{
 			name: "invalid cron expressions",
 			config: &Config{
 				AppConfig: AppConfig{
 					GroundControlURL:          URL("https://example.com"),
-					LogLevel:                  "info",
-					StateReplicationInterval:  "bad cron expr",
+					StateReplicationInterval:  "bad cron",
 					RegisterSatelliteInterval: "also bad",
-					UpdateConfigInterval:      "not good",
 				},
-				ZotConfigRaw: []byte("{}"),
+				ZotConfigRaw: []byte(DefaultZotConfigJSON),
 			},
 			expectError:    false,
 			expectWarnings: true,
+			expectedConfig: &Config{
+				AppConfig: AppConfig{
+					StateReplicationInterval:  DefaultFetchAndReplicateCronExpr,
+					RegisterSatelliteInterval: DefaultZTRCronExpr,
+				},
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			warnings, err := ValidateConfig(tt.config)
+			config, warnings, err := ValidateAndEnforceDefaults(tt.config, DefaultGroundControlURL)
 
 			if tt.expectError {
 				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.expectedErrMsg)
+				if tt.expectedErrMsg != "" {
+					require.Contains(t, err.Error(), tt.expectedErrMsg)
+				}
 				return
 			}
 
 			require.NoError(t, err)
 
 			if tt.expectWarnings {
-				require.NotEmpty(t, warnings, "expected warnings but got none")
+				require.NotEmpty(t, warnings)
 			} else {
-				require.Empty(t, warnings, "expected no warnings but got some")
+				require.Empty(t, warnings)
+			}
+
+			if tt.expectedConfig != nil {
+				exp := tt.expectedConfig.AppConfig
+				got := config.AppConfig
+				if exp.LogLevel != "" {
+					require.Equal(t, exp.LogLevel, got.LogLevel)
+				}
+				if exp.StateReplicationInterval != "" {
+					require.Equal(t, exp.StateReplicationInterval, got.StateReplicationInterval)
+				}
+				if exp.RegisterSatelliteInterval != "" {
+					require.Equal(t, exp.RegisterSatelliteInterval, got.RegisterSatelliteInterval)
+				}
+				if len(tt.expectedConfig.ZotConfigRaw) > 0 {
+					require.JSONEq(t, string(tt.expectedConfig.ZotConfigRaw), string(config.ZotConfigRaw))
+				}
 			}
 		})
 	}

@@ -2,8 +2,11 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -11,16 +14,20 @@ type ConfigManager struct {
 	config                  *Config
 	Token                   string
 	DefaultGroundControlURL string
+	JsonLog                 bool
 	configPath              string
+	prevConfigPath          string
 	mu                      sync.RWMutex
 }
 
-func NewConfigManager(path, token, defaultGroundControlURL string, config *Config) (*ConfigManager, error) {
+func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config) (*ConfigManager, error) {
 	return &ConfigManager{
 		config:                  config,
-		configPath:              path,
+		configPath:              configPath,
+		prevConfigPath:          prevConfigPath,
 		Token:                   token,
 		DefaultGroundControlURL: defaultGroundControlURL,
+		JsonLog:                 jsonLog,
 	}, nil
 }
 
@@ -33,6 +40,7 @@ func (cm *ConfigManager) With(mutators ...func(*Config)) *ConfigManager {
 	return cm
 }
 
+// Writes the cm's config to disk
 func (cm *ConfigManager) WriteConfig() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -50,33 +58,80 @@ func (cm *ConfigManager) WriteConfig() error {
 	return nil
 }
 
-func InitConfigManager(path string) (*ConfigManager, []string, error) {
-	cfg, err := readAndReturnConfig(path)
+// Writes the given config to disk at the configPath
+func (cm *ConfigManager) WriteConfigToDisk(config *Config) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(cm.configPath, data, 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Writes the given config to disk at the prevConfigPath
+func (cm *ConfigManager) WritePrevConfigToDisk(config *Config) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(cm.prevConfigPath, data, 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging bool) (*ConfigManager, []string, error) {
+	var cfg *Config
+	var err error
+
+	if _, err := url.ParseRequestURI(groundControlURL); err != nil {
+		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url env var: %w", err)
+	}
+
+	cfg, err = readAndReturnConfig(configPath)
+	if errors.Is(err, os.ErrNotExist) {
+		cfg = &Config{}
+	} else if err != nil {
 		return nil, nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	warnings, err := ValidateConfig(cfg)
+	cfg, warnings, err := ValidateAndEnforceDefaults(cfg, groundControlURL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("invalid config: %w", err)
+		return nil, warnings, fmt.Errorf("invalid config: %w", err)
 	}
 
-	token := os.Getenv("TOKEN")
-	defaultGroundControlURL := os.Getenv("GROUND_CONTROL_URL")
-
-	cm, err := NewConfigManager(path, token, defaultGroundControlURL, cfg)
+	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, jsonLogging, cfg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create manager: %w", err)
+		return nil, warnings, fmt.Errorf("failed to create config manager: %w", err)
 	}
 
 	return cm, warnings, nil
 }
 
-// Reads the config at the given path and loads it in the given config variable
+// Reads the config at the given path and returns the parsed Config.
 func readAndReturnConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
+	}
+
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "{}" {
+		return nil, os.ErrNotExist
 	}
 
 	var cfg Config

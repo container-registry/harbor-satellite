@@ -25,7 +25,8 @@ type State struct {
 }
 
 type SatelliteState struct {
-	States []string
+	States []string `json:"states,omitempty"`
+	Config string   `json:"config,omitempty"`
 }
 
 func NewState() StateReader {

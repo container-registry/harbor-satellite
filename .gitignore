@@ -33,3 +33,8 @@ __debug_bin1949266242
 /zot
 /runtime
 /value
+
+.env
+config.json
+ground-control/.env
+ground-control/.gc-dev
