@@ -5,7 +5,7 @@ import "flag"
 const (
 	appDir                  = "/app"
 	appBinary               = "app"
-	sourceFile              = "main.go"
+	sourceFile              = "cmd/main.go"
 	relative_path           = "./testdata/config.json"
 	absolute_path           = "test/e2e/testdata/config.json"
 	satellite_ping_endpoint = "/api/v1/satellite/ping"
