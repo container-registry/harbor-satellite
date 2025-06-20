@@ -2,6 +2,8 @@ package e2e
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -67,6 +69,10 @@ func TestSatelliteE2E(t *testing.T) {
 		s.testCreateConfigurationAndGroup(t)
 	})
 
+	t.Run("RegisterSatellite", func(t *testing.T) {
+		s.testRegisterSatellite(t)
+	})
+
 	s.Clean(t)
 }
 
@@ -89,7 +95,7 @@ func (s *SatelliteTestSuite) testCreateConfigurationAndGroup(t *testing.T) {
 		"config":      config,
 	}
 
-	err = s.makeGroundControlRequest(t, "POST", "/configs", configReq, nil)
+	_, err = s.makeGroundControlRequest(t, "POST", "/configs", configReq)
 	assert.NoError(t, err, "Failed to create satellite configuration")
 
 	groupReq := map[string]any{
@@ -105,30 +111,49 @@ func (s *SatelliteTestSuite) testCreateConfigurationAndGroup(t *testing.T) {
 		},
 	}
 
-	err = s.makeGroundControlRequest(t, "POST", "/groups/sync", groupReq, nil)
+	_, err = s.makeGroundControlRequest(t, "POST", "/groups/sync", groupReq)
 	require.NoError(t, err, "failed to create group")
 
-	t.Log("Configuration and group created successfully")
+	t.Log("configuration and group created successfully")
 }
 
-func (s *SatelliteTestSuite) makeGroundControlRequest(t *testing.T, method, path string, body any, response any) error {
+func (s *SatelliteTestSuite) testRegisterSatellite(t *testing.T) {
+
+	//TODO:// we need clean up robot account after each test
+	name := generateUniqueSatelliteName("test-satellite")
+
+	registerReq := map[string]any{
+		"name":        name,
+		"groups":      []string{"test-group"},
+		"config_name": "test-config",
+	}
+
+	token, err := s.makeGroundControlRequest(t, "POST", "/satellites", registerReq)
+	require.NoError(t, err, "failed to register satellite")
+	require.NotEmpty(t, token, "token should not be empty")
+
+	t.Logf("satellite registered successfully with token: %v", token)
+}
+
+func (s *SatelliteTestSuite) makeGroundControlRequest(t *testing.T, method, path string, body any) (string, error) {
 	var reqBody []byte
 	var err error
 
 	if body != nil {
 		reqBody, err = json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("failed to marshal request body: %w", err)
+			return "", fmt.Errorf("failed to marshal request body: %w", err)
 		}
 	}
 
 	httpContainer := s.client.Container().
 		From("alpine@sha256:8a1f59ffb675680d47db6337b49d22281a139e9d709335b492be023728e11715").
 		WithServiceBinding("gc", s.groundControl).
-		WithExec([]string{"apk", "add", "curl"})
+		WithExec([]string{"apk", "add", "curl"}).
+		WithEnvVariable("CACHEBUSTER", time.Now().String())
 
 	var curlArgs []string
-	curlArgs = append(curlArgs, "curl", "-s", "-i", "-X", method)
+	curlArgs = append(curlArgs, "curl", "-siX", method)
 
 	if body != nil {
 		curlArgs = append(curlArgs, "-H", "Content-Type: application/json")
@@ -137,20 +162,14 @@ func (s *SatelliteTestSuite) makeGroundControlRequest(t *testing.T, method, path
 
 	curlArgs = append(curlArgs, fmt.Sprintf("http://gc:8080%s", path))
 
-	stdout, err := httpContainer.WithEnvVariable("CACHEBUSTER", time.Now().String()).WithExec(curlArgs).Stdout(s.ctx)
+	stdout, err := httpContainer.WithExec(curlArgs).Stdout(s.ctx)
 	if err != nil {
-		return fmt.Errorf("HTTP request failed: %w", err)
+		return "", fmt.Errorf("HTTP request failed: %w", err)
 	}
 
 	t.Logf("ground control api %s %s response: %s", method, path, stdout)
 
-	if response != nil && stdout != "" {
-		if err := json.Unmarshal([]byte(stdout), response); err != nil {
-			return fmt.Errorf("failed to unmarshal response: %w", err)
-		}
-	}
-
-	return nil
+	return stdout, nil
 }
 
 func startPostgres(ctx context.Context, client *dagger.Client) *dagger.Service {
@@ -159,7 +178,6 @@ func startPostgres(ctx context.Context, client *dagger.Client) *dagger.Service {
 		WithEnvVariable("POSTGRES_USER", "postgres").
 		WithEnvVariable("POSTGRES_PASSWORD", "password").
 		WithEnvVariable("POSTGRES_DB", "groundcontrol").
-		//WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithExposedPort(5432).
 		AsService().Start(ctx)
 
@@ -235,4 +253,10 @@ func getProjectRoot() (string, error) {
 	}
 
 	return filepath.Abs(filepath.Join(currentDir, "../.."))
+}
+
+func generateUniqueSatelliteName(name string) string {
+	t := make([]byte, 3)
+	rand.Read(t)
+	return fmt.Sprintf("%s-%s", name, hex.EncodeToString(t))
 }
