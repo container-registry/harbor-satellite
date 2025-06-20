@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"dagger.io/dagger"
 	"github.com/stretchr/testify/assert"
@@ -25,10 +26,10 @@ type SatelliteTestSuite struct {
 func NewSatelliteTestSuite(t *testing.T) *SatelliteTestSuite {
 	ctx := context.Background()
 	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stderr))
-	assert.NoError(t, err, "failed to connect to Dagger")
+	require.NoError(t, err, "failed to connect to Dagger")
 
 	projectDir, err := getProjectDir()
-	assert.NoError(t, err, "failed to get project directory")
+	require.NoError(t, err, "failed to get project directory")
 
 	return &SatelliteTestSuite{
 		client:     client,
@@ -77,25 +78,40 @@ func (s *SatelliteTestSuite) testCreateConfigurationAndGroup(t *testing.T) {
 		log.Fatalf("error reading file: %v", err)
 	}
 
-	var config map[string]interface{}
+	var config map[string]any
 	if err := json.Unmarshal(data, &config); err != nil {
 		fmt.Println("error unmarshalling JSON:", err)
 		return
 	}
 
-	configReq := map[string]interface{}{
+	configReq := map[string]any{
 		"config_name": "test-config",
 		"config":      config,
 	}
 
-	err = s.makeGroundControlRequest(t, "POST", "/configs/sync", configReq, nil)
+	err = s.makeGroundControlRequest(t, "POST", "/configs", configReq, nil)
 	assert.NoError(t, err, "Failed to create satellite configuration")
 
-	//TODO:// create group
-	t.Log("Configuration created successfully")
+	groupReq := map[string]any{
+		"group": "test-group",
+		"artifacts": []map[string]any{
+			{
+				"repository": "nova/alpine",
+				"tags":       []string{"latest"},
+				"type":       "docker",
+				"digest":     "sha256:e9e9d51e25e4343f56b64d5ef1717234ec62241d93bf59734c53b4108b5c19ca",
+				"deleted":    false,
+			},
+		},
+	}
+
+	err = s.makeGroundControlRequest(t, "POST", "/groups/sync", groupReq, nil)
+	require.NoError(t, err, "failed to create group")
+
+	t.Log("Configuration and group created successfully")
 }
 
-func (s *SatelliteTestSuite) makeGroundControlRequest(t *testing.T, method, path string, body interface{}, response interface{}) error {
+func (s *SatelliteTestSuite) makeGroundControlRequest(t *testing.T, method, path string, body any, response any) error {
 	var reqBody []byte
 	var err error
 
@@ -107,12 +123,12 @@ func (s *SatelliteTestSuite) makeGroundControlRequest(t *testing.T, method, path
 	}
 
 	httpContainer := s.client.Container().
-		From("alpine:latest").
+		From("alpine@sha256:8a1f59ffb675680d47db6337b49d22281a139e9d709335b492be023728e11715").
 		WithServiceBinding("gc", s.groundControl).
 		WithExec([]string{"apk", "add", "curl"})
 
 	var curlArgs []string
-	curlArgs = append(curlArgs, "curl", "-s", "-X", method)
+	curlArgs = append(curlArgs, "curl", "-s", "-i", "-X", method)
 
 	if body != nil {
 		curlArgs = append(curlArgs, "-H", "Content-Type: application/json")
@@ -121,7 +137,7 @@ func (s *SatelliteTestSuite) makeGroundControlRequest(t *testing.T, method, path
 
 	curlArgs = append(curlArgs, fmt.Sprintf("http://gc:8080%s", path))
 
-	stdout, err := httpContainer.WithExec(curlArgs).Stdout(s.ctx)
+	stdout, err := httpContainer.WithEnvVariable("CACHEBUSTER", time.Now().String()).WithExec(curlArgs).Stdout(s.ctx)
 	if err != nil {
 		return fmt.Errorf("HTTP request failed: %w", err)
 	}
@@ -139,7 +155,7 @@ func (s *SatelliteTestSuite) makeGroundControlRequest(t *testing.T, method, path
 
 func startPostgres(ctx context.Context, client *dagger.Client) *dagger.Service {
 	db, err := client.Container().
-		From("postgres:17").
+		From("postgres:17@sha256:6cf6142afacfa89fb28b894d6391c7dcbf6523c33178bdc33e782b3b533a9342").
 		WithEnvVariable("POSTGRES_USER", "postgres").
 		WithEnvVariable("POSTGRES_PASSWORD", "password").
 		WithEnvVariable("POSTGRES_DB", "groundcontrol").
@@ -158,7 +174,7 @@ func startGroundControl(ctx context.Context, client *dagger.Client, db *dagger.S
 	gcDir := client.Host().Directory(fmt.Sprintf("%s/ground-control", projectRoot))
 
 	gc, err := client.Container().
-		From("golang:latest").
+		From("golang:1.24-alpine@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706eef7846f319293ab5cb7a").
 		WithMountedCache("/go/pkg/mod", client.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", client.CacheVolume("go-build")).
@@ -172,8 +188,11 @@ func startGroundControl(ctx context.Context, client *dagger.Client, db *dagger.S
 		WithEnvVariable("DB_PASSWORD", "password").
 		WithEnvVariable("DB_DATABASE", "groundcontrol").
 		WithEnvVariable("PORT", "8080").
-		WithEnvVariable("HARBOR_URL", "http://172.22.0.2:30002").
-		//	WithEnvVariable("CACHEBUSTER", time.Now().String()).
+		WithEnvVariable("PORT", "8080").
+		WithEnvVariable("HARBOR_USERNAME", "admin").
+		WithEnvVariable("HARBOR_PASSWORD", "Harbor12345").
+		WithEnvVariable("HARBOR_URL", "https://demo.goharbor.io").
+		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithExec([]string{"go", "install", "github.com/pressly/goose/v3/cmd/goose@latest"}).
 		WithWorkdir("/app/sql/schema").
 		WithExec([]string{"goose", "postgres",
@@ -192,7 +211,8 @@ func startGroundControl(ctx context.Context, client *dagger.Client, db *dagger.S
 
 func checkHealthGroundControl(ctx context.Context, client *dagger.Client, gc *dagger.Service) string {
 	container := client.Container().
-		From("alpine").
+		From("alpine@sha256:8a1f59ffb675680d47db6337b49d22281a139e9d709335b492be023728e11715").
+		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithServiceBinding("gc", gc).
 		WithExec([]string{"wget", "-qO-", "http://gc:8080/ping"})
 
