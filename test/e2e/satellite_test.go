@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"dagger.io/dagger"
+	"github.com/container-registry/harbor-satellite/test/e2e/testconfig"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -113,10 +114,10 @@ func buildSatellite(
 	dest *dagger.Service,
 ) {
 	var PATH_TO_CONFIG string
-	if ABS {
-		PATH_TO_CONFIG = absolute_path
+	if testconfig.ABS {
+		PATH_TO_CONFIG = testconfig.Absolute_path
 	} else {
-		PATH_TO_CONFIG = relative_path
+		PATH_TO_CONFIG = testconfig.Relative_path
 	}
 	// Get the directory
 	parentDir, err := getProjectDir()
@@ -129,21 +130,21 @@ func buildSatellite(
 	configFile := client.Host().File(PATH_TO_CONFIG)
 
 	// Configure and build the Satellite
-	container := client.Container().From("golang:alpine").WithDirectory(appDir, dir).
-		WithWorkdir(appDir).
+	container := client.Container().From("golang:alpine").WithDirectory(testconfig.AppDir, dir).
+		WithWorkdir(testconfig.AppDir).
 		WithServiceBinding("source", source).
 		WithServiceBinding("dest", dest).
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithFile("./config.json", configFile).
-		WithExec([]string{"go", "build", "-o", appBinary, sourceFile}).
+		WithExec([]string{"go", "build", "-o", testconfig.AppBinary, testconfig.SourceFile}).
 		WithExposedPort(9090).
-		WithExec([]string{"./" + appBinary}).
+		WithExec([]string{"./" + testconfig.AppBinary}).
 		AsService()
 
 	satellite_container := client.Container().
 		From("golang:alpine").
 		WithServiceBinding("satellite", container).
-		WithExec([]string{"wget", "-O", "-", "http://satellite:9090" + satellite_ping_endpoint})
+		WithExec([]string{"wget", "-O", "-", "http://satellite:9090" + testconfig.Satellite_ping_endpoint})
 
 	output, err := satellite_container.Stdout(ctx)
 	assert.NoError(t, err, "Failed to get output from satellite ping endpoint")
