@@ -447,6 +447,7 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteGroupParams
+
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
 		return
