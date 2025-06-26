@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -30,7 +29,7 @@ func NewSatelliteTestSuite(t *testing.T) *SatelliteTestSuite {
 	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stderr))
 	require.NoError(t, err, "failed to connect to Dagger")
 
-	projectDir, err := getProjectDir()
+	projectDir, err := getProjectRootDir()
 	require.NoError(t, err, "failed to get project directory")
 
 	return &SatelliteTestSuite{
@@ -52,7 +51,7 @@ func (s *SatelliteTestSuite) Setup(t *testing.T) {
 	s.postgres = startPostgres(s.ctx, s.client)
 	require.NotNil(t, s.postgres, "postgresql service should not be nil")
 
-	s.groundControl = startGroundControl(s.ctx, s.client, s.postgres)
+	s.groundControl = startGroundControl(s.ctx, s.client)
 	require.NotNil(t, s.groundControl, "ground control service should not be nil")
 
 	checkHealthGroundControl(s.ctx, s.client, s.groundControl)
@@ -233,7 +232,7 @@ func startPostgres(ctx context.Context, client *dagger.Client) *dagger.Service {
 		WithEnvVariable("POSTGRES_PASSWORD", "password").
 		WithEnvVariable("POSTGRES_DB", "groundcontrol").
 		WithExposedPort(5432).
-		AsService().Start(ctx)
+		AsService().WithHostname("postgres").Start(ctx)
 
 	if err != nil {
 		log.Fatalf("Failed to start PostgreSQL service: %v", err)
@@ -241,8 +240,12 @@ func startPostgres(ctx context.Context, client *dagger.Client) *dagger.Service {
 	return db
 }
 
-func startGroundControl(ctx context.Context, client *dagger.Client, db *dagger.Service) *dagger.Service {
-	projectRoot, err := getProjectRoot()
+func startGroundControl(ctx context.Context, client *dagger.Client) *dagger.Service {
+	projectRoot, err := getProjectRootDir()
+	if err != nil {
+		log.Fatalf("failed to get project root dir %v", err)
+	}
+
 	gcDir := client.Host().Directory(fmt.Sprintf("%s/ground-control", projectRoot))
 
 	gc, err := client.Container().
@@ -253,7 +256,6 @@ func startGroundControl(ctx context.Context, client *dagger.Client, db *dagger.S
 		WithEnvVariable("GOCACHE", "/go/build-cache").
 		WithDirectory("/app", gcDir).
 		WithWorkdir("/app").
-		WithServiceBinding("postgres", db).
 		WithEnvVariable("DB_HOST", "postgres").
 		WithEnvVariable("DB_PORT", "5432").
 		WithEnvVariable("DB_USERNAME", "postgres").
@@ -270,9 +272,9 @@ func startGroundControl(ctx context.Context, client *dagger.Client, db *dagger.S
 			"postgres://postgres:password@postgres:5432/groundcontrol?sslmode=disable", "up"}).
 		WithWorkdir("/app").
 		WithExec([]string{"go", "build", "-o", "ground-control", "main.go"}).
-		WithExposedPort(8080).
-		WithExec([]string{"./ground-control"}).
-		AsService().Start(ctx)
+		WithExposedPort(8080, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
+		WithEntrypoint([]string{"./ground-control"}).
+		AsService().WithHostname("gc").Start(ctx)
 
 	if err != nil {
 		log.Fatalf("failed to start ground control service: %v", err)
@@ -293,19 +295,6 @@ func checkHealthGroundControl(ctx context.Context, client *dagger.Client, gc *da
 	}
 
 	return out
-}
-
-func getProjectRoot() (string, error) {
-	if projectRoot := os.Getenv("PROJECT_ROOT"); projectRoot != "" {
-		return projectRoot, nil
-	}
-
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Abs(filepath.Join(currentDir, "../.."))
 }
 
 func generateUniqueSatelliteName(name string) string {
