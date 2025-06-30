@@ -33,6 +33,7 @@ const (
 	registryName      = "test-registry"
 	replicationPolicy = "satellite-group"
 	destNamespace     = "group1"
+	policyId          = 1
 )
 
 type HarborRegistry struct {
@@ -162,9 +163,9 @@ func (hr *HarborRegistry) SetupHarborRegistry() (*dagger.Service, error) {
 	}
 	log.Println("core service started")
 
-	//TODO://Need to check the health and then proceed instead of arbitarysleep
-	time.Sleep(1 * time.Minute)
-
+	if err := hr.waitForCoreServiceHealth(); err != nil {
+		return nil, fmt.Errorf("failed to get status of core service: %w", err)
+	}
 	if err := hr.initializeHarborRegistry(); err != nil {
 		return nil, fmt.Errorf("failed to initialize harbor registry: %w", err)
 	}
@@ -173,16 +174,40 @@ func (hr *HarborRegistry) SetupHarborRegistry() (*dagger.Service, error) {
 	return coreService, nil
 }
 
+func (hr *HarborRegistry) waitForCoreServiceHealth() error {
+	timeout := time.After(2 * time.Minute)
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for services to be healthy")
+		case <-ticker.C:
+			err := hr.executeHTTPRequest("GET", "/health", "")
+			if err == nil {
+				log.Println("core service is healthy")
+				return nil
+			}
+			log.Printf("Services not ready yet: %v", err)
+		}
+	}
+}
+
 func (hr *HarborRegistry) initializeHarborRegistry() error {
 	log.Println("initializing harbor registry...")
 
 	requests := []func() error{
 		hr.createProject,
+		hr.listProjects,
+		hr.pushToRegistry,
+		hr.listArtifacts,
 		hr.listAdapters,
 		hr.pingRegistry,
 		hr.createRegistry,
 		hr.listRegistries,
 		hr.createReplicationPolicy,
+		hr.executeReplication,
+		hr.getExecuteReplication,
 	}
 
 	for i, request := range requests {
@@ -199,6 +224,9 @@ func (hr *HarborRegistry) createProject() error {
 	return hr.executeHTTPRequest("POST", "/projects", fmt.Sprintf(`{"project_name": "%s"}`, projectName))
 }
 
+func (hr *HarborRegistry) listProjects() error {
+	return hr.executeHTTPRequest("GET", "/projects", "")
+}
 func (hr *HarborRegistry) listAdapters() error {
 	return hr.executeHTTPRequest("GET", "/replication/adapters", "")
 }
@@ -238,18 +266,31 @@ func (hr *HarborRegistry) createRegistry() error {
 	return hr.executeHTTPRequest("POST", "/registries", data)
 }
 
+func (hr *HarborRegistry) pushToRegistry() error {
+	_, err := hr.client.Container().
+		From("alpine:latest").
+		WithEnvVariable("CACHEBUSTER", time.Now().String()).
+		WithExec([]string{"apk", "add", "crane"}).
+		WithExec([]string{"crane", "auth", "login", "registry:5000", "-u", "harbor_registry_user", "-p", "TRJUhYbJgSjXZWAj3oLEet3ugJ3nAOk3", "--insecure"}).
+		WithExec([]string{"cat", "/root/.docker/config.json"}).
+		WithExec([]string{"crane", "copy", "docker.io/library/alpine:latest", "registry:5000/edge/alpine:latest", "--insecure"}).
+		Stdout(hr.ctx)
+	return err
+}
+
+func (hr *HarborRegistry) listArtifacts() error {
+	return hr.executeHTTPRequest("GET", "/projects/edge/artifacts", "")
+}
+
 // TODO:// Need to check if we below function can create replication policy
 func (hr *HarborRegistry) createReplicationPolicy() error {
 	data := fmt.Sprintf(`{
 		"name": "%s",
 		"dest_registry": {
-			"creation_time": "2025-06-26T13:01:24.466Z",
-			"credential": {},
-			"id": 169,
+			"id": 1,
 			"name": "%s",
 			"status": "healthy",
 			"type": "harbor-satellite",
-			"update_time": "2025-06-26T13:01:24.466Z",
 			"url": "http://gc:8080"
 		},
 		"dest_namespace": "%s",
@@ -260,7 +301,10 @@ func (hr *HarborRegistry) createReplicationPolicy() error {
 				"cron": ""
 			}
 		},
-		"filters": [],
+		"filters": [{
+			"type": "name",
+			"value": "edge/**"
+		}],
 		"enabled": true,
 		"deletion": false,
 		"override": true,
@@ -270,12 +314,18 @@ func (hr *HarborRegistry) createReplicationPolicy() error {
 	return hr.executeHTTPRequest("POST", "/replication/policies", data)
 }
 
-//TODO:
-// Execution
-// https://core:8080/api/v2.0/replication/executions
+func (hr *HarborRegistry) executeReplication() error {
+	data := fmt.Sprintf(`{ "policy_id": %d }`, policyId)
+	return hr.executeHTTPRequest("POST", "/replication/executions", data)
+}
+
+func (hr *HarborRegistry) getExecuteReplication() error {
+	url := fmt.Sprintf("/replication/executions/%d", policyId)
+	return hr.executeHTTPRequest("GET", url, "")
+}
 
 func (hr *HarborRegistry) executeHTTPRequest(method, endpoint, data string) error {
-	args := []string{"curl", "-s", "-X", method}
+	args := []string{"curl", "-s", "-i", "-f", "-X", method}
 
 	args = append(args, "-u", fmt.Sprintf("%s:%s", harborAdminUser, harborAdminPassword))
 
@@ -298,6 +348,7 @@ func (hr *HarborRegistry) executeHTTPRequest(method, endpoint, data string) erro
 func curlContainer(ctx context.Context, c *dagger.Client, cmd []string) (string, error) {
 	return c.Container().
 		From("curlimages/curl@sha256:9a1ed35addb45476afa911696297f8e115993df459278ed036182dd2cd22b67b").
+		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithExec(cmd).
 		Stdout(ctx)
 }
