@@ -14,8 +14,9 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type SatelliteParams struct {
+type SatelliteGroupParams struct {
 	Satellite string `json:"satellite"`
+	Group     string `json:"group"`
 }
 
 type RegisterSatelliteParams struct {
@@ -225,7 +226,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 			token[:4],
 			token[len(token)-4:],
 		)
-        log.Printf("Invalid Satellite Token %s: %v", masked, err)
+		log.Printf("Invalid Satellite Token %s: %v", masked, err)
 		err := &AppError{
 			Message: "Error: Invalid Token",
 			Code:    http.StatusBadRequest,
@@ -424,7 +425,7 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(fmt.Sprintf("satellite-state/%s/state", sat.Name)))
+	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(sat.Name, "satellite"))
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -445,18 +446,8 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	groupName := vars["group"]
+	var req SatelliteGroupParams
 
-	if !utils.IsValidName(groupName) {
-		HandleAppError(w, &AppError{
-			Message: fmt.Sprintf(invalidNameMessage, "group"),
-			Code:    http.StatusBadRequest,
-		})
-		return
-	}
-
-	var req SatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
 		return
@@ -484,7 +475,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get group by name
-	grp, err := s.dbQueries.GetGroupByName(r.Context(), groupName)
+	grp, err := s.dbQueries.GetGroupByName(r.Context(), req.Group)
 	if err != nil {
 		log.Printf("Error: Group Not Found: %v", err)
 		err := &AppError{
@@ -511,7 +502,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if alreadyInGroup {
-		log.Printf("Satellite %s is already in group %s, no changes needed", req.Satellite, groupName)
+		log.Printf("Satellite %s is already in group %s, no changes needed", req.Satellite, req.Group)
 		WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite is already in the group"})
 		return
 	}
