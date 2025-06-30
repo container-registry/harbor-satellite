@@ -25,8 +25,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Configs
 	r.HandleFunc("/configs", s.listConfigsHandler).Methods("GET")
 	r.HandleFunc("/configs", s.createConfigHandler).Methods("POST")
-	// TODO: need to create update config handler function
-	// r.HandleFunc("/configs", s.updateConfigHandler).Methods("PATCH")
+	r.HandleFunc("/configs/{config}", s.updateConfigHandler).Methods("PATCH")
 	r.HandleFunc("/configs/{config}", s.getConfigHandler).Methods("GET")
 	r.HandleFunc("/configs/{config}", s.deleteConfigHandler).Methods("DELETE")
 	r.HandleFunc("/configs/satellite", s.setSatelliteConfig).Methods("POST")
