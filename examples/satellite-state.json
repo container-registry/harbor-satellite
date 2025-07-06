@@ -1,0 +1,6 @@
+{
+    "states": [
+        "http://demo.goharbor.io/satellite/group-state/demo-group/state:latest"
+    ],
+    "config": "http://demo.goharbor.io/satellite/config-state/config1/state:latest"
+}
