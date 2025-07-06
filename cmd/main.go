@@ -21,14 +21,13 @@ import (
 
 func main() {
 	var jsonLogging bool
-	flag.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
-	flag.Parse()
-
 	var groundControlURL string
 	var token string
-
+	
 	flag.StringVar(&groundControlURL, "ground-control-url", "", "URL to ground control")
+	flag.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
 	flag.StringVar(&token, "token", "", "Satellite token")
+
 	flag.Parse()
 
 	if token == "" {
