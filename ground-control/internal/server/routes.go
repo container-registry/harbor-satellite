@@ -12,28 +12,32 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/ping", s.Ping).Methods("GET")
 	r.HandleFunc("/health", s.healthHandler).Methods("GET")
 
-	// Ground Control interface
-	r.HandleFunc("/groups/sync", s.groupsSyncHandler).Methods("POST")
-	r.HandleFunc("/groups/list", s.listGroupHandler).Methods("GET")
-	r.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET")
-	r.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")
-	r.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")
+	// Groups
+	r.HandleFunc("/groups", s.listGroupHandler).Methods("GET")        // List all groups
+	r.HandleFunc("/groups/sync", s.groupsSyncHandler).Methods("POST") // Sync groups
+	r.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET") // Get specific group
 
-	r.HandleFunc("/configs/sync", s.configsSyncHandler).Methods("POST")
-	r.HandleFunc("/configs/list", s.listConfigsHandler).Methods("GET")
+	// Satellites in groups
+	r.HandleFunc("/groups/{group}/satellites", s.groupSatelliteHandler).Methods("GET") // List satellites in group
+	r.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")           // Add satellite to group
+	r.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")    // Remove satellite from group
+
+	// Configs
+	r.HandleFunc("/configs", s.listConfigsHandler).Methods("GET")
+	r.HandleFunc("/configs", s.createConfigHandler).Methods("POST")
+	// TODO: need to create update config handler function
+	// r.HandleFunc("/configs", s.updateConfigHandler).Methods("PATCH")
 	r.HandleFunc("/configs/{config}", s.getConfigHandler).Methods("GET")
 	r.HandleFunc("/configs/{config}", s.deleteConfigHandler).Methods("DELETE")
 	r.HandleFunc("/configs/satellite", s.setSatelliteConfig).Methods("POST")
 
-	r.HandleFunc("/groups/{group}/satellites", s.groupSatelliteListHandler).Methods("GET")
-
-	// Ground Control interface
-	r.HandleFunc("/satellites/register", s.registerSatelliteHandler).Methods("POST")
+	// Satellites
+	r.HandleFunc("/satellites", s.listSatelliteHandler).Methods("GET")      // List all satellites
+	r.HandleFunc("/satellites", s.registerSatelliteHandler).Methods("POST") // Register new satellite
 	r.HandleFunc("/satellites/ztr/{token}", s.ztrHandler).Methods("GET")
-	r.HandleFunc("/satellites/list", s.listSatelliteHandler).Methods("GET")
-	r.HandleFunc("/satellites/{satellite}", s.GetSatelliteByName).Methods("GET")
-	r.HandleFunc("/satellites/{satellite}", s.DeleteSatelliteByName).Methods("DELETE")
-	// r.HandleFunc("/satellites/{satellite}/images", s.GetImagesForSatellite).Methods("GET")
+	r.HandleFunc("/satellites/{satellite}", s.GetSatelliteByName).Methods("GET")       // Get specific satellite
+	r.HandleFunc("/satellites/{satellite}", s.DeleteSatelliteByName).Methods("DELETE") // Delete specific satellite
+	// r.HandleFunc("/satellites/{satellite}/images", s.GetImagesForSatellite).Methods("GET") // Get satellite images
 
 	return r
 }

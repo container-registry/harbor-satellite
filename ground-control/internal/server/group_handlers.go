@@ -140,6 +140,195 @@ func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	groupName := vars["group"]
+
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("Error starting transaction: %v", err)
+		err := &AppError{
+			Message: "Error: Failed to start database transaction",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	q := s.dbQueries.WithTx(tx)
+
+	committed := false
+	defer func() {
+		if p := recover(); p != nil {
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
+				return
+			}
+		} else if !committed {
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
+				return
+			}
+		}
+	}()
+
+	group, err := q.GetGroupByName(r.Context(), groupName)
+	if err != nil {
+		log.Println(err)
+		err := &AppError{
+			Message: "Error: Group Not Found",
+			Code:    http.StatusNotFound,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Remove the group from all associated satellites
+	satellites, err := q.GroupSatelliteList(r.Context(), group.ID)
+	if err != nil {
+		log.Println(err)
+		err := &AppError{
+			Message: "Error: Failed to list satellites for group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	for _, satellite := range satellites {
+		if err := q.RemoveSatelliteFromGroup(r.Context(), database.RemoveSatelliteFromGroupParams{
+			SatelliteID: satellite.SatelliteID,
+			GroupID:     group.ID,
+		}); err != nil {
+			log.Println(err)
+			err := &AppError{
+				Message: "Error: Failed to remove group from satellite",
+				Code:    http.StatusInternalServerError,
+			}
+			HandleAppError(w, err)
+			return
+		}
+
+		// Update robot permissions and state artifact for each satellite
+		robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), satellite.SatelliteID)
+		if err != nil {
+			log.Println(err)
+			err := &AppError{
+				Message: "Error: Failed to update satellite permissions",
+				Code:    http.StatusInternalServerError,
+			}
+			HandleAppError(w, err)
+			return
+		}
+
+		// Get remaining groups for this satellite
+		groupList, err := q.SatelliteGroupList(r.Context(), satellite.SatelliteID)
+		if err != nil {
+			log.Println(err)
+			err := &AppError{
+				Message: "Error: Failed to update satellite state",
+				Code:    http.StatusInternalServerError,
+			}
+			HandleAppError(w, err)
+			return
+		}
+
+		// Update projects and state artifacts
+		var projects []string
+		var groupStates []string
+		for _, g := range groupList {
+			grp, err := q.GetGroupByID(r.Context(), g.GroupID)
+			if err != nil {
+				log.Println(err)
+				err := &AppError{
+					Message: "Error: Failed to update satellite state",
+					Code:    http.StatusInternalServerError,
+				}
+				HandleAppError(w, err)
+				return
+			}
+			projects = append(projects, grp.Projects...)
+			groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
+		}
+
+		// Update robot permissions
+		_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
+		if err != nil {
+			log.Println(err)
+			err := &AppError{
+				Message: "Error: Failed to update satellite permissions",
+				Code:    http.StatusInternalServerError,
+			}
+			HandleAppError(w, err)
+			return
+		}
+
+		sat, err := q.GetSatellite(r.Context(), satellite.SatelliteID)
+		if err != nil {
+			log.Println(err)
+			err := &AppError{
+				Message: "Error: Failed to update satellite state",
+				Code:    http.StatusInternalServerError,
+			}
+			HandleAppError(w, err)
+			return
+		}
+
+		configObject, err := fetchSatelliteConfig(r.Context(), q, sat.ID)
+		if err != nil {
+			log.Printf("Error: Failed to fetch Satellite config: %v", err)
+			HandleAppError(w, err)
+			return
+		}
+
+		// Update state artifact
+		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
+		if err != nil {
+			log.Println(err)
+			err := &AppError{
+				Message: "Error: Failed to update satellite state",
+				Code:    http.StatusInternalServerError,
+			}
+			HandleAppError(w, err)
+			return
+		}
+	}
+
+	if err := q.DeleteGroup(r.Context(), group.ID); err != nil {
+		log.Println(err)
+		err := &AppError{
+			Message: "Error: Failed to delete group",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Commit failed: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Could not commit transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+
+	committed = true
+
+	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(groupName, "group"))
+	if err != nil {
+		log.Println(err)
+		err := &AppError{
+			Message: "Error: Failed to delete group state",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
 func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListGroups(r.Context())
 	if err != nil {
@@ -152,7 +341,7 @@ func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // groupSatelliteHandler lists all satellites attached to a specific group
-func (s *Server) groupSatelliteListHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) groupSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	groupName := vars["group"]
 
