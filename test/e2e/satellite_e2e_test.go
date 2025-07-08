@@ -41,10 +41,10 @@ func NewSatelliteTestSuite(t *testing.T) *SatelliteTestSuite {
 
 func (s *SatelliteTestSuite) Clean(t *testing.T) {
 	if err := s.client.Close(); err != nil {
-		log.Printf("error closing client: %v", err)
+		t.Logf("error closing client: %v", err)
 	}
-
 }
+
 func (s *SatelliteTestSuite) Setup(t *testing.T) {
 	t.Log("setting up test environment...")
 
@@ -85,8 +85,7 @@ func (s *SatelliteTestSuite) testCreateConfigurationAndGroup(t *testing.T) {
 
 	var config map[string]any
 	if err := json.Unmarshal(data, &config); err != nil {
-		fmt.Println("error unmarshalling JSON:", err)
-		return
+		require.NoError(t, err, "failed to unmarshal satellite config")
 	}
 
 	configReq := map[string]any{
@@ -295,8 +294,4 @@ func checkHealthGroundControl(ctx context.Context, client *dagger.Client, gc *da
 	}
 
 	return out
-}
-
-func generateUniqueSatelliteName(name string) string {
-	return fmt.Sprintf("%s-%d", name, time.Now().UnixMicro())
 }

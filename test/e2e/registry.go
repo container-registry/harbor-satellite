@@ -2,11 +2,14 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"testing"
 	"time"
 
 	"dagger.io/dagger"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -20,6 +23,7 @@ const (
 	registryImage    = "narharim/registry-harbor:" + harborImageTag
 	registryCtlImage = "narharim/registryctl-harbor:" + harborImageTag
 	coreImage        = "narharim/core-harbor:" + harborImageTag
+	jobImage         = "narharim/job-harbor:" + harborImageTag
 
 	configDirPath = "./test/e2e/testconfig/config/"
 
@@ -134,47 +138,85 @@ func (hr *HarborRegistry) startCore() (*dagger.Service, error) {
 
 }
 
-func (hr *HarborRegistry) SetupHarborRegistry() (*dagger.Service, error) {
-	log.Println("setting up harbor registry environment...")
+func (hr *HarborRegistry) startJobService() error {
+	source := hr.client.Host().Directory(hr.projectDir)
 
-	if err := hr.startPostgres(); err != nil {
-		return nil, fmt.Errorf("failed to start postgresql: %w", err)
-	}
-	log.Println("postgresql service started")
+	jobSrvConfig := source.File(configDirPath + "jobservice/config.yml")
+	envFile := source.File(configDirPath + "jobservice/env")
+	run_script := source.File(configDirPath + "run_env.sh")
 
-	if err := hr.startRedis(); err != nil {
-		return nil, fmt.Errorf("failed to start redis: %w", err)
-	}
-	log.Println("redis service started")
+	_, err := hr.client.Container().
+		From(jobImage).
+		WithMountedFile("/etc/jobservice/config.yml", jobSrvConfig).
+		WithMountedDirectory("/var/log/jobs", source.Directory(configDirPath+"jobservice")).
+		WithMountedFile("/envFile", envFile).
+		WithMountedFile("/run_script", run_script).
+		WithExec([]string{"chmod", "+x", "/run_script"}).
+		WithExposedPort(8080).
+		WithEntrypoint([]string{"/run_script", "/jobservice -c /etc/jobservice/config.yml"}).
+		AsService().
+		WithHostname("jobservice").
+		Start(hr.ctx)
 
-	if err := hr.startRegistry(); err != nil {
-		return nil, fmt.Errorf("failed to start registry: %w", err)
-	}
-	log.Println("registry service started")
-
-	if err := hr.startRegistryCtl(); err != nil {
-		return nil, fmt.Errorf("failed to start registryctl: %w", err)
-	}
-	log.Println("registryctl service started")
-
-	coreService, err := hr.startCore()
-	if err != nil {
-		return nil, fmt.Errorf("failed to start Core service: %w", err)
-	}
-	log.Println("core service started")
-
-	if err := hr.waitForCoreServiceHealth(); err != nil {
-		return nil, fmt.Errorf("failed to get status of core service: %w", err)
-	}
-	if err := hr.initializeHarborRegistry(); err != nil {
-		return nil, fmt.Errorf("failed to initialize harbor registry: %w", err)
-	}
-
-	log.Println("harbor registry setup completed successfully")
-	return coreService, nil
+	return err
 }
 
-func (hr *HarborRegistry) waitForCoreServiceHealth() error {
+func (hr *HarborRegistry) SetupHarborRegistry(t *testing.T) {
+	t.Log("setting up harbor registry environment...")
+
+	if err := hr.startPostgres(); err != nil {
+		requireNoExecError(t, err, "start postgresql")
+	}
+	t.Log("postgresql service started")
+
+	if err := hr.startRedis(); err != nil {
+		requireNoExecError(t, err, "start redis")
+	}
+	t.Log("redis service started")
+
+	if err := hr.startRegistry(); err != nil {
+		requireNoExecError(t, err, "start registry")
+	}
+	t.Log("registry service started")
+
+	if err := hr.startRegistryCtl(); err != nil {
+		requireNoExecError(t, err, "start registryctl")
+	}
+	t.Log("registryctl service started")
+
+	_, err := hr.startCore()
+	if err != nil {
+		requireNoExecError(t, err, "start core service")
+	}
+	t.Log("core service started")
+
+	if err := hr.waitForCoreServiceHealth(t); err != nil {
+		requireNoExecError(t, err, "core service health check")
+	}
+	t.Log("core service health check passed")
+
+	if err := hr.startJobService(); err != nil {
+		requireNoExecError(t, err, "start job service")
+	}
+	t.Log("job service started")
+
+	if err := hr.initializeHarborRegistry(t); err != nil {
+		requireNoExecError(t, err, "initialize harbor registry")
+	}
+
+	t.Log("harbor registry setup completed successfully")
+}
+
+func requireNoExecError(t *testing.T, err error, step string) {
+	var e *dagger.ExecError
+	if errors.As(err, &e) {
+		require.NoError(t, err, "failed to "+step+" (exec error)")
+	} else {
+		require.NoError(t, err, "failed to "+step+" (unexpected error)")
+	}
+}
+
+func (hr *HarborRegistry) waitForCoreServiceHealth(t *testing.T) error {
 	timeout := time.After(2 * time.Minute)
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
@@ -185,16 +227,16 @@ func (hr *HarborRegistry) waitForCoreServiceHealth() error {
 		case <-ticker.C:
 			err := hr.executeHTTPRequest("GET", "/health", "")
 			if err == nil {
-				log.Println("core service is healthy")
+				t.Log("core service is healthy")
 				return nil
 			}
-			log.Printf("Services not ready yet: %v", err)
+			t.Logf("Services not ready yet: %v", err)
 		}
 	}
 }
 
-func (hr *HarborRegistry) initializeHarborRegistry() error {
-	log.Println("initializing harbor registry...")
+func (hr *HarborRegistry) initializeHarborRegistry(t *testing.T) error {
+	t.Log("initializing harbor registry...")
 
 	requests := []func() error{
 		hr.createProject,
@@ -210,13 +252,13 @@ func (hr *HarborRegistry) initializeHarborRegistry() error {
 		hr.getExecuteReplication,
 	}
 
-	for i, request := range requests {
+	for _, request := range requests {
 		if err := request(); err != nil {
-			return fmt.Errorf("failed to execute step %d: %w", i+1, err)
+			return err
 		}
 	}
 
-	log.Println("harbor configuration initialized")
+	t.Log("harbor configuration initialized")
 	return nil
 }
 
@@ -271,10 +313,11 @@ func (hr *HarborRegistry) pushToRegistry() error {
 		From("alpine:latest").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithExec([]string{"apk", "add", "crane"}).
-		WithExec([]string{"crane", "auth", "login", "registry:5000", "-u", "harbor_registry_user", "-p", "TRJUhYbJgSjXZWAj3oLEet3ugJ3nAOk3", "--insecure"}).
+		WithExec([]string{"crane", "auth", "login", "core:8080", "-u", "admin", "-p", "Harbor12345", "--insecure"}).
 		WithExec([]string{"cat", "/root/.docker/config.json"}).
-		WithExec([]string{"crane", "copy", "docker.io/library/alpine:latest", "registry:5000/edge/alpine:latest", "--insecure"}).
+		WithExec([]string{"crane", "copy", "docker.io/library/alpine:latest", "core:8080/edge/alpine:latest", "--insecure"}).
 		Stdout(hr.ctx)
+
 	return err
 }
 
@@ -282,7 +325,6 @@ func (hr *HarborRegistry) listArtifacts() error {
 	return hr.executeHTTPRequest("GET", "/projects/edge/artifacts", "")
 }
 
-// TODO:// Need to check if we below function can create replication policy
 func (hr *HarborRegistry) createReplicationPolicy() error {
 	data := fmt.Sprintf(`{
 		"name": "%s",
@@ -343,12 +385,4 @@ func (hr *HarborRegistry) executeHTTPRequest(method, endpoint, data string) erro
 
 	log.Printf("%s %s completed. response: %s", method, endpoint, stdout)
 	return err
-}
-
-func curlContainer(ctx context.Context, c *dagger.Client, cmd []string) (string, error) {
-	return c.Container().
-		From("curlimages/curl@sha256:9a1ed35addb45476afa911696297f8e115993df459278ed036182dd2cd22b67b").
-		WithEnvVariable("CACHEBUSTER", time.Now().String()).
-		WithExec(cmd).
-		Stdout(ctx)
 }

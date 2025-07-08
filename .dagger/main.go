@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	"dagger.io/dagger"
+	"dagger/harbor-satellite/internal/dagger"
 )
 
 const (

@@ -5,7 +5,7 @@ SYNC_QUOTA=true
 _REDIS_URL_REG=redis://redis:6379/1?idle_timeout_seconds=30
 
 LOG_LEVEL=debug
-EXT_ENDPOINT=http://localhost
+EXT_ENDPOINT=http://core
 DATABASE_TYPE=postgresql
 POSTGRESQL_HOST=postgresql
 POSTGRESQL_PORT=5432
