@@ -147,7 +147,7 @@ func (s *SatelliteTestSuite) testRegisterSatelliteAndZTR(t *testing.T) {
 
 	satelliteDir := s.client.Host().Directory(s.projectDir)
 
-	_, err = s.client.Container().
+	_, _ = s.client.Container().
 		From("golang:1.24-alpine@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706eef7846f319293ab5cb7a").
 		WithMountedCache("/go/pkg/mod", s.client.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").

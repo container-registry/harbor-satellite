@@ -2,14 +2,12 @@ package e2e
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"testing"
 	"time"
 
 	"dagger.io/dagger"
-	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -205,15 +203,6 @@ func (hr *HarborRegistry) SetupHarborRegistry(t *testing.T) {
 	}
 
 	t.Log("harbor registry setup completed successfully")
-}
-
-func requireNoExecError(t *testing.T, err error, step string) {
-	var e *dagger.ExecError
-	if errors.As(err, &e) {
-		require.NoError(t, err, "failed to "+step+" (exec error)")
-	} else {
-		require.NoError(t, err, "failed to "+step+" (unexpected error)")
-	}
 }
 
 func (hr *HarborRegistry) waitForCoreServiceHealth(t *testing.T) error {
