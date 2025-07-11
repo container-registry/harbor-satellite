@@ -18,9 +18,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET") // Get specific group
 
 	// Satellites in groups
-	r.HandleFunc("/groups/{group}/satellites", s.groupSatelliteHandler).Methods("GET")                   // List satellites in group
-	r.HandleFunc("/groups/{group}/satellites", s.addSatelliteToGroup).Methods("POST")                    // Add satellite to group
-	r.HandleFunc("/groups/{group}/satellites/{satellite}", s.removeSatelliteFromGroup).Methods("DELETE") // Remove satellite from group
+	r.HandleFunc("/groups/{group}/satellites", s.groupSatelliteHandler).Methods("GET") // List satellites in group
+	r.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")           // Add satellite to group
+	r.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")    // Remove satellite from group
 
 	// Configs
 	r.HandleFunc("/configs", s.listConfigsHandler).Methods("GET")
