@@ -5,10 +5,10 @@ This guide provides the fastest way to get started with Harbor Satellite.
 ## Prerequisites
 
 Ensure you have:
-- A Harbor registry instance (or similar OCI-compliant registry)
+- A Harbor registry instance with satellite adapter. This should be available [here](https://github.com/container-registry/harbor-next/tree/next)
 - Credentials with permission to create robot accounts in the registry
 - The latest version of Dagger installed
-
+  
 ## Quick Setup
 
 ### 1. Configure Ground Control
@@ -66,8 +66,6 @@ To start the Ground Control service, execute the following Dagger command:
 dagger call run-ground-control up
 ```
 
-> **Note:** Ensure you have set up Dagger with the latest version before running this command. Ground Control will run on port 8080.
-
 
 ### 3. Create a group for the artifacts.
 
@@ -76,8 +74,6 @@ First, check the health of the ground control:
 ```bash
 curl --location 'http://localhost:8080/health'
 ```
-
-A group is just a set of images that the satellite needs to replicate. Alternatively, you can also use the groups already present in the upstream testing registry and skip this step entirely.
 
 A group is just a set of images that the satellite needs to replicate from the upstream registry.It also consists information about all the artifacts present in it. 
 > Upstream registry is the remote registry from which the satellite component pulls all the artifacts from and pushes them to the local OCI-compliant registry. 
@@ -168,6 +164,16 @@ curl --location 'http://localhost:8080/satellites' \
 ### 6. Start the satellite
 Set up the `.env` files. An [example](.env.example) is provided in the repository. Use the token you received earlier in this file.
 
+#### Option 1 : Without dagger
+A docker compose file is given in the project root. Tweak it as per your needs. Use the token you received earlier.
+> Note : if the ground control is not running on a public IP address, you might need to make sure the satellite and ground control are on the same network so that communication is possible.
+
+#### Option 2 : Using Dagger
+```bash
+  dagger call build --source=. --component=satellite export --path=./bin
+```
+
+#### Option 3 : Using Go
 You can directly run : 
 
 ```bash
