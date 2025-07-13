@@ -226,7 +226,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 			token[:4],
 			token[len(token)-4:],
 		)
-        log.Printf("Invalid Satellite Token %s: %v", masked, err)
+		log.Printf("Invalid Satellite Token %s: %v", masked, err)
 		err := &AppError{
 			Message: "Error: Invalid Token",
 			Code:    http.StatusBadRequest,
@@ -462,14 +462,6 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !utils.IsValidName(req.Group) {
-		HandleAppError(w, &AppError{
-			Message: fmt.Sprintf(invalidNameMessage, "group"),
-			Code:    http.StatusBadRequest,
-		})
-		return
-	}
-
 	// Get satellite by name
 	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), req.Satellite)
 	if err != nil {
@@ -644,11 +636,9 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 
 // If the satellite is removed from the group, the state artifact must be updated accordingly as well.
 func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request) {
-	var req SatelliteGroupParams
-	if err := DecodeRequestBody(r, &req); err != nil {
-		HandleAppError(w, err)
-		return
-	}
+	vars := mux.Vars(r)
+	groupName := vars["group"]
+	satelliteName := vars["satellite"]
 
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -677,7 +667,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		}
 	}()
 
-	sat, err := q.GetSatelliteByName(r.Context(), req.Satellite)
+	sat, err := q.GetSatelliteByName(r.Context(), satelliteName)
 	if err != nil {
 		log.Printf("Error: Satellite Not Found: %v", err)
 		err := &AppError{
@@ -688,7 +678,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	grp, err := q.GetGroupByName(r.Context(), req.Group)
+	grp, err := q.GetGroupByName(r.Context(), groupName)
 	if err != nil {
 		log.Printf("Error: Group Not Found: %v", err)
 		err := &AppError{

@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+
 	"github.com/rs/zerolog"
 )
 
@@ -14,13 +15,13 @@ type RegistryCredentials struct {
 }
 
 type AppConfig struct {
-	GroundControlURL          URL                 `json:"ground_control_url"`
+	GroundControlURL          URL                 `json:"ground_control_url,omitempty"`
 	LogLevel                  string              `json:"log_level,omitempty"`
 	UseUnsecure               bool                `json:"use_unsecure,omitempty"`
 	StateReplicationInterval  string              `json:"state_replication_interval,omitempty"`
 	RegisterSatelliteInterval string              `json:"register_satellite_interval,omitempty"`
 	BringOwnRegistry          bool                `json:"bring_own_registry,omitempty"`
-	LocalRegistryCredentials  RegistryCredentials `json:"local_registry"`
+	LocalRegistryCredentials  RegistryCredentials `json:"local_registry,omitempty"`
 }
 
 type StateConfig struct {
@@ -31,7 +32,7 @@ type StateConfig struct {
 type Config struct {
 	StateConfig  StateConfig     `json:"state_config,omitempty"`
 	AppConfig    AppConfig       `json:"app_config,omitempty"`
-	ZotConfigRaw json.RawMessage `json:"zot_config"`
+	ZotConfigRaw json.RawMessage `json:"zot_config,omitempty"`
 }
 
 var validLogLevels = map[string]bool{
