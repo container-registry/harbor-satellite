@@ -24,7 +24,7 @@ PORT=8080
 APP_ENV=local
 
 DB_HOST=127.0.0.1 # For Dagger use DB_HOST=pgservice
-DB_PORT=8100 # For Dagger use DB_PORT=5432
+DB_PORT=5432
 DB_DATABASE=groundcontrol
 DB_USERNAME=postgres       
 DB_PASSWORD=password  
@@ -69,13 +69,20 @@ docker compose up
 
 ### 3. Create a group for the artifacts.
 
-First, check the health of the server:
+First, check the health of the ground control:
 
 ```bash
 curl --location 'http://localhost:8080/health'
 ```
 
 A group is just a set of images that the satellite needs to replicate. Alternatively, you can also use the groups already present in the upstream testing registry and skip this step entirely.
+
+A group is just a set of images that the satellite needs to replicate from the upstream registry.It also consists information about all the artifacts present in it. 
+> Upstream registry is the remote registry from which the satellite component pulls all the artifacts from and pushes them to the local OCI-compliant registry. 
+
+Alternatively, you can also use the groups already present in the upstream testing registry and skip this step entirely.
+
+**Todo** : Guides users how to access this group
 
 > **Note:** You must modify the body given below according to your registry. 
 ```bash
@@ -90,7 +97,7 @@ curl --location 'http://localhost:8080/groups/sync' \
       "repository": "satellite/alpine",
       "tag": ["latest"],
       "type": "docker",
-      "digest": "sha256:c10f7298",
+      "digest": "sha256:5a6ee6c36824d527a0fe91a2a7c160c2e286bbeae46cd931c337ac769f1bd930",
       "deleted": false
     }
   ]
@@ -100,7 +107,8 @@ curl --location 'http://localhost:8080/groups/sync' \
 
 ### 4. Configure  the satellite
 
-Now you need to create a config artifact for the satellite. 
+Now you need to create a config artifact for the satellite.
+This artifact tells the satellite where the ground control is located and defines how and when to replicate artifacts from it. It also includes details about the local OCI-compliant registry, specified separately under its own field.
 
 ```bash
 curl --location 'http://localhost:8080/configs' \
@@ -143,7 +151,7 @@ curl --location 'http://localhost:8080/configs' \
 
 ### 5. Register satellite
 
-You now need to use the group and config you created to create the satellite. A successful request spits out a token which needs to be preserved for future steps.
+You now need to use the group and config you created to create the satellite. A successful request returns a token which needs to be preserved for future steps.
 
 ```bash
 curl --location 'http://localhost:8080/satellites' \
@@ -179,7 +187,3 @@ go run cmd/main.go --token "<your token here>" --ground-control-url "<ground con
    - Check network connectivity to Harbor
    - Ensure proper permissions
 
-## Next Steps
-
-For more detailed information, see:
-- [Architecture Guide](../architecture/README.md) - For system design details
