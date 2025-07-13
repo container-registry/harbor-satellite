@@ -29,18 +29,23 @@ DB_DATABASE=groundcontrol
 DB_USERNAME=postgres       
 DB_PASSWORD=password  
 ```
-You can also directly edit this [example](https://github.com/meethereum/harbor-satellite/blob/update-docs/ground-control/.env.example) available in the repository.
+You can also directly edit this [example](ground-control/.env.example) available in the repository.
 
 ### 2. Run Ground Control
 
-#### Option 1: Using Dagger (Recommended)
+#### Option 1: Without Dagger(recommended for end users)
 
-To start the Ground Control service, execute the following Dagger command:
-
+1. First, move to the ground-control directory:
 ```bash
-dagger call run-ground-control up
+cd ground-control
 ```
 
+2. Add the credentials to the `docker-compose` file for all the services needed for ground control. Make sure you add the same credentials that you have added in the .env file. Some additional tweaks can be also made, since this uses pre-built images.
+```bash
+docker compose up
+```
+
+#### Option 2: build the binary(recommended for end users)
 You can also build ground-control binary using:
 
 ```bash
@@ -53,19 +58,16 @@ To Run ground-control binary:
 ./gc-dev
 ```
 
-#### Option 2: Without Dagger
+#### Option 3: Using Dagger (recommended for developers)
 
-1. First, move to the ground-control directory:
-```bash
-cd ground-control
-```
+To start the Ground Control service, execute the following Dagger command:
 
-2. Add the credentials to the `docker-compose` file for all the services needed for ground control. Make sure you add the same credentials that you have added in the .env file. Some additional tweaks can be also made, since this uses pre-built images.
 ```bash
-docker compose up
+dagger call run-ground-control up
 ```
 
 > **Note:** Ensure you have set up Dagger with the latest version before running this command. Ground Control will run on port 8080.
+
 
 ### 3. Create a group for the artifacts.
 
@@ -107,7 +109,7 @@ curl --location 'http://localhost:8080/groups/sync' \
 
 ### 4. Configure  the satellite
 
-Now you need to create a config artifact for the satellite.
+Now you need to create a config artifact for the satellite. An example is given [here](examples/config.json).
 This artifact tells the satellite where the ground control is located and defines how and when to replicate artifacts from it. It also includes details about the local OCI-compliant registry, specified separately under its own field.
 
 ```bash
@@ -164,7 +166,7 @@ curl --location 'http://localhost:8080/satellites' \
 ```
 
 ### 6. Start the satellite
-Setup .env files. An [example](https://github.com/container-registry/harbor-satellite/blob/main/.env.example) is given here. The token you received earlier will be used here.
+Set up the `.env` files. An [example](.env.example) is provided in the repository. Use the token you received earlier in this file.
 
 You can directly run : 
 
