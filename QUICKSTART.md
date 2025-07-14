@@ -78,7 +78,6 @@ curl --location 'http://localhost:8080/health'
 A group is just a set of images that the satellite needs to replicate from the upstream registry.It also consists information about all the artifacts present in it. 
 > Upstream registry is the remote registry from which the satellite component pulls all the artifacts from and pushes them to the local OCI-compliant registry. 
 
-Alternatively, you can also use the groups already present in the upstream testing registry and skip this step entirely.
 
 
 > **Note:** You must modify the body given below according to your registry. 
