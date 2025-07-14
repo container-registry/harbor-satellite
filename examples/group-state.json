@@ -1,0 +1,14 @@
+{
+    "group": "demo-group",
+    "registry": "http://demo.goharbor.io",
+    "artifacts": [
+        {
+            "repository": "demo-project/example-repo",
+            "tag": [
+                "latest"
+            ],
+            "type": "docker",
+            "digest": "sha256:7565f2c7034d87673c5ddc3b1b8e97f8da794c31d9aa73ed26afffa1c8194889"
+        }
+    ]
+}

@@ -1,0 +1,34 @@
+{
+  "state_config": {
+    # do not edit this field as it is read only
+    "auth": {
+      "url": "https://demo.goharbor.io",
+      "username": "robt_demo-sat",
+      "password": "rEYNaqrdmErJKdzW45GNxeRjXETQfiEx"
+    },
+    "state": "https://demo.goharbor.io/satellite/satellite-state/demo-sat/state:latest"
+  },
+  "app_config": {
+    "ground_control_url": "http://127.0.0.1:8080",
+    "log_level": "info",
+    "use_unsecure": true,
+    "state_replication_interval": "@every 00h00m10s",
+    "register_satellite_interval": "@every 00h00m10s",
+    "local_registry": {
+      "url": "http://127.0.0.1:8585"
+    }
+  },
+  "zot_config": {
+    "distSpecVersion": "1.1.0",
+    "storage": {
+      "rootDirectory": "./zot"
+    },
+    "http": {
+      "address": "127.0.0.1",
+      "port": "8585"
+    },
+    "log": {
+      "level": "info"
+    }
+  }
+}
