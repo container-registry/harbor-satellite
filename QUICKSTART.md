@@ -5,7 +5,7 @@ This guide provides the fastest way to get started with Harbor Satellite.
 ## Prerequisites
 
 Ensure you have:
-- A Harbor registry instance with satellite adapter. This should be available [here](https://github.com/container-registry/harbor-next/tree/next)
+- A Harbor registry instance with satellite adapter. This should be available [here](https://github.com/container-registry/harbor-next/tree/satellite)
 - Credentials with permission to create robot accounts in the registry
 - The latest version of Dagger installed
   
