@@ -80,7 +80,6 @@ A group is just a set of images that the satellite needs to replicate from the u
 
 Alternatively, you can also use the groups already present in the upstream testing registry and skip this step entirely.
 
-**Todo** : Guides users how to access this group
 
 > **Note:** You must modify the body given below according to your registry. 
 ```bash
