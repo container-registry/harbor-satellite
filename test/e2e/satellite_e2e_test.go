@@ -286,7 +286,7 @@ func checkHealthGroundControl(ctx context.Context, client *dagger.Client, gc *da
 		From("alpine@sha256:8a1f59ffb675680d47db6337b49d22281a139e9d709335b492be023728e11715").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithServiceBinding("gc", gc).
-		WithExec([]string{"wget", "-qO-", "http://gc:8080/ping"})
+		WithExec([]string{"wget", "-qO-", "http://gc:8080/health"})
 
 	out, err := container.Stdout(ctx)
 	if err != nil {

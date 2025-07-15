@@ -238,6 +238,8 @@ func (hr *HarborRegistry) initializeHarborRegistry(t *testing.T) error {
 		hr.pingRegistry,
 		hr.createRegistry,
 		hr.listRegistries,
+		hr.getGroups,
+		hr.createGroups,
 		hr.createReplicationPolicy,
 		hr.executeReplication,
 		hr.getExecuteReplication,
@@ -318,6 +320,33 @@ func (hr *HarborRegistry) pushToRegistry() error {
 func (hr *HarborRegistry) listArtifacts() error {
 	return hr.executeHTTPRequest("GET", "/projects/edge/artifacts", "")
 }
+func (hr *HarborRegistry) getGroups() error {
+	return hr.executeHTTPRequest("GET", "/groups")
+}
+
+
+func (hr *HarborRegistry) createGroups() error {
+	data := fmt.Sprintf(`
+	{
+		"group": "%s",
+		"registry": "http://core:8080",
+		"artifacts": [
+		{
+			"repository": "edge/alpine",
+			"tag": [
+			"latest"
+			],
+			"labels": null,
+			"type": "IMAGE",
+			"digest": "sha256:8a1f59ffb675680d47db6337b49d22281a139e9d709335b492be023728e11715",
+			"deleted": false
+		}
+		]
+	}
+	`, destNamespace)
+
+	return hr.executeHTTPRequest("POST", "/groups/sync", data)
+}
 
 func (hr *HarborRegistry) createReplicationPolicy() error {
 	data := fmt.Sprintf(`{
@@ -363,10 +392,14 @@ func (hr *HarborRegistry) getExecuteReplication() error {
 func (hr *HarborRegistry) executeHTTPRequest(method, endpoint, data string) error {
 	args := []string{"curl", "-s", "-i", "-f", "-X", method}
 
+	
 	args = append(args, "-u", fmt.Sprintf("%s:%s", harborAdminUser, harborAdminPassword))
 
-	args = append(args, fmt.Sprintf("%s%s", harborBaseURL, endpoint))
-
+	if endpoint == "/groups/sync"  || endpoint == "/groups" {
+		args = append(args, fmt.Sprintf("%s%s", "http://gc:8080", endpoint))
+	} else {
+		args = append(args, fmt.Sprintf("%s%s", harborBaseURL, endpoint))
+	}
 	if data != "" {
 		args = append(args, "-H", "Content-Type: application/json")
 		args = append(args, "-d", data)
