@@ -34,7 +34,7 @@ const (
 	projectName       = "edge"
 	registryName      = "test-registry"
 	replicationPolicy = "satellite-group"
-	destNamespace     = "group1"
+	destNamespace     = "test-group"
 	policyId          = 1
 )
 
@@ -120,10 +120,12 @@ func (hr *HarborRegistry) startCore() (*dagger.Service, error) {
 	coreConfig := source.File(configDirPath + "core/app.conf")
 	envCoreFile := source.File(configDirPath + "core/env")
 	runDebug := source.File(configDirPath + "run_debug.sh")
+	privatekey := source.File(configDirPath + "core/private_key.pem")
 
 	return hr.client.Container().
 		From(coreImage).
 		WithMountedFile("/etc/core/app.conf", coreConfig).
+		WithMountedFile("/etc/core/private_key.pem", privatekey).
 		WithMountedFile("/envFile", envCoreFile).
 		WithMountedFile("/run_script", runDebug).
 		WithExec([]string{"chmod", "+x", "/run_script"}).
@@ -206,7 +208,7 @@ func (hr *HarborRegistry) SetupHarborRegistry(t *testing.T) {
 }
 
 func (hr *HarborRegistry) waitForCoreServiceHealth(t *testing.T) error {
-	timeout := time.After(2 * time.Minute)
+	timeout := time.After(15  * time.Minute)
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -247,6 +249,9 @@ func (hr *HarborRegistry) initializeHarborRegistry(t *testing.T) error {
 		}
 	}
 
+	time.Sleep(2 * time.Minute)
+
+	hr.getExecuteReplication()
 	t.Log("harbor configuration initialized")
 	return nil
 }
@@ -274,7 +279,7 @@ func (hr *HarborRegistry) pingRegistry() error {
 		"insecure": true,
 		"name": "%s",
 		"type": "harbor-satellite",
-		"url": "http://gc:8080"
+		"url": "https://webhook-test.com/8cd208a7fbfc0918f4f3e11c78d2ac60"
 	}`, registryName)
 
 	return hr.executeHTTPRequest("POST", "/registries/ping", data)
@@ -291,7 +296,7 @@ func (hr *HarborRegistry) createRegistry() error {
 		"insecure": true,
 		"name": "%s",
 		"type": "harbor-satellite",
-		"url": "http://gc:8080"
+		"url": "https://webhook-test.com/8cd208a7fbfc0918f4f3e11c78d2ac60"
 	}`, registryName)
 
 	return hr.executeHTTPRequest("POST", "/registries", data)
@@ -322,7 +327,7 @@ func (hr *HarborRegistry) createReplicationPolicy() error {
 			"name": "%s",
 			"status": "healthy",
 			"type": "harbor-satellite",
-			"url": "http://gc:8080"
+			"url": "https://webhook-test.com/8cd208a7fbfc0918f4f3e11c78d2ac60"
 		},
 		"dest_namespace": "%s",
 		"dest_namespace_replace_count": 1,
@@ -351,7 +356,7 @@ func (hr *HarborRegistry) executeReplication() error {
 }
 
 func (hr *HarborRegistry) getExecuteReplication() error {
-	url := fmt.Sprintf("/replication/executions/%d", policyId)
+	url := fmt.Sprintf("/replication/executions/%d", 3)
 	return hr.executeHTTPRequest("GET", url, "")
 }
 

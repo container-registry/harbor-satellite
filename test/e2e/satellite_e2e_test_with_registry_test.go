@@ -42,13 +42,13 @@ func NewSatelliteTestWithRegistry(t *testing.T) *SatelliteTestWithRegistrySuite 
 func (s *SatelliteTestWithRegistrySuite) Setup(t *testing.T) {
 	t.Log("setting up test environment...")
 
-	// s.satelliteTestSuite.postgres = startPostgres(s.satelliteTestSuite.ctx, s.satelliteTestSuite.client)
-	// require.NotNil(t, s.satelliteTestSuite.postgres, "postgresql service should not be nil")
-	//
-	// s.satelliteTestSuite.groundControl = startGroundControl(s.satelliteTestSuite.ctx, s.satelliteTestSuite.client)
-	// require.NotNil(t, s.satelliteTestSuite.groundControl, "ground control service should not be nil")
+	s.satelliteTestSuite.postgres = startPostgres(s.satelliteTestSuite.ctx, s.satelliteTestSuite.client)
+	require.NotNil(t, s.satelliteTestSuite.postgres, "postgresql service should not be nil")
 
-	// checkHealthGroundControl(s.satelliteTestSuite.ctx, s.satelliteTestSuite.client, s.satelliteTestSuite.groundControl)
+	s.satelliteTestSuite.groundControl = startGroundControl(s.satelliteTestSuite.ctx, s.satelliteTestSuite.client)
+	require.NotNil(t, s.satelliteTestSuite.groundControl, "ground control service should not be nil")
+
+	checkHealthGroundControl(s.satelliteTestSuite.ctx, s.satelliteTestSuite.client, s.satelliteTestSuite.groundControl)
 
 	s.harborRegistry.SetupHarborRegistry(t)
 	t.Log("test environment setup complete")

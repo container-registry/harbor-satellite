@@ -263,7 +263,7 @@ func startGroundControl(ctx context.Context, client *dagger.Client) *dagger.Serv
 		WithEnvVariable("PORT", "8080").
 		WithEnvVariable(testconfig.EnvHarborUsername, cfg.HarborUsername).
 		WithEnvVariable(testconfig.EnvHarborPassword, cfg.HarborPassword).
-		WithEnvVariable("HARBOR_URL", "https://demo.goharbor.io").
+		WithEnvVariable("HARBOR_URL", "http://core:8080").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithExec([]string{"go", "install", "github.com/pressly/goose/v3/cmd/goose@latest"}).
 		WithWorkdir("/app/sql/schema").
