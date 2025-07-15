@@ -279,7 +279,7 @@ func (hr *HarborRegistry) pingRegistry() error {
 		"insecure": true,
 		"name": "%s",
 		"type": "harbor-satellite",
-		"url": "https://webhook-test.com/8cd208a7fbfc0918f4f3e11c78d2ac60"
+		"url": "http://gc:8080/groups/sync"
 	}`, registryName)
 
 	return hr.executeHTTPRequest("POST", "/registries/ping", data)
@@ -296,7 +296,7 @@ func (hr *HarborRegistry) createRegistry() error {
 		"insecure": true,
 		"name": "%s",
 		"type": "harbor-satellite",
-		"url": "https://webhook-test.com/8cd208a7fbfc0918f4f3e11c78d2ac60"
+		"url": "http://gc:8080/groups/sync"
 	}`, registryName)
 
 	return hr.executeHTTPRequest("POST", "/registries", data)
@@ -327,7 +327,7 @@ func (hr *HarborRegistry) createReplicationPolicy() error {
 			"name": "%s",
 			"status": "healthy",
 			"type": "harbor-satellite",
-			"url": "https://webhook-test.com/8cd208a7fbfc0918f4f3e11c78d2ac60"
+			"url": "http://gc:8080/groups/sync"
 		},
 		"dest_namespace": "%s",
 		"dest_namespace_replace_count": 1,
