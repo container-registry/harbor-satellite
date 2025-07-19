@@ -3,7 +3,7 @@
     "auth": {}
   },
   "app_config": {
-    "ground_control_url": "http://gcc.kube.bupd.xyz",
+    "ground_control_url": "http://gc:8080",
     "log_level": "info",
     "use_unsecure": true,
     "state_replication_interval": "@every 00h00m10s",

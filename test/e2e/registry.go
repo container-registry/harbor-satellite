@@ -208,7 +208,7 @@ func (hr *HarborRegistry) SetupHarborRegistry(t *testing.T) {
 }
 
 func (hr *HarborRegistry) waitForCoreServiceHealth(t *testing.T) error {
-	timeout := time.After(15  * time.Minute)
+	timeout := time.After(5 * time.Minute)
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -238,8 +238,8 @@ func (hr *HarborRegistry) initializeHarborRegistry(t *testing.T) error {
 		hr.pingRegistry,
 		hr.createRegistry,
 		hr.listRegistries,
-		hr.getGroups,
-		hr.createGroups,
+		hr.createConfig,
+		hr.listConfig,
 		hr.createReplicationPolicy,
 		hr.executeReplication,
 		hr.getExecuteReplication,
@@ -251,9 +251,6 @@ func (hr *HarborRegistry) initializeHarborRegistry(t *testing.T) error {
 		}
 	}
 
-	time.Sleep(2 * time.Minute)
-
-	hr.getExecuteReplication()
 	t.Log("harbor configuration initialized")
 	return nil
 }
@@ -320,32 +317,44 @@ func (hr *HarborRegistry) pushToRegistry() error {
 func (hr *HarborRegistry) listArtifacts() error {
 	return hr.executeHTTPRequest("GET", "/projects/edge/artifacts", "")
 }
-func (hr *HarborRegistry) getGroups() error {
-	return hr.executeHTTPRequest("GET", "/groups")
+
+func (hr *HarborRegistry) createConfig() error {
+	data := `{
+		"config_name": "test-config",
+		"registry": "http://core:8080",
+		"config": {
+			"app_config": {
+				"ground_control_url": "http://gc:8080",
+				"log_level": "info",
+				"use_unsecure": true,
+				"state_replication_interval": "@every 00h00m10s",
+				"update_config_interval": "@every 00h00m10s",
+				"register_satellite_interval": "@every 00h00m10s",
+				"bring_own_registry": false,
+				"local_registry": {
+					"url": "http://127.0.0.1:8585"
+				}
+			},
+			"zot_config": {
+				"distSpecVersion": "1.1.0",
+				"storage": {
+					"rootDirectory": "./zot"
+				},
+				"http": {
+					"address": "127.0.0.1",
+					"port": "8585"
+				},
+				"log": {
+					"level": "info"
+				}
+			}
+		}
+	}`
+	return hr.executeHTTPRequest("POST", "/configs", data)
 }
 
-
-func (hr *HarborRegistry) createGroups() error {
-	data := fmt.Sprintf(`
-	{
-		"group": "%s",
-		"registry": "http://core:8080",
-		"artifacts": [
-		{
-			"repository": "edge/alpine",
-			"tag": [
-			"latest"
-			],
-			"labels": null,
-			"type": "IMAGE",
-			"digest": "sha256:8a1f59ffb675680d47db6337b49d22281a139e9d709335b492be023728e11715",
-			"deleted": false
-		}
-		]
-	}
-	`, destNamespace)
-
-	return hr.executeHTTPRequest("POST", "/groups/sync", data)
+func (hr *HarborRegistry) listConfig() error {
+	return hr.executeHTTPRequest("GET", "/configs", "")
 }
 
 func (hr *HarborRegistry) createReplicationPolicy() error {
@@ -392,12 +401,10 @@ func (hr *HarborRegistry) getExecuteReplication() error {
 func (hr *HarborRegistry) executeHTTPRequest(method, endpoint, data string) error {
 	args := []string{"curl", "-s", "-i", "-f", "-X", method}
 
-	
-	args = append(args, "-u", fmt.Sprintf("%s:%s", harborAdminUser, harborAdminPassword))
-
-	if endpoint == "/groups/sync"  || endpoint == "/groups" {
+	if endpoint == "/configs" {
 		args = append(args, fmt.Sprintf("%s%s", "http://gc:8080", endpoint))
 	} else {
+		args = append(args, "-u", fmt.Sprintf("%s:%s", harborAdminUser, harborAdminPassword))
 		args = append(args, fmt.Sprintf("%s%s", harborBaseURL, endpoint))
 	}
 	if data != "" {

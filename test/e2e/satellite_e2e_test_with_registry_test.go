@@ -3,7 +3,6 @@ package e2e
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -90,8 +89,6 @@ func (s *SatelliteTestWithRegistrySuite) testRegisterSatelliteAndZTR(t *testing.
 	t.Logf("satellite registered successfully with token: %v", token)
 
 	//ZTR
-	configPath := fmt.Sprintf("%s/test/e2e/testdata/new_config.json", s.satelliteTestSuite.projectDir)
-
 	satelliteDir := s.satelliteTestSuite.client.Host().Directory(s.satelliteTestSuite.projectDir)
 
 	_, err = s.satelliteTestSuite.client.Container().
@@ -100,10 +97,9 @@ func (s *SatelliteTestWithRegistrySuite) testRegisterSatelliteAndZTR(t *testing.
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", s.satelliteTestSuite.client.CacheVolume("go-build")).
 		WithEnvVariable("GOCACHE", "/go/build-cache").
-		WithDirectory("/app", satelliteDir).
+		WithMountedDirectory("/app", satelliteDir).
 		WithWorkdir("/app").
 		WithServiceBinding("gc", s.satelliteTestSuite.groundControl).
-		WithFile("/app/config.json", s.satelliteTestSuite.client.Host().File(configPath)).
 		WithEnvVariable("TOKEN", token.(string)).
 		WithEnvVariable("GROUND_CONTROL_URL", "http://gc:8080").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
