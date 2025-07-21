@@ -88,6 +88,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Dagger Version
+        uses: sagikazarmark/dagger-version-action@v0.0.1
+
       - name: Test E2E satellite
         uses: dagger/dagger-for-github@v7
         with:
