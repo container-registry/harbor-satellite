@@ -25,6 +25,10 @@ type RegisterSatelliteParams struct {
 	ConfigName string    `json:"config_name"`
 }
 
+type RegisterSatelliteResponse struct {
+	Token string `json:"token"`
+}
+
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	var req RegisterSatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -211,7 +215,11 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 	committed = true
 
-	WriteJSONResponse(w, http.StatusOK, tk)
+	resp := RegisterSatelliteResponse{
+		Token: tk,
+	}
+
+	WriteJSONResponse(w, http.StatusOK, resp)
 }
 
 func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {

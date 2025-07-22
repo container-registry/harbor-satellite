@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"dagger/harbor-satellite/internal/dagger"
 	"fmt"
-	"harbor-satellite/ci/internal/dagger"
 	"log"
 )
 

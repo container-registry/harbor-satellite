@@ -124,6 +124,10 @@ func CreateStateArtifact(ctx context.Context, stateArtifact *m.StateArtifact) er
 	})
 	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 
+	if strings.HasPrefix(stateArtifact.Registry, "http://") {
+		options = append(options, crane.Insecure)
+	}
+
 	// Construct the destination repository and strip protocol, if present
 	destinationRepo := getStateArtifactDestination(stateArtifact.Registry, repo)
 	if strings.Contains(destinationRepo, "://") {
@@ -171,6 +175,9 @@ func CreateAndPushConfigStateArtifact(ctx context.Context, configData []byte, co
 	})
 	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 
+	if strings.HasPrefix(os.Getenv("HARBOR_URL"), "http://") {
+		options = append(options, crane.Insecure)
+	}
 	// Construct the destination repository and strip protocol, if present
 	destinationRepo := AssembleConfigState(configName)
 	destinationRepo = stripProtocol(destinationRepo)
@@ -217,6 +224,9 @@ func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, s
 
 	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
 	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
+	if strings.HasPrefix(registry, "http://") {
+		options = append(options, crane.Insecure)
+	}
 
 	destinationRepo := AssembleSatelliteState(satelliteName)
 	destinationRepo = stripProtocol(destinationRepo)
