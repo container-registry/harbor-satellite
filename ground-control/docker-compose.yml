@@ -8,6 +8,8 @@ services:
       POSTGRES_PASSWORD: password
     ports:
       - "8100:5432"
+    volumes:
+      - db:/var/lib/postgresql/data
 
   db-migrator:
     image: 8gears.container-registry.com/harbor-satellite/db-migrator:test
@@ -40,3 +42,6 @@ services:
     depends_on:
       - postgres
       - db-migrator
+
+volumes:
+  db:
