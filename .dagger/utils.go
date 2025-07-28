@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"harbor-satellite/ci/internal/dagger"
+	"dagger/harbor-satellite/internal/dagger"
 )
 
 // builds given component from source

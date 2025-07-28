@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"harbor-satellite/ci/internal/dagger"
 	"log"
 	"strings"
+
+	"dagger/harbor-satellite/internal/dagger"
 )
 
 const (

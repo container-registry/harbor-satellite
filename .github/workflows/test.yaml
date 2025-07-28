@@ -80,3 +80,20 @@ jobs:
           version: ${{ steps.dagger_version.outputs.version }}
           verb: call
           args: build --component=ground-control
+  
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Dagger Version
+        uses: sagikazarmark/dagger-version-action@v0.0.1
+
+      - name: Test E2E satellite
+        uses: dagger/dagger-for-github@v7
+        with:
+          version: ${{ steps.dagger_version.outputs.version }}
+          verb: call
+          args: test-end-to-end
