@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -16,6 +17,7 @@ type Scheduler struct {
 	process  Process
 	log      *zerolog.Logger
 	interval time.Duration
+	mu       sync.Mutex
 }
 
 // NewSchedulerWithInterval creates a new scheduler with a parsed interval string
@@ -106,6 +108,9 @@ func (s *Scheduler) Stop() {
 }
 
 func (s *Scheduler) launchProcess(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if !s.process.IsRunning() {
 		s.log.Info().
 			Str("Process", s.process.Name()).

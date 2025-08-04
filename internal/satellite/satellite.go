@@ -2,6 +2,7 @@ package satellite
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
@@ -66,7 +67,7 @@ func (s *Satellite) UpdateSchedulerInterval(processName, newInterval string) err
 			return scheduler.ResetIntervalFromExpr(newInterval)
 		}
 	}
-	return nil
+	return fmt.Errorf("scheduler with process name '%s' not found", processName)
 }
 
 // Stop gracefully stops all schedulers
