@@ -2,7 +2,6 @@ package satellite
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
@@ -60,14 +59,8 @@ func (s *Satellite) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-// UpdateSchedulerInterval allows dynamic interval updates
-func (s *Satellite) UpdateSchedulerInterval(processName, newInterval string) error {
-	for _, scheduler := range s.schedulers {
-		if scheduler.Name() == processName {
-			return scheduler.ResetIntervalFromExpr(newInterval)
-		}
-	}
-	return fmt.Errorf("scheduler with process name '%s' not found", processName)
+func (s *Satellite) GetSchedulers() []*scheduler.Scheduler {
+	return s.schedulers
 }
 
 // Stop gracefully stops all schedulers
