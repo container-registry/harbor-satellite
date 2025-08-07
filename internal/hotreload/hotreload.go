@@ -8,7 +8,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
 
 type HotReloadManager struct {
@@ -40,7 +39,8 @@ func NewHotReloadManager(
 }
 
 func (hrm *HotReloadManager) registerCallbacks() {
-	//TODO: Register Different callbacks like need to change log level, zot registry configuration
+	//TODO: Register Different callbacks like need to change zot registry configuration
+	hrm.registerChangeCallback(config.LogLevelChanged, hrm.handleLogLevelChange)
 	hrm.registerChangeCallback(config.IntervalsChanged, hrm.handleIntervalsChange)
 }
 
@@ -92,18 +92,39 @@ func (hrm *HotReloadManager) handleIntervalsChange(change config.ConfigChange) e
 	return nil
 }
 
+func (hrm *HotReloadManager) handleLogLevelChange(change config.ConfigChange) error {
+	hrm.log.Info().
+		Str("type", string(change.Type)).
+		Interface("old_value", change.OldValue).
+		Interface("new_value", change.NewValue).
+		Msg("Handling log level change")
+
+	newLogLevel := change.NewValue.(string)
+	level, err := zerolog.ParseLevel(newLogLevel)
+	if err != nil {
+		hrm.log.Error().
+			Str("provided_level", newLogLevel).
+			Msg("Unknown log level. Defaulting to 'info'")
+		level = zerolog.InfoLevel
+	}
+
+	zerolog.SetGlobalLevel(level)
+	hrm.log.Info().Str("new_level", newLogLevel).Msg("Log level updated successfully")
+
+	return nil
+}
 func (hrm *HotReloadManager) SetStateReplicationScheduler(stateReplicationScheduler *scheduler.Scheduler) {
 	hrm.stateReplicationScheduler = stateReplicationScheduler
 }
 
 func (hrm *HotReloadManager) ProcessConfigChanges(changes []config.ConfigChange) error {
 
-	log.Info().Int("change_count", len(changes)).Msg("Processing configuration changes")
+	hrm.log.Info().Int("change_count", len(changes)).Msg("Processing configuration changes")
 
 	var errors []error
 
 	for _, change := range changes {
-		log.Debug().
+		hrm.log.Debug().
 			Str("change_type", string(change.Type)).
 			Interface("old_value", change.OldValue).
 			Interface("new_value", change.NewValue).
@@ -116,6 +137,7 @@ func (hrm *HotReloadManager) ProcessConfigChanges(changes []config.ConfigChange)
 		return fmt.Errorf("errors occurred while processing configuration changes: %v", errors)
 	}
 
-	log.Info().Msg("All configuration changes processed successfully")
+	hrm.log.Info().Msg("All configuration changes processed successfully")
+
 	return nil
 }

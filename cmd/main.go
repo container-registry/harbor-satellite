@@ -103,13 +103,10 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 						}
 					}
 					if len(changes) > 0 {
-						log.Info().Int("change_count", len(changes)).Msg("Processing configuration changes")
 						if err := hotReloadManager.ProcessConfigChanges(changes); err != nil {
 							log.Error().Err(err).Msg("Error processing configuration changes")
 						}
 					}
-
-					log.Info().Msg("Configuration reloaded successfully")
 				}
 			}
 		}
