@@ -2,12 +2,17 @@ package hotreload
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
+	cfg "zotregistry.dev/zot/pkg/api/config"
+	"zotregistry.dev/zot/pkg/cli/server"
 )
 
 type HotReloadManager struct {
@@ -40,8 +45,9 @@ func NewHotReloadManager(
 
 func (hrm *HotReloadManager) registerCallbacks() {
 	//TODO: Register Different callbacks like need to change zot registry configuration
-	hrm.registerChangeCallback(config.LogLevelChanged, hrm.handleLogLevelChange)
 	hrm.registerChangeCallback(config.IntervalsChanged, hrm.handleIntervalsChange)
+	hrm.registerChangeCallback(config.ZotConfigChanged, hrm.handleZotConfigChange)
+	hrm.registerChangeCallback(config.LogLevelChanged, hrm.handleLogLevelChange)
 }
 
 func (hrm *HotReloadManager) notifyChangeCallbacks(change config.ConfigChange) []error {
@@ -110,6 +116,35 @@ func (hrm *HotReloadManager) handleLogLevelChange(change config.ConfigChange) er
 
 	zerolog.SetGlobalLevel(level)
 	hrm.log.Info().Str("new_level", newLogLevel).Msg("Log level updated successfully")
+
+	return nil
+}
+
+func (hrm *HotReloadManager) handleZotConfigChange(change config.ConfigChange) error {
+	hrm.log.Info().
+		Str("type", string(change.Type)).
+		Msg("Handling Zot configuration change")
+
+	hrm.log.Warn().
+		Str("type", string(change.Type)).
+		Msg("Some Zot configuration may require to restart")
+
+	//verify the zot configuration before apply
+	var cfg *cfg.Config
+	if err := json.Unmarshal(hrm.cm.GetRawZotConfig(), &cfg); err != nil {
+		return fmt.Errorf("unable to unmarshal zot config: %w, defaulting to previous zot configuration", err)
+	}
+
+	//Zot verify the config using below function hence taking same the path
+	if err := server.LoadConfiguration(cfg, registry.ZotTempPath); err != nil {
+		hrm.log.Error().Interface("config", &cfg).Msg("invalid config file")
+		return err
+	}
+
+	err := os.WriteFile(registry.ZotTempPath, hrm.cm.GetRawZotConfig(), 0644)
+	if err != nil {
+		return fmt.Errorf("unable to change zot configuration change")
+	}
 
 	return nil
 }

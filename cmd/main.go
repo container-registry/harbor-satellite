@@ -133,22 +133,24 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 
 func handleRegistrySetup(ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager) error {
 	log.Debug().Msg("Setting up local registry")
+
 	if cm.GetOwnRegistry() {
 		log.Info().Msg("Configuring own registry")
 		if err := utils.HandleOwnRegistry(cm); err != nil {
 			log.Error().Err(err).Msg("Error handling own registry")
 			return err
 		}
-	} else {
-		log.Info().Msg("Launching default registry")
-
-		zm := registry.NewZotManager(log.With().Str("component", "zot manager").Logger(), cm.GetRawZotConfig())
-
-		errChan := make(chan error, 1)
-
-		go zm.HandleRegistrySetup(ctx, errChan)
-
-		return <-errChan
+		log.Info().Msg("Own registry configured successfully")
+		return nil
 	}
+
+	log.Info().Msg("Launching default registry")
+
+	zm := registry.NewZotManager(log.With().Str("component", "zot manager").Logger(), cm.GetRawZotConfig())
+
+	if err := zm.HandleRegistrySetup(ctx); err != nil {
+		return fmt.Errorf("default registry setup failed: %w", err)
+	}
+
 	return nil
 }
