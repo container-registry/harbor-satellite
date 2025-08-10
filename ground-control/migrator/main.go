@@ -1,10 +1,16 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"time"
+
+	_ "github.com/lib/pq"
+	"github.com/pressly/goose/v3"
 )
 
 // Function to run a shell command and return the output or error
@@ -59,10 +65,29 @@ func createDatabase(dbName, dbUser, dbPassword string) error {
 
 // Run Goose migrations
 func runMigrations(dbName, dbUser, dbPassword, dbHost, dbPort string) error {
-	gooseCmd := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", dbUser, dbPassword, dbHost, dbPort, dbName)
-	cmd := exec.Command("goose", "postgres", gooseCmd, "up")
-	fmt.Println(cmd)
-	return cmd.Run()
+	dbstring := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPassword, dbHost, dbPort, dbName)
+
+	db, err := sql.Open("postgres", dbstring)
+	if err != nil {
+		log.Fatalf("goose: failed to open DB: %v", err)
+	}
+
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Fatalf("goose: failed to close DB: %v", err)
+		}
+	}()
+
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, os.DirFS("."))
+	if err != nil {
+		log.Fatalf("goose: failed to create new provider : %v", err)
+	}
+
+	ctx := context.Background()
+	if _, err := provider.Up(ctx); err != nil {
+		log.Fatalf("goose: failed to migrate DB: %v", err)
+	}
+	return err
 }
 
 func main() {
