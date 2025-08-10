@@ -84,10 +84,10 @@ func runMigrations(dbName, dbUser, dbPassword, dbHost, dbPort string) error {
 	}
 
 	ctx := context.Background()
-	if _, err := provider.Up(ctx); err != nil {
+	if _, err = provider.Up(ctx); err != nil {
 		log.Fatalf("goose: failed to migrate DB: %v", err)
 	}
-	return err
+	return nil
 }
 
 func main() {
