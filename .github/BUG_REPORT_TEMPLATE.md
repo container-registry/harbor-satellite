@@ -1,25 +1,39 @@
+---
+name: Bug Report
+about: Create a report to help us improve Harbor Satellite by fixing bugs
+title: ''
+labels: bug
+assignees: ''
 
-
-<!--
-Thank you for taking the time to report a bug. Please provide as much detail as possible to help us investigate and resolve the issue efficiently.
--->
-
-## Bug Description
-*Clearly describe the problem you encountered. Include any relevant context or background.*
-
-## Steps to Reproduce
-*List the steps to reproduce the issue. Screenshots, logs, or error messages are appreciated.*
-
-## Expected Behavior
-*What did you expect to happen?*
-
-## Actual Behavior
-*What actually happened?*
+---
 
 ## Environment
-- Harbor Satellite version:
-- OS/Platform:
-- Any other relevant details:
 
-## Possible Solution (optional)
-*If you have suggestions for a fix, please share them here.*
+- Harbor Satellite version:
+- OS (e.g., Linux, macOS, Windows):
+- Kubernetes version (if applicable):
+- Others:
+
+## Description
+
+Describe the bug in detail and its impact.
+
+## Reproduction Steps
+
+Please list the steps to reproduce the bug, including minimal reproducible example if possible:
+
+1. 
+2. 
+3. 
+
+## Logs & Error Messages
+
+Please provide relevant logs or error messages.
+
+## Expected Behavior
+
+What was supposed to happen?
+
+## Additional Information
+
+Any other details you consider important.

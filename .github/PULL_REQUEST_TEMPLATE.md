@@ -1,5 +1,3 @@
-
-
 ---
 name: Pull Request
 about: Submit a pull request to improve Harbor Satellite
@@ -15,6 +13,7 @@ Briefly describe the purpose of this PR and what it changes. If it addresses an 
 ## Checklist
 
 - [ ] Code builds and tests pass
+- [ ] Unit/E2E tests added or updated
 - [ ] Documentation updated (if needed)
 - [ ] Changes tested locally
 - [ ] Related issues linked (if applicable)
