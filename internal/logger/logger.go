@@ -26,7 +26,8 @@ func NewLogger(logLevel string, isJson bool) *zerolog.Logger {
 	// Set log level to configured value
 	level, err := zerolog.ParseLevel(logLevel)
 	if err != nil {
-		fmt.Printf("Unknown Level String: '%s', defaulting to 'info'", logLevel)
+		logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
+		logger.Error().Msgf("Unknown Level String: '%s', defaulting to 'info'", logLevel)
 		level = zerolog.InfoLevel
 	}
 	zerolog.SetGlobalLevel(level)

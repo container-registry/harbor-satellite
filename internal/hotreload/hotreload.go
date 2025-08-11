@@ -44,7 +44,6 @@ func NewHotReloadManager(
 }
 
 func (hrm *HotReloadManager) registerCallbacks() {
-	//TODO: Register Different callbacks like need to change zot registry configuration
 	hrm.registerChangeCallback(config.IntervalsChanged, hrm.handleIntervalsChange)
 	hrm.registerChangeCallback(config.ZotConfigChanged, hrm.handleZotConfigChange)
 	hrm.registerChangeCallback(config.LogLevelChanged, hrm.handleLogLevelChange)
@@ -105,7 +104,10 @@ func (hrm *HotReloadManager) handleLogLevelChange(change config.ConfigChange) er
 		Interface("new_value", change.NewValue).
 		Msg("Handling log level change")
 
-	newLogLevel := change.NewValue.(string)
+	newLogLevel, ok := change.NewValue.(string)
+	if !ok {
+		return fmt.Errorf("invalid log level type: %T", change.NewValue)
+	}
 	level, err := zerolog.ParseLevel(newLogLevel)
 	if err != nil {
 		hrm.log.Error().
@@ -115,7 +117,7 @@ func (hrm *HotReloadManager) handleLogLevelChange(change config.ConfigChange) er
 	}
 
 	zerolog.SetGlobalLevel(level)
-	hrm.log.Info().Str("new_level", newLogLevel).Msg("Log level updated successfully")
+	hrm.log.Info().Str("new_level", level.String()).Msg("Log level updated successfully")
 
 	return nil
 }
@@ -130,20 +132,20 @@ func (hrm *HotReloadManager) handleZotConfigChange(change config.ConfigChange) e
 		Msg("Some Zot configuration may require to restart")
 
 	//verify the zot configuration before apply
-	var cfg *cfg.Config
+	var cfg cfg.Config
 	if err := json.Unmarshal(hrm.cm.GetRawZotConfig(), &cfg); err != nil {
 		return fmt.Errorf("unable to unmarshal zot config: %w, defaulting to previous zot configuration", err)
 	}
 
 	//Zot verify the config using below function hence taking same the path
-	if err := server.LoadConfiguration(cfg, registry.ZotTempPath); err != nil {
+	if err := server.LoadConfiguration(&cfg, registry.ZotTempPath); err != nil {
 		hrm.log.Error().Interface("config", &cfg).Msg("invalid config file")
 		return err
 	}
 
 	err := os.WriteFile(registry.ZotTempPath, hrm.cm.GetRawZotConfig(), 0644)
 	if err != nil {
-		return fmt.Errorf("unable to change zot configuration change")
+		return fmt.Errorf("unable to change zot configuration: %w", err)
 	}
 
 	return nil
@@ -165,7 +167,7 @@ func (hrm *HotReloadManager) ProcessConfigChanges(changes []config.ConfigChange)
 			Interface("new_value", change.NewValue).
 			Msg("Processing configuration change")
 
-		errors = hrm.notifyChangeCallbacks(change)
+		errors = append(errors, hrm.notifyChangeCallbacks(change)...)
 	}
 
 	if len(errors) > 0 {
