@@ -9,7 +9,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
-	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -23,7 +22,7 @@ func main() {
 	var jsonLogging bool
 	var groundControlURL string
 	var token string
-	
+
 	flag.StringVar(&groundControlURL, "ground-control-url", "", "URL to ground control")
 	flag.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
 	flag.StringVar(&token, "token", "", "Satellite token")
@@ -60,9 +59,6 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 		return err
 	}
 
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(cm)
-	ztrProcess := state.NewZtrProcess(cm)
-
 	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), jsonLogging, warnings)
 
 	// Write the config to disk, in case any defaults were enforced at runtime
@@ -93,22 +89,11 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 		}
 	})
 
-
-	if !cm.IsZTRDone() {
-		// schedule ztr
-		go satellite.ScheduleFunc(ctx, log, cm.GetRegistrationInterval(), ztrProcess)
-
-		select {
-		case <-ztrProcess.Done:
-			log.Info().Msg("ZTR process completed, scheduling the other processes...")
-		case <-ctx.Done():
-			log.Info().Msg("Satellite context cancelled, shutting down...")
-			return ctx.Err()
-		}
+	s := satellite.NewSatellite(cm)
+	err = s.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to start satellite: %w", err)
 	}
-
-	// schedule state replication
-	go satellite.ScheduleFunc(ctx, log, cm.GetStateReplicationInterval(), fetchAndReplicateStateProcess)
 
 	// Wait until context is cancelled
 	<-ctx.Done()
