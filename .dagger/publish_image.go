@@ -69,10 +69,6 @@ func (m *HarborSatellite) PublishImage(
 		if component == "db-migrator" {
 			// ctr = ctr.From("golang:"+GO_VERSION).
 			ctr = ctr.
-				WithExec([]string{"apk", "add", "--no-cache", "postgresql-client"}).
-				WithExec([]string{"apk", "add", "--no-cache", "curl"}).
-				WithExec([]string{"curl", "-L", "https://github.com/pressly/goose/releases/download/v3.24.1/goose_linux_x86_64", "-o", "/bin/goose"}).
-				WithExec([]string{"chmod", "777", "/bin/goose"}).
 				WithDirectory("/migrations", source.Directory("./ground-control/sql/schema")).
 				WithWorkdir("/migrations")
 			// WithExec([]string{"go", "install", "github.com/pressly/goose/v3/cmd/goose@latest"})
