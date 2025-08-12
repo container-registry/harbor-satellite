@@ -92,9 +92,9 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 		WithExec([]string{"goose", "postgres",
 			"postgres://postgres:password@postgres:5432/groundcontrol?sslmode=disable", "up"}).
 		WithWorkdir("/app").
-		WithExec([]string{"go", "build", "-o", "ground-control", "main.go"}).
+		WithExec([]string{"go", "build", "-o", "gc", "main.go"}).
 		WithExposedPort(8080, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
-		WithEntrypoint([]string{"./ground-control"}).
+		WithEntrypoint([]string{"./gc"}).
 		AsService().WithHostname("gc").Start(ctx)
 
 	if err != nil {

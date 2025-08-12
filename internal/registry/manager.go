@@ -63,7 +63,15 @@ func (zm *ZotManager) WriteTempZotConfig() error {
 		return fmt.Errorf("failed to create temp zot config file: %w", err)
 	}
 
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		if rmErr := zm.RemoveTempZotConfig(tmpFile.Name()); rmErr != nil {
+			if err == nil {
+				err = fmt.Errorf("failed to remove zot temp config file: %w", rmErr)
+			} else {
+				err = fmt.Errorf("%v; also failed to remove zot temp config file: %w", err, rmErr)
+			}
+		}
+	}()
 
 	if _, err := tmpFile.Write(zm.zotConfig); err != nil {
 		return fmt.Errorf("failed to write to temp zot file present at %s: %w", tmpFile.Name(), err)
