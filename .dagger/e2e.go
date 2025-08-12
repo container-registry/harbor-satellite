@@ -20,8 +20,8 @@ const (
 	harborAdminPassword = "Harbor12345"
 
 	harborImageTag   = "satellite"
-	postgresImage    = "goharbor/harbor-db:dev" 
-	redisImage       = "goharbor/redis-photon:dev"
+	postgresImage    = "registry.goharbor.io/dockerhub/goharbor/harbor-db:dev" 
+	redisImage       = "registry.goharbor.io/dockerhub/goharbor/redis-photon:dev"
 	registryImage    = "registry.goharbor.io/harbor-next/harbor-registry:" + harborImageTag
 	registryCtlImage = "registry.goharbor.io/harbor-next/harbor-registryctl:" + harborImageTag
 	coreImage        = "registry.goharbor.io/harbor-next/harbor-core:" + harborImageTag
