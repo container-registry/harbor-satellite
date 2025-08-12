@@ -19,13 +19,13 @@ const (
 	harborAdminUser     = "admin"
 	harborAdminPassword = "Harbor12345"
 
-	harborImageTag   = "test-satellite"
-	postgresImage    = "narharim/postgres-harbor:" + harborImageTag
-	redisImage       = "narharim/redis-harbor:" + harborImageTag
-	registryImage    = "narharim/registry-harbor:" + harborImageTag
-	registryCtlImage = "narharim/registryctl-harbor:" + harborImageTag
-	coreImage        = "narharim/core-harbor:" + harborImageTag
-	jobImage         = "narharim/job-harbor:" + harborImageTag
+	harborImageTag   = "satellite"
+	postgresImage    = "registry.goharbor.io/dockerhub/goharbor/harbor-db:dev" 
+	redisImage       = "registry.goharbor.io/dockerhub/goharbor/redis-photon:dev"
+	registryImage    = "registry.goharbor.io/harbor-next/harbor-registry:" + harborImageTag
+	registryCtlImage = "registry.goharbor.io/harbor-next/harbor-registryctl:" + harborImageTag
+	coreImage        = "registry.goharbor.io/harbor-next/harbor-core:" + harborImageTag
+	jobImage         = "registry.goharbor.io/harbor-next/harbor-jobservice:" + harborImageTag
 
 	configDirPath = "./test/e2e/testconfig/config/"
 
