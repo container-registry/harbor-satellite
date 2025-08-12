@@ -53,15 +53,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Push images
+      - name: Publish and Sign Tagged Image
         if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
         uses: ./.github/actions/publish-and-sign
         with:
-          IMAGE_TAGS: latest, ${{ github.ref_name }}
+          IMAGE_TAGS: "latest,${{ github.ref_name }}"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
           REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS }}
           REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
 
       - name: Create Release
         if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
@@ -73,13 +74,3 @@ jobs:
           verb: call
           args: "release --github-token=env:GITHUB_TOKEN"
 
-      - name: Publish and Sign Tagged Image
-        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
-        uses: ./.github/actions/publish-and-sign
-        with:
-          IMAGE_TAGS: "latest, ${{ github.ref_name }}"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
-          REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS }}
-          REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
-          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
