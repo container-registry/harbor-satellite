@@ -48,7 +48,7 @@ func (m *HarborSatellite) TestEndToEnd(ctx context.Context) (string, error) {
 	m.startGroundControl(ctx)
 	m.SetupHarborRegistry(ctx)
 	m.registerSatelliteAndZTR(ctx)
-	return m.getImageFromZot(ctx)
+	return m.pullImageFromZot(ctx)
 }
 
 func (m *HarborSatellite) startPostgres(ctx context.Context) {
@@ -583,7 +583,7 @@ func (m *HarborSatellite) registerSatelliteAndZTR(ctx context.Context) {
 	log.Println("Satellite startup and ZTR process completed successfully")
 }
 
-func (m *HarborSatellite) getImageFromZot(ctx context.Context) (string, error) {
+func (m *HarborSatellite) pullImageFromZot(ctx context.Context) (string, error) {
 	out, err := dag.Container().
 		From("alpine:latest").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
@@ -593,11 +593,8 @@ func (m *HarborSatellite) getImageFromZot(ctx context.Context) (string, error) {
 		WithExec([]string{"cat", "manifest.json"}).
 		Stdout(ctx)
 
-	var e *dagger.ExecError
-	if errors.As(err, &e) {
-		return fmt.Sprintf("pipeline failure: %s", e.Stderr), nil
-	} else if err != nil {
-		return "", err
+	if err != nil {
+		return "", fmt.Errorf("error unable to pull image from zot registry: %w", err)
 	}
 
 	return out, nil
