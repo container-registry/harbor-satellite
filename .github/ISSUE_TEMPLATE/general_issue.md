@@ -1,16 +1,14 @@
 ---
 name: General Issue
 about: Create a general issue to help us improve Harbor Satellite
-title: ''
 labels: enhancement
-assignees: ''
 ---
 
 ## Environment
 
 - Harbor Satellite version:
 - OS (e.g., Linux, macOS, Windows):
-- Kubernetes version (if applicable):
+- How are you running Harbor Satellite? (e.g., Dagger, Docker Compose, binary)
 - Others:
 
 ## Description

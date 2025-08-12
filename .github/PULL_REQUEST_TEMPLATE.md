@@ -1,14 +1,12 @@
 ---
 name: Pull Request
 about: Submit a pull request to improve Harbor Satellite
-title: ''
 labels: ''
-assignees: ''
 ---
 
 ## Description
 
-Briefly describe the purpose of this PR and what it changes. If it addresses an issue, please reference it.
+Briefly describe the purpose of this PR and what it changes. If it addresses an issue, please reference it using the "fixes" keyword (e.g., `fixes #123`).
 
 ## Checklist
 
@@ -17,7 +15,7 @@ Briefly describe the purpose of this PR and what it changes. If it addresses an 
 - [ ] Documentation updated (if needed)
 - [ ] Changes tested locally
 - [ ] Related issues linked (if applicable)
-- [ ] Follows project style and guidelines
+- [ ] Code is consistent with existing files
 
 ## Screenshots / Demo (if applicable)
 
