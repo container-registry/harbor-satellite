@@ -78,6 +78,7 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 		WithEnvVariable("GOCACHE", "/go/build-cache").
 		WithDirectory("/app", gcDir).
 		WithWorkdir("/app").
+		WithEnvVariable("PORT", "8080").
 		WithEnvVariable("DB_URL", dbConnString).
 		WithEnvVariable("HARBOR_USERNAME", harborAdminUser).
 		WithEnvVariable("HARBOR_PASSWORD", harborAdminPassword).
