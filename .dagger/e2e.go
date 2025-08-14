@@ -18,6 +18,7 @@ const (
 
 	harborAdminUser     = "admin"
 	harborAdminPassword = "Harbor12345"
+	dbConnString        = "postgres://postgres:password@postgres:5432/groundcontrol?sslmode=disable"
 
 	harborImageTag   = "test-satellite"
 	postgresImage    = "narharim/postgres-harbor:" + harborImageTag
@@ -77,20 +78,14 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 		WithEnvVariable("GOCACHE", "/go/build-cache").
 		WithDirectory("/app", gcDir).
 		WithWorkdir("/app").
-		WithEnvVariable("DB_HOST", "postgres").
-		WithEnvVariable("DB_PORT", "5432").
-		WithEnvVariable("DB_USERNAME", "postgres").
-		WithEnvVariable("DB_PASSWORD", "password").
-		WithEnvVariable("DB_DATABASE", "groundcontrol").
-		WithEnvVariable("PORT", "8080").
+		WithEnvVariable("DB_URL", dbConnString).
 		WithEnvVariable("HARBOR_USERNAME", harborAdminUser).
 		WithEnvVariable("HARBOR_PASSWORD", harborAdminPassword).
 		WithEnvVariable("HARBOR_URL", harborDomain).
 		WithExec([]string{"go", "install", "github.com/pressly/goose/v3/cmd/goose@latest"}).
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithWorkdir("/app/sql/schema").
-		WithExec([]string{"goose", "postgres",
-			"postgres://postgres:password@postgres:5432/groundcontrol?sslmode=disable", "up"}).
+		WithExec([]string{"goose", "postgres", dbConnString, "up"}).
 		WithWorkdir("/app").
 		WithExec([]string{"go", "build", "-o", "ground-control", "main.go"}).
 		WithExposedPort(8080, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
