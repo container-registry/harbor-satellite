@@ -59,7 +59,7 @@ func (m *HarborSatellite) RunGroundControl(
 		return nil, err
 	}
 
-	golang = golang.
+	gc := golang.
 		WithWorkdir(PROJ_MOUNT+"/ground-control/sql/schema").
 		WithExec([]string{"ls", "-la"}).
 		WithServiceBinding("pgservice", db).
@@ -68,10 +68,10 @@ func (m *HarborSatellite) RunGroundControl(
 		WithWorkdir(PROJ_MOUNT + "/ground-control").
 		WithExec([]string{"ls", "-la"}).
 		WithExec([]string{"go", "mod", "download"}).
-		WithExec([]string{"air", "-c", ".air.toml"}).
-		WithExposedPort(8080)
+		WithExposedPort(8080).
+		AsService(dagger.ContainerAsServiceOpts{Args: []string{"air", "-c", ".air.toml"}})
 
-	return golang.AsService(), nil
+	return gc, nil
 }
 
 // quickly build binaries for components for given platform.

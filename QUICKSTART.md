@@ -21,13 +21,8 @@ HARBOR_PASSWORD=Harbor12345
 HARBOR_URL=https://demo.goharbor.io
 
 PORT=8080
-APP_ENV=local
 
-DB_HOST=127.0.0.1 # For Dagger use DB_HOST=pgservice
-DB_PORT=5432
-DB_DATABASE=groundcontrol
-DB_USERNAME=postgres       
-DB_PASSWORD=password  
+DB_URL="postgres://postgres:password@127.0.0.1:5432/groundcontrol?sslmode=disable" # For Dagger use dbhost=pgservice instead of 127.0.0.1
 ```
 You can also directly edit this [example](ground-control/.env.example) available in the repository.
 
