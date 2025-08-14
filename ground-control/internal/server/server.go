@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -16,33 +17,31 @@ import (
 )
 
 type Server struct {
-	port      int
+	port      string
 	db        *sql.DB
 	dbQueries *database.Queries
 }
 
-var (
-	dbName   = os.Getenv("DB_DATABASE")
-	password = os.Getenv("DB_PASSWORD")
-	username = os.Getenv("DB_USERNAME")
-	PORT     = os.Getenv("DB_PORT")
-	HOST     = os.Getenv("DB_HOST")
-)
-
 func NewServer() *http.Server {
-	port, err := strconv.Atoi(os.Getenv("PORT"))
-	if err != nil {
-		log.Fatalf("PORT is not valid: %v", err)
+	port := os.Getenv("PORT")
+	if port == "" {
+		log.Fatal("PORT is required")
 	}
 
-	connStr := fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		username,
-		password,
-		HOST,
-		PORT,
-		dbName,
-	)
+	_, err := strconv.Atoi(port)
+	if err != nil {
+		log.Fatalf("invalid PORT: %s", port)
+	}
+
+	connStr := os.Getenv("DB_URL")
+	if connStr == "" {
+		log.Fatal("DB_URL is required")
+	}
+
+	_, err = url.Parse(connStr)
+	if err != nil {
+		log.Fatalf("invalid DB_URL: %v", err)
+	}
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
@@ -59,7 +58,7 @@ func NewServer() *http.Server {
 
 	// Declare Server config
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", NewServer.port),
+		Addr:         fmt.Sprintf(":%s", NewServer.port),
 		Handler:      NewServer.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
