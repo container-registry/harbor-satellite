@@ -595,7 +595,7 @@ func (m *HarborSatellite) getImageFromZot(ctx context.Context) (string, error) {
 
 	var e *dagger.ExecError
 	if errors.As(err, &e) {
-		return fmt.Sprintf("pipeline failure: %s", e.Stderr), nil
+		return fmt.Sprintf("pipeline failure: %s", e.Stderr), err
 	} else if err != nil {
 		return "", err
 	}
