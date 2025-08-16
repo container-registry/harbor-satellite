@@ -588,6 +588,7 @@ func (m *HarborSatellite) pullImageFromZot(ctx context.Context) (string, error) 
 		From("alpine:latest").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithExec([]string{"apk", "add", "crane"}).
+		WithExec([]string{"sleep", "30s"}).
 		WithExec([]string{"crane", "pull", "satellite:8585/edge/alpine:latest", "alpine.tar", "--insecure"}).
 		WithExec([]string{"tar", "-xf", "alpine.tar"}).
 		WithExec([]string{"cat", "manifest.json"}).
