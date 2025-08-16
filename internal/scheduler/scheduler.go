@@ -94,6 +94,8 @@ func (s *Scheduler) ResetIntervalFromExpr(intervalExpr string) error {
 
 // GetInterval returns the current interval
 func (s *Scheduler) GetInterval() time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.interval
 }
 

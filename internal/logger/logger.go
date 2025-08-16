@@ -24,7 +24,12 @@ func InitLogger(ctx context.Context, logLevel string, isJson bool, warnings []st
 // AddLoggerToContext creates a new context with a zerolog logger for stdout and stderr and sets the global log level.
 func NewLogger(logLevel string, isJson bool) *zerolog.Logger {
 	// Set log level to configured value
-	level := getLogLevel(logLevel)
+	level, err := zerolog.ParseLevel(logLevel)
+	if err != nil {
+		logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
+		logger.Error().Msgf("Unknown Level String: '%s', defaulting to 'info'", logLevel)
+		level = zerolog.InfoLevel
+	}
 	zerolog.SetGlobalLevel(level)
 
 	var logger zerolog.Logger
@@ -86,26 +91,6 @@ func FromContext(ctx context.Context) *zerolog.Logger {
 		return &defaultLogger
 	}
 	return logger
-}
-
-// Helper function to get the log level
-func getLogLevel(logLevel string) zerolog.Level {
-	switch logLevel {
-	case "debug":
-		return zerolog.DebugLevel
-	case "info":
-		return zerolog.InfoLevel
-	case "warn":
-		return zerolog.WarnLevel
-	case "error":
-		return zerolog.ErrorLevel
-	case "fatal":
-		return zerolog.FatalLevel
-	case "panic":
-		return zerolog.PanicLevel
-	default:
-		return zerolog.InfoLevel
-	}
 }
 
 // Helper function to colorize text
