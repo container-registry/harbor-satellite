@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/container-registry/harbor-satellite/internal/hotreload"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
@@ -67,6 +68,13 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 		return err
 	}
 
+	hotReloadManager := hotreload.NewHotReloadManager(
+		ctx,
+		cm,
+		log,
+		nil, // Will be set after scheduler creation
+	)
+
 	eventChan := make(chan struct{})
 
 	// Handle registry setup
@@ -85,6 +93,21 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 				return nil
 			case <-eventChan:
 				log.Info().Msg("Event chan event received")
+				changes, warnings, err := cm.ReloadConfig()
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to reload configuration")
+				} else {
+					if len(warnings) > 0 {
+						for _, warning := range warnings {
+							log.Warn().Str("warning", warning).Msg("Configuration reload warning")
+						}
+					}
+					if len(changes) > 0 {
+						if err := hotReloadManager.ProcessConfigChanges(changes); err != nil {
+							log.Error().Err(err).Msg("Error processing configuration changes")
+						}
+					}
+				}
 			}
 		}
 	})
@@ -93,6 +116,12 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 	err = s.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("unable to start satellite: %w", err)
+	}
+
+	for _, s := range s.GetSchedulers() {
+		if s.Name() == config.ReplicateStateJobName {
+			hotReloadManager.SetStateReplicationScheduler(s)
+		}
 	}
 
 	// Wait until context is cancelled
@@ -104,22 +133,24 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 
 func handleRegistrySetup(ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager) error {
 	log.Debug().Msg("Setting up local registry")
+
 	if cm.GetOwnRegistry() {
 		log.Info().Msg("Configuring own registry")
 		if err := utils.HandleOwnRegistry(cm); err != nil {
 			log.Error().Err(err).Msg("Error handling own registry")
 			return err
 		}
-	} else {
-		log.Info().Msg("Launching default registry")
-
-		zm := registry.NewZotManager(log.With().Str("component", "zot manager").Logger(), cm.GetRawZotConfig())
-
-		errChan := make(chan error, 1)
-
-		go zm.HandleRegistrySetup(ctx, errChan)
-
-		return <-errChan
+		log.Info().Msg("Own registry configured successfully")
+		return nil
 	}
+
+	log.Info().Msg("Launching default registry")
+
+	zm := registry.NewZotManager(log.With().Str("component", "zot manager").Logger(), cm.GetRawZotConfig())
+
+	if err := zm.HandleRegistrySetup(ctx); err != nil {
+		return fmt.Errorf("default registry setup failed: %w", err)
+	}
+
 	return nil
 }

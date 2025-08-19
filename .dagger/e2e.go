@@ -48,7 +48,7 @@ func (m *HarborSatellite) TestEndToEnd(ctx context.Context) (string, error) {
 	m.startGroundControl(ctx)
 	m.SetupHarborRegistry(ctx)
 	m.registerSatelliteAndZTR(ctx)
-	return m.getImageFromZot(ctx)
+	return m.pullImageFromZot(ctx)
 }
 
 func (m *HarborSatellite) startPostgres(ctx context.Context) {
@@ -92,9 +92,9 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 		WithExec([]string{"goose", "postgres",
 			"postgres://postgres:password@postgres:5432/groundcontrol?sslmode=disable", "up"}).
 		WithWorkdir("/app").
-		WithExec([]string{"go", "build", "-o", "ground-control", "main.go"}).
+		WithExec([]string{"go", "build", "-o", "gc", "main.go"}).
 		WithExposedPort(8080, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
-		WithEntrypoint([]string{"./ground-control"}).
+		WithEntrypoint([]string{"./gc"}).
 		AsService().WithHostname("gc").Start(ctx)
 
 	if err != nil {
@@ -583,21 +583,19 @@ func (m *HarborSatellite) registerSatelliteAndZTR(ctx context.Context) {
 	log.Println("Satellite startup and ZTR process completed successfully")
 }
 
-func (m *HarborSatellite) getImageFromZot(ctx context.Context) (string, error) {
+func (m *HarborSatellite) pullImageFromZot(ctx context.Context) (string, error) {
 	out, err := dag.Container().
 		From("alpine:latest").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithExec([]string{"apk", "add", "crane"}).
+		WithExec([]string{"sleep", "25s"}).
 		WithExec([]string{"crane", "pull", "satellite:8585/edge/alpine:latest", "alpine.tar", "--insecure"}).
 		WithExec([]string{"tar", "-xf", "alpine.tar"}).
 		WithExec([]string{"cat", "manifest.json"}).
 		Stdout(ctx)
 
-	var e *dagger.ExecError
-	if errors.As(err, &e) {
-		return fmt.Sprintf("pipeline failure: %s", e.Stderr), nil
-	} else if err != nil {
-		return "", err
+	if err != nil {
+		return "", fmt.Errorf("error unable to pull image from zot registry: %w", err)
 	}
 
 	return out, nil
