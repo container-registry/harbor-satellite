@@ -170,7 +170,7 @@ func (m *HarborSatellite) startCore(ctx context.Context) (*dagger.Service, error
 
 	coreConfig := m.Source.File(configDirPath + "core/app.conf")
 	envCoreFile := m.Source.File(configDirPath + "core/env")
-	runDebug := m.Source.File(configDirPath + "run_debug.sh")
+	runScript := m.Source.File(configDirPath + "run_env.sh")
 	privatekey := m.Source.File(configDirPath + "core/private_key.pem")
 
 	return dag.Container().
@@ -178,11 +178,11 @@ func (m *HarborSatellite) startCore(ctx context.Context) (*dagger.Service, error
 		WithMountedFile("/etc/core/app.conf", coreConfig).
 		WithMountedFile("/etc/core/private_key.pem", privatekey).
 		WithMountedFile("/envFile", envCoreFile).
-		WithMountedFile("/run_script", runDebug).
+		WithMountedFile("/run_script", runScript).
 		WithExec([]string{"chmod", "+x", "/run_script"}).
 		WithExposedPort(corePort, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
 		WithExposedPort(coreDebugPort, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
-		WithEntrypoint([]string{"/run_script", "/core", fmt.Sprintf("%d", coreDebugPort)}).
+		WithEntrypoint([]string{"/run_script", "/core"}).
 		AsService().
 		WithHostname("core").
 		Start(ctx)
