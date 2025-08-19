@@ -19,13 +19,13 @@ const (
 	harborAdminUser     = "admin"
 	harborAdminPassword = "Harbor12345"
 
-	harborImageTag   = "test-satellite"
-	postgresImage    = "narharim/postgres-harbor:" + harborImageTag
-	redisImage       = "narharim/redis-harbor:" + harborImageTag
-	registryImage    = "narharim/registry-harbor:" + harborImageTag
-	registryCtlImage = "narharim/registryctl-harbor:" + harborImageTag
-	coreImage        = "narharim/core-harbor:" + harborImageTag
-	jobImage         = "narharim/job-harbor:" + harborImageTag
+	harborImageTag   = "satellite"
+	postgresImage    = "registry.goharbor.io/dockerhub/goharbor/harbor-db:dev" 
+	redisImage       = "registry.goharbor.io/dockerhub/goharbor/redis-photon:dev"
+	registryImage    = "registry.goharbor.io/harbor-next/harbor-registry:" + harborImageTag
+	registryCtlImage = "registry.goharbor.io/harbor-next/harbor-registryctl:" + harborImageTag
+	coreImage        = "registry.goharbor.io/harbor-next/harbor-core:" + harborImageTag
+	jobImage         = "registry.goharbor.io/harbor-next/harbor-jobservice:" + harborImageTag
 
 	configDirPath = "./test/e2e/testconfig/config/"
 
@@ -170,7 +170,7 @@ func (m *HarborSatellite) startCore(ctx context.Context) (*dagger.Service, error
 
 	coreConfig := m.Source.File(configDirPath + "core/app.conf")
 	envCoreFile := m.Source.File(configDirPath + "core/env")
-	runDebug := m.Source.File(configDirPath + "run_debug.sh")
+	runScript := m.Source.File(configDirPath + "run_env.sh")
 	privatekey := m.Source.File(configDirPath + "core/private_key.pem")
 
 	return dag.Container().
@@ -178,11 +178,11 @@ func (m *HarborSatellite) startCore(ctx context.Context) (*dagger.Service, error
 		WithMountedFile("/etc/core/app.conf", coreConfig).
 		WithMountedFile("/etc/core/private_key.pem", privatekey).
 		WithMountedFile("/envFile", envCoreFile).
-		WithMountedFile("/run_script", runDebug).
+		WithMountedFile("/run_script", runScript).
 		WithExec([]string{"chmod", "+x", "/run_script"}).
 		WithExposedPort(corePort, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
 		WithExposedPort(coreDebugPort, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
-		WithEntrypoint([]string{"/run_script", "/core", fmt.Sprintf("%d", coreDebugPort)}).
+		WithEntrypoint([]string{"/run_script", "/core"}).
 		AsService().
 		WithHostname("core").
 		Start(ctx)
