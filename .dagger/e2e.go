@@ -20,7 +20,7 @@ const (
 	harborAdminPassword = "Harbor12345"
 
 	harborImageTag   = "satellite"
-	postgresImage    = "registry.goharbor.io/dockerhub/goharbor/harbor-db:dev" 
+	postgresImage    = "registry.goharbor.io/dockerhub/goharbor/harbor-db:dev"
 	redisImage       = "registry.goharbor.io/dockerhub/goharbor/redis-photon:dev"
 	registryImage    = "registry.goharbor.io/harbor-next/harbor-registry:" + harborImageTag
 	registryCtlImage = "registry.goharbor.io/harbor-next/harbor-registryctl:" + harborImageTag
@@ -44,9 +44,9 @@ const (
 
 // Test end to end satellite flow
 func (m *HarborSatellite) TestEndToEnd(ctx context.Context) (string, error) {
+	m.setupHarborRegistry(ctx)
 	m.startPostgres(ctx)
 	m.startGroundControl(ctx)
-	m.SetupHarborRegistry(ctx)
 	m.registerSatelliteAndZTR(ctx)
 	return m.pullImageFromZot(ctx)
 }
@@ -221,7 +221,7 @@ func requireNoExecError(err error, step string) {
 }
 
 // Setup harbor registry for creating groups to replicate container image at edge
-func (m *HarborSatellite) SetupHarborRegistry(ctx context.Context) {
+func (m *HarborSatellite) setupHarborRegistry(ctx context.Context) {
 	log.Println("setting up harbor registry environment...")
 
 	if err := m.startPostgresql(ctx); err != nil {
