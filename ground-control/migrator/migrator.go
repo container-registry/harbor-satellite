@@ -1,4 +1,4 @@
-package main
+package migrator
 
 import (
 	"context"
@@ -77,7 +77,7 @@ func runMigrations(db *sql.DB) {
 	log.Println("Migrations completed successfully.")
 }
 
-func main() {
+func DoMigrations() {
 	cfg := parseDBConfig()
 
 	db, err := sql.Open("postgres", cfg.URL)

@@ -12,10 +12,12 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/server"
+	"github.com/container-registry/harbor-satellite/ground-control/migrator"
 	_ "github.com/joho/godotenv/autoload"
 )
 
 func main() {
+	migrator.DoMigrations()
 	server := server.NewServer()
 
 	go func() {
