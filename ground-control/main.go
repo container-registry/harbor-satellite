@@ -11,11 +11,18 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/ground-control/internal/harborhealth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/server"
 	_ "github.com/joho/godotenv/autoload"
 )
 
 func main() {
+
+	err := harborhealth.CheckHealth()
+	if err != nil {
+		log.Fatalf("health check failed: %v", err)
+	}
+
 	server := server.NewServer()
 
 	go func() {
