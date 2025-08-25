@@ -86,6 +86,8 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 		WithEnvVariable("HARBOR_USERNAME", harborAdminUser).
 		WithEnvVariable("HARBOR_PASSWORD", harborAdminPassword).
 		WithEnvVariable("HARBOR_URL", harborDomain).
+		WithEnvVariable("CACHEBUSTER", time.Now().String()).
+		WithDirectory("/migrations", gcDir.Directory("./sql/schema")).
 		WithWorkdir("/app").
 		WithExec([]string{"go", "build", "-o", "gc", "main.go"}).
 		WithExposedPort(8080, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
