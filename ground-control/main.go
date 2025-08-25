@@ -13,6 +13,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/harborhealth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/server"
+	"github.com/container-registry/harbor-satellite/ground-control/migrator"
 	_ "github.com/joho/godotenv/autoload"
 )
 
@@ -23,6 +24,7 @@ func main() {
 		log.Fatalf("health check failed: %v", err)
 	}
 
+	migrator.DoMigrations()
 	server := server.NewServer()
 
 	go func() {

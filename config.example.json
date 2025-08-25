@@ -10,7 +10,7 @@
     "update_config_interval": "@every 00h00m10s",
     "register_satellite_interval": "@every 00h00m10s",
     "local_registry": {
-      "url": "http://127.0.0.1:8585"
+      "url": "http://0.0.0.0:8585"
     }
   },
   "zot_config": {

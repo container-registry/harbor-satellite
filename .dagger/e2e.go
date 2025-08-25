@@ -87,11 +87,8 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 		WithEnvVariable("HARBOR_USERNAME", harborAdminUser).
 		WithEnvVariable("HARBOR_PASSWORD", harborAdminPassword).
 		WithEnvVariable("HARBOR_URL", harborDomain).
-		WithExec([]string{"go", "install", "github.com/pressly/goose/v3/cmd/goose@latest"}).
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
-		WithWorkdir("/app/sql/schema").
-		WithExec([]string{"goose", "postgres",
-			"postgres://postgres:password@postgres:5432/groundcontrol?sslmode=disable", "up"}).
+		WithDirectory("/migrations", gcDir.Directory("./sql/schema")).
 		WithWorkdir("/app").
 		WithExec([]string{"go", "build", "-o", "gc", "main.go"}).
 		WithExposedPort(8080, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
