@@ -9,19 +9,7 @@ services:
     ports:
       - "8100:5432"
     volumes:
-      - db:/var/lib/postgresql/data
-
-  db-migrator:
-    image: 8gears.container-registry.com/harbor-satellite/db-migrator:test
-    container_name: db-migrator
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_DATABASE: groundcontrol
-      DB_USERNAME: postgres
-      DB_PASSWORD: password
-    depends_on:
-      - postgres
+      - ./db:/var/lib/postgresql/data
 
   groundcontrol:
     image: 8gears.container-registry.com/harbor-satellite/ground-control:test
@@ -41,7 +29,7 @@ services:
       - "8080:8080"
     depends_on:
       - postgres
-      - db-migrator
+      # - db-migrator
 
 volumes:
   db:

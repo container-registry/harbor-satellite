@@ -1,11 +1,10 @@
-package main
+package migrator
 
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
-	"net"
-	"net/url"
 	"os"
 	"time"
 
@@ -19,26 +18,28 @@ type DBConfig struct {
 	Port string
 }
 
+var (
+	dbName   = os.Getenv("DB_DATABASE")
+	password = os.Getenv("DB_PASSWORD")
+	username = os.Getenv("DB_USERNAME")
+	PORT     = os.Getenv("DB_PORT")
+	HOST     = os.Getenv("DB_HOST")
+)
+
 func parseDBConfig() DBConfig {
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		log.Fatal("DATABASE_URL is required")
-	}
-
-	u, err := url.Parse(dbURL)
-	if err != nil {
-		log.Fatalf("invalid DATABASE_URL: %v", err)
-	}
-
-	host, port, err := net.SplitHostPort(u.Host)
-	if err != nil {
-		log.Fatalf("missing or invalid port in DATABASE_URL: %v", err)
-	}
+	dbURL := fmt.Sprintf(
+		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		username,
+		password,
+		HOST,
+		PORT,
+		dbName,
+	)
 
 	return DBConfig{
 		URL:  dbURL,
-		Host: host,
-		Port: port,
+		Host: HOST,
+		Port: PORT,
 	}
 }
 
@@ -64,7 +65,7 @@ func waitForPostgresReady(db *sql.DB, timeout time.Duration) {
 }
 
 func runMigrations(db *sql.DB) {
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, os.DirFS("."))
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, os.DirFS("/migrations"))
 	if err != nil {
 		log.Fatalf("failed to create goose provider: %v", err)
 	}
@@ -77,7 +78,7 @@ func runMigrations(db *sql.DB) {
 	log.Println("Migrations completed successfully.")
 }
 
-func main() {
+func DoMigrations() {
 	cfg := parseDBConfig()
 
 	db, err := sql.Open("postgres", cfg.URL)
