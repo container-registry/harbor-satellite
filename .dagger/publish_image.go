@@ -26,8 +26,6 @@ func (m *HarborSatellite) PublishImage(
 		directory = source
 	case component == "ground-control":
 		directory = source.Directory(GROUND_CONTROL_PATH)
-	case component == "db-migrator":
-		directory = source.Directory(GROUND_CONTROL_PATH)
 	default:
 		panic(fmt.Sprintf("unknown component: %s", component))
 	}
@@ -66,12 +64,9 @@ func (m *HarborSatellite) PublishImage(
 			WithFile(component, builder.File(component)).
 			WithEntrypoint([]string{"/" + component})
 
-		if component == "db-migrator" {
-			// ctr = ctr.From("golang:"+GO_VERSION).
+		if component == "ground-control" {
 			ctr = ctr.
-				WithDirectory("/migrations", source.Directory("./ground-control/sql/schema")).
-				WithWorkdir("/migrations")
-			// WithExec([]string{"go", "install", "github.com/pressly/goose/v3/cmd/goose@latest"})
+				WithDirectory("/migrations", source.Directory("./ground-control/sql/schema"))
 		}
 		releaseImages = append(releaseImages, ctr)
 	}
@@ -191,9 +186,7 @@ func (m *HarborSatellite) getBuildContainer(
 				WithEnvVariable("GOOS", goos).
 				WithEnvVariable("GOARCH", goarch)
 
-			if component == "db-migrator" {
-				bldr = bldr.WithExec([]string{"go", "build", "-o", bin_path + component, "./migrator/main.go"})
-			} else if component == "satellite" {
+			if component == "satellite" {
 				bldr = bldr.WithExec([]string{"go", "build", "-o", bin_path + component, "./cmd/main.go"})
 			} else {
 				bldr = bldr.WithExec([]string{"go", "build", "-o", bin_path + component, "."})
