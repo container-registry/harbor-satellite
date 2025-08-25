@@ -66,8 +66,7 @@ func (m *HarborSatellite) PublishImage(
 
 		if component == "ground-control" {
 			ctr = ctr.
-				WithDirectory("/migrations", source.Directory("./ground-control/sql/schema")).
-				WithWorkdir("/migrations")
+				WithDirectory("/migrations", source.Directory("./ground-control/sql/schema"))
 		}
 		releaseImages = append(releaseImages, ctr)
 	}
