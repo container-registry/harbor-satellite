@@ -20,7 +20,7 @@ const (
 	harborAdminPassword = "Harbor12345"
 
 	harborImageTag   = "satellite"
-	postgresImage    = "registry.goharbor.io/dockerhub/goharbor/harbor-db:dev" 
+	postgresImage    = "registry.goharbor.io/dockerhub/goharbor/harbor-db:dev"
 	redisImage       = "registry.goharbor.io/dockerhub/goharbor/redis-photon:dev"
 	registryImage    = "registry.goharbor.io/harbor-next/harbor-registry:" + harborImageTag
 	registryCtlImage = "registry.goharbor.io/harbor-next/harbor-registryctl:" + harborImageTag
@@ -44,9 +44,10 @@ const (
 
 // Test end to end satellite flow
 func (m *HarborSatellite) TestEndToEnd(ctx context.Context) (string, error) {
+	m.setupHarborRegistry(ctx)
 	m.startPostgres(ctx)
 	m.startGroundControl(ctx)
-	m.SetupHarborRegistry(ctx)
+	initializeHarborRegistry(ctx)
 	m.registerSatelliteAndZTR(ctx)
 	return m.pullImageFromZot(ctx)
 }
@@ -218,7 +219,7 @@ func requireNoExecError(err error, step string) {
 }
 
 // Setup harbor registry for creating groups to replicate container image at edge
-func (m *HarborSatellite) SetupHarborRegistry(ctx context.Context) {
+func (m *HarborSatellite) setupHarborRegistry(ctx context.Context) {
 	log.Println("setting up harbor registry environment...")
 
 	if err := m.startPostgresql(ctx); err != nil {
@@ -257,10 +258,6 @@ func (m *HarborSatellite) SetupHarborRegistry(ctx context.Context) {
 	}
 	log.Println("job service started")
 
-	if err := initializeHarborRegistry(ctx); err != nil {
-		requireNoExecError(err, "initialize harbor registry")
-	}
-
 	log.Println("harbor registry setup completed successfully")
 }
 
@@ -273,7 +270,7 @@ func waitForCoreServiceHealth(ctx context.Context) error {
 		case <-timeout:
 			return fmt.Errorf("timeout waiting for services to be healthy")
 		case <-ticker.C:
-			err := executeHTTPRequest(ctx, "GET", "/health", "")
+			_, err := executeHTTPRequest(ctx, "GET", "/health", "")
 			if err == nil {
 				log.Println("core service is healthy")
 				return nil
@@ -283,10 +280,10 @@ func waitForCoreServiceHealth(ctx context.Context) error {
 	}
 }
 
-func initializeHarborRegistry(ctx context.Context) error {
+func initializeHarborRegistry(ctx context.Context) {
 	log.Println("initializing harbor registry...")
 
-	requests := []func(ctx context.Context) error{
+	requests := []func(ctx context.Context) (string, error){
 		createProject,
 		listProjects,
 		pushToRegistry,
@@ -295,38 +292,37 @@ func initializeHarborRegistry(ctx context.Context) error {
 		pingRegistry,
 		createRegistry,
 		listRegistries,
-		createConfig,
 		createReplicationPolicy,
 		executeReplication,
 		getExecuteReplication,
+		createConfig,
 	}
 
 	for _, request := range requests {
-		if err := request(ctx); err != nil {
-			return err
+		if _, err := request(ctx); err != nil {
+			requireNoExecError(err, "initialize harbor registry")
 		}
 	}
 
 	log.Println("harbor configuration initialized")
-	return nil
 }
 
-func createProject(ctx context.Context) error {
+func createProject(ctx context.Context) (string, error) {
 	return executeHTTPRequest(ctx, "POST", "/projects", fmt.Sprintf(`{"project_name": "%s"}`, projectName))
 }
 
-func listProjects(ctx context.Context) error {
+func listProjects(ctx context.Context) (string, error) {
 	return executeHTTPRequest(ctx, "GET", "/projects", "")
 }
-func listAdapters(ctx context.Context) error {
+func listAdapters(ctx context.Context) (string, error) {
 	return executeHTTPRequest(ctx, "GET", "/replication/adapters", "")
 }
 
-func listRegistries(ctx context.Context) error {
+func listRegistries(ctx context.Context) (string, error) {
 	return executeHTTPRequest(ctx, "GET", "/registries", "")
 }
 
-func pingRegistry(ctx context.Context) error {
+func pingRegistry(ctx context.Context) (string, error) {
 	data := fmt.Sprintf(`{
 		"access_key": "",
 		"access_secret": "",
@@ -340,7 +336,7 @@ func pingRegistry(ctx context.Context) error {
 	return executeHTTPRequest(ctx, "POST", "/registries/ping", data)
 }
 
-func createRegistry(ctx context.Context) error {
+func createRegistry(ctx context.Context) (string, error) {
 	data := fmt.Sprintf(`{
 		"credential": {
 			"access_key": "",
@@ -357,7 +353,7 @@ func createRegistry(ctx context.Context) error {
 	return executeHTTPRequest(ctx, "POST", "/registries", data)
 }
 
-func pushToRegistry(ctx context.Context) error {
+func pushToRegistry(ctx context.Context) (string, error) {
 	_, err := dag.Container().
 		From("alpine:latest").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
@@ -367,14 +363,14 @@ func pushToRegistry(ctx context.Context) error {
 		WithExec([]string{"crane", "copy", "docker.io/library/alpine:latest", "core:8080/edge/alpine:latest", "--insecure"}).
 		Stdout(ctx)
 
-	return err
+	return "", err
 }
 
-func listArtifacts(ctx context.Context) error {
+func listArtifacts(ctx context.Context) (string, error) {
 	return executeHTTPRequest(ctx, "GET", "/projects/edge/artifacts", "")
 }
 
-func createConfig(ctx context.Context) error {
+func createConfig(ctx context.Context) (string, error) {
 	data := fmt.Sprintf(`{
 		"config_name": "test-config",
 		"registry": "%s",
@@ -409,7 +405,7 @@ func createConfig(ctx context.Context) error {
 	return executeHTTPRequest(ctx, "POST", "/configs", data)
 }
 
-func createReplicationPolicy(ctx context.Context) error {
+func createReplicationPolicy(ctx context.Context) (string, error) {
 	data := fmt.Sprintf(`{
 		"name": "%s",
 		"dest_registry": {
@@ -440,20 +436,20 @@ func createReplicationPolicy(ctx context.Context) error {
 	return executeHTTPRequest(ctx, "POST", "/replication/policies", data)
 }
 
-func executeReplication(ctx context.Context) error {
+func executeReplication(ctx context.Context) (string, error) {
 	data := fmt.Sprintf(`{ "policy_id": %d }`, policyId)
 	return executeHTTPRequest(ctx, "POST", "/replication/executions", data)
 }
 
-func getExecuteReplication(ctx context.Context) error {
+func getExecuteReplication(ctx context.Context) (string, error) {
 	url := fmt.Sprintf("/replication/executions/%d", 3)
 	return executeHTTPRequest(ctx, "GET", url, "")
 }
 
-func executeHTTPRequest(ctx context.Context, method, endpoint, data string) error {
-	args := []string{"curl", "-s", "-i", "-f", "-X", method}
+func executeHTTPRequest(ctx context.Context, method, endpoint, data string) (string, error) {
+	args := []string{"curl", "-s", "-X", method}
 
-	if endpoint == "/configs" {
+	if endpoint == "/configs" || endpoint == "/satellites" {
 		args = append(args, fmt.Sprintf("%s%s", "http://gc:8080", endpoint))
 	} else {
 		args = append(args, "-u", fmt.Sprintf("%s:%s", harborAdminUser, harborAdminPassword))
@@ -466,11 +462,11 @@ func executeHTTPRequest(ctx context.Context, method, endpoint, data string) erro
 
 	stdout, err := curlContainer(ctx, args)
 	if err != nil {
-		return fmt.Errorf("HTTP %s %s failed: %w", method, endpoint, err)
+		return "", fmt.Errorf("HTTP %s %s failed: %w", method, endpoint, err)
 	}
 
 	log.Printf("%s %s completed. response: %s", method, endpoint, stdout)
-	return err
+	return stdout, err
 }
 
 func curlContainer(ctx context.Context, cmd []string) (string, error) {
@@ -479,42 +475,6 @@ func curlContainer(ctx context.Context, cmd []string) (string, error) {
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithExec(cmd).
 		Stdout(ctx)
-}
-
-func makeGroundControlRequest(ctx context.Context, method, path string, body any) (string, error) {
-	var reqBody []byte
-	var err error
-
-	if body != nil {
-		reqBody, err = json.Marshal(body)
-		if err != nil {
-			return "", fmt.Errorf("failed to marshal request body: %w", err)
-		}
-	}
-
-	httpContainer := dag.Container().
-		From("alpine@sha256:8a1f59ffb675680d47db6337b49d22281a139e9d709335b492be023728e11715").
-		WithExec([]string{"apk", "add", "curl"}).
-		WithEnvVariable("CACHEBUSTER", time.Now().String())
-
-	var curlArgs []string
-	curlArgs = append(curlArgs, "curl", "-sX", method)
-
-	if body != nil {
-		curlArgs = append(curlArgs, "-H", "Content-Type: application/json")
-		curlArgs = append(curlArgs, "-d", string(reqBody))
-	}
-
-	curlArgs = append(curlArgs, fmt.Sprintf("http://gc:8080%s", path))
-
-	stdout, err := httpContainer.WithExec(curlArgs).Stdout(ctx)
-	if err != nil {
-		return "", fmt.Errorf("HTTP request failed: %w", err)
-	}
-
-	log.Printf("ground control api %s %s response: %s", method, path, stdout)
-
-	return stdout, nil
 }
 
 func checkHealthGroundControl(ctx context.Context) {
@@ -528,13 +488,13 @@ func checkHealthGroundControl(ctx context.Context) {
 
 func (m *HarborSatellite) registerSatelliteAndZTR(ctx context.Context) {
 
-	registerReq := map[string]any{
-		"name":        "test-satellite",
-		"groups":      []string{"test-group"},
-		"config_name": "test-config",
-	}
+	registerReq := fmt.Sprintf(`{
+		"name": "test-satellite",
+		"groups": ["%s"],
+		"config_name": "test-config"
+	}`, destNamespace)
 
-	registerResp, err := makeGroundControlRequest(ctx, "POST", "/satellites", registerReq)
+	registerResp, err := executeHTTPRequest(ctx, "POST", "/satellites", registerReq)
 	if err != nil {
 		log.Fatalf("failed to register satellite: %v", err)
 	}
