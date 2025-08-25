@@ -90,7 +90,7 @@ curl --location 'http://localhost:8080/groups/sync' \
   "artifacts": [
     {
       # your artifact information here
-      "repository": "satellite/alpine",
+      "repository": "library/alpine",
       "tag": ["latest"],
       "type": "docker",
       "digest": "sha256:5a6ee6c36824d527a0fe91a2a7c160c2e286bbeae46cd931c337ac769f1bd930",
@@ -124,7 +124,7 @@ curl --location 'http://localhost:8080/configs' \
         "update_config_interval": "@every 00h00m10s",
         "register_satellite_interval": "@every 00h00m10s",
         "local_registry": {
-            "url": "http://127.0.0.1:8585"
+            "url": "http://0.0.0.0:8585"
         }
     },
     "zot_config": {
@@ -133,7 +133,7 @@ curl --location 'http://localhost:8080/configs' \
             "rootDirectory": "./zot"
         },
         "http": {
-            "address": "127.0.0.1",
+            "address": "0.0.0.0",
             "port": "8585"
         },
         "log": {
