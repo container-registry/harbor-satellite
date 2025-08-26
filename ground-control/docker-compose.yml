@@ -24,7 +24,6 @@ services:
       HARBOR_PASSWORD: Harbor12345
       HARBOR_URL: http://harbor-sat.kube.bupd.xyz
       PORT: 8080
-      APP_ENV: local
     ports:
       - "8080:8080"
     depends_on:
