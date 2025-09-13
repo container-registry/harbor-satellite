@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
@@ -23,6 +24,18 @@ type RegisterSatelliteParams struct {
 	Name       string    `json:"name"`
 	Groups     *[]string `json:"groups,omitempty"`
 	ConfigName string    `json:"config_name"`
+}
+
+type SatelliteStatusParams struct {
+	Name             string    `json:"name"`
+	State            string    `json:"state"`
+	NextUpdate       string    `json:"nextUpdate"`
+	NextConfigUpdate string    `json:"nextConfigUpdate"`
+	NextStateUpdate  string    `json:"nextStateUpdate"`
+	MemoryBytes      uint64    `json:"memoryBytes"`
+	StorageBytes     uint64    `json:"storageBytes"`
+	CPUPercent       float64   `json:"cpuPercent"`
+	RequestCreatedAt time.Time `json:"requestCreatedTime"`
 }
 
 type RegisterSatelliteResponse struct {
@@ -338,6 +351,19 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+
+func (s *Server) statusReportHandler(w http.ResponseWriter, r *http.Request){
+	var req SatelliteStatusParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+	// todo : add a function here that processes the information, instead of just printing
+	fmt.Printf("satellite reported status : %v", req)
+
 }
 
 func (s *Server) GetSatelliteByName(w http.ResponseWriter, r *http.Request) {

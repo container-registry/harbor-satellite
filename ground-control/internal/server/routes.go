@@ -37,6 +37,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/satellites/{satellite}", s.GetSatelliteByName).Methods("GET")       // Get specific satellite
 	r.HandleFunc("/satellites/{satellite}", s.DeleteSatelliteByName).Methods("DELETE") // Delete specific satellite
 	// r.HandleFunc("/satellites/{satellite}/images", s.GetImagesForSatellite).Methods("GET") // Get satellite images
+	r.HandleFunc("/satellites/status",s.statusReportHandler).Methods("POST")
 
 	return r
 }
