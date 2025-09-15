@@ -1,172 +1,73 @@
 package runtime
 
-// import (
-// 	"fmt"
-// 	"os"
-// 	"path/filepath"
+import (
+	"fmt"
+	"github.com/BurntSushi/toml"
+	"os"
+	"strings"
+)
 
-// 	"github.com/container-registry/harbor-satellite/internal/logger"
-// 	"github.com/container-registry/harbor-satellite/internal/utils"
-// 	"github.com/container-registry/harbor-satellite/internal/registry"
-// 	"github.com/pelletier/go-toml/v2"
-// 	"github.com/rs/zerolog"
-// 	"github.com/spf13/cobra"
-// )
+const registriesConfPath = "/etc/containers/registries.conf"
 
-// const (
-// 	DefaultCrioRegistryConfigPath = "/etc/containers/registries.conf.d/crio.conf"
-// )
+// SetLocalMirrorForRegistries adds a single local mirror to multiple upstream registries
+func setCrioConfig(upstreamRegistries []string, localMirror string) error {
+	var cfg RegistriesConf
 
-// var DefaultCrioGenPath string
+	// Load existing config if exists
+	if _, err := os.Stat(registriesConfPath); err == nil {
+		if _, err := toml.DecodeFile(registriesConfPath, &cfg); err != nil {
+			return fmt.Errorf("failed to parse %s: %w", registriesConfPath, err)
+		}
+	}
 
-// func init() {
-// 	cwd, err := os.Getwd()
-// 	if err != nil {
-// 		fmt.Printf("Error getting current working directory: %v\n", err)
-// 		if _, err := os.Stat(DefaultCrioGenPath); os.IsNotExist(err) {
-// 			DefaultCrioGenPath = "runtime/crio"
-// 			err := os.MkdirAll(DefaultCrioGenPath, os.ModePerm)
-// 			if err != nil {
-// 				fmt.Printf("Error creating default directory: %v\n", err)
-// 			}
-// 		}
-// 	} else {
-// 		DefaultCrioGenPath = filepath.Join(cwd, "runtime/crio")
-// 	}
-// }
+	// Determine insecure flag from localMirror
+	insecure := !strings.HasPrefix(localMirror, "https")
 
-// func NewCrioCommand() *cobra.Command {
-// 	var defaultZotConfig registry.ZotConfig
-// 	var generateConfig bool
-// 	var crioConfigPath string
+	for _, upstream := range upstreamRegistries {
+		upstream = strings.TrimSpace(upstream)
+		if upstream == "" {
+			continue
+		}
 
-// 	crioCmd := &cobra.Command{
-// 		Use:   "crio",
-// 		Short: "Creates the config file for the crio runtime to fetch the images from the local repository",
-// 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-// 			//return SetupContainerRuntimeCommand(cmd, &defaultZotConfig, DefaultCrioGenPath)
-// 			return nil
-// 		},
-// 		RunE: func(cmd *cobra.Command, args []string) error {
-// 			log := logger.FromContext(cmd.Context())
-// 			if generateConfig {
-// 				log.Info().Msg("Generating the config file for crio ...")
-// 				log.Info().Msgf("Fetching crio registry config file form path: %s", crioConfigPath)
-// 				err := GenerateCrioRegistryConfig(&defaultZotConfig, crioConfigPath, log)
-// 				if err != nil {
-// 					log.Err(err).Msg("Error generating crio registry config")
-// 					return err
-// 				}
-// 			}
-// 			return nil
-// 		},
-// 	}
-// 	crioCmd.Flags().BoolVarP(&generateConfig, "gen", "g", false, "Generate the config file")
-// 	crioCmd.PersistentFlags().StringVarP(&crioConfigPath, "config", "c", DefaultCrioRegistryConfigPath, "Path to the crio registry config file")
-// 	return crioCmd
-// }
+		// Find existing registry or create new
+		var reg *Registry
+		for idx, r := range cfg.Registries {
+			if r.Location == upstream {
+				reg = &cfg.Registries[idx]
+				break
+			}
+		}
+		if reg == nil {
+			cfg.Registries = append(cfg.Registries, Registry{Location: upstream})
+			reg = &cfg.Registries[len(cfg.Registries)-1]
+		}
 
-// func GenerateCrioRegistryConfig(defaultZotConfig *registry.ZotConfig, crioConfigPath string, log *zerolog.Logger) error {
-// 	// Read the current crio registry config file
-// 	data, err := utils.ReadFile(crioConfigPath, false)
-// 	if err != nil {
-// 		if os.IsNotExist(err) {
-// 			log.Warn().Msg("Config file does not exist, proceeding with default values")
-// 			data = []byte{}
-// 		} else {
-// 			log.Err(err).Msg("Error reading config file")
-// 			return fmt.Errorf("could not read config file: %w", err)
-// 		}
-// 	}
-// 	var crioRegistryConfig CriORegistryConfig
-// 	err = toml.Unmarshal(data, &crioRegistryConfig)
-// 	if err != nil {
-// 		log.Err(err).Msg("Error unmarshalling crio registry config")
-// 		return fmt.Errorf("could not unmarshal crio registry config: %w", err)
-// 	}
-// 	// Update the crio registry config file
-// 	// - Add the local registry to the unqualified search registries if not already present
-// 	found := false
-// 	localRegistry := utils.FormatRegistryURL(defaultZotConfig.RemoteURL)
-// 	for _, registry := range crioRegistryConfig.UnqualifiedSearchRegistries {
-// 		if registry == localRegistry {
-// 			found = true
-// 			break
-// 		}
-// 	}
-// 	if !found {
-// 		crioRegistryConfig.UnqualifiedSearchRegistries = append(crioRegistryConfig.UnqualifiedSearchRegistries, localRegistry)
-// 	}
-// 	// Now range over the registries and find if there is a registry with the prefix satellite
-// 	// If there is a registry with the prefix satellite, update the location to the local registry
-// 	found = false
-// 	for _, registries := range crioRegistryConfig.Registries {
-// 		if registries.Prefix == "satellite.io" {
-// 			found = true
-// 			if registries.Location == "" {
-// 				registries.Location = DockerURL
-// 			}
-// 			// Add the local registry to the first position in the mirrors
-// 			mirror := Mirror{
-// 				Location: localRegistry,
-// 				//Insecure: config.UseUnsecure(),
-// 			}
-// 			registries.Mirrors = append([]Mirror{mirror}, registries.Mirrors...)
-// 		}
-// 	}
-// 	if !found {
-// 		// Add the satellite registry to the registries
-// 		registry := Registry{
-// 			Prefix:   "satellite.io",
-// 			Location: DockerURL,
-// 			Mirrors: []Mirror{
-// 				{
-// 					Location: localRegistry,
-// 					//	Insecure: config.UseUnsecure(),
-// 				},
-// 			},
-// 		}
-// 		crioRegistryConfig.Registries = append(crioRegistryConfig.Registries, registry)
-// 	}
-// 	// Now marshal the updated crio registry config
-// 	updatedData, err := toml.Marshal(crioRegistryConfig)
-// 	if err != nil {
-// 		log.Err(err).Msg("Error marshalling crio registry config")
-// 		return fmt.Errorf("could not marshal crio registry config: %w", err)
-// 	}
-// 	// Write the updated crio registry config to the file
-// 	pathToWrite := filepath.Join(DefaultCrioGenPath, "crio.conf")
-// 	log.Info().Msgf("Writing the crio registry config to path: %s", pathToWrite)
-// 	err = utils.WriteFile(pathToWrite, updatedData)
-// 	if err != nil {
-// 		log.Err(err).Msg("Error writing crio registry config")
-// 		return fmt.Errorf("could not write crio registry config: %w", err)
-// 	}
-// 	log.Info().Msg("Successfully wrote the crio registry config")
-// 	return nil
-// }
+		// Append the local mirror if not already present
+		found := false
+		for _, m := range reg.Mirrors {
+			if m.Location == localMirror {
+				found = true
+				break
+			}
+		}
+		if !found {
+			reg.Mirrors = append(reg.Mirrors, Mirror{
+				Location: localMirror,
+				Insecure: insecure,
+			})
+		}
+	}
 
-// //func SetupContainerRuntimeCommand(cmd *cobra.Command, defaultZotConfig *registry.ZotConfig, defaultGenPath string) error {
-// //	utils.CommandRunSetup(cmd)
-// //	var err error
-// //	log := logger.FromContext(cmd.Context())
+	// Write back to the file
+	f, err := os.Create(registriesConfPath)
+	if err != nil {
+		return fmt.Errorf("failed to open %s for writing: %w", registriesConfPath, err)
+	}
+	defer f.Close()
 
-// // //if config.GetOwnRegistry() {
-// // //	log.Info().Msg("Using own registry for config generation")
-// // //	log.Info().Msgf("Remote registry URL: %s", config.GetRemoteRegistryURL())
-// // //	_, err := url.Parse(config.GetRemoteRegistryURL())
-// // //	if err != nil {
-// // //		return fmt.Errorf("could not parse remote registry URL: %w", err)
-// // //	}
-// // //	defaultZotConfig.RemoteURL = config.GetRemoteRegistryURL()
-// // //} else {
-// // //	log.Info().Msg("Using default registry for config generation")
-// // //	err = registry.ReadZotConfig(config.GetZotConfigPath(), defaultZotConfig)
-// // //	if err != nil || defaultZotConfig == nil {
-// // //		return fmt.Errorf("could not read config: %w", err)
-// // //	}
-// // //	defaultZotConfig.RemoteURL = defaultZotConfig.GetRegistryURL()
-// // //	log.Info().Msgf("Default config read successfully: %v", defaultZotConfig.HTTP.Address+":"+defaultZotConfig.HTTP.Port)
-// // //}
-// // //return utils.CreateRuntimeDirectory(defaultGenPath)
-// //}
+	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
+		return fmt.Errorf("failed to encode TOML and write to file: %w", err)
+	}
+
+	return nil
+}

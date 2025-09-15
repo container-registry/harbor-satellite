@@ -7,7 +7,6 @@ import (
 
 // ApplyCRIConfigs applies mirror configs to the appropriate runtime.
 func ApplyCRIConfigs(mirrorsMap []string, localRegistry string) error {
-
 	for _, entry := range mirrorsMap {
 		parts := strings.SplitN(entry, ":", 2)
 		if len(parts) != 2 {
@@ -15,21 +14,22 @@ func ApplyCRIConfigs(mirrorsMap []string, localRegistry string) error {
 		}
 
 		cri := parts[0]
-		mirror := parts[1]
+		mirrorList := strings.Split(parts[1], ",") // split here once
 
 		switch cri {
 		case "docker":
-			if err := setDockerdConfig(mirror, localRegistry); err != nil {
-				return fmt.Errorf("docker config error: %w", err)
+			if err := setDockerdConfig(mirrorList, localRegistry); err != nil {
+				return fmt.Errorf("%s config error: %w", cri, err)
 			}
 		case "crio", "podman":
-			// TODO: implement CRI-O/Podman logic
+			if err := setCrioConfig(mirrorList, localRegistry); err != nil {
+				return fmt.Errorf("%s config error: %w", cri, err)
+			}
 		case "containerd":
-			// TODO: implement containerd logic
+			// TODO
 		default:
 			return fmt.Errorf("unsupported CRI: %s", cri)
 		}
 	}
-
 	return nil
 }
