@@ -26,7 +26,9 @@ func ApplyCRIConfigs(mirrorsMap []string, localRegistry string) error {
 				return fmt.Errorf("%s config error: %w", cri, err)
 			}
 		case "containerd":
-			// TODO
+			if err := setContainerdConfig(mirrorList, localRegistry); err != nil {
+				return fmt.Errorf("%s config error: %w", cri, err)
+			}
 		default:
 			return fmt.Errorf("unsupported CRI: %s", cri)
 		}
