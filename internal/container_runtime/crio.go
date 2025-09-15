@@ -63,7 +63,9 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open %s for writing: %w", registriesConfPath, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
 		return fmt.Errorf("failed to encode TOML and write to file: %w", err)

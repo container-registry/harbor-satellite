@@ -72,7 +72,6 @@ func main() {
 	}
 	httpData := data["http"].(map[string]interface{})
 	localRegistryEndpoint := httpData["address"].(string) + ":" + httpData["port"].(string)
-	fmt.Printf("%s", localRegistryEndpoint)
 
 	err = runtime.ApplyCRIConfigs(mirrors, localRegistryEndpoint)
 	if err != nil {

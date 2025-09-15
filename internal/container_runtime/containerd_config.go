@@ -1,6 +1,6 @@
 package runtime
 
-// ContainerdHosts represents the structure of hosts.toml
+// Host represents a registry host entry in a hosts.toml file
 type Host struct {
 	Capabilities []string `toml:"capabilities"`
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 )
 
 const dockerConfigPath = "/etc/docker/daemon.json"
@@ -25,16 +26,28 @@ func setDockerdConfig(mirrors []string, localRegistry string) error {
 		return nil
 	}
 
-	config := make(map[string]interface{})
-	if data, err := os.ReadFile(dockerConfigPath); err == nil {
-		_ = json.Unmarshal(data, &config)
+	// Ensure localRegistry has a valid scheme
+	if !strings.HasPrefix(localRegistry, "http://") && !strings.HasPrefix(localRegistry, "https://") {
+		localRegistry = "http://" + localRegistry
 	}
 
-	// Update dockerd config while preserving existing settings
-	if _, ok := config["registry-mirrors"]; !ok {
-		config["registry-mirrors"] = []string{localRegistry}
-		newData, _ := json.MarshalIndent(config, "", "  ")
-		_ = os.WriteFile(dockerConfigPath, newData, 0644)
+	config := make(map[string]interface{})
+	if data, err := os.ReadFile(dockerConfigPath); err == nil {
+		err = json.Unmarshal(data, &config)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal docker config: %w", err)
+		}
+	}
+
+	config["registry-mirrors"] = []string{localRegistry}
+
+	newData, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal docker config: %w", err)
+	}
+
+	if err := os.WriteFile(dockerConfigPath, newData, 0644); err != nil {
+		return fmt.Errorf("failed to write docker config: %w", err)
 	}
 
 	cmd := exec.Command("systemctl", "restart", "docker")

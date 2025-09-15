@@ -1,6 +1,6 @@
 package runtime
 
-// CrioConfig models the structure of config relevant for registries
+// RegistriesConf models the structure of config relevant for registries
 type RegistriesConf struct {
 	Registries []Registry `toml:"registry"`
 }
