@@ -176,6 +176,30 @@ go run cmd/main.go --token "<your token here>" --ground-control-url "<ground con
 ```
 > Note : by default, logging in JSON format is set to true. To change this pass additional flag `--json-logging=false`
 
+
+
+### 7. Configure Local Registry as Mirror (Optional)
+
+Harbor Satellite allows you to set up a local registry as a mirror for upstream registries. Using the optional `--mirrors` flag, you can specify which upstream registries should be mirrored. The configured CRI will attempt to pull images from the local registry (Zot by default) first, and use the upstream registry as a fallback if the image is not available locally.
+
+#### Supported CRIs
+- `docker`
+- `crio`
+- `podman`
+- `containerd`
+
+#### Usage
+```bash
+--mirrors=containerd:docker.io crio:docker.io
+```
+
+#### Notes
+- Docker: Only supports mirroring images from docker.io. Use `docker:true` to enable Docker mirroring.
+- Appending or updating CRI configuration files requires sudo.
+- Satellite assumes default configuration paths for each CRI. If you use non-standard locations, you may need to manually update the configs.
+- Containerd: Using outdated versions is not recommended, as some configuration options and styles may be deprecated.
+
+
 ## Troubleshooting
 
 ### Common Issues
