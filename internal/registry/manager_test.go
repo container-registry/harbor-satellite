@@ -31,17 +31,17 @@ func TestWriteTempZotConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			zm := NewZotManager(log, tt.config)
-			tmpPath, err := zm.WriteTempZotConfig()
+			err := zm.WriteTempZotConfig()
 			if tt.expectErr {
 				require.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
 
-			data, readErr := os.ReadFile(tmpPath)
+			data, readErr := os.ReadFile(ZotTempPath)
 			require.NoError(t, readErr)
 			require.Equal(t, tt.config, data)
-			require.NoError(t, os.Remove(tmpPath))
+			require.NoError(t, os.Remove(ZotTempPath))
 		})
 	}
 }

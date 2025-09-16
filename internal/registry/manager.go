@@ -3,7 +3,9 @@ package registry
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/rs/zerolog"
@@ -11,6 +13,8 @@ import (
 	"zotregistry.dev/zot/pkg/api/config"
 	"zotregistry.dev/zot/pkg/cli/server"
 )
+
+const ZotTempPath = "/tmp/zot-hot.json"
 
 type ZotManager struct {
 	zotConfig json.RawMessage
@@ -24,58 +28,55 @@ func NewZotManager(log zerolog.Logger, zotConfig json.RawMessage) *ZotManager {
 	}
 }
 
-func (zm *ZotManager) HandleRegistrySetup(ctx context.Context, errChan chan error) {
-	tmpConfigPath, err := zm.WriteTempZotConfig()
+func (zm *ZotManager) HandleRegistrySetup(ctx context.Context) error {
+	err := zm.WriteTempZotConfig()
 	if err != nil {
-		zm.log.Error().Err(err).Msg("Error writing temp zot config to disk")
-		errChan <- fmt.Errorf("error writing temp zot config to disk: %w", err)
-		return
+		return fmt.Errorf("error writing temp zot config to disk: %w", err)
 	}
 
 	defer func() {
-		err := zm.RemoveTempZotConfig(tmpConfigPath)
+		err := zm.RemoveTempZotConfig(ZotTempPath)
 		if err != nil {
 			zm.log.Warn().Err(err).Msg("Failed to remove temp zot config")
-			return
 		} else {
-			zm.log.Debug().Str("path", tmpConfigPath).Msg("Temp zot config removed")
-			return
+			zm.log.Debug().Str("path", ZotTempPath).Msg("Temp zot config removed")
 		}
 	}()
 
-	if err := zm.VerifyRegistryConfig(tmpConfigPath); err != nil {
-		errChan <- fmt.Errorf("error launching default zot registry: %w", err)
-		return
+	if err := zm.VerifyRegistryConfig(ZotTempPath); err != nil {
+		return fmt.Errorf("error verifying registry config: %w", err)
 	}
 
-	if err := zm.LaunchZotRegistry(ctx, tmpConfigPath); err != nil {
-		errChan <- fmt.Errorf("error launching default zot registry: %w", err)
-		return
+	if err := zm.LaunchZotRegistry(ctx, ZotTempPath); err != nil {
+		return fmt.Errorf("error launching default zot registry: %w", err)
 	}
+
+	return nil
 }
 
 // WriteTempZotConfig creates a temp file and writes the zot config to it.
-func (zm *ZotManager) WriteTempZotConfig() (string, error) {
+func (zm *ZotManager) WriteTempZotConfig() error {
 	zm.log.Debug().Msg("Creating temporary zot config file")
 
 	tmpFile, err := os.CreateTemp("", "zot-*.json")
 	if err != nil {
-		zm.log.Error().Err(err).Msg("Failed to create temporary zot config file")
-		return "", fmt.Errorf("failed to create temp zot config file: %w", err)
+		return fmt.Errorf("failed to create temp zot config file: %w", err)
 	}
 
 	if _, err := tmpFile.Write(zm.zotConfig); err != nil {
-		zm.log.Error().Err(err).Str("path", tmpFile.Name()).Msg("Failed to write to temp zot config file")
-		return "", fmt.Errorf("failed to write to temp zot file present at %s: %w", tmpFile.Name(), err)
+		return fmt.Errorf("failed to write to temp zot file present at %s: %w", tmpFile.Name(), err)
 	}
 
 	if err := tmpFile.Close(); err != nil {
-		zm.log.Error().Err(err).Str("path", tmpFile.Name()).Msg("Failed to close temp zot config file")
-		return "", fmt.Errorf("failed to close temp zot config file %s: %w", tmpFile.Name(), err)
+		return fmt.Errorf("failed to close temp zot config file %s: %w", tmpFile.Name(), err)
+	}
+
+	if err := os.Rename(tmpFile.Name(), ZotTempPath); err != nil {
+		return fmt.Errorf("failed to rename to target config path: %w", err)
 	}
 
 	zm.log.Debug().Str("path", tmpFile.Name()).Msg("Temporary zot config file created successfully")
-	return tmpFile.Name(), nil
+	return nil
 }
 
 // RemoveTempZotConfig deletes the temporary zot config file.
@@ -127,7 +128,7 @@ func (zm *ZotManager) LaunchZotRegistry(ctx context.Context, zotConfigPath strin
 		ctlr.Shutdown() // nolint: contextcheck
 	}()
 
-	if err := ctlr.Run(); err != nil {
+	if err := ctlr.Run(); !errors.Is(err, http.ErrServerClosed) {
 		zm.log.Error().Err(err).Msg("Failed to start zot registry, exiting")
 		return fmt.Errorf("zot registry run failure: %w", err)
 	}

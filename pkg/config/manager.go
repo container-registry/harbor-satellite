@@ -10,6 +10,22 @@ import (
 	"sync"
 )
 
+type ConfigChangeType string
+
+const (
+	LogLevelChanged  ConfigChangeType = "log_level"
+	IntervalsChanged ConfigChangeType = "intervals"
+	ZotConfigChanged ConfigChangeType = "zot_config"
+)
+
+type ConfigChange struct {
+	Type     ConfigChangeType
+	OldValue interface{}
+	NewValue interface{}
+}
+
+type ConfigChangeCallback func(change ConfigChange) error
+
 type ConfigManager struct {
 	config                  *Config
 	Token                   string
@@ -92,6 +108,59 @@ func (cm *ConfigManager) WritePrevConfigToDisk(config *Config) error {
 	}
 
 	return nil
+}
+
+func (cm *ConfigManager) detectChanges(oldConfig *Config, newConfig *Config) []ConfigChange {
+	var changes []ConfigChange
+
+	if oldConfig.AppConfig.LogLevel != newConfig.AppConfig.LogLevel {
+		changes = append(changes, ConfigChange{
+			Type:     LogLevelChanged,
+			OldValue: oldConfig.AppConfig.LogLevel,
+			NewValue: newConfig.AppConfig.LogLevel,
+		})
+	}
+
+	if oldConfig.AppConfig.StateReplicationInterval != newConfig.AppConfig.StateReplicationInterval {
+		changes = append(changes, ConfigChange{
+			Type:     IntervalsChanged,
+			OldValue: oldConfig.AppConfig.StateReplicationInterval,
+			NewValue: newConfig.AppConfig.StateReplicationInterval,
+		})
+	}
+
+	if string(oldConfig.ZotConfigRaw) != string(newConfig.ZotConfigRaw) {
+		changes = append(changes, ConfigChange{
+			Type:     ZotConfigChanged,
+			OldValue: "zot_config_changed",
+			NewValue: "zot_config_changed",
+		})
+	}
+
+	return changes
+}
+func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	oldConfig := cm.config
+
+	newConfig, err := readAndReturnConfig(cm.configPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read config from disk: %w", err)
+	}
+
+	validatedConfig, warnings, err := ValidateAndEnforceDefaults(newConfig, cm.DefaultGroundControlURL)
+	if err != nil {
+		return nil, warnings, fmt.Errorf("failed to validate reloaded config: %w", err)
+	}
+
+	changes := cm.detectChanges(oldConfig, validatedConfig)
+
+	cm.config = validatedConfig
+
+	return changes, warnings, nil
+
 }
 
 func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging bool) (*ConfigManager, []string, error) {

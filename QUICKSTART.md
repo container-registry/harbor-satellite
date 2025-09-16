@@ -13,6 +13,20 @@ Before you begin, ensure you have:
 - (Optional) **Docker** and **Docker Compose** for non-Dagger setups. [Install Docker](https://docs.docker.com/get-docker/).
 
 ## Step 1: Configure Ground Control
+```bash
+HARBOR_USERNAME=admin
+HARBOR_PASSWORD=Harbor12345
+HARBOR_URL=https://demo.goharbor.io
+
+PORT=8080
+
+DB_HOST=127.0.0.1 # For Dagger use DB_HOST=pgservice
+DB_PORT=5432
+DB_DATABASE=groundcontrol
+DB_USERNAME=postgres       
+DB_PASSWORD=password  
+```
+You can also directly edit this [example](ground-control/.env.example) available in the repository.
 
 Ground Control is the central service that manages satellite configurations. Let’s set it up.
 
@@ -135,7 +149,7 @@ curl -X POST http://localhost:8080/groups/sync \
 Now you need to create a config artifact for the satellite. An example is given [example](https://github.com/container-registry/harbor-satellite/blob/main/examples/config.json). This artifact tells the satellite where the ground control is located and defines how and when to replicate artifacts from it. It also includes details about the local OCI-compliant registry, specified separately under its own field.
 
 ```bash
-curl --location 'http://localhost:8080/configs' \
+curl -i --location 'http://localhost:8080/configs' \
 --header 'Content-Type: application/json' \
 --data '{
   "config_name": "config1",
@@ -147,12 +161,10 @@ curl --location 'http://localhost:8080/configs' \
         "ground_control_url": "http://127.0.0.1:8080",
         "log_level": "info",
         "use_unsecure": true,
-        "zot_config_path": "./registry_config.json",
         "state_replication_interval": "@every 00h00m10s",
-        "update_config_interval": "@every 00h00m10s",
         "register_satellite_interval": "@every 00h00m10s",
         "local_registry": {
-            "url": "http://127.0.0.1:8585"
+            "url": "http://0.0.0.0:8585"
         }
     },
     "zot_config": {
@@ -161,7 +173,7 @@ curl --location 'http://localhost:8080/configs' \
             "rootDirectory": "./zot"
         },
         "http": {
-            "address": "127.0.0.1",
+            "address": "0.0.0.0",
             "port": "8585"
         },
         "log": {
