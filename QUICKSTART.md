@@ -253,6 +253,5 @@ If you encounter issues, consider these common problems and solutions:
 
 - Explore the [Harbor Satellite documentation](https://docs.goharbor.io).
 - Join the [Harbor community](https://community.goharbor.io) for support.
-- For API-related questions, visit [xAI API](https://x.ai/api).
-
+- Open an issue on GitHub: https://github.com/container-registry/harbor-satellite/issues
 
