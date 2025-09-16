@@ -1,20 +1,18 @@
-# Quick Start Guide
+# Harbor Satellite Quick Start Guide
 
-This guide provides the fastest way to get started with Harbor Satellite.
+Welcome to the Harbor Satellite Quick Start Guide! This guide provides a clear and streamlined process to set up and start using Harbor Satellite quickly.
 
 ## Prerequisites
 
-Ensure you have:
-- A Harbor registry instance with satellite adapter. This should be available [here](https://github.com/container-registry/harbor-next/tree/satellite)
-- Credentials with permission to create robot accounts in the registry
-- The latest version of Dagger installed
-  
-## Quick Setup
+Before you begin, ensure you have:
 
-### 1. Configure Ground Control
+- A **Harbor registry instance** with the satellite adapter installed. You can the instance [here](https://github.com/container-registry/harbor-next/tree/satellite).
+- **Credentials** with permission to create robot accounts in the registry
 
-Navigate to the `ground-control` directory and set up the environment variables like this : 
+- The latest version of **Dagger** installed. [Download and install Dagger](https://docs.dagger.io/install).
+- (Optional) **Docker** and **Docker Compose** for non-Dagger setups. [Install Docker](https://docs.docker.com/get-docker/).
 
+## Step 1: Configure Ground Control
 ```bash
 HARBOR_USERNAME=admin
 HARBOR_PASSWORD=Harbor12345
@@ -30,80 +28,125 @@ DB_PASSWORD=password
 ```
 You can also directly edit this [example](ground-control/.env.example) available in the repository.
 
-### 2. Run Ground Control
+Ground Control is the central service that manages satellite configurations. Let’s set it up.
 
-#### Option 1: Without Dagger(recommended for end users)
+1. Clone the Harbor Satellite repository (if not already done):
+   ```bash
+   git clone https://github.com/container-registry/harbor-satellite.git
+   cd harbor-satellite
+   ```
+2. Navigate to the `ground-control` directory:
+   ```bash
+   cd ground-control
+   ```
+3. Create a `.env` file using the provided example:
+   ```bash
+   cp .env.example .env
+   ```
+4. Edit the `.env` file with your configuration:
 
-1. First, move to the ground-control directory:
+   ```env
+   # Harbor Registry Credentials
+   HARBOR_USERNAME=admin
+   HARBOR_PASSWORD=Harbor12345
+   HARBOR_URL=https://demo.goharbor.io
+
+   # Ground Control Settings
+   PORT=8080
+   APP_ENV=local
+
+   # Database Settings (Use DB_HOST=pgservice for Dagger)
+   DB_HOST=127.0.0.1
+   DB_PORT=5432
+   DB_DATABASE=groundcontrol
+   DB_USERNAME=postgres
+   DB_PASSWORD=password
+   ```
+
+   > **Note:** _Ensure the database is running and accessible. For Dagger, set `DB_HOST=pgservice`._
+
+## Step 2: Start Ground Control
+
+Choose one of the following options to start Ground Control
+
+**Option 1: Using Docker Compose (Recommended for End Users)**
+
+1. Update the `docker-compose.yml` file in the `ground-control` directory with the same credentials as in the `.env` file.
+   
+2. Start Ground Control :
+   
+   ```bash
+   docker compose up
+   ```
+
+   > **Tip:** _Use `-d` to run in detached mode. Verify the service is running with `docker ps`._
+
+**Option 2: Build and Run Binary (Alternative for End Users)**
+
+1. Build the Ground Control binary:
+
+   ```bash
+   dagger call build-dev --platform "linux/amd64" --component "ground-control" export --path=./gc-dev
+   ```
+
+2. Run the binary:
+
+   ```bash
+   ./gc-dev
+   ```
+
+**Option 3: Using Dagger (Recommended for Developers)**
+
+1. Start Ground Control with Dagger:
+
+   ```bash
+   dagger call run-ground-control up
+   ```
+
+## Step 3: Verify Ground Control Health
+
+Check if Ground Control is running
+
+   ```bash
+    curl http://localhost:8080/health
+   ```
+
+
+A `200 OK` response indicates Ground Control is healthy.
+
+## Step 4: Create a Group for Artifacts
+
+A **group** is just a set of images that the satellite needs to replicate from the upstream registry.It also consists information about all the artifacts present in it.
+
+> **Note:** _You must modify the body given below according to your registry._
+
+
+Use the following `curl` command to create a group. Modify the JSON body to match your registry and artifacts:
+
 ```bash
-cd ground-control
+curl -X POST http://localhost:8080/groups/sync \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group": "group1",
+    "registry": "https://demo.goharbor.io",
+    "artifacts": [
+      {
+        "repository": "satellite/alpine",
+        "tag": ["latest"],
+        "type": "docker",
+        "digest": "sha256:5a6ee6c36824d527a0fe91a2a7c160c2e286bbeae46cd931c337ac769f1bd930",
+        "deleted": false
+      }
+    ]
+  }'
 ```
 
-2. Add the credentials to the `docker-compose` file for all the services needed for ground control. Make sure you add the same credentials that you have added in the .env file. Some additional tweaks can be also made, since this uses pre-built images.
-```bash
-docker compose up
-```
 
-#### Option 2: build the binary(recommended for end users)
-You can also build ground-control binary using:
+> **Note:** _Replace `repository`, `tag`, and `digest` with your artifact details. Use `docker inspect` or Harbor's UI to find the digest._
 
-```bash
-dagger call build-dev --platform "linux/amd64" --component "ground-control" export --path=./gc-dev
-```
+## Step 5: Configure the Satellite
 
-To Run ground-control binary:
-
-```bash
-./gc-dev
-```
-
-#### Option 3: Using Dagger (recommended for developers)
-
-To start the Ground Control service, execute the following Dagger command:
-
-```bash
-dagger call run-ground-control up
-```
-
-
-### 3. Create a group for the artifacts.
-
-First, check the health of the ground control:
-
-```bash
-curl --location 'http://localhost:8080/health'
-```
-
-A group is just a set of images that the satellite needs to replicate from the upstream registry.It also consists information about all the artifacts present in it. 
-> Upstream registry is the remote registry from which the satellite component pulls all the artifacts from and pushes them to the local OCI-compliant registry. 
-
-
-
-> **Note:** You must modify the body given below according to your registry. 
-```bash
-curl --location 'http://localhost:8080/groups/sync' \
---header 'Content-Type: application/json' \
---data '{
-  "group": "group1", # name of the group
-  "registry": "http://demo.goharbor.io", # your registry URL here
-  "artifacts": [
-    {
-      # your artifact information here
-      "repository": "library/alpine",
-      "tag": ["latest"],
-      "type": "docker",
-      "digest": "sha256:5a6ee6c36824d527a0fe91a2a7c160c2e286bbeae46cd931c337ac769f1bd930",
-      "deleted": false
-    }
-  ]
-}
-'
-```
-
-### 4. Configure  the satellite
-
-Now you need to create a config artifact for the satellite. An example is given [here](examples/config.json).
-This artifact tells the satellite where the ground control is located and defines how and when to replicate artifacts from it. It also includes details about the local OCI-compliant registry, specified separately under its own field.
+Now you need to create a config artifact for the satellite. An example is given [example](https://github.com/container-registry/harbor-satellite/blob/main/examples/config.json). This artifact tells the satellite where the ground control is located and defines how and when to replicate artifacts from it. It also includes details about the local OCI-compliant registry, specified separately under its own field.
 
 ```bash
 curl -i --location 'http://localhost:8080/configs' \
@@ -142,9 +185,11 @@ curl -i --location 'http://localhost:8080/configs' \
 '
 ```
 
-### 5. Register satellite
+> **Tip:** _Adjust `ground_control_url` and `local_registry.url` if running on a different host or port_.
 
-You now need to use the group and config you created to create the satellite. A successful request returns a token which needs to be preserved for future steps.
+## Step 6: Register the Satellite
+
+Register the satellite with the group and configuration created earlier. This request returns a token, which you must save for the next step:
 
 ```bash
 curl --location 'http://localhost:8080/satellites' \
@@ -156,37 +201,69 @@ curl --location 'http://localhost:8080/satellites' \
 }'
 ```
 
-### 6. Start the satellite
-Set up the `.env` files. An [example](.env.example) is provided in the repository. Use the token you received earlier in this file.
+> **Important**: Copy the token from the response. _Where will you store this token to ensure it’s secure and accessible?_
 
-#### Option 1 : Without dagger
-A docker compose file is given in the project root. Tweak it as per your needs. Use the token you received earlier.
-> Note : if the ground control is not running on a public IP address, you might need to make sure the satellite and ground control are on the same network so that communication is possible.
+## Step 7: Start the Satellite
 
-#### Option 2 : Using Dagger
-```bash
-  dagger call build --source=. --component=satellite export --path=./bin
-```
+Set up the satellite using the token from Step 6. Choose one of the following options: Example [here](https://github.com/container-registry/harbor-satellite/blob/main/.env.example)
 
-#### Option 3 : Using Go
-You can directly run : 
+**Option 1: Using Docker Compose (Recommended for End Users)**
 
-```bash
-go run cmd/main.go --token "<your token here>" --ground-control-url "<ground control url here>"
-```
-> Note : by default, logging in JSON format is set to true. To change this pass additional flag `--json-logging=false`
+1. Update the `docker-compose.yml` file in the project root with the token and other required settings.
+  
+2. Ensure Ground Control and the satellite are on the same network if Ground Control isn’t on a public IP.
+3. Start the satellite:
+
+   ```bash
+   docker compose up -d
+   ```
+
+**Option 2: Using Dagger**
+
+1. Build and export the satellite binary:
+
+   ```bash
+   dagger call build --source=. --component=satellite export --path=./bin
+   ```
+
+2. Run the binary with the token:
+   
+   ```bash
+   ./bin --token "<your-token>" --ground-control-url "http://127.0.0.1:8080"
+   ```
+
+**Option 3: Using Go**
+
+1. Run the satellite directly:
+   
+   ```bash
+    go run cmd/main.go --token "<your token here>" --ground-control-url "<ground control url here>"
+   ```
+
+
+   > **Note** : by default, logging in JSON format is set to true.  To change this pass additional flag `--json-logging=false` 
 
 ## Troubleshooting
 
-### Common Issues
+If you encounter issues, consider these common problems and solutions:
 
 1. **Ground Control Connection Issues**
-   - Verify the Ground Control URL in config.json
-   - Check if Ground Control is running
-   - Cross check the environment variables and the Docker Compose file
-
+   - Verify the `ground_control_url` in the satellite configuration.
+   - Check if Ground Control is running: `curl http://localhost:8080/health`.
+   - Ensure environment variables match the `docker-compose.yml` file.
 2. **Registry Access Issues**
-   - Verify Harbor credentials
-   - Check network connectivity to Harbor
-   - Ensure proper permissions
+   - Confirm Harbor credentials (`HARBOR_USERNAME` and `HARBOR_PASSWORD`).
+   - Test network connectivity to the Harbor registry: `ping demo.goharbor.io`.
+   - Ensure the robot account has appropriate permissions in Harbor.
+3. **Satellite Not Replicating Artifacts**
+   - Verify the group and config names in the satellite registration.
+   - Check the artifact digest and repository details in the group configuration..
+   - Ensure the local registry (`http://127.0.0.1:8585`) is running.
+
+> **Question**: Which of these issues seems most likely in your environment, and how will you verify it?
+## Need Help?
+
+- Explore the [Harbor Satellite documentation](https://docs.goharbor.io).
+- Join the [Harbor community](https://community.goharbor.io) for support.
+- Open an issue on GitHub: https://github.com/container-registry/harbor-satellite/issues
 
