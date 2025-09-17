@@ -65,7 +65,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// get local registry addrress from raw zot confi
+	// get local registry addrress from raw zot config
 	var data map[string]interface{}
 	if err := json.Unmarshal(cm.GetRawZotConfig(), &data); err != nil {
 		panic(err)

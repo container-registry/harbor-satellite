@@ -121,7 +121,7 @@ curl -i --location 'http://localhost:8080/configs' \
         "state_replication_interval": "@every 00h00m10s",
         "register_satellite_interval": "@every 00h00m10s",
         "local_registry": {
-            "url": "http://127.0.0.1:8585"
+            "url": "http://0.0.0.0:8585"
         }
     },
     "zot_config": {
@@ -130,7 +130,7 @@ curl -i --location 'http://localhost:8080/configs' \
             "rootDirectory": "./zot"
         },
         "http": {
-            "address": "127.0.0.1",
+            "address": "0.0.0.0",
             "port": "8585"
         },
         "log": {
@@ -180,8 +180,7 @@ go run cmd/main.go --token "<your token here>" --ground-control-url "<ground con
 
 ### 7. Configure Local Registry as Mirror (Optional)
 
-Harbor Satellite allows you to set up a local registry as a mirror for upstream registries. Using the optional `--mirrors` flag, you can specify which upstream registries should be mirrored. The configured CRI will attempt to pull images from the local registry (Zot by default) first, and use the upstream registry as a fallback if the image is not available locally.
-
+Harbor Satellite allows you to set up a local registry as a mirror for upstream registries. Using the optional `--mirrors` flag, you can specify which upstream registries should be mirrored. The configured Container Runtime (CRI) will attempt to pull images from the local registry (Zot by default) first, and use the upstream registry as a fallback if the image is not available locally.
 #### Supported CRIs
 - `docker`
 - `crio`
@@ -194,7 +193,7 @@ Harbor Satellite allows you to set up a local registry as a mirror for upstream 
 ```
 
 #### Notes
-- Docker: Only supports mirroring images from docker.io. Use `docker:true` to enable Docker mirroring. 
+- When using docker as a runtime it supports mirroring images from docker.io. So, use `--mirrors=docker:true` to enable Docker mirroring. 
 - For loading dockerd's configs docker service is restarted. Make sure you have stopped all other docker processes
 - Appending or updating CRI configuration files requires sudo.
 - Satellite assumes default configuration paths for each CRI. If you use non-standard locations, you may need to manually update the configs.
