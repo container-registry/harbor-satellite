@@ -11,45 +11,54 @@ import (
 
 const dockerConfigPath = "/etc/docker/daemon.json"
 
+type DockerConfig struct {
+	RegistryMirrors []string `json:"registry-mirrors,omitempty"`
+}
+
 func setDockerdConfig(mirrors []string, localRegistry string) error {
 	if len(mirrors) == 0 {
 		return nil
 	}
 
-	flag := mirrors[0]
-	enabled, err := strconv.ParseBool(flag)
+	enabled, err := strconv.ParseBool(mirrors[0])
 	if err != nil {
-		return fmt.Errorf("docker mirror must be true/false, got %q", flag)
+		return fmt.Errorf("docker mirror must be true/false, got %q", mirrors[0])
 	}
-
 	if !enabled {
 		return nil
 	}
 
-	// Ensure localRegistry has a valid scheme
+	// validate URI
 	if !strings.HasPrefix(localRegistry, "http://") && !strings.HasPrefix(localRegistry, "https://") {
 		localRegistry = "http://" + localRegistry
 	}
 
-	config := make(map[string]interface{})
+	var config DockerConfig
 	if data, err := os.ReadFile(dockerConfigPath); err == nil {
-		err = json.Unmarshal(data, &config)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal docker config: %w", err)
-		}
+		_ = json.Unmarshal(data, &config)
 	}
 
-	config["registry-mirrors"] = []string{localRegistry}
+	// Add mirror if not already in list
+	alreadyPresent := false
+	for _, m := range config.RegistryMirrors {
+		if m == localRegistry {
+			alreadyPresent = true
+			break
+		}
+	}
+	if !alreadyPresent {
+		config.RegistryMirrors = append(config.RegistryMirrors, localRegistry)
+	}
 
 	newData, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal docker config: %w", err)
 	}
-
 	if err := os.WriteFile(dockerConfigPath, newData, 0644); err != nil {
 		return fmt.Errorf("failed to write docker config: %w", err)
 	}
 
+	//restart docker service safely
 	cmd := exec.Command("systemctl", "restart", "docker")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to restart Docker: %w", err)
