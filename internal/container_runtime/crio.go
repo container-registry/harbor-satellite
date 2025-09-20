@@ -9,18 +9,19 @@ import (
 
 const registriesConfPath = "/etc/containers/registries.conf"
 
-// SetLocalMirrorForRegistries adds a single local mirror to multiple upstream registries
+// setCrioConfig configures mirrors for crio and podman
 func setCrioConfig(upstreamRegistries []string, localMirror string) error {
-	var cfg RegistriesConf
-
-	// Load existing config if exists
-	if _, err := os.Stat(registriesConfPath); err == nil {
-		if _, err := toml.DecodeFile(registriesConfPath, &cfg); err != nil {
-			return fmt.Errorf("failed to parse %s: %w", registriesConfPath, err)
-		}
+	data := map[string]interface{}{}
+	if _, err := toml.DecodeFile(registriesConfPath, &data); err != nil {
+		return fmt.Errorf("failed to parse %s: %w", registriesConfPath, err)
 	}
 
-	// Determine insecure flag from localMirror
+	// esnsure registry section exists
+	regs, ok := data["registry"].([]map[string]interface{})
+	if !ok {
+		regs = []map[string]interface{}{}
+	}
+
 	insecure := !strings.HasPrefix(localMirror, "https")
 
 	for _, upstream := range upstreamRegistries {
@@ -29,47 +30,52 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) error {
 			continue
 		}
 
-		// Find existing registry or create new
-		var reg *Registry
-		for idx, r := range cfg.Registries {
-			if r.Location == upstream {
-				reg = &cfg.Registries[idx]
-				break
-			}
-		}
-		if reg == nil {
-			cfg.Registries = append(cfg.Registries, Registry{Location: upstream})
-			reg = &cfg.Registries[len(cfg.Registries)-1]
-		}
-
-		// Append the local mirror if not already present
-		found := false
-		for _, m := range reg.Mirrors {
-			if m.Location == localMirror {
+		var found bool
+		for _, r := range regs {
+			if r["location"] == upstream {
+				// append mirror if missing
+				mirrors, _ := r["mirror"].([]map[string]interface{})
+				exists := false
+				for _, m := range mirrors {
+					if m["location"] == localMirror {
+						exists = true
+						break
+					}
+				}
+				if !exists {
+					mirrors = append(mirrors, map[string]interface{}{
+						"location": localMirror,
+						"insecure": insecure,
+					})
+				}
+				r["mirror"] = mirrors
 				found = true
 				break
 			}
 		}
+
 		if !found {
-			reg.Mirrors = append(reg.Mirrors, Mirror{
-				Location: localMirror,
-				Insecure: insecure,
+			regs = append(regs, map[string]interface{}{
+				"location": upstream,
+				"mirror": []map[string]interface{}{
+					{
+						"location": localMirror,
+						"insecure": insecure,
+					},
+				},
 			})
 		}
 	}
 
-	// Write back to the file
+	data["registry"] = regs
+
 	f, err := os.Create(registriesConfPath)
 	if err != nil {
-		return fmt.Errorf("failed to open %s for writing: %w", registriesConfPath, err)
+		return fmt.Errorf("failed to open %s: %w", registriesConfPath, err)
 	}
 	defer func() {
 		_ = f.Close()
 	}()
 
-	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
-		return fmt.Errorf("failed to encode TOML and write to file: %w", err)
-	}
-
-	return nil
+	return toml.NewEncoder(f).Encode(data)
 }

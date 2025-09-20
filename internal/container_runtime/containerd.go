@@ -69,7 +69,9 @@ func writeContainerdHostToml(registryURL, localMirror string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open %s for writing: %w", path, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	return toml.NewEncoder(f).Encode(cfg)
 }
@@ -112,7 +114,9 @@ func configureContainerd(certDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open %s for writing: %w", containerdConfigPath, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	return toml.NewEncoder(f).Encode(cfg)
 }
