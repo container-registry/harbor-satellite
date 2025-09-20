@@ -189,7 +189,7 @@ Harbor Satellite allows you to set up a local registry as a mirror for upstream 
 
 #### Usage
 ```bash
---mirrors=containerd:docker.io,quay.io -mirrors=podman:docker.io
+--mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
 ```
 
 #### Notes
