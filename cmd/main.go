@@ -28,7 +28,6 @@ func (m *mirrorFlags) String() string {
 	return fmt.Sprint(*m)
 }
 
-// Set implements flag.Value for mirrorFlags
 func (m *mirrorFlags) Set(value string) error {
 	*m = append(*m, value)
 	return nil
