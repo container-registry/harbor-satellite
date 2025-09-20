@@ -180,7 +180,7 @@ go run cmd/main.go --token "<your token here>" --ground-control-url "<ground con
 
 ### 7. Configure Local Registry as Mirror (Optional)
 
-Harbor Satellite allows you to set up a local registry as a mirror for upstream registries. Using the optional `--mirrors` flag, you can specify which upstream registries should be mirrored. The configured Container Runtime (CRI) will attempt to pull images from the local registry (Zot by default) first, and use the upstream registry as a fallback if the image is not available locally.
+Harbor Satellite allows you to set up a local registry as a mirror for upstream registries. Using the optional `--mirrors` flag, you can specify which upstream registries should be mirrored. The configured container runtime interface (CRI) will attempt to pull images from the local registry (Zot by default) first, and use the upstream registry as a fallback if the image is not available locally.
 #### Supported CRIs
 - `docker`
 - `crio`
@@ -189,7 +189,7 @@ Harbor Satellite allows you to set up a local registry as a mirror for upstream 
 
 #### Usage
 ```bash
---mirrors=containerd:docker.io crio:docker.io
+--mirrors=containerd:docker.io,quay.io -mirrors=podman:docker.io
 ```
 
 #### Notes
