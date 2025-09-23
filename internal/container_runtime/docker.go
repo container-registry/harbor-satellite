@@ -1,8 +1,8 @@
 package runtime
 
 import (
-	"encoding/json"
 	"fmt"
+	"github.com/spf13/viper"
 	"os"
 	"os/exec"
 	"strconv"
@@ -11,15 +11,10 @@ import (
 
 const dockerConfigPath = "/etc/docker/daemon.json"
 
-type DockerConfig struct {
-	RegistryMirrors []string `json:"registry-mirrors,omitempty"`
-}
-
 func setDockerdConfig(mirrors []string, localRegistry string) error {
 	if len(mirrors) == 0 {
 		return nil
 	}
-
 	enabled, err := strconv.ParseBool(mirrors[0])
 	if err != nil {
 		return fmt.Errorf("docker mirror must be true/false, got %q", mirrors[0])
@@ -33,36 +28,51 @@ func setDockerdConfig(mirrors []string, localRegistry string) error {
 		localRegistry = "http://" + localRegistry
 	}
 
-	var config DockerConfig
-	if data, err := os.ReadFile(dockerConfigPath); err == nil {
-		_ = json.Unmarshal(data, &config)
-	}
+	v := viper.New()
+	v.SetConfigFile(dockerConfigPath)
+	v.SetConfigType("json")
 
-	// Add mirror if not already in list
-	alreadyPresent := false
-	for _, m := range config.RegistryMirrors {
+	ensureConfigFileExists(dockerConfigPath)
+
+	// Try reading the existing file
+	if err := v.ReadInConfig(); err != nil {
+		return fmt.Errorf("failed to read docker config : %w", err)
+	}
+	// Get existing mirrors (if any)
+	currentMirrors := v.GetStringSlice("registry-mirrors")
+
+	// Append the new mirror if not present
+	found := false
+	for _, m := range currentMirrors {
 		if m == localRegistry {
-			alreadyPresent = true
+			found = true
 			break
 		}
 	}
-	if !alreadyPresent {
-		config.RegistryMirrors = append(config.RegistryMirrors, localRegistry)
+	if !found {
+		currentMirrors = append(currentMirrors, localRegistry)
+		v.Set("registry-mirrors", currentMirrors)
 	}
 
-	newData, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal docker config: %w", err)
-	}
-	if err := os.WriteFile(dockerConfigPath, newData, 0644); err != nil {
+	if err := v.WriteConfigAs(dockerConfigPath); err != nil {
 		return fmt.Errorf("failed to write docker config: %w", err)
 	}
 
-	//restart docker service safely
+	// restart docker safely
 	cmd := exec.Command("systemctl", "restart", "docker")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to restart Docker: %w", err)
 	}
 
+	return nil
+}
+
+func ensureConfigFileExists(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		// create the file with {}
+		if err := os.WriteFile(path, []byte("{}"), 0644); err != nil {
+			return err
+		}
+	}
 	return nil
 }
