@@ -2,80 +2,124 @@ package runtime
 
 import (
 	"fmt"
-	"github.com/BurntSushi/toml"
+	"io"
 	"os"
 	"strings"
+
+	"github.com/spf13/viper"
 )
 
-const registriesConfPath = "/etc/containers/registries.conf"
+const (
+	tempRegistriesConfigPath = "/etc/containers/registries.toml"
+	registriesConfigPath     = "/etc/containers/registries.conf"
+)
 
-// setCrioConfig configures mirrors for crio and podman
 func setCrioConfig(upstreamRegistries []string, localMirror string) error {
-	data := map[string]interface{}{}
-	if _, err := toml.DecodeFile(registriesConfPath, &data); err != nil {
-		return fmt.Errorf("failed to parse %s: %w", registriesConfPath, err)
+
+	if _, err := os.Stat(registriesConfigPath); os.IsNotExist(err) {
+		f, err := os.Create(registriesConfigPath)
+		if err != nil {
+			return fmt.Errorf("error while creating registries.conf : %w", err)
+		}
+		f.Close()
 	}
 
-	// esnsure registry section exists
-	regs, ok := data["registry"].([]map[string]interface{})
-	if !ok {
-		regs = []map[string]interface{}{}
+	// viper fails to recognise .conf file extension, so copy into a temporary .toml file
+	if err := copyFile(registriesConfigPath, tempRegistriesConfigPath); err != nil {
+		return fmt.Errorf("failed to copy registries.conf file to temporary .toml file: %w", err)
 	}
 
-	insecure := !strings.HasPrefix(localMirror, "https")
+	v := viper.New()
+	v.SetConfigFile(tempRegistriesConfigPath)
+	v.SetConfigType("toml")
+
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return fmt.Errorf("failed to read registries.conf: %w", err)
+		}
+	}
+
+	var cfg RegistriesConf
+	if err := v.Unmarshal(&cfg); err != nil {
+		return fmt.Errorf("failed to unmarshal registries.conf: %w", err)
+	}
+
+	insecure := !strings.HasPrefix(localMirror, "https://")
 
 	for _, upstream := range upstreamRegistries {
-		upstream = strings.TrimSpace(upstream)
-		if upstream == "" {
-			continue
-		}
+		// configure only those fields which are not already configured
+		registryFound := false
+		for i := range cfg.Registries {
+			r := &cfg.Registries[i]
+			if r.Location == upstream {
+				registryFound = true
 
-		var found bool
-		for _, r := range regs {
-			if r["location"] == upstream {
-				// append mirror if missing
-				mirrors, _ := r["mirror"].([]map[string]interface{})
-				exists := false
-				for _, m := range mirrors {
-					if m["location"] == localMirror {
-						exists = true
+				mirrorFound := false
+				for _, m := range r.Mirrors {
+					if m.Location == localMirror {
+						mirrorFound = true
 						break
 					}
 				}
-				if !exists {
-					mirrors = append(mirrors, map[string]interface{}{
-						"location": localMirror,
-						"insecure": insecure,
+
+				if !mirrorFound {
+					r.Mirrors = append(r.Mirrors, Mirror{
+						Location: localMirror,
+						Insecure: insecure,
 					})
 				}
-				r["mirror"] = mirrors
-				found = true
 				break
 			}
 		}
 
-		if !found {
-			regs = append(regs, map[string]interface{}{
-				"location": upstream,
-				"mirror": []map[string]interface{}{
+		if !registryFound {
+			cfg.Registries = append(cfg.Registries, Registry{
+				Location: upstream,
+				Mirrors: []Mirror{
 					{
-						"location": localMirror,
-						"insecure": insecure,
+						Location: localMirror,
+						Insecure: insecure,
 					},
 				},
 			})
 		}
 	}
 
-	data["registry"] = regs
+	v.Set("registry", cfg.Registries)
 
-	f, err := os.Create(registriesConfPath)
-	if err != nil {
-		return fmt.Errorf("failed to open %s: %w", registriesConfPath, err)
+	if err := v.WriteConfigAs(tempRegistriesConfigPath); err != nil {
+		return fmt.Errorf("failed to write registries.conf: %w", err)
 	}
-	defer func() {
-		_ = f.Close()
-	}()
 
-	return toml.NewEncoder(f).Encode(data)
+	// copy contents of temp file back into actaul path
+	if err := copyFile(tempRegistriesConfigPath, registriesConfigPath); err != nil {
+		return fmt.Errorf("failed to copy temporary .toml file to registries.conf: %w", err)
+	}
+
+	// cleanup : delete temporaary file
+	if err := os.Remove(tempRegistriesConfigPath); err != nil {
+		return fmt.Errorf("failed to delete temporary .toml file : %w", err)
+	}
+
+	return nil
+}
+
+// copyFile copies a file from src to dst, replacing dst if it exists.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err = io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
 }

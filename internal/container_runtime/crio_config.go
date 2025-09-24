@@ -1,16 +1,19 @@
 package runtime
 
-// RegistriesConf models the structure of config relevant for registries
+// RegistriesConf models fields of /etc/containers/registries.conf
 type RegistriesConf struct {
-	Registries []Registry `toml:"registry"`
+	Registries []Registry             `mapstructure:"registry" toml:"registry"`
+	Unknown    map[string]interface{} `mapstructure:",remain"` // do not touch parts we do not deal with
 }
 
+// Registry models registry field in /etc/containers/registries.conf
 type Registry struct {
-	Location string   `toml:"location"`
-	Mirrors  []Mirror `toml:"mirror,omitempty"`
+	Location string   `mapstructure:"location" toml:"location"`
+	Mirrors  []Mirror `mapstructure:"mirror,omitempty" toml:"mirror,omitempty"`
 }
 
+// Mirror models mirror field in /etc/containers/registries.conf
 type Mirror struct {
-	Location string `toml:"location"`
-	Insecure bool   `toml:"insecure,omitempty"`
+	Location string `mapstructure:"location" toml:"location"`
+	Insecure bool   `mapstructure:"insecure" toml:"insecure"`
 }
