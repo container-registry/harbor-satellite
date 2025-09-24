@@ -32,13 +32,13 @@ func setDockerdConfig(mirrors []string, localRegistry string) error {
 	v.SetConfigFile(dockerConfigPath)
 	v.SetConfigType("json")
 
-	ensureConfigFileExists(dockerConfigPath)
+	if err := ensureDockerConfigFileExists(dockerConfigPath); err != nil {
+		return fmt.Errorf("failed to create default docker config : %w", err)
+	}
 
-	// Try reading the existing file
 	if err := v.ReadInConfig(); err != nil {
 		return fmt.Errorf("failed to read docker config : %w", err)
 	}
-	// Get existing mirrors (if any)
 	currentMirrors := v.GetStringSlice("registry-mirrors")
 
 	// Append the new mirror if not present
@@ -67,7 +67,7 @@ func setDockerdConfig(mirrors []string, localRegistry string) error {
 	return nil
 }
 
-func ensureConfigFileExists(path string) error {
+func ensureDockerConfigFileExists(path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		// create the file with {}
 		if err := os.WriteFile(path, []byte("{}"), 0644); err != nil {

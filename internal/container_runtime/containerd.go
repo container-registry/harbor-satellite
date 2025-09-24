@@ -16,12 +16,10 @@ const (
 
 // setContainerdConfig writes hosts.toml for multiple upstream registries and updates containerd registry plugin
 func setContainerdConfig(upstreamRegistries []string, localMirror string) error {
-	// Update containerd main config
 	if err := configureContainerd(containerdCertsDir); err != nil {
 		return fmt.Errorf("failed to configure registry plugin: %w", err)
 	}
 
-	// Write hosts.toml for each registry
 	for _, registryURL := range upstreamRegistries {
 		if err := writeContainerdHostToml(registryURL, localMirror); err != nil {
 			return fmt.Errorf("failed to configure containerd for %s: %w", registryURL, err)
@@ -45,7 +43,6 @@ func writeContainerdHostToml(registryURL, localMirror string) error {
 	path := filepath.Join(dir, "hosts.toml")
 	var cfg ContainerdHosts
 
-	// Load existing hosts.toml if exists
 	if _, err := os.Stat(path); err == nil {
 		if _, err := toml.DecodeFile(path, &cfg); err != nil {
 			return fmt.Errorf("failed to parse %s: %w", path, err)
@@ -78,35 +75,15 @@ func writeContainerdHostToml(registryURL, localMirror string) error {
 
 // configureContainerd updates only the registry config path in containerd main config
 func configureContainerd(certDir string) error {
-	var cfg map[string]interface{}
-
-	// Load entire existing config into map
-	if _, err := os.Stat(containerdConfigPath); err == nil {
-		if _, err := toml.DecodeFile(containerdConfigPath, &cfg); err != nil {
-			return fmt.Errorf("failed to parse %s: %w", containerdConfigPath, err)
-		}
-	} else {
-		cfg = make(map[string]interface{})
+	cfg, err := loadToml(containerdConfigPath)
+	if err != nil {
+		return err
 	}
 
-	// create/initialise nested maps required
-	plugins, ok := cfg["plugins"].(map[string]interface{})
-	if !ok || plugins == nil {
-		plugins = make(map[string]interface{})
-		cfg["plugins"] = plugins
-	}
-
-	criImages, ok := plugins["io.containerd.cri.v1.images"].(map[string]interface{})
-	if !ok || criImages == nil {
-		criImages = make(map[string]interface{})
-		plugins["io.containerd.cri.v1.images"] = criImages
-	}
-
-	registryMap, ok := criImages["registry"].(map[string]interface{})
-	if !ok || registryMap == nil {
-		registryMap = make(map[string]interface{})
-		criImages["registry"] = registryMap
-	}
+	// do not overwrite existing config
+	plugins := loadNestedMap(cfg, "plugins")
+	criImages := loadNestedMap(plugins, "io.containerd.cri.v1.images")
+	registryMap := loadNestedMap(criImages, "registry")
 
 	registryMap["config_path"] = certDir
 
@@ -119,4 +96,26 @@ func configureContainerd(certDir string) error {
 	}()
 
 	return toml.NewEncoder(f).Encode(cfg)
+}
+
+// loadToml loads existing TOML into a flexible type
+func loadToml(path string) (map[string]interface{}, error) {
+	cfg := make(map[string]interface{})
+	if _, err := os.Stat(path); err == nil {
+		if _, err := toml.DecodeFile(path, &cfg); err != nil {
+			return nil, fmt.Errorf("failed to parse %s: %w", path, err)
+		}
+	}
+	return cfg, nil
+}
+
+func loadNestedMap(parent map[string]interface{}, key string) map[string]interface{} {
+	if v, ok := parent[key]; ok {
+		if m, ok := v.(map[string]interface{}); ok {
+			return m
+		}
+	}
+	newMap := make(map[string]interface{})
+	parent[key] = newMap
+	return newMap
 }

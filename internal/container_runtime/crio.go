@@ -21,7 +21,7 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) error {
 		if err != nil {
 			return fmt.Errorf("error while creating registries.conf : %w", err)
 		}
-		f.Close()
+		_ = f.Close()
 	}
 
 	// viper fails to recognise .conf file extension, so copy into a temporary .toml file
@@ -110,13 +110,17 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() {
+		_ = in.Close()
+	}()
 
 	out, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func(){
+		_ = out.Close()
+	}()
 
 	if _, err = io.Copy(out, in); err != nil {
 		return err
