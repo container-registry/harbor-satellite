@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"os"
-
+	"github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/hotreload"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/registry"
@@ -13,20 +13,36 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"os"
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
 
+// mirrorFlags is a custom flag type for cri and mirror mappings
+type mirrorFlags []string
+
+// String implements flag.Value for mirrorFlags
+func (m *mirrorFlags) String() string {
+	return fmt.Sprint(*m)
+}
+
+func (m *mirrorFlags) Set(value string) error {
+	*m = append(*m, value)
+	return nil
+}
+
 func main() {
 	var jsonLogging bool
 	var groundControlURL string
 	var token string
+	var mirrors mirrorFlags
 
 	flag.StringVar(&groundControlURL, "ground-control-url", "", "URL to ground control")
 	flag.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
 	flag.StringVar(&token, "token", "", "Satellite token")
+	flag.Var(&mirrors, "mirrors", "Specify CRI and registries in the form CRI:registry1,registry2")
 
 	flag.Parse()
 
@@ -42,7 +58,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	err := run(jsonLogging, token, groundControlURL)
+	cm, _, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging)
+	if err != nil {
+		fmt.Printf("Error initiating the config manager: %v", err)
+		os.Exit(1)
+	}
+
+	// get local registry addrress from raw zot config
+	var data map[string]interface{}
+	if err := json.Unmarshal(cm.GetRawZotConfig(), &data); err != nil {
+		panic(err)
+	}
+	httpData := data["http"].(map[string]interface{})
+	localRegistryEndpoint := httpData["address"].(string) + ":" + httpData["port"].(string)
+
+	err = runtime.ApplyCRIConfigs(mirrors, localRegistryEndpoint)
+	if err != nil {
+		fmt.Printf("fatal : %v\n", err)
+		os.Exit(1)
+	}
+
+	err = run(jsonLogging, token, groundControlURL)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)

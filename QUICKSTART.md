@@ -243,6 +243,30 @@ Set up the satellite using the token from Step 6. Choose one of the following op
 
    > **Note** : by default, logging in JSON format is set to true.  To change this pass additional flag `--json-logging=false` 
 
+
+
+### 7. Configure Local Registry as Mirror (Optional)
+
+Harbor Satellite allows you to set up a local registry as a mirror for upstream registries. Using the optional `--mirrors` flag, you can specify which upstream registries should be mirrored. The configured container runtime interface (CRI) will attempt to pull images from the local registry (Zot by default) first, and use the upstream registry as a fallback if the image is not available locally.
+#### Supported CRIs
+- `docker`
+- `crio`
+- `podman`
+- `containerd`
+
+#### Usage
+```bash
+--mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
+```
+
+#### Notes
+- When using docker as a runtime it supports mirroring images from docker.io. So, use `--mirrors=docker:true` to enable Docker mirroring. 
+- For loading dockerd's configs docker service is restarted. Make sure you have stopped all other docker processes
+- Appending or updating CRI configuration files requires sudo.
+- Satellite assumes default configuration paths for each CRI. If you use non-standard locations, you may need to manually update the configs.
+- Containerd: Using outdated versions is not recommended, as some configuration options and styles may be deprecated.
+
+
 ## Troubleshooting
 
 If you encounter issues, consider these common problems and solutions:
