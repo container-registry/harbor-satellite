@@ -31,8 +31,13 @@ func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess
 }
 
 func (s *StatusReportingProcess) Execute(ctx context.Context, upstream chan scheduler.UpstreamInfo) error {
-	s.start()
-	defer s.stop()
+	s.mu.Lock()
+	if s.isRunning {
+		s.mu.Unlock()
+		return nil
+	}
+	s.isRunning = true
+	s.mu.Unlock()
 
 	log := logger.FromContext(ctx).With().Str("process", s.name).Logger()
 
@@ -41,52 +46,55 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream chan sche
 		log.Warn().Msgf("Process %s cannot execute: %s", s.name, reason)
 		return nil
 	}
-	log.Info().Msgf("Executing process")
 
-	// consume upstream info continuously
+	log.Info().Msg("Starting status reporting process")
+
 	go func() {
+		defer s.stop()
 		for {
 			select {
 			case <-ctx.Done():
+				log.Info().Msg("Context cancelled, stopping status reporting process")
 				return
+
 			case info, ok := <-upstream:
 				if !ok {
+					log.Info().Msg("Upstream channel closed, stopping status reporting process")
 					return
 				}
-				var req StatusReportParams
 
+				var req StatusReportParams
 				groundControlURL := s.cm.ResolveGroundControlURL()
 
-				satteliteName, err := extractSatelliteNameFromURL(info.StateURL)
+				satelliteName, err := extractSatelliteNameFromURL(info.StateURL)
 				if err != nil {
-					log.Warn().Msg("Failed to parse state reporting interval")
+					log.Warn().Err(err).Msg("Failed to extract satellite name")
 					continue
 				}
 
 				duration, err := scheduler.ParseEveryExpr(s.cm.GetStateReportingInterval())
 				if err != nil {
-					log.Warn().Msg("Failed to parse state reporting interval")
+					log.Warn().Err(err).Msg("Failed to parse state reporting interval")
 					continue
 				}
 
-				// populate info from upstream channel into the request
-				req.Name = satteliteName
+				req.Name = satelliteName
 				req.Activity = info.CurrentActivity
 				req.StateReportInterval = s.cm.GetStateReportingInterval()
 				req.LatestStateDigest = info.LatestStateDigest
 				req.LatestConfigDigest = info.LatestConfigDigest
 
-				// populate all other info which is not provided by the upstream channel, into the request
 				if err := collectStatusReportParams(ctx, duration, &req); err != nil {
-					log.Warn().Msg("Failed to populate heartbeat payload fully")
+					log.Warn().Err(err).Msg("Failed to collect status report params")
+					continue
 				}
 
-				if err := sendStatusReport(ctx, string(groundControlURL), &req); err != nil {
-					log.Warn().Msg("Failed to send status report")
+				if err := sendStatusReport(ctx, groundControlURL, &req); err != nil {
+					log.Warn().Err(err).Msg("Failed to send status report")
+					continue
 				}
 
 				log.Info().Msg("Heartbeat sent to ground control successfully")
-
 			}
 		}
 	}()

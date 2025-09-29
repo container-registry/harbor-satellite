@@ -54,23 +54,25 @@ func (s *Satellite) Run(ctx context.Context) error {
 	)
 
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to create status reporter scheduler")
+		log.Error().Err(err).Msg("Failed to create state replication scheduler")
 		return err
 	}
+	s.schedulers = append(s.schedulers, stateScheduler)
 
+	// Create state reporting
 	statusReportingScheduler, err := scheduler.NewSchedulerWithInterval(
 		s.cm.GetStateReportingInterval(),
 		statusReportingProcess,
 		log,
 		ch,
 	)
-	s.schedulers = append(s.schedulers, statusReportingScheduler)
 
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to create state replication scheduler")
+		log.Error().Err(err).Msg("Failed to create status reporting scheduler")
 		return err
 	}
-	s.schedulers = append(s.schedulers, stateScheduler)
+	s.schedulers = append(s.schedulers, statusReportingScheduler)
+
 	go stateScheduler.Run(ctx)
 
 	if !s.cm.IsHeartbeatDisabled() {
