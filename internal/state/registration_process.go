@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 )
@@ -38,7 +39,7 @@ func NewZtrProcess(cm *config.ConfigManager) *ZtrProcess {
 	}
 }
 
-func (z *ZtrProcess) Execute(ctx context.Context) error {
+func (z *ZtrProcess) Execute(ctx context.Context, upstreamPayload chan scheduler.UpstreamInfo) error {
 	z.start()
 	defer z.stop()
 
@@ -72,6 +73,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 
 	// Close the z.Done channel on successful ZTR alone.
 	close(z.Done)
+
 	return nil
 }
 

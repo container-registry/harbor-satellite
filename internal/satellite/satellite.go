@@ -2,7 +2,6 @@ package satellite
 
 import (
 	"context"
-
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/state"
@@ -24,9 +23,11 @@ func NewSatellite(cm *config.ConfigManager) *Satellite {
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
+	ch := make(chan scheduler.UpstreamInfo, 10)
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm)
 	ztrProcess := state.NewZtrProcess(s.cm)
+	statusReportingProcess := state.NewStatusReportingProcess(s.cm)
 
 	// Create schedulers instead of using ScheduleFunc
 	if !s.cm.IsZTRDone() {
@@ -34,6 +35,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 			s.cm.GetRegistrationInterval(),
 			ztrProcess,
 			log,
+			ch,
 		)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to create ZTR scheduler")
@@ -48,13 +50,29 @@ func (s *Satellite) Run(ctx context.Context) error {
 		s.cm.GetStateReplicationInterval(),
 		fetchAndReplicateStateProcess,
 		log,
+		ch,
 	)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create status reporter scheduler")
+		return err
+	}
+
+	//  Create status reporting scheduler
+	statusReportingScheduler, err := scheduler.NewSchedulerWithInterval(
+		s.cm.GetStateReportingInterval(),
+		statusReportingProcess,
+		log,
+		ch,
+	)
+
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create state replication scheduler")
 		return err
 	}
 	s.schedulers = append(s.schedulers, stateScheduler)
 	go stateScheduler.Run(ctx)
+	go statusReportingScheduler.Run(ctx)
 
 	return ctx.Err()
 }

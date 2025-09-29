@@ -27,15 +27,15 @@ type RegisterSatelliteParams struct {
 }
 
 type SatelliteStatusParams struct {
-	Name             string    `json:"name"`
-	State            string    `json:"state"`
-	NextUpdate       string    `json:"nextUpdate"`
-	NextConfigUpdate string    `json:"nextConfigUpdate"`
-	NextStateUpdate  string    `json:"nextStateUpdate"`
-	MemoryBytes      uint64    `json:"memoryBytes"`
-	StorageBytes     uint64    `json:"storageBytes"`
-	CPUPercent       float64   `json:"cpuPercent"`
-	RequestCreatedAt time.Time `json:"requestCreatedTime"`
+	Name                string    `json:"name"`                  // Satellite identifier
+	Activity            string    `json:"activity"`              // Current activity satellite is doing
+	StateReportInterval string    `json:"state_report_interval"` // Interval between status reports
+	LatestStateDigest   string    `json:"latest_state_digest"`   // Digest of latest state artifact
+	LatestConfigDigest  string    `json:"latest_config_digest"`  // Digest of latest config artifact
+	MemoryUsedBytes     uint64    `json:"memory_used_bytes"`     // Memory currently used by satellite
+	StorageUsedBytes    uint64    `json:"storage_used_bytes"`    // Storage currently used by satellite
+	CPUPercent          float64   `json:"cpu_percent"`           // CPU usage percentage
+	RequestCreatedTime  time.Time `json:"request_created_time"`  // Timestamp of request creation
 }
 
 type RegisterSatelliteResponse struct {
@@ -353,15 +353,14 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-
-func (s *Server) statusReportHandler(w http.ResponseWriter, r *http.Request){
+func (s *Server) statusReportHandler(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteStatusParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
 		return
 	}
-	// todo : add a function here that processes the information, instead of just printing
+	// todo : process the heartbeat. eg:- save latest state in db
 	fmt.Printf("satellite reported status : %v", req)
 
 }

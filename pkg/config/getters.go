@@ -141,3 +141,15 @@ func (cm *ConfigManager) GetConfig() *Config {
 	defer cm.mu.RUnlock()
 	return cm.config
 }
+
+func (cm *ConfigManager) GetStateReportingInterval() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.HeartbeatConfig.StateReportInterval
+}
+
+func (cm *ConfigManager) GetConfigReportingInterval() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.HeartbeatConfig.ConfigReportInterval
+}

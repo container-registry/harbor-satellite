@@ -17,6 +17,10 @@ const DefaultPrevConfigPath string = "prev_config.json"
 const DefaultZTRCronExpr string = "@every 00h00m05s"
 const DefaultFetchAndReplicateCronExpr string = "@every 00h00m30s"
 
+// todo : this is just for testing, change later to 5m and 10m
+const DefaultStateReportCronExpr string = "@every 00h00m10s"
+const DefaultConfigReportCronExpr string = "@every 00h00m10s"
+
 const BringOwnRegistry bool = false
 
 const DefaultZotConfigJSON = `{
