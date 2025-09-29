@@ -10,7 +10,7 @@ type Process interface {
 	Name() string
 
 	// Execute runs the process
-	Execute(ctx context.Context) error
+	Execute(ctx context.Context, stateDigest chan UpstreamInfo) error
 
 	// IsRunning returns true if the process is running
 	IsRunning() bool
