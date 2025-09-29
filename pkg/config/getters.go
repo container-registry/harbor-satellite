@@ -148,8 +148,8 @@ func (cm *ConfigManager) GetStateReportingInterval() string {
 	return cm.config.HeartbeatConfig.StateReportInterval
 }
 
-func (cm *ConfigManager) GetConfigReportingInterval() string {
+func (cm *ConfigManager) IsHeartbeatDisabled() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return cm.config.HeartbeatConfig.ConfigReportInterval
+	return cm.config.HeartbeatConfig.Disabled
 }

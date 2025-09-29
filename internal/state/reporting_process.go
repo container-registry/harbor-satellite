@@ -9,7 +9,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
-	"io"
 	"net/http"
 	"sync"
 )
@@ -56,9 +55,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream chan sche
 				}
 				var req StatusReportParams
 
-				c := s.cm.GetConfig()
-				// todo : do it in a safe way(mutex lock)
-				groundControlURL := c.AppConfig.GroundControlURL
+				groundControlURL := s.cm.ResolveGroundControlURL()
 
 				satteliteName, err := extractSatelliteNameFromURL(info.StateURL)
 				if err != nil {
@@ -83,8 +80,10 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream chan sche
 				collectStatusReportParams(ctx, duration, &req)
 
 				if err := sendStatusReport(ctx, string(groundControlURL), &req); err != nil {
-					log.Error().Err(err).Msg("Failed to send status report")
+					log.Warn().Msg("Failed to send status report")
 				}
+
+				log.Info().Msg("Heartbeat sent to ground control successfully")
 
 			}
 		}
@@ -107,9 +106,7 @@ func (s *StatusReportingProcess) stop() {
 }
 
 func (s *StatusReportingProcess) CanExecute(log *zerolog.Logger) (bool, string) {
-	//todo : keep only if required
 	return true, fmt.Sprintf("Process %s can execute all conditions fulfilled", s.name)
-
 }
 
 func (s *StatusReportingProcess) IsComplete() bool {
@@ -150,11 +147,6 @@ func sendStatusReport(ctx context.Context, groundControlURL string, req *StatusR
 		return fmt.Errorf("failed to send status report: %w", err)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("status report failed: %s - %s", resp.Status, string(respBody))
-	}
 
 	return nil
 }

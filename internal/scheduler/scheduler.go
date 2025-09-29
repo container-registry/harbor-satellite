@@ -28,6 +28,12 @@ type Scheduler struct {
 	upstreamPayload chan UpstreamInfo
 }
 
+const (
+	ActivityStateSynced      = "state synced successfully"
+	ActivityEncounteredError = "encountered error"
+	ActivityReconcilingState = "reconciling state"
+)
+
 // NewSchedulerWithInterval creates a new scheduler with a parsed interval string
 func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog.Logger, upstreamPayload chan UpstreamInfo) (*Scheduler, error) {
 	duration, err := ParseEveryExpr(intervalExpr)

@@ -96,10 +96,6 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for register_satellite_interval, using default schedule %s", DefaultZTRCronExpr))
 	}
 
-	if !isValidCronExpression(config.HeartbeatConfig.ConfigReportInterval) {
-		config.HeartbeatConfig.ConfigReportInterval = DefaultConfigReportCronExpr
-	}
-
 	if !isValidCronExpression(config.HeartbeatConfig.StateReportInterval) {
 		config.HeartbeatConfig.StateReportInterval = DefaultStateReportCronExpr
 	}

@@ -58,13 +58,13 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 
-	//  Create status reporting scheduler
 	statusReportingScheduler, err := scheduler.NewSchedulerWithInterval(
 		s.cm.GetStateReportingInterval(),
 		statusReportingProcess,
 		log,
 		ch,
 	)
+	s.schedulers = append(s.schedulers, statusReportingScheduler)
 
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create state replication scheduler")
@@ -72,7 +72,10 @@ func (s *Satellite) Run(ctx context.Context) error {
 	}
 	s.schedulers = append(s.schedulers, stateScheduler)
 	go stateScheduler.Run(ctx)
-	go statusReportingScheduler.Run(ctx)
+
+	if !s.cm.IsHeartbeatDisabled() {
+		go statusReportingScheduler.Run(ctx)
+	}
 
 	return ctx.Err()
 }

@@ -30,16 +30,15 @@ type StateConfig struct {
 }
 
 type HeartbeatConfig struct {
-	Disable              bool   `json:"disable",omitempty`
-	StateReportInterval  string `json:"state_report_interval",omitempty`
-	ConfigReportInterval string `json:"config_report_interval", omitempty`
+	Disabled            bool   `json:"disable,omitempty"`
+	StateReportInterval string `json:"state_report_interval,omitempty"`
 }
 
 type Config struct {
 	StateConfig     StateConfig     `json:"state_config,omitempty"`
 	AppConfig       AppConfig       `json:"app_config,omitempty"`
 	ZotConfigRaw    json.RawMessage `json:"zot_config,omitempty"`
-	HeartbeatConfig HeartbeatConfig `json:"heartbeat_config",omitempty`
+	HeartbeatConfig HeartbeatConfig `json:"heartbeat_config,omitempty"`
 }
 
 var validLogLevels = map[string]bool{
