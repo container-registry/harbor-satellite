@@ -108,5 +108,5 @@ func extractSatelliteNameFromURL(stateURL string) (string, error) {
 		return "", fmt.Errorf("state URL %q does not have enough path segments to extract satellite name", stateURL)
 	}
 
-	return parts[3], nil
+	return parts[2], nil
 }
