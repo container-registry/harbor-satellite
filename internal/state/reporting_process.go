@@ -77,7 +77,9 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream chan sche
 				req.LatestConfigDigest = info.LatestConfigDigest
 
 				// populate all other info which is not provided by the upstream channel, into the request
-				collectStatusReportParams(ctx, duration, &req)
+				if err := collectStatusReportParams(ctx, duration, &req); err != nil {
+					log.Warn().Msg("Failed to populate heartbeat payload fully")
+				}
 
 				if err := sendStatusReport(ctx, string(groundControlURL), &req); err != nil {
 					log.Warn().Msg("Failed to send status report")
@@ -146,7 +148,9 @@ func sendStatusReport(ctx context.Context, groundControlURL string, req *StatusR
 	if err != nil {
 		return fmt.Errorf("failed to send status report: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	return nil
 }
