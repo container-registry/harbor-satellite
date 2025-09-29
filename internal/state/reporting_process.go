@@ -31,19 +31,16 @@ func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess
 }
 
 func (s *StatusReportingProcess) Execute(ctx context.Context, upstream chan scheduler.UpstreamInfo) error {
-	s.mu.Lock()
-	if s.isRunning {
-		s.mu.Unlock()
+	if !s.start() {
 		return nil
 	}
-	s.isRunning = true
-	s.mu.Unlock()
 
 	log := logger.FromContext(ctx).With().Str("process", s.name).Logger()
 
 	canExecute, reason := s.CanExecute(&log)
 	if !canExecute {
 		log.Warn().Msgf("Process %s cannot execute: %s", s.name, reason)
+		s.stop()
 		return nil
 	}
 
@@ -51,6 +48,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream chan sche
 
 	go func() {
 		defer s.stop()
+
 		for {
 			select {
 			case <-ctx.Done():
