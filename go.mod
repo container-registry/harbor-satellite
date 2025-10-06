@@ -13,7 +13,7 @@ require (
 require (
 	github.com/joho/godotenv v1.5.1
 	github.com/rs/zerolog v1.33.0
-	github.com/shirou/gopsutil/v4 v4.25.8
+	github.com/shirou/gopsutil/v4 v4.25.9
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.11.1
 )
@@ -36,7 +36,7 @@ require (
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/platforms v1.0.0-rc.1 // indirect
 	github.com/containerd/plugin v1.0.0 // indirect
-	github.com/ebitengine/purego v0.8.4 // indirect
+	github.com/ebitengine/purego v0.9.0 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
