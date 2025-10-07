@@ -52,12 +52,10 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream chan sche
 		for {
 			select {
 			case <-ctx.Done():
-				log.Info().Msg("Context cancelled, stopping status reporting process")
 				return
 
 			case info, ok := <-upstream:
 				if !ok {
-					log.Info().Msg("Upstream channel closed, stopping status reporting process")
 					return
 				}
 
@@ -83,7 +81,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream chan sche
 				req.LatestConfigDigest = info.LatestConfigDigest
 
 				if err := collectStatusReportParams(ctx, duration, &req); err != nil {
-					log.Warn().Err(err).Msg("Failed to collect status report params")
+					log.Warn().Err(err).Msg("Failed to collect status report parameters")
 					continue
 				}
 
@@ -115,12 +113,6 @@ func (s *StatusReportingProcess) stop() {
 
 func (s *StatusReportingProcess) CanExecute(log *zerolog.Logger) (bool, string) {
 	return true, fmt.Sprintf("Process %s can execute all conditions fulfilled", s.name)
-}
-
-func (s *StatusReportingProcess) IsComplete() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.cm.IsZTRDone()
 }
 
 func (s *StatusReportingProcess) IsRunning() bool {
