@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 	"net/http"
 	"sync"
+	"time"
 )
 
 type StatusReportingProcess struct {
@@ -125,7 +126,11 @@ func sendStatusReport(ctx context.Context, groundControlURL string, req *StatusR
 		return fmt.Errorf("failed to marshal status report: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
+	// add a request level timeout
+	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	httpReq, err := http.NewRequestWithContext(timeoutCtx, http.MethodPost, url, bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("failed to create status report request: %w", err)
 	}
@@ -136,9 +141,11 @@ func sendStatusReport(ctx context.Context, groundControlURL string, req *StatusR
 	if err != nil {
 		return fmt.Errorf("failed to send status report: %w", err)
 	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("heartbeat request timed out : %w, with status code %d", err, resp.StatusCode)
+	}
 
 	return nil
 }

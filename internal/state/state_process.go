@@ -207,7 +207,9 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 		}
 
 		configDigest, err := configStateFetcher.FetchDigest(ctx, &configFetcherLog)
-		upstreamPayload.LatestConfigDigest = configDigest
+		if err == nil {
+			upstreamPayload.LatestConfigDigest = configDigest
+		}
 
 		if err != nil {
 			configFetcherLog.Error().Err(err).Msgf("Error fetching state artifact digest from url: %s", satelliteState.Config)
