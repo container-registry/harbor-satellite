@@ -1,6 +1,8 @@
 package config
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // Threadsafe getter functions to fetch config data.
 

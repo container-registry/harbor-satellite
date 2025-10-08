@@ -23,7 +23,7 @@ func NewSatellite(cm *config.ConfigManager) *Satellite {
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
-	ch := make(chan scheduler.UpstreamInfo, 10)
+	var heartbeatPayload scheduler.UpstreamInfo
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm)
 	ztrProcess := state.NewZtrProcess(s.cm)
@@ -35,7 +35,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 			s.cm.GetRegistrationInterval(),
 			ztrProcess,
 			log,
-			ch,
+			&heartbeatPayload,
 		)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to create ZTR scheduler")
@@ -50,7 +50,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		s.cm.GetStateReplicationInterval(),
 		fetchAndReplicateStateProcess,
 		log,
-		ch,
+		&heartbeatPayload,
 	)
 
 	if err != nil {
@@ -64,7 +64,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		s.cm.GetStateReportingInterval(),
 		statusReportingProcess,
 		log,
-		ch,
+		&heartbeatPayload,
 	)
 
 	if err != nil {
@@ -75,7 +75,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	go stateScheduler.Run(ctx)
 
-	if !s.cm.IsHeartbeatDisabled() {
+	if !(s.cm.IsHeartbeatDisabled()) {
 		go statusReportingScheduler.Run(ctx)
 	}
 

@@ -26,14 +26,15 @@ func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess
 		name: "status_report",
 		mu:   &sync.Mutex{},
 		cm:   cm,
-		Done: make(chan struct{}, 1),
 	}
 }
 
-func (s *StatusReportingProcess) Execute(ctx context.Context, upstream chan scheduler.UpstreamInfo) error {
+func (s *StatusReportingProcess) Execute(ctx context.Context, upstream *scheduler.UpstreamInfo) error {
 	if !s.start() {
 		return nil
 	}
+
+	defer s.stop()
 
 	log := logger.FromContext(ctx).With().Str("process", s.name).Logger()
 
@@ -46,54 +47,39 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream chan sche
 
 	log.Info().Msg("Starting status reporting process")
 
-	go func() {
-		defer s.stop()
+	groundControlURL := s.cm.ResolveGroundControlURL()
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
+	satelliteName, err := extractSatelliteNameFromURL(upstream.StateURL)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to extract satellite name")
 
-			case info, ok := <-upstream:
-				if !ok {
-					return
-				}
+	}
 
-				var req StatusReportParams
-				groundControlURL := s.cm.ResolveGroundControlURL()
+	duration, err := scheduler.ParseEveryExpr(s.cm.GetStateReportingInterval())
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to parse state reporting interval")
 
-				satelliteName, err := extractSatelliteNameFromURL(info.StateURL)
-				if err != nil {
-					log.Warn().Err(err).Msg("Failed to extract satellite name")
-					continue
-				}
+	}
 
-				duration, err := scheduler.ParseEveryExpr(s.cm.GetStateReportingInterval())
-				if err != nil {
-					log.Warn().Err(err).Msg("Failed to parse state reporting interval")
-					continue
-				}
+	req := StatusReportParams{
+		Name:                satelliteName,
+		Activity:            upstream.CurrentActivity,
+		StateReportInterval: s.cm.GetStateReportingInterval(),
+		LatestStateDigest:   upstream.LatestStateDigest,
+		LatestConfigDigest:  upstream.LatestConfigDigest,
+	}
 
-				req.Name = satelliteName
-				req.Activity = info.CurrentActivity
-				req.StateReportInterval = s.cm.GetStateReportingInterval()
-				req.LatestStateDigest = info.LatestStateDigest
-				req.LatestConfigDigest = info.LatestConfigDigest
+	if err := collectStatusReportParams(ctx, duration, &req); err != nil {
+		log.Warn().Err(err).Msg("Failed to collect status report parameters")
 
-				if err := collectStatusReportParams(ctx, duration, &req); err != nil {
-					log.Warn().Err(err).Msg("Failed to collect status report parameters")
-					continue
-				}
+	}
 
-				if err := sendStatusReport(ctx, groundControlURL, &req); err != nil {
-					log.Warn().Err(err).Msg("Failed to send status report")
-					continue
-				}
+	if err := sendStatusReport(ctx, groundControlURL, &req); err != nil {
+		log.Warn().Err(err).Msg("Failed to send status report")
 
-				log.Info().Msg("Heartbeat sent to ground control successfully")
-			}
-		}
-	}()
+	}
+
+	log.Info().Msg("Heartbeat sent to ground control successfully")
 
 	return nil
 }
@@ -119,6 +105,10 @@ func (s *StatusReportingProcess) IsRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.isRunning
+}
+
+func (f *StatusReportingProcess) IsComplete() bool {
+	return false
 }
 
 func (s *StatusReportingProcess) Name() string {

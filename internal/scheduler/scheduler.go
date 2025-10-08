@@ -25,7 +25,7 @@ type Scheduler struct {
 	log             *zerolog.Logger
 	interval        time.Duration
 	mu              sync.Mutex
-	upstreamPayload chan UpstreamInfo
+	upstreamPayload *UpstreamInfo
 }
 
 const (
@@ -35,7 +35,7 @@ const (
 )
 
 // NewSchedulerWithInterval creates a new scheduler with a parsed interval string
-func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog.Logger, upstreamPayload chan UpstreamInfo) (*Scheduler, error) {
+func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog.Logger, upstreamPayload *UpstreamInfo) (*Scheduler, error) {
 	duration, err := ParseEveryExpr(intervalExpr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse interval: %w", err)

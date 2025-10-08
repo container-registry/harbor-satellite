@@ -39,7 +39,7 @@ func NewZtrProcess(cm *config.ConfigManager) *ZtrProcess {
 	}
 }
 
-func (z *ZtrProcess) Execute(ctx context.Context, upstreamPayload chan scheduler.UpstreamInfo) error {
+func (z *ZtrProcess) Execute(ctx context.Context, upstreamPayload *scheduler.UpstreamInfo) error {
 	z.start()
 	defer z.stop()
 
