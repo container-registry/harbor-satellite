@@ -141,7 +141,9 @@ func sendStatusReport(ctx context.Context, groundControlURL string, req *StatusR
 	if err != nil {
 		return fmt.Errorf("failed to send status report: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("heartbeat request timed out : %w, with status code %d", err, resp.StatusCode)
