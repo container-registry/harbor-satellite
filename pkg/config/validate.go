@@ -86,8 +86,8 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		config.AppConfig.LocalRegistryCredentials.URL = URL(zotConfig.GetRegistryURL())
 	}
 
-	if config.HeartbeatConfig.StateReportInterval == "" {
-		config.HeartbeatConfig.StateReportInterval = DefaultStateReportCronExpr
+	if config.AppConfig.HeartbeatInterval == "" {
+		config.AppConfig.HeartbeatInterval = DefaultStateReportCronExpr
 		warnings = append(warnings, fmt.Sprintf("heartbeat interval not specified, defaulting to : %s", DefaultStateReportCronExpr))
 	}
 
@@ -101,8 +101,8 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for register_satellite_interval, using default schedule %s", DefaultZTRCronExpr))
 	}
 
-	if !isValidCronExpression(config.HeartbeatConfig.StateReportInterval) {
-		config.HeartbeatConfig.StateReportInterval = DefaultStateReportCronExpr
+	if !isValidCronExpression(config.AppConfig.HeartbeatInterval) {
+		config.AppConfig.HeartbeatInterval = DefaultStateReportCronExpr
 		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for state_report_interval, using default schedule %s", DefaultStateReportCronExpr))
 	}
 

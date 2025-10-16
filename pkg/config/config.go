@@ -22,6 +22,8 @@ type AppConfig struct {
 	RegisterSatelliteInterval string              `json:"register_satellite_interval,omitempty"`
 	BringOwnRegistry          bool                `json:"bring_own_registry,omitempty"`
 	LocalRegistryCredentials  RegistryCredentials `json:"local_registry,omitempty"`
+	Disabled                  bool                `json:"disable,omitempty"`
+	StateReportInterval       string              `json:"state_report_interval,omitempty"`
 }
 
 type StateConfig struct {
@@ -29,16 +31,10 @@ type StateConfig struct {
 	StateURL            string              `json:"state,omitempty"`
 }
 
-type HeartbeatConfig struct {
-	Disabled            bool   `json:"disable,omitempty"`
-	StateReportInterval string `json:"state_report_interval,omitempty"`
-}
-
 type Config struct {
-	StateConfig     StateConfig     `json:"state_config,omitempty"`
-	AppConfig       AppConfig       `json:"app_config,omitempty"`
-	ZotConfigRaw    json.RawMessage `json:"zot_config,omitempty"`
-	HeartbeatConfig HeartbeatConfig `json:"heartbeat_config,omitempty"`
+	StateConfig  StateConfig     `json:"state_config,omitempty"`
+	AppConfig    AppConfig       `json:"app_config,omitempty"`
+	ZotConfigRaw json.RawMessage `json:"zot_config,omitempty"`
 }
 
 var validLogLevels = map[string]bool{

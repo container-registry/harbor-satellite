@@ -58,8 +58,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream *schedule
 
 	duration, err := scheduler.ParseEveryExpr(s.cm.GetStateReportingInterval())
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to parse state reporting interval")
-
+		return fmt.Errorf("failed to parse state heartbeat interval : %w", err)
 	}
 
 	req := StatusReportParams{
@@ -76,8 +75,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream *schedule
 	}
 
 	if err := sendStatusReport(ctx, groundControlURL, &req); err != nil {
-		log.Warn().Err(err).Msg("Failed to send status report")
-
+		return fmt.Errorf("failed to send status report: %w", err)
 	}
 
 	log.Info().Msg("Heartbeat sent to ground control successfully")
