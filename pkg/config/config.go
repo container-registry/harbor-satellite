@@ -22,6 +22,8 @@ type AppConfig struct {
 	RegisterSatelliteInterval string              `json:"register_satellite_interval,omitempty"`
 	BringOwnRegistry          bool                `json:"bring_own_registry,omitempty"`
 	LocalRegistryCredentials  RegistryCredentials `json:"local_registry,omitempty"`
+	Disabled                  bool                `json:"disable,omitempty"`
+	StateReportInterval       string              `json:"state_report_interval,omitempty"`
 }
 
 type StateConfig struct {

@@ -17,6 +17,8 @@ const DefaultPrevConfigPath string = "prev_config.json"
 const DefaultZTRCronExpr string = "@every 00h00m05s"
 const DefaultFetchAndReplicateCronExpr string = "@every 00h00m30s"
 
+const DefaultStateReportCronExpr string = "@every 00h05m00s"
+
 const BringOwnRegistry bool = false
 
 const DefaultZotConfigJSON = `{
@@ -34,4 +36,4 @@ const DefaultZotConfigJSON = `{
 }`
 
 const DefaultRemoteRegistryURL = "http://127.0.0.1:8585"
-const DefaultGroundControlURL = "http://127.0.0.1:8080"
+const DefaultGroundControlURL = "http://groundcontrol:8080"
