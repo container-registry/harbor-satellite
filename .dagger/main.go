@@ -147,15 +147,7 @@ func (m *HarborSatellite) Build(
 	source *dagger.Directory,
 	component string,
 ) (*dagger.Directory, error) {
-	var directory *dagger.Directory
-	switch {
-	case component == "satellite":
-		directory = source
-	case component == "ground-control":
-		directory = source.Directory(GROUND_CONTROL_PATH)
-	default:
-		return nil, fmt.Errorf("unknown component: %s", component)
-	}
+	directory := source
 	return m.build(directory, component), nil
 }
 
