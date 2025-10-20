@@ -361,7 +361,7 @@ func (s *Server) statusReportHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// todo : process the heartbeat. eg:- save latest state in db
-	fmt.Printf("satellite reported status : %v", req)
+	fmt.Printf("satellite reported status : %v\n", req)
 	w.WriteHeader(http.StatusOK)
 
 }
