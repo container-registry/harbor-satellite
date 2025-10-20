@@ -69,6 +69,7 @@ func (m *HarborSatellite) startPostgres(ctx context.Context) {
 func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 
 	gcDir := m.Source.Directory("./ground-control")
+	rootDir := m.Source.Directory(".")
 
 	_, err := dag.Container().
 		From("golang:1.24-alpine@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706eef7846f319293ab5cb7a").
@@ -76,8 +77,8 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
 		WithEnvVariable("GOCACHE", "/go/build-cache").
-		WithDirectory("/app", gcDir).
-		WithWorkdir("/app").
+		WithDirectory("/app", rootDir).
+		WithWorkdir("/app/ground-control").
 		WithEnvVariable("DB_HOST", "postgres").
 		WithEnvVariable("DB_PORT", "5432").
 		WithEnvVariable("DB_USERNAME", "postgres").
@@ -89,7 +90,7 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 		WithEnvVariable("HARBOR_URL", harborDomain).
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithDirectory("/migrations", gcDir.Directory("./sql/schema")).
-		WithWorkdir("/app").
+		WithWorkdir("/app/ground-control").
 		WithExec([]string{"go", "build", "-o", "gc", "main.go"}).
 		WithExposedPort(8080, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
 		WithEntrypoint([]string{"./gc"}).
