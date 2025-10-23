@@ -33,7 +33,7 @@ func (m *HarborSatellite) PublishImage(
 		WithMountedDirectory(PROJ_MOUNT, directory).
 		WithExec([]string{"ls", PROJ_MOUNT})
 	dirContainer.Stdout(ctx)
-	builders := m.getBuildContainer(ctx, component, directory)
+	builders := m.getBuildContainer(ctx, component, source)
 	releaseImages := []*dagger.Container{}
 
 	for i, tag := range imageTags {
