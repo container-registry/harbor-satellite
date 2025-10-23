@@ -165,7 +165,8 @@ curl -i --location 'http://localhost:8080/configs' \
         "register_satellite_interval": "@every 00h00m10s",
         "local_registry": {
             "url": "http://0.0.0.0:8585"
-        }
+        },
+        "heartbeat_interval": "@every 00h00m30s", # optional, default interval is 5 minutes 
     },
     "zot_config": {
         "distSpecVersion": "1.1.0",
