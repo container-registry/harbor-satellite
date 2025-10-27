@@ -144,7 +144,7 @@ func (cm *ConfigManager) GetConfig() *Config {
 	return cm.config
 }
 
-func (cm *ConfigManager) GetStateReportingInterval() string {
+func (cm *ConfigManager) GetHeartbeatInterval() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.config.AppConfig.HeartbeatInterval
