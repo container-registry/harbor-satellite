@@ -61,7 +61,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	// Create state reporting
 	statusReportingScheduler, err := scheduler.NewSchedulerWithInterval(
-		s.cm.GetStateReportingInterval(),
+		s.cm.GetHeartbeatInterval(),
 		statusReportingProcess,
 		log,
 		&heartbeatPayload,

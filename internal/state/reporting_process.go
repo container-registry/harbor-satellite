@@ -56,7 +56,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream *schedule
 
 	}
 
-	duration, err := scheduler.ParseEveryExpr(s.cm.GetStateReportingInterval())
+	duration, err := scheduler.ParseEveryExpr(s.cm.GetHeartbeatInterval())
 	if err != nil {
 		return fmt.Errorf("failed to parse state heartbeat interval : %w", err)
 	}
@@ -64,7 +64,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream *schedule
 	req := StatusReportParams{
 		Name:                satelliteName,
 		Activity:            upstream.CurrentActivity,
-		StateReportInterval: s.cm.GetStateReportingInterval(),
+		StateReportInterval: s.cm.GetHeartbeatInterval(),
 		LatestStateDigest:   upstream.LatestStateDigest,
 		LatestConfigDigest:  upstream.LatestConfigDigest,
 	}
