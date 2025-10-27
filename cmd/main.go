@@ -108,6 +108,7 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 		ctx,
 		cm,
 		log,
+		nil,
 		nil, // Will be set after scheduler creation
 	)
 
@@ -155,9 +156,7 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 	}
 
 	for _, s := range s.GetSchedulers() {
-		if s.Name() == config.ReplicateStateJobName {
-			hotReloadManager.SetStateReplicationScheduler(s)
-		}
+		hotReloadManager.SetStateReplicationScheduler(s)
 	}
 
 	// Wait until context is cancelled
