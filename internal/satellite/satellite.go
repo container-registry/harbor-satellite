@@ -59,22 +59,24 @@ func (s *Satellite) Run(ctx context.Context) error {
 	}
 	s.schedulers = append(s.schedulers, stateScheduler)
 
-	if !s.cm.IsHeartbeatDisabled() {
-		// Create state reporting
-		statusReportingScheduler, err := scheduler.NewSchedulerWithInterval(
-			s.cm.GetHeartbeatInterval(),
-			statusReportingProcess,
-			log,
-			&heartbeatPayload,
-		)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to create status reporting scheduler")
-			return err
-		}
-		s.schedulers = append(s.schedulers, statusReportingScheduler)
+	// Create state reporting
+	statusReportingScheduler, err := scheduler.NewSchedulerWithInterval(
+		s.cm.GetHeartbeatInterval(),
+		statusReportingProcess,
+		log,
+		&heartbeatPayload,
+	)
+
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create status reporting scheduler")
+		return err
+	}
+	s.schedulers = append(s.schedulers, statusReportingScheduler)
+
+	go stateScheduler.Run(ctx)
+
+	if !(s.cm.IsHeartbeatDisabled()) {
 		go statusReportingScheduler.Run(ctx)
-	} else {
-		log.Info().Msg("Heartbeat disabled; skipping status reporter scheduler")
 	}
 
 	return ctx.Err()
