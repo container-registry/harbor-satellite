@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -360,10 +361,17 @@ func (s *Server) statusReportHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
-	// todo : process the heartbeat. eg:- save latest state in db
-	fmt.Printf("satellite reported status : %v\n", req)
-	w.WriteHeader(http.StatusOK)
 
+	//todo: instead of just printing, save the latest state in db 
+	heartbeat, err := json.MarshalIndent(req, "", "  ")
+	if err != nil {
+		log.Printf("failed to marshal json: %v\n", err)
+		http.Error(w, "failed to marshal json", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("satellite reported status:\n%s\n", string(heartbeat))
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) GetSatelliteByName(w http.ResponseWriter, r *http.Request) {
