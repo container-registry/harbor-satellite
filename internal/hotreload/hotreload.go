@@ -99,10 +99,10 @@ func (hrm *HotReloadManager) handleIntervalsChange(change config.ConfigChange) e
 	}
 
 	if hrm.heartbeatScheduler != nil {
-		hrm.log.Info().Msg("Restarting state replication scheduler with new interval")
-		err := hrm.stateReplicationScheduler.ResetIntervalFromExpr(hrm.cm.GetHeartbeatInterval())
+		hrm.log.Info().Msg("Restarting heartbeat scheduler with new interval")
+		err := hrm.heartbeatScheduler.ResetIntervalFromExpr(hrm.cm.GetHeartbeatInterval())
 		if err != nil {
-			return fmt.Errorf("unable to restart state replication scheduler: %w", err)
+			return fmt.Errorf("unable to heartbeat scheduler: %w", err)
 		}
 	}
 
