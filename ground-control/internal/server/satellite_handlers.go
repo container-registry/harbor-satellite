@@ -362,11 +362,15 @@ func (s *Server) statusReportHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//todo: instead of just printing, save the latest state in db 
+	//todo: instead of just printing, save the latest state in db
 	heartbeat, err := json.MarshalIndent(req, "", "  ")
 	if err != nil {
 		log.Printf("failed to marshal json: %v\n", err)
-		http.Error(w, "failed to marshal json", http.StatusInternalServerError)
+		err := &AppError{
+			Message: "Error: Failed to decode heartbeat",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
 		return
 	}
 
