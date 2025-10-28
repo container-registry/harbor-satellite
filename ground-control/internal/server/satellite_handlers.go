@@ -1,11 +1,13 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
@@ -23,6 +25,18 @@ type RegisterSatelliteParams struct {
 	Name       string    `json:"name"`
 	Groups     *[]string `json:"groups,omitempty"`
 	ConfigName string    `json:"config_name"`
+}
+
+type SatelliteStatusParams struct {
+	Name                string    `json:"name"`                  // Satellite identifier
+	Activity            string    `json:"activity"`              // Current activity satellite is doing
+	StateReportInterval string    `json:"state_report_interval"` // Interval between status reports
+	LatestStateDigest   string    `json:"latest_state_digest"`   // Digest of latest state artifact
+	LatestConfigDigest  string    `json:"latest_config_digest"`  // Digest of latest config artifact
+	MemoryUsedBytes     uint64    `json:"memory_used_bytes"`     // Memory currently used by satellite
+	StorageUsedBytes    uint64    `json:"storage_used_bytes"`    // Storage currently used by satellite
+	CPUPercent          float64   `json:"cpu_percent"`           // CPU usage percentage
+	RequestCreatedTime  time.Time `json:"request_created_time"`  // Timestamp of request creation
 }
 
 type RegisterSatelliteResponse struct {
@@ -338,6 +352,30 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) statusReportHandler(w http.ResponseWriter, r *http.Request) {
+	var req SatelliteStatusParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	//todo: instead of just printing, save the latest state in db
+	heartbeat, err := json.MarshalIndent(req, "", "  ")
+	if err != nil {
+		log.Printf("failed to marshal json: %v\n", err)
+		err := &AppError{
+			Message: "Error: Failed to decode heartbeat",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	fmt.Printf("satellite reported status:\n%s\n", string(heartbeat))
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) GetSatelliteByName(w http.ResponseWriter, r *http.Request) {

@@ -129,6 +129,14 @@ func (cm *ConfigManager) detectChanges(oldConfig *Config, newConfig *Config) []C
 		})
 	}
 
+	if oldConfig.AppConfig.HeartbeatInterval != newConfig.AppConfig.HeartbeatInterval {
+		changes = append(changes, ConfigChange{
+			Type:     IntervalsChanged,
+			OldValue: oldConfig.AppConfig.HeartbeatInterval,
+			NewValue: newConfig.AppConfig.HeartbeatInterval,
+		})
+	}
+
 	if string(oldConfig.ZotConfigRaw) != string(newConfig.ZotConfigRaw) {
 		changes = append(changes, ConfigChange{
 			Type:     ZotConfigChanged,

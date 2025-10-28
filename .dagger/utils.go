@@ -19,10 +19,18 @@ func (m *HarborSatellite) build(source *dagger.Directory, component string) *dag
 
 	outputs := dag.Directory()
 
+	var workDir string
+	switch {
+	case component == "satellite":
+		workDir = PROJ_MOUNT
+	case component == "ground-control":
+		workDir = PROJ_MOUNT + "/ground-control"
+	}
+
 	golang := dag.Container().
 		From(DEFAULT_GO).
 		WithDirectory(PROJ_MOUNT, source).
-		WithWorkdir(PROJ_MOUNT).
+		WithWorkdir(workDir).
 		WithExec([]string{"ls", "-la"})
 
 	// Iterate through supported builds
