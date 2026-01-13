@@ -59,7 +59,7 @@ linters-settings:
       underef:
         skipRecvDeref: false
 
-  gomnd:
+  mnd:
     ignored-functions:
       - flag.Arg
       - flag.Duration.*
