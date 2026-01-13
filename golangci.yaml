@@ -185,6 +185,93 @@ linters-settings:
     # Default: false
     all: true
 
+  # New strict linter settings
+  wrapcheck:
+    ignoreSigs:
+      - .Errorf(
+      - errors.New(
+      - errors.Unwrap(
+      - .Wrap(
+      - .Wrapf(
+      - .WithMessage(
+      - .WithMessagef(
+      - .WithStack(
+    ignorePackageGlobs:
+      - github.com/container-registry/harbor-satellite/*
+
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: "io/ioutil"
+            desc: "Deprecated: use io and os packages instead"
+
+  interfacebloat:
+    max: 10
+
+  maintidx:
+    under: 20
+
+  tagliatelle:
+    case:
+      use-field-name: true
+      rules:
+        json: snake
+        yaml: snake
+
+  tagalign:
+    align: true
+    sort: true
+    order:
+      - json
+      - yaml
+      - xml
+      - form
+
+  ireturn:
+    allow:
+      - anon
+      - error
+      - empty
+      - stdlib
+      - generic
+
+  nlreturn:
+    block-size: 2
+
+  decorder:
+    dec-order:
+      - type
+      - const
+      - var
+      - func
+    disable-dec-order-check: false
+    disable-init-func-first-check: false
+
+  varnamelen:
+    max-distance: 5
+    min-name-length: 2
+    ignore-names:
+      - err
+      - ok
+      - id
+      - i
+      - j
+      - k
+      - n
+      - v
+      - x
+      - y
+      - db
+      - tx
+      - wg
+      - mu
+      - fs
+      - fd
+      - ip
+    ignore-type-assert-ok: true
+    ignore-map-index-ok: true
+    ignore-chan-recv-ok: true
 
 linters:
   disable-all: true
@@ -268,6 +355,41 @@ linters:
     - usestdlibvars # detects the possibility to use variables/constants from the Go standard library
     - wastedassign # finds wasted assignment statements
     - whitespace # detects leading and trailing whitespace
+    ## New strict linters
+    # Security
+    - forcetypeassert # finds forced type assertions that can panic
+    - wrapcheck # checks errors from external packages are wrapped
+    # Performance
+    - prealloc # finds slice declarations that could be pre-allocated
+    # Memory management
+    - containedctx # detects struct with context.Context field
+    - contextcheck # checks for non-inherited context
+    - fatcontext # detects nested contexts in loops
+    # Go style and idioms
+    - decorder # checks declaration order
+    - nlreturn # checks for newline before return
+    - tagalign # checks struct tags are aligned
+    - tagliatelle # checks struct tag naming conventions
+    # Error handling
+    - err113 # checks error handling expressions
+    # Code quality
+    - maintidx # measures maintainability index
+    - recvcheck # checks receiver type consistency
+    # Multi-arch / Edge
+    - gosmopolitan # reports i18n/l10n anti-patterns
+    - ireturn # checks interface return types
+    # Testing
+    - paralleltest # checks for t.Parallel() usage
+    - thelper # checks test helpers call t.Helper()
+    - usetesting # checks for testing package replacements
+    # Logging (project uses zerolog)
+    - zerologlint # checks zerolog usage
+    # Module / Import
+    - depguard # checks for blocked imports
+    - importas # enforces consistent import aliases
+    # Interface quality
+    - interfacebloat # checks interface method count
+    - iface # detects incorrect interface use
 
 issues:
   # Maximum count of issues with the same text.
@@ -283,9 +405,15 @@ issues:
     - path: "_test\\.go"
       linters:
         - bodyclose
+        - containedctx
+        - contextcheck
         - dupl
+        - err113
+        - forcetypeassert
         - funlen
         - goconst
         - gosec
+        - maintidx
         - noctx
+        - paralleltest
         - wrapcheck
