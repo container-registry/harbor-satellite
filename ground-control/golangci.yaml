@@ -231,7 +231,6 @@ linters:
     - errorlint
     - execinquery
     - exhaustive
-    - copyloopvar
     - forbidigo
     - funlen
     - gocheckcompilerdirectives
@@ -343,5 +342,4 @@ issues:
         - gosec
         - maintidx
         - noctx
-        - paralleltest
         - wrapcheck
