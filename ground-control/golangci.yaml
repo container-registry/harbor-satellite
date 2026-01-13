@@ -246,7 +246,7 @@ linters:
     - goimports
     - gofmt
     - gofumpt
-    - gomnd
+    - mnd
     - gomoddirectives
     - gomodguard
     - goprintffuncname
