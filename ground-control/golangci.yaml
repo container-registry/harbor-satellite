@@ -231,7 +231,7 @@ linters:
     - errorlint
     - execinquery
     - exhaustive
-    - exportloopref
+    - copyloopvar
     - forbidigo
     - funlen
     - gocheckcompilerdirectives
