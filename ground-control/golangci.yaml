@@ -1,0 +1,345 @@
+# Ground Control linting configuration
+# Kept in sync with root golangci.yaml for satellite
+
+run:
+  timeout: 3m
+
+linters-settings:
+  cyclop:
+    max-complexity: 30
+    package-average: 10.0
+
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  exhaustive:
+    check:
+      - switch
+      - map
+
+  exhaustruct:
+    exclude:
+      # std libs
+      - "^net/http.Client$"
+      - "^net/http.Cookie$"
+      - "^net/http.Request$"
+      - "^net/http.Response$"
+      - "^net/http.Server$"
+      - "^net/http.Transport$"
+      - "^net/url.URL$"
+      - "^os/exec.Cmd$"
+      - "^reflect.StructField$"
+      # public libs
+      - "^github.com/Shopify/sarama.Config$"
+      - "^github.com/Shopify/sarama.ProducerMessage$"
+      - "^github.com/mitchellh/mapstructure.DecoderConfig$"
+      - "^github.com/prometheus/client_golang/.+Opts$"
+      - "^github.com/spf13/cobra.Command$"
+      - "^github.com/spf13/cobra.CompletionOptions$"
+      - "^github.com/stretchr/testify/mock.Mock$"
+      - "^github.com/testcontainers/testcontainers-go.+Request$"
+      - "^github.com/testcontainers/testcontainers-go.FromDockerfile$"
+      - "^golang.org/x/tools/go/analysis.Analyzer$"
+      - "^google.golang.org/protobuf/.+Options$"
+      - "^gopkg.in/yaml.v3.Node$"
+
+  funlen:
+    lines: 100
+    statements: 50
+    ignore-comments: true
+
+  gocognit:
+    min-complexity: 20
+
+  gocritic:
+    settings:
+      captLocal:
+        paramsOnly: false
+      underef:
+        skipRecvDeref: false
+
+  mnd:
+    ignored-functions:
+      - flag.Arg
+      - flag.Duration.*
+      - flag.Float.*
+      - flag.Int.*
+      - flag.Uint.*
+      - os.Chmod
+      - os.Mkdir.*
+      - os.OpenFile
+      - os.WriteFile
+      - prometheus.ExponentialBuckets.*
+      - prometheus.LinearBuckets
+
+  gomodguard:
+    blocked:
+      modules:
+        - github.com/golang/protobuf:
+            recommendations:
+              - google.golang.org/protobuf
+            reason: "see https://developers.google.com/protocol-buffers/docs/reference/go/faq#modules"
+        - github.com/satori/go.uuid:
+            recommendations:
+              - github.com/google/uuid
+            reason: "satori's package is not maintained"
+        - github.com/gofrs/uuid:
+            recommendations:
+              - github.com/gofrs/uuid/v5
+            reason: "gofrs' package was not go module before v5"
+
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment
+    settings:
+      shadow:
+        strict: true
+
+  inamedparam:
+    skip-single-param: true
+
+  nakedret:
+    max-func-lines: 0
+
+  nolintlint:
+    allow-no-explanation: [ funlen, gocognit, lll ]
+    require-explanation: true
+    require-specific: true
+
+  perfsprint:
+    strconcat: false
+
+  rowserrcheck:
+    packages:
+      - github.com/jmoiron/sqlx
+
+  tenv:
+    all: true
+
+  # Strict linter settings
+  wrapcheck:
+    ignoreSigs:
+      - .Errorf(
+      - errors.New(
+      - errors.Unwrap(
+      - .Wrap(
+      - .Wrapf(
+      - .WithMessage(
+      - .WithMessagef(
+      - .WithStack(
+    ignorePackageGlobs:
+      - github.com/container-registry/harbor-satellite/ground-control/*
+
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: "io/ioutil"
+            desc: "Deprecated: use io and os packages instead"
+
+  interfacebloat:
+    max: 10
+
+  maintidx:
+    under: 20
+
+  tagliatelle:
+    case:
+      use-field-name: true
+      rules:
+        json: snake
+        yaml: snake
+
+  tagalign:
+    align: true
+    sort: true
+    order:
+      - json
+      - yaml
+      - xml
+      - form
+
+  ireturn:
+    allow:
+      - anon
+      - error
+      - empty
+      - stdlib
+      - generic
+
+  nlreturn:
+    block-size: 2
+
+  decorder:
+    dec-order:
+      - type
+      - const
+      - var
+      - func
+    disable-dec-order-check: false
+    disable-init-func-first-check: false
+
+  varnamelen:
+    max-distance: 5
+    min-name-length: 2
+    ignore-names:
+      - err
+      - ok
+      - id
+      - i
+      - j
+      - k
+      - n
+      - v
+      - x
+      - y
+      - db
+      - tx
+      - wg
+      - mu
+      - fs
+      - fd
+      - ip
+    ignore-type-assert-ok: true
+    ignore-map-index-ok: true
+    ignore-chan-recv-ok: true
+
+linters:
+  disable-all: true
+  enable:
+    - misspell
+    ## enabled by default
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - typecheck
+    - unused
+    ## disabled by default
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - copyloopvar
+    - cyclop
+    - dupl
+    - durationcheck
+    - errname
+    - errorlint
+    - execinquery
+    - exhaustive
+    - forbidigo
+    - funlen
+    - gocheckcompilerdirectives
+    - gochecknoglobals
+    - gochecknoinits
+    - gochecksumtype
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - goimports
+    - gofmt
+    - gofumpt
+    - mnd
+    - gomoddirectives
+    - gomodguard
+    - goprintffuncname
+    - gosec
+    - intrange
+    - lll
+    - loggercheck
+    - makezero
+    - mirror
+    - musttag
+    - nakedret
+    - nestif
+    - nilerr
+    - nilnil
+    - noctx
+    - nolintlint
+    - nonamedreturns
+    - nosprintfhostport
+    - perfsprint
+    - predeclared
+    - promlinter
+    - protogetter
+    - reassign
+    - revive
+    - rowserrcheck
+    - sloglint
+    - spancheck
+    - sqlclosecheck
+    - stylecheck
+    - tenv
+    - testableexamples
+    - testifylint
+    - testpackage
+    - tparallel
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+    ## New strict linters
+    # Security
+    - forcetypeassert
+    - wrapcheck
+    # Performance
+    - prealloc
+    # Memory management
+    - containedctx
+    - contextcheck
+    - fatcontext
+    # Go style and idioms
+    - decorder
+    - nlreturn
+    - tagalign
+    - tagliatelle
+    # Error handling
+    - err113
+    # Code quality
+    - maintidx
+    - recvcheck
+    # Multi-arch / Edge
+    - gosmopolitan
+    - ireturn
+    # Testing
+    - paralleltest
+    - thelper
+    - usetesting
+    # Logging
+    - zerologlint
+    # Module / Import
+    - depguard
+    - importas
+    # Interface quality
+    - interfacebloat
+    - iface
+
+issues:
+  max-same-issues: 50
+
+  exclude-rules:
+    - source: "(noinspection|TODO)"
+      linters: [ godot ]
+    - source: "//noinspection"
+      linters: [ gocritic ]
+    - path: "_test\\.go"
+      linters:
+        - bodyclose
+        - containedctx
+        - contextcheck
+        - dupl
+        - err113
+        - forcetypeassert
+        - funlen
+        - goconst
+        - gosec
+        - maintidx
+        - noctx
+        - wrapcheck

@@ -63,39 +63,6 @@ func setSatelliteConfig(ctx context.Context, q *database.Queries, satelliteName 
 	return &sat, nil
 }
 
-func validateRequestBody(w http.ResponseWriter, req RegisterSatelliteParams) error {
-	if len(req.Name) < 1 {
-		log.Println("name should be at least one character long.")
-		return &AppError{
-			Message: "Error: name should be at least one character long.",
-			Code:    http.StatusBadRequest,
-		}
-	}
-	return nil
-}
-
-// If the robot account is already present, we need to check if the robot account
-// permissions need to be updated.
-// i.e, check if the satellite is already connected to the groups in the request body.
-// if not, then update the robot account.
-func checkRobotAccountExistence(ctx context.Context, name string) error {
-	roboPresent, err := harbor.IsRobotPresent(ctx, name)
-	if err != nil {
-		log.Println(err)
-		return &AppError{
-			Message: fmt.Sprintf("Error querying for robot account: %v", err.Error()),
-			Code:    http.StatusBadRequest,
-		}
-	}
-	if roboPresent {
-		return &AppError{
-			Message: "Error: Robot Account name already present. Try with a different name.",
-			Code:    http.StatusBadRequest,
-		}
-	}
-	return nil
-}
-
 func addSatelliteToGroups(ctx context.Context, q *database.Queries, groups *[]string, satelliteID int32) ([]string, error) {
 	var groupStates []string
 	if groups != nil {

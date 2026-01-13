@@ -27,8 +27,8 @@ func GetProject(ctx context.Context, name string) (bool, error) {
 func CreateSatelliteProject(ctx context.Context) (bool, error) {
 	client := GetClient()
 	var (
-		public  bool  = true
-		storage int64 = -1
+		public  = true
+		storage = int64(-1)
 	)
 	log.Println("creating project satellite")
 	proj, err := client.Project.CreateProject(ctx, &project.CreateProjectParams{
