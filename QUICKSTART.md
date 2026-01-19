@@ -6,7 +6,7 @@ Welcome to the Harbor Satellite Quick Start Guide! This guide provides a clear a
 
 Before you begin, ensure you have:
 
-- A **Harbor registry instance** with the satellite adapter installed. You can the instance [here](https://github.com/container-registry/harbor-next/tree/satellite).
+- A **Harbor registry instance** with the satellite adapter installed. You can find the instance [here](https://github.com/container-registry/harbor-next/tree/satellite).
 - **Credentials** with permission to create robot accounts in the registry
 
 - The latest version of **Dagger** installed. [Download and install Dagger](https://docs.dagger.io/install).
