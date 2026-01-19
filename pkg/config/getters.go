@@ -155,3 +155,9 @@ func (cm *ConfigManager) IsHeartbeatDisabled() bool {
 	defer cm.mu.RUnlock()
 	return cm.config.AppConfig.DisableHeartbeat
 }
+
+func (cm *ConfigManager) GetMetricsConfig() MetricsConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.Metrics
+}
