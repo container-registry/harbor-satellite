@@ -52,8 +52,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream *schedule
 
 	satelliteName, err := extractSatelliteNameFromURL(upstream.StateURL)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to extract satellite name")
-
+		return fmt.Errorf("failed to extract satellite name: %w", err)
 	}
 
 	duration, err := scheduler.ParseEveryExpr(s.cm.GetHeartbeatInterval())
