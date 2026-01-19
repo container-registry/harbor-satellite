@@ -9,7 +9,7 @@ SELECT * FROM satellite_configs
 WHERE config_id = $1;
 
 -- name: SatelliteConfig :one
-SELECT (satellite_id, config_id) FROM satellite_configs
+SELECT satellite_id, config_id FROM satellite_configs
 WHERE satellite_id = $1;
 
 -- name: RemoveSatelliteFromConfig :exec
