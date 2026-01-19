@@ -38,7 +38,11 @@ func (s *Server) StartCleanupJob(ctx context.Context, cfg CleanupConfig) {
 			log.Println("Status cleanup job stopped")
 			return
 		case <-ticker.C:
-			n, _ := rand.Int(rand.Reader, big.NewInt(4))
+			n, err := rand.Int(rand.Reader, big.NewInt(4))
+			if err != nil {
+				log.Printf("Failed to generate jitter: %v", err)
+				n = big.NewInt(0)
+			}
 			jitter := time.Duration(n.Int64()+1) * time.Minute
 			select {
 			case <-ctx.Done():
