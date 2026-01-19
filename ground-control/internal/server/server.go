@@ -58,6 +58,11 @@ func NewServer(ctx context.Context) *http.Server {
 		dbQueries: dbQueries,
 	}
 
+	// Bootstrap system admin user
+	if err := s.BootstrapSystemAdmin(context.Background()); err != nil {
+		log.Fatalf("Failed to bootstrap system admin: %v", err)
+	}
+
 	go s.StartCleanupJob(ctx, CleanupConfig{
 		RetentionDays:   defaultRetentionDays,
 		CleanupInterval: defaultCleanupInterval,
