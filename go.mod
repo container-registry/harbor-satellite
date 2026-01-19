@@ -46,12 +46,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/gocsaf/csaf/v3 v3.1.1 // indirect
 	github.com/google/go-github/v62 v62.0.0 // indirect
-<<<<<<< HEAD
-||||||| parent of a0eb13c (fix : go.mod)
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3 // indirect
-=======
 	github.com/hashicorp/hcl v1.0.1-vault-7 // indirect
->>>>>>> a0eb13c (fix : go.mod)
 	github.com/in-toto/attestation v1.1.1 // indirect
 	github.com/magiconair/properties v1.8.9 // indirect
 	github.com/moby/sys/capability v0.4.0 // indirect
