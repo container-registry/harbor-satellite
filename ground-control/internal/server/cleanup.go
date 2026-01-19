@@ -2,8 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"log"
-	"math/rand"
+	"math/big"
 	"time"
 )
 
@@ -37,7 +38,8 @@ func (s *Server) StartCleanupJob(ctx context.Context, cfg CleanupConfig) {
 			log.Println("Status cleanup job stopped")
 			return
 		case <-ticker.C:
-			jitter := time.Duration(rand.Intn(4)+1) * time.Minute
+			n, _ := rand.Int(rand.Reader, big.NewInt(4))
+			jitter := time.Duration(n.Int64()+1) * time.Minute
 			select {
 			case <-ctx.Done():
 				return
