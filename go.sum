@@ -1612,8 +1612,8 @@ github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 h1:SOEGU9fKiNWd/HOJuq
 github.com/lann/builder v0.0.0-20180802200727-47ae307949d0/go.mod h1:dXGbAdH5GtBTC4WfIxhKZfyBF/HBFgRZSWwZ9g/He9o=
 github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 h1:P6pPBnrTSX3DEVR4fDembhRWSsG5rVo6hYhAB/ADZrk=
 github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0/go.mod h1:vmVJ0l/dxyfGW6FmdpVm2joNMFikkuWg0EoCKLGUMNw=
-github.com/letsencrypt/boulder v0.20251007.0 h1:pMm3aaJ1RjK+Cmy7YlfpTMTF7Qi2iIvA2TTcFv3jPPo=
-github.com/letsencrypt/boulder v0.20251007.0/go.mod h1:7YMndJspwD07GMDYoaxzAESW78YYgV0gRmQpPnTqYas=
+github.com/letsencrypt/boulder v0.20250805.0 h1:zxsVgGuLNyeN0gS9UpVkXoMKhWZuAvJU4O8Tj1Uz8Js=
+github.com/letsencrypt/boulder v0.20250805.0/go.mod h1:vhzIPUGRWmHp6tByCEUWypGctYnTjv+ReAvX5H2LfyY=
 github.com/liamg/memoryfs v1.6.0 h1:jAFec2HI1PgMTem5gR7UT8zi9u4BfG5jorCRlLH06W8=
 github.com/liamg/memoryfs v1.6.0/go.mod h1:z7mfqXFQS8eSeBBsFjYLlxYRMRyiPktytvYCYTb3BSk=
 github.com/lib/pq v1.10.9 h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=

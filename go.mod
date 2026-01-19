@@ -1,6 +1,6 @@
 module github.com/container-registry/harbor-satellite
 
-go 1.25.0
+go 1.24.11
 
 require (
 	github.com/google/go-containerregistry v0.20.6
@@ -328,7 +328,7 @@ require (
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
-	github.com/letsencrypt/boulder v0.20251007.0 // indirect
+	github.com/letsencrypt/boulder v0.20250805.0 // indirect
 	github.com/liamg/memoryfs v1.6.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
