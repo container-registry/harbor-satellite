@@ -25,16 +25,20 @@ type FetchAndReplicateStateProcess struct {
 
 // Define result types for channels
 type StateFetcherResult struct {
-	Index     int
-	URL       string
-	Error     error
-	Cancelled bool
+	Index        int
+	URL          string
+	Error        error
+	Cancelled    bool
+	HadError     bool
 }
 
 type ConfigFetcherResult struct {
-	ConfigDigest string
-	Error        error
-	Cancelled    bool
+	ConfigDigest       string
+	LatestConfigDigest string
+	Error              error
+	Cancelled          bool
+	HadError           bool
+	Activity           string
 }
 
 func NewFetchAndReplicateStateProcess(cm *config.ConfigManager) *FetchAndReplicateStateProcess {
@@ -152,8 +156,8 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 			if err != nil {
 				stateFetcherLog.Error().Err(err).Msg("Error processing input")
 				result.Error = fmt.Errorf("failed to create state fetcher for %s: %w", f.stateMap[index].url, err)
+				result.HadError = true
 				stateFetcherResults <- result
-				upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
 				return
 			}
 
@@ -161,8 +165,8 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 			if err != nil {
 				stateFetcherLog.Error().Err(err).Msg("Error fetching state")
 				result.Error = fmt.Errorf("failed to fetch state for %s: %w", f.stateMap[index].url, err)
+				result.HadError = true
 				stateFetcherResults <- result
-				upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
 				return
 			}
 			stateFetcherLog.Info().Msgf("State fetched successfully for %s", f.stateMap[index].url)
@@ -173,16 +177,16 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 			if err := replicator.DeleteReplicationEntity(ctx, deleteEntity); err != nil {
 				stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
 				result.Error = fmt.Errorf("failed to delete entities for %s: %w", f.stateMap[index].url, err)
+				result.HadError = true
 				stateFetcherResults <- result
-				upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
 				return
 			}
 
 			if err := replicator.Replicate(ctx, replicateEntity); err != nil {
 				stateFetcherLog.Error().Err(err).Msg("Error replicating state")
 				result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
+				result.HadError = true
 				stateFetcherResults <- result
-				upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
 				return
 			}
 
@@ -207,26 +211,23 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 		if err != nil {
 			configFetcherLog.Error().Err(err).Msg("Error processing satellite state")
 			result.Error = fmt.Errorf("failed to create config state fetcher: %w", err)
+			result.HadError = true
 			configFetcherResult <- result
-			upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
 			return
 		}
 
 		configDigest, err := configStateFetcher.FetchDigest(ctx, &configFetcherLog)
-		if err == nil {
-			upstreamPayload.LatestConfigDigest = configDigest
-		}
-
 		if err != nil {
 			configFetcherLog.Error().Err(err).Msgf("Error fetching state artifact digest from url: %s", satelliteState.Config)
 			result.Error = fmt.Errorf("failed to fetch config digest from %s: %w", satelliteState.Config, err)
+			result.HadError = true
 			configFetcherResult <- result
-			upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
 			return
 		}
+		result.LatestConfigDigest = configDigest
 
 		if configDigest != f.currentConfigDigest {
-			upstreamPayload.CurrentActivity = scheduler.ActivityReconcilingState
+			result.Activity = scheduler.ActivityReconcilingState
 			configFetcherLog.Info().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("The upstream config has changes, reconciling the satellite accordingly")
 
 			remoteConfig := config.Config{}
@@ -272,8 +273,10 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 
 		// Success case
 		result.ConfigDigest = configDigest
+		if result.Activity == "" {
+			result.Activity = scheduler.ActivityStateSynced
+		}
 		configFetcherResult <- result
-		upstreamPayload.CurrentActivity = scheduler.ActivityStateSynced
 	}()
 
 	// Collect results from all goroutines
@@ -293,10 +296,9 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 
 			if stateResult.Cancelled {
 				log.Debug().Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msg("State fetcher cancelled")
-			} else if stateResult.Error != nil {
+			} else if stateResult.Error != nil || stateResult.HadError {
 				allErrors = append(allErrors, stateResult.Error.Error())
 				log.Error().Err(stateResult.Error).Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msg("State fetcher failed")
-				upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
 			} else {
 				log.Info().Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msgf("State fetcher completed successfully for %s", stateResult.URL)
 			}
@@ -304,14 +306,20 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 		case configResult := <-configFetcherResult:
 			receivedConfigFetcher = true
 
+			if configResult.LatestConfigDigest != "" {
+				upstreamPayload.LatestConfigDigest = configResult.LatestConfigDigest
+			}
+
 			if configResult.Cancelled {
 				log.Debug().Msg("Config fetcher cancelled")
-			} else if configResult.Error != nil {
+			} else if configResult.Error != nil || configResult.HadError {
 				allErrors = append(allErrors, configResult.Error.Error())
 				log.Error().Err(configResult.Error).Msg("Config fetcher failed")
-				upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
 			} else {
 				log.Info().Str("digest", configResult.ConfigDigest).Msg("Config fetcher completed successfully")
+				if configResult.Activity != "" {
+					upstreamPayload.CurrentActivity = configResult.Activity
+				}
 			}
 		}
 
