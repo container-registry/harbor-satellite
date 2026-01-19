@@ -35,6 +35,7 @@ func (m *HarborSatellite) goreleaserContainer() *dagger.Container {
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build-"+GO_VERSION)).
 		WithEnvVariable("GOCACHE", "/go/build-cache").
+		WithEnvVariable("GOTOOLCHAIN", "auto").
 		WithMountedDirectory("/src", m.Source).
 		WithWorkdir("/src").
 		WithEnvVariable("TINI_SUBREAPER", "true")

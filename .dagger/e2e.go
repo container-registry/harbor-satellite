@@ -72,7 +72,7 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 	rootDir := m.Source.Directory(".")
 
 	_, err := dag.Container().
-		From("golang:1.24-alpine@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706eef7846f319293ab5cb7a").
+		From("golang:1.24.11-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -531,7 +531,7 @@ func (m *HarborSatellite) registerSatelliteAndZTR(ctx context.Context) {
 
 	//ZTR
 	_, err = dag.Container().
-		From("golang:1.24-alpine@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706eef7846f319293ab5cb7a").
+		From("golang:1.24.11-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
