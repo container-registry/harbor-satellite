@@ -67,11 +67,13 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream *schedule
 		StateReportInterval: s.cm.GetHeartbeatInterval(),
 		LatestStateDigest:   upstream.LatestStateDigest,
 		LatestConfigDigest:  upstream.LatestConfigDigest,
+		LastSyncDurationMs:  upstream.LastSyncDurationMs,
+		ImageCount:          upstream.ImageCount,
 	}
 
-	if err := collectStatusReportParams(ctx, duration, &req); err != nil {
+	metricsConfig := s.cm.GetMetricsConfig()
+	if err := collectStatusReportParams(ctx, duration, &req, metricsConfig); err != nil {
 		log.Warn().Err(err).Msg("Failed to collect status report parameters")
-
 	}
 
 	if err := sendStatusReport(ctx, groundControlURL, &req); err != nil {
@@ -117,14 +119,13 @@ func (s *StatusReportingProcess) Name() string {
 }
 
 func sendStatusReport(ctx context.Context, groundControlURL string, req *StatusReportParams) error {
-	url := fmt.Sprintf("%s/satellites/status", groundControlURL)
+	url := fmt.Sprintf("%s/satellites/sync", groundControlURL)
 
 	body, err := json.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("failed to marshal status report: %w", err)
 	}
 
-	// add a request level timeout
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -143,8 +144,11 @@ func sendStatusReport(ctx context.Context, groundControlURL string, req *StatusR
 		_ = resp.Body.Close()
 	}()
 
+	if resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("satellite not registered with ground-control")
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("heartbeat request timed out : %w, with status code %d", err, resp.StatusCode)
+		return fmt.Errorf("status report failed with status code %d", resp.StatusCode)
 	}
 
 	return nil

@@ -8,43 +8,46 @@ import (
 	"strings"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/mem"
 )
 
 type StatusReportParams struct {
-	Name                string    `json:"name"`                  // Satellite identifier
-	Activity            string    `json:"activity"`              // Current activity satellite is doing
-	StateReportInterval string    `json:"state_report_interval"` // Interval between status reports
-	LatestStateDigest   string    `json:"latest_state_digest"`   // Digest of latest state artifact
-	LatestConfigDigest  string    `json:"latest_config_digest"`  // Digest of latest config artifact
-	MemoryUsedBytes     uint64    `json:"memory_used_bytes"`     // Memory currently used by satellite
-	StorageUsedBytes    uint64    `json:"storage_used_bytes"`    // Storage currently used by satellite
-	CPUPercent          float64   `json:"cpu_percent"`           // CPU usage percentage
-	RequestCreatedTime  time.Time `json:"request_created_time"`  // Timestamp of request creation
+	Name                string    `json:"name"`                   // Satellite identifier
+	Activity            string    `json:"activity"`               // Current activity satellite is doing
+	StateReportInterval string    `json:"state_report_interval"`  // Interval between status reports
+	LatestStateDigest   string    `json:"latest_state_digest"`    // Digest of latest state artifact
+	LatestConfigDigest  string    `json:"latest_config_digest"`   // Digest of latest config artifact
+	MemoryUsedBytes     uint64    `json:"memory_used_bytes"`      // Memory currently used by satellite
+	StorageUsedBytes    uint64    `json:"storage_used_bytes"`     // Storage currently used by satellite
+	CPUPercent          float64   `json:"cpu_percent"`            // CPU usage percentage
+	RequestCreatedTime  time.Time `json:"request_created_time"`   // Timestamp of request creation
+	LastSyncDurationMs  int64     `json:"last_sync_duration_ms"`  // How long last sync took
+	ImageCount          int       `json:"image_count"`            // Number of images in local registry
 }
 
-func collectStatusReportParams(ctx context.Context, duration time.Duration, req *StatusReportParams) error {
-	cpuPercent, err := getAvgCpuUsage(ctx, 1*time.Second, duration)
-	if err != nil {
-		return err
-	}
-
-	memUsed, err := getMemoryUsedBytes(ctx)
-	if err != nil {
-		return err
-	}
-
-	storUsed, err := getStorageUsedBytes(ctx, "/")
-	if err != nil {
-		return err
-	}
-
-	req.CPUPercent = cpuPercent
-	req.MemoryUsedBytes = memUsed
-	req.StorageUsedBytes = storUsed
+func collectStatusReportParams(ctx context.Context, duration time.Duration, req *StatusReportParams, cfg config.MetricsConfig) error {
 	req.RequestCreatedTime = time.Now()
+
+	if cfg.CollectCPU {
+		if cpuPercent, err := getAvgCpuUsage(ctx, 1*time.Second, duration); err == nil {
+			req.CPUPercent = cpuPercent
+		}
+	}
+
+	if cfg.CollectMemory {
+		if memUsed, err := getMemoryUsedBytes(ctx); err == nil {
+			req.MemoryUsedBytes = memUsed
+		}
+	}
+
+	if cfg.CollectStorage {
+		if storUsed, err := getStorageUsedBytes(ctx, "/"); err == nil {
+			req.StorageUsedBytes = storUsed
+		}
+	}
 
 	return nil
 }
