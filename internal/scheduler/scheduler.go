@@ -15,6 +15,8 @@ type UpstreamInfo struct {
 	LatestConfigDigest string
 	CurrentActivity    string
 	StateURL           string
+	LastSyncDurationMs int64
+	ImageCount         int
 }
 
 // Scheduler manages the execution of processes with configurable intervals
