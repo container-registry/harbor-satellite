@@ -23,7 +23,8 @@ func (q *Queries) DeleteOldSatelliteStatus(ctx context.Context, dollar_1 interfa
 
 const getActiveSatellites = `-- name: GetActiveSatellites :many
 SELECT s.id, s.name, s.created_at, s.updated_at, s.last_seen, s.heartbeat_interval,
-       ss.activity as last_activity, ss.reported_at as last_status_time
+       COALESCE(ss.activity, '') as last_activity,
+       COALESCE(ss.reported_at, s.last_seen) as last_status_time
 FROM satellites s
 LEFT JOIN LATERAL (
     SELECT activity, reported_at
@@ -31,7 +32,14 @@ LEFT JOIN LATERAL (
     WHERE satellite_id = s.id
     ORDER BY created_at DESC LIMIT 1
 ) ss ON true
-WHERE s.last_seen > NOW() - INTERVAL '15 minutes'
+WHERE s.last_seen IS NOT NULL
+  AND s.last_seen > NOW() - (
+    CASE
+      WHEN s.heartbeat_interval LIKE '@every %'
+      THEN (SUBSTRING(s.heartbeat_interval FROM 8)::INTERVAL * 3)
+      ELSE INTERVAL '15 minutes'
+    END
+  )
 `
 
 type GetActiveSatellitesRow struct {
