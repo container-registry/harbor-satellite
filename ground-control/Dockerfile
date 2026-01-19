@@ -33,6 +33,6 @@ COPY --from=builder /ground-control /app/ground-control
 # Copy migrations
 COPY --from=builder /app/ground-control/sql/schema /migrations
 
-EXPOSE 8080
+EXPOSE 9090
 
 ENTRYPOINT ["/app/ground-control"]
