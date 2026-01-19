@@ -28,6 +28,14 @@ type Group struct {
 	UpdatedAt   time.Time
 }
 
+type LoginAttempt struct {
+	ID          int32
+	Username    string
+	FailedCount int32
+	LockedUntil sql.NullTime
+	LastAttempt time.Time
+}
+
 type RobotAccount struct {
 	ID          int32
 	RobotName   string
@@ -78,4 +86,21 @@ type SatelliteToken struct {
 	Token       string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type Session struct {
+	ID        int32
+	UserID    int32
+	Token     string
+	ExpiresAt time.Time
+	CreatedAt time.Time
+}
+
+type User struct {
+	ID           int32
+	Username     string
+	PasswordHash string
+	Role         string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
