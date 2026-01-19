@@ -397,6 +397,8 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("Failed to update last_seen: %v", err)
+		HandleAppError(w, &AppError{Message: "failed to update last_seen", Code: http.StatusInternalServerError})
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
