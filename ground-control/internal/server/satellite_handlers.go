@@ -391,9 +391,16 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	normalizedInterval, err := normalizeHeartbeatInterval(req.StateReportInterval)
+	if err != nil {
+		log.Printf("Invalid heartbeat interval %q: %v", req.StateReportInterval, err)
+		HandleAppError(w, &AppError{Message: "invalid heartbeat interval format", Code: http.StatusBadRequest})
+		return
+	}
+
 	err = s.dbQueries.UpdateSatelliteLastSeen(r.Context(), database.UpdateSatelliteLastSeenParams{
 		ID:                sat.ID,
-		HeartbeatInterval: toNullString(req.StateReportInterval),
+		HeartbeatInterval: toNullString(normalizedInterval),
 	})
 	if err != nil {
 		log.Printf("Failed to update last_seen: %v", err)
