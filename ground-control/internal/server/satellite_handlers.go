@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -28,15 +27,17 @@ type RegisterSatelliteParams struct {
 }
 
 type SatelliteStatusParams struct {
-	Name                string    `json:"name"`                  // Satellite identifier
-	Activity            string    `json:"activity"`              // Current activity satellite is doing
-	StateReportInterval string    `json:"state_report_interval"` // Interval between status reports
-	LatestStateDigest   string    `json:"latest_state_digest"`   // Digest of latest state artifact
-	LatestConfigDigest  string    `json:"latest_config_digest"`  // Digest of latest config artifact
-	MemoryUsedBytes     uint64    `json:"memory_used_bytes"`     // Memory currently used by satellite
-	StorageUsedBytes    uint64    `json:"storage_used_bytes"`    // Storage currently used by satellite
-	CPUPercent          float64   `json:"cpu_percent"`           // CPU usage percentage
-	RequestCreatedTime  time.Time `json:"request_created_time"`  // Timestamp of request creation
+	Name                string    `json:"name"`                   // Satellite identifier
+	Activity            string    `json:"activity"`               // Current activity satellite is doing
+	StateReportInterval string    `json:"state_report_interval"`  // Interval between status reports
+	LatestStateDigest   string    `json:"latest_state_digest"`    // Digest of latest state artifact
+	LatestConfigDigest  string    `json:"latest_config_digest"`   // Digest of latest config artifact
+	MemoryUsedBytes     uint64    `json:"memory_used_bytes"`      // Memory currently used by satellite
+	StorageUsedBytes    uint64    `json:"storage_used_bytes"`     // Storage currently used by satellite
+	CPUPercent          float64   `json:"cpu_percent"`            // CPU usage percentage
+	RequestCreatedTime  time.Time `json:"request_created_time"`   // Timestamp of request creation
+	LastSyncDurationMs  int64     `json:"last_sync_duration_ms"`  // How long last sync took
+	ImageCount          int       `json:"image_count"`            // Number of images in local registry
 }
 
 type RegisterSatelliteResponse struct {
@@ -354,7 +355,7 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) statusReportHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteStatusParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
@@ -362,20 +363,82 @@ func (s *Server) statusReportHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//todo: instead of just printing, save the latest state in db
-	heartbeat, err := json.MarshalIndent(req, "", "  ")
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), req.Name)
 	if err != nil {
-		log.Printf("failed to marshal json: %v\n", err)
-		err := &AppError{
-			Message: "Error: Failed to decode heartbeat",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
+		log.Printf("Unknown satellite: %s", req.Name)
+		HandleAppError(w, &AppError{
+			Message: "unknown satellite entity",
+			Code:    http.StatusForbidden,
+		})
 		return
 	}
 
-	fmt.Printf("satellite reported status:\n%s\n", string(heartbeat))
+	_, err = s.dbQueries.InsertSatelliteStatus(r.Context(), database.InsertSatelliteStatusParams{
+		SatelliteID:        sat.ID,
+		Activity:           req.Activity,
+		LatestStateDigest:  toNullString(req.LatestStateDigest),
+		LatestConfigDigest: toNullString(req.LatestConfigDigest),
+		CpuPercent:         toNullString(fmt.Sprintf("%.2f", req.CPUPercent)),
+		MemoryUsedBytes:    toNullInt64(int64(req.MemoryUsedBytes)),
+		StorageUsedBytes:   toNullInt64(int64(req.StorageUsedBytes)),
+		LastSyncDurationMs: toNullInt64(req.LastSyncDurationMs),
+		ImageCount:         toNullInt32(int32(req.ImageCount)),
+		ReportedAt:         req.RequestCreatedTime,
+	})
+	if err != nil {
+		log.Printf("Failed to insert status: %v", err)
+		HandleAppError(w, &AppError{Message: "failed to save status", Code: http.StatusInternalServerError})
+		return
+	}
+
+	err = s.dbQueries.UpdateSatelliteLastSeen(r.Context(), database.UpdateSatelliteLastSeenParams{
+		ID:                sat.ID,
+		HeartbeatInterval: toNullString(req.StateReportInterval),
+	})
+	if err != nil {
+		log.Printf("Failed to update last_seen: %v", err)
+	}
+
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) getSatelliteStatusHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	satelliteName := vars["satellite"]
+
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
+	if err != nil {
+		HandleAppError(w, &AppError{Message: "satellite not found", Code: http.StatusNotFound})
+		return
+	}
+
+	status, err := s.dbQueries.GetLatestSatelliteStatus(r.Context(), sat.ID)
+	if err != nil {
+		HandleAppError(w, &AppError{Message: "no status available", Code: http.StatusNotFound})
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, status)
+}
+
+func (s *Server) getActiveSatellitesHandler(w http.ResponseWriter, r *http.Request) {
+	satellites, err := s.dbQueries.GetActiveSatellites(r.Context())
+	if err != nil {
+		log.Printf("Failed to get active satellites: %v", err)
+		HandleAppError(w, &AppError{Message: "failed to get active satellites", Code: http.StatusInternalServerError})
+		return
+	}
+	WriteJSONResponse(w, http.StatusOK, satellites)
+}
+
+func (s *Server) getStaleSatellitesHandler(w http.ResponseWriter, r *http.Request) {
+	satellites, err := s.dbQueries.GetStaleSatellites(r.Context())
+	if err != nil {
+		log.Printf("Failed to get stale satellites: %v", err)
+		HandleAppError(w, &AppError{Message: "failed to get stale satellites", Code: http.StatusInternalServerError})
+		return
+	}
+	WriteJSONResponse(w, http.StatusOK, satellites)
 }
 
 func (s *Server) GetSatelliteByName(w http.ResponseWriter, r *http.Request) {
