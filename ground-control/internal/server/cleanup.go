@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"math/rand"
 	"time"
@@ -82,7 +81,7 @@ func (s *Server) releaseAdvisoryLock(ctx context.Context, lockID int) {
 	}
 }
 
-func NewCleanupConfigFromEnv(db *sql.DB) CleanupConfig {
+func NewCleanupConfig() CleanupConfig {
 	return CleanupConfig{
 		RetentionDays:   defaultRetentionDays,
 		CleanupInterval: defaultCleanupInterval,
