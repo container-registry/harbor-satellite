@@ -6,7 +6,7 @@ Welcome to the Harbor Satellite Quick Start Guide! This guide provides a clear a
 
 Before you begin, ensure you have:
 
-- A **Harbor registry instance** with the satellite adapter installed. You can the instance [here](https://github.com/container-registry/harbor-next/tree/satellite).
+- A **Harbor registry instance** with the satellite adapter installed. You can find it in the [harbor-next satellite branch](https://github.com/container-registry/harbor-next/tree/satellite).
 - **Credentials** with permission to create robot accounts in the registry
 
 - The latest version of **Dagger** installed. [Download and install Dagger](https://docs.dagger.io/install).
@@ -165,7 +165,8 @@ curl -i --location 'http://localhost:8080/configs' \
         "register_satellite_interval": "@every 00h00m10s",
         "local_registry": {
             "url": "http://0.0.0.0:8585"
-        }
+        },
+        "heartbeat_interval": "@every 00h00m30s", # optional, default interval is 1 minute 
     },
     "zot_config": {
         "distSpecVersion": "1.1.0",

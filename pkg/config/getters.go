@@ -1,6 +1,8 @@
 package config
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 // Threadsafe getter functions to fetch config data.
 
@@ -140,4 +142,22 @@ func (cm *ConfigManager) GetConfig() *Config {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.config
+}
+
+func (cm *ConfigManager) GetHeartbeatInterval() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.HeartbeatInterval
+}
+
+func (cm *ConfigManager) IsHeartbeatDisabled() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.DisableHeartbeat
+}
+
+func (cm *ConfigManager) GetMetricsConfig() MetricsConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.Metrics
 }

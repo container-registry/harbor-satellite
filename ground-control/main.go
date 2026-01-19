@@ -18,31 +18,36 @@ import (
 )
 
 func main() {
-
 	err := harborhealth.CheckHealth()
 	if err != nil {
 		log.Fatalf("health check failed: %v", err)
 	}
 
 	migrator.DoMigrations()
-	server := server.NewServer()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	srv := server.NewServer(ctx)
 
 	go func() {
-		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("cannot start server: %s", err)
 		}
 	}()
 
-	fmt.Printf("Ground Control running on port %s\n", server.Addr)
+	fmt.Printf("Ground Control running on port %s\n", srv.Addr)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
+	cancel()
+
 	shutdownCtx, shutdownRelease := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownRelease()
 
-	if err := server.Shutdown(shutdownCtx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("HTTP shutdown error: %v", err)
 	}
 }

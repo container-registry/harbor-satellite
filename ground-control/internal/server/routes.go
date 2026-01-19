@@ -34,9 +34,12 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/satellites", s.listSatelliteHandler).Methods("GET")      // List all satellites
 	r.HandleFunc("/satellites", s.registerSatelliteHandler).Methods("POST") // Register new satellite
 	r.HandleFunc("/satellites/ztr/{token}", s.ztrHandler).Methods("GET")
-	r.HandleFunc("/satellites/{satellite}", s.GetSatelliteByName).Methods("GET")       // Get specific satellite
-	r.HandleFunc("/satellites/{satellite}", s.DeleteSatelliteByName).Methods("DELETE") // Delete specific satellite
-	// r.HandleFunc("/satellites/{satellite}/images", s.GetImagesForSatellite).Methods("GET") // Get satellite images
+	r.HandleFunc("/satellites/sync", s.syncHandler).Methods("POST")                        // Heartbeat sync endpoint
+	r.HandleFunc("/satellites/active", s.getActiveSatellitesHandler).Methods("GET")        // Get active satellites
+	r.HandleFunc("/satellites/stale", s.getStaleSatellitesHandler).Methods("GET")          // Get stale satellites
+	r.HandleFunc("/satellites/{satellite}", s.GetSatelliteByName).Methods("GET")           // Get specific satellite
+	r.HandleFunc("/satellites/{satellite}", s.DeleteSatelliteByName).Methods("DELETE")     // Delete specific satellite
+	r.HandleFunc("/satellites/{satellite}/status", s.getSatelliteStatusHandler).Methods("GET") // Get satellite status
 
 	return r
 }

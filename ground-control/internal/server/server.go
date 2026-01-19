@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -29,7 +30,7 @@ var (
 	HOST     = os.Getenv("DB_HOST")
 )
 
-func NewServer() *http.Server {
+func NewServer(ctx context.Context) *http.Server {
 	port, err := strconv.Atoi(os.Getenv("PORT"))
 	if err != nil {
 		log.Fatalf("PORT is not valid: %v", err)
@@ -51,16 +52,20 @@ func NewServer() *http.Server {
 
 	dbQueries := database.New(db)
 
-	NewServer := &Server{
+	s := &Server{
 		port:      port,
 		db:        db,
 		dbQueries: dbQueries,
 	}
 
-	// Declare Server config
+	go s.StartCleanupJob(ctx, CleanupConfig{
+		RetentionDays:   defaultRetentionDays,
+		CleanupInterval: defaultCleanupInterval,
+	})
+
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", NewServer.port),
-		Handler:      NewServer.RegisterRoutes(),
+		Addr:         fmt.Sprintf(":%d", s.port),
+		Handler:      s.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
