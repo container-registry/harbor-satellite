@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
@@ -60,8 +61,13 @@ func NewStateMap(url []string) []StateMap {
 }
 
 func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPayload *scheduler.UpstreamInfo) error {
+	startTime := time.Now()
 	f.start()
-	defer f.stop()
+	defer func() {
+		f.stop()
+		upstreamPayload.LastSyncDurationMs = time.Since(startTime).Milliseconds()
+		upstreamPayload.ImageCount = f.countTotalImages()
+	}()
 
 	// Top level logger with process name
 	log := logger.FromContext(ctx).With().Str("process", f.name).Logger()
@@ -519,4 +525,14 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func (f *FetchAndReplicateStateProcess) countTotalImages() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	total := 0
+	for _, sm := range f.stateMap {
+		total += len(sm.Entities)
+	}
+	return total
 }
