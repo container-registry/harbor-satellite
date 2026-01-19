@@ -294,6 +294,14 @@ func normalizeHeartbeatInterval(interval string) (string, error) {
 		return "", fmt.Errorf("heartbeat interval must be positive, got %v", duration)
 	}
 
+	if duration < time.Second {
+		return "", fmt.Errorf("heartbeat interval must be at least 1 second, got %v", duration)
+	}
+
+	if duration.Nanoseconds()%int64(time.Second) != 0 {
+		return "", fmt.Errorf("heartbeat interval must be a whole number of seconds, got %v", duration)
+	}
+
 	// Normalize to canonical format: HHhMMmSSs
 	hours := int(duration.Hours())
 	minutes := int(duration.Minutes()) % 60

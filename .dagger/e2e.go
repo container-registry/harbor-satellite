@@ -479,11 +479,24 @@ func curlContainer(ctx context.Context, cmd []string) (string, error) {
 }
 
 func checkHealthGroundControl(ctx context.Context) {
+	timeout := time.After(2 * time.Minute)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
 	cmd := []string{"curl", "-sif", "http://gc:8080/health"}
 
-	_, err := curlContainer(ctx, cmd)
-	if err != nil {
-		log.Fatalf("health check failed for ground control service: %v", err)
+	for {
+		select {
+		case <-timeout:
+			log.Fatalf("timeout waiting for ground control health check")
+		case <-ticker.C:
+			_, err := curlContainer(ctx, cmd)
+			if err == nil {
+				log.Println("ground control service is healthy")
+				return
+			}
+			log.Printf("ground control not ready yet: %v", err)
+		}
 	}
 }
 

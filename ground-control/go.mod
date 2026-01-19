@@ -473,5 +473,3 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 	zotregistry.dev/zot v1.4.4-0.20240604183918-a4b6892a9c27 // indirect
 )
-
-replace github.com/container-registry/harbor-satellite => ../

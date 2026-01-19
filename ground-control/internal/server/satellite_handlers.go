@@ -373,6 +373,13 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	normalizedInterval, err := normalizeHeartbeatInterval(req.StateReportInterval)
+	if err != nil {
+		log.Printf("Invalid heartbeat interval %q: %v", req.StateReportInterval, err)
+		HandleAppError(w, &AppError{Message: "invalid heartbeat interval format", Code: http.StatusBadRequest})
+		return
+	}
+
 	_, err = s.dbQueries.InsertSatelliteStatus(r.Context(), database.InsertSatelliteStatusParams{
 		SatelliteID:        sat.ID,
 		Activity:           req.Activity,
@@ -388,13 +395,6 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Failed to insert status: %v", err)
 		HandleAppError(w, &AppError{Message: "failed to save status", Code: http.StatusInternalServerError})
-		return
-	}
-
-	normalizedInterval, err := normalizeHeartbeatInterval(req.StateReportInterval)
-	if err != nil {
-		log.Printf("Invalid heartbeat interval %q: %v", req.StateReportInterval, err)
-		HandleAppError(w, &AppError{Message: "invalid heartbeat interval format", Code: http.StatusBadRequest})
 		return
 	}
 
