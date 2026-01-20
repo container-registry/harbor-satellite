@@ -140,7 +140,7 @@ func (m *HarborSatellite) getPathToReleaser(name string) (string, error) {
 
 func getSupportedBuilds() map[string][]string {
 	return map[string][]string{
-		"linux":  {"amd64", "arm64", "ppc64le", "s390x", "386", "riscv64"},
+		"linux":  {"amd64", "arm64", "ppc64le", "s390x", "riscv64"},
 		"darwin": {"amd64", "arm64"},
 	}
 }
