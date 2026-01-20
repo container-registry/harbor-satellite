@@ -56,59 +56,82 @@ func HashPassword(password string) (string, error) {
 	), nil
 }
 
+type hashParams struct {
+	memory      uint32
+	iterations  uint32
+	parallelism uint8
+	keyLength   uint32
+	salt        []byte
+	hash        []byte
+}
+
 // VerifyPassword compares a password against an Argon2id hash
 func VerifyPassword(password, encodedHash string) (bool, error) {
-	salt, hash, err := decodeHash(encodedHash)
+	params, err := decodeHash(encodedHash)
 	if err != nil {
 		return false, err
 	}
 
 	otherHash := argon2.IDKey(
 		[]byte(password),
-		salt,
-		argonIterations,
-		argonMemory,
-		argonParallelism,
-		argonKeyLength,
+		params.salt,
+		params.iterations,
+		params.memory,
+		params.parallelism,
+		params.keyLength,
 	)
 
 	// Constant-time comparison
-	if subtle.ConstantTimeCompare(hash, otherHash) == 1 {
+	if subtle.ConstantTimeCompare(params.hash, otherHash) == 1 {
 		return true, nil
 	}
 	return false, nil
 }
 
-func decodeHash(encodedHash string) (salt, hash []byte, err error) {
+func decodeHash(encodedHash string) (*hashParams, error) {
 	parts := strings.Split(encodedHash, "$")
 	if len(parts) != 6 {
-		return nil, nil, ErrInvalidHash
+		return nil, ErrInvalidHash
 	}
 
 	if parts[1] != "argon2id" {
-		return nil, nil, ErrInvalidHash
+		return nil, ErrInvalidHash
 	}
 
 	var version int
-	_, err = fmt.Sscanf(parts[2], "v=%d", &version)
+	_, err := fmt.Sscanf(parts[2], "v=%d", &version)
 	if err != nil {
-		return nil, nil, ErrInvalidHash
+		return nil, ErrInvalidHash
 	}
 	if version != argon2.Version {
-		return nil, nil, ErrIncompatibleVersion
+		return nil, ErrIncompatibleVersion
 	}
 
-	salt, err = base64.RawStdEncoding.DecodeString(parts[4])
+	var memory, iterations uint32
+	var parallelism uint8
+	_, err = fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism)
 	if err != nil {
-		return nil, nil, ErrInvalidHash
+		return nil, ErrInvalidHash
 	}
 
-	hash, err = base64.RawStdEncoding.DecodeString(parts[5])
+	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
-		return nil, nil, ErrInvalidHash
+		return nil, ErrInvalidHash
 	}
 
-	return salt, hash, nil
+	hash, err := base64.RawStdEncoding.DecodeString(parts[5])
+	if err != nil {
+		return nil, ErrInvalidHash
+	}
+
+	return &hashParams{
+		memory:      memory,
+		iterations:  iterations,
+		parallelism: parallelism,
+		keyLength:   uint32(len(hash)),
+		salt:        salt,
+		hash:        hash,
+	}, nil
 }
 
 // GenerateSessionToken creates a cryptographically random session token
