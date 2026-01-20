@@ -88,6 +88,7 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 		WithEnvVariable("HARBOR_USERNAME", harborAdminUser).
 		WithEnvVariable("HARBOR_PASSWORD", harborAdminPassword).
 		WithEnvVariable("HARBOR_URL", harborDomain).
+		WithEnvVariable("ADMIN_PASSWORD", "AdminPass123").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithDirectory("/migrations", gcDir.Directory("./sql/schema")).
 		WithWorkdir("/app/ground-control").
