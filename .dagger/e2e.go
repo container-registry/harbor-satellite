@@ -301,6 +301,7 @@ func initializeHarborRegistry(ctx context.Context) {
 		executeReplication,
 		getExecuteReplication,
 		createConfig,
+		createGroup,
 	}
 
 	for _, request := range requests {
@@ -410,6 +411,15 @@ func createConfig(ctx context.Context) (string, error) {
 	return executeHTTPRequest(ctx, "POST", "/configs", data)
 }
 
+func createGroup(ctx context.Context) (string, error) {
+	data := fmt.Sprintf(`{
+		"group": "%s",
+		"registry": "%s",
+		"artifacts": []
+	}`, destNamespace, harborDomain)
+	return executeHTTPRequest(ctx, "POST", "/groups/sync", data)
+}
+
 func createReplicationPolicy(ctx context.Context) (string, error) {
 	data := fmt.Sprintf(`{
 		"name": "%s",
@@ -482,7 +492,13 @@ func getGCAuthToken(ctx context.Context) (string, error) {
 func executeHTTPRequest(ctx context.Context, method, endpoint, data string) (string, error) {
 	args := []string{"curl", "-s", "-X", method}
 
-	if endpoint == "/configs" || endpoint == "/satellites" {
+	gcEndpoints := map[string]bool{
+		"/configs":     true,
+		"/satellites":  true,
+		"/groups/sync": true,
+	}
+
+	if gcEndpoints[endpoint] {
 		token, err := getGCAuthToken(ctx)
 		if err != nil {
 			return "", err
