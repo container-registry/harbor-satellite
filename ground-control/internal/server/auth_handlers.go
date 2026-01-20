@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
@@ -121,9 +122,11 @@ func (s *Server) recordFailedAttempt(r *http.Request, username string) {
 
 	if attempts.FailedCount >= maxFailedAttempts {
 		lockUntil := time.Now().Add(lockoutDuration)
-		_ = s.dbQueries.LockAccount(r.Context(), database.LockAccountParams{
+		if err := s.dbQueries.LockAccount(r.Context(), database.LockAccountParams{
 			Username:    username,
 			LockedUntil: sql.NullTime{Time: lockUntil, Valid: true},
-		})
+		}); err != nil {
+			log.Printf("Failed to lock account %s: %v", username, err)
+		}
 	}
 }
