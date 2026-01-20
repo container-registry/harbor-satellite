@@ -415,8 +415,8 @@ func createGroup(ctx context.Context) (string, error) {
 	data := fmt.Sprintf(`{
 		"group": "%s",
 		"registry": "%s",
-		"artifacts": []
-	}`, destNamespace, harborDomain)
+		"artifacts": [{"repository": "%s/alpine", "tag": ["latest"]}]
+	}`, destNamespace, harborDomain, projectName)
 	return executeHTTPRequest(ctx, "POST", "/groups/sync", data)
 }
 
