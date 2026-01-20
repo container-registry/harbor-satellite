@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/lib/pq"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
@@ -74,7 +75,12 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		Role:         roleAdmin,
 	})
 	if err != nil {
-		http.Error(w, "User already exists", http.StatusConflict)
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			http.Error(w, "User already exists", http.StatusConflict)
+			return
+		}
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -261,7 +267,7 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Check if user exists
-	_, err := s.dbQueries.GetUserByUsername(r.Context(), username)
+	user, err := s.dbQueries.GetUserByUsername(r.Context(), username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "User not found", http.StatusNotFound)
@@ -286,8 +292,10 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Invalidate all sessions for the user whose password was changed
-	user, _ := s.dbQueries.GetUserByUsername(r.Context(), username)
-	_ = s.dbQueries.DeleteUserSessions(r.Context(), user.ID)
+	if err := s.dbQueries.DeleteUserSessions(r.Context(), user.ID); err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	w.WriteHeader(http.StatusNoContent)
 }
