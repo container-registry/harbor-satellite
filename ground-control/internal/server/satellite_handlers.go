@@ -356,6 +356,25 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate satellite token from Authorization header
+	token := extractToken(r)
+	if token == "" {
+		HandleAppError(w, &AppError{
+			Message: "missing authorization token",
+			Code:    http.StatusUnauthorized,
+		})
+		return
+	}
+
+	satelliteID, err := s.dbQueries.GetSatelliteIDByToken(r.Context(), token)
+	if err != nil {
+		HandleAppError(w, &AppError{
+			Message: "invalid token",
+			Code:    http.StatusUnauthorized,
+		})
+		return
+	}
+
 	var req SatelliteStatusParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
@@ -368,6 +387,15 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Unknown satellite: %s", req.Name)
 		HandleAppError(w, &AppError{
 			Message: "unknown satellite entity",
+			Code:    http.StatusForbidden,
+		})
+		return
+	}
+
+	// Verify token belongs to the claimed satellite
+	if sat.ID != satelliteID {
+		HandleAppError(w, &AppError{
+			Message: "token does not match satellite",
 			Code:    http.StatusForbidden,
 		})
 		return
