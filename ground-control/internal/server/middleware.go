@@ -4,8 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strings"
-
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 )
 
 type contextKey string
@@ -81,13 +79,4 @@ func extractToken(r *http.Request) string {
 	}
 
 	return parts[1]
-}
-
-// sessionRowToUser converts a database session row to AuthUser
-func sessionRowToUser(row database.GetSessionByTokenRow) AuthUser {
-	return AuthUser{
-		ID:       row.UserID,
-		Username: row.Username,
-		Role:     row.Role,
-	}
 }
