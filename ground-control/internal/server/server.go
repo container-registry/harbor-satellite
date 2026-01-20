@@ -59,7 +59,7 @@ func NewServer(ctx context.Context) *http.Server {
 	}
 
 	// Bootstrap system admin user
-	if err := s.BootstrapSystemAdmin(context.Background()); err != nil {
+	if err := s.BootstrapSystemAdmin(ctx); err != nil {
 		log.Fatalf("Failed to bootstrap system admin: %v", err)
 	}
 
