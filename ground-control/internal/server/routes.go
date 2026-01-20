@@ -14,6 +14,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/health", s.healthHandler).Methods("GET")
 	r.HandleFunc("/login", s.loginHandler).Methods("POST")
 	r.HandleFunc("/satellites/ztr/{token}", s.ztrHandler).Methods("GET") // Satellite token auth
+	r.HandleFunc("/satellites/sync", s.syncHandler).Methods("POST")      // Satellite heartbeat (uses ZTR token)
 
 	// Protected routes (require authentication)
 	protected := r.PathPrefix("").Subrouter()
@@ -53,7 +54,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Satellites
 	protected.HandleFunc("/satellites", s.listSatelliteHandler).Methods("GET")
 	protected.HandleFunc("/satellites", s.registerSatelliteHandler).Methods("POST")
-	protected.HandleFunc("/satellites/sync", s.syncHandler).Methods("POST")
 	protected.HandleFunc("/satellites/active", s.getActiveSatellitesHandler).Methods("GET")
 	protected.HandleFunc("/satellites/stale", s.getStaleSatellitesHandler).Methods("GET")
 	protected.HandleFunc("/satellites/{satellite}", s.GetSatelliteByName).Methods("GET")
