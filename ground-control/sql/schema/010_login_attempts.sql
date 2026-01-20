@@ -7,7 +7,5 @@ CREATE TABLE login_attempts (
   last_attempt TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_login_attempts_username ON login_attempts(username);
-
 -- +goose Down
 DROP TABLE login_attempts;
