@@ -114,6 +114,11 @@ func decodeHash(encodedHash string) (*hashParams, error) {
 		return nil, ErrInvalidHash
 	}
 
+	// Validate parameters to prevent panic in argon2.IDKey
+	if iterations == 0 || parallelism == 0 || memory == 0 {
+		return nil, ErrInvalidHash
+	}
+
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
 		return nil, ErrInvalidHash
