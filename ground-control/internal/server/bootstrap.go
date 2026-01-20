@@ -44,6 +44,12 @@ func (s *Server) BootstrapSystemAdmin(ctx context.Context) error {
 		Role:         roleSystemAdmin,
 	})
 	if err != nil {
+		// Handle race condition: another instance may have created admin
+		exists, checkErr := s.dbQueries.SystemAdminExists(ctx)
+		if checkErr == nil && exists {
+			log.Println("System admin created by another instance")
+			return nil
+		}
 		return fmt.Errorf("failed to create system admin: %w", err)
 	}
 
