@@ -12,7 +12,7 @@ SELECT * FROM users
 WHERE id = $1;
 
 -- name: ListUsers :many
-SELECT * FROM users
+SELECT id, username, role, created_at, updated_at FROM users
 WHERE role != 'system_admin'
 ORDER BY created_at DESC;
 
