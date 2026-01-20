@@ -19,6 +19,9 @@ const (
 	harborAdminUser     = "admin"
 	harborAdminPassword = "Harbor12345"
 
+	gcAdminUser     = "admin"
+	gcAdminPassword = "AdminPass123"
+
 	harborImageTag   = "satellite"
 	postgresImage    = "goharbor/harbor-db:v2.14.0"
 	redisImage       = "goharbor/redis-photon:v2.14.0"
@@ -448,10 +451,43 @@ func getExecuteReplication(ctx context.Context) (string, error) {
 	return executeHTTPRequest(ctx, "GET", url, "")
 }
 
+var gcAuthToken string
+
+func getGCAuthToken(ctx context.Context) (string, error) {
+	if gcAuthToken != "" {
+		return gcAuthToken, nil
+	}
+
+	loginData := fmt.Sprintf(`{"username":"%s","password":"%s"}`, gcAdminUser, gcAdminPassword)
+	args := []string{"curl", "-s", "-X", "POST", "http://gc:8080/login", "-H", "Content-Type: application/json", "-d", loginData}
+
+	stdout, err := curlContainer(ctx, args)
+	if err != nil {
+		return "", fmt.Errorf("login failed: %w", err)
+	}
+
+	// Parse token from response: {"token":"...","expires_at":"..."}
+	var resp struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		return "", fmt.Errorf("failed to parse login response: %w (response: %s)", err, stdout)
+	}
+
+	gcAuthToken = resp.Token
+	log.Printf("Got GC auth token")
+	return gcAuthToken, nil
+}
+
 func executeHTTPRequest(ctx context.Context, method, endpoint, data string) (string, error) {
 	args := []string{"curl", "-s", "-X", method}
 
 	if endpoint == "/configs" || endpoint == "/satellites" {
+		token, err := getGCAuthToken(ctx)
+		if err != nil {
+			return "", err
+		}
+		args = append(args, "-H", fmt.Sprintf("Authorization: Bearer %s", token))
 		args = append(args, fmt.Sprintf("%s%s", "http://gc:8080", endpoint))
 	} else {
 		args = append(args, "-u", fmt.Sprintf("%s:%s", harborAdminUser, harborAdminPassword))
