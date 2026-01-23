@@ -122,18 +122,37 @@ Check if Ground Control is running
 
 A `200 OK` response indicates Ground Control is healthy.
 
-## Step 4: Create a Group for Artifacts
+## Step 4: Login to Ground Control
 
-A **group** is just a set of images that the satellite needs to replicate from the upstream registry.It also consists information about all the artifacts present in it.
+Authenticate with the admin credentials to get a session token:
+
+```bash
+curl -X POST http://localhost:9090/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "admin",
+    "password": "SecurePass123"
+  }'
+```
+
+Save the token from the response for subsequent API calls:
+
+```bash
+export TOKEN="<token-from-response>"
+```
+
+## Step 5: Create a Group for Artifacts
+
+A **group** is just a set of images that the satellite needs to replicate from the upstream registry. It also contains information about all the artifacts present in it.
 
 > **Note:** _You must modify the body given below according to your registry._
-
 
 Use the following `curl` command to create a group. Modify the JSON body to match your registry and artifacts:
 
 ```bash
 curl -X POST http://localhost:9090/groups/sync \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{
     "group": "group1",
     "registry": "http://localhost:8080",
@@ -149,76 +168,77 @@ curl -X POST http://localhost:9090/groups/sync \
   }'
 ```
 
-
 > **Note:** _Replace `repository`, `tag`, and `digest` with your artifact details. Use `docker inspect` or Harbor's UI to find the digest._
 
-## Step 5: Configure the Satellite
+## Step 6: Configure the Satellite
 
 Now you need to create a config artifact for the satellite. An example is given [example](https://github.com/container-registry/harbor-satellite/blob/main/examples/config.json). This artifact tells the satellite where the ground control is located and defines how and when to replicate artifacts from it. It also includes details about the local OCI-compliant registry, specified separately under its own field.
 
 ```bash
-curl -i --location 'http://localhost:9090/configs' \
---header 'Content-Type: application/json' \
---data '{
-  "config_name": "config1",
-  "config": {
-    "state_config": {},
-    "app_config": {
-      "ground_control_url": "http://host.docker.internal:9090",
-      "log_level": "info",
-      "use_unsecure": true,
-      "state_replication_interval": "@every 00h00m10s",
-      "register_satellite_interval": "@every 00h00m10s",
-      "local_registry": {
-        "url": "http://0.0.0.0:8585"
+curl -X POST http://localhost:9090/configs \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "config_name": "config1",
+    "config": {
+      "state_config": {},
+      "app_config": {
+        "ground_control_url": "http://host.docker.internal:9090",
+        "log_level": "info",
+        "use_unsecure": true,
+        "state_replication_interval": "@every 00h00m10s",
+        "register_satellite_interval": "@every 00h00m10s",
+        "local_registry": {
+          "url": "http://0.0.0.0:8585"
+        },
+        "heartbeat_interval": "@every 00h00m30s"
       },
-      "heartbeat_interval": "@every 00h00m30s"
-    },
-    "zot_config": {
-      "distSpecVersion": "1.1.0",
-      "storage": {
-        "rootDirectory": "./zot"
-      },
-      "http": {
-        "address": "0.0.0.0",
-        "port": "8585"
-      },
-      "log": {
-        "level": "info"
+      "zot_config": {
+        "distSpecVersion": "1.1.0",
+        "storage": {
+          "rootDirectory": "./zot"
+        },
+        "http": {
+          "address": "0.0.0.0",
+          "port": "8585"
+        },
+        "log": {
+          "level": "info"
+        }
       }
     }
-  }
-}'
+  }'
 ```
 
 > **Tip:** _Adjust `ground_control_url` and `local_registry.url` if running on a different host or port_.
 
-## Step 6: Register the Satellite
+## Step 7: Register the Satellite
 
-Register the satellite with the group and configuration created earlier. This request returns a token, which you must save for the next step:
+Register the satellite with the group and configuration created earlier. This request returns a satellite token, which you must save for the next step:
 
 ```bash
-curl --location 'http://localhost:9090/satellites' \
---header 'Content-Type: application/json' \
---data '{
+curl -X POST http://localhost:9090/satellites \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
     "name": "satellite_1",
     "groups": ["group1"],
     "config_name": "config1"
-}'
+  }'
 ```
 
-> **Important**: Copy the token from the response. _Where will you store this token to ensure it’s secure and accessible?_
+> **Important**: Copy the satellite token from the response. This is different from your admin session token.
 
-## Step 7: Start the Satellite
+## Step 8: Start the Satellite
 
-Set up the satellite using the token from Step 6. Choose one of the following options: Example [here](https://github.com/container-registry/harbor-satellite/blob/main/.env.example)
+Set up the satellite using the satellite token from Step 7. Choose one of the following options: Example [here](https://github.com/container-registry/harbor-satellite/blob/main/.env.example)
 
 **Option 1: Using Docker Compose (Recommended for End Users)**
 
-1. Start the satellite with your token:
+1. Start the satellite with your satellite token:
 
    ```bash
-   TOKEN=<your-token> docker compose up -d
+   TOKEN=<satellite-token> docker compose up -d
    ```
 
    > **Note:** _Ground Control URL is pre-configured in `.env` to use `host.docker.internal:9090`._
@@ -231,18 +251,18 @@ Set up the satellite using the token from Step 6. Choose one of the following op
    dagger call build --source=. --component=satellite export --path=./bin
    ```
 
-2. Run the binary with the token:
+2. Run the binary with the satellite token:
 
    ```bash
-   ./bin --token "<your-token>" --ground-control-url "http://host.docker.internal:9090"
+   ./bin --token "<satellite-token>" --ground-control-url "http://host.docker.internal:9090"
    ```
 
 **Option 3: Using Go**
 
 1. Run the satellite directly:
-   
+
    ```bash
-    go run cmd/main.go --token "<your token here>" --ground-control-url "<ground control url here>"
+   go run cmd/main.go --token "<satellite-token>" --ground-control-url "<ground control url here>"
    ```
 
 
@@ -250,7 +270,7 @@ Set up the satellite using the token from Step 6. Choose one of the following op
 
 
 
-### 7. Configure Local Registry as Mirror (Optional)
+### 9. Configure Local Registry as Mirror (Optional)
 
 Harbor Satellite allows you to set up a local registry as a mirror for upstream registries. Using the optional `--mirrors` flag, you can specify which upstream registries should be mirrored. The configured container runtime interface (CRI) will attempt to pull images from the local registry (Zot by default) first, and use the upstream registry as a fallback if the image is not available locally.
 #### Supported CRIs
