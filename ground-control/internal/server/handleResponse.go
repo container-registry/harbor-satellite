@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -17,9 +18,18 @@ func (e *AppError) Error() string {
 
 // write JSON response with given status code and data.
 func WriteJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+	respBytes, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("Failed to marshal JSON response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	_ = json.NewEncoder(w).Encode(data)
+	if _, err := w.Write(respBytes); err != nil {
+		log.Printf("Failed to write JSON response: %v", err)
+	}
 }
 
 // handle AppError and senda structured JSON response.
