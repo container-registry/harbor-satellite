@@ -35,6 +35,8 @@ type HarborSatellite struct {
 	// Local or remote directory with source code, defaults to "./"
 	// +defaultPath="./"
 	Source *dagger.Directory
+
+	gcAuthToken string
 }
 
 // start the dev server for ground-control.
