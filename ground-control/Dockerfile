@@ -15,10 +15,14 @@ COPY cmd/ ./cmd/
 # Copy ground-control module
 COPY ground-control/ ./ground-control/
 
-# Download dependencies and build
+# Download dependencies and build with cache
 WORKDIR /app/ground-control
-RUN go mod download
-RUN CGO_ENABLED=0 GOOS=linux go build -o /ground-control ./main.go
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -o /ground-control ./main.go
 
 # Final stage
 FROM alpine:3.19

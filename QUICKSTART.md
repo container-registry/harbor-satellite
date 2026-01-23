@@ -124,14 +124,14 @@ A `200 OK` response indicates Ground Control is healthy.
 
 ## Step 4: Login to Ground Control
 
-Authenticate with the admin credentials to get a session token:
+Authenticate with the admin credentials to get a session token. Use the password you set in `ADMIN_PASSWORD`:
 
 ```bash
 curl -X POST http://localhost:9090/login \
   -H "Content-Type: application/json" \
   -d '{
     "username": "admin",
-    "password": "SecurePass123"
+    "password": "<your-ADMIN_PASSWORD>"
   }'
 ```
 

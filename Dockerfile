@@ -8,13 +8,18 @@ RUN apk add --no-cache git
 
 # Copy go mod files first for caching
 COPY go.mod go.sum ./
-RUN go mod download
+
+# Download dependencies with cache mount
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -o /satellite ./cmd/main.go
+# Build the binary with cache mount
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -o /satellite ./cmd/main.go
 
 # Final stage
 FROM alpine:3.19
