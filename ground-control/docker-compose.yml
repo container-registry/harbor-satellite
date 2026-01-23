@@ -21,16 +21,13 @@ services:
       context: ..
       dockerfile: ground-control/Dockerfile
     container_name: groundcontrol
+    env_file: .env
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_DATABASE: groundcontrol
       DB_USERNAME: postgres
       DB_PASSWORD: password
-      HARBOR_USERNAME: admin
-      HARBOR_PASSWORD: Harbor12345
-      HARBOR_URL: http://host.docker.internal:8080
-      PORT: 9090
     ports:
       - "9090:9090"
     extra_hosts:
