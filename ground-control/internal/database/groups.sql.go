@@ -162,3 +162,15 @@ func (q *Queries) ListGroups(ctx context.Context) ([]Group, error) {
 	}
 	return items, nil
 }
+
+const getGroupIDByName = `-- name: GetGroupIDByName :one
+SELECT id FROM groups
+WHERE group_name = $1
+`
+
+func (q *Queries) GetGroupIDByName(ctx context.Context, groupName string) (int32, error) {
+	row := q.db.QueryRowContext(ctx, getGroupIDByName, groupName)
+	var id int32
+	err := row.Scan(&id)
+	return id, err
+}

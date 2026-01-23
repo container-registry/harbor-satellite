@@ -82,17 +82,16 @@ func addSatelliteToGroups(ctx context.Context, q *database.Queries, groups *[]st
 					}
 				}
 			}
-			group, err := q.GetGroupByName(ctx, groupName)
+			groupID, err := q.GetGroupIDByName(ctx, groupName)
 			if err != nil {
 				return nil, &AppError{
 					Message: fmt.Sprintf("Error: Invalid Group Name: %v", groupName),
 					Code:    http.StatusBadRequest,
 				}
 			}
-			// TODO: we just need the group id here.
 			if err := q.AddSatelliteToGroup(ctx, database.AddSatelliteToGroupParams{
 				SatelliteID: satelliteID,
-				GroupID:     group.ID,
+				GroupID:     groupID,
 			}); err != nil {
 				return nil, err
 			}

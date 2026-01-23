@@ -29,3 +29,7 @@ WHERE group_name = $1;
 
 -- name: CheckGroupExists :one
 SELECT EXISTS(SELECT 1 FROM groups WHERE group_name = $1);
+
+-- name: GetGroupIDByName :one
+SELECT id FROM groups
+WHERE group_name = $1;
