@@ -234,6 +234,12 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Invalidate all sessions including current session
+	if err := s.dbQueries.DeleteUserSessions(r.Context(), user.ID); err != nil {
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
