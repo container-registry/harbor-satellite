@@ -14,9 +14,8 @@ import (
 )
 
 const (
-	minPasswordLength = 8
-	roleAdmin         = "admin"
-	roleSystemAdmin   = "system_admin"
+	roleAdmin       = "admin"
+	roleSystemAdmin = "system_admin"
 )
 
 type createUserRequest struct {
@@ -58,8 +57,8 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.Password) < minPasswordLength {
-		WriteJSONError(w, "Password must be at least 8 characters", http.StatusBadRequest)
+	if err := s.passwordPolicy.Validate(req.Password); err != nil {
+		WriteJSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -202,8 +201,8 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if len(req.NewPassword) < minPasswordLength {
-		WriteJSONError(w, "Password must be at least 8 characters", http.StatusBadRequest)
+	if err := s.passwordPolicy.Validate(req.NewPassword); err != nil {
+		WriteJSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -254,8 +253,8 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if len(req.NewPassword) < minPasswordLength {
-		WriteJSONError(w, "Password must be at least 8 characters", http.StatusBadRequest)
+	if err := s.passwordPolicy.Validate(req.NewPassword); err != nil {
+		WriteJSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 

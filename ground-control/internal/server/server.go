@@ -13,13 +13,15 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/lib/pq"
 
+	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 )
 
 type Server struct {
-	port      int
-	db        *sql.DB
-	dbQueries *database.Queries
+	port           int
+	db             *sql.DB
+	dbQueries      *database.Queries
+	passwordPolicy auth.PasswordPolicy
 }
 
 var (
@@ -51,11 +53,13 @@ func NewServer(ctx context.Context) *http.Server {
 	}
 
 	dbQueries := database.New(db)
+	passwordPolicy := auth.LoadPolicyFromEnv()
 
 	s := &Server{
-		port:      port,
-		db:        db,
-		dbQueries: dbQueries,
+		port:           port,
+		db:             db,
+		dbQueries:      dbQueries,
+		passwordPolicy: passwordPolicy,
 	}
 
 	// Bootstrap system admin user

@@ -29,8 +29,8 @@ func (s *Server) BootstrapSystemAdmin(ctx context.Context) error {
 		return fmt.Errorf("ADMIN_PASSWORD environment variable is required for initial setup")
 	}
 
-	if len(password) < minPasswordLength {
-		return fmt.Errorf("ADMIN_PASSWORD must be at least %d characters", minPasswordLength)
+	if err := s.passwordPolicy.Validate(password); err != nil {
+		return fmt.Errorf("ADMIN_PASSWORD invalid: %w", err)
 	}
 
 	hash, err := auth.HashPassword(password)
