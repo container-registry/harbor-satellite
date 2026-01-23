@@ -89,14 +89,10 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(loginResponse{
+	WriteJSONResponse(w, http.StatusOK, loginResponse{
 		Token:     token,
 		ExpiresAt: expiresAt.Format(time.RFC3339),
-	}); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
+	})
 }
 
 func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {

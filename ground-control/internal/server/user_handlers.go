@@ -84,17 +84,12 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(userResponse{
+	WriteJSONResponse(w, http.StatusCreated, userResponse{
 		ID:        user.ID,
 		Username:  user.Username,
 		Role:      user.Role,
 		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	}); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
+	})
 }
 
 // listUsersHandler lists all users except system_admin
@@ -115,11 +110,7 @@ func (s *Server) listUsersHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
+	WriteJSONResponse(w, http.StatusOK, response)
 }
 
 // getUserHandler gets a specific user by username
@@ -143,16 +134,12 @@ func (s *Server) getUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(userResponse{
+	WriteJSONResponse(w, http.StatusOK, userResponse{
 		ID:        user.ID,
 		Username:  user.Username,
 		Role:      user.Role,
 		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	}); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
+	})
 }
 
 // deleteUserHandler deletes a user (system_admin only, cannot delete self)
