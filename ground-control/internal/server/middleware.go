@@ -22,13 +22,13 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := extractToken(r)
 		if token == "" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		session, err := s.dbQueries.GetSessionByToken(r.Context(), token)
 		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
@@ -48,12 +48,12 @@ func (s *Server) RequireRole(role string, next http.HandlerFunc) http.HandlerFun
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, ok := GetUserFromContext(r.Context())
 		if !ok {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		if user.Role != role {
-			http.Error(w, "Forbidden", http.StatusForbidden)
+			WriteJSONError(w, "Forbidden", http.StatusForbidden)
 			return
 		}
 

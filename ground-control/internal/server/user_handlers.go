@@ -44,28 +44,28 @@ type changeUserPasswordRequest struct {
 func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	var req createUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	if req.Username == "" {
-		http.Error(w, "Username is required", http.StatusBadRequest)
+		WriteJSONError(w, "Username is required", http.StatusBadRequest)
 		return
 	}
 
 	if req.Username == "admin" {
-		http.Error(w, "Username 'admin' is reserved", http.StatusBadRequest)
+		WriteJSONError(w, "Username 'admin' is reserved", http.StatusBadRequest)
 		return
 	}
 
 	if len(req.Password) < minPasswordLength {
-		http.Error(w, "Password must be at least 8 characters", http.StatusBadRequest)
+		WriteJSONError(w, "Password must be at least 8 characters", http.StatusBadRequest)
 		return
 	}
 
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -77,10 +77,10 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
-			http.Error(w, "User already exists", http.StatusConflict)
+			WriteJSONError(w, "User already exists", http.StatusConflict)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -96,7 +96,7 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listUsersHandler(w http.ResponseWriter, r *http.Request) {
 	users, err := s.dbQueries.ListUsers(r.Context())
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -121,16 +121,16 @@ func (s *Server) getUserHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := s.dbQueries.GetUserByUsername(r.Context(), username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "User not found", http.StatusNotFound)
+			WriteJSONError(w, "User not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	// Hide system_admin from regular queries
 	if user.Role == roleSystemAdmin {
-		http.Error(w, "User not found", http.StatusNotFound)
+		WriteJSONError(w, "User not found", http.StatusNotFound)
 		return
 	}
 
@@ -149,17 +149,17 @@ func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	currentUser, ok := GetUserFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	if username == currentUser.Username {
-		http.Error(w, "Cannot delete yourself", http.StatusBadRequest)
+		WriteJSONError(w, "Cannot delete yourself", http.StatusBadRequest)
 		return
 	}
 
 	if username == "admin" {
-		http.Error(w, "Cannot delete system admin", http.StatusBadRequest)
+		WriteJSONError(w, "Cannot delete system admin", http.StatusBadRequest)
 		return
 	}
 
@@ -167,21 +167,21 @@ func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := s.dbQueries.GetUserByUsername(r.Context(), username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "User not found", http.StatusNotFound)
+			WriteJSONError(w, "User not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	// Delete user's sessions first (CASCADE should handle this, but explicit)
 	if err := s.dbQueries.DeleteUserSessions(r.Context(), user.ID); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	if err := s.dbQueries.DeleteUser(r.Context(), username); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -192,37 +192,37 @@ func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	currentUser, ok := GetUserFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	var req changePasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	if len(req.NewPassword) < minPasswordLength {
-		http.Error(w, "Password must be at least 8 characters", http.StatusBadRequest)
+		WriteJSONError(w, "Password must be at least 8 characters", http.StatusBadRequest)
 		return
 	}
 
 	// Verify current password
 	user, err := s.dbQueries.GetUserByUsername(r.Context(), currentUser.Username)
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	valid, err := auth.VerifyPassword(req.CurrentPassword, user.PasswordHash)
 	if err != nil || !valid {
-		http.Error(w, "Current password is incorrect", http.StatusUnauthorized)
+		WriteJSONError(w, "Current password is incorrect", http.StatusUnauthorized)
 		return
 	}
 
 	hash, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -230,7 +230,7 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 		Username:     currentUser.Username,
 		PasswordHash: hash,
 	}); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -244,12 +244,12 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 
 	var req changeUserPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	if len(req.NewPassword) < minPasswordLength {
-		http.Error(w, "Password must be at least 8 characters", http.StatusBadRequest)
+		WriteJSONError(w, "Password must be at least 8 characters", http.StatusBadRequest)
 		return
 	}
 
@@ -257,16 +257,16 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 	user, err := s.dbQueries.GetUserByUsername(r.Context(), username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Error(w, "User not found", http.StatusNotFound)
+			WriteJSONError(w, "User not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	hash, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -274,13 +274,13 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 		Username:     username,
 		PasswordHash: hash,
 	}); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	// Invalidate all sessions for the user whose password was changed
 	if err := s.dbQueries.DeleteUserSessions(r.Context(), user.ID); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 

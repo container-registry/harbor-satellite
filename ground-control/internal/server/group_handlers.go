@@ -133,7 +133,7 @@ func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.GetGroupByName(r.Context(), group)
 	if err != nil {
 		log.Printf("Could not get group: %v", err)
-		http.Error(w, err.Error(), http.StatusNotFound)
+		WriteJSONError(w, err.Error(), http.StatusNotFound)
 		return
 	}
 

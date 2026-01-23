@@ -31,24 +31,24 @@ type loginResponse struct {
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	if req.Username == "" || req.Password == "" {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
 	// Check if account is locked
 	attempts, err := s.dbQueries.GetLoginAttempts(r.Context(), req.Username)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	if err == nil && attempts.LockedUntil.Valid && attempts.LockedUntil.Time.After(time.Now()) {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
@@ -56,7 +56,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := s.dbQueries.GetUserByUsername(r.Context(), req.Username)
 	if err != nil {
 		s.recordFailedAttempt(r, req.Username)
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
@@ -64,7 +64,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	valid, err := auth.VerifyPassword(req.Password, user.PasswordHash)
 	if err != nil || !valid {
 		s.recordFailedAttempt(r, req.Username)
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
@@ -74,7 +74,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	// Generate session token
 	token, err := auth.GenerateSessionToken()
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -85,7 +85,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -98,12 +98,12 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	token := extractToken(r)
 	if token == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	if err := s.dbQueries.DeleteSession(r.Context(), token); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
