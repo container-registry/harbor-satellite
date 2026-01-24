@@ -20,6 +20,8 @@ HARBOR_URL=http://localhost:8080
 
 PORT=9090
 ADMIN_PASSWORD=SecurePass123
+SESSION_DURATION_HOURS=24
+LOCKOUT_DURATION_MINUTES=15
 
 # Password Policy (optional)
 PASSWORD_MIN_LENGTH=8
@@ -65,6 +67,7 @@ Ground Control is the central service that manages satellite configurations. Let
    # Ground Control Settings
    PORT=9090
    ADMIN_PASSWORD=SecurePass123
+   SESSION_DURATION_HOURS=24
 
    # Password Policy (optional)
    PASSWORD_MIN_LENGTH=8
@@ -140,6 +143,8 @@ Save the token from the response for subsequent API calls:
 ```bash
 export TOKEN="<token-from-response>"
 ```
+
+> **Note:** The Bearer token is valid for 24 hours by default. Configure `SESSION_DURATION_HOURS` in `.env` to change this.
 
 ## Step 5: Create a Group for Artifacts
 

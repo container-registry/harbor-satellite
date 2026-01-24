@@ -18,11 +18,18 @@ import (
 )
 
 type Server struct {
-	port           int
-	db             *sql.DB
-	dbQueries      *database.Queries
-	passwordPolicy auth.PasswordPolicy
+	port            int
+	db              *sql.DB
+	dbQueries       *database.Queries
+	passwordPolicy  auth.PasswordPolicy
+	sessionDuration time.Duration
+	lockoutDuration time.Duration
 }
+
+const (
+	defaultSessionDurationHours = 24
+	defaultLockoutDurationMins  = 15
+)
 
 var (
 	dbName   = os.Getenv("DB_DATABASE")
@@ -31,6 +38,26 @@ var (
 	PORT     = os.Getenv("DB_PORT")
 	HOST     = os.Getenv("DB_HOST")
 )
+
+func loadSessionDuration() time.Duration {
+	hours := defaultSessionDurationHours
+	if envVal := os.Getenv("SESSION_DURATION_HOURS"); envVal != "" {
+		if parsed, err := strconv.Atoi(envVal); err == nil && parsed > 0 {
+			hours = parsed
+		}
+	}
+	return time.Duration(hours) * time.Hour
+}
+
+func loadLockoutDuration() time.Duration {
+	mins := defaultLockoutDurationMins
+	if envVal := os.Getenv("LOCKOUT_DURATION_MINUTES"); envVal != "" {
+		if parsed, err := strconv.Atoi(envVal); err == nil && parsed > 0 {
+			mins = parsed
+		}
+	}
+	return time.Duration(mins) * time.Minute
+}
 
 func NewServer(ctx context.Context) *http.Server {
 	port, err := strconv.Atoi(os.Getenv("PORT"))
@@ -54,12 +81,16 @@ func NewServer(ctx context.Context) *http.Server {
 
 	dbQueries := database.New(db)
 	passwordPolicy := auth.LoadPolicyFromEnv()
+	sessionDuration := loadSessionDuration()
+	lockoutDuration := loadLockoutDuration()
 
 	s := &Server{
-		port:           port,
-		db:             db,
-		dbQueries:      dbQueries,
-		passwordPolicy: passwordPolicy,
+		port:            port,
+		db:              db,
+		dbQueries:       dbQueries,
+		passwordPolicy:  passwordPolicy,
+		sessionDuration: sessionDuration,
+		lockoutDuration: lockoutDuration,
 	}
 
 	// Bootstrap system admin user

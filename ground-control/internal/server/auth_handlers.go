@@ -12,11 +12,7 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 )
 
-const (
-	maxFailedAttempts = 5
-	lockoutDuration   = 15 * time.Minute
-	sessionDuration   = 24 * time.Hour
-)
+const maxFailedAttempts = 5
 
 type loginRequest struct {
 	Username string `json:"username"`
@@ -78,7 +74,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expiresAt := time.Now().Add(sessionDuration)
+	expiresAt := time.Now().Add(s.sessionDuration)
 	_, err = s.dbQueries.CreateSession(r.Context(), database.CreateSessionParams{
 		UserID:    user.ID,
 		Token:     token,
@@ -117,7 +113,7 @@ func (s *Server) recordFailedAttempt(r *http.Request, username string) {
 	}
 
 	if attempts.FailedCount >= maxFailedAttempts {
-		lockUntil := time.Now().Add(lockoutDuration)
+		lockUntil := time.Now().Add(s.lockoutDuration)
 		if err := s.dbQueries.LockAccount(r.Context(), database.LockAccountParams{
 			Username:    username,
 			LockedUntil: sql.NullTime{Time: lockUntil, Valid: true},
