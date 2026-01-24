@@ -158,7 +158,7 @@ curl -X POST http://localhost:9090/groups/sync \
     "registry": "http://localhost:8080",
     "artifacts": [
       {
-        "repository": "satellite/alpine",
+        "repository": "library/alpine",
         "tag": ["latest"],
         "type": "docker",
         "digest": "sha256:5a6ee6c36824d527a0fe91a2a7c160c2e286bbeae46cd931c337ac769f1bd930",
