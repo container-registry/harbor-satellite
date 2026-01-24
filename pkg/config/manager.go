@@ -171,7 +171,7 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 
 }
 
-func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging bool) (*ConfigManager, []string, error) {
+func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure bool) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
 
@@ -184,6 +184,11 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 		cfg = &Config{}
 	} else if err != nil {
 		return nil, nil, fmt.Errorf("failed to read config: %w", err)
+	}
+
+	// Override use_unsecure from CLI/env if set
+	if useUnsecure {
+		cfg.AppConfig.UseUnsecure = true
 	}
 
 	cfg, warnings, err := ValidateAndEnforceDefaults(cfg, groundControlURL)

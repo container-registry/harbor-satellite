@@ -8,6 +8,7 @@ services:
     environment:
       - GROUND_CONTROL_URL=${GROUND_CONTROL_URL}
       - TOKEN=${TOKEN}
+      - USE_UNSECURE=${USE_UNSECURE:-false}
     ports:
       - "8090:8080"
       - "8585:8585"
