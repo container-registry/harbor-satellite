@@ -37,11 +37,13 @@ func main() {
 	var jsonLogging bool
 	var groundControlURL string
 	var token string
+	var useUnsecure bool
 	var mirrors mirrorFlags
 
 	flag.StringVar(&groundControlURL, "ground-control-url", "", "URL to ground control")
 	flag.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
 	flag.StringVar(&token, "token", "", "Satellite token")
+	flag.BoolVar(&useUnsecure, "use-unsecure", false, "Use insecure (HTTP) connections to registries")
 	flag.Var(&mirrors, "mirrors", "Specify CRI and registries in the form CRI:registry1,registry2")
 
 	flag.Parse()
@@ -52,13 +54,16 @@ func main() {
 	if groundControlURL == "" {
 		groundControlURL = os.Getenv("GROUND_CONTROL_URL")
 	}
+	if !useUnsecure {
+		useUnsecure = os.Getenv("USE_UNSECURE") == "true"
+	}
 
 	if token == "" || groundControlURL == "" {
 		fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars.")
 		os.Exit(1)
 	}
 
-	cm, _, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging)
+	cm, _, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging, useUnsecure)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		os.Exit(1)
@@ -78,19 +83,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = run(jsonLogging, token, groundControlURL)
+	err = run(jsonLogging, token, groundControlURL, useUnsecure)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(jsonLogging bool, token, groundControlURL string) error {
+func run(jsonLogging bool, token, groundControlURL string, useUnsecure bool) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging)
+	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging, useUnsecure)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		return err

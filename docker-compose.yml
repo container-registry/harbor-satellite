@@ -1,11 +1,17 @@
 services:
   satellite:
-    image: 8gears.container-registry.com/harbor-satellite/satellite:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: satellite
+    env_file: .env
     environment:
-      - GROUND_CONTROL_URL=http://172.17.0.1:8888
-      - TOKEN=c78dc95cae68e73664a067cb8bc0c6d2
+      - GROUND_CONTROL_URL=${GROUND_CONTROL_URL}
+      - TOKEN=${TOKEN}
+      - USE_UNSECURE=${USE_UNSECURE:-false}
     ports:
-      - "8090:8080"  # Expose ports as needed
-      - "8585:8585"  # Expose ports as needed
+      - "8090:8080"
+      - "8585:8585"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: always
