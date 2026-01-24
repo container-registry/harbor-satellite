@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"strings"
+
+	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 )
 
 type contextKey string
@@ -17,25 +20,46 @@ type AuthUser struct {
 	Role     string
 }
 
-// AuthMiddleware validates session tokens and adds user info to context
+// AuthMiddleware validates session tokens or basic auth and adds user info to context
 func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := extractToken(r)
-		if token == "" {
-			WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
-			return
+		var user AuthUser
+		var authenticated bool
+
+		// Try Bearer token first
+		if token := extractBearerToken(r); token != "" {
+			session, err := s.dbQueries.GetSessionByToken(r.Context(), token)
+			if err == nil {
+				user = AuthUser{
+					ID:       session.UserID,
+					Username: session.Username,
+					Role:     session.Role,
+				}
+				authenticated = true
+			}
 		}
 
-		session, err := s.dbQueries.GetSessionByToken(r.Context(), token)
-		if err != nil {
-			WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
-			return
+		// Try Basic auth if Bearer didn't work
+		if !authenticated {
+			if username, password, ok := extractBasicAuth(r); ok {
+				dbUser, err := s.dbQueries.GetUserByUsername(r.Context(), username)
+				if err == nil {
+					valid, err := auth.VerifyPassword(password, dbUser.PasswordHash)
+					if err == nil && valid {
+						user = AuthUser{
+							ID:       dbUser.ID,
+							Username: dbUser.Username,
+							Role:     dbUser.Role,
+						}
+						authenticated = true
+					}
+				}
+			}
 		}
 
-		user := AuthUser{
-			ID:       session.UserID,
-			Username: session.Username,
-			Role:     session.Role,
+		if !authenticated {
+			WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
+			return
 		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, user)
@@ -68,6 +92,10 @@ func GetUserFromContext(ctx context.Context) (AuthUser, bool) {
 }
 
 func extractToken(r *http.Request) string {
+	return extractBearerToken(r)
+}
+
+func extractBearerToken(r *http.Request) string {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		return ""
@@ -79,4 +107,28 @@ func extractToken(r *http.Request) string {
 	}
 
 	return parts[1]
+}
+
+func extractBasicAuth(r *http.Request) (username, password string, ok bool) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return "", "", false
+	}
+
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Basic") {
+		return "", "", false
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", "", false
+	}
+
+	credentials := strings.SplitN(string(decoded), ":", 2)
+	if len(credentials) != 2 {
+		return "", "", false
+	}
+
+	return credentials[0], credentials[1], true
 }
