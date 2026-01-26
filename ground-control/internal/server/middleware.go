@@ -21,6 +21,7 @@ type AuthUser struct {
 }
 
 // AuthMiddleware validates session tokens or basic auth and adds user info to context
+// It also accepts satellite tokens for satellite-specific endpoints
 func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var user AuthUser
@@ -28,6 +29,7 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 
 		// Try Bearer token first
 		if token := extractBearerToken(r); token != "" {
+			// First try as a user session token
 			session, err := s.dbQueries.GetSessionByToken(r.Context(), token)
 			if err == nil {
 				user = AuthUser{
@@ -36,6 +38,20 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 					Role:     session.Role,
 				}
 				authenticated = true
+			} else {
+				// If not a session token, try as a satellite token
+				satelliteID, err := s.dbQueries.GetSatelliteIDByToken(r.Context(), token)
+				if err == nil {
+					satellite, err := s.dbQueries.GetSatellite(r.Context(), satelliteID)
+					if err == nil {
+						user = AuthUser{
+							ID:       satellite.ID,
+							Username: satellite.Name,
+							Role:     "satellite",
+						}
+						authenticated = true
+					}
+				}
 			}
 		}
 

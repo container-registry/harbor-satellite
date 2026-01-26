@@ -75,7 +75,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context, upstream *schedule
 		log.Warn().Err(err).Msg("Failed to collect status report parameters")
 	}
 
-	if err := sendStatusReport(ctx, groundControlURL, &req); err != nil {
+	if err := sendStatusReport(ctx, groundControlURL, s.cm.Token, &req); err != nil {
 		return fmt.Errorf("failed to send status report: %w", err)
 	}
 
@@ -117,7 +117,7 @@ func (s *StatusReportingProcess) Name() string {
 	return s.name
 }
 
-func sendStatusReport(ctx context.Context, groundControlURL string, req *StatusReportParams) error {
+func sendStatusReport(ctx context.Context, groundControlURL, token string, req *StatusReportParams) error {
 	url := fmt.Sprintf("%s/satellites/sync", groundControlURL)
 
 	body, err := json.Marshal(req)
@@ -133,6 +133,7 @@ func sendStatusReport(ctx context.Context, groundControlURL string, req *StatusR
 		return fmt.Errorf("failed to create status report request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 
 	client := &http.Client{}
 	resp, err := client.Do(httpReq)
@@ -145,6 +146,9 @@ func sendStatusReport(ctx context.Context, groundControlURL string, req *StatusR
 
 	if resp.StatusCode == http.StatusForbidden {
 		return fmt.Errorf("satellite not registered with ground-control")
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("satellite authentication failed - invalid token")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("status report failed with status code %d", resp.StatusCode)

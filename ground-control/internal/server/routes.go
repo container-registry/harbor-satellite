@@ -14,11 +14,13 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.HandleFunc("/health", s.healthHandler).Methods("GET")
 	r.HandleFunc("/login", s.loginHandler).Methods("POST")
 	r.HandleFunc("/satellites/ztr/{token}", s.ztrHandler).Methods("GET") // Satellite token auth
-	r.HandleFunc("/satellites/sync", s.syncHandler).Methods("POST")      // Satellite heartbeat (uses ZTR token)
 
 	// Protected routes (require authentication)
 	protected := r.PathPrefix("").Subrouter()
 	protected.Use(s.AuthMiddleware)
+
+	// Satellite sync (authenticated with satellite token only)
+	protected.HandleFunc("/satellites/sync", s.RequireRole("satellite", s.syncHandler)).Methods("POST")
 
 	// Auth
 	protected.HandleFunc("/logout", s.logoutHandler).Methods("POST")
