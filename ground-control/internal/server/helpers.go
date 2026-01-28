@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -11,7 +10,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
@@ -63,6 +61,39 @@ func setSatelliteConfig(ctx context.Context, q *database.Queries, satelliteName 
 		}
 	}
 	return &sat, nil
+}
+
+func validateRequestBody(w http.ResponseWriter, req RegisterSatelliteParams) error {
+	if len(req.Name) < 1 {
+		log.Println("name should be at least one character long.")
+		return &AppError{
+			Message: "Error: name should be at least one character long.",
+			Code:    http.StatusBadRequest,
+		}
+	}
+	return nil
+}
+
+// If the robot account is already present, we need to check if the robot account
+// permissions need to be updated.
+// i.e, check if the satellite is already connected to the groups in the request body.
+// if not, then update the robot account.
+func checkRobotAccountExistence(ctx context.Context, name string) error {
+	roboPresent, err := harbor.IsRobotPresent(ctx, name)
+	if err != nil {
+		log.Println(err)
+		return &AppError{
+			Message: fmt.Sprintf("Error querying for robot account: %v", err.Error()),
+			Code:    http.StatusBadRequest,
+		}
+	}
+	if roboPresent {
+		return &AppError{
+			Message: "Error: Robot Account name already present. Try with a different name.",
+			Code:    http.StatusBadRequest,
+		}
+	}
+	return nil
 }
 
 func addSatelliteToGroups(ctx context.Context, q *database.Queries, groups *[]string, satelliteID int32) ([]string, error) {
@@ -215,6 +246,14 @@ func GenerateRandomToken(charLength int) (string, error) {
 	return hex.EncodeToString(token), nil
 }
 
+// maskToken returns a masked version of a token for secure logging.
+func maskToken(token string) string {
+	if len(token) < 8 {
+		return "***"
+	}
+	return fmt.Sprintf("%s...%s", token[:4], token[len(token)-4:])
+}
+
 func GetAuthToken(r *http.Request) (string, error) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
@@ -257,55 +296,4 @@ func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, sate
 		}
 	}
 	return configObject, nil
-}
-
-func toNullString(s string) sql.NullString {
-	return sql.NullString{String: s, Valid: s != ""}
-}
-
-func toNullInt64(n int64) sql.NullInt64 {
-	return sql.NullInt64{Int64: n, Valid: true}
-}
-
-func toNullInt32(n int32) sql.NullInt32 {
-	return sql.NullInt32{Int32: n, Valid: true}
-}
-
-// normalizeHeartbeatInterval validates and normalizes the heartbeat interval to a canonical format.
-// Expected input format: "@every HHhMMmSSs" (e.g., "@every 00h01m30s")
-// Returns the normalized interval string or an error if the format is invalid.
-func normalizeHeartbeatInterval(interval string) (string, error) {
-	if interval == "" {
-		return "", nil
-	}
-
-	const prefix = "@every "
-	if !strings.HasPrefix(interval, prefix) {
-		return "", fmt.Errorf("invalid heartbeat interval format: must start with %q", prefix)
-	}
-
-	durationStr := strings.TrimPrefix(interval, prefix)
-	duration, err := time.ParseDuration(durationStr)
-	if err != nil {
-		return "", fmt.Errorf("invalid heartbeat interval duration %q: %w", durationStr, err)
-	}
-
-	if duration <= 0 {
-		return "", fmt.Errorf("heartbeat interval must be positive, got %v", duration)
-	}
-
-	if duration < time.Second {
-		return "", fmt.Errorf("heartbeat interval must be at least 1 second, got %v", duration)
-	}
-
-	if duration.Nanoseconds()%int64(time.Second) != 0 {
-		return "", fmt.Errorf("heartbeat interval must be a whole number of seconds, got %v", duration)
-	}
-
-	// Normalize to canonical format: HHhMMmSSs
-	hours := int(duration.Hours())
-	minutes := int(duration.Minutes()) % 60
-	seconds := int(duration.Seconds()) % 60
-
-	return fmt.Sprintf("@every %02dh%02dm%02ds", hours, minutes, seconds), nil
 }

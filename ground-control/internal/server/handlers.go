@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 )
@@ -17,7 +18,8 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	err := s.db.Ping()
 	if err != nil {
 		log.Printf("error pinging db: %v", err)
-		WriteJSONResponse(w, http.StatusServiceUnavailable, map[string]string{"status": "unhealthy"})
+		msg, _ := json.Marshal(map[string]string{"status": "unhealthy"})
+		http.Error(w, string(msg), http.StatusBadRequest)
 		return
 	}
 

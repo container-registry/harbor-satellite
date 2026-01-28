@@ -3,62 +3,57 @@ package server
 import (
 	"net/http"
 
+	"github.com/container-registry/harbor-satellite/ground-control/internal/middleware"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
 	"github.com/gorilla/mux"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
 	r := mux.NewRouter()
 
-	// Public routes
 	r.HandleFunc("/ping", s.Ping).Methods("GET")
 	r.HandleFunc("/health", s.healthHandler).Methods("GET")
-	r.HandleFunc("/login", s.loginHandler).Methods("POST")
-	r.HandleFunc("/satellites/ztr/{token}", s.ztrHandler).Methods("GET") // Satellite token auth
-	r.HandleFunc("/satellites/sync", s.syncHandler).Methods("POST")      // Satellite heartbeat (uses ZTR token)
-
-	// Protected routes (require authentication)
-	protected := r.PathPrefix("").Subrouter()
-	protected.Use(s.AuthMiddleware)
-
-	// Auth
-	protected.HandleFunc("/logout", s.logoutHandler).Methods("POST")
-
-	// Users (all authenticated users)
-	protected.HandleFunc("/users", s.listUsersHandler).Methods("GET")
-	protected.HandleFunc("/users/password", s.changeOwnPasswordHandler).Methods("PATCH")
-	protected.HandleFunc("/users/{username}", s.getUserHandler).Methods("GET")
-
-	// User management (system_admin only)
-	protected.HandleFunc("/users", s.RequireRole(roleSystemAdmin, s.createUserHandler)).Methods("POST")
-	protected.HandleFunc("/users/{username}", s.RequireRole(roleSystemAdmin, s.deleteUserHandler)).Methods("DELETE")
-	protected.HandleFunc("/users/{username}/password", s.RequireRole(roleSystemAdmin, s.changeUserPasswordHandler)).Methods("PATCH")
 
 	// Groups
-	protected.HandleFunc("/groups", s.listGroupHandler).Methods("GET")
-	protected.HandleFunc("/groups/sync", s.groupsSyncHandler).Methods("POST")
-	protected.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET")
+	r.HandleFunc("/groups", s.listGroupHandler).Methods("GET")        // List all groups
+	r.HandleFunc("/groups/sync", s.groupsSyncHandler).Methods("POST") // Sync groups
+	r.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET") // Get specific group
 
 	// Satellites in groups
-	protected.HandleFunc("/groups/{group}/satellites", s.groupSatelliteHandler).Methods("GET")
-	protected.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")
-	protected.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")
+	r.HandleFunc("/groups/{group}/satellites", s.groupSatelliteHandler).Methods("GET") // List satellites in group
+	r.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")           // Add satellite to group
+	r.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")    // Remove satellite from group
 
 	// Configs
-	protected.HandleFunc("/configs", s.listConfigsHandler).Methods("GET")
-	protected.HandleFunc("/configs", s.createConfigHandler).Methods("POST")
-	protected.HandleFunc("/configs/{config}", s.updateConfigHandler).Methods("PATCH")
-	protected.HandleFunc("/configs/{config}", s.getConfigHandler).Methods("GET")
-	protected.HandleFunc("/configs/{config}", s.deleteConfigHandler).Methods("DELETE")
-	protected.HandleFunc("/configs/satellite", s.setSatelliteConfig).Methods("POST")
+	r.HandleFunc("/configs", s.listConfigsHandler).Methods("GET")
+	r.HandleFunc("/configs", s.createConfigHandler).Methods("POST")
+	r.HandleFunc("/configs/{config}", s.updateConfigHandler).Methods("PATCH")
+	r.HandleFunc("/configs/{config}", s.getConfigHandler).Methods("GET")
+	r.HandleFunc("/configs/{config}", s.deleteConfigHandler).Methods("DELETE")
+	r.HandleFunc("/configs/satellite", s.setSatelliteConfig).Methods("POST")
 
-	// Satellites
-	protected.HandleFunc("/satellites", s.listSatelliteHandler).Methods("GET")
-	protected.HandleFunc("/satellites", s.registerSatelliteHandler).Methods("POST")
-	protected.HandleFunc("/satellites/active", s.getActiveSatellitesHandler).Methods("GET")
-	protected.HandleFunc("/satellites/stale", s.getStaleSatellitesHandler).Methods("GET")
-	protected.HandleFunc("/satellites/{satellite}", s.GetSatelliteByName).Methods("GET")
-	protected.HandleFunc("/satellites/{satellite}", s.DeleteSatelliteByName).Methods("DELETE")
-	protected.HandleFunc("/satellites/{satellite}/status", s.getSatelliteStatusHandler).Methods("GET")
+	// ZTR endpoints (must be defined before wildcard routes)
+	// Token-based ZTR (backward compatible)
+	ztrSubrouter := r.PathPrefix("/satellites/ztr").Subrouter()
+	ztrSubrouter.Use(middleware.RateLimitMiddleware(s.rateLimiter))
+	ztrSubrouter.HandleFunc("/{token}", s.ztrHandler).Methods("GET")
+
+	// SPIFFE-based ZTR (mTLS authentication, no token required)
+	// The satellite's identity is verified via SPIFFE SVID in TLS handshake
+	spiffeZtrSubrouter := r.PathPrefix("/satellites/spiffe-ztr").Subrouter()
+	spiffeZtrSubrouter.Use(spiffe.RequireSPIFFEAuth)
+	spiffeZtrSubrouter.Use(middleware.RateLimitMiddleware(s.rateLimiter))
+	spiffeZtrSubrouter.HandleFunc("", s.spiffeZtrHandler).Methods("GET")
+
+	// SPIRE status endpoint
+	r.HandleFunc("/spire/status", s.spireStatusHandler).Methods("GET")
+
+	// Satellites (wildcard routes must come after specific routes)
+	r.HandleFunc("/satellites", s.listSatelliteHandler).Methods("GET")      // List all satellites
+	r.HandleFunc("/satellites", s.registerSatelliteHandler).Methods("POST") // Register new satellite
+	r.HandleFunc("/satellites/{satellite}/join-token", s.generateJoinTokenHandler).Methods("POST") // SPIRE join token
+	r.HandleFunc("/satellites/{satellite}", s.GetSatelliteByName).Methods("GET")       // Get specific satellite
+	r.HandleFunc("/satellites/{satellite}", s.DeleteSatelliteByName).Methods("DELETE") // Delete specific satellite
 
 	return r
 }

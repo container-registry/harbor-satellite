@@ -20,7 +20,6 @@ type HotReloadManager struct {
 	log                       *zerolog.Logger
 	ctx                       context.Context
 	stateReplicationScheduler *scheduler.Scheduler
-	heartbeatScheduler        *scheduler.Scheduler
 	changeCallbacks           map[config.ConfigChangeType][]config.ConfigChangeCallback
 	callbackMu                sync.RWMutex
 }
@@ -30,14 +29,12 @@ func NewHotReloadManager(
 	cm *config.ConfigManager,
 	log *zerolog.Logger,
 	stateReplicationScheduler *scheduler.Scheduler,
-	heartbeatScheduler *scheduler.Scheduler,
 ) *HotReloadManager {
 	manager := &HotReloadManager{
 		cm:                        cm,
 		log:                       log,
 		ctx:                       ctx,
 		stateReplicationScheduler: stateReplicationScheduler,
-		heartbeatScheduler:        heartbeatScheduler,
 		changeCallbacks:           make(map[config.ConfigChangeType][]config.ConfigChangeCallback),
 	}
 
@@ -97,15 +94,6 @@ func (hrm *HotReloadManager) handleIntervalsChange(change config.ConfigChange) e
 			return fmt.Errorf("unable to restart state replication scheduler: %w", err)
 		}
 	}
-
-	if hrm.heartbeatScheduler != nil {
-		hrm.log.Info().Msg("Restarting heartbeat scheduler with new interval")
-		err := hrm.heartbeatScheduler.ResetIntervalFromExpr(hrm.cm.GetHeartbeatInterval())
-		if err != nil {
-			return fmt.Errorf("unable to heartbeat scheduler: %w", err)
-		}
-	}
-
 	return nil
 }
 

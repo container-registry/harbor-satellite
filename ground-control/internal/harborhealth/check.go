@@ -24,11 +24,18 @@ func defaultConfig() *config {
 			"portal":      {},
 			"trivy":       {},
 			"registryctl": {},
+			"jobservice":  {},
 		},
 	}
 }
 
 func CheckHealth() error {
+	// Allow skipping health check for development/testing
+	if os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true" {
+		log.Println("WARNING: Harbor health check skipped (SKIP_HARBOR_HEALTH_CHECK=true)")
+		return nil
+	}
+
 	config := defaultConfig()
 	return checkhealth(config)
 }
