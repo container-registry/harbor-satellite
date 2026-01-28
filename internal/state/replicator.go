@@ -2,9 +2,13 @@ package state
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	satTLS "github.com/container-registry/harbor-satellite/internal/tls"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
@@ -26,9 +30,14 @@ type BasicReplicator struct {
 	remoteRegistryURL string
 	remoteUsername    string
 	remotePassword    string
+	tlsCfg            config.TLSConfig
 }
 
 func NewBasicReplicator(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool) Replicator {
+	return NewBasicReplicatorWithTLS(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword, useUnsecure, config.TLSConfig{})
+}
+
+func NewBasicReplicatorWithTLS(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool, tlsCfg config.TLSConfig) Replicator {
 	return &BasicReplicator{
 		sourceUsername:    sourceUsername,
 		sourcePassword:    sourcePassword,
@@ -37,6 +46,7 @@ func NewBasicReplicator(sourceUsername, sourcePassword, sourceRegistry, remoteUR
 		sourceRegistry:    sourceRegistry,
 		remoteUsername:    remoteUsername,
 		remotePassword:    remotePassword,
+		tlsCfg:            tlsCfg,
 	}
 }
 
@@ -78,6 +88,14 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 	if r.useUnsecure {
 		pullOptions = append(pullOptions, crane.Insecure)
 		pushOptions = append(pushOptions, crane.Insecure)
+	} else {
+		transport, err := r.buildTLSTransport()
+		if err != nil {
+			return fmt.Errorf("build TLS transport: %w", err)
+		}
+		if transport != nil {
+			pullOptions = append(pullOptions, crane.WithTransport(transport))
+		}
 	}
 
 	for _, replicationEntity := range replicationEntities {
@@ -129,4 +147,27 @@ func (r *BasicReplicator) DeleteReplicationEntity(ctx context.Context, replicati
 	}
 
 	return nil
+}
+
+func (r *BasicReplicator) buildTLSTransport() (http.RoundTripper, error) {
+	if r.tlsCfg.CertFile == "" && r.tlsCfg.CAFile == "" {
+		return nil, nil
+	}
+
+	cfg := &satTLS.Config{
+		CertFile:   r.tlsCfg.CertFile,
+		KeyFile:    r.tlsCfg.KeyFile,
+		CAFile:     r.tlsCfg.CAFile,
+		SkipVerify: r.tlsCfg.SkipVerify,
+		MinVersion: tls.VersionTLS12,
+	}
+
+	tlsConfig, err := satTLS.LoadClientTLSConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("load TLS config: %w", err)
+	}
+
+	return &http.Transport{
+		TLSClientConfig: tlsConfig,
+	}, nil
 }

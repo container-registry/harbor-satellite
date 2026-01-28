@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/container-registry/harbor-satellite/internal/registry"
@@ -22,10 +23,14 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 
 	var warnings []string
 
-	if config.AppConfig.GroundControlURL == "" {
-		warnings = append(warnings, fmt.Sprintf(
-			"ground_control_url not provided. Defaulting to default ground_control_url: %s", defaultGroundControlURL,
-		))
+	// Environment variable/CLI flag always takes precedence over config file
+	if defaultGroundControlURL != "" {
+		if config.AppConfig.GroundControlURL != "" && string(config.AppConfig.GroundControlURL) != defaultGroundControlURL {
+			warnings = append(warnings, fmt.Sprintf(
+				"ground_control_url from env/CLI (%s) takes precedence over config file (%s)",
+				defaultGroundControlURL, config.AppConfig.GroundControlURL,
+			))
+		}
 		config.AppConfig.GroundControlURL = URL(defaultGroundControlURL)
 	}
 
@@ -41,6 +46,11 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 			config.AppConfig.LogLevel,
 		))
 		config.AppConfig.LogLevel = zerolog.LevelInfoValue
+	}
+
+	// Check for USE_UNSECURE environment variable
+	if useUnsecure := os.Getenv("USE_UNSECURE"); useUnsecure != "" {
+		config.AppConfig.UseUnsecure = strings.ToLower(useUnsecure) == "true" || useUnsecure == "1"
 	}
 
 	bringOwnRegistry := config.AppConfig.BringOwnRegistry
@@ -86,11 +96,6 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		config.AppConfig.LocalRegistryCredentials.URL = URL(zotConfig.GetRegistryURL())
 	}
 
-	if config.AppConfig.HeartbeatInterval == "" {
-		config.AppConfig.HeartbeatInterval = DefaultStateReportCronExpr
-		warnings = append(warnings, fmt.Sprintf("heartbeat interval not specified, defaulting to : %s", DefaultStateReportCronExpr))
-	}
-
 	if !isValidCronExpression(config.AppConfig.StateReplicationInterval) {
 		config.AppConfig.StateReplicationInterval = DefaultFetchAndReplicateCronExpr
 		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for state_replication_interval, using default schedule %s", DefaultFetchAndReplicateCronExpr))
@@ -101,9 +106,10 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for register_satellite_interval, using default schedule %s", DefaultZTRCronExpr))
 	}
 
-	if !isValidCronExpression(config.AppConfig.HeartbeatInterval) {
-		config.AppConfig.HeartbeatInterval = DefaultStateReportCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for state_report_interval, using default schedule %s", DefaultStateReportCronExpr))
+	tlsWarnings, tlsErr := validateTLSConfig(&config.AppConfig.TLS)
+	warnings = append(warnings, tlsWarnings...)
+	if tlsErr != nil {
+		return nil, warnings, tlsErr
 	}
 
 	return config, warnings, nil
@@ -115,4 +121,41 @@ func isValidCronExpression(cronExpression string) bool {
 		return false
 	}
 	return true
+}
+
+// validateTLSConfig validates TLS configuration.
+func validateTLSConfig(tls *TLSConfig) ([]string, error) {
+	var warnings []string
+
+	if tls.CertFile == "" && tls.KeyFile == "" && tls.CAFile == "" {
+		return warnings, nil
+	}
+
+	if (tls.CertFile != "" && tls.KeyFile == "") || (tls.CertFile == "" && tls.KeyFile != "") {
+		return warnings, fmt.Errorf("both cert_file and key_file must be provided together")
+	}
+
+	if tls.CertFile != "" {
+		if _, err := os.Stat(tls.CertFile); os.IsNotExist(err) {
+			return warnings, fmt.Errorf("TLS cert_file not found: %s", tls.CertFile)
+		}
+	}
+
+	if tls.KeyFile != "" {
+		if _, err := os.Stat(tls.KeyFile); os.IsNotExist(err) {
+			return warnings, fmt.Errorf("TLS key_file not found: %s", tls.KeyFile)
+		}
+	}
+
+	if tls.CAFile != "" {
+		if _, err := os.Stat(tls.CAFile); os.IsNotExist(err) {
+			return warnings, fmt.Errorf("TLS ca_file not found: %s", tls.CAFile)
+		}
+	}
+
+	if tls.SkipVerify {
+		warnings = append(warnings, "TLS skip_verify is enabled, certificate verification will be skipped")
+	}
+
+	return warnings, nil
 }

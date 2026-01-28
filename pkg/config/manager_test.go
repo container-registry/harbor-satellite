@@ -41,7 +41,7 @@ func TestInitConfigManager(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "Success", path: validConfigPath, wantErr: false},
-		{name: "FileMissing", path: "/non/existent/path.json", wantErr: false}, // Missing file uses defaults
+		{name: "FileMissing", path: "/non/existent/path.json", wantErr: false}, // missing file uses defaults
 		{name: "InvalidJSON", path: invalidConfigPath, wantErr: true},
 	}
 
@@ -50,7 +50,7 @@ func TestInitConfigManager(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := InitConfigManager(token, ground_control_url, tt.path, "", false, false)
+			_, _, err := InitConfigManager(token, ground_control_url, tt.path, "", false)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {

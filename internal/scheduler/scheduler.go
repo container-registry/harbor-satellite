@@ -10,47 +10,30 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type UpstreamInfo struct {
-	LatestStateDigest  string
-	LatestConfigDigest string
-	CurrentActivity    string
-	StateURL           string
-	LastSyncDurationMs int64
-	ImageCount         int
-}
-
 // Scheduler manages the execution of processes with configurable intervals
 type Scheduler struct {
-	name            string
-	ticker          *time.Ticker
-	process         Process
-	log             *zerolog.Logger
-	interval        time.Duration
-	mu              sync.Mutex
-	upstreamPayload *UpstreamInfo
+	name     string
+	ticker   *time.Ticker
+	process  Process
+	log      *zerolog.Logger
+	interval time.Duration
+	mu       sync.Mutex
 }
 
-const (
-	ActivityStateSynced      = "state synced successfully"
-	ActivityEncounteredError = "encountered error"
-	ActivityReconcilingState = "reconciling state"
-)
-
 // NewSchedulerWithInterval creates a new scheduler with a parsed interval string
-func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog.Logger, upstreamPayload *UpstreamInfo) (*Scheduler, error) {
-	duration, err := ParseEveryExpr(intervalExpr)
+func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog.Logger) (*Scheduler, error) {
+	duration, err := parseEveryExpr(intervalExpr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse interval: %w", err)
 	}
 
 	ticker := time.NewTicker(duration)
 	scheduler := &Scheduler{
-		name:            process.Name(),
-		ticker:          ticker,
-		process:         process,
-		log:             log,
-		interval:        duration,
-		upstreamPayload: upstreamPayload,
+		name:     process.Name(),
+		ticker:   ticker,
+		process:  process,
+		log:      log,
+		interval: duration,
 	}
 
 	return scheduler, nil
@@ -100,7 +83,7 @@ func (s *Scheduler) ResetInterval(newInterval time.Duration) {
 
 // ResetIntervalFromExpr changes the ticker interval using an expression string
 func (s *Scheduler) ResetIntervalFromExpr(intervalExpr string) error {
-	duration, err := ParseEveryExpr(intervalExpr)
+	duration, err := parseEveryExpr(intervalExpr)
 	if err != nil {
 		return fmt.Errorf("failed to parse interval: %w", err)
 	}
@@ -136,7 +119,7 @@ func (s *Scheduler) launchProcess(ctx context.Context) {
 			Msg("Scheduler triggering task execution")
 
 		go func() {
-			if err := s.process.Execute(ctx, s.upstreamPayload); err != nil {
+			if err := s.process.Execute(ctx); err != nil {
 				s.log.Warn().
 					Str("Process", s.process.Name()).
 					Err(err).
@@ -150,7 +133,7 @@ func (s *Scheduler) launchProcess(ctx context.Context) {
 	}
 }
 
-func ParseEveryExpr(expr string) (time.Duration, error) {
+func parseEveryExpr(expr string) (time.Duration, error) {
 	const prefix = "@every "
 	if expr == "" {
 		return 0, fmt.Errorf("empty expression provided")

@@ -14,10 +14,19 @@ type RegistryCredentials struct {
 	Password string `json:"password,omitempty"`
 }
 
-type MetricsConfig struct {
-	CollectCPU     bool `json:"collect_cpu"`
-	CollectMemory  bool `json:"collect_memory"`
-	CollectStorage bool `json:"collect_storage"`
+// TLSConfig holds TLS settings for secure connections.
+type TLSConfig struct {
+	CertFile   string `json:"cert_file,omitempty"`
+	KeyFile    string `json:"key_file,omitempty"`
+	CAFile     string `json:"ca_file,omitempty"`
+	SkipVerify bool   `json:"skip_verify,omitempty"`
+}
+
+// SPIFFEConfig holds SPIFFE/SPIRE authentication settings.
+type SPIFFEConfig struct {
+	Enabled          bool   `json:"enabled,omitempty"`
+	EndpointSocket   string `json:"endpoint_socket,omitempty"`
+	ExpectedServerID string `json:"expected_server_id,omitempty"`
 }
 
 type AppConfig struct {
@@ -28,9 +37,9 @@ type AppConfig struct {
 	RegisterSatelliteInterval string              `json:"register_satellite_interval,omitempty"`
 	BringOwnRegistry          bool                `json:"bring_own_registry,omitempty"`
 	LocalRegistryCredentials  RegistryCredentials `json:"local_registry,omitempty"`
-	DisableHeartbeat          bool                `json:"disable_heartbeat,omitempty"`
-	HeartbeatInterval         string              `json:"heartbeat_interval,omitempty"`
-	Metrics                   MetricsConfig       `json:"metrics,omitempty"`
+	TLS                       TLSConfig           `json:"tls,omitempty"`
+	SPIFFE                    SPIFFEConfig        `json:"spiffe,omitempty"`
+	EncryptConfig             bool                `json:"encrypt_config,omitempty"`
 }
 
 type StateConfig struct {

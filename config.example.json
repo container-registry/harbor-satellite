@@ -11,7 +11,14 @@
     "register_satellite_interval": "@every 00h00m10s",
     "local_registry": {
       "url": "http://0.0.0.0:8585"
-    }
+    },
+    "tls": {
+      "cert_file": "",
+      "key_file": "",
+      "ca_file": "",
+      "skip_verify": false
+    },
+    "encrypt_config": false
   },
   "zot_config": {
     "distSpecVersion": "1.1.0",

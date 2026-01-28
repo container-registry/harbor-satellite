@@ -37,14 +37,18 @@ func main() {
 	var jsonLogging bool
 	var groundControlURL string
 	var token string
-	var useUnsecure bool
 	var mirrors mirrorFlags
+	var spiffeEnabled bool
+	var spiffeEndpointSocket string
+	var spiffeExpectedServerID string
 
 	flag.StringVar(&groundControlURL, "ground-control-url", "", "URL to ground control")
 	flag.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
 	flag.StringVar(&token, "token", "", "Satellite token")
-	flag.BoolVar(&useUnsecure, "use-unsecure", false, "Use insecure (HTTP) connections to registries")
 	flag.Var(&mirrors, "mirrors", "Specify CRI and registries in the form CRI:registry1,registry2")
+	flag.BoolVar(&spiffeEnabled, "spiffe-enabled", false, "Enable SPIFFE/SPIRE authentication")
+	flag.StringVar(&spiffeEndpointSocket, "spiffe-endpoint-socket", config.DefaultSPIFFEEndpointSocket, "SPIFFE Workload API endpoint socket")
+	flag.StringVar(&spiffeExpectedServerID, "spiffe-expected-server-id", "", "Expected SPIFFE ID of Ground Control server")
 
 	flag.Parse()
 
@@ -54,19 +58,39 @@ func main() {
 	if groundControlURL == "" {
 		groundControlURL = os.Getenv("GROUND_CONTROL_URL")
 	}
-	if !useUnsecure {
-		useUnsecure = os.Getenv("USE_UNSECURE") == "true"
+	if os.Getenv("SPIFFE_ENABLED") == "true" {
+		spiffeEnabled = true
+	}
+	if os.Getenv("SPIFFE_ENDPOINT_SOCKET") != "" {
+		spiffeEndpointSocket = os.Getenv("SPIFFE_ENDPOINT_SOCKET")
+	}
+	if os.Getenv("SPIFFE_EXPECTED_SERVER_ID") != "" {
+		spiffeExpectedServerID = os.Getenv("SPIFFE_EXPECTED_SERVER_ID")
 	}
 
-	if token == "" || groundControlURL == "" {
-		fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars.")
+	// Token is not required if SPIFFE is enabled
+	if !spiffeEnabled && (token == "" || groundControlURL == "") {
+		fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars (or enable SPIFFE with --spiffe-enabled).")
+		os.Exit(1)
+	}
+	if groundControlURL == "" {
+		fmt.Println("Missing required argument: --ground-control-url or GROUND_CONTROL_URL env var.")
 		os.Exit(1)
 	}
 
-	cm, _, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging, useUnsecure)
+	cm, _, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		os.Exit(1)
+	}
+
+	// Apply SPIFFE config from CLI flags
+	if spiffeEnabled {
+		cm.With(config.SetSPIFFEConfig(config.SPIFFEConfig{
+			Enabled:          spiffeEnabled,
+			EndpointSocket:   spiffeEndpointSocket,
+			ExpectedServerID: spiffeExpectedServerID,
+		}))
 	}
 
 	// get local registry addrress from raw zot config
@@ -83,22 +107,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = run(jsonLogging, token, groundControlURL, useUnsecure)
+	err = run(jsonLogging, token, groundControlURL, spiffeEnabled, spiffeEndpointSocket, spiffeExpectedServerID)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(jsonLogging bool, token, groundControlURL string, useUnsecure bool) error {
+func run(jsonLogging bool, token, groundControlURL string, spiffeEnabled bool, spiffeEndpointSocket, spiffeExpectedServerID string) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging, useUnsecure)
+	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		return err
+	}
+
+	// Apply SPIFFE config from CLI flags
+	if spiffeEnabled {
+		cm.With(config.SetSPIFFEConfig(config.SPIFFEConfig{
+			Enabled:          spiffeEnabled,
+			EndpointSocket:   spiffeEndpointSocket,
+			ExpectedServerID: spiffeExpectedServerID,
+		}))
 	}
 
 	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), jsonLogging, warnings)
@@ -113,7 +146,6 @@ func run(jsonLogging bool, token, groundControlURL string, useUnsecure bool) err
 		ctx,
 		cm,
 		log,
-		nil,
 		nil, // Will be set after scheduler creation
 	)
 
@@ -161,7 +193,9 @@ func run(jsonLogging bool, token, groundControlURL string, useUnsecure bool) err
 	}
 
 	for _, s := range s.GetSchedulers() {
-		hotReloadManager.SetStateReplicationScheduler(s)
+		if s.Name() == config.ReplicateStateJobName {
+			hotReloadManager.SetStateReplicationScheduler(s)
+		}
 	}
 
 	// Wait until context is cancelled
