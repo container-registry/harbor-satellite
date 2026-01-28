@@ -1,0 +1,55 @@
+# SPIRE Docker Compose for Harbor Satellite
+# This is a development/testing setup. For production, use Kubernetes or a more robust deployment.
+
+services:
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:1.10.4
+    container_name: spire-server
+    hostname: spire-server
+    command: ["-config", "/opt/spire/conf/server/server.conf"]
+    volumes:
+      - ./server.conf:/opt/spire/conf/server/server.conf:ro
+      - ./certs:/opt/spire/conf/server:ro
+      - spire-server-data:/opt/spire/data/server
+      - spire-server-socket:/tmp/spire-server/private
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["/opt/spire/bin/spire-server", "healthcheck", "-socketPath", "/tmp/spire-server/private/api.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - harbor-satellite
+
+  spire-agent:
+    image: ghcr.io/spiffe/spire-agent:1.10.4
+    container_name: spire-agent
+    hostname: spire-agent
+    command: ["-config", "/opt/spire/conf/agent/agent.conf"]
+    volumes:
+      - ./agent.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - spire-agent-data:/opt/spire/data/agent
+      - spire-agent-socket:/run/spire/sockets
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      spire-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["/opt/spire/bin/spire-agent", "healthcheck", "-socketPath", "/run/spire/sockets/agent.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - harbor-satellite
+
+volumes:
+  spire-server-data:
+  spire-server-socket:
+  spire-agent-data:
+  spire-agent-socket:
+
+networks:
+  harbor-satellite:
+    external: true
