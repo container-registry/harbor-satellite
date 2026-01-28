@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	DEFAULT_GO           = "golang:1.24.11"
+	DEFAULT_GO           = "golang:1.24.3"
 	PROJ_MOUNT           = "/app"
-	GO_VERSION           = "1.24.11"
+	GO_VERSION           = "1.24.3"
 	DOCKER_PORT          = 2375
 	GORELEASER_VERSION   = "v2.9.0"
 	GOLANGCILINT_VERSION = "v2.0.2"
@@ -35,8 +35,6 @@ type HarborSatellite struct {
 	// Local or remote directory with source code, defaults to "./"
 	// +defaultPath="./"
 	Source *dagger.Directory
-
-	gcAuthToken string
 }
 
 // start the dev server for ground-control.
@@ -149,7 +147,15 @@ func (m *HarborSatellite) Build(
 	source *dagger.Directory,
 	component string,
 ) (*dagger.Directory, error) {
-	directory := source
+	var directory *dagger.Directory
+	switch {
+	case component == "satellite":
+		directory = source
+	case component == "ground-control":
+		directory = source.Directory(GROUND_CONTROL_PATH)
+	default:
+		return nil, fmt.Errorf("unknown component: %s", component)
+	}
 	return m.build(directory, component), nil
 }
 

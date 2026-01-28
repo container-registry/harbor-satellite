@@ -19,18 +19,10 @@ func (m *HarborSatellite) build(source *dagger.Directory, component string) *dag
 
 	outputs := dag.Directory()
 
-	var workDir string
-	switch {
-	case component == "satellite":
-		workDir = PROJ_MOUNT
-	case component == "ground-control":
-		workDir = PROJ_MOUNT + "/ground-control"
-	}
-
 	golang := dag.Container().
 		From(DEFAULT_GO).
 		WithDirectory(PROJ_MOUNT, source).
-		WithWorkdir(workDir).
+		WithWorkdir(PROJ_MOUNT).
 		WithExec([]string{"ls", "-la"})
 
 	// Iterate through supported builds
@@ -140,7 +132,7 @@ func (m *HarborSatellite) getPathToReleaser(name string) (string, error) {
 
 func getSupportedBuilds() map[string][]string {
 	return map[string][]string{
-		"linux":  {"amd64", "arm64", "ppc64le", "s390x", "riscv64"},
+		"linux":  {"amd64", "arm64", "ppc64le", "s390x", "386", "riscv64"},
 		"darwin": {"amd64", "arm64"},
 	}
 }
