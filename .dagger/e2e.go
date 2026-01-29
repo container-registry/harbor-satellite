@@ -90,6 +90,7 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 		WithEnvVariable("HARBOR_USERNAME", harborAdminUser).
 		WithEnvVariable("HARBOR_PASSWORD", harborAdminPassword).
 		WithEnvVariable("HARBOR_URL", harborDomain).
+		WithEnvVariable("ADMIN_PASSWORD", gcAdminPassword).
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithDirectory("/migrations", gcDir.Directory("./sql/schema")).
 		WithWorkdir("/app").
@@ -406,7 +407,7 @@ func (m *HarborSatellite) createConfig(ctx context.Context) (string, error) {
 			}
 		}
 	}`, harborDomain)
-	return m.executeHTTPRequest(ctx, "POST", "/configs", data)
+	return m.executeHTTPRequest(ctx, "POST", "/api/configs", data)
 }
 
 func (m *HarborSatellite) createGroup(ctx context.Context) (string, error) {
@@ -415,7 +416,7 @@ func (m *HarborSatellite) createGroup(ctx context.Context) (string, error) {
 		"registry": "%s",
 		"artifacts": [{"repository": "%s/alpine", "tag": ["latest"]}]
 	}`, destNamespace, harborDomain, projectName)
-	return m.executeHTTPRequest(ctx, "POST", "/groups/sync", data)
+	return m.executeHTTPRequest(ctx, "POST", "/api/groups/sync", data)
 }
 
 func (m *HarborSatellite) createReplicationPolicy(ctx context.Context) (string, error) {
@@ -493,9 +494,9 @@ func (m *HarborSatellite) executeHTTPRequest(ctx context.Context, method, endpoi
 	args := []string{"curl", "-sf", "-X", method}
 
 	gcEndpoints := map[string]bool{
-		"/configs":     true,
-		"/satellites":  true,
-		"/groups/sync": true,
+		"/api/configs":    true,
+		"/api/satellites": true,
+		"/api/groups/sync": true,
 	}
 
 	if gcEndpoints[endpoint] {
@@ -561,7 +562,7 @@ func (m *HarborSatellite) registerSatelliteAndZTR(ctx context.Context) {
 		"config_name": "test-config"
 	}`, destNamespace)
 
-	registerResp, err := m.executeHTTPRequest(ctx, "POST", "/satellites", registerReq)
+	registerResp, err := m.executeHTTPRequest(ctx, "POST", "/api/satellites", registerReq)
 	if err != nil {
 		log.Fatalf("failed to register satellite: %v", err)
 	}
@@ -700,6 +701,7 @@ func (m *HarborSatellite) startGroundControlWithEmbeddedSPIRE(ctx context.Contex
 		WithEnvVariable("SPIRE_BIND_ADDRESS", "0.0.0.0").
 		// Skip Harbor health check for this test
 		WithEnvVariable("SKIP_HARBOR_HEALTH_CHECK", "true").
+		WithEnvVariable("ADMIN_PASSWORD", gcAdminPassword).
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithDirectory("/migrations", gcDir.Directory("./sql/schema")).
 		// Install SPIRE server binary
