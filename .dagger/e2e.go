@@ -494,9 +494,10 @@ func (m *HarborSatellite) executeHTTPRequest(ctx context.Context, method, endpoi
 	args := []string{"curl", "-sf", "-X", method}
 
 	gcEndpoints := map[string]bool{
-		"/api/configs":    true,
-		"/api/satellites": true,
+		"/api/configs":     true,
+		"/api/satellites":  true,
 		"/api/groups/sync": true,
+		"/api/join-tokens": true,
 	}
 
 	if gcEndpoints[endpoint] {
@@ -864,13 +865,5 @@ func (m *HarborSatellite) generateJoinToken(ctx context.Context, satelliteName, 
 	data := fmt.Sprintf(`{"satellite_name": "%s", "region": "%s", "ttl_seconds": 600}`,
 		satelliteName, region)
 
-	cmd := []string{
-		"curl", "-s",
-		"-X", "POST",
-		"-H", "Content-Type: application/json",
-		"-d", data,
-		"http://gc:8080/join-tokens",
-	}
-
-	return curlContainer(ctx, cmd)
+	return m.executeHTTPRequest(ctx, "POST", "/api/join-tokens", data)
 }
