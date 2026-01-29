@@ -66,7 +66,7 @@ func main() {
 	if os.Getenv("SPIFFE_ENDPOINT_SOCKET") != "" {
 		spiffeEndpointSocket = os.Getenv("SPIFFE_ENDPOINT_SOCKET")
 	}
-	if os.Getenv("SPIFFE_EXPECTED_SERVER_ID") != "" {
+	if spiffeExpectedServerID == "" && os.Getenv("SPIFFE_EXPECTED_SERVER_ID") != "" {
 		spiffeExpectedServerID = os.Getenv("SPIFFE_EXPECTED_SERVER_ID")
 	}
 	if !useUnsecure {
