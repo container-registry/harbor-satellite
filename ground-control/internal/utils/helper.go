@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -258,7 +259,11 @@ func DeleteArtifact(deleteURL string) error {
 		return fmt.Errorf("failed to send request: %v", err)
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Error closing response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("failed to delete repository, received status: %d", resp.StatusCode)
@@ -271,14 +276,6 @@ func ConstructHarborDeleteURL(repo string, repoType string) string {
 	repositoryName := fmt.Sprintf("%s-state/%s/state", repoType, repo)
 	doubleEncodedRepoName := url.QueryEscape(url.QueryEscape(repositoryName))
 	return fmt.Sprintf("%s/api/v2.0/projects/satellite/repositories/%s", registry, doubleEncodedRepoName)
-}
-
-func getEnvVar(key string) (string, error) {
-	value := os.Getenv(key)
-	if value == "" {
-		return "", fmt.Errorf("%s environment variable is not set", key)
-	}
-	return value, nil
 }
 
 func stripProtocol(url string) string {
