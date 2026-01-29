@@ -295,7 +295,7 @@ func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Sat
 
 	// Stop schedulers to prevent new tasks from being accepted
 	log.Info().Msg("Stopping schedulers to prevent new replication tasks")
-	s.Stop(ctx)
+	s.Stop(shutdownCtx)
 
 	// Wait for in-progress tasks with timeout
 	log.Info().Msg("Waiting for in-progress replication tasks to complete")
