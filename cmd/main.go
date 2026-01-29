@@ -295,12 +295,14 @@ func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Sat
 
 	// Stop schedulers to prevent new tasks from being accepted
 	log.Info().Msg("Stopping schedulers to prevent new replication tasks")
-	s.Stop(shutdownCtx)
 
 	// Wait for in-progress tasks and scheduler goroutines with timeout
 	log.Info().Msg("Waiting for in-progress replication tasks and scheduler goroutines to complete")
 	shutdownDone := make(chan struct{})
 	go func() {
+		// Stop schedulers (blocks until scheduler goroutines complete)
+		s.Stop(shutdownCtx)
+		// Wait for errgroup tasks
 		err := wg.Wait()
 		if err != nil {
 			log.Error().Err(err).Msg("Error waiting for goroutines during shutdown")
