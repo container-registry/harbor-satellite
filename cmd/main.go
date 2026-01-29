@@ -14,6 +14,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"os"
+	"path/filepath"
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/rs/zerolog"
@@ -39,12 +40,14 @@ func main() {
 	var token string
 	var useUnsecure bool
 	var mirrors mirrorFlags
+	var configDir string
 
 	flag.StringVar(&groundControlURL, "ground-control-url", "", "URL to ground control")
 	flag.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
 	flag.StringVar(&token, "token", "", "Satellite token")
 	flag.BoolVar(&useUnsecure, "use-unsecure", false, "Use insecure (HTTP) connections to registries")
 	flag.Var(&mirrors, "mirrors", "Specify CRI and registries in the form CRI:registry1,registry2")
+	flag.StringVar(&configDir, "config-dir", "", "Directory for satellite config and state files")
 
 	flag.Parse()
 
@@ -57,13 +60,27 @@ func main() {
 	if !useUnsecure {
 		useUnsecure = os.Getenv("USE_UNSECURE") == "true"
 	}
+	if configDir == "" {
+		configDir = os.Getenv("CONFIG_DIR")
+	}
+	if configDir == "" {
+		configDir = config.DefaultConfigDir
+	}
+	
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		fmt.Printf("Error creating config directory: %v", err)
+		os.Exit(1)
+	}
+
+	configPath := filepath.Join(configDir, config.DefaultConfigFilename)
+	prevConfigPath := filepath.Join(configDir, config.DefaultPrevConfigFilename)
 
 	if token == "" || groundControlURL == "" {
 		fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars.")
 		os.Exit(1)
 	}
 
-	cm, _, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging, useUnsecure)
+	cm, _, err := config.InitConfigManager(token, groundControlURL, configPath, prevConfigPath, jsonLogging, useUnsecure)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		os.Exit(1)
@@ -83,19 +100,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = run(jsonLogging, token, groundControlURL, useUnsecure)
+	err = run(jsonLogging, token, groundControlURL, useUnsecure, configPath, prevConfigPath)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(jsonLogging bool, token, groundControlURL string, useUnsecure bool) error {
+func run(jsonLogging bool, token, groundControlURL string, useUnsecure bool, configPath, prevConfigPath string) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging, useUnsecure)
+	cm, warnings, err := config.InitConfigManager(token, groundControlURL, configPath, prevConfigPath, jsonLogging, useUnsecure)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		return err
@@ -124,7 +141,7 @@ func run(jsonLogging bool, token, groundControlURL string, useUnsecure bool) err
 
 	// Watch for changes in the config file
 	wg.Go(func() error {
-		return watcher.WatchChanges(ctx, log.With().Str("component", "file watcher").Logger(), config.DefaultConfigPath, eventChan)
+		return watcher.WatchChanges(ctx, log.With().Str("component", "file watcher").Logger(), configPath, eventChan)
 	})
 
 	// Watch for changes in the config file

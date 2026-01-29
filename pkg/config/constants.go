@@ -1,5 +1,10 @@
 package config
 
+import (
+  "os"
+  "path/filepath"
+)
+
 // Job names that the user is expected to provide in the config.json file
 const ReplicateStateJobName string = "replicate_state"
 const ZTRConfigJobName string = "register_satellite"
@@ -9,8 +14,18 @@ const ZTRConfigJobName string = "register_satellite"
 // in the config.json file.
 
 // Default config.json path for the satellite, used if the user does not provide any config path
-const DefaultConfigPath string = "config.json"
-const DefaultPrevConfigPath string = "prev_config.json"
+const DefaultConfigFilename string = "config.json"
+const DefaultPrevConfigFilename string = "prev_config.json"
+
+var DefaultConfigDir string = defaultConfigDir()
+
+func defaultConfigDir() string {
+  home, err := os.UserHomeDir()
+  if err != nil || home == "" {
+    return filepath.Join(".", ".config", "satellite")
+  }
+  return filepath.Join(home, ".config", "satellite")
+}
 
 // Below are the default values of the job schedules that would be used if the user does not provide any schedule or
 // if there is any error while parsing the cron expression
