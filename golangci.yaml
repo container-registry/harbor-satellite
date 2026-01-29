@@ -185,6 +185,93 @@ linters-settings:
     # Default: false
     all: true
 
+  wrapcheck:
+    ignoreSigs:
+      - .Errorf(
+      - errors.New(
+      - errors.Unwrap(
+      - .Wrap(
+      - .Wrapf(
+      - .WithMessage(
+      - .WithMessagef(
+      - .WithStack(
+    ignorePackageGlobs:
+      - github.com/container-registry/harbor-satellite/*
+
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: "io/ioutil"
+            desc: "Deprecated: use io and os packages instead"
+
+  interfacebloat:
+    max: 10
+
+  maintidx:
+    under: 20
+
+  tagliatelle:
+    case:
+      use-field-name: true
+      rules:
+        json: snake
+        yaml: snake
+
+  tagalign:
+    align: true
+    sort: true
+    order:
+      - json
+      - yaml
+      - xml
+      - form
+
+  ireturn:
+    allow:
+      - anon
+      - error
+      - empty
+      - stdlib
+      - generic
+
+  nlreturn:
+    block-size: 2
+
+  decorder:
+    dec-order:
+      - type
+      - const
+      - var
+      - func
+    disable-dec-order-check: false
+    disable-init-func-first-check: false
+
+  varnamelen:
+    max-distance: 5
+    min-name-length: 2
+    ignore-names:
+      - err
+      - ok
+      - id
+      - i
+      - j
+      - k
+      - n
+      - v
+      - x
+      - y
+      - db
+      - tx
+      - wg
+      - mu
+      - fs
+      - fd
+      - ip
+    ignore-type-assert-ok: true
+    ignore-map-index-ok: true
+    ignore-chan-recv-ok: true
+
 
 linters:
   disable-all: true
