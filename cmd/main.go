@@ -37,6 +37,7 @@ func main() {
 	var jsonLogging bool
 	var groundControlURL string
 	var token string
+	var useUnsecure bool
 	var mirrors mirrorFlags
 	var spiffeEnabled bool
 	var spiffeEndpointSocket string
@@ -45,6 +46,7 @@ func main() {
 	flag.StringVar(&groundControlURL, "ground-control-url", "", "URL to ground control")
 	flag.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
 	flag.StringVar(&token, "token", "", "Satellite token")
+	flag.BoolVar(&useUnsecure, "use-unsecure", false, "Use insecure (HTTP) connections to registries")
 	flag.Var(&mirrors, "mirrors", "Specify CRI and registries in the form CRI:registry1,registry2")
 	flag.BoolVar(&spiffeEnabled, "spiffe-enabled", false, "Enable SPIFFE/SPIRE authentication")
 	flag.StringVar(&spiffeEndpointSocket, "spiffe-endpoint-socket", config.DefaultSPIFFEEndpointSocket, "SPIFFE Workload API endpoint socket")
@@ -66,6 +68,9 @@ func main() {
 	}
 	if os.Getenv("SPIFFE_EXPECTED_SERVER_ID") != "" {
 		spiffeExpectedServerID = os.Getenv("SPIFFE_EXPECTED_SERVER_ID")
+	}
+	if !useUnsecure {
+		useUnsecure = os.Getenv("USE_UNSECURE") == "true"
 	}
 
 	// Token is not required if SPIFFE is enabled
