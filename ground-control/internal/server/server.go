@@ -108,7 +108,7 @@ func NewServer() *ServerResult {
 			Enabled:     true,
 			DataDir:     getEnvOrDefault("SPIRE_DATA_DIR", "/tmp/spire-data"),
 			TrustDomain: getEnvOrDefault("SPIRE_TRUST_DOMAIN", "harbor-satellite.local"),
-			BindAddress: "127.0.0.1",
+			BindAddress: getEnvOrDefault("SPIRE_BIND_ADDRESS", "127.0.0.1"),
 			BindPort:    8081,
 		}
 		embeddedSpire = spiffe.NewEmbeddedSpireServer(spireCfg)
