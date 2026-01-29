@@ -77,14 +77,29 @@ func (cw *CertWatcher) Stop() {
 
 // loadCertificate loads the certificate from files.
 func (cw *CertWatcher) loadCertificate() error {
+	// Capture mod times BEFORE loading to ensure lastModTime matches the loaded cert
+	certInfo, err := os.Stat(cw.certFile)
+	if err != nil {
+		return err
+	}
+	keyInfo, err := os.Stat(cw.keyFile)
+	if err != nil {
+		return err
+	}
+
 	cert, err := tls.LoadX509KeyPair(cw.certFile, cw.keyFile)
 	if err != nil {
 		return err
 	}
 
+	latestMod := certInfo.ModTime()
+	if keyInfo.ModTime().After(latestMod) {
+		latestMod = keyInfo.ModTime()
+	}
+
 	cw.mu.Lock()
 	cw.cert = &cert
-	cw.updateModTime()
+	cw.lastModTime = latestMod
 	cw.mu.Unlock()
 
 	return nil
@@ -110,22 +125,3 @@ func (cw *CertWatcher) hasChanged() bool {
 	return certInfo.ModTime().After(lastMod) || keyInfo.ModTime().After(lastMod)
 }
 
-// updateModTime updates the last modification time.
-func (cw *CertWatcher) updateModTime() {
-	certInfo, err := os.Stat(cw.certFile)
-	if err != nil {
-		return
-	}
-
-	keyInfo, err := os.Stat(cw.keyFile)
-	if err != nil {
-		return
-	}
-
-	// Use the later of the two modification times
-	if certInfo.ModTime().After(keyInfo.ModTime()) {
-		cw.lastModTime = certInfo.ModTime()
-	} else {
-		cw.lastModTime = keyInfo.ModTime()
-	}
-}
