@@ -15,6 +15,7 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/lib/pq"
 
+	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/middleware"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
@@ -26,6 +27,14 @@ type Server struct {
 	dbQueries      *database.Queries
 	rateLimiter    *middleware.RateLimiter
 	spiffeProvider spiffe.Provider
+
+	// User auth
+	passwordPolicy  auth.PasswordPolicy
+	sessionDuration time.Duration
+	lockoutDuration time.Duration
+
+	// Satellite status
+	staleThreshold time.Duration
 }
 
 // TLSConfig holds TLS settings for the server.
@@ -96,6 +105,14 @@ func NewServer() *ServerResult {
 		dbQueries:      dbQueries,
 		rateLimiter:    rateLimiter,
 		spiffeProvider: spiffeProvider,
+
+		// User auth settings
+		passwordPolicy:  auth.LoadPolicyFromEnv(),
+		sessionDuration: parseDurationEnv("SESSION_DURATION", 24*time.Hour),
+		lockoutDuration: parseDurationEnv("LOCKOUT_DURATION", 5*time.Minute),
+
+		// Satellite status
+		staleThreshold: parseDurationEnv("STALE_THRESHOLD", time.Hour),
 	}
 
 	tlsCfg := loadTLSConfig()
@@ -144,6 +161,15 @@ func NewServer() *ServerResult {
 		SPIFFEProvider: spiffeProvider,
 		SPIFFEConfig:   spiffeCfg,
 	}
+}
+
+func parseDurationEnv(key string, defaultValue time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return defaultValue
 }
 
 func loadTLSConfig() *TLSConfig {
