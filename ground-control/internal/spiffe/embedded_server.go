@@ -131,6 +131,11 @@ func (s *EmbeddedSpireServer) GetSocketPath() string {
 	return s.socketPath
 }
 
+// GetBindPort returns the TCP port for agent connections.
+func (s *EmbeddedSpireServer) GetBindPort() int {
+	return s.config.BindPort
+}
+
 // waitForReady polls the socket until the server is ready.
 func (s *EmbeddedSpireServer) waitForReady(ctx context.Context) error {
 	deadline := time.Now().Add(60 * time.Second)
