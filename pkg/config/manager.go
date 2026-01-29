@@ -31,12 +31,13 @@ type ConfigManager struct {
 	Token                   string
 	DefaultGroundControlURL string
 	JsonLog                 bool
+	RegistryDataDir          string
 	configPath              string
 	prevConfigPath          string
 	mu                      sync.RWMutex
 }
 
-func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config) (*ConfigManager, error) {
+func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, registryDataDir string, config *Config) (*ConfigManager, error) {
 	return &ConfigManager{
 		config:                  config,
 		configPath:              configPath,
@@ -44,6 +45,7 @@ func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL
 		Token:                   token,
 		DefaultGroundControlURL: defaultGroundControlURL,
 		JsonLog:                 jsonLog,
+		RegistryDataDir:          registryDataDir,
 	}, nil
 }
 
@@ -158,7 +160,7 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 		return nil, nil, fmt.Errorf("failed to read config from disk: %w", err)
 	}
 
-	validatedConfig, warnings, err := ValidateAndEnforceDefaults(newConfig, cm.DefaultGroundControlURL, "")
+	validatedConfig, warnings, err := ValidateAndEnforceDefaults(newConfig, cm.DefaultGroundControlURL, cm.RegistryDataDir)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to validate reloaded config: %w", err)
 	}
@@ -191,7 +193,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 		return nil, warnings, fmt.Errorf("invalid config: %w", err)
 	}
 
-	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, jsonLogging, cfg)
+	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, jsonLogging, registryDataDir, cfg)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to create config manager: %w", err)
 	}

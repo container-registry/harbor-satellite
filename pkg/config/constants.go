@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"os/user"
 	"path/filepath"
 )
@@ -51,15 +52,22 @@ const DefaultGroundControlURL = "http://127.0.0.1:8080"
 
 func GetDefaultRegistryDataDir() (string, error) {
 	currentUser, err := user.Current()
-	if err != nil {
+	if err == nil {
+		if currentUser.Uid == "0" {
+			return SystemRegistryDataDir, nil
+		}
+		if currentUser.HomeDir != "" {
+			return filepath.Join(currentUser.HomeDir, ".local", "share", "satellite", "registry"), nil
+		}
+	}
+
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+		return filepath.Join(xdg, "satellite", "registry"), nil
+	}
+
+	home, homeErr := os.UserHomeDir()
+	if homeErr != nil {
 		return "", err
 	}
-
-	// If running as root, use system directory
-	if currentUser.Uid == "0" {
-		return SystemRegistryDataDir, nil
-	}
-
-	// For non-root users, use XDG user data directory
-	return filepath.Join(currentUser.HomeDir, ".local", "share", "satellite", "registry"), nil
+	return filepath.Join(home, ".local", "share", "satellite", "registry"), nil
 }
