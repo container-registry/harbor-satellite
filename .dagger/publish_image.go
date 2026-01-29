@@ -170,6 +170,14 @@ func (m *HarborSatellite) getBuildContainer(
 ) []*dagger.Container {
 	var builds []*dagger.Container
 
+	var workDir string
+	switch {
+	case component == "satellite":
+		workDir = PROJ_MOUNT
+	case component == "ground-control":
+		workDir = PROJ_MOUNT + "/ground-control"
+	}
+
 	fmt.Println("🛠️  Building with Dagger...")
 	supportedBuilds := getSupportedBuilds()
 	for goos, arches := range supportedBuilds {
@@ -182,7 +190,7 @@ func (m *HarborSatellite) getBuildContainer(
 				WithMountedCache("/go/build-cache", dag.CacheVolume("go-build-"+GO_VERSION)).
 				WithEnvVariable("GOCACHE", "/go/build-cache").
 				WithMountedDirectory(PROJ_MOUNT, source).
-				WithWorkdir(PROJ_MOUNT).
+				WithWorkdir(workDir).
 				WithEnvVariable("GOOS", goos).
 				WithEnvVariable("GOARCH", goarch)
 
