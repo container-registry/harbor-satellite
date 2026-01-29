@@ -20,3 +20,8 @@ WHERE username = $1;
 UPDATE login_attempts
 SET locked_until = $2, last_attempt = NOW()
 WHERE username = $1;
+
+-- name: DeleteOldLoginAttempts :exec
+DELETE FROM login_attempts
+WHERE last_attempt < NOW() - make_interval(days => $1)
+AND (locked_until IS NULL OR locked_until < NOW());

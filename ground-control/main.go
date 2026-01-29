@@ -31,7 +31,13 @@ func main() {
 	srv := server.NewServer(ctx)
 
 	go func() {
-		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		var err error
+		if server.TLSEnabled {
+			err = srv.ListenAndServeTLS(server.TLSCertPath, server.TLSKeyPath)
+		} else {
+			err = srv.ListenAndServe()
+		}
+		if !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("cannot start server: %s", err)
 		}
 	}()

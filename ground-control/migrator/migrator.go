@@ -27,13 +27,25 @@ var (
 )
 
 func parseDBConfig() DBConfig {
+	// Load DB SSL mode (default: disable for backward compatibility)
+	sslmode := os.Getenv("DB_SSLMODE")
+	if sslmode == "" {
+		sslmode = "disable"
+	}
+
+	// Validate FIPS requirements for database connection
+	if os.Getenv("FIPS_MODE") == "true" && sslmode == "disable" {
+		log.Fatalf("FIPS mode requires encrypted database connections (DB_SSLMODE must not be 'disable')")
+	}
+
 	dbURL := fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		username,
 		password,
 		HOST,
 		PORT,
 		dbName,
+		sslmode,
 	)
 
 	return DBConfig{

@@ -64,6 +64,16 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Transparent hash migration: re-hash with current algorithm if needed
+	if auth.NeedsRehash(user.PasswordHash) {
+		if newHash, err := auth.HashPassword(req.Password); err == nil {
+			_ = s.dbQueries.UpdateUserPassword(r.Context(), database.UpdateUserPasswordParams{
+				Username:     user.Username,
+				PasswordHash: newHash,
+			})
+		}
+	}
+
 	// Reset failed attempts on success (ignore errors)
 	_ = s.dbQueries.ResetLoginAttempts(r.Context(), req.Username)
 
