@@ -250,6 +250,19 @@ The satellite stores registry data in a configurable location. By default:
 - **For regular users**: `~/.local/share/satellite/registry` (XDG user data directory)
 You can override the default location using:
 **Command-line flag:**
+```bash
+./bin --token "<your-token>" --registry-data-dir "/custom/path/registry"
+```
+
+**Environment variable:**
+```bash
+export REGISTRY_DATA_DIR="/custom/path/registry"
+./bin --token "<your-token>"
+```
+
+**Precedence:** Command-line flag > Environment variable > Default path
+
+> **Note:** This only applies when using the embedded Zot registry. External (BYO) registries are unaffected.
 
 ### 7. Configure Local Registry as Mirror (Optional)
 

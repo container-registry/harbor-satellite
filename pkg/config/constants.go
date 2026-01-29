@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -51,13 +52,14 @@ const DefaultRemoteRegistryURL = "http://127.0.0.1:8585"
 const DefaultGroundControlURL = "http://127.0.0.1:8080"
 
 func GetDefaultRegistryDataDir() (string, error) {
+	const userSubPath = ".local/share/satellite/registry"
 	currentUser, err := user.Current()
 	if err == nil {
 		if currentUser.Uid == "0" {
 			return SystemRegistryDataDir, nil
 		}
 		if currentUser.HomeDir != "" {
-			return filepath.Join(currentUser.HomeDir, ".local", "share", "satellite", "registry"), nil
+			return filepath.Join(currentUser.HomeDir, userSubPath), nil
 		}
 	}
 
@@ -67,7 +69,7 @@ func GetDefaultRegistryDataDir() (string, error) {
 
 	home, homeErr := os.UserHomeDir()
 	if homeErr != nil {
-		return "", err
+		return "", fmt.Errorf("failed to determine home directory: %w", homeErr)
 	}
-	return filepath.Join(home, ".local", "share", "satellite", "registry"), nil
+	return filepath.Join(home, userSubPath), nil
 }
