@@ -49,9 +49,6 @@ const DefaultZotConfigJSON = `{
 const DefaultRemoteRegistryURL = "http://127.0.0.1:8585"
 const DefaultGroundControlURL = "http://127.0.0.1:8080"
 
-// GetDefaultRegistryDataDir returns the default registry data directory based on user context.
-// For root user, it returns /var/lib/satellite/registry
-// For non-root users, it returns ~/.local/share/satellite/registry
 func GetDefaultRegistryDataDir() (string, error) {
 	currentUser, err := user.Current()
 	if err != nil {

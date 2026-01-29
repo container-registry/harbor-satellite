@@ -79,12 +79,9 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string, 
 		return nil, nil, fmt.Errorf("invalid zot_config: %w", err)
 	}
 
-	// Handle registry data directory
 	if !bringOwnRegistry {
-		// Determine the final registry data directory
 		finalRegistryDir := registryDataDir
 		if finalRegistryDir == "" {
-			// No flag or env var provided, use default
 			var err error
 			finalRegistryDir, err = GetDefaultRegistryDataDir()
 			if err != nil {
@@ -95,15 +92,12 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string, 
 			warnings = append(warnings, fmt.Sprintf("registry-data-dir specified: %s", finalRegistryDir))
 		}
 
-		// Update the zot config with the resolved path
 		zotConfig.Storage.RootDirectory = finalRegistryDir
 
-		// Create the directory if it doesn't exist
 		if err := os.MkdirAll(finalRegistryDir, 0755); err != nil {
 			return nil, nil, fmt.Errorf("failed to create registry data directory %s: %w", finalRegistryDir, err)
 		}
-
-		// Re-marshal the updated zot config
+		
 		updatedZotConfig, err := json.Marshal(zotConfig)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to marshal updated zot config: %w", err)
