@@ -83,7 +83,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	cm, _, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging)
+	cm, _, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging, useUnsecure)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		os.Exit(1)
@@ -112,19 +112,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = run(jsonLogging, token, groundControlURL, spiffeEnabled, spiffeEndpointSocket, spiffeExpectedServerID)
+	err = run(jsonLogging, token, groundControlURL, useUnsecure, spiffeEnabled, spiffeEndpointSocket, spiffeExpectedServerID)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(jsonLogging bool, token, groundControlURL string, spiffeEnabled bool, spiffeEndpointSocket, spiffeExpectedServerID string) error {
+func run(jsonLogging bool, token, groundControlURL string, useUnsecure, spiffeEnabled bool, spiffeEndpointSocket, spiffeExpectedServerID string) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging)
+	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging, useUnsecure)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		return err
