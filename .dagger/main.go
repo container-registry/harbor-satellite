@@ -180,10 +180,15 @@ func (m *HarborSatellite) lint(_ context.Context) *dagger.Container {
 	fmt.Println("👀 Running linter and printing results to file golangci-lint.txt.")
 	linter := dag.Container().
 		From("golangci/golangci-lint:"+GOLANGCILINT_VERSION+"-alpine").
-		WithMountedCache("/lint-cache", dag.CacheVolume("/lint-cache")).
+		WithMountedCache("/lint-cache", dag.CacheVolume("lint-cache-v2")).
 		WithEnvVariable("GOLANGCI_LINT_CACHE", "/lint-cache").
+		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod-"+GO_VERSION)).
+		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
+		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build-"+GO_VERSION)).
+		WithEnvVariable("GOCACHE", "/go/build-cache").
 		WithMountedDirectory("/src", m.Source).
-		WithWorkdir("/src")
+		WithWorkdir("/src").
+		WithExec([]string{"go", "mod", "download"})
 	return linter
 }
 
