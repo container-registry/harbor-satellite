@@ -1,4 +1,4 @@
-//go:build nospiffe
+//go:build nospiffe || !linux
 
 package identity
 
