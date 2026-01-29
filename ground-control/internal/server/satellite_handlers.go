@@ -31,6 +31,20 @@ type RegisterSatelliteResponse struct {
 	Token string `json:"token"`
 }
 
+type SatelliteStatusParams struct {
+	Name                string    `json:"name"`
+	Activity            string    `json:"activity"`
+	StateReportInterval string    `json:"state_report_interval"`
+	LatestStateDigest   string    `json:"latest_state_digest"`
+	LatestConfigDigest  string    `json:"latest_config_digest"`
+	MemoryUsedBytes     uint64    `json:"memory_used_bytes"`
+	StorageUsedBytes    uint64    `json:"storage_used_bytes"`
+	CPUPercent          float64   `json:"cpu_percent"`
+	RequestCreatedTime  time.Time `json:"request_created_time"`
+	LastSyncDurationMs  int64     `json:"last_sync_duration_ms"`
+	ImageCount          int       `json:"image_count"`
+}
+
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	var req RegisterSatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -475,6 +489,109 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
+	var req SatelliteStatusParams
+	if err := DecodeRequestBody(r, &req); err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	// Check SPIFFE identity first for dual auth
+	var satelliteName string
+	if name, ok := spiffe.GetSatelliteName(r.Context()); ok {
+		satelliteName = name
+	} else {
+		satelliteName = req.Name
+	}
+
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
+	if err != nil {
+		log.Printf("Unknown satellite: %s", satelliteName)
+		HandleAppError(w, &AppError{
+			Message: "unknown satellite entity",
+			Code:    http.StatusForbidden,
+		})
+		return
+	}
+
+	normalizedInterval, err := normalizeHeartbeatInterval(req.StateReportInterval)
+	if err != nil {
+		log.Printf("Invalid heartbeat interval %q: %v", req.StateReportInterval, err)
+		HandleAppError(w, &AppError{Message: "invalid heartbeat interval format", Code: http.StatusBadRequest})
+		return
+	}
+
+	_, err = s.dbQueries.InsertSatelliteStatus(r.Context(), database.InsertSatelliteStatusParams{
+		SatelliteID:        sat.ID,
+		Activity:           req.Activity,
+		LatestStateDigest:  toNullString(req.LatestStateDigest),
+		LatestConfigDigest: toNullString(req.LatestConfigDigest),
+		CpuPercent:         toNullString(fmt.Sprintf("%.2f", req.CPUPercent)),
+		MemoryUsedBytes:    toNullInt64(int64(req.MemoryUsedBytes)),
+		StorageUsedBytes:   toNullInt64(int64(req.StorageUsedBytes)),
+		LastSyncDurationMs: toNullInt64(req.LastSyncDurationMs),
+		ImageCount:         toNullInt32(int32(req.ImageCount)),
+		ReportedAt:         req.RequestCreatedTime,
+	})
+	if err != nil {
+		log.Printf("Failed to insert status: %v", err)
+		HandleAppError(w, &AppError{Message: "failed to save status", Code: http.StatusInternalServerError})
+		return
+	}
+
+	err = s.dbQueries.UpdateSatelliteLastSeen(r.Context(), database.UpdateSatelliteLastSeenParams{
+		ID:                sat.ID,
+		HeartbeatInterval: toNullString(normalizedInterval),
+	})
+	if err != nil {
+		log.Printf("Failed to update last_seen: %v", err)
+		HandleAppError(w, &AppError{Message: "failed to update last_seen", Code: http.StatusInternalServerError})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) getSatelliteStatusHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	satelliteName := vars["satellite"]
+
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
+	if err != nil {
+		HandleAppError(w, &AppError{Message: "satellite not found", Code: http.StatusNotFound})
+		return
+	}
+
+	status, err := s.dbQueries.GetLatestSatelliteStatus(r.Context(), sat.ID)
+	if err != nil {
+		HandleAppError(w, &AppError{Message: "no status available", Code: http.StatusNotFound})
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, status)
+}
+
+func (s *Server) getActiveSatellitesHandler(w http.ResponseWriter, r *http.Request) {
+	satellites, err := s.dbQueries.GetActiveSatellites(r.Context())
+	if err != nil {
+		log.Printf("Failed to get active satellites: %v", err)
+		HandleAppError(w, &AppError{Message: "failed to get active satellites", Code: http.StatusInternalServerError})
+		return
+	}
+	WriteJSONResponse(w, http.StatusOK, satellites)
+}
+
+func (s *Server) getStaleSatellitesHandler(w http.ResponseWriter, r *http.Request) {
+	satellites, err := s.dbQueries.GetStaleSatellites(r.Context())
+	if err != nil {
+		log.Printf("Failed to get stale satellites: %v", err)
+		HandleAppError(w, &AppError{Message: "failed to get stale satellites", Code: http.StatusInternalServerError})
+		return
+	}
+	WriteJSONResponse(w, http.StatusOK, satellites)
 }
 
 // autoRegisterSatellite automatically creates a satellite entry during SPIFFE ZTR.

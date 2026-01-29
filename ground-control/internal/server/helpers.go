@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
@@ -296,4 +298,55 @@ func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, sate
 		}
 	}
 	return configObject, nil
+}
+
+func toNullString(s string) sql.NullString {
+	return sql.NullString{String: s, Valid: s != ""}
+}
+
+func toNullInt64(n int64) sql.NullInt64 {
+	return sql.NullInt64{Int64: n, Valid: true}
+}
+
+func toNullInt32(n int32) sql.NullInt32 {
+	return sql.NullInt32{Int32: n, Valid: true}
+}
+
+// normalizeHeartbeatInterval validates and normalizes the heartbeat interval to a canonical format.
+// Expected input format: "@every HHhMMmSSs" (e.g., "@every 00h01m30s")
+// Returns the normalized interval string or an error if the format is invalid.
+func normalizeHeartbeatInterval(interval string) (string, error) {
+	if interval == "" {
+		return "", nil
+	}
+
+	const prefix = "@every "
+	if !strings.HasPrefix(interval, prefix) {
+		return "", fmt.Errorf("invalid heartbeat interval format: must start with %q", prefix)
+	}
+
+	durationStr := strings.TrimPrefix(interval, prefix)
+	duration, err := time.ParseDuration(durationStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid heartbeat interval duration %q: %w", durationStr, err)
+	}
+
+	if duration <= 0 {
+		return "", fmt.Errorf("heartbeat interval must be positive, got %v", duration)
+	}
+
+	if duration < time.Second {
+		return "", fmt.Errorf("heartbeat interval must be at least 1 second, got %v", duration)
+	}
+
+	if duration.Nanoseconds()%int64(time.Second) != 0 {
+		return "", fmt.Errorf("heartbeat interval must be a whole number of seconds, got %v", duration)
+	}
+
+	// Normalize to canonical format: HHhMMmSSs
+	hours := int(duration.Hours())
+	minutes := int(duration.Minutes()) % 60
+	seconds := int(duration.Seconds()) % 60
+
+	return fmt.Sprintf("@every %02dh%02dm%02ds", hours, minutes, seconds), nil
 }

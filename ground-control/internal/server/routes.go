@@ -11,49 +11,77 @@ import (
 func (s *Server) RegisterRoutes() http.Handler {
 	r := mux.NewRouter()
 
+	// Public routes
 	r.HandleFunc("/ping", s.Ping).Methods("GET")
 	r.HandleFunc("/health", s.healthHandler).Methods("GET")
 
-	// Groups
-	r.HandleFunc("/groups", s.listGroupHandler).Methods("GET")        // List all groups
-	r.HandleFunc("/groups/sync", s.groupsSyncHandler).Methods("POST") // Sync groups
-	r.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET") // Get specific group
+	// Login (rate limited, public)
+	loginRouter := r.PathPrefix("/login").Subrouter()
+	loginRouter.Use(middleware.RateLimitMiddleware(s.rateLimiter))
+	loginRouter.HandleFunc("", s.loginHandler).Methods("POST")
 
-	// Satellites in groups
-	r.HandleFunc("/groups/{group}/satellites", s.groupSatelliteHandler).Methods("GET") // List satellites in group
-	r.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")           // Add satellite to group
-	r.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")    // Remove satellite from group
+	// Human API routes (user auth required)
+	api := r.PathPrefix("/api").Subrouter()
+	api.Use(s.AuthMiddleware)
+
+	// Logout
+	api.HandleFunc("/logout", s.logoutHandler).Methods("POST")
+
+	// Users
+	api.HandleFunc("/users", s.listUsersHandler).Methods("GET")
+	api.HandleFunc("/users/password", s.changeOwnPasswordHandler).Methods("PATCH")
+	api.HandleFunc("/users/{username}", s.getUserHandler).Methods("GET")
+	api.HandleFunc("/users", s.RequireRole(roleSystemAdmin, s.createUserHandler)).Methods("POST")
+	api.HandleFunc("/users/{username}", s.RequireRole(roleSystemAdmin, s.deleteUserHandler)).Methods("DELETE")
+	api.HandleFunc("/users/{username}/password", s.RequireRole(roleSystemAdmin, s.changeUserPasswordHandler)).Methods("PATCH")
+
+	// Groups
+	api.HandleFunc("/groups", s.listGroupHandler).Methods("GET")
+	api.HandleFunc("/groups/sync", s.groupsSyncHandler).Methods("POST")
+	api.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET")
+	api.HandleFunc("/groups/{group}/satellites", s.groupSatelliteHandler).Methods("GET")
+	api.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")
+	api.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")
 
 	// Configs
-	r.HandleFunc("/configs", s.listConfigsHandler).Methods("GET")
-	r.HandleFunc("/configs", s.createConfigHandler).Methods("POST")
-	r.HandleFunc("/configs/{config}", s.updateConfigHandler).Methods("PATCH")
-	r.HandleFunc("/configs/{config}", s.getConfigHandler).Methods("GET")
-	r.HandleFunc("/configs/{config}", s.deleteConfigHandler).Methods("DELETE")
-	r.HandleFunc("/configs/satellite", s.setSatelliteConfig).Methods("POST")
+	api.HandleFunc("/configs", s.listConfigsHandler).Methods("GET")
+	api.HandleFunc("/configs", s.createConfigHandler).Methods("POST")
+	api.HandleFunc("/configs/{config}", s.updateConfigHandler).Methods("PATCH")
+	api.HandleFunc("/configs/{config}", s.getConfigHandler).Methods("GET")
+	api.HandleFunc("/configs/{config}", s.deleteConfigHandler).Methods("DELETE")
+	api.HandleFunc("/configs/satellite", s.setSatelliteConfig).Methods("POST")
 
-	// ZTR endpoints (must be defined before wildcard routes)
-	// Token-based ZTR (backward compatible)
-	ztrSubrouter := r.PathPrefix("/satellites/ztr").Subrouter()
-	ztrSubrouter.Use(middleware.RateLimitMiddleware(s.rateLimiter))
-	ztrSubrouter.HandleFunc("/{token}", s.ztrHandler).Methods("GET")
+	// Satellite management (human only)
+	api.HandleFunc("/satellites", s.listSatelliteHandler).Methods("GET")
+	api.HandleFunc("/satellites", s.registerSatelliteHandler).Methods("POST")
+	api.HandleFunc("/satellites/active", s.getActiveSatellitesHandler).Methods("GET")
+	api.HandleFunc("/satellites/stale", s.getStaleSatellitesHandler).Methods("GET")
+	api.HandleFunc("/satellites/{satellite}", s.GetSatelliteByName).Methods("GET")
+	api.HandleFunc("/satellites/{satellite}", s.DeleteSatelliteByName).Methods("DELETE")
+	api.HandleFunc("/satellites/{satellite}/status", s.getSatelliteStatusHandler).Methods("GET")
 
-	// SPIFFE-based ZTR (mTLS authentication, no token required)
-	// The satellite's identity is verified via SPIFFE SVID in TLS handshake
-	spiffeZtrSubrouter := r.PathPrefix("/satellites/spiffe-ztr").Subrouter()
-	spiffeZtrSubrouter.Use(spiffe.RequireSPIFFEAuth)
-	spiffeZtrSubrouter.Use(middleware.RateLimitMiddleware(s.rateLimiter))
-	spiffeZtrSubrouter.HandleFunc("", s.spiffeZtrHandler).Methods("GET")
+	// SPIRE management (admin only)
+	api.HandleFunc("/spire/status", s.RequireRole(roleSystemAdmin, s.spireStatusHandler)).Methods("GET")
 
-	// SPIRE status endpoint
-	r.HandleFunc("/spire/status", s.spireStatusHandler).Methods("GET")
+	// Satellite routes (robot creds or SPIFFE)
+	satellites := r.PathPrefix("/satellites").Subrouter()
 
-	// Satellites (wildcard routes must come after specific routes)
-	r.HandleFunc("/satellites", s.listSatelliteHandler).Methods("GET")      // List all satellites
-	r.HandleFunc("/satellites", s.registerSatelliteHandler).Methods("POST") // Register new satellite
-	r.HandleFunc("/satellites/{satellite}/join-token", s.generateJoinTokenHandler).Methods("POST") // SPIRE join token
-	r.HandleFunc("/satellites/{satellite}", s.GetSatelliteByName).Methods("GET")       // Get specific satellite
-	r.HandleFunc("/satellites/{satellite}", s.DeleteSatelliteByName).Methods("DELETE") // Delete specific satellite
+	// Token-based ZTR (rate limited)
+	ztr := satellites.PathPrefix("/ztr").Subrouter()
+	ztr.Use(middleware.RateLimitMiddleware(s.rateLimiter))
+	ztr.HandleFunc("/{token}", s.ztrHandler).Methods("GET")
+
+	// SPIFFE-based ZTR (rate limited)
+	spiffeZtr := satellites.PathPrefix("/spiffe-ztr").Subrouter()
+	spiffeZtr.Use(spiffe.RequireSPIFFEAuth)
+	spiffeZtr.Use(middleware.RateLimitMiddleware(s.rateLimiter))
+	spiffeZtr.HandleFunc("", s.spiffeZtrHandler).Methods("GET")
+
+	// Sync (dual auth: robot credentials or SPIFFE)
+	satellites.HandleFunc("/sync", s.syncHandler).Methods("POST")
+
+	// Join token (satellite requests)
+	satellites.HandleFunc("/{satellite}/join-token", s.generateJoinTokenHandler).Methods("POST")
 
 	return r
 }
