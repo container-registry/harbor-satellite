@@ -2,6 +2,8 @@
 
 package crypto
 
+import "crypto"
+
 // NoOpProvider provides no-op cryptographic operations for minimal builds.
 // Data passes through unchanged - NOT for production use with sensitive data.
 type NoOpProvider struct{}
@@ -31,15 +33,15 @@ func (p *NoOpProvider) DeriveKey(input, _ []byte, keyLen int) ([]byte, error) {
 	return result, nil
 }
 
-func (p *NoOpProvider) Sign(_ []byte, _ any) ([]byte, error) {
+func (p *NoOpProvider) Sign(_ []byte, _ crypto.PrivateKey) ([]byte, error) {
 	return []byte("nospiffe-stub-signature"), nil
 }
 
-func (p *NoOpProvider) Verify(_, _ []byte, _ any) error {
+func (p *NoOpProvider) Verify(_, _ []byte, _ crypto.PublicKey) error {
 	return nil
 }
 
-func (p *NoOpProvider) GenerateKeyPair() (any, any, error) {
+func (p *NoOpProvider) GenerateKeyPair() (crypto.PrivateKey, crypto.PublicKey, error) {
 	return nil, nil, nil
 }
 

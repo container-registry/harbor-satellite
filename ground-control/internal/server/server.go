@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -213,15 +212,3 @@ func buildServerTLSConfigWithWatcher(cfg *TLSConfig, cw *middleware.CertWatcher)
 	return tlsConfig, nil
 }
 
-// buildSPIFFETLSConfig creates a TLS config using SPIFFE for mTLS authentication.
-func buildSPIFFETLSConfig(provider spiffe.Provider, cfg *spiffe.Config) (*tls.Config, error) {
-	td := provider.GetTrustDomain()
-	authorizer := spiffe.NewSatelliteAuthorizer(td)
-
-	tlsConfig, err := provider.GetTLSConfig(context.Background(), authorizer.AuthorizeID())
-	if err != nil {
-		return nil, fmt.Errorf("build SPIFFE TLS config: %w", err)
-	}
-
-	return tlsConfig, nil
-}
