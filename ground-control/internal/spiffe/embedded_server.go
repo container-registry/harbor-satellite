@@ -64,13 +64,13 @@ func (s *EmbeddedSpireServer) Start(ctx context.Context) error {
 	log.Printf("Embedded SPIRE server started (PID: %d)", s.cmd.Process.Pid)
 
 	if err := s.waitForReady(ctx); err != nil {
-		s.Stop()
+		_ = s.Stop()
 		return fmt.Errorf("wait for server ready: %w", err)
 	}
 
 	client, err := NewServerClient(s.socketPath, s.config.TrustDomain)
 	if err != nil {
-		s.Stop()
+		_ = s.Stop()
 		return fmt.Errorf("create server client: %w", err)
 	}
 	s.client = client
@@ -82,7 +82,7 @@ func (s *EmbeddedSpireServer) Start(ctx context.Context) error {
 // Stop gracefully stops the SPIRE server subprocess.
 func (s *EmbeddedSpireServer) Stop() error {
 	if s.client != nil {
-		s.client.Close()
+		_ = s.client.Close()
 		s.client = nil
 	}
 
@@ -104,7 +104,7 @@ func (s *EmbeddedSpireServer) Stop() error {
 	select {
 	case <-time.After(10 * time.Second):
 		log.Println("SPIRE server shutdown timeout, sending SIGKILL")
-		s.cmd.Process.Kill()
+		_ = s.cmd.Process.Kill()
 		<-done
 	case err := <-done:
 		if err != nil {
@@ -156,7 +156,7 @@ func (s *EmbeddedSpireServer) waitForReady(ctx context.Context) error {
 				// Try to connect
 				client, err := NewServerClient(s.socketPath, s.config.TrustDomain)
 				if err == nil {
-					client.Close()
+					_ = client.Close()
 					return nil
 				}
 			}
