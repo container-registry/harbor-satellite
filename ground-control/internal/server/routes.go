@@ -83,5 +83,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Join token (satellite requests)
 	satellites.HandleFunc("/{satellite}/join-token", s.generateJoinTokenHandler).Methods("POST")
 
+	// Join tokens (no pre-registration required, uses embedded SPIRE)
+	r.HandleFunc("/join-tokens", s.createJoinTokenHandler).Methods("POST")
+
 	return r
 }
