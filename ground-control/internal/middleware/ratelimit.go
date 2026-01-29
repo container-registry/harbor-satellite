@@ -101,28 +101,9 @@ func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
 }
 
 // getClientIP extracts the client IP from the request.
+// Only uses RemoteAddr to prevent IP spoofing via X-Forwarded-For/X-Real-IP headers.
+// If behind a trusted proxy, configure the proxy to set RemoteAddr correctly.
 func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first (for proxies)
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		// Take the first IP (original client)
-		if idx := len(xff); idx > 0 {
-			for i := 0; i < len(xff); i++ {
-				if xff[i] == ',' {
-					return xff[:i]
-				}
-			}
-			return xff
-		}
-	}
-
-	// Check X-Real-IP header
-	xri := r.Header.Get("X-Real-IP")
-	if xri != "" {
-		return xri
-	}
-
-	// Fall back to RemoteAddr
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
