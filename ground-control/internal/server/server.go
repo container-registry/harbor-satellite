@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -26,6 +27,7 @@ type Server struct {
 	dbQueries      *database.Queries
 	rateLimiter    *middleware.RateLimiter
 	spiffeProvider spiffe.Provider
+	embeddedSpire  *spiffe.EmbeddedSpireServer
 
 	// User auth
 	passwordPolicy  auth.PasswordPolicy
@@ -51,6 +53,7 @@ type ServerResult struct {
 	CertWatcher    *middleware.CertWatcher
 	SPIFFEProvider spiffe.Provider
 	SPIFFEConfig   *spiffe.Config
+	EmbeddedSpire  *spiffe.EmbeddedSpireServer
 }
 
 var (
@@ -98,12 +101,29 @@ func NewServer() *ServerResult {
 		log.Printf("SPIFFE enabled with trust domain: %s", spiffeCfg.TrustDomain)
 	}
 
+	// Start embedded SPIRE server if enabled
+	var embeddedSpire *spiffe.EmbeddedSpireServer
+	if os.Getenv("EMBEDDED_SPIRE_ENABLED") == "true" {
+		spireCfg := &spiffe.EmbeddedSpireConfig{
+			Enabled:     true,
+			DataDir:     getEnvOrDefault("SPIRE_DATA_DIR", "/tmp/spire-data"),
+			TrustDomain: getEnvOrDefault("SPIRE_TRUST_DOMAIN", "harbor-satellite.local"),
+			BindAddress: "127.0.0.1",
+			BindPort:    8081,
+		}
+		embeddedSpire = spiffe.NewEmbeddedSpireServer(spireCfg)
+		if err := embeddedSpire.Start(context.Background()); err != nil {
+			log.Fatalf("Failed to start embedded SPIRE server: %v", err)
+		}
+	}
+
 	newServer := &Server{
 		port:           port,
 		db:             db,
 		dbQueries:      dbQueries,
 		rateLimiter:    rateLimiter,
 		spiffeProvider: spiffeProvider,
+		embeddedSpire:  embeddedSpire,
 
 		// User auth settings
 		passwordPolicy:  auth.LoadPolicyFromEnv(),
@@ -159,7 +179,15 @@ func NewServer() *ServerResult {
 		CertWatcher:    certWatcher,
 		SPIFFEProvider: spiffeProvider,
 		SPIFFEConfig:   spiffeCfg,
+		EmbeddedSpire:  embeddedSpire,
 	}
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
 }
 
 func parseDurationEnv(key string, defaultValue time.Duration) time.Duration {
