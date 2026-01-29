@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"log"
 	"net"
 	"net/http"
@@ -91,7 +92,9 @@ func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
 
 			if !rl.Allow(ip) {
 				log.Printf("Rate limit exceeded for IP: %s", ip)
-				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "Too Many Requests"})
 				return
 			}
 

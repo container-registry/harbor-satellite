@@ -4,6 +4,7 @@ package spiffe
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 
@@ -59,7 +60,7 @@ func RequireSPIFFEAuth(next http.Handler) http.Handler {
 		id, err := ExtractSPIFFEIDFromRequest(r)
 		if err != nil {
 			log.Printf("SPIFFE auth required: no valid SPIFFE ID: %v", err)
-			http.Error(w, "SPIFFE authentication required", http.StatusUnauthorized)
+			writeJSONResponse(w, http.StatusUnauthorized, map[string]string{"error": "SPIFFE authentication required"})
 			return
 		}
 
@@ -159,10 +160,16 @@ func (m *DualAuthMiddleware) Wrap(next http.Handler) http.Handler {
 
 		// If SPIFFE auth failed or disabled, use the original context
 		if !authenticated && m.authMode == "spiffe" {
-			http.Error(w, "SPIFFE authentication required", http.StatusUnauthorized)
+			writeJSONResponse(w, http.StatusUnauthorized, map[string]string{"error": "SPIFFE authentication required"})
 			return
 		}
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func writeJSONResponse(w http.ResponseWriter, statusCode int, data any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_ = json.NewEncoder(w).Encode(data)
 }

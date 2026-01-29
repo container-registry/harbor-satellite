@@ -4,6 +4,7 @@ package spiffe
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
@@ -26,7 +27,9 @@ func AuthMiddleware(next http.Handler) http.Handler {
 // RequireSPIFFEAuth returns 501 Not Implemented when SPIFFE is disabled.
 func RequireSPIFFEAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "SPIFFE not available in this build", http.StatusNotImplemented)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "SPIFFE not available in this build"})
 	})
 }
 
