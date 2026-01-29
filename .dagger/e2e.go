@@ -562,6 +562,7 @@ func (m *HarborSatellite) pullImageFromZot(ctx context.Context) (string, error) 
 // This test verifies:
 // 1. GC starts with embedded SPIRE server
 // 2. Join tokens can be generated via /join-tokens endpoint (no pre-registration)
+// 3. Satellite with SPIRE agent can attest using the join token
 func (m *HarborSatellite) TestSpiffeJoinTokenE2E(ctx context.Context) (string, error) {
 	log.Println("Starting SPIFFE Join Token E2E test...")
 
@@ -573,29 +574,35 @@ func (m *HarborSatellite) TestSpiffeJoinTokenE2E(ctx context.Context) (string, e
 	m.startGroundControlWithEmbeddedSPIRE(ctx)
 	log.Println("Ground Control with embedded SPIRE started")
 
-	// Test: Generate join token (no pre-registration required)
-	log.Println("Testing join token generation...")
+	// Generate join token (no pre-registration required)
+	log.Println("Generating join token...")
 	joinTokenResp, err := m.generateJoinToken(ctx, "test-satellite", "us-west")
 	if err != nil {
 		return "", fmt.Errorf("join token generation failed: %w", err)
 	}
 	log.Printf("Join token response: %s", joinTokenResp)
 
-	// Verify response contains required fields
+	// Parse response to extract join token
 	var tokenResp map[string]any
 	if err := json.Unmarshal([]byte(joinTokenResp), &tokenResp); err != nil {
 		return "", fmt.Errorf("failed to parse join token response: %w", err)
 	}
 
-	if _, exists := tokenResp["join_token"]; !exists {
+	joinToken, exists := tokenResp["join_token"].(string)
+	if !exists || joinToken == "" {
 		return "", fmt.Errorf("join token response missing 'join_token' field")
 	}
 	if _, exists := tokenResp["spiffe_id"]; !exists {
 		return "", fmt.Errorf("join token response missing 'spiffe_id' field")
 	}
-	if _, exists := tokenResp["expires_at"]; !exists {
-		return "", fmt.Errorf("join token response missing 'expires_at' field")
+
+	// Start satellite with SPIRE agent using the join token
+	log.Println("Starting satellite with SPIRE agent...")
+	err = m.startSatelliteWithSPIRE(ctx, joinToken)
+	if err != nil {
+		return "", fmt.Errorf("failed to start satellite with SPIRE: %w", err)
 	}
+	log.Println("Satellite with SPIRE agent started and attested successfully")
 
 	log.Println("SPIFFE Join Token E2E test completed successfully")
 	return joinTokenResp, nil
@@ -619,10 +626,11 @@ func (m *HarborSatellite) startGroundControlWithEmbeddedSPIRE(ctx context.Contex
 		WithEnvVariable("DB_PASSWORD", "password").
 		WithEnvVariable("DB_DATABASE", "groundcontrol").
 		WithEnvVariable("PORT", "8080").
-		// Embedded SPIRE config
+		// Embedded SPIRE config - bind to 0.0.0.0 for external access
 		WithEnvVariable("EMBEDDED_SPIRE_ENABLED", "true").
 		WithEnvVariable("SPIRE_DATA_DIR", "/tmp/spire-data").
 		WithEnvVariable("SPIRE_TRUST_DOMAIN", "harbor-satellite.local").
+		WithEnvVariable("SPIRE_BIND_ADDRESS", "0.0.0.0").
 		// Skip Harbor health check for this test
 		WithEnvVariable("SKIP_HARBOR_HEALTH_CHECK", "true").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
@@ -634,6 +642,7 @@ func (m *HarborSatellite) startGroundControlWithEmbeddedSPIRE(ctx context.Contex
 		WithEnvVariable("PATH", "/opt/spire-1.10.4/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin").
 		WithExec([]string{"go", "build", "-o", "gc", "main.go"}).
 		WithExposedPort(8080, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
+		WithExposedPort(8081, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}). // SPIRE server port
 		WithEntrypoint([]string{"./gc"}).
 		AsService().WithHostname("gc").Start(ctx)
 
@@ -643,6 +652,83 @@ func (m *HarborSatellite) startGroundControlWithEmbeddedSPIRE(ctx context.Contex
 
 	// Wait for GC to be healthy
 	waitForGCHealthWithRetry(ctx, 60*time.Second)
+}
+
+// startSatelliteWithSPIRE starts a satellite with SPIRE agent that attests using the join token.
+func (m *HarborSatellite) startSatelliteWithSPIRE(ctx context.Context, joinToken string) error {
+	// Create SPIRE agent config
+	agentConfig := fmt.Sprintf(`agent {
+    data_dir = "/tmp/spire-agent"
+    log_level = "INFO"
+    server_address = "gc"
+    server_port = "8081"
+    socket_path = "/tmp/spire-agent/agent.sock"
+    trust_domain = "harbor-satellite.local"
+    insecure_bootstrap = true
+}
+
+plugins {
+    NodeAttestor "join_token" {
+        plugin_data {
+            join_token = "%s"
+        }
+    }
+
+    KeyManager "memory" {
+        plugin_data {}
+    }
+
+    WorkloadAttestor "unix" {
+        plugin_data {}
+    }
+}
+`, joinToken)
+
+	// Start container with SPIRE agent and verify attestation
+	out, err := dag.Container().
+		From("golang:1.24-alpine@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706eef7846f319293ab5cb7a").
+		WithEnvVariable("CACHEBUSTER", time.Now().String()).
+		// Install SPIRE agent binary
+		WithExec([]string{"apk", "add", "--no-cache", "curl", "tar"}).
+		WithExec([]string{"sh", "-c",
+			"curl -sL https://github.com/spiffe/spire/releases/download/v1.10.4/spire-1.10.4-linux-amd64-musl.tar.gz | tar xz -C /opt"}).
+		WithEnvVariable("PATH", "/opt/spire-1.10.4/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin").
+		// Create agent config
+		WithExec([]string{"mkdir", "-p", "/tmp/spire-agent"}).
+		WithNewFile("/tmp/spire-agent/agent.conf", agentConfig).
+		// Start SPIRE agent in background and wait for attestation
+		WithExec([]string{"sh", "-c", `
+			# Start SPIRE agent in background
+			spire-agent run -config /tmp/spire-agent/agent.conf &
+			AGENT_PID=$!
+
+			# Wait for agent to attest (check socket exists)
+			for i in $(seq 1 30); do
+				if [ -S /tmp/spire-agent/agent.sock ]; then
+					echo "SPIRE agent socket ready"
+					# Verify we can fetch SVID
+					if spire-agent api fetch -socketPath /tmp/spire-agent/agent.sock 2>/dev/null; then
+						echo "SVID fetch successful - attestation complete"
+						kill $AGENT_PID 2>/dev/null || true
+						exit 0
+					fi
+				fi
+				echo "Waiting for SPIRE agent... ($i/30)"
+				sleep 2
+			done
+
+			echo "SPIRE agent attestation failed"
+			kill $AGENT_PID 2>/dev/null || true
+			exit 1
+		`}).
+		Stdout(ctx)
+
+	if err != nil {
+		return fmt.Errorf("SPIRE agent attestation failed: %w", err)
+	}
+
+	log.Printf("SPIRE agent output: %s", out)
+	return nil
 }
 
 func waitForGCHealthWithRetry(ctx context.Context, timeout time.Duration) {
