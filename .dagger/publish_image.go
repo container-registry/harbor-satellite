@@ -170,13 +170,9 @@ func (m *HarborSatellite) getBuildContainer(
 ) []*dagger.Container {
 	var builds []*dagger.Container
 
-	var workDir string
-	switch {
-	case component == "satellite":
-		workDir = PROJ_MOUNT
-	case component == "ground-control":
-		workDir = PROJ_MOUNT + "/ground-control"
-	}
+	// For satellite, the full source is mounted to /app and we work from there
+	// For ground-control, only the ground-control subdir is mounted to /app
+	workDir := PROJ_MOUNT
 
 	fmt.Println("🛠️  Building with Dagger...")
 	supportedBuilds := getSupportedBuilds()
