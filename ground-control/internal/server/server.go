@@ -134,6 +134,11 @@ func NewServer() *ServerResult {
 		staleThreshold: parseDurationEnv("STALE_THRESHOLD", time.Hour),
 	}
 
+	// Bootstrap system admin user if not exists
+	if err := newServer.BootstrapSystemAdmin(context.Background()); err != nil {
+		log.Fatalf("Failed to bootstrap system admin: %v", err)
+	}
+
 	tlsCfg := loadTLSConfig()
 
 	httpServer := &http.Server{
