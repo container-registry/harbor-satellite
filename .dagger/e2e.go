@@ -659,12 +659,13 @@ func (m *HarborSatellite) startGroundControlWithEmbeddedSPIRE(ctx context.Contex
 
 // startSatelliteWithSPIRE starts a satellite with SPIRE agent that attests using the join token.
 func (m *HarborSatellite) startSatelliteWithSPIRE(ctx context.Context, joinToken string) error {
-	// Create SPIRE agent config
-	agentConfig := fmt.Sprintf(`agent {
+	// Create SPIRE agent config - join_token attestor config is empty,
+	// the actual token is passed via -joinToken flag
+	agentConfig := `agent {
     data_dir = "/tmp/spire-agent"
-    log_level = "INFO"
+    log_level = "DEBUG"
     server_address = "gc"
-    server_port = "8081"
+    server_port = 8081
     socket_path = "/tmp/spire-agent/agent.sock"
     trust_domain = "harbor-satellite.local"
     insecure_bootstrap = true
@@ -672,9 +673,7 @@ func (m *HarborSatellite) startSatelliteWithSPIRE(ctx context.Context, joinToken
 
 plugins {
     NodeAttestor "join_token" {
-        plugin_data {
-            join_token = "%s"
-        }
+        plugin_data {}
     }
 
     KeyManager "memory" {
@@ -685,7 +684,7 @@ plugins {
         plugin_data {}
     }
 }
-`, joinToken)
+`
 
 	// Start container with SPIRE agent and verify attestation
 	out, err := dag.Container().
@@ -699,15 +698,18 @@ plugins {
 		// Create agent config
 		WithExec([]string{"mkdir", "-p", "/tmp/spire-agent"}).
 		WithNewFile("/tmp/spire-agent/agent.conf", agentConfig).
+		// Pass join token as environment variable for use in script
+		WithEnvVariable("JOIN_TOKEN", joinToken).
 		// Debug: check connectivity to SPIRE server
 		WithExec([]string{"sh", "-c", "echo 'Testing connectivity to gc:8081...' && nc -zv gc 8081 || echo 'Connection failed'"}).
-		// Start SPIRE agent in background and wait for attestation
+		// Start SPIRE agent with join token and wait for attestation
 		WithExec([]string{"sh", "-c", `
-			# Start SPIRE agent with verbose logging
-			spire-agent run -config /tmp/spire-agent/agent.conf 2>&1 &
+			echo "Starting SPIRE agent with join token..."
+			# Start SPIRE agent with join token flag
+			spire-agent run -config /tmp/spire-agent/agent.conf -joinToken "$JOIN_TOKEN" 2>&1 &
 			AGENT_PID=$!
 
-			# Give agent time to start
+			# Give agent time to start and attest
 			sleep 5
 
 			# Wait for agent to attest (check socket exists)
@@ -725,7 +727,7 @@ plugins {
 				sleep 2
 			done
 
-			echo "SPIRE agent attestation failed - showing agent logs"
+			echo "SPIRE agent attestation failed"
 			kill $AGENT_PID 2>/dev/null || true
 			exit 1
 		`}).
