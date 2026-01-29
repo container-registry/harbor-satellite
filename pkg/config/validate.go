@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/container-registry/harbor-satellite/internal/registry"
@@ -15,7 +16,7 @@ import (
 // It applies default values where required, verifies URLs, cron expressions,
 // and handles the logic for bring-your-own-registry vs default registry setup.
 // Returns warnings for any defaulted or ignored fields and a fatal error for critical misconfigurations.
-func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) (*Config, []string, error) {
+func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string, registryDataDir string) (*Config, []string, error) {
 	if config == nil {
 		config = &Config{}
 	}
@@ -76,6 +77,38 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	var zotConfig registry.ZotConfig
 	if err := json.Unmarshal(config.ZotConfigRaw, &zotConfig); err != nil {
 		return nil, nil, fmt.Errorf("invalid zot_config: %w", err)
+	}
+
+	// Handle registry data directory
+	if !bringOwnRegistry {
+		// Determine the final registry data directory
+		finalRegistryDir := registryDataDir
+		if finalRegistryDir == "" {
+			// No flag or env var provided, use default
+			var err error
+			finalRegistryDir, err = GetDefaultRegistryDataDir()
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to get default registry data directory: %w", err)
+			}
+			warnings = append(warnings, fmt.Sprintf("registry-data-dir not specified. Using default path: %s", finalRegistryDir))
+		} else {
+			warnings = append(warnings, fmt.Sprintf("registry-data-dir specified: %s", finalRegistryDir))
+		}
+
+		// Update the zot config with the resolved path
+		zotConfig.Storage.RootDirectory = finalRegistryDir
+
+		// Create the directory if it doesn't exist
+		if err := os.MkdirAll(finalRegistryDir, 0755); err != nil {
+			return nil, nil, fmt.Errorf("failed to create registry data directory %s: %w", finalRegistryDir, err)
+		}
+
+		// Re-marshal the updated zot config
+		updatedZotConfig, err := json.Marshal(zotConfig)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to marshal updated zot config: %w", err)
+		}
+		config.ZotConfigRaw = updatedZotConfig
 	}
 
 	if !bringOwnRegistry && config.AppConfig.LocalRegistryCredentials.URL == "" {

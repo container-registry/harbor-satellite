@@ -158,7 +158,7 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 		return nil, nil, fmt.Errorf("failed to read config from disk: %w", err)
 	}
 
-	validatedConfig, warnings, err := ValidateAndEnforceDefaults(newConfig, cm.DefaultGroundControlURL)
+	validatedConfig, warnings, err := ValidateAndEnforceDefaults(newConfig, cm.DefaultGroundControlURL, "")
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to validate reloaded config: %w", err)
 	}
@@ -171,7 +171,7 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 
 }
 
-func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging bool) (*ConfigManager, []string, error) {
+func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging bool, registryDataDir string) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
 
@@ -186,7 +186,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 		return nil, nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	cfg, warnings, err := ValidateAndEnforceDefaults(cfg, groundControlURL)
+	cfg, warnings, err := ValidateAndEnforceDefaults(cfg, groundControlURL, registryDataDir)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("invalid config: %w", err)
 	}

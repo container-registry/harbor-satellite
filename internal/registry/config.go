@@ -10,8 +10,9 @@ import (
 )
 
 type ZotConfig struct {
-	HTTP ZotHTTPConfig `json:"http"`
-	Log  ZotLogConfig  `json:"log"`
+	HTTP    ZotHTTPConfig    `json:"http"`
+	Log     ZotLogConfig     `json:"log"`
+	Storage ZotStorageConfig `json:"storage"`
 }
 
 type ZotHTTPConfig struct {
@@ -21,6 +22,10 @@ type ZotHTTPConfig struct {
 
 type ZotLogConfig struct {
 	Level string `json:"level"`
+}
+
+type ZotStorageConfig struct {
+	RootDirectory string `json:"rootDirectory"`
 }
 
 func (c *ZotConfig) GetRegistryURL() string {

@@ -1,5 +1,10 @@
 package config
 
+import (
+	"os/user"
+	"path/filepath"
+)
+
 // Job names that the user is expected to provide in the config.json file
 const ReplicateStateJobName string = "replicate_state"
 const ZTRConfigJobName string = "register_satellite"
@@ -11,6 +16,12 @@ const ZTRConfigJobName string = "register_satellite"
 // Default config.json path for the satellite, used if the user does not provide any config path
 const DefaultConfigPath string = "config.json"
 const DefaultPrevConfigPath string = "prev_config.json"
+
+// Registry data directory environment variable
+const RegistryDataDirEnvVar string = "REGISTRY_DATA_DIR"
+
+// System-level registry storage path for root user
+const SystemRegistryDataDir string = "/var/lib/satellite/registry"
 
 // Below are the default values of the job schedules that would be used if the user does not provide any schedule or
 // if there is any error while parsing the cron expression
@@ -37,3 +48,21 @@ const DefaultZotConfigJSON = `{
 
 const DefaultRemoteRegistryURL = "http://127.0.0.1:8585"
 const DefaultGroundControlURL = "http://127.0.0.1:8080"
+
+// GetDefaultRegistryDataDir returns the default registry data directory based on user context.
+// For root user, it returns /var/lib/satellite/registry
+// For non-root users, it returns ~/.local/share/satellite/registry
+func GetDefaultRegistryDataDir() (string, error) {
+	currentUser, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+
+	// If running as root, use system directory
+	if currentUser.Uid == "0" {
+		return SystemRegistryDataDir, nil
+	}
+
+	// For non-root users, use XDG user data directory
+	return filepath.Join(currentUser.HomeDir, ".local", "share", "satellite", "registry"), nil
+}

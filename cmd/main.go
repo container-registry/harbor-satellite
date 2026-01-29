@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/container-registry/harbor-satellite/internal/container_runtime"
+	"os"
+
+	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/hotreload"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/registry"
@@ -13,7 +15,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
-	"os"
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/rs/zerolog"
@@ -37,11 +38,13 @@ func main() {
 	var jsonLogging bool
 	var groundControlURL string
 	var token string
+	var registryDataDir string
 	var mirrors mirrorFlags
 
 	flag.StringVar(&groundControlURL, "ground-control-url", "", "URL to ground control")
 	flag.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
 	flag.StringVar(&token, "token", "", "Satellite token")
+	flag.StringVar(&registryDataDir, "registry-data-dir", "", "Registry data directory (default: ~/.local/share/satellite/registry for non-root, /var/lib/satellite/registry for root)")
 	flag.Var(&mirrors, "mirrors", "Specify CRI and registries in the form CRI:registry1,registry2")
 
 	flag.Parse()
@@ -52,13 +55,16 @@ func main() {
 	if groundControlURL == "" {
 		groundControlURL = os.Getenv("GROUND_CONTROL_URL")
 	}
+	if registryDataDir == "" {
+		registryDataDir = os.Getenv(config.RegistryDataDirEnvVar)
+	}
 
 	if token == "" || groundControlURL == "" {
 		fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars.")
 		os.Exit(1)
 	}
 
-	cm, _, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging)
+	cm, _, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging, registryDataDir)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		os.Exit(1)
@@ -78,19 +84,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = run(jsonLogging, token, groundControlURL)
+	err = run(jsonLogging, token, groundControlURL, registryDataDir)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(jsonLogging bool, token, groundControlURL string) error {
+func run(jsonLogging bool, token, groundControlURL, registryDataDir string) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging)
+	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging, registryDataDir)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		return err

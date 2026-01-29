@@ -244,7 +244,26 @@ Set up the satellite using the token from Step 6. Choose one of the following op
 
    > **Note** : by default, logging in JSON format is set to true.  To change this pass additional flag `--json-logging=false` 
 
+### Registry Data Directory Configuration
 
+The satellite stores registry data in a configurable location. By default:
+- **For root/system service**: `/var/lib/satellite/registry`
+- **For regular users**: `~/.local/share/satellite/registry` (XDG user data directory)
+
+You can override the default location using:
+
+**Command-line flag:**
+```bash
+./bin --token "<your-token>" --ground-control-url "http://127.0.0.1:8080" --registry-data-dir "/custom/path"
+```
+
+**Environment variable:**
+```bash
+export REGISTRY_DATA_DIR="/custom/path"
+./bin --token "<your-token>" --ground-control-url "http://127.0.0.1:8080"
+```
+
+The flag takes precedence over the environment variable, which takes precedence over the default path.
 
 ### 7. Configure Local Registry as Mirror (Optional)
 
