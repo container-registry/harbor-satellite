@@ -117,7 +117,11 @@ func (s *SpiffeZtrProcess) registerWithSPIFFE(ctx context.Context, log *zerolog.
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Warn().Err(err).Msg("error closing response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return config.StateConfig{}, fmt.Errorf("registration failed: %s", resp.Status)

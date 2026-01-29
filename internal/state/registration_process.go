@@ -157,7 +157,11 @@ func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSCo
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			logger.FromContext(ctx).Warn().Err(err).Msg("error closing response body")
+		}
+	}()
 
 	if response.StatusCode != http.StatusOK {
 		return config.StateConfig{}, fmt.Errorf("failed to register satellite: %s", response.Status)
