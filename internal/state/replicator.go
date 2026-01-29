@@ -105,6 +105,14 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 	}
 
 	for _, entity := range replicationEntities {
+		// Check context cancellation before processing each image
+		select {
+		case <-ctx.Done():
+			log.Warn().Err(ctx.Err()).Msg("Context cancelled, stopping replication")
+			return ctx.Err()
+		default:
+		}
+
 		srcRef := fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, entity.GetRepository(), entity.GetName(), entity.GetTag())
 		dstRef := fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag())
 
@@ -217,6 +225,14 @@ func (r *BasicReplicator) DeleteReplicationEntity(ctx context.Context, replicati
 	}
 
 	for _, entity := range replicationEntity {
+		// Check context cancellation before processing each image
+		select {
+		case <-ctx.Done():
+			log.Warn().Err(ctx.Err()).Msg("Context cancelled, stopping deletion")
+			return ctx.Err()
+		default:
+		}
+
 		log.Info().Msgf("Deleting image %s from repository %s at registry %s with tag %s", entity.GetName(), entity.GetRepository(), r.remoteRegistryURL, entity.GetTag())
 
 		err := crane.Delete(fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag()), options...)

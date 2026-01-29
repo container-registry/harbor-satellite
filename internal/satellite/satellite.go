@@ -98,9 +98,19 @@ func (s *Satellite) GetSchedulers() []*scheduler.Scheduler {
 	return s.schedulers
 }
 
-// Stop gracefully stops all schedulers
-func (s *Satellite) Stop() {
-	for _, scheduler := range s.schedulers {
-		scheduler.Stop()
+// Stop gracefully stops all schedulers and logs the shutdown process
+func (s *Satellite) Stop(ctx context.Context) {
+	log := logger.FromContext(ctx)
+	log.Info().Int("scheduler_count", len(s.schedulers)).
+		Msg("Initiating scheduler shutdown")
+
+	for i, sched := range s.schedulers {
+		log.Debug().
+			Int("index", i).
+			Str("scheduler", sched.Name()).
+			Msg("Stopping scheduler")
+		sched.Stop()
 	}
+
+	log.Info().Msg("All schedulers stopped")
 }

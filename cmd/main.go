@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/hotreload"
@@ -54,6 +55,7 @@ type SatelliteOptions struct {
 
 func main() {
 	var opts SatelliteOptions
+	var shutdownTimeout string
 
 	flag.StringVar(&opts.GroundControlURL, "ground-control-url", "", "URL to ground control")
 	flag.BoolVar(&opts.JSONLogging, "json-logging", true, "Enable JSON logging")
@@ -69,6 +71,7 @@ func main() {
 	flag.StringVar(&opts.RegistryPassword, "registry-password", "", "External registry password")
 	flag.StringVar(&opts.ConfigDir, "config-dir", "", "Configuration directory path (default: ~/.config/satellite)")
 	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", "", "Registry data directory (overrides default storage path derived from config-dir)")
+	flag.StringVar(&shutdownTimeout, "shutdown-timeout", "", "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
 
 	flag.Parse()
 
@@ -108,6 +111,12 @@ func main() {
 	if opts.RegistryDataDir == "" {
 		opts.RegistryDataDir = os.Getenv(config.RegistryDataDirEnvVar)
 	}
+	if shutdownTimeout == "" {
+		shutdownTimeout = os.Getenv("SHUTDOWN_TIMEOUT")
+		if shutdownTimeout == "" {
+			shutdownTimeout = "30s"
+		}
+	}
 
 	// Resolve config directory path
 	if opts.ConfigDir == "" {
@@ -144,14 +153,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = run(opts, pathConfig)
+	err = run(opts, pathConfig, shutdownTimeout)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(opts SatelliteOptions, pathConfig *config.PathConfig) error {
+func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout string) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
@@ -264,9 +273,46 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig) error {
 
 	// Wait until context is cancelled
 	<-ctx.Done()
-	log.Info().Msg("Satellite context cancelled, shutting down...")
 
-	return wg.Wait()
+	// Graceful shutdown with timeout
+	shutdownDuration, err := time.ParseDuration(shutdownTimeout)
+	if err != nil {
+		log.Warn().Err(err).Str("shutdownTimeout", shutdownTimeout).
+			Msg("Invalid shutdown timeout, defaulting to 30s")
+		shutdownDuration = 30 * time.Second
+	}
+
+	log.Info().Dur("timeout", shutdownDuration).
+		Msg("Received shutdown signal, initiating graceful shutdown")
+
+	// Create a shutdown context with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownDuration)
+	defer shutdownCancel()
+
+	// Stop schedulers to prevent new tasks from being accepted
+	log.Info().Msg("Stopping schedulers to prevent new replication tasks")
+	s.Stop(ctx)
+
+	// Wait for in-progress tasks with timeout
+	log.Info().Msg("Waiting for in-progress replication tasks to complete")
+	shutdownDone := make(chan struct{})
+	go func() {
+		err := wg.Wait()
+		if err != nil {
+			log.Error().Err(err).Msg("Error waiting for goroutines during shutdown")
+		}
+		close(shutdownDone)
+	}()
+
+	select {
+	case <-shutdownDone:
+		log.Info().Msg("Graceful shutdown completed successfully")
+	case <-shutdownCtx.Done():
+		log.Warn().Msg("Shutdown timeout exceeded, forcing exit")
+		return fmt.Errorf("graceful shutdown timeout exceeded")
+	}
+
+	return nil
 }
 
 func resolveLocalRegistryEndpoint(cm *config.ConfigManager) (string, error) {
