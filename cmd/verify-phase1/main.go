@@ -18,7 +18,7 @@ type SampleConfig struct {
 }
 
 func main() {
-	fmt.Println("=== Phase 1 Verification ===\n")
+	fmt.Println("=== Phase 1 Verification ===")
 
 	// 1. Test Device Identity
 	fmt.Println("## 1. Device Identity")
