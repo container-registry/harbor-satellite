@@ -13,6 +13,9 @@ const DefaultSPIFFEEndpointSocket string = "unix:///run/spire/sockets/agent.sock
 // by providing values in the config.json file. These default values will be used if the user does not provide any value or wrong format value
 // in the config.json file.
 
+// Registry data directory environment variable
+const RegistryDataDirEnvVar string = "REGISTRY_DATA_DIR"
+
 // Below are the default values of the job schedules that would be used if the user does not provide any schedule or
 // if there is any error while parsing the cron expression
 const DefaultZTRCronExpr string = "@every 00h00m05s"
@@ -37,3 +40,4 @@ const DefaultZotConfigJSON = `{
 
 const DefaultRemoteRegistryURL = "http://127.0.0.1:8585"
 const DefaultGroundControlURL = "http://127.0.0.1:8080"
+

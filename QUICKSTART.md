@@ -68,6 +68,24 @@ graph TB
 - [ADR: Ground Control authentication](docs/decisions/0004-ground-control-authentication.md)
 - [ADR: SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md)
 
+## Registry Data Directory
+
+The satellite stores registry data in a configurable location. By default, it uses a `zot` subdirectory inside the configuration directory (`~/.config/satellite/zot`).
+
+You can override the storage location using:
+
+**Command-line flag:**
+```bash
+./bin --token "<your-token>" --ground-control-url "http://127.0.0.1:8080" --registry-data-dir "/custom/path"
+```
+
+**Environment variable:**
+```bash
+export REGISTRY_DATA_DIR="/custom/path"
+./bin --token "<your-token>" --ground-control-url "http://127.0.0.1:8080"
+```
+
+The flag takes precedence over the environment variable, which takes precedence over the default path.
 ## Need Help?
 
 - Explore the [Harbor Satellite documentation](https://docs.goharbor.io).
