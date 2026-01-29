@@ -74,7 +74,7 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 	gcDir := m.Source.Directory("./ground-control")
 
 	_, err := dag.Container().
-		From("golang:1.24.11-alpine").
+		From(DEFAULT_GO + "-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -571,7 +571,7 @@ func (m *HarborSatellite) registerSatelliteAndZTR(ctx context.Context) {
 
 	//ZTR
 	_, err = dag.Container().
-		From("golang:1.24.11-alpine").
+		From(DEFAULT_GO + "-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -666,7 +666,7 @@ func (m *HarborSatellite) startGroundControlWithEmbeddedSPIRE(ctx context.Contex
 	gcDir := m.Source.Directory("./ground-control")
 
 	_, err := dag.Container().
-		From("golang:1.24.11-alpine").
+		From(DEFAULT_GO + "-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -742,7 +742,7 @@ plugins {
 
 	// Start container with SPIRE agent and verify attestation
 	out, err := dag.Container().
-		From("golang:1.24.11-alpine").
+		From(DEFAULT_GO + "-alpine").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		// Install SPIRE agent binary and netcat for debugging
 		WithExec([]string{"apk", "add", "--no-cache", "curl", "tar", "netcat-openbsd"}).
