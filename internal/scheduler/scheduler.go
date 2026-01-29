@@ -111,9 +111,19 @@ func (s *Scheduler) Name() string {
 }
 
 // Stop signals the scheduler to stop and waits for all goroutines to complete
-func (s *Scheduler) Stop() {
-	// Wait for the scheduler's main Run goroutine to complete
-	s.wg.Wait()
+func (s *Scheduler) Stop(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *Scheduler) launchProcess(ctx context.Context) {

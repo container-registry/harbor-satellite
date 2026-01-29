@@ -109,7 +109,7 @@ func (s *Satellite) Stop(ctx context.Context) {
 			Int("index", i).
 			Str("scheduler", sched.Name()).
 			Msg("Stopping scheduler")
-		sched.Stop()
+		sched.Stop(ctx)
 	}
 
 	log.Info().Msg("All schedulers stopped")
