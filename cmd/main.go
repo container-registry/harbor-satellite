@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/container-registry/harbor-satellite/internal/container_runtime"
+	"time"
+
+	"os"
+
+	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/hotreload"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/registry"
@@ -13,7 +17,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
-	"os"
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/rs/zerolog"
@@ -38,10 +41,12 @@ func main() {
 	var groundControlURL string
 	var token string
 	var mirrors mirrorFlags
+	var shutdownTimeout string
 
 	flag.StringVar(&groundControlURL, "ground-control-url", "", "URL to ground control")
 	flag.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
 	flag.StringVar(&token, "token", "", "Satellite token")
+	flag.StringVar(&shutdownTimeout, "shutdown-timeout", "", "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
 	flag.Var(&mirrors, "mirrors", "Specify CRI and registries in the form CRI:registry1,registry2")
 
 	flag.Parse()
@@ -51,6 +56,12 @@ func main() {
 	}
 	if groundControlURL == "" {
 		groundControlURL = os.Getenv("GROUND_CONTROL_URL")
+	}
+	if shutdownTimeout == "" {
+		shutdownTimeout = os.Getenv("SHUTDOWN_TIMEOUT")
+		if shutdownTimeout == "" {
+			shutdownTimeout = "30s"
+		}
 	}
 
 	if token == "" || groundControlURL == "" {
@@ -78,14 +89,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = run(jsonLogging, token, groundControlURL)
+	err = run(jsonLogging, token, groundControlURL, shutdownTimeout)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(jsonLogging bool, token, groundControlURL string) error {
+func run(jsonLogging bool, token, groundControlURL string, shutdownTimeout string) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
@@ -161,9 +172,46 @@ func run(jsonLogging bool, token, groundControlURL string) error {
 
 	// Wait until context is cancelled
 	<-ctx.Done()
-	log.Info().Msg("Satellite context cancelled, shutting down...")
 
-	return wg.Wait()
+	// Graceful shutdown with timeout
+	shutdownDuration, err := time.ParseDuration(shutdownTimeout)
+	if err != nil {
+		log.Warn().Err(err).Str("shutdownTimeout", shutdownTimeout).
+			Msg("Invalid shutdown timeout, defaulting to 30s")
+		shutdownDuration = 30 * time.Second
+	}
+
+	log.Info().Dur("timeout", shutdownDuration).
+		Msg("Received shutdown signal, initiating graceful shutdown")
+
+	// Create a shutdown context with timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownDuration)
+	defer shutdownCancel()
+
+	// Stop schedulers to prevent new tasks from being accepted
+	log.Info().Msg("Stopping schedulers to prevent new replication tasks")
+	s.Stop(ctx)
+
+	// Wait for in-progress tasks with timeout
+	log.Info().Msg("Waiting for in-progress replication tasks to complete")
+	shutdownDone := make(chan struct{})
+	go func() {
+		err := wg.Wait()
+		if err != nil {
+			log.Error().Err(err).Msg("Error waiting for goroutines during shutdown")
+		}
+		close(shutdownDone)
+	}()
+
+	select {
+	case <-shutdownDone:
+		log.Info().Msg("Graceful shutdown completed successfully")
+	case <-shutdownCtx.Done():
+		log.Warn().Msg("Shutdown timeout exceeded, forcing exit")
+		return fmt.Errorf("graceful shutdown timeout exceeded")
+	}
+
+	return nil
 }
 
 func handleRegistrySetup(ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager) error {
