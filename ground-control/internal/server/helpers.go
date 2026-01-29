@@ -89,7 +89,6 @@ func addSatelliteToGroups(ctx context.Context, q *database.Queries, groups *[]st
 					Code:    http.StatusBadRequest,
 				}
 			}
-			// TODO: we just need the group id here.
 			if err := q.AddSatelliteToGroup(ctx, database.AddSatelliteToGroupParams{
 				SatelliteID: satelliteID,
 				GroupID:     group.ID,
