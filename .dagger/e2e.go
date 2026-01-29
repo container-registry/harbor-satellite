@@ -652,6 +652,9 @@ func (m *HarborSatellite) startGroundControlWithEmbeddedSPIRE(ctx context.Contex
 
 	// Wait for GC to be healthy
 	waitForGCHealthWithRetry(ctx, 60*time.Second)
+
+	// Wait for SPIRE server port to be accessible
+	waitForSPIREServer(ctx, 30*time.Second)
 }
 
 // startSatelliteWithSPIRE starts a satellite with SPIRE agent that attests using the join token.
@@ -688,26 +691,31 @@ plugins {
 	out, err := dag.Container().
 		From("golang:1.24-alpine@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706eef7846f319293ab5cb7a").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
-		// Install SPIRE agent binary
-		WithExec([]string{"apk", "add", "--no-cache", "curl", "tar"}).
+		// Install SPIRE agent binary and netcat for debugging
+		WithExec([]string{"apk", "add", "--no-cache", "curl", "tar", "netcat-openbsd"}).
 		WithExec([]string{"sh", "-c",
 			"curl -sL https://github.com/spiffe/spire/releases/download/v1.10.4/spire-1.10.4-linux-amd64-musl.tar.gz | tar xz -C /opt"}).
 		WithEnvVariable("PATH", "/opt/spire-1.10.4/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin").
 		// Create agent config
 		WithExec([]string{"mkdir", "-p", "/tmp/spire-agent"}).
 		WithNewFile("/tmp/spire-agent/agent.conf", agentConfig).
+		// Debug: check connectivity to SPIRE server
+		WithExec([]string{"sh", "-c", "echo 'Testing connectivity to gc:8081...' && nc -zv gc 8081 || echo 'Connection failed'"}).
 		// Start SPIRE agent in background and wait for attestation
 		WithExec([]string{"sh", "-c", `
-			# Start SPIRE agent in background
-			spire-agent run -config /tmp/spire-agent/agent.conf &
+			# Start SPIRE agent with verbose logging
+			spire-agent run -config /tmp/spire-agent/agent.conf 2>&1 &
 			AGENT_PID=$!
+
+			# Give agent time to start
+			sleep 5
 
 			# Wait for agent to attest (check socket exists)
 			for i in $(seq 1 30); do
 				if [ -S /tmp/spire-agent/agent.sock ]; then
 					echo "SPIRE agent socket ready"
 					# Verify we can fetch SVID
-					if spire-agent api fetch -socketPath /tmp/spire-agent/agent.sock 2>/dev/null; then
+					if spire-agent api fetch -socketPath /tmp/spire-agent/agent.sock; then
 						echo "SVID fetch successful - attestation complete"
 						kill $AGENT_PID 2>/dev/null || true
 						exit 0
@@ -717,7 +725,7 @@ plugins {
 				sleep 2
 			done
 
-			echo "SPIRE agent attestation failed"
+			echo "SPIRE agent attestation failed - showing agent logs"
 			kill $AGENT_PID 2>/dev/null || true
 			exit 1
 		`}).
@@ -750,6 +758,33 @@ func waitForGCHealthWithRetry(ctx context.Context, timeout time.Duration) {
 				return
 			}
 			log.Printf("Ground Control not ready yet, retrying...")
+		}
+	}
+}
+
+func waitForSPIREServer(ctx context.Context, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				log.Fatalf("timeout waiting for SPIRE server to be ready")
+			}
+
+			// Check if SPIRE server port is accessible
+			_, err := dag.Container().
+				From("alpine:latest").
+				WithExec([]string{"apk", "add", "--no-cache", "netcat-openbsd"}).
+				WithExec([]string{"nc", "-zv", "gc", "8081"}).
+				Stdout(ctx)
+			if err == nil {
+				log.Println("SPIRE server port is accessible")
+				return
+			}
+			log.Printf("SPIRE server not ready yet, retrying...")
 		}
 	}
 }
