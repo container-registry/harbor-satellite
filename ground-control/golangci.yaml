@@ -1,3 +1,5 @@
+version: "2"
+
 # Ground Control linting configuration
 # Kept in sync with root golangci.yaml for satellite
 
@@ -216,7 +218,6 @@ linters:
     - govet
     - ineffassign
     - staticcheck
-    - typecheck
     - unused
     ## disabled by default
     - asasalint
