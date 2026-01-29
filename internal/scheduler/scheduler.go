@@ -18,6 +18,7 @@ type Scheduler struct {
 	log      *zerolog.Logger
 	interval time.Duration
 	mu       sync.Mutex
+	wg       sync.WaitGroup
 }
 
 // NewSchedulerWithInterval creates a new scheduler with a parsed interval string
@@ -41,6 +42,8 @@ func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog
 
 // Run starts the scheduler and blocks until context is cancelled
 func (s *Scheduler) Run(ctx context.Context) {
+	s.wg.Add(1)
+	defer s.wg.Done()
 	defer s.ticker.Stop()
 
 	s.log.Info().
@@ -107,9 +110,10 @@ func (s *Scheduler) Name() string {
 	return s.name
 }
 
-// Stop stops the scheduler
+// Stop signals the scheduler to stop and waits for all goroutines to complete
 func (s *Scheduler) Stop() {
-	s.ticker.Stop()
+	// Wait for the scheduler's main Run goroutine to complete
+	s.wg.Wait()
 }
 
 func (s *Scheduler) launchProcess(ctx context.Context) {
@@ -121,7 +125,9 @@ func (s *Scheduler) launchProcess(ctx context.Context) {
 			Str("Process", s.process.Name()).
 			Msg("Scheduler triggering task execution")
 
+		s.wg.Add(1)
 		go func() {
+			defer s.wg.Done()
 			if err := s.process.Execute(ctx); err != nil {
 				s.log.Warn().
 					Str("Process", s.process.Name()).

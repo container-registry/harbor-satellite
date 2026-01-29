@@ -297,8 +297,8 @@ func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Sat
 	log.Info().Msg("Stopping schedulers to prevent new replication tasks")
 	s.Stop(shutdownCtx)
 
-	// Wait for in-progress tasks with timeout
-	log.Info().Msg("Waiting for in-progress replication tasks to complete")
+	// Wait for in-progress tasks and scheduler goroutines with timeout
+	log.Info().Msg("Waiting for in-progress replication tasks and scheduler goroutines to complete")
 	shutdownDone := make(chan struct{})
 	go func() {
 		err := wg.Wait()
