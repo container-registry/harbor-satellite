@@ -74,7 +74,7 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 	gcDir := m.Source.Directory("./ground-control")
 
 	_, err := dag.Container().
-		From("golang:1.24-alpine@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706eef7846f319293ab5cb7a").
+		From("golang:1.24.11-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -299,6 +299,7 @@ func (m *HarborSatellite) initializeHarborRegistry(ctx context.Context) {
 		m.executeReplication,
 		m.getExecuteReplication,
 		m.createConfig,
+		m.createGroup,
 	}
 
 	for _, request := range requests {
@@ -408,6 +409,15 @@ func (m *HarborSatellite) createConfig(ctx context.Context) (string, error) {
 	return m.executeHTTPRequest(ctx, "POST", "/configs", data)
 }
 
+func (m *HarborSatellite) createGroup(ctx context.Context) (string, error) {
+	data := fmt.Sprintf(`{
+		"group": "%s",
+		"registry": "%s",
+		"artifacts": [{"repository": "%s/alpine", "tag": ["latest"]}]
+	}`, destNamespace, harborDomain, projectName)
+	return m.executeHTTPRequest(ctx, "POST", "/groups/sync", data)
+}
+
 func (m *HarborSatellite) createReplicationPolicy(ctx context.Context) (string, error) {
 	data := fmt.Sprintf(`{
 		"name": "%s",
@@ -449,10 +459,51 @@ func (m *HarborSatellite) getExecuteReplication(ctx context.Context) (string, er
 	return m.executeHTTPRequest(ctx, "GET", url, "")
 }
 
-func (m *HarborSatellite) executeHTTPRequest(ctx context.Context, method, endpoint, data string) (string, error) {
-	args := []string{"curl", "-s", "-X", method}
+func (m *HarborSatellite) getGCAuthToken(ctx context.Context) (string, error) {
+	if m.gcAuthToken != "" {
+		return m.gcAuthToken, nil
+	}
 
-	if endpoint == "/configs" || endpoint == "/satellites" {
+	loginData := fmt.Sprintf(`{"username":"%s","password":"%s"}`, gcAdminUser, gcAdminPassword)
+	args := []string{"curl", "-sf", "-X", "POST", "http://gc:8080/login", "-H", "Content-Type: application/json", "-d", loginData}
+
+	stdout, err := curlContainer(ctx, args)
+	if err != nil {
+		return "", fmt.Errorf("login failed: %w", err)
+	}
+
+	// Parse token from response: {"token":"...","expires_at":"..."}
+	var resp struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		return "", fmt.Errorf("failed to parse login response: %w (response: %s)", err, stdout)
+	}
+
+	if resp.Token == "" {
+		return "", fmt.Errorf("received empty token from login response")
+	}
+
+	m.gcAuthToken = resp.Token
+	log.Printf("Got GC auth token")
+	return m.gcAuthToken, nil
+}
+
+func (m *HarborSatellite) executeHTTPRequest(ctx context.Context, method, endpoint, data string) (string, error) {
+	args := []string{"curl", "-sf", "-X", method}
+
+	gcEndpoints := map[string]bool{
+		"/configs":     true,
+		"/satellites":  true,
+		"/groups/sync": true,
+	}
+
+	if gcEndpoints[endpoint] {
+		token, err := m.getGCAuthToken(ctx)
+		if err != nil {
+			return "", err
+		}
+		args = append(args, "-H", fmt.Sprintf("Authorization: Bearer %s", token))
 		args = append(args, fmt.Sprintf("%s%s", "http://gc:8080", endpoint))
 	} else {
 		args = append(args, "-u", fmt.Sprintf("%s:%s", harborAdminUser, harborAdminPassword))
@@ -520,7 +571,7 @@ func (m *HarborSatellite) registerSatelliteAndZTR(ctx context.Context) {
 
 	//ZTR
 	_, err = dag.Container().
-		From("golang:1.24-alpine@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706eef7846f319293ab5cb7a").
+		From("golang:1.24.11-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -615,7 +666,7 @@ func (m *HarborSatellite) startGroundControlWithEmbeddedSPIRE(ctx context.Contex
 	gcDir := m.Source.Directory("./ground-control")
 
 	_, err := dag.Container().
-		From("golang:1.24-alpine@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706eef7846f319293ab5cb7a").
+		From("golang:1.24.11-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -691,7 +742,7 @@ plugins {
 
 	// Start container with SPIRE agent and verify attestation
 	out, err := dag.Container().
-		From("golang:1.24-alpine@sha256:68932fa6d4d4059845c8f40ad7e654e626f3ebd3706eef7846f319293ab5cb7a").
+		From("golang:1.24.11-alpine").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		// Install SPIRE agent binary and netcat for debugging
 		WithExec([]string{"apk", "add", "--no-cache", "curl", "tar", "netcat-openbsd"}).

@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	DEFAULT_GO           = "golang:1.24.3"
+	DEFAULT_GO           = "golang:1.24.11"
 	PROJ_MOUNT           = "/app"
-	GO_VERSION           = "1.24.3"
+	GO_VERSION           = "1.24.11"
 	DOCKER_PORT          = 2375
 	GORELEASER_VERSION   = "v2.9.0"
 	GOLANGCILINT_VERSION = "v2.0.2"
@@ -47,7 +47,7 @@ func (m *HarborSatellite) RunGroundControl(
 	source *dagger.Directory,
 ) (*dagger.Service, error) {
 	golang := dag.Container().
-		From("golang:latest").
+		From("golang:1.24.11-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -95,7 +95,7 @@ func (m *HarborSatellite) BuildDev(
 	if component == "satellite" || component == "ground-control" {
 		var binaryFile *dagger.File
 		golang := dag.Container().
-			From("golang:latest").
+			From("golang:1.24.11-alpine").
 			WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 			WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 			WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
