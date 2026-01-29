@@ -63,6 +63,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	// SPIRE management (admin only)
 	api.HandleFunc("/spire/status", s.RequireRole(roleSystemAdmin, s.spireStatusHandler)).Methods("GET")
+	api.HandleFunc("/join-tokens", s.RequireRole(roleSystemAdmin, s.createJoinTokenHandler)).Methods("POST")
 
 	// Satellite routes (robot creds or SPIFFE)
 	satellites := r.PathPrefix("/satellites").Subrouter()
@@ -83,9 +84,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	// Join token (satellite requests)
 	satellites.HandleFunc("/{satellite}/join-token", s.generateJoinTokenHandler).Methods("POST")
-
-	// Join tokens (no pre-registration required, uses embedded SPIRE)
-	r.HandleFunc("/join-tokens", s.createJoinTokenHandler).Methods("POST")
 
 	return r
 }
