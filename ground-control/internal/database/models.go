@@ -5,6 +5,7 @@
 package database
 
 import (
+	"database/sql"
 	"encoding/json"
 	"time"
 )
@@ -27,6 +28,14 @@ type Group struct {
 	UpdatedAt   time.Time
 }
 
+type LoginAttempt struct {
+	ID          int32
+	Username    string
+	FailedCount int32
+	LockedUntil sql.NullTime
+	LastAttempt time.Time
+}
+
 type RobotAccount struct {
 	ID          int32
 	RobotName   string
@@ -38,10 +47,12 @@ type RobotAccount struct {
 }
 
 type Satellite struct {
-	ID        int32
-	Name      string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID                int32
+	Name              string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	LastSeen          sql.NullTime
+	HeartbeatInterval sql.NullString
 }
 
 type SatelliteConfig struct {
@@ -54,6 +65,21 @@ type SatelliteGroup struct {
 	GroupID     int32
 }
 
+type SatelliteStatus struct {
+	ID                 int32
+	SatelliteID        int32
+	Activity           string
+	LatestStateDigest  sql.NullString
+	LatestConfigDigest sql.NullString
+	CpuPercent         sql.NullString
+	MemoryUsedBytes    sql.NullInt64
+	StorageUsedBytes   sql.NullInt64
+	LastSyncDurationMs sql.NullInt64
+	ImageCount         sql.NullInt32
+	ReportedAt         time.Time
+	CreatedAt          time.Time
+}
+
 type SatelliteToken struct {
 	ID          int32
 	SatelliteID int32
@@ -61,4 +87,21 @@ type SatelliteToken struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	ExpiresAt   time.Time
+}
+
+type Session struct {
+	ID        int32
+	UserID    int32
+	Token     string
+	ExpiresAt time.Time
+	CreatedAt time.Time
+}
+
+type User struct {
+	ID           int32
+	Username     string
+	PasswordHash string
+	Role         string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }

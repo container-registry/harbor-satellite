@@ -7,12 +7,13 @@ package database
 
 import (
 	"context"
+	"time"
 )
 
 const createSatellite = `-- name: CreateSatellite :one
 INSERT INTO satellites (name, created_at, updated_at)
 VALUES ($1, NOW(), NOW())
-RETURNING id, name, created_at, updated_at
+RETURNING id, name, created_at, updated_at, last_seen, heartbeat_interval
 `
 
 func (q *Queries) CreateSatellite(ctx context.Context, name string) (Satellite, error) {
@@ -23,6 +24,8 @@ func (q *Queries) CreateSatellite(ctx context.Context, name string) (Satellite, 
 		&i.Name,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LastSeen,
+		&i.HeartbeatInterval,
 	)
 	return i, err
 }
@@ -48,7 +51,7 @@ func (q *Queries) DeleteSatelliteByName(ctx context.Context, name string) error 
 }
 
 const getSatellite = `-- name: GetSatellite :one
-SELECT id, name, created_at, updated_at FROM satellites
+SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval FROM satellites
 WHERE id = $1 LIMIT 1
 `
 
@@ -60,12 +63,14 @@ func (q *Queries) GetSatellite(ctx context.Context, id int32) (Satellite, error)
 		&i.Name,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LastSeen,
+		&i.HeartbeatInterval,
 	)
 	return i, err
 }
 
 const getSatelliteByName = `-- name: GetSatelliteByName :one
-SELECT id, name, created_at, updated_at FROM satellites
+SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval FROM satellites
 WHERE name = $1 LIMIT 1
 `
 
@@ -77,6 +82,8 @@ func (q *Queries) GetSatelliteByName(ctx context.Context, name string) (Satellit
 		&i.Name,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LastSeen,
+		&i.HeartbeatInterval,
 	)
 	return i, err
 }
@@ -105,15 +112,22 @@ JOIN groups g ON g.id = sg.group_id
 WHERE g.group_name = $1
 `
 
-func (q *Queries) GetSatellitesByGroupName(ctx context.Context, groupName string) ([]Satellite, error) {
+type GetSatellitesByGroupNameRow struct {
+	ID        int32
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (q *Queries) GetSatellitesByGroupName(ctx context.Context, groupName string) ([]GetSatellitesByGroupNameRow, error) {
 	rows, err := q.db.QueryContext(ctx, getSatellitesByGroupName, groupName)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Satellite
+	var items []GetSatellitesByGroupNameRow
 	for rows.Next() {
-		var i Satellite
+		var i GetSatellitesByGroupNameRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -134,7 +148,7 @@ func (q *Queries) GetSatellitesByGroupName(ctx context.Context, groupName string
 }
 
 const listSatellites = `-- name: ListSatellites :many
-SELECT id, name, created_at, updated_at FROM satellites
+SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval FROM satellites
 `
 
 func (q *Queries) ListSatellites(ctx context.Context) ([]Satellite, error) {
@@ -151,6 +165,8 @@ func (q *Queries) ListSatellites(ctx context.Context) ([]Satellite, error) {
 			&i.Name,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LastSeen,
+			&i.HeartbeatInterval,
 		); err != nil {
 			return nil, err
 		}
