@@ -724,6 +724,14 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 	satellite := vars["satellite"]
 
 	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		log.Printf("Error starting transaction: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Failed to start database transaction",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
 	q := s.dbQueries.WithTx(tx)
 
 	committed := false
