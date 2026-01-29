@@ -168,7 +168,7 @@ func (s *EmbeddedSpireServer) waitForReady(ctx context.Context) error {
 func (s *EmbeddedSpireServer) writeConfig() error {
 	config := fmt.Sprintf(`server {
     bind_address = "%s"
-    bind_port = "%d"
+    bind_port = %d
     socket_path = "%s"
     trust_domain = "%s"
     data_dir = "%s"
