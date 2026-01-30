@@ -35,7 +35,9 @@ func (h *HealthRegistrar) RegisterRoutes(router Router) {
 func (h *HealthRegistrar) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(HealthResponse{Status: "ok"})
+	if err := json.NewEncoder(w).Encode(HealthResponse{Status: "ok"}); err != nil {
+		h.logger.Error().Err(err).Msg("failed to write health response")
+	}
 }
 
 func (h *HealthRegistrar) readyHandler(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +84,9 @@ func (h *HealthRegistrar) readyHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error().Err(err).Msg("failed to write rediness response")
+	}
 }
 
 func (h *HealthRegistrar) checkRegistry() error {
@@ -112,7 +116,11 @@ func (h *HealthRegistrar) checkRegistry() error {
 	if err != nil {
 		return fmt.Errorf("registry not accessible: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			h.logger.Warn().Err(err).Msg("failed to close registry response body")
+		}
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("registry returned status %d", resp.StatusCode)
@@ -130,7 +138,11 @@ func (h *HealthRegistrar) checkGroundControl() error {
 	if err != nil {
 		return fmt.Errorf("ground control not accessible: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			h.logger.Warn().Err(err).Msg("failed to close ground control response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("ground control returned status %d", resp.StatusCode)
