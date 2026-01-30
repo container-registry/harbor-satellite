@@ -127,6 +127,23 @@ func (s *Server) createJoinTokenHandler(w http.ResponseWriter, r *http.Request) 
 		// Continue - token is still valid, entry creation may succeed on retry
 	}
 
+	// Ensure satellite record exists in DB so admin can assign groups/configs before ZTR
+	_, err = s.dbQueries.GetSatelliteByName(r.Context(), req.SatelliteName)
+	if err != nil {
+		_, createErr := s.dbQueries.CreateSatellite(r.Context(), req.SatelliteName)
+		if createErr != nil {
+			log.Printf("Join token: Failed to create satellite record for %s: %v", req.SatelliteName, createErr)
+			HandleAppError(w, &AppError{
+				Message: "Failed to create satellite record",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		log.Printf("Join token: Created satellite record for %s", req.SatelliteName)
+	} else {
+		log.Printf("Join token: Satellite %s already exists, re-issuing token", req.SatelliteName)
+	}
+
 	expiresAt := time.Now().Add(ttl)
 
 	log.Printf("Join token: Generated token for satellite %s (region: %s, expires: %v)",
