@@ -68,6 +68,19 @@ Harbor Satellite will also include a toolset enabling the monitoring and managem
 ## QuickStart
 Please refer to the latest setup instructions in `QUICKSTART.md` file for detailed steps on setting up Harbor Satellite locally.
 
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+- **[Getting Started](docs/getting-started.md)** - Complete setup guide for Ground Control and Satellite
+- **[Configuration Reference](docs/configuration.md)** - All configuration options and examples
+- **[API Reference](docs/api-reference.md)** - Ground Control REST API documentation
+- **[Architecture](docs/architecture.md)** - System architecture and design patterns
+- **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
+- **[Deployment Guides](docs/deployment/)**
+  - [Docker Deployment](docs/deployment/docker.md)
+  - [Kubernetes Deployment](docs/deployment/kubernetes.md)
+
 ## Non-Goals
 
 T.B.D.
