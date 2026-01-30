@@ -68,9 +68,18 @@ docker compose up -d spire-agent-gc
 
 ### 1.5 Register GC workload
 
+The x509pop attestor assigns agent SPIFFE IDs based on certificate fingerprint:
+`spiffe://<trust-domain>/spire/agent/x509pop/<fingerprint>`. Extract the actual
+agent ID after attestation:
+
 ```bash
+# Get the GC agent SPIFFE ID (assigned by x509pop attestor)
+GC_AGENT_ID=$(docker exec spire-server /opt/spire/bin/spire-server agent list \
+    -socketPath /tmp/spire-server/private/api.sock \
+    | grep "SPIFFE ID" | grep "x509pop" | head -1 | awk '{print $NF}')
+
 docker exec spire-server /opt/spire/bin/spire-server entry create \
-    -parentID spiffe://harbor-satellite.local/agent/ground-control \
+    -parentID "$GC_AGENT_ID" \
     -spiffeID spiffe://harbor-satellite.local/ground-control \
     -selector docker:label:com.docker.compose.service:ground-control \
     -socketPath /tmp/spire-server/private/api.sock
@@ -85,32 +94,48 @@ docker compose up -d ground-control
 ### 1.7 Verify
 
 ```bash
-curl http://localhost:8080/ping
+curl -sk https://localhost:9080/ping
 ```
 
 ## Step 2: Start Satellite with External SPIRE
 
-### 2.1 Register satellite workload
+### 2.1 Start SPIRE agent for Satellite
 
-```bash
-docker exec spire-server /opt/spire/bin/spire-server entry create \
-    -parentID spiffe://harbor-satellite.local/agent/satellite \
-    -spiffeID spiffe://harbor-satellite.local/satellite \
-    -selector docker:label:com.docker.compose.service:satellite \
-    -socketPath /tmp/spire-server/private/api.sock
-```
-
-### 2.2 Start SPIRE agent and Satellite
-
-The satellite agent uses the certificate generated in step 1.1.
+The satellite agent uses the certificate generated in step 1.1. Start it first
+so it can attest before registering the workload entry.
 
 ```bash
 cd ../sat
 docker compose up -d spire-agent-satellite
+```
+
+### 2.2 Register satellite workload
+
+Extract the satellite agent SPIFFE ID after attestation and register the workload.
+
+The last path segment of `-spiffeID` becomes the satellite name in Ground Control.
+For example, `/satellite/edge-01` registers as `edge-01`. Using just `/satellite`
+defaults to the name `default`.
+
+```bash
+SAT_AGENT_ID=$(docker exec spire-server /opt/spire/bin/spire-server agent list \
+    -socketPath /tmp/spire-server/private/api.sock \
+    | grep "SPIFFE ID" | grep "x509pop" | tail -1 | awk '{print $NF}')
+
+docker exec spire-server /opt/spire/bin/spire-server entry create \
+    -parentID "$SAT_AGENT_ID" \
+    -spiffeID spiffe://harbor-satellite.local/satellite/edge-01 \
+    -selector docker:label:com.docker.compose.service:satellite \
+    -socketPath /tmp/spire-server/private/api.sock
+```
+
+### 2.3 Start Satellite
+
+```bash
 docker compose up -d satellite
 ```
 
-### 2.3 Verify
+### 2.4 Verify
 
 ```bash
 docker logs satellite
