@@ -106,6 +106,11 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for state_report_interval, using default schedule %s", DefaultStateReportCronExpr))
 	}
 
+	if config.AppConfig.HealthServerPort == "" {
+		config.AppConfig.HealthServerPort = DefaultHealthServerPort
+		warnings = append(warnings, fmt.Sprintf("health server port not specified, defaulting to : %s", DefaultHealthServerPort))
+	}
+
 	return config, warnings, nil
 }
 

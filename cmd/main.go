@@ -5,15 +5,17 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/container-registry/harbor-satellite/internal/container_runtime"
+	"os"
+
+	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/hotreload"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
+	"github.com/container-registry/harbor-satellite/internal/server"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
-	"os"
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/rs/zerolog"
@@ -153,6 +155,15 @@ func run(jsonLogging bool, token, groundControlURL string, useUnsecure bool) err
 			}
 		}
 	})
+
+	// Start health server
+	router := server.NewDefaultRouter("")
+	healthRegistrar := server.NewHealthRegistrar(cm, log)
+	metricsRegistrar := &server.MetricsRegistrar{}
+	debugRegistrar := &server.DebugRegistrar{}
+	app := server.NewApp(router, ctx, log, cm.GetHealthServerPort(), healthRegistrar, metricsRegistrar, debugRegistrar)
+	app.SetupRoutes()
+	app.SetupServer(wg)
 
 	s := satellite.NewSatellite(cm)
 	err = s.Run(ctx)

@@ -161,3 +161,9 @@ func (cm *ConfigManager) GetMetricsConfig() MetricsConfig {
 	defer cm.mu.RUnlock()
 	return cm.config.AppConfig.Metrics
 }
+
+func (cm *ConfigManager) GetHealthServerPort() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.HealthServerPort
+}

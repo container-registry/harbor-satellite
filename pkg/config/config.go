@@ -31,6 +31,7 @@ type AppConfig struct {
 	DisableHeartbeat          bool                `json:"disable_heartbeat,omitempty"`
 	HeartbeatInterval         string              `json:"heartbeat_interval,omitempty"`
 	Metrics                   MetricsConfig       `json:"metrics,omitempty"`
+	HealthServerPort          string              `json:"health_server_port,omitempty"`
 }
 
 type StateConfig struct {
