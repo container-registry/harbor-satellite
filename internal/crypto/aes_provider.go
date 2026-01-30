@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
+	"math"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -97,7 +98,7 @@ func (p *AESProvider) DeriveKey(input, salt []byte, keyLen int) ([]byte, error) 
 	if len(input) == 0 {
 		return nil, ErrInvalidInput
 	}
-	if keyLen <= 0 {
+	if keyLen <= 0 || keyLen > math.MaxUint32 {
 		return nil, ErrInvalidKeyLength
 	}
 
