@@ -96,47 +96,10 @@ func (h *HealthRegistrar) readyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HealthRegistrar) checkRegistry() error {
-	// Get local registry endpoint
-	// From main.go, it's constructed from zot config
-	var data map[string]interface{}
-	if err := json.Unmarshal(h.cm.GetRawZotConfig(), &data); err != nil {
-		return fmt.Errorf("failed to parse zot config: %w", err)
+	address, port, scheme, err := parseZotHTTPConfig(h.cm.GetRawZotConfig())
+	if err != nil {
+		return err
 	}
-	httpData, ok := data["http"].(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("invalid zot config: missing http section")
-	}
-	address, ok := httpData["address"].(string)
-	if !ok {
-		return fmt.Errorf("invalid zot config: missing address")
-	}
-	address = strings.TrimSpace(address)
-	if address == "" {
-		return fmt.Errorf("invalid zot config: empty address")
-	}
-	if address == "0.0.0.0" || address == "::" {
-		address = "localhost"
-	}
-	rawPort, ok := httpData["port"]
-	if !ok {
-		return fmt.Errorf("invalid zot config: missing port")
-	}
-	var port string
-	switch v := rawPort.(type) {
-	case string:
-		port = v
-	case float64:
-		port = strconv.FormatInt(int64(v), 10)
-	default:
-		return fmt.Errorf("invalid zot config: unsupported port type %T", rawPort)
-	}
-
-	// Check if TLS is configured
-	scheme := "http"
-	if _, hasTLS := httpData["tls"]; hasTLS {
-		scheme = "https"
-	}
-
 	registryURL := fmt.Sprintf("%s://%s/v2/", scheme, net.JoinHostPort(address, port))
 
 	// Ping the registry
@@ -156,6 +119,71 @@ func (h *HealthRegistrar) checkRegistry() error {
 	}
 
 	return nil
+}
+
+func parseZotHTTPConfig(raw []byte) (string, string, string, error) {
+	var data map[string]interface{}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return "", "", "", fmt.Errorf("failed to parse zot config: %w", err)
+	}
+
+	httpData, ok := data["http"].(map[string]interface{})
+	if !ok {
+		return "", "", "", fmt.Errorf("invalid zot config: missing http section")
+	}
+
+	address, err := parseZotAddress(httpData)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	port, err := parseZotPort(httpData)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	return address, port, detectZotScheme(httpData), nil
+}
+
+func parseZotAddress(httpData map[string]interface{}) (string, error) {
+	address, ok := httpData["address"].(string)
+	if !ok {
+		return "", fmt.Errorf("invalid zot config: missing address")
+	}
+
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return "", fmt.Errorf("invalid zot config: empty address")
+	}
+
+	if address == "0.0.0.0" || address == "::" {
+		address = "localhost"
+	}
+
+	return address, nil
+}
+
+func parseZotPort(httpData map[string]interface{}) (string, error) {
+	rawPort, ok := httpData["port"]
+	if !ok {
+		return "", fmt.Errorf("invalid zot config: missing port")
+	}
+
+	switch v := rawPort.(type) {
+	case string:
+		return v, nil
+	case float64:
+		return strconv.FormatInt(int64(v), 10), nil
+	default:
+		return "", fmt.Errorf("invalid zot config: unsupported port type %T", rawPort)
+	}
+}
+
+func detectZotScheme(httpData map[string]interface{}) string {
+	if _, hasTLS := httpData["tls"]; hasTLS {
+		return "https"
+	}
+	return "http"
 }
 
 func (h *HealthRegistrar) checkGroundControl() error {
