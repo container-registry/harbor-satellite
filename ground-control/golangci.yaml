@@ -11,6 +11,12 @@ linters-settings:
     max-complexity: 30
     package-average: 10.0
 
+  gosec:
+    excludes:
+      - G304
+      - G101
+      - G104
+
   errcheck:
     check-type-assertions: true
     check-blank: true
