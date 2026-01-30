@@ -6,6 +6,7 @@ services:
     image: ghcr.io/spiffe/spire-agent:1.12.3
     container_name: spire-agent-satellite
     hostname: spire-agent-satellite
+    pid: host
     command: ["-config", "/opt/spire/conf/agent/agent.conf"]
     volumes:
       - ./spire/agent-satellite.conf:/opt/spire/conf/agent/agent.conf:ro
@@ -14,9 +15,10 @@ services:
       - ../gc/certs/agent-satellite-host-key-cert.pub:/opt/spire/conf/agent/host-key-cert.pub:ro
       - spire-agent-satellite-data:/opt/spire/data/agent
       - spire-agent-satellite-socket:/run/spire/sockets
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Required for SPIRE workload attestor (identifies containers by Docker labels)
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
     healthcheck:
-      test: ["CMD-SHELL", "/opt/spire/bin/spire-agent healthcheck -socketPath /run/spire/sockets/agent.sock"]
+      test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck", "-socketPath", "/run/spire/sockets/agent.sock"]
       interval: 10s
       timeout: 5s
       retries: 10
