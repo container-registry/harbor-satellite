@@ -444,4 +444,4 @@ sequenceDiagram
 - `ground-control/internal/server/routes.go` - Route structure
 - `ground-control/internal/server/spire_handlers.go` - Join token handlers
 - `.dagger/e2e.go:635` - SPIFFE E2E test
-- `deploy/spire/` - SPIRE deployment configs
+- `deploy/quickstart/spiffe/` - SPIFFE quickstart configs

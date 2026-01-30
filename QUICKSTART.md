@@ -47,7 +47,7 @@ Cryptographic identity using X.509 certificates via the SPIFFE framework and SPI
 ## Further Reading
 
 - [Architecture overview](docs/architecture/README.md)
-- [SPIRE deployment guide](deploy/spire/README.md)
+- [SPIFFE quickstart guide](deploy/quickstart/spiffe/README.md)
 - [ADR: Ground Control authentication](docs/decisions/0004-ground-control-authentication.md)
 - [ADR: SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md)
 
