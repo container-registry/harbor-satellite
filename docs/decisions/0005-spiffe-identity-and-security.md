@@ -91,6 +91,25 @@ Key rules:
 - If SPIFFE is enabled and client creation fails, satellite halts with error
 - Token ZTR is never a fallback for SPIFFE
 
+```mermaid
+sequenceDiagram
+    participant Satellite
+    participant Config as CLI Flags
+
+    Satellite->>Config: Read --spiffe-enabled flag
+
+    alt SPIFFE enabled
+        Satellite->>Satellite: Create SPIFFE client
+        alt Client creation fails
+            Satellite->>Satellite: HALT with error (no fallback to token)
+        end
+        Satellite->>Satellite: Use SPIFFE ZTR path
+    else SPIFFE disabled
+        Satellite->>Satellite: Read --token flag
+        Satellite->>Satellite: Use Token ZTR path
+    end
+```
+
 ### 2. Attestation Methods
 
 | Method | Status | How It Works |
@@ -115,6 +134,61 @@ When a satellite with a valid SPIFFE ID calls `/satellites/spiffe-ztr`:
 8. Return StateConfig (registry creds + state URL)
 9. Satellite encrypts and stores StateConfig with device fingerprint
 
+```mermaid
+sequenceDiagram
+    participant SA as SPIRE Agent
+    participant Satellite
+    participant GC as Ground Control
+    participant Harbor
+
+    Satellite->>SA: Connect via Workload API socket
+    SA-->>Satellite: X.509 SVID (mTLS identity)
+    Satellite->>GC: mTLS GET /satellites/spiffe-ztr
+    GC->>GC: Validate SPIFFE ID from mTLS peer cert
+    GC->>GC: Extract satellite name + region from SPIFFE ID path
+    GC->>GC: Check if satellite exists in DB
+
+    alt Satellite not found
+        GC->>GC: Auto-create satellite record (no groups)
+    end
+
+    GC->>Harbor: Create robot account
+    Harbor-->>GC: Robot credentials
+    GC-->>Satellite: StateConfig (registry creds + state URL)
+    Satellite->>Satellite: Encrypt StateConfig with device fingerprint
+    Satellite->>Satellite: Store encrypted config to disk
+
+    loop Continuous Operation
+        Satellite->>Harbor: Fetch state/config artifacts (robot creds)
+        Satellite->>Satellite: Replicate artifacts to local Zot registry
+        Satellite->>GC: Heartbeat
+    end
+```
+
+Token ZTR follows a simpler path for comparison:
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant Satellite
+    participant GC as Ground Control
+    participant Harbor
+
+    Admin->>Satellite: Start with --token and --ground-control-url
+    Satellite->>GC: GET /satellites/ztr/{token}
+    GC->>GC: Validate token
+    GC->>Harbor: Create robot account
+    Harbor-->>GC: Robot credentials
+    GC-->>Satellite: StateConfig (registry creds + state URL)
+    Satellite->>Satellite: Encrypt StateConfig with device fingerprint
+    Satellite->>Satellite: Store encrypted config to disk
+    loop Continuous Operation
+        Satellite->>Harbor: Fetch state/config artifacts (robot creds)
+        Satellite->>Satellite: Replicate artifacts to local Zot registry
+        Satellite->>GC: Heartbeat
+    end
+```
+
 ### 4. Admin Approval Flow (Phase 2)
 
 1. Satellite attests with SPIRE agent (e.g., via TPM)
@@ -137,6 +211,22 @@ File: `internal/spiffe/client.go`
 - `WaitForSVID()` for bootstrap sequencing
 - SVID rotation is transparent (X509Source auto-updates, fresh HTTP client per request)
 - CLI flags: `--spiffe-enabled`, `--spiffe-endpoint-socket`, `--spiffe-expected-server-id`
+
+```mermaid
+sequenceDiagram
+    participant SS as SPIRE Server
+    participant SA as SPIRE Agent
+    participant X509Src as X509Source
+    participant Satellite
+
+    SS->>SA: Push renewed SVID (before expiry)
+    SA->>X509Src: Updated SVID available
+    X509Src->>X509Src: Update cached SVID
+    Satellite->>X509Src: Next request needs mTLS client
+    X509Src-->>Satellite: TLS config with new SVID
+
+    Note over Satellite: No restart needed
+```
 
 ### 6. Embedded SPIRE Agent in Satellite (Phase 1 - TO IMPLEMENT)
 
@@ -167,6 +257,32 @@ File: `internal/spiffe/client.go`
 - E2E tested: `TestSpiffeJoinTokenE2E` in `.dagger/e2e.go:635`
 - Note: `POST /satellites/{satellite}/join-token` should be removed (redundant)
 
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant GC as Ground Control
+    participant SS as SPIRE Server
+    participant SA as SPIRE Agent
+    participant Satellite
+
+    Admin->>GC: POST /api/join-tokens {satellite_name, region}
+    GC->>GC: Create satellite record in DB
+    GC->>SS: CreateJoinToken (gRPC)
+    SS-->>GC: Join token
+    GC-->>Admin: Join token + satellite ID
+
+    Note over Admin,SA: Admin provides join token to SPIRE agent config
+
+    SA->>SS: Node attestation (join_token method)
+    SS->>SS: Validate join token
+    SS-->>SA: Node SVID issued
+    SA->>SS: Request workload SVID
+    SS-->>SA: X.509 SVID for satellite
+
+    Note over Satellite: Satellite now has SPIFFE identity
+    Note over Satellite: Proceeds to SPIFFE ZTR flow (section 3)
+```
+
 ### 9. SPIFFE ID Structure
 
 ```
@@ -189,6 +305,28 @@ spiffe://<trust-domain>/satellite/region/<region>/<name>
 - Encryption must work in ALL builds (currently broken in nospiffe build tag; must be decoupled)
 
 Hardware recovery: SPIFFE ID survives hardware change (SPIRE-managed). Local encrypted config is lost. Satellite re-does ZTR with same SPIFFE ID. GC re-issues StateConfig. New config encrypted with new device fingerprint.
+
+```mermaid
+sequenceDiagram
+    participant SA as SPIRE Agent
+    participant Satellite
+    participant GC as Ground Control
+
+    Note over Satellite: Hardware change (new machine-id, MAC, or disk)
+
+    Satellite->>Satellite: Decryption fails (device fingerprint changed)
+    Satellite->>Satellite: Discard old encrypted config
+
+    Satellite->>SA: Connect to SPIRE agent
+    SA-->>Satellite: Same X.509 SVID (SPIRE-managed identity survives)
+
+    Satellite->>GC: mTLS GET /satellites/spiffe-ztr (same SPIFFE ID)
+    GC->>GC: Satellite exists in DB (same SPIFFE ID)
+    GC-->>Satellite: Re-issue StateConfig
+
+    Satellite->>Satellite: Encrypt StateConfig with new device fingerprint
+    Satellite->>Satellite: Resume normal operation
+```
 
 ### 12. TLS Support
 
@@ -223,6 +361,46 @@ Hardware recovery: SPIFFE ID survives hardware change (SPIRE-managed). Local enc
 7. GC auto-registers satellite, returns StateConfig
 8. Satellite encrypts and stores StateConfig
 9. State replication scheduler begins
+
+```mermaid
+sequenceDiagram
+    participant Satellite
+    participant SA as SPIRE Agent
+    participant SS as SPIRE Server
+    participant Zot as Zot Registry
+    participant CRI as Container Runtime
+    participant GC as Ground Control
+    participant Harbor
+
+    Satellite->>Satellite: Parse CLI flags (--spiffe-enabled)
+
+    alt Embedded Agent (SPIFFE_PROVIDER=embedded)
+        Satellite->>SA: Start SPIRE agent subprocess
+        SA->>SS: Node attestation
+        SS-->>SA: Node SVID
+        SA-->>Satellite: Agent ready (socket available)
+    else External Agent (SPIFFE_PROVIDER=sidecar)
+        Note over SA: Already running and attested
+        Satellite->>SA: Connect via Workload API socket
+    end
+
+    Satellite->>Zot: Start local OCI registry
+    Satellite->>CRI: Configure CRI mirrors
+
+    Satellite->>SA: Request X.509 SVID
+    SA-->>Satellite: X.509 SVID
+
+    Satellite->>GC: mTLS GET /satellites/spiffe-ztr
+    GC-->>Satellite: StateConfig
+
+    Satellite->>Satellite: Encrypt and store StateConfig
+
+    loop Continuous Operation
+        Satellite->>Harbor: Fetch state/config artifacts (robot creds)
+        Satellite->>Satellite: Replicate artifacts to Zot
+        Satellite->>GC: Heartbeat
+    end
+```
 
 ---
 
