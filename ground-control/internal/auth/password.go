@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
@@ -130,16 +129,11 @@ func decodeHash(encodedHash string) (*hashParams, error) {
 		return nil, ErrInvalidHash
 	}
 
-	hashLen := len(hash)
-	if hashLen > math.MaxUint32 {
-		return nil, ErrInvalidHash
-	}
-
 	return &hashParams{
 		memory:      memory,
 		iterations:  iterations,
 		parallelism: parallelism,
-		keyLength:   uint32(hashLen),
+		keyLength:   uint32(len(hash)),
 		salt:        salt,
 		hash:        hash,
 	}, nil

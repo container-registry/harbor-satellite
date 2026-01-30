@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -525,37 +524,16 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var memoryBytes int64
-	if req.MemoryUsedBytes <= uint64(math.MaxInt64) {
-		memoryBytes = int64(req.MemoryUsedBytes)
-	} else {
-		memoryBytes = math.MaxInt64
-	}
-
-	var storageBytes int64
-	if req.StorageUsedBytes <= uint64(math.MaxInt64) {
-		storageBytes = int64(req.StorageUsedBytes)
-	} else {
-		storageBytes = math.MaxInt64
-	}
-
-	var imageCount int32
-	if req.ImageCount <= math.MaxInt32 {
-		imageCount = int32(req.ImageCount)
-	} else {
-		imageCount = math.MaxInt32
-	}
-
 	_, err = s.dbQueries.InsertSatelliteStatus(r.Context(), database.InsertSatelliteStatusParams{
 		SatelliteID:        sat.ID,
 		Activity:           req.Activity,
 		LatestStateDigest:  toNullString(req.LatestStateDigest),
 		LatestConfigDigest: toNullString(req.LatestConfigDigest),
 		CpuPercent:         toNullString(fmt.Sprintf("%.2f", req.CPUPercent)),
-		MemoryUsedBytes:    toNullInt64(memoryBytes),
-		StorageUsedBytes:   toNullInt64(storageBytes),
+		MemoryUsedBytes:    toNullInt64(int64(req.MemoryUsedBytes)),
+		StorageUsedBytes:   toNullInt64(int64(req.StorageUsedBytes)),
 		LastSyncDurationMs: toNullInt64(req.LastSyncDurationMs),
-		ImageCount:         toNullInt32(imageCount),
+		ImageCount:         toNullInt32(int32(req.ImageCount)),
 		ReportedAt:         req.RequestCreatedTime,
 	})
 	if err != nil {
