@@ -413,12 +413,25 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 
 	robot, err := q.GetRobotAccBySatelliteID(r.Context(), satellite.ID)
 	if err != nil {
-		log.Printf("SPIFFE ZTR: Robot account not found for satellite %s: %v", satelliteName, err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Robot Account Not Found for Satellite",
-			Code:    http.StatusInternalServerError,
-		})
-		return
+		log.Printf("SPIFFE ZTR: Robot account not found for satellite %s, creating...", satelliteName)
+		robot, _, err = ensureSatelliteRobotAccount(r, q, satellite)
+		if err != nil {
+			log.Printf("SPIFFE ZTR: Failed to create robot account for satellite %s: %v", satelliteName, err)
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Error: Failed to create robot account: %v", err),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+
+		if err := ensureSatelliteConfig(r, q, satellite); err != nil {
+			log.Printf("SPIFFE ZTR: Failed to ensure config for satellite %s: %v", satelliteName, err)
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Error: Failed to ensure satellite config: %v", err),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
 	}
 
 	groups, err := q.SatelliteGroupList(r.Context(), satellite.ID)
@@ -602,6 +615,83 @@ func (s *Server) getStaleSatellitesHandler(w http.ResponseWriter, r *http.Reques
 	WriteJSONResponse(w, http.StatusOK, satellites)
 }
 
+// ensureSatelliteRobotAccount creates a Harbor robot account for the satellite and stores it in DB.
+// Returns the created robot account and the Harbor robot ID (for cleanup on failure).
+func ensureSatelliteRobotAccount(r *http.Request, q *database.Queries, satellite database.Satellite) (database.RobotAccount, int64, error) {
+	var robotName, robotSecret string
+	var harborRobotID int64
+	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
+
+	if !skipHarborCheck {
+		if err := ensureSatelliteProjectExists(r.Context()); err != nil {
+			return database.RobotAccount{}, 0, fmt.Errorf("ensure satellite project: %w", err)
+		}
+
+		projects := []string{"satellite"}
+		rbt, err := utils.CreateRobotAccForSatellite(r.Context(), projects, satellite.Name)
+		if err != nil {
+			return database.RobotAccount{}, 0, fmt.Errorf("create robot account: %w", err)
+		}
+		harborRobotID = rbt.ID
+		robotName = rbt.Name
+		robotSecret = rbt.Secret
+	} else {
+		log.Printf("SPIFFE ZTR: Harbor not available, using placeholder credentials for satellite %s", satellite.Name)
+		robotName = "robot$satellite-" + satellite.Name
+		robotSecret = "spiffe-auto-registered-placeholder-secret"
+	}
+
+	robotParams := database.AddRobotAccountParams{
+		RobotName:   robotName,
+		RobotSecret: robotSecret,
+		RobotID:     strconv.FormatInt(harborRobotID, 10),
+		SatelliteID: satellite.ID,
+	}
+	robot, err := q.AddRobotAccount(r.Context(), robotParams)
+	if err != nil {
+		return database.RobotAccount{}, harborRobotID, fmt.Errorf("store robot account: %w", err)
+	}
+
+	log.Printf("SPIFFE ZTR: Created robot account %s for satellite %s", robotName, satellite.Name)
+	return robot, harborRobotID, nil
+}
+
+// ensureSatelliteConfig links the satellite to the default config if no config is assigned.
+func ensureSatelliteConfig(r *http.Request, q *database.Queries, satellite database.Satellite) error {
+	_, err := fetchSatelliteConfig(r.Context(), q, satellite.ID)
+	if err == nil {
+		return nil
+	}
+
+	defaultConfig, err := q.GetConfigByName(r.Context(), "default")
+	if err != nil {
+		defaultConfigJSON := []byte(`{}`)
+		defaultConfig, err = q.CreateConfig(r.Context(), database.CreateConfigParams{
+			ConfigName:  "default",
+			RegistryUrl: os.Getenv("HARBOR_URL"),
+			Config:      defaultConfigJSON,
+		})
+		if err != nil {
+			return fmt.Errorf("create default config: %w", err)
+		}
+
+		if pushErr := utils.CreateAndPushConfigStateArtifact(r.Context(), defaultConfigJSON, "default"); pushErr != nil {
+			log.Printf("SPIFFE ZTR: Warning - failed to create config-state artifact: %v", pushErr)
+		}
+	}
+
+	configLinkParams := database.SetSatelliteConfigParams{
+		SatelliteID: satellite.ID,
+		ConfigID:    defaultConfig.ID,
+	}
+	if err := q.SetSatelliteConfig(r.Context(), configLinkParams); err != nil {
+		return fmt.Errorf("link satellite to config: %w", err)
+	}
+
+	log.Printf("SPIFFE ZTR: Linked satellite %s to default config", satellite.Name)
+	return nil
+}
+
 // autoRegisterSatellite automatically creates a satellite entry during SPIFFE ZTR.
 // This enables true Zero Touch Registration where satellites don't need to be pre-registered.
 func (s *Server) autoRegisterSatellite(r *http.Request, name string) (database.Satellite, error) {
@@ -612,12 +702,12 @@ func (s *Server) autoRegisterSatellite(r *http.Request, name string) (database.S
 
 	q := s.dbQueries.WithTx(tx)
 	committed := false
-	var robotID int64
+	var harborRobotID int64
 
 	defer func() {
 		if !committed {
-			if robotID != 0 {
-				if _, delErr := harbor.DeleteRobotAccount(r.Context(), robotID); delErr != nil {
+			if harborRobotID != 0 {
+				if _, delErr := harbor.DeleteRobotAccount(r.Context(), harborRobotID); delErr != nil {
 					log.Printf("Warning: Failed to cleanup robot account during auto-register: %v", delErr)
 				}
 			}
@@ -627,76 +717,18 @@ func (s *Server) autoRegisterSatellite(r *http.Request, name string) (database.S
 		}
 	}()
 
-	// Create the satellite
 	satellite, err := q.CreateSatellite(r.Context(), name)
 	if err != nil {
 		return database.Satellite{}, fmt.Errorf("create satellite: %w", err)
 	}
 
-	// Try to create Harbor project and robot account
-	// If Harbor is not available (SKIP_HARBOR_HEALTH_CHECK=true), use placeholder credentials
-	var robotName, robotSecret string
-	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
-
-	if !skipHarborCheck {
-		if err := ensureSatelliteProjectExists(r.Context()); err != nil {
-			return database.Satellite{}, fmt.Errorf("ensure satellite project: %w", err)
-		}
-
-		projects := []string{"satellite"}
-		rbt, err := utils.CreateRobotAccForSatellite(r.Context(), projects, name)
-		if err != nil {
-			return database.Satellite{}, fmt.Errorf("create robot account: %w", err)
-		}
-		robotID = rbt.ID
-		robotName = rbt.Name
-		robotSecret = rbt.Secret
-	} else {
-		// Use placeholder credentials when Harbor is not available
-		log.Printf("SPIFFE ZTR: Harbor not available, using placeholder credentials for satellite %s", name)
-		robotName = "robot$satellite-" + name
-		robotSecret = "spiffe-auto-registered-placeholder-secret"
-	}
-
-	// Store robot account in database
-	robotParams := database.AddRobotAccountParams{
-		RobotName:   robotName,
-		RobotSecret: robotSecret,
-		RobotID:     strconv.FormatInt(robotID, 10),
-		SatelliteID: satellite.ID,
-	}
-	if _, err := q.AddRobotAccount(r.Context(), robotParams); err != nil {
-		return database.Satellite{}, fmt.Errorf("store robot account: %w", err)
-	}
-
-	// Create default config for the satellite
-	defaultConfig, err := q.GetConfigByName(r.Context(), "default")
+	_, harborRobotID, err = ensureSatelliteRobotAccount(r, q, satellite)
 	if err != nil {
-		// Create a default config if it doesn't exist
-		defaultConfigJSON := []byte(`{}`)
-		defaultConfig, err = q.CreateConfig(r.Context(), database.CreateConfigParams{
-			ConfigName:  "default",
-			RegistryUrl: os.Getenv("HARBOR_URL"),
-			Config:      defaultConfigJSON,
-		})
-		if err != nil {
-			return database.Satellite{}, fmt.Errorf("create default config: %w", err)
-		}
-
-		// Push config-state artifact to Harbor
-		if err := utils.CreateAndPushConfigStateArtifact(r.Context(), defaultConfigJSON, "default"); err != nil {
-			log.Printf("SPIFFE ZTR: Warning - failed to create config-state artifact: %v", err)
-			// Don't fail registration if config-state artifact creation fails
-		}
+		return database.Satellite{}, err
 	}
 
-	// Link satellite to default config
-	configLinkParams := database.SetSatelliteConfigParams{
-		SatelliteID: satellite.ID,
-		ConfigID:    defaultConfig.ID,
-	}
-	if err := q.SetSatelliteConfig(r.Context(), configLinkParams); err != nil {
-		return database.Satellite{}, fmt.Errorf("link satellite to config: %w", err)
+	if err := ensureSatelliteConfig(r, q, satellite); err != nil {
+		return database.Satellite{}, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -704,7 +736,7 @@ func (s *Server) autoRegisterSatellite(r *http.Request, name string) (database.S
 	}
 	committed = true
 
-	log.Printf("SPIFFE ZTR: Auto-registered satellite %s with robot account %s", name, robotName)
+	log.Printf("SPIFFE ZTR: Auto-registered satellite %s with ID %d", name, satellite.ID)
 	return satellite, nil
 }
 
