@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -109,6 +110,13 @@ func (h *HealthRegistrar) checkRegistry() error {
 	if !ok {
 		return fmt.Errorf("invalid zot config: missing address")
 	}
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return fmt.Errorf("invalid zot config: empty address")
+	}
+	if address == "0.0.0.0" || address == "::" {
+		address = "localhost"
+	}
 	rawPort, ok := httpData["port"]
 	if !ok {
 		return fmt.Errorf("invalid zot config: missing port")
@@ -129,7 +137,7 @@ func (h *HealthRegistrar) checkRegistry() error {
 		scheme = "https"
 	}
 
-	registryURL := fmt.Sprintf("%s://%s:%s/v2/", scheme, address, port)
+	registryURL := fmt.Sprintf("%s://%s/v2/", scheme, net.JoinHostPort(address, port))
 
 	// Ping the registry
 	client := &http.Client{Timeout: 5 * time.Second}
