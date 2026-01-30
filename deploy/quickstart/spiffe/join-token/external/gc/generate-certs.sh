@@ -19,7 +19,7 @@ openssl genrsa -out "$CERTS_DIR/ca.key" 4096
 openssl req -new -x509 -days 365 -key "$CERTS_DIR/ca.key" -out "$CERTS_DIR/ca.crt" \
     -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=SPIRE CA"
 
-chmod 600 "$CERTS_DIR/ca.key"
+chmod 644 "$CERTS_DIR/ca.key"
 chmod 644 "$CERTS_DIR/ca.crt"
 
 echo "CA certificate generated in $CERTS_DIR"

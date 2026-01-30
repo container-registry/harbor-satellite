@@ -37,7 +37,7 @@ ssh-keygen -s "$CERTS_DIR/ssh-ca" -I "agent-satellite" -h -n "spire-agent-satell
     -V "+52w" "$CERTS_DIR/agent-satellite-host-key.pub"
 
 # Set permissions
-chmod 600 "$CERTS_DIR/ssh-ca" "$CERTS_DIR/agent-gc-host-key" "$CERTS_DIR/agent-satellite-host-key" "$CERTS_DIR/bootstrap.key"
+chmod 644 "$CERTS_DIR/ssh-ca" "$CERTS_DIR/agent-gc-host-key" "$CERTS_DIR/agent-satellite-host-key" "$CERTS_DIR/bootstrap.key"
 chmod 644 "$CERTS_DIR/ssh-ca.pub" "$CERTS_DIR"/*.pub "$CERTS_DIR/bootstrap.crt"
 
 echo "SSH certificates generated in $CERTS_DIR"

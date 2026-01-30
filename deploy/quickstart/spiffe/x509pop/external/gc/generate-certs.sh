@@ -67,7 +67,7 @@ openssl x509 -req -days 365 -in "$CERTS_DIR/agent-satellite.csr" \
     -out "$CERTS_DIR/agent-satellite.crt" -extfile "$CERTS_DIR/agent-satellite.ext"
 
 # Cleanup temp files and set permissions
-chmod 600 "$CERTS_DIR"/*.key
+chmod 644 "$CERTS_DIR"/*.key
 chmod 644 "$CERTS_DIR"/*.crt
 rm -f "$CERTS_DIR"/*.csr "$CERTS_DIR"/*.ext "$CERTS_DIR"/*.srl
 
