@@ -105,7 +105,7 @@ services:
       spire-agent-gc:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sk --max-time 2 https://localhost:8080/ping > /dev/null 2>&1; test $? -ne 7"]
+      test: ["CMD", "curl", "-sfk", "https://localhost:8080/ping"]
       interval: 10s
       timeout: 5s
       retries: 10
