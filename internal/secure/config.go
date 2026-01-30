@@ -121,7 +121,7 @@ func (e *ConfigEncryptor) EncryptToFile(path string, config any) error {
 
 // DecryptFromFile reads and decrypts config from file.
 func (e *ConfigEncryptor) DecryptFromFile(path string, config any) error {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path from internal config
 	if err != nil {
 		if os.IsNotExist(err) {
 			return ErrConfigNotFound

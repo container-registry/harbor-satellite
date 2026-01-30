@@ -199,7 +199,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 
 // Reads the config at the given path and returns the parsed Config.
 func readAndReturnConfig(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path from internal config
 	if err != nil {
 		return nil, err
 	}

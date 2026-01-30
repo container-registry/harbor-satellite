@@ -143,7 +143,7 @@ func (hrm *HotReloadManager) handleZotConfigChange(change config.ConfigChange) e
 		return err
 	}
 
-	err := os.WriteFile(registry.ZotTempPath, hrm.cm.GetRawZotConfig(), 0644)
+	err := os.WriteFile(registry.ZotTempPath, hrm.cm.GetRawZotConfig(), 0600)
 	if err != nil {
 		return fmt.Errorf("unable to change zot configuration: %w", err)
 	}

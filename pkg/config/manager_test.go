@@ -77,7 +77,7 @@ func TestConfigManager_WriteConfig(t *testing.T) {
 		})
 		require.NoError(t, cm.WriteConfig())
 
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // G304: test file path
 		require.NoError(t, err)
 
 		var saved Config

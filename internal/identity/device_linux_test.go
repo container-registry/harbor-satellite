@@ -97,8 +97,8 @@ func TestLinuxDeviceIdentity_WithMockedPaths(t *testing.T) {
 	machineIDPath := filepath.Join(tmpDir, "machine-id")
 	bootIDPath := filepath.Join(tmpDir, "boot_id")
 
-	require.NoError(t, os.WriteFile(machineIDPath, []byte("test-machine-id-12345\n"), 0o644))
-	require.NoError(t, os.WriteFile(bootIDPath, []byte("test-boot-id-xyz\n"), 0o644))
+	require.NoError(t, os.WriteFile(machineIDPath, []byte("test-machine-id-12345\n"), 0o600))
+	require.NoError(t, os.WriteFile(bootIDPath, []byte("test-boot-id-xyz\n"), 0o600))
 
 	d := &LinuxDeviceIdentity{
 		machineIDPath: machineIDPath,
@@ -124,7 +124,7 @@ func TestLinuxDeviceIdentity_FingerprintFallback(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	machineIDPath := filepath.Join(tmpDir, "machine-id")
-	require.NoError(t, os.WriteFile(machineIDPath, []byte("fallback-machine-id\n"), 0o644))
+	require.NoError(t, os.WriteFile(machineIDPath, []byte("fallback-machine-id\n"), 0o600))
 
 	d := &LinuxDeviceIdentity{
 		machineIDPath: machineIDPath,

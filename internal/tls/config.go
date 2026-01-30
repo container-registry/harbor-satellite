@@ -90,7 +90,7 @@ func LoadServerTLSConfig(cfg *Config) (*tls.Config, error) {
 		minVersion = tls.VersionTLS12
 	}
 
-	tlsConfig := &tls.Config{
+	tlsConfig := &tls.Config{ //nolint:gosec // G402: minVersion is floored to TLS 1.2 above
 		MinVersion:   minVersion,
 		Certificates: []tls.Certificate{*cert},
 	}
@@ -131,7 +131,7 @@ func LoadCAPool(caFile string) (*x509.CertPool, error) {
 		return nil, ErrCANotFound
 	}
 
-	caData, err := os.ReadFile(caFile)
+	caData, err := os.ReadFile(caFile) //nolint:gosec // G304: path from validated TLS config
 	if err != nil {
 		return nil, fmt.Errorf("read CA file: %w", err)
 	}
@@ -146,7 +146,7 @@ func LoadCAPool(caFile string) (*x509.CertPool, error) {
 
 // ValidateCertificate validates a certificate file.
 func ValidateCertificate(certFile string) error {
-	certData, err := os.ReadFile(certFile)
+	certData, err := os.ReadFile(certFile) //nolint:gosec // G304: path from validated TLS config
 	if err != nil {
 		if os.IsNotExist(err) {
 			return ErrCertNotFound
@@ -217,7 +217,7 @@ type CertificateInfo struct {
 
 // GetCertificateInfo extracts information from a certificate file.
 func GetCertificateInfo(certFile string) (*CertificateInfo, error) {
-	certData, err := os.ReadFile(certFile)
+	certData, err := os.ReadFile(certFile) //nolint:gosec // G304: path from validated TLS config
 	if err != nil {
 		return nil, err
 	}

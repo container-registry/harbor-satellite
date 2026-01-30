@@ -106,7 +106,7 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) error {
 
 // copyFile copies a file from src to dst, replacing dst if it exists.
 func copyFile(src, dst string) error {
-	in, err := os.Open(src)
+	in, err := os.Open(src) //nolint:gosec // G304: path from internal CRI config
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func copyFile(src, dst string) error {
 		_ = in.Close()
 	}()
 
-	out, err := os.Create(dst)
+	out, err := os.Create(dst) //nolint:gosec // G304: path from internal CRI config
 	if err != nil {
 		return err
 	}

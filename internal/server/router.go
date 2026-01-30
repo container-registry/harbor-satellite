@@ -12,7 +12,7 @@ type Router interface {
 	// Use adds middleware to the default router
 	Use(middleware ...Middleware)
 	// Group called on the router would create a group with the given prefix
-	//and would inherit the middleware from the router and would be added to the root group of the router
+	// and would inherit the middleware from the router and would be added to the root group of the router
 	Group(prefix string) *RouterGroup
 }
 

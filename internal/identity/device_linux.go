@@ -145,7 +145,7 @@ func (d *LinuxDeviceIdentity) GetDiskSerial() (string, error) {
 		}
 
 		serialPath := filepath.Join(d.blockDevPath, name, "device", "serial")
-		data, err := os.ReadFile(serialPath)
+		data, err := os.ReadFile(serialPath) //nolint:gosec // G304: path from sysfs block device
 		if err == nil {
 			serial := strings.TrimSpace(string(data))
 			if serial != "" {

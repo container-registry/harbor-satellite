@@ -161,7 +161,7 @@ func TestConfigEncryptor_EncryptToFile(t *testing.T) {
 	err := e.EncryptToFile(path, cfg)
 	require.NoError(t, err)
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: test file path
 	require.NoError(t, err)
 	require.NotEmpty(t, data)
 
