@@ -11,7 +11,7 @@ echo ""
 
 # Verify GC is running
 echo "[1/3] Verifying Ground Control is running..."
-if ! curl -s http://localhost:8080/ping > /dev/null 2>&1; then
+if ! curl -sk https://localhost:${GC_HOST_PORT:-9080}/ping > /dev/null 2>&1; then
     echo "ERROR: Ground Control is not running. Run ../gc/setup.sh first."
     exit 1
 fi

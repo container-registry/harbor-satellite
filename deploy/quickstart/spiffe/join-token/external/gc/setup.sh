@@ -117,7 +117,7 @@ docker compose up -d ground-control
 
 echo "Waiting for Ground Control to be healthy..."
 for i in $(seq 1 30); do
-    if curl -s http://localhost:8080/ping > /dev/null 2>&1; then
+    if curl -sk https://localhost:${GC_HOST_PORT:-9080}/ping > /dev/null 2>&1; then
         echo "Ground Control is healthy"
         break
     fi
@@ -133,9 +133,9 @@ echo ""
 echo "=== Ground Control Setup Complete ==="
 echo ""
 echo "Services running:"
-echo "  PostgreSQL:      localhost:5432"
-echo "  SPIRE Server:    localhost:8081"
-echo "  Ground Control:  localhost:8080"
+echo "  PostgreSQL:      (internal only)"
+echo "  SPIRE Server:    localhost:${SPIRE_HOST_PORT:-9081}"
+echo "  Ground Control:  localhost:${GC_HOST_PORT:-9080}"
 echo ""
 echo "Next: Set up satellite in ../sat/"
 echo "Cleanup: ./cleanup.sh"
