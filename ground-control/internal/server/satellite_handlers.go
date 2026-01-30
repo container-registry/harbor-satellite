@@ -46,6 +46,14 @@ type SatelliteStatusParams struct {
 }
 
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
+	if s.spiffeProvider != nil || s.spireClient != nil {
+		HandleAppError(w, &AppError{
+			Message: "satellite registration via this endpoint is disabled when SPIFFE is enabled. Use POST /api/join-tokens instead",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
 	var req RegisterSatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
