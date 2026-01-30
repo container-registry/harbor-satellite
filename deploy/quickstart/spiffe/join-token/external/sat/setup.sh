@@ -11,7 +11,7 @@ echo ""
 
 # Verify GC is running
 echo "[1/4] Verifying Ground Control is running..."
-if ! curl -s http://localhost:8080/ping > /dev/null 2>&1; then
+if ! curl -s http://localhost:${GC_HOST_PORT:-9080}/ping > /dev/null 2>&1; then
     echo "ERROR: Ground Control is not running. Run ../gc/setup.sh first."
     exit 1
 fi
@@ -22,9 +22,9 @@ echo "[2/4] Requesting join token from Ground Control..."
 
 # Login to get session cookie
 COOKIE_JAR=$(mktemp)
-LOGIN_RESP=$(curl -s -w "%{http_code}" -c "$COOKIE_JAR" -X POST http://localhost:8080/login \
+LOGIN_RESP=$(curl -s -w "%{http_code}" -c "$COOKIE_JAR" -X POST http://localhost:${GC_HOST_PORT:-9080}/login \
     -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"password"}')
+    -d '{"username":"admin","password":"Harbor12345"}')
 HTTP_CODE="${LOGIN_RESP: -3}"
 
 if [ "$HTTP_CODE" != "200" ]; then
@@ -33,7 +33,7 @@ if [ "$HTTP_CODE" != "200" ]; then
     exit 1
 fi
 
-TOKEN_RESP=$(curl -s -b "$COOKIE_JAR" -X POST http://localhost:8080/api/join-tokens \
+TOKEN_RESP=$(curl -s -b "$COOKIE_JAR" -X POST http://localhost:${GC_HOST_PORT:-9080}/api/join-tokens \
     -H "Content-Type: application/json" \
     -d '{"satellite_name":"edge-01","region":"us-west"}')
 rm -f "$COOKIE_JAR"
