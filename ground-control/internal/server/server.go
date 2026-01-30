@@ -28,6 +28,12 @@ type Server struct {
 	rateLimiter    *middleware.RateLimiter
 	spiffeProvider spiffe.Provider
 	embeddedSpire  *spiffe.EmbeddedSpireServer
+	spireClient    *spiffe.ServerClient
+
+	// External SPIRE server metadata (used when embeddedSpire is nil)
+	spireServerAddress string
+	spireServerPort    int
+	spireTrustDomain   string
 
 	// User auth
 	passwordPolicy  auth.PasswordPolicy
@@ -117,6 +123,30 @@ func NewServer() *ServerResult {
 		}
 	}
 
+	// Initialize SPIRE client: prefer embedded, fall back to external socket
+	var spireClient *spiffe.ServerClient
+	var spireServerAddress string
+	var spireServerPort int
+	var spireTrustDomain string
+
+	if embeddedSpire != nil {
+		spireClient = embeddedSpire.GetClient()
+		spireServerAddress = embeddedSpire.GetBindAddress()
+		spireServerPort = embeddedSpire.GetBindPort()
+		spireTrustDomain = embeddedSpire.GetTrustDomain()
+	} else if socketPath := os.Getenv("SPIRE_SERVER_SOCKET"); socketPath != "" {
+		spireTrustDomain = getEnvOrDefault("SPIRE_TRUST_DOMAIN", "harbor-satellite.local")
+		var clientErr error
+		spireClient, clientErr = spiffe.NewServerClient(socketPath, spireTrustDomain)
+		if clientErr != nil {
+			log.Printf("Warning: Failed to connect to external SPIRE server at %s: %v", socketPath, clientErr)
+		} else {
+			log.Printf("Connected to external SPIRE server at %s (trust domain: %s)", socketPath, spireTrustDomain)
+		}
+		spireServerAddress = getEnvOrDefault("SPIRE_SERVER_ADDRESS", "spire-server")
+		spireServerPort = parseIntEnv("SPIRE_SERVER_PORT", 8081)
+	}
+
 	newServer := &Server{
 		port:           port,
 		db:             db,
@@ -124,6 +154,11 @@ func NewServer() *ServerResult {
 		rateLimiter:    rateLimiter,
 		spiffeProvider: spiffeProvider,
 		embeddedSpire:  embeddedSpire,
+		spireClient:    spireClient,
+
+		spireServerAddress: spireServerAddress,
+		spireServerPort:    spireServerPort,
+		spireTrustDomain:   spireTrustDomain,
 
 		// User auth settings
 		passwordPolicy:  auth.LoadPolicyFromEnv(),
@@ -191,6 +226,15 @@ func NewServer() *ServerResult {
 func getEnvOrDefault(key, defaultValue string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return defaultValue
+}
+
+func parseIntEnv(key string, defaultValue int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
 	}
 	return defaultValue
 }

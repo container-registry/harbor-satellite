@@ -131,6 +131,11 @@ func (s *EmbeddedSpireServer) GetSocketPath() string {
 	return s.socketPath
 }
 
+// GetBindAddress returns the bind address for agent connections.
+func (s *EmbeddedSpireServer) GetBindAddress() string {
+	return s.config.BindAddress
+}
+
 // GetBindPort returns the TCP port for agent connections.
 func (s *EmbeddedSpireServer) GetBindPort() int {
 	return s.config.BindPort
