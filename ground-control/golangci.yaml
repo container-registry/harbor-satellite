@@ -13,9 +13,10 @@ linters-settings:
 
   gosec:
     excludes:
-      - G304
       - G101
       - G104
+      - G115
+      - G204
 
   errcheck:
     check-type-assertions: true

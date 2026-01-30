@@ -525,9 +525,26 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	memoryBytes := min(req.MemoryUsedBytes, uint64(math.MaxInt64))
-	storageBytes := min(req.StorageUsedBytes, uint64(math.MaxInt64))
-	imageCount := min(req.ImageCount, math.MaxInt32)
+	var memoryBytes int64
+	if req.MemoryUsedBytes <= uint64(math.MaxInt64) {
+		memoryBytes = int64(req.MemoryUsedBytes)
+	} else {
+		memoryBytes = math.MaxInt64
+	}
+
+	var storageBytes int64
+	if req.StorageUsedBytes <= uint64(math.MaxInt64) {
+		storageBytes = int64(req.StorageUsedBytes)
+	} else {
+		storageBytes = math.MaxInt64
+	}
+
+	var imageCount int32
+	if req.ImageCount <= math.MaxInt32 {
+		imageCount = int32(req.ImageCount)
+	} else {
+		imageCount = math.MaxInt32
+	}
 
 	_, err = s.dbQueries.InsertSatelliteStatus(r.Context(), database.InsertSatelliteStatusParams{
 		SatelliteID:        sat.ID,
@@ -535,10 +552,10 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		LatestStateDigest:  toNullString(req.LatestStateDigest),
 		LatestConfigDigest: toNullString(req.LatestConfigDigest),
 		CpuPercent:         toNullString(fmt.Sprintf("%.2f", req.CPUPercent)),
-		MemoryUsedBytes:    toNullInt64(int64(memoryBytes)),  //nolint:gosec // G115: bounded by min() above
-		StorageUsedBytes:   toNullInt64(int64(storageBytes)), //nolint:gosec // G115: bounded by min() above
+		MemoryUsedBytes:    toNullInt64(memoryBytes),
+		StorageUsedBytes:   toNullInt64(storageBytes),
 		LastSyncDurationMs: toNullInt64(req.LastSyncDurationMs),
-		ImageCount:         toNullInt32(int32(imageCount)), //nolint:gosec // G115: bounded by min() above
+		ImageCount:         toNullInt32(imageCount),
 		ReportedAt:         req.RequestCreatedTime,
 	})
 	if err != nil {
@@ -652,7 +669,7 @@ func (s *Server) autoRegisterSatellite(r *http.Request, name string) (database.S
 		// Use placeholder credentials when Harbor is not available
 		log.Printf("SPIFFE ZTR: Harbor not available, using placeholder credentials for satellite %s", name)
 		robotName = "robot$satellite-" + name
-		robotSecret = "spiffe-auto-registered-placeholder-secret" //nolint:gosec // G101: placeholder, not a real credential
+		robotSecret = "spiffe-auto-registered-placeholder-secret"
 	}
 
 	// Store robot account in database
