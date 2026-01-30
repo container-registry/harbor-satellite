@@ -42,9 +42,14 @@ func DefaultConfig() *Config {
 
 // LoadClientTLSConfig loads TLS configuration for a client with mTLS support.
 func LoadClientTLSConfig(cfg *Config) (*tls.Config, error) {
+	minVersion := cfg.MinVersion
+	if minVersion < tls.VersionTLS12 {
+		minVersion = tls.VersionTLS12
+	}
+
 	tlsConfig := &tls.Config{
-		MinVersion:         cfg.MinVersion,
-		InsecureSkipVerify: cfg.SkipVerify,
+		MinVersion:         minVersion,
+		InsecureSkipVerify: cfg.SkipVerify, //nolint:gosec // G402: config-driven TLS verification skip
 		ServerName:         cfg.ServerName,
 	}
 
@@ -80,8 +85,13 @@ func LoadServerTLSConfig(cfg *Config) (*tls.Config, error) {
 		return nil, err
 	}
 
+	minVersion := cfg.MinVersion
+	if minVersion < tls.VersionTLS12 {
+		minVersion = tls.VersionTLS12
+	}
+
 	tlsConfig := &tls.Config{
-		MinVersion:   cfg.MinVersion,
+		MinVersion:   minVersion,
 		Certificates: []tls.Certificate{*cert},
 	}
 
