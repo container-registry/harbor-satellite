@@ -180,8 +180,17 @@ func parseZotPort(httpData map[string]interface{}) (string, error) {
 }
 
 func detectZotScheme(httpData map[string]interface{}) string {
-	if _, hasTLS := httpData["tls"]; hasTLS {
-		return "https"
+	if v, hasTLS := httpData["tls"]; hasTLS {
+		switch t := v.(type) {
+		case bool:
+			if t {
+				return "https"
+			}
+		case map[string]interface{}:
+			if len(t) > 0 {
+				return "https"
+			}
+		}
 	}
 	return "http"
 }
