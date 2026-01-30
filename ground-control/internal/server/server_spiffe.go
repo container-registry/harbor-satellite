@@ -20,5 +20,9 @@ func buildSPIFFETLSConfig(provider spiffe.Provider, _ *spiffe.Config) (*tls.Conf
 		return nil, fmt.Errorf("build SPIFFE TLS config: %w", err)
 	}
 
+	// Allow public endpoints (ping, health, login) without client certs.
+	// SPIFFE auth is enforced at the middleware level for protected routes.
+	tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+
 	return tlsConfig, nil
 }
