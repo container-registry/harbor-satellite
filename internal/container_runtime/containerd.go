@@ -32,7 +32,7 @@ func setContainerdConfig(upstreamRegistries []string, localMirror string) error 
 // writeContainerdHostToml creates or updates hosts.toml for a registry
 func writeContainerdHostToml(registryURL, localMirror string) error {
 	dir := filepath.Join(containerdCertsDir, registryURL)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
