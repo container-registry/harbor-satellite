@@ -101,7 +101,6 @@ func (h *HealthRegistrar) checkRegistry() error {
 		return err
 	}
 	registryURL := fmt.Sprintf("%s://%s/v2/", scheme, net.JoinHostPort(address, port))
-
 	// Ping the registry
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(registryURL)
@@ -113,12 +112,13 @@ func (h *HealthRegistrar) checkRegistry() error {
 			h.logger.Warn().Err(err).Msg("failed to close registry response body")
 		}
 	}()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("registry returned status %d", resp.StatusCode)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
 	}
-
-	return nil
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil
+	}
+	return fmt.Errorf("registry returned status %d", resp.StatusCode)
 }
 
 func parseZotHTTPConfig(raw []byte) (string, string, string, error) {
