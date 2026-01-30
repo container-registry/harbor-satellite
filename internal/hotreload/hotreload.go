@@ -131,13 +131,13 @@ func (hrm *HotReloadManager) handleZotConfigChange(change config.ConfigChange) e
 		Str("type", string(change.Type)).
 		Msg("Some Zot configuration may require to restart")
 
-	//verify the zot configuration before apply
+	// verify the zot configuration before apply
 	var cfg cfg.Config
 	if err := json.Unmarshal(hrm.cm.GetRawZotConfig(), &cfg); err != nil {
 		return fmt.Errorf("unable to unmarshal zot config: %w, defaulting to previous zot configuration", err)
 	}
 
-	//Zot verify the config using below function hence taking same the path
+	// Zot verify the config using below function hence taking same the path
 	if err := server.LoadConfiguration(&cfg, registry.ZotTempPath); err != nil {
 		hrm.log.Error().Interface("config", &cfg).Msg("invalid config file")
 		return err

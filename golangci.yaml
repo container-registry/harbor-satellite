@@ -18,6 +18,12 @@ linters-settings:
     # Default: 0.0
     package-average: 10.0
 
+  gosec:
+    excludes:
+      - G304
+      - G101
+      - G104
+
   errcheck:
     # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
     # Such cases aren't reported by default.

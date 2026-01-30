@@ -257,24 +257,26 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		case stateResult := <-stateFetcherResults:
 			receivedStateFetchers++
 
-			if stateResult.Cancelled {
+			switch {
+			case stateResult.Cancelled:
 				log.Debug().Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msg("State fetcher cancelled")
-			} else if stateResult.Error != nil {
+			case stateResult.Error != nil:
 				allErrors = append(allErrors, stateResult.Error.Error())
 				log.Error().Err(stateResult.Error).Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msg("State fetcher failed")
-			} else {
+			default:
 				log.Info().Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msgf("State fetcher completed successfully for %s", stateResult.URL)
 			}
 
 		case configResult := <-configFetcherResult:
 			receivedConfigFetcher = true
 
-			if configResult.Cancelled {
+			switch {
+			case configResult.Cancelled:
 				log.Debug().Msg("Config fetcher cancelled")
-			} else if configResult.Error != nil {
+			case configResult.Error != nil:
 				allErrors = append(allErrors, configResult.Error.Error())
 				log.Error().Err(configResult.Error).Msg("Config fetcher failed")
-			} else {
+			default:
 				log.Info().Str("digest", configResult.ConfigDigest).Msg("Config fetcher completed successfully")
 			}
 		}
@@ -317,7 +319,8 @@ func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
 	}
 
 	// Add new states
-	f.stateMap = append(updatedStateMap, NewStateMap(newStates)...)
+	updatedStateMap = append(updatedStateMap, NewStateMap(newStates)...)
+	f.stateMap = updatedStateMap
 }
 
 func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *zerolog.Logger, oldEntites []Entity) ([]Entity, []Entity, StateReader) {
@@ -344,17 +347,18 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 		key := newEntity.Name + "|" + newEntity.Tag
 		oldEntity, exists := oldEntityMap[key]
 
-		if !exists {
+		switch {
+		case !exists:
 			log.Debug().Str("entity", key).Msg("New entity not found in old state, scheduling for replication")
 			entityToReplicate = append(entityToReplicate, newEntity)
-		} else if newEntity.Digest != oldEntity.Digest {
+		case newEntity.Digest != oldEntity.Digest:
 			log.Debug().Str("entity", key).
 				Str("old_digest", oldEntity.Digest).
 				Str("new_digest", newEntity.Digest).
 				Msg("Entity digest changed, scheduling old for delete and new for replicate")
 			entityToReplicate = append(entityToReplicate, newEntity)
 			entityToDelete = append(entityToDelete, oldEntity)
-		} else {
+		default:
 			log.Debug().Str("entity", key).Msg("Entity unchanged, skipping")
 		}
 		delete(oldEntityMap, key)
