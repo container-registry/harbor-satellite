@@ -1,0 +1,120 @@
+# Docker Compose for Ground Control with External SPIRE (X.509 PoP Attestation)
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: harbor-satellite-postgres
+    environment:
+      POSTGRES_USER: harbor
+      POSTGRES_PASSWORD: harbor
+      POSTGRES_DB: harbor_satellite
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U harbor -d harbor_satellite"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - harbor-satellite
+
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:1.12.3
+    container_name: spire-server
+    hostname: spire-server
+    command: ["-config", "/opt/spire/conf/server/server.conf"]
+    volumes:
+      - ./spire/server.conf:/opt/spire/conf/server/server.conf:ro
+      - ./certs/ca.crt:/opt/spire/conf/server/ca.crt:ro
+      - ./certs/ca.key:/opt/spire/conf/server/ca.key:ro
+      - ./certs/x509pop-ca.crt:/opt/spire/conf/server/x509pop-ca.crt:ro
+      - spire-server-data:/opt/spire/data/server
+      - spire-server-socket:/tmp/spire-server/private
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/spire/bin/spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - harbor-satellite
+
+  spire-agent-gc:
+    image: ghcr.io/spiffe/spire-agent:1.12.3
+    container_name: spire-agent-gc
+    hostname: spire-agent-gc
+    command: ["-config", "/opt/spire/conf/agent/agent.conf"]
+    volumes:
+      - ./spire/agent-gc.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - ./certs/agent-gc.crt:/opt/spire/conf/agent/agent.crt:ro
+      - ./certs/agent-gc.key:/opt/spire/conf/agent/agent.key:ro
+      - spire-agent-gc-data:/opt/spire/data/agent
+      - spire-agent-gc-socket:/run/spire/sockets
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      spire-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/spire/bin/spire-agent healthcheck -socketPath /run/spire/sockets/agent.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - harbor-satellite
+
+  ground-control:
+    build:
+      context: ../../../../../../ground-control
+      dockerfile: Dockerfile
+    container_name: ground-control
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=harbor_satellite
+      - DB_USERNAME=harbor
+      - DB_PASSWORD=harbor
+      - PORT=8080
+      - APP_ENV=development
+      - HARBOR_URL=${HARBOR_URL:-http://host.docker.internal:8080}
+      - HARBOR_USERNAME=${HARBOR_USERNAME:-admin}
+      - HARBOR_PASSWORD=${HARBOR_PASSWORD:-Harbor12345}
+      - SKIP_HARBOR_HEALTH_CHECK=true
+      - SPIFFE_ENABLED=true
+      - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
+      - SPIFFE_TRUST_DOMAIN=harbor-satellite.local
+      - SPIRE_SERVER_SOCKET=/tmp/spire-server/private/api.sock
+      - SPIRE_SERVER_ADDRESS=spire-server
+      - SPIRE_SERVER_PORT=8081
+      - SPIRE_TRUST_DOMAIN=harbor-satellite.local
+    volumes:
+      - spire-agent-gc-socket:/run/spire/sockets:ro
+      - spire-server-socket:/tmp/spire-server/private:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spire-agent-gc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - harbor-satellite
+
+volumes:
+  postgres-data:
+  spire-server-data:
+  spire-server-socket:
+  spire-agent-gc-data:
+  spire-agent-gc-socket:
+
+networks:
+  harbor-satellite:
+    name: harbor-satellite
