@@ -82,8 +82,5 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Sync (dual auth: robot credentials or SPIFFE)
 	satellites.HandleFunc("/sync", s.syncHandler).Methods("POST")
 
-	// Join token (satellite requests)
-	satellites.HandleFunc("/{satellite}/join-token", s.generateJoinTokenHandler).Methods("POST")
-
 	return r
 }
