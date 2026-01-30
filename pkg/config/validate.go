@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/container-registry/harbor-satellite/internal/registry"
@@ -111,7 +112,23 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		warnings = append(warnings, fmt.Sprintf("health server port not specified, defaulting to : %s", DefaultHealthServerPort))
 	}
 
+	if !isvalidPort(config.AppConfig.HealthServerPort) {
+		return nil, nil, fmt.Errorf("invalid health_server_port: %q", config.AppConfig.HealthServerPort)
+	}
+
 	return config, warnings, nil
+}
+
+func isvalidPort(port string) bool {
+	port = strings.TrimSpace(port)
+	if port == "" {
+		return false
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil {
+		return false
+	}
+	return n > 0 && n <= 65535
 }
 
 // validateCronExpression checks the validity of a cron expression.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -21,6 +22,9 @@ type HealthResponse struct {
 }
 
 func NewHealthRegistrar(cm *config.ConfigManager, logger *zerolog.Logger) *HealthRegistrar {
+	if cm == nil || logger == nil {
+		panic("NewHealthRegistrar: cm and logger must not be nil")
+	}
 	return &HealthRegistrar{
 		cm:     cm,
 		logger: logger,
@@ -85,7 +89,7 @@ func (h *HealthRegistrar) readyHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		h.logger.Error().Err(err).Msg("failed to write rediness response")
+		h.logger.Error().Err(err).Msg("failed to write readiness response")
 	}
 }
 
@@ -108,7 +112,14 @@ func (h *HealthRegistrar) checkRegistry() error {
 	if !ok {
 		return fmt.Errorf("invalid zot config: missing port")
 	}
-	registryURL := fmt.Sprintf("http://%s:%s/v2/", address, port)
+
+	// Check if TLS is configured
+	scheme := "http"
+	if _, hasTLS := httpData["tls"]; hasTLS {
+		scheme = "https"
+	}
+
+	registryURL := fmt.Sprintf("%s://%s:%s/v2/", scheme, address, port)
 
 	// Ping the registry
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -130,7 +141,7 @@ func (h *HealthRegistrar) checkRegistry() error {
 }
 
 func (h *HealthRegistrar) checkGroundControl() error {
-	gcURL := h.cm.ResolveGroundControlURL()
+	gcURL := strings.TrimSuffix(h.cm.ResolveGroundControlURL(), "/")
 
 	// Simple ping to GC
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -144,7 +155,7 @@ func (h *HealthRegistrar) checkGroundControl() error {
 		}
 	}()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("ground control returned status %d", resp.StatusCode)
 	}
 
