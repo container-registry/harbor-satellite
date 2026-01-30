@@ -20,23 +20,30 @@ echo "Ground Control is reachable"
 # Generate join token for satellite agent via GC API
 echo "[2/4] Requesting join token from Ground Control..."
 
-# Login to get session cookie
-COOKIE_JAR=$(mktemp)
-LOGIN_RESP=$(curl -s -w "%{http_code}" -c "$COOKIE_JAR" -X POST http://localhost:${GC_HOST_PORT:-9080}/login \
+GC_URL="https://localhost:${GC_HOST_PORT:-9080}"
+
+# Login to get Bearer token
+LOGIN_RESP=$(curl -sk -w "\n%{http_code}" -X POST "${GC_URL}/login" \
     -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"Harbor12345"}')
-HTTP_CODE="${LOGIN_RESP: -3}"
+    -d "{\"username\":\"admin\",\"password\":\"${ADMIN_PASSWORD:-Harbor12345}\"}")
+HTTP_CODE=$(echo "$LOGIN_RESP" | tail -1)
+LOGIN_BODY=$(echo "$LOGIN_RESP" | sed '$d')
 
 if [ "$HTTP_CODE" != "200" ]; then
     echo "ERROR: Login failed (HTTP $HTTP_CODE). Check admin credentials."
-    rm -f "$COOKIE_JAR"
     exit 1
 fi
 
-TOKEN_RESP=$(curl -s -b "$COOKIE_JAR" -X POST http://localhost:${GC_HOST_PORT:-9080}/api/join-tokens \
+AUTH_TOKEN=$(echo "$LOGIN_BODY" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+if [ -z "$AUTH_TOKEN" ]; then
+    echo "ERROR: Failed to parse auth token from login response"
+    exit 1
+fi
+
+TOKEN_RESP=$(curl -sk -X POST "${GC_URL}/api/join-tokens" \
     -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{"satellite_name":"edge-01","region":"us-west"}')
-rm -f "$COOKIE_JAR"
 
 SAT_TOKEN=$(echo "$TOKEN_RESP" | grep -o '"join_token":"[^"]*"' | cut -d'"' -f4)
 if [ -z "$SAT_TOKEN" ]; then

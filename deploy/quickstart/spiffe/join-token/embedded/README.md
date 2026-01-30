@@ -4,4 +4,4 @@ Embedded SPIRE mode runs the SPIRE server/agent within the GC and satellite bina
 
 This deployment mode is planned for Phase 2.
 
-For now, use the [external SPIRE setup](../README.md).
+For now, use the [external SPIRE setup](../../README.md).

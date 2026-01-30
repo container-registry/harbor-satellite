@@ -120,24 +120,38 @@ docker compose up -d ground-control
 
 ### 1.9 Verify GC is running
 
+GC serves HTTPS when SPIFFE is enabled. Use `-k` to skip certificate verification.
+
 ```bash
-curl http://localhost:8080/ping
-curl http://localhost:8080/api/spire/status  # requires auth
+curl -sk https://localhost:9080/ping
+curl -sk https://localhost:9080/api/spire/status  # requires system_admin role
 ```
 
 ## Step 2: Start Satellite with External SPIRE
 
 ### 2.1 Request join token from Ground Control
 
-```bash
-# Login first
-curl -c cookies.txt -X POST http://localhost:8080/login \
-    -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"password"}'
+Protected endpoints support both Bearer token and basic auth.
 
-# Request token
-curl -b cookies.txt -X POST http://localhost:8080/api/join-tokens \
+Using basic auth (`-u`):
+```bash
+curl -sk -u admin:Harbor12345 -X POST https://localhost:9080/api/join-tokens \
     -H "Content-Type: application/json" \
+    -d '{"satellite_name":"edge-01","region":"us-west"}'
+```
+
+Or using a Bearer token:
+```bash
+# Login to get a Bearer token
+LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"Harbor12345"}')
+AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+# Request join token
+curl -sk -X POST https://localhost:9080/api/join-tokens \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{"satellite_name":"edge-01","region":"us-west"}'
 ```
 
@@ -145,6 +159,10 @@ The response includes the join token and SPIRE server connection details:
 ```json
 {
   "join_token": "...",
+  "expires_at": "...",
+  "spiffe_id": "spiffe://harbor-satellite.local/satellite/region/us-west/edge-01",
+  "region": "us-west",
+  "satellite": "edge-01",
   "spire_server_address": "spire-server",
   "spire_server_port": 8081,
   "trust_domain": "harbor-satellite.local"
@@ -157,16 +175,70 @@ The response includes the join token and SPIRE server connection details:
 cd ../sat
 ```
 
-Create `spire/agent-satellite-runtime.conf` with the token from step 2.1 (same format as step 1.5).
+Create `spire/agent-satellite-runtime.conf` with the join token from step 2.1:
 
-### 2.3 Start SPIRE agent and Satellite
+```bash
+cat > spire/agent-satellite-runtime.conf << EOF
+agent {
+    data_dir = "/opt/spire/data/agent"
+    log_level = "INFO"
+    server_address = "spire-server"
+    server_port = "8081"
+    socket_path = "/run/spire/sockets/agent.sock"
+    trust_bundle_path = "/opt/spire/conf/agent/bootstrap.crt"
+    trust_domain = "harbor-satellite.local"
+    join_token = "YOUR_TOKEN_HERE"
+}
+
+plugins {
+    NodeAttestor "join_token" {
+        plugin_data {}
+    }
+    KeyManager "disk" {
+        plugin_data {
+            directory = "/opt/spire/data/agent"
+        }
+    }
+    WorkloadAttestor "unix" {
+        plugin_data {}
+    }
+    WorkloadAttestor "docker" {
+        plugin_data {
+            docker_socket_path = "unix:///var/run/docker.sock"
+        }
+    }
+}
+
+health_checks {
+    listener_enabled = true
+    bind_address = "0.0.0.0"
+    bind_port = "8080"
+    live_path = "/live"
+    ready_path = "/ready"
+}
+EOF
+```
+
+### 2.3 Register satellite workload
+
+Register the satellite workload entry so it can receive an SVID after the agent attests:
+
+```bash
+docker exec spire-server /opt/spire/bin/spire-server entry create \
+    -parentID spiffe://harbor-satellite.local/agent/edge-01 \
+    -spiffeID spiffe://harbor-satellite.local/satellite/region/us-west/edge-01 \
+    -selector docker:label:com.docker.compose.service:satellite \
+    -socketPath /tmp/spire-server/private/api.sock
+```
+
+### 2.4 Start SPIRE agent and Satellite
 
 ```bash
 docker compose up -d spire-agent-satellite
 docker compose up -d satellite
 ```
 
-### 2.4 Verify
+### 2.5 Verify
 
 ```bash
 docker logs satellite
@@ -182,6 +254,8 @@ cd ../sat && ./setup.sh
 ```
 
 ## Cleanup
+
+Satellite must be cleaned up first since it depends on the GC docker network.
 
 ```bash
 cd external/sat && ./cleanup.sh

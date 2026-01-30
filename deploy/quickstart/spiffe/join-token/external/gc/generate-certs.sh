@@ -19,6 +19,7 @@ openssl genrsa -out "$CERTS_DIR/ca.key" 4096
 openssl req -new -x509 -days 365 -key "$CERTS_DIR/ca.key" -out "$CERTS_DIR/ca.crt" \
     -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=SPIRE CA"
 
+# 644 required: SPIRE server container runs as non-root and needs read access
 chmod 644 "$CERTS_DIR/ca.key"
 chmod 644 "$CERTS_DIR/ca.crt"
 
