@@ -53,7 +53,7 @@ func (s *EmbeddedSpireServer) Start(ctx context.Context) error {
 		return fmt.Errorf("write config: %w", err)
 	}
 
-	s.cmd = exec.CommandContext(ctx, "spire-server", "run", "-config", s.configPath)
+	s.cmd = exec.CommandContext(ctx, "spire-server", "run", "-config", s.configPath) //nolint:gosec // G204: configPath is derived from internal config, not user input
 	s.cmd.Stdout = os.Stdout
 	s.cmd.Stderr = os.Stderr
 

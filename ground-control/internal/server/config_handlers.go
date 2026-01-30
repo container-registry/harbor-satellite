@@ -172,7 +172,7 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	existing, err := q.GetConfigByName(r.Context(), configName)
 	if err != nil {
-		//If config not found, send StatusNotFound
+		// If config not found, send StatusNotFound
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Printf("error: config not found : %s", configName)
 			err := &AppError{

@@ -32,14 +32,15 @@ func main() {
 
 	go func() {
 		var err error
-		if spiffeCfg != nil && spiffeCfg.Enabled {
+		switch {
+		case spiffeCfg != nil && spiffeCfg.Enabled:
 			// SPIFFE provides certificates via TLSConfig.GetCertificate
 			fmt.Printf("Starting Ground Control with SPIFFE mTLS on port %s\n", httpServer.Addr)
 			err = httpServer.ListenAndServeTLS("", "")
-		} else if tlsCfg.Enabled {
+		case tlsCfg.Enabled:
 			fmt.Printf("Starting Ground Control with TLS on port %s\n", httpServer.Addr)
 			err = httpServer.ListenAndServeTLS(tlsCfg.CertFile, tlsCfg.KeyFile)
-		} else {
+		default:
 			fmt.Printf("Starting Ground Control on port %s\n", httpServer.Addr)
 			err = httpServer.ListenAndServe()
 		}
@@ -58,6 +59,6 @@ func main() {
 	defer shutdownRelease()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("HTTP shutdown error: %v", err)
+		log.Printf("HTTP shutdown error: %v", err)
 	}
 }

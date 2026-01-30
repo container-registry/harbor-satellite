@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -524,16 +525,20 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	memoryBytes := min(req.MemoryUsedBytes, uint64(math.MaxInt64))
+	storageBytes := min(req.StorageUsedBytes, uint64(math.MaxInt64))
+	imageCount := min(req.ImageCount, math.MaxInt32)
+
 	_, err = s.dbQueries.InsertSatelliteStatus(r.Context(), database.InsertSatelliteStatusParams{
 		SatelliteID:        sat.ID,
 		Activity:           req.Activity,
 		LatestStateDigest:  toNullString(req.LatestStateDigest),
 		LatestConfigDigest: toNullString(req.LatestConfigDigest),
 		CpuPercent:         toNullString(fmt.Sprintf("%.2f", req.CPUPercent)),
-		MemoryUsedBytes:    toNullInt64(int64(req.MemoryUsedBytes)),
-		StorageUsedBytes:   toNullInt64(int64(req.StorageUsedBytes)),
+		MemoryUsedBytes:    toNullInt64(int64(memoryBytes)),  //nolint:gosec // G115: bounded by min() above
+		StorageUsedBytes:   toNullInt64(int64(storageBytes)), //nolint:gosec // G115: bounded by min() above
 		LastSyncDurationMs: toNullInt64(req.LastSyncDurationMs),
-		ImageCount:         toNullInt32(int32(req.ImageCount)),
+		ImageCount:         toNullInt32(int32(imageCount)), //nolint:gosec // G115: bounded by min() above
 		ReportedAt:         req.RequestCreatedTime,
 	})
 	if err != nil {
@@ -647,7 +652,7 @@ func (s *Server) autoRegisterSatellite(r *http.Request, name string) (database.S
 		// Use placeholder credentials when Harbor is not available
 		log.Printf("SPIFFE ZTR: Harbor not available, using placeholder credentials for satellite %s", name)
 		robotName = "robot$satellite-" + name
-		robotSecret = "spiffe-auto-registered-placeholder-secret"
+		robotSecret = "spiffe-auto-registered-placeholder-secret" //nolint:gosec // G101: placeholder, not a real credential
 	}
 
 	// Store robot account in database
@@ -829,7 +834,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//Validate satellite and group
+	// Validate satellite and group
 	if !utils.IsValidName(req.Satellite) {
 		HandleAppError(w, &AppError{
 			Message: fmt.Sprintf(invalidNameMessage, "satellite"),
