@@ -123,19 +123,30 @@ Deletion is not a lifecycle state. It is handled via a `deleted` boolean column 
 
 ### State Transition Diagram
 
-```
-pending -------> online -------> stale
-   |                |               |
-   |                |               +---> online (recovery)
-   |                |               |
-   v                v               v
-              revoked
-                 |
-                 v
-              pending (admin re-enables)
+```mermaid
+stateDiagram-v2
+    [*] --> pending : Admin creates satellite
 
-Any state ---> [deleted = true] (admin removes, full cleanup)
+    pending --> online : ZTR completed (first heartbeat)
+    pending --> revoked : Admin action
+
+    online --> stale : Missed heartbeats (background job)
+    online --> revoked : Admin action
+
+    stale --> online : Heartbeat received (recovery)
+    stale --> revoked : Admin action
+
+    revoked --> pending : Admin re-enables
+
+    note right of revoked
+        Satellite still sends heartbeats.
+        GC responds 403 while revoked.
+        On re-enable, GC responds 200
+        with JSON refresh directive.
+    end note
 ```
+
+Note: Any state can be soft-deleted (`deleted = true`). This is not a state transition but a separate operation that hides the satellite from the GC UI and cleans up all associated resources.
 
 ### Onboarding Flows
 
@@ -143,43 +154,64 @@ Both flows coexist long-term as deployment options. Both start at `pending` and 
 
 ## Normal ZTR Flow
 
-1. Admin calls `POST /api/satellites` to register satellite.
-2. Ground Control creates satellite record with `status = pending`.
-3. Admin receives a one-time ZTR token.
-4. Admin can assign groups/configs while satellite is pending.
-5. Admin provides token to the satellite.
-6. Satellite calls `GET /satellites/ztr/{token}`.
-7. Ground Control returns robot credentials and state URL. Token is consumed and deleted.
-8. `status = online`. Satellite begins heartbeat loop.
+```mermaid
+flowchart TD
+    A[Admin calls POST /api/satellites] --> B[GC creates satellite record]
+    B --> C["status = pending"]
+    C --> D[Admin receives one-time ZTR token]
+    D --> E[Admin can assign groups/configs]
+    E --> F[Admin provides token to satellite]
+    F --> G["Satellite calls GET /satellites/ztr/{token}"]
+    G --> H[GC returns robot credentials + state URL]
+    H --> I[Token consumed and deleted]
+    I --> J["status = online"]
+    J --> K[Satellite begins heartbeat loop]
+```
 
 ## SPIFFE ZTR Flow
 
-1. Admin calls `POST /api/join-tokens`.
-2. Ground Control creates satellite record and SPIRE workload entry. `status = pending`.
-3. Admin receives a SPIRE join token.
-4. Admin can assign groups/configs while satellite is pending.
-5. Admin provides join token to the satellite agent.
-6. Satellite attests directly with the SPIRE server.
-7. SPIRE issues an SVID to the satellite.
-8. Satellite presents SVID to Ground Control.
-9. Ground Control returns robot credentials and state URL.
-10. `status = online`. Satellite begins heartbeat loop.
+```mermaid
+flowchart TD
+    A[Admin calls POST /api/join-tokens] --> B[GC creates satellite record + SPIRE workload entry]
+    B --> C["status = pending"]
+    C --> D[Admin receives SPIRE join token]
+    D --> E[Admin can assign groups/configs]
+    E --> F[Admin provides join token to satellite agent]
+    F --> G[Satellite attests directly with SPIRE server]
+    G --> H[SPIRE issues SVID to satellite]
+    H --> I[Satellite presents SVID to Ground Control]
+    I --> J[GC returns robot credentials + state URL]
+    J --> K["status = online"]
+    K --> L[Satellite begins heartbeat loop]
+```
 
 ## Revoke and Re-enable Flow
 
-Revoke:
-1. Admin revokes satellite. `status = revoked`.
-2. Ground Control disables robot account in Harbor and revokes SPIRE entry.
-3. Satellite continues heartbeating but receives `403 Forbidden`.
+```mermaid
+flowchart TD
+    A[Admin revokes satellite] --> B["status = revoked"]
+    B --> C[GC disables robot account in Harbor]
+    C --> D[GC revokes SPIRE entry]
+    D --> E[Satellite heartbeat gets 403 from GC]
 
-Re-enable:
-1. Admin re-enables satellite. `status = pending`.
-2. Satellite heartbeat receives `200` with a JSON directive to refresh credentials.
-3. Satellite calls the refresh route.
-4. Ground Control issues new robot credentials.
-5. `status = online`. Normal operation resumes.
+    F[Admin re-enables satellite] --> G["status = pending"]
+    G --> H[Satellite heartbeat gets 200 with refresh directive]
+    H --> I[Satellite calls refresh route]
+    I --> J[GC issues new robot credentials]
+    J --> K["status = online"]
+```
 
 ### Heartbeat Response by State
+
+```mermaid
+flowchart LR
+    HB[Satellite sends heartbeat] --> Check{Satellite status?}
+    Check -->|online| OK["200 OK"]
+    Check -->|stale| Recovery["200 OK (transition to online)"]
+    Check -->|revoked| Denied["403 Forbidden"]
+    Check -->|pending re-enabled| Refresh["200 + JSON refresh directive"]
+    Check -->|deleted| Unauth["401 Unauthorized"]
+```
 
 | Satellite Status | HTTP Response | Behavior |
 |---|---|---|
