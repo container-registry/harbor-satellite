@@ -112,14 +112,14 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		warnings = append(warnings, fmt.Sprintf("health server port not specified, defaulting to : %s", DefaultHealthServerPort))
 	}
 
-	if !isvalidPort(config.AppConfig.HealthServerPort) {
+	if !isValidPort(config.AppConfig.HealthServerPort) {
 		return nil, nil, fmt.Errorf("invalid health_server_port: %q", config.AppConfig.HealthServerPort)
 	}
 
 	return config, warnings, nil
 }
 
-func isvalidPort(port string) bool {
+func isValidPort(port string) bool {
 	port = strings.TrimSpace(port)
 	if port == "" {
 		return false

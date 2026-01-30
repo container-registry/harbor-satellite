@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,9 +109,18 @@ func (h *HealthRegistrar) checkRegistry() error {
 	if !ok {
 		return fmt.Errorf("invalid zot config: missing address")
 	}
-	port, ok := httpData["port"].(string)
+	rawPort, ok := httpData["port"]
 	if !ok {
 		return fmt.Errorf("invalid zot config: missing port")
+	}
+	var port string
+	switch v := rawPort.(type) {
+	case string:
+		port = v
+	case float64:
+		port = strconv.FormatInt(int64(v), 10)
+	default:
+		return fmt.Errorf("invalid zot config: unsupported port type %T", rawPort)
 	}
 
 	// Check if TLS is configured
