@@ -15,13 +15,16 @@ type CreateJoinTokenRequest struct {
 	TTL           int    `json:"ttl_seconds,omitempty"` // Default: 600 (10 minutes)
 }
 
-// JoinTokenResponse contains the generated join token and metadata.
+// JoinTokenResponse contains the generated join token and bootstrap metadata.
 type JoinTokenResponse struct {
-	JoinToken string    `json:"join_token"`
-	ExpiresAt time.Time `json:"expires_at"`
-	SPIFFEID  string    `json:"spiffe_id"`
-	Region    string    `json:"region"`
-	Satellite string    `json:"satellite"`
+	JoinToken          string    `json:"join_token"`
+	ExpiresAt          time.Time `json:"expires_at"`
+	SPIFFEID           string    `json:"spiffe_id"`
+	Region             string    `json:"region"`
+	Satellite          string    `json:"satellite"`
+	SpireServerAddress string    `json:"spire_server_address"`
+	SpireServerPort    int       `json:"spire_server_port"`
+	TrustDomain        string    `json:"trust_domain"`
 }
 
 // SPIREStatusResponse contains SPIRE integration status.
@@ -36,7 +39,7 @@ type SPIREStatusResponse struct {
 // GET /spire/status
 func (s *Server) spireStatusHandler(w http.ResponseWriter, r *http.Request) {
 	status := SPIREStatusResponse{
-		Enabled:   s.spiffeProvider != nil || s.embeddedSpire != nil,
+		Enabled:   s.spiffeProvider != nil || s.spireClient != nil,
 		Connected: false,
 	}
 
@@ -45,9 +48,13 @@ func (s *Server) spireStatusHandler(w http.ResponseWriter, r *http.Request) {
 		status.Provider = "sidecar"
 		status.Connected = true
 	} else if s.embeddedSpire != nil {
-		status.TrustDomain = s.embeddedSpire.GetTrustDomain()
+		status.TrustDomain = s.spireTrustDomain
 		status.Provider = "embedded"
-		status.Connected = s.embeddedSpire.GetClient() != nil
+		status.Connected = s.spireClient != nil
+	} else if s.spireClient != nil {
+		status.TrustDomain = s.spireTrustDomain
+		status.Provider = "external"
+		status.Connected = true
 	}
 
 	WriteJSONResponse(w, http.StatusOK, status)
@@ -86,8 +93,7 @@ func (s *Server) createJoinTokenHandler(w http.ResponseWriter, r *http.Request) 
 		req.TTL = 86400 // Max 24 hours
 	}
 
-	// Check if embedded SPIRE is available
-	if s.embeddedSpire == nil || s.embeddedSpire.GetClient() == nil {
+	if s.spireClient == nil {
 		HandleAppError(w, &AppError{
 			Message: "SPIRE server not configured",
 			Code:    http.StatusServiceUnavailable,
@@ -95,17 +101,16 @@ func (s *Server) createJoinTokenHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	client := s.embeddedSpire.GetClient()
-	trustDomain := s.embeddedSpire.GetTrustDomain()
+	trustDomain := s.spireTrustDomain
 
 	// Build SPIFFE IDs
 	agentSpiffeID := fmt.Sprintf("spiffe://%s/agent/%s", trustDomain, req.SatelliteName)
 	workloadSpiffeID := fmt.Sprintf("spiffe://%s/satellite/region/%s/%s",
 		trustDomain, req.Region, req.SatelliteName)
 
-	// Generate join token via embedded SPIRE
+	// Generate join token via SPIRE server client
 	ttl := time.Duration(req.TTL) * time.Second
-	joinToken, err := client.CreateJoinToken(r.Context(), agentSpiffeID, ttl)
+	joinToken, err := s.spireClient.CreateJoinToken(r.Context(), agentSpiffeID, ttl)
 	if err != nil {
 		log.Printf("Failed to create join token: %v", err)
 		HandleAppError(w, &AppError{
@@ -116,7 +121,7 @@ func (s *Server) createJoinTokenHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Create workload entry for the satellite (so it can get SVID after attestation)
-	err = client.CreateWorkloadEntry(r.Context(), agentSpiffeID, workloadSpiffeID, []string{"unix:uid:0"})
+	err = s.spireClient.CreateWorkloadEntry(r.Context(), agentSpiffeID, workloadSpiffeID, []string{"unix:uid:0"})
 	if err != nil {
 		log.Printf("Failed to create workload entry: %v", err)
 		// Continue - token is still valid, entry creation may succeed on retry
@@ -128,11 +133,14 @@ func (s *Server) createJoinTokenHandler(w http.ResponseWriter, r *http.Request) 
 		req.SatelliteName, req.Region, expiresAt)
 
 	resp := JoinTokenResponse{
-		JoinToken: joinToken,
-		ExpiresAt: expiresAt,
-		SPIFFEID:  workloadSpiffeID,
-		Region:    req.Region,
-		Satellite: req.SatelliteName,
+		JoinToken:          joinToken,
+		ExpiresAt:          expiresAt,
+		SPIFFEID:           workloadSpiffeID,
+		Region:             req.Region,
+		Satellite:          req.SatelliteName,
+		SpireServerAddress: s.spireServerAddress,
+		SpireServerPort:    s.spireServerPort,
+		TrustDomain:        trustDomain,
 	}
 
 	WriteJSONResponse(w, http.StatusOK, resp)
