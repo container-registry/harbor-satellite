@@ -87,6 +87,7 @@ Admin creates trust between SPIRE server and agent via join token, TPM, or cloud
 | Satellite sync | Robot credentials | Ongoing state replication after ZTR |
 
 Key rules:
+
 - Token and SPIFFE ZTR are mutually exclusive (if/else at `satellite.go:35`, no fallback)
 - If SPIFFE is enabled and client creation fails, satellite halts with error
 - Token ZTR is never a fallback for SPIFFE
