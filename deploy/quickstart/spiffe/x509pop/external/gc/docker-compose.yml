@@ -11,10 +11,11 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U harbor -d harbor_satellite"]
+      test: ["CMD", "pg_isready", "-U", "harbor", "-d", "harbor_satellite"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
     networks:
       - harbor-satellite
 
@@ -31,9 +32,9 @@ services:
       - spire-server-data:/opt/spire/data/server
       - spire-server-socket:/tmp/spire-server/private
     ports:
-      - "8081:8081"
+      - "${SPIRE_HOST_PORT:-9081}:8081"
     healthcheck:
-      test: ["CMD-SHELL", "/opt/spire/bin/spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock"]
+      test: ["CMD", "/opt/spire/bin/spire-server", "healthcheck", "-socketPath", "/tmp/spire-server/private/api.sock"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -45,6 +46,7 @@ services:
     image: ghcr.io/spiffe/spire-agent:1.12.3
     container_name: spire-agent-gc
     hostname: spire-agent-gc
+    pid: host
     command: ["-config", "/opt/spire/conf/agent/agent.conf"]
     volumes:
       - ./spire/agent-gc.conf:/opt/spire/conf/agent/agent.conf:ro
@@ -53,12 +55,13 @@ services:
       - ./certs/agent-gc.key:/opt/spire/conf/agent/agent.key:ro
       - spire-agent-gc-data:/opt/spire/data/agent
       - spire-agent-gc-socket:/run/spire/sockets
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Required for SPIRE workload attestor (identifies containers by Docker labels)
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
     depends_on:
       spire-server:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "/opt/spire/bin/spire-agent healthcheck -socketPath /run/spire/sockets/agent.sock"]
+      test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck", "-socketPath", "/run/spire/sockets/agent.sock"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -82,7 +85,8 @@ services:
       - HARBOR_URL=${HARBOR_URL:-http://host.docker.internal:8080}
       - HARBOR_USERNAME=${HARBOR_USERNAME:-admin}
       - HARBOR_PASSWORD=${HARBOR_PASSWORD:-Harbor12345}
-      - SKIP_HARBOR_HEALTH_CHECK=true
+      - SKIP_HARBOR_HEALTH_CHECK=${SKIP_HARBOR_HEALTH_CHECK:-false}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Harbor12345}
       - SPIFFE_ENABLED=true
       - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
       - SPIFFE_TRUST_DOMAIN=harbor-satellite.local
@@ -94,7 +98,7 @@ services:
       - spire-agent-gc-socket:/run/spire/sockets:ro
       - spire-server-socket:/tmp/spire-server/private:ro
     ports:
-      - "8080:8080"
+      - "${GC_HOST_PORT:-9080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,7 +108,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8080/ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 15s
     networks:
       - harbor-satellite
 
