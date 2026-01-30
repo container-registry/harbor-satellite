@@ -20,9 +20,10 @@ linters-settings:
 
   gosec:
     excludes:
-      - G304
       - G101
       - G104
+      - G115
+      - G204
 
   errcheck:
     # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.

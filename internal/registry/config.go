@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -33,7 +34,7 @@ func (c *ZotConfig) GetRegistryURL() string {
 
 // ReadConfig reads a JSON file from the specified path and unmarshals it into a ZotConfig struct.
 func ReadZotConfig(filePath string, zotConfig *ZotConfig) error {
-	file, err := os.Open(filePath) //nolint:gosec // G304: path from internal config
+	file, err := os.Open(filepath.Clean(filePath))
 	if err != nil {
 		return fmt.Errorf("could not open file: %w", err)
 	}

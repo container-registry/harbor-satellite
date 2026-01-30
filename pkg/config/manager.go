@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -199,7 +200,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 
 // Reads the config at the given path and returns the parsed Config.
 func readAndReturnConfig(path string) (*Config, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // G304: path from internal config
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}

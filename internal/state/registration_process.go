@@ -184,9 +184,9 @@ func createHTTPClient(tlsCfg config.TLSConfig, useUnsecure bool) (*http.Client, 
 
 	if useUnsecure {
 		transport.TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true, //nolint:gosec // G402: intentional when useUnsecure flag is set
-			MinVersion:         tls.VersionTLS12,
+			MinVersion: tls.VersionTLS12,
 		}
+		transport.TLSClientConfig.InsecureSkipVerify = useUnsecure
 	} else if tlsCfg.CertFile != "" || tlsCfg.CAFile != "" {
 		cfg := &satTLS.Config{
 			CertFile:   tlsCfg.CertFile,

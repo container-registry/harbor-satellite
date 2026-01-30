@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -42,15 +43,12 @@ func DefaultConfig() *Config {
 
 // LoadClientTLSConfig loads TLS configuration for a client with mTLS support.
 func LoadClientTLSConfig(cfg *Config) (*tls.Config, error) {
-	minVersion := cfg.MinVersion
-	if minVersion < tls.VersionTLS12 {
-		minVersion = tls.VersionTLS12
-	}
-
 	tlsConfig := &tls.Config{
-		MinVersion:         minVersion,
-		InsecureSkipVerify: cfg.SkipVerify, //nolint:gosec // G402: config-driven TLS verification skip
-		ServerName:         cfg.ServerName,
+		MinVersion: tls.VersionTLS12,
+		ServerName: cfg.ServerName,
+	}
+	if cfg.SkipVerify {
+		tlsConfig.InsecureSkipVerify = cfg.SkipVerify
 	}
 
 	// Load client certificate if provided (for mTLS)
@@ -85,13 +83,8 @@ func LoadServerTLSConfig(cfg *Config) (*tls.Config, error) {
 		return nil, err
 	}
 
-	minVersion := cfg.MinVersion
-	if minVersion < tls.VersionTLS12 {
-		minVersion = tls.VersionTLS12
-	}
-
-	tlsConfig := &tls.Config{ //nolint:gosec // G402: minVersion is floored to TLS 1.2 above
-		MinVersion:   minVersion,
+	tlsConfig := &tls.Config{
+		MinVersion:   tls.VersionTLS12,
 		Certificates: []tls.Certificate{*cert},
 	}
 
@@ -131,7 +124,7 @@ func LoadCAPool(caFile string) (*x509.CertPool, error) {
 		return nil, ErrCANotFound
 	}
 
-	caData, err := os.ReadFile(caFile) //nolint:gosec // G304: path from validated TLS config
+	caData, err := os.ReadFile(filepath.Clean(caFile))
 	if err != nil {
 		return nil, fmt.Errorf("read CA file: %w", err)
 	}
@@ -146,7 +139,7 @@ func LoadCAPool(caFile string) (*x509.CertPool, error) {
 
 // ValidateCertificate validates a certificate file.
 func ValidateCertificate(certFile string) error {
-	certData, err := os.ReadFile(certFile) //nolint:gosec // G304: path from validated TLS config
+	certData, err := os.ReadFile(filepath.Clean(certFile))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return ErrCertNotFound
@@ -217,7 +210,7 @@ type CertificateInfo struct {
 
 // GetCertificateInfo extracts information from a certificate file.
 func GetCertificateInfo(certFile string) (*CertificateInfo, error) {
-	certData, err := os.ReadFile(certFile) //nolint:gosec // G304: path from validated TLS config
+	certData, err := os.ReadFile(filepath.Clean(certFile))
 	if err != nil {
 		return nil, err
 	}

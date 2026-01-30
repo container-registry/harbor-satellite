@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 
 	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/container-registry/harbor-satellite/internal/identity"
@@ -121,7 +122,7 @@ func (e *ConfigEncryptor) EncryptToFile(path string, config any) error {
 
 // DecryptFromFile reads and decrypts config from file.
 func (e *ConfigEncryptor) DecryptFromFile(path string, config any) error {
-	data, err := os.ReadFile(path) //nolint:gosec // G304: path from internal config
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return ErrConfigNotFound

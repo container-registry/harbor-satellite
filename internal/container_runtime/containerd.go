@@ -62,7 +62,7 @@ func writeContainerdHostToml(registryURL, localMirror string) error {
 		Capabilities: []string{"pull", "resolve"},
 	}
 
-	f, err := os.Create(path) //nolint:gosec // G304: path derived from internal registry config
+	f, err := os.Create(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("failed to open %s for writing: %w", path, err)
 	}
