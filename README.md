@@ -65,6 +65,30 @@ Harbor Satellite will synchronize with the central Harbor registry, when Interne
 
 Harbor Satellite will also include a toolset enabling the monitoring and management of local decentralized registries.
 
+## Documentation
+
+Harbor Satellite includes comprehensive documentation to help you get started and deploy in production:
+
+### Getting Started
+- **[Getting Started Guide](docs/getting-started.md)** - Complete setup guide for both Ground Control and Satellite
+- **[Quick Start Guide](QUICKSTART.md)** - Fast setup instructions for local development
+
+### Configuration and API
+- **[Configuration Reference](docs/configuration.md)** - Complete configuration options and examples
+- **[API Reference](docs/api-reference.md)** - Ground Control API documentation
+
+### Architecture
+- **[Architecture Overview](docs/architecture.md)** - System architecture and design
+- **[Architecture Components](docs/architecture/components.md)** - Detailed component documentation
+- **[Use Cases](docs/architecture/use-cases.md)** - Deployment patterns and use cases
+
+### Deployment
+- **[Docker Deployment](docs/deployment/docker.md)** - Deploy using Docker and Docker Compose
+- **[Kubernetes Deployment](docs/deployment/kubernetes.md)** - Deploy on Kubernetes
+
+### Operations
+- **[Troubleshooting Guide](docs/troubleshooting.md)** - Common issues and solutions
+
 ## QuickStart
 Please refer to the latest setup instructions in `QUICKSTART.md` file for detailed steps on setting up Harbor Satellite locally.
 
