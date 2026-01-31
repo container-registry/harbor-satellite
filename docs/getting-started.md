@@ -353,8 +353,8 @@ Now that you have Harbor Satellite up and running, you can:
 
 ## Additional Resources
 
-- [QUICKSTART.md](../../QUICKSTART.md) - Quick start guide
-- [README.md](../../README.md) - Project overview
+- [QUICKSTART.md](../QUICKSTART.md) - Quick start guide
+- [README.md](../README.md) - Project overview
 - [Architecture Documentation](architecture/) - Detailed architecture information
 - [Configuration Reference](configuration.md) - Complete configuration options
 - [API Reference](api-reference.md) - Ground Control API documentation
