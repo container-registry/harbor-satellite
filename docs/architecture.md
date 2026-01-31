@@ -28,6 +28,7 @@ Harbor Satellite is a registry fleet management and artifact distribution soluti
 ## System Architecture
 
 ### High-Level Architecture
+![alt text](./images/diagram.png)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
