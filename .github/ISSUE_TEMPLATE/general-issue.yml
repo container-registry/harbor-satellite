@@ -1,0 +1,39 @@
+name: General Issue
+description: For issues that don't fit other categories
+title: "[GENERAL] "
+labels: []
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please provide details about your issue.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the issue
+      placeholder: What is the issue?
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component is affected?
+      options:
+        - Satellite
+        - Ground Control
+        - Both
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Any additional context
+      placeholder: Add any other context here
+    validations:
+      required: false

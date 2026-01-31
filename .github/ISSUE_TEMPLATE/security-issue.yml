@@ -1,0 +1,82 @@
+name: Security Issue
+description: Report a security vulnerability or issue
+title: "[SECURITY] "
+labels: ["security"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a security issue. Please provide detailed information to help us understand and address the vulnerability.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide background information about the security issue
+      placeholder: Describe the context and what this issue affects
+    validations:
+      required: true
+  - type: textarea
+    id: current_state
+    attributes:
+      label: Current State
+      description: Describe the current implementation and behavior
+      placeholder: What is currently happening?
+    validations:
+      required: true
+  - type: textarea
+    id: security_issue
+    attributes:
+      label: Security Issue
+      description: Clearly describe the security vulnerability
+      placeholder: What is the security problem?
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected Behavior
+      description: Describe how this should be fixed or what the secure behavior should be
+      placeholder: What should happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: value
+    attributes:
+      label: Value
+      description: Explain the security impact and importance of fixing this
+      placeholder: Why is this important to fix?
+    validations:
+      required: false
+  - type: textarea
+    id: changes_to_make
+    attributes:
+      label: Changes to be Made
+      description: Outline the required changes
+      placeholder: What needs to be changed?
+    validations:
+      required: false
+  - type: textarea
+    id: files_to_modify
+    attributes:
+      label: Files to Modify
+      description: List the files that need to be changed
+      placeholder: Which files are affected?
+    validations:
+      required: false
+  - type: textarea
+    id: resources
+    attributes:
+      label: Resources
+      description: Provide any relevant links, documentation, or references
+      placeholder: Links to documentation, specs, etc.
+    validations:
+      required: false
+  - type: textarea
+    id: additional_info
+    attributes:
+      label: Additional Information
+      description: Any other relevant information
+      placeholder: Additional context or details
+    validations:
+      required: false
