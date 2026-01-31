@@ -51,9 +51,21 @@ for i in $(seq 1 20); do
 done
 
 # Step 4: Register GC workload
+# sshpop agents get SPIFFE IDs based on SSH key fingerprint, so we must
+# extract the actual agent ID from the server after attestation.
 echo "[4/5] Registering Ground Control workload..."
+GC_AGENT_ID=$(docker exec spire-server /opt/spire/bin/spire-server agent list \
+    -socketPath /tmp/spire-server/private/api.sock 2>/dev/null \
+    | grep "SPIFFE ID" | grep "sshpop" | head -1 | awk '{print $NF}')
+
+if [ -z "$GC_AGENT_ID" ]; then
+    echo "ERROR: Could not find attested GC agent SPIFFE ID"
+    exit 1
+fi
+echo "GC agent SPIFFE ID: $GC_AGENT_ID"
+
 docker exec spire-server /opt/spire/bin/spire-server entry create \
-    -parentID spiffe://harbor-satellite.local/spire/agent/sshpop/agent-gc \
+    -parentID "$GC_AGENT_ID" \
     -spiffeID spiffe://harbor-satellite.local/ground-control \
     -selector docker:label:com.docker.compose.service:ground-control \
     -socketPath /tmp/spire-server/private/api.sock || true

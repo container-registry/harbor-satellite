@@ -10,7 +10,7 @@ echo "=== Satellite Setup (SSH PoP) ==="
 echo ""
 
 # Verify GC is running
-echo "[1/3] Verifying Ground Control is running..."
+echo "[1/4] Verifying Ground Control is running..."
 if ! curl -sk https://localhost:${GC_HOST_PORT:-9080}/ping > /dev/null 2>&1; then
     echo "ERROR: Ground Control is not running. Run ../gc/setup.sh first."
     exit 1
@@ -23,16 +23,8 @@ if [ ! -f "../gc/certs/agent-satellite-host-key" ]; then
     exit 1
 fi
 
-# Register satellite workload
-echo "[2/3] Registering satellite workload..."
-docker exec spire-server /opt/spire/bin/spire-server entry create \
-    -parentID spiffe://harbor-satellite.local/spire/agent/sshpop/agent-satellite \
-    -spiffeID spiffe://harbor-satellite.local/satellite \
-    -selector docker:label:com.docker.compose.service:satellite \
-    -socketPath /tmp/spire-server/private/api.sock || true
-
-# Start satellite agent and satellite
-echo "[3/3] Starting SPIRE agent and Satellite..."
+# Start satellite agent first (must attest before we can get its SPIFFE ID)
+echo "[2/4] Starting SPIRE agent for Satellite (SSH PoP)..."
 docker compose up -d spire-agent-satellite
 
 echo "Waiting for satellite agent to attest..."
@@ -51,6 +43,28 @@ for i in $(seq 1 20); do
     sleep 2
 done
 
+# Register satellite workload using actual agent SPIFFE ID
+# sshpop agents get SPIFFE IDs based on SSH key fingerprint, so we must
+# extract the actual satellite agent ID from the server after attestation.
+echo "[3/4] Registering satellite workload..."
+SAT_AGENT_ID=$(docker exec spire-server /opt/spire/bin/spire-server agent list \
+    -socketPath /tmp/spire-server/private/api.sock 2>/dev/null \
+    | grep "SPIFFE ID" | grep "sshpop" | tail -1 | awk '{print $NF}')
+
+if [ -z "$SAT_AGENT_ID" ]; then
+    echo "ERROR: Could not find attested satellite agent SPIFFE ID"
+    exit 1
+fi
+echo "Satellite agent SPIFFE ID: $SAT_AGENT_ID"
+
+docker exec spire-server /opt/spire/bin/spire-server entry create \
+    -parentID "$SAT_AGENT_ID" \
+    -spiffeID spiffe://harbor-satellite.local/satellite/edge-01 \
+    -selector docker:label:com.docker.compose.service:satellite \
+    -socketPath /tmp/spire-server/private/api.sock || true
+
+# Start satellite
+echo "[4/4] Starting Satellite..."
 docker compose up -d satellite
 
 echo "Waiting for Satellite to initialize..."
