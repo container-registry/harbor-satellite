@@ -22,20 +22,25 @@ See [no-spiffe quickstart](../no-spiffe/quickstart.md).
 
 ## Common Files
 
-- `common/docker-compose.base.yml` - Shared PostgreSQL and mock registry services
+- `common/docker-compose.base.yml` - Shared PostgreSQL
 
 ## Architecture
 
-```
-+------------------+     +------------------+     +------------------+
-|   SPIRE Server   |<--->|  SPIRE Agent GC  |<--->| Ground Control   |
-+------------------+     +------------------+     +------------------+
-        ^                                                  ^
-        |                                                  |
-        v                                                  v
-+------------------+     +------------------+     +------------------+
-|  SPIRE Agent Sat |<--->|    Satellite     |---->| mTLS Connection  |
-+------------------+     +------------------+     +------------------+
+```mermaid
+graph TB
+    SPIRE_SERVER[SPIRE Server]
+    SPIRE_AGENT_GC[SPIRE Agent GC]
+    GC[Ground Control]
+    SPIRE_AGENT_SAT[SPIRE Agent Sat]
+    SAT[Satellite]
+    MTLS[mTLS Connection]
+
+    SPIRE_SERVER <--> SPIRE_AGENT_GC
+    SPIRE_AGENT_GC <--> GC
+    SPIRE_SERVER <--> SPIRE_AGENT_SAT
+    SPIRE_AGENT_SAT <--> SAT
+    SAT --> MTLS
+    GC --> MTLS
 ```
 
 ## Endpoints

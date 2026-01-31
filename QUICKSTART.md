@@ -27,6 +27,23 @@ Simple one-time token authentication. An admin registers a satellite via the Gro
 
 Cryptographic identity using X.509 certificates via the SPIFFE framework and SPIRE runtime. Satellites authenticate to Ground Control using mutual TLS with automatically rotated certificates.
 
+```mermaid
+graph TB
+    SPIRE_SERVER[SPIRE Server]
+    SPIRE_AGENT_GC[SPIRE Agent GC]
+    GC[Ground Control]
+    SPIRE_AGENT_SAT[SPIRE Agent Sat]
+    SAT[Satellite]
+    MTLS[mTLS Connection]
+
+    SPIRE_SERVER <--> SPIRE_AGENT_GC
+    SPIRE_AGENT_GC <--> GC
+    SPIRE_SERVER <--> SPIRE_AGENT_SAT
+    SPIRE_AGENT_SAT <--> SAT
+    SAT --> MTLS
+    GC --> MTLS
+```
+
 - Zero-trust, certificate-based identity
 - Automatic certificate rotation
 - Multiple attestation methods: join token, X.509 certificate, TPM

@@ -34,16 +34,21 @@ cd ../sat && ./setup.sh
 
 ## Architecture
 
-```
-                    SPIRE Server
-                    (trust root)
-                   /            \
-                  /              \
-    SPIRE Agent (GC)      SPIRE Agent (Satellite)
-         |                       |
-    Ground Control            Satellite
-         |                       |
-         +---- mTLS (SVID) ------+
+```mermaid
+graph TB
+    SPIRE_SERVER[SPIRE Server<br/>trust root]
+    SPIRE_AGENT_GC[SPIRE Agent GC]
+    SPIRE_AGENT_SAT[SPIRE Agent Satellite]
+    GC[Ground Control]
+    SAT[Satellite]
+    MTLS[mTLS - SVID]
+
+    SPIRE_SERVER <--> SPIRE_AGENT_GC
+    SPIRE_SERVER <--> SPIRE_AGENT_SAT
+    SPIRE_AGENT_GC <--> GC
+    SPIRE_AGENT_SAT <--> SAT
+    GC <--> MTLS
+    SAT <--> MTLS
 ```
 
 ## Directory Structure
