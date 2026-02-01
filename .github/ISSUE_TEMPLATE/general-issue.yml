@@ -16,24 +16,12 @@ body:
       placeholder: What is the issue?
     validations:
       required: true
-  - type: dropdown
-    id: component
-    attributes:
-      label: Component
-      description: Which component is affected?
-      options:
-        - Satellite
-        - Ground Control
-        - Both
-        - Documentation
-        - Other
-    validations:
-      required: true
+
   - type: textarea
-    id: additional_context
+    id: expected_file_changes
     attributes:
-      label: Additional Context
-      description: Any additional context
-      placeholder: Add any other context here
+      label: Expected File Changes
+      description: If you know what files should be changed, list them here
+      placeholder: List any expected file changes here
     validations:
       required: false
