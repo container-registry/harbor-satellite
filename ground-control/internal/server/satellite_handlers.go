@@ -149,31 +149,9 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Create Robot Account for Satellite
-	projects := []string{"satellite"}
-	rbt, err := utils.CreateRobotAccForSatellite(r.Context(), projects, satellite.Name)
-	if err != nil {
-		log.Println(err)
-		err := &AppError{
-			Message: fmt.Sprintf("Error: creating robot account %v", err),
-			Code:    http.StatusBadRequest,
-		}
-		HandleAppError(w, err)
-		return
-	}
-	robotID = rbt.ID
-
-	if err := storeRobotAccountInDB(r.Context(), q, rbt, satellite.ID); err != nil {
-		log.Println("Error storing robot account in DB:", err)
-		HandleAppError(w, err)
-		return
-	}
-
-	if err := assignPermissionsToRobot(r.Context(), q, req.Groups, rbt.ID); err != nil {
-		log.Println("Error assigning permissions to robot:", err)
-		HandleAppError(w, err)
-		return
-	}
+	// Create Robot Account logic moved to ZTR handler to avoid storing secret
+	// We still need to ensure the project exists though?
+	// ensureSatelliteProjectExists is called above.
 
 	config, err := q.GetConfigByName(r.Context(), req.ConfigName)
 	if err != nil {
@@ -258,69 +236,47 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	robot, err := q.GetRobotAccBySatelliteID(r.Context(), satelliteID)
+	projects := []string{"satellite"}
+	rbt, err := utils.CreateRobotAccForSatellite(r.Context(), projects, satellite.Name)
 	if err != nil {
-		log.Println("Robot Account Not Found")
 		log.Println(err)
 		err := &AppError{
-			Message: "Error: Robot Account Not Found for Satellite",
-			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("Error: creating robot account %v", err),
+			Code:    http.StatusInternalServerError, // Internal error since this is system logic
 		}
 		HandleAppError(w, err)
 		return
 	}
 
-	// groups attached to satellite
-	groups, err := q.SatelliteGroupList(r.Context(), satelliteID)
-	if err != nil {
-		log.Printf("failed to list groups for satellite: %v, %v", satelliteID, err)
-		log.Println(err)
-		err := &AppError{
-			Message: "Error: Satellite Groups List Failed",
-			Code:    http.StatusInternalServerError,
+	if err := storeRobotAccountInDB(r.Context(), q, rbt, satellite.ID); err != nil {
+		log.Println("Error storing robot account in DB:", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	
+	var groupNames []string
+	for _, g := range groups {
+		grp, err := q.GetGroupByID(r.Context(), g.GroupID)
+		if err != nil {
+			log.Println("Error getting group:", err)
+			continue 
 		}
+		groupNames = append(groupNames, grp.GroupName)
+	}
+
+	if err := assignPermissionsToRobot(r.Context(), q, &groupNames, rbt.ID); err != nil {
+		log.Println("Error assigning permissions to robot:", err)
 		HandleAppError(w, err)
 		return
 	}
-
-	states, err := getGroupStates(r.Context(), groups, q)
-	if err != nil {
-		log.Println("Error retrieving group states:", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Get Group By ID Failed",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
-	satellite, err := q.GetSatellite(r.Context(), satelliteID)
-	if err != nil {
-		HandleAppError(w, &AppError{Message: "satellite not found", Code: http.StatusNotFound})
-		return
-	}
-
-	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satelliteID)
-	if err != nil {
-		log.Printf("Error: Failed to fetch Satellite config: %v", err)
-		HandleAppError(w, err)
-		return
-	}
-
-	// For sanity, create (update) the state artifact during the registration process as well.
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
-	if err != nil {
-		log.Println(err)
-		HandleAppError(w, err)
-		return
-	}
-
-	satelliteState := utils.AssembleSatelliteState(satellite.Name)
 
 	result := config.StateConfig{
 		StateURL: satelliteState,
+		SatelliteName: satellite.Name,
 		RegistryCredentials: config.RegistryCredentials{
-			Username: robot.RobotName,
-			Password: robot.RobotSecret,
+			Username: rbt.Name,
+			Password: rbt.Secret,
 			URL:      config.URL(os.Getenv("HARBOR_URL")),
 		},
 	}

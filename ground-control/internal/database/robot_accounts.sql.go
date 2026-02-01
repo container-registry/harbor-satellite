@@ -7,42 +7,43 @@ package database
 
 import (
 	"context"
+	"database/sql"
 )
 
 const addRobotAccount = `-- name: AddRobotAccount :one
-INSERT INTO robot_accounts (robot_name, robot_secret, robot_id, satellite_id, created_at, updated_at)
+INSERT INTO robot_accounts (robot_name, robot_id, satellite_id, robot_expiry, created_at, updated_at)
 VALUES ($1, $2, $3, $4, NOW(), NOW())
   ON CONFLICT (robot_id)
   DO UPDATE SET
   robot_name = EXCLUDED.robot_name,
-  robot_secret = EXCLUDED.robot_secret,
+  robot_expiry = EXCLUDED.robot_expiry,
   updated_at = NOW()
-RETURNING id, robot_name, robot_secret, robot_id, satellite_id, created_at, updated_at
+RETURNING id, robot_name, robot_id, satellite_id, created_at, updated_at, robot_expiry
 `
 
 type AddRobotAccountParams struct {
 	RobotName   string
-	RobotSecret string
 	RobotID     string
 	SatelliteID int32
+	RobotExpiry sql.NullTime
 }
 
 func (q *Queries) AddRobotAccount(ctx context.Context, arg AddRobotAccountParams) (RobotAccount, error) {
 	row := q.db.QueryRowContext(ctx, addRobotAccount,
 		arg.RobotName,
-		arg.RobotSecret,
 		arg.RobotID,
 		arg.SatelliteID,
+		arg.RobotExpiry,
 	)
 	var i RobotAccount
 	err := row.Scan(
 		&i.ID,
 		&i.RobotName,
-		&i.RobotSecret,
 		&i.RobotID,
 		&i.SatelliteID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RobotExpiry,
 	)
 	return i, err
 }
@@ -58,7 +59,7 @@ func (q *Queries) DeleteRobotAccount(ctx context.Context, id int32) error {
 }
 
 const getRobotAccBySatelliteID = `-- name: GetRobotAccBySatelliteID :one
-SELECT id, robot_name, robot_secret, robot_id, satellite_id, created_at, updated_at FROM robot_accounts
+SELECT id, robot_name, robot_id, satellite_id, created_at, updated_at, robot_expiry FROM robot_accounts
 WHERE satellite_id = $1
 `
 
@@ -68,17 +69,17 @@ func (q *Queries) GetRobotAccBySatelliteID(ctx context.Context, satelliteID int3
 	err := row.Scan(
 		&i.ID,
 		&i.RobotName,
-		&i.RobotSecret,
 		&i.RobotID,
 		&i.SatelliteID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RobotExpiry,
 	)
 	return i, err
 }
 
 const getRobotAccount = `-- name: GetRobotAccount :one
-SELECT id, robot_name, robot_secret, robot_id, satellite_id, created_at, updated_at FROM robot_accounts
+SELECT id, robot_name, robot_id, satellite_id, created_at, updated_at, robot_expiry FROM robot_accounts
 WHERE id = $1
 `
 
@@ -88,17 +89,17 @@ func (q *Queries) GetRobotAccount(ctx context.Context, id int32) (RobotAccount, 
 	err := row.Scan(
 		&i.ID,
 		&i.RobotName,
-		&i.RobotSecret,
 		&i.RobotID,
 		&i.SatelliteID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RobotExpiry,
 	)
 	return i, err
 }
 
 const listRobotAccounts = `-- name: ListRobotAccounts :many
-SELECT id, robot_name, robot_secret, robot_id, satellite_id, created_at, updated_at FROM robot_accounts
+SELECT id, robot_name, robot_id, satellite_id, created_at, updated_at, robot_expiry FROM robot_accounts
 `
 
 func (q *Queries) ListRobotAccounts(ctx context.Context) ([]RobotAccount, error) {
@@ -113,11 +114,11 @@ func (q *Queries) ListRobotAccounts(ctx context.Context) ([]RobotAccount, error)
 		if err := rows.Scan(
 			&i.ID,
 			&i.RobotName,
-			&i.RobotSecret,
 			&i.RobotID,
 			&i.SatelliteID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.RobotExpiry,
 		); err != nil {
 			return nil, err
 		}
@@ -135,8 +136,8 @@ func (q *Queries) ListRobotAccounts(ctx context.Context) ([]RobotAccount, error)
 const updateRobotAccount = `-- name: UpdateRobotAccount :exec
 UPDATE robot_accounts
 SET robot_name = $2,
-    robot_secret = $3,
-    robot_id = $4,
+    robot_id = $3,
+    robot_expiry = $4,
     updated_at = NOW()
 WHERE id = $1
 `
@@ -144,16 +145,16 @@ WHERE id = $1
 type UpdateRobotAccountParams struct {
 	ID          int32
 	RobotName   string
-	RobotSecret string
 	RobotID     string
+	RobotExpiry sql.NullTime
 }
 
 func (q *Queries) UpdateRobotAccount(ctx context.Context, arg UpdateRobotAccountParams) error {
 	_, err := q.db.ExecContext(ctx, updateRobotAccount,
 		arg.ID,
 		arg.RobotName,
-		arg.RobotSecret,
 		arg.RobotID,
+		arg.RobotExpiry,
 	)
 	return err
 }

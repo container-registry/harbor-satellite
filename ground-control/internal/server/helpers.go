@@ -127,11 +127,19 @@ func ensureSatelliteProjectExists(ctx context.Context) error {
 
 // Add Robot Account to database
 func storeRobotAccountInDB(ctx context.Context, q *database.Queries, rbt *goharbormodels.RobotCreated, satelliteID int32) error {
+	var expiryTime sql.NullTime
+	if rbt.ExpiresAt > 0 {
+		expiryTime = sql.NullTime{
+			Time:  time.Unix(rbt.ExpiresAt, 0),
+			Valid: true,
+		}
+	}
+
 	params := database.AddRobotAccountParams{
 		RobotName:   rbt.Name,
-		RobotSecret: rbt.Secret,
 		RobotID:     strconv.Itoa(int(rbt.ID)),
 		SatelliteID: satelliteID,
+		RobotExpiry: expiryTime,
 	}
 	if _, err := q.AddRobotAccount(ctx, params); err != nil {
 		log.Println(err)

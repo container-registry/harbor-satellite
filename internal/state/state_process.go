@@ -103,7 +103,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 	}
 	log.Info().Msg(reason)
 
-	satelliteStateFetcher, err := getStateFetcherForInput(satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
+	satelliteStateFetcher, err := getStateFetcherForInput(satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log, f.cm)
 	if err != nil {
 		log.Error().Err(err).Msg("Error processing satellite state")
 		upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
@@ -152,7 +152,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 
 			stateFetcherLog.Info().Msgf("Processing state for %s", f.stateMap[index].url)
 
-			groupStateFetcher, err := getStateFetcherForInput(f.stateMap[index].url, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
+			groupStateFetcher, err := getStateFetcherForInput(f.stateMap[index].url, srcUsername, srcPassword, useUnsecure, &stateFetcherLog, f.cm)
 			if err != nil {
 				stateFetcherLog.Error().Err(err).Msg("Error processing input")
 				result.Error = fmt.Errorf("failed to create state fetcher for %s: %w", f.stateMap[index].url, err)
@@ -207,7 +207,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 
 		result := ConfigFetcherResult{}
 
-		configStateFetcher, err := getStateFetcherForInput(satelliteState.Config, srcUsername, srcPassword, useUnsecure, &configFetcherLog)
+		configStateFetcher, err := getStateFetcherForInput(satelliteState.Config, srcUsername, srcPassword, useUnsecure, &configFetcherLog, f.cm)
 		if err != nil {
 			configFetcherLog.Error().Err(err).Msg("Error processing satellite state")
 			result.Error = fmt.Errorf("failed to create config state fetcher: %w", err)

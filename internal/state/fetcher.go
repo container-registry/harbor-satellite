@@ -14,6 +14,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/rs/zerolog"
+	"strings"
 )
 
 type StateFetcher interface {
@@ -30,9 +31,10 @@ type URLStateFetcher struct {
 	baseStateFetcher
 	url      string
 	insecure bool
+	cm       *config.ConfigManager
 }
 
-func NewURLStateFetcher(stateURL, userName, password string, insecure bool) StateFetcher {
+func NewURLStateFetcher(stateURL, userName, password string, insecure bool, cm *config.ConfigManager) StateFetcher {
 	url := utils.FormatRegistryURL(stateURL)
 	return &URLStateFetcher{
 		baseStateFetcher: baseStateFetcher{
@@ -41,6 +43,7 @@ func NewURLStateFetcher(stateURL, userName, password string, insecure bool) Stat
 		},
 		url:      url,
 		insecure: insecure,
+		cm:       cm,
 	}
 }
 
@@ -89,6 +92,10 @@ func (f *URLStateFetcher) fetchConfigState(ctx context.Context, config *config.C
 
 func (f *URLStateFetcher) FetchDigest(ctx context.Context, log *zerolog.Logger) (string, error) {
 	log.Debug().Msgf("Fetching digest for state artifact: %s", f.url)
+	return f.fetchDigestWithRetry(ctx, log, 1) // 1 retry allowed
+}
+
+func (f *URLStateFetcher) fetchDigestWithRetry(ctx context.Context, log *zerolog.Logger, retries int) (string, error) {
 	auth := authn.FromConfig(authn.AuthConfig{
 		Username: f.username,
 		Password: f.password,
@@ -97,11 +104,30 @@ func (f *URLStateFetcher) FetchDigest(ctx context.Context, log *zerolog.Logger) 
 	if f.insecure {
 		options = append(options, crane.Insecure)
 	}
-	return crane.Digest(f.url, options...)
+
+	digest, err := crane.Digest(f.url, options...)
+	if err != nil && retries > 0 {
+		errMsg := err.Error()
+		if isAuthError(errMsg) {
+			log.Warn().Msg("Authentication failed, attempting to refresh credentials")
+			if refreshErr := f.cm.RefreshCredentials(ctx); refreshErr != nil {
+				log.Error().Err(refreshErr).Msg("Failed to refresh credentials")
+				return "", err 
+			}
+			f.password = f.cm.GetSourceRegistryPassword()
+			f.username = f.cm.GetSourceRegistryUsername() 
+			return f.fetchDigestWithRetry(ctx, log, retries-1)
+		}
+	}
+	return digest, err
 }
 
 func (f *URLStateFetcher) pullImage(ctx context.Context, log *zerolog.Logger) (v1.Image, error) {
 	log.Debug().Msgf("Pulling state artifact: %s", f.url)
+	return f.pullImageWithRetry(ctx, log, 1)
+}
+
+func (f *URLStateFetcher) pullImageWithRetry(ctx context.Context, log *zerolog.Logger, retries int) (v1.Image, error) {
 	auth := authn.FromConfig(authn.AuthConfig{
 		Username: f.username,
 		Password: f.password,
@@ -110,7 +136,29 @@ func (f *URLStateFetcher) pullImage(ctx context.Context, log *zerolog.Logger) (v
 	if f.insecure {
 		options = append(options, crane.Insecure)
 	}
-	return crane.Pull(f.url, options...)
+	img, err := crane.Pull(f.url, options...)
+	if err != nil && retries > 0 {
+		errMsg := err.Error()
+		if isAuthError(errMsg) {
+			log.Warn().Msg("Authentication failed during pull, attempting to refresh credentials")
+			if refreshErr := f.cm.RefreshCredentials(ctx); refreshErr != nil {
+				log.Error().Err(refreshErr).Msg("Failed to refresh credentials")
+				return nil, err
+			}
+			f.password = f.cm.GetSourceRegistryPassword()
+			f.username = f.cm.GetSourceRegistryUsername()
+			return f.pullImageWithRetry(ctx, log, retries-1)
+		}
+	}
+	return img, err
+}
+
+func isAuthError(msg string) bool {
+	msg = strings.ToLower(msg)
+	return strings.Contains(msg, "unauthorized") || 
+	       strings.Contains(msg, "forbidden") || 
+	       strings.Contains(msg, "status code 401") || 
+	       strings.Contains(msg, "status code 403")
 }
 
 func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out interface{}, log *zerolog.Logger) error {

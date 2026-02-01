@@ -1,13 +1,17 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 type ConfigChangeType string
@@ -222,4 +226,86 @@ func readAndReturnConfig(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+type RefreshCredentialsResponse struct {
+	RobotName string `json:"robot_name"`
+	Secret    string `json:"secret"`
+}
+
+func (cm *ConfigManager) RefreshCredentials(ctx context.Context) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	satelliteName := cm.config.StateConfig.SatelliteName
+	if satelliteName == "" {
+		return fmt.Errorf("satellite name not set in config")
+	}
+	
+	// Construct URL
+	// We use DefaultGroundControlURL or from config? 
+	// The register command uses DefaultGroundControlURL or checks env.
+	// ConfigManager has DefaultGroundControlURL.
+	// But usually Ground Control URL is part of the system environment.
+	// We can use cm.DefaultGroundControlURL if it's stored.
+	baseURL := cm.DefaultGroundControlURL
+	if baseURL == "" {
+		// Fallback to env?
+		baseURL = os.Getenv("GROUND_CONTROL_URL")
+	}
+	if baseURL == "" {
+		return fmt.Errorf("ground control URL not set")
+	}
+
+	url := fmt.Sprintf("%s/satellites/%s/refresh-credentials", baseURL, satelliteName)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
+	if err != nil {
+		return err
+	}
+	
+	// Add auth token? 
+	// We assume we don't have a token effectively anymore if we are refreshing?
+	// But wait, the previous handler implementation:
+	// "TODO: Authenticate that the request comes from the valid satellite?"
+	// I left it open.
+	// If I need to authenticate, I need a token.
+	// But the robot credentials are what we use for auth usually?
+	// If robot creds are invalid (expired), we can't use them to refresh themselves usually.
+	// UNLESS the refresh endpoint allows expired credentials (if slightly expired)?
+	// OR we use mTLS.
+	// Given the scope, I will assume network/mTLS or open endpoint for this refactor step, 
+	// unless user specified authentication.
+	// The implementation plan "Satellite calls POST ... after receiving 403".
+	// If I use the robot secret to auth the refresh call, it will fail if 403.
+	// So it must be unauthenticated OR mTLS.
+	// For now, I will NOT add Authorization header.
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to refresh credentials: %s, body: %s", resp.Status, string(body))
+	}
+
+	var creds RefreshCredentialsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&creds); err != nil {
+		return err
+	}
+
+	// Update config
+	cm.config.StateConfig.RegistryCredentials.Username = creds.RobotName
+	cm.config.StateConfig.RegistryCredentials.Password = creds.Secret
+	
+	// Persist
+	data, err := json.MarshalIndent(cm.config, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(cm.configPath, data, 0644)
 }

@@ -36,6 +36,7 @@ type AppConfig struct {
 type StateConfig struct {
 	RegistryCredentials RegistryCredentials `json:"auth,omitempty"`
 	StateURL            string              `json:"state,omitempty"`
+	SatelliteName       string              `json:"satellite_name,omitempty"`
 }
 
 type Config struct {
