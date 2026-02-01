@@ -236,6 +236,24 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Fetch full satellite object
+	satellite, err := q.GetSatelliteByID(r.Context(), int32(satelliteID))
+	if err != nil {
+		log.Printf("Error getting satellite by ID: %v", err)
+		HandleAppError(w, &AppError{Message: "Internal Server Error", Code: http.StatusInternalServerError})
+		return
+	}
+
+	// Fetch groups
+	groups, err := q.SatelliteGroupList(r.Context(), satellite.ID)
+	if err != nil {
+		log.Printf("Error getting satellite groups: %v", err)
+		HandleAppError(w, &AppError{Message: "Internal Server Error", Code: http.StatusInternalServerError})
+		return
+	}
+
+	satelliteState := utils.AssembleSatelliteState(satellite.Name)
+
 	projects := []string{"satellite"}
 	rbt, err := utils.CreateRobotAccForSatellite(r.Context(), projects, satellite.Name)
 	if err != nil {
@@ -254,13 +272,14 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	
+// Fix loop error handling
 	var groupNames []string
 	for _, g := range groups {
 		grp, err := q.GetGroupByID(r.Context(), g.GroupID)
 		if err != nil {
-			log.Println("Error getting group:", err)
-			continue 
+			log.Printf("Error getting group: %v", err)
+			HandleAppError(w, &AppError{Message: "Internal Server Error", Code: http.StatusInternalServerError})
+			return
 		}
 		groupNames = append(groupNames, grp.GroupName)
 	}

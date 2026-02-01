@@ -3,7 +3,7 @@ package server
 import (
 	"log"
 	"net/http"
-	"os"
+	"strconv"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
@@ -19,14 +19,8 @@ func (s *Server) refreshCredentialsHandler(w http.ResponseWriter, r *http.Reques
 	vars := mux.Vars(r)
 	satelliteName := vars["satellite"]
 
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		log.Printf("error: failed to begin transaction: %v", err)
-		HandleAppError(w, &AppError{Message: "Internal Server Error", Code: http.StatusInternalServerError})
-		return
-	}
-	q := s.dbQueries.WithTx(tx)
-	defer tx.Rollback()
+	// No transaction needed as we are only reading from DB and updating Harbor/Config
+	q := s.dbQueries
 
 	sat, err := q.GetSatelliteByName(r.Context(), satelliteName)
 	if err != nil {

@@ -110,6 +110,10 @@ func (f *URLStateFetcher) fetchDigestWithRetry(ctx context.Context, log *zerolog
 		errMsg := err.Error()
 		if isAuthError(errMsg) {
 			log.Warn().Msg("Authentication failed, attempting to refresh credentials")
+			if f.cm == nil {
+				log.Error().Msg("ConfigManager is nil, cannot refresh credentials")
+				return "", err
+			}
 			if refreshErr := f.cm.RefreshCredentials(ctx); refreshErr != nil {
 				log.Error().Err(refreshErr).Msg("Failed to refresh credentials")
 				return "", err 
@@ -141,6 +145,10 @@ func (f *URLStateFetcher) pullImageWithRetry(ctx context.Context, log *zerolog.L
 		errMsg := err.Error()
 		if isAuthError(errMsg) {
 			log.Warn().Msg("Authentication failed during pull, attempting to refresh credentials")
+			if f.cm == nil {
+				log.Error().Msg("ConfigManager is nil, cannot refresh credentials")
+				return nil, err
+			}
 			if refreshErr := f.cm.RefreshCredentials(ctx); refreshErr != nil {
 				log.Error().Err(refreshErr).Msg("Failed to refresh credentials")
 				return nil, err
