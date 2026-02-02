@@ -76,14 +76,14 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/satellites/ztr/ec8a90f1c4a848fb730952b7c189d600",
+              "raw": "{{base_url}}/satellites/ztr/{{ztr_token}}",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "satellites",
                 "ztr",
-                "ec8a90f1c4a848fb730952b7c189d600"
+                "{{ztr_token}}"
               ]
             }
           },
@@ -890,7 +890,7 @@
     "bearer": [
       {
         "key": "token",
-        "value": "",
+        "value": "ebXOTKgxDlJzDf9enwntcsK6Em9F48iIKaLwQuv5bjs9Fp9JACuygLeX6PmAi-GVD479MRp-yN50tj0lRFQyqA==",
         "type": "string"
       }
     ]
@@ -927,6 +927,11 @@
     {
       "key": "auth_token",
       "value": ""
+    },
+    {
+      "key": "ztr_token",
+      "value": "",
+      "type": "default"
     }
   ]
 }
