@@ -4,8 +4,10 @@ import (
 	"context"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
+	"github.com/container-registry/harbor-satellite/internal/server"
 	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"golang.org/x/sync/errgroup"
 )
 
 type Satellite struct {
@@ -24,6 +26,18 @@ func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
 	var heartbeatPayload scheduler.UpstreamInfo
+
+	// Setup HTTP server with health check endpoint
+	g, ctx := errgroup.WithContext(ctx)
+	
+	router := server.NewDefaultRouter("")
+	healthRegistrar := server.NewHealthRegistrar(s.cm)
+	metricsRegistrar := &server.MetricsRegistrar{}
+	debugRegistrar := &server.DebugRegistrar{}
+	
+	app := server.NewApp(router, ctx, log, healthRegistrar, metricsRegistrar, debugRegistrar)
+	app.SetupRoutes()
+	app.SetupServer(g)
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm)
 	ztrProcess := state.NewZtrProcess(s.cm)
@@ -79,7 +93,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		go statusReportingScheduler.Run(ctx)
 	}
 
-	return ctx.Err()
+	return g.Wait()
 }
 
 func (s *Satellite) GetSchedulers() []*scheduler.Scheduler {
