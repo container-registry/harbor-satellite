@@ -692,6 +692,197 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Satellites",
+      "item": [
+        {
+          "name": "List Satellites",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/satellites",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "satellites"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Register Satellite",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"satellite-02\",\n  \"description\": \"Production satellite\",\n  \"config_name\": \"config1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/satellites",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "satellites"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Active Satellites",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/satellites/active",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "satellites",
+                "active"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Stale Satellites",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/satellites/stale",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "satellites",
+                "stale"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Satellite by Name",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/satellites/:satellite",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "satellites",
+                ":satellite"
+              ],
+              "variable": [
+                {
+                  "key": "satellite",
+                  "value": "satellite-01"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Satellite",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/satellites/:satellite",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "satellites",
+                ":satellite"
+              ],
+              "variable": [
+                {
+                  "key": "satellite",
+                  "value": "satellite1"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Satellite Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/satellites/:satellite/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "satellites",
+                ":satellite",
+                "status"
+              ],
+              "variable": [
+                {
+                  "key": "satellite",
+                  "value": "satellite-01"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "auth": {
