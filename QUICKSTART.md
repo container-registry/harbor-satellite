@@ -83,7 +83,7 @@ Ground Control is the central service that manages satellite configurations. Let
 
 Choose one of the following options to start Ground Control
 
-**Option 1: Using Makefile (Recommended for Developers)**
+### Option 1: Using Makefile (Recommended for Developers)
 
 1. Start Ground Control in development mode with hot reloading:
 
@@ -111,7 +111,7 @@ Choose one of the following options to start Ground Control
    make logs
    ```
 
-**Option 2: Using Docker Compose (Recommended for End Users)**
+### Option 2: Using Docker Compose (Recommended for End Users)
 
 1. Start Ground Control:
 
@@ -121,7 +121,7 @@ Choose one of the following options to start Ground Control
 
    > **Tip:** _Use `-d` to run in detached mode. Verify the service is running with `docker ps`._
 
-**Option 3: Build and Run Binary (Alternative for End Users)**
+### Option 3: Build and Run Binary (Alternative for End Users)
 
 1. Build the Ground Control binary:
 
@@ -135,7 +135,7 @@ Choose one of the following options to start Ground Control
    ./gc-dev
    ```
 
-**Option 4: Using Dagger (Recommended for Developers)**
+### Option 4: Using Dagger (Recommended for Developers)
 
 1. Start Ground Control with Dagger:
 
