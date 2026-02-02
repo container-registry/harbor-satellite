@@ -1,0 +1,53 @@
+{
+  "info": {
+    "_postman_id": "6cd9dcca-2d73-46a2-a68c-a750e000d4cc",
+    "name": "Harbor Satellite Ground Control API",
+    "description": "Complete API collection for Harbor Satellite Ground Control server running on localhost:9090",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "25016471"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "ebXOTKgxDlJzDf9enwntcsK6Em9F48iIKaLwQuv5bjs9Fp9JACuygLeX6PmAi-GVD479MRp-yN50tj0lRFQyqA==",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:9090"
+    },
+    {
+      "key": "auth_token",
+      "value": ""
+    }
+  ]
+}
