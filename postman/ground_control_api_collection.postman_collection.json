@@ -328,6 +328,187 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Groups",
+      "item": [
+        {
+          "name": "List Groups",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/groups",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "groups"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Group by Name",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/groups/:group",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "groups",
+                ":group"
+              ],
+              "variable": [
+                {
+                  "key": "group",
+                  "value": "group1"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sync Group State",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"group\": \"group1\",\n    \"registry\": \"http://host.docker.internal:8080\",\n    \"artifacts\": [\n        {\n            \"repository\": \"library/alpine\",\n            \"tag\": [\n                \"latest\"\n            ],\n            \"type\": \"docker\",\n            \"digest\": \"sha256:1529d13528ed05668b2038ffab807ac8633ad6adfe6be8901adda62411f70d29\",\n            \"deleted\": false\n        }\n    ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/groups/sync",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "groups",
+                "sync"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Satellites in Group",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/groups/:group/satellites",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "groups",
+                ":group",
+                "satellites"
+              ],
+              "variable": [
+                {
+                  "key": "group",
+                  "value": "group1"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Add Satellite to Group",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"satellite\": \"satellite-01\",\n  \"group\": \"group1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/groups/satellite",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "groups",
+                "satellite"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Satellite from Group",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"group\": \"group1\",\n  \"satellite\": \"satellite1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/groups/group1/satellite/satellite1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "groups",
+                "group1",
+                "satellite",
+                "satellite1"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "auth": {
