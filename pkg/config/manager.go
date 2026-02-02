@@ -257,6 +257,11 @@ func (cm *ConfigManager) RefreshCredentials(ctx context.Context) error {
 		return err
 	}
 
+	// Validate response before persisting
+	if creds.RobotName == "" || creds.Secret == "" {
+		return fmt.Errorf("invalid refresh response: received empty credentials")
+	}
+
 	// 3. Acquire lock to update configuration
 	cm.mu.Lock()
 	cm.config.StateConfig.RegistryCredentials.Username = creds.RobotName
