@@ -252,29 +252,8 @@ func (cm *ConfigManager) RefreshCredentials(ctx context.Context) error {
 		return fmt.Errorf("ground control URL not set")
 	}
 
-	// 2. Perform Network I/O (Unlocked)
-	encodedSatelliteName := url.PathEscape(satelliteName)
-	refreshURL := fmt.Sprintf("%s/satellites/%s/refresh-credentials", baseURL, encodedSatelliteName)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", refreshURL, nil)
+	creds, err := cm.performCredentialRefreshRequest(ctx, baseURL, satelliteName)
 	if err != nil {
-		return err
-	}
-	
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to refresh credentials: %s, body: %s", resp.Status, string(body))
-	}
-
-	var creds RefreshCredentialsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&creds); err != nil {
 		return err
 	}
 
@@ -291,4 +270,34 @@ func (cm *ConfigManager) RefreshCredentials(ctx context.Context) error {
 		return err
 	}
 	return os.WriteFile(cm.configPath, data, 0644)
+}
+
+func (cm *ConfigManager) performCredentialRefreshRequest(ctx context.Context, baseURL, satelliteName string) (*RefreshCredentialsResponse, error) {
+	// 2. Perform Network I/O (Unlocked)
+	encodedSatelliteName := url.PathEscape(satelliteName)
+	refreshURL := fmt.Sprintf("%s/satellites/%s/refresh-credentials", baseURL, encodedSatelliteName)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", refreshURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to refresh credentials: %s, body: %s", resp.Status, string(body))
+	}
+
+	var creds RefreshCredentialsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&creds); err != nil {
+		return nil, err
+	}
+
+	return &creds, nil
 }
