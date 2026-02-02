@@ -15,7 +15,7 @@ body:
       description: Describe the issue
       placeholder: What is the issue?
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: expected_file_changes

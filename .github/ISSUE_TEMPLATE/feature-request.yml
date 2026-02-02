@@ -11,7 +11,7 @@ body:
       description: A brief summary of the feature request
       placeholder: What feature would you like to see?
     validations:
-      required: true
+      required: false
   - type: textarea
     id: solution
     attributes:
@@ -19,7 +19,7 @@ body:
       description: Describe the solution you'd like
       placeholder: Describe what you want to happen
     validations:
-      required: true
+      required: false
   - type: textarea
     id: alternatives
     attributes:

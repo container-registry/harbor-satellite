@@ -11,7 +11,7 @@ body:
       description: A clear and concise description of the bug
       placeholder: What happened?
     validations:
-      required: true
+      required: false
   - type: textarea
     id: steps_to_reproduce
     attributes:
@@ -22,7 +22,7 @@ body:
         2. Click on '...'
         3. See error
     validations:
-      required: true
+      required: false
   - type: textarea
     id: expected_behavior
     attributes:
@@ -30,7 +30,7 @@ body:
       description: What you expected to happen
       placeholder: What should have happened?
     validations:
-      required: true
+      required: false
   - type: textarea
     id: actual_behavior
     attributes:
@@ -38,7 +38,7 @@ body:
       description: What actually happened
       placeholder: What happened instead?
     validations:
-      required: true
+      required: false
   - type: textarea
     id: expected_file_changes
     attributes:
