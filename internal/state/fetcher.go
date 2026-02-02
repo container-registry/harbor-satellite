@@ -95,6 +95,22 @@ func (f *URLStateFetcher) FetchDigest(ctx context.Context, log *zerolog.Logger) 
 	return f.fetchDigestWithRetry(ctx, log, 1) // 1 retry allowed
 }
 
+
+func (f *URLStateFetcher) tryRefreshCredentials(ctx context.Context, log *zerolog.Logger) error {
+	log.Warn().Msg("Authentication failed, attempting to refresh credentials")
+	if f.cm == nil {
+		log.Error().Msg("ConfigManager is nil, cannot refresh credentials")
+		return fmt.Errorf("config manager is nil")
+	}
+	if err := f.cm.RefreshCredentials(ctx); err != nil {
+		log.Error().Err(err).Msg("Failed to refresh credentials")
+		return err
+	}
+	f.password = f.cm.GetSourceRegistryPassword()
+	f.username = f.cm.GetSourceRegistryUsername()
+	return nil
+}
+
 func (f *URLStateFetcher) fetchDigestWithRetry(ctx context.Context, log *zerolog.Logger, retries int) (string, error) {
 	auth := authn.FromConfig(authn.AuthConfig{
 		Username: f.username,
@@ -107,20 +123,11 @@ func (f *URLStateFetcher) fetchDigestWithRetry(ctx context.Context, log *zerolog
 
 	digest, err := crane.Digest(f.url, options...)
 	if err != nil && retries > 0 {
-		errMsg := err.Error()
-		if isAuthError(errMsg) {
-			log.Warn().Msg("Authentication failed, attempting to refresh credentials")
-			if f.cm == nil {
-				log.Error().Msg("ConfigManager is nil, cannot refresh credentials")
-				return "", err
+		if isAuthError(err.Error()) {
+			if refreshErr := f.tryRefreshCredentials(ctx, log); refreshErr == nil {
+				return f.fetchDigestWithRetry(ctx, log, retries-1)
 			}
-			if refreshErr := f.cm.RefreshCredentials(ctx); refreshErr != nil {
-				log.Error().Err(refreshErr).Msg("Failed to refresh credentials")
-				return "", err 
-			}
-			f.password = f.cm.GetSourceRegistryPassword()
-			f.username = f.cm.GetSourceRegistryUsername() 
-			return f.fetchDigestWithRetry(ctx, log, retries-1)
+			return "", err
 		}
 	}
 	return digest, err
@@ -142,20 +149,11 @@ func (f *URLStateFetcher) pullImageWithRetry(ctx context.Context, log *zerolog.L
 	}
 	img, err := crane.Pull(f.url, options...)
 	if err != nil && retries > 0 {
-		errMsg := err.Error()
-		if isAuthError(errMsg) {
-			log.Warn().Msg("Authentication failed during pull, attempting to refresh credentials")
-			if f.cm == nil {
-				log.Error().Msg("ConfigManager is nil, cannot refresh credentials")
-				return nil, err
+		if isAuthError(err.Error()) {
+			if refreshErr := f.tryRefreshCredentials(ctx, log); refreshErr == nil {
+				return f.pullImageWithRetry(ctx, log, retries-1)
 			}
-			if refreshErr := f.cm.RefreshCredentials(ctx); refreshErr != nil {
-				log.Error().Err(refreshErr).Msg("Failed to refresh credentials")
-				return nil, err
-			}
-			f.password = f.cm.GetSourceRegistryPassword()
-			f.username = f.cm.GetSourceRegistryUsername()
-			return f.pullImageWithRetry(ctx, log, retries-1)
+			return nil, err
 		}
 	}
 	return img, err

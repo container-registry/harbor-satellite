@@ -59,7 +59,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	protected.HandleFunc("/satellites/{satellite}", s.GetSatelliteByName).Methods("GET")
 	protected.HandleFunc("/satellites/{satellite}", s.DeleteSatelliteByName).Methods("DELETE")
 	protected.HandleFunc("/satellites/{satellite}/status", s.getSatelliteStatusHandler).Methods("GET")
-	protected.HandleFunc("/satellites/{satellite}/refresh-credentials", s.refreshCredentialsHandler).Methods("POST")
+	protected.HandleFunc("/satellites/{satellite}/refresh-credentials", s.RequireRole(roleSystemAdmin, s.refreshCredentialsHandler)).Methods("POST")
 
 	return r
 }
