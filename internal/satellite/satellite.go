@@ -29,15 +29,6 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	// Setup HTTP server with health check endpoint
 	g, ctx := errgroup.WithContext(ctx)
-	
-	router := server.NewDefaultRouter("")
-	healthRegistrar := server.NewHealthRegistrar(s.cm)
-	metricsRegistrar := &server.MetricsRegistrar{}
-	debugRegistrar := &server.DebugRegistrar{}
-	
-	app := server.NewApp(router, ctx, log, healthRegistrar, metricsRegistrar, debugRegistrar)
-	app.SetupRoutes()
-	app.SetupServer(g)
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm)
 	ztrProcess := state.NewZtrProcess(s.cm)
@@ -86,6 +77,16 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 	s.schedulers = append(s.schedulers, statusReportingScheduler)
+
+	// Setup HTTP server after all schedulers are successfully created
+	router := server.NewDefaultRouter("")
+	healthRegistrar := server.NewHealthRegistrar(s.cm)
+	metricsRegistrar := &server.MetricsRegistrar{}
+	debugRegistrar := &server.DebugRegistrar{}
+	
+	app := server.NewApp(router, ctx, log, healthRegistrar, metricsRegistrar, debugRegistrar)
+	app.SetupRoutes()
+	app.SetupServer(g)
 
 	go stateScheduler.Run(ctx)
 

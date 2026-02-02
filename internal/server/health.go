@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -35,17 +36,23 @@ func (h *HealthRegistrar) RegisterRoutes(router Router) {
 func (h *HealthRegistrar) healthHandler(w http.ResponseWriter, r *http.Request) {
 	response := h.checkHealth()
 
-	w.Header().Set("Content-Type", "application/json")
+	// Encode to buffer first to catch any encoding errors before writing headers
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
 
-	// Set status code based on overall health
+	// Set headers and status code only after successful encoding
+	w.Header().Set("Content-Type", "application/json")
 	if response.Status == "healthy" {
 		w.WriteHeader(http.StatusOK)
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	// Write the buffered response
+	if _, err := w.Write(buf.Bytes()); err != nil {
 		return
 	}
 }
