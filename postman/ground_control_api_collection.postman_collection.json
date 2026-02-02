@@ -509,6 +509,189 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Configurations",
+      "item": [
+        {
+          "name": "List Configurations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/configs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "configs"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Configuration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"config_name\": \"config1\",\n    \"config\": {\n        \"state_config\": {},\n        \"app_config\": {\n            \"ground_control_url\": \"http://host.docker.internal:9090\",\n            \"log_level\": \"info\",\n            \"use_unsecure\": true,\n            \"state_replication_interval\": \"@every 00h00m10s\",\n            \"register_satellite_interval\": \"@every 00h00m10s\",\n            \"local_registry\": {\n                \"url\": \"http://0.0.0.0:8585\"\n            },\n            \"heartbeat_interval\": \"@every 00h00m30s\"\n        },\n        \"zot_config\": {\n            \"distSpecVersion\": \"1.1.0\",\n            \"storage\": {\n                \"rootDirectory\": \"./zot\"\n            },\n            \"http\": {\n                \"address\": \"0.0.0.0\",\n                \"port\": \"8585\"\n            },\n            \"log\": {\n                \"level\": \"info\"\n            }\n        }\n    }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/configs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "configs"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Configuration",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/configs/:config",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "configs",
+                ":config"
+              ],
+              "variable": [
+                {
+                  "key": "config",
+                  "value": "config1"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Configuration",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"app_config\": {\n        \"log_level\": \"debug\"\n    }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/configs/:config",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "configs",
+                ":config"
+              ],
+              "variable": [
+                {
+                  "key": "config",
+                  "value": "config1"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Configuration",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/configs/:config",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "configs",
+                ":config"
+              ],
+              "variable": [
+                {
+                  "key": "config",
+                  "value": "config1"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Set Satellite Configuration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"satellite_name\": \"satellite-01\",\n  \"config_name\": \"config1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/configs/satellite",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "configs",
+                "satellite"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "auth": {
