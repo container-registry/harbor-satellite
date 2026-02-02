@@ -257,19 +257,14 @@ func (cm *ConfigManager) RefreshCredentials(ctx context.Context) error {
 		return err
 	}
 
-	// 3. Acquire lock to update and persist configuration
+	// 3. Acquire lock to update configuration
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
 	cm.config.StateConfig.RegistryCredentials.Username = creds.RobotName
 	cm.config.StateConfig.RegistryCredentials.Password = creds.Secret
+	cm.mu.Unlock() // Unlock before calling WriteConfig to avoid deadlock
 	
 	// Persist
-	data, err := json.MarshalIndent(cm.config, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(cm.configPath, data, 0644)
+	return cm.WriteConfig()
 }
 
 func (cm *ConfigManager) performCredentialRefreshRequest(ctx context.Context, baseURL, satelliteName string) (*RefreshCredentialsResponse, error) {
