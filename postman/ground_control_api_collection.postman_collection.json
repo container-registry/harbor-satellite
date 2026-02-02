@@ -6,6 +6,119 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "25016471"
   },
+    "item": [
+    {
+      "name": "Public Endpoints",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ping",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ping"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Health Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"SecurePass123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Satellite ZTR Token Auth",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/satellites/ztr/ec8a90f1c4a848fb730952b7c189d600",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "satellites",
+                "ztr",
+                "ec8a90f1c4a848fb730952b7c189d600"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Satellite Sync (Heartbeat)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Name\": \"satellite-01\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/satellites/sync",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "satellites",
+                "sync"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
   "auth": {
     "type": "bearer",
     "bearer": [
