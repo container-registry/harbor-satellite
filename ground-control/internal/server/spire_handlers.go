@@ -151,11 +151,12 @@ func (s *Server) createJoinTokenHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Ensure satellite record exists in DB so admin can assign groups/configs before ZTR
-	_, err = s.dbQueries.GetSatelliteByName(r.Context(), req.SatelliteName)
+	q := s.dbQueries
+	satellite, err := q.GetSatelliteByName(r.Context(), req.SatelliteName)
 	if err != nil {
-		_, createErr := s.dbQueries.CreateSatellite(r.Context(), req.SatelliteName)
-		if createErr != nil {
-			log.Printf("Join token: Failed to create satellite record for %s: %v", req.SatelliteName, createErr)
+		satellite, err = q.CreateSatellite(r.Context(), req.SatelliteName)
+		if err != nil {
+			log.Printf("Join token: Failed to create satellite record for %s: %v", req.SatelliteName, err)
 			HandleAppError(w, &AppError{
 				Message: "Failed to create satellite record",
 				Code:    http.StatusInternalServerError,
@@ -163,6 +164,24 @@ func (s *Server) createJoinTokenHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		log.Printf("Join token: Created satellite record for %s", req.SatelliteName)
+
+		// Create robot account and link default config for new satellites
+		if _, _, robotErr := ensureSatelliteRobotAccount(r, q, satellite); robotErr != nil {
+			log.Printf("Join token: Failed to create robot account for %s: %v", req.SatelliteName, robotErr)
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Failed to create robot account: %v", robotErr),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		if configErr := ensureSatelliteConfig(r, q, satellite); configErr != nil {
+			log.Printf("Join token: Failed to ensure config for %s: %v", req.SatelliteName, configErr)
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Failed to ensure satellite config: %v", configErr),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
 	} else {
 		log.Printf("Join token: Satellite %s already exists, re-issuing token", req.SatelliteName)
 	}
