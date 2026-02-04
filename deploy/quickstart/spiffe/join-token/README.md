@@ -127,28 +127,79 @@ curl -sk https://localhost:9080/ping
 curl -sk https://localhost:9080/api/spire/status  # requires system_admin role
 ```
 
-## Step 2: Start Satellite with External SPIRE
+## Step 2: Create Config and Group
 
-### 2.1 Request join token from Ground Control
+### 2.1 Login to Ground Control
 
-Protected endpoints support both Bearer token and basic auth.
-
-Using basic auth (`-u`):
 ```bash
-curl -sk -u admin:Harbor12345 -X POST https://localhost:9080/api/join-tokens \
-    -H "Content-Type: application/json" \
-    -d '{"satellite_name":"edge-01","region":"us-west"}'
-```
-
-Or using a Bearer token:
-```bash
-# Login to get a Bearer token
 LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
     -H "Content-Type: application/json" \
     -d '{"username":"admin","password":"Harbor12345"}')
 AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+```
 
-# Request join token
+### 2.2 Create a satellite config
+
+This config is fetched by satellites and controls local registry setup, replication intervals, and heartbeat reporting.
+
+```bash
+curl -sk -X POST https://localhost:9080/api/configs \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d '{
+      "config_name": "default",
+      "config": {
+        "app_config": {
+          "log_level": "info",
+          "state_replication_interval": "@every 00h00m30s",
+          "register_satellite_interval": "@every 00h00m05s",
+          "heartbeat_interval": "@every 00h00m30s",
+          "metrics": {
+            "collect_cpu": true,
+            "collect_memory": true,
+            "collect_storage": true
+          },
+          "local_registry": {
+            "url": "http://127.0.0.1:8585"
+          }
+        },
+        "zot_config": {
+          "distSpecVersion": "1.1.0",
+          "storage": { "rootDirectory": "./zot" },
+          "http": { "address": "0.0.0.0", "port": "8585" },
+          "log": { "level": "info" }
+        }
+      }
+    }'
+```
+
+### 2.3 Create a group with images
+
+Sync a group containing the images you want the satellite to replicate. Replace the artifact details with images from your Harbor instance.
+
+```bash
+curl -sk -X POST https://localhost:9080/api/groups/sync \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d '{
+      "group": "edge-images",
+      "registry": "http://localhost:8080",
+      "artifacts": [
+        {
+          "repository": "library/nginx",
+          "tag": ["latest"],
+          "type": "image",
+          "digest": "sha256:YOUR_DIGEST_HERE"
+        }
+      ]
+    }'
+```
+
+## Step 3: Start Satellite with External SPIRE
+
+### 3.1 Request join token from Ground Control
+
+```bash
 curl -sk -X POST https://localhost:9080/api/join-tokens \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
@@ -169,13 +220,13 @@ The response includes the join token and SPIRE server connection details:
 }
 ```
 
-### 2.2 Create satellite agent config
+### 3.2 Create satellite agent config
 
 ```bash
 cd ../sat
 ```
 
-Create `spire/agent-satellite-runtime.conf` with the join token from step 2.1:
+Create `spire/agent-satellite-runtime.conf` with the join token from step 3.1:
 
 ```bash
 cat > spire/agent-satellite-runtime.conf << EOF
@@ -219,7 +270,7 @@ health_checks {
 EOF
 ```
 
-### 2.3 Register satellite workload
+### 3.3 Register satellite workload
 
 Register the satellite workload entry so it can receive an SVID after the agent attests:
 
@@ -231,14 +282,32 @@ docker exec spire-server /opt/spire/bin/spire-server entry create \
     -socketPath /tmp/spire-server/private/api.sock
 ```
 
-### 2.4 Start SPIRE agent and Satellite
+### 3.4 Start SPIRE agent and Satellite
 
 ```bash
 docker compose up -d spire-agent-satellite
 docker compose up -d satellite
 ```
 
-### 2.5 Verify
+### 3.5 Assign config and group to satellite
+
+After the satellite starts and completes SPIFFE ZTR, assign the config and group:
+
+```bash
+cd ../gc
+
+curl -sk -X POST https://localhost:9080/api/configs/satellite \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d '{"satellite": "edge-01", "config_name": "default"}'
+
+curl -sk -X POST https://localhost:9080/api/groups/satellite \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d '{"satellite": "edge-01", "group": "edge-images"}'
+```
+
+### 3.6 Verify
 
 ```bash
 docker logs satellite
