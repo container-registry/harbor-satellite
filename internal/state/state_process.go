@@ -129,74 +129,23 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 
 	f.updateStateMap(satelliteState.States)
 
+	// Take a snapshot of stateMap under lock to avoid race conditions
+	// Goroutines will work on this snapshot and update f.stateMap under f.mu
+	f.mu.Lock()
+	stateMapSnapshot := make([]StateMap, len(f.stateMap))
+	copy(stateMapSnapshot, f.stateMap)
+	f.mu.Unlock()
+
 	// Create channels for results
-	stateFetcherResults := make(chan StateFetcherResult, len(f.stateMap))
+	stateFetcherResults := make(chan StateFetcherResult, len(stateMapSnapshot))
 	configFetcherResult := make(chan ConfigFetcherResult, 1)
 
-	// Mutex for concurrency safe access of the stateMap
-	mutex := &sync.Mutex{}
-
 	// Launch state fetcher goroutines
-	for i := range f.stateMap {
-		go func(index int) {
-			stateFetcherLog := log.With().
-				Str("sub-process", "state-fetcher").
-				Str("group", f.stateMap[index].url).
-				Int("goroutine-id", index).
-				Logger()
-
-			result := StateFetcherResult{
-				Index: index,
-				URL:   f.stateMap[index].url,
-			}
-
-			stateFetcherLog.Info().Msgf("Processing state for %s", f.stateMap[index].url)
-
-			groupStateFetcher, err := getStateFetcherForInput(f.stateMap[index].url, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
-			if err != nil {
-				stateFetcherLog.Error().Err(err).Msg("Error processing input")
-				result.Error = fmt.Errorf("failed to create state fetcher for %s: %w", f.stateMap[index].url, err)
-				result.HadError = true
-				stateFetcherResults <- result
-				return
-			}
-
-			newStateFetched, err := f.FetchAndProcessState(ctx, groupStateFetcher, &stateFetcherLog)
-			if err != nil {
-				stateFetcherLog.Error().Err(err).Msg("Error fetching state")
-				result.Error = fmt.Errorf("failed to fetch state for %s: %w", f.stateMap[index].url, err)
-				result.HadError = true
-				stateFetcherResults <- result
-				return
-			}
-			stateFetcherLog.Info().Msgf("State fetched successfully for %s", f.stateMap[index].url)
-
-			deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, &stateFetcherLog, f.stateMap[index].Entities)
-			f.LogChanges(deleteEntity, replicateEntity, &stateFetcherLog)
-
-			if err := replicator.DeleteReplicationEntity(ctx, deleteEntity); err != nil {
-				stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
-				result.Error = fmt.Errorf("failed to delete entities for %s: %w", f.stateMap[index].url, err)
-				result.HadError = true
-				stateFetcherResults <- result
-				return
-			}
-
-			if err := replicator.Replicate(ctx, replicateEntity); err != nil {
-				stateFetcherLog.Error().Err(err).Msg("Error replicating state")
-				result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
-				result.HadError = true
-				stateFetcherResults <- result
-				return
-			}
-
-			mutex.Lock()
-			f.stateMap[index].State = newState
-			f.stateMap[index].Entities = FetchEntitiesFromState(newState)
-			mutex.Unlock()
-
+	for i := range stateMapSnapshot {
+		go func(index int, stateEntry StateMap) {
+			result := f.processStateEntry(ctx, index, stateEntry, srcUsername, srcPassword, useUnsecure, replicator, &log)
 			stateFetcherResults <- result
-		}(i)
+		}(i, stateMapSnapshot[i])
 	}
 
 	// Launch config fetcher goroutine
@@ -324,7 +273,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 		}
 
 		// Check if we've received all results
-		if receivedStateFetchers == len(f.stateMap) && receivedConfigFetcher {
+		if receivedStateFetchers == len(stateMapSnapshot) && receivedConfigFetcher {
 			break
 		}
 	}
@@ -339,6 +288,10 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 }
 
 func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
+	// Lock to prevent race conditions with concurrent goroutines accessing stateMap
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	var newStates []string
 	for _, state := range states {
 		found := false
@@ -363,6 +316,64 @@ func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
 
 	// Add new states
 	f.stateMap = append(updatedStateMap, NewStateMap(newStates)...)
+}
+
+// processStateEntry handles state fetching and replication for a single state entry.
+// This method is called by goroutines launched in Execute() to process each state URL.
+func (f *FetchAndReplicateStateProcess) processStateEntry(
+	ctx context.Context, index int, stateEntry StateMap,
+	srcUsername, srcPassword string, useUnsecure bool,
+	replicator Replicator, parentLog *zerolog.Logger,
+) StateFetcherResult {
+	stateFetcherLog := parentLog.With().Str("sub-process", "state-fetcher").
+		Str("group", stateEntry.url).Int("goroutine-id", index).Logger()
+
+	result := StateFetcherResult{Index: index, URL: stateEntry.url}
+	stateFetcherLog.Info().Msgf("Processing state for %s", stateEntry.url)
+
+	groupStateFetcher, err := getStateFetcherForInput(stateEntry.url, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
+	if err != nil {
+		return f.makeErrorResult(result, err, "failed to create state fetcher for %s", stateEntry.url)
+	}
+
+	newStateFetched, err := f.FetchAndProcessState(ctx, groupStateFetcher, &stateFetcherLog)
+	if err != nil {
+		return f.makeErrorResult(result, err, "failed to fetch state for %s", stateEntry.url)
+	}
+	stateFetcherLog.Info().Msgf("State fetched successfully for %s", stateEntry.url)
+
+	deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, &stateFetcherLog, stateEntry.Entities)
+	f.LogChanges(deleteEntity, replicateEntity, &stateFetcherLog)
+
+	if err := replicator.DeleteReplicationEntity(ctx, deleteEntity); err != nil {
+		return f.makeErrorResult(result, err, "failed to delete entities for %s", stateEntry.url)
+	}
+	if err := replicator.Replicate(ctx, replicateEntity); err != nil {
+		return f.makeErrorResult(result, err, "failed to replicate entities for %s", stateEntry.url)
+	}
+
+	f.updateStateMapEntry(stateEntry.url, newState)
+	return result
+}
+
+// makeErrorResult creates a StateFetcherResult with an error.
+func (f *FetchAndReplicateStateProcess) makeErrorResult(result StateFetcherResult, err error, format string, url string) StateFetcherResult {
+	result.Error = fmt.Errorf(format+": %w", url, err)
+	result.HadError = true
+	return result
+}
+
+// updateStateMapEntry updates the state map entry for the given URL under the struct mutex.
+func (f *FetchAndReplicateStateProcess) updateStateMapEntry(url string, newState StateReader) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for idx := range f.stateMap {
+		if f.stateMap[idx].url == url {
+			f.stateMap[idx].State = newState
+			f.stateMap[idx].Entities = FetchEntitiesFromState(newState)
+			return
+		}
+	}
 }
 
 func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *zerolog.Logger, oldEntites []Entity) ([]Entity, []Entity, StateReader) {
