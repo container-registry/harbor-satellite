@@ -51,10 +51,8 @@ func getAvgCPUUsage(ctx context.Context, sampleInterval, totalDuration time.Dura
 	var total float64
 	var count int
 	for i := 0; i < samples; i++ {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			break
-		default:
 		}
 		percents, err := cpu.PercentWithContext(ctx, sampleInterval, false)
 		if err != nil || len(percents) == 0 {

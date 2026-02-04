@@ -1,0 +1,140 @@
+package state
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/pkg/config"
+)
+
+const StatusReportRoute = "satellites/sync"
+
+type StatusReportingProcess struct {
+	name      string
+	isRunning bool
+	mu        *sync.Mutex
+	cm        *config.ConfigManager
+}
+
+func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess {
+	return &StatusReportingProcess{
+		name: config.StatusReportJobName,
+		mu:   &sync.Mutex{},
+		cm:   cm,
+	}
+}
+
+func (s *StatusReportingProcess) Execute(ctx context.Context) error {
+	s.start()
+	defer s.stop()
+
+	log := logger.FromContext(ctx).With().Str("process", s.name).Logger()
+
+	stateURL := s.cm.GetStateURL()
+	if stateURL == "" {
+		log.Warn().Msg("State URL not available yet, skipping status report")
+		return nil
+	}
+
+	satelliteName, err := extractSatelliteNameFromURL(stateURL)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to extract satellite name from state URL")
+		return err
+	}
+
+	heartbeatExpr := s.cm.GetHeartbeatInterval()
+	heartbeatDuration, err := parseEveryExpr(heartbeatExpr)
+	if err != nil {
+		log.Warn().Err(err).Msgf("Failed to parse heartbeat interval %q, using 30s", heartbeatExpr)
+		heartbeatDuration = 30 * time.Second
+	}
+
+	metricsCfg := s.cm.GetMetricsConfig()
+
+	req := &StatusReportParams{
+		Name:                satelliteName,
+		StateReportInterval: heartbeatExpr,
+		RequestCreatedTime:  time.Now().UTC(),
+	}
+
+	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg)
+
+	groundControlURL := s.cm.ResolveGroundControlURL()
+	if err := s.sendStatusReport(ctx, groundControlURL, req); err != nil {
+		log.Error().Err(err).Msg("Failed to send status report")
+		return err
+	}
+
+	log.Info().Str("satellite", satelliteName).Msg("Status report sent successfully")
+	return nil
+}
+
+func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundControlURL string, req *StatusReportParams) error {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("marshal status report: %w", err)
+	}
+
+	syncURL := fmt.Sprintf("%s/%s", groundControlURL, StatusReportRoute)
+
+	client, err := createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure())
+	if err != nil {
+		return fmt.Errorf("create HTTP client: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, syncURL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.FromContext(ctx).Warn().Err(err).Msg("error closing response body")
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("status report failed: %s", resp.Status)
+	}
+
+	return nil
+}
+
+func (s *StatusReportingProcess) Name() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.name
+}
+
+func (s *StatusReportingProcess) IsRunning() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.isRunning
+}
+
+func (s *StatusReportingProcess) IsComplete() bool {
+	return false
+}
+
+func (s *StatusReportingProcess) start() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.isRunning = true
+}
+
+func (s *StatusReportingProcess) stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.isRunning = false
+}
