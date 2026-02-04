@@ -106,7 +106,7 @@ docker exec spire-server /opt/spire/bin/spire-server entry create \
 ### 1.7 Start Ground Control
 
 ```bash
-docker compose up -d ground-control
+docker compose up -d ground-control --build
 ```
 
 ### 1.8 Verify GC is running
@@ -222,7 +222,7 @@ EOF
 
 ```bash
 docker compose up -d spire-agent-satellite
-docker compose up -d satellite
+docker compose up -d satellite --build
 ```
 
 The satellite performs SPIFFE ZTR (zero trust registration) on startup, which completes its registration with Ground Control and obtains credentials.

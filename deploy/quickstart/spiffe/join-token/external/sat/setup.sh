@@ -122,7 +122,7 @@ for i in $(seq 1 20); do
     sleep 2
 done
 
-docker compose up -d satellite
+docker compose up -d satellite --build
 
 echo "Waiting for Satellite to initialize..."
 sleep 5

@@ -113,7 +113,7 @@ docker exec spire-server /opt/spire/bin/spire-server entry create \
 
 # Step 6: Start Ground Control
 echo "[6/6] Starting Ground Control..."
-docker compose up -d ground-control
+docker compose up -d ground-control --build
 
 echo "Waiting for Ground Control to be healthy..."
 for i in $(seq 1 30); do
