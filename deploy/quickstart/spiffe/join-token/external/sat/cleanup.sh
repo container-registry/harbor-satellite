@@ -7,8 +7,10 @@ cd "$SCRIPT_DIR"
 
 echo "=== Cleaning up Satellite (Join Token) ==="
 
+echo "> docker compose down -v --remove-orphans"
 docker compose down -v --remove-orphans
 
+echo "> rm -f ./spire/agent-satellite-runtime.conf"
 rm -f ./spire/agent-satellite-runtime.conf
 
 # Delete robot account from Harbor
@@ -17,12 +19,13 @@ HARBOR_USERNAME="${HARBOR_USERNAME:-admin}"
 HARBOR_PASSWORD="${HARBOR_PASSWORD:-Harbor12345}"
 SATELLITE_NAME="${SATELLITE_NAME:-edge-01}"
 
-echo "Deleting robot account for satellite ${SATELLITE_NAME} from Harbor..."
+echo "> Querying Harbor for robot account matching ${SATELLITE_NAME}..."
 ROBOT_ID=$(curl -s -u "${HARBOR_USERNAME}:${HARBOR_PASSWORD}" \
     "${HARBOR_URL}/api/v2.0/robots?q=name%3D~${SATELLITE_NAME}" \
     | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
 
 if [ -n "$ROBOT_ID" ]; then
+    echo "> DELETE ${HARBOR_URL}/api/v2.0/robots/${ROBOT_ID}"
     curl -s -X DELETE -u "${HARBOR_USERNAME}:${HARBOR_PASSWORD}" \
         "${HARBOR_URL}/api/v2.0/robots/${ROBOT_ID}"
     echo "Deleted robot account (ID: ${ROBOT_ID})"
