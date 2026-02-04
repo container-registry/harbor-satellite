@@ -413,6 +413,7 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 
 	robot, err := q.GetRobotAccBySatelliteID(r.Context(), satellite.ID)
 	if err != nil {
+		// Robot not found - create new one (backward compat for satellites created before join-token flow)
 		log.Printf("SPIFFE ZTR: Robot account not found for satellite %s, creating...", satelliteName)
 		robot, _, err = ensureSatelliteRobotAccount(r, q, satellite)
 		if err != nil {
@@ -428,6 +429,17 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("SPIFFE ZTR: Failed to ensure config for satellite %s: %v", satelliteName, err)
 			HandleAppError(w, &AppError{
 				Message: fmt.Sprintf("Error: Failed to ensure satellite config: %v", err),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+	} else {
+		// Robot exists - refresh its secret so the satellite gets a fresh credential
+		robot, err = refreshRobotSecret(r, q, robot)
+		if err != nil {
+			log.Printf("SPIFFE ZTR: Failed to refresh robot secret for satellite %s: %v", satelliteName, err)
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Error: Failed to refresh robot secret: %v", err),
 				Code:    http.StatusInternalServerError,
 			})
 			return
@@ -654,6 +666,40 @@ func ensureSatelliteRobotAccount(r *http.Request, q *database.Queries, satellite
 
 	log.Printf("SPIFFE ZTR: Created robot account %s for satellite %s", robotName, satellite.Name)
 	return robot, harborRobotID, nil
+}
+
+// refreshRobotSecret refreshes the Harbor robot account secret and updates the DB.
+func refreshRobotSecret(r *http.Request, q *database.Queries, robot database.RobotAccount) (database.RobotAccount, error) {
+	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
+	if skipHarborCheck {
+		log.Printf("SPIFFE ZTR: Harbor not available, skipping robot secret refresh for %s", robot.RobotName)
+		return robot, nil
+	}
+
+	harborRobotID, err := strconv.ParseInt(robot.RobotID, 10, 64)
+	if err != nil {
+		return robot, fmt.Errorf("parse robot ID: %w", err)
+	}
+
+	resp, err := harbor.RefreshRobotAccount(r.Context(), "", harborRobotID)
+	if err != nil {
+		return robot, fmt.Errorf("refresh robot secret in Harbor: %w", err)
+	}
+
+	newSecret := resp.Payload.Secret
+	err = q.UpdateRobotAccount(r.Context(), database.UpdateRobotAccountParams{
+		ID:          robot.ID,
+		RobotName:   robot.RobotName,
+		RobotSecret: newSecret,
+		RobotID:     robot.RobotID,
+	})
+	if err != nil {
+		return robot, fmt.Errorf("update robot secret in DB: %w", err)
+	}
+
+	robot.RobotSecret = newSecret
+	log.Printf("SPIFFE ZTR: Refreshed robot secret for %s", robot.RobotName)
+	return robot, nil
 }
 
 // ensureSatelliteConfig links the satellite to the default config if no config is assigned.
