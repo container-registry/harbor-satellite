@@ -76,11 +76,14 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		}
 	}
 
-	if !bringOwnRegistry && len(config.ZotConfigRaw) == 0 {
-		warnings = append(warnings, fmt.Sprintf(
-			"empty zot_config provided. Defaulting to: %v", DefaultZotConfigJSON,
-		))
-		config.ZotConfigRaw = json.RawMessage(DefaultZotConfigJSON)
+	if !bringOwnRegistry {
+		needsDefault := len(config.ZotConfigRaw) == 0 || strings.TrimSpace(string(config.ZotConfigRaw)) == "{}"
+		if needsDefault {
+			warnings = append(warnings, fmt.Sprintf(
+				"empty zot_config provided. Defaulting to: %v", DefaultZotConfigJSON,
+			))
+			config.ZotConfigRaw = json.RawMessage(DefaultZotConfigJSON)
+		}
 	}
 
 	var zotConfig registry.ZotConfig

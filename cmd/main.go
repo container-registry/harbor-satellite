@@ -98,29 +98,18 @@ func main() {
 		}))
 	}
 
-	// get local registry address from raw zot config
-	if len(mirrors) > 0 {
-		var data map[string]interface{}
-		rawZot := cm.GetRawZotConfig()
-		if len(rawZot) == 0 {
-			fmt.Println("Error: --mirrors requires zot_config to be set")
-			os.Exit(1)
-		}
-		if err := json.Unmarshal(rawZot, &data); err != nil {
-			fmt.Printf("Error parsing zot_config: %v\n", err)
-			os.Exit(1)
-		}
-		httpRaw, ok := data["http"].(map[string]interface{})
-		if !ok {
-			fmt.Println("Error: zot_config missing http section")
-			os.Exit(1)
-		}
-		localRegistryEndpoint := httpRaw["address"].(string) + ":" + httpRaw["port"].(string)
+	// get local registry addrress from raw zot config
+	var data map[string]interface{}
+	if err := json.Unmarshal(cm.GetRawZotConfig(), &data); err != nil {
+		panic(err)
+	}
+	httpData := data["http"].(map[string]interface{})
+	localRegistryEndpoint := httpData["address"].(string) + ":" + httpData["port"].(string)
 
-		if err := runtime.ApplyCRIConfigs(mirrors, localRegistryEndpoint); err != nil {
-			fmt.Printf("fatal : %v\n", err)
-			os.Exit(1)
-		}
+	err = runtime.ApplyCRIConfigs(mirrors, localRegistryEndpoint)
+	if err != nil {
+		fmt.Printf("fatal : %v\n", err)
+		os.Exit(1)
 	}
 
 	err = run(jsonLogging, token, groundControlURL, useUnsecure, spiffeEnabled, spiffeEndpointSocket, spiffeExpectedServerID)
