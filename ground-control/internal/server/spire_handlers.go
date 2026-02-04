@@ -4,15 +4,17 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
 // CreateJoinTokenRequest represents a request to generate a SPIRE join token
 // without requiring satellite pre-registration.
 type CreateJoinTokenRequest struct {
-	SatelliteName string `json:"satellite_name"`
-	Region        string `json:"region"`
-	TTL           int    `json:"ttl_seconds,omitempty"` // Default: 600 (10 minutes)
+	SatelliteName string   `json:"satellite_name"`
+	Region        string   `json:"region"`
+	TTL           int      `json:"ttl_seconds,omitempty"` // Default: 600 (10 minutes)
+	Selectors     []string `json:"selectors"`
 }
 
 // JoinTokenResponse contains the generated join token and bootstrap metadata.
@@ -93,6 +95,23 @@ func (s *Server) createJoinTokenHandler(w http.ResponseWriter, r *http.Request) 
 		req.TTL = 86400 // Max 24 hours
 	}
 
+	if len(req.Selectors) == 0 {
+		HandleAppError(w, &AppError{
+			Message: "selectors is required",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+	for _, sel := range req.Selectors {
+		if !strings.Contains(sel, ":") {
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("invalid selector format %q: must contain at least one ':'", sel),
+				Code:    http.StatusBadRequest,
+			})
+			return
+		}
+	}
+
 	if s.spireClient == nil {
 		HandleAppError(w, &AppError{
 			Message: "SPIRE server not configured",
@@ -121,10 +140,14 @@ func (s *Server) createJoinTokenHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Create workload entry for the satellite (so it can get SVID after attestation)
-	err = s.spireClient.CreateWorkloadEntry(r.Context(), agentSpiffeID, workloadSpiffeID, []string{"unix:uid:0"})
+	err = s.spireClient.CreateWorkloadEntry(r.Context(), agentSpiffeID, workloadSpiffeID, req.Selectors)
 	if err != nil {
 		log.Printf("Failed to create workload entry: %v", err)
-		// Continue - token is still valid, entry creation may succeed on retry
+		HandleAppError(w, &AppError{
+			Message: "Failed to create workload entry",
+			Code:    http.StatusInternalServerError,
+		})
+		return
 	}
 
 	// Ensure satellite record exists in DB so admin can assign groups/configs before ZTR
