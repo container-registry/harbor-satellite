@@ -91,6 +91,14 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		return nil, nil, fmt.Errorf("invalid zot_config: %w", err)
 	}
 
+	if !bringOwnRegistry && (zotConfig.HTTP.Address == "" || zotConfig.HTTP.Port == "") {
+		warnings = append(warnings, "zot_config missing required http address/port. Applying defaults.")
+		config.ZotConfigRaw = json.RawMessage(DefaultZotConfigJSON)
+		if err := json.Unmarshal(config.ZotConfigRaw, &zotConfig); err != nil {
+			return nil, nil, fmt.Errorf("invalid default zot_config: %w", err)
+		}
+	}
+
 	if !bringOwnRegistry && config.AppConfig.LocalRegistryCredentials.URL == "" {
 		warnings = append(warnings, fmt.Sprintf(
 			"remote registry URL is empty. Defaulting to value from zot_config %s",
