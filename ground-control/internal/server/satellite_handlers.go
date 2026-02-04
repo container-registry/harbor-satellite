@@ -665,7 +665,23 @@ func ensureSatelliteConfig(r *http.Request, q *database.Queries, satellite datab
 
 	defaultConfig, err := q.GetConfigByName(r.Context(), "default")
 	if err != nil {
-		defaultConfigJSON := []byte(`{}`)
+		defaultConfigJSON := []byte(`{
+  "app_config": {
+    "log_level": "info",
+    "state_replication_interval": "@every 00h00m30s",
+    "register_satellite_interval": "@every 00h00m05s",
+    "heartbeat_interval": "@every 00h00m30s",
+    "local_registry": {
+      "url": "http://127.0.0.1:8585"
+    }
+  },
+  "zot_config": {
+    "distSpecVersion": "1.1.0",
+    "storage": { "rootDirectory": "./zot" },
+    "http": { "address": "0.0.0.0", "port": "8585" },
+    "log": { "level": "info" }
+  }
+}`)
 		defaultConfig, err = q.CreateConfig(r.Context(), database.CreateConfigParams{
 			ConfigName:  "default",
 			RegistryUrl: os.Getenv("HARBOR_URL"),
