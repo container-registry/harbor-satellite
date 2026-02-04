@@ -10,24 +10,40 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
 const StatusReportRoute = "satellites/sync"
 
 type StatusReportingProcess struct {
-	name      string
-	isRunning bool
-	mu        *sync.Mutex
-	cm        *config.ConfigManager
+	name         string
+	isRunning    bool
+	mu           *sync.Mutex
+	cm           *config.ConfigManager
+	spiffeClient *spiffe.Client
 }
 
 func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess {
-	return &StatusReportingProcess{
+	p := &StatusReportingProcess{
 		name: config.StatusReportJobName,
 		mu:   &sync.Mutex{},
 		cm:   cm,
 	}
+
+	if cm.IsSPIFFEEnabled() {
+		spiffeCfg := cm.GetSPIFFEConfig()
+		client, err := spiffe.NewClient(spiffe.Config{
+			Enabled:          spiffeCfg.Enabled,
+			EndpointSocket:   spiffeCfg.EndpointSocket,
+			ExpectedServerID: spiffeCfg.ExpectedServerID,
+		})
+		if err == nil {
+			p.spiffeClient = client
+		}
+	}
+
+	return p
 }
 
 func (s *StatusReportingProcess) Execute(ctx context.Context) error {
@@ -83,9 +99,20 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 
 	syncURL := fmt.Sprintf("%s/%s", groundControlURL, StatusReportRoute)
 
-	client, err := createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure())
-	if err != nil {
-		return fmt.Errorf("create HTTP client: %w", err)
+	var client *http.Client
+	if s.spiffeClient != nil {
+		if err := s.spiffeClient.Connect(ctx); err != nil {
+			return fmt.Errorf("connect to SPIRE agent: %w", err)
+		}
+		client, err = s.spiffeClient.CreateHTTPClient()
+		if err != nil {
+			return fmt.Errorf("create SPIFFE HTTP client: %w", err)
+		}
+	} else {
+		client, err = createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure())
+		if err != nil {
+			return fmt.Errorf("create HTTP client: %w", err)
+		}
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, syncURL, bytes.NewReader(body))
