@@ -84,8 +84,8 @@ func getStorageUsedBytes(ctx context.Context, path string) uint64 {
 	return usage.Used
 }
 
-// extractSatelliteNameFromURL parses a state URL like
-// "hostname/v2/satellite/<name>/satellite/manifests/latest" and returns <name>.
+// extractSatelliteNameFromURL parses a state URL and returns the satellite name.
+// Supports: "hostname/satellite/satellite-state/<name>/state:latest"
 func extractSatelliteNameFromURL(stateURL string) (string, error) {
 	parsed, err := url.Parse(stateURL)
 	if err != nil {
@@ -93,9 +93,9 @@ func extractSatelliteNameFromURL(stateURL string) (string, error) {
 	}
 
 	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	// Expected path: v2/satellite/<name>/satellite/manifests/latest
+	// Path format: /satellite/satellite-state/<name>/state:latest
 	for i, part := range parts {
-		if part == "satellite" && i+1 < len(parts) {
+		if part == "satellite-state" && i+1 < len(parts) {
 			return parts[i+1], nil
 		}
 	}
