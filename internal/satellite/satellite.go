@@ -75,6 +75,20 @@ func (s *Satellite) Run(ctx context.Context) error {
 	s.schedulers = append(s.schedulers, stateScheduler)
 	go stateScheduler.Run(ctx)
 
+	// Create status report scheduler
+	statusReportProcess := state.NewStatusReportingProcess(s.cm)
+	statusScheduler, err := scheduler.NewSchedulerWithInterval(
+		s.cm.GetHeartbeatInterval(),
+		statusReportProcess,
+		log,
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create status report scheduler")
+		return err
+	}
+	s.schedulers = append(s.schedulers, statusScheduler)
+	go statusScheduler.Run(ctx)
+
 	return ctx.Err()
 }
 
