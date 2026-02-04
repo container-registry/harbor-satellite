@@ -8,6 +8,11 @@ cd "$SCRIPT_DIR"
 echo "=== Ground Control Setup (Join Token) ==="
 echo ""
 
+# Prerequisite: Harbor must be running and reachable
+echo "Prerequisite: Harbor registry must be running."
+echo "  Set HARBOR_URL, HARBOR_USERNAME, HARBOR_PASSWORD if not using defaults."
+echo ""
+
 # Step 1: Generate CA certificates
 echo "[1/6] Generating CA certificates..."
 ./generate-certs.sh
