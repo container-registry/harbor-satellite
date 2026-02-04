@@ -3,6 +3,7 @@ package config
 // Job names that the user is expected to provide in the config.json file
 const ReplicateStateJobName string = "replicate_state"
 const ZTRConfigJobName string = "register_satellite"
+const StatusReportJobName string = "status_report"
 const SPIFFEZTRConfigJobName string = "spiffe_register_satellite"
 
 // Default SPIFFE endpoint socket
@@ -20,6 +21,7 @@ const DefaultPrevConfigPath string = "prev_config.json"
 // if there is any error while parsing the cron expression
 const DefaultZTRCronExpr string = "@every 00h00m05s"
 const DefaultFetchAndReplicateCronExpr string = "@every 00h00m30s"
+const DefaultHeartbeatCronExpr string = "@every 00h00m30s"
 
 const BringOwnRegistry bool = false
 

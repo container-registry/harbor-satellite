@@ -106,6 +106,18 @@ func (cm *ConfigManager) GetStateReplicationInterval() string {
 	return cm.config.AppConfig.StateReplicationInterval
 }
 
+func (cm *ConfigManager) GetHeartbeatInterval() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.HeartbeatInterval
+}
+
+func (cm *ConfigManager) GetMetricsConfig() MetricsConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.Metrics
+}
+
 func (cm *ConfigManager) GetStateConfig() StateConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()

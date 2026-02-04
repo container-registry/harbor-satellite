@@ -29,12 +29,20 @@ type SPIFFEConfig struct {
 	ExpectedServerID string `json:"expected_server_id,omitempty"`
 }
 
+type MetricsConfig struct {
+	CollectCPU     bool `json:"collect_cpu,omitempty"`
+	CollectMemory  bool `json:"collect_memory,omitempty"`
+	CollectStorage bool `json:"collect_storage,omitempty"`
+}
+
 type AppConfig struct {
 	GroundControlURL          URL                 `json:"ground_control_url,omitempty"`
 	LogLevel                  string              `json:"log_level,omitempty"`
 	UseUnsecure               bool                `json:"use_unsecure,omitempty"`
 	StateReplicationInterval  string              `json:"state_replication_interval,omitempty"`
 	RegisterSatelliteInterval string              `json:"register_satellite_interval,omitempty"`
+	HeartbeatInterval         string              `json:"heartbeat_interval,omitempty"`
+	Metrics                   MetricsConfig       `json:"metrics,omitempty"`
 	BringOwnRegistry          bool                `json:"bring_own_registry,omitempty"`
 	LocalRegistryCredentials  RegistryCredentials `json:"local_registry,omitempty"`
 	TLS                       TLSConfig           `json:"tls,omitempty"`

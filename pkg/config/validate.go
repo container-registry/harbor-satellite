@@ -106,6 +106,11 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for register_satellite_interval, using default schedule %s", DefaultZTRCronExpr))
 	}
 
+	if !isValidCronExpression(config.AppConfig.HeartbeatInterval) {
+		config.AppConfig.HeartbeatInterval = DefaultHeartbeatCronExpr
+		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for heartbeat_interval, using default schedule %s", DefaultHeartbeatCronExpr))
+	}
+
 	tlsWarnings, tlsErr := validateTLSConfig(&config.AppConfig.TLS)
 	warnings = append(warnings, tlsWarnings...)
 	if tlsErr != nil {
