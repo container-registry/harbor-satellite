@@ -7,10 +7,9 @@ Tokens are single-use: once a SPIRE agent uses a token to attest, it cannot be r
 ## Prerequisites
 
 - Docker and docker compose installed
-- Harbor running (or use SKIP_HARBOR_HEALTH_CHECK=true for testing)
-- Ground Control and Satellite built (or use docker images)
+- Harbor running with at least one image pushed (e.g. `library/nginx:alpine`)
 
-## Step 1: Start Ground Control with External SPIRE
+## Step 1: Start Ground Control
 
 ### 1.1 Generate bootstrap CA certificate
 
@@ -19,28 +18,20 @@ cd external/gc
 ./generate-certs.sh
 ```
 
-Or manually:
-```bash
-mkdir -p certs
-openssl genrsa -out certs/ca.key 4096
-openssl req -new -x509 -days 365 -key certs/ca.key -out certs/ca.crt \
-    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=SPIRE CA"
-```
-
 ### 1.2 Start SPIRE server and PostgreSQL
 
 ```bash
 docker compose up -d postgres spire-server
 ```
 
-### 1.3 Wait for SPIRE server to be healthy
+Wait for SPIRE server to be healthy:
 
 ```bash
 docker exec spire-server /opt/spire/bin/spire-server healthcheck \
     -socketPath /tmp/spire-server/private/api.sock
 ```
 
-### 1.4 Generate join token for GC agent
+### 1.3 Generate join token for GC agent
 
 ```bash
 docker exec spire-server /opt/spire/bin/spire-server token generate \
@@ -50,9 +41,9 @@ docker exec spire-server /opt/spire/bin/spire-server token generate \
 
 Save the token value from the output.
 
-### 1.5 Create agent config with token
+### 1.4 Create agent config with token
 
-Create `spire/agent-gc-runtime.conf` with the token from step 1.4:
+Create `spire/agent-gc-runtime.conf` using the token from step 1.3:
 
 ```bash
 cat > spire/agent-gc-runtime.conf << EOF
@@ -96,13 +87,13 @@ health_checks {
 EOF
 ```
 
-### 1.6 Start SPIRE agent for GC
+### 1.5 Start SPIRE agent for GC
 
 ```bash
 docker compose up -d spire-agent-gc
 ```
 
-### 1.7 Register GC workload
+### 1.6 Register GC workload
 
 ```bash
 docker exec spire-server /opt/spire/bin/spire-server entry create \
@@ -112,24 +103,21 @@ docker exec spire-server /opt/spire/bin/spire-server entry create \
     -socketPath /tmp/spire-server/private/api.sock
 ```
 
-### 1.8 Start Ground Control
+### 1.7 Start Ground Control
 
 ```bash
 docker compose up -d ground-control
 ```
 
-### 1.9 Verify GC is running
+### 1.8 Verify GC is running
 
 GC serves HTTPS when SPIFFE is enabled. Use `-k` to skip certificate verification.
 
 ```bash
 curl -sk https://localhost:9080/ping
-curl -sk https://localhost:9080/api/spire/status  # requires system_admin role
 ```
 
-## Step 2: Create Config and Group
-
-### 2.1 Login to Ground Control
+## Step 2: Login and Get Auth Token
 
 ```bash
 LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
@@ -138,66 +126,9 @@ LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
 AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 ```
 
-### 2.2 Create a satellite config
+## Step 3: Request Satellite Join Token
 
-This config is fetched by satellites and controls local registry setup, replication intervals, and heartbeat reporting.
-
-```bash
-curl -sk -X POST https://localhost:9080/api/configs \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{
-      "config_name": "default",
-      "config": {
-        "app_config": {
-          "log_level": "info",
-          "state_replication_interval": "@every 00h00m30s",
-          "register_satellite_interval": "@every 00h00m05s",
-          "heartbeat_interval": "@every 00h00m30s",
-          "metrics": {
-            "collect_cpu": true,
-            "collect_memory": true,
-            "collect_storage": true
-          },
-          "local_registry": {
-            "url": "http://127.0.0.1:8585"
-          }
-        },
-        "zot_config": {
-          "distSpecVersion": "1.1.0",
-          "storage": { "rootDirectory": "./zot" },
-          "http": { "address": "0.0.0.0", "port": "8585" },
-          "log": { "level": "info" }
-        }
-      }
-    }'
-```
-
-### 2.3 Create a group with images
-
-Sync a group containing the images you want the satellite to replicate. Replace the artifact details with images from your Harbor instance.
-
-```bash
-curl -sk -X POST https://localhost:9080/api/groups/sync \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{
-      "group": "edge-images",
-      "registry": "http://localhost:8080",
-      "artifacts": [
-        {
-          "repository": "library/nginx",
-          "tag": ["latest"],
-          "type": "image",
-          "digest": "sha256:YOUR_DIGEST_HERE"
-        }
-      ]
-    }'
-```
-
-## Step 3: Start Satellite with External SPIRE
-
-### 3.1 Request join token from Ground Control
+Request a join token from Ground Control for the satellite. This also pre-registers the satellite and creates a robot account for it in Harbor.
 
 ```bash
 curl -sk -X POST https://localhost:9080/api/join-tokens \
@@ -206,7 +137,8 @@ curl -sk -X POST https://localhost:9080/api/join-tokens \
     -d '{"satellite_name":"edge-01","region":"us-west"}'
 ```
 
-The response includes the join token and SPIRE server connection details:
+The response includes the join token and SPIRE connection details:
+
 ```json
 {
   "join_token": "...",
@@ -220,13 +152,29 @@ The response includes the join token and SPIRE server connection details:
 }
 ```
 
-### 3.2 Create satellite agent config
+Save the `join_token` value.
+
+## Step 4: Register Satellite Workload
+
+Register the satellite workload entry so it can receive an SVID after the agent attests. The `parentID` must use the satellite name from the join token response:
+
+```bash
+docker exec spire-server /opt/spire/bin/spire-server entry create \
+    -parentID spiffe://harbor-satellite.local/agent/edge-01 \
+    -spiffeID spiffe://harbor-satellite.local/satellite/region/us-west/edge-01 \
+    -selector docker:label:com.docker.compose.service:satellite \
+    -socketPath /tmp/spire-server/private/api.sock
+```
+
+## Step 5: Start Satellite
+
+### 5.1 Create satellite agent config
 
 ```bash
 cd ../sat
 ```
 
-Create `spire/agent-satellite-runtime.conf` with the join token from step 3.1:
+Create `spire/agent-satellite-runtime.conf` using the join token from step 3:
 
 ```bash
 cat > spire/agent-satellite-runtime.conf << EOF
@@ -270,49 +218,148 @@ health_checks {
 EOF
 ```
 
-### 3.3 Register satellite workload
-
-Register the satellite workload entry so it can receive an SVID after the agent attests:
-
-```bash
-docker exec spire-server /opt/spire/bin/spire-server entry create \
-    -parentID spiffe://harbor-satellite.local/agent/edge-01 \
-    -spiffeID spiffe://harbor-satellite.local/satellite/region/us-west/edge-01 \
-    -selector docker:label:com.docker.compose.service:satellite \
-    -socketPath /tmp/spire-server/private/api.sock
-```
-
-### 3.4 Start SPIRE agent and Satellite
+### 5.2 Start SPIRE agent and satellite
 
 ```bash
 docker compose up -d spire-agent-satellite
 docker compose up -d satellite
 ```
 
-### 3.5 Assign config and group to satellite
+The satellite performs SPIFFE ZTR (zero trust registration) on startup, which completes its registration with Ground Control and obtains credentials.
 
-After the satellite starts and completes SPIFFE ZTR, assign the config and group:
+Check logs to confirm ZTR succeeded:
+
+```bash
+docker logs satellite
+```
+
+Look for messages indicating successful SPIFFE authentication and registration.
+
+## Step 6: Create and Assign Config
+
+After the satellite has started and completed ZTR, create a config and assign it.
+
+### 6.1 Create a satellite config
 
 ```bash
 cd ../gc
 
+curl -sk -X POST https://localhost:9080/api/configs \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d '{
+      "config_name": "default",
+      "config": {
+        "app_config": {
+          "log_level": "info",
+          "state_replication_interval": "@every 00h00m30s",
+          "register_satellite_interval": "@every 00h00m05s",
+          "heartbeat_interval": "@every 00h00m30s",
+          "metrics": {
+            "collect_cpu": true,
+            "collect_memory": true,
+            "collect_storage": true
+          },
+          "local_registry": {
+            "url": "http://127.0.0.1:8585"
+          }
+        },
+        "zot_config": {
+          "distSpecVersion": "1.1.0",
+          "storage": { "rootDirectory": "./zot" },
+          "http": { "address": "0.0.0.0", "port": "8585" },
+          "log": { "level": "info" }
+        }
+      }
+    }'
+```
+
+### 6.2 Assign config to satellite
+
+```bash
 curl -sk -X POST https://localhost:9080/api/configs/satellite \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{"satellite": "edge-01", "config_name": "default"}'
+```
 
+## Step 7: Create and Assign Group
+
+### 7.1 Push an image to Harbor (if not already present)
+
+```bash
+docker pull nginx:alpine
+docker tag nginx:alpine localhost:8080/library/nginx:alpine
+docker push localhost:8080/library/nginx:alpine
+```
+
+### 7.2 Create a group with images
+
+Replace the digest with the actual digest from your Harbor instance:
+
+```bash
+curl -sk -X POST https://localhost:9080/api/groups/sync \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d '{
+      "group": "edge-images",
+      "registry": "http://localhost:8080",
+      "artifacts": [
+        {
+          "repository": "library/nginx",
+          "tag": ["alpine"],
+          "type": "image",
+          "digest": "sha256:YOUR_DIGEST_HERE"
+        }
+      ]
+    }'
+```
+
+### 7.3 Assign group to satellite
+
+```bash
 curl -sk -X POST https://localhost:9080/api/groups/satellite \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{"satellite": "edge-01", "group": "edge-images"}'
 ```
 
-### 3.6 Verify
+## Step 8: Verify
+
+### Check satellite logs for replication
 
 ```bash
 docker logs satellite
+```
+
+Look for messages indicating image replication succeeded.
+
+### Pull from the satellite registry
+
+The satellite's local Zot registry is exposed on port 5050 (configurable via `SATELLITE_ZOT_PORT`):
+
+```bash
+docker pull localhost:5050/library/nginx:alpine --tls-verify=false
+```
+
+Or with podman:
+
+```bash
+podman pull localhost:5050/library/nginx:alpine --tls-verify=false
+```
+
+### Check SPIRE agent status
+
+```bash
 docker exec spire-server /opt/spire/bin/spire-server agent list \
     -socketPath /tmp/spire-server/private/api.sock
+```
+
+### Check satellite status in Ground Control
+
+```bash
+curl -sk https://localhost:9080/api/satellites \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" | jq .
 ```
 
 ## Automated Setup
@@ -321,6 +368,8 @@ docker exec spire-server /opt/spire/bin/spire-server agent list \
 cd external/gc && ./setup.sh
 cd ../sat && ./setup.sh
 ```
+
+Note: the automated scripts handle token generation, agent config creation, and workload registration. You still need to create configs, groups, and assign them to the satellite manually after setup completes.
 
 ## Cleanup
 
