@@ -65,11 +65,22 @@ func (s *Server) runCleanupWithLock(ctx context.Context, days int) {
 	}
 	defer s.releaseAdvisoryLock(ctx, cleanupLockID)
 
+	// Clean old satellite status
 	if err := s.dbQueries.DeleteOldSatelliteStatus(ctx, days); err != nil {
 		log.Printf("Status cleanup failed: %v", err)
-		return
 	}
-	log.Printf("Status cleanup completed (deleted records older than %d days)", days)
+
+	// Clean expired sessions (GDPR compliance)
+	if err := s.dbQueries.DeleteExpiredSessions(ctx); err != nil {
+		log.Printf("Session cleanup failed: %v", err)
+	}
+
+	// Clean stale login attempts (GDPR compliance)
+	if err := s.dbQueries.DeleteOldLoginAttempts(ctx, int32(days)); err != nil {
+		log.Printf("Login attempt cleanup failed: %v", err)
+	}
+
+	log.Printf("Cleanup completed (retention: %d days)", days)
 }
 
 func (s *Server) tryAcquireAdvisoryLock(ctx context.Context, lockID int) (bool, error) {
