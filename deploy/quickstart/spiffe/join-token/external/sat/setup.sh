@@ -43,7 +43,7 @@ fi
 TOKEN_RESP=$(curl -sk -X POST "${GC_URL}/api/join-tokens" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{"satellite_name":"edge-01","region":"us-west"}')
+    -d '{"satellite_name":"edge-01","region":"us-west","selectors":["docker:label:com.docker.compose.service:satellite"]}')
 
 SAT_TOKEN=$(echo "$TOKEN_RESP" | grep -o '"join_token":"[^"]*"' | cut -d'"' -f4)
 if [ -z "$SAT_TOKEN" ]; then
@@ -94,13 +94,6 @@ health_checks {
     ready_path = "/ready"
 }
 EOF
-
-# Register satellite workload on SPIRE server (via GC's spire-server container)
-docker exec spire-server /opt/spire/bin/spire-server entry create \
-    -parentID spiffe://harbor-satellite.local/agent/edge-01 \
-    -spiffeID spiffe://harbor-satellite.local/satellite/region/us-west/edge-01 \
-    -selector docker:label:com.docker.compose.service:satellite \
-    -socketPath /tmp/spire-server/private/api.sock || true
 
 # Start satellite agent and satellite
 echo "[4/4] Starting SPIRE agent and Satellite..."
