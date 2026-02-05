@@ -30,3 +30,16 @@ func (c *ServerClient) CreateWorkloadEntry(_ context.Context, _, _ string, _ []s
 func (c *ServerClient) Close() error {
 	return nil
 }
+
+// AgentInfo contains information about an attested SPIRE agent.
+type AgentInfo struct {
+	SpiffeID        string
+	AttestationType string
+	Selectors       []string
+	ExpiresAt       time.Time
+}
+
+// ListAgents is not available in nospiffe builds.
+func (c *ServerClient) ListAgents(_ context.Context, _ string) ([]AgentInfo, error) {
+	return nil, fmt.Errorf("SPIFFE support not compiled in (nospiffe build)")
+}
