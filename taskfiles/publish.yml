@@ -1,0 +1,75 @@
+version: "3"
+
+vars:
+  COMPONENT: satellite
+  IMAGE_TAGS: latest
+  PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/riscv64
+
+tasks:
+  image:
+    desc: Build and push multi-arch container image
+    requires:
+      vars: [REGISTRY, REGISTRY_USERNAME, REGISTRY_PASSWORD, PROJECT_NAME]
+    vars:
+      COMPONENT: "{{.COMPONENT | default \"satellite\"}}"
+      IMAGE_TAGS: "{{.IMAGE_TAGS | default \"latest\"}}"
+    cmds:
+      - echo "$REGISTRY_PASSWORD" | docker login {{.REGISTRY}} -u {{.REGISTRY_USERNAME}} --password-stdin
+      - |
+        DOCKERFILE="Dockerfile"
+        CONTEXT="."
+        if [ "{{.COMPONENT}}" = "ground-control" ]; then
+          DOCKERFILE="ground-control/Dockerfile"
+          CONTEXT="ground-control"
+        fi
+
+        # Build comma-separated tags
+        TAGS=""
+        for tag in $(echo "{{.IMAGE_TAGS}}" | tr ',' ' '); do
+          tag=$(echo "$tag" | sed 's/^v//')
+          TAGS="$TAGS -t {{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
+        done
+
+        docker buildx build \
+          --platform {{.PLATFORMS}} \
+          -f $DOCKERFILE \
+          $TAGS \
+          --push \
+          $CONTEXT
+
+  image-and-sign:
+    desc: Build, push, and sign multi-arch container image with Cosign
+    requires:
+      vars: [REGISTRY, REGISTRY_USERNAME, REGISTRY_PASSWORD, PROJECT_NAME]
+    vars:
+      COMPONENT: "{{.COMPONENT | default \"satellite\"}}"
+      IMAGE_TAGS: "{{.IMAGE_TAGS | default \"latest\"}}"
+    cmds:
+      - task: image
+        vars:
+          COMPONENT: "{{.COMPONENT}}"
+          IMAGE_TAGS: "{{.IMAGE_TAGS}}"
+      - |
+        # Sign the first tag
+        FIRST_TAG=$(echo "{{.IMAGE_TAGS}}" | cut -d',' -f1 | sed 's/^v//')
+        IMAGE_ADDR="{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$FIRST_TAG"
+
+        cosign sign --yes --recursive \
+          --registry-username={{.REGISTRY_USERNAME}} \
+          --registry-password="$REGISTRY_PASSWORD" \
+          "$IMAGE_ADDR" \
+          --timeout 1m
+
+  snapshot-release:
+    desc: Create snapshot release with GoReleaser
+    cmds:
+      - goreleaser release --snapshot --clean
+    generates:
+      - dist/**
+
+  release:
+    desc: Create official release with GoReleaser
+    requires:
+      vars: [GITHUB_TOKEN]
+    cmds:
+      - goreleaser release --clean
