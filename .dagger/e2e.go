@@ -72,16 +72,15 @@ func (m *HarborSatellite) startPostgres(ctx context.Context) {
 func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 
 	gcDir := m.Source.Directory("./ground-control")
-	rootDir := m.Source.Directory(".")
 
 	_, err := dag.Container().
-		From("golang:1.24.11-alpine").
+		From(DEFAULT_GO + "-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
 		WithEnvVariable("GOCACHE", "/go/build-cache").
-		WithDirectory("/app", rootDir).
-		WithWorkdir("/app/ground-control").
+		WithDirectory("/app", gcDir).
+		WithWorkdir("/app").
 		WithEnvVariable("DB_HOST", "postgres").
 		WithEnvVariable("DB_PORT", "5432").
 		WithEnvVariable("DB_USERNAME", "postgres").
@@ -91,10 +90,10 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 		WithEnvVariable("HARBOR_USERNAME", harborAdminUser).
 		WithEnvVariable("HARBOR_PASSWORD", harborAdminPassword).
 		WithEnvVariable("HARBOR_URL", harborDomain).
-		WithEnvVariable("ADMIN_PASSWORD", "AdminPass123").
+		WithEnvVariable("ADMIN_PASSWORD", gcAdminPassword).
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		WithDirectory("/migrations", gcDir.Directory("./sql/schema")).
-		WithWorkdir("/app/ground-control").
+		WithWorkdir("/app").
 		WithExec([]string{"go", "build", "-o", "gc", "main.go"}).
 		WithExposedPort(8080, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
 		WithEntrypoint([]string{"./gc"}).
@@ -408,7 +407,7 @@ func (m *HarborSatellite) createConfig(ctx context.Context) (string, error) {
 			}
 		}
 	}`, harborDomain)
-	return m.executeHTTPRequest(ctx, "POST", "/configs", data)
+	return m.executeHTTPRequest(ctx, "POST", "/api/configs", data)
 }
 
 func (m *HarborSatellite) createGroup(ctx context.Context) (string, error) {
@@ -417,7 +416,7 @@ func (m *HarborSatellite) createGroup(ctx context.Context) (string, error) {
 		"registry": "%s",
 		"artifacts": [{"repository": "%s/alpine", "tag": ["latest"]}]
 	}`, destNamespace, harborDomain, projectName)
-	return m.executeHTTPRequest(ctx, "POST", "/groups/sync", data)
+	return m.executeHTTPRequest(ctx, "POST", "/api/groups/sync", data)
 }
 
 func (m *HarborSatellite) createReplicationPolicy(ctx context.Context) (string, error) {
@@ -495,9 +494,10 @@ func (m *HarborSatellite) executeHTTPRequest(ctx context.Context, method, endpoi
 	args := []string{"curl", "-sf", "-X", method}
 
 	gcEndpoints := map[string]bool{
-		"/configs":     true,
-		"/satellites":  true,
-		"/groups/sync": true,
+		"/api/configs":     true,
+		"/api/satellites":  true,
+		"/api/groups/sync": true,
+		"/api/join-tokens": true,
 	}
 
 	if gcEndpoints[endpoint] {
@@ -563,7 +563,7 @@ func (m *HarborSatellite) registerSatelliteAndZTR(ctx context.Context) {
 		"config_name": "test-config"
 	}`, destNamespace)
 
-	registerResp, err := m.executeHTTPRequest(ctx, "POST", "/satellites", registerReq)
+	registerResp, err := m.executeHTTPRequest(ctx, "POST", "/api/satellites", registerReq)
 	if err != nil {
 		log.Fatalf("failed to register satellite: %v", err)
 	}
@@ -586,7 +586,7 @@ func (m *HarborSatellite) registerSatelliteAndZTR(ctx context.Context) {
 
 	//ZTR
 	_, err = dag.Container().
-		From("golang:1.24.11-alpine").
+		From(DEFAULT_GO + "-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -625,4 +625,245 @@ func (m *HarborSatellite) pullImageFromZot(ctx context.Context) (string, error) 
 	}
 
 	return out, nil
+}
+
+// TestSpiffeJoinTokenE2E tests the SPIFFE join token flow with embedded SPIRE server.
+// This test verifies:
+// 1. GC starts with embedded SPIRE server
+// 2. Join tokens can be generated via /join-tokens endpoint (no pre-registration)
+// 3. Satellite with SPIRE agent can attest using the join token
+func (m *HarborSatellite) TestSpiffeJoinTokenE2E(ctx context.Context) (string, error) {
+	log.Println("Starting SPIFFE Join Token E2E test...")
+
+	// Start PostgreSQL
+	m.startPostgres(ctx)
+	log.Println("PostgreSQL started")
+
+	// Start Ground Control with embedded SPIRE
+	m.startGroundControlWithEmbeddedSPIRE(ctx)
+	log.Println("Ground Control with embedded SPIRE started")
+
+	// Generate join token (no pre-registration required)
+	log.Println("Generating join token...")
+	joinTokenResp, err := m.generateJoinToken(ctx, "test-satellite", "us-west")
+	if err != nil {
+		return "", fmt.Errorf("join token generation failed: %w", err)
+	}
+	log.Printf("Join token response: %s", joinTokenResp)
+
+	// Parse response to extract join token
+	var tokenResp map[string]any
+	if err := json.Unmarshal([]byte(joinTokenResp), &tokenResp); err != nil {
+		return "", fmt.Errorf("failed to parse join token response: %w", err)
+	}
+
+	joinToken, exists := tokenResp["join_token"].(string)
+	if !exists || joinToken == "" {
+		return "", fmt.Errorf("join token response missing 'join_token' field")
+	}
+	if _, exists := tokenResp["spiffe_id"]; !exists {
+		return "", fmt.Errorf("join token response missing 'spiffe_id' field")
+	}
+
+	// Start satellite with SPIRE agent using the join token
+	log.Println("Starting satellite with SPIRE agent...")
+	err = m.startSatelliteWithSPIRE(ctx, joinToken)
+	if err != nil {
+		return "", fmt.Errorf("failed to start satellite with SPIRE: %w", err)
+	}
+	log.Println("Satellite with SPIRE agent started and attested successfully")
+
+	log.Println("SPIFFE Join Token E2E test completed successfully")
+	return joinTokenResp, nil
+}
+
+func (m *HarborSatellite) startGroundControlWithEmbeddedSPIRE(ctx context.Context) {
+	gcDir := m.Source.Directory("./ground-control")
+
+	_, err := dag.Container().
+		From(DEFAULT_GO + "-alpine").
+		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
+		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
+		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
+		WithEnvVariable("GOCACHE", "/go/build-cache").
+		WithDirectory("/app", gcDir).
+		WithWorkdir("/app").
+		// Database config
+		WithEnvVariable("DB_HOST", "postgres").
+		WithEnvVariable("DB_PORT", "5432").
+		WithEnvVariable("DB_USERNAME", "postgres").
+		WithEnvVariable("DB_PASSWORD", "password").
+		WithEnvVariable("DB_DATABASE", "groundcontrol").
+		WithEnvVariable("PORT", "8080").
+		// Embedded SPIRE config - bind to 0.0.0.0 for external access
+		WithEnvVariable("EMBEDDED_SPIRE_ENABLED", "true").
+		WithEnvVariable("SPIRE_DATA_DIR", "/tmp/spire-data").
+		WithEnvVariable("SPIRE_TRUST_DOMAIN", "harbor-satellite.local").
+		WithEnvVariable("SPIRE_BIND_ADDRESS", "0.0.0.0").
+		// Skip Harbor health check for this test
+		WithEnvVariable("SKIP_HARBOR_HEALTH_CHECK", "true").
+		WithEnvVariable("ADMIN_PASSWORD", gcAdminPassword).
+		WithEnvVariable("CACHEBUSTER", time.Now().String()).
+		WithDirectory("/migrations", gcDir.Directory("./sql/schema")).
+		// Install SPIRE server binary
+		WithExec([]string{"apk", "add", "--no-cache", "curl", "tar"}).
+		WithExec([]string{"sh", "-c",
+			"curl -sL https://github.com/spiffe/spire/releases/download/v1.10.4/spire-1.10.4-linux-amd64-musl.tar.gz | tar xz -C /opt"}).
+		WithEnvVariable("PATH", "/opt/spire-1.10.4/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin").
+		WithExec([]string{"go", "build", "-o", "gc", "main.go"}).
+		WithExposedPort(8080, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}).
+		WithExposedPort(8081, dagger.ContainerWithExposedPortOpts{ExperimentalSkipHealthcheck: true}). // SPIRE server port
+		WithEntrypoint([]string{"./gc"}).
+		AsService().WithHostname("gc").Start(ctx)
+
+	if err != nil {
+		log.Fatalf("failed to start ground control with embedded SPIRE: %v", err)
+	}
+
+	// Wait for GC to be healthy
+	m.waitForGCHealthWithRetry(ctx, 60*time.Second)
+
+	// Wait for SPIRE server port to be accessible
+	m.waitForSPIREServer(ctx, 30*time.Second)
+}
+
+// startSatelliteWithSPIRE starts a satellite with SPIRE agent that attests using the join token.
+func (m *HarborSatellite) startSatelliteWithSPIRE(ctx context.Context, joinToken string) error {
+	// Create SPIRE agent config - join_token attestor config is empty,
+	// the actual token is passed via -joinToken flag
+	agentConfig := `agent {
+    data_dir = "/tmp/spire-agent"
+    log_level = "DEBUG"
+    server_address = "gc"
+    server_port = 8081
+    socket_path = "/tmp/spire-agent/agent.sock"
+    trust_domain = "harbor-satellite.local"
+    insecure_bootstrap = true
+}
+
+plugins {
+    NodeAttestor "join_token" {
+        plugin_data {}
+    }
+
+    KeyManager "memory" {
+        plugin_data {}
+    }
+
+    WorkloadAttestor "unix" {
+        plugin_data {}
+    }
+}
+`
+
+	// Start container with SPIRE agent and verify attestation
+	out, err := dag.Container().
+		From(DEFAULT_GO + "-alpine").
+		WithEnvVariable("CACHEBUSTER", time.Now().String()).
+		// Install SPIRE agent binary and netcat for debugging
+		WithExec([]string{"apk", "add", "--no-cache", "curl", "tar", "netcat-openbsd"}).
+		WithExec([]string{"sh", "-c",
+			"curl -sL https://github.com/spiffe/spire/releases/download/v1.10.4/spire-1.10.4-linux-amd64-musl.tar.gz | tar xz -C /opt"}).
+		WithEnvVariable("PATH", "/opt/spire-1.10.4/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin").
+		// Create agent config
+		WithExec([]string{"mkdir", "-p", "/tmp/spire-agent"}).
+		WithNewFile("/tmp/spire-agent/agent.conf", agentConfig).
+		// Pass join token as environment variable for use in script
+		WithEnvVariable("JOIN_TOKEN", joinToken).
+		// Debug: check connectivity to SPIRE server
+		WithExec([]string{"sh", "-c", "echo 'Testing connectivity to gc:8081...' && nc -zv gc 8081 || echo 'Connection failed'"}).
+		// Start SPIRE agent with join token and wait for attestation
+		WithExec([]string{"sh", "-c", `
+			echo "Starting SPIRE agent with join token..."
+			# Start SPIRE agent with join token flag
+			spire-agent run -config /tmp/spire-agent/agent.conf -joinToken "$JOIN_TOKEN" 2>&1 &
+			AGENT_PID=$!
+
+			# Give agent time to start and attest
+			sleep 5
+
+			# Wait for agent to attest (check socket exists)
+			for i in $(seq 1 30); do
+				if [ -S /tmp/spire-agent/agent.sock ]; then
+					echo "SPIRE agent socket ready"
+					# Verify we can fetch SVID
+					if spire-agent api fetch -socketPath /tmp/spire-agent/agent.sock; then
+						echo "SVID fetch successful - attestation complete"
+						kill $AGENT_PID 2>/dev/null || true
+						exit 0
+					fi
+				fi
+				echo "Waiting for SPIRE agent... ($i/30)"
+				sleep 2
+			done
+
+			echo "SPIRE agent attestation failed"
+			kill $AGENT_PID 2>/dev/null || true
+			exit 1
+		`}).
+		Stdout(ctx)
+
+	if err != nil {
+		return fmt.Errorf("SPIRE agent attestation failed: %w", err)
+	}
+
+	log.Printf("SPIRE agent output: %s", out)
+	return nil
+}
+
+func (m *HarborSatellite) waitForGCHealthWithRetry(ctx context.Context, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				log.Fatalf("timeout waiting for Ground Control to be healthy")
+			}
+
+			cmd := []string{"curl", "-sf", "http://gc:8080/health"}
+			_, err := curlContainer(ctx, cmd)
+			if err == nil {
+				log.Println("Ground Control is healthy")
+				return
+			}
+			log.Printf("Ground Control not ready yet, retrying...")
+		}
+	}
+}
+
+func (m *HarborSatellite) waitForSPIREServer(ctx context.Context, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				log.Fatalf("timeout waiting for SPIRE server to be ready")
+			}
+
+			// Check if SPIRE server port is accessible
+			_, err := dag.Container().
+				From("alpine:latest").
+				WithExec([]string{"apk", "add", "--no-cache", "netcat-openbsd"}).
+				WithExec([]string{"nc", "-zv", "gc", "8081"}).
+				Stdout(ctx)
+			if err == nil {
+				log.Println("SPIRE server port is accessible")
+				return
+			}
+			log.Printf("SPIRE server not ready yet, retrying...")
+		}
+	}
+}
+
+func (m *HarborSatellite) generateJoinToken(ctx context.Context, satelliteName, region string) (string, error) {
+	data := fmt.Sprintf(`{"satellite_name": "%s", "region": "%s", "ttl_seconds": 600, "selectors": ["unix:uid:0"]}`,
+		satelliteName, region)
+
+	return m.executeHTTPRequest(ctx, "POST", "/api/join-tokens", data)
 }

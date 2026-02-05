@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16
     container_name: groundcontrol-db
     environment:
       POSTGRES_DB: groundcontrol
@@ -9,7 +9,7 @@ services:
     ports:
       - "8100:5432"
     volumes:
-      - groundcontrol-db-data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d groundcontrol"]
       interval: 5s
@@ -18,23 +18,31 @@ services:
 
   groundcontrol:
     build:
-      context: ..
-      dockerfile: ground-control/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     container_name: groundcontrol
-    env_file: .env
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_DATABASE: groundcontrol
       DB_USERNAME: postgres
       DB_PASSWORD: password
+      HARBOR_USERNAME: admin
+      HARBOR_PASSWORD: Harbor12345
+      HARBOR_URL: http://harbor-sat.kube.bupd.xyz
+      PORT: 8080
+      # Skip Harbor health check for local testing (set to false in production)
+      SKIP_HARBOR_HEALTH_CHECK: "true"
+      # SPIFFE Configuration (disabled by default)
+      SPIFFE_ENABLED: "false"
+      SPIFFE_TRUST_DOMAIN: harbor-satellite.local
+      SPIFFE_PROVIDER: sidecar
+      SPIFFE_ENDPOINT_SOCKET: unix:///run/spire/sockets/agent.sock
     ports:
-      - "9090:9090"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
-  groundcontrol-db-data:
+  pgdata:

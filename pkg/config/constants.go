@@ -3,6 +3,11 @@ package config
 // Job names that the user is expected to provide in the config.json file
 const ReplicateStateJobName string = "replicate_state"
 const ZTRConfigJobName string = "register_satellite"
+const StatusReportJobName string = "status_report"
+const SPIFFEZTRConfigJobName string = "spiffe_register_satellite"
+
+// Default SPIFFE endpoint socket
+const DefaultSPIFFEEndpointSocket string = "unix:///run/spire/sockets/agent.sock"
 
 // The values below contain the default values of the constants used in the satellite. The user is allowed to override them
 // by providing values in the config.json file. These default values will be used if the user does not provide any value or wrong format value
@@ -16,8 +21,7 @@ const DefaultPrevConfigPath string = "prev_config.json"
 // if there is any error while parsing the cron expression
 const DefaultZTRCronExpr string = "@every 00h00m05s"
 const DefaultFetchAndReplicateCronExpr string = "@every 00h00m30s"
-
-const DefaultStateReportCronExpr string = "@every 00h01m00s"
+const DefaultHeartbeatCronExpr string = "@every 00h00m30s"
 
 const BringOwnRegistry bool = false
 

@@ -7,24 +7,36 @@ package database
 
 import (
 	"context"
+	"time"
 )
 
 const addToken = `-- name: AddToken :one
-INSERT INTO satellite_token (satellite_id, token, created_at, updated_at)
-VALUES ($1, $2, NOW(), NOW())
+INSERT INTO satellite_token (satellite_id, token, expires_at, created_at, updated_at)
+VALUES ($1, $2, $3, NOW(), NOW())
 RETURNING token
 `
 
 type AddTokenParams struct {
 	SatelliteID int32
 	Token       string
+	ExpiresAt   time.Time
 }
 
 func (q *Queries) AddToken(ctx context.Context, arg AddTokenParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, addToken, arg.SatelliteID, arg.Token)
+	row := q.db.QueryRowContext(ctx, addToken, arg.SatelliteID, arg.Token, arg.ExpiresAt)
 	var token string
 	err := row.Scan(&token)
 	return token, err
+}
+
+const deleteExpiredTokens = `-- name: DeleteExpiredTokens :exec
+DELETE FROM satellite_token
+WHERE expires_at < NOW()
+`
+
+func (q *Queries) DeleteExpiredTokens(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteExpiredTokens)
+	return err
 }
 
 const deleteToken = `-- name: DeleteToken :exec
@@ -51,7 +63,7 @@ func (q *Queries) GetSatelliteIDByToken(ctx context.Context, token string) (int3
 }
 
 const getToken = `-- name: GetToken :one
-SELECT id, satellite_id, token, created_at, updated_at FROM satellite_token
+SELECT id, satellite_id, token, created_at, updated_at, expires_at FROM satellite_token
 WHERE id = $1
 `
 
@@ -64,12 +76,32 @@ func (q *Queries) GetToken(ctx context.Context, id int32) (SatelliteToken, error
 		&i.Token,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const getTokenByValue = `-- name: GetTokenByValue :one
+SELECT id, satellite_id, token, created_at, updated_at, expires_at FROM satellite_token
+WHERE token = $1
+`
+
+func (q *Queries) GetTokenByValue(ctx context.Context, token string) (SatelliteToken, error) {
+	row := q.db.QueryRowContext(ctx, getTokenByValue, token)
+	var i SatelliteToken
+	err := row.Scan(
+		&i.ID,
+		&i.SatelliteID,
+		&i.Token,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
 
 const listToken = `-- name: ListToken :many
-SELECT id, satellite_id, token, created_at, updated_at FROM satellite_token
+SELECT id, satellite_id, token, created_at, updated_at, expires_at FROM satellite_token
 `
 
 func (q *Queries) ListToken(ctx context.Context) ([]SatelliteToken, error) {
@@ -87,6 +119,7 @@ func (q *Queries) ListToken(ctx context.Context) ([]SatelliteToken, error) {
 			&i.Token,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}

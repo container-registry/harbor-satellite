@@ -96,7 +96,7 @@ func FormatRegistryURL(url string) string {
 }
 
 func ReadFile(path string, shouldPrint bool) ([]byte, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func PrintData(content string) {
 
 // WriteFile takes the path and the data wand write the data to the file
 func WriteFile(path string, data []byte) error {
-	file, err := os.Create(path)
+	file, err := os.Create(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("error creating file :%s", err)
 	}

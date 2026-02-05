@@ -70,7 +70,7 @@ func setDockerdConfig(mirrors []string, localRegistry string) error {
 func ensureDockerConfigFileExists(path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		// create the file with {}
-		if err := os.WriteFile(path, []byte("{}"), 0644); err != nil {
+		if err := os.WriteFile(path, []byte("{}"), 0600); err != nil {
 			return err
 		}
 	}

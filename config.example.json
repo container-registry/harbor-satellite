@@ -9,9 +9,22 @@
     "state_replication_interval": "@every 00h00m10s",
     "update_config_interval": "@every 00h00m10s",
     "register_satellite_interval": "@every 00h00m10s",
+    "heartbeat_interval": "@every 00h00m30s",
+    "metrics": {
+      "collect_cpu": true,
+      "collect_memory": true,
+      "collect_storage": true
+    },
     "local_registry": {
       "url": "http://0.0.0.0:8585"
-    }
+    },
+    "tls": {
+      "cert_file": "",
+      "key_file": "",
+      "ca_file": "",
+      "skip_verify": false
+    },
+    "encrypt_config": false
   },
   "zot_config": {
     "distSpecVersion": "1.1.0",

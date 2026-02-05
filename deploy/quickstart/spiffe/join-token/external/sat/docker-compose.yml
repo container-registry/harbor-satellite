@@ -1,0 +1,56 @@
+# Docker Compose for Satellite with External SPIRE Agent (Join Token Attestation)
+# Requires the GC-side SPIRE server to be running (from ../gc/)
+
+services:
+  spire-agent-satellite:
+    image: ghcr.io/spiffe/spire-agent:1.12.3
+    container_name: spire-agent-satellite
+    hostname: spire-agent-satellite
+    pid: host
+    command: ["-config", "/opt/spire/conf/agent/agent.conf"]
+    volumes:
+      - ./spire/agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ../gc/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - spire-agent-satellite-data:/opt/spire/data/agent
+      - spire-agent-satellite-socket:/run/spire/sockets
+      # Required for SPIRE workload attestor (identifies containers by Docker labels)
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck", "-socketPath", "/run/spire/sockets/agent.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - harbor-satellite
+
+  satellite:
+    build:
+      context: ../../../../../..
+      dockerfile: Dockerfile
+    container_name: satellite
+    environment:
+      - GROUND_CONTROL_URL=https://ground-control:8080
+      - USE_UNSECURE=true
+      - SPIFFE_ENABLED=true
+      - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
+      - SPIFFE_EXPECTED_SERVER_ID=spiffe://harbor-satellite.local/ground-control
+    volumes:
+      - spire-agent-satellite-socket:/run/spire/sockets:ro
+      - satellite-data:/data
+    ports:
+      - "${SATELLITE_ZOT_PORT:-5050}:8585"
+    depends_on:
+      spire-agent-satellite:
+        condition: service_healthy
+    networks:
+      - harbor-satellite
+
+volumes:
+  spire-agent-satellite-data:
+  spire-agent-satellite-socket:
+  satellite-data:
+
+networks:
+  harbor-satellite:
+    external: true

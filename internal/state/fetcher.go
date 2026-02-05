@@ -4,9 +4,11 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -14,6 +16,8 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/rs/zerolog"
+
+	satTLS "github.com/container-registry/harbor-satellite/internal/tls"
 )
 
 type StateFetcher interface {
@@ -30,9 +34,14 @@ type URLStateFetcher struct {
 	baseStateFetcher
 	url      string
 	insecure bool
+	tlsCfg   config.TLSConfig
 }
 
 func NewURLStateFetcher(stateURL, userName, password string, insecure bool) StateFetcher {
+	return NewURLStateFetcherWithTLS(stateURL, userName, password, insecure, config.TLSConfig{})
+}
+
+func NewURLStateFetcherWithTLS(stateURL, userName, password string, insecure bool, tlsCfg config.TLSConfig) StateFetcher {
 	url := utils.FormatRegistryURL(stateURL)
 	return &URLStateFetcher{
 		baseStateFetcher: baseStateFetcher{
@@ -41,6 +50,7 @@ func NewURLStateFetcher(stateURL, userName, password string, insecure bool) Stat
 		},
 		url:      url,
 		insecure: insecure,
+		tlsCfg:   tlsCfg,
 	}
 }
 
@@ -89,28 +99,67 @@ func (f *URLStateFetcher) fetchConfigState(ctx context.Context, config *config.C
 
 func (f *URLStateFetcher) FetchDigest(ctx context.Context, log *zerolog.Logger) (string, error) {
 	log.Debug().Msgf("Fetching digest for state artifact: %s", f.url)
-	auth := authn.FromConfig(authn.AuthConfig{
-		Username: f.username,
-		Password: f.password,
-	})
-	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
-	if f.insecure {
-		options = append(options, crane.Insecure)
+	options, err := f.buildCraneOptions(ctx)
+	if err != nil {
+		return "", fmt.Errorf("build crane options: %w", err)
 	}
 	return crane.Digest(f.url, options...)
 }
 
 func (f *URLStateFetcher) pullImage(ctx context.Context, log *zerolog.Logger) (v1.Image, error) {
 	log.Debug().Msgf("Pulling state artifact: %s", f.url)
+	options, err := f.buildCraneOptions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("build crane options: %w", err)
+	}
+	return crane.Pull(f.url, options...)
+}
+
+func (f *URLStateFetcher) buildCraneOptions(ctx context.Context) ([]crane.Option, error) {
 	auth := authn.FromConfig(authn.AuthConfig{
 		Username: f.username,
 		Password: f.password,
 	})
+
 	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
+
 	if f.insecure {
 		options = append(options, crane.Insecure)
+		return options, nil
 	}
-	return crane.Pull(f.url, options...)
+
+	transport, err := f.buildTLSTransport()
+	if err != nil {
+		return nil, err
+	}
+	if transport != nil {
+		options = append(options, crane.WithTransport(transport))
+	}
+
+	return options, nil
+}
+
+func (f *URLStateFetcher) buildTLSTransport() (http.RoundTripper, error) {
+	if f.tlsCfg.CertFile == "" && f.tlsCfg.CAFile == "" {
+		return nil, nil
+	}
+
+	cfg := &satTLS.Config{
+		CertFile:   f.tlsCfg.CertFile,
+		KeyFile:    f.tlsCfg.KeyFile,
+		CAFile:     f.tlsCfg.CAFile,
+		SkipVerify: f.tlsCfg.SkipVerify,
+		MinVersion: tls.VersionTLS12,
+	}
+
+	tlsConfig, err := satTLS.LoadClientTLSConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("load TLS config: %w", err)
+	}
+
+	return &http.Transport{
+		TLSClientConfig: tlsConfig,
+	}, nil
 }
 
 func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out interface{}, log *zerolog.Logger) error {

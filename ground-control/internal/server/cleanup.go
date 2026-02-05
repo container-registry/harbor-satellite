@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	cleanupLockID         = 12345
-	defaultRetentionDays  = 7
+	cleanupLockID          = 12345
+	defaultRetentionDays   = 7
 	defaultCleanupInterval = 24 * time.Hour
 )
 

@@ -37,12 +37,6 @@ builds:
       - mipsle
       - riscv64
     ignore:
-      - goos: linux
-        goarch: "386"
-      - goos: linux
-        goarch: mips
-      - goos: linux
-        goarch: mipsle
       - goos: darwin
         goarch: ppc64le
       - goos: darwin

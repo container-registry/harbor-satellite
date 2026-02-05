@@ -20,7 +20,6 @@ type HotReloadManager struct {
 	log                       *zerolog.Logger
 	ctx                       context.Context
 	stateReplicationScheduler *scheduler.Scheduler
-	heartbeatScheduler        *scheduler.Scheduler
 	changeCallbacks           map[config.ConfigChangeType][]config.ConfigChangeCallback
 	callbackMu                sync.RWMutex
 }
@@ -30,14 +29,12 @@ func NewHotReloadManager(
 	cm *config.ConfigManager,
 	log *zerolog.Logger,
 	stateReplicationScheduler *scheduler.Scheduler,
-	heartbeatScheduler *scheduler.Scheduler,
 ) *HotReloadManager {
 	manager := &HotReloadManager{
 		cm:                        cm,
 		log:                       log,
 		ctx:                       ctx,
 		stateReplicationScheduler: stateReplicationScheduler,
-		heartbeatScheduler:        heartbeatScheduler,
 		changeCallbacks:           make(map[config.ConfigChangeType][]config.ConfigChangeCallback),
 	}
 
@@ -97,15 +94,6 @@ func (hrm *HotReloadManager) handleIntervalsChange(change config.ConfigChange) e
 			return fmt.Errorf("unable to restart state replication scheduler: %w", err)
 		}
 	}
-
-	if hrm.heartbeatScheduler != nil {
-		hrm.log.Info().Msg("Restarting heartbeat scheduler with new interval")
-		err := hrm.heartbeatScheduler.ResetIntervalFromExpr(hrm.cm.GetHeartbeatInterval())
-		if err != nil {
-			return fmt.Errorf("unable to heartbeat scheduler: %w", err)
-		}
-	}
-
 	return nil
 }
 
@@ -143,19 +131,19 @@ func (hrm *HotReloadManager) handleZotConfigChange(change config.ConfigChange) e
 		Str("type", string(change.Type)).
 		Msg("Some Zot configuration may require to restart")
 
-	//verify the zot configuration before apply
+	// verify the zot configuration before apply
 	var cfg cfg.Config
 	if err := json.Unmarshal(hrm.cm.GetRawZotConfig(), &cfg); err != nil {
 		return fmt.Errorf("unable to unmarshal zot config: %w, defaulting to previous zot configuration", err)
 	}
 
-	//Zot verify the config using below function hence taking same the path
+	// Zot verify the config using below function hence taking same the path
 	if err := server.LoadConfiguration(&cfg, registry.ZotTempPath); err != nil {
 		hrm.log.Error().Interface("config", &cfg).Msg("invalid config file")
 		return err
 	}
 
-	err := os.WriteFile(registry.ZotTempPath, hrm.cm.GetRawZotConfig(), 0644)
+	err := os.WriteFile(registry.ZotTempPath, hrm.cm.GetRawZotConfig(), 0600)
 	if err != nil {
 		return fmt.Errorf("unable to change zot configuration: %w", err)
 	}

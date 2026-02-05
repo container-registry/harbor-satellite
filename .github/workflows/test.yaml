@@ -97,3 +97,20 @@ jobs:
           version: ${{ steps.dagger_version.outputs.version }}
           verb: call
           args: test-end-to-end
+
+  e2e-spiffe-join-token-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Dagger Version
+        uses: sagikazarmark/dagger-version-action@v0.0.1
+
+      - name: Test SPIFFE Join Token E2E
+        uses: dagger/dagger-for-github@v7
+        with:
+          version: ${{ steps.dagger_version.outputs.version }}
+          verb: call
+          args: test-spiffe-join-token-e-2-e

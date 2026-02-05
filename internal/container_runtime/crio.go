@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -106,7 +107,7 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) error {
 
 // copyFile copies a file from src to dst, replacing dst if it exists.
 func copyFile(src, dst string) error {
-	in, err := os.Open(src)
+	in, err := os.Open(filepath.Clean(src))
 	if err != nil {
 		return err
 	}
@@ -114,7 +115,7 @@ func copyFile(src, dst string) error {
 		_ = in.Close()
 	}()
 
-	out, err := os.Create(dst)
+	out, err := os.Create(filepath.Clean(dst))
 	if err != nil {
 		return err
 	}

@@ -86,6 +86,7 @@ type SatelliteToken struct {
 	Token       string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	ExpiresAt   time.Time
 }
 
 type Session struct {

@@ -1,8 +1,6 @@
 package config
 
-import (
-	"encoding/json"
-)
+import "encoding/json"
 
 // Threadsafe getter functions to fetch config data.
 
@@ -108,6 +106,18 @@ func (cm *ConfigManager) GetStateReplicationInterval() string {
 	return cm.config.AppConfig.StateReplicationInterval
 }
 
+func (cm *ConfigManager) GetHeartbeatInterval() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.HeartbeatInterval
+}
+
+func (cm *ConfigManager) GetMetricsConfig() MetricsConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.Metrics
+}
+
 func (cm *ConfigManager) GetStateConfig() StateConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -144,20 +154,26 @@ func (cm *ConfigManager) GetConfig() *Config {
 	return cm.config
 }
 
-func (cm *ConfigManager) GetHeartbeatInterval() string {
+func (cm *ConfigManager) GetTLSConfig() TLSConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return cm.config.AppConfig.HeartbeatInterval
+	return cm.config.AppConfig.TLS
 }
 
-func (cm *ConfigManager) IsHeartbeatDisabled() bool {
+func (cm *ConfigManager) ShouldEncryptConfig() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return cm.config.AppConfig.DisableHeartbeat
+	return cm.config.AppConfig.EncryptConfig
 }
 
-func (cm *ConfigManager) GetMetricsConfig() MetricsConfig {
+func (cm *ConfigManager) GetSPIFFEConfig() SPIFFEConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return cm.config.AppConfig.Metrics
+	return cm.config.AppConfig.SPIFFE
+}
+
+func (cm *ConfigManager) IsSPIFFEEnabled() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.SPIFFE.Enabled
 }

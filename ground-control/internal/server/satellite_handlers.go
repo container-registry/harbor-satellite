@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -26,25 +27,33 @@ type RegisterSatelliteParams struct {
 	ConfigName string    `json:"config_name"`
 }
 
-type SatelliteStatusParams struct {
-	Name                string    `json:"name"`                   // Satellite identifier
-	Activity            string    `json:"activity"`               // Current activity satellite is doing
-	StateReportInterval string    `json:"state_report_interval"`  // Interval between status reports
-	LatestStateDigest   string    `json:"latest_state_digest"`    // Digest of latest state artifact
-	LatestConfigDigest  string    `json:"latest_config_digest"`   // Digest of latest config artifact
-	MemoryUsedBytes     uint64    `json:"memory_used_bytes"`      // Memory currently used by satellite
-	StorageUsedBytes    uint64    `json:"storage_used_bytes"`     // Storage currently used by satellite
-	CPUPercent          float64   `json:"cpu_percent"`            // CPU usage percentage
-	RequestCreatedTime  time.Time `json:"request_created_time"`   // Timestamp of request creation
-	LastSyncDurationMs  int64     `json:"last_sync_duration_ms"`  // How long last sync took
-	ImageCount          int       `json:"image_count"`            // Number of images in local registry
-}
-
 type RegisterSatelliteResponse struct {
 	Token string `json:"token"`
 }
 
+type SatelliteStatusParams struct {
+	Name                string    `json:"name"`
+	Activity            string    `json:"activity"`
+	StateReportInterval string    `json:"state_report_interval"`
+	LatestStateDigest   string    `json:"latest_state_digest"`
+	LatestConfigDigest  string    `json:"latest_config_digest"`
+	MemoryUsedBytes     uint64    `json:"memory_used_bytes"`
+	StorageUsedBytes    uint64    `json:"storage_used_bytes"`
+	CPUPercent          float64   `json:"cpu_percent"`
+	RequestCreatedTime  time.Time `json:"request_created_time"`
+	LastSyncDurationMs  int64     `json:"last_sync_duration_ms"`
+	ImageCount          int       `json:"image_count"`
+}
+
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
+	if s.spiffeProvider != nil || s.spireClient != nil {
+		HandleAppError(w, &AppError{
+			Message: "satellite registration via this endpoint is disabled when SPIFFE is enabled. Use POST /api/join-tokens instead",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
 	var req RegisterSatelliteParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
@@ -201,7 +210,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Add token to DB
+	// Add token to DB with 24-hour expiry
 	token, err := GenerateRandomToken(32)
 	if err != nil {
 		log.Println(err)
@@ -209,9 +218,11 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	tokenExpiry := time.Now().Add(24 * time.Hour)
 	tk, err := q.AddToken(r.Context(), database.AddTokenParams{
 		SatelliteID: satellite.ID,
 		Token:       token,
+		ExpiresAt:   tokenExpiry,
 	})
 	if err != nil {
 		log.Println("error in token")
@@ -243,20 +254,30 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 
 	q := s.dbQueries
 
-	satelliteID, err := q.GetSatelliteIDByToken(r.Context(), token)
+	// Get full token info including expiry
+	tokenInfo, err := q.GetTokenByValue(r.Context(), token)
 	if err != nil {
-		masked := fmt.Sprintf("%s…%s",
-			token[:4],
-			token[len(token)-4:],
-		)
+		masked := maskToken(token)
 		log.Printf("Invalid Satellite Token %s: %v", masked, err)
-		err := &AppError{
+		HandleAppError(w, &AppError{
 			Message: "Error: Invalid Token",
 			Code:    http.StatusBadRequest,
-		}
-		HandleAppError(w, err)
+		})
 		return
 	}
+
+	// Validate token expiry
+	if time.Now().After(tokenInfo.ExpiresAt) {
+		masked := maskToken(token)
+		log.Printf("Expired Satellite Token %s (expired at %v)", masked, tokenInfo.ExpiresAt)
+		HandleAppError(w, &AppError{
+			Message: "Error: Token Expired",
+			Code:    http.StatusUnauthorized,
+		})
+		return
+	}
+
+	satelliteID := tokenInfo.SatelliteID
 
 	robot, err := q.GetRobotAccBySatelliteID(r.Context(), satelliteID)
 	if err != nil {
@@ -340,6 +361,154 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+// spiffeZtrHandler handles Zero-Touch Registration using SPIFFE mTLS authentication.
+// The satellite's identity is extracted from the TLS client certificate (SVID).
+// This eliminates the need for single-use tokens.
+func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract SPIFFE ID from the TLS connection
+	satelliteName, ok := spiffe.GetSatelliteName(r.Context())
+	if !ok {
+		spiffeID, ok := spiffe.GetSPIFFEID(r.Context())
+		if !ok {
+			log.Println("SPIFFE ZTR: No SPIFFE identity in request")
+			HandleAppError(w, &AppError{
+				Message: "Error: SPIFFE authentication required",
+				Code:    http.StatusUnauthorized,
+			})
+			return
+		}
+
+		var err error
+		satelliteName, err = spiffe.ExtractSatelliteNameFromSPIFFEID(spiffeID)
+		if err != nil {
+			log.Printf("SPIFFE ZTR: Invalid SPIFFE ID format: %v", err)
+			HandleAppError(w, &AppError{
+				Message: "Error: Invalid SPIFFE ID format for satellite",
+				Code:    http.StatusBadRequest,
+			})
+			return
+		}
+	}
+
+	log.Printf("SPIFFE ZTR: Processing registration for satellite %s", satelliteName)
+
+	q := s.dbQueries
+
+	satellite, err := q.GetSatelliteByName(r.Context(), satelliteName)
+	if err != nil {
+		log.Printf("SPIFFE ZTR: Satellite %s not found (error: %v), auto-registering...", satelliteName, err)
+		satellite, err = s.autoRegisterSatellite(r, satelliteName)
+		if err != nil {
+			log.Printf("SPIFFE ZTR: Failed to auto-register satellite %s: %v", satelliteName, err)
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Error: Failed to auto-register satellite: %v", err),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		log.Printf("SPIFFE ZTR: Auto-registered satellite %s with ID %d", satelliteName, satellite.ID)
+	} else {
+		log.Printf("SPIFFE ZTR: Found existing satellite %s with ID %d", satelliteName, satellite.ID)
+	}
+
+	robot, err := q.GetRobotAccBySatelliteID(r.Context(), satellite.ID)
+	if err != nil {
+		// Robot not found - create new one (backward compat for satellites created before join-token flow)
+		log.Printf("SPIFFE ZTR: Robot account not found for satellite %s, creating...", satelliteName)
+		robot, _, err = ensureSatelliteRobotAccount(r, q, satellite)
+		if err != nil {
+			log.Printf("SPIFFE ZTR: Failed to create robot account for satellite %s: %v", satelliteName, err)
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Error: Failed to create robot account: %v", err),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+
+		if err := ensureSatelliteConfig(r, q, satellite); err != nil {
+			log.Printf("SPIFFE ZTR: Failed to ensure config for satellite %s: %v", satelliteName, err)
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Error: Failed to ensure satellite config: %v", err),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+	} else {
+		// Robot exists - refresh its secret so the satellite gets a fresh credential
+		robot, err = refreshRobotSecret(r, q, robot)
+		if err != nil {
+			log.Printf("SPIFFE ZTR: Failed to refresh robot secret for satellite %s: %v", satelliteName, err)
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Error: Failed to refresh robot secret: %v", err),
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+	}
+
+	groups, err := q.SatelliteGroupList(r.Context(), satellite.ID)
+	if err != nil {
+		log.Printf("SPIFFE ZTR: Failed to list groups for satellite %s: %v", satelliteName, err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Satellite Groups List Failed",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+
+	states, err := getGroupStates(r.Context(), groups, q)
+	if err != nil {
+		log.Printf("SPIFFE ZTR: Error retrieving group states: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Get Group By ID Failed",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+
+	// When Harbor is available, create state artifacts; otherwise just return credentials
+	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
+	var satelliteState string
+
+	if !skipHarborCheck {
+		configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satellite.ID)
+		if err != nil {
+			log.Printf("SPIFFE ZTR: Failed to fetch satellite config: %v", err)
+			HandleAppError(w, err)
+			return
+		}
+
+		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
+		if err != nil {
+			log.Printf("SPIFFE ZTR: Failed to create state artifact: %v", err)
+			HandleAppError(w, err)
+			return
+		}
+		satelliteState = utils.AssembleSatelliteState(satellite.Name)
+	} else {
+		// Use placeholder state URL when Harbor is not available
+		satelliteState = "placeholder://spiffe-testing/" + satellite.Name
+		log.Printf("SPIFFE ZTR: Harbor not available, using placeholder state for satellite %s", satelliteName)
+	}
+
+	harborURL := os.Getenv("HARBOR_URL")
+	if harborURL == "" {
+		harborURL = "http://placeholder-registry:5000"
+	}
+
+	result := config.StateConfig{
+		StateURL: satelliteState,
+		RegistryCredentials: config.RegistryCredentials{
+			Username: robot.RobotName,
+			Password: robot.RobotSecret,
+			URL:      config.URL(harborURL),
+		},
+	}
+
+	log.Printf("SPIFFE ZTR: Successfully registered satellite %s", satelliteName)
+	WriteJSONResponse(w, http.StatusOK, result)
+}
+
 func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListSatellites(r.Context())
 	if err != nil {
@@ -363,9 +532,17 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), req.Name)
+	// Check SPIFFE identity first for dual auth
+	var satelliteName string
+	if name, ok := spiffe.GetSatelliteName(r.Context()); ok {
+		satelliteName = name
+	} else {
+		satelliteName = req.Name
+	}
+
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
 	if err != nil {
-		log.Printf("Unknown satellite: %s", req.Name)
+		log.Printf("Unknown satellite: %s", satelliteName)
 		HandleAppError(w, &AppError{
 			Message: "unknown satellite entity",
 			Code:    http.StatusForbidden,
@@ -450,6 +627,181 @@ func (s *Server) getStaleSatellitesHandler(w http.ResponseWriter, r *http.Reques
 	WriteJSONResponse(w, http.StatusOK, satellites)
 }
 
+// ensureSatelliteRobotAccount creates a Harbor robot account for the satellite and stores it in DB.
+// Returns the created robot account and the Harbor robot ID (for cleanup on failure).
+func ensureSatelliteRobotAccount(r *http.Request, q *database.Queries, satellite database.Satellite) (database.RobotAccount, int64, error) {
+	var robotName, robotSecret string
+	var harborRobotID int64
+	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
+
+	if !skipHarborCheck {
+		if err := ensureSatelliteProjectExists(r.Context()); err != nil {
+			return database.RobotAccount{}, 0, fmt.Errorf("ensure satellite project: %w", err)
+		}
+
+		projects := []string{"satellite"}
+		rbt, err := utils.CreateRobotAccForSatellite(r.Context(), projects, satellite.Name)
+		if err != nil {
+			return database.RobotAccount{}, 0, fmt.Errorf("create robot account: %w", err)
+		}
+		harborRobotID = rbt.ID
+		robotName = rbt.Name
+		robotSecret = rbt.Secret
+	} else {
+		log.Printf("SPIFFE ZTR: Harbor not available, using placeholder credentials for satellite %s", satellite.Name)
+		robotName = "robot$satellite-" + satellite.Name
+		robotSecret = "spiffe-auto-registered-placeholder-secret"
+	}
+
+	robotParams := database.AddRobotAccountParams{
+		RobotName:   robotName,
+		RobotSecret: robotSecret,
+		RobotID:     strconv.FormatInt(harborRobotID, 10),
+		SatelliteID: satellite.ID,
+	}
+	robot, err := q.AddRobotAccount(r.Context(), robotParams)
+	if err != nil {
+		return database.RobotAccount{}, harborRobotID, fmt.Errorf("store robot account: %w", err)
+	}
+
+	log.Printf("SPIFFE ZTR: Created robot account %s for satellite %s", robotName, satellite.Name)
+	return robot, harborRobotID, nil
+}
+
+// refreshRobotSecret refreshes the Harbor robot account secret and updates the DB.
+func refreshRobotSecret(r *http.Request, q *database.Queries, robot database.RobotAccount) (database.RobotAccount, error) {
+	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
+	if skipHarborCheck {
+		log.Printf("SPIFFE ZTR: Harbor not available, skipping robot secret refresh for %s", robot.RobotName)
+		return robot, nil
+	}
+
+	harborRobotID, err := strconv.ParseInt(robot.RobotID, 10, 64)
+	if err != nil {
+		return robot, fmt.Errorf("parse robot ID: %w", err)
+	}
+
+	resp, err := harbor.RefreshRobotAccount(r.Context(), "", harborRobotID)
+	if err != nil {
+		return robot, fmt.Errorf("refresh robot secret in Harbor: %w", err)
+	}
+
+	newSecret := resp.Payload.Secret
+	err = q.UpdateRobotAccount(r.Context(), database.UpdateRobotAccountParams{
+		ID:          robot.ID,
+		RobotName:   robot.RobotName,
+		RobotSecret: newSecret,
+		RobotID:     robot.RobotID,
+	})
+	if err != nil {
+		return robot, fmt.Errorf("update robot secret in DB: %w", err)
+	}
+
+	robot.RobotSecret = newSecret
+	log.Printf("SPIFFE ZTR: Refreshed robot secret for %s", robot.RobotName)
+	return robot, nil
+}
+
+// ensureSatelliteConfig links the satellite to the default config if no config is assigned.
+func ensureSatelliteConfig(r *http.Request, q *database.Queries, satellite database.Satellite) error {
+	_, err := fetchSatelliteConfig(r.Context(), q, satellite.ID)
+	if err == nil {
+		return nil
+	}
+
+	defaultConfig, err := q.GetConfigByName(r.Context(), "default")
+	if err != nil {
+		defaultConfigJSON := []byte(`{
+  "app_config": {
+    "log_level": "info",
+    "state_replication_interval": "@every 00h00m30s",
+    "register_satellite_interval": "@every 00h00m05s",
+    "heartbeat_interval": "@every 00h00m30s",
+    "local_registry": {
+      "url": "http://127.0.0.1:8585"
+    }
+  },
+  "zot_config": {
+    "distSpecVersion": "1.1.0",
+    "storage": { "rootDirectory": "./zot" },
+    "http": { "address": "0.0.0.0", "port": "8585" },
+    "log": { "level": "info" }
+  }
+}`)
+		defaultConfig, err = q.CreateConfig(r.Context(), database.CreateConfigParams{
+			ConfigName:  "default",
+			RegistryUrl: os.Getenv("HARBOR_URL"),
+			Config:      defaultConfigJSON,
+		})
+		if err != nil {
+			return fmt.Errorf("create default config: %w", err)
+		}
+
+		if pushErr := utils.CreateAndPushConfigStateArtifact(r.Context(), defaultConfigJSON, "default"); pushErr != nil {
+			log.Printf("SPIFFE ZTR: Warning - failed to create config-state artifact: %v", pushErr)
+		}
+	}
+
+	configLinkParams := database.SetSatelliteConfigParams{
+		SatelliteID: satellite.ID,
+		ConfigID:    defaultConfig.ID,
+	}
+	if err := q.SetSatelliteConfig(r.Context(), configLinkParams); err != nil {
+		return fmt.Errorf("link satellite to config: %w", err)
+	}
+
+	log.Printf("SPIFFE ZTR: Linked satellite %s to default config", satellite.Name)
+	return nil
+}
+
+// autoRegisterSatellite automatically creates a satellite entry during SPIFFE ZTR.
+// This enables true Zero Touch Registration where satellites don't need to be pre-registered.
+func (s *Server) autoRegisterSatellite(r *http.Request, name string) (database.Satellite, error) {
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		return database.Satellite{}, fmt.Errorf("begin transaction: %w", err)
+	}
+
+	q := s.dbQueries.WithTx(tx)
+	committed := false
+	var harborRobotID int64
+
+	defer func() {
+		if !committed {
+			if harborRobotID != 0 {
+				if _, delErr := harbor.DeleteRobotAccount(r.Context(), harborRobotID); delErr != nil {
+					log.Printf("Warning: Failed to cleanup robot account during auto-register: %v", delErr)
+				}
+			}
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback auto-register transaction: %v", err)
+			}
+		}
+	}()
+
+	satellite, err := q.CreateSatellite(r.Context(), name)
+	if err != nil {
+		return database.Satellite{}, fmt.Errorf("create satellite: %w", err)
+	}
+
+	_, harborRobotID, err = ensureSatelliteRobotAccount(r, q, satellite)
+	if err != nil {
+		return database.Satellite{}, err
+	}
+
+	if err := ensureSatelliteConfig(r, q, satellite); err != nil {
+		return database.Satellite{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return database.Satellite{}, fmt.Errorf("commit transaction: %w", err)
+	}
+	committed = true
+
+	log.Printf("SPIFFE ZTR: Auto-registered satellite %s with ID %d", name, satellite.ID)
+	return satellite, nil
+}
+
 func (s *Server) GetSatelliteByName(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	satellite := vars["satellite"]
@@ -475,12 +827,11 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
-		log.Printf("error: failed to begin transaction: %v", err)
+		log.Printf("Error starting transaction: %v", err)
 		HandleAppError(w, &AppError{
-			Message: "Error: Failed to begin transaction",
+			Message: "Error: Failed to start database transaction",
 			Code:    http.StatusInternalServerError,
 		})
-
 		return
 	}
 	q := s.dbQueries.WithTx(tx)
@@ -580,7 +931,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//Validate satellite and group
+	// Validate satellite and group
 	if !utils.IsValidName(req.Satellite) {
 		HandleAppError(w, &AppError{
 			Message: fmt.Sprintf(invalidNameMessage, "satellite"),

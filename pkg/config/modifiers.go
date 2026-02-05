@@ -81,3 +81,15 @@ func SetLocalRegistryCredentials(creds RegistryCredentials) func(*Config) {
 		cfg.AppConfig.LocalRegistryCredentials = creds
 	}
 }
+
+func SetSPIFFEConfig(spiffeCfg SPIFFEConfig) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.SPIFFE = spiffeCfg
+	}
+}
+
+func SetSPIFFEEnabled(enabled bool) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.SPIFFE.Enabled = enabled
+	}
+}

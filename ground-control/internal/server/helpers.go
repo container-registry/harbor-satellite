@@ -214,6 +214,14 @@ func GenerateRandomToken(charLength int) (string, error) {
 	return hex.EncodeToString(token), nil
 }
 
+// maskToken returns a masked version of a token for secure logging.
+func maskToken(token string) string {
+	if len(token) < 8 {
+		return "***"
+	}
+	return fmt.Sprintf("%s...%s", token[:4], token[len(token)-4:])
+}
+
 func GetAuthToken(r *http.Request) (string, error) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {

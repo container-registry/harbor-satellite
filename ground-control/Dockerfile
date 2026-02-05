@@ -3,40 +3,36 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache git
+# Install git for go mod download (if using private repos)
+RUN apk add --no-cache git ca-certificates
 
-# Copy root module first (for the replace directive)
+# Copy go mod files first for better caching
 COPY go.mod go.sum ./
-COPY pkg/ ./pkg/
-COPY internal/ ./internal/
-COPY cmd/ ./cmd/
+RUN go mod download
 
-# Copy ground-control module
-COPY ground-control/ ./ground-control/
+# Copy source code
+COPY . .
 
-# Download dependencies and build with cache
-WORKDIR /app/ground-control
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
+# Build the binary
+RUN CGO_ENABLED=0 GOOS=linux go build -o /ground-control ./main.go
 
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -o /ground-control ./main.go
+# Runtime stage
+FROM alpine:3.20
 
-# Final stage
-FROM alpine:3.19
-
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata curl
 
 WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /ground-control /app/ground-control
 
-# Copy migrations
-COPY --from=builder /app/ground-control/sql/schema /migrations
+# Copy migrations (migrator looks at /migrations first, then sql/schema)
+COPY --from=builder /app/sql/schema /migrations
 
-EXPOSE 9090
+# Create non-root user
+RUN adduser -D -g '' appuser
+USER appuser
+
+EXPOSE 8080
 
 ENTRYPOINT ["/app/ground-control"]
