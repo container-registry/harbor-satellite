@@ -862,7 +862,7 @@ func (m *HarborSatellite) waitForSPIREServer(ctx context.Context, timeout time.D
 }
 
 func (m *HarborSatellite) generateJoinToken(ctx context.Context, satelliteName, region string) (string, error) {
-	data := fmt.Sprintf(`{"satellite_name": "%s", "region": "%s", "ttl_seconds": 600}`,
+	data := fmt.Sprintf(`{"satellite_name": "%s", "region": "%s", "ttl_seconds": 600, "selectors": ["unix:uid:0"]}`,
 		satelliteName, region)
 
 	return m.executeHTTPRequest(ctx, "POST", "/api/join-tokens", data)
