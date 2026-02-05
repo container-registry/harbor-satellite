@@ -43,25 +43,52 @@ for i in $(seq 1 20); do
     sleep 2
 done
 
-# Register satellite workload using actual agent SPIFFE ID
-# sshpop agents get SPIFFE IDs based on SSH key fingerprint, so we must
-# extract the actual satellite agent ID from the server after attestation.
-echo "[3/4] Registering satellite workload..."
-SAT_AGENT_ID=$(docker exec spire-server /opt/spire/bin/spire-server agent list \
-    -socketPath /tmp/spire-server/private/api.sock 2>/dev/null \
-    | grep "SPIFFE ID" | grep "sshpop" | tail -1 | awk '{print $NF}')
+# Register satellite via GC API (requires discovering agent ID first)
+echo "[3/4] Registering satellite workload via Ground Control..."
+
+GC_URL="https://localhost:${GC_HOST_PORT:-9080}"
+
+LOGIN_RESP=$(curl -sk -w "\n%{http_code}" -X POST "${GC_URL}/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"admin\",\"password\":\"${ADMIN_PASSWORD:-Harbor12345}\"}")
+HTTP_CODE=$(echo "$LOGIN_RESP" | tail -1)
+LOGIN_BODY=$(echo "$LOGIN_RESP" | sed '$d')
+
+if [ "$HTTP_CODE" != "200" ]; then
+    echo "ERROR: Login failed (HTTP $HTTP_CODE)"
+    exit 1
+fi
+
+AUTH_TOKEN=$(echo "$LOGIN_BODY" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+if [ -z "$AUTH_TOKEN" ]; then
+    echo "ERROR: Failed to parse auth token"
+    exit 1
+fi
+
+# Discover sshpop agent SPIFFE ID via GC API
+AGENTS_RESP=$(curl -sk "${GC_URL}/api/spire/agents?attestation_type=sshpop" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}")
+SAT_AGENT_ID=$(echo "$AGENTS_RESP" | grep -o '"spiffe_id":"[^"]*"' | tail -1 | cut -d'"' -f4)
 
 if [ -z "$SAT_AGENT_ID" ]; then
-    echo "ERROR: Could not find attested satellite agent SPIFFE ID"
+    echo "ERROR: Could not find sshpop agent via GC API"
     exit 1
 fi
 echo "Satellite agent SPIFFE ID: $SAT_AGENT_ID"
 
-docker exec spire-server /opt/spire/bin/spire-server entry create \
-    -parentID "$SAT_AGENT_ID" \
-    -spiffeID spiffe://harbor-satellite.local/satellite/edge-01 \
-    -selector docker:label:com.docker.compose.service:satellite \
-    -socketPath /tmp/spire-server/private/api.sock || true
+REG_RESP=$(curl -sk -w "\n%{http_code}" -X POST "${GC_URL}/api/satellites/register" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d "{\"satellite_name\":\"edge-01\",\"selectors\":[\"docker:label:com.docker.compose.service:satellite\"],\"attestation_method\":\"sshpop\",\"parent_agent_id\":\"${SAT_AGENT_ID}\"}")
+HTTP_CODE=$(echo "$REG_RESP" | tail -1)
+REG_BODY=$(echo "$REG_RESP" | sed '$d')
+
+if [ "$HTTP_CODE" != "200" ]; then
+    echo "ERROR: Registration failed (HTTP $HTTP_CODE)"
+    echo "Response: $REG_BODY"
+    exit 1
+fi
+echo "Satellite registered successfully"
 
 # Start satellite
 echo "[4/4] Starting Satellite..."
