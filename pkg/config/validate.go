@@ -145,14 +145,16 @@ func validateAndEnforceCronSchedules(config *Config) []string {
 func validateAndEnforceZotConfig(config *Config, bringOwnRegistry bool) ([]string, error) {
 	var warnings []string
 
-	if !bringOwnRegistry {
-		needsDefault := len(config.ZotConfigRaw) == 0 || strings.TrimSpace(string(config.ZotConfigRaw)) == "{}"
-		if needsDefault {
-			warnings = append(warnings, fmt.Sprintf(
-				"empty zot_config provided. Defaulting to: %v", DefaultZotConfigJSON,
-			))
-			config.ZotConfigRaw = json.RawMessage(DefaultZotConfigJSON)
-		}
+	if bringOwnRegistry {
+		return warnings, nil
+	}
+
+	needsDefault := len(config.ZotConfigRaw) == 0 || strings.TrimSpace(string(config.ZotConfigRaw)) == "{}"
+	if needsDefault {
+		warnings = append(warnings, fmt.Sprintf(
+			"empty zot_config provided. Defaulting to: %v", DefaultZotConfigJSON,
+		))
+		config.ZotConfigRaw = json.RawMessage(DefaultZotConfigJSON)
 	}
 
 	var zotConfig registry.ZotConfig
@@ -160,7 +162,7 @@ func validateAndEnforceZotConfig(config *Config, bringOwnRegistry bool) ([]strin
 		return nil, fmt.Errorf("invalid zot_config: %w", err)
 	}
 
-	if !bringOwnRegistry && (zotConfig.HTTP.Address == "" || zotConfig.HTTP.Port == "") {
+	if zotConfig.HTTP.Address == "" || zotConfig.HTTP.Port == "" {
 		warnings = append(warnings, "zot_config missing required http address/port. Applying defaults.")
 		config.ZotConfigRaw = json.RawMessage(DefaultZotConfigJSON)
 		if err := json.Unmarshal(config.ZotConfigRaw, &zotConfig); err != nil {
@@ -168,7 +170,7 @@ func validateAndEnforceZotConfig(config *Config, bringOwnRegistry bool) ([]strin
 		}
 	}
 
-	if !bringOwnRegistry && config.AppConfig.LocalRegistryCredentials.URL == "" {
+	if config.AppConfig.LocalRegistryCredentials.URL == "" {
 		warnings = append(warnings, fmt.Sprintf(
 			"remote registry URL is empty. Defaulting to value from zot_config %s",
 			DefaultRemoteRegistryURL,

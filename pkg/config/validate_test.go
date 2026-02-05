@@ -149,6 +149,53 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 			expectedErrMsg: "invalid custom registry URL",
 		},
 		{
+			name: "bring own registry with valid config",
+			config: &Config{
+				AppConfig: AppConfig{
+					GroundControlURL: URL("https://example.com"),
+					BringOwnRegistry: true,
+					LocalRegistryCredentials: RegistryCredentials{
+						URL:      URL("https://myregistry.example.com"),
+						Username: "user",
+						Password: "pass",
+					},
+				},
+			},
+			expectError:    false,
+			expectWarnings: true,
+		},
+		{
+			name: "bring own registry missing credentials warns",
+			config: &Config{
+				AppConfig: AppConfig{
+					GroundControlURL: URL("https://example.com"),
+					BringOwnRegistry: true,
+					LocalRegistryCredentials: RegistryCredentials{
+						URL: URL("https://myregistry.example.com"),
+					},
+				},
+			},
+			expectError:    false,
+			expectWarnings: true,
+		},
+		{
+			name: "bring own registry with redundant zot config warns",
+			config: &Config{
+				AppConfig: AppConfig{
+					GroundControlURL: URL("https://example.com"),
+					BringOwnRegistry: true,
+					LocalRegistryCredentials: RegistryCredentials{
+						URL:      URL("https://myregistry.example.com"),
+						Username: "user",
+						Password: "pass",
+					},
+				},
+				ZotConfigRaw: []byte(`{"distSpecVersion":"1.1.0"}`),
+			},
+			expectError:    false,
+			expectWarnings: true,
+		},
+		{
 			name: "invalid heartbeat interval defaults",
 			config: &Config{
 				AppConfig: AppConfig{
