@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: groundcontrol
+    networks:
+      - spiffe-e2e
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  gc:
+    build:
+      context: ../..
+      dockerfile: ground-control/Dockerfile
+      args:
+        - SPIRE_ENABLED=true
+    container_name: gc
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      DB_DATABASE: groundcontrol
+      PORT: "8080"
+      ADMIN_PASSWORD: AdminPass123
+      EMBEDDED_SPIRE_ENABLED: "true"
+      SPIRE_DATA_DIR: /tmp/spire-data
+      SPIRE_TRUST_DOMAIN: harbor-satellite.local
+      SPIRE_BIND_ADDRESS: "0.0.0.0"
+      SKIP_HARBOR_HEALTH_CHECK: "true"
+    ports:
+      - "9080:8080"
+      - "8081:8081"
+    networks:
+      - spiffe-e2e
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+networks:
+  spiffe-e2e:
+    driver: bridge

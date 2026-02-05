@@ -1,0 +1,137 @@
+services:
+  postgresql:
+    image: goharbor/harbor-db:v2.14.0
+    container_name: postgresql
+    networks:
+      - harbor-e2e
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: goharbor/redis-photon:v2.14.0
+    container_name: redis
+    networks:
+      - harbor-e2e
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  registry:
+    image: registry.goharbor.io/harbor-next/harbor-registry:satellite
+    container_name: registry
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../../test/e2e/testconfig/config/registry:/etc/registry:ro
+    networks:
+      - harbor-e2e
+
+  registryctl:
+    image: registry.goharbor.io/harbor-next/harbor-registryctl:satellite
+    container_name: registryctl
+    depends_on:
+      - registry
+    volumes:
+      - ../../test/e2e/testconfig/config/registry:/etc/registry:ro
+      - ../../test/e2e/testconfig/config/registryctl/config.yml:/etc/registryctl/config.yml:ro
+      - ../../test/e2e/testconfig/config/jobservice/env:/envFile:ro
+      - ../../test/e2e/testconfig/config/run_env.sh:/run_script:ro
+    entrypoint: ["/bin/sh", "-c", "chmod +x /run_script && /run_script '/registryctl -c /etc/registryctl/config.yml'"]
+    networks:
+      - harbor-e2e
+
+  core:
+    image: registry.goharbor.io/harbor-next/harbor-core:satellite
+    container_name: core
+    depends_on:
+      - registry
+      - registryctl
+    volumes:
+      - ../../test/e2e/testconfig/config/core/app.conf:/etc/core/app.conf:ro
+      - ../../test/e2e/testconfig/config/core/private_key.pem:/etc/core/private_key.pem:ro
+      - ../../test/e2e/testconfig/config/core/env:/envFile:ro
+      - ../../test/e2e/testconfig/config/run_env.sh:/run_script:ro
+    entrypoint: ["/bin/sh", "-c", "chmod +x /run_script && /run_script '/core'"]
+    ports:
+      - "8080:8080"
+    networks:
+      - harbor-e2e
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/v2.0/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  jobservice:
+    image: registry.goharbor.io/harbor-next/harbor-jobservice:satellite
+    container_name: jobservice
+    depends_on:
+      core:
+        condition: service_healthy
+    volumes:
+      - ../../test/e2e/testconfig/config/jobservice/config.yml:/etc/jobservice/config.yml:ro
+      - ../../test/e2e/testconfig/config/jobservice/env:/envFile:ro
+      - ../../test/e2e/testconfig/config/run_env.sh:/run_script:ro
+    entrypoint: ["/bin/sh", "-c", "chmod +x /run_script && /run_script '/jobservice -c /etc/jobservice/config.yml'"]
+    networks:
+      - harbor-e2e
+
+  postgres:
+    image: postgres:17
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: groundcontrol
+    networks:
+      - harbor-e2e
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  gc:
+    build:
+      context: ../..
+      dockerfile: ground-control/Dockerfile
+    container_name: gc
+    depends_on:
+      postgres:
+        condition: service_healthy
+      core:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      DB_DATABASE: groundcontrol
+      PORT: "8080"
+      HARBOR_USERNAME: admin
+      HARBOR_PASSWORD: Harbor12345
+      HARBOR_URL: http://core:8080
+      ADMIN_PASSWORD: AdminPass123
+    ports:
+      - "9080:8080"
+    networks:
+      - harbor-e2e
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+networks:
+  harbor-e2e:
+    driver: bridge
