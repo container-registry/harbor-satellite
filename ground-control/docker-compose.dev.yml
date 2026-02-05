@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: groundcontrol-db
+    environment:
+      POSTGRES_DB: groundcontrol
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "8100:5432"
+    volumes:
+      - groundcontrol-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d groundcontrol"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  groundcontrol:
+    build:
+      context: ..
+      dockerfile: ground-control/Dockerfile.dev
+    container_name: groundcontrol-dev
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: groundcontrol
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      GO_ENV: development
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../ground-control:/app:cached
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  groundcontrol-db-data:
