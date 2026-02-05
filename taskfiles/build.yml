@@ -1,0 +1,89 @@
+version: "3"
+
+vars:
+  COMPONENT: satellite
+  GOOS:
+    sh: go env GOOS
+  GOARCH:
+    sh: go env GOARCH
+
+tasks:
+  satellite:
+    desc: Build satellite binary for current platform
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go build -o {{.BIN_DIR}}/satellite ./cmd/main.go
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BIN_DIR}}/satellite"
+
+  ground-control:
+    desc: Build ground-control binary for current platform
+    dir: "{{.ROOT_DIR}}/ground-control"
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go build -o {{.BIN_DIR}}/ground-control ./main.go
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BIN_DIR}}/ground-control"
+
+  dev:
+    desc: Quick dev build for a component (accepts COMPONENT, GOOS, GOARCH)
+    vars:
+      COMPONENT: "{{.COMPONENT | default \"satellite\"}}"
+      GOOS: "{{.GOOS}}"
+      GOARCH: "{{.GOARCH}}"
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - |
+        if [ "{{.COMPONENT}}" = "satellite" ]; then
+          GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -o {{.BIN_DIR}}/{{.COMPONENT}}-{{.GOOS}}-{{.GOARCH}} ./cmd/main.go
+        elif [ "{{.COMPONENT}}" = "ground-control" ]; then
+          cd ground-control && GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -o {{.BIN_DIR}}/{{.COMPONENT}}-{{.GOOS}}-{{.GOARCH}} ./main.go
+        else
+          echo "Unknown component: {{.COMPONENT}}. Use 'satellite' or 'ground-control'."
+          exit 1
+        fi
+
+  all:
+    desc: Build both components for all platforms
+    cmds:
+      - task: all-satellite
+      - task: all-ground-control
+
+  all-satellite:
+    desc: Build satellite for all platforms
+    cmds:
+      - mkdir -p {{.BIN_DIR}}/satellite
+      - for:
+          matrix:
+            GOOS: [linux]
+            GOARCH: [amd64, arm64, ppc64le, s390x, riscv64]
+        cmd: GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/satellite/satellite-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./cmd/main.go
+      - for:
+          matrix:
+            GOOS: [darwin]
+            GOARCH: [amd64, arm64]
+        cmd: GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/satellite/satellite-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./cmd/main.go
+
+  all-ground-control:
+    desc: Build ground-control for all platforms
+    dir: "{{.ROOT_DIR}}/ground-control"
+    cmds:
+      - mkdir -p {{.BIN_DIR}}/ground-control
+      - for:
+          matrix:
+            GOOS: [linux]
+            GOARCH: [amd64, arm64, ppc64le, s390x, riscv64]
+        cmd: GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/ground-control/ground-control-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./main.go
+      - for:
+          matrix:
+            GOOS: [darwin]
+            GOARCH: [amd64, arm64]
+        cmd: GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/ground-control/ground-control-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./main.go

@@ -1,0 +1,30 @@
+version: "3"
+
+vars:
+  GO_VERSION: "1.24.11"
+  GOLANGCILINT_VERSION: "v2.0.2"
+  GORELEASER_VERSION: "v2.9.0"
+  PLATFORMS_LINUX: "amd64 arm64 ppc64le s390x riscv64"
+  PLATFORMS_DARWIN: "amd64 arm64"
+  VULN_FILTER: "GO-2025-3409|GO-2024-2979"
+  BIN_DIR: "{{.ROOT_DIR}}/bin"
+
+includes:
+  build:
+    taskfile: ./taskfiles/build.yml
+    dir: "{{.ROOT_DIR}}"
+  lint:
+    taskfile: ./taskfiles/lint.yml
+    dir: "{{.ROOT_DIR}}"
+  publish:
+    taskfile: ./taskfiles/publish.yml
+    dir: "{{.ROOT_DIR}}"
+  e2e:
+    taskfile: ./taskfiles/e2e.yml
+    dir: "{{.ROOT_DIR}}"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
