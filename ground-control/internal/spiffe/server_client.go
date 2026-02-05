@@ -126,6 +126,61 @@ func (c *ServerClient) Close() error {
 	return nil
 }
 
+// AgentInfo contains information about an attested SPIRE agent.
+type AgentInfo struct {
+	SpiffeID        string
+	AttestationType string
+	Selectors       []string
+	ExpiresAt       time.Time
+}
+
+// ListAgents lists attested agents, optionally filtered by attestation type.
+func (c *ServerClient) ListAgents(ctx context.Context, attestationType string) ([]AgentInfo, error) {
+	var agents []AgentInfo
+	var pageToken string
+
+	for {
+		req := &agentv1.ListAgentsRequest{
+			PageToken: pageToken,
+		}
+
+		if attestationType != "" {
+			req.Filter = &agentv1.ListAgentsRequest_Filter{
+				ByAttestationType: attestationType,
+			}
+		}
+
+		resp, err := c.agentClient.ListAgents(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("list agents: %w", err)
+		}
+
+		for _, agent := range resp.Agents {
+			info := AgentInfo{
+				SpiffeID:        fmt.Sprintf("spiffe://%s%s", agent.Id.TrustDomain, agent.Id.Path),
+				AttestationType: agent.AttestationType,
+			}
+
+			if agent.X509SvidExpiresAt > 0 {
+				info.ExpiresAt = time.Unix(agent.X509SvidExpiresAt, 0)
+			}
+
+			for _, sel := range agent.Selectors {
+				info.Selectors = append(info.Selectors, fmt.Sprintf("%s:%s", sel.Type, sel.Value))
+			}
+
+			agents = append(agents, info)
+		}
+
+		pageToken = resp.NextPageToken
+		if pageToken == "" {
+			break
+		}
+	}
+
+	return agents, nil
+}
+
 // extractPath extracts the path component from a SPIFFE ID.
 // Input: "spiffe://domain/path/to/workload" -> "/path/to/workload"
 func extractPath(spiffeID, trustDomain string) string {
