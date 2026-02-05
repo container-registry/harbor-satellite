@@ -48,3 +48,13 @@ func (s *EmbeddedSpireServer) GetTrustDomain() string {
 func (s *EmbeddedSpireServer) GetSocketPath() string {
 	return ""
 }
+
+// GetBindAddress returns empty string in nospiffe builds.
+func (s *EmbeddedSpireServer) GetBindAddress() string {
+	return ""
+}
+
+// GetBindPort returns 0 in nospiffe builds.
+func (s *EmbeddedSpireServer) GetBindPort() int {
+	return 0
+}
