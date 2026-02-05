@@ -128,6 +128,5 @@ tasks:
       - docker rm -f satellite gc 2>/dev/null || true
       - echo "Removing e2e images..."
       - docker rmi -f gc:e2e satellite:e2e 2>/dev/null || true
-      - docker volume prune -f 2>/dev/null || true
       - echo "Done!"
     silent: true

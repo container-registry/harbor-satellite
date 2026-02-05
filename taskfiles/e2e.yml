@@ -194,7 +194,6 @@ tasks:
       - echo "Stopping e2e containers..."
       - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite 2>/dev/null || true
-      - docker volume prune -f 2>/dev/null || true
       - echo "Cleanup complete"
     silent: true
 
@@ -204,7 +203,6 @@ tasks:
       - echo "Stopping spiffe containers..."
       - docker compose -f docker/e2e/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f spire-agent-satellite satellite-spiffe 2>/dev/null || true
-      - docker volume prune -f 2>/dev/null || true
       - rm -f docker/e2e/spiffe/agent-gc-runtime.conf docker/e2e/spiffe/agent-satellite-runtime.conf 2>/dev/null || true
       - rm -rf docker/e2e/spiffe/certs 2>/dev/null || true
       - echo "Cleanup complete"
