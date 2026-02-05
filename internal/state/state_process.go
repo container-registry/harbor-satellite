@@ -81,14 +81,8 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	}
 	log.Info().Msg(reason)
 
-	satelliteStateFetcher, err := getStateFetcherForInput(satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
+	satelliteState, err := f.fetchSatelliteRootState(ctx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
 	if err != nil {
-		log.Error().Err(err).Msg("Error processing satellite state")
-		return err
-	}
-	satelliteState := &SatelliteState{}
-	if err := satelliteStateFetcher.FetchStateArtifact(ctx, satelliteState, &log); err != nil {
-		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteStateURL)
 		return err
 	}
 
@@ -406,6 +400,25 @@ func (f *FetchAndReplicateStateProcess) CanExecute(satelliteStateURL, remoteURL,
 	}
 
 	return true, fmt.Sprintf("Process %s can execute: all conditions fulfilled", f.name)
+}
+
+func (f *FetchAndReplicateStateProcess) fetchSatelliteRootState(
+	ctx context.Context,
+	satelliteStateURL, srcUsername, srcPassword string,
+	useUnsecure bool,
+	log *zerolog.Logger,
+) (*SatelliteState, error) {
+	satelliteStateFetcher, err := getStateFetcherForInput(satelliteStateURL, srcUsername, srcPassword, useUnsecure, log)
+	if err != nil {
+		log.Error().Err(err).Msg("Error processing satellite state")
+		return nil, err
+	}
+	satelliteState := &SatelliteState{}
+	if err := satelliteStateFetcher.FetchStateArtifact(ctx, satelliteState, log); err != nil {
+		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteStateURL)
+		return nil, err
+	}
+	return satelliteState, nil
 }
 
 func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, string, string, string, bool, string) {
