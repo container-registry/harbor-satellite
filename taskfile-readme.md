@@ -62,7 +62,7 @@ task publish DEST=ttl.sh/my-test
 task publish DEST=ttl.sh/my-test TAG=v1.0.0
 
 # Publish to private registry
-REGISTRY_USERNAME=user REGISTRY_PASSWORD=pass task publish DEST=ghcr.io/myorg/project
+REG_USER=user REG_PASS=pass task publish DEST=ghcr.io/myorg/project
 ```
 
 ## E2E Test Tasks

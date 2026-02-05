@@ -25,7 +25,7 @@ tasks:
             task publish DEST=ghcr.io/myorg/harbor-satellite TAG=v1.0.0
 
           For private registries, set credentials via environment:
-            REGISTRY_USERNAME=user REGISTRY_PASSWORD=pass task publish DEST=ghcr.io/myorg/project
+            REG_USER=user REG_PASS=pass task publish DEST=ghcr.io/myorg/project
     cmds:
       - echo "Publishing to {{.DEST}} with tag {{.TAG}}..."
       - task: image
@@ -44,21 +44,14 @@ tasks:
     silent: true
 
   image:
-    desc: Build and push multi-arch container image
+    desc: Build and push container image
     vars:
       REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
       PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
       COMPONENT: "{{.COMPONENT | default .Env.COMPONENT | default \"satellite\"}}"
       IMAGE_TAGS: "{{.IMAGE_TAGS | default .Env.IMAGE_TAGS | default \"dev\"}}"
     cmds:
-      - echo "Building {{.COMPONENT}} for {{.PLATFORMS}}..."
       - |
-        # Login if credentials provided
-        if [ -n "$REGISTRY_USERNAME" ] && [ -n "$REGISTRY_PASSWORD" ]; then
-          echo "Logging into {{.REGISTRY}}..."
-          echo "$REGISTRY_PASSWORD" | docker login {{.REGISTRY}} -u "$REGISTRY_USERNAME" --password-stdin
-        fi
-
         DOCKERFILE="Dockerfile"
         CONTEXT="."
         if [ "{{.COMPONENT}}" = "ground-control" ]; then
@@ -66,20 +59,28 @@ tasks:
           CONTEXT="ground-control"
         fi
 
-        # Build comma-separated tags
-        TAGS=""
-        for tag in $(echo "{{.IMAGE_TAGS}}" | tr ',' ' '); do
-          tag=$(echo "$tag" | sed 's/^v//')
-          TAGS="$TAGS -t {{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
-        done
+        FIRST_TAG=$(echo "{{.IMAGE_TAGS}}" | cut -d',' -f1 | sed 's/^v//')
+        IMAGE="{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$FIRST_TAG"
 
-        echo "Pushing {{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:{{.IMAGE_TAGS}}..."
-        docker buildx build \
-          --platform {{.PLATFORMS}} \
-          -f $DOCKERFILE \
-          $TAGS \
-          --push \
-          $CONTEXT
+        echo "Building {{.COMPONENT}}..."
+        docker build -f $DOCKERFILE -t "$IMAGE" $CONTEXT
+
+        # Login if credentials provided (REG_USER/REG_PASS)
+        if [ -n "$REG_USER" ] && [ -n "$REG_PASS" ]; then
+          echo "Logging into {{.REGISTRY}}..."
+          echo "$REG_PASS" | docker login {{.REGISTRY}} -u "$REG_USER" --password-stdin
+        fi
+
+        echo "Pushing $IMAGE..."
+        docker push "$IMAGE"
+
+        # Tag and push additional tags
+        for tag in $(echo "{{.IMAGE_TAGS}}" | tr ',' ' ' | tail -n +2); do
+          tag=$(echo "$tag" | sed 's/^v//')
+          EXTRA_IMAGE="{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
+          docker tag "$IMAGE" "$EXTRA_IMAGE"
+          docker push "$EXTRA_IMAGE"
+        done
       - echo "Published {{.COMPONENT}}"
     silent: true
 
@@ -103,8 +104,8 @@ tasks:
         IMAGE_ADDR="{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$FIRST_TAG"
 
         cosign sign --yes --recursive \
-          --registry-username="$REGISTRY_USERNAME" \
-          --registry-password="$REGISTRY_PASSWORD" \
+          --registry-username="$REG_USER" \
+          --registry-password="$REG_PASS" \
           "$IMAGE_ADDR" \
           --timeout 1m
       - echo "Signed {{.COMPONENT}}"

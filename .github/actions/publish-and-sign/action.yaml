@@ -51,8 +51,8 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
         REGISTRY: ${{ inputs.REGISTRY_ADDRESS }}
-        REGISTRY_USERNAME: ${{ inputs.REGISTRY_USERNAME }}
-        REGISTRY_PASSWORD: ${{ inputs.REGISTRY_PASSWORD }}
+        REG_USER: ${{ inputs.REGISTRY_USERNAME }}
+        REG_PASS: ${{ inputs.REGISTRY_PASSWORD }}
         PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
         IMAGE_TAGS: ${{ inputs.IMAGE_TAGS }}
         COMPONENT: satellite
@@ -63,8 +63,8 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
         REGISTRY: ${{ inputs.REGISTRY_ADDRESS }}
-        REGISTRY_USERNAME: ${{ inputs.REGISTRY_USERNAME }}
-        REGISTRY_PASSWORD: ${{ inputs.REGISTRY_PASSWORD }}
+        REG_USER: ${{ inputs.REGISTRY_USERNAME }}
+        REG_PASS: ${{ inputs.REGISTRY_PASSWORD }}
         PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
         IMAGE_TAGS: ${{ inputs.IMAGE_TAGS }}
         COMPONENT: ground-control
