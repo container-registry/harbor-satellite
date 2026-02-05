@@ -40,10 +40,10 @@ if [ -z "$AUTH_TOKEN" ]; then
     exit 1
 fi
 
-TOKEN_RESP=$(curl -sk -X POST "${GC_URL}/api/join-tokens" \
+TOKEN_RESP=$(curl -sk -X POST "${GC_URL}/api/satellites/register" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{"satellite_name":"edge-01","region":"us-west","selectors":["docker:label:com.docker.compose.service:satellite"]}')
+    -d '{"satellite_name":"edge-01","region":"us-west","selectors":["docker:label:com.docker.compose.service:satellite"],"attestation_method":"join_token"}')
 
 SAT_TOKEN=$(echo "$TOKEN_RESP" | grep -o '"join_token":"[^"]*"' | cut -d'"' -f4)
 if [ -z "$SAT_TOKEN" ]; then
