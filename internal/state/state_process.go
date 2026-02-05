@@ -72,16 +72,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	default:
 	}
 
-	sourceURL := utils.FormatRegistryURL(f.cm.GetSourceRegistryURL())
-	remoteURL := utils.FormatRegistryURL(f.cm.GetRemoteRegistryURL())
-	srcUsername := f.cm.GetSourceRegistryUsername()
-	srcPassword := f.cm.GetSourceRegistryPassword()
-	remoteUsername := f.cm.GetRemoteRegistryUsername()
-	remotePassword := f.cm.GetRemoteRegistryPassword()
-	useUnsecure := f.cm.UseUnsecure()
-	satelliteStateURL := f.cm.GetStateURL()
-
-	replicator := NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure)
+	replicator, sourceURL, srcUsername, srcPassword, remoteURL, useUnsecure, satelliteStateURL := f.setupReplication()
 
 	canExecute, reason := f.CanExecute(satelliteStateURL, remoteURL, sourceURL, srcUsername, srcPassword)
 	if !canExecute {
@@ -415,6 +406,21 @@ func (f *FetchAndReplicateStateProcess) CanExecute(satelliteStateURL, remoteURL,
 	}
 
 	return true, fmt.Sprintf("Process %s can execute: all conditions fulfilled", f.name)
+}
+
+func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, string, string, string, bool, string) {
+	sourceURL := utils.FormatRegistryURL(f.cm.GetSourceRegistryURL())
+	remoteURL := utils.FormatRegistryURL(f.cm.GetRemoteRegistryURL())
+	srcUsername := f.cm.GetSourceRegistryUsername()
+	srcPassword := f.cm.GetSourceRegistryPassword()
+	remoteUsername := f.cm.GetRemoteRegistryUsername()
+	remotePassword := f.cm.GetRemoteRegistryPassword()
+	useUnsecure := f.cm.UseUnsecure()
+	satelliteStateURL := f.cm.GetStateURL()
+
+	replicator := NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure)
+
+	return replicator, sourceURL, srcUsername, srcPassword, remoteURL, useUnsecure, satelliteStateURL
 }
 
 func (f *FetchAndReplicateStateProcess) start() {
