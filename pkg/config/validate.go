@@ -48,23 +48,10 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	bringOwnRegistry := config.AppConfig.BringOwnRegistry
 
 	if bringOwnRegistry {
-		if config.AppConfig.LocalRegistryCredentials.URL == "" {
-			return nil, nil, fmt.Errorf("custom registry URL is required when BringOwnRegistry is enabled")
-		}
-
-		if _, err := url.ParseRequestURI(string(config.AppConfig.LocalRegistryCredentials.URL)); err != nil {
-			return nil, nil, fmt.Errorf("invalid custom registry URL: %w", err)
-		}
-
-		if config.AppConfig.LocalRegistryCredentials.Username == "" || config.AppConfig.LocalRegistryCredentials.Password == "" {
-			warnings = append(warnings, "username or password for custom registry is empty.")
-		}
-
-		if len(config.ZotConfigRaw) > 0 {
-			warnings = append(warnings,
-				"redundant zot_config provided for bring_own_registry: `true`.",
-			)
-			config.ZotConfigRaw = json.RawMessage{}
+		borWarnings, borErr := validateBringOwnRegistry(config)
+		warnings = append(warnings, borWarnings...)
+		if borErr != nil {
+			return nil, warnings, borErr
 		}
 	}
 
@@ -144,6 +131,30 @@ func validateAndEnforceLogLevel(config *Config) []string {
 		config.AppConfig.LogLevel = zerolog.LevelInfoValue
 	}
 	return warnings
+}
+
+// validateBringOwnRegistry validates custom registry configuration.
+func validateBringOwnRegistry(config *Config) ([]string, error) {
+	var warnings []string
+
+	if config.AppConfig.LocalRegistryCredentials.URL == "" {
+		return nil, fmt.Errorf("custom registry URL is required when BringOwnRegistry is enabled")
+	}
+
+	if _, err := url.ParseRequestURI(string(config.AppConfig.LocalRegistryCredentials.URL)); err != nil {
+		return nil, fmt.Errorf("invalid custom registry URL: %w", err)
+	}
+
+	if config.AppConfig.LocalRegistryCredentials.Username == "" || config.AppConfig.LocalRegistryCredentials.Password == "" {
+		warnings = append(warnings, "username or password for custom registry is empty.")
+	}
+
+	if len(config.ZotConfigRaw) > 0 {
+		warnings = append(warnings, "redundant zot_config provided for bring_own_registry: `true`.")
+		config.ZotConfigRaw = json.RawMessage{}
+	}
+
+	return warnings, nil
 }
 
 // validateTLSConfig validates TLS configuration.
