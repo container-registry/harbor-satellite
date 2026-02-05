@@ -7,13 +7,27 @@ tasks:
   both:
     desc: Publish both satellite and ground-control
     vars:
-      DEST: "{{.DEST | default \"registry.goharbor.io/harbor-satellite\"}}"
       TAG: "{{.TAG | default \"dev\"}}"
       REGISTRY:
         sh: echo "{{.DEST}}" | cut -d'/' -f1
       PROJECT:
         sh: echo "{{.DEST}}" | cut -d'/' -f2-
+    preconditions:
+      - sh: test -n "{{.DEST}}"
+        msg: |
+          DEST is required.
+
+          Usage:
+            task publish DEST=<registry>/<project> [TAG=<tag>]
+
+          Examples:
+            task publish DEST=ttl.sh/my-project
+            task publish DEST=ghcr.io/myorg/harbor-satellite TAG=v1.0.0
+
+          For private registries, set credentials via environment:
+            REGISTRY_USERNAME=user REGISTRY_PASSWORD=pass task publish DEST=ghcr.io/myorg/project
     cmds:
+      - echo "Publishing to {{.DEST}} with tag {{.TAG}}..."
       - task: image
         vars:
           REGISTRY: "{{.REGISTRY}}"
@@ -26,6 +40,8 @@ tasks:
           PROJECT_NAME: "{{.PROJECT}}"
           COMPONENT: ground-control
           IMAGE_TAGS: "{{.TAG}}"
+      - echo "Published satellite and ground-control to {{.DEST}}"
+    silent: true
 
   image:
     desc: Build and push multi-arch container image
@@ -35,9 +51,11 @@ tasks:
       COMPONENT: "{{.COMPONENT | default .Env.COMPONENT | default \"satellite\"}}"
       IMAGE_TAGS: "{{.IMAGE_TAGS | default .Env.IMAGE_TAGS | default \"dev\"}}"
     cmds:
+      - echo "Building {{.COMPONENT}} for {{.PLATFORMS}}..."
       - |
         # Login if credentials provided
         if [ -n "$REGISTRY_USERNAME" ] && [ -n "$REGISTRY_PASSWORD" ]; then
+          echo "Logging into {{.REGISTRY}}..."
           echo "$REGISTRY_PASSWORD" | docker login {{.REGISTRY}} -u "$REGISTRY_USERNAME" --password-stdin
         fi
 
@@ -55,12 +73,15 @@ tasks:
           TAGS="$TAGS -t {{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
         done
 
+        echo "Pushing {{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:{{.IMAGE_TAGS}}..."
         docker buildx build \
           --platform {{.PLATFORMS}} \
           -f $DOCKERFILE \
           $TAGS \
           --push \
           $CONTEXT
+      - echo "Published {{.COMPONENT}}"
+    silent: true
 
   image-and-sign:
     desc: Build, push, and sign multi-arch container image with Cosign
@@ -76,8 +97,8 @@ tasks:
           PROJECT_NAME: "{{.PROJECT_NAME}}"
           COMPONENT: "{{.COMPONENT}}"
           IMAGE_TAGS: "{{.IMAGE_TAGS}}"
+      - echo "Signing {{.COMPONENT}} image..."
       - |
-        # Sign the first tag
         FIRST_TAG=$(echo "{{.IMAGE_TAGS}}" | cut -d',' -f1 | sed 's/^v//')
         IMAGE_ADDR="{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$FIRST_TAG"
 
@@ -86,13 +107,18 @@ tasks:
           --registry-password="$REGISTRY_PASSWORD" \
           "$IMAGE_ADDR" \
           --timeout 1m
+      - echo "Signed {{.COMPONENT}}"
+    silent: true
 
   snapshot-release:
     desc: Create snapshot release with GoReleaser
     cmds:
+      - echo "Creating snapshot release..."
       - goreleaser release --snapshot --clean
+      - echo "Snapshot release created in dist/"
     generates:
       - dist/**
+    silent: true
 
   release:
     desc: Create official release with GoReleaser
@@ -100,4 +126,7 @@ tasks:
       - sh: test -n "$GITHUB_TOKEN"
         msg: GITHUB_TOKEN environment variable is required
     cmds:
+      - echo "Creating release..."
       - goreleaser release --clean
+      - echo "Release complete!"
+    silent: true

@@ -48,22 +48,21 @@ task e2e
 
 | Command | Description |
 |---------|-------------|
-| `task publish` | Publish both components (default: registry.goharbor.io/harbor-satellite:dev) |
-| `task publish DEST=ttl.sh/myproject TAG=v1.0` | Publish to custom registry |
+| `task publish DEST=registry/project` | Publish both components to registry |
 | `task snapshot` | Create snapshot release with GoReleaser |
 | `task release` | Create official release |
 
 ### Examples
 
 ```bash
-# Publish to default registry with dev tag
-task publish
-
 # Publish to ttl.sh (anonymous registry, no auth needed)
 task publish DEST=ttl.sh/my-test
 
-# Publish to private registry with custom tag
-REGISTRY_USERNAME=user REGISTRY_PASSWORD=pass task publish DEST=ghcr.io/myorg TAG=v1.0.0
+# Publish with custom tag
+task publish DEST=ttl.sh/my-test TAG=v1.0.0
+
+# Publish to private registry
+REGISTRY_USERNAME=user REGISTRY_PASSWORD=pass task publish DEST=ghcr.io/myorg/project
 ```
 
 ## E2E Test Tasks

@@ -78,10 +78,9 @@ tasks:
       - task: _e2e:test-spiffe
 
   publish:
-    desc: "Publish both components (usage: task publish DEST=registry/project TAG=dev)"
+    desc: "Publish both components to registry"
     aliases: [p]
     vars:
-      DEST: "{{.DEST | default \"registry.goharbor.io/harbor-satellite\"}}"
       TAG: "{{.TAG | default \"dev\"}}"
     cmds:
       - task: _publish:both
