@@ -248,14 +248,15 @@ sequenceDiagram
 - `source.go`: X509Source wrapper with rotation watching
 - Embedded and external are equal production options
 
-### 8. Join Token Flow
+### 8. Unified Satellite Registration
 
-- `POST /api/join-tokens`: generate token via embedded SPIRE (admin only)
-- Generating a join token creates the satellite record (no pre-registration needed)
-- Groups and configs are assigned independently after satellite creation
-- Token used by SPIRE agent for `join_token` attestation
-- E2E tested: `TestSpiffeJoinTokenE2E` in `.dagger/e2e.go:635`
-- Note: `POST /satellites/{satellite}/join-token` should be removed (redundant)
+- `POST /api/satellites/register`: unified registration for all attestation methods (admin only)
+- Supports `attestation_method`: `join_token`, `x509pop`, `sshpop`
+- Creates satellite record, robot account, SPIRE workload entry in one call
+- For `join_token`: generates and returns join token
+- For `x509pop`: auto-matches agent by CN selector
+- For `sshpop`: requires `parent_agent_id` (discover via `GET /api/spire/agents`)
+- E2E tested: `TestSpiffeJoinTokenE2E` in `.dagger/e2e.go`
 
 ```mermaid
 sequenceDiagram
@@ -265,16 +266,20 @@ sequenceDiagram
     participant SA as SPIRE Agent
     participant Satellite
 
-    Admin->>GC: POST /api/join-tokens {satellite_name, region}
+    Admin->>GC: POST /api/satellites/register {satellite_name, attestation_method, selectors}
     GC->>GC: Create satellite record in DB
-    GC->>SS: CreateJoinToken (gRPC)
-    SS-->>GC: Join token
-    GC-->>Admin: Join token + satellite ID
+    GC->>GC: Create robot account in Harbor
+    alt join_token attestation
+        GC->>SS: CreateJoinToken (gRPC)
+        SS-->>GC: Join token
+    end
+    GC->>SS: CreateWorkloadEntry (gRPC)
+    GC-->>Admin: Registration response (join_token if applicable)
 
-    Note over Admin,SA: Admin provides join token to SPIRE agent config
+    Note over Admin,SA: For join_token: Admin provides token to SPIRE agent config
 
-    SA->>SS: Node attestation (join_token method)
-    SS->>SS: Validate join token
+    SA->>SS: Node attestation (join_token/x509pop/sshpop)
+    SS->>SS: Validate attestation
     SS-->>SA: Node SVID issued
     SA->>SS: Request workload SVID
     SS-->>SA: X.509 SVID for satellite
