@@ -41,3 +41,4 @@ ground-control/.gc-dev
 
 # Task build output
 bin/
+.task/
