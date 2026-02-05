@@ -44,7 +44,7 @@ services:
       - ../../test/e2e/testconfig/config/registryctl/config.yml:/etc/registryctl/config.yml:ro
       - ../../test/e2e/testconfig/config/jobservice/env:/envFile:ro
       - ../../test/e2e/testconfig/config/run_env.sh:/run_script:ro
-    entrypoint: ["/bin/sh", "-c", "chmod +x /run_script && /run_script '/registryctl -c /etc/registryctl/config.yml'"]
+    entrypoint: ["/bin/sh", "/run_script", "/registryctl -c /etc/registryctl/config.yml"]
     networks:
       - harbor-e2e
 
@@ -59,13 +59,13 @@ services:
       - ../../test/e2e/testconfig/config/core/private_key.pem:/etc/core/private_key.pem:ro
       - ../../test/e2e/testconfig/config/core/env:/envFile:ro
       - ../../test/e2e/testconfig/config/run_env.sh:/run_script:ro
-    entrypoint: ["/bin/sh", "-c", "chmod +x /run_script && /run_script '/core'"]
+    entrypoint: ["/bin/sh", "/run_script", "/core"]
     ports:
       - "8080:8080"
     networks:
       - harbor-e2e
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/v2.0/health"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/api/v2.0/ping"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -76,12 +76,12 @@ services:
     container_name: jobservice
     depends_on:
       core:
-        condition: service_healthy
+        condition: service_started
     volumes:
       - ../../test/e2e/testconfig/config/jobservice/config.yml:/etc/jobservice/config.yml:ro
       - ../../test/e2e/testconfig/config/jobservice/env:/envFile:ro
       - ../../test/e2e/testconfig/config/run_env.sh:/run_script:ro
-    entrypoint: ["/bin/sh", "-c", "chmod +x /run_script && /run_script '/jobservice -c /etc/jobservice/config.yml'"]
+    entrypoint: ["/bin/sh", "/run_script", "/jobservice -c /etc/jobservice/config.yml"]
     networks:
       - harbor-e2e
 
@@ -132,4 +132,5 @@ services:
 
 networks:
   harbor-e2e:
+    name: harbor-e2e
     driver: bridge

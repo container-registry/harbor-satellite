@@ -5,6 +5,7 @@ vars:
   HARBOR_ADMIN_USER: admin
   HARBOR_ADMIN_PASSWORD: Harbor12345
   HARBOR_URL: http://localhost:8080
+  HARBOR_INTERNAL_URL: http://core:8080
   HARBOR_API: "{{.HARBOR_URL}}/api/v2.0"
   GC_ADMIN_USER: admin
   GC_ADMIN_PASSWORD: AdminPass123
@@ -206,7 +207,7 @@ tasks:
           -H "Content-Type: application/json" \
           -d '{
             "config_name": "test-config",
-            "registry": "{{.HARBOR_URL}}",
+            "registry": "{{.HARBOR_INTERNAL_URL}}",
             "config": {
               "app_config": {
                 "ground_control_url": "http://gc:8080",
@@ -221,7 +222,7 @@ tasks:
               "zot_config": {
                 "distSpecVersion": "1.1.0",
                 "storage": {"rootDirectory": "./zot"},
-                "http": {"address": "127.0.0.1", "port": "8585"},
+                "http": {"address": "0.0.0.0", "port": "8585"},
                 "log": {"level": "info"}
               }
             }
@@ -233,7 +234,7 @@ tasks:
           -H "Content-Type: application/json" \
           -d '{
             "group": "{{.DEST_NAMESPACE}}",
-            "registry": "{{.HARBOR_URL}}",
+            "registry": "{{.HARBOR_INTERNAL_URL}}",
             "artifacts": [{"repository": "{{.PROJECT_NAME}}/alpine", "tag": ["latest"]}]
           }'
 
@@ -282,17 +283,27 @@ tasks:
     cmds:
       - |
         echo "Waiting for replication..."
-        sleep 25
-
-        echo "Pulling image from satellite Zot registry..."
-        docker run --rm --network harbor-e2e alpine:latest sh -c "
-          apk add --no-cache crane &&
-          crane pull satellite:8585/{{.PROJECT_NAME}}/alpine:latest alpine.tar --insecure &&
-          tar -xf alpine.tar &&
-          cat manifest.json
-        "
-
-        echo "E2E test passed: Image replicated successfully"
+        for i in $(seq 1 12); do
+          echo "Checking replication status... ($i/12)"
+          if docker run --rm --network harbor-e2e alpine:latest sh -c "
+            apk add --no-cache crane > /dev/null 2>&1 &&
+            crane manifest satellite:8585/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
+          "; then
+            echo "Image available, pulling..."
+            docker run --rm --network harbor-e2e alpine:latest sh -c "
+              apk add --no-cache crane &&
+              crane pull satellite:8585/{{.PROJECT_NAME}}/alpine:latest alpine.tar --insecure &&
+              tar -xf alpine.tar &&
+              cat manifest.json
+            "
+            echo "E2E test passed: Image replicated successfully"
+            exit 0
+          fi
+          sleep 10
+        done
+        echo "Timeout waiting for replication"
+        docker logs satellite 2>&1 | tail -50
+        exit 1
 
   generate-join-token:
     desc: Generate SPIFFE join token
