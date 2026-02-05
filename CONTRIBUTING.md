@@ -114,7 +114,6 @@ This adds a `Signed-off-by` line to your commit message.
 ## Communication
 
 - **Slack**: [#harbor-satellite](https://cloud-native.slack.com/archives/C06NE6EJBU1)
-- **Issues**: GitHub issue tracker
 - **Email**: For sensitive topics, contact maintainers directly
 
 ## Code of Conduct
