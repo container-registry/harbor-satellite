@@ -65,16 +65,13 @@ tasks:
       - |
         CERTS_DIR="docker/e2e/spiffe/certs"
         mkdir -p "$CERTS_DIR"
-        if [ -f "$CERTS_DIR/ca.crt" ] && [ -f "$CERTS_DIR/ca.key" ]; then
-          echo "Certificates already exist, skipping generation"
-          exit 0
-        fi
         echo "Generating bootstrap CA certificate..."
         openssl genrsa -out "$CERTS_DIR/ca.key" 4096 2>/dev/null
         openssl req -new -x509 -days 365 -key "$CERTS_DIR/ca.key" -out "$CERTS_DIR/ca.crt" \
           -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=SPIRE CA" 2>/dev/null
         chmod 644 "$CERTS_DIR/ca.key" "$CERTS_DIR/ca.crt"
-        echo "CA certificate generated"
+        echo "CA certificate generated in $CERTS_DIR"
+        ls -la "$CERTS_DIR"
 
   start-spire-server:
     desc: Start PostgreSQL and SPIRE server
@@ -83,15 +80,17 @@ tasks:
         echo "Starting PostgreSQL and SPIRE server..."
         docker compose -f docker/e2e/docker-compose.spiffe.yml up -d postgres spire-server
         echo "Waiting for SPIRE server to be healthy..."
-        for i in $(seq 1 30); do
+        for i in $(seq 1 60); do
           if docker exec spire-server /opt/spire/bin/spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock > /dev/null 2>&1; then
             echo "SPIRE server is healthy"
             exit 0
           fi
-          echo "Waiting for SPIRE server... ($i/30)"
+          echo "Waiting for SPIRE server... ($i/60)"
           sleep 2
         done
         echo "ERROR: SPIRE server failed to start"
+        echo "SPIRE server logs:"
+        docker logs spire-server 2>&1 | tail -50
         exit 1
 
   setup-gc-agent:
@@ -209,6 +208,7 @@ tasks:
       - docker rm -f spire-agent-satellite satellite-spiffe 2>/dev/null || true
       - docker volume prune -f 2>/dev/null || true
       - rm -f docker/e2e/spiffe/agent-gc-runtime.conf docker/e2e/spiffe/agent-satellite-runtime.conf 2>/dev/null || true
+      - rm -rf docker/e2e/spiffe/certs 2>/dev/null || true
       - echo "Cleanup complete"
     silent: true
 
