@@ -38,15 +38,7 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url: %w", err)
 	}
 
-	if config.AppConfig.LogLevel == "" {
-		config.AppConfig.LogLevel = zerolog.LevelInfoValue
-	} else if !validLogLevels[strings.ToLower(config.AppConfig.LogLevel)] {
-		warnings = append(warnings, fmt.Sprintf(
-			"invalid log_level '%s' provided. Valid options are: info, debug, panic, error, warn, fatal. Defaulting to 'info'.",
-			config.AppConfig.LogLevel,
-		))
-		config.AppConfig.LogLevel = zerolog.LevelInfoValue
-	}
+	warnings = append(warnings, validateAndEnforceLogLevel(config)...)
 
 	// Check for USE_UNSECURE environment variable
 	if useUnsecure := os.Getenv("USE_UNSECURE"); useUnsecure != "" {
@@ -131,12 +123,27 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	return config, warnings, nil
 }
 
-// validateCronExpression checks the validity of a cron expression.
+// isValidCronExpression checks the validity of a cron expression.
 func isValidCronExpression(cronExpression string) bool {
 	if _, err := cron.ParseStandard(cronExpression); err != nil {
 		return false
 	}
 	return true
+}
+
+// validateAndEnforceLogLevel validates log level and defaults to info if invalid.
+func validateAndEnforceLogLevel(config *Config) []string {
+	var warnings []string
+	if config.AppConfig.LogLevel == "" {
+		config.AppConfig.LogLevel = zerolog.LevelInfoValue
+	} else if !validLogLevels[strings.ToLower(config.AppConfig.LogLevel)] {
+		warnings = append(warnings, fmt.Sprintf(
+			"invalid log_level '%s' provided. Valid options are: info, debug, panic, error, warn, fatal. Defaulting to 'info'.",
+			config.AppConfig.LogLevel,
+		))
+		config.AppConfig.LogLevel = zerolog.LevelInfoValue
+	}
+	return warnings
 }
 
 // validateTLSConfig validates TLS configuration.
