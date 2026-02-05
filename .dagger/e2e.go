@@ -365,7 +365,7 @@ func (m *HarborSatellite) pushToRegistry(ctx context.Context) (string, error) {
 		WithExec([]string{"apk", "add", "crane"}).
 		WithExec([]string{"crane", "auth", "login", "core:8080", "-u", "admin", "-p", "Harbor12345", "--insecure"}).
 		WithExec([]string{"cat", "/root/.docker/config.json"}).
-		WithExec([]string{"crane", "copy", "docker.io/library/alpine:latest", "core:8080/edge/alpine:latest", "--insecure"}).
+		WithExec([]string{"crane", "copy", "gcr.io/distroless/static:latest", "core:8080/edge/alpine:latest", "--insecure"}).
 		Stdout(ctx)
 
 	return "", err
