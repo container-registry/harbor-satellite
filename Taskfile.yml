@@ -88,6 +88,24 @@ tasks:
           DEST: "{{.DEST}}"
           TAG: "{{.TAG}}"
 
+  publish-and-sign:
+    desc: Build, push, and sign both components
+    vars:
+      TAG: "{{.TAG | default \"dev\"}}"
+    cmds:
+      - task: _publish:image-and-sign
+        vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT}}"
+          COMPONENT: satellite
+          IMAGE_TAGS: "{{.TAG}}"
+      - task: _publish:image-and-sign
+        vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT}}"
+          COMPONENT: ground-control
+          IMAGE_TAGS: "{{.TAG}}"
+
   release:
     desc: Create release with GoReleaser
     cmds:
