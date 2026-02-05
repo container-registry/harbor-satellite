@@ -109,57 +109,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		configFetcherResult <- result
 	}()
 
-	// Collect results from all goroutines
-	var allErrors []string
-	receivedStateFetchers := 0
-	receivedConfigFetcher := false
-
-	// Wait for all results from the fetcher goroutines or cancellation
-	for {
-		select {
-		case <-ctx.Done():
-			log.Warn().Err(ctx.Err()).Msg("Operation cancelled")
-			return ctx.Err()
-
-		case stateResult := <-stateFetcherResults:
-			receivedStateFetchers++
-
-			switch {
-			case stateResult.Cancelled:
-				log.Debug().Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msg("State fetcher cancelled")
-			case stateResult.Error != nil:
-				allErrors = append(allErrors, stateResult.Error.Error())
-				log.Error().Err(stateResult.Error).Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msg("State fetcher failed")
-			default:
-				log.Info().Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msgf("State fetcher completed successfully for %s", stateResult.URL)
-			}
-
-		case configResult := <-configFetcherResult:
-			receivedConfigFetcher = true
-
-			switch {
-			case configResult.Cancelled:
-				log.Debug().Msg("Config fetcher cancelled")
-			case configResult.Error != nil:
-				allErrors = append(allErrors, configResult.Error.Error())
-				log.Error().Err(configResult.Error).Msg("Config fetcher failed")
-			default:
-				log.Info().Str("digest", configResult.ConfigDigest).Msg("Config fetcher completed successfully")
-			}
-		}
-
-		// Check if we've received all results
-		if receivedStateFetchers == len(f.stateMap) && receivedConfigFetcher {
-			break
-		}
-	}
-
-	// Return accumulated errors if any
-	if len(allErrors) > 0 {
-		return fmt.Errorf("the following errors occurred while reconciling satellite state: %s", strings.Join(allErrors, "; "))
-	}
-
-	return nil
+	return f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), &log)
 }
 
 func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
@@ -282,6 +232,62 @@ func (f *FetchAndReplicateStateProcess) CanExecute(satelliteStateURL, remoteURL,
 	}
 
 	return true, fmt.Sprintf("Process %s can execute: all conditions fulfilled", f.name)
+}
+
+func (f *FetchAndReplicateStateProcess) collectResults(
+	ctx context.Context,
+	stateFetcherResults <-chan StateFetcherResult,
+	configFetcherResult <-chan ConfigFetcherResult,
+	expectedCount int,
+	log *zerolog.Logger,
+) error {
+	var allErrors []string
+	receivedStateFetchers := 0
+	receivedConfigFetcher := false
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Warn().Err(ctx.Err()).Msg("Operation cancelled")
+			return ctx.Err()
+
+		case stateResult := <-stateFetcherResults:
+			receivedStateFetchers++
+
+			switch {
+			case stateResult.Cancelled:
+				log.Debug().Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msg("State fetcher cancelled")
+			case stateResult.Error != nil:
+				allErrors = append(allErrors, stateResult.Error.Error())
+				log.Error().Err(stateResult.Error).Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msg("State fetcher failed")
+			default:
+				log.Info().Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msgf("State fetcher completed successfully for %s", stateResult.URL)
+			}
+
+		case configResult := <-configFetcherResult:
+			receivedConfigFetcher = true
+
+			switch {
+			case configResult.Cancelled:
+				log.Debug().Msg("Config fetcher cancelled")
+			case configResult.Error != nil:
+				allErrors = append(allErrors, configResult.Error.Error())
+				log.Error().Err(configResult.Error).Msg("Config fetcher failed")
+			default:
+				log.Info().Str("digest", configResult.ConfigDigest).Msg("Config fetcher completed successfully")
+			}
+		}
+
+		if receivedStateFetchers == expectedCount && receivedConfigFetcher {
+			break
+		}
+	}
+
+	if len(allErrors) > 0 {
+		return fmt.Errorf("the following errors occurred while reconciling satellite state: %s", strings.Join(allErrors, "; "))
+	}
+
+	return nil
 }
 
 func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
