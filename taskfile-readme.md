@@ -34,14 +34,14 @@ task lint:lint
 |---------|-------------|
 | `task build:satellite` | Build satellite binary for current platform |
 | `task build:ground-control` | Build ground-control binary for current platform |
-| `task build:dev COMPONENT=satellite` | Quick dev build (accepts GOOS, GOARCH) |
+| `task build:dev` | Quick dev build for both components |
 | `task build:all` | Build both components for all platforms |
 
 ### Examples
 
 ```bash
-# Build for specific platform
-task build:dev COMPONENT=satellite GOOS=linux GOARCH=arm64
+# Quick dev build (both components, current platform)
+task build:dev
 
 # Build all platforms
 task build:all
@@ -104,7 +104,7 @@ REGISTRY=ghcr.io REGISTRY_USERNAME=user REGISTRY_PASSWORD=pass \
 Override any variable at runtime:
 
 ```bash
-task build:dev COMPONENT=ground-control GOOS=darwin GOARCH=arm64
+task publish:image COMPONENT=satellite IMAGE_TAGS=v1.0.0
 ```
 
 ## Troubleshooting

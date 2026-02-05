@@ -34,22 +34,16 @@ tasks:
       - "{{.BIN_DIR}}/ground-control"
 
   dev:
-    desc: Quick dev build for a component (accepts COMPONENT, GOOS, GOARCH)
+    desc: Quick dev build for both components for current platform
     vars:
-      COMPONENT: "{{.COMPONENT | default \"satellite\"}}"
-      GOOS: "{{.GOOS}}"
-      GOARCH: "{{.GOARCH}}"
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
     cmds:
       - mkdir -p {{.BIN_DIR}}
-      - |
-        if [ "{{.COMPONENT}}" = "satellite" ]; then
-          GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -o {{.BIN_DIR}}/{{.COMPONENT}}-{{.GOOS}}-{{.GOARCH}} ./cmd/main.go
-        elif [ "{{.COMPONENT}}" = "ground-control" ]; then
-          cd ground-control && GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -o {{.BIN_DIR}}/{{.COMPONENT}}-{{.GOOS}}-{{.GOARCH}} ./main.go
-        else
-          echo "Unknown component: {{.COMPONENT}}. Use 'satellite' or 'ground-control'."
-          exit 1
-        fi
+      - GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -o {{.BIN_DIR}}/satellite ./cmd/main.go
+      - cd ground-control && GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -o {{.BIN_DIR}}/ground-control ./main.go
 
   all:
     desc: Build both components for all platforms
