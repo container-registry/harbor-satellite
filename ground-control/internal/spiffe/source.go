@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
@@ -129,13 +130,14 @@ func (s *Source) Close() error {
 func (s *Source) WatchForRotation(ctx context.Context, callback func(*x509svid.SVID)) {
 	go func() {
 		var lastID string
-		ticker := ctx.Done()
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
 
 		for {
 			select {
-			case <-ticker:
+			case <-ctx.Done():
 				return
-			default:
+			case <-ticker.C:
 				svid, err := s.GetSVID()
 				if err != nil {
 					log.Printf("SVID watch: error getting SVID: %v", err)

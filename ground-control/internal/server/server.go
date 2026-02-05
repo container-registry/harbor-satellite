@@ -55,6 +55,7 @@ type TLSConfig struct {
 // ServerResult contains the http.Server and TLS configuration.
 type ServerResult struct {
 	Server         *http.Server
+	AppServer      *Server
 	TLSConfig      *TLSConfig
 	CertWatcher    *middleware.CertWatcher
 	SPIFFEProvider spiffe.Provider
@@ -177,11 +178,12 @@ func NewServer() *ServerResult {
 	tlsCfg := loadTLSConfig()
 
 	httpServer := &http.Server{
-		Addr:         fmt.Sprintf(":%d", newServer.port),
-		Handler:      newServer.RegisterRoutes(),
-		IdleTimeout:  time.Minute,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		Addr:              fmt.Sprintf(":%d", newServer.port),
+		Handler:           newServer.RegisterRoutes(),
+		IdleTimeout:       time.Minute,
+		ReadTimeout:       10 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      30 * time.Second,
 	}
 
 	var certWatcher *middleware.CertWatcher
@@ -215,6 +217,7 @@ func NewServer() *ServerResult {
 
 	return &ServerResult{
 		Server:         httpServer,
+		AppServer:      newServer,
 		TLSConfig:      tlsCfg,
 		CertWatcher:    certWatcher,
 		SPIFFEProvider: spiffeProvider,

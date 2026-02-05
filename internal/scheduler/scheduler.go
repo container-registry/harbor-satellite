@@ -73,6 +73,9 @@ func (s *Scheduler) Run(ctx context.Context) {
 
 // ResetInterval changes the ticker interval dynamically
 func (s *Scheduler) ResetInterval(newInterval time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.ticker.Reset(newInterval)
 	s.interval = newInterval
 	s.log.Info().

@@ -30,6 +30,11 @@ func main() {
 	tlsCfg := serverResult.TLSConfig
 	spiffeCfg := serverResult.SPIFFEConfig
 
+	// Start background cleanup job
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	defer cleanupCancel()
+	go serverResult.AppServer.StartCleanupJob(cleanupCtx, server.NewCleanupConfig())
+
 	go func() {
 		var err error
 		switch {

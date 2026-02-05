@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
@@ -70,6 +71,8 @@ type SidecarProvider struct {
 	config     *Config
 	x509Source *workloadapi.X509Source
 	td         spiffeid.TrustDomain
+	once       sync.Once
+	initErr    error
 }
 
 // NewSidecarProvider creates a provider that connects to a local SPIRE agent sidecar.
@@ -86,21 +89,20 @@ func NewSidecarProvider(cfg *Config) (*SidecarProvider, error) {
 }
 
 // GetX509Source returns an X509Source connected to the local SPIRE agent.
+// Uses sync.Once to ensure thread-safe initialization.
 func (p *SidecarProvider) GetX509Source(ctx context.Context) (*workloadapi.X509Source, error) {
-	if p.x509Source != nil {
-		return p.x509Source, nil
-	}
-
-	source, err := workloadapi.NewX509Source(
-		ctx,
-		workloadapi.WithClientOptions(workloadapi.WithAddr(p.config.EndpointSocket)),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("create X509Source: %w", err)
-	}
-
-	p.x509Source = source
-	return source, nil
+	p.once.Do(func() {
+		source, err := workloadapi.NewX509Source(
+			ctx,
+			workloadapi.WithClientOptions(workloadapi.WithAddr(p.config.EndpointSocket)),
+		)
+		if err != nil {
+			p.initErr = fmt.Errorf("create X509Source: %w", err)
+			return
+		}
+		p.x509Source = source
+	})
+	return p.x509Source, p.initErr
 }
 
 // GetTLSConfig returns a TLS config for mTLS server connections using SPIFFE.

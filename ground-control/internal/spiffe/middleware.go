@@ -5,6 +5,7 @@ package spiffe
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -98,72 +99,46 @@ func GetRegion(ctx context.Context) (string, bool) {
 	return region, ok
 }
 
-// DualAuthMiddleware supports both token-based and SPIFFE-based authentication.
-// It first checks for SPIFFE identity, then falls back to token auth.
-type DualAuthMiddleware struct {
-	authMode       string
-	spiffeEnabled  bool
-	trustDomain    spiffeid.TrustDomain
+// TokenAuthMiddleware handles token-based authentication for satellites.
+// Use this for non-SPIFFE deployments where satellites authenticate via tokens.
+type TokenAuthMiddleware struct {
 	tokenValidator func(token string) (int64, error)
 }
 
-// NewDualAuthMiddleware creates middleware that supports both auth modes.
-// authMode can be "spiffe", "token", or "both".
-func NewDualAuthMiddleware(authMode string, spiffeEnabled bool, trustDomain string) *DualAuthMiddleware {
-	var td spiffeid.TrustDomain
-	if spiffeEnabled {
-		var err error
-		td, err = spiffeid.TrustDomainFromString(trustDomain)
-		if err != nil {
-			log.Printf("Warning: invalid trust domain %q: %v", trustDomain, err)
-		}
-	}
-
-	return &DualAuthMiddleware{
-		authMode:      authMode,
-		spiffeEnabled: spiffeEnabled,
-		trustDomain:   td,
-	}
+// NewTokenAuthMiddleware creates middleware for token-based authentication.
+func NewTokenAuthMiddleware() *TokenAuthMiddleware {
+	return &TokenAuthMiddleware{}
 }
 
 // SetTokenValidator sets the function used to validate tokens.
-func (m *DualAuthMiddleware) SetTokenValidator(validator func(token string) (int64, error)) {
+func (m *TokenAuthMiddleware) SetTokenValidator(validator func(token string) (int64, error)) {
 	m.tokenValidator = validator
 }
 
-// Wrap wraps a handler with dual authentication support.
-func (m *DualAuthMiddleware) Wrap(next http.Handler) http.Handler {
+// Wrap wraps a handler with token authentication.
+// Rejects requests without a valid token.
+func (m *TokenAuthMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var authenticated bool
-		ctx := r.Context()
-
-		// Try SPIFFE authentication first if enabled
-		if m.spiffeEnabled && (m.authMode == "spiffe" || m.authMode == "both") {
-			id, err := ExtractSPIFFEIDFromRequest(r)
-			if err == nil {
-				ctx = context.WithValue(ctx, SPIFFEIDKey, id)
-
-				name, err := ExtractSatelliteNameFromSPIFFEID(id)
-				if err == nil {
-					ctx = context.WithValue(ctx, SatelliteNameKey, name)
-				}
-
-				region, err := ExtractRegionFromSPIFFEID(id)
-				if err == nil {
-					ctx = context.WithValue(ctx, RegionKey, region)
-				}
-
-				authenticated = true
-				log.Printf("Authenticated via SPIFFE: %s", id.String())
-			}
-		}
-
-		// If SPIFFE auth failed or disabled, use the original context
-		if !authenticated && m.authMode == "spiffe" {
-			writeJSONResponse(w, http.StatusUnauthorized, map[string]string{"error": "SPIFFE authentication required"})
+		if m.tokenValidator == nil {
+			writeJSONResponse(w, http.StatusInternalServerError, map[string]string{"error": "token validator not configured"})
 			return
 		}
 
+		token := r.Header.Get("Authorization")
+		if token == "" {
+			writeJSONResponse(w, http.StatusUnauthorized, map[string]string{"error": "authorization token required"})
+			return
+		}
+
+		satelliteID, err := m.tokenValidator(token)
+		if err != nil {
+			log.Printf("Token auth failed: %v", err)
+			writeJSONResponse(w, http.StatusUnauthorized, map[string]string{"error": "invalid token"})
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), SatelliteNameKey, fmt.Sprintf("satellite-%d", satelliteID))
+		log.Printf("Authenticated via token: satellite-%d", satelliteID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
