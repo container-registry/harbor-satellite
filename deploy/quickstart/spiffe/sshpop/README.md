@@ -131,22 +131,20 @@ docker exec spire-agent-satellite /opt/spire/bin/spire-agent healthcheck \
 
 ### 2.2 Register satellite via Ground Control
 
-Register the satellite using the GC API. For sshpop, you must first discover the agent SPIFFE ID
-via the agents API, then pass it as `parent_agent_id`.
+Register the satellite using the GC API. For sshpop, compute the agent SPIFFE ID from the
+SSH key fingerprint (deterministic) and pass it as `parent_agent_id`.
 
 ```bash
+# Compute agent SPIFFE ID from SSH key fingerprint
+SSH_FINGERPRINT=$(ssh-keygen -lf ../gc/certs/agent-satellite-host-key.pub -E sha256 | awk '{print $2}')
+SAT_AGENT_ID="spiffe://harbor-satellite.local/spire/agent/sshpop/${SSH_FINGERPRINT}"
+echo "Satellite agent SPIFFE ID: $SAT_AGENT_ID"
+
 # Login to Ground Control
 LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
     -H "Content-Type: application/json" \
     -d '{"username":"admin","password":"Harbor12345"}')
 AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-
-# Discover the sshpop agent SPIFFE ID
-AGENTS_RESP=$(curl -sk "https://localhost:9080/api/spire/agents?attestation_type=sshpop" \
-    -H "Authorization: Bearer ${AUTH_TOKEN}")
-SAT_AGENT_ID=$(echo "$AGENTS_RESP" | grep -o '"spiffe_id":"[^"]*"' | tail -1 | cut -d'"' -f4)
-
-echo "Satellite agent SPIFFE ID: $SAT_AGENT_ID"
 
 # Register satellite with explicit parent_agent_id
 curl -sk -X POST https://localhost:9080/api/satellites/register \
@@ -212,6 +210,11 @@ It defines `spire-agent-satellite-2` and `satellite-2` services (zot on port 505
 ```bash
 cd ../sat
 
+# Compute agent SPIFFE ID from SSH key fingerprint (deterministic)
+SSH_FINGERPRINT=$(ssh-keygen -lf ../gc/certs/agent-satellite-2-host-key.pub -E sha256 | awk '{print $2}')
+SAT2_AGENT_ID="spiffe://harbor-satellite.local/spire/agent/sshpop/${SSH_FINGERPRINT}"
+echo "Agent SPIFFE ID: $SAT2_AGENT_ID"
+
 # Start the SPIRE agent
 docker compose -f docker-compose.yml -f docker-compose.edge-02.yml up -d spire-agent-satellite-2
 
@@ -224,13 +227,6 @@ LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
     -H "Content-Type: application/json" \
     -d '{"username":"admin","password":"Harbor12345"}')
 AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-
-# Discover the new sshpop agent SPIFFE ID
-AGENTS_RESP=$(curl -sk "https://localhost:9080/api/spire/agents?attestation_type=sshpop" \
-    -H "Authorization: Bearer ${AUTH_TOKEN}")
-SAT2_AGENT_ID=$(echo "$AGENTS_RESP" | grep -o '"spiffe_id":"[^"]*"' | tail -1 | cut -d'"' -f4)
-
-echo "Agent SPIFFE ID: $SAT2_AGENT_ID"
 
 # Register satellite via GC API
 curl -sk -X POST https://localhost:9080/api/satellites/register \

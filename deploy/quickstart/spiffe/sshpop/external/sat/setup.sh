@@ -65,15 +65,9 @@ if [ -z "$AUTH_TOKEN" ]; then
     exit 1
 fi
 
-# Discover sshpop agent SPIFFE ID via GC API
-AGENTS_RESP=$(curl -sk "${GC_URL}/api/spire/agents?attestation_type=sshpop" \
-    -H "Authorization: Bearer ${AUTH_TOKEN}")
-SAT_AGENT_ID=$(echo "$AGENTS_RESP" | grep -o '"spiffe_id":"[^"]*"' | tail -1 | cut -d'"' -f4)
-
-if [ -z "$SAT_AGENT_ID" ]; then
-    echo "ERROR: Could not find sshpop agent via GC API"
-    exit 1
-fi
+# Compute agent SPIFFE ID from SSH key fingerprint (deterministic)
+SSH_FINGERPRINT=$(ssh-keygen -lf ../gc/certs/agent-satellite-host-key.pub -E sha256 | awk '{print $2}')
+SAT_AGENT_ID="spiffe://harbor-satellite.local/spire/agent/sshpop/${SSH_FINGERPRINT}"
 echo "Satellite agent SPIFFE ID: $SAT_AGENT_ID"
 
 REG_RESP=$(curl -sk -w "\n%{http_code}" -X POST "${GC_URL}/api/satellites/register" \
