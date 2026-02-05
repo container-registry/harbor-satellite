@@ -490,3 +490,39 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 
 	WriteJSONResponse(w, http.StatusOK, resp)
 }
+
+// listSpireAgentsHandler lists attested SPIRE agents.
+// GET /api/spire/agents?attestation_type=x509pop
+func (s *Server) listSpireAgentsHandler(w http.ResponseWriter, r *http.Request) {
+	if s.spireClient == nil {
+		HandleAppError(w, &AppError{
+			Message: "SPIRE server not configured",
+			Code:    http.StatusServiceUnavailable,
+		})
+		return
+	}
+
+	attestationType := r.URL.Query().Get("attestation_type")
+
+	agents, err := s.spireClient.ListAgents(r.Context(), attestationType)
+	if err != nil {
+		log.Printf("Failed to list agents: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Failed to list agents",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+
+	agentResponses := make([]AgentInfoResponse, 0, len(agents))
+	for _, agent := range agents {
+		agentResponses = append(agentResponses, AgentInfoResponse{
+			SpiffeID:        agent.SpiffeID,
+			AttestationType: agent.AttestationType,
+			Selectors:       agent.Selectors,
+			ExpiresAt:       agent.ExpiresAt,
+		})
+	}
+
+	WriteJSONResponse(w, http.StatusOK, AgentListResponse{Agents: agentResponses})
+}
