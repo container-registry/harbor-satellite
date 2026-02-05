@@ -156,6 +156,9 @@ func (c *ServerClient) ListAgents(ctx context.Context, attestationType string) (
 		}
 
 		for _, agent := range resp.Agents {
+			if agent.Id == nil {
+				continue
+			}
 			info := AgentInfo{
 				SpiffeID:        fmt.Sprintf("spiffe://%s%s", agent.Id.TrustDomain, agent.Id.Path),
 				AttestationType: agent.AttestationType,
