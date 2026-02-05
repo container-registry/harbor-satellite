@@ -126,17 +126,17 @@ func (s *Server) createJoinTokenHandler(w http.ResponseWriter, r *http.Request) 
 	q := s.dbQueries
 	_, err := q.GetSatelliteByName(r.Context(), req.SatelliteName)
 	if err == nil {
-		log.Printf("error: satellite with name '%s' already exists", req.SatelliteName)
+		log.Printf("satellite with name '%s' already exists", req.SatelliteName)
 		HandleAppError(w, &AppError{
-			Message: "error: satellite already exists",
+			Message: "satellite already exists",
 			Code:    http.StatusConflict,
 		})
 		return
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		log.Printf("error: failed to check satellite existence: %v", err)
+		log.Printf("failed to check satellite existence: %v", err)
 		HandleAppError(w, &AppError{
-			Message: "error: failed to check satellite",
+			Message: "failed to check satellite",
 			Code:    http.StatusInternalServerError,
 		})
 		return
