@@ -36,14 +36,14 @@ func (s *Server) RegisterRoutes() http.Handler {
 	api.HandleFunc("/users/{username}/password", s.RequireRole(roleSystemAdmin, s.changeUserPasswordHandler)).Methods("PATCH")
 
 	// Groups
-	protected.HandleFunc("/groups", s.listGroupHandler).Methods("GET")
-	protected.HandleFunc("/groups/sync", s.groupsSyncHandler).Methods("POST")
-	protected.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET")
-
-	// Satellites in groups
-	protected.HandleFunc("/groups/{group}/satellites", s.groupSatelliteHandler).Methods("GET")
-	protected.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")
-	protected.HandleFunc("/groups/{group}/satellite/{satellite}", s.removeSatelliteFromGroup).Methods("DELETE")
+	api.HandleFunc("/groups", s.listGroupHandler).Methods("GET")
+	api.HandleFunc("/groups/sync", s.groupsSyncHandler).Methods("POST")
+	api.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET")
+	api.HandleFunc("/groups/{group}/satellites", s.groupSatelliteHandler).Methods("GET")
+	api.HandleFunc("/groups/{group}/satellite/{satellite}", s.removeSatelliteFromGroup).Methods("DELETE")
+	api.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")
+	api.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")
+	api.HandleFunc("/groups/{group}", s.RequireRole(roleSystemAdmin, s.deleteGroupHandler)).Methods("DELETE")
 
 	// Configs
 	api.HandleFunc("/configs", s.listConfigsHandler).Methods("GET")
