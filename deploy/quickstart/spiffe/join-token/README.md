@@ -126,26 +126,32 @@ LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
 AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 ```
 
-## Step 3: Request Satellite Join Token
+## Step 3: Register Satellite
 
-Request a join token from Ground Control for the satellite. This also pre-registers the satellite and creates a robot account for it in Harbor.
+Register the satellite with Ground Control. This creates a join token, registers the SPIRE workload entry, creates the satellite DB record, and provisions a robot account in Harbor.
 
 ```bash
-curl -sk -X POST https://localhost:9080/api/join-tokens \
+curl -sk -X POST https://localhost:9080/api/satellites/register \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{"satellite_name":"edge-01","region":"us-west"}'
+    -d '{
+      "satellite_name": "edge-01",
+      "region": "us-west",
+      "selectors": ["docker:label:com.docker.compose.service:satellite"],
+      "attestation_method": "join_token"
+    }'
 ```
 
 The response includes the join token and SPIRE connection details:
 
 ```json
 {
+  "satellite": "edge-01",
+  "region": "us-west",
+  "spiffe_id": "spiffe://harbor-satellite.local/satellite/region/us-west/edge-01",
+  "parent_agent_id": "spiffe://harbor-satellite.local/agent/edge-01",
   "join_token": "...",
   "expires_at": "...",
-  "spiffe_id": "spiffe://harbor-satellite.local/satellite/region/us-west/edge-01",
-  "region": "us-west",
-  "satellite": "edge-01",
   "spire_server_address": "spire-server",
   "spire_server_port": 8081,
   "trust_domain": "harbor-satellite.local"
@@ -154,21 +160,9 @@ The response includes the join token and SPIRE connection details:
 
 Save the `join_token` value.
 
-## Step 4: Register Satellite Workload
+## Step 4: Start Satellite
 
-Register the satellite workload entry so it can receive an SVID after the agent attests. The `parentID` must use the satellite name from the join token response:
-
-```bash
-docker exec spire-server /opt/spire/bin/spire-server entry create \
-    -parentID spiffe://harbor-satellite.local/agent/edge-01 \
-    -spiffeID spiffe://harbor-satellite.local/satellite/region/us-west/edge-01 \
-    -selector docker:label:com.docker.compose.service:satellite \
-    -socketPath /tmp/spire-server/private/api.sock
-```
-
-## Step 5: Start Satellite
-
-### 5.1 Create satellite agent config
+### 4.1 Create satellite agent config
 
 ```bash
 cd ../sat
@@ -218,7 +212,7 @@ health_checks {
 EOF
 ```
 
-### 5.2 Start SPIRE agent and satellite
+### 4.2 Start SPIRE agent and satellite
 
 ```bash
 docker compose up -d spire-agent-satellite
@@ -235,11 +229,11 @@ docker logs satellite
 
 Look for messages indicating successful SPIFFE authentication and registration.
 
-## Step 6: Create and Assign Config
+## Step 5: Create and Assign Config
 
 After the satellite has started and completed ZTR, create a config and assign it.
 
-### 6.1 Create a satellite config
+### 5.1 Create a satellite config
 
 ```bash
 cd ../gc
@@ -274,7 +268,7 @@ curl -sk -X POST https://localhost:9080/api/configs \
     }'
 ```
 
-### 6.2 Assign config to satellite
+### 5.2 Assign config to satellite
 
 ```bash
 curl -sk -X POST https://localhost:9080/api/configs/satellite \
@@ -283,9 +277,9 @@ curl -sk -X POST https://localhost:9080/api/configs/satellite \
     -d '{"satellite": "edge-01", "config_name": "default"}'
 ```
 
-## Step 7: Create and Assign Group
+## Step 6: Create and Assign Group
 
-### 7.1 Push an image to Harbor (if not already present)
+### 6.1 Push an image to Harbor (if not already present)
 
 ```bash
 docker pull nginx:alpine
@@ -293,7 +287,7 @@ docker tag nginx:alpine localhost:8080/library/nginx:alpine
 docker push localhost:8080/library/nginx:alpine
 ```
 
-### 7.2 Create a group with images
+### 6.2 Create a group with images
 
 Replace the digest with the actual digest from your Harbor instance:
 
@@ -315,7 +309,7 @@ curl -sk -X POST https://localhost:9080/api/groups/sync \
     }'
 ```
 
-### 7.3 Assign group to satellite
+### 6.3 Assign group to satellite
 
 ```bash
 curl -sk -X POST https://localhost:9080/api/groups/satellite \
@@ -324,7 +318,7 @@ curl -sk -X POST https://localhost:9080/api/groups/satellite \
     -d '{"satellite": "edge-01", "group": "edge-images"}'
 ```
 
-## Step 8: Verify
+## Step 7: Verify
 
 ### Check satellite logs for replication
 
