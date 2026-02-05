@@ -61,20 +61,7 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		return nil, warnings, zotErr
 	}
 
-	if !isValidCronExpression(config.AppConfig.StateReplicationInterval) {
-		config.AppConfig.StateReplicationInterval = DefaultFetchAndReplicateCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for state_replication_interval, using default schedule %s", DefaultFetchAndReplicateCronExpr))
-	}
-
-	if !isValidCronExpression(config.AppConfig.RegisterSatelliteInterval) {
-		config.AppConfig.RegisterSatelliteInterval = DefaultZTRCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for register_satellite_interval, using default schedule %s", DefaultZTRCronExpr))
-	}
-
-	if !isValidCronExpression(config.AppConfig.HeartbeatInterval) {
-		config.AppConfig.HeartbeatInterval = DefaultHeartbeatCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for heartbeat_interval, using default schedule %s", DefaultHeartbeatCronExpr))
-	}
+	warnings = append(warnings, validateAndEnforceCronSchedules(config)...)
 
 	tlsWarnings, tlsErr := validateTLSConfig(&config.AppConfig.TLS)
 	warnings = append(warnings, tlsWarnings...)
@@ -130,6 +117,28 @@ func validateBringOwnRegistry(config *Config) ([]string, error) {
 	}
 
 	return warnings, nil
+}
+
+// validateAndEnforceCronSchedules validates and defaults cron schedules.
+func validateAndEnforceCronSchedules(config *Config) []string {
+	var warnings []string
+
+	if !isValidCronExpression(config.AppConfig.StateReplicationInterval) {
+		config.AppConfig.StateReplicationInterval = DefaultFetchAndReplicateCronExpr
+		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for state_replication_interval, using default schedule %s", DefaultFetchAndReplicateCronExpr))
+	}
+
+	if !isValidCronExpression(config.AppConfig.RegisterSatelliteInterval) {
+		config.AppConfig.RegisterSatelliteInterval = DefaultZTRCronExpr
+		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for register_satellite_interval, using default schedule %s", DefaultZTRCronExpr))
+	}
+
+	if !isValidCronExpression(config.AppConfig.HeartbeatInterval) {
+		config.AppConfig.HeartbeatInterval = DefaultHeartbeatCronExpr
+		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for heartbeat_interval, using default schedule %s", DefaultHeartbeatCronExpr))
+	}
+
+	return warnings
 }
 
 // validateAndEnforceZotConfig validates and defaults zot registry configuration.
