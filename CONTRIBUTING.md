@@ -26,7 +26,7 @@ git clone https://github.com/YOUR_USERNAME/harbor-satellite.git
 cd harbor-satellite
 
 # Add upstream remote
-git remote add upstream https://github.com/goharbor/harbor-satellite.git
+git remote add upstream https://github.com/container-registry/harbor-satellite.git
 ```
 
 ### 2. Set Up Development Environment
