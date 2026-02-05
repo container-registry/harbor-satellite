@@ -494,10 +494,11 @@ func (m *HarborSatellite) executeHTTPRequest(ctx context.Context, method, endpoi
 	args := []string{"curl", "-sf", "-X", method}
 
 	gcEndpoints := map[string]bool{
-		"/api/configs":     true,
-		"/api/satellites":  true,
-		"/api/groups/sync": true,
-		"/api/join-tokens": true,
+		"/api/configs":             true,
+		"/api/satellites":          true,
+		"/api/satellites/register": true,
+		"/api/groups/sync":         true,
+		"/api/spire/agents":        true,
 	}
 
 	if gcEndpoints[endpoint] {
@@ -630,7 +631,7 @@ func (m *HarborSatellite) pullImageFromZot(ctx context.Context) (string, error) 
 // TestSpiffeJoinTokenE2E tests the SPIFFE join token flow with embedded SPIRE server.
 // This test verifies:
 // 1. GC starts with embedded SPIRE server
-// 2. Join tokens can be generated via /join-tokens endpoint (no pre-registration)
+// 2. Satellites can be registered via /api/satellites/register with attestation_method=join_token
 // 3. Satellite with SPIRE agent can attest using the join token
 func (m *HarborSatellite) TestSpiffeJoinTokenE2E(ctx context.Context) (string, error) {
 	log.Println("Starting SPIFFE Join Token E2E test...")
@@ -643,9 +644,9 @@ func (m *HarborSatellite) TestSpiffeJoinTokenE2E(ctx context.Context) (string, e
 	m.startGroundControlWithEmbeddedSPIRE(ctx)
 	log.Println("Ground Control with embedded SPIRE started")
 
-	// Generate join token (no pre-registration required)
-	log.Println("Generating join token...")
-	joinTokenResp, err := m.generateJoinToken(ctx, "test-satellite", "us-west")
+	// Register satellite and get join token
+	log.Println("Registering satellite with join token attestation...")
+	joinTokenResp, err := m.registerSatelliteWithJoinToken(ctx, "test-satellite", "us-west")
 	if err != nil {
 		return "", fmt.Errorf("join token generation failed: %w", err)
 	}
@@ -861,9 +862,14 @@ func (m *HarborSatellite) waitForSPIREServer(ctx context.Context, timeout time.D
 	}
 }
 
-func (m *HarborSatellite) generateJoinToken(ctx context.Context, satelliteName, region string) (string, error) {
-	data := fmt.Sprintf(`{"satellite_name": "%s", "region": "%s", "ttl_seconds": 600, "selectors": ["unix:uid:0"]}`,
-		satelliteName, region)
+func (m *HarborSatellite) registerSatelliteWithJoinToken(ctx context.Context, satelliteName, region string) (string, error) {
+	data := fmt.Sprintf(`{
+		"satellite_name": "%s",
+		"region": "%s",
+		"selectors": ["unix:uid:0"],
+		"attestation_method": "join_token",
+		"ttl_seconds": 600
+	}`, satelliteName, region)
 
-	return m.executeHTTPRequest(ctx, "POST", "/api/join-tokens", data)
+	return m.executeHTTPRequest(ctx, "POST", "/api/satellites/register", data)
 }
