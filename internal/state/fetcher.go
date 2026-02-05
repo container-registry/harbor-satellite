@@ -162,8 +162,9 @@ type httpTransport struct {
 }
 
 func (t *httpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.URL.Scheme = "http"
-	return t.base.RoundTrip(req)
+	clone := req.Clone(req.Context())
+	clone.URL.Scheme = "http"
+	return t.base.RoundTrip(clone)
 }
 
 func (f *URLStateFetcher) buildTLSTransport() (http.RoundTripper, error) {
