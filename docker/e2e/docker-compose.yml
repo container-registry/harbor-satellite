@@ -101,9 +101,7 @@ services:
       retries: 12
 
   gc:
-    build:
-      context: ../..
-      dockerfile: ground-control/Dockerfile
+    image: gc:e2e
     container_name: gc
     depends_on:
       postgres:

@@ -38,41 +38,36 @@ tasks:
 
   setup:
     desc: Start Harbor and Ground Control stack
-    dir: "{{.E2E_DIR}}"
     cmds:
-      - echo "Building images..."
-      - docker compose build
-      - echo "Starting services..."
-      - docker compose up -d
-      - echo "Waiting for containers to start..."
+      - echo "Building ground-control image..."
+      - docker build -t gc:e2e -f ground-control/Dockerfile ground-control/
+      - echo "Starting Harbor and GC stack..."
+      - docker compose -f docker/e2e/docker-compose.yml up -d
       - sleep 5
-      - docker compose ps
+      - docker compose -f docker/e2e/docker-compose.yml ps
     silent: true
 
   setup-spiffe:
     desc: Start SPIFFE test stack
-    dir: "{{.E2E_DIR}}"
     cmds:
-      - echo "Building images..."
-      - docker compose -f docker-compose.spiffe.yml build
-      - echo "Starting services..."
-      - docker compose -f docker-compose.spiffe.yml up -d
-      - echo "Waiting for containers to start..."
+      - echo "Building ground-control image..."
+      - docker build -t gc:e2e -f ground-control/Dockerfile ground-control/
+      - echo "Starting SPIFFE stack..."
+      - docker compose -f docker/e2e/docker-compose.spiffe.yml up -d
       - sleep 5
-      - docker compose -f docker-compose.spiffe.yml ps
+      - docker compose -f docker/e2e/docker-compose.spiffe.yml ps
     silent: true
 
   cleanup:
     desc: Stop and remove E2E containers
-    dir: "{{.E2E_DIR}}"
     cmds:
-      - docker compose down -v --remove-orphans || true
+      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans || true
+      - docker rm -f satellite || true
 
   cleanup-spiffe:
     desc: Stop and remove SPIFFE E2E containers
-    dir: "{{.E2E_DIR}}"
     cmds:
-      - docker compose -f docker-compose.spiffe.yml down -v --remove-orphans || true
+      - docker compose -f docker/e2e/docker-compose.spiffe.yml down -v --remove-orphans || true
 
   wait-harbor:
     desc: Wait for Harbor core to be healthy

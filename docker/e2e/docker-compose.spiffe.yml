@@ -15,11 +15,7 @@ services:
       retries: 12
 
   gc:
-    build:
-      context: ../..
-      dockerfile: ground-control/Dockerfile
-      args:
-        - SPIRE_ENABLED=true
+    image: gc:e2e
     container_name: gc
     depends_on:
       postgres:
