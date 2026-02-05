@@ -337,6 +337,14 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
+	if req.AttestationMethod == "sshpop" && req.ParentAgentID == "" {
+		HandleAppError(w, &AppError{
+			Message: "parent_agent_id is required for sshpop attestation",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
 	if req.Region == "" {
 		req.Region = "default"
 	}
@@ -416,13 +424,6 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 		}
 
 	case "sshpop":
-		if req.ParentAgentID == "" {
-			HandleAppError(w, &AppError{
-				Message: "parent_agent_id is required for sshpop attestation",
-				Code:    http.StatusBadRequest,
-			})
-			return
-		}
 		agentSpiffeID = req.ParentAgentID
 	}
 
