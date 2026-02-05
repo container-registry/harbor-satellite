@@ -65,12 +65,12 @@ tasks:
     cmds:
       - |
         echo "Waiting for Harbor core to be healthy..."
-        for i in $(seq 1 90); do
+        for i in $(seq 1 30); do
           if curl -sf {{.HARBOR_API}}/health > /dev/null 2>&1; then
             echo "Harbor core is healthy"
             exit 0
           fi
-          echo "Waiting for Harbor... ($i/90)"
+          echo "Waiting for Harbor... ($i/30)"
           sleep 10
         done
         echo "Timeout waiting for Harbor"
