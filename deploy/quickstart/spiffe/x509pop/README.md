@@ -109,25 +109,30 @@ cd ../sat
 docker compose up -d spire-agent-satellite
 ```
 
-### 2.2 Register satellite workload
+### 2.2 Register satellite via Ground Control
 
-Extract the satellite agent SPIFFE ID after attestation and register the workload.
-
-The last path segment of `-spiffeID` becomes the satellite name in Ground Control.
-For example, `/satellite/edge-01` registers as `edge-01`. Using just `/satellite`
-defaults to the name `default`.
+Register the satellite using the GC API. The API automatically discovers the x509pop agent
+by matching the certificate CN selector and creates the workload entry.
 
 ```bash
-SAT_AGENT_ID=$(docker exec spire-server /opt/spire/bin/spire-server agent list \
-    -socketPath /tmp/spire-server/private/api.sock \
-    | grep "SPIFFE ID" | grep "x509pop" | tail -1 | awk '{print $NF}')
+# Login to Ground Control
+LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"Harbor12345"}')
+AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
-docker exec spire-server /opt/spire/bin/spire-server entry create \
-    -parentID "$SAT_AGENT_ID" \
-    -spiffeID spiffe://harbor-satellite.local/satellite/edge-01 \
-    -selector docker:label:com.docker.compose.service:satellite \
-    -socketPath /tmp/spire-server/private/api.sock
+# Register satellite (auto-matches x509pop agent by CN)
+curl -sk -X POST https://localhost:9080/api/satellites/register \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d '{
+      "satellite_name": "edge-01",
+      "selectors": ["docker:label:com.docker.compose.service:satellite"],
+      "attestation_method": "x509pop"
+    }'
 ```
+
+The API creates the SPIRE workload entry, satellite DB record, and robot account.
 
 ### 2.3 Start Satellite
 
