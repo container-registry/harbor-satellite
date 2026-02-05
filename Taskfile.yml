@@ -122,8 +122,12 @@ tasks:
       - echo "Cleaning up..."
       - rm -rf bin/ dist/
       - rm -f golangci-lint.report vulnerability-check.report
-      - docker rm -f satellite 2>/dev/null || true
-      - cd docker/e2e && docker compose down -v --remove-orphans 2>/dev/null || true
-      - cd docker/e2e && docker compose -f docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
+      - echo "Stopping containers..."
+      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f docker/e2e/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f satellite gc 2>/dev/null || true
+      - echo "Removing e2e images..."
+      - docker rmi -f gc:e2e satellite:e2e 2>/dev/null || true
+      - docker volume prune -f 2>/dev/null || true
       - echo "Done!"
     silent: true

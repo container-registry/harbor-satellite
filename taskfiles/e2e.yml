@@ -61,13 +61,21 @@ tasks:
   cleanup:
     desc: Stop and remove E2E containers
     cmds:
-      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans || true
-      - docker rm -f satellite || true
+      - echo "Stopping e2e containers..."
+      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f satellite 2>/dev/null || true
+      - docker volume prune -f 2>/dev/null || true
+      - echo "Cleanup complete"
+    silent: true
 
   cleanup-spiffe:
     desc: Stop and remove SPIFFE E2E containers
     cmds:
-      - docker compose -f docker/e2e/docker-compose.spiffe.yml down -v --remove-orphans || true
+      - echo "Stopping spiffe containers..."
+      - docker compose -f docker/e2e/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
+      - docker volume prune -f 2>/dev/null || true
+      - echo "Cleanup complete"
+    silent: true
 
   wait-harbor:
     desc: Wait for Harbor core to be healthy
