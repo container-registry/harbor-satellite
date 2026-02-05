@@ -105,74 +105,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 	// Launch config fetcher goroutine
 	go func() {
-		configFetcherLog := log.With().
-			Str("sub-process", "config-fetcher").
-			Logger()
-
-		result := ConfigFetcherResult{}
-
-		configStateFetcher, err := getStateFetcherForInput(satelliteState.Config, srcUsername, srcPassword, useUnsecure, &configFetcherLog)
-		if err != nil {
-			configFetcherLog.Error().Err(err).Msg("Error processing satellite state")
-			result.Error = fmt.Errorf("failed to create config state fetcher: %w", err)
-			configFetcherResult <- result
-			return
-		}
-
-		configDigest, err := configStateFetcher.FetchDigest(ctx, &configFetcherLog)
-		if err != nil {
-			configFetcherLog.Error().Err(err).Msgf("Error fetching state artifact digest from url: %s", satelliteState.Config)
-			result.Error = fmt.Errorf("failed to fetch config digest from %s: %w", satelliteState.Config, err)
-			configFetcherResult <- result
-			return
-		}
-
-		if configDigest != f.currentConfigDigest {
-			configFetcherLog.Info().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("The upstream config has changes, reconciling the satellite accordingly")
-
-			remoteConfig := config.Config{}
-			if err := configStateFetcher.FetchStateArtifact(ctx, &remoteConfig, &configFetcherLog); err != nil {
-				configFetcherLog.Error().Err(err).
-					Msgf("Error fetching new config's state artifact from url: %s, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
-				result.Error = fmt.Errorf("failed to fetch config artifact from %s: %w", satelliteState.Config, err)
-				configFetcherResult <- result
-				return
-			}
-
-			remoteConfig.StateConfig = f.cm.GetStateConfig()
-			validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
-			if err != nil {
-				configFetcherLog.Error().Err(err).
-					Msgf("Error validating config state artifact digest from url: %s, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
-				result.Error = fmt.Errorf("failed to validate config from %s: %w", satelliteState.Config, err)
-				configFetcherResult <- result
-				return
-			}
-			if len(warnings) != 0 {
-				utils.HandleNewConfigWarnings(&configFetcherLog, warnings)
-			}
-
-			if err := f.cm.WritePrevConfigToDisk(f.cm.GetConfig()); err != nil {
-				configFetcherLog.Error().Err(err).
-					Msgf("Error writing the prev config to disk while reconciling remote config, continuing execution with the same previous config with digest %s", f.currentConfigDigest)
-				result.Error = fmt.Errorf("failed to write previous config to disk: %w", err)
-				configFetcherResult <- result
-				return
-			}
-
-			configFetcherLog.Debug().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("Writing new config to disk")
-			if err := f.cm.WriteConfigToDisk(validatedRemoteConfig); err != nil {
-				configFetcherLog.Error().Err(err).
-					Msgf("Error writing the newly fetched remote config from %s to disk, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
-				result.Error = fmt.Errorf("failed to write new config to disk: %w", err)
-				configFetcherResult <- result
-				return
-			}
-			f.currentConfigDigest = configDigest
-		}
-
-		// Success case
-		result.ConfigDigest = configDigest
+		result := f.reconcileRemoteConfig(ctx, satelliteState.Config, srcUsername, srcPassword, useUnsecure, &log)
 		configFetcherResult <- result
 	}()
 
@@ -349,6 +282,76 @@ func (f *FetchAndReplicateStateProcess) CanExecute(satelliteStateURL, remoteURL,
 	}
 
 	return true, fmt.Sprintf("Process %s can execute: all conditions fulfilled", f.name)
+}
+
+func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
+	ctx context.Context,
+	configURL, srcUsername, srcPassword string,
+	useUnsecure bool,
+	log *zerolog.Logger,
+) ConfigFetcherResult {
+	configFetcherLog := log.With().
+		Str("sub-process", "config-fetcher").
+		Logger()
+
+	result := ConfigFetcherResult{}
+
+	configStateFetcher, err := getStateFetcherForInput(configURL, srcUsername, srcPassword, useUnsecure, &configFetcherLog)
+	if err != nil {
+		configFetcherLog.Error().Err(err).Msg("Error processing satellite state")
+		result.Error = fmt.Errorf("failed to create config state fetcher: %w", err)
+		return result
+	}
+
+	configDigest, err := configStateFetcher.FetchDigest(ctx, &configFetcherLog)
+	if err != nil {
+		configFetcherLog.Error().Err(err).Msgf("Error fetching state artifact digest from url: %s", configURL)
+		result.Error = fmt.Errorf("failed to fetch config digest from %s: %w", configURL, err)
+		return result
+	}
+
+	if configDigest != f.currentConfigDigest {
+		configFetcherLog.Info().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("The upstream config has changes, reconciling the satellite accordingly")
+
+		remoteConfig := config.Config{}
+		if err := configStateFetcher.FetchStateArtifact(ctx, &remoteConfig, &configFetcherLog); err != nil {
+			configFetcherLog.Error().Err(err).
+				Msgf("Error fetching new config's state artifact from url: %s, continuing execution with the previous config with digest %s", configURL, f.currentConfigDigest)
+			result.Error = fmt.Errorf("failed to fetch config artifact from %s: %w", configURL, err)
+			return result
+		}
+
+		remoteConfig.StateConfig = f.cm.GetStateConfig()
+		validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
+		if err != nil {
+			configFetcherLog.Error().Err(err).
+				Msgf("Error validating config state artifact digest from url: %s, continuing execution with the previous config with digest %s", configURL, f.currentConfigDigest)
+			result.Error = fmt.Errorf("failed to validate config from %s: %w", configURL, err)
+			return result
+		}
+		if len(warnings) != 0 {
+			utils.HandleNewConfigWarnings(&configFetcherLog, warnings)
+		}
+
+		if err := f.cm.WritePrevConfigToDisk(f.cm.GetConfig()); err != nil {
+			configFetcherLog.Error().Err(err).
+				Msgf("Error writing the prev config to disk while reconciling remote config, continuing execution with the same previous config with digest %s", f.currentConfigDigest)
+			result.Error = fmt.Errorf("failed to write previous config to disk: %w", err)
+			return result
+		}
+
+		configFetcherLog.Debug().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("Writing new config to disk")
+		if err := f.cm.WriteConfigToDisk(validatedRemoteConfig); err != nil {
+			configFetcherLog.Error().Err(err).
+				Msgf("Error writing the newly fetched remote config from %s to disk, continuing execution with the previous config with digest %s", configURL, f.currentConfigDigest)
+			result.Error = fmt.Errorf("failed to write new config to disk: %w", err)
+			return result
+		}
+		f.currentConfigDigest = configDigest
+	}
+
+	result.ConfigDigest = configDigest
+	return result
 }
 
 func (f *FetchAndReplicateStateProcess) processGroupState(
