@@ -97,3 +97,15 @@ tasks:
     desc: Create snapshot release with GoReleaser
     cmds:
       - task: _publish:snapshot-release
+
+  clean:
+    desc: Clean up development environment
+    cmds:
+      - echo "Cleaning up..."
+      - rm -rf bin/ dist/
+      - rm -f golangci-lint.report vulnerability-check.report
+      - docker rm -f satellite 2>/dev/null || true
+      - cd docker/e2e && docker compose down -v --remove-orphans 2>/dev/null || true
+      - cd docker/e2e && docker compose -f docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
+      - echo "Done!"
+    silent: true
