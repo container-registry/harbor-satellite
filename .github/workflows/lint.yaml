@@ -28,7 +28,7 @@ jobs:
         run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.0.2
 
       - name: Run golangci-lint
-        run: task lint:lint-report
+        run: task lint-report
 
       - name: Generate lint summary
         run: |

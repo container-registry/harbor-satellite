@@ -1,21 +1,46 @@
 version: "3"
 
 vars:
-  COMPONENT: satellite
-  IMAGE_TAGS: latest
   PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/riscv64
 
 tasks:
+  both:
+    desc: Publish both satellite and ground-control
+    vars:
+      DEST: "{{.DEST | default \"registry.goharbor.io/harbor-satellite\"}}"
+      TAG: "{{.TAG | default \"dev\"}}"
+      REGISTRY:
+        sh: echo "{{.DEST}}" | cut -d'/' -f1
+      PROJECT:
+        sh: echo "{{.DEST}}" | cut -d'/' -f2-
+    cmds:
+      - task: image
+        vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT}}"
+          COMPONENT: satellite
+          IMAGE_TAGS: "{{.TAG}}"
+      - task: image
+        vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT}}"
+          COMPONENT: ground-control
+          IMAGE_TAGS: "{{.TAG}}"
+
   image:
     desc: Build and push multi-arch container image
-    requires:
-      vars: [REGISTRY, REGISTRY_USERNAME, REGISTRY_PASSWORD, PROJECT_NAME]
     vars:
-      COMPONENT: "{{.COMPONENT | default \"satellite\"}}"
-      IMAGE_TAGS: "{{.IMAGE_TAGS | default \"latest\"}}"
+      REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
+      PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
+      COMPONENT: "{{.COMPONENT | default .Env.COMPONENT | default \"satellite\"}}"
+      IMAGE_TAGS: "{{.IMAGE_TAGS | default .Env.IMAGE_TAGS | default \"dev\"}}"
     cmds:
-      - echo "$REGISTRY_PASSWORD" | docker login {{.REGISTRY}} -u {{.REGISTRY_USERNAME}} --password-stdin
       - |
+        # Login if credentials provided
+        if [ -n "$REGISTRY_USERNAME" ] && [ -n "$REGISTRY_PASSWORD" ]; then
+          echo "$REGISTRY_PASSWORD" | docker login {{.REGISTRY}} -u "$REGISTRY_USERNAME" --password-stdin
+        fi
+
         DOCKERFILE="Dockerfile"
         CONTEXT="."
         if [ "{{.COMPONENT}}" = "ground-control" ]; then
@@ -39,14 +64,16 @@ tasks:
 
   image-and-sign:
     desc: Build, push, and sign multi-arch container image with Cosign
-    requires:
-      vars: [REGISTRY, REGISTRY_USERNAME, REGISTRY_PASSWORD, PROJECT_NAME]
     vars:
-      COMPONENT: "{{.COMPONENT | default \"satellite\"}}"
-      IMAGE_TAGS: "{{.IMAGE_TAGS | default \"latest\"}}"
+      REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
+      PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
+      COMPONENT: "{{.COMPONENT | default .Env.COMPONENT | default \"satellite\"}}"
+      IMAGE_TAGS: "{{.IMAGE_TAGS | default .Env.IMAGE_TAGS | default \"dev\"}}"
     cmds:
       - task: image
         vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT_NAME}}"
           COMPONENT: "{{.COMPONENT}}"
           IMAGE_TAGS: "{{.IMAGE_TAGS}}"
       - |
@@ -55,7 +82,7 @@ tasks:
         IMAGE_ADDR="{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$FIRST_TAG"
 
         cosign sign --yes --recursive \
-          --registry-username={{.REGISTRY_USERNAME}} \
+          --registry-username="$REGISTRY_USERNAME" \
           --registry-password="$REGISTRY_PASSWORD" \
           "$IMAGE_ADDR" \
           --timeout 1m
@@ -69,7 +96,8 @@ tasks:
 
   release:
     desc: Create official release with GoReleaser
-    requires:
-      vars: [GITHUB_TOKEN]
+    preconditions:
+      - sh: test -n "$GITHUB_TOKEN"
+        msg: GITHUB_TOKEN environment variable is required
     cmds:
       - goreleaser release --clean

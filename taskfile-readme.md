@@ -18,94 +18,69 @@ This project uses [Task](https://taskfile.dev) as the build tool.
 # List all available tasks
 task --list
 
-# Build satellite
-task build:satellite
-
-# Build ground-control
-task build:ground-control
+# Build both components
+task build
 
 # Run linter
-task lint:lint
+task lint
+
+# Run E2E tests
+task e2e
 ```
 
 ## Build Tasks
 
 | Command | Description |
 |---------|-------------|
-| `task build:satellite` | Build satellite binary for current platform |
-| `task build:ground-control` | Build ground-control binary for current platform |
-| `task build:dev` | Quick dev build for both components |
-| `task build:all` | Build both components for all platforms |
-
-### Examples
-
-```bash
-# Quick dev build (both components, current platform)
-task build:dev
-
-# Build all platforms
-task build:all
-```
+| `task build` | Build both components for current platform |
+| `task build-all` | Build both components for all platforms |
 
 ## Lint Tasks
 
 | Command | Description |
 |---------|-------------|
-| `task lint:lint` | Run golangci-lint |
-| `task lint:lint-report` | Run lint and export to golangci-lint.report |
-| `task lint:vulnerability-check` | Run govulncheck (filters known issues) |
-| `task lint:vulnerability-check-report` | Run govulncheck and export to file |
+| `task lint` | Run golangci-lint |
+| `task lint-report` | Run lint and export to file |
+| `task vuln` | Run govulncheck (filters known issues) |
+| `task vuln-report` | Run govulncheck and export to file |
 
 ## Publish Tasks
 
 | Command | Description |
 |---------|-------------|
-| `task publish:image COMPONENT=satellite` | Build and push multi-arch image |
-| `task publish:image-and-sign COMPONENT=satellite` | Build, push, and sign image |
-| `task publish:snapshot-release` | Create snapshot release with GoReleaser |
-| `task publish:release` | Create official release |
-
-### Required Environment Variables
-
-- `REGISTRY` - Container registry address
-- `REGISTRY_USERNAME` - Registry username
-- `REGISTRY_PASSWORD` - Registry password
-- `PROJECT_NAME` - Project name in registry
-- `IMAGE_TAGS` - Comma-separated tags (e.g., "latest,v1.0.0")
-- `GITHUB_TOKEN` - For releases
+| `task publish` | Publish both components (default: registry.goharbor.io/harbor-satellite:dev) |
+| `task publish DEST=ttl.sh/myproject TAG=v1.0` | Publish to custom registry |
+| `task snapshot` | Create snapshot release with GoReleaser |
+| `task release` | Create official release |
 
 ### Examples
 
 ```bash
-# Publish satellite with tag
-REGISTRY=ghcr.io REGISTRY_USERNAME=user REGISTRY_PASSWORD=pass \
-  PROJECT_NAME=myorg/harbor-satellite IMAGE_TAGS=latest \
-  task publish:image COMPONENT=satellite
+# Publish to default registry with dev tag
+task publish
+
+# Publish to ttl.sh (anonymous registry, no auth needed)
+task publish DEST=ttl.sh/my-test
+
+# Publish to private registry with custom tag
+REGISTRY_USERNAME=user REGISTRY_PASSWORD=pass task publish DEST=ghcr.io/myorg TAG=v1.0.0
 ```
 
 ## E2E Test Tasks
 
 | Command | Description |
 |---------|-------------|
-| `task e2e:test` | Run full E2E test suite |
-| `task e2e:test-spiffe` | Run SPIFFE join token E2E test |
-| `task e2e:cleanup` | Clean up E2E infrastructure |
+| `task e2e` | Run all E2E tests |
+| `task e2e-test` | Run main E2E test only |
+| `task e2e-spiffe` | Run SPIFFE join token E2E test |
 
-### E2E Test Flow
+## Aliases
 
-1. Starts Harbor registry stack (PostgreSQL, Redis, Registry, Core, JobService)
-2. Starts Ground Control with PostgreSQL
-3. Initializes Harbor with project and replication policy
-4. Registers satellite and starts local Zot registry
-5. Verifies image replication from Harbor to local Zot
-
-## Task Variables
-
-Override any variable at runtime:
-
-```bash
-task publish:image COMPONENT=satellite IMAGE_TAGS=v1.0.0
-```
+| Alias | Full Command |
+|-------|--------------|
+| `task b` | `task build` |
+| `task l` | `task lint` |
+| `task p` | `task publish` |
 
 ## Troubleshooting
 

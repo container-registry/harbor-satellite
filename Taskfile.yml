@@ -10,16 +10,16 @@ vars:
   BIN_DIR: "{{.ROOT_DIR}}/bin"
 
 includes:
-  build:
+  _build:
     taskfile: ./taskfiles/build.yml
     dir: "{{.ROOT_DIR}}"
-  lint:
+  _lint:
     taskfile: ./taskfiles/lint.yml
     dir: "{{.ROOT_DIR}}"
-  publish:
+  _publish:
     taskfile: ./taskfiles/publish.yml
     dir: "{{.ROOT_DIR}}"
-  e2e:
+  _e2e:
     taskfile: ./taskfiles/e2e.yml
     dir: "{{.ROOT_DIR}}"
 
@@ -28,3 +28,73 @@ tasks:
     desc: List available tasks
     cmds:
       - task --list
+
+  build:
+    desc: Build both components for current platform
+    aliases: [b]
+    cmds:
+      - task: _build:dev
+
+  build-all:
+    desc: Build both components for all platforms
+    cmds:
+      - task: _build:all
+
+  lint:
+    desc: Run golangci-lint
+    aliases: [l]
+    cmds:
+      - task: _lint:lint
+
+  lint-report:
+    desc: Run golangci-lint and export to file
+    cmds:
+      - task: _lint:lint-report
+
+  vuln:
+    desc: Run vulnerability check
+    cmds:
+      - task: _lint:vulnerability-check
+
+  vuln-report:
+    desc: Run vulnerability check and export to file
+    cmds:
+      - task: _lint:vulnerability-check-report
+
+  e2e:
+    desc: Run all E2E tests
+    cmds:
+      - task: _e2e:test
+      - task: _e2e:test-spiffe
+
+  e2e-test:
+    desc: Run main E2E test
+    cmds:
+      - task: _e2e:test
+
+  e2e-spiffe:
+    desc: Run SPIFFE E2E test
+    cmds:
+      - task: _e2e:test-spiffe
+
+  publish:
+    desc: "Publish both components (usage: task publish DEST=registry/project TAG=dev)"
+    aliases: [p]
+    vars:
+      DEST: "{{.DEST | default \"registry.goharbor.io/harbor-satellite\"}}"
+      TAG: "{{.TAG | default \"dev\"}}"
+    cmds:
+      - task: _publish:both
+        vars:
+          DEST: "{{.DEST}}"
+          TAG: "{{.TAG}}"
+
+  release:
+    desc: Create release with GoReleaser
+    cmds:
+      - task: _publish:release
+
+  snapshot:
+    desc: Create snapshot release with GoReleaser
+    cmds:
+      - task: _publish:snapshot-release
