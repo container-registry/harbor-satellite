@@ -10,16 +10,53 @@ import (
 	"time"
 )
 
-// CreateJoinTokenRequest represents a request to generate a SPIRE join token
-// without requiring satellite pre-registration.
+// RegisterSatelliteRequest represents a request to register a satellite with SPIFFE.
+type RegisterSatelliteRequest struct {
+	SatelliteName     string   `json:"satellite_name"`
+	Region            string   `json:"region,omitempty"`
+	Selectors         []string `json:"selectors"`
+	AttestationMethod string   `json:"attestation_method"` // join_token, x509pop, sshpop
+	TTLSeconds        int      `json:"ttl_seconds,omitempty"`
+	ParentAgentID     string   `json:"parent_agent_id,omitempty"`
+}
+
+// RegisterSatelliteWithSPIFFEResponse contains satellite registration details.
+type RegisterSatelliteWithSPIFFEResponse struct {
+	Satellite          string     `json:"satellite"`
+	Region             string     `json:"region"`
+	SpiffeID           string     `json:"spiffe_id"`
+	ParentAgentID      string     `json:"parent_agent_id,omitempty"`
+	JoinToken          string     `json:"join_token,omitempty"`
+	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
+	SpireServerAddress string     `json:"spire_server_address"`
+	SpireServerPort    int        `json:"spire_server_port"`
+	TrustDomain        string     `json:"trust_domain"`
+}
+
+// AgentListResponse contains a list of attested agents.
+type AgentListResponse struct {
+	Agents []AgentInfoResponse `json:"agents"`
+}
+
+// AgentInfoResponse contains agent information for API response.
+type AgentInfoResponse struct {
+	SpiffeID        string    `json:"spiffe_id"`
+	AttestationType string    `json:"attestation_type"`
+	Selectors       []string  `json:"selectors,omitempty"`
+	ExpiresAt       time.Time `json:"expires_at,omitempty"`
+}
+
+// CreateJoinTokenRequest represents a request to generate a SPIRE join token.
+// Deprecated: Use RegisterSatelliteRequest with attestation_method="join_token" instead.
 type CreateJoinTokenRequest struct {
 	SatelliteName string   `json:"satellite_name"`
 	Region        string   `json:"region"`
-	TTL           int      `json:"ttl_seconds,omitempty"` // Default: 600 (10 minutes)
+	TTL           int      `json:"ttl_seconds,omitempty"`
 	Selectors     []string `json:"selectors"`
 }
 
 // JoinTokenResponse contains the generated join token and bootstrap metadata.
+// Deprecated: Use RegisterSatelliteWithSPIFFEResponse instead.
 type JoinTokenResponse struct {
 	JoinToken          string    `json:"join_token"`
 	ExpiresAt          time.Time `json:"expires_at"`
