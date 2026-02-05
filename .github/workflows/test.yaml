@@ -64,6 +64,9 @@ jobs:
           install-only: true
           version: v2.9.0
 
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
+
       - name: Test Release
         run: task snapshot
 

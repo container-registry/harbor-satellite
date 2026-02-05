@@ -110,7 +110,7 @@ tasks:
         echo "Creating agent config with join token..."
         cat > docker/e2e/spiffe/agent-gc-runtime.conf << EOF
         agent {
-            data_dir = "/opt/spire/data/agent"
+            data_dir = "/tmp/spire-agent"
             log_level = "INFO"
             server_address = "spire-server"
             server_port = "8081"
@@ -123,10 +123,8 @@ tasks:
             NodeAttestor "join_token" {
                 plugin_data {}
             }
-            KeyManager "disk" {
-                plugin_data {
-                    directory = "/opt/spire/data/agent"
-                }
+            KeyManager "memory" {
+                plugin_data {}
             }
             WorkloadAttestor "unix" {
                 plugin_data {}
@@ -481,7 +479,7 @@ tasks:
         echo "Creating satellite agent config with join token..."
         cat > docker/e2e/spiffe/agent-satellite-runtime.conf << EOF
         agent {
-            data_dir = "/opt/spire/data/agent"
+            data_dir = "/tmp/spire-agent"
             log_level = "INFO"
             server_address = "spire-server"
             server_port = "8081"
@@ -494,10 +492,8 @@ tasks:
             NodeAttestor "join_token" {
                 plugin_data {}
             }
-            KeyManager "disk" {
-                plugin_data {
-                    directory = "/opt/spire/data/agent"
-                }
+            KeyManager "memory" {
+                plugin_data {}
             }
             WorkloadAttestor "unix" {
                 plugin_data {}

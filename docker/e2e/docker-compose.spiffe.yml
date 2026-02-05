@@ -21,9 +21,8 @@ services:
     command: ["-config", "/opt/spire/conf/server/server.conf"]
     volumes:
       - ./spiffe/server.conf:/opt/spire/conf/server/server.conf:ro
-      - spire-server-data:/opt/spire/data/server
       - spire-server-socket:/tmp/spire-server/private
-      - ./spiffe/certs:/opt/spire/certs
+      - ./spiffe/certs:/opt/spire/certs:ro
     ports:
       - "8081:8081"
     healthcheck:
@@ -44,7 +43,6 @@ services:
     volumes:
       - ./spiffe/agent-gc-runtime.conf:/opt/spire/conf/agent/agent.conf:ro
       - ./spiffe/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
-      - spire-agent-gc-data:/opt/spire/data/agent
       - spire-agent-gc-socket:/run/spire/sockets
       - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
     depends_on:
@@ -97,9 +95,7 @@ services:
       start_period: 15s
 
 volumes:
-  spire-server-data:
   spire-server-socket:
-  spire-agent-gc-data:
   spire-agent-gc-socket:
 
 networks:
