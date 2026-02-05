@@ -129,22 +129,38 @@ docker exec spire-agent-satellite /opt/spire/bin/spire-agent healthcheck \
     -socketPath /run/spire/sockets/agent.sock
 ```
 
-### 2.2 Register satellite workload
+### 2.2 Register satellite via Ground Control
+
+Register the satellite using the GC API. For sshpop, you must first discover the agent SPIFFE ID
+via the agents API, then pass it as `parent_agent_id`.
 
 ```bash
-# Get the satellite agent SPIFFE ID (the most recently attested agent)
-SAT_AGENT_ID=$(docker exec spire-server /opt/spire/bin/spire-server agent list \
-    -socketPath /tmp/spire-server/private/api.sock 2>/dev/null \
-    | grep "SPIFFE ID" | grep "sshpop" | tail -1 | awk '{print $NF}')
+# Login to Ground Control
+LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"Harbor12345"}')
+AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+# Discover the sshpop agent SPIFFE ID
+AGENTS_RESP=$(curl -sk "https://localhost:9080/api/spire/agents?attestation_type=sshpop" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}")
+SAT_AGENT_ID=$(echo "$AGENTS_RESP" | grep -o '"spiffe_id":"[^"]*"' | tail -1 | cut -d'"' -f4)
 
 echo "Satellite agent SPIFFE ID: $SAT_AGENT_ID"
 
-docker exec spire-server /opt/spire/bin/spire-server entry create \
-    -parentID "$SAT_AGENT_ID" \
-    -spiffeID spiffe://harbor-satellite.local/satellite/edge-01 \
-    -selector docker:label:com.docker.compose.service:satellite \
-    -socketPath /tmp/spire-server/private/api.sock
+# Register satellite with explicit parent_agent_id
+curl -sk -X POST https://localhost:9080/api/satellites/register \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d "{
+      \"satellite_name\": \"edge-01\",
+      \"selectors\": [\"docker:label:com.docker.compose.service:satellite\"],
+      \"attestation_method\": \"sshpop\",
+      \"parent_agent_id\": \"${SAT_AGENT_ID}\"
+    }"
 ```
+
+The API creates the SPIRE workload entry, satellite DB record, and robot account.
 
 ### 2.3 Start Satellite
 
@@ -188,7 +204,7 @@ ssh-keygen -s ssh-ca -I "agent-satellite-2" -h -n "spire-agent-satellite-2" \
 chmod 644 ssh-ca
 ```
 
-### 2. Start the agent and register the workload
+### 2. Start the agent and register via GC API
 
 A compose override file `docker-compose.edge-02.yml` is provided in `sat/`.
 It defines `spire-agent-satellite-2` and `satellite-2` services (zot on port 5051).
@@ -203,18 +219,29 @@ docker compose -f docker-compose.yml -f docker-compose.edge-02.yml up -d spire-a
 docker exec spire-agent-satellite-2 /opt/spire/bin/spire-agent healthcheck \
     -socketPath /run/spire/sockets/agent.sock
 
-# Get the new agent's SPIFFE ID and register the workload
-SAT2_AGENT_ID=$(docker exec spire-server /opt/spire/bin/spire-server agent list \
-    -socketPath /tmp/spire-server/private/api.sock 2>/dev/null \
-    | grep "SPIFFE ID" | grep "sshpop" | tail -1 | awk '{print $NF}')
+# Login to Ground Control
+LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"Harbor12345"}')
+AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+# Discover the new sshpop agent SPIFFE ID
+AGENTS_RESP=$(curl -sk "https://localhost:9080/api/spire/agents?attestation_type=sshpop" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}")
+SAT2_AGENT_ID=$(echo "$AGENTS_RESP" | grep -o '"spiffe_id":"[^"]*"' | tail -1 | cut -d'"' -f4)
 
 echo "Agent SPIFFE ID: $SAT2_AGENT_ID"
 
-docker exec spire-server /opt/spire/bin/spire-server entry create \
-    -parentID "$SAT2_AGENT_ID" \
-    -spiffeID spiffe://harbor-satellite.local/satellite/edge-02 \
-    -selector docker:label:com.docker.compose.service:satellite-2 \
-    -socketPath /tmp/spire-server/private/api.sock
+# Register satellite via GC API
+curl -sk -X POST https://localhost:9080/api/satellites/register \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d "{
+      \"satellite_name\": \"edge-02\",
+      \"selectors\": [\"docker:label:com.docker.compose.service:satellite-2\"],
+      \"attestation_method\": \"sshpop\",
+      \"parent_agent_id\": \"${SAT2_AGENT_ID}\"
+    }"
 ```
 
 ### 3. Start the satellite
