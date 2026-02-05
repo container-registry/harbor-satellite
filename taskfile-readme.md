@@ -87,7 +87,7 @@ REG_USER=user REG_PASS=pass task publish DEST=ghcr.io/myorg/project
 Ensure Task is installed: `task --version`
 
 ### golangci-lint not found
-Install: `go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.0.2`
+Install: `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.0.2`
 
 ### govulncheck not found
 Install: `go install golang.org/x/vuln/cmd/govulncheck@latest`
