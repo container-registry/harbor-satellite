@@ -250,20 +250,15 @@ tasks:
         fi
         echo "Satellite registered with token: $TOKEN"
 
-        echo "Building and starting satellite..."
+        echo "Building satellite from local code..."
+        docker build -t satellite:e2e -f Dockerfile .
+
+        echo "Starting satellite..."
         docker run -d --name satellite --network harbor-e2e \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -p 8585:8585 \
-          golang:{{.GO_VERSION}}-alpine sh -c "
-            apk add --no-cache git &&
-            mkdir -p /app &&
-            cd /app &&
-            git clone --depth 1 https://github.com/goharbor/harbor-satellite.git . &&
-            cp config.example.json config.json &&
-            go build -o satellite ./cmd/main.go &&
-            ./satellite
-          "
+          satellite:e2e
 
   verify:
     desc: Verify image replication to local Zot
