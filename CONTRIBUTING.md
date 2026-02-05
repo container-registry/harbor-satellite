@@ -5,7 +5,7 @@ Welcome! Harbor Satellite is developed in the open, and we're grateful to the co
 ## Before You Start
 
 - Read the [README](README.md) to understand the project scope and architecture
-- Check [existing issues](https://github.com/goharbor/harbor-satellite/issues) to avoid duplicates
+- Check [existing issues](https://github.com/container-registry/harbor-satellite/issues) to avoid duplicates
 - Join [#harbor-satellite on CNCF Slack](https://cloud-native.slack.com/archives/C06NE6EJBU1)
 
 ## Ways to Contribute
