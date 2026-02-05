@@ -38,3 +38,6 @@ __debug_bin1949266242
 config.json
 ground-control/.env
 ground-control/.gc-dev
+
+# Task build output
+bin/
