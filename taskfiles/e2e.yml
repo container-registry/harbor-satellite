@@ -100,7 +100,6 @@ tasks:
         for i in $(seq 1 60); do
           if curl -sf {{.GC_URL}}/health > /dev/null 2>&1; then
             echo "Ground Control is healthy"
-            # Also check SPIRE port
             if nc -z localhost 8081 2>/dev/null; then
               echo "SPIRE server port is accessible"
               exit 0
@@ -319,58 +318,60 @@ tasks:
         JOIN_TOKEN=$(cat /tmp/join_token)
 
         echo "Starting SPIRE agent for attestation..."
-        docker run --rm --network spiffe-e2e alpine:latest sh -c "
-          apk add --no-cache curl tar netcat-openbsd &&
-          curl -sL https://github.com/spiffe/spire/releases/download/v1.10.4/spire-1.10.4-linux-amd64-musl.tar.gz | tar xz -C /opt &&
-          mkdir -p /tmp/spire-agent &&
+        docker run --rm --network spiffe-e2e \
+          -e JOIN_TOKEN="$JOIN_TOKEN" \
+          alpine:latest sh -c '
+            apk add --no-cache curl tar netcat-openbsd
+            curl -sL https://github.com/spiffe/spire/releases/download/v1.10.4/spire-1.10.4-linux-amd64-musl.tar.gz | tar xz -C /opt
+            mkdir -p /tmp/spire-agent
 
-          cat > /tmp/spire-agent/agent.conf << 'EOF'
-agent {
-    data_dir = \"/tmp/spire-agent\"
-    log_level = \"DEBUG\"
-    server_address = \"gc\"
-    server_port = 8081
-    socket_path = \"/tmp/spire-agent/agent.sock\"
-    trust_domain = \"harbor-satellite.local\"
-    insecure_bootstrap = true
-}
+            cat > /tmp/spire-agent/agent.conf << CONF
+        agent {
+            data_dir = "/tmp/spire-agent"
+            log_level = "DEBUG"
+            server_address = "gc"
+            server_port = 8081
+            socket_path = "/tmp/spire-agent/agent.sock"
+            trust_domain = "harbor-satellite.local"
+            insecure_bootstrap = true
+        }
 
-plugins {
-    NodeAttestor \"join_token\" {
-        plugin_data {}
-    }
-    KeyManager \"memory\" {
-        plugin_data {}
-    }
-    WorkloadAttestor \"unix\" {
-        plugin_data {}
-    }
-}
-EOF
+        plugins {
+            NodeAttestor "join_token" {
+                plugin_data {}
+            }
+            KeyManager "memory" {
+                plugin_data {}
+            }
+            WorkloadAttestor "unix" {
+                plugin_data {}
+            }
+        }
+        CONF
 
-          echo 'Testing connectivity to gc:8081...'
-          nc -zv gc 8081 || echo 'Connection test failed'
+            echo "Testing connectivity to gc:8081..."
+            nc -zv gc 8081 || echo "Connection test failed"
 
-          echo 'Starting SPIRE agent with join token...'
-          /opt/spire-1.10.4/bin/spire-agent run -config /tmp/spire-agent/agent.conf -joinToken '$JOIN_TOKEN' 2>&1 &
-          AGENT_PID=\$!
+            echo "Starting SPIRE agent with join token..."
+            /opt/spire-1.10.4/bin/spire-agent run -config /tmp/spire-agent/agent.conf -joinToken "$JOIN_TOKEN" 2>&1 &
+            AGENT_PID=$!
 
-          sleep 5
+            sleep 5
 
-          for i in \$(seq 1 30); do
-            if [ -S /tmp/spire-agent/agent.sock ]; then
-              echo 'SPIRE agent socket ready'
-              if /opt/spire-1.10.4/bin/spire-agent api fetch -socketPath /tmp/spire-agent/agent.sock; then
-                echo 'SVID fetch successful - attestation complete'
-                kill \$AGENT_PID 2>/dev/null || true
-                exit 0
+            for i in $(seq 1 30); do
+              if [ -S /tmp/spire-agent/agent.sock ]; then
+                echo "SPIRE agent socket ready"
+                if /opt/spire-1.10.4/bin/spire-agent api fetch -socketPath /tmp/spire-agent/agent.sock; then
+                  echo "SVID fetch successful - attestation complete"
+                  kill $AGENT_PID 2>/dev/null || true
+                  exit 0
+                fi
               fi
-            fi
-            echo \"Waiting for SPIRE agent... (\$i/30)\"
-            sleep 2
-          done
+              echo "Waiting for SPIRE agent... ($i/30)"
+              sleep 2
+            done
 
-          echo 'SPIRE agent attestation failed'
-          kill \$AGENT_PID 2>/dev/null || true
-          exit 1
-        "
+            echo "SPIRE agent attestation failed"
+            kill $AGENT_PID 2>/dev/null || true
+            exit 1
+          '
