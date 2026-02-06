@@ -55,6 +55,15 @@ type Satellite struct {
 	HeartbeatInterval sql.NullString
 }
 
+type SatelliteCachedImage struct {
+	ID          int32
+	SatelliteID int32
+	Reference   string
+	SizeBytes   int64
+	ReportedAt  time.Time
+	CreatedAt   time.Time
+}
+
 type SatelliteConfig struct {
 	SatelliteID int32
 	ConfigID    int32
