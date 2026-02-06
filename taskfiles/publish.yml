@@ -59,9 +59,6 @@ tasks:
           CONTEXT="ground-control"
         fi
 
-        FIRST_TAG=$(echo "{{.IMAGE_TAGS}}" | cut -d',' -f1 | sed 's/^v//')
-        IMAGE="{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$FIRST_TAG"
-
         # Login if credentials provided (REG_USER/REG_PASS)
         if [ -n "$REG_USER" ] && [ -n "$REG_PASS" ]; then
           echo "Logging into {{.REGISTRY}}..."
@@ -69,8 +66,8 @@ tasks:
         fi
 
         # Build tags list for buildx
-        TAGS="-t $IMAGE"
-        for tag in $(echo "{{.IMAGE_TAGS}}" | tr ',' ' ' | tail -n +2); do
+        TAGS=""
+        for tag in $(echo "{{.IMAGE_TAGS}}" | tr ',' ' '); do
           tag=$(echo "$tag" | sed 's/^v//')
           TAGS="$TAGS -t {{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
         done
