@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -16,7 +18,7 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
-	goharbormodels "github.com/goharbor/go-client/pkg/sdk/v2.0/models"
+	"golang.org/x/crypto/argon2"
 )
 
 func isConfigInUse(ctx context.Context, q *database.Queries, config database.Config) (bool, error) {
@@ -125,13 +127,29 @@ func ensureSatelliteProjectExists(ctx context.Context) error {
 	return nil
 }
 
-// Add Robot Account to database
-func storeRobotAccountInDB(ctx context.Context, q *database.Queries, rbt *goharbormodels.RobotCreated, satelliteID int32) error {
+// hashRobotCredentials computes a deterministic argon2id hash of robotName+secret.
+// Uses robotName as salt so GC can re-derive the hash from credentials.
+func hashRobotCredentials(robotName, secret string) string {
+	salt := []byte(robotName)
+	hash := argon2.IDKey([]byte(secret), salt, 2, 19456, 1, 32)
+	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
+	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
+	return fmt.Sprintf("$argon2id$v=%d$m=19456,t=2,p=1$%s$%s", argon2.Version, b64Salt, b64Hash)
+}
+
+// verifyRobotCredentials checks if the given credentials match the stored hash.
+func verifyRobotCredentials(robotName, secret, storedHash string) bool {
+	computed := hashRobotCredentials(robotName, secret)
+	return subtle.ConstantTimeCompare([]byte(computed), []byte(storedHash)) == 1
+}
+
+func storeRobotAccountInDB(ctx context.Context, q *database.Queries, robotName, secretHash, robotID string, satelliteID int32, expiry sql.NullTime) error {
 	params := database.AddRobotAccountParams{
-		RobotName:   rbt.Name,
-		RobotSecret: rbt.Secret,
-		RobotID:     strconv.Itoa(int(rbt.ID)),
-		SatelliteID: satelliteID,
+		RobotName:       robotName,
+		RobotSecretHash: secretHash,
+		RobotID:         robotID,
+		SatelliteID:     satelliteID,
+		RobotExpiry:     expiry,
 	}
 	if _, err := q.AddRobotAccount(ctx, params); err != nil {
 		log.Println(err)
