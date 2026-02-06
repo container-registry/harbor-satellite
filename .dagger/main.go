@@ -244,7 +244,6 @@ func (m *HarborSatellite) TestCoverage(
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
 		WithMountedDirectory("/src", source).
 		WithWorkdir("/src").
-		// 🔧 Same environment fix for consistency
 		WithExec([]string{"sh", "-c", "echo test-machine-id > /etc/machine-id"}).
 		WithExec([]string{
 			"go", "test", "./...",
@@ -268,7 +267,6 @@ func (m *HarborSatellite) TestCoverageReport(
 		WithMountedDirectory("/src", source).
 		WithWorkdir("/src").
 		WithExec([]string{"apk", "add", "--no-cache", "bc"}).
-		// 🔧 Same environment fix for consistency
 		WithExec([]string{"sh", "-c", "echo test-machine-id > /etc/machine-id"}).
 		WithExec([]string{
 			"go", "test", "./...",
@@ -276,7 +274,7 @@ func (m *HarborSatellite) TestCoverageReport(
 		})
 
 	return container.WithExec([]string{"sh", "-c", `
-		echo "<h2> 📊 Test Coverage</h2>" > ` + report + `
+		echo "<h2> Test Coverage</h2>" > ` + report + `
 		total=$(go tool cover -func=` + coverage + ` | grep total: | grep -Eo '[0-9]+\.[0-9]+')
 		echo "<b>Total Coverage:</b> $total%" >> ` + report + `
 		echo "<details><summary>Details</summary><pre>" >> ` + report + `
