@@ -79,7 +79,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 		RequestCreatedTime:  time.Now().UTC(),
 	}
 
-	registryURL := s.cm.GetZotURL()
+	registryURL := s.cm.GetLocalRegistryURL()
 	insecure := s.cm.UseUnsecure()
 	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
 
