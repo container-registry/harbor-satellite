@@ -215,7 +215,6 @@ func (m *HarborSatellite) TestReport(
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
 		WithEnvVariable("GOCACHE", "/go/build-cache").
-		// 🔧 Fix: machine-id required by identity tests
 		WithExec([]string{"sh", "-c", "echo test-machine-id > /etc/machine-id"}).
 		WithExec([]string{"go", "install", "gotest.tools/gotestsum@v1.12.0"}).
 		WithMountedDirectory("/src", source).
