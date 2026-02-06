@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
@@ -172,7 +173,12 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 	robotID = rbt.ID
 
-	if err := storeRobotAccountInDB(r.Context(), q, rbt, satellite.ID); err != nil {
+	secretHash := hashRobotCredentials(rbt.Name, rbt.Secret)
+	expiry := sql.NullTime{}
+	if rbt.ExpiresAt > 0 {
+		expiry = sql.NullTime{Time: time.Unix(rbt.ExpiresAt, 0), Valid: true}
+	}
+	if err := storeRobotAccountInDB(r.Context(), q, rbt.Name, secretHash, strconv.FormatInt(rbt.ID, 10), satellite.ID, expiry); err != nil {
 		log.Println("Error storing robot account in DB:", err)
 		HandleAppError(w, err)
 		return
@@ -291,6 +297,35 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Refresh robot secret via Harbor to get a fresh credential for the satellite
+	harborRobotID, err := strconv.ParseInt(robot.RobotID, 10, 64)
+	if err != nil {
+		log.Printf("Error parsing robot ID: %v", err)
+		HandleAppError(w, &AppError{Message: "Error: invalid robot ID", Code: http.StatusInternalServerError})
+		return
+	}
+	refreshResp, err := harbor.RefreshRobotAccount(r.Context(), "", harborRobotID)
+	if err != nil {
+		log.Printf("Error refreshing robot secret: %v", err)
+		HandleAppError(w, &AppError{Message: "Error: failed to refresh robot secret", Code: http.StatusInternalServerError})
+		return
+	}
+	freshSecret := refreshResp.Payload.Secret
+
+	// Update stored hash with new secret
+	newHash := hashRobotCredentials(robot.RobotName, freshSecret)
+	if err := q.UpdateRobotAccount(r.Context(), database.UpdateRobotAccountParams{
+		ID:              robot.ID,
+		RobotName:       robot.RobotName,
+		RobotSecretHash: newHash,
+		RobotID:         robot.RobotID,
+		RobotExpiry:     robot.RobotExpiry,
+	}); err != nil {
+		log.Printf("Error updating robot hash in DB: %v", err)
+		HandleAppError(w, &AppError{Message: "Error: failed to update robot hash", Code: http.StatusInternalServerError})
+		return
+	}
+
 	// groups attached to satellite
 	groups, err := q.SatelliteGroupList(r.Context(), satelliteID)
 	if err != nil {
@@ -341,7 +376,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		StateURL: satelliteState,
 		RegistryCredentials: config.RegistryCredentials{
 			Username: robot.RobotName,
-			Password: robot.RobotSecret,
+			Password: freshSecret,
 			URL:      config.URL(os.Getenv("HARBOR_URL")),
 		},
 	}
@@ -411,11 +446,13 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("SPIFFE ZTR: Found existing satellite %s with ID %d", satelliteName, satellite.ID)
 	}
 
+	var freshSecret string
 	robot, err := q.GetRobotAccBySatelliteID(r.Context(), satellite.ID)
 	if err != nil {
 		// Robot not found - create new one (backward compat for satellites created before join-token flow)
 		log.Printf("SPIFFE ZTR: Robot account not found for satellite %s, creating...", satelliteName)
-		robot, _, err = ensureSatelliteRobotAccount(r, q, satellite)
+		var initialSecret string
+		robot, _, initialSecret, err = ensureSatelliteRobotAccount(r, q, satellite)
 		if err != nil {
 			log.Printf("SPIFFE ZTR: Failed to create robot account for satellite %s: %v", satelliteName, err)
 			HandleAppError(w, &AppError{
@@ -424,6 +461,7 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		freshSecret = initialSecret
 
 		if err := ensureSatelliteConfig(r, q, satellite); err != nil {
 			log.Printf("SPIFFE ZTR: Failed to ensure config for satellite %s: %v", satelliteName, err)
@@ -435,7 +473,7 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// Robot exists - refresh its secret so the satellite gets a fresh credential
-		robot, err = refreshRobotSecret(r, q, robot)
+		freshSecret, err = refreshRobotSecret(r, q, robot)
 		if err != nil {
 			log.Printf("SPIFFE ZTR: Failed to refresh robot secret for satellite %s: %v", satelliteName, err)
 			HandleAppError(w, &AppError{
@@ -500,7 +538,7 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		StateURL: satelliteState,
 		RegistryCredentials: config.RegistryCredentials{
 			Username: robot.RobotName,
-			Password: robot.RobotSecret,
+			Password: freshSecret,
 			URL:      config.URL(harborURL),
 		},
 	}
@@ -627,79 +665,87 @@ func (s *Server) getStaleSatellitesHandler(w http.ResponseWriter, r *http.Reques
 	WriteJSONResponse(w, http.StatusOK, satellites)
 }
 
-// ensureSatelliteRobotAccount creates a Harbor robot account for the satellite and stores it in DB.
-// Returns the created robot account and the Harbor robot ID (for cleanup on failure).
-func ensureSatelliteRobotAccount(r *http.Request, q *database.Queries, satellite database.Satellite) (database.RobotAccount, int64, error) {
+// ensureSatelliteRobotAccount creates a Harbor robot account for the satellite and stores its hash in DB.
+// Returns the created robot account, the Harbor robot ID (for cleanup on failure), and the transient secret.
+func ensureSatelliteRobotAccount(r *http.Request, q *database.Queries, satellite database.Satellite) (database.RobotAccount, int64, string, error) {
 	var robotName, robotSecret string
 	var harborRobotID int64
+	var expiry sql.NullTime
 	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
 
 	if !skipHarborCheck {
 		if err := ensureSatelliteProjectExists(r.Context()); err != nil {
-			return database.RobotAccount{}, 0, fmt.Errorf("ensure satellite project: %w", err)
+			return database.RobotAccount{}, 0, "", fmt.Errorf("ensure satellite project: %w", err)
 		}
 
 		projects := []string{"satellite"}
 		rbt, err := utils.CreateRobotAccForSatellite(r.Context(), projects, satellite.Name)
 		if err != nil {
-			return database.RobotAccount{}, 0, fmt.Errorf("create robot account: %w", err)
+			return database.RobotAccount{}, 0, "", fmt.Errorf("create robot account: %w", err)
 		}
 		harborRobotID = rbt.ID
 		robotName = rbt.Name
 		robotSecret = rbt.Secret
+		if rbt.ExpiresAt > 0 {
+			expiry = sql.NullTime{Time: time.Unix(rbt.ExpiresAt, 0), Valid: true}
+		}
 	} else {
 		log.Printf("SPIFFE ZTR: Harbor not available, using placeholder credentials for satellite %s", satellite.Name)
 		robotName = "robot$satellite-" + satellite.Name
 		robotSecret = "spiffe-auto-registered-placeholder-secret"
 	}
 
+	secretHash := hashRobotCredentials(robotName, robotSecret)
 	robotParams := database.AddRobotAccountParams{
-		RobotName:   robotName,
-		RobotSecret: robotSecret,
-		RobotID:     strconv.FormatInt(harborRobotID, 10),
-		SatelliteID: satellite.ID,
+		RobotName:       robotName,
+		RobotSecretHash: secretHash,
+		RobotID:         strconv.FormatInt(harborRobotID, 10),
+		SatelliteID:     satellite.ID,
+		RobotExpiry:     expiry,
 	}
 	robot, err := q.AddRobotAccount(r.Context(), robotParams)
 	if err != nil {
-		return database.RobotAccount{}, harborRobotID, fmt.Errorf("store robot account: %w", err)
+		return database.RobotAccount{}, harborRobotID, "", fmt.Errorf("store robot account: %w", err)
 	}
 
 	log.Printf("SPIFFE ZTR: Created robot account %s for satellite %s", robotName, satellite.Name)
-	return robot, harborRobotID, nil
+	return robot, harborRobotID, robotSecret, nil
 }
 
-// refreshRobotSecret refreshes the Harbor robot account secret and updates the DB.
-func refreshRobotSecret(r *http.Request, q *database.Queries, robot database.RobotAccount) (database.RobotAccount, error) {
+// refreshRobotSecret refreshes the Harbor robot account secret and updates the hash in DB.
+// Returns the fresh plaintext secret for pass-through to the satellite.
+func refreshRobotSecret(r *http.Request, q *database.Queries, robot database.RobotAccount) (string, error) {
 	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
 	if skipHarborCheck {
 		log.Printf("SPIFFE ZTR: Harbor not available, skipping robot secret refresh for %s", robot.RobotName)
-		return robot, nil
+		return "spiffe-auto-registered-placeholder-secret", nil
 	}
 
 	harborRobotID, err := strconv.ParseInt(robot.RobotID, 10, 64)
 	if err != nil {
-		return robot, fmt.Errorf("parse robot ID: %w", err)
+		return "", fmt.Errorf("parse robot ID: %w", err)
 	}
 
 	resp, err := harbor.RefreshRobotAccount(r.Context(), "", harborRobotID)
 	if err != nil {
-		return robot, fmt.Errorf("refresh robot secret in Harbor: %w", err)
+		return "", fmt.Errorf("refresh robot secret in Harbor: %w", err)
 	}
 
 	newSecret := resp.Payload.Secret
+	newHash := hashRobotCredentials(robot.RobotName, newSecret)
 	err = q.UpdateRobotAccount(r.Context(), database.UpdateRobotAccountParams{
-		ID:          robot.ID,
-		RobotName:   robot.RobotName,
-		RobotSecret: newSecret,
-		RobotID:     robot.RobotID,
+		ID:              robot.ID,
+		RobotName:       robot.RobotName,
+		RobotSecretHash: newHash,
+		RobotID:         robot.RobotID,
+		RobotExpiry:     robot.RobotExpiry,
 	})
 	if err != nil {
-		return robot, fmt.Errorf("update robot secret in DB: %w", err)
+		return "", fmt.Errorf("update robot hash in DB: %w", err)
 	}
 
-	robot.RobotSecret = newSecret
 	log.Printf("SPIFFE ZTR: Refreshed robot secret for %s", robot.RobotName)
-	return robot, nil
+	return newSecret, nil
 }
 
 // ensureSatelliteConfig links the satellite to the default config if no config is assigned.
@@ -784,7 +830,7 @@ func (s *Server) autoRegisterSatellite(r *http.Request, name string) (database.S
 		return database.Satellite{}, fmt.Errorf("create satellite: %w", err)
 	}
 
-	_, harborRobotID, err = ensureSatelliteRobotAccount(r, q, satellite)
+	_, harborRobotID, _, err = ensureSatelliteRobotAccount(r, q, satellite)
 	if err != nil {
 		return database.Satellite{}, err
 	}
