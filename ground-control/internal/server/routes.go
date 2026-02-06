@@ -65,8 +65,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 	api.HandleFunc("/spire/status", s.RequireRole(roleSystemAdmin, s.spireStatusHandler)).Methods("GET")
 	api.HandleFunc("/spire/agents", s.RequireRole(roleSystemAdmin, s.listSpireAgentsHandler)).Methods("GET")
 	api.HandleFunc("/satellites/register", s.RequireRole(roleSystemAdmin, s.registerSatelliteWithSPIFFEHandler)).Methods("POST")
-	// Deprecated: use /satellites/register with attestation_method="join_token"
-	api.HandleFunc("/join-tokens", s.RequireRole(roleSystemAdmin, s.createJoinTokenHandler)).Methods("POST")
 
 	// Satellite routes (robot creds or SPIFFE)
 	satellites := r.PathPrefix("/satellites").Subrouter()
