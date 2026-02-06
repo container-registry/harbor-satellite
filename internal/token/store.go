@@ -117,10 +117,10 @@ func (s *MemoryTokenStore) Cleanup() {
 
 // MockTokenStore is a mock implementation for testing.
 type MockTokenStore struct {
-	UsedTokens    map[string]bool
-	RateLimited   map[string]bool
-	MarkUsedErr   error
-	RateLimitErr  error
+	UsedTokens   map[string]bool
+	RateLimited  map[string]bool
+	MarkUsedErr  error
+	RateLimitErr error
 }
 
 // NewMockTokenStore creates a mock token store.

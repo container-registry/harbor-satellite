@@ -47,7 +47,7 @@ func (m *HarborSatellite) RunGroundControl(
 	source *dagger.Directory,
 ) (*dagger.Service, error) {
 	golang := dag.Container().
-		From(DEFAULT_GO + "-alpine").
+		From(DEFAULT_GO+"-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -95,7 +95,7 @@ func (m *HarborSatellite) BuildDev(
 	if component == "satellite" || component == "ground-control" {
 		var binaryFile *dagger.File
 		golang := dag.Container().
-			From(DEFAULT_GO + "-alpine").
+			From(DEFAULT_GO+"-alpine").
 			WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 			WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 			WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
