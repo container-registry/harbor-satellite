@@ -17,7 +17,9 @@ services:
     restart: unless-stopped
 
   satellite:
-    image: 8gears.container-registry.com/harbor-satellite/satellite:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: satellite
     depends_on:
       registry:
