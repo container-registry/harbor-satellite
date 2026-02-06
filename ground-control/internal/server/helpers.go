@@ -3,9 +3,7 @@ package server
 import (
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	"database/sql"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -17,8 +15,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
+	"github.com/container-registry/harbor-satellite/ground-control/pkg/crypto"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
-	"golang.org/x/crypto/argon2"
 )
 
 func isConfigInUse(ctx context.Context, q *database.Queries, config database.Config) (bool, error) {
@@ -127,32 +125,14 @@ func ensureSatelliteProjectExists(ctx context.Context) error {
 	return nil
 }
 
-// hashRobotCredentials computes an argon2id hash of the secret using a random 16-byte salt.
+// hashRobotCredentials computes an argon2id hash of the secret using a random salt.
 func hashRobotCredentials(secret string) (string, error) {
-	salt := make([]byte, 16)
-	if _, err := rand.Read(salt); err != nil {
-		return "", fmt.Errorf("generate salt: %w", err)
-	}
-	hash := argon2.IDKey([]byte(secret), salt, 2, 19456, 1, 32)
-	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
-	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
-	return fmt.Sprintf("$argon2id$v=%d$m=19456,t=2,p=1$%s$%s", argon2.Version, b64Salt, b64Hash), nil
+	return crypto.HashSecret(secret)
 }
 
-// verifyRobotCredentials checks if the given secret matches the stored hash
-// by extracting the salt from the encoded hash and recomputing.
+// verifyRobotCredentials checks if the given secret matches the stored hash.
 func verifyRobotCredentials(secret, storedHash string) bool {
-	parts := strings.Split(storedHash, "$")
-	if len(parts) != 6 {
-		return false
-	}
-	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
-	if err != nil {
-		return false
-	}
-	hash := argon2.IDKey([]byte(secret), salt, 2, 19456, 1, 32)
-	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
-	return subtle.ConstantTimeCompare([]byte(b64Hash), []byte(parts[5])) == 1
+	return crypto.VerifySecret(secret, storedHash)
 }
 
 func storeRobotAccountInDB(ctx context.Context, q *database.Queries, robotName, secretHash, robotID string, satelliteID int32, expiry sql.NullTime) error {

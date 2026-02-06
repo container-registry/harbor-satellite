@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/container-registry/harbor-satellite/ground-control/pkg/crypto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,25 +29,25 @@ func TestHashRobotCredentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hash, err := hashRobotCredentials(tt.secret)
+			hash, err := crypto.HashSecret(tt.secret)
 			require.NoError(t, err)
 			require.True(t, strings.HasPrefix(hash, "$argon2id$"), "hash should start with $argon2id$")
 		})
 	}
 
 	t.Run("random salt produces unique hashes", func(t *testing.T) {
-		h1, err := hashRobotCredentials("same-secret")
+		h1, err := crypto.HashSecret("same-secret")
 		require.NoError(t, err)
-		h2, err := hashRobotCredentials("same-secret")
+		h2, err := crypto.HashSecret("same-secret")
 		require.NoError(t, err)
 
 		require.NotEqual(t, h1, h2, "same secret with random salt should produce different hashes")
 	})
 
 	t.Run("different secrets produce different hashes", func(t *testing.T) {
-		h1, err := hashRobotCredentials("secret-1")
+		h1, err := crypto.HashSecret("secret-1")
 		require.NoError(t, err)
-		h2, err := hashRobotCredentials("secret-2")
+		h2, err := crypto.HashSecret("secret-2")
 		require.NoError(t, err)
 
 		require.NotEqual(t, h1, h2)
@@ -55,7 +56,7 @@ func TestHashRobotCredentials(t *testing.T) {
 
 func TestVerifyRobotCredentials(t *testing.T) {
 	secret := "correct-secret"
-	storedHash, err := hashRobotCredentials(secret)
+	storedHash, err := crypto.HashSecret(secret)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -82,12 +83,12 @@ func TestVerifyRobotCredentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := verifyRobotCredentials(tt.secret, storedHash)
+			got := crypto.VerifySecret(tt.secret, storedHash)
 			require.Equal(t, tt.want, got)
 		})
 	}
 
 	t.Run("malformed hash returns false", func(t *testing.T) {
-		require.False(t, verifyRobotCredentials(secret, "not-a-valid-hash"))
+		require.False(t, crypto.VerifySecret(secret, "not-a-valid-hash"))
 	})
 }
