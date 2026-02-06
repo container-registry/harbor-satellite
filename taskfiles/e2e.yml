@@ -569,7 +569,7 @@ tasks:
     cmds:
       - |
         echo "Creating BYO config..."
-        curl -sf -X POST {{.GC_URL}}/api/configs \
+        RESP=$(curl -s -w '\n%{http_code}' -X POST {{.GC_URL}}/api/configs \
           -H "Authorization: Bearer {{.GC_TOKEN}}" \
           -H "Content-Type: application/json" \
           -d '{
@@ -585,19 +585,33 @@ tasks:
                 "register_satellite_interval": "@every 00h00m10s",
                 "bring_own_registry": true,
                 "local_registry": {"url": "http://byo-registry:5000"}
-              }
+              },
+              "zot_config": {}
             }
-          }'
+          }')
+        HTTP_CODE=$(echo "$RESP" | tail -1)
+        BODY=$(echo "$RESP" | sed '$d')
+        if [ "$HTTP_CODE" -ge 400 ]; then
+          echo "ERROR: Config creation failed (HTTP $HTTP_CODE): $BODY"
+          exit 1
+        fi
+        echo "Config created (HTTP $HTTP_CODE)"
 
         echo "Creating group..."
-        curl -sf -X POST {{.GC_URL}}/api/groups/sync \
+        RESP=$(curl -s -w '\n%{http_code}' -X POST {{.GC_URL}}/api/groups/sync \
           -H "Authorization: Bearer {{.GC_TOKEN}}" \
           -H "Content-Type: application/json" \
           -d '{
             "group": "{{.DEST_NAMESPACE}}",
             "registry": "{{.HARBOR_INTERNAL_URL}}",
             "artifacts": [{"repository": "{{.PROJECT_NAME}}/alpine", "tag": ["latest"]}]
-          }'
+          }')
+        HTTP_CODE=$(echo "$RESP" | tail -1)
+        BODY=$(echo "$RESP" | sed '$d')
+        if [ "$HTTP_CODE" -ge 400 ]; then
+          echo "ERROR: Group creation failed (HTTP $HTTP_CODE): $BODY"
+          exit 1
+        fi
 
         echo "Ground Control initialized for BYO"
 
