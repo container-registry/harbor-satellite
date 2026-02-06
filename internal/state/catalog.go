@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -118,7 +119,7 @@ func registryScheme(insecure bool) string {
 	return "https"
 }
 
-func fetchCatalog(ctx context.Context, client *http.Client, registryHost string, insecure bool) ([]string, error) {
+func fetchCatalog(ctx context.Context, client *http.Client, registryHost string, insecure bool) (_ []string, retErr error) {
 	url := fmt.Sprintf("%s://%s/v2/_catalog", registryScheme(insecure), registryHost)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -129,7 +130,7 @@ func fetchCatalog(ctx context.Context, client *http.Client, registryHost string,
 	if err != nil {
 		return nil, fmt.Errorf("catalog request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { retErr = errors.Join(retErr, resp.Body.Close()) }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("catalog request returned %s", resp.Status)
@@ -142,7 +143,7 @@ func fetchCatalog(ctx context.Context, client *http.Client, registryHost string,
 	return catalog.Repositories, nil
 }
 
-func fetchTags(ctx context.Context, client *http.Client, registryHost, repo string, insecure bool) ([]string, error) {
+func fetchTags(ctx context.Context, client *http.Client, registryHost, repo string, insecure bool) (_ []string, retErr error) {
 	url := fmt.Sprintf("%s://%s/v2/%s/tags/list", registryScheme(insecure), registryHost, repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -153,7 +154,7 @@ func fetchTags(ctx context.Context, client *http.Client, registryHost, repo stri
 	if err != nil {
 		return nil, fmt.Errorf("tags request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { retErr = errors.Join(retErr, resp.Body.Close()) }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tags request returned %s", resp.Status)
