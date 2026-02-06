@@ -34,19 +34,43 @@ func HashSecret(secret string) (string, error) {
 // VerifySecret checks if the given secret matches the stored hash.
 func VerifySecret(secret, storedHash string) bool {
 	// Parse the hash format: $argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>
-	// For simplicity, we use the hardcoded parameters from constants.
-	// A more robust implementation would parse parameters from the hash string.
 	parts := splitHash(storedHash)
 	if len(parts) != 6 {
 		return false
 	}
+
+	// Parse version
+	var version int
+	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil {
+		return false
+	}
+	if version != argon2.Version {
+		return false
+	}
+
+	// Parse parameters (memory, time, parallelism)
+	var memory, time uint32
+	var parallelism uint8
+	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &time, &parallelism); err != nil {
+		return false
+	}
+
+	// Decode salt
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
 		return false
 	}
-	hash := argon2.IDKey([]byte(secret), salt, ArgonTime, ArgonMemory, ArgonParallelism, ArgonKeySize)
-	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
-	return subtle.ConstantTimeCompare([]byte(b64Hash), []byte(parts[5])) == 1
+
+	// Decode stored hash to get key length
+	storedHashBytes, err := base64.RawStdEncoding.DecodeString(parts[5])
+	if err != nil {
+		return false
+	}
+	keyLen := uint32(len(storedHashBytes))
+
+	// Recompute hash using parameters from the stored hash
+	hash := argon2.IDKey([]byte(secret), salt, time, memory, parallelism, keyLen)
+	return subtle.ConstantTimeCompare(storedHashBytes, hash) == 1
 }
 
 func splitHash(hash string) []string {
