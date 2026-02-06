@@ -7,16 +7,16 @@ import (
 
 // MockProvider implements Provider interface for testing.
 type MockProvider struct {
-	EncryptFunc     func(plaintext, key []byte) ([]byte, error)
-	DecryptFunc     func(ciphertext, key []byte) ([]byte, error)
-	DeriveKeyFunc   func(input, salt []byte, keyLen int) ([]byte, error)
-	SignFunc        func(data []byte, key crypto.PrivateKey) ([]byte, error)
-	VerifyFunc      func(data, signature []byte, key crypto.PublicKey) error
-	GenerateFunc    func() (crypto.PrivateKey, crypto.PublicKey, error)
-	HashFunc        func(data []byte) []byte
-	RandomBytesFunc func(n int) ([]byte, error)
-	Err             error
-	EncryptedPrefix []byte
+	EncryptFunc      func(plaintext, key []byte) ([]byte, error)
+	DecryptFunc      func(ciphertext, key []byte) ([]byte, error)
+	DeriveKeyFunc    func(input, salt []byte, keyLen int) ([]byte, error)
+	SignFunc         func(data []byte, key crypto.PrivateKey) ([]byte, error)
+	VerifyFunc       func(data, signature []byte, key crypto.PublicKey) error
+	GenerateFunc     func() (crypto.PrivateKey, crypto.PublicKey, error)
+	HashFunc         func(data []byte) []byte
+	RandomBytesFunc  func(n int) ([]byte, error)
+	Err              error
+	EncryptedPrefix  []byte
 }
 
 // NewMockProvider creates a MockProvider with sensible defaults.

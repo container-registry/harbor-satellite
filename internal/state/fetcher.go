@@ -31,10 +31,10 @@ type baseStateFetcher struct {
 
 type URLStateFetcher struct {
 	baseStateFetcher
-	url      string
-	insecure bool
-	useHTTP  bool
-	tlsCfg   config.TLSConfig
+	url       string
+	insecure  bool
+	useHTTP   bool
+	tlsCfg    config.TLSConfig
 }
 
 func NewURLStateFetcher(stateURL, userName, password string, insecure bool) StateFetcher {

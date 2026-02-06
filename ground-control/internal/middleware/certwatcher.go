@@ -124,3 +124,4 @@ func (cw *CertWatcher) hasChanged() bool {
 
 	return certInfo.ModTime().After(lastMod) || keyInfo.ModTime().After(lastMod)
 }
+
