@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -233,10 +234,13 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 	satellite, err := q.GetSatelliteByName(r.Context(), req.SatelliteName)
 	if err != nil {
 		// New satellite: wrap DB writes in a transaction with cleanup on failure
+		// Use a detached context for cleanup so cancellation doesn't leave orphaned resources
+		cleanupCtx := context.WithoutCancel(r.Context())
+
 		tx, txErr := s.db.BeginTx(r.Context(), nil)
 		if txErr != nil {
 			log.Printf("Register: Failed to begin transaction: %v", txErr)
-			if delErr := s.spireClient.DeleteWorkloadEntry(r.Context(), workloadEntryID); delErr != nil {
+			if delErr := s.spireClient.DeleteWorkloadEntry(cleanupCtx, workloadEntryID); delErr != nil {
 				log.Printf("Warning: Failed to cleanup workload entry: %v", delErr)
 			}
 			HandleAppError(w, &AppError{
@@ -252,11 +256,11 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 
 		defer func() {
 			if !committed {
-				if delErr := s.spireClient.DeleteWorkloadEntry(r.Context(), workloadEntryID); delErr != nil {
+				if delErr := s.spireClient.DeleteWorkloadEntry(cleanupCtx, workloadEntryID); delErr != nil {
 					log.Printf("Warning: Failed to cleanup workload entry: %v", delErr)
 				}
 				if harborRobotID != 0 {
-					if _, delErr := harbor.DeleteRobotAccount(r.Context(), harborRobotID); delErr != nil {
+					if _, delErr := harbor.DeleteRobotAccount(cleanupCtx, harborRobotID); delErr != nil {
 						log.Printf("Warning: Failed to cleanup robot account: %v", delErr)
 					}
 				}
