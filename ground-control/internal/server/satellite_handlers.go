@@ -302,37 +302,11 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Refresh robot secret via Harbor to get a fresh credential for the satellite
-	harborRobotID, err := strconv.ParseInt(robot.RobotID, 10, 64)
-	if err != nil {
-		log.Printf("Error parsing robot ID: %v", err)
-		HandleAppError(w, &AppError{Message: "Error: invalid robot ID", Code: http.StatusInternalServerError})
-		return
-	}
-	refreshResp, err := harbor.RefreshRobotAccount(r.Context(), "", harborRobotID)
+	// Refresh robot secret via Harbor and update stored hash
+	freshSecret, err := refreshRobotSecret(r, q, robot)
 	if err != nil {
 		log.Printf("Error refreshing robot secret: %v", err)
-		HandleAppError(w, &AppError{Message: "Error: failed to refresh robot secret", Code: http.StatusInternalServerError})
-		return
-	}
-	freshSecret := refreshResp.Payload.Secret
-
-	// Update stored hash with new secret
-	newHash, err := hashRobotCredentials(freshSecret)
-	if err != nil {
-		log.Printf("Error hashing refreshed secret: %v", err)
-		HandleAppError(w, &AppError{Message: "Error: failed to hash refreshed secret", Code: http.StatusInternalServerError})
-		return
-	}
-	if err := q.UpdateRobotAccount(r.Context(), database.UpdateRobotAccountParams{
-		ID:              robot.ID,
-		RobotName:       robot.RobotName,
-		RobotSecretHash: newHash,
-		RobotID:         robot.RobotID,
-		RobotExpiry:     robot.RobotExpiry,
-	}); err != nil {
-		log.Printf("Error updating robot hash in DB: %v", err)
-		HandleAppError(w, &AppError{Message: "Error: failed to update robot hash", Code: http.StatusInternalServerError})
+		HandleAppError(w, &AppError{Message: fmt.Sprintf("Error: %v", err), Code: http.StatusInternalServerError})
 		return
 	}
 
@@ -742,6 +716,9 @@ func refreshRobotSecret(r *http.Request, q *database.Queries, robot database.Rob
 	resp, err := harbor.RefreshRobotAccount(r.Context(), "", harborRobotID)
 	if err != nil {
 		return "", fmt.Errorf("refresh robot secret in Harbor: %w", err)
+	}
+	if resp.Payload == nil {
+		return "", fmt.Errorf("harbor returned nil payload for robot %s", robot.RobotName)
 	}
 
 	newSecret := resp.Payload.Secret
