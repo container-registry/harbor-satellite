@@ -27,6 +27,19 @@ tasks:
       - task: register-satellite
       - task: verify
 
+  test-byo:
+    desc: Run BYO registry E2E test
+    cmds:
+      - task: setup
+      - defer: { task: cleanup-byo }
+      - task: wait-harbor
+      - task: wait-gc
+      - task: init-harbor
+      - task: init-gc-byo
+      - task: register-satellite-byo
+      - task: verify-byo
+      - echo "BYO registry E2E test passed"
+
   test-spiffe:
     desc: Run SPIFFE join token E2E test
     cmds:
@@ -543,3 +556,147 @@ tasks:
           -socketPath /tmp/spire-server/private/api.sock
 
         echo "SPIFFE join token attestation verified successfully"
+
+  init-gc-byo:
+    desc: Initialize Ground Control with BYO registry config
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sf -X POST {{.GC_URL}}/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Creating BYO config..."
+        curl -sf -X POST {{.GC_URL}}/api/configs \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "config_name": "byo-config",
+            "registry": "{{.HARBOR_INTERNAL_URL}}",
+            "config": {
+              "app_config": {
+                "ground_control_url": "http://gc:8080",
+                "log_level": "info",
+                "use_unsecure": true,
+                "state_replication_interval": "@every 00h00m10s",
+                "update_config_interval": "@every 00h00m10s",
+                "register_satellite_interval": "@every 00h00m10s",
+                "bring_own_registry": true,
+                "local_registry": {"url": "http://byo-registry:5000"}
+              }
+            }
+          }'
+
+        echo "Creating group..."
+        curl -sf -X POST {{.GC_URL}}/api/groups/sync \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "group": "{{.DEST_NAMESPACE}}",
+            "registry": "{{.HARBOR_INTERNAL_URL}}",
+            "artifacts": [{"repository": "{{.PROJECT_NAME}}/alpine", "tag": ["latest"]}]
+          }'
+
+        echo "Ground Control initialized for BYO"
+
+  register-satellite-byo:
+    desc: Register satellite with BYO registry and start it
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sf -X POST {{.GC_URL}}/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Registering satellite..."
+        RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name": "byo-satellite",
+            "groups": ["{{.DEST_NAMESPACE}}"],
+            "config_name": "byo-config"
+          }')
+
+        TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$TOKEN" ]; then
+          echo "Failed to get satellite token"
+          exit 1
+        fi
+        echo "Satellite registered with token: $TOKEN"
+
+        echo "Starting BYO registry (registry:2)..."
+        docker run -d --name byo-registry --network harbor-e2e \
+          -e REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry \
+          -e REGISTRY_HTTP_ADDR=0.0.0.0:5000 \
+          registry:2
+
+        echo "Waiting for BYO registry to be healthy..."
+        for i in $(seq 1 15); do
+          if docker exec byo-registry wget -q -O - http://localhost:5000/v2/ > /dev/null 2>&1; then
+            echo "BYO registry is healthy"
+            break
+          fi
+          if [ "$i" -eq 15 ]; then
+            echo "ERROR: BYO registry failed to start"
+            docker logs byo-registry 2>&1 | tail -20
+            exit 1
+          fi
+          echo "Waiting for BYO registry... ($i/15)"
+          sleep 2
+        done
+
+        echo "Building satellite from local code..."
+        docker build -t satellite:e2e -f Dockerfile .
+
+        echo "Starting satellite in BYO mode..."
+        docker run -d --name satellite-byo --network harbor-e2e \
+          -e TOKEN="$TOKEN" \
+          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e BYO_REGISTRY=true \
+          -e REGISTRY_URL=http://byo-registry:5000 \
+          -e USE_UNSECURE=true \
+          satellite:e2e
+
+  verify-byo:
+    desc: Verify image replication to BYO registry
+    cmds:
+      - |
+        echo "Waiting for replication to BYO registry..."
+        for i in $(seq 1 12); do
+          echo "Checking BYO registry... ($i/12)"
+          if docker run --rm --network harbor-e2e alpine:latest sh -c "
+            apk add --no-cache crane > /dev/null 2>&1 &&
+            crane manifest byo-registry:5000/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
+          "; then
+            echo "Image available in BYO registry, pulling..."
+            docker run --rm --network harbor-e2e alpine:latest sh -c "
+              apk add --no-cache crane &&
+              crane pull byo-registry:5000/{{.PROJECT_NAME}}/alpine:latest alpine.tar --insecure &&
+              tar -xf alpine.tar &&
+              cat manifest.json
+            "
+            echo "BYO E2E test passed: Image replicated to external registry"
+            exit 0
+          fi
+          sleep 10
+        done
+        echo "Timeout waiting for BYO replication"
+        echo "Satellite logs:"
+        docker logs satellite-byo 2>&1 | tail -50
+        echo "BYO registry catalog:"
+        docker exec byo-registry wget -q -O - http://localhost:5000/v2/_catalog 2>&1 || true
+        exit 1
+
+  cleanup-byo:
+    desc: Stop and remove BYO E2E containers
+    cmds:
+      - echo "Stopping BYO e2e containers..."
+      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f satellite-byo byo-registry 2>/dev/null || true
+      - echo "BYO cleanup complete"
+    silent: true
