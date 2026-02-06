@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -43,7 +45,6 @@ func TestComputeManifestSize(t *testing.T) {
 				]
 			}`,
 			wantSize: 31500,
-			wantErr:  false,
 		},
 		{
 			name: "empty layers",
@@ -53,7 +54,6 @@ func TestComputeManifestSize(t *testing.T) {
 				"layers": []
 			}`,
 			wantSize: 500,
-			wantErr:  false,
 		},
 		{
 			name: "single layer",
@@ -63,7 +63,6 @@ func TestComputeManifestSize(t *testing.T) {
 				"layers": [{"size": 42}]
 			}`,
 			wantSize: 42,
-			wantErr:  false,
 		},
 		{
 			name: "multi-arch OCI index returns error",
@@ -72,8 +71,7 @@ func TestComputeManifestSize(t *testing.T) {
 				"mediaType": "application/vnd.oci.image.index.v1+json",
 				"manifests": [{"digest": "sha256:aaa", "size": 500}]
 			}`,
-			wantSize: 0,
-			wantErr:  true,
+			wantErr: true,
 		},
 		{
 			name: "docker manifest list returns error",
@@ -82,13 +80,11 @@ func TestComputeManifestSize(t *testing.T) {
 				"mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
 				"manifests": [{"digest": "sha256:bbb", "size": 600}]
 			}`,
-			wantSize: 0,
-			wantErr:  true,
+			wantErr: true,
 		},
 		{
 			name:     "invalid json",
 			manifest: `not json`,
-			wantSize: 0,
 			wantErr:  true,
 		},
 	}
@@ -114,8 +110,9 @@ func TestFetchCatalog(t *testing.T) {
 		}))
 		defer srv.Close()
 
+		client := srv.Client()
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		repos, err := fetchCatalog(context.Background(), addr, true)
+		repos, err := fetchCatalog(context.Background(), client, addr, true)
 		require.NoError(t, err)
 		require.Equal(t, []string{"library/nginx", "library/alpine"}, repos)
 	})
@@ -126,8 +123,9 @@ func TestFetchCatalog(t *testing.T) {
 		}))
 		defer srv.Close()
 
+		client := srv.Client()
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		repos, err := fetchCatalog(context.Background(), addr, true)
+		repos, err := fetchCatalog(context.Background(), client, addr, true)
 		require.NoError(t, err)
 		require.Empty(t, repos)
 	})
@@ -138,14 +136,16 @@ func TestFetchCatalog(t *testing.T) {
 		}))
 		defer srv.Close()
 
+		client := srv.Client()
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		_, err := fetchCatalog(context.Background(), addr, true)
+		_, err := fetchCatalog(context.Background(), client, addr, true)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "500")
 	})
 
 	t.Run("unreachable server returns error", func(t *testing.T) {
-		_, err := fetchCatalog(context.Background(), "127.0.0.1:1", true)
+		client := &http.Client{}
+		_, err := fetchCatalog(context.Background(), client, "127.0.0.1:1", true)
 		require.Error(t, err)
 	})
 }
@@ -158,8 +158,9 @@ func TestFetchTags(t *testing.T) {
 		}))
 		defer srv.Close()
 
+		client := srv.Client()
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		tags, err := fetchTags(context.Background(), addr, "library/nginx", true)
+		tags, err := fetchTags(context.Background(), client, addr, "library/nginx", true)
 		require.NoError(t, err)
 		require.Equal(t, []string{"latest", "1.25"}, tags)
 	})
@@ -170,8 +171,9 @@ func TestFetchTags(t *testing.T) {
 		}))
 		defer srv.Close()
 
+		client := srv.Client()
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		tags, err := fetchTags(context.Background(), addr, "library/nginx", true)
+		tags, err := fetchTags(context.Background(), client, addr, "library/nginx", true)
 		require.NoError(t, err)
 		require.Empty(t, tags)
 	})
@@ -182,8 +184,9 @@ func TestFetchTags(t *testing.T) {
 		}))
 		defer srv.Close()
 
+		client := srv.Client()
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		_, err := fetchTags(context.Background(), addr, "nonexistent", true)
+		_, err := fetchTags(context.Background(), client, addr, "nonexistent", true)
 		require.Error(t, err)
 	})
 }
@@ -227,30 +230,26 @@ func TestCollectCachedImages(t *testing.T) {
 	})
 }
 
-func TestCollectCachedImages_SkipsFailedImages(t *testing.T) {
-	t.Run("skips images where manifest is missing", func(t *testing.T) {
-		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/v2/":
-				w.WriteHeader(http.StatusOK)
-			default:
-				w.WriteHeader(http.StatusNotFound)
-			}
-		}))
-		defer srv.Close()
+func TestCollectImageInfo_MissingManifest(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2/":
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
 
-		addr := strings.TrimPrefix(srv.URL, "https://")
-		ctx := testContext()
-		_, err := collectImageInfo(ctx, addr+"/library/nginx:latest", true)
-		require.Error(t, err)
-	})
+	addr := strings.TrimPrefix(srv.URL, "https://")
+	_, err := collectImageInfo(addr+"/library/nginx:latest", crane.WithContext(context.Background()), true)
+	require.Error(t, err)
 }
 
-func TestCollectCachedImages_FullFlowWithTLS(t *testing.T) {
+func TestCollectImageInfo_FullFlow(t *testing.T) {
 	configDigest := "sha256:aabbccddee00112233445566778899aabbccddee00112233445566778899aabb"
 	layer1Digest := "sha256:1111111111111111111111111111111111111111111111111111111111111111"
 	layer2Digest := "sha256:2222222222222222222222222222222222222222222222222222222222222222"
-	manifestDigest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 	manifest := fmt.Sprintf(`{
 		"schemaVersion": 2,
@@ -262,18 +261,13 @@ func TestCollectCachedImages_FullFlowWithTLS(t *testing.T) {
 		]
 	}`, configDigest, layer1Digest, layer2Digest)
 
+	expectedDigest := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(manifest)))
+
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v2/":
 			w.WriteHeader(http.StatusOK)
 		case "/v2/library/nginx/manifests/latest":
-			if r.Method == http.MethodHead {
-				w.Header().Set("Docker-Content-Digest", manifestDigest)
-				w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
-				w.Header().Set("Content-Length", fmt.Sprintf("%d", len(manifest)))
-				w.WriteHeader(http.StatusOK)
-				return
-			}
 			w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
 			_, err := w.Write([]byte(manifest))
 			require.NoError(t, err)
@@ -284,10 +278,9 @@ func TestCollectCachedImages_FullFlowWithTLS(t *testing.T) {
 	defer srv.Close()
 
 	addr := strings.TrimPrefix(srv.URL, "https://")
-	ctx := testContext()
 
-	img, err := collectImageInfo(ctx, addr+"/library/nginx:latest", true)
+	img, err := collectImageInfo(addr+"/library/nginx:latest", crane.WithContext(context.Background()), true)
 	require.NoError(t, err)
-	require.Contains(t, img.Reference, "library/nginx:latest@"+manifestDigest)
+	require.Contains(t, img.Reference, "library/nginx:latest@"+expectedDigest)
 	require.Equal(t, int64(9000), img.SizeBytes)
 }

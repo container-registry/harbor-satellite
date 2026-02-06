@@ -2,9 +2,9 @@ package state
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -13,8 +13,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 )
-
-var registryClient = &http.Client{Timeout: 30 * time.Second}
 
 type CachedImage struct {
 	Reference string `json:"reference"`
@@ -29,28 +27,25 @@ type tagsResponse struct {
 	Tags []string `json:"tags"`
 }
 
-func collectCachedImages(ctx context.Context, registryURL string, insecure bool) ([]CachedImage, error) {
+func collectCachedImages(ctx context.Context, registryHost string, insecure bool) ([]CachedImage, error) {
 	log := logger.FromContext(ctx)
+	client := &http.Client{Timeout: 30 * time.Second}
 
-	repos, err := fetchCatalog(ctx, registryURL, insecure)
+	repos, err := fetchCatalog(ctx, client, registryHost, insecure)
 	if err != nil {
 		return nil, fmt.Errorf("fetch catalog: %w", err)
 	}
 
-	if len(repos) == 0 {
-		return []CachedImage{}, nil
-	}
-
 	var images []CachedImage
 	for _, repo := range repos {
-		tags, err := fetchTags(ctx, registryURL, repo, insecure)
+		tags, err := fetchTags(ctx, client, registryHost, repo, insecure)
 		if err != nil {
 			log.Warn().Err(err).Str("repo", repo).Msg("Skipping repo: failed to fetch tags")
 			continue
 		}
 		for _, tag := range tags {
-			ref := fmt.Sprintf("%s/%s:%s", registryURL, repo, tag)
-			img, err := collectImageInfo(ctx, ref, insecure)
+			ref := fmt.Sprintf("%s/%s:%s", registryHost, repo, tag)
+			img, err := collectImageInfo(ref, crane.WithContext(ctx), insecure)
 			if err != nil {
 				log.Warn().Err(err).Str("ref", ref).Msg("Skipping image: failed to collect info")
 				continue
@@ -65,26 +60,23 @@ func collectCachedImages(ctx context.Context, registryURL string, insecure bool)
 	return images, nil
 }
 
-func collectImageInfo(ctx context.Context, ref string, insecure bool) (CachedImage, error) {
-	opts := []crane.Option{crane.WithContext(ctx)}
+func collectImageInfo(ref string, ctxOpt crane.Option, insecure bool) (CachedImage, error) {
+	opts := []crane.Option{ctxOpt}
 	if insecure {
 		opts = append(opts, crane.Insecure)
 	}
 
-	digest, err := crane.Digest(ref, opts...)
-	if err != nil {
-		return CachedImage{}, fmt.Errorf("get digest for %s: %w", ref, err)
-	}
-
-	manifest, err := crane.Manifest(ref, opts...)
+	raw, err := crane.Manifest(ref, opts...)
 	if err != nil {
 		return CachedImage{}, fmt.Errorf("get manifest for %s: %w", ref, err)
 	}
 
-	size, err := computeManifestSize(manifest)
+	size, err := computeManifestSize(raw)
 	if err != nil {
 		return CachedImage{}, fmt.Errorf("compute size for %s: %w", ref, err)
 	}
+
+	digest := fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
 
 	return CachedImage{
 		Reference: ref + "@" + digest,
@@ -126,68 +118,50 @@ func registryScheme(insecure bool) string {
 	return "https"
 }
 
-func fetchCatalog(ctx context.Context, registryURL string, insecure bool) ([]string, error) {
-	url := fmt.Sprintf("%s://%s/v2/_catalog", registryScheme(insecure), registryURL)
+func fetchCatalog(ctx context.Context, client *http.Client, registryHost string, insecure bool) ([]string, error) {
+	url := fmt.Sprintf("%s://%s/v2/_catalog", registryScheme(insecure), registryHost)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create catalog request: %w", err)
 	}
 
-	resp, err := registryClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("send catalog request: %w", err)
+		return nil, fmt.Errorf("catalog request: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.FromContext(ctx).Warn().Err(err).Msg("error closing catalog response body")
-		}
-	}()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("catalog request returned %s", resp.Status)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read catalog response: %w", err)
-	}
-
 	var catalog catalogResponse
-	if err := json.Unmarshal(body, &catalog); err != nil {
-		return nil, fmt.Errorf("unmarshal catalog: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(&catalog); err != nil {
+		return nil, fmt.Errorf("decode catalog: %w", err)
 	}
 	return catalog.Repositories, nil
 }
 
-func fetchTags(ctx context.Context, registryURL, repo string, insecure bool) ([]string, error) {
-	url := fmt.Sprintf("%s://%s/v2/%s/tags/list", registryScheme(insecure), registryURL, repo)
+func fetchTags(ctx context.Context, client *http.Client, registryHost, repo string, insecure bool) ([]string, error) {
+	url := fmt.Sprintf("%s://%s/v2/%s/tags/list", registryScheme(insecure), registryHost, repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create tags request: %w", err)
 	}
 
-	resp, err := registryClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("send tags request: %w", err)
+		return nil, fmt.Errorf("tags request: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.FromContext(ctx).Warn().Err(err).Msg("error closing tags response body")
-		}
-	}()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tags request returned %s", resp.Status)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read tags response: %w", err)
-	}
-
 	var tags tagsResponse
-	if err := json.Unmarshal(body, &tags); err != nil {
-		return nil, fmt.Errorf("unmarshal tags: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+		return nil, fmt.Errorf("decode tags: %w", err)
 	}
 	return tags.Tags, nil
 }
