@@ -173,7 +173,12 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 	robotID = rbt.ID
 
-	secretHash := hashRobotCredentials(rbt.Name, rbt.Secret)
+	secretHash, err := hashRobotCredentials(rbt.Secret)
+	if err != nil {
+		log.Printf("Error hashing robot credentials: %v", err)
+		HandleAppError(w, &AppError{Message: "Error: failed to hash robot credentials", Code: http.StatusInternalServerError})
+		return
+	}
 	expiry := sql.NullTime{}
 	if rbt.ExpiresAt > 0 {
 		expiry = sql.NullTime{Time: time.Unix(rbt.ExpiresAt, 0), Valid: true}
@@ -313,7 +318,12 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	freshSecret := refreshResp.Payload.Secret
 
 	// Update stored hash with new secret
-	newHash := hashRobotCredentials(robot.RobotName, freshSecret)
+	newHash, err := hashRobotCredentials(freshSecret)
+	if err != nil {
+		log.Printf("Error hashing refreshed secret: %v", err)
+		HandleAppError(w, &AppError{Message: "Error: failed to hash refreshed secret", Code: http.StatusInternalServerError})
+		return
+	}
 	if err := q.UpdateRobotAccount(r.Context(), database.UpdateRobotAccountParams{
 		ID:              robot.ID,
 		RobotName:       robot.RobotName,
@@ -695,7 +705,10 @@ func ensureSatelliteRobotAccount(r *http.Request, q *database.Queries, satellite
 		robotSecret = "spiffe-auto-registered-placeholder-secret"
 	}
 
-	secretHash := hashRobotCredentials(robotName, robotSecret)
+	secretHash, err := hashRobotCredentials(robotSecret)
+	if err != nil {
+		return database.RobotAccount{}, 0, "", fmt.Errorf("hash robot credentials: %w", err)
+	}
 	robotParams := database.AddRobotAccountParams{
 		RobotName:       robotName,
 		RobotSecretHash: secretHash,
@@ -732,7 +745,10 @@ func refreshRobotSecret(r *http.Request, q *database.Queries, robot database.Rob
 	}
 
 	newSecret := resp.Payload.Secret
-	newHash := hashRobotCredentials(robot.RobotName, newSecret)
+	newHash, err := hashRobotCredentials(newSecret)
+	if err != nil {
+		return "", fmt.Errorf("hash refreshed secret: %w", err)
+	}
 	err = q.UpdateRobotAccount(r.Context(), database.UpdateRobotAccountParams{
 		ID:              robot.ID,
 		RobotName:       robot.RobotName,

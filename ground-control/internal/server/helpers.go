@@ -127,20 +127,32 @@ func ensureSatelliteProjectExists(ctx context.Context) error {
 	return nil
 }
 
-// hashRobotCredentials computes a deterministic argon2id hash of robotName+secret.
-// Uses robotName as salt so GC can re-derive the hash from credentials.
-func hashRobotCredentials(robotName, secret string) string {
-	salt := []byte(robotName)
+// hashRobotCredentials computes an argon2id hash of the secret using a random 16-byte salt.
+func hashRobotCredentials(secret string) (string, error) {
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		return "", fmt.Errorf("generate salt: %w", err)
+	}
 	hash := argon2.IDKey([]byte(secret), salt, 2, 19456, 1, 32)
 	b64Salt := base64.RawStdEncoding.EncodeToString(salt)
 	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
-	return fmt.Sprintf("$argon2id$v=%d$m=19456,t=2,p=1$%s$%s", argon2.Version, b64Salt, b64Hash)
+	return fmt.Sprintf("$argon2id$v=%d$m=19456,t=2,p=1$%s$%s", argon2.Version, b64Salt, b64Hash), nil
 }
 
-// verifyRobotCredentials checks if the given credentials match the stored hash.
-func verifyRobotCredentials(robotName, secret, storedHash string) bool {
-	computed := hashRobotCredentials(robotName, secret)
-	return subtle.ConstantTimeCompare([]byte(computed), []byte(storedHash)) == 1
+// verifyRobotCredentials checks if the given secret matches the stored hash
+// by extracting the salt from the encoded hash and recomputing.
+func verifyRobotCredentials(secret, storedHash string) bool {
+	parts := strings.Split(storedHash, "$")
+	if len(parts) != 6 {
+		return false
+	}
+	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
+	if err != nil {
+		return false
+	}
+	hash := argon2.IDKey([]byte(secret), salt, 2, 19456, 1, 32)
+	b64Hash := base64.RawStdEncoding.EncodeToString(hash)
+	return subtle.ConstantTimeCompare([]byte(b64Hash), []byte(parts[5])) == 1
 }
 
 func storeRobotAccountInDB(ctx context.Context, q *database.Queries, robotName, secretHash, robotID string, satelliteID int32, expiry sql.NullTime) error {
