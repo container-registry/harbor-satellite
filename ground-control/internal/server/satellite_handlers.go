@@ -137,9 +137,9 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	// Create satellite
 	satellite, err := q.CreateSatellite(r.Context(), req.Name)
 	if err != nil {
-		log.Println("Error creating satellite:", err)
+		log.Printf("Error creating satellite %s: %v", req.Name, err)
 		err := &AppError{
-			Message: fmt.Sprintf("Error: %v", err.Error()),
+			Message: "Error: failed to create satellite",
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
@@ -163,9 +163,9 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	projects := []string{"satellite"}
 	rbt, err := utils.CreateRobotAccForSatellite(r.Context(), projects, satellite.Name)
 	if err != nil {
-		log.Println(err)
+		log.Printf("Error creating robot account for satellite %s: %v", satellite.Name, err)
 		err := &AppError{
-			Message: fmt.Sprintf("Error: creating robot account %v", err),
+			Message: "Error: failed to create robot account",
 			Code:    http.StatusBadRequest,
 		}
 		HandleAppError(w, err)
@@ -306,7 +306,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	freshSecret, err := refreshRobotSecret(r, q, robot)
 	if err != nil {
 		log.Printf("Error refreshing robot secret: %v", err)
-		HandleAppError(w, &AppError{Message: fmt.Sprintf("Error: %v", err), Code: http.StatusInternalServerError})
+		HandleAppError(w, &AppError{Message: "Error: failed to refresh robot secret", Code: http.StatusInternalServerError})
 		return
 	}
 
@@ -420,7 +420,7 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Printf("SPIFFE ZTR: Failed to auto-register satellite %s: %v", satelliteName, err)
 			HandleAppError(w, &AppError{
-				Message: fmt.Sprintf("Error: Failed to auto-register satellite: %v", err),
+				Message: "Error: failed to auto-register satellite",
 				Code:    http.StatusInternalServerError,
 			})
 			return
@@ -440,7 +440,7 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Printf("SPIFFE ZTR: Failed to create robot account for satellite %s: %v", satelliteName, err)
 			HandleAppError(w, &AppError{
-				Message: fmt.Sprintf("Error: Failed to create robot account: %v", err),
+				Message: "Error: failed to create robot account",
 				Code:    http.StatusInternalServerError,
 			})
 			return
@@ -450,7 +450,7 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		if err := ensureSatelliteConfig(r, q, satellite); err != nil {
 			log.Printf("SPIFFE ZTR: Failed to ensure config for satellite %s: %v", satelliteName, err)
 			HandleAppError(w, &AppError{
-				Message: fmt.Sprintf("Error: Failed to ensure satellite config: %v", err),
+				Message: "Error: failed to ensure satellite config",
 				Code:    http.StatusInternalServerError,
 			})
 			return
@@ -461,7 +461,7 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Printf("SPIFFE ZTR: Failed to refresh robot secret for satellite %s: %v", satelliteName, err)
 			HandleAppError(w, &AppError{
-				Message: fmt.Sprintf("Error: Failed to refresh robot secret: %v", err),
+				Message: "Error: failed to refresh robot secret",
 				Code:    http.StatusInternalServerError,
 			})
 			return
@@ -674,6 +674,8 @@ func ensureSatelliteRobotAccount(r *http.Request, q *database.Queries, satellite
 			expiry = sql.NullTime{Time: time.Unix(rbt.ExpiresAt, 0), Valid: true}
 		}
 	} else {
+		// WARNING: SKIP_HARBOR_HEALTH_CHECK is for testing/development only.
+		// In this mode, a hardcoded placeholder secret is used. DO NOT enable in production.
 		log.Printf("SPIFFE ZTR: Harbor not available, using placeholder credentials for satellite %s", satellite.Name)
 		robotName = "robot$satellite-" + satellite.Name
 		robotSecret = "spiffe-auto-registered-placeholder-secret"
@@ -704,6 +706,8 @@ func ensureSatelliteRobotAccount(r *http.Request, q *database.Queries, satellite
 func refreshRobotSecret(r *http.Request, q *database.Queries, robot database.RobotAccount) (string, error) {
 	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
 	if skipHarborCheck {
+		// WARNING: SKIP_HARBOR_HEALTH_CHECK is for testing/development only.
+		// In this mode, a hardcoded placeholder secret is used. DO NOT enable in production.
 		log.Printf("SPIFFE ZTR: Harbor not available, skipping robot secret refresh for %s", robot.RobotName)
 		return "spiffe-auto-registered-placeholder-secret", nil
 	}

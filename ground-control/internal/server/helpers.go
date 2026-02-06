@@ -164,9 +164,9 @@ func storeRobotAccountInDB(ctx context.Context, q *database.Queries, robotName, 
 		RobotExpiry:     expiry,
 	}
 	if _, err := q.AddRobotAccount(ctx, params); err != nil {
-		log.Println(err)
+		log.Printf("Error adding robot account to DB: %v", err)
 		return &AppError{
-			Message: fmt.Sprintf("Error: adding robot account to DB %v", err.Error()),
+			Message: "Error: failed to store robot account",
 			Code:    http.StatusInternalServerError,
 		}
 	}
@@ -178,9 +178,16 @@ func assignPermissionsToRobot(ctx context.Context, q *database.Queries, groups *
 		for _, groupName := range *groups {
 			projects, err := q.GetProjectsOfGroup(ctx, groupName)
 			if err != nil {
-				log.Println(err)
+				log.Printf("Error fetching projects of group %s: %v", groupName, err)
 				return &AppError{
-					Message: fmt.Sprintf("Error: fetching projects of group %v", err.Error()),
+					Message: "Error: failed to fetch projects for group",
+					Code:    http.StatusInternalServerError,
+				}
+			}
+			if len(projects) == 0 {
+				log.Printf("No projects found for group %s", groupName)
+				return &AppError{
+					Message: "Error: no projects found for group",
 					Code:    http.StatusInternalServerError,
 				}
 			}
@@ -189,9 +196,9 @@ func assignPermissionsToRobot(ctx context.Context, q *database.Queries, groups *
 			// give permission to the robot account for all the projects present in this group
 			_, err = utils.UpdateRobotProjects(ctx, project, strconv.FormatInt(robotID, 10))
 			if err != nil {
-				log.Println(err)
+				log.Printf("Error updating robot account permissions: %v", err)
 				return &AppError{
-					Message: fmt.Sprintf("Error: updating robot account %v", err.Error()),
+					Message: "Error: failed to update robot account permissions",
 					Code:    http.StatusInternalServerError,
 				}
 			}
