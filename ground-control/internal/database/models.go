@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+type Artifact struct {
+	ID        int32
+	Reference string
+	SizeBytes int64
+	CreatedAt time.Time
+}
+
 type Config struct {
 	ID          int32
 	ConfigName  string
@@ -55,15 +62,6 @@ type Satellite struct {
 	HeartbeatInterval sql.NullString
 }
 
-type SatelliteCachedImage struct {
-	ID          int32
-	SatelliteID int32
-	Reference   string
-	SizeBytes   int64
-	ReportedAt  time.Time
-	CreatedAt   time.Time
-}
-
 type SatelliteConfig struct {
 	SatelliteID int32
 	ConfigID    int32
@@ -87,6 +85,7 @@ type SatelliteStatus struct {
 	ImageCount         sql.NullInt32
 	ReportedAt         time.Time
 	CreatedAt          time.Time
+	ArtifactIds        []int32
 }
 
 type SatelliteToken struct {
