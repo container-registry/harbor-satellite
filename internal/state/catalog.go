@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/crane"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 )
+
+var registryClient = &http.Client{Timeout: 30 * time.Second}
 
 type CachedImage struct {
 	Reference string `json:"reference"`
@@ -109,7 +112,7 @@ func fetchCatalog(ctx context.Context, registryURL string) ([]string, error) {
 		return nil, fmt.Errorf("create catalog request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := registryClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("send catalog request: %w", err)
 	}
@@ -142,7 +145,7 @@ func fetchTags(ctx context.Context, registryURL, repo string) ([]string, error) 
 		return nil, fmt.Errorf("create tags request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := registryClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("send tags request: %w", err)
 	}
