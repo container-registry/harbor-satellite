@@ -17,15 +17,19 @@ type PathConfig struct {
 	ZotStorageDir  string
 }
 
-// expandPath expands ~ to the user's home directory in paths.
+// expandPath expands ~ and ~/ to the user's home directory in paths.
 func expandPath(path string) (string, error) {
-	if !strings.HasPrefix(path, "~/") {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
 		return path, nil
 	}
 
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("get home directory: %w", err)
+	}
+
+	if path == "~" {
+		return home, nil
 	}
 
 	return filepath.Join(home, path[2:]), nil

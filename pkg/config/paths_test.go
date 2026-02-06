@@ -32,6 +32,11 @@ func TestExpandPath(t *testing.T) {
 			input:    "config/satellite",
 			expected: "config/satellite",
 		},
+		{
+			name:     "Bare tilde",
+			input:    "~",
+			expected: home,
+		},
 	}
 
 	for _, tt := range tests {
