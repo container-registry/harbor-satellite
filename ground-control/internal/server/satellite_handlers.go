@@ -730,12 +730,25 @@ func refreshRobotSecret(r *http.Request, q *database.Queries, robot database.Rob
 	if err != nil {
 		return "", fmt.Errorf("hash refreshed secret: %w", err)
 	}
+
+	// Fetch updated robot details from Harbor to get the new expiry
+	// (Harbor extends expiry on refresh but doesn't return it in RefreshSec response)
+	robotDetails, err := harbor.GetRobotAccount(r.Context(), harborRobotID)
+	if err != nil {
+		return "", fmt.Errorf("fetch updated robot details: %w", err)
+	}
+
+	var newExpiry sql.NullTime
+	if robotDetails.ExpiresAt > 0 {
+		newExpiry = sql.NullTime{Time: time.Unix(robotDetails.ExpiresAt, 0), Valid: true}
+	}
+
 	err = q.UpdateRobotAccount(r.Context(), database.UpdateRobotAccountParams{
 		ID:              robot.ID,
 		RobotName:       robot.RobotName,
 		RobotSecretHash: newHash,
 		RobotID:         robot.RobotID,
-		RobotExpiry:     robot.RobotExpiry,
+		RobotExpiry:     newExpiry,
 	})
 	if err != nil {
 		return "", fmt.Errorf("update robot hash in DB: %w", err)
