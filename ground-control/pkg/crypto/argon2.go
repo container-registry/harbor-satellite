@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -49,16 +50,5 @@ func VerifySecret(secret, storedHash string) bool {
 }
 
 func splitHash(hash string) []string {
-	var parts []string
-	var current string
-	for _, c := range hash {
-		if c == '$' {
-			parts = append(parts, current)
-			current = ""
-		} else {
-			current += string(c)
-		}
-	}
-	parts = append(parts, current)
-	return parts
+	return strings.Split(hash, "$")
 }
