@@ -114,6 +114,10 @@ func (c *ServerClient) CreateWorkloadEntry(ctx context.Context, parentID, spiffe
 	if len(resp.Results) == 0 || resp.Results[0].Entry == nil {
 		return "", fmt.Errorf("create workload entry: empty response")
 	}
+	if resp.Results[0].Status != nil && resp.Results[0].Status.Code != 0 {
+		return "", fmt.Errorf("create workload entry: status %d - %s",
+			resp.Results[0].Status.Code, resp.Results[0].Status.Message)
+	}
 
 	return resp.Results[0].Entry.Id, nil
 }
