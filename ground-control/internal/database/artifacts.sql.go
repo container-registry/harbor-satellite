@@ -73,36 +73,3 @@ func (q *Queries) GetArtifactIDsByReferences(ctx context.Context, refs []string)
 	}
 	return items, nil
 }
-
-const getArtifactsByIDs = `-- name: GetArtifactsByIDs :many
-SELECT id, reference, size_bytes, created_at FROM artifacts
-WHERE id = ANY($1::INT[])
-`
-
-func (q *Queries) GetArtifactsByIDs(ctx context.Context, ids []int32) ([]Artifact, error) {
-	rows, err := q.db.QueryContext(ctx, getArtifactsByIDs, pq.Array(ids))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Artifact
-	for rows.Next() {
-		var i Artifact
-		if err := rows.Scan(
-			&i.ID,
-			&i.Reference,
-			&i.SizeBytes,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
