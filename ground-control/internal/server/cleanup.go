@@ -69,6 +69,12 @@ func (s *Server) runCleanupWithLock(ctx context.Context, days int) {
 		log.Printf("Status cleanup failed: %v", err)
 		return
 	}
+
+	if err := s.dbQueries.DeleteOldCachedImages(ctx, days); err != nil {
+		log.Printf("Cached images cleanup failed: %v", err)
+		return
+	}
+
 	log.Printf("Status cleanup completed (deleted records older than %d days)", days)
 }
 

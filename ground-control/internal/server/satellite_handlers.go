@@ -31,18 +31,24 @@ type RegisterSatelliteResponse struct {
 	Token string `json:"token"`
 }
 
+type CachedImage struct {
+	Reference string `json:"reference"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
 type SatelliteStatusParams struct {
-	Name                string    `json:"name"`
-	Activity            string    `json:"activity"`
-	StateReportInterval string    `json:"state_report_interval"`
-	LatestStateDigest   string    `json:"latest_state_digest"`
-	LatestConfigDigest  string    `json:"latest_config_digest"`
-	MemoryUsedBytes     uint64    `json:"memory_used_bytes"`
-	StorageUsedBytes    uint64    `json:"storage_used_bytes"`
-	CPUPercent          float64   `json:"cpu_percent"`
-	RequestCreatedTime  time.Time `json:"request_created_time"`
-	LastSyncDurationMs  int64     `json:"last_sync_duration_ms"`
-	ImageCount          int       `json:"image_count"`
+	Name                string        `json:"name"`
+	Activity            string        `json:"activity"`
+	StateReportInterval string        `json:"state_report_interval"`
+	LatestStateDigest   string        `json:"latest_state_digest"`
+	LatestConfigDigest  string        `json:"latest_config_digest"`
+	MemoryUsedBytes     uint64        `json:"memory_used_bytes"`
+	StorageUsedBytes    uint64        `json:"storage_used_bytes"`
+	CPUPercent          float64       `json:"cpu_percent"`
+	RequestCreatedTime  time.Time     `json:"request_created_time"`
+	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
+	ImageCount          int           `json:"image_count"`
+	CachedImages        []CachedImage `json:"cached_images,omitempty"`
 }
 
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
@@ -583,6 +589,21 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Failed to update last_seen: %v", err)
 		HandleAppError(w, &AppError{Message: "failed to update last_seen", Code: http.StatusInternalServerError})
 		return
+	}
+
+	if len(req.CachedImages) > 0 {
+		for _, img := range req.CachedImages {
+			err := s.dbQueries.InsertSatelliteCachedImage(r.Context(), database.InsertSatelliteCachedImageParams{
+				SatelliteID: sat.ID,
+				Reference:   img.Reference,
+				SizeBytes:   img.SizeBytes,
+				ReportedAt:  req.RequestCreatedTime,
+			})
+			if err != nil {
+				log.Printf("Failed to insert cached image %s: %v", img.Reference, err)
+			}
+		}
+		log.Printf("Stored %d cached images for satellite %s", len(req.CachedImages), satelliteName)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -1263,4 +1284,23 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) getCachedImagesHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	satelliteName := vars["satellite"]
+
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
+	if err != nil {
+		HandleAppError(w, &AppError{Message: "satellite not found", Code: http.StatusNotFound})
+		return
+	}
+
+	images, err := s.dbQueries.GetLatestCachedImages(r.Context(), sat.ID)
+	if err != nil {
+		HandleAppError(w, &AppError{Message: "failed to get cached images", Code: http.StatusInternalServerError})
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, images)
 }
