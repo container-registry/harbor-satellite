@@ -563,6 +563,39 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var artifactIDs []int32
+	if len(req.CachedImages) > 0 {
+		refs := make([]string, len(req.CachedImages))
+		sizes := make([]int64, len(req.CachedImages))
+		for i, img := range req.CachedImages {
+			refs[i] = img.Reference
+			sizes[i] = img.SizeBytes
+		}
+
+		err := s.dbQueries.BatchInsertArtifacts(r.Context(), database.BatchInsertArtifactsParams{
+			Refs:  refs,
+			Sizes: sizes,
+		})
+		if err != nil {
+			log.Printf("Failed to batch insert artifacts: %v", err)
+			HandleAppError(w, &AppError{Message: "failed to save artifacts", Code: http.StatusInternalServerError})
+			return
+		}
+
+		artifacts, err := s.dbQueries.GetArtifactIDsByReferences(r.Context(), refs)
+		if err != nil {
+			log.Printf("Failed to resolve artifact IDs: %v", err)
+			HandleAppError(w, &AppError{Message: "failed to resolve artifact IDs", Code: http.StatusInternalServerError})
+			return
+		}
+
+		artifactIDs = make([]int32, len(artifacts))
+		for i, a := range artifacts {
+			artifactIDs[i] = a.ID
+		}
+		log.Printf("Stored %d artifacts for satellite %s", len(artifactIDs), satelliteName)
+	}
+
 	_, err = s.dbQueries.InsertSatelliteStatus(r.Context(), database.InsertSatelliteStatusParams{
 		SatelliteID:        sat.ID,
 		Activity:           req.Activity,
@@ -574,6 +607,7 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		LastSyncDurationMs: toNullInt64(req.LastSyncDurationMs),
 		ImageCount:         toNullInt32(int32(req.ImageCount)),
 		ReportedAt:         req.RequestCreatedTime,
+		ArtifactIds:        artifactIDs,
 	})
 	if err != nil {
 		log.Printf("Failed to insert status: %v", err)
@@ -589,21 +623,6 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Failed to update last_seen: %v", err)
 		HandleAppError(w, &AppError{Message: "failed to update last_seen", Code: http.StatusInternalServerError})
 		return
-	}
-
-	if len(req.CachedImages) > 0 {
-		for _, img := range req.CachedImages {
-			err := s.dbQueries.InsertSatelliteCachedImage(r.Context(), database.InsertSatelliteCachedImageParams{
-				SatelliteID: sat.ID,
-				Reference:   img.Reference,
-				SizeBytes:   img.SizeBytes,
-				ReportedAt:  req.RequestCreatedTime,
-			})
-			if err != nil {
-				log.Printf("Failed to insert cached image %s: %v", img.Reference, err)
-			}
-		}
-		log.Printf("Stored %d cached images for satellite %s", len(req.CachedImages), satelliteName)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -1296,11 +1315,11 @@ func (s *Server) getCachedImagesHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	images, err := s.dbQueries.GetLatestCachedImages(r.Context(), sat.ID)
+	artifacts, err := s.dbQueries.GetLatestArtifacts(r.Context(), sat.ID)
 	if err != nil {
 		HandleAppError(w, &AppError{Message: "failed to get cached images", Code: http.StatusInternalServerError})
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, images)
+	WriteJSONResponse(w, http.StatusOK, artifacts)
 }
