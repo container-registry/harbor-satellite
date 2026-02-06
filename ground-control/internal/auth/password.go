@@ -14,10 +14,8 @@ func HashPassword(password string) (string, error) {
 }
 
 // VerifyPassword compares a password against an Argon2id hash.
-func VerifyPassword(password, encodedHash string) (bool, error) {
-	// The crypto package returns bool directly without error for simplicity.
-	// Wrap it to maintain the (bool, error) signature for backward compatibility.
-	return crypto.VerifySecret(password, encodedHash), nil
+func VerifyPassword(password, encodedHash string) bool {
+	return crypto.VerifySecret(password, encodedHash)
 }
 
 // GenerateSessionToken creates a cryptographically random session token.

@@ -436,7 +436,8 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		// Robot not found - create new one (backward compat for satellites created before join-token flow)
 		log.Printf("SPIFFE ZTR: Robot account not found for satellite %s, creating...", satelliteName)
 		var initialSecret string
-		robot, _, initialSecret, err = ensureSatelliteRobotAccount(r, q, satellite)
+		var harborRobotID int64
+		robot, harborRobotID, initialSecret, err = ensureSatelliteRobotAccount(r, q, satellite)
 		if err != nil {
 			log.Printf("SPIFFE ZTR: Failed to create robot account for satellite %s: %v", satelliteName, err)
 			HandleAppError(w, &AppError{
@@ -449,6 +450,12 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 
 		if err := ensureSatelliteConfig(r, q, satellite); err != nil {
 			log.Printf("SPIFFE ZTR: Failed to ensure config for satellite %s: %v", satelliteName, err)
+			// Cleanup the orphaned robot account in Harbor
+			if harborRobotID != 0 {
+				if _, delErr := harbor.DeleteRobotAccount(r.Context(), harborRobotID); delErr != nil {
+					log.Printf("Warning: Failed to cleanup robot account %d after config failure: %v", harborRobotID, delErr)
+				}
+			}
 			HandleAppError(w, &AppError{
 				Message: "Error: failed to ensure satellite config",
 				Code:    http.StatusInternalServerError,
@@ -726,6 +733,9 @@ func refreshRobotSecret(r *http.Request, q *database.Queries, robot database.Rob
 	}
 
 	newSecret := resp.Payload.Secret
+	if newSecret == "" {
+		return "", fmt.Errorf("harbor returned empty secret for robot %s", robot.RobotName)
+	}
 	newHash, err := hashRobotCredentials(newSecret)
 	if err != nil {
 		return "", fmt.Errorf("hash refreshed secret: %w", err)

@@ -130,11 +130,6 @@ func hashRobotCredentials(secret string) (string, error) {
 	return crypto.HashSecret(secret)
 }
 
-// verifyRobotCredentials checks if the given secret matches the stored hash.
-func verifyRobotCredentials(secret, storedHash string) bool {
-	return crypto.VerifySecret(secret, storedHash)
-}
-
 func storeRobotAccountInDB(ctx context.Context, q *database.Queries, robotName, secretHash, robotID string, satelliteID int32, expiry sql.NullTime) error {
 	params := database.AddRobotAccountParams{
 		RobotName:       robotName,

@@ -44,8 +44,8 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 			if username, password, ok := extractBasicAuth(r); ok {
 				dbUser, err := s.dbQueries.GetUserByUsername(r.Context(), username)
 				if err == nil {
-					valid, err := auth.VerifyPassword(password, dbUser.PasswordHash)
-					if err == nil && valid {
+					valid := auth.VerifyPassword(password, dbUser.PasswordHash)
+					if valid {
 						user = AuthUser{
 							ID:       dbUser.ID,
 							Username: dbUser.Username,
