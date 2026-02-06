@@ -31,18 +31,24 @@ type RegisterSatelliteResponse struct {
 	Token string `json:"token"`
 }
 
+type CachedImage struct {
+	Reference string `json:"reference"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
 type SatelliteStatusParams struct {
-	Name                string    `json:"name"`
-	Activity            string    `json:"activity"`
-	StateReportInterval string    `json:"state_report_interval"`
-	LatestStateDigest   string    `json:"latest_state_digest"`
-	LatestConfigDigest  string    `json:"latest_config_digest"`
-	MemoryUsedBytes     uint64    `json:"memory_used_bytes"`
-	StorageUsedBytes    uint64    `json:"storage_used_bytes"`
-	CPUPercent          float64   `json:"cpu_percent"`
-	RequestCreatedTime  time.Time `json:"request_created_time"`
-	LastSyncDurationMs  int64     `json:"last_sync_duration_ms"`
-	ImageCount          int       `json:"image_count"`
+	Name                string        `json:"name"`
+	Activity            string        `json:"activity"`
+	StateReportInterval string        `json:"state_report_interval"`
+	LatestStateDigest   string        `json:"latest_state_digest"`
+	LatestConfigDigest  string        `json:"latest_config_digest"`
+	MemoryUsedBytes     uint64        `json:"memory_used_bytes"`
+	StorageUsedBytes    uint64        `json:"storage_used_bytes"`
+	CPUPercent          float64       `json:"cpu_percent"`
+	RequestCreatedTime  time.Time     `json:"request_created_time"`
+	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
+	ImageCount          int           `json:"image_count"`
+	CachedImages        []CachedImage `json:"cached_images,omitempty"`
 }
 
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
@@ -557,6 +563,39 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var artifactIDs []int32
+	if len(req.CachedImages) > 0 {
+		refs := make([]string, len(req.CachedImages))
+		sizes := make([]int64, len(req.CachedImages))
+		for i, img := range req.CachedImages {
+			refs[i] = img.Reference
+			sizes[i] = img.SizeBytes
+		}
+
+		err := s.dbQueries.BatchInsertArtifacts(r.Context(), database.BatchInsertArtifactsParams{
+			Refs:  refs,
+			Sizes: sizes,
+		})
+		if err != nil {
+			log.Printf("Failed to batch insert artifacts: %v", err)
+			HandleAppError(w, &AppError{Message: "failed to save artifacts", Code: http.StatusInternalServerError})
+			return
+		}
+
+		artifacts, err := s.dbQueries.GetArtifactIDsByReferences(r.Context(), refs)
+		if err != nil {
+			log.Printf("Failed to resolve artifact IDs: %v", err)
+			HandleAppError(w, &AppError{Message: "failed to resolve artifact IDs", Code: http.StatusInternalServerError})
+			return
+		}
+
+		artifactIDs = make([]int32, len(artifacts))
+		for i, a := range artifacts {
+			artifactIDs[i] = a.ID
+		}
+		log.Printf("Stored %d artifacts for satellite %s", len(artifactIDs), satelliteName)
+	}
+
 	_, err = s.dbQueries.InsertSatelliteStatus(r.Context(), database.InsertSatelliteStatusParams{
 		SatelliteID:        sat.ID,
 		Activity:           req.Activity,
@@ -568,6 +607,7 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		LastSyncDurationMs: toNullInt64(req.LastSyncDurationMs),
 		ImageCount:         toNullInt32(int32(req.ImageCount)),
 		ReportedAt:         req.RequestCreatedTime,
+		ArtifactIds:        artifactIDs,
 	})
 	if err != nil {
 		log.Printf("Failed to insert status: %v", err)
@@ -1263,4 +1303,23 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
+}
+
+func (s *Server) getCachedImagesHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	satelliteName := vars["satellite"]
+
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
+	if err != nil {
+		HandleAppError(w, &AppError{Message: "satellite not found", Code: http.StatusNotFound})
+		return
+	}
+
+	artifacts, err := s.dbQueries.GetLatestArtifacts(r.Context(), sat.ID)
+	if err != nil {
+		HandleAppError(w, &AppError{Message: "failed to get cached images", Code: http.StatusInternalServerError})
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, artifacts)
 }

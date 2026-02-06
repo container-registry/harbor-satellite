@@ -2,9 +2,9 @@
 INSERT INTO satellite_status (
     satellite_id, activity, latest_state_digest, latest_config_digest,
     cpu_percent, memory_used_bytes, storage_used_bytes,
-    last_sync_duration_ms, image_count, reported_at
+    last_sync_duration_ms, image_count, reported_at, artifact_ids
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING *;
 
 -- name: UpdateSatelliteLastSeen :exec
@@ -57,3 +57,13 @@ SELECT * FROM satellite_status
 WHERE satellite_id = $1
 ORDER BY created_at DESC
 LIMIT $2;
+
+-- name: GetLatestArtifacts :many
+SELECT a.id, a.reference, a.size_bytes, a.created_at
+FROM artifacts a
+WHERE a.id = ANY(
+    (SELECT artifact_ids FROM satellite_status
+     WHERE satellite_id = $1
+     ORDER BY created_at DESC LIMIT 1)
+)
+ORDER BY a.reference;

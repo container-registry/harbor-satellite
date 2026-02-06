@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+type Artifact struct {
+	ID        int32
+	Reference string
+	SizeBytes int64
+	CreatedAt time.Time
+}
+
 type Config struct {
 	ID          int32
 	ConfigName  string
@@ -78,6 +85,7 @@ type SatelliteStatus struct {
 	ImageCount         sql.NullInt32
 	ReportedAt         time.Time
 	CreatedAt          time.Time
+	ArtifactIds        []int32
 }
 
 type SatelliteToken struct {
