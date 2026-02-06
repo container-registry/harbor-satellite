@@ -96,13 +96,13 @@ tasks:
       - task: _publish:image-and-sign
         vars:
           REGISTRY: "{{.REGISTRY}}"
-          PROJECT_NAME: "{{.PROJECT}}"
+          PROJECT_NAME: "{{.PROJECT_NAME}}"
           COMPONENT: satellite
           IMAGE_TAGS: "{{.TAG}}"
       - task: _publish:image-and-sign
         vars:
           REGISTRY: "{{.REGISTRY}}"
-          PROJECT_NAME: "{{.PROJECT}}"
+          PROJECT_NAME: "{{.PROJECT_NAME}}"
           COMPONENT: ground-control
           IMAGE_TAGS: "{{.TAG}}"
 

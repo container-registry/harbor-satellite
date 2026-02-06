@@ -53,6 +53,6 @@ runs:
         REGISTRY: ${{ inputs.REGISTRY_ADDRESS }}
         REG_USER: ${{ inputs.REGISTRY_USERNAME }}
         REG_PASS: ${{ inputs.REGISTRY_PASSWORD }}
-        PROJECT: ${{ inputs.PROJECT_NAME }}
+        PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
         TAG: ${{ inputs.IMAGE_TAGS }}
       run: task publish-and-sign
