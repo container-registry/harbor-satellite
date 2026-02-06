@@ -66,6 +66,26 @@ func TestComputeManifestSize(t *testing.T) {
 			wantErr:  false,
 		},
 		{
+			name: "multi-arch OCI index returns error",
+			manifest: `{
+				"schemaVersion": 2,
+				"mediaType": "application/vnd.oci.image.index.v1+json",
+				"manifests": [{"digest": "sha256:aaa", "size": 500}]
+			}`,
+			wantSize: 0,
+			wantErr:  true,
+		},
+		{
+			name: "docker manifest list returns error",
+			manifest: `{
+				"schemaVersion": 2,
+				"mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
+				"manifests": [{"digest": "sha256:bbb", "size": 600}]
+			}`,
+			wantSize: 0,
+			wantErr:  true,
+		},
+		{
 			name:     "invalid json",
 			manifest: `not json`,
 			wantSize: 0,
@@ -95,7 +115,7 @@ func TestFetchCatalog(t *testing.T) {
 		defer srv.Close()
 
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		repos, err := fetchCatalog(context.Background(), addr)
+		repos, err := fetchCatalog(context.Background(), addr, true)
 		require.NoError(t, err)
 		require.Equal(t, []string{"library/nginx", "library/alpine"}, repos)
 	})
@@ -107,7 +127,7 @@ func TestFetchCatalog(t *testing.T) {
 		defer srv.Close()
 
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		repos, err := fetchCatalog(context.Background(), addr)
+		repos, err := fetchCatalog(context.Background(), addr, true)
 		require.NoError(t, err)
 		require.Empty(t, repos)
 	})
@@ -119,13 +139,13 @@ func TestFetchCatalog(t *testing.T) {
 		defer srv.Close()
 
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		_, err := fetchCatalog(context.Background(), addr)
+		_, err := fetchCatalog(context.Background(), addr, true)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "500")
 	})
 
 	t.Run("unreachable server returns error", func(t *testing.T) {
-		_, err := fetchCatalog(context.Background(), "127.0.0.1:1")
+		_, err := fetchCatalog(context.Background(), "127.0.0.1:1", true)
 		require.Error(t, err)
 	})
 }
@@ -139,7 +159,7 @@ func TestFetchTags(t *testing.T) {
 		defer srv.Close()
 
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		tags, err := fetchTags(context.Background(), addr, "library/nginx")
+		tags, err := fetchTags(context.Background(), addr, "library/nginx", true)
 		require.NoError(t, err)
 		require.Equal(t, []string{"latest", "1.25"}, tags)
 	})
@@ -151,7 +171,7 @@ func TestFetchTags(t *testing.T) {
 		defer srv.Close()
 
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		tags, err := fetchTags(context.Background(), addr, "library/nginx")
+		tags, err := fetchTags(context.Background(), addr, "library/nginx", true)
 		require.NoError(t, err)
 		require.Empty(t, tags)
 	})
@@ -163,7 +183,7 @@ func TestFetchTags(t *testing.T) {
 		defer srv.Close()
 
 		addr := strings.TrimPrefix(srv.URL, "http://")
-		_, err := fetchTags(context.Background(), addr, "nonexistent")
+		_, err := fetchTags(context.Background(), addr, "nonexistent", true)
 		require.Error(t, err)
 	})
 }

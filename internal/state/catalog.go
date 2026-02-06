@@ -32,7 +32,7 @@ type tagsResponse struct {
 func collectCachedImages(ctx context.Context, registryURL string, insecure bool) ([]CachedImage, error) {
 	log := logger.FromContext(ctx)
 
-	repos, err := fetchCatalog(ctx, registryURL)
+	repos, err := fetchCatalog(ctx, registryURL, insecure)
 	if err != nil {
 		return nil, fmt.Errorf("fetch catalog: %w", err)
 	}
@@ -43,7 +43,7 @@ func collectCachedImages(ctx context.Context, registryURL string, insecure bool)
 
 	var images []CachedImage
 	for _, repo := range repos {
-		tags, err := fetchTags(ctx, registryURL, repo)
+		tags, err := fetchTags(ctx, registryURL, repo, insecure)
 		if err != nil {
 			log.Warn().Err(err).Str("repo", repo).Msg("Skipping repo: failed to fetch tags")
 			continue
@@ -93,10 +93,24 @@ func collectImageInfo(ctx context.Context, ref string, insecure bool) (CachedIma
 }
 
 func computeManifestSize(raw []byte) (int64, error) {
+	var probe struct {
+		MediaType string `json:"mediaType"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return 0, fmt.Errorf("unmarshal manifest: %w", err)
+	}
+
+	switch probe.MediaType {
+	case "application/vnd.oci.image.index.v1+json",
+		"application/vnd.docker.distribution.manifest.list.v2+json":
+		return 0, fmt.Errorf("multi-arch manifest index not supported for size computation")
+	}
+
 	var m v1.Manifest
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return 0, fmt.Errorf("unmarshal manifest: %w", err)
 	}
+
 	var total int64
 	total += m.Config.Size
 	for _, layer := range m.Layers {
@@ -105,8 +119,15 @@ func computeManifestSize(raw []byte) (int64, error) {
 	return total, nil
 }
 
-func fetchCatalog(ctx context.Context, registryURL string) ([]string, error) {
-	url := fmt.Sprintf("http://%s/v2/_catalog", registryURL)
+func registryScheme(insecure bool) string {
+	if insecure {
+		return "http"
+	}
+	return "https"
+}
+
+func fetchCatalog(ctx context.Context, registryURL string, insecure bool) ([]string, error) {
+	url := fmt.Sprintf("%s://%s/v2/_catalog", registryScheme(insecure), registryURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create catalog request: %w", err)
@@ -138,8 +159,8 @@ func fetchCatalog(ctx context.Context, registryURL string) ([]string, error) {
 	return catalog.Repositories, nil
 }
 
-func fetchTags(ctx context.Context, registryURL, repo string) ([]string, error) {
-	url := fmt.Sprintf("http://%s/v2/%s/tags/list", registryURL, repo)
+func fetchTags(ctx context.Context, registryURL, repo string, insecure bool) ([]string, error) {
+	url := fmt.Sprintf("%s://%s/v2/%s/tags/list", registryScheme(insecure), registryURL, repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create tags request: %w", err)
