@@ -50,6 +50,11 @@ tasks:
       PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
       COMPONENT: "{{.COMPONENT | default .Env.COMPONENT | default \"satellite\"}}"
       IMAGE_TAGS: "{{.IMAGE_TAGS | default .Env.IMAGE_TAGS | default \"dev\"}}"
+    preconditions:
+      - sh: test -n "{{.REGISTRY}}"
+        msg: "REGISTRY is required. Set via task var or REGISTRY env var."
+      - sh: test -n "{{.PROJECT_NAME}}"
+        msg: "PROJECT_NAME is required. Set via task var or PROJECT_NAME env var."
     cmds:
       - |
         DOCKERFILE="Dockerfile"
@@ -89,6 +94,11 @@ tasks:
       PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
       COMPONENT: "{{.COMPONENT | default .Env.COMPONENT | default \"satellite\"}}"
       IMAGE_TAGS: "{{.IMAGE_TAGS | default .Env.IMAGE_TAGS | default \"dev\"}}"
+    preconditions:
+      - sh: test -n "{{.REGISTRY}}"
+        msg: "REGISTRY is required. Set via task var or REGISTRY env var."
+      - sh: test -n "{{.PROJECT_NAME}}"
+        msg: "PROJECT_NAME is required. Set via task var or PROJECT_NAME env var."
     cmds:
       - task: image
         vars:
