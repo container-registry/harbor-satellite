@@ -7,6 +7,11 @@ cd "$SCRIPT_DIR"
 
 echo "=== Cleaning up Ground Control (SSH PoP) ==="
 
+echo "> Deleting Ground Control SPIRE entry..."
+docker exec spire-server /opt/spire/bin/spire-server entry delete \
+    -spiffeID spiffe://harbor-satellite.local/ground-control \
+    -socketPath /tmp/spire-server/private/api.sock 2>/dev/null || true
+
 echo "> docker compose down -v --remove-orphans"
 docker compose down -v --remove-orphans
 

@@ -7,6 +7,11 @@ cd "$SCRIPT_DIR"
 
 echo "=== Cleaning up Satellite (SSH PoP) ==="
 
+echo "> Deleting Satellite SPIRE entry..."
+docker exec spire-server /opt/spire/bin/spire-server entry delete \
+    -spiffeID spiffe://harbor-satellite.local/satellite/region//edge-01 \
+    -socketPath /tmp/spire-server/private/api.sock 2>/dev/null || true
+
 echo "> docker compose down -v --remove-orphans"
 docker compose down -v --remove-orphans
 
