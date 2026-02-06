@@ -1,0 +1,545 @@
+version: "3"
+
+vars:
+  E2E_DIR: "{{.ROOT_DIR}}/docker/e2e"
+  HARBOR_ADMIN_USER: admin
+  HARBOR_ADMIN_PASSWORD: Harbor12345
+  HARBOR_URL: http://localhost:8080
+  HARBOR_INTERNAL_URL: http://core:8080
+  HARBOR_API: "{{.HARBOR_URL}}/api/v2.0"
+  GC_ADMIN_USER: admin
+  GC_ADMIN_PASSWORD: AdminPass123
+  GC_URL: http://localhost:9080
+  PROJECT_NAME: edge
+  REGISTRY_NAME: test-registry
+  DEST_NAMESPACE: test-group
+
+tasks:
+  test:
+    desc: Run full E2E test suite
+    cmds:
+      - task: setup
+      - defer: { task: cleanup }
+      - task: wait-harbor
+      - task: wait-gc
+      - task: init-harbor
+      - task: init-gc
+      - task: register-satellite
+      - task: verify
+
+  test-spiffe:
+    desc: Run SPIFFE join token E2E test
+    cmds:
+      - task: setup-spiffe
+      - defer: { task: cleanup-spiffe }
+      - task: wait-gc-spiffe
+      - task: generate-join-token
+      - task: verify-spiffe-attestation
+      - echo "SPIFFE join token E2E test passed"
+
+  setup:
+    desc: Start Harbor and Ground Control stack
+    cmds:
+      - echo "Building ground-control image..."
+      - docker build -t gc:e2e -f ground-control/Dockerfile ground-control/
+      - echo "Starting Harbor and GC stack..."
+      - docker compose -f docker/e2e/docker-compose.yml up -d
+      - sleep 5
+      - docker compose -f docker/e2e/docker-compose.yml ps
+    silent: true
+
+  setup-spiffe:
+    desc: Start SPIFFE test stack with external SPIRE
+    cmds:
+      - echo "Building ground-control image..."
+      - docker build -t gc:e2e -f ground-control/Dockerfile ground-control/
+      - task: generate-spiffe-certs
+      - task: start-spire-server
+      - task: setup-gc-agent
+      - task: start-gc-spiffe
+    silent: true
+
+  generate-spiffe-certs:
+    desc: Generate CA certificates for SPIRE
+    cmds:
+      - |
+        CERTS_DIR="docker/e2e/spiffe/certs"
+        mkdir -p "$CERTS_DIR"
+        echo "Generating bootstrap CA certificate..."
+        openssl genrsa -out "$CERTS_DIR/ca.key" 4096 2>/dev/null
+        openssl req -new -x509 -days 365 -key "$CERTS_DIR/ca.key" -out "$CERTS_DIR/ca.crt" \
+          -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=SPIRE CA" 2>/dev/null
+        chmod 644 "$CERTS_DIR/ca.key" "$CERTS_DIR/ca.crt"
+        echo "CA certificate generated in $CERTS_DIR"
+        ls -la "$CERTS_DIR"
+
+  start-spire-server:
+    desc: Start PostgreSQL and SPIRE server
+    cmds:
+      - |
+        echo "Starting PostgreSQL and SPIRE server..."
+        docker compose -f docker/e2e/docker-compose.spiffe.yml up -d postgres spire-server
+        echo "Waiting for SPIRE server to be healthy..."
+        for i in $(seq 1 60); do
+          if docker exec spire-server /opt/spire/bin/spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock > /dev/null 2>&1; then
+            echo "SPIRE server is healthy"
+            exit 0
+          fi
+          echo "Waiting for SPIRE server... ($i/60)"
+          sleep 2
+        done
+        echo "ERROR: SPIRE server failed to start"
+        echo "SPIRE server logs:"
+        docker logs spire-server 2>&1 | tail -50
+        exit 1
+
+  setup-gc-agent:
+    desc: Generate join token and start GC SPIRE agent
+    cmds:
+      - |
+        echo "Generating join token for GC SPIRE agent..."
+        GC_TOKEN=$(docker exec spire-server /opt/spire/bin/spire-server token generate \
+          -spiffeID spiffe://harbor-satellite.local/agent/ground-control \
+          -socketPath /tmp/spire-server/private/api.sock | grep "Token:" | awk '{print $2}')
+        if [ -z "$GC_TOKEN" ]; then
+          echo "ERROR: Failed to generate join token"
+          exit 1
+        fi
+        echo "GC Agent Token: $GC_TOKEN"
+
+        echo "Creating agent config with join token..."
+        cat > docker/e2e/spiffe/agent-gc-runtime.conf << EOF
+        agent {
+            data_dir = "/tmp/spire-agent"
+            log_level = "INFO"
+            server_address = "spire-server"
+            server_port = "8081"
+            socket_path = "/run/spire/sockets/agent.sock"
+            trust_bundle_path = "/opt/spire/conf/agent/bootstrap.crt"
+            trust_domain = "harbor-satellite.local"
+            join_token = "$GC_TOKEN"
+        }
+        plugins {
+            NodeAttestor "join_token" {
+                plugin_data {}
+            }
+            KeyManager "memory" {
+                plugin_data {}
+            }
+            WorkloadAttestor "unix" {
+                plugin_data {}
+            }
+            WorkloadAttestor "docker" {
+                plugin_data {
+                    docker_socket_path = "unix:///var/run/docker.sock"
+                }
+            }
+        }
+        health_checks {
+            listener_enabled = true
+            bind_address = "0.0.0.0"
+            bind_port = "8080"
+            live_path = "/live"
+            ready_path = "/ready"
+        }
+        EOF
+
+        echo "Starting SPIRE agent for Ground Control..."
+        docker compose -f docker/e2e/docker-compose.spiffe.yml up -d spire-agent-gc
+        sleep 5
+
+        echo "Waiting for agent to attest..."
+        for i in $(seq 1 20); do
+          if docker exec spire-agent-gc /opt/spire/bin/spire-agent healthcheck -socketPath /run/spire/sockets/agent.sock > /dev/null 2>&1; then
+            echo "SPIRE agent is healthy"
+            break
+          fi
+          if [ "$i" -eq 20 ]; then
+            echo "ERROR: SPIRE agent failed to attest"
+            exit 1
+          fi
+          echo "Waiting for SPIRE agent... ($i/20)"
+          sleep 2
+        done
+
+        echo "Registering GC workload entry..."
+        docker exec spire-server /opt/spire/bin/spire-server entry create \
+          -parentID spiffe://harbor-satellite.local/agent/ground-control \
+          -spiffeID spiffe://harbor-satellite.local/ground-control \
+          -selector docker:label:com.docker.compose.service:gc \
+          -socketPath /tmp/spire-server/private/api.sock || true
+
+  start-gc-spiffe:
+    desc: Start Ground Control with SPIFFE
+    cmds:
+      - |
+        echo "Starting Ground Control..."
+        docker compose -f docker/e2e/docker-compose.spiffe.yml up -d gc
+        echo "Waiting for Ground Control to be healthy..."
+        for i in $(seq 1 30); do
+          if curl -sfk https://localhost:9080/health > /dev/null 2>&1; then
+            echo "Ground Control is healthy"
+            exit 0
+          fi
+          echo "Waiting for Ground Control... ($i/30)"
+          sleep 2
+        done
+        echo "ERROR: Ground Control failed to start"
+        docker logs gc 2>&1 | tail -30
+        exit 1
+
+  cleanup:
+    desc: Stop and remove E2E containers
+    cmds:
+      - echo "Stopping e2e containers..."
+      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f satellite 2>/dev/null || true
+      - echo "Cleanup complete"
+    silent: true
+
+  cleanup-spiffe:
+    desc: Stop and remove SPIFFE E2E containers
+    cmds:
+      - echo "Stopping spiffe containers..."
+      - docker compose -f docker/e2e/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f spire-agent-satellite satellite-spiffe 2>/dev/null || true
+      - rm -f docker/e2e/spiffe/agent-gc-runtime.conf docker/e2e/spiffe/agent-satellite-runtime.conf 2>/dev/null || true
+      - rm -rf docker/e2e/spiffe/certs 2>/dev/null || true
+      - echo "Cleanup complete"
+    silent: true
+
+  wait-harbor:
+    desc: Wait for Harbor core to be healthy
+    cmds:
+      - |
+        echo "Waiting for Harbor core to be healthy..."
+        for i in $(seq 1 30); do
+          if curl -sf {{.HARBOR_API}}/health > /dev/null 2>&1; then
+            echo "Harbor core is healthy"
+            exit 0
+          fi
+          echo "Waiting for Harbor... ($i/30)"
+          sleep 10
+        done
+        echo "Timeout waiting for Harbor"
+        exit 1
+
+  wait-gc:
+    desc: Wait for Ground Control to be healthy
+    cmds:
+      - |
+        echo "Waiting for Ground Control to be healthy..."
+        for i in $(seq 1 30); do
+          if curl -sf {{.GC_URL}}/health > /dev/null 2>&1; then
+            echo "Ground Control is healthy"
+            exit 0
+          fi
+          echo "Waiting for GC... ($i/30)"
+          sleep 5
+        done
+        echo "Timeout waiting for Ground Control"
+        exit 1
+
+  wait-gc-spiffe:
+    desc: Wait for Ground Control with SPIRE to be healthy
+    cmds:
+      - |
+        echo "Verifying Ground Control and SPIRE are healthy..."
+        if ! curl -sfk https://localhost:9080/health > /dev/null 2>&1; then
+          echo "ERROR: Ground Control is not healthy"
+          exit 1
+        fi
+        echo "Ground Control is healthy"
+        if ! docker exec spire-server /opt/spire/bin/spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock > /dev/null 2>&1; then
+          echo "ERROR: SPIRE server is not healthy"
+          exit 1
+        fi
+        echo "SPIRE server is healthy"
+
+  init-harbor:
+    desc: Initialize Harbor with project, image, registry, and replication policy
+    cmds:
+      - |
+        echo "Creating project..."
+        curl -sf -X POST {{.HARBOR_API}}/projects \
+          -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
+          -H "Content-Type: application/json" \
+          -d '{"project_name": "{{.PROJECT_NAME}}"}'
+
+        echo "Pushing image to Harbor..."
+        docker run --rm --network harbor-e2e alpine:latest sh -c "
+          apk add --no-cache crane &&
+          crane auth login core:8080 -u admin -p Harbor12345 --insecure &&
+          crane copy docker.io/library/alpine:latest core:8080/{{.PROJECT_NAME}}/alpine:latest --insecure
+        "
+
+        echo "Creating registry..."
+        curl -sf -X POST {{.HARBOR_API}}/registries \
+          -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
+          -H "Content-Type: application/json" \
+          -d '{
+            "credential": {"access_key": "", "access_secret": "", "type": "basic"},
+            "description": "",
+            "insecure": true,
+            "name": "{{.REGISTRY_NAME}}",
+            "type": "harbor-satellite",
+            "url": "http://gc:8080/groups/sync"
+          }'
+
+        echo "Creating replication policy..."
+        curl -sf -X POST {{.HARBOR_API}}/replication/policies \
+          -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name": "satellite-group",
+            "dest_registry": {
+              "id": 1,
+              "name": "{{.REGISTRY_NAME}}",
+              "status": "healthy",
+              "type": "harbor-satellite",
+              "url": "http://gc:8080/groups/sync"
+            },
+            "dest_namespace": "{{.DEST_NAMESPACE}}",
+            "dest_namespace_replace_count": 1,
+            "trigger": {"type": "manual", "trigger_settings": {"cron": ""}},
+            "filters": [{"type": "name", "value": "{{.PROJECT_NAME}}/**"}],
+            "enabled": true,
+            "deletion": false,
+            "override": true,
+            "speed": -1
+          }'
+
+        echo "Executing replication..."
+        curl -sf -X POST {{.HARBOR_API}}/replication/executions \
+          -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
+          -H "Content-Type: application/json" \
+          -d '{"policy_id": 1}'
+
+        echo "Harbor initialized"
+
+  init-gc:
+    desc: Initialize Ground Control with config and group
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sf -X POST {{.GC_URL}}/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Creating config..."
+        curl -sf -X POST {{.GC_URL}}/api/configs \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "config_name": "test-config",
+            "registry": "{{.HARBOR_INTERNAL_URL}}",
+            "config": {
+              "app_config": {
+                "ground_control_url": "http://gc:8080",
+                "log_level": "info",
+                "use_unsecure": true,
+                "state_replication_interval": "@every 00h00m10s",
+                "update_config_interval": "@every 00h00m10s",
+                "register_satellite_interval": "@every 00h00m10s",
+                "bring_own_registry": false,
+                "local_registry": {"url": "http://127.0.0.1:8585"}
+              },
+              "zot_config": {
+                "distSpecVersion": "1.1.0",
+                "storage": {"rootDirectory": "./zot"},
+                "http": {"address": "0.0.0.0", "port": "8585"},
+                "log": {"level": "info"}
+              }
+            }
+          }'
+
+        echo "Creating group..."
+        curl -sf -X POST {{.GC_URL}}/api/groups/sync \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "group": "{{.DEST_NAMESPACE}}",
+            "registry": "{{.HARBOR_INTERNAL_URL}}",
+            "artifacts": [{"repository": "{{.PROJECT_NAME}}/alpine", "tag": ["latest"]}]
+          }'
+
+        echo "Ground Control initialized"
+
+  register-satellite:
+    desc: Register satellite and start it
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sf -X POST {{.GC_URL}}/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Registering satellite..."
+        RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name": "test-satellite",
+            "groups": ["{{.DEST_NAMESPACE}}"],
+            "config_name": "test-config"
+          }')
+
+        TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$TOKEN" ]; then
+          echo "Failed to get satellite token"
+          exit 1
+        fi
+        echo "Satellite registered with token: $TOKEN"
+
+        echo "Building satellite from local code..."
+        docker build -t satellite:e2e -f Dockerfile .
+
+        echo "Starting satellite..."
+        docker run -d --name satellite --network harbor-e2e \
+          -e TOKEN="$TOKEN" \
+          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -p 8585:8585 \
+          satellite:e2e
+
+  verify:
+    desc: Verify image replication to local Zot
+    cmds:
+      - |
+        echo "Waiting for replication..."
+        for i in $(seq 1 12); do
+          echo "Checking replication status... ($i/12)"
+          if docker run --rm --network harbor-e2e alpine:latest sh -c "
+            apk add --no-cache crane > /dev/null 2>&1 &&
+            crane manifest satellite:8585/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
+          "; then
+            echo "Image available, pulling..."
+            docker run --rm --network harbor-e2e alpine:latest sh -c "
+              apk add --no-cache crane &&
+              crane pull satellite:8585/{{.PROJECT_NAME}}/alpine:latest alpine.tar --insecure &&
+              tar -xf alpine.tar &&
+              cat manifest.json
+            "
+            echo "E2E test passed: Image replicated successfully"
+            exit 0
+          fi
+          sleep 10
+        done
+        echo "Timeout waiting for replication"
+        docker logs satellite 2>&1 | tail -50
+        exit 1
+
+  generate-join-token:
+    desc: Register satellite and generate SPIFFE join token
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sfk -X POST https://localhost:9080/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Registering satellite with SPIFFE attestation..."
+        RESPONSE=$(curl -sfk -X POST https://localhost:9080/api/satellites/register \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "satellite_name": "test-satellite",
+            "region": "us-west",
+            "selectors": ["docker:label:com.docker.compose.service:satellite-spiffe"],
+            "attestation_method": "join_token"
+          }')
+
+        JOIN_TOKEN=$(echo "$RESPONSE" | grep -o '"join_token":"[^"]*"' | cut -d'"' -f4)
+        SPIFFE_ID=$(echo "$RESPONSE" | grep -o '"spiffe_id":"[^"]*"' | cut -d'"' -f4)
+
+        if [ -z "$JOIN_TOKEN" ]; then
+          echo "Failed to get join token"
+          echo "Response: $RESPONSE"
+          exit 1
+        fi
+
+        echo "Satellite registered with SPIFFE"
+        echo "SPIFFE ID: $SPIFFE_ID"
+        echo "Join token: $JOIN_TOKEN"
+        echo "$JOIN_TOKEN" > /tmp/spiffe_join_token
+
+  verify-spiffe-attestation:
+    desc: Verify SPIFFE agent attestation with join token
+    cmds:
+      - |
+        JOIN_TOKEN=$(cat /tmp/spiffe_join_token)
+
+        echo "Creating satellite agent config with join token..."
+        cat > docker/e2e/spiffe/agent-satellite-runtime.conf << EOF
+        agent {
+            data_dir = "/tmp/spire-agent"
+            log_level = "INFO"
+            server_address = "spire-server"
+            server_port = "8081"
+            socket_path = "/run/spire/sockets/agent.sock"
+            trust_bundle_path = "/opt/spire/conf/agent/bootstrap.crt"
+            trust_domain = "harbor-satellite.local"
+            join_token = "$JOIN_TOKEN"
+        }
+        plugins {
+            NodeAttestor "join_token" {
+                plugin_data {}
+            }
+            KeyManager "memory" {
+                plugin_data {}
+            }
+            WorkloadAttestor "unix" {
+                plugin_data {}
+            }
+            WorkloadAttestor "docker" {
+                plugin_data {
+                    docker_socket_path = "unix:///var/run/docker.sock"
+                }
+            }
+        }
+        health_checks {
+            listener_enabled = true
+            bind_address = "0.0.0.0"
+            bind_port = "8080"
+            live_path = "/live"
+            ready_path = "/ready"
+        }
+        EOF
+
+        echo "Starting SPIRE agent for satellite..."
+        docker run -d --name spire-agent-satellite \
+          --network spiffe-e2e \
+          --pid host \
+          -v $(pwd)/docker/e2e/spiffe/agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro \
+          -v $(pwd)/docker/e2e/spiffe/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro \
+          -v ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro \
+          ghcr.io/spiffe/spire-agent:1.12.3 \
+          -config /opt/spire/conf/agent/agent.conf
+
+        echo "Waiting for satellite agent to attest..."
+        sleep 5
+
+        for i in $(seq 1 20); do
+          if docker exec spire-agent-satellite /opt/spire/bin/spire-agent healthcheck -socketPath /run/spire/sockets/agent.sock > /dev/null 2>&1; then
+            echo "Satellite SPIRE agent is healthy - attestation successful"
+            break
+          fi
+          if [ "$i" -eq 20 ]; then
+            echo "ERROR: Satellite SPIRE agent failed to attest"
+            docker logs spire-agent-satellite 2>&1 | tail -30
+            exit 1
+          fi
+          echo "Waiting for satellite SPIRE agent... ($i/20)"
+          sleep 2
+        done
+
+        echo "Verifying agent is registered with SPIRE server..."
+        docker exec spire-server /opt/spire/bin/spire-server agent list \
+          -socketPath /tmp/spire-server/private/api.sock
+
+        echo "SPIFFE join token attestation verified successfully"

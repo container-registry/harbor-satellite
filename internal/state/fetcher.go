@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
@@ -32,9 +31,10 @@ type baseStateFetcher struct {
 
 type URLStateFetcher struct {
 	baseStateFetcher
-	url      string
-	insecure bool
-	tlsCfg   config.TLSConfig
+	url       string
+	insecure  bool
+	useHTTP   bool
+	tlsCfg    config.TLSConfig
 }
 
 func NewURLStateFetcher(stateURL, userName, password string, insecure bool) StateFetcher {
@@ -42,7 +42,18 @@ func NewURLStateFetcher(stateURL, userName, password string, insecure bool) Stat
 }
 
 func NewURLStateFetcherWithTLS(stateURL, userName, password string, insecure bool, tlsCfg config.TLSConfig) StateFetcher {
-	url := utils.FormatRegistryURL(stateURL)
+	var url string
+	var useHTTP bool
+	if len(stateURL) > 7 && stateURL[:7] == "http://" {
+		url = stateURL[7:]
+		useHTTP = true
+	} else if len(stateURL) > 8 && stateURL[:8] == "https://" {
+		url = stateURL[8:]
+		useHTTP = false
+	} else {
+		url = stateURL
+		useHTTP = insecure
+	}
 	return &URLStateFetcher{
 		baseStateFetcher: baseStateFetcher{
 			username: userName,
@@ -50,6 +61,7 @@ func NewURLStateFetcherWithTLS(stateURL, userName, password string, insecure boo
 		},
 		url:      url,
 		insecure: insecure,
+		useHTTP:  useHTTP,
 		tlsCfg:   tlsCfg,
 	}
 }
@@ -121,12 +133,18 @@ func (f *URLStateFetcher) buildCraneOptions(ctx context.Context) ([]crane.Option
 		Password: f.password,
 	})
 
-	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
-
-	if f.insecure {
-		options = append(options, crane.Insecure)
+	var options []crane.Option
+	if f.useHTTP {
+		// Force HTTP scheme by wrapping the default transport
+		transport := &httpTransport{base: http.DefaultTransport}
+		options = []crane.Option{crane.Insecure, crane.WithAuth(auth), crane.WithContext(ctx), crane.WithTransport(transport)}
 		return options, nil
 	}
+	if f.insecure {
+		options = []crane.Option{crane.Insecure, crane.WithAuth(auth), crane.WithContext(ctx)}
+		return options, nil
+	}
+	options = []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 
 	transport, err := f.buildTLSTransport()
 	if err != nil {
@@ -137,6 +155,16 @@ func (f *URLStateFetcher) buildCraneOptions(ctx context.Context) ([]crane.Option
 	}
 
 	return options, nil
+}
+
+type httpTransport struct {
+	base http.RoundTripper
+}
+
+func (t *httpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.URL.Scheme = "http"
+	return t.base.RoundTrip(clone)
 }
 
 func (f *URLStateFetcher) buildTLSTransport() (http.RoundTripper, error) {

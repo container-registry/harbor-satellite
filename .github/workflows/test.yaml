@@ -15,25 +15,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Dagger Version
-        uses: sagikazarmark/dagger-version-action@v0.0.1
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run Vulnerability Check
-        uses: dagger/dagger-for-github@v7
-        with:
-          version: ${{ steps.dagger_version.outputs.version }}
-          verb: call
-          args: vulnerability-check-report export --path=vulnerability-check.report
+        run: task vuln-report
 
       - name: Generate vulnerability summary
         run: |
-          echo "<h2> 🔒 Vulnerability Check Results</h2>" >> $GITHUB_STEP_SUMMARY
+          echo "<h2> Vulnerability Check Results</h2>" >> $GITHUB_STEP_SUMMARY
           cat vulnerability-check.report >> $GITHUB_STEP_SUMMARY
-          # Check if the lint report contains any content (error or issues)
           if ! grep -q "No vulnerabilities found." vulnerability-check.report; then
-              # If the file contains content, output an error message and exit with code 1
-              echo "⚠️ vulnerabilities found!" >> $GITHUB_STEP_SUMMARY
-              # temporarrily disabled vuln check
+              echo "vulnerabilities found!" >> $GITHUB_STEP_SUMMARY
               exit 0
           fi
 
@@ -45,15 +48,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Dagger Version
-        uses: sagikazarmark/dagger-version-action@v0.0.1
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          install-only: true
+          version: v2.9.0
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
 
       - name: Test Release
-        uses: dagger/dagger-for-github@v7
-        with:
-          version: ${{ steps.dagger_version.outputs.version }}
-          verb: call
-          args: snapshot-release
+        run: task snapshot
 
   build-satellite:
     runs-on: ubuntu-latest
@@ -61,12 +76,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build the binary for the satellite
-        uses: dagger/dagger-for-github@v7
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          version: ${{ steps.dagger_version.outputs.version }}
-          verb: call
-          args: build --component=satellite
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Build the binary for the satellite
+        run: task _build:satellite
 
   build-ground-control:
     runs-on: ubuntu-latest
@@ -74,13 +95,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build the binary for ground control
-        uses: dagger/dagger-for-github@v7
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          version: ${{ steps.dagger_version.outputs.version }}
-          verb: call
-          args: build --component=ground-control
-  
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Build the binary for ground control
+        run: task _build:ground-control
+
   e2e-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -88,15 +115,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Dagger Version
-        uses: sagikazarmark/dagger-version-action@v0.0.1
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
 
       - name: Test E2E satellite
-        uses: dagger/dagger-for-github@v7
-        with:
-          version: ${{ steps.dagger_version.outputs.version }}
-          verb: call
-          args: test-end-to-end
+        run: task e2e-test
 
   e2e-spiffe-join-token-tests:
     runs-on: ubuntu-latest
@@ -105,12 +135,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Dagger Version
-        uses: sagikazarmark/dagger-version-action@v0.0.1
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
 
       - name: Test SPIFFE Join Token E2E
-        uses: dagger/dagger-for-github@v7
-        with:
-          version: ${{ steps.dagger_version.outputs.version }}
-          verb: call
-          args: test-spiffe-join-token-e-2-e
+        run: task e2e-spiffe
