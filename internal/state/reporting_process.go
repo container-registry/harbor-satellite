@@ -79,7 +79,9 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 		RequestCreatedTime:  time.Now().UTC(),
 	}
 
-	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg)
+	registryURL := s.cm.GetZotURL()
+	insecure := s.cm.UseUnsecure()
+	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
 
 	groundControlURL := s.cm.ResolveGroundControlURL()
 	if err := s.sendStatusReport(ctx, groundControlURL, req); err != nil {
