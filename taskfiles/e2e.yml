@@ -559,18 +559,20 @@ tasks:
 
   init-gc-byo:
     desc: Initialize Ground Control with BYO registry config
-    vars:
-      GC_TOKEN:
-        sh: |
-          curl -sf -X POST {{.GC_URL}}/login \
-            -H "Content-Type: application/json" \
-            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
-            grep -o '"token":"[^"]*"' | cut -d'"' -f4
     cmds:
       - |
+        GC_TOKEN=$(curl -sf -X POST {{.GC_URL}}/login \
+          -H "Content-Type: application/json" \
+          -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+          grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$GC_TOKEN" ]; then
+          echo "ERROR: Failed to get GC token"
+          exit 1
+        fi
+
         echo "Creating BYO config..."
         RESP=$(curl -s -w '\n%{http_code}' -X POST {{.GC_URL}}/api/configs \
-          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Authorization: Bearer $GC_TOKEN" \
           -H "Content-Type: application/json" \
           -d '{
             "config_name": "byo-config",
@@ -598,37 +600,33 @@ tasks:
         echo "Config created (HTTP $HTTP_CODE)"
 
         echo "Creating group..."
-        RESP=$(curl -s -w '\n%{http_code}' -X POST {{.GC_URL}}/api/groups/sync \
-          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+        curl -sf -X POST {{.GC_URL}}/api/groups/sync \
+          -H "Authorization: Bearer $GC_TOKEN" \
           -H "Content-Type: application/json" \
           -d '{
             "group": "{{.DEST_NAMESPACE}}",
             "registry": "{{.HARBOR_INTERNAL_URL}}",
             "artifacts": [{"repository": "{{.PROJECT_NAME}}/alpine", "tag": ["latest"]}]
-          }')
-        HTTP_CODE=$(echo "$RESP" | tail -1)
-        BODY=$(echo "$RESP" | sed '$d')
-        if [ "$HTTP_CODE" -ge 400 ]; then
-          echo "ERROR: Group creation failed (HTTP $HTTP_CODE): $BODY"
-          exit 1
-        fi
+          }'
 
         echo "Ground Control initialized for BYO"
 
   register-satellite-byo:
     desc: Register satellite with BYO registry and start it
-    vars:
-      GC_TOKEN:
-        sh: |
-          curl -sf -X POST {{.GC_URL}}/login \
-            -H "Content-Type: application/json" \
-            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
-            grep -o '"token":"[^"]*"' | cut -d'"' -f4
     cmds:
       - |
+        GC_TOKEN=$(curl -sf -X POST {{.GC_URL}}/login \
+          -H "Content-Type: application/json" \
+          -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+          grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$GC_TOKEN" ]; then
+          echo "ERROR: Failed to get GC token"
+          exit 1
+        fi
+
         echo "Registering satellite..."
         RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
-          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Authorization: Bearer $GC_TOKEN" \
           -H "Content-Type: application/json" \
           -d '{
             "name": "byo-satellite",
