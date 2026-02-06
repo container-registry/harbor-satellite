@@ -33,113 +33,132 @@ func (m *mirrorFlags) Set(value string) error {
 	return nil
 }
 
-func main() {
-	var jsonLogging bool
-	var groundControlURL string
-	var token string
-	var useUnsecure bool
-	var mirrors mirrorFlags
-	var spiffeEnabled bool
-	var spiffeEndpointSocket string
-	var spiffeExpectedServerID string
+// SatelliteOptions holds all CLI flag and env var configuration.
+type SatelliteOptions struct {
+	JSONLogging            bool
+	GroundControlURL       string
+	Token                  string
+	UseUnsecure            bool
+	Mirrors                mirrorFlags
+	SPIFFEEnabled          bool
+	SPIFFEEndpointSocket   string
+	SPIFFEExpectedServerID string
+	BYORegistry            bool
+	RegistryURL            string
+	RegistryUsername        string
+	RegistryPassword       string
+}
 
-	flag.StringVar(&groundControlURL, "ground-control-url", "", "URL to ground control")
-	flag.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
-	flag.StringVar(&token, "token", "", "Satellite token")
-	flag.BoolVar(&useUnsecure, "use-unsecure", false, "Use insecure (HTTP) connections to registries")
-	flag.Var(&mirrors, "mirrors", "Specify CRI and registries in the form CRI:registry1,registry2")
-	flag.BoolVar(&spiffeEnabled, "spiffe-enabled", false, "Enable SPIFFE/SPIRE authentication")
-	flag.StringVar(&spiffeEndpointSocket, "spiffe-endpoint-socket", config.DefaultSPIFFEEndpointSocket, "SPIFFE Workload API endpoint socket")
-	flag.StringVar(&spiffeExpectedServerID, "spiffe-expected-server-id", "", "Expected SPIFFE ID of Ground Control server")
+func main() {
+	var opts SatelliteOptions
+
+	flag.StringVar(&opts.GroundControlURL, "ground-control-url", "", "URL to ground control")
+	flag.BoolVar(&opts.JSONLogging, "json-logging", true, "Enable JSON logging")
+	flag.StringVar(&opts.Token, "token", "", "Satellite token")
+	flag.BoolVar(&opts.UseUnsecure, "use-unsecure", false, "Use insecure (HTTP) connections to registries")
+	flag.Var(&opts.Mirrors, "mirrors", "Specify CRI and registries in the form CRI:registry1,registry2")
+	flag.BoolVar(&opts.SPIFFEEnabled, "spiffe-enabled", false, "Enable SPIFFE/SPIRE authentication")
+	flag.StringVar(&opts.SPIFFEEndpointSocket, "spiffe-endpoint-socket", config.DefaultSPIFFEEndpointSocket, "SPIFFE Workload API endpoint socket")
+	flag.StringVar(&opts.SPIFFEExpectedServerID, "spiffe-expected-server-id", "", "Expected SPIFFE ID of Ground Control server")
+	flag.BoolVar(&opts.BYORegistry, "byo-registry", false, "Use external registry instead of embedded Zot")
+	flag.StringVar(&opts.RegistryURL, "registry-url", "", "External registry URL")
+	flag.StringVar(&opts.RegistryUsername, "registry-username", "", "External registry username")
+	flag.StringVar(&opts.RegistryPassword, "registry-password", "", "External registry password")
 
 	flag.Parse()
 
-	if token == "" {
-		token = os.Getenv("TOKEN")
+	if opts.Token == "" {
+		opts.Token = os.Getenv("TOKEN")
 	}
-	if groundControlURL == "" {
-		groundControlURL = os.Getenv("GROUND_CONTROL_URL")
+	if opts.GroundControlURL == "" {
+		opts.GroundControlURL = os.Getenv("GROUND_CONTROL_URL")
 	}
 	if os.Getenv("SPIFFE_ENABLED") == "true" {
-		spiffeEnabled = true
+		opts.SPIFFEEnabled = true
 	}
 	if os.Getenv("SPIFFE_ENDPOINT_SOCKET") != "" {
-		spiffeEndpointSocket = os.Getenv("SPIFFE_ENDPOINT_SOCKET")
+		opts.SPIFFEEndpointSocket = os.Getenv("SPIFFE_ENDPOINT_SOCKET")
 	}
-	if spiffeExpectedServerID == "" && os.Getenv("SPIFFE_EXPECTED_SERVER_ID") != "" {
-		spiffeExpectedServerID = os.Getenv("SPIFFE_EXPECTED_SERVER_ID")
+	if opts.SPIFFEExpectedServerID == "" && os.Getenv("SPIFFE_EXPECTED_SERVER_ID") != "" {
+		opts.SPIFFEExpectedServerID = os.Getenv("SPIFFE_EXPECTED_SERVER_ID")
 	}
-	if !useUnsecure {
-		useUnsecure = os.Getenv("USE_UNSECURE") == "true"
+	if !opts.UseUnsecure {
+		opts.UseUnsecure = os.Getenv("USE_UNSECURE") == "true"
+	}
+	if !opts.BYORegistry {
+		opts.BYORegistry = os.Getenv("BYO_REGISTRY") == "true"
+	}
+	if opts.RegistryURL == "" {
+		opts.RegistryURL = os.Getenv("REGISTRY_URL")
+	}
+	if opts.RegistryUsername == "" {
+		opts.RegistryUsername = os.Getenv("REGISTRY_USERNAME")
+	}
+	if opts.RegistryPassword == "" {
+		opts.RegistryPassword = os.Getenv("REGISTRY_PASSWORD")
 	}
 
 	// Token is not required if SPIFFE is enabled
-	if !spiffeEnabled && (token == "" || groundControlURL == "") {
+	if !opts.SPIFFEEnabled && (opts.Token == "" || opts.GroundControlURL == "") {
 		fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars (or enable SPIFFE with --spiffe-enabled).")
 		os.Exit(1)
 	}
-	if groundControlURL == "" {
+	if opts.GroundControlURL == "" {
 		fmt.Println("Missing required argument: --ground-control-url or GROUND_CONTROL_URL env var.")
 		os.Exit(1)
 	}
-
-	cm, _, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging, useUnsecure)
-	if err != nil {
-		fmt.Printf("Error initiating the config manager: %v", err)
+	if opts.BYORegistry && opts.RegistryURL == "" {
+		fmt.Println("Missing required argument: --registry-url is required when --byo-registry is enabled.")
 		os.Exit(1)
 	}
 
-	// Apply SPIFFE config from CLI flags
-	if spiffeEnabled {
-		cm.With(config.SetSPIFFEConfig(config.SPIFFEConfig{
-			Enabled:          spiffeEnabled,
-			EndpointSocket:   spiffeEndpointSocket,
-			ExpectedServerID: spiffeExpectedServerID,
-		}))
-	}
-
-	// get local registry addrress from raw zot config
-	var data map[string]interface{}
-	if err := json.Unmarshal(cm.GetRawZotConfig(), &data); err != nil {
-		panic(err)
-	}
-	httpData := data["http"].(map[string]interface{})
-	localRegistryEndpoint := httpData["address"].(string) + ":" + httpData["port"].(string)
-
-	err = runtime.ApplyCRIConfigs(mirrors, localRegistryEndpoint)
-	if err != nil {
-		fmt.Printf("fatal : %v\n", err)
-		os.Exit(1)
-	}
-
-	err = run(jsonLogging, token, groundControlURL, useUnsecure, spiffeEnabled, spiffeEndpointSocket, spiffeExpectedServerID)
+	err := run(opts)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(jsonLogging bool, token, groundControlURL string, useUnsecure, spiffeEnabled bool, spiffeEndpointSocket, spiffeExpectedServerID string) error {
+func run(opts SatelliteOptions) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := config.InitConfigManager(token, groundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, jsonLogging, useUnsecure)
+	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, opts.JSONLogging, opts.UseUnsecure)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		return err
 	}
 
 	// Apply SPIFFE config from CLI flags
-	if spiffeEnabled {
+	if opts.SPIFFEEnabled {
 		cm.With(config.SetSPIFFEConfig(config.SPIFFEConfig{
-			Enabled:          spiffeEnabled,
-			EndpointSocket:   spiffeEndpointSocket,
-			ExpectedServerID: spiffeExpectedServerID,
+			Enabled:          opts.SPIFFEEnabled,
+			EndpointSocket:   opts.SPIFFEEndpointSocket,
+			ExpectedServerID: opts.SPIFFEExpectedServerID,
 		}))
 	}
 
-	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), jsonLogging, warnings)
+	// Apply BYO registry config from CLI flags / env vars
+	if opts.BYORegistry {
+		cm.With(
+			config.SetBringOwnRegistry(true),
+			config.SetLocalRegistryURL(opts.RegistryURL),
+			config.SetLocalRegistryUsername(opts.RegistryUsername),
+			config.SetLocalRegistryPassword(opts.RegistryPassword),
+		)
+	}
+
+	// Resolve local registry endpoint for CRI mirror config
+	localRegistryEndpoint, err := resolveLocalRegistryEndpoint(cm)
+	if err != nil {
+		return fmt.Errorf("resolving local registry endpoint: %w", err)
+	}
+	if err := runtime.ApplyCRIConfigs(opts.Mirrors, localRegistryEndpoint); err != nil {
+		return fmt.Errorf("applying CRI configs: %w", err)
+	}
+
+	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), opts.JSONLogging, warnings)
 
 	// Write the config to disk, in case any defaults were enforced at runtime
 	if err := cm.WriteConfig(); err != nil {
@@ -208,6 +227,26 @@ func run(jsonLogging bool, token, groundControlURL string, useUnsecure, spiffeEn
 	log.Info().Msg("Satellite context cancelled, shutting down...")
 
 	return wg.Wait()
+}
+
+func resolveLocalRegistryEndpoint(cm *config.ConfigManager) (string, error) {
+	if cm.GetOwnRegistry() {
+		return utils.FormatRegistryURL(cm.GetLocalRegistryURL()), nil
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal(cm.GetRawZotConfig(), &data); err != nil {
+		return "", fmt.Errorf("unmarshalling zot config: %w", err)
+	}
+	httpData, ok := data["http"].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("missing 'http' section in zot config")
+	}
+	addr, _ := httpData["address"].(string)
+	port, _ := httpData["port"].(string)
+	if addr == "" || port == "" {
+		return "", fmt.Errorf("missing 'address' or 'port' in zot http config")
+	}
+	return addr + ":" + port, nil
 }
 
 func handleRegistrySetup(ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager) error {

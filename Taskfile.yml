@@ -65,12 +65,18 @@ tasks:
     desc: Run all E2E tests
     cmds:
       - task: _e2e:test
+      - task: _e2e:test-byo
       - task: _e2e:test-spiffe
 
   e2e-test:
     desc: Run main E2E test
     cmds:
       - task: _e2e:test
+
+  e2e-byo:
+    desc: Run BYO registry E2E test
+    cmds:
+      - task: _e2e:test-byo
 
   e2e-spiffe:
     desc: Run SPIFFE E2E test
@@ -125,8 +131,20 @@ tasks:
       - echo "Stopping containers..."
       - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker compose -f docker/e2e/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
-      - docker rm -f satellite gc 2>/dev/null || true
+      - docker compose -f docker-compose.byo.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f satellite satellite-byo byo-registry gc 2>/dev/null || true
       - echo "Removing e2e images..."
       - docker rmi -f gc:e2e satellite:e2e 2>/dev/null || true
       - echo "Done!"
     silent: true
+
+  byo-up:
+    desc: Start satellite with BYO registry (registry:2 sidecar)
+    cmds:
+      - docker compose -f docker-compose.byo.yml up -d
+      - docker compose -f docker-compose.byo.yml ps
+
+  byo-down:
+    desc: Stop satellite BYO registry setup
+    cmds:
+      - docker compose -f docker-compose.byo.yml down -v

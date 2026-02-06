@@ -1,0 +1,38 @@
+services:
+  registry:
+    image: registry:2
+    container_name: satellite-registry
+    environment:
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /var/lib/registry
+      REGISTRY_HTTP_ADDR: 0.0.0.0:5000
+    ports:
+      - "${REGISTRY_PORT:-5000}:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:5000/v2/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  satellite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: satellite
+    depends_on:
+      registry:
+        condition: service_healthy
+    environment:
+      - GROUND_CONTROL_URL=${GROUND_CONTROL_URL:-http://172.17.0.1:8888}
+      - TOKEN=${TOKEN:-changeme}
+      - BYO_REGISTRY=true
+      - REGISTRY_URL=http://registry:5000
+      - USE_UNSECURE=true
+    ports:
+      - "${SATELLITE_PORT:-9090}:9090"
+    restart: unless-stopped
+
+volumes:
+  registry-data:

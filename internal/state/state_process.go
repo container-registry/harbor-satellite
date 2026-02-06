@@ -441,7 +441,7 @@ func (f *FetchAndReplicateStateProcess) fetchSatelliteRootState(
 
 func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, string, string, string, bool, string) {
 	sourceURL := utils.FormatRegistryURL(f.cm.GetSourceRegistryURL())
-	remoteURL := utils.FormatRegistryURL(f.cm.GetRemoteRegistryURL())
+	remoteURL := utils.FormatRegistryURL(f.cm.GetLocalRegistryURL())
 	srcUsername := f.cm.GetSourceRegistryUsername()
 	srcPassword := f.cm.GetSourceRegistryPassword()
 	remoteUsername := f.cm.GetRemoteRegistryUsername()

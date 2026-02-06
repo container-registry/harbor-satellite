@@ -128,6 +128,26 @@ jobs:
       - name: Test E2E satellite
         run: task e2e-test
 
+  e2e-byo-registry-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Test BYO Registry E2E
+        run: task e2e-byo
+
   e2e-spiffe-join-token-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
