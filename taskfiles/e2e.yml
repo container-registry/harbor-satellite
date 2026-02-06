@@ -10,7 +10,7 @@ vars:
   GC_ADMIN_USER: admin
   GC_ADMIN_PASSWORD: AdminPass123
   GC_URL: http://localhost:9080
-  PROJECT_NAME: edge
+  PROJECT_NAME: harbor-satellite
   REGISTRY_NAME: test-registry
   DEST_NAMESPACE: test-group
 
