@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
 )
 
 // RegisterSatelliteRequest represents a request to register a satellite with SPIFFE.
@@ -217,7 +219,7 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 	workloadSpiffeID := fmt.Sprintf("spiffe://%s/satellite/region/%s/%s",
 		trustDomain, req.Region, req.SatelliteName)
 
-	err := s.spireClient.CreateWorkloadEntry(r.Context(), agentSpiffeID, workloadSpiffeID, req.Selectors)
+	workloadEntryID, err := s.spireClient.CreateWorkloadEntry(r.Context(), agentSpiffeID, workloadSpiffeID, req.Selectors)
 	if err != nil {
 		log.Printf("Failed to create workload entry: %v", err)
 		HandleAppError(w, &AppError{
@@ -230,7 +232,41 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 	q := s.dbQueries
 	satellite, err := q.GetSatelliteByName(r.Context(), req.SatelliteName)
 	if err != nil {
-		satellite, err = q.CreateSatellite(r.Context(), req.SatelliteName)
+		// New satellite: wrap DB writes in a transaction with cleanup on failure
+		tx, txErr := s.db.BeginTx(r.Context(), nil)
+		if txErr != nil {
+			log.Printf("Register: Failed to begin transaction: %v", txErr)
+			if delErr := s.spireClient.DeleteWorkloadEntry(r.Context(), workloadEntryID); delErr != nil {
+				log.Printf("Warning: Failed to cleanup workload entry: %v", delErr)
+			}
+			HandleAppError(w, &AppError{
+				Message: "Failed to begin transaction",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+
+		txQueries := q.WithTx(tx)
+		committed := false
+		var harborRobotID int64
+
+		defer func() {
+			if !committed {
+				if delErr := s.spireClient.DeleteWorkloadEntry(r.Context(), workloadEntryID); delErr != nil {
+					log.Printf("Warning: Failed to cleanup workload entry: %v", delErr)
+				}
+				if harborRobotID != 0 {
+					if _, delErr := harbor.DeleteRobotAccount(r.Context(), harborRobotID); delErr != nil {
+						log.Printf("Warning: Failed to cleanup robot account: %v", delErr)
+					}
+				}
+				if rbErr := tx.Rollback(); rbErr != nil {
+					log.Printf("Error: Failed to rollback transaction: %v", rbErr)
+				}
+			}
+		}()
+
+		satellite, err = txQueries.CreateSatellite(r.Context(), req.SatelliteName)
 		if err != nil {
 			log.Printf("Register: Failed to create satellite record for %s: %v", req.SatelliteName, err)
 			HandleAppError(w, &AppError{
@@ -241,15 +277,16 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 		}
 		log.Printf("Register: Created satellite record for %s", req.SatelliteName)
 
-		if _, _, robotErr := ensureSatelliteRobotAccount(r, q, satellite); robotErr != nil {
-			log.Printf("Register: Failed to create robot account for %s: %v", req.SatelliteName, robotErr)
+		_, harborRobotID, err = ensureSatelliteRobotAccount(r, txQueries, satellite)
+		if err != nil {
+			log.Printf("Register: Failed to create robot account for %s: %v", req.SatelliteName, err)
 			HandleAppError(w, &AppError{
-				Message: fmt.Sprintf("Failed to create robot account: %v", robotErr),
+				Message: fmt.Sprintf("Failed to create robot account: %v", err),
 				Code:    http.StatusInternalServerError,
 			})
 			return
 		}
-		if configErr := ensureSatelliteConfig(r, q, satellite); configErr != nil {
+		if configErr := ensureSatelliteConfig(r, txQueries, satellite); configErr != nil {
 			log.Printf("Register: Failed to ensure config for %s: %v", req.SatelliteName, configErr)
 			HandleAppError(w, &AppError{
 				Message: fmt.Sprintf("Failed to ensure satellite config: %v", configErr),
@@ -257,6 +294,16 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 			})
 			return
 		}
+
+		if commitErr := tx.Commit(); commitErr != nil {
+			log.Printf("Register: Failed to commit transaction for %s: %v", req.SatelliteName, commitErr)
+			HandleAppError(w, &AppError{
+				Message: "Failed to commit satellite creation",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		committed = true
 	} else {
 		log.Printf("Register: Satellite %s already exists", req.SatelliteName)
 	}
