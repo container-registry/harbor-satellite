@@ -19,6 +19,12 @@ func testContext() context.Context {
 	return context.WithValue(context.Background(), logger.LoggerKey, &log)
 }
 
+func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
+	t.Helper()
+	w.Header().Set("Content-Type", "application/json")
+	require.NoError(t, json.NewEncoder(w).Encode(v))
+}
+
 func TestComputeManifestSize(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -84,9 +90,7 @@ func TestFetchCatalog(t *testing.T) {
 	t.Run("returns repository list", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, "/v2/_catalog", r.URL.Path)
-			resp := catalogResponse{Repositories: []string{"library/nginx", "library/alpine"}}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			writeJSON(t, w, catalogResponse{Repositories: []string{"library/nginx", "library/alpine"}})
 		}))
 		defer srv.Close()
 
@@ -98,9 +102,7 @@ func TestFetchCatalog(t *testing.T) {
 
 	t.Run("empty catalog", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			resp := catalogResponse{Repositories: []string{}}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			writeJSON(t, w, catalogResponse{Repositories: []string{}})
 		}))
 		defer srv.Close()
 
@@ -132,9 +134,7 @@ func TestFetchTags(t *testing.T) {
 	t.Run("returns tag list", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, "/v2/library/nginx/tags/list", r.URL.Path)
-			resp := tagsResponse{Tags: []string{"latest", "1.25"}}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			writeJSON(t, w, tagsResponse{Tags: []string{"latest", "1.25"}})
 		}))
 		defer srv.Close()
 
@@ -146,9 +146,7 @@ func TestFetchTags(t *testing.T) {
 
 	t.Run("empty tags", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			resp := tagsResponse{Tags: []string{}}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			writeJSON(t, w, tagsResponse{Tags: []string{}})
 		}))
 		defer srv.Close()
 
@@ -173,9 +171,7 @@ func TestFetchTags(t *testing.T) {
 func TestCollectCachedImages(t *testing.T) {
 	t.Run("empty catalog returns empty slice", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			resp := catalogResponse{Repositories: []string{}}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			writeJSON(t, w, catalogResponse{Repositories: []string{}})
 		}))
 		defer srv.Close()
 
@@ -190,9 +186,7 @@ func TestCollectCachedImages(t *testing.T) {
 	t.Run("skips repos with failed tag fetch", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/v2/_catalog" {
-				resp := catalogResponse{Repositories: []string{"badrepo"}}
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(resp)
+				writeJSON(t, w, catalogResponse{Repositories: []string{"badrepo"}})
 				return
 			}
 			w.WriteHeader(http.StatusInternalServerError)
@@ -215,17 +209,8 @@ func TestCollectCachedImages(t *testing.T) {
 
 func TestCollectCachedImages_SkipsFailedImages(t *testing.T) {
 	t.Run("skips images where manifest is missing", func(t *testing.T) {
-		// TLS server so crane.Insecure (skip-verify) works
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
-			case "/v2/_catalog":
-				resp := catalogResponse{Repositories: []string{"library/nginx"}}
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(resp)
-			case "/v2/library/nginx/tags/list":
-				resp := tagsResponse{Tags: []string{"latest"}}
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(resp)
 			case "/v2/":
 				w.WriteHeader(http.StatusOK)
 			default:
@@ -234,9 +219,6 @@ func TestCollectCachedImages_SkipsFailedImages(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		// fetchCatalog/fetchTags use http:// but crane uses https:// (TLS server)
-		// We need to override fetchCatalog/fetchTags to use the TLS server too.
-		// Instead, test collectImageInfo directly to verify skip behavior.
 		addr := strings.TrimPrefix(srv.URL, "https://")
 		ctx := testContext()
 		_, err := collectImageInfo(ctx, addr+"/library/nginx:latest", true)
@@ -273,7 +255,8 @@ func TestCollectCachedImages_FullFlowWithTLS(t *testing.T) {
 				return
 			}
 			w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
-			w.Write([]byte(manifest))
+			_, err := w.Write([]byte(manifest))
+			require.NoError(t, err)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

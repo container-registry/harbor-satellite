@@ -113,7 +113,11 @@ func fetchCatalog(ctx context.Context, registryURL string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("send catalog request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.FromContext(ctx).Warn().Err(err).Msg("error closing catalog response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("catalog request returned %s", resp.Status)
@@ -142,7 +146,11 @@ func fetchTags(ctx context.Context, registryURL, repo string) ([]string, error) 
 	if err != nil {
 		return nil, fmt.Errorf("send tags request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.FromContext(ctx).Warn().Err(err).Msg("error closing tags response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tags request returned %s", resp.Status)

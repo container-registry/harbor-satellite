@@ -15,15 +15,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSyncHandler_WithCachedImages(t *testing.T) {
+func newMockServer(t *testing.T) (*Server, sqlmock.Sqlmock) {
+	t.Helper()
+
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
 
-	server := &Server{
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		require.NoError(t, db.Close())
+	})
+
+	return &Server{
 		db:        db,
 		dbQueries: database.New(db),
-	}
+	}, mock
+}
+
+func TestSyncHandler_WithCachedImages(t *testing.T) {
+	server, mock := newMockServer(t)
 
 	now := time.Now().UTC().Truncate(time.Second)
 
@@ -78,14 +88,7 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 }
 
 func TestSyncHandler_NoCachedImages(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	defer db.Close()
-
-	server := &Server{
-		db:        db,
-		dbQueries: database.New(db),
-	}
+	server, mock := newMockServer(t)
 
 	now := time.Now().UTC().Truncate(time.Second)
 
@@ -108,8 +111,6 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 
 	mock.ExpectExec("UPDATE satellites SET last_seen").WillReturnResult(sqlmock.NewResult(0, 1))
 
-	// No InsertSatelliteCachedImage expected since CachedImages is empty
-
 	reqBody := SatelliteStatusParams{
 		Name:               "edge-01",
 		RequestCreatedTime: now,
@@ -126,14 +127,7 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 }
 
 func TestSyncHandler_UnknownSatellite(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	defer db.Close()
-
-	server := &Server{
-		db:        db,
-		dbQueries: database.New(db),
-	}
+	server, mock := newMockServer(t)
 
 	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
 		WithArgs("unknown").
@@ -156,14 +150,7 @@ func TestSyncHandler_UnknownSatellite(t *testing.T) {
 
 func TestGetCachedImagesHandler(t *testing.T) {
 	t.Run("returns cached images for satellite", func(t *testing.T) {
-		db, mock, err := sqlmock.New()
-		require.NoError(t, err)
-		defer db.Close()
-
-		server := &Server{
-			db:        db,
-			dbQueries: database.New(db),
-		}
+		server, mock := newMockServer(t)
 
 		now := time.Now().UTC().Truncate(time.Second)
 
@@ -189,7 +176,7 @@ func TestGetCachedImagesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, rr.Code)
 
 		var images []database.SatelliteCachedImage
-		err = json.NewDecoder(rr.Body).Decode(&images)
+		err := json.NewDecoder(rr.Body).Decode(&images)
 		require.NoError(t, err)
 		require.Len(t, images, 2)
 		require.Equal(t, "localhost:8585/library/nginx:latest@sha256:abc", images[0].Reference)
@@ -201,14 +188,7 @@ func TestGetCachedImagesHandler(t *testing.T) {
 	})
 
 	t.Run("satellite not found returns 404", func(t *testing.T) {
-		db, mock, err := sqlmock.New()
-		require.NoError(t, err)
-		defer db.Close()
-
-		server := &Server{
-			db:        db,
-			dbQueries: database.New(db),
-		}
+		server, mock := newMockServer(t)
 
 		mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
 			WithArgs("nonexistent").
@@ -225,14 +205,7 @@ func TestGetCachedImagesHandler(t *testing.T) {
 	})
 
 	t.Run("no cached images returns empty array", func(t *testing.T) {
-		db, mock, err := sqlmock.New()
-		require.NoError(t, err)
-		defer db.Close()
-
-		server := &Server{
-			db:        db,
-			dbQueries: database.New(db),
-		}
+		server, mock := newMockServer(t)
 
 		now := time.Now().UTC().Truncate(time.Second)
 

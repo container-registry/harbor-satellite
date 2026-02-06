@@ -75,10 +75,10 @@ func TestExtractSatelliteNameFromURL(t *testing.T) {
 
 func TestParseEveryExpr(t *testing.T) {
 	tests := []struct {
-		name     string
-		expr     string
-		wantDur  time.Duration
-		wantErr  bool
+		name    string
+		expr    string
+		wantDur time.Duration
+		wantErr bool
 	}{
 		{
 			name:    "valid 30s",
