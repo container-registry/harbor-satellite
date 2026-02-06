@@ -12,6 +12,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/gorilla/mux"
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,28 +45,42 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 		WithArgs("edge-01").
 		WillReturnRows(satRows)
 
-	// Mock InsertSatelliteStatus
+	// Mock BatchInsertArtifacts
+	mock.ExpectExec("INSERT INTO artifacts").
+		WithArgs(
+			pq.Array([]string{
+				"localhost:8585/library/nginx:latest@sha256:abc",
+				"localhost:8585/library/alpine:3.18@sha256:def",
+			}),
+			pq.Array([]int64{50000, 5000}),
+		).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+
+	// Mock GetArtifactIDsByReferences
+	artifactRows := sqlmock.NewRows([]string{"id", "reference", "size_bytes", "created_at"}).
+		AddRow(int32(10), "localhost:8585/library/nginx:latest@sha256:abc", int64(50000), now).
+		AddRow(int32(11), "localhost:8585/library/alpine:3.18@sha256:def", int64(5000), now)
+	mock.ExpectQuery("SELECT .+ FROM artifacts").
+		WithArgs(pq.Array([]string{
+			"localhost:8585/library/nginx:latest@sha256:abc",
+			"localhost:8585/library/alpine:3.18@sha256:def",
+		})).
+		WillReturnRows(artifactRows)
+
+	// Mock InsertSatelliteStatus (with artifact_ids)
 	statusRows := sqlmock.NewRows([]string{
 		"id", "satellite_id", "activity", "latest_state_digest", "latest_config_digest",
 		"cpu_percent", "memory_used_bytes", "storage_used_bytes", "last_sync_duration_ms",
-		"image_count", "reported_at", "created_at",
+		"image_count", "reported_at", "created_at", "artifact_ids",
 	}).AddRow(
 		1, 1, "", sql.NullString{}, sql.NullString{},
 		sql.NullString{}, sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{},
-		sql.NullInt32{Int32: 2, Valid: true}, now, now,
+		sql.NullInt32{Int32: 2, Valid: true}, now, now, pq.Array([]int32{10, 11}),
 	)
 	mock.ExpectQuery("INSERT INTO satellite_status").WillReturnRows(statusRows)
 
 	// Mock UpdateSatelliteLastSeen
 	mock.ExpectExec("UPDATE satellites SET last_seen").WillReturnResult(sqlmock.NewResult(0, 1))
-
-	// Mock InsertSatelliteCachedImage for each image
-	mock.ExpectExec("INSERT INTO satellite_cached_images").
-		WithArgs(int32(1), "localhost:8585/library/nginx:latest@sha256:abc", int64(50000), now).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec("INSERT INTO satellite_cached_images").
-		WithArgs(int32(1), "localhost:8585/library/alpine:3.18@sha256:def", int64(5000), now).
-		WillReturnResult(sqlmock.NewResult(2, 1))
 
 	reqBody := SatelliteStatusParams{
 		Name:               "edge-01",
@@ -101,11 +116,11 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 	statusRows := sqlmock.NewRows([]string{
 		"id", "satellite_id", "activity", "latest_state_digest", "latest_config_digest",
 		"cpu_percent", "memory_used_bytes", "storage_used_bytes", "last_sync_duration_ms",
-		"image_count", "reported_at", "created_at",
+		"image_count", "reported_at", "created_at", "artifact_ids",
 	}).AddRow(
 		1, 1, "", sql.NullString{}, sql.NullString{},
 		sql.NullString{}, sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{},
-		sql.NullInt32{Int32: 0, Valid: true}, now, now,
+		sql.NullInt32{Int32: 0, Valid: true}, now, now, pq.Array([]int32(nil)),
 	)
 	mock.ExpectQuery("INSERT INTO satellite_status").WillReturnRows(statusRows)
 
@@ -160,12 +175,12 @@ func TestGetCachedImagesHandler(t *testing.T) {
 			WithArgs("edge-01").
 			WillReturnRows(satRows)
 
-		imageRows := sqlmock.NewRows([]string{"id", "satellite_id", "reference", "size_bytes", "reported_at", "created_at"}).
-			AddRow(1, 1, "localhost:8585/library/nginx:latest@sha256:abc", int64(50000), now, now).
-			AddRow(2, 1, "localhost:8585/library/alpine:3.18@sha256:def", int64(5000), now, now)
-		mock.ExpectQuery("SELECT .+ FROM satellite_cached_images").
+		artifactRows := sqlmock.NewRows([]string{"id", "reference", "size_bytes", "created_at"}).
+			AddRow(int32(10), "localhost:8585/library/nginx:latest@sha256:abc", int64(50000), now).
+			AddRow(int32(11), "localhost:8585/library/alpine:3.18@sha256:def", int64(5000), now)
+		mock.ExpectQuery("SELECT .+ FROM artifacts").
 			WithArgs(int32(1)).
-			WillReturnRows(imageRows)
+			WillReturnRows(artifactRows)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/edge-01/images", nil)
 		req = mux.SetURLVars(req, map[string]string{"satellite": "edge-01"})
@@ -175,14 +190,14 @@ func TestGetCachedImagesHandler(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, rr.Code)
 
-		var images []database.SatelliteCachedImage
-		err := json.NewDecoder(rr.Body).Decode(&images)
+		var artifacts []database.Artifact
+		err := json.NewDecoder(rr.Body).Decode(&artifacts)
 		require.NoError(t, err)
-		require.Len(t, images, 2)
-		require.Equal(t, "localhost:8585/library/nginx:latest@sha256:abc", images[0].Reference)
-		require.Equal(t, int64(50000), images[0].SizeBytes)
-		require.Equal(t, "localhost:8585/library/alpine:3.18@sha256:def", images[1].Reference)
-		require.Equal(t, int64(5000), images[1].SizeBytes)
+		require.Len(t, artifacts, 2)
+		require.Equal(t, "localhost:8585/library/nginx:latest@sha256:abc", artifacts[0].Reference)
+		require.Equal(t, int64(50000), artifacts[0].SizeBytes)
+		require.Equal(t, "localhost:8585/library/alpine:3.18@sha256:def", artifacts[1].Reference)
+		require.Equal(t, int64(5000), artifacts[1].SizeBytes)
 
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
@@ -215,8 +230,8 @@ func TestGetCachedImagesHandler(t *testing.T) {
 			WithArgs("edge-01").
 			WillReturnRows(satRows)
 
-		emptyRows := sqlmock.NewRows([]string{"id", "satellite_id", "reference", "size_bytes", "reported_at", "created_at"})
-		mock.ExpectQuery("SELECT .+ FROM satellite_cached_images").
+		emptyRows := sqlmock.NewRows([]string{"id", "reference", "size_bytes", "created_at"})
+		mock.ExpectQuery("SELECT .+ FROM artifacts").
 			WithArgs(int32(1)).
 			WillReturnRows(emptyRows)
 
