@@ -282,19 +282,17 @@ tasks:
         echo "Pulling alpine locally (avoids Docker Hub rate limits in container)..."
         docker pull alpine:latest || { echo "Failed to pull alpine:latest"; exit 1; }
 
-        echo "Saving alpine image to tar..."
-        docker save alpine:latest -o /tmp/alpine.tar
+        echo "Pushing image to Harbor..."
+        docker tag alpine:latest localhost:8080/{{.PROJECT_NAME}}/alpine:latest
 
-        echo "Pushing image to Harbor using skopeo..."
-        docker run --rm --network harbor-e2e \
-          -v /tmp/alpine.tar:/alpine.tar:ro \
-          quay.io/skopeo/stable:latest \
-          copy --dest-tls-verify=false \
-          docker-archive:/alpine.tar \
-          docker://core:8080/{{.PROJECT_NAME}}/alpine:latest \
-          --dest-creds admin:Harbor12345
-
-        rm -f /tmp/alpine.tar
+        # Try docker login/push (Docker), fallback to podman flags (Podman)
+        if docker login localhost:8080 -u admin -p Harbor12345 2>/dev/null; then
+          docker push localhost:8080/{{.PROJECT_NAME}}/alpine:latest 2>/dev/null || \
+          docker push localhost:8080/{{.PROJECT_NAME}}/alpine:latest --tls-verify=false
+        else
+          docker login localhost:8080 -u admin -p Harbor12345 --tls-verify=false
+          docker push localhost:8080/{{.PROJECT_NAME}}/alpine:latest --tls-verify=false
+        fi
 
         echo "Creating registry..."
         curl -sf -X POST {{.HARBOR_API}}/registries \
