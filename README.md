@@ -68,6 +68,24 @@ Harbor Satellite will also include a toolset enabling the monitoring and managem
 ## QuickStart
 Please refer to the latest setup instructions in `QUICKSTART.md` file for detailed steps on setting up Harbor Satellite locally.
 
+## BYO (Bring Your Own) Registry
+
+Satellite embeds a Zot registry by default. To use an external registry instead (e.g. `registry:2`), pass the BYO flags via CLI or env vars:
+
+| CLI Flag | Env Var | Description |
+|---|---|---|
+| `--byo-registry` | `BYO_REGISTRY` | Enable BYO mode |
+| `--registry-url` | `REGISTRY_URL` | External registry URL (required if BYO) |
+| `--registry-username` | `REGISTRY_USERNAME` | External registry username (optional) |
+| `--registry-password` | `REGISTRY_PASSWORD` | External registry password (optional) |
+
+A docker-compose setup with `registry:2` as a sidecar is available:
+
+```bash
+task byo-up    # start satellite + registry:2
+task byo-down  # stop and cleanup
+```
+
 ## Non-Goals
 
 T.B.D.
