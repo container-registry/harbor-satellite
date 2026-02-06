@@ -5,7 +5,6 @@ go 1.24.1
 toolchain go1.24.3
 
 require (
-	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/container-registry/harbor-satellite v0.0.0-20250428155801-b2a3f5a849f9
 	github.com/evanphx/json-patch v5.9.11+incompatible
 	github.com/goharbor/go-client v0.210.0
