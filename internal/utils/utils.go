@@ -38,7 +38,7 @@ func ValidateRegistryAddress(registryAdr, registryPort string) (string, error) {
 
 // / HandleOwnRegistry handles the own registry address and port and sets the Zot URL
 func HandleOwnRegistry(cm *config.ConfigManager) error {
-	remoteRegistryURL := string(cm.GetRemoteRegistryURL())
+	remoteRegistryURL := string(cm.GetLocalRegistryURL())
 	_, err := url.Parse(remoteRegistryURL)
 	if err != nil {
 		return fmt.Errorf("error parsing URL: %w", err)

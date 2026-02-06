@@ -82,7 +82,7 @@ func (cm *ConfigManager) GetRemoteRegistryPassword() string {
 	return cm.config.AppConfig.LocalRegistryCredentials.Password
 }
 
-func (cm *ConfigManager) GetRemoteRegistryURL() string {
+func (cm *ConfigManager) GetLocalRegistryURL() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return string(cm.config.AppConfig.LocalRegistryCredentials.URL)

@@ -231,7 +231,7 @@ func run(opts SatelliteOptions) error {
 
 func resolveLocalRegistryEndpoint(cm *config.ConfigManager) (string, error) {
 	if cm.GetOwnRegistry() {
-		return utils.FormatRegistryURL(cm.GetRemoteRegistryURL()), nil
+		return utils.FormatRegistryURL(cm.GetLocalRegistryURL()), nil
 	}
 	var data map[string]interface{}
 	if err := json.Unmarshal(cm.GetRawZotConfig(), &data); err != nil {
