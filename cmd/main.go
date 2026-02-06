@@ -45,8 +45,9 @@ type SatelliteOptions struct {
 	SPIFFEExpectedServerID string
 	BYORegistry            bool
 	RegistryURL            string
-	RegistryUsername        string
+	RegistryUsername       string
 	RegistryPassword       string
+	ConfigDir              string
 }
 
 func main() {
@@ -64,6 +65,7 @@ func main() {
 	flag.StringVar(&opts.RegistryURL, "registry-url", "", "External registry URL")
 	flag.StringVar(&opts.RegistryUsername, "registry-username", "", "External registry username")
 	flag.StringVar(&opts.RegistryPassword, "registry-password", "", "External registry password")
+	flag.StringVar(&opts.ConfigDir, "config-dir", "", "Configuration directory path (default: ~/.config/satellite)")
 
 	flag.Parse()
 
@@ -97,6 +99,25 @@ func main() {
 	if opts.RegistryPassword == "" {
 		opts.RegistryPassword = os.Getenv("REGISTRY_PASSWORD")
 	}
+	if opts.ConfigDir == "" {
+		opts.ConfigDir = os.Getenv("CONFIG_DIR")
+	}
+
+	// Resolve config directory path
+	if opts.ConfigDir == "" {
+		var err error
+		opts.ConfigDir, err = config.DefaultConfigDir()
+		if err != nil {
+			fmt.Printf("Error resolving default config directory: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	pathConfig, err := config.ResolvePathConfig(opts.ConfigDir)
+	if err != nil {
+		fmt.Printf("Error resolving config paths: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Token is not required if SPIFFE is enabled
 	if !opts.SPIFFEEnabled && (opts.Token == "" || opts.GroundControlURL == "") {
@@ -112,19 +133,63 @@ func main() {
 		os.Exit(1)
 	}
 
-	err := run(opts)
+	cm, _, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
+	if err != nil {
+		fmt.Printf("Error initiating the config manager: %v", err)
+		os.Exit(1)
+	}
+
+	// Apply SPIFFE config from CLI flags
+	if opts.SPIFFEEnabled {
+		cm.With(config.SetSPIFFEConfig(config.SPIFFEConfig{
+			Enabled:          opts.SPIFFEEnabled,
+			EndpointSocket:   opts.SPIFFEEndpointSocket,
+			ExpectedServerID: opts.SPIFFEExpectedServerID,
+		}))
+	}
+
+	// Apply BYO registry config from CLI flags / env vars
+	if opts.BYORegistry {
+		cm.With(
+			config.SetBringOwnRegistry(true),
+			config.SetLocalRegistryURL(opts.RegistryURL),
+			config.SetLocalRegistryUsername(opts.RegistryUsername),
+			config.SetLocalRegistryPassword(opts.RegistryPassword),
+		)
+	}
+
+	// Update Zot config with storage path
+	zotConfigJSON, err := config.BuildZotConfigWithStoragePath(pathConfig.ZotStorageDir)
+	if err != nil {
+		fmt.Printf("Error building Zot config: %v\n", err)
+		os.Exit(1)
+	}
+	cm.GetConfig().ZotConfigRaw = json.RawMessage(zotConfigJSON)
+
+	// Resolve local registry endpoint for CRI mirror config
+	localRegistryEndpoint, err := resolveLocalRegistryEndpoint(cm)
+	if err != nil {
+		fmt.Printf("Error resolving local registry endpoint: %v\n", err)
+		os.Exit(1)
+	}
+	if err := runtime.ApplyCRIConfigs(opts.Mirrors, localRegistryEndpoint); err != nil {
+		fmt.Printf("Error applying CRI configs: %v\n", err)
+		os.Exit(1)
+	}
+
+	err = run(opts, pathConfig)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(opts SatelliteOptions) error {
+func run(opts SatelliteOptions, pathConfig *config.PathConfig) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, config.DefaultConfigPath, config.DefaultPrevConfigPath, opts.JSONLogging, opts.UseUnsecure)
+	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v", err)
 		return err
@@ -149,6 +214,13 @@ func run(opts SatelliteOptions) error {
 		)
 	}
 
+	// Update Zot config with storage path
+	zotConfigJSON, err := config.BuildZotConfigWithStoragePath(pathConfig.ZotStorageDir)
+	if err != nil {
+		return fmt.Errorf("build Zot config: %w", err)
+	}
+	cm.GetConfig().ZotConfigRaw = json.RawMessage(zotConfigJSON)
+
 	// Resolve local registry endpoint for CRI mirror config
 	localRegistryEndpoint, err := resolveLocalRegistryEndpoint(cm)
 	if err != nil {
@@ -170,17 +242,18 @@ func run(opts SatelliteOptions) error {
 		ctx,
 		cm,
 		log,
+		pathConfig.ZotTempConfig,
 		nil, // Will be set after scheduler creation
 	)
 
 	eventChan := make(chan struct{})
 
 	// Handle registry setup
-	wg.Go(func() error { return handleRegistrySetup(ctx, log, cm) })
+	wg.Go(func() error { return handleRegistrySetup(ctx, log, cm, pathConfig) })
 
 	// Watch for changes in the config file
 	wg.Go(func() error {
-		return watcher.WatchChanges(ctx, log.With().Str("component", "file watcher").Logger(), config.DefaultConfigPath, eventChan)
+		return watcher.WatchChanges(ctx, log.With().Str("component", "file watcher").Logger(), pathConfig.ConfigFile, eventChan)
 	})
 
 	// Watch for changes in the config file
@@ -249,7 +322,7 @@ func resolveLocalRegistryEndpoint(cm *config.ConfigManager) (string, error) {
 	return addr + ":" + port, nil
 }
 
-func handleRegistrySetup(ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager) error {
+func handleRegistrySetup(ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager, pathConfig *config.PathConfig) error {
 	log.Debug().Msg("Setting up local registry")
 
 	if cm.GetOwnRegistry() {
@@ -264,7 +337,7 @@ func handleRegistrySetup(ctx context.Context, log *zerolog.Logger, cm *config.Co
 
 	log.Info().Msg("Launching default registry")
 
-	zm := registry.NewZotManager(log.With().Str("component", "zot manager").Logger(), cm.GetRawZotConfig())
+	zm := registry.NewZotManager(log.With().Str("component", "zot manager").Logger(), cm.GetRawZotConfig(), pathConfig.ZotTempConfig)
 
 	if err := zm.HandleRegistrySetup(ctx); err != nil {
 		return fmt.Errorf("default registry setup failed: %w", err)

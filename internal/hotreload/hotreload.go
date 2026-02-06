@@ -7,7 +7,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
@@ -19,6 +18,7 @@ type HotReloadManager struct {
 	cm                        *config.ConfigManager
 	log                       *zerolog.Logger
 	ctx                       context.Context
+	zotTempPath               string
 	stateReplicationScheduler *scheduler.Scheduler
 	changeCallbacks           map[config.ConfigChangeType][]config.ConfigChangeCallback
 	callbackMu                sync.RWMutex
@@ -28,12 +28,14 @@ func NewHotReloadManager(
 	ctx context.Context,
 	cm *config.ConfigManager,
 	log *zerolog.Logger,
+	zotTempPath string,
 	stateReplicationScheduler *scheduler.Scheduler,
 ) *HotReloadManager {
 	manager := &HotReloadManager{
 		cm:                        cm,
 		log:                       log,
 		ctx:                       ctx,
+		zotTempPath:               zotTempPath,
 		stateReplicationScheduler: stateReplicationScheduler,
 		changeCallbacks:           make(map[config.ConfigChangeType][]config.ConfigChangeCallback),
 	}
@@ -138,12 +140,12 @@ func (hrm *HotReloadManager) handleZotConfigChange(change config.ConfigChange) e
 	}
 
 	// Zot verify the config using below function hence taking same the path
-	if err := server.LoadConfiguration(&cfg, registry.ZotTempPath); err != nil {
+	if err := server.LoadConfiguration(&cfg, hrm.zotTempPath); err != nil {
 		hrm.log.Error().Interface("config", &cfg).Msg("invalid config file")
 		return err
 	}
 
-	err := os.WriteFile(registry.ZotTempPath, hrm.cm.GetRawZotConfig(), 0600)
+	err := os.WriteFile(hrm.zotTempPath, hrm.cm.GetRawZotConfig(), 0600)
 	if err != nil {
 		return fmt.Errorf("unable to change zot configuration: %w", err)
 	}
