@@ -1,13 +1,14 @@
 package server
 
 import (
-	"database/sql"
-	"errors"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
 )
 
 // RegisterSatelliteRequest represents a request to register a satellite with SPIFFE.
@@ -46,28 +47,6 @@ type AgentInfoResponse struct {
 	ExpiresAt       time.Time `json:"expires_at,omitempty"`
 }
 
-// CreateJoinTokenRequest represents a request to generate a SPIRE join token.
-// Deprecated: Use RegisterSatelliteRequest with attestation_method="join_token" instead.
-type CreateJoinTokenRequest struct {
-	SatelliteName string   `json:"satellite_name"`
-	Region        string   `json:"region"`
-	TTL           int      `json:"ttl_seconds,omitempty"`
-	Selectors     []string `json:"selectors"`
-}
-
-// JoinTokenResponse contains the generated join token and bootstrap metadata.
-// Deprecated: Use RegisterSatelliteWithSPIFFEResponse instead.
-type JoinTokenResponse struct {
-	JoinToken          string    `json:"join_token"`
-	ExpiresAt          time.Time `json:"expires_at"`
-	SPIFFEID           string    `json:"spiffe_id"`
-	Region             string    `json:"region"`
-	Satellite          string    `json:"satellite"`
-	SpireServerAddress string    `json:"spire_server_address"`
-	SpireServerPort    int       `json:"spire_server_port"`
-	TrustDomain        string    `json:"trust_domain"`
-}
-
 // SPIREStatusResponse contains SPIRE integration status.
 type SPIREStatusResponse struct {
 	Enabled     bool   `json:"enabled"`
@@ -99,195 +78,6 @@ func (s *Server) spireStatusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, status)
-}
-
-// createJoinTokenHandler generates a SPIRE join token for satellite bootstrap
-// without requiring the satellite to be pre-registered.
-// POST /join-tokens
-func (s *Server) createJoinTokenHandler(w http.ResponseWriter, r *http.Request) {
-	var req CreateJoinTokenRequest
-	if err := DecodeRequestBody(r, &req); err != nil {
-		HandleAppError(w, &AppError{
-			Message: "Invalid request body",
-			Code:    http.StatusBadRequest,
-		})
-		return
-	}
-
-	if req.SatelliteName == "" {
-		HandleAppError(w, &AppError{
-			Message: "satellite_name is required",
-			Code:    http.StatusBadRequest,
-		})
-		return
-	}
-
-	if req.Region == "" {
-		req.Region = "default"
-	}
-
-	if req.TTL <= 0 {
-		req.TTL = 600 // 10 minutes default
-	}
-
-	if req.TTL > 86400 {
-		req.TTL = 86400 // Max 24 hours
-	}
-
-	if len(req.Selectors) == 0 {
-		HandleAppError(w, &AppError{
-			Message: "selectors is required",
-			Code:    http.StatusBadRequest,
-		})
-		return
-	}
-	for _, sel := range req.Selectors {
-		if !strings.Contains(sel, ":") {
-			HandleAppError(w, &AppError{
-				Message: fmt.Sprintf("invalid selector format %q: must contain at least one ':'", sel),
-				Code:    http.StatusBadRequest,
-			})
-			return
-		}
-	}
-
-	if s.spireClient == nil {
-		HandleAppError(w, &AppError{
-			Message: "SPIRE server not configured",
-			Code:    http.StatusServiceUnavailable,
-		})
-		return
-	}
-
-	// Check if satellite already exists
-	q := s.dbQueries
-	_, err := q.GetSatelliteByName(r.Context(), req.SatelliteName)
-	if err == nil {
-		log.Printf("satellite with name '%s' already exists", req.SatelliteName)
-		HandleAppError(w, &AppError{
-			Message: "satellite already exists",
-			Code:    http.StatusConflict,
-		})
-		return
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		log.Printf("failed to check satellite existence: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "failed to check satellite",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
-	trustDomain := s.spireTrustDomain
-
-	// Build SPIFFE IDs
-	agentSpiffeID := fmt.Sprintf("spiffe://%s/agent/%s", trustDomain, req.SatelliteName)
-	workloadSpiffeID := fmt.Sprintf("spiffe://%s/satellite/region/%s/%s",
-		trustDomain, req.Region, req.SatelliteName)
-
-	// Generate join token via SPIRE server client
-	ttl := time.Duration(req.TTL) * time.Second
-	joinToken, err := s.spireClient.CreateJoinToken(r.Context(), agentSpiffeID, ttl)
-	if err != nil {
-		log.Printf("Failed to create join token: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Failed to create join token",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
-	// Create workload entry for the satellite (so it can get SVID after attestation)
-	err = s.spireClient.CreateWorkloadEntry(r.Context(), agentSpiffeID, workloadSpiffeID, req.Selectors)
-	if err != nil {
-		log.Printf("Failed to create workload entry: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Failed to create workload entry",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
-	// Start transaction for database operations
-	tx, err := s.db.BeginTx(r.Context(), nil)
-	if err != nil {
-		log.Printf("Join token: Failed to begin transaction: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Failed to begin transaction",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-	txQueries := q.WithTx(tx)
-
-	// Create satellite record in DB so admin can assign groups/configs before ZTR
-	satellite, err := txQueries.CreateSatellite(r.Context(), req.SatelliteName)
-	if err != nil {
-		_ = tx.Rollback()
-		if _, dupErr := q.GetSatelliteByName(r.Context(), req.SatelliteName); dupErr == nil {
-			log.Printf("satellite with name '%s' already exists (race condition)", req.SatelliteName)
-			HandleAppError(w, &AppError{
-				Message: "satellite already exists",
-				Code:    http.StatusConflict,
-			})
-			return
-		}
-		log.Printf("Join token: Failed to create satellite record for %s: %v", req.SatelliteName, err)
-		HandleAppError(w, &AppError{
-			Message: "Failed to create satellite record",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-	log.Printf("Join token: Created satellite record for %s", req.SatelliteName)
-
-	// Create robot account and link default config for new satellites
-	if _, _, robotErr := ensureSatelliteRobotAccount(r, txQueries, satellite); robotErr != nil {
-		_ = tx.Rollback()
-		log.Printf("Join token: Failed to create robot account for %s: %v", req.SatelliteName, robotErr)
-		HandleAppError(w, &AppError{
-			Message: "Failed to create robot account",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-	if configErr := ensureSatelliteConfig(r, txQueries, satellite); configErr != nil {
-		_ = tx.Rollback()
-		log.Printf("Join token: Failed to ensure config for %s: %v", req.SatelliteName, configErr)
-		HandleAppError(w, &AppError{
-			Message: "Failed to ensure satellite config",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
-	if err := tx.Commit(); err != nil {
-		log.Printf("Join token: Failed to commit transaction for %s: %v", req.SatelliteName, err)
-		HandleAppError(w, &AppError{
-			Message: "Failed to commit satellite creation",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
-	expiresAt := time.Now().Add(ttl)
-
-	log.Printf("Join token: Generated token for satellite %s (region: %s, expires: %v)",
-		req.SatelliteName, req.Region, expiresAt)
-
-	resp := JoinTokenResponse{
-		JoinToken:          joinToken,
-		ExpiresAt:          expiresAt,
-		SPIFFEID:           workloadSpiffeID,
-		Region:             req.Region,
-		Satellite:          req.SatelliteName,
-		SpireServerAddress: s.spireServerAddress,
-		SpireServerPort:    s.spireServerPort,
-		TrustDomain:        trustDomain,
-	}
-
-	WriteJSONResponse(w, http.StatusOK, resp)
 }
 
 // registerSatelliteWithSPIFFEHandler handles unified satellite registration for all attestation methods.
@@ -430,7 +220,7 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 	workloadSpiffeID := fmt.Sprintf("spiffe://%s/satellite/region/%s/%s",
 		trustDomain, req.Region, req.SatelliteName)
 
-	err := s.spireClient.CreateWorkloadEntry(r.Context(), agentSpiffeID, workloadSpiffeID, req.Selectors)
+	workloadEntryID, err := s.spireClient.CreateWorkloadEntry(r.Context(), agentSpiffeID, workloadSpiffeID, req.Selectors)
 	if err != nil {
 		log.Printf("Failed to create workload entry: %v", err)
 		HandleAppError(w, &AppError{
@@ -443,7 +233,52 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 	q := s.dbQueries
 	satellite, err := q.GetSatelliteByName(r.Context(), req.SatelliteName)
 	if err != nil {
-		satellite, err = q.CreateSatellite(r.Context(), req.SatelliteName)
+		// New satellite: wrap DB writes in a transaction with cleanup on failure
+		// Use a detached context for cleanup so cancellation doesn't leave orphaned resources
+		cleanupCtx := context.WithoutCancel(r.Context())
+
+		tx, txErr := s.db.BeginTx(r.Context(), nil)
+		if txErr != nil {
+			log.Printf("Register: Failed to begin transaction: %v", txErr)
+			if delErr := s.spireClient.DeleteWorkloadEntry(cleanupCtx, workloadEntryID); delErr != nil {
+				log.Printf("Warning: Failed to cleanup workload entry: %v", delErr)
+			}
+			HandleAppError(w, &AppError{
+				Message: "Failed to begin transaction",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+
+		txQueries := q.WithTx(tx)
+		committed := false
+		var harborRobotID int64
+
+		// Cleanup contract: if any step below fails (CreateSatellite,
+		// ensureSatelliteRobotAccount, ensureSatelliteConfig, or Commit),
+		// this defer rolls back all previously created artifacts:
+		//   1. SPIRE workload entry (always, via DeleteWorkloadEntry)
+		//   2. Harbor robot account (if created, via DeleteRobotAccount)
+		//   3. DB transaction (via Rollback)
+		// Uses cleanupCtx so cleanup completes even if the request is cancelled.
+		// Same pattern as autoRegisterSatellite.
+		defer func() {
+			if !committed {
+				if delErr := s.spireClient.DeleteWorkloadEntry(cleanupCtx, workloadEntryID); delErr != nil {
+					log.Printf("Warning: Failed to cleanup workload entry: %v", delErr)
+				}
+				if harborRobotID != 0 {
+					if _, delErr := harbor.DeleteRobotAccount(cleanupCtx, harborRobotID); delErr != nil {
+						log.Printf("Warning: Failed to cleanup robot account: %v", delErr)
+					}
+				}
+				if rbErr := tx.Rollback(); rbErr != nil {
+					log.Printf("Error: Failed to rollback transaction: %v", rbErr)
+				}
+			}
+		}()
+
+		satellite, err = txQueries.CreateSatellite(r.Context(), req.SatelliteName)
 		if err != nil {
 			log.Printf("Register: Failed to create satellite record for %s: %v", req.SatelliteName, err)
 			HandleAppError(w, &AppError{
@@ -454,15 +289,16 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 		}
 		log.Printf("Register: Created satellite record for %s", req.SatelliteName)
 
-		if _, _, robotErr := ensureSatelliteRobotAccount(r, q, satellite); robotErr != nil {
-			log.Printf("Register: Failed to create robot account for %s: %v", req.SatelliteName, robotErr)
+		_, harborRobotID, err = ensureSatelliteRobotAccount(r, txQueries, satellite)
+		if err != nil {
+			log.Printf("Register: Failed to create robot account for %s: %v", req.SatelliteName, err)
 			HandleAppError(w, &AppError{
-				Message: fmt.Sprintf("Failed to create robot account: %v", robotErr),
+				Message: fmt.Sprintf("Failed to create robot account: %v", err),
 				Code:    http.StatusInternalServerError,
 			})
 			return
 		}
-		if configErr := ensureSatelliteConfig(r, q, satellite); configErr != nil {
+		if configErr := ensureSatelliteConfig(r, txQueries, satellite); configErr != nil {
 			log.Printf("Register: Failed to ensure config for %s: %v", req.SatelliteName, configErr)
 			HandleAppError(w, &AppError{
 				Message: fmt.Sprintf("Failed to ensure satellite config: %v", configErr),
@@ -470,6 +306,16 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 			})
 			return
 		}
+
+		if commitErr := tx.Commit(); commitErr != nil {
+			log.Printf("Register: Failed to commit transaction for %s: %v", req.SatelliteName, commitErr)
+			HandleAppError(w, &AppError{
+				Message: "Failed to commit satellite creation",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		committed = true
 	} else {
 		log.Printf("Register: Satellite %s already exists", req.SatelliteName)
 	}
