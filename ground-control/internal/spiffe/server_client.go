@@ -75,7 +75,8 @@ func (c *ServerClient) CreateJoinToken(ctx context.Context, spiffeID string, ttl
 
 // CreateWorkloadEntry creates a registration entry for a workload.
 // The entry associates a SPIFFE ID with selectors that identify the workload.
-func (c *ServerClient) CreateWorkloadEntry(ctx context.Context, parentID, spiffeID string, selectors []string) error {
+// Returns the entry ID for cleanup on failure.
+func (c *ServerClient) CreateWorkloadEntry(ctx context.Context, parentID, spiffeID string, selectors []string) (string, error) {
 	parentPath := extractPath(parentID, c.trustDomain.String())
 	workloadPath := extractPath(spiffeID, c.trustDomain.String())
 
@@ -83,7 +84,7 @@ func (c *ServerClient) CreateWorkloadEntry(ctx context.Context, parentID, spiffe
 	for _, sel := range selectors {
 		parts := strings.SplitN(sel, ":", 2)
 		if len(parts) != 2 {
-			return fmt.Errorf("invalid selector format %q, expected type:value", sel)
+			return "", fmt.Errorf("invalid selector format %q, expected type:value", sel)
 		}
 		selectorList = append(selectorList, &typesv1.Selector{
 			Type:  parts[0],
@@ -91,7 +92,7 @@ func (c *ServerClient) CreateWorkloadEntry(ctx context.Context, parentID, spiffe
 		})
 	}
 
-	_, err := c.entryClient.BatchCreateEntry(ctx, &entryv1.BatchCreateEntryRequest{
+	resp, err := c.entryClient.BatchCreateEntry(ctx, &entryv1.BatchCreateEntryRequest{
 		Entries: []*typesv1.Entry{
 			{
 				ParentId: &typesv1.SPIFFEID{
@@ -107,9 +108,24 @@ func (c *ServerClient) CreateWorkloadEntry(ctx context.Context, parentID, spiffe
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("create workload entry: %w", err)
+		return "", fmt.Errorf("create workload entry: %w", err)
 	}
 
+	if len(resp.Results) == 0 || resp.Results[0].Entry == nil {
+		return "", fmt.Errorf("create workload entry: empty response")
+	}
+
+	return resp.Results[0].Entry.Id, nil
+}
+
+// DeleteWorkloadEntry removes a workload registration entry by ID.
+func (c *ServerClient) DeleteWorkloadEntry(ctx context.Context, entryID string) error {
+	_, err := c.entryClient.BatchDeleteEntry(ctx, &entryv1.BatchDeleteEntryRequest{
+		Ids: []string{entryID},
+	})
+	if err != nil {
+		return fmt.Errorf("delete workload entry %s: %w", entryID, err)
+	}
 	return nil
 }
 
