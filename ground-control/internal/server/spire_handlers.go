@@ -254,6 +254,14 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 		committed := false
 		var harborRobotID int64
 
+		// Cleanup contract: if any step below fails (CreateSatellite,
+		// ensureSatelliteRobotAccount, ensureSatelliteConfig, or Commit),
+		// this defer rolls back all previously created artifacts:
+		//   1. SPIRE workload entry (always, via DeleteWorkloadEntry)
+		//   2. Harbor robot account (if created, via DeleteRobotAccount)
+		//   3. DB transaction (via Rollback)
+		// Uses cleanupCtx so cleanup completes even if the request is cancelled.
+		// Same pattern as autoRegisterSatellite.
 		defer func() {
 			if !committed {
 				if delErr := s.spireClient.DeleteWorkloadEntry(cleanupCtx, workloadEntryID); delErr != nil {
