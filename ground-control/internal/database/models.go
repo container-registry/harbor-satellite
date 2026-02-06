@@ -37,13 +37,14 @@ type LoginAttempt struct {
 }
 
 type RobotAccount struct {
-	ID          int32
-	RobotName   string
-	RobotSecret string
-	RobotID     string
-	SatelliteID int32
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID              int32
+	RobotName       string
+	RobotSecretHash string
+	RobotID         string
+	SatelliteID     int32
+	RobotExpiry     sql.NullTime
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type Satellite struct {
