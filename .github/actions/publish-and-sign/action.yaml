@@ -37,7 +37,7 @@ runs:
     - name: Set up Docker Buildx with remote BuildKit
       shell: bash
       run: |
-        docker buildx create --name remote --driver remote tcp://buildkitd.github-runners.svc:1234
+        docker buildx inspect remote || docker buildx create --name remote --driver remote tcp://buildkitd.github-runners.svc:1234
         docker buildx use remote
 
     - name: Install Cosign
