@@ -175,7 +175,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig) error {
 	if err != nil {
 		return fmt.Errorf("build Zot config: %w", err)
 	}
-	cm.GetConfig().ZotConfigRaw = json.RawMessage(zotConfigJSON)
+	cm.With(config.SetZotConfigRaw(json.RawMessage(zotConfigJSON)))
 
 	// Resolve local registry endpoint for CRI mirror config
 	localRegistryEndpoint, err := resolveLocalRegistryEndpoint(cm)
