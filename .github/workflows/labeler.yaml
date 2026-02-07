@@ -7,7 +7,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    runs-on: [self-hosted, container-registry]
+    runs-on: container-registry
     steps:
     - name: Label PR
       uses: actions/labeler@v5
