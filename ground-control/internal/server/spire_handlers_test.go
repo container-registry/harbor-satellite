@@ -112,7 +112,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 			resp := w.Result()
 			defer resp.Body.Close()
 
-			var respBody map[string]interface{}
+			var respBody map[string]any
 			err = json.NewDecoder(resp.Body).Decode(&respBody)
 			require.NoError(t, err)
 
@@ -148,7 +148,7 @@ func TestListSpireAgentsHandler_NoSpireClient(t *testing.T) {
 
 	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 
-	var respBody map[string]interface{}
+	var respBody map[string]any
 	err := json.NewDecoder(resp.Body).Decode(&respBody)
 	require.NoError(t, err)
 	require.Contains(t, respBody["message"], "SPIRE server not configured")

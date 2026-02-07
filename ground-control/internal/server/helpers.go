@@ -200,7 +200,7 @@ func getGroupStates(ctx context.Context, groups []database.SatelliteGroup, q *da
 	return states, nil
 }
 
-func DecodeRequestBody(r *http.Request, v interface{}) error {
+func DecodeRequestBody(r *http.Request, v any) error {
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
 		return &AppError{
 			Message: "Invalid request body",
