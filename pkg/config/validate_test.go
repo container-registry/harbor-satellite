@@ -19,6 +19,8 @@ type validateTestCase struct {
 }
 
 func TestValidateAndEnforceDefaults(t *testing.T) {
+	expectedZotConfigJSON := DefaultZotConfigJSON
+
 	tests := []validateTestCase{
 		{
 			name: "valid config",
@@ -53,7 +55,7 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 					StateReplicationInterval:  DefaultFetchAndReplicateCronExpr,
 					RegisterSatelliteInterval: DefaultZTRCronExpr,
 				},
-				ZotConfigRaw: []byte(DefaultZotConfigJSON),
+				ZotConfigRaw: []byte(expectedZotConfigJSON),
 			},
 		},
 		{
@@ -78,7 +80,7 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 			expectError:    false,
 			expectWarnings: true,
 			expectedConfig: &Config{
-				ZotConfigRaw: []byte(DefaultZotConfigJSON),
+				ZotConfigRaw: []byte(expectedZotConfigJSON),
 			},
 		},
 		{

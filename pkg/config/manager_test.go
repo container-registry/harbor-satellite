@@ -68,7 +68,7 @@ func TestConfigManager_WriteConfig(t *testing.T) {
 		ZotConfigRaw: json.RawMessage(`{"storage": {}}`),
 	}
 	path := filepath.Join(t.TempDir(), "config.json")
-	cm, err := NewConfigManager(path, "", "", "", false, "", cfg)
+	cm, err := NewConfigManager(path, "", "", "", false, cfg)
 	require.NoError(t, err)
 
 	t.Run("SuccessfulWrite", func(t *testing.T) {

@@ -13,7 +13,7 @@ func TestConfigManagerModifiers(t *testing.T) {
 		StateConfig:  StateConfig{},
 		ZotConfigRaw: json.RawMessage(`{"storage": {}}`),
 	}
-	cm, err := NewConfigManager("", "", "", "", true, "", cfg)
+	cm, err := NewConfigManager("", "", "", "", true, cfg)
 	require.NoError(t, err)
 
 	tests := []struct {
