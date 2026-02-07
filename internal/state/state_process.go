@@ -369,14 +369,14 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 			result.Error = fmt.Errorf("failed to write new config to disk: %w", err)
 			return result
 		}
+		mutex.Lock()
 		f.currentConfigDigest = configDigest
 		if f.stateFilePath != "" {
-			mutex.Lock()
 			if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
 				configFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
 			}
-			mutex.Unlock()
 		}
+		mutex.Unlock()
 	}
 
 	result.ConfigDigest = configDigest
