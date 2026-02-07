@@ -41,7 +41,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	api.HandleFunc("/groups/{group}", s.getGroupHandler).Methods("GET")
 	api.HandleFunc("/groups/{group}/satellites", s.groupSatelliteHandler).Methods("GET")
 	api.HandleFunc("/groups/satellite", s.addSatelliteToGroup).Methods("POST")
-	api.HandleFunc("/groups/satellite", s.removeSatelliteFromGroup).Methods("DELETE")
+	api.HandleFunc("/groups/{group}/satellite/{satellite}", s.removeSatelliteFromGroup).Methods("DELETE")
 	api.HandleFunc("/groups/{group}", s.RequireRole(roleSystemAdmin, s.deleteGroupHandler)).Methods("DELETE")
 
 	// Configs
