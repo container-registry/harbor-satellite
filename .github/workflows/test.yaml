@@ -109,7 +109,7 @@ jobs:
         run: task _build:ground-control
 
   e2e-tests:
-    runs-on: container-registry
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -129,7 +129,7 @@ jobs:
         run: task e2e-test
 
   e2e-byo-registry-tests:
-    runs-on: container-registry
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -149,7 +149,7 @@ jobs:
         run: task e2e-byo
 
   e2e-spiffe-join-token-tests:
-    runs-on: container-registry
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout repository
