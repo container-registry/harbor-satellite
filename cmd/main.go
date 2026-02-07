@@ -147,7 +147,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig) error {
 
 	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
 	if err != nil {
-		fmt.Printf("Error initiating the config manager: %v", err)
+		fmt.Printf("Error initiating the config manager: %v\n", err)
 		return err
 	}
 
