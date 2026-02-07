@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	auditLogger "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
@@ -258,6 +259,10 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 	committed = true
 
+	auditLogger.LogEvent(r.Context(), "satellite.registration", req.Name, auditLogger.ClientIP(r), map[string]interface{}{
+		"config_name": req.ConfigName,
+	})
+
 	resp := RegisterSatelliteResponse{
 		Token: tk,
 	}
@@ -276,6 +281,9 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		masked := maskToken(token)
 		log.Printf("Invalid Satellite Token %s: %v", masked, err)
+		auditLogger.LogEvent(r.Context(), "satellite.auth.failure", "", auditLogger.ClientIP(r), map[string]interface{}{
+			"reason": "invalid_token",
+		})
 		HandleAppError(w, &AppError{
 			Message: "Error: Invalid Token",
 			Code:    http.StatusBadRequest,
@@ -1025,6 +1033,8 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	committed = true
+
+	auditLogger.LogEvent(r.Context(), "satellite.deregistration", satellite, auditLogger.ClientIP(r), nil)
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }

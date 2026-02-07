@@ -10,6 +10,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	auditLogger "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
 )
 
 const maxFailedAttempts = 5
@@ -32,6 +33,9 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Username == "" || req.Password == "" {
+		auditLogger.LogEvent(r.Context(), "user.auth.failure", req.Username, auditLogger.ClientIP(r), map[string]interface{}{
+			"reason": "missing_credentials",
+		})
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -44,6 +48,9 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err == nil && attempts.LockedUntil.Valid && attempts.LockedUntil.Time.After(time.Now()) {
+		auditLogger.LogEvent(r.Context(), "user.auth.failure", req.Username, auditLogger.ClientIP(r), map[string]interface{}{
+			"reason": "account_locked",
+		})
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -52,6 +59,9 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := s.dbQueries.GetUserByUsername(r.Context(), req.Username)
 	if err != nil {
 		s.recordFailedAttempt(r, req.Username)
+		auditLogger.LogEvent(r.Context(), "user.auth.failure", req.Username, auditLogger.ClientIP(r), map[string]interface{}{
+			"reason": "unknown_user",
+		})
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -60,6 +70,9 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	valid := auth.VerifyPassword(req.Password, user.PasswordHash)
 	if !valid {
 		s.recordFailedAttempt(r, req.Username)
+		auditLogger.LogEvent(r.Context(), "user.auth.failure", req.Username, auditLogger.ClientIP(r), map[string]interface{}{
+			"reason": "invalid_password",
+		})
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}

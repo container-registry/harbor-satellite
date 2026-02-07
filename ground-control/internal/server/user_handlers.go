@@ -11,6 +11,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	auditLogger "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
 )
 
 const (
@@ -82,6 +83,8 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	auditLogger.LogEvent(r.Context(), "user.create", req.Username, auditLogger.ClientIP(r), nil)
 
 	WriteJSONResponse(w, http.StatusCreated, userResponse{
 		ID:        user.ID,
@@ -185,6 +188,8 @@ func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+
+	auditLogger.LogEvent(r.Context(), "user.delete", username, auditLogger.ClientIP(r), nil)
 }
 
 // changeOwnPasswordHandler allows any authenticated user to change their password
@@ -240,6 +245,8 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+
+	auditLogger.LogEvent(r.Context(), "user.password.change", currentUser.Username, auditLogger.ClientIP(r), nil)
 }
 
 // changeUserPasswordHandler allows system_admin to change any user's password
@@ -290,4 +297,6 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+
+	auditLogger.LogEvent(r.Context(), "user.password.change", username, auditLogger.ClientIP(r), nil)
 }

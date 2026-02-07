@@ -48,6 +48,7 @@ type AppConfig struct {
 	TLS                       TLSConfig           `json:"tls,omitempty"`
 	SPIFFE                    SPIFFEConfig        `json:"spiffe,omitempty"`
 	EncryptConfig             bool                `json:"encrypt_config,omitempty"`
+	AuditLogPath              string              `json:"audit_log_path,omitempty"`
 }
 
 type StateConfig struct {
