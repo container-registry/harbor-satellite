@@ -6,7 +6,7 @@ on:
       - "assets/**"
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: container-registry
     permissions:
       contents: write
       packages: write
