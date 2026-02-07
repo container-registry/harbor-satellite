@@ -6,7 +6,7 @@ on:
       - "assets/**"
 jobs:
   lint:
-    runs-on: container-registry
+    runs-on: [self-hosted, container-registry]
     permissions:
       contents: write
       packages: write
