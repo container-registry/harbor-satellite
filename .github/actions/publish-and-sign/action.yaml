@@ -34,8 +34,11 @@ runs:
       with:
         version: 3.x
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+    - name: Set up Docker Buildx with remote BuildKit
+      shell: bash
+      run: |
+        docker buildx create --name remote --driver remote tcp://buildkitd.github-runners.svc:1234
+        docker buildx use remote
 
     - name: Install Cosign
       uses: sigstore/cosign-installer@v3.7.0
