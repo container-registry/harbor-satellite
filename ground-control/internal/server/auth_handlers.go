@@ -57,8 +57,8 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify password
-	valid, err := auth.VerifyPassword(req.Password, user.PasswordHash)
-	if err != nil || !valid {
+	valid := auth.VerifyPassword(req.Password, user.PasswordHash)
+	if !valid {
 		s.recordFailedAttempt(r, req.Username)
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
