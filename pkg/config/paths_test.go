@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,6 +38,16 @@ func TestExpandPath(t *testing.T) {
 			input:    "~",
 			expected: home,
 		},
+		{
+			name:     "Empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "Tilde in middle not expanded",
+			input:    "/some/~/path",
+			expected: "/some/~/path",
+		},
 	}
 
 	for _, tt := range tests {
@@ -57,29 +68,33 @@ func TestEnsureDir(t *testing.T) {
 		{
 			name: "Create new directory",
 			setup: func(t *testing.T) string {
-				return filepath.Join(os.TempDir(), "test-satellite-new")
+				return filepath.Join(t.TempDir(), "new-dir")
 			},
 			expectErr: false,
 		},
 		{
 			name: "Existing directory",
 			setup: func(t *testing.T) string {
-				dir := filepath.Join(os.TempDir(), "test-satellite-existing")
+				dir := filepath.Join(t.TempDir(), "existing")
 				require.NoError(t, os.MkdirAll(dir, 0755))
 				return dir
 			},
 			expectErr: false,
+		},
+		{
+			name: "Path is existing file",
+			setup: func(t *testing.T) string {
+				f := filepath.Join(t.TempDir(), "file")
+				require.NoError(t, os.WriteFile(f, []byte("data"), 0600))
+				return f
+			},
+			expectErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
-			t.Cleanup(func() {
-				if err := os.RemoveAll(path); err != nil {
-					t.Errorf("cleanup: %v", err)
-				}
-			})
 
 			err := ensureDir(path)
 			if tt.expectErr {
@@ -104,29 +119,29 @@ func TestDefaultConfigDir(t *testing.T) {
 func TestResolvePathConfig(t *testing.T) {
 	tests := []struct {
 		name      string
-		configDir string
+		configDir func(t *testing.T) string
 		expectErr bool
 	}{
 		{
-			name:      "Temp directory",
-			configDir: filepath.Join(os.TempDir(), "test-satellite-resolve"),
+			name: "Temp directory",
+			configDir: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "resolve")
+			},
 			expectErr: false,
 		},
 		{
-			name:      "Tilde expansion",
-			configDir: "~/test-satellite-resolve",
-			expectErr: false,
-		},
-		{
-			name:      "Relative path resolves to absolute",
-			configDir: "test-satellite-relative",
+			name: "Relative path resolves to absolute",
+			configDir: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "relative")
+			},
 			expectErr: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pathConfig, err := ResolvePathConfig(tt.configDir)
+			dir := tt.configDir(t)
+			pathConfig, err := ResolvePathConfig(dir)
 			if tt.expectErr {
 				require.Error(t, err)
 				return
@@ -134,12 +149,6 @@ func TestResolvePathConfig(t *testing.T) {
 
 			require.NoError(t, err)
 			require.NotNil(t, pathConfig)
-
-			t.Cleanup(func() {
-				if err := os.RemoveAll(pathConfig.ConfigDir); err != nil {
-					t.Errorf("cleanup: %v", err)
-				}
-			})
 
 			require.True(t, filepath.IsAbs(pathConfig.ConfigDir), "ConfigDir should be absolute")
 			require.DirExists(t, pathConfig.ConfigDir)
@@ -157,6 +166,11 @@ func TestBuildZotConfigWithStoragePath(t *testing.T) {
 	result, err := BuildZotConfigWithStoragePath(storagePath)
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
-	require.Contains(t, result, storagePath)
-	require.Contains(t, result, `"rootDirectory"`)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result), &parsed), "output should be valid JSON")
+
+	storage, ok := parsed["storage"].(map[string]any)
+	require.True(t, ok, "storage section should exist")
+	require.Equal(t, storagePath, storage["rootDirectory"])
 }

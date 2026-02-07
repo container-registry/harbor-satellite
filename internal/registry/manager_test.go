@@ -30,7 +30,7 @@ func TestWriteTempZotConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tmpPath := filepath.Join(os.TempDir(), "zot-test.json")
+			tmpPath := filepath.Join(t.TempDir(), "zot-test.json")
 			zm := NewZotManager(log, tt.config, tmpPath)
 			err := zm.WriteTempZotConfig()
 			if tt.expectErr {
@@ -42,36 +42,33 @@ func TestWriteTempZotConfig(t *testing.T) {
 			data, readErr := os.ReadFile(tmpPath)
 			require.NoError(t, readErr)
 			require.Equal(t, tt.config, data)
-			require.NoError(t, os.Remove(tmpPath))
 		})
 	}
 }
 
 func TestRemoveTempZotConfig(t *testing.T) {
 	log := zerolog.Nop()
-	tmpPath := filepath.Join(os.TempDir(), "zot-test.json")
+	tmpPath := filepath.Join(t.TempDir(), "zot-test.json")
 	zm := NewZotManager(log, nil, tmpPath)
 
 	tests := []struct {
 		name        string
-		setup       func() string
+		setup       func(t *testing.T) string
 		expectedErr bool
 	}{
 		{
 			name: "File Exists",
-			setup: func() string {
-				tmpFile, err := os.CreateTemp("", "testfile-*.json")
-				defer require.NoError(t, tmpFile.Close())
-				require.NoError(t, err)
-				path := tmpFile.Name()
-				return path
+			setup: func(t *testing.T) string {
+				f := filepath.Join(t.TempDir(), "testfile.json")
+				require.NoError(t, os.WriteFile(f, []byte("test"), 0600))
+				return f
 			},
 			expectedErr: false,
 		},
 		{
 			name: "File Does Not Exist",
-			setup: func() string {
-				return filepath.Join(os.TempDir(), "nonexistent.json")
+			setup: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "nonexistent.json")
 			},
 			expectedErr: true,
 		},
@@ -79,7 +76,7 @@ func TestRemoveTempZotConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path := tt.setup()
+			path := tt.setup(t)
 
 			err := zm.RemoveTempZotConfig(path)
 
@@ -97,7 +94,7 @@ func TestRemoveTempZotConfig(t *testing.T) {
 
 func TestVerifyRegistryConfig(t *testing.T) {
 	log := zerolog.Nop()
-	tmpPath := filepath.Join(os.TempDir(), "zot-test.json")
+	tmpPath := filepath.Join(t.TempDir(), "zot-test.json")
 	zm := NewZotManager(log, nil, tmpPath)
 
 	tests := []struct {
@@ -119,22 +116,16 @@ func TestVerifyRegistryConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tmpFile, err := os.CreateTemp("", "zot-config-*.json")
-			require.NoError(t, err)
+			tmpFile := filepath.Join(t.TempDir(), "zot-config.json")
+			require.NoError(t, os.WriteFile(tmpFile, tt.configData, 0600))
 
-			_, writeErr := tmpFile.Write(tt.configData)
-			require.NoError(t, writeErr)
-
-			require.NoError(t, tmpFile.Close())
-
-			err = zm.VerifyRegistryConfig(tmpFile.Name())
+			err := zm.VerifyRegistryConfig(tmpFile)
 
 			if tt.expectError {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
 			}
-			require.NoError(t, os.Remove(tmpFile.Name()))
 		})
 	}
 }
