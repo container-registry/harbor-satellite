@@ -97,7 +97,6 @@ func TestSaveEmptyState(t *testing.T) {
 		t.Errorf("Groups count = %d, want 0", len(loaded.Groups))
 	}
 
-	// Verify file actually exists on disk
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("state file should exist: %v", err)
 	}

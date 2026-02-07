@@ -38,11 +38,9 @@ type ConfigFetcherResult struct {
 
 func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath string) *FetchAndReplicateStateProcess {
 	p := &FetchAndReplicateStateProcess{
-		name:                config.ReplicateStateJobName,
-		isRunning:           false,
-		currentConfigDigest: "",
-		cm:                  cm,
-		stateFilePath:       stateFilePath,
+		name:          config.ReplicateStateJobName,
+		cm:            cm,
+		stateFilePath: stateFilePath,
 	}
 
 	if stateFilePath != "" {
