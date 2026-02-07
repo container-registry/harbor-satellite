@@ -25,8 +25,8 @@ const (
 
 type ConfigChange struct {
 	Type     ConfigChangeType
-	OldValue interface{}
-	NewValue interface{}
+	OldValue any
+	NewValue any
 }
 
 type ConfigChangeCallback func(change ConfigChange) error

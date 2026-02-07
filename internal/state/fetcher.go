@@ -20,7 +20,7 @@ import (
 )
 
 type StateFetcher interface {
-	FetchStateArtifact(ctx context.Context, state interface{}, log *zerolog.Logger) error
+	FetchStateArtifact(ctx context.Context, state any, log *zerolog.Logger) error
 	FetchDigest(ctx context.Context, log *zerolog.Logger) (string, error)
 }
 
@@ -66,7 +66,7 @@ func NewURLStateFetcherWithTLS(stateURL, userName, password string, insecure boo
 	}
 }
 
-func (f *URLStateFetcher) FetchStateArtifact(ctx context.Context, state interface{}, log *zerolog.Logger) error {
+func (f *URLStateFetcher) FetchStateArtifact(ctx context.Context, state any, log *zerolog.Logger) error {
 	switch s := state.(type) {
 	case *SatelliteState:
 		return f.fetchSatelliteState(ctx, s, log)
@@ -190,7 +190,7 @@ func (f *URLStateFetcher) buildTLSTransport() (http.RoundTripper, error) {
 	}, nil
 }
 
-func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out interface{}, log *zerolog.Logger) error {
+func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out any, log *zerolog.Logger) error {
 	log.Debug().Msgf("Extracting artifacts.json from the state artifact: %s", url)
 
 	tarContent := new(bytes.Buffer)

@@ -42,7 +42,7 @@ func NewLogger(logLevel string, isJson bool) *zerolog.Logger {
 		output := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "2006-01-02 15:04:05"}
 
 		// Customize the output for each log level
-		output.FormatLevel = func(i interface{}) string {
+		output.FormatLevel = func(i any) string {
 			var l string
 			if ll, ok := i.(string); ok {
 				switch ll {

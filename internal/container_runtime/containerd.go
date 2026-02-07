@@ -99,8 +99,8 @@ func configureContainerd(certDir string) error {
 }
 
 // loadToml loads existing TOML into a flexible type
-func loadToml(path string) (map[string]interface{}, error) {
-	cfg := make(map[string]interface{})
+func loadToml(path string) (map[string]any, error) {
+	cfg := make(map[string]any)
 	if _, err := os.Stat(path); err == nil {
 		if _, err := toml.DecodeFile(path, &cfg); err != nil {
 			return nil, fmt.Errorf("failed to parse %s: %w", path, err)
@@ -109,13 +109,13 @@ func loadToml(path string) (map[string]interface{}, error) {
 	return cfg, nil
 }
 
-func loadNestedMap(parent map[string]interface{}, key string) map[string]interface{} {
+func loadNestedMap(parent map[string]any, key string) map[string]any {
 	if v, ok := parent[key]; ok {
-		if m, ok := v.(map[string]interface{}); ok {
+		if m, ok := v.(map[string]any); ok {
 			return m
 		}
 	}
-	newMap := make(map[string]interface{})
+	newMap := make(map[string]any)
 	parent[key] = newMap
 	return newMap
 }

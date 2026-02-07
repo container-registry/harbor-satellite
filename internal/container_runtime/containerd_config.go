@@ -9,7 +9,7 @@ type Host struct {
 type ContainerdHosts struct {
 	Server  string                 `toml:"server"`
 	Host    map[string]Host        `toml:"host"`
-	Unknown map[string]interface{} `toml:",remain"` // do not touch parts we do not deal with
+	Unknown map[string]any `toml:",remain"` // do not touch parts we do not deal with
 }
 
 type ContainerdConfig struct {
