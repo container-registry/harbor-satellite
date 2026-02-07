@@ -94,12 +94,12 @@ func ResolvePathConfig(configDir string) (*PathConfig, error) {
 // BuildZotConfigWithStoragePath updates the Zot configuration JSON to use
 // the specified storage directory path.
 func BuildZotConfigWithStoragePath(storageDir string) (string, error) {
-	var zotConfig map[string]interface{}
+	var zotConfig map[string]any
 	if err := json.Unmarshal([]byte(DefaultZotConfigJSON), &zotConfig); err != nil {
 		return "", fmt.Errorf("unmarshal default Zot config: %w", err)
 	}
 
-	storage, ok := zotConfig["storage"].(map[string]interface{})
+	storage, ok := zotConfig["storage"].(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("invalid Zot config: storage section not found")
 	}

@@ -262,11 +262,11 @@ func resolveLocalRegistryEndpoint(cm *config.ConfigManager) (string, error) {
 	if cm.GetOwnRegistry() {
 		return utils.FormatRegistryURL(cm.GetLocalRegistryURL()), nil
 	}
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal(cm.GetRawZotConfig(), &data); err != nil {
 		return "", fmt.Errorf("unmarshalling zot config: %w", err)
 	}
-	httpData, ok := data["http"].(map[string]interface{})
+	httpData, ok := data["http"].(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("missing 'http' section in zot config")
 	}
