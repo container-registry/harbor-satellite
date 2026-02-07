@@ -47,9 +47,7 @@ func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath st
 
 	if stateFilePath != "" {
 		persisted, err := LoadState(stateFilePath)
-		if err != nil {
-			fmt.Printf("Warning: failed to load persisted state: %v\n", err)
-		} else if persisted != nil {
+		if err == nil && persisted != nil {
 			p.currentConfigDigest = persisted.ConfigDigest
 			for _, g := range persisted.Groups {
 				p.stateMap = append(p.stateMap, StateMap{
@@ -124,7 +122,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 	// Launch config fetcher goroutine
 	go func() {
-		result := f.reconcileRemoteConfig(ctx, satelliteState.Config, srcUsername, srcPassword, useUnsecure, &log)
+		result := f.reconcileRemoteConfig(ctx, satelliteState.Config, srcUsername, srcPassword, useUnsecure, mutex, &log)
 		configFetcherResult <- result
 	}()
 
@@ -313,6 +311,7 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 	ctx context.Context,
 	configURL, srcUsername, srcPassword string,
 	useUnsecure bool,
+	mutex *sync.Mutex,
 	log *zerolog.Logger,
 ) ConfigFetcherResult {
 	configFetcherLog := log.With().
@@ -374,9 +373,11 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 		}
 		f.currentConfigDigest = configDigest
 		if f.stateFilePath != "" {
+			mutex.Lock()
 			if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
 				configFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
 			}
+			mutex.Unlock()
 		}
 	}
 
