@@ -3,7 +3,7 @@ package runtime
 // RegistriesConf models fields of /etc/containers/registries.conf
 type RegistriesConf struct {
 	Registries []Registry             `mapstructure:"registry" toml:"registry"`
-	Unknown    map[string]interface{} `mapstructure:",remain"` // do not touch parts we do not deal with
+	Unknown    map[string]any `mapstructure:",remain"` // do not touch parts we do not deal with
 }
 
 // Registry models registry field in /etc/containers/registries.conf

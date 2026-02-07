@@ -1,0 +1,176 @@
+package config
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestExpandPath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "Tilde expansion",
+			input:    "~/config/satellite",
+			expected: filepath.Join(home, "config/satellite"),
+		},
+		{
+			name:     "No tilde",
+			input:    "/tmp/satellite",
+			expected: "/tmp/satellite",
+		},
+		{
+			name:     "Relative path",
+			input:    "config/satellite",
+			expected: "config/satellite",
+		},
+		{
+			name:     "Bare tilde",
+			input:    "~",
+			expected: home,
+		},
+		{
+			name:     "Empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "Tilde in middle not expanded",
+			input:    "/some/~/path",
+			expected: "/some/~/path",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := expandPath(tt.input)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestEnsureDir(t *testing.T) {
+	tests := []struct {
+		name      string
+		setup     func(t *testing.T) string
+		expectErr bool
+	}{
+		{
+			name: "Create new directory",
+			setup: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "new-dir")
+			},
+			expectErr: false,
+		},
+		{
+			name: "Existing directory",
+			setup: func(t *testing.T) string {
+				dir := filepath.Join(t.TempDir(), "existing")
+				require.NoError(t, os.MkdirAll(dir, 0755))
+				return dir
+			},
+			expectErr: false,
+		},
+		{
+			name: "Path is existing file",
+			setup: func(t *testing.T) string {
+				f := filepath.Join(t.TempDir(), "file")
+				require.NoError(t, os.WriteFile(f, []byte("data"), 0600))
+				return f
+			},
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := tt.setup(t)
+
+			err := ensureDir(path)
+			if tt.expectErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				info, statErr := os.Stat(path)
+				require.NoError(t, statErr)
+				require.True(t, info.IsDir())
+			}
+		})
+	}
+}
+
+func TestDefaultConfigDir(t *testing.T) {
+	dir, err := DefaultConfigDir()
+	require.NoError(t, err)
+	require.NotEmpty(t, dir)
+	require.Contains(t, dir, "satellite")
+}
+
+func TestResolvePathConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		configDir func(t *testing.T) string
+		expectErr bool
+	}{
+		{
+			name: "Temp directory",
+			configDir: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "resolve")
+			},
+			expectErr: false,
+		},
+		{
+			name: "Relative path resolves to absolute",
+			configDir: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "relative")
+			},
+			expectErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := tt.configDir(t)
+			pathConfig, err := ResolvePathConfig(dir)
+			if tt.expectErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, pathConfig)
+
+			require.True(t, filepath.IsAbs(pathConfig.ConfigDir), "ConfigDir should be absolute")
+			require.DirExists(t, pathConfig.ConfigDir)
+			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "config.json"), pathConfig.ConfigFile)
+			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "prev_config.json"), pathConfig.PrevConfigFile)
+			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "zot-hot.json"), pathConfig.ZotTempConfig)
+			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "zot"), pathConfig.ZotStorageDir)
+		})
+	}
+}
+
+func TestBuildZotConfigWithStoragePath(t *testing.T) {
+	storagePath := "/custom/zot/storage"
+
+	result, err := BuildZotConfigWithStoragePath(storagePath)
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result), &parsed), "output should be valid JSON")
+
+	storage, ok := parsed["storage"].(map[string]any)
+	require.True(t, ok, "storage section should exist")
+	require.Equal(t, storagePath, storage["rootDirectory"])
+}

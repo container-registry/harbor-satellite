@@ -13,10 +13,6 @@ const DefaultSPIFFEEndpointSocket string = "unix:///run/spire/sockets/agent.sock
 // by providing values in the config.json file. These default values will be used if the user does not provide any value or wrong format value
 // in the config.json file.
 
-// Default config.json path for the satellite, used if the user does not provide any config path
-const DefaultConfigPath string = "config.json"
-const DefaultPrevConfigPath string = "prev_config.json"
-
 // Below are the default values of the job schedules that would be used if the user does not provide any schedule or
 // if there is any error while parsing the cron expression
 const DefaultZTRCronExpr string = "@every 00h00m05s"
