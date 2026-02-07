@@ -3,6 +3,8 @@ package harbor
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/robot"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
@@ -17,12 +19,8 @@ type ListParams struct {
 	Sort     string
 }
 
-func GetRobotDetails(r *robot.CreateRobotCreated) (int64, string, string) {
-	id := r.Payload.ID
-	name := r.Payload.Name
-	secret := r.Payload.Secret
-
-	return id, name, secret
+func GetRobotDetails(r *robot.CreateRobotCreated) (int64, string, string, int64) {
+	return r.Payload.ID, r.Payload.Name, r.Payload.Secret, r.Payload.ExpiresAt
 }
 
 func IsRobotPresent(ctx context.Context, name string) (bool, error) {
@@ -137,12 +135,21 @@ func CreateRobotAccount(ctx context.Context, opts *models.RobotCreate) (*robot.C
 	return response, nil
 }
 
+func robotDurationDays() int64 {
+	if v := os.Getenv("ROBOT_DURATION_DAYS"); v != "" {
+		if days, err := strconv.ParseInt(v, 10, 64); err == nil && days > 0 {
+			return days
+		}
+	}
+	return 30
+}
+
 func RobotAccountTemplate(name string, projects []string) *models.RobotCreate {
 	robotPermissions := GenRobotPerms(projects)
 	robotAccount := &models.RobotCreate{
 		Description: "managed by ground-control should not edit",
 		Disable:     false,
-		Duration:    -1,
+		Duration:    robotDurationDays(),
 		Level:       "system",
 		Name:        name,
 		Permissions: robotPermissions,
