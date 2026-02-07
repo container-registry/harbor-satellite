@@ -19,6 +19,7 @@ type FetchAndReplicateStateProcess struct {
 	currentConfigDigest string
 	cm                  *config.ConfigManager
 	mu                  sync.Mutex
+	stateFilePath       string
 }
 
 // Define result types for channels
@@ -35,13 +36,31 @@ type ConfigFetcherResult struct {
 	Cancelled    bool
 }
 
-func NewFetchAndReplicateStateProcess(cm *config.ConfigManager) *FetchAndReplicateStateProcess {
-	return &FetchAndReplicateStateProcess{
+func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath string) *FetchAndReplicateStateProcess {
+	p := &FetchAndReplicateStateProcess{
 		name:                config.ReplicateStateJobName,
 		isRunning:           false,
 		currentConfigDigest: "",
 		cm:                  cm,
+		stateFilePath:       stateFilePath,
 	}
+
+	if stateFilePath != "" {
+		persisted, err := LoadState(stateFilePath)
+		if err != nil {
+			fmt.Printf("Warning: failed to load persisted state: %v\n", err)
+		} else if persisted != nil {
+			p.currentConfigDigest = persisted.ConfigDigest
+			for _, g := range persisted.Groups {
+				p.stateMap = append(p.stateMap, StateMap{
+					url:      g.URL,
+					Entities: g.Entities,
+				})
+			}
+		}
+	}
+
+	return p
 }
 
 type StateMap struct {
@@ -354,6 +373,11 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 			return result
 		}
 		f.currentConfigDigest = configDigest
+		if f.stateFilePath != "" {
+			if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+				configFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
+			}
+		}
 	}
 
 	result.ConfigDigest = configDigest
@@ -415,6 +439,11 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	mutex.Lock()
 	f.stateMap[index].State = newState
 	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
+	if f.stateFilePath != "" {
+		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
+		}
+	}
 	mutex.Unlock()
 
 	return result

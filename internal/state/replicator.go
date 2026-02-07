@@ -52,10 +52,10 @@ func NewBasicReplicatorWithTLS(sourceUsername, sourcePassword, sourceRegistry, r
 
 // Entity represents an image or artifact which needs to be handled by the replicator
 type Entity struct {
-	Name       string
-	Repository string
-	Tag        string
-	Digest     string
+	Name       string `json:"name"`
+	Repository string `json:"repository"`
+	Tag        string `json:"tag"`
+	Digest     string `json:"digest"`
 }
 
 func (e Entity) GetName() string {
