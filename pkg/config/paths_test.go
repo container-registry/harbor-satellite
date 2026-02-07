@@ -75,7 +75,11 @@ func TestEnsureDir(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
-			defer os.RemoveAll(path)
+			t.Cleanup(func() {
+				if err := os.RemoveAll(path); err != nil {
+					t.Errorf("cleanup: %v", err)
+				}
+			})
 
 			err := ensureDir(path)
 			if tt.expectErr {
@@ -126,7 +130,11 @@ func TestResolvePathConfig(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, pathConfig)
 
-			defer os.RemoveAll(pathConfig.ConfigDir)
+			t.Cleanup(func() {
+				if err := os.RemoveAll(pathConfig.ConfigDir); err != nil {
+					t.Errorf("cleanup: %v", err)
+				}
+			})
 
 			require.DirExists(t, pathConfig.ConfigDir)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "config.json"), pathConfig.ConfigFile)

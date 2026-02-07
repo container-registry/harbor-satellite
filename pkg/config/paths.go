@@ -46,7 +46,9 @@ func ensureDir(path string) error {
 	if err := os.WriteFile(testFile, []byte{}, 0600); err != nil {
 		return fmt.Errorf("directory %s not writable: %w", path, err)
 	}
-	os.Remove(testFile)
+	if err := os.Remove(testFile); err != nil {
+		return fmt.Errorf("clean up write test in %s: %w", path, err)
+	}
 
 	return nil
 }
