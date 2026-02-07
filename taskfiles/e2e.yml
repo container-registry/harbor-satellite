@@ -279,12 +279,20 @@ tasks:
           -H "Content-Type: application/json" \
           -d '{"project_name": "{{.PROJECT_NAME}}"}'
 
+        echo "Pulling alpine locally (avoids Docker Hub rate limits in container)..."
+        docker pull alpine:latest || { echo "Failed to pull alpine:latest"; exit 1; }
+
         echo "Pushing image to Harbor..."
-        docker run --rm --network harbor-e2e alpine:latest sh -c "
-          apk add --no-cache crane &&
-          crane auth login core:8080 -u admin -p Harbor12345 --insecure &&
-          crane copy docker.io/library/alpine:latest core:8080/{{.PROJECT_NAME}}/alpine:latest --insecure
-        "
+        docker tag alpine:latest localhost:8080/{{.PROJECT_NAME}}/alpine:latest
+
+        # Try docker login/push (Docker), fallback to podman flags (Podman)
+        if docker login localhost:8080 -u admin -p Harbor12345 2>/dev/null; then
+          docker push localhost:8080/{{.PROJECT_NAME}}/alpine:latest 2>/dev/null || \
+          docker push localhost:8080/{{.PROJECT_NAME}}/alpine:latest --tls-verify=false
+        else
+          docker login localhost:8080 -u admin -p Harbor12345 --tls-verify=false
+          docker push localhost:8080/{{.PROJECT_NAME}}/alpine:latest --tls-verify=false
+        fi
 
         echo "Creating registry..."
         curl -sf -X POST {{.HARBOR_API}}/registries \

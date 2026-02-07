@@ -213,8 +213,8 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	valid, err := auth.VerifyPassword(req.CurrentPassword, user.PasswordHash)
-	if err != nil || !valid {
+	valid := auth.VerifyPassword(req.CurrentPassword, user.PasswordHash)
+	if !valid {
 		WriteJSONError(w, "Current password is incorrect", http.StatusUnauthorized)
 		return
 	}

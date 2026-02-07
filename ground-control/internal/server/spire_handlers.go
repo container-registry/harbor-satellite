@@ -289,7 +289,7 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 		}
 		log.Printf("Register: Created satellite record for %s", req.SatelliteName)
 
-		_, harborRobotID, err = ensureSatelliteRobotAccount(r, txQueries, satellite)
+		_, harborRobotID, _, err = ensureSatelliteRobotAccount(r, txQueries, satellite)
 		if err != nil {
 			log.Printf("Register: Failed to create robot account for %s: %v", req.SatelliteName, err)
 			HandleAppError(w, &AppError{

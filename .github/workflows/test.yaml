@@ -8,7 +8,7 @@ on:
 
 jobs:
   vulnerability-check:
-    runs-on: ubuntu-latest
+    runs-on: container-registry
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -41,7 +41,7 @@ jobs:
           fi
 
   test-release:
-    runs-on: ubuntu-latest
+    runs-on: container-registry
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -71,7 +71,7 @@ jobs:
         run: task snapshot
 
   build-satellite:
-    runs-on: ubuntu-latest
+    runs-on: container-registry
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -90,7 +90,7 @@ jobs:
         run: task _build:satellite
 
   build-ground-control:
-    runs-on: ubuntu-latest
+    runs-on: container-registry
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
