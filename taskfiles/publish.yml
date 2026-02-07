@@ -44,12 +44,14 @@ tasks:
     silent: true
 
   image:
-    desc: Build and push multi-arch container image
+    desc: Build and push multi-arch or single-platform container image
     vars:
       REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
       PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
       COMPONENT: "{{.COMPONENT | default .Env.COMPONENT | default \"satellite\"}}"
       IMAGE_TAGS: "{{.IMAGE_TAGS | default .Env.IMAGE_TAGS | default \"dev\"}}"
+      PLATFORM: "{{.PLATFORM | default .Env.PLATFORM}}"
+      TAG_SUFFIX: "{{.TAG_SUFFIX | default .Env.TAG_SUFFIX}}"
     preconditions:
       - sh: test -n "{{.REGISTRY}}"
         msg: "REGISTRY is required. Set via task var or REGISTRY env var."
@@ -70,16 +72,26 @@ tasks:
           echo "$REG_PASS" | docker login {{.REGISTRY}} -u "$REG_USER" --password-stdin
         fi
 
-        # Build tags list for buildx
+        # Platform: single PLATFORM or all PLATFORMS
+        if [ -n "{{.PLATFORM}}" ]; then
+          PLATFORMS="{{.PLATFORM}}"
+        else
+          PLATFORMS="{{.PLATFORMS}}"
+        fi
+
+        # Build tags list for buildx (append TAG_SUFFIX when set)
         TAGS=""
         for tag in $(echo "{{.IMAGE_TAGS}}" | tr ',' ' '); do
           tag=$(echo "$tag" | sed 's/^v//')
+          if [ -n "{{.TAG_SUFFIX}}" ]; then
+            tag="${tag}-{{.TAG_SUFFIX}}"
+          fi
           TAGS="$TAGS -t {{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
         done
 
-        echo "Building and pushing {{.COMPONENT}} for {{.PLATFORMS}}..."
+        echo "Building and pushing {{.COMPONENT}} for $PLATFORMS..."
         docker buildx build \
-          --platform {{.PLATFORMS}} \
+          --platform $PLATFORMS \
           -f $DOCKERFILE \
           $TAGS \
           --push \
@@ -88,12 +100,14 @@ tasks:
     silent: true
 
   image-and-sign:
-    desc: Build, push, and sign multi-arch container image with Cosign
+    desc: Build, push, and optionally sign (when not single-platform) container image with Cosign
     vars:
       REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
       PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
       COMPONENT: "{{.COMPONENT | default .Env.COMPONENT | default \"satellite\"}}"
       IMAGE_TAGS: "{{.IMAGE_TAGS | default .Env.IMAGE_TAGS | default \"dev\"}}"
+      PLATFORM: "{{.PLATFORM | default .Env.PLATFORM}}"
+      TAG_SUFFIX: "{{.TAG_SUFFIX | default .Env.TAG_SUFFIX}}"
     preconditions:
       - sh: test -n "{{.REGISTRY}}"
         msg: "REGISTRY is required. Set via task var or REGISTRY env var."
@@ -106,17 +120,57 @@ tasks:
           PROJECT_NAME: "{{.PROJECT_NAME}}"
           COMPONENT: "{{.COMPONENT}}"
           IMAGE_TAGS: "{{.IMAGE_TAGS}}"
-      - echo "Signing {{.COMPONENT}} image..."
+          PLATFORM: "{{.PLATFORM}}"
+          TAG_SUFFIX: "{{.TAG_SUFFIX}}"
       - |
-        FIRST_TAG=$(echo "{{.IMAGE_TAGS}}" | cut -d',' -f1 | sed 's/^v//')
-        IMAGE_ADDR="{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$FIRST_TAG"
+        # Sign only when building multi-arch (no PLATFORM set); single-arch is signed in manifest job
+        if [ -z "{{.PLATFORM}}" ]; then
+          echo "Signing {{.COMPONENT}} image..."
+          FIRST_TAG=$(echo "{{.IMAGE_TAGS}}" | cut -d',' -f1 | sed 's/^v//')
+          IMAGE_ADDR="{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$FIRST_TAG"
+          cosign sign --yes --recursive \
+            --registry-username="$REG_USER" \
+            --registry-password="$REG_PASS" \
+            "$IMAGE_ADDR" \
+            --timeout 1m
+          echo "Signed {{.COMPONENT}}"
+        fi
+    silent: true
 
-        cosign sign --yes --recursive \
-          --registry-username="$REG_USER" \
-          --registry-password="$REG_PASS" \
-          "$IMAGE_ADDR" \
-          --timeout 1m
-      - echo "Signed {{.COMPONENT}}"
+  manifest-list-and-sign:
+    desc: Create multi-arch manifest list from per-arch tags and sign with Cosign
+    vars:
+      REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
+      PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
+      BASE_TAG: "{{.BASE_TAG | default .Env.BASE_TAG | default \"latest\"}}"
+      SUFFIXES: "{{.SUFFIXES | default .Env.SUFFIXES | default \"amd64 arm64 ppc64le s390x riscv64\"}}"
+    preconditions:
+      - sh: test -n "{{.REGISTRY}}"
+        msg: "REGISTRY is required."
+      - sh: test -n "{{.PROJECT_NAME}}"
+        msg: "PROJECT_NAME is required."
+    cmds:
+      - |
+        if [ -n "$REG_USER" ] && [ -n "$REG_PASS" ]; then
+          echo "Logging into {{.REGISTRY}}..."
+          echo "$REG_PASS" | docker login {{.REGISTRY}} -u "$REG_USER" --password-stdin
+        fi
+      - |
+        for COMPONENT in satellite ground-control; do
+          SOURCES=""
+          for suf in {{.SUFFIXES}}; do
+            SOURCES="$SOURCES {{.REGISTRY}}/{{.PROJECT_NAME}}/$COMPONENT:{{.BASE_TAG}}-$suf"
+          done
+          echo "Creating manifest list for $COMPONENT:{{.BASE_TAG}}..."
+          docker buildx imagetools create -t {{.REGISTRY}}/{{.PROJECT_NAME}}/$COMPONENT:{{.BASE_TAG}} $SOURCES
+          echo "Signing $COMPONENT..."
+          cosign sign --yes --recursive \
+            --registry-username="$REG_USER" \
+            --registry-password="$REG_PASS" \
+            "{{.REGISTRY}}/{{.PROJECT_NAME}}/$COMPONENT:{{.BASE_TAG}}" \
+            --timeout 5m
+        done
+      - echo "Manifest lists created and signed"
     silent: true
 
   snapshot-release:
