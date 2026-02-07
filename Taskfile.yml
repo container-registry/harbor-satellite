@@ -83,6 +83,16 @@ tasks:
     cmds:
       - task: _e2e:test-spiffe
 
+  e2e-crash-recovery:
+    desc: Run crash recovery E2E test
+    cmds:
+      - task: _e2e:test-crash-recovery
+
+  e2e-crash-recovery-byo:
+    desc: Run crash recovery BYO registry E2E test
+    cmds:
+      - task: _e2e:test-crash-recovery-byo
+
   publish:
     desc: "Publish both components to registry"
     aliases: [p]
