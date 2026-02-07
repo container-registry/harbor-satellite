@@ -133,50 +133,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	cm, _, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
-	if err != nil {
-		fmt.Printf("Error initiating the config manager: %v", err)
-		os.Exit(1)
-	}
-
-	// Apply SPIFFE config from CLI flags
-	if opts.SPIFFEEnabled {
-		cm.With(config.SetSPIFFEConfig(config.SPIFFEConfig{
-			Enabled:          opts.SPIFFEEnabled,
-			EndpointSocket:   opts.SPIFFEEndpointSocket,
-			ExpectedServerID: opts.SPIFFEExpectedServerID,
-		}))
-	}
-
-	// Apply BYO registry config from CLI flags / env vars
-	if opts.BYORegistry {
-		cm.With(
-			config.SetBringOwnRegistry(true),
-			config.SetLocalRegistryURL(opts.RegistryURL),
-			config.SetLocalRegistryUsername(opts.RegistryUsername),
-			config.SetLocalRegistryPassword(opts.RegistryPassword),
-		)
-	}
-
-	// Update Zot config with storage path
-	zotConfigJSON, err := config.BuildZotConfigWithStoragePath(pathConfig.ZotStorageDir)
-	if err != nil {
-		fmt.Printf("Error building Zot config: %v\n", err)
-		os.Exit(1)
-	}
-	cm.GetConfig().ZotConfigRaw = json.RawMessage(zotConfigJSON)
-
-	// Resolve local registry endpoint for CRI mirror config
-	localRegistryEndpoint, err := resolveLocalRegistryEndpoint(cm)
-	if err != nil {
-		fmt.Printf("Error resolving local registry endpoint: %v\n", err)
-		os.Exit(1)
-	}
-	if err := runtime.ApplyCRIConfigs(opts.Mirrors, localRegistryEndpoint); err != nil {
-		fmt.Printf("Error applying CRI configs: %v\n", err)
-		os.Exit(1)
-	}
-
 	err = run(opts, pathConfig)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
