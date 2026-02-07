@@ -73,6 +73,11 @@ func ResolvePathConfig(configDir string) (*PathConfig, error) {
 		return nil, fmt.Errorf("expand config directory path: %w", err)
 	}
 
+	expanded, err = filepath.Abs(expanded)
+	if err != nil {
+		return nil, fmt.Errorf("resolve absolute path: %w", err)
+	}
+
 	if err := ensureDir(expanded); err != nil {
 		return nil, err
 	}

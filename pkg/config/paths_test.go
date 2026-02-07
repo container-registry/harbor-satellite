@@ -117,6 +117,11 @@ func TestResolvePathConfig(t *testing.T) {
 			configDir: "~/test-satellite-resolve",
 			expectErr: false,
 		},
+		{
+			name:      "Relative path resolves to absolute",
+			configDir: "test-satellite-relative",
+			expectErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -136,6 +141,7 @@ func TestResolvePathConfig(t *testing.T) {
 				}
 			})
 
+			require.True(t, filepath.IsAbs(pathConfig.ConfigDir), "ConfigDir should be absolute")
 			require.DirExists(t, pathConfig.ConfigDir)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "config.json"), pathConfig.ConfigFile)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "prev_config.json"), pathConfig.PrevConfigFile)
