@@ -92,13 +92,24 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string, 
 			warnings = append(warnings, fmt.Sprintf("registry-data-dir specified: %s", finalRegistryDir))
 		}
 
-		zotConfig.Storage.RootDirectory = finalRegistryDir
-
 		if err := os.MkdirAll(finalRegistryDir, 0755); err != nil {
 			return nil, nil, fmt.Errorf("failed to create registry data directory %s: %w", finalRegistryDir, err)
 		}
-		
-		updatedZotConfig, err := json.Marshal(zotConfig)
+
+		// Use map to preserve all fields (e.g. distSpecVersion, extensions)
+		// that are not represented in the ZotConfig struct.
+		var rawMap map[string]interface{}
+		if err := json.Unmarshal(config.ZotConfigRaw, &rawMap); err != nil {
+			return nil, nil, fmt.Errorf("failed to parse zot config for update: %w", err)
+		}
+		storageMap, ok := rawMap["storage"].(map[string]interface{})
+		if !ok {
+			storageMap = make(map[string]interface{})
+			rawMap["storage"] = storageMap
+		}
+		storageMap["rootDirectory"] = finalRegistryDir
+
+		updatedZotConfig, err := json.Marshal(rawMap)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to marshal updated zot config: %w", err)
 		}

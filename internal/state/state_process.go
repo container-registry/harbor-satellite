@@ -240,7 +240,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 			}
 
 			remoteConfig.StateConfig = f.cm.GetStateConfig()
-			validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL, "")
+			validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL, f.cm.RegistryDataDir)
 			if err != nil {
 				configFetcherLog.Error().Err(err).
 					Msgf("Error validating config state artifact digest from url: %s, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)

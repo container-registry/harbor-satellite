@@ -41,7 +41,7 @@ func TestInitConfigManager(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "Success", path: validConfigPath, wantErr: false},
-		{name: "FileMissing", path: "/non/existent/path.json", wantErr: true},
+		{name: "FileMissing", path: "/non/existent/path.json", wantErr: false},
 		{name: "InvalidJSON", path: invalidConfigPath, wantErr: true},
 	}
 

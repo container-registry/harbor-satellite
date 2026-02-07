@@ -17,6 +17,21 @@ type validateTestCase struct {
 }
 
 func TestValidateAndEnforceDefaults(t *testing.T) {
+	testRegistryDir := t.TempDir()
+	expectedZotConfigJSON := `{
+  "distSpecVersion": "1.1.0",
+  "storage": {
+    "rootDirectory": "` + testRegistryDir + `"
+  },
+  "http": {
+    "address": "0.0.0.0",
+    "port": "8585"
+  },
+  "log": {
+    "level": "info"
+  }
+}`
+
 	tests := []validateTestCase{
 		{
 			name: "valid config",
@@ -51,7 +66,7 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 					StateReplicationInterval:  DefaultFetchAndReplicateCronExpr,
 					RegisterSatelliteInterval: DefaultZTRCronExpr,
 				},
-				ZotConfigRaw: []byte(DefaultZotConfigJSON),
+				ZotConfigRaw: []byte(expectedZotConfigJSON),
 			},
 		},
 		{
@@ -76,7 +91,7 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 			expectError:    false,
 			expectWarnings: true,
 			expectedConfig: &Config{
-				ZotConfigRaw: []byte(DefaultZotConfigJSON),
+				ZotConfigRaw: []byte(expectedZotConfigJSON),
 			},
 		},
 		{
@@ -119,7 +134,7 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config, warnings, err := ValidateAndEnforceDefaults(tt.config, DefaultGroundControlURL, "")
+			config, warnings, err := ValidateAndEnforceDefaults(tt.config, DefaultGroundControlURL, testRegistryDir)
 
 			if tt.expectError {
 				require.Error(t, err)
