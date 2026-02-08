@@ -17,6 +17,10 @@ WHERE id = $1;
 SELECT * FROM robot_accounts
 WHERE satellite_id = $1;
 
+-- name: GetRobotAccByName :one
+SELECT * FROM robot_accounts
+WHERE robot_name = $1;
+
 -- name: ListRobotAccounts :many
 SELECT * FROM robot_accounts;
 
