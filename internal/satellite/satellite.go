@@ -109,7 +109,9 @@ func (s *Satellite) Stop(ctx context.Context) {
 			Int("index", i).
 			Str("scheduler", sched.Name()).
 			Msg("Stopping scheduler")
-		sched.Stop(ctx)
+		if err := sched.Stop(ctx); err != nil {
+			log.Warn().Err(err).Str("scheduler", sched.Name()).Msg("Scheduler stop timed out")
+		}
 	}
 
 	log.Info().Msg("All schedulers stopped")
