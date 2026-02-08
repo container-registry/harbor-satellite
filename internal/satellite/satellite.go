@@ -104,15 +104,21 @@ func (s *Satellite) Stop(ctx context.Context) {
 	log.Info().Int("scheduler_count", len(s.schedulers)).
 		Msg("Initiating scheduler shutdown")
 
+	failedCount := 0
 	for i, sched := range s.schedulers {
 		log.Debug().
 			Int("index", i).
 			Str("scheduler", sched.Name()).
 			Msg("Stopping scheduler")
 		if err := sched.Stop(ctx); err != nil {
-			log.Warn().Err(err).Str("scheduler", sched.Name()).Msg("Scheduler stop timed out")
+			failedCount++
+			log.Warn().Err(err).Str("scheduler", sched.Name()).Msg("Scheduler stop failed")
 		}
 	}
 
-	log.Info().Msg("All schedulers stopped")
+	if failedCount > 0 {
+		log.Warn().Int("failed_count", failedCount).Msg("Some schedulers failed to stop")
+	} else {
+		log.Info().Msg("All schedulers stopped")
+	}
 }
