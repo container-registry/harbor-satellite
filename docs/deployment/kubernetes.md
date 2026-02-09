@@ -111,19 +111,34 @@ spec:
         - name: DB_HOST
           value: postgres
         - name: DB_DATABASE
-          value: satellite
+          value: groundcontrol
         - name: DB_USERNAME
-          value: satellite
+          value: groundcontrol
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
               name: ground-control-secrets
               key: db-password
-        - name: HARBOR_TOKEN
+        - name: HARBOR_URL
           valueFrom:
             secretKeyRef:
               name: ground-control-secrets
-              key: harbor-token
+              key: harbor-url
+        - name: HARBOR_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: ground-control-secrets
+              key: harbor-username
+        - name: HARBOR_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ground-control-secrets
+              key: harbor-password
+        - name: ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ground-control-secrets
+              key: admin-password
         livenessProbe:
           httpGet:
             path: /health
@@ -158,20 +173,52 @@ kubectl create namespace satellite
 
 cat > satellite-config.yaml << 'EOF'
 apiVersion: v1
+kind: Secret
+metadata:
+  name: satellite-secrets
+  namespace: satellite
+type: Opaque
+stringData:
+  auth-token: "your-robot-token-here"
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: satellite-config
   namespace: satellite
 data:
-  config.yaml: |
-    satellite:
-      ground_control:
-        url: http://your-ground-control:8080
-      registry:
-        enabled: true
-        url: localhost:5000
-      auth:
-        token: your-robot-token
+  config.json: |
+    {
+      "state_config": {
+        "registry": "https://harbor.example.com",
+        "username": "robot_satellite_edge",
+        "password": "robot-account-secret"
+      },
+      "app_config": {
+        "ground_control_url": "http://your-ground-control:8080",
+        "log_level": "info",
+        "use_unsecure": false,
+        "state_replication_interval": "@every 00h05m00s",
+        "register_satellite_interval": "@every 00h01m00s",
+        "heartbeat_interval": "@every 00h01m00s",
+        "local_registry": {
+          "url": "http://0.0.0.0:8585"
+        }
+      },
+      "zot_config": {
+        "distSpecVersion": "1.1.0",
+        "storage": {
+          "rootDirectory": "/var/lib/satellite/zot"
+        },
+        "http": {
+          "address": "0.0.0.0",
+          "port": "8585"
+        },
+        "log": {
+          "level": "info"
+        }
+      }
+    }
 EOF
 
 kubectl apply -f satellite-config.yaml
@@ -224,7 +271,7 @@ spec:
           name: satellite-config
       - name: container-runtime
         hostPath:
-          path: /var/run/containerd  # Adjust for your container runtime
+          path: /run/containerd/containerd.sock  # Adjust for your container runtime (or /var/run/crio/crio.sock for CRI-O)
           type: Socket
 ---
 apiVersion: v1

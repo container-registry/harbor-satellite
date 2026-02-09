@@ -51,10 +51,13 @@ curl -X POST http://localhost:8080/login \
 
 ## Base URL
 
-The default Ground Control API is available at:
-```
-http://localhost:8080/api
-```
+Ground Control API is available at:
+- **Protected endpoints** (require authentication): `http://localhost:8080/api`
+- **Public endpoints** (no authentication): `http://localhost:8080`
+  - `/login` - Obtain session token
+  - `/health` - Health check
+  - `/satellites/ztr/{token}` - Satellite Zero-Touch Registration
+  - `/satellites/sync` - Satellite sync endpoint
 
 Adjust the base URL according to your deployment configuration.
 

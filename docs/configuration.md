@@ -233,7 +233,7 @@ For SPIFFE-based authentication:
 
 ```bash
 # SPIRE server settings
-SPIFE_ENABLED=true
+SPIFFE_ENABLED=true
 SPIRE_SOCKET_PATH=/tmp/spire-server/api.sock
 SPIRE_TRUST_DOMAIN=example.org
 ```

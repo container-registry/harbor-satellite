@@ -164,7 +164,7 @@ unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
    # Check routing
    traceroute ground-control
    # Test from satellite host
-   curl -v http://ground-control:8080/api/v1/satellites
+   curl -v http://ground-control:8080/api/satellites
    ```
 
 #### Authentication and authorization errors
@@ -178,13 +178,13 @@ unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
 **Diagnostic Commands:**
 ```bash
 # Check current token validity
-curl -H "Authorization: Bearer YOUR_TOKEN" http://ground-control:8080/api/v1/satellites
+curl -H "Authorization: Bearer YOUR_TOKEN" http://ground-control:8080/api/satellites
 
 # Generate new authentication token
 curl -X POST -H "Content-Type: application/json" \
 
   -d '{"username":"your-user","password":"your-password"}' \
-  http://ground-control:8080/api/v1/auth/login
+  http://ground-control:8080/login
 
 # Verify token format
 echo "YOUR_TOKEN" | base64 -d
@@ -197,17 +197,17 @@ echo "YOUR_TOKEN" | base64 -d
    # Check token expiration time
    jwt decode YOUR_TOKEN  # if jwt CLI tool is available
    # Or use online JWT decoder
-   echo "Token expiry: $(curl -s -H 'Authorization: Bearer YOUR_TOKEN' http://ground-control:8080/api/v1/auth/validate | jq -r .expires_at)"
+   echo "Token expiry: $(curl -s -H 'Authorization: Bearer YOUR_TOKEN' http://ground-control:8080/api/validate | jq -r .expires_at)"
    ```
 
 2. **Invalid permissions**
    ```bash
    # Check user permissions
    curl -H "Authorization: Bearer YOUR_TOKEN" \
-     http://ground-control:8080/api/v1/auth/user
+     http://ground-control:8080/api/user
    # Verify satellite registration
    curl -H "Authorization: Bearer YOUR_TOKEN" \
-     http://ground-control:8080/api/v1/satellites
+     http://ground-control:8080/api/satellites
    ```
 
 3. **Clock synchronization issues**
@@ -299,7 +299,7 @@ journalctl -u satellite -f | grep -i sync
 
 # Verify desired state from Ground Control
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://ground-control:8080/api/v1/satellites/YOUR_SATELLITE_ID/state
+  http://ground-control:8080/api/satellites/YOUR_SATELLITE_ID/state
 
 # Check local registry contents
 curl http://localhost:8585/v2/_catalog | jq .
@@ -566,11 +566,11 @@ sudo -u postgres psql ground_control_db -c "\dt+ public.*"
 ```bash
 # Get desired state from Ground Control
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://ground-control:8080/api/v1/satellites/YOUR_SATELLITE_ID/state > desired_state.json
+  http://ground-control:8080/api/satellites/YOUR_SATELLITE_ID/state > desired_state.json
 
 # Get current satellite state (if available via API)
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://ground-control:8080/api/v1/satellites/YOUR_SATELLITE_ID > current_state.json
+  http://ground-control:8080/api/satellites/YOUR_SATELLITE_ID > current_state.json
 
 # Compare states
 diff <(cat desired_state.json | jq -S .) <(cat current_state.json | jq -S .)

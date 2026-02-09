@@ -4,12 +4,13 @@ Harbor Satellite extends Harbor container registry capabilities to edge computin
 
 ## Architecture Overview
 
-This document provides a high-level overview of Harbor Satellite architecture. For detailed component documentation, see the [architecture directory](architecture/):
+This document provides a high-level overview of Harbor Satellite architecture. For more detailed information, refer to the [configuration reference](configuration.md) and [API reference](api-reference.md).
 
-- [System Overview](architecture/overview.md) - Detailed system architecture
-- [Component Details](architecture/components.md) - Individual component specifications
-- [Use Cases](architecture/use-cases.md) - Deployment patterns and scenarios
-- [Design Decisions](decisions/) - Architecture Decision Records (ADRs)
+**Architecture Resources:**
+- [Configuration Guide](configuration.md) - All configuration options
+- [API Reference](api-reference.md) - REST API endpoints
+- [Getting Started](getting-started.md) - Setup and deployment
+- [Troubleshooting](troubleshooting.md) - Common issues and solutions
 
 ## Core Components
 

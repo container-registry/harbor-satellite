@@ -359,11 +359,14 @@ sudo systemctl restart containerd
 Harbor Satellite can automatically configure container runtimes:
 
 ```bash
-# For Docker
-./satellite --mirrors=docker:true
+# For containerd with local mirror
+./satellite --mirrors=containerd:localhost:8585
 
-# For multiple runtimes
-./satellite --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
+# For docker with Harbor mirror
+./satellite --mirrors=docker:harbor.example.com
+
+# For multiple registries on containerd
+./satellite --mirrors=containerd:docker.io:localhost:8585,quay.io:localhost:8585
 ```
 
 > **Supported CRIs**: Docker, containerd, CRI-O, Podman

@@ -37,34 +37,27 @@ mkdir -p {data,configs,scripts}
 
 ```bash
 cat > configs/groundcontrol.env << 'EOF'
-# Server
-GC_LISTEN_ADDR=0.0.0.0:8080
-GC_LOG_LEVEL=info
-GC_METRICS_PORT=8090
-GC_READ_TIMEOUT=30s
-GC_WRITE_TIMEOUT=30s
+# Server Settings
+PORT=8080
+APP_ENV=production
 
 # Database
 DB_HOST=postgres
 DB_PORT=5432
-DB_USER=groundcontrol
+DB_DATABASE=groundcontrol
+DB_USERNAME=groundcontrol
 DB_PASSWORD=CHANGE_ME_SECURE_PASSWORD
-DB_NAME=groundcontrol
 DB_SSLMODE=disable
-DB_MAX_OPEN_CONNS=20
 
-# Authentication
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=CHANGE_ME_ADMIN_PASSWORD
-JWT_SECRET=GENERATE_RANDOM_32_CHAR_STRING_HERE
-JWT_EXPIRY=24h
-
-# Harbor Integration
+# Harbor Registry
 HARBOR_URL=https://harbor.example.com
 HARBOR_USERNAME=robot$groundcontrol
 HARBOR_PASSWORD=ROBOT_ACCOUNT_PASSWORD
-HARBOR_SKIP_TLS_VERIFY=false
-HARBOR_SYNC_INTERVAL=5m
+
+# Admin User
+ADMIN_PASSWORD=CHANGE_ME_ADMIN_PASSWORD
+SESSION_DURATION_HOURS=24
+PASSWORD_MIN_LENGTH=8
 
 # SPIFFE (optional, for zero-trust)
 SPIFFE_ENABLED=false
@@ -126,7 +119,7 @@ services:
 
       - satellite-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -210,52 +203,38 @@ Deploy one Satellite instance at each edge location.
 The configuration below is an example only. Refer to the Configuration Reference for all supported options and recommended values.
 
 ```bash
-cat > configs/satellite-config.yaml << 'EOF'
-satellite:
-  # Ground Control connection
-  ground_control:
-    url: http://ground-control:8080  # Or actual GC IP/hostname
-    device_id: edge-site-01          # Change per satellite
-    group: production-sites
-    auth_token: sat_reg_your_token_here
-    sync_interval: 5m
-    timeout: 30s
-    retry_attempts: 3
-
-  # Logging
-  log:
-    level: info
-    format: json
-    output: stdout
-
-  # Local registry
-  registry:
-    storage_path: /data/registry
-    host: 0.0.0.0
-    port: 5000
-    mode: mirror
-    allow_upstream_pull: true
-    upstream_url: https://harbor.example.com
-    upstream_timeout: 30s
-
-  # Container runtime integration
-  runtime:
-    type: containerd           # or crio
-    socket: /run/containerd/containerd.sock
-    mirrors:
-      enabled: true
-      namespace: docker.io
-
-  # Garbage collection
-  gc:
-    enabled: true
-    strategy: lru
-    target_percent: 80
-
-  # Scheduling
-  scheduler:
-    max_concurrent_pulls: 4
-    pull_timeout: 10m
+cat > configs/satellite-config.json << 'EOF'
+{
+  "state_config": {
+    "registry": "https://harbor.example.com",
+    "username": "robot_satellite_edge_site_01",
+    "password": "robot-account-secret"
+  },
+  "app_config": {
+    "ground_control_url": "http://ground-control:8080",
+    "log_level": "info",
+    "use_unsecure": false,
+    "state_replication_interval": "@every 00h05m00s",
+    "register_satellite_interval": "@every 00h01m00s",
+    "heartbeat_interval": "@every 00h01m00s",
+    "local_registry": {
+      "url": "http://0.0.0.0:8585"
+    }
+  },
+  "zot_config": {
+    "distSpecVersion": "1.1.0",
+    "storage": {
+      "rootDirectory": "/var/lib/satellite/zot"
+    },
+    "http": {
+      "address": "0.0.0.0",
+      "port": "8585"
+    },
+    "log": {
+      "level": "info"
+    }
+  }
+}
 EOF
 ```
 
