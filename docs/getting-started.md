@@ -22,6 +22,7 @@ Harbor Satellite consists of two main components:
 ### Development Tools
 
 Choose your preferred deployment method:
+
 - **Docker & Docker Compose** (recommended for getting started)
 - **Go 1.21+** for building from source
 - **Dagger** for development builds ([installation guide](https://docs.dagger.io/install))
@@ -29,12 +30,14 @@ Choose your preferred deployment method:
 ### System Requirements
 
 **Ground Control:**
+
 - CPU: 1-2 cores
 - Memory: 512MB - 1GB
 - Storage: Minimal (database dependent)
 - Network: Access to Harbor registry
 
 **Satellite (per edge location):**
+
 - CPU: 1-2 cores  
 - Memory: 1-2GB
 - Storage: Varies by image cache requirements (recommend 50GB+)
@@ -142,6 +145,7 @@ Ground Control manages all satellites and serves as the central coordination poi
 ```bash
 # Login and get session token
 TOKEN=$(curl -s -X POST http://localhost:8080/login \
+
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"SecurePass123"}' \
   | jq -r .token)
@@ -156,6 +160,7 @@ Groups define collections of images that satellites should replicate:
 ```bash
 # Create a group for production applications
 curl -X POST http://localhost:8080/api/groups/sync \
+
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -189,6 +194,7 @@ Configurations define how satellites behave:
 ```bash
 # Create configuration for edge deployments
 curl -X POST http://localhost:8080/api/configs \
+
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -235,6 +241,7 @@ Each satellite needs registration to receive its authentication credentials:
 ```bash
 # Register satellite for west coast edge location
 SATELLITE_TOKEN=$(curl -s -X POST http://localhost:8080/api/satellites \
+
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -295,6 +302,7 @@ Deploy the satellite at your edge location using the token from Step 3.
 2. **Run satellite:**
    ```bash
    ./bin/satellite \
+
      --token "$SATELLITE_TOKEN" \
      --ground-control-url "http://ground-control.example.com:8080"
    ```
@@ -303,6 +311,7 @@ Deploy the satellite at your edge location using the token from Step 3.
 
 ```bash
 docker run -d \
+
   --name satellite-edge-west-1 \
   -e TOKEN="$SATELLITE_TOKEN" \
   -e GROUND_CONTROL_URL="http://ground-control.example.com:8080" \
@@ -398,6 +407,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 # Verify image availability
 curl http://localhost:8585/v2/library/nginx/manifests/latest \
+
   -H "Accept: application/vnd.docker.distribution.manifest.v2+json"
 ```
 
@@ -429,6 +439,7 @@ Quick setup for development:
 ```bash
 # Use insecure connections for local testing
 curl -X POST http://localhost:8080/api/configs \
+
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -450,6 +461,7 @@ Secure configuration for production:
 
 ```bash
 curl -X POST http://localhost:8080/api/configs \
+
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -472,6 +484,7 @@ Configuration for disconnected environments:
 
 ```bash
 curl -X POST http://localhost:8080/api/configs \
+
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

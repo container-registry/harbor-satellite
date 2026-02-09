@@ -13,33 +13,37 @@ This document provides a high-level overview of Harbor Satellite architecture. F
 
 ## Core Components
 
-### Cloud Side (Central)
+### Ground Control (Cloud)
 
-#### Ground Control
 Central management service that orchestrates satellite fleets:
+
 - **Device Management** - Registration and grouping of edge locations
 - **State Management** - Desired vs actual state enforcement
 - **Configuration Distribution** - Centralized policy and config management
 - **Monitoring & Health** - Fleet-wide visibility and health checks
 
-#### Harbor Registry (Extended)
+### Harbor Registry (Extended)
+
 Central Harbor instance with satellite extension:
+
 - **Artifact Management** - Source of truth for container images
 - **Robot Account Integration** - Authentication for satellite communication
 - **Policy Engine** - Replication rules and access controls
 - **Audit & Compliance** - Tracking and governance
 
-### Edge Side (Satellite)
+### Satellite Process (Edge)
 
-#### Satellite Process
 Lightweight agent running on edge locations:
-- **State Synchronization** - Pulls desired state from Ground Control  
+
+- **State Synchronization** - Pulls desired state from Ground Control
 - **Image Replication** - Fetches and stores required container images
 - **Runtime Integration** - Configures container runtimes for local registry
 - **Health Reporting** - Status and telemetry back to Ground Control
 
-#### Local Registry (Zot)
+### Local Registry / Zot (Edge)
+
 OCI-compliant registry for on-site image storage:
+
 - **Image Storage** - Local cache of required container images
 - **Registry API** - Standard OCI Distribution API
 - **Performance Optimization** - Fast local image serving

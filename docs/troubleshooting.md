@@ -33,6 +33,7 @@ crictl info | grep -A 5 "registry"
 #### Satellite fails to start with configuration errors
 
 **Symptoms:**
+
 - Application exits during startup
 - "Configuration file not found" or similar errors
 - Exit code 1 or 2
@@ -73,6 +74,7 @@ satellite --config /path/to/config.json --validate-config
 #### Satellite exits with "Error initiating the config manager"
 
 **Symptoms:**
+
 - Process starts but exits immediately with configuration errors
 - HTTP client initialization failures
 
@@ -109,6 +111,7 @@ dig your-ground-control
 #### "connection refused" when connecting to Ground Control
 
 **Symptoms:**
+
 - Satellite cannot reach Ground Control
 - Network timeouts or connection errors
 - HTTP status 500 or connection timeouts
@@ -167,6 +170,7 @@ unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
 #### Authentication and authorization errors
 
 **Symptoms:**
+
 - HTTP 401 (Unauthorized) responses
 - HTTP 403 (Forbidden) responses
 - "invalid token" or "token expired" errors
@@ -178,6 +182,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" http://ground-control:8080/api/v1/sat
 
 # Generate new authentication token
 curl -X POST -H "Content-Type: application/json" \
+
   -d '{"username":"your-user","password":"your-password"}' \
   http://ground-control:8080/api/v1/auth/login
 
@@ -220,6 +225,7 @@ echo "YOUR_TOKEN" | base64 -d
 #### Local registry not accessible
 
 **Symptoms:**
+
 - Applications cannot pull images from local satellite registry
 - Registry connection timeouts or errors
 - HTTP 500 errors when accessing registry endpoints
@@ -280,6 +286,7 @@ ps aux | grep zot
 #### Image synchronization failures
 
 **Symptoms:**
+
 - Images not appearing in local registry
 - Sync process reports failures
 - "image not found" errors despite being in desired state
@@ -343,6 +350,7 @@ curl http://localhost:8585/v2/_catalog | jq .
 #### Containers still pulling from remote registries
 
 **Symptoms:**
+
 - Images downloading despite local registry running
 - Slow container startup times
 - Network traffic to remote registries
@@ -424,6 +432,7 @@ cat /etc/containers/registries.conf
 #### Mirror configuration not working
 
 **Symptoms:**
+
 - Registry mirrors configured but not used
 - Images still being pulled from upstream
 - No traffic to local registry
@@ -700,6 +709,7 @@ docker-compose logs -f --tail=100
 ```
 
 **Manual Installations:**
+
 - Satellite: `/var/log/satellite.log` or configured log path
 - Ground Control: `/var/log/ground-control.log` or configured log path  
 - Registry: `/var/log/zot.log` or configured log path
@@ -771,14 +781,17 @@ systemctl restart ground-control
 If you can't resolve the issue:
 
 1. **Collect debug information:**
+
    - Satellite and Ground Control logs
    - Configuration files (with secrets redacted)
    - System information and environment details
    
 2. **Check existing issues:**
+
    - [GitHub Issues](https://github.com/container-registry/harbor-satellite/issues)
    
 3. **Get community support:**
+
    - [#harbor-satellite on CNCF Slack](https://cloud-native.slack.com/archives/C06NE6EJBU1)
 
 ## See Also

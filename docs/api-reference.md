@@ -33,6 +33,7 @@ Obtain a session token via the login endpoint:
 
 ```bash
 curl -X POST http://localhost:8080/login \
+
   -H "Content-Type: application/json" \
   -d '{
     "username": "admin",
@@ -70,6 +71,7 @@ All error responses follow a consistent format:
 ```
 
 **Common HTTP Status Codes:**
+
 - `200 OK` - Success
 - `201 Created` - Resource created successfully  
 - `204 No Content` - Success with no response body
@@ -115,6 +117,7 @@ Authenticate and obtain a session token.
 **Example:**
 ```bash
 curl -X POST http://localhost:8080/login \
+
   -H "Content-Type: application/json" \
   -d '{
     "username": "admin",
@@ -131,6 +134,7 @@ curl -X POST http://localhost:8080/login \
 ```
 
 **Error Responses:**
+
 - `401 Unauthorized` - Invalid credentials
 - `429 Too Many Requests` - Rate limit exceeded
 
@@ -141,6 +145,7 @@ Zero-touch registration endpoint for satellites to obtain configuration.
 **Endpoint:** `GET /satellites/ztr/{token}`
 
 **Path Parameters:**
+
 - `token` (string, required): Satellite registration token
 
 **Example:**
@@ -186,6 +191,7 @@ Endpoint for satellites to report status and receive updates.
 **Example:**
 ```bash
 curl -X POST http://localhost:8080/satellites/sync \
+
   -H "Content-Type: application/json" \
   -d '{
     "name": "satellite_1",
@@ -247,6 +253,7 @@ Get details for a specific user.
 **Endpoint:** `GET /api/users/{username}`
 
 **Path Parameters:**
+
 - `username` (string, required): Username to retrieve
 
 **Example:**
@@ -282,6 +289,7 @@ Create a new user (requires system_admin role).
 **Example:**
 ```bash
 curl -X POST \
+
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"username":"newuser","password":"SecurePass123"}' \
@@ -332,6 +340,7 @@ Get details for a specific group.
 **Endpoint:** `GET /api/groups/{group}`
 
 **Path Parameters:**
+
 - `group` (string, required): Group name
 
 **Example:**
@@ -373,6 +382,7 @@ Create or update a group with artifact specifications.
 **Example:**
 ```bash
 curl -X POST \
+
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -420,6 +430,7 @@ Assign a satellite to a group.
 **Example:**
 ```bash
 curl -X POST \
+
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"satellite":"satellite_1","group":"production-apps"}' \
@@ -479,6 +490,7 @@ Get a specific configuration by name.
 **Endpoint:** `GET /api/configs/{config}`
 
 **Path Parameters:**
+
 - `config` (string, required): Configuration name
 
 **Example:**
@@ -530,6 +542,7 @@ Create a new configuration.
 **Example:**
 ```bash
 curl -X POST \
+
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d @config-payload.json \
@@ -613,6 +626,7 @@ Register a new satellite and get its authentication token.
 **Example:**
 ```bash
 curl -X POST \
+
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -639,6 +653,7 @@ Get details for a specific satellite.
 **Endpoint:** `GET /api/satellites/{satellite}`
 
 **Path Parameters:**
+
 - `satellite` (string, required): Satellite name
 
 **Example:**
@@ -710,6 +725,7 @@ Unregister a satellite and clean up its resources.
 **Example:**
 ```bash
 curl -X DELETE \
+
   -H "Authorization: Bearer $TOKEN" \
   http://localhost:8080/api/satellites/satellite_1
 ```

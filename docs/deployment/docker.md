@@ -90,8 +90,10 @@ services:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
+
       - postgres-data:/var/lib/postgresql/data
     ports:
+
       - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
@@ -99,6 +101,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
+
       - satellite-network
 
   ground-control:
@@ -109,14 +112,18 @@ services:
       postgres:
         condition: service_healthy
     env_file:
+
       - configs/groundcontrol.env
     ports:
+
       - "8080:8080"
       - "8090:8090"  # Metrics port
     volumes:
+
       - ground-control-data:/data
       - /etc/time/timezone:/etc/timezone:ro
     networks:
+
       - satellite-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
@@ -259,6 +266,7 @@ From your Ground Control host:
 ```bash
 # Get auth token
 TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
+
   -H "Content-Type: application/json" \
   -d '{
     "username":"admin",
@@ -267,6 +275,7 @@ TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
 
 # Register device
 RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/devices/register \
+
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -304,12 +313,15 @@ services:
     
     volumes:
       # Configuration
+
       - ./configs/satellite-config.yaml:/etc/satellite/config.yaml:ro
       
       # Data persistence
+
       - satellite-data:/data
       
       # Container runtime access
+
       - /run/containerd/containerd.sock:/run/containerd/containerd.sock
       - /etc/containerd/:/etc/containerd/
       
@@ -317,11 +329,13 @@ services:
       # - /run/spire/sockets:/run/spire/sockets:ro
     
     ports:
+
       - "5000:5000"          # Registry API
       - "8081:8081"          # Satellite API
       - "9090:9090"          # Metrics (Prometheus)
     
     networks:
+
       - satellite-edge-network
     
     healthcheck:
