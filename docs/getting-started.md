@@ -38,7 +38,7 @@ Choose your preferred deployment method:
 
 **Satellite (per edge location):**
 
-- CPU: 1-2 cores  
+- CPU: 1-2 cores
 - Memory: 1-2GB
 - Storage: Varies by image cache requirements (recommend 50GB+)
 - Network: Reliable connection to Ground Control (periodic sync)
@@ -47,13 +47,13 @@ Choose your preferred deployment method:
 
 ```mermaid
 graph TB
-    Harbor[Harbor Registry<br/>Central Image Storage] 
+    Harbor[Harbor Registry<br/>Central Image Storage]
     GC[Ground Control<br/>Management API<br/>PostgreSQL Database]
     Sat1[Satellite Edge-1<br/>Local Registry Zot<br/>Image Cache]
     Sat2[Satellite Edge-2<br/>Local Registry Zot<br/>Image Cache]
     Apps1[Edge Applications<br/>Kubernetes Pods<br/>Docker Containers]
     Apps2[Edge Applications<br/>Kubernetes Pods<br/>Docker Containers]
-    
+
     Harbor <--> GC
     GC <--> Sat1
     GC <--> Sat2
@@ -84,18 +84,18 @@ Ground Control manages all satellites and serves as the central coordination poi
    HARBOR_USERNAME=admin
    HARBOR_PASSWORD=Harbor12345
    HARBOR_URL=https://harbor.example.com
-   
-   # Ground Control Settings  
+
+   # Ground Control Settings
    PORT=8080
    ADMIN_PASSWORD=SecurePass123
    SESSION_DURATION_HOURS=24
-   
+
    # Database Configuration
    DB_HOST=postgres
    DB_DATABASE=groundcontrol
    DB_USERNAME=postgres
    DB_PASSWORD=strongPassword123
-   
+
    # Security Settings
    PASSWORD_MIN_LENGTH=8
    PASSWORD_REQUIRE_UPPERCASE=true
@@ -112,7 +112,7 @@ Ground Control manages all satellites and serves as the central coordination poi
    # Check health
    curl http://localhost:8080/health
    # Expected: HTTP 200 OK
-   
+
    # Check logs
    docker compose logs -f groundcontrol
    ```
@@ -134,7 +134,7 @@ Ground Control manages all satellites and serves as the central coordination poi
    export HARBOR_PASSWORD="Harbor12345"
    export DB_HOST="localhost"
    export ADMIN_PASSWORD="SecurePass123"
-   
+
    ./ground-control
    ```
 
@@ -175,7 +175,7 @@ curl -X POST http://localhost:8080/api/groups/sync \
         "deleted": false
       },
       {
-        "repository": "library/redis", 
+        "repository": "library/redis",
         "tag": ["7-alpine"],
         "type": "docker",
         "digest": "sha256:8b6b682f3a25d7b4e8f0c3a2b1e9f8d4c3a2b1e9f8d4c3a2b1e9f8d4c3a2b1e9",
@@ -206,7 +206,7 @@ curl -X POST http://localhost:8080/api/configs \
         "log_level": "info",
         "use_unsecure": false,
         "state_replication_interval": "@every 00h05m00s",
-        "register_satellite_interval": "@every 00h01m00s", 
+        "register_satellite_interval": "@every 00h01m00s",
         "heartbeat_interval": "@every 00h01m00s",
         "local_registry": {
           "url": "http://0.0.0.0:8585"
@@ -269,7 +269,7 @@ Deploy the satellite at your edge location using the token from Step 3.
 2. **Create environment file:**
    ```bash
    cat > .env << EOF
-   GROUND_CONTROL_URL=http://ground-control.example.com:8080  
+   GROUND_CONTROL_URL=http://ground-control.example.com:8080
    TOKEN=$SATELLITE_TOKEN
    USE_UNSECURE=false
    EOF
@@ -284,10 +284,10 @@ Deploy the satellite at your edge location using the token from Step 3.
    ```bash
    # Check container status
    docker compose ps satellite
-   
-   # Check satellite logs  
+
+   # Check satellite logs
    docker compose logs -f satellite
-   
+
    # Verify local registry
    curl http://localhost:8585/v2/_catalog
    ```
@@ -391,7 +391,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 # Verify local registry catalog
 curl http://localhost:8585/v2/_catalog
 
-# Check specific image replication  
+# Check specific image replication
 curl http://localhost:8585/v2/library/nginx/tags/list
 
 # Test pulling through satellite registry
@@ -488,7 +488,7 @@ curl -X POST http://localhost:8080/api/configs \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "config_name": "airgap-config", 
+    "config_name": "airgap-config",
     "config": {
       "app_config": {
         "ground_control_url": "https://ground-control.internal",
@@ -523,10 +523,10 @@ docker compose logs satellite
 # Verify token validity (should return configuration)
 curl http://localhost:8080/satellites/ztr/$SATELLITE_TOKEN
 
-# Test Ground Control connectivity  
+# Test Ground Control connectivity
 curl http://ground-control.example.com:8080/health
 
-# Check local registry 
+# Check local registry
 curl http://localhost:8585/v2/_catalog
 ```
 

@@ -26,7 +26,7 @@ Satellite configuration consists of three main sections:
     "log_level": "string",
     "use_unsecure": "boolean",
     "state_replication_interval": "string",
-    "update_config_interval": "string", 
+    "update_config_interval": "string",
     "register_satellite_interval": "string",
     "heartbeat_interval": "string",
     "metrics": {},
@@ -50,7 +50,7 @@ Harbor authentication credentials (managed by Ground Control):
 {
   "auth": {
     "url": "https://harbor.example.com",
-    "username": "robot_account_name", 
+    "username": "robot_account_name",
     "password": "robot_account_token"
   }
 }
@@ -75,7 +75,7 @@ Core satellite runtime settings.
 - **`ground_control_url`** (required) — Ground Control service URL
   - Example: `"http://ground-control:8080"`
 
-- **`use_unsecure`** (boolean) — Disable TLS verification for Ground Control connections  
+- **`use_unsecure`** (boolean) — Disable TLS verification for Ground Control connections
   - Default: `false`
   - Example: `true` (for development only)
 
@@ -89,7 +89,7 @@ All intervals use cron syntax (`@every NNhNNmNNs`):
 - **`update_config_interval`** — How often to check for configuration updates
   - Default: `"@every 00h00m10s"`
 
-- **`register_satellite_interval`** — How often to re-register with Ground Control  
+- **`register_satellite_interval`** — How often to re-register with Ground Control
   - Default: `"@every 00h00m10s"`
 
 - **`heartbeat_interval`** — Heartbeat frequency to Ground Control
@@ -107,14 +107,14 @@ All intervals use cron syntax (`@every NNhNNmNNs`):
 {
   "metrics": {
     "collect_cpu": true,
-    "collect_memory": true, 
+    "collect_memory": true,
     "collect_storage": true
   }
 }
 ```
 
 - **`collect_cpu`** — Enable CPU usage metrics
-- **`collect_memory`** — Enable memory usage metrics  
+- **`collect_memory`** — Enable memory usage metrics
 - **`collect_storage`** — Enable storage usage metrics
 
 #### Local Registry Settings
@@ -135,7 +135,7 @@ All intervals use cron syntax (`@every NNhNNmNNs`):
 {
   "tls": {
     "cert_file": "/path/to/cert.pem",
-    "key_file": "/path/to/key.pem", 
+    "key_file": "/path/to/key.pem",
     "ca_file": "/path/to/ca.pem",
     "skip_verify": false
   }
@@ -182,7 +182,7 @@ Embedded [Zot](https://zotregistry.io) registry settings.
 - **`storage.dedupe`** — Enable layer deduplication
 - **`storage.gc`** — Garbage collection settings
 
-#### HTTP Server  
+#### HTTP Server
 
 - **`http.address`** — Bind address for registry server
 - **`http.port`** — Port for registry server
@@ -199,7 +199,7 @@ Required for Ground Control operation:
 ```bash
 DB_HOST=localhost
 DB_PORT=5432
-DB_DATABASE=satellite  
+DB_DATABASE=satellite
 DB_USERNAME=satellite
 DB_PASSWORD=your-password
 DB_SSLMODE=disable
@@ -232,7 +232,7 @@ LOG_LEVEL=info
 For SPIFFE-based authentication:
 
 ```bash
-# SPIRE server settings  
+# SPIRE server settings
 SPIFE_ENABLED=true
 SPIRE_SOCKET_PATH=/tmp/spire-server/api.sock
 SPIRE_TRUST_DOMAIN=example.org
@@ -254,11 +254,11 @@ Minimal configuration for local development:
     "log_level": "debug",
     "use_unsecure": true,
     "local_registry": {
-      "url": "http://127.0.0.1:8585"  
+      "url": "http://127.0.0.1:8585"
     }
   },
   "zot_config": {
-    "distSpecVersion": "1.1.0", 
+    "distSpecVersion": "1.1.0",
     "storage": {
       "rootDirectory": "./zot"
     },
@@ -288,7 +288,7 @@ Secure configuration with TLS and proper intervals:
     "use_unsecure": false,
     "state_replication_interval": "@every 00h05m00s",
     "update_config_interval": "@every 00h15m00s",
-    "register_satellite_interval": "@every 01h00m00s", 
+    "register_satellite_interval": "@every 01h00m00s",
     "heartbeat_interval": "@every 00h01m00s",
     "metrics": {
       "collect_cpu": true,
@@ -339,7 +339,7 @@ Configuration for edge locations with intermittent connectivity:
     "log_level": "info",
     "use_unsecure": false,
     "state_replication_interval": "@every 00h01m00s",
-    "update_config_interval": "@every 00h05m00s", 
+    "update_config_interval": "@every 00h05m00s",
     "register_satellite_interval": "@every 00h30m00s",
     "heartbeat_interval": "@every 00h00m30s",
     "local_registry": {
@@ -362,7 +362,7 @@ SATELLITE_GROUND_CONTROL_URL=https://backup-gc.company.com
 # Override log level
 SATELLITE_LOG_LEVEL=debug
 
-# Override registry URL  
+# Override registry URL
 SATELLITE_REGISTRY_URL=http://localhost:5000
 ```
 

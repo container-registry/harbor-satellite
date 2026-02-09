@@ -8,7 +8,7 @@ Deploy Harbor Satellite on Kubernetes clusters. This guide covers basic setup us
 
 Kubernetes deployment includes:
 
-- **Ground Control** — Deployment in cloud cluster  
+- **Ground Control** — Deployment in cloud cluster
 - **PostgreSQL** — Database (managed service or StatefulSet)
 - **Satellite** — Deployment on edge cluster nodes
 

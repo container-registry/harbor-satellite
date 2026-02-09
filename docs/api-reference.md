@@ -73,7 +73,7 @@ All error responses follow a consistent format:
 **Common HTTP Status Codes:**
 
 - `200 OK` - Success
-- `201 Created` - Resource created successfully  
+- `201 Created` - Resource created successfully
 - `204 No Content` - Success with no response body
 - `400 Bad Request` - Invalid request parameters
 - `401 Unauthorized` - Authentication required or invalid
@@ -371,7 +371,7 @@ Create or update a group with artifact specifications.
     {
       "repository": "myapp/api",
       "tag": ["v1.0.0"],
-      "type": "docker", 
+      "type": "docker",
       "digest": "sha256:7b8ff7d47829...",
       "deleted": false
     }
@@ -446,7 +446,7 @@ Remove a satellite from a group.
 **Request Body:**
 ```json
 {
-  "satellite": "satellite_1", 
+  "satellite": "satellite_1",
   "group": "production-apps"
 }
 ```

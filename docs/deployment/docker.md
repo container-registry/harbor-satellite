@@ -143,7 +143,7 @@ volumes:
       type: none
       o: bind
       device: ./data/postgres
-  
+
   ground-control-data:
     driver: local
     driver_opts:
@@ -306,50 +306,50 @@ services:
     image: ghcr.io/container-registry/satellite:latest
     container_name: harbor-satellite
     restart: unless-stopped
-    
+
     environment:
       CONFIG_PATH: /etc/satellite/config.yaml
       LOG_LEVEL: info
-    
+
     volumes:
       # Configuration
 
       - ./configs/satellite-config.yaml:/etc/satellite/config.yaml:ro
-      
+
       # Data persistence
 
       - satellite-data:/data
-      
+
       # Container runtime access
 
       - /run/containerd/containerd.sock:/run/containerd/containerd.sock
       - /etc/containerd/:/etc/containerd/
-      
+
       # SPIFFE (optional)
       # - /run/spire/sockets:/run/spire/sockets:ro
-    
+
     ports:
 
       - "5000:5000"          # Registry API
       - "8081:8081"          # Satellite API
       - "9090:9090"          # Metrics (Prometheus)
-    
+
     networks:
 
       - satellite-edge-network
-    
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/v2/"]
       interval: 30s
       timeout: 10s
       retries: 3
-    
+
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
-    
+
     # Resource limits (adjust for your hardware)
     deploy:
       resources:
@@ -405,7 +405,7 @@ For production environments, consider adding TLS, backups, and monitoring based 
 
 - **Networking**: Multi-site connectivity, DNS resolution, and firewall configuration
 - **Security**: TLS termination, certificate management, and authentication
-- **Backup**: Database backup and disaster recovery strategies  
+- **Backup**: Database backup and disaster recovery strategies
 - **Monitoring**: Application metrics, container health, and log management
 - **Scale**: Load balancing, horizontal scaling, and resource planning
 
@@ -417,7 +417,7 @@ For production environments, consider adding TLS, backups, and monitoring based 
 - Verify configuration files and environment variables
 - Ensure required ports are available
 
-### Network connectivity issues  
+### Network connectivity issues
 
 - Verify Docker network configuration
 - Test connectivity between containers

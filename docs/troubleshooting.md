@@ -367,14 +367,14 @@ crictl info | grep -A 5 registry
 cat /etc/containerd/config.toml | grep -A 10 registry
 
 # For CRI-O:
-crictl info | grep -A 5 registry  
+crictl info | grep -A 5 registry
 cat /etc/containers/registries.conf
 ```
 
 **Solutions:**
 
 1. **Verify container runtime mirror configuration**
-   
+
    **Docker:**
    ```bash
    # Check current daemon.json
@@ -383,7 +383,7 @@ cat /etc/containers/registries.conf
    # {
    #   "registry-mirrors": ["http://localhost:8585"]
    # }
-   
+
    # Restart Docker daemon
    systemctl restart docker
    # Verify configuration took effect
@@ -395,7 +395,7 @@ cat /etc/containers/registries.conf
    # Check containerd config
    cat /etc/containerd/config.toml
    # Look for registry.mirrors section
-   
+
    # Restart containerd
    systemctl restart containerd
    # Test with crictl
@@ -407,7 +407,7 @@ cat /etc/containers/registries.conf
    # Check registries configuration
    cat /etc/containers/registries.conf
    # Should have mirror configuration
-   
+
    # Restart CRI-O
    systemctl restart crio
    ```
@@ -417,7 +417,7 @@ cat /etc/containers/registries.conf
    # Test from container runtime perspective
    # For Docker:
    docker run --rm alpine wget -qO- http://localhost:8585/v2/
-   
+
    # For containerd/CRI-O:
    crictl run --rm alpine wget -qO- http://host.docker.internal:8585/v2/
    ```
@@ -448,7 +448,7 @@ sudo systemctl restart docker
 
 # Monitor registry access
 sudo tcpdump -i any port 8585
-# Monitor upstream registry access  
+# Monitor upstream registry access
 sudo tcpdump -i any port 443 | grep registry
 
 # Test mirror with specific image
@@ -690,7 +690,7 @@ grep -E "GET|POST|PUT|DELETE" /var/log/zot.log | tail -20
 # Satellite logs
 journalctl -u satellite -f --since "1 hour ago"
 
-# Ground Control logs  
+# Ground Control logs
 journalctl -u ground-control -f --since "1 hour ago"
 
 # Registry logs
@@ -711,7 +711,7 @@ docker-compose logs -f --tail=100
 **Manual Installations:**
 
 - Satellite: `/var/log/satellite.log` or configured log path
-- Ground Control: `/var/log/ground-control.log` or configured log path  
+- Ground Control: `/var/log/ground-control.log` or configured log path
 - Registry: `/var/log/zot.log` or configured log path
 
 ## Recovery Procedures
@@ -785,11 +785,11 @@ If you can't resolve the issue:
    - Satellite and Ground Control logs
    - Configuration files (with secrets redacted)
    - System information and environment details
-   
+
 2. **Check existing issues:**
 
    - [GitHub Issues](https://github.com/container-registry/harbor-satellite/issues)
-   
+
 3. **Get community support:**
 
    - [#harbor-satellite on CNCF Slack](https://cloud-native.slack.com/archives/C06NE6EJBU1)
