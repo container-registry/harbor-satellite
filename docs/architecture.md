@@ -61,18 +61,21 @@ graph TB
 ## Key Architecture Principles
 
 ### Edge-First Design
+
 - **Autonomous Operation** - Satellites function independently when disconnected
 - **Minimal Resources** - Optimized for resource-constrained environments
 - **Fault Tolerance** - Graceful degradation during network failures
 - **Security** - Zero-trust identity and secure communication
 
 ### Declarative Management
+
 - **Desired State** - Ground Control defines what images should be available
 - **Reconciliation** - Satellites continuously sync to desired state
 - **Idempotent Operations** - Safe to retry and re-run operations
 - **Configuration as Code** - Versioned, auditable configuration management
 
 ### Scalable Fleet Management
+
 - **Hierarchical Organization** - Groups and individual satellite management
 - **Efficient Distribution** - Bandwidth-optimized image distribution
 - **Centralized Visibility** - Fleet-wide monitoring and management
@@ -98,12 +101,14 @@ Satellite operates in proxy mode, handling registry requests transparently and c
 ## Security Architecture
 
 ### Identity and Authentication
+
 - **SPIFFE/SPIRE Integration** - Workload identity for zero-trust communication
 - **Robot Accounts** - Harbor-managed service accounts for API access
 - **Certificate Management** - Automated TLS certificate provisioning
 - **Mutual TLS** - Encrypted communication between all components
 
 ### Network Security
+
 - **Configurable Endpoints** - Flexible network topology support
 - **Firewall Friendly** - Outbound-only connections from satellites
 - **Air-Gap Support** - Offline operation capabilities

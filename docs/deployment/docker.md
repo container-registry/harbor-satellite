@@ -398,16 +398,19 @@ For production environments, consider adding TLS, backups, and monitoring based 
 ## Common Docker Deployment Issues
 
 ### Container startup failures
+
 - Check container logs: `docker logs <container-name>`
 - Verify configuration files and environment variables
 - Ensure required ports are available
 
 ### Network connectivity issues  
+
 - Verify Docker network configuration
 - Test connectivity between containers
 - Check firewall rules and port accessibility
 
 ### Storage and resource issues
+
 - Monitor disk usage and clean up unused images
 - Adjust resource limits based on workload requirements
 - Ensure sufficient storage for registry data

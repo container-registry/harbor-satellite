@@ -728,17 +728,20 @@ When rate limits are exceeded, you'll receive a `429 Too Many Requests` response
 
 ## Best Practices
 
-### Authentication
+#### Authentication Best Practices
+
 - Store session tokens securely
 - Implement token refresh before expiration
 - Use HTTPS in production environments
 
-### Error Handling
+#### Error Handling Best Practices
+
 - Always check HTTP status codes
 - Parse error response bodies for detailed messages
 - Implement retries with exponential backoff for 5xx errors
 
-### Polling
+#### Polling Best Practices
+
 - Use appropriate intervals for satellite status checks
 - Implement jitter to avoid thundering herd effects
 - Cache responses when appropriate

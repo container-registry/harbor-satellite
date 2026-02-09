@@ -534,21 +534,25 @@ docker compose exec groundcontrol \
 Now that you have Harbor Satellite running:
 
 ### Production Deployment
+
 - **Security**: Configure TLS certificates and secure authentication
 - **Monitoring**: Set up metrics collection and alerting
 - **Backup**: Implement backup strategies for Ground Control database
 - **Scaling**: Deploy additional satellites at other edge locations
 
 ### Advanced Configuration
+
 - **[Configuration Reference](configuration.md)** - Complete configuration options
 - **[API Reference](api-reference.md)** - Full API documentation for automation
 - **[Architecture Guide](architecture.md)** - Deep dive into system design
 
 ### Deployment Guides
+
 - **[Docker Deployment](deployment/docker.md)** - Production Docker setup
 - **[Kubernetes Deployment](deployment/kubernetes.md)** - K8s deployment manifests
 
 ### Operations
+
 - **[Troubleshooting Guide](troubleshooting.md)** - Common issues and solutions
 - **[Monitoring Setup](../examples/)** - Example monitoring configurations
 
