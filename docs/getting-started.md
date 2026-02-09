@@ -65,7 +65,7 @@ graph TB
 
 Ground Control manages all satellites and serves as the central coordination point.
 
-### Option A: Docker Compose (Recommended)
+### Option A: Docker Compose (Recommended - Ground Control)
 
 1. **Clone and setup:**
    ```bash
@@ -117,7 +117,7 @@ Ground Control manages all satellites and serves as the central coordination poi
    docker compose logs -f groundcontrol
    ```
 
-### Option B: Binary Installation
+### Option B: Binary Installation (Ground Control)
 
 1. **Build Ground Control:**
    ```bash
@@ -259,7 +259,7 @@ echo "Satellite token: $SATELLITE_TOKEN"
 
 Deploy the satellite at your edge location using the token from Step 3.
 
-### Option A: Docker Compose (Recommended)
+### Option A: Docker Compose (Recommended - Satellite)
 
 1. **Navigate to project root:**
    ```bash
@@ -292,7 +292,7 @@ Deploy the satellite at your edge location using the token from Step 3.
    curl http://localhost:8585/v2/_catalog
    ```
 
-### Option B: Binary Installation
+### Option B: Binary Installation (Satellite)
 
 1. **Build satellite:**
    ```bash

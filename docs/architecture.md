@@ -120,12 +120,14 @@ Satellite operates in proxy mode, handling registry requests transparently and c
 ## Data Flow and State Management
 
 ### Configuration Distribution
+
 1. **Policy Definition** - Administrators define image distribution policies in Harbor
 2. **State Generation** - Ground Control generates desired state artifacts
 3. **State Distribution** - Satellites pull state updates on configurable schedules
 4. **Local Reconciliation** - Satellites ensure local state matches desired state
 
 ### Image Replication
+
 1. **State Analysis** - Satellite compares local images with desired state
 2. **Delta Calculation** - Identifies missing or outdated images
 3. **Efficient Transfer** - Downloads only required image layers
@@ -133,6 +135,7 @@ Satellite operates in proxy mode, handling registry requests transparently and c
 5. **Verification** - Validates image integrity and signatures
 
 ### Runtime Integration
+
 1. **Mirror Configuration** - Updates container runtime mirror configs
 2. **Host Configuration** - Modifies registry resolution (hosts.toml, registries.conf)
 3. **Service Restart** - Signals runtime to reload configuration
