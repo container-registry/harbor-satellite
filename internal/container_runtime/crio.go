@@ -113,10 +113,8 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) (string, err
 		return bkPath, fmt.Errorf("failed to copy temporary .toml file to registries.conf: %w", err)
 	}
 
-	// cleanup: delete temporary file
-	if err := os.Remove(tempRegistriesConfigPath); err != nil {
-		return bkPath, fmt.Errorf("failed to delete temporary .toml file : %w", err)
-	}
+	// cleanup: delete temporary file (non-fatal)
+	_ = os.Remove(tempRegistriesConfigPath)
 
 	return bkPath, nil
 }
