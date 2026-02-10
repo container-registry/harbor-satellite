@@ -290,7 +290,7 @@ func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Sat
 		Msg("Received shutdown signal, initiating graceful shutdown")
 
 	// Create a shutdown context with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownDuration)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.WithValue(context.Background(), logger.LoggerKey, log), shutdownDuration)
 	defer shutdownCancel()
 
 	// Stop schedulers to prevent new tasks from being accepted
