@@ -36,7 +36,7 @@ type ConfigFetcherResult struct {
 	Cancelled    bool
 }
 
-func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath string) *FetchAndReplicateStateProcess {
+func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath string, log *zerolog.Logger) *FetchAndReplicateStateProcess {
 	p := &FetchAndReplicateStateProcess{
 		name:          config.ReplicateStateJobName,
 		cm:            cm,
@@ -45,7 +45,9 @@ func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath st
 
 	if stateFilePath != "" {
 		persisted, err := LoadState(stateFilePath)
-		if err == nil && persisted != nil {
+		if err != nil {
+			log.Warn().Err(err).Str("path", stateFilePath).Msg("Corrupted state file, starting fresh")
+		} else if persisted != nil {
 			p.currentConfigDigest = persisted.ConfigDigest
 			for _, g := range persisted.Groups {
 				p.stateMap = append(p.stateMap, StateMap{
