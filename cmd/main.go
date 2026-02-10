@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/container-registry/harbor-satellite/internal/container_runtime"
+	"os"
+
+	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/hotreload"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/registry"
@@ -13,7 +15,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
-	"os"
 
 	_ "github.com/joho/godotenv/autoload"
 	"github.com/rs/zerolog"
@@ -48,6 +49,7 @@ type SatelliteOptions struct {
 	RegistryUsername       string
 	RegistryPassword       string
 	ConfigDir              string
+	RegistryDataDir        string
 }
 
 func main() {
@@ -66,6 +68,7 @@ func main() {
 	flag.StringVar(&opts.RegistryUsername, "registry-username", "", "External registry username")
 	flag.StringVar(&opts.RegistryPassword, "registry-password", "", "External registry password")
 	flag.StringVar(&opts.ConfigDir, "config-dir", "", "Configuration directory path (default: ~/.config/satellite)")
+	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", "", "Registry data directory (overrides default storage path derived from config-dir)")
 
 	flag.Parse()
 
@@ -102,6 +105,9 @@ func main() {
 	if opts.ConfigDir == "" {
 		opts.ConfigDir = os.Getenv("CONFIG_DIR")
 	}
+	if opts.RegistryDataDir == "" {
+		opts.RegistryDataDir = os.Getenv(config.RegistryDataDirEnvVar)
+	}
 
 	// Resolve config directory path
 	if opts.ConfigDir == "" {
@@ -117,6 +123,11 @@ func main() {
 	if err != nil {
 		fmt.Printf("Error resolving config paths: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Override ZotStorageDir if --registry-data-dir flag or env var is set
+	if opts.RegistryDataDir != "" {
+		pathConfig.ZotStorageDir = opts.RegistryDataDir
 	}
 
 	// Token is not required if SPIFFE is enabled
