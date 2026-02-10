@@ -197,6 +197,15 @@ func TestGetUserHandler(t *testing.T) {
 }
 
 func TestDeleteUserHandler(t *testing.T) {
+	caller := AuthUser{ID: 1, Username: "superadmin", Role: "system_admin"}
+
+	deleteReq := func(username string) *http.Request {
+		req := httptest.NewRequest(http.MethodDelete, "/api/users/"+username, nil)
+		req = mux.SetURLVars(req, map[string]string{"username": username})
+		ctx := context.WithValue(req.Context(), userContextKey, caller)
+		return req.WithContext(ctx)
+	}
+
 	t.Run("success returns 204", func(t *testing.T) {
 		server, mock := newMockServerWithAuth(t)
 		now := time.Now().UTC().Truncate(time.Second)
@@ -214,13 +223,8 @@ func TestDeleteUserHandler(t *testing.T) {
 			WithArgs("alice").
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/users/alice", nil)
-		req = mux.SetURLVars(req, map[string]string{"username": "alice"})
-		ctx := context.WithValue(req.Context(), userContextKey, AuthUser{ID: 1, Username: "superadmin", Role: "system_admin"})
-		req = req.WithContext(ctx)
-
 		rr := httptest.NewRecorder()
-		server.deleteUserHandler(rr, req)
+		server.deleteUserHandler(rr, deleteReq("alice"))
 
 		require.Equal(t, http.StatusNoContent, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -229,13 +233,8 @@ func TestDeleteUserHandler(t *testing.T) {
 	t.Run("self-delete blocked returns 400", func(t *testing.T) {
 		server, _ := newMockServerWithAuth(t)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/users/superadmin", nil)
-		req = mux.SetURLVars(req, map[string]string{"username": "superadmin"})
-		ctx := context.WithValue(req.Context(), userContextKey, AuthUser{ID: 1, Username: "superadmin", Role: "system_admin"})
-		req = req.WithContext(ctx)
-
 		rr := httptest.NewRecorder()
-		server.deleteUserHandler(rr, req)
+		server.deleteUserHandler(rr, deleteReq("superadmin"))
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
@@ -243,13 +242,8 @@ func TestDeleteUserHandler(t *testing.T) {
 	t.Run("admin delete blocked returns 400", func(t *testing.T) {
 		server, _ := newMockServerWithAuth(t)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/users/admin", nil)
-		req = mux.SetURLVars(req, map[string]string{"username": "admin"})
-		ctx := context.WithValue(req.Context(), userContextKey, AuthUser{ID: 1, Username: "superadmin", Role: "system_admin"})
-		req = req.WithContext(ctx)
-
 		rr := httptest.NewRecorder()
-		server.deleteUserHandler(rr, req)
+		server.deleteUserHandler(rr, deleteReq("admin"))
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
@@ -261,13 +255,8 @@ func TestDeleteUserHandler(t *testing.T) {
 			WithArgs("nonexistent").
 			WillReturnError(sql.ErrNoRows)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/users/nonexistent", nil)
-		req = mux.SetURLVars(req, map[string]string{"username": "nonexistent"})
-		ctx := context.WithValue(req.Context(), userContextKey, AuthUser{ID: 1, Username: "superadmin", Role: "system_admin"})
-		req = req.WithContext(ctx)
-
 		rr := httptest.NewRecorder()
-		server.deleteUserHandler(rr, req)
+		server.deleteUserHandler(rr, deleteReq("nonexistent"))
 
 		require.Equal(t, http.StatusNotFound, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -282,23 +271,19 @@ func TestLoginHandler(t *testing.T) {
 		hash, err := auth.HashPassword("SecurePass1")
 		require.NoError(t, err)
 
-		// GetLoginAttempts - no previous attempts
 		mock.ExpectQuery("SELECT .+ FROM login_attempts").
 			WithArgs("testuser").
 			WillReturnError(sql.ErrNoRows)
 
-		// GetUserByUsername
 		mock.ExpectQuery("SELECT .+ FROM users WHERE username").
 			WithArgs("testuser").
 			WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role", "created_at", "updated_at"}).
 				AddRow(1, "testuser", hash, "admin", now, now))
 
-		// ResetLoginAttempts
 		mock.ExpectExec("UPDATE login_attempts").
 			WithArgs("testuser").
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		// CreateSession
 		mock.ExpectQuery("INSERT INTO sessions").
 			WithArgs(int32(1), sqlmock.AnyArg(), sqlmock.AnyArg()).
 			WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "token", "expires_at", "created_at"}).
@@ -322,18 +307,15 @@ func TestLoginHandler(t *testing.T) {
 		hash, err := auth.HashPassword("CorrectPass1")
 		require.NoError(t, err)
 
-		// GetLoginAttempts
 		mock.ExpectQuery("SELECT .+ FROM login_attempts").
 			WithArgs("testuser").
 			WillReturnError(sql.ErrNoRows)
 
-		// GetUserByUsername
 		mock.ExpectQuery("SELECT .+ FROM users WHERE username").
 			WithArgs("testuser").
 			WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role", "created_at", "updated_at"}).
 				AddRow(1, "testuser", hash, "admin", now, now))
 
-		// recordFailedAttempt -> UpsertLoginAttempt
 		mock.ExpectQuery("INSERT INTO login_attempts").
 			WithArgs("testuser").
 			WillReturnRows(sqlmock.NewRows([]string{"id", "username", "failed_count", "locked_until", "last_attempt"}).

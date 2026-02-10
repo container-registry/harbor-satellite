@@ -149,17 +149,15 @@ func TestDeleteConfigHandler_ConfigInUse(t *testing.T) {
 	server, mock := newMockServer(t)
 	now := time.Now().UTC().Truncate(time.Second)
 
-	configRows := sqlmock.NewRows([]string{"id", "config_name", "registry_url", "config", "created_at", "updated_at"}).
-		AddRow(1, "used-config", "http://harbor:8080", json.RawMessage(`{}`), now, now)
 	mock.ExpectQuery("SELECT .+ FROM configs WHERE config_name").
 		WithArgs("used-config").
-		WillReturnRows(configRows)
+		WillReturnRows(sqlmock.NewRows([]string{"id", "config_name", "registry_url", "config", "created_at", "updated_at"}).
+			AddRow(1, "used-config", "http://harbor:8080", json.RawMessage(`{}`), now, now))
 
-	satConfigRows := sqlmock.NewRows([]string{"satellite_id", "config_id"}).
-		AddRow(1, 1)
 	mock.ExpectQuery("SELECT .+ FROM satellite_configs").
 		WithArgs(int32(1)).
-		WillReturnRows(satConfigRows)
+		WillReturnRows(sqlmock.NewRows([]string{"satellite_id", "config_id"}).
+			AddRow(1, 1))
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/configs/used-config", nil)
 	req = mux.SetURLVars(req, map[string]string{"config": "used-config"})

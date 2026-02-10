@@ -154,10 +154,9 @@ func TestGroupSatelliteHandler(t *testing.T) {
 			WithArgs("empty-group").
 			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 
-		emptyRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at"})
 		mock.ExpectQuery("SELECT .+ FROM satellites").
 			WithArgs("empty-group").
-			WillReturnRows(emptyRows)
+			WillReturnRows(sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at"}))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/groups/empty-group/satellites", nil)
 		req = mux.SetURLVars(req, map[string]string{"group": "empty-group"})
