@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -19,7 +20,7 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) (string, err
 	if _, err := os.Stat(registriesConfigPath); os.IsNotExist(err) {
 		f, err := os.Create(registriesConfigPath)
 		if err != nil {
-			return "", fmt.Errorf("error while creating registries.conf : %w", err)
+			return "", fmt.Errorf("error creating registries.conf: %w", err)
 		}
 		_ = f.Close()
 	}
@@ -52,40 +53,22 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) (string, err
 	insecure := !strings.HasPrefix(localMirror, "https://")
 
 	for _, upstream := range upstreamRegistries {
-		// configure only those fields which are not already configured
-		registryFound := false
-		for i := range cfg.Registries {
-			r := &cfg.Registries[i]
-			if r.Location == upstream {
-				registryFound = true
+		idx := slices.IndexFunc(cfg.Registries, func(r Registry) bool {
+			return r.Location == upstream
+		})
 
-				mirrorFound := false
-				for _, m := range r.Mirrors {
-					if m.Location == localMirror {
-						mirrorFound = true
-						break
-					}
-				}
-
-				if !mirrorFound {
-					r.Mirrors = append(r.Mirrors, Mirror{
-						Location: localMirror,
-						Insecure: insecure,
-					})
-				}
-				break
+		if idx >= 0 {
+			r := &cfg.Registries[idx]
+			hasMirror := slices.ContainsFunc(r.Mirrors, func(m Mirror) bool {
+				return m.Location == localMirror
+			})
+			if !hasMirror {
+				r.Mirrors = append(r.Mirrors, Mirror{Location: localMirror, Insecure: insecure})
 			}
-		}
-
-		if !registryFound {
+		} else {
 			cfg.Registries = append(cfg.Registries, Registry{
 				Location: upstream,
-				Mirrors: []Mirror{
-					{
-						Location: localMirror,
-						Insecure: insecure,
-					},
-				},
+				Mirrors:  []Mirror{{Location: localMirror, Insecure: insecure}},
 			})
 		}
 	}
