@@ -216,7 +216,7 @@ func TestExecute_CRIReporting(t *testing.T) {
 	})
 
 	t.Run("retry after failure includes CRI", func(t *testing.T) {
-		var shouldFail bool = true
+		shouldFail := true
 		var lastActivity string
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var req StatusReportParams
