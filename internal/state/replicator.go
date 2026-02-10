@@ -100,6 +100,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		}
 		if transport != nil {
 			pullOpts = append(pullOpts, remote.WithTransport(transport))
+			pushOpts = append(pushOpts, remote.WithTransport(transport))
 		}
 	}
 
