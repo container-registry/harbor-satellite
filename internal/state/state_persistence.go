@@ -45,22 +45,28 @@ func SaveState(path string, stateMap []StateMap, configDigest string) error {
 	}
 	tmpName := tmp.Name()
 
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
+	cleanup := func() {
+		if closeErr := tmp.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close temp file: %w", closeErr)
+		}
+		if err != nil {
+			if removeErr := os.Remove(tmpName); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				err = fmt.Errorf("%w (cleanup failed: %v)", err, removeErr)
+			}
+		}
+	}
+	defer cleanup()
+
+	if _, err = tmp.Write(data); err != nil {
 		return fmt.Errorf("write temp file: %w", err)
 	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
+	if err = tmp.Sync(); err != nil {
 		return fmt.Errorf("sync temp file: %w", err)
 	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
+	if err = tmp.Close(); err != nil {
 		return fmt.Errorf("close temp file: %w", err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		_ = os.Remove(tmpName)
+	if err = os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("rename temp to state file: %w", err)
 	}
 
