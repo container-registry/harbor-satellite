@@ -80,8 +80,11 @@ func (s *Satellite) Run(ctx context.Context) error {
 	s.schedulers = append(s.schedulers, stateScheduler)
 	stateScheduler.Start(ctx)
 
-	// Create status report scheduler
+	// Create status report scheduler with pending CRI results
 	statusReportProcess := state.NewStatusReportingProcess(s.cm)
+	if len(s.criResults) > 0 {
+		statusReportProcess.SetPendingCRIResults(s.criResults)
+	}
 	statusScheduler, err := scheduler.NewSchedulerWithInterval(
 		s.cm.GetHeartbeatInterval(),
 		statusReportProcess,
