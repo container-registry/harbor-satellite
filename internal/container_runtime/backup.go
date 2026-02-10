@@ -12,8 +12,11 @@ import (
 // backupFile creates a timestamped backup of the given file.
 // Returns the backup path, or empty string if the source does not exist.
 func backupFile(path string) (string, error) {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return "", nil
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("stat %s: %w", path, err)
 	}
 
 	timestamp := time.Now().Format("20060102T150405")
