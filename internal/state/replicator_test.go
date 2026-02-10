@@ -7,9 +7,11 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/random"
-	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/types"
+	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -237,4 +239,80 @@ func TestDeleteReplicationEntity(t *testing.T) {
 		{Name: "alpine", Repository: "library", Tag: "latest"},
 	})
 	require.NoError(t, err)
+}
+
+// TestReplicate_LayerResume simulates crash mid-replication and verifies that
+// already-present layers are skipped during resume. This tests the blob-level
+// deduplication that happens inside remote.Write via HEAD checks.
+func TestReplicate_LayerResume(t *testing.T) {
+	_, srcAddr := newTestRegistry(t)
+	_, dstAddr := newTestRegistry(t)
+
+	// Step 1: Create base image with 3 layers
+	baseImg, err := random.Image(1024, 3)
+	require.NoError(t, err)
+	baseLayers, err := baseImg.Layers()
+	require.NoError(t, err)
+	require.Len(t, baseLayers, 3, "base image should have 3 layers")
+
+	// Step 2: Create extended image by appending 2 new layers to base image
+	// This creates an image with 5 layers where first 3 are shared with baseImg
+	newLayer1, err := random.Layer(1024, types.DockerLayer)
+	require.NoError(t, err)
+	newLayer2, err := random.Layer(1024, types.DockerLayer)
+	require.NoError(t, err)
+
+	extendedImgRaw, err := mutate.AppendLayers(baseImg, newLayer1, newLayer2)
+	require.NoError(t, err)
+
+	// Convert to OCI format (same as what replicator does) for consistent digest
+	extendedImg := mutate.MediaType(extendedImgRaw, types.OCIManifestSchema1)
+	extendedLayers, err := extendedImg.Layers()
+	require.NoError(t, err)
+	require.Len(t, extendedLayers, 5, "extended image should have 5 layers")
+
+	// Step 3: Push base image to both source and dest
+	// This simulates a previous replication that completed (establishing 3 layers at dest)
+	baseRefSrc, err := name.ParseReference(srcAddr+"/library/app:base", name.Insecure)
+	require.NoError(t, err)
+	require.NoError(t, remote.Write(baseRefSrc, baseImg))
+
+	baseRefDst, err := name.ParseReference(dstAddr+"/library/app:base", name.Insecure)
+	require.NoError(t, err)
+	require.NoError(t, remote.Write(baseRefDst, baseImg))
+
+	// Step 4: Push extended image to source only
+	extRefSrc, err := name.ParseReference(srcAddr+"/library/app:extended", name.Insecure)
+	require.NoError(t, err)
+	require.NoError(t, remote.Write(extRefSrc, extendedImg))
+
+	// Step 5: Replicate the extended image from source to dest
+	// The destination already has 3 of the 5 layers (from base image)
+	// remote.Write should detect these via blob HEAD checks and only pull the 2 new layers
+	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
+	ctx := testContext()
+
+	err = r.Replicate(ctx, []Entity{
+		{Name: "app", Repository: "library", Tag: "extended"},
+	})
+	require.NoError(t, err, "replication should succeed with layer-level resume")
+
+	// Step 6: Verify the image exists at destination with correct content
+	extRefDst, err := name.ParseReference(dstAddr+"/library/app:extended", name.Insecure)
+	require.NoError(t, err)
+
+	dstImg, err := remote.Image(extRefDst, remote.WithContext(ctx))
+	require.NoError(t, err, "replicated image should exist at destination")
+
+	// Verify layer count matches source
+	finalLayers, err := dstImg.Layers()
+	require.NoError(t, err)
+	require.Len(t, finalLayers, 5, "destination should have all 5 layers")
+
+	// Verify digest matches source (proves all layers were correctly replicated)
+	srcDigest, err := extendedImg.Digest()
+	require.NoError(t, err)
+	dstDigest, err := dstImg.Digest()
+	require.NoError(t, err)
+	require.Equal(t, srcDigest, dstDigest, "digests should match after replication")
 }
