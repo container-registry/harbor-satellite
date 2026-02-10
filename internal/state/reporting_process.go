@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
+	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -17,11 +19,13 @@ import (
 const StatusReportRoute = "satellites/sync"
 
 type StatusReportingProcess struct {
-	name         string
-	isRunning    bool
-	mu           *sync.Mutex
-	cm           *config.ConfigManager
-	spiffeClient *spiffe.Client
+	name             string
+	isRunning        bool
+	mu               *sync.Mutex
+	cm               *config.ConfigManager
+	spiffeClient     *spiffe.Client
+	pendingCRI      []runtime.CRIConfigResult
+	criReported     bool
 }
 
 func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess {
@@ -44,6 +48,13 @@ func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess
 	}
 
 	return p
+}
+
+// SetPendingCRIResults stores CRI config results to be sent in the first heartbeat.
+func (s *StatusReportingProcess) SetPendingCRIResults(results []runtime.CRIConfigResult) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pendingCRI = results
 }
 
 func (s *StatusReportingProcess) Execute(ctx context.Context) error {
@@ -79,6 +90,15 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 		RequestCreatedTime:  time.Now().UTC(),
 	}
 
+	// Include pending CRI results until successfully sent
+	s.mu.Lock()
+	hasPendingCRI := !s.criReported && len(s.pendingCRI) > 0
+	if hasPendingCRI {
+		req.Activity = formatCRIActivity(s.pendingCRI)
+		log.Info().Str("activity", req.Activity).Msg("Reporting CRI config results")
+	}
+	s.mu.Unlock()
+
 	registryURL := s.cm.GetLocalRegistryURL()
 	insecure := s.cm.UseUnsecure()
 	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
@@ -89,8 +109,34 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 		return err
 	}
 
+	// Clear CRI results only after successful send
+	if hasPendingCRI {
+		s.mu.Lock()
+		s.criReported = true
+		s.pendingCRI = nil
+		s.mu.Unlock()
+	}
+
 	log.Info().Str("satellite", satelliteName).Msg("Status report sent successfully")
 	return nil
+}
+
+// formatCRIActivity formats CRI config results into a structured string for the Activity field.
+func formatCRIActivity(results []runtime.CRIConfigResult) string {
+	var parts []string
+	for _, r := range results {
+		status := "ok"
+		if !r.Success {
+			status = "err:" + r.Error
+		}
+		entry := string(r.CRI) + "(" + status
+		if r.BackupPath != "" {
+			entry += ", backup:" + r.BackupPath
+		}
+		entry += ")"
+		parts = append(parts, entry)
+	}
+	return "cri_fallback_configured: " + strings.Join(parts, ", ")
 }
 
 func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundControlURL string, req *StatusReportParams) error {

@@ -3,6 +3,7 @@ package satellite
 import (
 	"context"
 
+	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/state"
@@ -11,13 +12,15 @@ import (
 
 type Satellite struct {
 	cm            *config.ConfigManager
+	criResults    []runtime.CRIConfigResult
 	schedulers    []*scheduler.Scheduler
 	stateFilePath string
 }
 
-func NewSatellite(cm *config.ConfigManager, stateFilePath string) *Satellite {
+func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string) *Satellite {
 	return &Satellite{
 		cm:            cm,
+		criResults:    criResults,
 		schedulers:    make([]*scheduler.Scheduler, 0),
 		stateFilePath: stateFilePath,
 	}
@@ -77,8 +80,11 @@ func (s *Satellite) Run(ctx context.Context) error {
 	s.schedulers = append(s.schedulers, stateScheduler)
 	stateScheduler.Start(ctx)
 
-	// Create status report scheduler
+	// Create status report scheduler with pending CRI results
 	statusReportProcess := state.NewStatusReportingProcess(s.cm)
+	if len(s.criResults) > 0 {
+		statusReportProcess.SetPendingCRIResults(s.criResults)
+	}
 	statusScheduler, err := scheduler.NewSchedulerWithInterval(
 		s.cm.GetHeartbeatInterval(),
 		statusReportProcess,

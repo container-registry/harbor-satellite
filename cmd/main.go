@@ -51,6 +51,8 @@ type SatelliteOptions struct {
 	RegistryPassword       string
 	ConfigDir              string
 	RegistryDataDir        string
+	NoRegistryFallback     bool
+	FallbackOnly           bool
 }
 
 func main() {
@@ -61,7 +63,7 @@ func main() {
 	flag.BoolVar(&opts.JSONLogging, "json-logging", true, "Enable JSON logging")
 	flag.StringVar(&opts.Token, "token", "", "Satellite token")
 	flag.BoolVar(&opts.UseUnsecure, "use-unsecure", false, "Use insecure (HTTP) connections to registries")
-	flag.Var(&opts.Mirrors, "mirrors", "Specify CRI and registries in the form CRI:registry1,registry2")
+	flag.Var(&opts.Mirrors, "mirrors", "Override CRI registry config. Format: CRI:registry1,registry2")
 	flag.BoolVar(&opts.SPIFFEEnabled, "spiffe-enabled", false, "Enable SPIFFE/SPIRE authentication")
 	flag.StringVar(&opts.SPIFFEEndpointSocket, "spiffe-endpoint-socket", config.DefaultSPIFFEEndpointSocket, "SPIFFE Workload API endpoint socket")
 	flag.StringVar(&opts.SPIFFEExpectedServerID, "spiffe-expected-server-id", "", "Expected SPIFFE ID of Ground Control server")
@@ -72,6 +74,8 @@ func main() {
 	flag.StringVar(&opts.ConfigDir, "config-dir", "", "Configuration directory path (default: ~/.config/satellite)")
 	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", "", "Registry data directory (overrides default storage path derived from config-dir)")
 	flag.StringVar(&shutdownTimeout, "shutdown-timeout", "", "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
+	flag.BoolVar(&opts.NoRegistryFallback, "no-registry-fallback", false, "Disable all CRI registry fallback configuration")
+	flag.BoolVar(&opts.FallbackOnly, "fallback-only", false, "Apply CRI registry fallback configs and exit without starting satellite")
 
 	flag.Parse()
 
@@ -117,6 +121,9 @@ func main() {
 			shutdownTimeout = "30s"
 		}
 	}
+	if !opts.NoRegistryFallback && os.Getenv("NO_REGISTRY_FALLBACK") == "true" {
+		opts.NoRegistryFallback = true
+	}
 
 	// Resolve config directory path
 	if opts.ConfigDir == "" {
@@ -139,14 +146,19 @@ func main() {
 		pathConfig.ZotStorageDir = opts.RegistryDataDir
 	}
 
-	// Token is not required if SPIFFE is enabled
-	if !opts.SPIFFEEnabled && (opts.Token == "" || opts.GroundControlURL == "") {
-		fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars (or enable SPIFFE with --spiffe-enabled).")
-		os.Exit(1)
+	// For --fallback-only mode, relax token/gc-url requirements
+	if !opts.FallbackOnly {
+		if !opts.SPIFFEEnabled && (opts.Token == "" || opts.GroundControlURL == "") {
+			fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars (or enable SPIFFE with --spiffe-enabled).")
+			os.Exit(1)
+		}
+		if opts.GroundControlURL == "" {
+			fmt.Println("Missing required argument: --ground-control-url or GROUND_CONTROL_URL env var.")
+			os.Exit(1)
+		}
 	}
 	if opts.GroundControlURL == "" {
-		fmt.Println("Missing required argument: --ground-control-url or GROUND_CONTROL_URL env var.")
-		os.Exit(1)
+		opts.GroundControlURL = config.DefaultGroundControlURL
 	}
 	if opts.BYORegistry && opts.RegistryURL == "" {
 		fmt.Println("Missing required argument: --registry-url is required when --byo-registry is enabled.")
@@ -202,8 +214,20 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	if err != nil {
 		return fmt.Errorf("resolving local registry endpoint: %w", err)
 	}
-	if err := runtime.ApplyCRIConfigs(opts.Mirrors, localRegistryEndpoint); err != nil {
-		return fmt.Errorf("applying CRI configs: %w", err)
+
+	// Resolve and apply CRI configs
+	criResults := resolveCRIAndApply(cm, opts.Mirrors, opts.NoRegistryFallback, localRegistryEndpoint)
+	for _, r := range criResults {
+		if r.Success {
+			fmt.Printf("CRI %s configured (backup: %s)\n", r.CRI, r.BackupPath)
+		} else {
+			fmt.Printf("warning: %s config error: %s\n", r.CRI, r.Error)
+		}
+	}
+
+	if opts.FallbackOnly {
+		fmt.Println("--fallback-only: CRI configs applied, exiting.")
+		return nil
 	}
 
 	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), opts.JSONLogging, warnings)
@@ -232,7 +256,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		return watcher.WatchChanges(ctx, log.With().Str("component", "file watcher").Logger(), pathConfig.ConfigFile, eventChan)
 	})
 
-	// Watch for changes in the config file
+	// Process config file change events
 	wg.Go(func() error {
 		for {
 			select {
@@ -259,7 +283,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	})
 
-	s := satellite.NewSatellite(cm, pathConfig.StateFile)
+	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile)
 	err = s.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("unable to start satellite: %w", err)
@@ -318,6 +342,40 @@ func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Sat
 		return fmt.Errorf("graceful shutdown timeout exceeded")
 	}
 
+	return nil
+}
+
+// resolveCRIAndApply determines which CRI configs to apply and applies them.
+// Priority: config file registry_fallback > --mirrors flag > --no-registry-fallback/env.
+func resolveCRIAndApply(cm *config.ConfigManager, mirrors mirrorFlags, noFallback bool, localRegistry string) []runtime.CRIConfigResult {
+	fbCfg := cm.GetRegistryFallbackConfig()
+
+	// Config file registry_fallback takes highest priority (from GC)
+	if fbCfg.Enabled {
+		configs, err := runtime.ResolveCRIConfigs(nil, true, fbCfg.Registries, fbCfg.Runtimes)
+		if err != nil {
+			fmt.Printf("warning: failed to resolve CRI configs: %v\n", err)
+			return nil
+		}
+		return runtime.ApplyCRIConfigs(configs, localRegistry)
+	}
+
+	// Explicit --mirrors flag
+	if len(mirrors) > 0 {
+		configs, err := runtime.ResolveCRIConfigs(mirrors, false, nil, nil)
+		if err != nil {
+			fmt.Printf("warning: failed to parse mirror flags: %v\n", err)
+			return nil
+		}
+		return runtime.ApplyCRIConfigs(configs, localRegistry)
+	}
+
+	// Disabled via flag or env var
+	if noFallback {
+		return nil
+	}
+
+	// No CRI config requested
 	return nil
 }
 
