@@ -64,6 +64,12 @@ func TestParseMirrorFlags(t *testing.T) {
 				}
 				if len(got[i].Registries) != len(tt.want[i].Registries) {
 					t.Errorf("config[%d].Registries = %v, want %v", i, got[i].Registries, tt.want[i].Registries)
+				} else {
+					for j := range tt.want[i].Registries {
+						if got[i].Registries[j] != tt.want[i].Registries[j] {
+							t.Errorf("config[%d].Registries[%d] = %q, want %q", i, j, got[i].Registries[j], tt.want[i].Registries[j])
+						}
+					}
 				}
 			}
 		})
