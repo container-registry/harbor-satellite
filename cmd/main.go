@@ -202,8 +202,17 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	if err != nil {
 		return fmt.Errorf("resolving local registry endpoint: %w", err)
 	}
-	if err := runtime.ApplyCRIConfigs(opts.Mirrors, localRegistryEndpoint); err != nil {
-		return fmt.Errorf("applying CRI configs: %w", err)
+
+	criConfigs, err := runtime.ResolveCRIConfigs(opts.Mirrors, len(opts.Mirrors) > 0, nil, nil)
+	if err != nil {
+		fmt.Printf("fatal: %v\n", err)
+		os.Exit(1)
+	}
+	criResults := runtime.ApplyCRIConfigs(criConfigs, localRegistryEndpoint)
+	for _, r := range criResults {
+		if !r.Success {
+			fmt.Printf("warning: %s config error: %s\n", r.CRI, r.Error)
+		}
 	}
 
 	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), opts.JSONLogging, warnings)
