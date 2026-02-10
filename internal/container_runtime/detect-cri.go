@@ -18,16 +18,16 @@ func ApplyCRIConfigs(mirrorsMap []string, localRegistry string) error {
 
 		switch cri {
 		case "docker":
-			if err := setDockerdConfig(mirrorList, localRegistry); err != nil {
+			if _, err := setDockerdConfig(mirrorList, localRegistry); err != nil {
 				return fmt.Errorf("%s config error: %w", cri, err)
 			}
 		// crio and podman both use the same config
 		case "crio", "podman":
-			if err := setCrioConfig(mirrorList, localRegistry); err != nil {
+			if _, err := setCrioConfig(mirrorList, localRegistry); err != nil {
 				return fmt.Errorf("%s config error: %w", cri, err)
 			}
 		case "containerd":
-			if err := setContainerdConfig(mirrorList, localRegistry); err != nil {
+			if _, err := setContainerdConfig(mirrorList, localRegistry); err != nil {
 				return fmt.Errorf("%s config error: %w", cri, err)
 			}
 		default:

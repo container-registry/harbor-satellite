@@ -15,19 +15,23 @@ const (
 	registriesConfigPath     = "/etc/containers/registries.conf"
 )
 
-func setCrioConfig(upstreamRegistries []string, localMirror string) error {
-
+func setCrioConfig(upstreamRegistries []string, localMirror string) (string, error) {
 	if _, err := os.Stat(registriesConfigPath); os.IsNotExist(err) {
 		f, err := os.Create(registriesConfigPath)
 		if err != nil {
-			return fmt.Errorf("error while creating registries.conf : %w", err)
+			return "", fmt.Errorf("error while creating registries.conf : %w", err)
 		}
 		_ = f.Close()
 	}
 
+	bkPath, err := backupFile(registriesConfigPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to backup registries.conf: %w", err)
+	}
+
 	// viper fails to recognise .conf file extension, so copy into a temporary .toml file
 	if err := copyFile(registriesConfigPath, tempRegistriesConfigPath); err != nil {
-		return fmt.Errorf("failed to copy registries.conf file to temporary .toml file: %w", err)
+		return bkPath, fmt.Errorf("failed to copy registries.conf file to temporary .toml file: %w", err)
 	}
 
 	v := viper.New()
@@ -36,13 +40,13 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) error {
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return fmt.Errorf("failed to read registries.conf: %w", err)
+			return bkPath, fmt.Errorf("failed to read registries.conf: %w", err)
 		}
 	}
 
 	var cfg RegistriesConf
 	if err := v.Unmarshal(&cfg); err != nil {
-		return fmt.Errorf("failed to unmarshal registries.conf: %w", err)
+		return bkPath, fmt.Errorf("failed to unmarshal registries.conf: %w", err)
 	}
 
 	insecure := !strings.HasPrefix(localMirror, "https://")
@@ -89,20 +93,32 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) error {
 	v.Set("registry", cfg.Registries)
 
 	if err := v.WriteConfigAs(tempRegistriesConfigPath); err != nil {
-		return fmt.Errorf("failed to write registries.conf: %w", err)
+		return bkPath, fmt.Errorf("failed to write registries.conf: %w", err)
 	}
 
-	// copy contents of temp file back into actaul path
+	// validate TOML before committing
+	data, err := os.ReadFile(tempRegistriesConfigPath)
+	if err != nil {
+		return bkPath, fmt.Errorf("failed to read temp registries file: %w", err)
+	}
+	if err := validateTOML(data); err != nil {
+		if bkPath != "" {
+			_ = restoreBackup(bkPath, registriesConfigPath)
+		}
+		return bkPath, fmt.Errorf("registries.conf validation failed, rolled back: %w", err)
+	}
+
+	// copy contents of temp file back into actual path
 	if err := copyFile(tempRegistriesConfigPath, registriesConfigPath); err != nil {
-		return fmt.Errorf("failed to copy temporary .toml file to registries.conf: %w", err)
+		return bkPath, fmt.Errorf("failed to copy temporary .toml file to registries.conf: %w", err)
 	}
 
-	// cleanup : delete temporaary file
+	// cleanup: delete temporary file
 	if err := os.Remove(tempRegistriesConfigPath); err != nil {
-		return fmt.Errorf("failed to delete temporary .toml file : %w", err)
+		return bkPath, fmt.Errorf("failed to delete temporary .toml file : %w", err)
 	}
 
-	return nil
+	return bkPath, nil
 }
 
 // copyFile copies a file from src to dst, replacing dst if it exists.
