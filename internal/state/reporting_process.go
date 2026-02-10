@@ -24,8 +24,8 @@ type StatusReportingProcess struct {
 	mu               *sync.Mutex
 	cm               *config.ConfigManager
 	spiffeClient     *spiffe.Client
-	pendingCRI       []runtime.CRIConfigResult
-	criReportedOnce  sync.Once
+	pendingCRI      []runtime.CRIConfigResult
+	criReported     bool
 }
 
 func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess {
@@ -90,18 +90,14 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 		RequestCreatedTime:  time.Now().UTC(),
 	}
 
-	// Include pending CRI results exactly once
-	s.criReportedOnce.Do(func() {
-		s.mu.Lock()
-		results := s.pendingCRI
-		s.pendingCRI = nil
-		s.mu.Unlock()
-
-		if len(results) > 0 {
-			req.Activity = formatCRIActivity(results)
-			log.Info().Str("activity", req.Activity).Msg("Reporting CRI config results")
-		}
-	})
+	// Include pending CRI results until successfully sent
+	s.mu.Lock()
+	hasPendingCRI := !s.criReported && len(s.pendingCRI) > 0
+	if hasPendingCRI {
+		req.Activity = formatCRIActivity(s.pendingCRI)
+		log.Info().Str("activity", req.Activity).Msg("Reporting CRI config results")
+	}
+	s.mu.Unlock()
 
 	registryURL := s.cm.GetLocalRegistryURL()
 	insecure := s.cm.UseUnsecure()
@@ -111,6 +107,14 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	if err := s.sendStatusReport(ctx, groundControlURL, req); err != nil {
 		log.Error().Err(err).Msg("Failed to send status report")
 		return err
+	}
+
+	// Clear CRI results only after successful send
+	if hasPendingCRI {
+		s.mu.Lock()
+		s.criReported = true
+		s.pendingCRI = nil
+		s.mu.Unlock()
 	}
 
 	log.Info().Str("satellite", satelliteName).Msg("Status report sent successfully")

@@ -354,7 +354,8 @@ func resolveCRIAndApply(cm *config.ConfigManager, mirrors mirrorFlags, noFallbac
 	if fbCfg.Enabled {
 		configs, err := runtime.ResolveCRIConfigs(nil, true, fbCfg.Registries, fbCfg.Runtimes)
 		if err != nil {
-			return []runtime.CRIConfigResult{{Error: err.Error()}}
+			fmt.Printf("warning: failed to resolve CRI configs: %v\n", err)
+			return nil
 		}
 		return runtime.ApplyCRIConfigs(configs, localRegistry)
 	}
@@ -363,7 +364,8 @@ func resolveCRIAndApply(cm *config.ConfigManager, mirrors mirrorFlags, noFallbac
 	if len(mirrors) > 0 {
 		configs, err := runtime.ResolveCRIConfigs(mirrors, false, nil, nil)
 		if err != nil {
-			return []runtime.CRIConfigResult{{Error: err.Error()}}
+			fmt.Printf("warning: failed to parse mirror flags: %v\n", err)
+			return nil
 		}
 		return runtime.ApplyCRIConfigs(configs, localRegistry)
 	}

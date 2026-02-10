@@ -183,15 +183,15 @@ func validateAndEnforceZotConfig(config *Config, bringOwnRegistry bool) ([]strin
 	return warnings, nil
 }
 
-var validRuntimes = map[string]bool{
-	"docker":     true,
-	"containerd": true,
-	"crio":       true,
-	"podman":     true,
-}
-
 // validateRegistryFallbackConfig validates registry fallback settings when enabled.
 func validateRegistryFallbackConfig(config *Config) []string {
+	validRuntimes := map[string]bool{
+		"docker":     true,
+		"containerd": true,
+		"crio":       true,
+		"podman":     true,
+	}
+
 	var warnings []string
 	fb := config.AppConfig.RegistryFallback
 	if !fb.Enabled {

@@ -36,7 +36,7 @@ func validateJSON(data []byte) error {
 
 // validateTOML checks whether data is valid TOML.
 func validateTOML(data []byte) error {
-	var m map[string]interface{}
+	var m map[string]any
 	if err := toml.Unmarshal(data, &m); err != nil {
 		return fmt.Errorf("invalid TOML content: %w", err)
 	}
