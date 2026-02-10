@@ -1,6 +1,7 @@
 package state
 
 import (
+	"context"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -315,4 +316,45 @@ func TestReplicate_LayerResume(t *testing.T) {
 	dstDigest, err := dstImg.Digest()
 	require.NoError(t, err)
 	require.Equal(t, srcDigest, dstDigest, "digests should match after replication")
+}
+
+func TestReplicate_CancelledContextStopsProcessing(t *testing.T) {
+	_, srcAddr := newTestRegistry(t)
+	_, dstAddr := newTestRegistry(t)
+
+	pushImage(t, srcAddr, "library", "img1", "v1", 1)
+	pushImage(t, srcAddr, "library", "img2", "v1", 1)
+	pushImage(t, srcAddr, "library", "img3", "v1", 1)
+
+	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
+
+	ctx, cancel := context.WithCancel(testContext())
+	cancel() // cancel immediately
+
+	err := r.Replicate(ctx, []Entity{
+		{Name: "img1", Repository: "library", Tag: "v1"},
+		{Name: "img2", Repository: "library", Tag: "v1"},
+		{Name: "img3", Repository: "library", Tag: "v1"},
+	})
+
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestDeleteReplicationEntity_CancelledContextStopsProcessing(t *testing.T) {
+	_, dstAddr := newTestRegistry(t)
+
+	pushImage(t, dstAddr, "library", "img1", "v1", 1)
+	pushImage(t, dstAddr, "library", "img2", "v1", 1)
+
+	r := NewBasicReplicator("", "", "", dstAddr, "", "", true)
+
+	ctx, cancel := context.WithCancel(testContext())
+	cancel()
+
+	err := r.DeleteReplicationEntity(ctx, []Entity{
+		{Name: "img1", Repository: "library", Tag: "v1"},
+		{Name: "img2", Repository: "library", Tag: "v1"},
+	})
+
+	require.ErrorIs(t, err, context.Canceled)
 }

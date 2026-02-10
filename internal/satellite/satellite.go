@@ -61,7 +61,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 			return err
 		}
 		s.schedulers = append(s.schedulers, ztrScheduler)
-		go ztrScheduler.Run(ctx)
+		ztrScheduler.Start(ctx)
 	}
 
 	// Create state replication scheduler
@@ -75,7 +75,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 	s.schedulers = append(s.schedulers, stateScheduler)
-	go stateScheduler.Run(ctx)
+	stateScheduler.Start(ctx)
 
 	// Create status report scheduler
 	statusReportProcess := state.NewStatusReportingProcess(s.cm)
@@ -89,7 +89,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 	s.schedulers = append(s.schedulers, statusScheduler)
-	go statusScheduler.Run(ctx)
+	statusScheduler.Start(ctx)
 
 	return ctx.Err()
 }
@@ -98,9 +98,27 @@ func (s *Satellite) GetSchedulers() []*scheduler.Scheduler {
 	return s.schedulers
 }
 
-// Stop gracefully stops all schedulers
-func (s *Satellite) Stop() {
-	for _, scheduler := range s.schedulers {
-		scheduler.Stop()
+// Stop gracefully stops all schedulers and logs the shutdown process
+func (s *Satellite) Stop(ctx context.Context) {
+	log := logger.FromContext(ctx)
+	log.Info().Int("scheduler_count", len(s.schedulers)).
+		Msg("Initiating scheduler shutdown")
+
+	failedCount := 0
+	for i, sched := range s.schedulers {
+		log.Debug().
+			Int("index", i).
+			Str("scheduler", sched.Name()).
+			Msg("Stopping scheduler")
+		if err := sched.Stop(ctx); err != nil {
+			failedCount++
+			log.Warn().Err(err).Str("scheduler", sched.Name()).Msg("Scheduler stop failed")
+		}
+	}
+
+	if failedCount > 0 {
+		log.Warn().Int("failed_count", failedCount).Msg("Some schedulers failed to stop")
+	} else {
+		log.Info().Msg("All schedulers stopped")
 	}
 }
