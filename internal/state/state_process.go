@@ -103,7 +103,15 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return err
 	}
 
+	oldLen := len(f.stateMap)
 	f.updateStateMap(satelliteState.States)
+
+	// Persist state if groups were added or removed
+	if f.stateFilePath != "" && len(f.stateMap) != oldLen {
+		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist state after group changes")
+		}
+	}
 
 	// Create channels for results
 	stateFetcherResults := make(chan StateFetcherResult, len(f.stateMap))
