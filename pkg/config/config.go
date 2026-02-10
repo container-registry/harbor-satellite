@@ -35,19 +35,26 @@ type MetricsConfig struct {
 	CollectStorage bool `json:"collect_storage,omitempty"`
 }
 
+type RegistryFallbackConfig struct {
+	Enabled    bool     `json:"enabled,omitempty"`
+	Registries []string `json:"registries,omitempty"`
+	Runtimes   []string `json:"runtimes,omitempty"`
+}
+
 type AppConfig struct {
-	GroundControlURL          URL                 `json:"ground_control_url,omitempty"`
-	LogLevel                  string              `json:"log_level,omitempty"`
-	UseUnsecure               bool                `json:"use_unsecure,omitempty"`
-	StateReplicationInterval  string              `json:"state_replication_interval,omitempty"`
-	RegisterSatelliteInterval string              `json:"register_satellite_interval,omitempty"`
-	HeartbeatInterval         string              `json:"heartbeat_interval,omitempty"`
-	Metrics                   MetricsConfig       `json:"metrics,omitempty"`
-	BringOwnRegistry          bool                `json:"bring_own_registry,omitempty"`
-	LocalRegistryCredentials  RegistryCredentials `json:"local_registry,omitempty"`
-	TLS                       TLSConfig           `json:"tls,omitempty"`
-	SPIFFE                    SPIFFEConfig        `json:"spiffe,omitempty"`
-	EncryptConfig             bool                `json:"encrypt_config,omitempty"`
+	GroundControlURL          URL                    `json:"ground_control_url,omitempty"`
+	LogLevel                  string                 `json:"log_level,omitempty"`
+	UseUnsecure               bool                   `json:"use_unsecure,omitempty"`
+	StateReplicationInterval  string                 `json:"state_replication_interval,omitempty"`
+	RegisterSatelliteInterval string                 `json:"register_satellite_interval,omitempty"`
+	HeartbeatInterval         string                 `json:"heartbeat_interval,omitempty"`
+	Metrics                   MetricsConfig          `json:"metrics,omitempty"`
+	BringOwnRegistry          bool                   `json:"bring_own_registry,omitempty"`
+	LocalRegistryCredentials  RegistryCredentials    `json:"local_registry,omitempty"`
+	TLS                       TLSConfig              `json:"tls,omitempty"`
+	SPIFFE                    SPIFFEConfig           `json:"spiffe,omitempty"`
+	EncryptConfig             bool                   `json:"encrypt_config,omitempty"`
+	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty"`
 }
 
 type StateConfig struct {

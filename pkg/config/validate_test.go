@@ -395,6 +395,104 @@ func TestValidateTLSConfig(t *testing.T) {
 	})
 }
 
+func TestValidateRegistryFallbackConfig(t *testing.T) {
+	baseConfig := func() *Config {
+		return &Config{
+			AppConfig: AppConfig{
+				GroundControlURL: URL("https://example.com"),
+			},
+			ZotConfigRaw: []byte(DefaultZotConfigJSON),
+		}
+	}
+
+	t.Run("disabled produces no warnings", func(t *testing.T) {
+		cfg := baseConfig()
+		cfg.AppConfig.RegistryFallback = RegistryFallbackConfig{Enabled: false}
+		_, warnings, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+		for _, w := range warnings {
+			require.NotContains(t, w, "registry_fallback")
+		}
+	})
+
+	t.Run("enabled with no registries defaults to docker.io", func(t *testing.T) {
+		cfg := baseConfig()
+		cfg.AppConfig.RegistryFallback = RegistryFallbackConfig{Enabled: true}
+		result, warnings, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+		found := false
+		for _, w := range warnings {
+			if w == "registry_fallback is enabled but no registries specified, defaulting to docker.io" {
+				found = true
+			}
+		}
+		require.True(t, found, "expected default registries warning, got: %v", warnings)
+		require.Equal(t, []string{"docker.io"}, result.AppConfig.RegistryFallback.Registries)
+	})
+
+	t.Run("enabled with valid registries no warning", func(t *testing.T) {
+		cfg := baseConfig()
+		cfg.AppConfig.RegistryFallback = RegistryFallbackConfig{
+			Enabled:    true,
+			Registries: []string{"docker.io", "quay.io"},
+		}
+		_, warnings, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+		for _, w := range warnings {
+			require.NotContains(t, w, "no registries specified")
+		}
+	})
+
+	t.Run("enabled with empty registry entry warns", func(t *testing.T) {
+		cfg := baseConfig()
+		cfg.AppConfig.RegistryFallback = RegistryFallbackConfig{
+			Enabled:    true,
+			Registries: []string{"docker.io", "  "},
+		}
+		_, warnings, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+		found := false
+		for _, w := range warnings {
+			if w == "registry_fallback contains an empty registry entry" {
+				found = true
+			}
+		}
+		require.True(t, found, "expected empty registry warning")
+	})
+
+	t.Run("enabled with unknown runtime warns", func(t *testing.T) {
+		cfg := baseConfig()
+		cfg.AppConfig.RegistryFallback = RegistryFallbackConfig{
+			Enabled:    true,
+			Registries: []string{"docker.io"},
+			Runtimes:   []string{"docker", "badruntime"},
+		}
+		_, warnings, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+		found := false
+		for _, w := range warnings {
+			if w == `registry_fallback contains unknown runtime "badruntime", valid values: docker, containerd, crio, podman` {
+				found = true
+			}
+		}
+		require.True(t, found, "expected unknown runtime warning, got: %v", warnings)
+	})
+
+	t.Run("enabled with all valid runtimes no runtime warning", func(t *testing.T) {
+		cfg := baseConfig()
+		cfg.AppConfig.RegistryFallback = RegistryFallbackConfig{
+			Enabled:    true,
+			Registries: []string{"docker.io"},
+			Runtimes:   []string{"docker", "containerd", "crio", "podman"},
+		}
+		_, warnings, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+		for _, w := range warnings {
+			require.NotContains(t, w, "unknown runtime")
+		}
+	})
+}
+
 func TestUseUnsecureEnvVar(t *testing.T) {
 	baseConfig := func() *Config {
 		return &Config{

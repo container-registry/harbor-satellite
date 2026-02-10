@@ -172,3 +172,9 @@ func (cm *ConfigManager) IsSPIFFEEnabled() bool {
 	defer cm.mu.RUnlock()
 	return cm.config.AppConfig.SPIFFE.Enabled
 }
+
+func (cm *ConfigManager) GetRegistryFallbackConfig() RegistryFallbackConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.RegistryFallback
+}
