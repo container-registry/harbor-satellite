@@ -103,11 +103,10 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return err
 	}
 
-	oldLen := len(f.stateMap)
-	f.updateStateMap(satelliteState.States)
+	changed := f.updateStateMap(satelliteState.States)
 
-	// Persist state if groups were added or removed
-	if f.stateFilePath != "" && len(f.stateMap) != oldLen {
+	// Persist state if groups were added, removed, or swapped
+	if f.stateFilePath != "" && changed {
 		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
 			log.Warn().Err(err).Msg("Failed to persist state after group changes")
 		}
@@ -137,7 +136,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	return f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), &log)
 }
 
-func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
+func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) bool {
 	var newStates []string
 	for _, state := range states {
 		found := false
@@ -154,15 +153,20 @@ func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
 
 	// Remove states that are no longer needed
 	var updatedStateMap []StateMap
+	removed := 0
 	for _, stateMap := range f.stateMap {
 		if contains(states, stateMap.url) {
 			updatedStateMap = append(updatedStateMap, stateMap)
+		} else {
+			removed++
 		}
 	}
 
 	// Add new states
 	updatedStateMap = append(updatedStateMap, NewStateMap(newStates)...)
 	f.stateMap = updatedStateMap
+
+	return len(newStates) > 0 || removed > 0
 }
 
 func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *zerolog.Logger, oldEntites []Entity) ([]Entity, []Entity, StateReader) {
