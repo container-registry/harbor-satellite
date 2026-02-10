@@ -720,3 +720,278 @@ tasks:
       - docker rm -f satellite-byo byo-registry 2>/dev/null || true
       - echo "BYO cleanup complete"
     silent: true
+
+  test-crash-recovery:
+    desc: Test crash recovery with embedded Zot registry
+    cmds:
+      - task: setup
+      - defer: { task: cleanup-crash-recovery }
+      - task: wait-harbor
+      - task: wait-gc
+      - task: init-harbor
+      - task: init-gc
+      - task: register-and-run-satellite-with-volume
+      - task: verify
+      - task: crash-and-restart-satellite
+      - task: verify-crash-recovery
+      - echo "Crash recovery E2E test passed"
+
+  test-crash-recovery-byo:
+    desc: Test crash recovery with BYO registry
+    cmds:
+      - task: setup
+      - defer: { task: cleanup-crash-recovery-byo }
+      - task: wait-harbor
+      - task: wait-gc
+      - task: init-harbor
+      - task: init-gc-byo
+      - task: register-and-run-satellite-byo-with-volume
+      - task: verify-byo
+      - task: crash-and-restart-satellite-byo
+      - task: verify-crash-recovery-byo
+      - echo "Crash recovery BYO E2E test passed"
+
+  register-and-run-satellite-with-volume:
+    desc: Register satellite and start it with a named volume for state persistence
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sf -X POST {{.GC_URL}}/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Registering satellite..."
+        RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name": "test-satellite",
+            "groups": ["{{.DEST_NAMESPACE}}"],
+            "config_name": "test-config"
+          }')
+
+        TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$TOKEN" ]; then
+          echo "Failed to get satellite token"
+          exit 1
+        fi
+        echo "Satellite registered with token: $TOKEN"
+        echo "$TOKEN" > /tmp/e2e_satellite_token
+
+        echo "Building satellite from local code..."
+        docker build -t satellite:e2e -f Dockerfile .
+
+        echo "Starting satellite with named volume..."
+        docker run -d --name satellite --network harbor-e2e \
+          -v sat-state-vol:/satellite-state \
+          -e TOKEN="$TOKEN" \
+          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e CONFIG_DIR=/satellite-state \
+          -p 8585:8585 \
+          satellite:e2e
+
+  crash-and-restart-satellite:
+    desc: Kill satellite and restart it to test crash recovery
+    cmds:
+      - |
+        TOKEN=$(cat /tmp/e2e_satellite_token)
+
+        echo "Killing satellite (SIGKILL to simulate crash)..."
+        docker kill satellite
+        docker rm satellite
+
+        echo "Restarting satellite with same volume..."
+        docker run -d --name satellite --network harbor-e2e \
+          -v sat-state-vol:/satellite-state \
+          -e TOKEN="$TOKEN" \
+          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e CONFIG_DIR=/satellite-state \
+          -p 8585:8585 \
+          satellite:e2e
+
+        echo "Waiting for satellite to start..."
+        sleep 15
+
+  verify-crash-recovery:
+    desc: Verify satellite recovered from crash without full re-replication
+    cmds:
+      - |
+        echo "Checking satellite logs for crash recovery..."
+
+        if docker logs satellite 2>&1 | tail -100 | grep -q "Old state has zero entities, replicating the complete state"; then
+          echo "FAIL: Satellite re-replicated the complete state after crash"
+          docker logs satellite 2>&1 | tail -50
+          exit 1
+        fi
+        echo "PASS: No full re-replication detected"
+
+        if docker logs satellite 2>&1 | tail -100 | grep -q "Total artifacts to replicate: 0"; then
+          echo "PASS: Zero artifacts to replicate after restart"
+        else
+          echo "WARN: Could not confirm zero artifacts to replicate (may still be syncing)"
+        fi
+
+        echo "Verifying image is still accessible..."
+        for i in $(seq 1 6); do
+          if docker run --rm --network harbor-e2e alpine:latest sh -c "
+            apk add --no-cache crane > /dev/null 2>&1 &&
+            crane manifest satellite:8585/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
+          "; then
+            echo "PASS: Image still accessible after crash recovery"
+            exit 0
+          fi
+          echo "Waiting for image availability... ($i/6)"
+          sleep 5
+        done
+        echo "FAIL: Image not accessible after crash recovery"
+        docker logs satellite 2>&1 | tail -50
+        exit 1
+
+  cleanup-crash-recovery:
+    desc: Stop and remove crash recovery E2E containers
+    cmds:
+      - echo "Stopping crash recovery containers..."
+      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f satellite 2>/dev/null || true
+      - docker volume rm -f sat-state-vol 2>/dev/null || true
+      - rm -f /tmp/e2e_satellite_token 2>/dev/null || true
+      - echo "Crash recovery cleanup complete"
+    silent: true
+
+  register-and-run-satellite-byo-with-volume:
+    desc: Register satellite with BYO registry and start with named volume
+    cmds:
+      - |
+        GC_TOKEN=$(curl -sf -X POST {{.GC_URL}}/login \
+          -H "Content-Type: application/json" \
+          -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+          grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$GC_TOKEN" ]; then
+          echo "ERROR: Failed to get GC token"
+          exit 1
+        fi
+
+        echo "Registering satellite..."
+        RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
+          -H "Authorization: Bearer $GC_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name": "byo-satellite",
+            "groups": ["{{.DEST_NAMESPACE}}"],
+            "config_name": "byo-config"
+          }')
+
+        TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$TOKEN" ]; then
+          echo "Failed to get satellite token"
+          exit 1
+        fi
+        echo "Satellite registered with token: $TOKEN"
+        echo "$TOKEN" > /tmp/e2e_byo_satellite_token
+
+        echo "Starting BYO registry (registry:2)..."
+        docker run -d --name byo-registry --network harbor-e2e \
+          -e REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry \
+          -e REGISTRY_HTTP_ADDR=0.0.0.0:5000 \
+          registry:2
+
+        echo "Waiting for BYO registry to be healthy..."
+        for i in $(seq 1 15); do
+          if docker exec byo-registry wget -q -O - http://localhost:5000/v2/ > /dev/null 2>&1; then
+            echo "BYO registry is healthy"
+            break
+          fi
+          if [ "$i" -eq 15 ]; then
+            echo "ERROR: BYO registry failed to start"
+            docker logs byo-registry 2>&1 | tail -20
+            exit 1
+          fi
+          echo "Waiting for BYO registry... ($i/15)"
+          sleep 2
+        done
+
+        echo "Building satellite from local code..."
+        docker build -t satellite:e2e -f Dockerfile .
+
+        echo "Starting satellite in BYO mode with named volume..."
+        docker run -d --name satellite-byo --network harbor-e2e \
+          -v sat-byo-state-vol:/satellite-state \
+          -e TOKEN="$TOKEN" \
+          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e BYO_REGISTRY=true \
+          -e REGISTRY_URL=http://byo-registry:5000 \
+          -e USE_UNSECURE=true \
+          -e CONFIG_DIR=/satellite-state \
+          satellite:e2e
+
+  crash-and-restart-satellite-byo:
+    desc: Kill BYO satellite and restart it to test crash recovery
+    cmds:
+      - |
+        TOKEN=$(cat /tmp/e2e_byo_satellite_token)
+
+        echo "Killing BYO satellite (SIGKILL to simulate crash)..."
+        docker kill satellite-byo
+        docker rm satellite-byo
+
+        echo "Restarting BYO satellite with same volume..."
+        docker run -d --name satellite-byo --network harbor-e2e \
+          -v sat-byo-state-vol:/satellite-state \
+          -e TOKEN="$TOKEN" \
+          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e BYO_REGISTRY=true \
+          -e REGISTRY_URL=http://byo-registry:5000 \
+          -e USE_UNSECURE=true \
+          -e CONFIG_DIR=/satellite-state \
+          satellite:e2e
+
+        echo "Waiting for satellite to start..."
+        sleep 15
+
+  verify-crash-recovery-byo:
+    desc: Verify BYO satellite recovered from crash without full re-replication
+    cmds:
+      - |
+        echo "Checking BYO satellite logs for crash recovery..."
+
+        if docker logs satellite-byo 2>&1 | tail -100 | grep -q "Old state has zero entities, replicating the complete state"; then
+          echo "FAIL: BYO satellite re-replicated the complete state after crash"
+          docker logs satellite-byo 2>&1 | tail -50
+          exit 1
+        fi
+        echo "PASS: No full re-replication detected"
+
+        if docker logs satellite-byo 2>&1 | tail -100 | grep -q "Total artifacts to replicate: 0"; then
+          echo "PASS: Zero artifacts to replicate after restart"
+        else
+          echo "WARN: Could not confirm zero artifacts to replicate (may still be syncing)"
+        fi
+
+        echo "Verifying image is still accessible in BYO registry..."
+        for i in $(seq 1 6); do
+          if docker run --rm --network harbor-e2e alpine:latest sh -c "
+            apk add --no-cache crane > /dev/null 2>&1 &&
+            crane manifest byo-registry:5000/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
+          "; then
+            echo "PASS: Image still accessible in BYO registry after crash recovery"
+            exit 0
+          fi
+          echo "Waiting for image availability... ($i/6)"
+          sleep 5
+        done
+        echo "FAIL: Image not accessible in BYO registry after crash recovery"
+        docker logs satellite-byo 2>&1 | tail -50
+        exit 1
+
+  cleanup-crash-recovery-byo:
+    desc: Stop and remove BYO crash recovery E2E containers
+    cmds:
+      - echo "Stopping BYO crash recovery containers..."
+      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f satellite-byo byo-registry 2>/dev/null || true
+      - docker volume rm -f sat-byo-state-vol 2>/dev/null || true
+      - rm -f /tmp/e2e_byo_satellite_token 2>/dev/null || true
+      - echo "BYO crash recovery cleanup complete"
+    silent: true

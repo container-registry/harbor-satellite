@@ -19,6 +19,7 @@ type FetchAndReplicateStateProcess struct {
 	currentConfigDigest string
 	cm                  *config.ConfigManager
 	mu                  sync.Mutex
+	stateFilePath       string
 }
 
 // Define result types for channels
@@ -35,13 +36,29 @@ type ConfigFetcherResult struct {
 	Cancelled    bool
 }
 
-func NewFetchAndReplicateStateProcess(cm *config.ConfigManager) *FetchAndReplicateStateProcess {
-	return &FetchAndReplicateStateProcess{
-		name:                config.ReplicateStateJobName,
-		isRunning:           false,
-		currentConfigDigest: "",
-		cm:                  cm,
+func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath string, log *zerolog.Logger) *FetchAndReplicateStateProcess {
+	p := &FetchAndReplicateStateProcess{
+		name:          config.ReplicateStateJobName,
+		cm:            cm,
+		stateFilePath: stateFilePath,
 	}
+
+	if stateFilePath != "" {
+		persisted, err := LoadState(stateFilePath)
+		if err != nil {
+			log.Warn().Err(err).Str("path", stateFilePath).Msg("Corrupted state file, starting fresh")
+		} else if persisted != nil {
+			p.currentConfigDigest = persisted.ConfigDigest
+			for _, g := range persisted.Groups {
+				p.stateMap = append(p.stateMap, StateMap{
+					url:      g.URL,
+					Entities: g.Entities,
+				})
+			}
+		}
+	}
+
+	return p
 }
 
 type StateMap struct {
@@ -86,7 +103,14 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return err
 	}
 
-	f.updateStateMap(satelliteState.States)
+	changed := f.updateStateMap(satelliteState.States)
+
+	// Persist state if groups were added, removed, or swapped
+	if f.stateFilePath != "" && changed {
+		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist state after group changes")
+		}
+	}
 
 	// Create channels for results
 	stateFetcherResults := make(chan StateFetcherResult, len(f.stateMap))
@@ -105,14 +129,14 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 	// Launch config fetcher goroutine
 	go func() {
-		result := f.reconcileRemoteConfig(ctx, satelliteState.Config, srcUsername, srcPassword, useUnsecure, &log)
+		result := f.reconcileRemoteConfig(ctx, satelliteState.Config, srcUsername, srcPassword, useUnsecure, mutex, &log)
 		configFetcherResult <- result
 	}()
 
 	return f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), &log)
 }
 
-func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
+func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) bool {
 	var newStates []string
 	for _, state := range states {
 		found := false
@@ -129,15 +153,20 @@ func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
 
 	// Remove states that are no longer needed
 	var updatedStateMap []StateMap
+	removed := 0
 	for _, stateMap := range f.stateMap {
 		if contains(states, stateMap.url) {
 			updatedStateMap = append(updatedStateMap, stateMap)
+		} else {
+			removed++
 		}
 	}
 
 	// Add new states
 	updatedStateMap = append(updatedStateMap, NewStateMap(newStates)...)
 	f.stateMap = updatedStateMap
+
+	return len(newStates) > 0 || removed > 0
 }
 
 func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *zerolog.Logger, oldEntites []Entity) ([]Entity, []Entity, StateReader) {
@@ -149,7 +178,7 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 	var entityToReplicate []Entity
 
 	if oldEntites == nil {
-		log.Warn().Msg("Old state has zero entites, replicating the complete state")
+		log.Warn().Msg("Old state has zero entities, replicating the complete state")
 		return entityToDelete, newEntites, newState
 	}
 
@@ -294,6 +323,7 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 	ctx context.Context,
 	configURL, srcUsername, srcPassword string,
 	useUnsecure bool,
+	mutex *sync.Mutex,
 	log *zerolog.Logger,
 ) ConfigFetcherResult {
 	configFetcherLog := log.With().
@@ -353,7 +383,14 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 			result.Error = fmt.Errorf("failed to write new config to disk: %w", err)
 			return result
 		}
+		mutex.Lock()
 		f.currentConfigDigest = configDigest
+		if f.stateFilePath != "" {
+			if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+				configFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
+			}
+		}
+		mutex.Unlock()
 	}
 
 	result.ConfigDigest = configDigest
@@ -415,6 +452,11 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	mutex.Lock()
 	f.stateMap[index].State = newState
 	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
+	if f.stateFilePath != "" {
+		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
+		}
+	}
 	mutex.Unlock()
 
 	return result
