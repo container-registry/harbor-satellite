@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -32,7 +33,7 @@ func backupFile(path string) (string, error) {
 // validateJSON checks whether data is valid JSON.
 func validateJSON(data []byte) error {
 	if !json.Valid(data) {
-		return fmt.Errorf("invalid JSON content")
+		return errors.New("invalid JSON content")
 	}
 	return nil
 }
