@@ -61,7 +61,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 			return err
 		}
 		s.schedulers = append(s.schedulers, ztrScheduler)
-		go ztrScheduler.Run(ctx)
+		ztrScheduler.Start(ctx)
 	}
 
 	// Create state replication scheduler
@@ -75,7 +75,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 	s.schedulers = append(s.schedulers, stateScheduler)
-	go stateScheduler.Run(ctx)
+	stateScheduler.Start(ctx)
 
 	// Create status report scheduler
 	statusReportProcess := state.NewStatusReportingProcess(s.cm)
@@ -89,7 +89,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 	s.schedulers = append(s.schedulers, statusScheduler)
-	go statusScheduler.Run(ctx)
+	statusScheduler.Start(ctx)
 
 	return ctx.Err()
 }

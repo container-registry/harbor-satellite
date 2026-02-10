@@ -40,9 +40,15 @@ func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog
 	return scheduler, nil
 }
 
-// Run starts the scheduler and blocks until context is cancelled
-func (s *Scheduler) Run(ctx context.Context) {
+// Start launches Run in a goroutine with proper WaitGroup tracking.
+// wg.Add must happen before the goroutine to avoid a race with Stop.
+func (s *Scheduler) Start(ctx context.Context) {
 	s.wg.Add(1)
+	go s.run(ctx)
+}
+
+// run starts the scheduler and blocks until context is cancelled
+func (s *Scheduler) run(ctx context.Context) {
 	defer s.wg.Done()
 	defer s.ticker.Stop()
 
