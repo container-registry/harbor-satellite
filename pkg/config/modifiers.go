@@ -101,3 +101,9 @@ func SetSPIFFEEnabled(enabled bool) func(*Config) {
 		cfg.AppConfig.SPIFFE.Enabled = enabled
 	}
 }
+
+func SetRegistryFallbackConfig(fb RegistryFallbackConfig) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.RegistryFallback = fb
+	}
+}
