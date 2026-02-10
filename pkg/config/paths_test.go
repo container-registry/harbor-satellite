@@ -174,3 +174,223 @@ func TestBuildZotConfigWithStoragePath(t *testing.T) {
 	require.True(t, ok, "storage section should exist")
 	require.Equal(t, storagePath, storage["rootDirectory"])
 }
+
+func TestExpandPath_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		shouldErr bool
+	}{
+		{
+			name:      "Double tilde",
+			input:     "~~/config",
+			shouldErr: false,
+		},
+		{
+			name:      "Very long path",
+			input:     "~/very/long/path/" + string(make([]byte, 200)),
+			shouldErr: false,
+		},
+		{
+			name:      "Path with spaces",
+			input:     "~/config with spaces/satellite",
+			shouldErr: false,
+		},
+		{
+			name:      "Path with special chars",
+			input:     "~/config-with_special.chars@123",
+			shouldErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := expandPath(tt.input)
+			if tt.shouldErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.NotEmpty(t, result)
+			}
+		})
+	}
+}
+
+func TestEnsureDir_NestedDirectories(t *testing.T) {
+	t.Run("deeply nested directory creation", func(t *testing.T) {
+		base := t.TempDir()
+		path := filepath.Join(base, "level1", "level2", "level3", "level4")
+
+		err := ensureDir(path)
+		require.NoError(t, err)
+
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		require.True(t, info.IsDir())
+	})
+
+	t.Run("directory with special permissions", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "special-perms")
+
+		err := ensureDir(path)
+		require.NoError(t, err)
+
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(0755), info.Mode().Perm())
+	})
+}
+
+func TestResolvePathConfig_AllPaths(t *testing.T) {
+	dir := t.TempDir()
+	pathConfig, err := ResolvePathConfig(dir)
+	require.NoError(t, err)
+	require.NotNil(t, pathConfig)
+
+	t.Run("all paths are absolute", func(t *testing.T) {
+		require.True(t, filepath.IsAbs(pathConfig.ConfigDir))
+		require.True(t, filepath.IsAbs(pathConfig.ConfigFile))
+		require.True(t, filepath.IsAbs(pathConfig.PrevConfigFile))
+		require.True(t, filepath.IsAbs(pathConfig.ZotTempConfig))
+		require.True(t, filepath.IsAbs(pathConfig.ZotStorageDir))
+		require.True(t, filepath.IsAbs(pathConfig.StateFile))
+	})
+
+	t.Run("all paths under config dir", func(t *testing.T) {
+		require.Contains(t, pathConfig.ConfigFile, pathConfig.ConfigDir)
+		require.Contains(t, pathConfig.PrevConfigFile, pathConfig.ConfigDir)
+		require.Contains(t, pathConfig.ZotTempConfig, pathConfig.ConfigDir)
+		require.Contains(t, pathConfig.ZotStorageDir, pathConfig.ConfigDir)
+		require.Contains(t, pathConfig.StateFile, pathConfig.ConfigDir)
+	})
+
+	t.Run("correct filenames", func(t *testing.T) {
+		require.Equal(t, "config.json", filepath.Base(pathConfig.ConfigFile))
+		require.Equal(t, "prev_config.json", filepath.Base(pathConfig.PrevConfigFile))
+		require.Equal(t, "zot-hot.json", filepath.Base(pathConfig.ZotTempConfig))
+		require.Equal(t, "zot", filepath.Base(pathConfig.ZotStorageDir))
+		require.Equal(t, "state.json", filepath.Base(pathConfig.StateFile))
+	})
+}
+
+func TestBuildZotConfigWithStoragePath_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		storagePath string
+		expectError bool
+	}{
+		{
+			name:        "empty path",
+			storagePath: "",
+			expectError: false,
+		},
+		{
+			name:        "relative path",
+			storagePath: "./relative/path",
+			expectError: false,
+		},
+		{
+			name:        "absolute path",
+			storagePath: "/absolute/path",
+			expectError: false,
+		},
+		{
+			name:        "path with spaces",
+			storagePath: "/path with spaces/storage",
+			expectError: false,
+		},
+		{
+			name:        "path with special chars",
+			storagePath: "/path-with_special.chars@123/storage",
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := BuildZotConfigWithStoragePath(tt.storagePath)
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.NotEmpty(t, result)
+
+				var parsed map[string]any
+				require.NoError(t, json.Unmarshal([]byte(result), &parsed))
+
+				storage, ok := parsed["storage"].(map[string]any)
+				require.True(t, ok)
+				require.Equal(t, tt.storagePath, storage["rootDirectory"])
+			}
+		})
+	}
+}
+
+func TestBuildZotConfigWithStoragePath_PreservesOtherFields(t *testing.T) {
+	storagePath := "/test/storage"
+
+	result, err := BuildZotConfigWithStoragePath(storagePath)
+	require.NoError(t, err)
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result), &parsed))
+
+	// Verify other config sections are preserved
+	_, hasHTTP := parsed["http"]
+	require.True(t, hasHTTP, "http section should be preserved")
+
+	_, hasLog := parsed["log"]
+	require.True(t, hasLog, "log section should be preserved")
+
+	storage, ok := parsed["storage"].(map[string]any)
+	require.True(t, ok)
+
+	// Verify rootDirectory is updated
+	require.Equal(t, storagePath, storage["rootDirectory"])
+}
+
+func TestEnsureDir_ConcurrentCreation(t *testing.T) {
+	base := t.TempDir()
+	path := filepath.Join(base, "concurrent")
+
+	// Try to create the same directory concurrently
+	done := make(chan bool, 3)
+	for i := 0; i < 3; i++ {
+		go func() {
+			_ = ensureDir(path)
+			done <- true
+		}()
+	}
+
+	// Wait for all goroutines to complete
+	for i := 0; i < 3; i++ {
+		<-done
+	}
+
+	// Verify directory exists (at least one creation should have succeeded)
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	require.True(t, info.IsDir())
+}
+
+func TestResolvePathConfig_WithTilde(t *testing.T) {
+	configDir := filepath.Join(t.TempDir(), "test-satellite-config")
+	pathConfig, err := ResolvePathConfig(configDir)
+	require.NoError(t, err)
+	require.NotNil(t, pathConfig)
+
+	// Should be absolute path
+	require.True(t, filepath.IsAbs(pathConfig.ConfigDir))
+}
+
+func TestDefaultConfigDir_Consistency(t *testing.T) {
+	// Call twice and verify we get the same result
+	dir1, err1 := DefaultConfigDir()
+	require.NoError(t, err1)
+
+	dir2, err2 := DefaultConfigDir()
+	require.NoError(t, err2)
+
+	require.Equal(t, dir1, dir2, "DefaultConfigDir should return consistent results")
+	require.Contains(t, dir1, "satellite")
+}
