@@ -203,13 +203,13 @@ func validateRegistryFallbackConfig(config *Config) []string {
 		config.AppConfig.RegistryFallback.Registries = []string{"docker.io"}
 	}
 
-	for _, r := range fb.Registries {
+	for _, r := range config.AppConfig.RegistryFallback.Registries {
 		if strings.TrimSpace(r) == "" {
 			warnings = append(warnings, "registry_fallback contains an empty registry entry")
 		}
 	}
 
-	for _, rt := range fb.Runtimes {
+	for _, rt := range config.AppConfig.RegistryFallback.Runtimes {
 		if !validRuntimes[rt] {
 			warnings = append(warnings, fmt.Sprintf(
 				"registry_fallback contains unknown runtime %q, valid values: docker, containerd, crio, podman", rt,
