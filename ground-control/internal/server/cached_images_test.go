@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -244,6 +245,106 @@ func TestGetCachedImagesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func TestSyncHandler_InvalidBody(t *testing.T) {
+	server, _ := newMockServer(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader([]byte("not json")))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.syncHandler(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+func TestSyncHandler_InvalidHeartbeatInterval(t *testing.T) {
+	server, mock := newMockServer(t)
+
+	now := time.Now().UTC().Truncate(time.Second)
+
+	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
+		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
+		WithArgs("edge-01").
+		WillReturnRows(satRows)
+
+	reqBody := SatelliteStatusParams{
+		Name:                "edge-01",
+		StateReportInterval: "bad-format",
+		RequestCreatedTime:  now,
+	}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.syncHandler(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSyncHandler_BatchInsertArtifactsFails(t *testing.T) {
+	server, mock := newMockServer(t)
+
+	now := time.Now().UTC().Truncate(time.Second)
+
+	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
+		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
+		WithArgs("edge-01").
+		WillReturnRows(satRows)
+
+	mock.ExpectExec("INSERT INTO artifacts").
+		WithArgs(
+			pq.Array([]string{"localhost:8585/nginx:latest@sha256:abc"}),
+			pq.Array([]int64{50000}),
+		).
+		WillReturnError(fmt.Errorf("db connection lost"))
+
+	reqBody := SatelliteStatusParams{
+		Name:               "edge-01",
+		RequestCreatedTime: now,
+		CachedImages: []CachedImage{
+			{Reference: "localhost:8585/nginx:latest@sha256:abc", SizeBytes: 50000},
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.syncHandler(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetCachedImagesHandler_DBFailure(t *testing.T) {
+	server, mock := newMockServer(t)
+
+	now := time.Now().UTC().Truncate(time.Second)
+
+	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
+		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
+		WithArgs("edge-01").
+		WillReturnRows(satRows)
+
+	mock.ExpectQuery("SELECT .+ FROM artifacts").
+		WithArgs(int32(1)).
+		WillReturnError(fmt.Errorf("db timeout"))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/satellites/edge-01/images", nil)
+	req = mux.SetURLVars(req, map[string]string{"satellite": "edge-01"})
+
+	rr := httptest.NewRecorder()
+	server.getCachedImagesHandler(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestCachedImageJSON(t *testing.T) {
