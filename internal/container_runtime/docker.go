@@ -2,11 +2,13 @@ package runtime
 
 import (
 	"fmt"
-	"github.com/spf13/viper"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/spf13/viper"
 )
 
 const dockerConfigPath = "/etc/docker/daemon.json"
@@ -23,7 +25,6 @@ func setDockerdConfig(mirrors []string, localRegistry string) (string, error) {
 		return "", nil
 	}
 
-	// validate URI
 	if !strings.HasPrefix(localRegistry, "http://") && !strings.HasPrefix(localRegistry, "https://") {
 		localRegistry = "http://" + localRegistry
 	}
@@ -38,23 +39,15 @@ func setDockerdConfig(mirrors []string, localRegistry string) (string, error) {
 	v.SetConfigType("json")
 
 	if err := ensureDockerConfigFileExists(dockerConfigPath); err != nil {
-		return backupPath, fmt.Errorf("failed to create default docker config : %w", err)
+		return backupPath, fmt.Errorf("failed to create default docker config: %w", err)
 	}
 
 	if err := v.ReadInConfig(); err != nil {
-		return backupPath, fmt.Errorf("failed to read docker config : %w", err)
+		return backupPath, fmt.Errorf("failed to read docker config: %w", err)
 	}
 	currentMirrors := v.GetStringSlice("registry-mirrors")
 
-	// Append the new mirror if not present
-	found := false
-	for _, m := range currentMirrors {
-		if m == localRegistry {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if !slices.Contains(currentMirrors, localRegistry) {
 		currentMirrors = append(currentMirrors, localRegistry)
 		v.Set("registry-mirrors", currentMirrors)
 	}
