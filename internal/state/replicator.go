@@ -11,7 +11,9 @@ import (
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 )
 
@@ -71,54 +73,75 @@ func (e Entity) GetTag() string {
 }
 
 // Replicate replicates images from the source registry to the Zot registry.
+// Uses lazy image references so layers are streamed one-by-one from source
+// to destination. If the process crashes mid-replication, already-pushed
+// layers are preserved and skipped on retry.
 func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []Entity) error {
 	log := logger.FromContext(ctx)
-	pullAuthConfig := authn.FromConfig(authn.AuthConfig{
+	pullAuth := authn.FromConfig(authn.AuthConfig{
 		Username: r.sourceUsername,
 		Password: r.sourcePassword,
 	})
-	pushAuthConfig := authn.FromConfig(authn.AuthConfig{
+	pushAuth := authn.FromConfig(authn.AuthConfig{
 		Username: r.remoteUsername,
 		Password: r.remotePassword,
 	})
 
-	pullOptions := []crane.Option{crane.WithAuth(pullAuthConfig), crane.WithContext(ctx)}
-	pushOptions := []crane.Option{crane.WithAuth(pushAuthConfig), crane.WithContext(ctx)}
+	var nameOpts []name.Option
+	pullOpts := []remote.Option{remote.WithAuth(pullAuth), remote.WithContext(ctx)}
+	pushOpts := []remote.Option{remote.WithAuth(pushAuth), remote.WithContext(ctx)}
 
 	if r.useUnsecure {
-		pullOptions = append(pullOptions, crane.Insecure)
-		pushOptions = append(pushOptions, crane.Insecure)
+		nameOpts = append(nameOpts, name.Insecure)
 	} else {
 		transport, err := r.buildTLSTransport()
 		if err != nil {
 			return fmt.Errorf("build TLS transport: %w", err)
 		}
 		if transport != nil {
-			pullOptions = append(pullOptions, crane.WithTransport(transport))
+			pullOpts = append(pullOpts, remote.WithTransport(transport))
 		}
 	}
 
-	for _, replicationEntity := range replicationEntities {
+	for _, entity := range replicationEntities {
+		srcRef := fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, entity.GetRepository(), entity.GetName(), entity.GetTag())
+		dstRef := fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag())
 
-		log.Info().Msgf("Pulling image %s from repository %s at registry %s with tag %s", replicationEntity.GetName(), replicationEntity.GetRepository(), r.sourceRegistry, replicationEntity.GetTag())
-		// Pull the image from the source registry
-		srcImage, err := crane.Pull(fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, replicationEntity.GetRepository(), replicationEntity.GetName(), replicationEntity.GetTag()), pullOptions...)
+		log.Info().Msgf("Replicating image %s from %s to %s", entity.GetName(), r.sourceRegistry, r.remoteRegistryURL)
+
+		src, err := name.ParseReference(srcRef, nameOpts...)
 		if err != nil {
-			log.Error().Msgf("Failed to pull image: %v", err)
+			return fmt.Errorf("parse source ref %s: %w", srcRef, err)
+		}
+
+		dst, err := name.ParseReference(dstRef, nameOpts...)
+		if err != nil {
+			return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
+		}
+
+		// Lazy fetch - no layers downloaded yet
+		desc, err := remote.Get(src, pullOpts...)
+		if err != nil {
+			log.Error().Msgf("Failed to fetch image descriptor: %v", err)
 			return err
 		}
 
-		// Convert Docker manifest to OCI manifest
-		ociImage := mutate.MediaType(srcImage, types.OCIManifestSchema1)
-
-		// Push the converted OCI image to the Zot registry
-		err = crane.Push(ociImage, fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, replicationEntity.GetRepository(), replicationEntity.GetName(), replicationEntity.GetTag()), pushOptions...)
+		img, err := desc.Image()
 		if err != nil {
-			log.Error().Msgf("Failed to push image: %v", err)
+			log.Error().Msgf("Failed to resolve image: %v", err)
 			return err
 		}
-		log.Info().Msgf("Image %s pushed successfully", replicationEntity.GetName())
 
+		// Lazy OCI conversion - no data materialized
+		ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
+
+		// Streams layers one-by-one: pull layer from source, push to dest,
+		// then move to next layer. Manifest is pushed last.
+		if err := remote.Write(dst, ociImage, pushOpts...); err != nil {
+			log.Error().Msgf("Failed to replicate image: %v", err)
+			return err
+		}
+		log.Info().Msgf("Image %s replicated successfully", entity.GetName())
 	}
 	return nil
 }
