@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
+	auditLogger "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
 )
 
 type contextKey string
@@ -25,6 +26,7 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var user AuthUser
 		var authenticated bool
+		var actor string
 
 		// Try Bearer token first
 		if token := extractBearerToken(r); token != "" {
@@ -35,6 +37,7 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 					Username: session.Username,
 					Role:     session.Role,
 				}
+				actor = session.Username
 				authenticated = true
 			}
 		}
@@ -51,6 +54,7 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 							Username: dbUser.Username,
 							Role:     dbUser.Role,
 						}
+						actor = dbUser.Username
 						authenticated = true
 					}
 				}
@@ -58,6 +62,11 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		if !authenticated {
+			auditLogger.LogEvent(r.Context(), "user.auth.failure", actor, auditLogger.ClientIP(r), map[string]interface{}{
+				"reason": "invalid_credentials",
+				"path":   r.URL.Path,
+				"method": r.Method,
+			})
 			WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
