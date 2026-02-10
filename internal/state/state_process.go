@@ -166,7 +166,7 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 	var entityToReplicate []Entity
 
 	if oldEntites == nil {
-		log.Warn().Msg("Old state has zero entites, replicating the complete state")
+		log.Warn().Msg("Old state has zero entities, replicating the complete state")
 		return entityToDelete, newEntites, newState
 	}
 

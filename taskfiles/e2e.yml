@@ -820,7 +820,7 @@ tasks:
       - |
         echo "Checking satellite logs for crash recovery..."
 
-        if docker logs satellite 2>&1 | tail -100 | grep -q "Old state has zero entites, replicating the complete state"; then
+        if docker logs satellite 2>&1 | tail -100 | grep -q "Old state has zero entities, replicating the complete state"; then
           echo "FAIL: Satellite re-replicated the complete state after crash"
           docker logs satellite 2>&1 | tail -50
           exit 1
@@ -956,7 +956,7 @@ tasks:
       - |
         echo "Checking BYO satellite logs for crash recovery..."
 
-        if docker logs satellite-byo 2>&1 | tail -100 | grep -q "Old state has zero entites, replicating the complete state"; then
+        if docker logs satellite-byo 2>&1 | tail -100 | grep -q "Old state has zero entities, replicating the complete state"; then
           echo "FAIL: BYO satellite re-replicated the complete state after crash"
           docker logs satellite-byo 2>&1 | tail -50
           exit 1
