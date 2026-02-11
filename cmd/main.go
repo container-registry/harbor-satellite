@@ -161,6 +161,10 @@ func main() {
 			fmt.Println("Missing required argument: --ground-control-url or GROUND_CONTROL_URL env var.")
 			os.Exit(1)
 		}
+		if opts.HarborRegistryURL == "" {
+			fmt.Println("Missing required argument: --harbor-registry-url or HARBOR_REGISTRY_URL env var.")
+			os.Exit(1)
+		}
 	}
 	if opts.GroundControlURL == "" {
 		opts.GroundControlURL = config.DefaultGroundControlURL
