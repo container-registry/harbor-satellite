@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -76,7 +75,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 
 	// Override Harbor registry URLs if --harbor-registry-url is set
 	if override := z.cm.GetHarborRegistryURL(); override != "" {
-		stateConfig, err = applyHarborRegistryOverride(stateConfig, override)
+		stateConfig, err = config.ApplyHarborRegistryOverride(stateConfig, override)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to apply harbor registry URL override")
 			return err
@@ -184,45 +183,6 @@ func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSCo
 	}
 
 	return authResponse, nil
-}
-
-// applyHarborRegistryOverride replaces the host:port in both auth URL and state URL
-// with the provided override URL. This is needed when GC returns a Docker-internal
-// address (e.g., host.docker.internal:8080) that doesn't resolve on bare-metal nodes.
-func applyHarborRegistryOverride(sc config.StateConfig, override string) (config.StateConfig, error) {
-	overrideParsed, err := url.Parse(override)
-	if err != nil {
-		return sc, fmt.Errorf("parse harbor registry override URL: %w", err)
-	}
-
-	replaceHost := func(raw string) (string, error) {
-		parsed, err := url.Parse(raw)
-		if err != nil {
-			return "", fmt.Errorf("parse URL %q: %w", raw, err)
-		}
-		parsed.Scheme = overrideParsed.Scheme
-		parsed.Host = overrideParsed.Host
-		return parsed.String(), nil
-	}
-
-	authURL := string(sc.RegistryCredentials.URL)
-	if authURL != "" {
-		newAuth, err := replaceHost(authURL)
-		if err != nil {
-			return sc, err
-		}
-		sc.RegistryCredentials.URL = config.URL(newAuth)
-	}
-
-	if sc.StateURL != "" {
-		newState, err := replaceHost(sc.StateURL)
-		if err != nil {
-			return sc, err
-		}
-		sc.StateURL = newState
-	}
-
-	return sc, nil
 }
 
 func createHTTPClient(tlsCfg config.TLSConfig, useUnsecure bool) (*http.Client, error) {
