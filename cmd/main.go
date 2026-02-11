@@ -53,6 +53,7 @@ type SatelliteOptions struct {
 	RegistryDataDir        string
 	NoRegistryFallback     bool
 	FallbackOnly           bool
+	HarborRegistryURL      string
 }
 
 func main() {
@@ -76,6 +77,7 @@ func main() {
 	flag.StringVar(&shutdownTimeout, "shutdown-timeout", "", "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
 	flag.BoolVar(&opts.NoRegistryFallback, "no-registry-fallback", false, "Disable all CRI registry fallback configuration")
 	flag.BoolVar(&opts.FallbackOnly, "fallback-only", false, "Apply CRI registry fallback configs and exit without starting satellite")
+	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", "", "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
 
 	flag.Parse()
 
@@ -123,6 +125,9 @@ func main() {
 	}
 	if !opts.NoRegistryFallback && os.Getenv("NO_REGISTRY_FALLBACK") == "true" {
 		opts.NoRegistryFallback = true
+	}
+	if opts.HarborRegistryURL == "" {
+		opts.HarborRegistryURL = os.Getenv("HARBOR_REGISTRY_URL")
 	}
 
 	// Resolve config directory path
@@ -200,6 +205,10 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 			config.SetLocalRegistryUsername(opts.RegistryUsername),
 			config.SetLocalRegistryPassword(opts.RegistryPassword),
 		)
+	}
+
+	if opts.HarborRegistryURL != "" {
+		cm.With(config.SetHarborRegistryURL(opts.HarborRegistryURL))
 	}
 
 	// Update Zot config with storage path
