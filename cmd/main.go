@@ -213,6 +213,16 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	if opts.HarborRegistryURL != "" {
 		cm.With(config.SetHarborRegistryURL(opts.HarborRegistryURL))
+
+		// Apply override to existing state config (from prior ZTR)
+		if cm.IsZTRDone() {
+			sc := cm.GetStateConfig()
+			sc, err = config.ApplyHarborRegistryOverride(sc, opts.HarborRegistryURL)
+			if err != nil {
+				return fmt.Errorf("apply harbor registry URL override: %w", err)
+			}
+			cm.With(config.SetStateConfig(sc))
+		}
 	}
 
 	// Update Zot config with storage path
