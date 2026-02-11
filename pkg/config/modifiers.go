@@ -107,3 +107,9 @@ func SetRegistryFallbackConfig(fb RegistryFallbackConfig) func(*Config) {
 		cfg.AppConfig.RegistryFallback = fb
 	}
 }
+
+func SetHarborRegistryURL(url string) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.HarborRegistryURL = url
+	}
+}

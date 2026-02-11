@@ -55,6 +55,7 @@ type AppConfig struct {
 	SPIFFE                    SPIFFEConfig           `json:"spiffe,omitempty"`
 	EncryptConfig             bool                   `json:"encrypt_config,omitempty"`
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty"`
+	HarborRegistryURL        string                 `json:"harbor_registry_url,omitempty"`
 }
 
 type StateConfig struct {
