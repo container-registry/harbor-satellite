@@ -118,28 +118,28 @@ func SetHarborRegistryURL(url string) func(*Config) {
 	}
 }
 
+// ReplaceURLHost replaces the scheme and host:port in raw with those from override.
+func ReplaceURLHost(raw, override string) (string, error) {
+	overrideParsed, err := url.Parse(override)
+	if err != nil {
+		return "", fmt.Errorf("parse override URL: %w", err)
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("parse URL %q: %w", raw, err)
+	}
+	parsed.Scheme = overrideParsed.Scheme
+	parsed.Host = overrideParsed.Host
+	return parsed.String(), nil
+}
+
 // ApplyHarborRegistryOverride replaces the scheme and host:port in both auth URL
 // and state URL with the provided override. Used when GC returns a Docker-internal
 // address (e.g., host.docker.internal:8080) that doesn't resolve on bare-metal nodes.
 func ApplyHarborRegistryOverride(sc StateConfig, override string) (StateConfig, error) {
-	overrideParsed, err := url.Parse(override)
-	if err != nil {
-		return sc, fmt.Errorf("parse harbor registry override URL: %w", err)
-	}
-
-	replaceHost := func(raw string) (string, error) {
-		parsed, err := url.Parse(raw)
-		if err != nil {
-			return "", fmt.Errorf("parse URL %q: %w", raw, err)
-		}
-		parsed.Scheme = overrideParsed.Scheme
-		parsed.Host = overrideParsed.Host
-		return parsed.String(), nil
-	}
-
 	authURL := string(sc.RegistryCredentials.URL)
 	if authURL != "" {
-		newAuth, err := replaceHost(authURL)
+		newAuth, err := ReplaceURLHost(authURL, override)
 		if err != nil {
 			return sc, err
 		}
@@ -147,7 +147,7 @@ func ApplyHarborRegistryOverride(sc StateConfig, override string) (StateConfig, 
 	}
 
 	if sc.StateURL != "" {
-		newState, err := replaceHost(sc.StateURL)
+		newState, err := ReplaceURLHost(sc.StateURL, override)
 		if err != nil {
 			return sc, err
 		}
