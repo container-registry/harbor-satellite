@@ -17,22 +17,60 @@ jobs:
       id-token: write
     runs-on: container-registry
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            tag_suffix: amd64
+          - platform: linux/arm64
+            tag_suffix: arm64
+          - platform: linux/ppc64le
+            tag_suffix: ppc64le
+          - platform: linux/s390x
+            tag_suffix: s390x
+          - platform: linux/riscv64
+            tag_suffix: riscv64
     steps:
       - name: Print GitHub ref for debugging
         run: |
           echo "GitHub ref: $GITHUB_REF"
 
       - name: Checkout repo
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main')
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Publish and Sign Snapshot Image
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main')
         uses: ./.github/actions/publish-and-sign
         with:
           IMAGE_TAGS: latest
+          PLATFORM: ${{ matrix.platform }}
+          TAG_SUFFIX: ${{ matrix.tag_suffix }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS }}
+          REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+
+  push-latest-manifest:
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: container-registry
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: push-latest-images
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create manifest list and sign
+        uses: ./.github/actions/publish-and-sign
+        with:
+          IMAGE_TAGS: latest
+          CREATE_MANIFEST_ONLY: 'true'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
           REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS }}

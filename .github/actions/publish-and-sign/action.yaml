@@ -20,6 +20,16 @@ inputs:
   PROJECT_NAME:
     description: 'Project Name'
     required: true
+  PLATFORM:
+    description: 'Optional single platform (e.g. linux/amd64). When set, build only this platform and use TAG_SUFFIX for tag.'
+    required: false
+  TAG_SUFFIX:
+    description: 'Optional tag suffix (e.g. amd64). Appended to each IMAGE_TAGS when PLATFORM is set.'
+    required: false
+  CREATE_MANIFEST_ONLY:
+    description: 'When true, only create multi-arch manifest list from per-arch tags and sign (no build).'
+    required: false
+    default: 'false'
 
 runs:
   using: "composite"
@@ -50,6 +60,7 @@ runs:
       run: cosign env
 
     - name: Publish and Sign Both Components
+      if: inputs.CREATE_MANIFEST_ONLY != 'true'
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
@@ -58,4 +69,19 @@ runs:
         REG_PASS: ${{ inputs.REGISTRY_PASSWORD }}
         PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
         TAG: ${{ inputs.IMAGE_TAGS }}
+        PLATFORM: ${{ inputs.PLATFORM }}
+        TAG_SUFFIX: ${{ inputs.TAG_SUFFIX }}
       run: task publish-and-sign
+
+    - name: Create manifest list and sign
+      if: inputs.CREATE_MANIFEST_ONLY == 'true'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
+        REGISTRY: ${{ inputs.REGISTRY_ADDRESS }}
+        REG_USER: ${{ inputs.REGISTRY_USERNAME }}
+        REG_PASS: ${{ inputs.REGISTRY_PASSWORD }}
+        PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
+        BASE_TAG: ${{ inputs.IMAGE_TAGS }}
+        SUFFIXES: 'amd64 arm64 ppc64le s390x riscv64'
+      run: task _publish:manifest-list-and-sign
