@@ -103,6 +103,15 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return err
 	}
 
+	// Override host in fetched state URLs if --harbor-registry-url is set
+	if override := f.cm.GetHarborRegistryURL(); override != "" {
+		satelliteState, err = applyHarborOverrideToSatelliteState(satelliteState, override)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to apply harbor registry URL override to satellite state")
+			return err
+		}
+	}
+
 	changed := f.updateStateMap(satelliteState.States)
 
 	// Persist state if groups were added, removed, or swapped
@@ -571,4 +580,22 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func applyHarborOverrideToSatelliteState(state *SatelliteState, override string) (*SatelliteState, error) {
+	for i, s := range state.States {
+		replaced, err := config.ReplaceURLHost(s, override)
+		if err != nil {
+			return nil, fmt.Errorf("override state URL %q: %w", s, err)
+		}
+		state.States[i] = replaced
+	}
+	if state.Config != "" {
+		replaced, err := config.ReplaceURLHost(state.Config, override)
+		if err != nil {
+			return nil, fmt.Errorf("override config URL %q: %w", state.Config, err)
+		}
+		state.Config = replaced
+	}
+	return state, nil
 }
