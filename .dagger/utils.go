@@ -19,13 +19,9 @@ func (m *HarborSatellite) build(source *dagger.Directory, component string) *dag
 
 	outputs := dag.Directory()
 
-	var workDir string
-	switch {
-	case component == "satellite":
-		workDir = PROJ_MOUNT
-	case component == "ground-control":
-		workDir = PROJ_MOUNT + "/ground-control"
-	}
+	// For satellite, the full source is mounted to /app and we work from there
+	// For ground-control, only the ground-control subdir is mounted to /app
+	workDir := PROJ_MOUNT
 
 	golang := dag.Container().
 		From(DEFAULT_GO).

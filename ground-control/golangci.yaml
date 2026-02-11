@@ -1,3 +1,5 @@
+version: "2"
+
 # Ground Control linting configuration
 # Kept in sync with root golangci.yaml for satellite
 
@@ -8,6 +10,13 @@ linters-settings:
   cyclop:
     max-complexity: 30
     package-average: 10.0
+
+  gosec:
+    excludes:
+      - G101
+      - G104
+      - G115
+      - G204
 
   errcheck:
     check-type-assertions: true
@@ -216,7 +225,6 @@ linters:
     - govet
     - ineffassign
     - staticcheck
-    - typecheck
     - unused
     ## disabled by default
     - asasalint

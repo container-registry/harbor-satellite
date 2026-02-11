@@ -35,7 +35,7 @@ func WriteJSONError(w http.ResponseWriter, message string, statusCode int) {
 }
 
 // write JSON response with given status code and data.
-func WriteJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+func WriteJSONResponse(w http.ResponseWriter, statusCode int, data any) {
 	respBytes, err := json.Marshal(data)
 	if err != nil {
 		log.Printf("Failed to marshal JSON response: %v", err)

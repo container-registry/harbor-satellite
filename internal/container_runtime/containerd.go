@@ -15,24 +15,25 @@ const (
 )
 
 // setContainerdConfig writes hosts.toml for multiple upstream registries and updates containerd registry plugin
-func setContainerdConfig(upstreamRegistries []string, localMirror string) error {
-	if err := configureContainerd(containerdCertsDir); err != nil {
-		return fmt.Errorf("failed to configure registry plugin: %w", err)
+func setContainerdConfig(upstreamRegistries []string, localMirror string) (string, error) {
+	backupPath, err := configureContainerd(containerdCertsDir)
+	if err != nil {
+		return backupPath, fmt.Errorf("failed to configure registry plugin: %w", err)
 	}
 
 	for _, registryURL := range upstreamRegistries {
 		if err := writeContainerdHostToml(registryURL, localMirror); err != nil {
-			return fmt.Errorf("failed to configure containerd for %s: %w", registryURL, err)
+			return backupPath, fmt.Errorf("failed to configure containerd for %s: %w", registryURL, err)
 		}
 	}
 
-	return nil
+	return backupPath, nil
 }
 
 // writeContainerdHostToml creates or updates hosts.toml for a registry
 func writeContainerdHostToml(registryURL, localMirror string) error {
 	dir := filepath.Join(containerdCertsDir, registryURL)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
@@ -41,6 +42,13 @@ func writeContainerdHostToml(registryURL, localMirror string) error {
 	}
 
 	path := filepath.Join(dir, "hosts.toml")
+
+	// backup existing hosts.toml before overwrite
+	bkPath, err := backupFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to backup %s: %w", path, err)
+	}
+
 	var cfg ContainerdHosts
 
 	if _, err := os.Stat(path); err == nil {
@@ -62,7 +70,7 @@ func writeContainerdHostToml(registryURL, localMirror string) error {
 		Capabilities: []string{"pull", "resolve"},
 	}
 
-	f, err := os.Create(path)
+	f, err := os.Create(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("failed to open %s for writing: %w", path, err)
 	}
@@ -70,14 +78,26 @@ func writeContainerdHostToml(registryURL, localMirror string) error {
 		_ = f.Close()
 	}()
 
-	return toml.NewEncoder(f).Encode(cfg)
+	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
+		if bkPath != "" {
+			_ = restoreBackup(bkPath, path)
+		}
+		return fmt.Errorf("failed to encode hosts.toml, rolled back: %w", err)
+	}
+
+	return nil
 }
 
 // configureContainerd updates only the registry config path in containerd main config
-func configureContainerd(certDir string) error {
+func configureContainerd(certDir string) (string, error) {
+	bkPath, err := backupFile(containerdConfigPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to backup containerd config: %w", err)
+	}
+
 	cfg, err := loadToml(containerdConfigPath)
 	if err != nil {
-		return err
+		return bkPath, err
 	}
 
 	// do not overwrite existing config
@@ -89,18 +109,25 @@ func configureContainerd(certDir string) error {
 
 	f, err := os.Create(containerdConfigPath)
 	if err != nil {
-		return fmt.Errorf("failed to open %s for writing: %w", containerdConfigPath, err)
+		return bkPath, fmt.Errorf("failed to open %s for writing: %w", containerdConfigPath, err)
 	}
 	defer func() {
 		_ = f.Close()
 	}()
 
-	return toml.NewEncoder(f).Encode(cfg)
+	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
+		if bkPath != "" {
+			_ = restoreBackup(bkPath, containerdConfigPath)
+		}
+		return bkPath, fmt.Errorf("failed to write containerd config, rolled back: %w", err)
+	}
+
+	return bkPath, nil
 }
 
 // loadToml loads existing TOML into a flexible type
-func loadToml(path string) (map[string]interface{}, error) {
-	cfg := make(map[string]interface{})
+func loadToml(path string) (map[string]any, error) {
+	cfg := make(map[string]any)
 	if _, err := os.Stat(path); err == nil {
 		if _, err := toml.DecodeFile(path, &cfg); err != nil {
 			return nil, fmt.Errorf("failed to parse %s: %w", path, err)
@@ -109,13 +136,13 @@ func loadToml(path string) (map[string]interface{}, error) {
 	return cfg, nil
 }
 
-func loadNestedMap(parent map[string]interface{}, key string) map[string]interface{} {
+func loadNestedMap(parent map[string]any, key string) map[string]any {
 	if v, ok := parent[key]; ok {
-		if m, ok := v.(map[string]interface{}); ok {
+		if m, ok := v.(map[string]any); ok {
 			return m
 		}
 	}
-	newMap := make(map[string]interface{})
+	newMap := make(map[string]any)
 	parent[key] = newMap
 	return newMap
 }

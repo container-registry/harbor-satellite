@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+type Artifact struct {
+	ID        int32
+	Reference string
+	SizeBytes int64
+	CreatedAt time.Time
+}
+
 type Config struct {
 	ID          int32
 	ConfigName  string
@@ -37,13 +44,14 @@ type LoginAttempt struct {
 }
 
 type RobotAccount struct {
-	ID          int32
-	RobotName   string
-	RobotSecret string
-	RobotID     string
-	SatelliteID int32
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID              int32
+	RobotName       string
+	RobotSecretHash string
+	RobotID         string
+	SatelliteID     int32
+	RobotExpiry     sql.NullTime
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type Satellite struct {
@@ -78,6 +86,7 @@ type SatelliteStatus struct {
 	ImageCount         sql.NullInt32
 	ReportedAt         time.Time
 	CreatedAt          time.Time
+	ArtifactIds        []int32
 }
 
 type SatelliteToken struct {
@@ -86,6 +95,7 @@ type SatelliteToken struct {
 	Token       string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	ExpiresAt   time.Time
 }
 
 type Session struct {

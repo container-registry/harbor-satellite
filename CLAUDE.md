@@ -125,6 +125,12 @@ Ground Control uses environment variables (see ground-control/.env.example):
 - Database connection (DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD)
 - Server settings (PORT, APP_ENV)
 
+## Go Style Rules
+
+- Use `any` instead of `interface{}`. The project targets Go 1.22+ where `any` is the preferred alias.
+- Use `t.TempDir()` in tests instead of manual temp paths with `os.TempDir()`.
+- Use `cm.With()` modifiers for all ConfigManager mutations (never mutate via `cm.GetConfig()` directly).
+
 ## Important Development Notes
 
 ### State Management

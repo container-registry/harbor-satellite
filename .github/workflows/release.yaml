@@ -15,7 +15,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    runs-on: ubuntu-latest
+    runs-on: container-registry
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Print GitHub ref for debugging
@@ -44,7 +44,7 @@ jobs:
       contents: write
       packages: write
       id-token: write
-    runs-on: ubuntu-latest
+    runs-on: container-registry
     if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
     steps:
       - name: Checkout repo
@@ -64,13 +64,27 @@ jobs:
           REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
 
+      - name: Setup Go
+        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Install GoReleaser
+        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          install-only: true
+          version: v2.9.0
+
       - name: Create Release
         if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
-        uses: dagger/dagger-for-github@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          version: "latest"
-          verb: call
-          args: "release --github-token=env:GITHUB_TOKEN"
-
+        run: task release

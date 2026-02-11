@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	cleanupLockID         = 12345
-	defaultRetentionDays  = 7
+	cleanupLockID          = 12345
+	defaultRetentionDays   = 7
 	defaultCleanupInterval = 24 * time.Hour
 )
 
@@ -69,6 +69,11 @@ func (s *Server) runCleanupWithLock(ctx context.Context, days int) {
 		log.Printf("Status cleanup failed: %v", err)
 		return
 	}
+
+	if err := s.dbQueries.DeleteOrphanedArtifacts(ctx, days); err != nil {
+		log.Printf("Orphaned artifacts cleanup failed: %v", err)
+	}
+
 	log.Printf("Status cleanup completed (deleted records older than %d days)", days)
 }
 

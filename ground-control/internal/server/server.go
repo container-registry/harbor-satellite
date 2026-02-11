@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"fmt"
 	"log"
@@ -15,21 +17,51 @@ import (
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/middleware"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
 )
 
 type Server struct {
-	port            int
-	db              *sql.DB
-	dbQueries       *database.Queries
+	port           int
+	db             *sql.DB
+	dbQueries      *database.Queries
+	rateLimiter    *middleware.RateLimiter
+	spiffeProvider spiffe.Provider
+	embeddedSpire  *spiffe.EmbeddedSpireServer
+	spireClient    *spiffe.ServerClient
+
+	// External SPIRE server metadata (used when embeddedSpire is nil)
+	spireServerAddress string
+	spireServerPort    int
+	spireTrustDomain   string
+
+	// User auth
 	passwordPolicy  auth.PasswordPolicy
 	sessionDuration time.Duration
 	lockoutDuration time.Duration
+
+	// Satellite status
+	staleThreshold time.Duration
 }
 
-const (
-	defaultSessionDurationHours = 24
-	defaultLockoutDurationMins  = 15
-)
+// TLSConfig holds TLS settings for the server.
+type TLSConfig struct {
+	CertFile string
+	KeyFile  string
+	CAFile   string
+	Enabled  bool
+}
+
+// ServerResult contains the http.Server and TLS configuration.
+type ServerResult struct {
+	Server         *http.Server
+	AppServer      *Server
+	TLSConfig      *TLSConfig
+	CertWatcher    *middleware.CertWatcher
+	SPIFFEProvider spiffe.Provider
+	SPIFFEConfig   *spiffe.Config
+	EmbeddedSpire  *spiffe.EmbeddedSpireServer
+}
 
 var (
 	dbName   = os.Getenv("DB_DATABASE")
@@ -39,27 +71,7 @@ var (
 	HOST     = os.Getenv("DB_HOST")
 )
 
-func loadSessionDuration() time.Duration {
-	hours := defaultSessionDurationHours
-	if envVal := os.Getenv("SESSION_DURATION_HOURS"); envVal != "" {
-		if parsed, err := strconv.Atoi(envVal); err == nil && parsed > 0 {
-			hours = parsed
-		}
-	}
-	return time.Duration(hours) * time.Hour
-}
-
-func loadLockoutDuration() time.Duration {
-	mins := defaultLockoutDurationMins
-	if envVal := os.Getenv("LOCKOUT_DURATION_MINUTES"); envVal != "" {
-		if parsed, err := strconv.Atoi(envVal); err == nil && parsed > 0 {
-			mins = parsed
-		}
-	}
-	return time.Duration(mins) * time.Minute
-}
-
-func NewServer(ctx context.Context) *http.Server {
+func NewServer() *ServerResult {
 	port, err := strconv.Atoi(os.Getenv("PORT"))
 	if err != nil {
 		log.Fatalf("PORT is not valid: %v", err)
@@ -80,36 +92,203 @@ func NewServer(ctx context.Context) *http.Server {
 	}
 
 	dbQueries := database.New(db)
-	passwordPolicy := auth.LoadPolicyFromEnv()
-	sessionDuration := loadSessionDuration()
-	lockoutDuration := loadLockoutDuration()
 
-	s := &Server{
-		port:            port,
-		db:              db,
-		dbQueries:       dbQueries,
-		passwordPolicy:  passwordPolicy,
-		sessionDuration: sessionDuration,
-		lockoutDuration: lockoutDuration,
+	// Initialize rate limiter: 10 requests per minute per IP for ZTR endpoint
+	rateLimiter := middleware.NewRateLimiter(10, time.Minute)
+
+	// Load SPIFFE configuration
+	spiffeCfg := spiffe.LoadConfig()
+
+	var spiffeProvider spiffe.Provider
+	if spiffeCfg.Enabled {
+		spiffeProvider, err = spiffe.NewProvider(spiffeCfg)
+		if err != nil {
+			log.Fatalf("Failed to create SPIFFE provider: %v", err)
+		}
+		log.Printf("SPIFFE enabled with trust domain: %s", spiffeCfg.TrustDomain)
 	}
 
-	// Bootstrap system admin user
-	if err := s.BootstrapSystemAdmin(ctx); err != nil {
+	// Start embedded SPIRE server if enabled
+	var embeddedSpire *spiffe.EmbeddedSpireServer
+	if os.Getenv("EMBEDDED_SPIRE_ENABLED") == "true" {
+		spireCfg := &spiffe.EmbeddedSpireConfig{
+			Enabled:     true,
+			DataDir:     getEnvOrDefault("SPIRE_DATA_DIR", "/tmp/spire-data"),
+			TrustDomain: getEnvOrDefault("SPIRE_TRUST_DOMAIN", "harbor-satellite.local"),
+			BindAddress: getEnvOrDefault("SPIRE_BIND_ADDRESS", "127.0.0.1"),
+			BindPort:    8081,
+		}
+		embeddedSpire = spiffe.NewEmbeddedSpireServer(spireCfg)
+		if err := embeddedSpire.Start(context.Background()); err != nil {
+			log.Fatalf("Failed to start embedded SPIRE server: %v", err)
+		}
+	}
+
+	// Initialize SPIRE client: prefer embedded, fall back to external socket
+	var spireClient *spiffe.ServerClient
+	var spireServerAddress string
+	var spireServerPort int
+	var spireTrustDomain string
+
+	if embeddedSpire != nil {
+		spireClient = embeddedSpire.GetClient()
+		spireServerAddress = embeddedSpire.GetBindAddress()
+		spireServerPort = embeddedSpire.GetBindPort()
+		spireTrustDomain = embeddedSpire.GetTrustDomain()
+	} else if socketPath := os.Getenv("SPIRE_SERVER_SOCKET"); socketPath != "" {
+		spireTrustDomain = getEnvOrDefault("SPIRE_TRUST_DOMAIN", "harbor-satellite.local")
+		var clientErr error
+		spireClient, clientErr = spiffe.NewServerClient(socketPath, spireTrustDomain)
+		if clientErr != nil {
+			log.Printf("Warning: Failed to connect to external SPIRE server at %s: %v", socketPath, clientErr)
+		} else {
+			log.Printf("Connected to external SPIRE server at %s (trust domain: %s)", socketPath, spireTrustDomain)
+		}
+		spireServerAddress = getEnvOrDefault("SPIRE_SERVER_ADDRESS", "spire-server")
+		spireServerPort = parseIntEnv("SPIRE_SERVER_PORT", 8081)
+	}
+
+	newServer := &Server{
+		port:           port,
+		db:             db,
+		dbQueries:      dbQueries,
+		rateLimiter:    rateLimiter,
+		spiffeProvider: spiffeProvider,
+		embeddedSpire:  embeddedSpire,
+		spireClient:    spireClient,
+
+		spireServerAddress: spireServerAddress,
+		spireServerPort:    spireServerPort,
+		spireTrustDomain:   spireTrustDomain,
+
+		// User auth settings
+		passwordPolicy:  auth.LoadPolicyFromEnv(),
+		sessionDuration: parseDurationEnv("SESSION_DURATION", 24*time.Hour),
+		lockoutDuration: parseDurationEnv("LOCKOUT_DURATION", 5*time.Minute),
+
+		// Satellite status
+		staleThreshold: parseDurationEnv("STALE_THRESHOLD", time.Hour),
+	}
+
+	// Bootstrap system admin user if not exists
+	if err := newServer.BootstrapSystemAdmin(context.Background()); err != nil {
 		log.Fatalf("Failed to bootstrap system admin: %v", err)
 	}
 
-	go s.StartCleanupJob(ctx, CleanupConfig{
-		RetentionDays:   defaultRetentionDays,
-		CleanupInterval: defaultCleanupInterval,
-	})
+	tlsCfg := loadTLSConfig()
 
-	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", s.port),
-		Handler:      s.RegisterRoutes(),
-		IdleTimeout:  time.Minute,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+	httpServer := &http.Server{
+		Addr:              fmt.Sprintf(":%d", newServer.port),
+		Handler:           newServer.RegisterRoutes(),
+		IdleTimeout:       time.Minute,
+		ReadTimeout:       10 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      30 * time.Second,
 	}
 
-	return server
+	var certWatcher *middleware.CertWatcher
+
+	// Configure TLS: prefer SPIFFE if enabled, fall back to file-based TLS
+	if spiffeCfg.Enabled && spiffeProvider != nil {
+		tlsConfig, err := buildSPIFFETLSConfig(spiffeProvider, spiffeCfg)
+		if err != nil {
+			log.Fatalf("Failed to build SPIFFE TLS config: %v", err)
+		}
+		httpServer.TLSConfig = tlsConfig
+		log.Println("Using SPIFFE-based mTLS for server authentication")
+	} else if tlsCfg.Enabled {
+		// Create certificate watcher for hot-reload
+		var err error
+		certWatcher, err = middleware.NewCertWatcher(tlsCfg.CertFile, tlsCfg.KeyFile)
+		if err != nil {
+			log.Fatalf("Failed to create certificate watcher: %v", err)
+		}
+
+		tlsConfig, err := buildServerTLSConfigWithWatcher(tlsCfg, certWatcher)
+		if err != nil {
+			log.Fatalf("Failed to load TLS config: %v", err)
+		}
+		httpServer.TLSConfig = tlsConfig
+
+		// Start watching for certificate changes (check every 30 seconds)
+		certWatcher.Start(30 * time.Second)
+		log.Println("Certificate watcher started for TLS hot-reload")
+	}
+
+	return &ServerResult{
+		Server:         httpServer,
+		AppServer:      newServer,
+		TLSConfig:      tlsCfg,
+		CertWatcher:    certWatcher,
+		SPIFFEProvider: spiffeProvider,
+		SPIFFEConfig:   spiffeCfg,
+		EmbeddedSpire:  embeddedSpire,
+	}
 }
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
+}
+
+func parseIntEnv(key string, defaultValue int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return defaultValue
+}
+
+func parseDurationEnv(key string, defaultValue time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return defaultValue
+}
+
+func loadTLSConfig() *TLSConfig {
+	certFile := os.Getenv("TLS_CERT_FILE")
+	keyFile := os.Getenv("TLS_KEY_FILE")
+	caFile := os.Getenv("TLS_CA_FILE")
+
+	enabled := certFile != "" && keyFile != ""
+
+	return &TLSConfig{
+		CertFile: certFile,
+		KeyFile:  keyFile,
+		CAFile:   caFile,
+		Enabled:  enabled,
+	}
+}
+
+// buildServerTLSConfigWithWatcher creates a TLS config that uses the certificate watcher
+// for dynamic certificate reloading.
+func buildServerTLSConfigWithWatcher(cfg *TLSConfig, cw *middleware.CertWatcher) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		MinVersion:     tls.VersionTLS12,
+		GetCertificate: cw.GetCertificate,
+	}
+
+	if cfg.CAFile != "" {
+		caData, err := os.ReadFile(cfg.CAFile)
+		if err != nil {
+			return nil, fmt.Errorf("read CA file: %w", err)
+		}
+
+		caPool := x509.NewCertPool()
+		if !caPool.AppendCertsFromPEM(caData) {
+			return nil, fmt.Errorf("invalid CA certificate")
+		}
+
+		tlsConfig.ClientCAs = caPool
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
+	return tlsConfig, nil
+}
+

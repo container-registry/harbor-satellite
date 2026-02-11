@@ -16,7 +16,7 @@ func writeTempConfig(t *testing.T, data any) string {
 
 	bytes, err := json.Marshal(data)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(path, bytes, 0644))
+	require.NoError(t, os.WriteFile(path, bytes, 0600))
 
 	return path
 }
@@ -33,7 +33,7 @@ func TestInitConfigManager(t *testing.T) {
 
 	invalidConfigPath := filepath.Join(t.TempDir(), "invalid.json")
 	fmt.Println(validConfigPath)
-	require.NoError(t, os.WriteFile(invalidConfigPath, []byte("not-json"), 0644))
+	require.NoError(t, os.WriteFile(invalidConfigPath, []byte("not-json"), 0600))
 
 	tests := []struct {
 		name    string
@@ -41,7 +41,7 @@ func TestInitConfigManager(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "Success", path: validConfigPath, wantErr: false},
-		{name: "FileMissing", path: "/non/existent/path.json", wantErr: false}, // Missing file uses defaults
+		{name: "FileMissing", path: "/non/existent/path.json", wantErr: false}, // missing file uses defaults
 		{name: "InvalidJSON", path: invalidConfigPath, wantErr: true},
 	}
 
@@ -77,7 +77,7 @@ func TestConfigManager_WriteConfig(t *testing.T) {
 		})
 		require.NoError(t, cm.WriteConfig())
 
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(filepath.Clean(path))
 		require.NoError(t, err)
 
 		var saved Config

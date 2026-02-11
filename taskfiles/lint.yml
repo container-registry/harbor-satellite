@@ -1,0 +1,44 @@
+version: "3"
+
+tasks:
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - echo "Running golangci-lint..."
+      - golangci-lint run
+      - echo "Lint passed!"
+    silent: true
+
+  lint-report:
+    desc: Run golangci-lint and export results to file
+    cmds:
+      - echo "Running golangci-lint and exporting report..."
+      - golangci-lint run -v --output.tab.path=golangci-lint.report --issues-exit-code 0
+      - echo "Report saved to golangci-lint.report"
+    silent: true
+
+  vulnerability-check:
+    desc: Run govulncheck (filters known unfixable zot vulnerabilities)
+    cmds:
+      - echo "Running vulnerability check..."
+      - |
+        govulncheck -format json ./... 2>&1 | tee /tmp/vuln.json || true
+        if grep -q '"id":"GO-' /tmp/vuln.json; then
+          VULNS=$(grep -o '"id":"GO-[^"]*"' /tmp/vuln.json | grep -v '{{.VULN_FILTER}}' || true)
+          if [ -n "$VULNS" ]; then
+            echo "Found unexpected vulnerabilities:"
+            echo "$VULNS"
+            govulncheck -show verbose ./...
+            exit 1
+          fi
+        fi
+        echo "No unexpected vulnerabilities found"
+    silent: true
+
+  vulnerability-check-report:
+    desc: Run govulncheck and export results to file
+    cmds:
+      - echo "Running vulnerability check and exporting report..."
+      - govulncheck ./... > vulnerability-check.report 2>&1 || true
+      - echo "Report saved to vulnerability-check.report"
+    silent: true

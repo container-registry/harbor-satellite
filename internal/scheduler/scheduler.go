@@ -10,54 +10,46 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type UpstreamInfo struct {
-	LatestStateDigest  string
-	LatestConfigDigest string
-	CurrentActivity    string
-	StateURL           string
-	LastSyncDurationMs int64
-	ImageCount         int
-}
-
 // Scheduler manages the execution of processes with configurable intervals
 type Scheduler struct {
-	name            string
-	ticker          *time.Ticker
-	process         Process
-	log             *zerolog.Logger
-	interval        time.Duration
-	mu              sync.Mutex
-	upstreamPayload *UpstreamInfo
+	name     string
+	ticker   *time.Ticker
+	process  Process
+	log      *zerolog.Logger
+	interval time.Duration
+	mu       sync.Mutex
+	wg       sync.WaitGroup
 }
 
-const (
-	ActivityStateSynced      = "state synced successfully"
-	ActivityEncounteredError = "encountered error"
-	ActivityReconcilingState = "reconciling state"
-)
-
 // NewSchedulerWithInterval creates a new scheduler with a parsed interval string
-func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog.Logger, upstreamPayload *UpstreamInfo) (*Scheduler, error) {
-	duration, err := ParseEveryExpr(intervalExpr)
+func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog.Logger) (*Scheduler, error) {
+	duration, err := parseEveryExpr(intervalExpr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse interval: %w", err)
 	}
 
 	ticker := time.NewTicker(duration)
 	scheduler := &Scheduler{
-		name:            process.Name(),
-		ticker:          ticker,
-		process:         process,
-		log:             log,
-		interval:        duration,
-		upstreamPayload: upstreamPayload,
+		name:     process.Name(),
+		ticker:   ticker,
+		process:  process,
+		log:      log,
+		interval: duration,
 	}
 
 	return scheduler, nil
 }
 
-// Run starts the scheduler and blocks until context is cancelled
-func (s *Scheduler) Run(ctx context.Context) {
+// Start launches Run in a goroutine with proper WaitGroup tracking.
+// wg.Add must happen before the goroutine to avoid a race with Stop.
+func (s *Scheduler) Start(ctx context.Context) {
+	s.wg.Add(1)
+	go s.run(ctx)
+}
+
+// run starts the scheduler and blocks until context is cancelled
+func (s *Scheduler) run(ctx context.Context) {
+	defer s.wg.Done()
 	defer s.ticker.Stop()
 
 	s.log.Info().
@@ -90,6 +82,9 @@ func (s *Scheduler) Run(ctx context.Context) {
 
 // ResetInterval changes the ticker interval dynamically
 func (s *Scheduler) ResetInterval(newInterval time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.ticker.Reset(newInterval)
 	s.interval = newInterval
 	s.log.Info().
@@ -100,7 +95,7 @@ func (s *Scheduler) ResetInterval(newInterval time.Duration) {
 
 // ResetIntervalFromExpr changes the ticker interval using an expression string
 func (s *Scheduler) ResetIntervalFromExpr(intervalExpr string) error {
-	duration, err := ParseEveryExpr(intervalExpr)
+	duration, err := parseEveryExpr(intervalExpr)
 	if err != nil {
 		return fmt.Errorf("failed to parse interval: %w", err)
 	}
@@ -121,9 +116,20 @@ func (s *Scheduler) Name() string {
 	return s.name
 }
 
-// Stop stops the scheduler
-func (s *Scheduler) Stop() {
-	s.ticker.Stop()
+// Stop signals the scheduler to stop and waits for all goroutines to complete
+func (s *Scheduler) Stop(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *Scheduler) launchProcess(ctx context.Context) {
@@ -135,8 +141,10 @@ func (s *Scheduler) launchProcess(ctx context.Context) {
 			Str("Process", s.process.Name()).
 			Msg("Scheduler triggering task execution")
 
+		s.wg.Add(1)
 		go func() {
-			if err := s.process.Execute(ctx, s.upstreamPayload); err != nil {
+			defer s.wg.Done()
+			if err := s.process.Execute(ctx); err != nil {
 				s.log.Warn().
 					Str("Process", s.process.Name()).
 					Err(err).
@@ -150,7 +158,7 @@ func (s *Scheduler) launchProcess(ctx context.Context) {
 	}
 }
 
-func ParseEveryExpr(expr string) (time.Duration, error) {
+func parseEveryExpr(expr string) (time.Duration, error) {
 	const prefix = "@every "
 	if expr == "" {
 		return 0, fmt.Errorf("empty expression provided")

@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
-	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
@@ -21,33 +19,46 @@ type FetchAndReplicateStateProcess struct {
 	currentConfigDigest string
 	cm                  *config.ConfigManager
 	mu                  sync.Mutex
+	stateFilePath       string
 }
 
 // Define result types for channels
 type StateFetcherResult struct {
-	Index        int
-	URL          string
-	Error        error
-	Cancelled    bool
-	HadError     bool
+	Index     int
+	URL       string
+	Error     error
+	Cancelled bool
 }
 
 type ConfigFetcherResult struct {
-	ConfigDigest       string
-	LatestConfigDigest string
-	Error              error
-	Cancelled          bool
-	HadError           bool
-	Activity           string
+	ConfigDigest string
+	Error        error
+	Cancelled    bool
 }
 
-func NewFetchAndReplicateStateProcess(cm *config.ConfigManager) *FetchAndReplicateStateProcess {
-	return &FetchAndReplicateStateProcess{
-		name:                config.ReplicateStateJobName,
-		isRunning:           false,
-		currentConfigDigest: "",
-		cm:                  cm,
+func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath string, log *zerolog.Logger) *FetchAndReplicateStateProcess {
+	p := &FetchAndReplicateStateProcess{
+		name:          config.ReplicateStateJobName,
+		cm:            cm,
+		stateFilePath: stateFilePath,
 	}
+
+	if stateFilePath != "" {
+		persisted, err := LoadState(stateFilePath)
+		if err != nil {
+			log.Warn().Err(err).Str("path", stateFilePath).Msg("Corrupted state file, starting fresh")
+		} else if persisted != nil {
+			p.currentConfigDigest = persisted.ConfigDigest
+			for _, g := range persisted.Groups {
+				p.stateMap = append(p.stateMap, StateMap{
+					url:      g.URL,
+					Entities: g.Entities,
+				})
+			}
+		}
+	}
+
+	return p
 }
 
 type StateMap struct {
@@ -64,14 +75,9 @@ func NewStateMap(url []string) []StateMap {
 	return stateMap
 }
 
-func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPayload *scheduler.UpstreamInfo) error {
-	startTime := time.Now()
+func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	f.start()
-	defer func() {
-		f.stop()
-		upstreamPayload.LastSyncDurationMs = time.Since(startTime).Milliseconds()
-		upstreamPayload.ImageCount = f.countTotalImages()
-	}()
+	defer f.stop()
 
 	// Top level logger with process name
 	log := logger.FromContext(ctx).With().Str("process", f.name).Logger()
@@ -83,18 +89,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 	default:
 	}
 
-	sourceURL := utils.FormatRegistryURL(f.cm.GetSourceRegistryURL())
-	remoteURL := utils.FormatRegistryURL(f.cm.GetRemoteRegistryURL())
-	srcUsername := f.cm.GetSourceRegistryUsername()
-	srcPassword := f.cm.GetSourceRegistryPassword()
-	remoteUsername := f.cm.GetRemoteRegistryUsername()
-	remotePassword := f.cm.GetRemoteRegistryPassword()
-	useUnsecure := f.cm.UseUnsecure()
-	satelliteStateURL := f.cm.GetStateURL()
-
-	upstreamPayload.StateURL = satelliteStateURL
-
-	replicator := NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure)
+	replicator, sourceURL, srcUsername, srcPassword, remoteURL, useUnsecure, satelliteStateURL := f.setupReplication()
 
 	canExecute, reason := f.CanExecute(satelliteStateURL, remoteURL, sourceURL, srcUsername, srcPassword)
 	if !canExecute {
@@ -103,31 +98,19 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 	}
 	log.Info().Msg(reason)
 
-	satelliteStateFetcher, err := getStateFetcherForInput(satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
+	satelliteState, err := f.fetchSatelliteRootState(ctx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
 	if err != nil {
-		log.Error().Err(err).Msg("Error processing satellite state")
-		upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
-		return err
-	}
-	satelliteState := &SatelliteState{}
-	if err := satelliteStateFetcher.FetchStateArtifact(ctx, satelliteState, &log); err != nil {
-		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteStateURL)
-		upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
 		return err
 	}
 
-	// fetch digest of latest state and put into the upstreamPayload
-	stateDigest, err := satelliteStateFetcher.FetchDigest(ctx, &log)
-	if err != nil {
-		log.Error().Err(err).Msgf("Error fetching digest from latest state artifact")
-		upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
-	}
+	changed := f.updateStateMap(satelliteState.States)
 
-	if stateDigest != "" {
-		upstreamPayload.LatestStateDigest = stateDigest
+	// Persist state if groups were added, removed, or swapped
+	if f.stateFilePath != "" && changed {
+		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist state after group changes")
+		}
 	}
-
-	f.updateStateMap(satelliteState.States)
 
 	// Create channels for results
 	stateFetcherResults := make(chan StateFetcherResult, len(f.stateMap))
@@ -139,206 +122,21 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context, upstreamPay
 	// Launch state fetcher goroutines
 	for i := range f.stateMap {
 		go func(index int) {
-			stateFetcherLog := log.With().
-				Str("sub-process", "state-fetcher").
-				Str("group", f.stateMap[index].url).
-				Int("goroutine-id", index).
-				Logger()
-
-			result := StateFetcherResult{
-				Index: index,
-				URL:   f.stateMap[index].url,
-			}
-
-			stateFetcherLog.Info().Msgf("Processing state for %s", f.stateMap[index].url)
-
-			groupStateFetcher, err := getStateFetcherForInput(f.stateMap[index].url, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
-			if err != nil {
-				stateFetcherLog.Error().Err(err).Msg("Error processing input")
-				result.Error = fmt.Errorf("failed to create state fetcher for %s: %w", f.stateMap[index].url, err)
-				result.HadError = true
-				stateFetcherResults <- result
-				return
-			}
-
-			newStateFetched, err := f.FetchAndProcessState(ctx, groupStateFetcher, &stateFetcherLog)
-			if err != nil {
-				stateFetcherLog.Error().Err(err).Msg("Error fetching state")
-				result.Error = fmt.Errorf("failed to fetch state for %s: %w", f.stateMap[index].url, err)
-				result.HadError = true
-				stateFetcherResults <- result
-				return
-			}
-			stateFetcherLog.Info().Msgf("State fetched successfully for %s", f.stateMap[index].url)
-
-			deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, &stateFetcherLog, f.stateMap[index].Entities)
-			f.LogChanges(deleteEntity, replicateEntity, &stateFetcherLog)
-
-			if err := replicator.DeleteReplicationEntity(ctx, deleteEntity); err != nil {
-				stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
-				result.Error = fmt.Errorf("failed to delete entities for %s: %w", f.stateMap[index].url, err)
-				result.HadError = true
-				stateFetcherResults <- result
-				return
-			}
-
-			if err := replicator.Replicate(ctx, replicateEntity); err != nil {
-				stateFetcherLog.Error().Err(err).Msg("Error replicating state")
-				result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
-				result.HadError = true
-				stateFetcherResults <- result
-				return
-			}
-
-			mutex.Lock()
-			f.stateMap[index].State = newState
-			f.stateMap[index].Entities = FetchEntitiesFromState(newState)
-			mutex.Unlock()
-
+			result := f.processGroupState(ctx, index, srcUsername, srcPassword, useUnsecure, replicator, mutex, &log)
 			stateFetcherResults <- result
 		}(i)
 	}
 
 	// Launch config fetcher goroutine
 	go func() {
-		configFetcherLog := log.With().
-			Str("sub-process", "config-fetcher").
-			Logger()
-
-		result := ConfigFetcherResult{}
-
-		configStateFetcher, err := getStateFetcherForInput(satelliteState.Config, srcUsername, srcPassword, useUnsecure, &configFetcherLog)
-		if err != nil {
-			configFetcherLog.Error().Err(err).Msg("Error processing satellite state")
-			result.Error = fmt.Errorf("failed to create config state fetcher: %w", err)
-			result.HadError = true
-			configFetcherResult <- result
-			return
-		}
-
-		configDigest, err := configStateFetcher.FetchDigest(ctx, &configFetcherLog)
-		if err != nil {
-			configFetcherLog.Error().Err(err).Msgf("Error fetching state artifact digest from url: %s", satelliteState.Config)
-			result.Error = fmt.Errorf("failed to fetch config digest from %s: %w", satelliteState.Config, err)
-			result.HadError = true
-			configFetcherResult <- result
-			return
-		}
-		result.LatestConfigDigest = configDigest
-
-		if configDigest != f.currentConfigDigest {
-			result.Activity = scheduler.ActivityReconcilingState
-			configFetcherLog.Info().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("The upstream config has changes, reconciling the satellite accordingly")
-
-			remoteConfig := config.Config{}
-			if err := configStateFetcher.FetchStateArtifact(ctx, &remoteConfig, &configFetcherLog); err != nil {
-				configFetcherLog.Error().Err(err).
-					Msgf("Error fetching new config's state artifact from url: %s, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
-				result.Error = fmt.Errorf("failed to fetch config artifact from %s: %w", satelliteState.Config, err)
-				configFetcherResult <- result
-				return
-			}
-
-			remoteConfig.StateConfig = f.cm.GetStateConfig()
-			validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
-			if err != nil {
-				configFetcherLog.Error().Err(err).
-					Msgf("Error validating config state artifact digest from url: %s, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
-				result.Error = fmt.Errorf("failed to validate config from %s: %w", satelliteState.Config, err)
-				configFetcherResult <- result
-				return
-			}
-			if len(warnings) != 0 {
-				utils.HandleNewConfigWarnings(&configFetcherLog, warnings)
-			}
-
-			if err := f.cm.WritePrevConfigToDisk(f.cm.GetConfig()); err != nil {
-				configFetcherLog.Error().Err(err).
-					Msgf("Error writing the prev config to disk while reconciling remote config, continuing execution with the same previous config with digest %s", f.currentConfigDigest)
-				result.Error = fmt.Errorf("failed to write previous config to disk: %w", err)
-				configFetcherResult <- result
-				return
-			}
-
-			configFetcherLog.Debug().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("Writing new config to disk")
-			if err := f.cm.WriteConfigToDisk(validatedRemoteConfig); err != nil {
-				configFetcherLog.Error().Err(err).
-					Msgf("Error writing the newly fetched remote config from %s to disk, continuing execution with the previous config with digest %s", satelliteState.Config, f.currentConfigDigest)
-				result.Error = fmt.Errorf("failed to write new config to disk: %w", err)
-				configFetcherResult <- result
-				return
-			}
-			f.currentConfigDigest = configDigest
-		}
-
-		// Success case
-		result.ConfigDigest = configDigest
-		if result.Activity == "" {
-			result.Activity = scheduler.ActivityStateSynced
-		}
+		result := f.reconcileRemoteConfig(ctx, satelliteState.Config, srcUsername, srcPassword, useUnsecure, mutex, &log)
 		configFetcherResult <- result
 	}()
 
-	// Collect results from all goroutines
-	var allErrors []string
-	receivedStateFetchers := 0
-	receivedConfigFetcher := false
-
-	// Wait for all results from the fetcher goroutines or cancellation
-	for {
-		select {
-		case <-ctx.Done():
-			log.Warn().Err(ctx.Err()).Msg("Operation cancelled")
-			return ctx.Err()
-
-		case stateResult := <-stateFetcherResults:
-			receivedStateFetchers++
-
-			if stateResult.Cancelled {
-				log.Debug().Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msg("State fetcher cancelled")
-			} else if stateResult.Error != nil || stateResult.HadError {
-				allErrors = append(allErrors, stateResult.Error.Error())
-				log.Error().Err(stateResult.Error).Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msg("State fetcher failed")
-			} else {
-				log.Info().Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msgf("State fetcher completed successfully for %s", stateResult.URL)
-			}
-
-		case configResult := <-configFetcherResult:
-			receivedConfigFetcher = true
-
-			if configResult.LatestConfigDigest != "" {
-				upstreamPayload.LatestConfigDigest = configResult.LatestConfigDigest
-			}
-
-			if configResult.Cancelled {
-				log.Debug().Msg("Config fetcher cancelled")
-			} else if configResult.Error != nil || configResult.HadError {
-				allErrors = append(allErrors, configResult.Error.Error())
-				log.Error().Err(configResult.Error).Msg("Config fetcher failed")
-			} else {
-				log.Info().Str("digest", configResult.ConfigDigest).Msg("Config fetcher completed successfully")
-				if configResult.Activity != "" {
-					upstreamPayload.CurrentActivity = configResult.Activity
-				}
-			}
-		}
-
-		// Check if we've received all results
-		if receivedStateFetchers == len(f.stateMap) && receivedConfigFetcher {
-			break
-		}
-	}
-
-	// Return accumulated errors if any
-	if len(allErrors) > 0 {
-		upstreamPayload.CurrentActivity = scheduler.ActivityEncounteredError
-		return fmt.Errorf("the following errors occurred while reconciling satellite state: %s", strings.Join(allErrors, "; "))
-	}
-
-	return nil
+	return f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), &log)
 }
 
-func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
+func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) bool {
 	var newStates []string
 	for _, state := range states {
 		found := false
@@ -355,14 +153,20 @@ func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
 
 	// Remove states that are no longer needed
 	var updatedStateMap []StateMap
+	removed := 0
 	for _, stateMap := range f.stateMap {
 		if contains(states, stateMap.url) {
 			updatedStateMap = append(updatedStateMap, stateMap)
+		} else {
+			removed++
 		}
 	}
 
 	// Add new states
-	f.stateMap = append(updatedStateMap, NewStateMap(newStates)...)
+	updatedStateMap = append(updatedStateMap, NewStateMap(newStates)...)
+	f.stateMap = updatedStateMap
+
+	return len(newStates) > 0 || removed > 0
 }
 
 func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *zerolog.Logger, oldEntites []Entity) ([]Entity, []Entity, StateReader) {
@@ -374,7 +178,7 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 	var entityToReplicate []Entity
 
 	if oldEntites == nil {
-		log.Warn().Msg("Old state has zero entites, replicating the complete state")
+		log.Warn().Msg("Old state has zero entities, replicating the complete state")
 		return entityToDelete, newEntites, newState
 	}
 
@@ -389,17 +193,18 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 		key := newEntity.Name + "|" + newEntity.Tag
 		oldEntity, exists := oldEntityMap[key]
 
-		if !exists {
+		switch {
+		case !exists:
 			log.Debug().Str("entity", key).Msg("New entity not found in old state, scheduling for replication")
 			entityToReplicate = append(entityToReplicate, newEntity)
-		} else if newEntity.Digest != oldEntity.Digest {
+		case newEntity.Digest != oldEntity.Digest:
 			log.Debug().Str("entity", key).
 				Str("old_digest", oldEntity.Digest).
 				Str("new_digest", newEntity.Digest).
 				Msg("Entity digest changed, scheduling old for delete and new for replicate")
 			entityToReplicate = append(entityToReplicate, newEntity)
 			entityToDelete = append(entityToDelete, oldEntity)
-		} else {
+		default:
 			log.Debug().Str("entity", key).Msg("Entity unchanged, skipping")
 		}
 		delete(oldEntityMap, key)
@@ -456,6 +261,239 @@ func (f *FetchAndReplicateStateProcess) CanExecute(satelliteStateURL, remoteURL,
 	}
 
 	return true, fmt.Sprintf("Process %s can execute: all conditions fulfilled", f.name)
+}
+
+func (f *FetchAndReplicateStateProcess) collectResults(
+	ctx context.Context,
+	stateFetcherResults <-chan StateFetcherResult,
+	configFetcherResult <-chan ConfigFetcherResult,
+	expectedCount int,
+	log *zerolog.Logger,
+) error {
+	var allErrors []string
+	receivedStateFetchers := 0
+	receivedConfigFetcher := false
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Warn().Err(ctx.Err()).Msg("Operation cancelled")
+			return ctx.Err()
+
+		case stateResult := <-stateFetcherResults:
+			receivedStateFetchers++
+
+			switch {
+			case stateResult.Cancelled:
+				log.Debug().Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msg("State fetcher cancelled")
+			case stateResult.Error != nil:
+				allErrors = append(allErrors, stateResult.Error.Error())
+				log.Error().Err(stateResult.Error).Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msg("State fetcher failed")
+			default:
+				log.Info().Int("goroutine-id", stateResult.Index).Str("group", stateResult.URL).Msgf("State fetcher completed successfully for %s", stateResult.URL)
+			}
+
+		case configResult := <-configFetcherResult:
+			receivedConfigFetcher = true
+
+			switch {
+			case configResult.Cancelled:
+				log.Debug().Msg("Config fetcher cancelled")
+			case configResult.Error != nil:
+				allErrors = append(allErrors, configResult.Error.Error())
+				log.Error().Err(configResult.Error).Msg("Config fetcher failed")
+			default:
+				log.Info().Str("digest", configResult.ConfigDigest).Msg("Config fetcher completed successfully")
+			}
+		}
+
+		if receivedStateFetchers == expectedCount && receivedConfigFetcher {
+			break
+		}
+	}
+
+	if len(allErrors) > 0 {
+		return fmt.Errorf("the following errors occurred while reconciling satellite state: %s", strings.Join(allErrors, "; "))
+	}
+
+	return nil
+}
+
+func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
+	ctx context.Context,
+	configURL, srcUsername, srcPassword string,
+	useUnsecure bool,
+	mutex *sync.Mutex,
+	log *zerolog.Logger,
+) ConfigFetcherResult {
+	configFetcherLog := log.With().
+		Str("sub-process", "config-fetcher").
+		Logger()
+
+	result := ConfigFetcherResult{}
+
+	configStateFetcher, err := getStateFetcherForInput(configURL, srcUsername, srcPassword, useUnsecure, &configFetcherLog)
+	if err != nil {
+		configFetcherLog.Error().Err(err).Msg("Error processing satellite state")
+		result.Error = fmt.Errorf("failed to create config state fetcher: %w", err)
+		return result
+	}
+
+	configDigest, err := configStateFetcher.FetchDigest(ctx, &configFetcherLog)
+	if err != nil {
+		configFetcherLog.Error().Err(err).Msgf("Error fetching state artifact digest from url: %s", configURL)
+		result.Error = fmt.Errorf("failed to fetch config digest from %s: %w", configURL, err)
+		return result
+	}
+
+	if configDigest != f.currentConfigDigest {
+		configFetcherLog.Info().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("The upstream config has changes, reconciling the satellite accordingly")
+
+		remoteConfig := config.Config{}
+		if err := configStateFetcher.FetchStateArtifact(ctx, &remoteConfig, &configFetcherLog); err != nil {
+			configFetcherLog.Error().Err(err).
+				Msgf("Error fetching new config's state artifact from url: %s, continuing execution with the previous config with digest %s", configURL, f.currentConfigDigest)
+			result.Error = fmt.Errorf("failed to fetch config artifact from %s: %w", configURL, err)
+			return result
+		}
+
+		remoteConfig.StateConfig = f.cm.GetStateConfig()
+		validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
+		if err != nil {
+			configFetcherLog.Error().Err(err).
+				Msgf("Error validating config state artifact digest from url: %s, continuing execution with the previous config with digest %s", configURL, f.currentConfigDigest)
+			result.Error = fmt.Errorf("failed to validate config from %s: %w", configURL, err)
+			return result
+		}
+		if len(warnings) != 0 {
+			utils.HandleNewConfigWarnings(&configFetcherLog, warnings)
+		}
+
+		if err := f.cm.WritePrevConfigToDisk(f.cm.GetConfig()); err != nil {
+			configFetcherLog.Error().Err(err).
+				Msgf("Error writing the prev config to disk while reconciling remote config, continuing execution with the same previous config with digest %s", f.currentConfigDigest)
+			result.Error = fmt.Errorf("failed to write previous config to disk: %w", err)
+			return result
+		}
+
+		configFetcherLog.Debug().Str("Current Digest", f.currentConfigDigest).Str("Remote Digest", configDigest).Msgf("Writing new config to disk")
+		if err := f.cm.WriteConfigToDisk(validatedRemoteConfig); err != nil {
+			configFetcherLog.Error().Err(err).
+				Msgf("Error writing the newly fetched remote config from %s to disk, continuing execution with the previous config with digest %s", configURL, f.currentConfigDigest)
+			result.Error = fmt.Errorf("failed to write new config to disk: %w", err)
+			return result
+		}
+		mutex.Lock()
+		f.currentConfigDigest = configDigest
+		if f.stateFilePath != "" {
+			if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+				configFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
+			}
+		}
+		mutex.Unlock()
+	}
+
+	result.ConfigDigest = configDigest
+	return result
+}
+
+func (f *FetchAndReplicateStateProcess) processGroupState(
+	ctx context.Context,
+	index int,
+	srcUsername, srcPassword string,
+	useUnsecure bool,
+	replicator Replicator,
+	mutex *sync.Mutex,
+	log *zerolog.Logger,
+) StateFetcherResult {
+	stateFetcherLog := log.With().
+		Str("sub-process", "state-fetcher").
+		Str("group", f.stateMap[index].url).
+		Int("goroutine-id", index).
+		Logger()
+
+	result := StateFetcherResult{
+		Index: index,
+		URL:   f.stateMap[index].url,
+	}
+
+	stateFetcherLog.Info().Msgf("Processing state for %s", f.stateMap[index].url)
+
+	groupStateFetcher, err := getStateFetcherForInput(f.stateMap[index].url, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
+	if err != nil {
+		stateFetcherLog.Error().Err(err).Msg("Error processing input")
+		result.Error = fmt.Errorf("failed to create state fetcher for %s: %w", f.stateMap[index].url, err)
+		return result
+	}
+
+	newStateFetched, err := f.FetchAndProcessState(ctx, groupStateFetcher, &stateFetcherLog)
+	if err != nil {
+		stateFetcherLog.Error().Err(err).Msg("Error fetching state")
+		result.Error = fmt.Errorf("failed to fetch state for %s: %w", f.stateMap[index].url, err)
+		return result
+	}
+	stateFetcherLog.Info().Msgf("State fetched successfully for %s", f.stateMap[index].url)
+
+	deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, &stateFetcherLog, f.stateMap[index].Entities)
+	f.LogChanges(deleteEntity, replicateEntity, &stateFetcherLog)
+
+	if err := replicator.DeleteReplicationEntity(ctx, deleteEntity); err != nil {
+		stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
+		result.Error = fmt.Errorf("failed to delete entities for %s: %w", f.stateMap[index].url, err)
+		return result
+	}
+
+	if err := replicator.Replicate(ctx, replicateEntity); err != nil {
+		stateFetcherLog.Error().Err(err).Msg("Error replicating state")
+		result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
+		return result
+	}
+
+	mutex.Lock()
+	f.stateMap[index].State = newState
+	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
+	if f.stateFilePath != "" {
+		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
+		}
+	}
+	mutex.Unlock()
+
+	return result
+}
+
+func (f *FetchAndReplicateStateProcess) fetchSatelliteRootState(
+	ctx context.Context,
+	satelliteStateURL, srcUsername, srcPassword string,
+	useUnsecure bool,
+	log *zerolog.Logger,
+) (*SatelliteState, error) {
+	satelliteStateFetcher, err := getStateFetcherForInput(satelliteStateURL, srcUsername, srcPassword, useUnsecure, log)
+	if err != nil {
+		log.Error().Err(err).Msg("Error processing satellite state")
+		return nil, err
+	}
+	satelliteState := &SatelliteState{}
+	if err := satelliteStateFetcher.FetchStateArtifact(ctx, satelliteState, log); err != nil {
+		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteStateURL)
+		return nil, err
+	}
+	return satelliteState, nil
+}
+
+func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, string, string, string, bool, string) {
+	sourceURL := utils.FormatRegistryURL(f.cm.GetSourceRegistryURL())
+	remoteURL := utils.FormatRegistryURL(f.cm.GetLocalRegistryURL())
+	srcUsername := f.cm.GetSourceRegistryUsername()
+	srcPassword := f.cm.GetSourceRegistryPassword()
+	remoteUsername := f.cm.GetRemoteRegistryUsername()
+	remotePassword := f.cm.GetRemoteRegistryPassword()
+	useUnsecure := f.cm.UseUnsecure()
+	satelliteStateURL := f.cm.GetStateURL()
+
+	replicator := NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure)
+
+	return replicator, sourceURL, srcUsername, srcPassword, remoteURL, useUnsecure, satelliteStateURL
 }
 
 func (f *FetchAndReplicateStateProcess) start() {
@@ -533,14 +571,4 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
-}
-
-func (f *FetchAndReplicateStateProcess) countTotalImages() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	total := 0
-	for _, sm := range f.stateMap {
-		total += len(sm.Entities)
-	}
-	return total
 }

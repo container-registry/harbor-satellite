@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
@@ -29,7 +30,7 @@ func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, registra
 		registrars: registrars,
 		ctx:        ctx,
 		Logger:     logger,
-		server:     &http.Server{Addr: ":9090", Handler: router},
+		server:     &http.Server{Addr: ":9090", Handler: router, ReadHeaderTimeout: 10 * time.Second},
 	}
 }
 

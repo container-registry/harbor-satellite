@@ -6,8 +6,13 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/container-registry/harbor-satellite/internal/crypto"
+	"github.com/container-registry/harbor-satellite/internal/identity"
+	"github.com/container-registry/harbor-satellite/internal/secure"
 )
 
 type ConfigChangeType string
@@ -20,8 +25,8 @@ const (
 
 type ConfigChange struct {
 	Type     ConfigChangeType
-	OldValue interface{}
-	NewValue interface{}
+	OldValue any
+	NewValue any
 }
 
 type ConfigChangeCallback func(change ConfigChange) error
@@ -34,9 +39,15 @@ type ConfigManager struct {
 	configPath              string
 	prevConfigPath          string
 	mu                      sync.RWMutex
+	encryptor               *secure.ConfigEncryptor
+	encryptEnabled          bool
 }
 
 func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config) (*ConfigManager, error) {
+	cryptoProvider := crypto.NewAESProvider()
+	deviceIdentity := identity.NewLinuxDeviceIdentity()
+	encryptor := secure.NewConfigEncryptor(cryptoProvider, deviceIdentity)
+
 	return &ConfigManager{
 		config:                  config,
 		configPath:              configPath,
@@ -44,6 +55,8 @@ func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL
 		Token:                   token,
 		DefaultGroundControlURL: defaultGroundControlURL,
 		JsonLog:                 jsonLog,
+		encryptor:               encryptor,
+		encryptEnabled:          config.AppConfig.EncryptConfig,
 	}, nil
 }
 
@@ -61,17 +74,26 @@ func (cm *ConfigManager) WriteConfig() error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	data, err := json.MarshalIndent(cm.config, "", "  ")
-	if err != nil {
-		return err
+	return cm.writeConfigUnlocked(cm.config, cm.configPath)
+}
+
+func (cm *ConfigManager) writeConfigUnlocked(config *Config, path string) error {
+	var data []byte
+	var err error
+
+	if cm.encryptEnabled {
+		data, err = cm.encryptor.EncryptConfig(config)
+		if err != nil {
+			return fmt.Errorf("encrypt config: %w", err)
+		}
+	} else {
+		data, err = json.MarshalIndent(config, "", "  ")
+		if err != nil {
+			return err
+		}
 	}
 
-	err = os.WriteFile(cm.configPath, data, 0644)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return os.WriteFile(path, data, 0o600)
 }
 
 // Writes the given config to disk at the configPath
@@ -79,17 +101,7 @@ func (cm *ConfigManager) WriteConfigToDisk(config *Config) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(cm.configPath, data, 0644)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return cm.writeConfigUnlocked(config, cm.configPath)
 }
 
 // Writes the given config to disk at the prevConfigPath
@@ -97,17 +109,7 @@ func (cm *ConfigManager) WritePrevConfigToDisk(config *Config) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	err = os.WriteFile(cm.prevConfigPath, data, 0644)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return cm.writeConfigUnlocked(config, cm.prevConfigPath)
 }
 
 func (cm *ConfigManager) detectChanges(oldConfig *Config, newConfig *Config) []ConfigChange {
@@ -126,14 +128,6 @@ func (cm *ConfigManager) detectChanges(oldConfig *Config, newConfig *Config) []C
 			Type:     IntervalsChanged,
 			OldValue: oldConfig.AppConfig.StateReplicationInterval,
 			NewValue: newConfig.AppConfig.StateReplicationInterval,
-		})
-	}
-
-	if oldConfig.AppConfig.HeartbeatInterval != newConfig.AppConfig.HeartbeatInterval {
-		changes = append(changes, ConfigChange{
-			Type:     IntervalsChanged,
-			OldValue: oldConfig.AppConfig.HeartbeatInterval,
-			NewValue: newConfig.AppConfig.HeartbeatInterval,
 		})
 	}
 
@@ -206,7 +200,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 
 // Reads the config at the given path and returns the parsed Config.
 func readAndReturnConfig(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +208,18 @@ func readAndReturnConfig(path string) (*Config, error) {
 	trimmed := strings.TrimSpace(string(data))
 	if trimmed == "" || trimmed == "{}" {
 		return nil, os.ErrNotExist
+	}
+
+	if secure.IsEncrypted(data) {
+		cryptoProvider := crypto.NewAESProvider()
+		deviceIdentity := identity.NewLinuxDeviceIdentity()
+		encryptor := secure.NewConfigEncryptor(cryptoProvider, deviceIdentity)
+
+		var cfg Config
+		if err := encryptor.DecryptConfig(data, &cfg); err != nil {
+			return nil, fmt.Errorf("decrypt config: %w", err)
+		}
+		return &cfg, nil
 	}
 
 	var cfg Config

@@ -1,0 +1,104 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: groundcontrol
+    networks:
+      - spiffe-e2e
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:1.12.3
+    container_name: spire-server
+    hostname: spire-server
+    command: ["-config", "/opt/spire/conf/server/server.conf"]
+    volumes:
+      - ./spiffe/server.conf:/opt/spire/conf/server/server.conf:ro
+      - spire-server-socket:/tmp/spire-server/private
+      - ./spiffe/certs:/opt/spire/certs:ro
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "/opt/spire/bin/spire-server", "healthcheck", "-socketPath", "/tmp/spire-server/private/api.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - spiffe-e2e
+
+  spire-agent-gc:
+    image: ghcr.io/spiffe/spire-agent:1.12.3
+    container_name: spire-agent-gc
+    hostname: spire-agent-gc
+    pid: host
+    command: ["-config", "/opt/spire/conf/agent/agent.conf"]
+    volumes:
+      - ./spiffe/agent-gc-runtime.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./spiffe/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - spire-agent-gc-socket:/run/spire/sockets
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    depends_on:
+      spire-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck", "-socketPath", "/run/spire/sockets/agent.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - spiffe-e2e
+
+  gc:
+    image: gc:e2e
+    container_name: gc
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spire-agent-gc:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      DB_DATABASE: groundcontrol
+      PORT: "8080"
+      ADMIN_PASSWORD: AdminPass123
+      SKIP_HARBOR_HEALTH_CHECK: "true"
+      SPIFFE_ENABLED: "true"
+      SPIFFE_ENDPOINT_SOCKET: unix:///run/spire/sockets/agent.sock
+      SPIFFE_TRUST_DOMAIN: harbor-satellite.local
+      SPIRE_SERVER_SOCKET: /tmp/spire-server/private/api.sock
+      SPIRE_SERVER_ADDRESS: spire-server
+      SPIRE_SERVER_PORT: "8081"
+    volumes:
+      - spire-agent-gc-socket:/run/spire/sockets:ro
+      - spire-server-socket:/tmp/spire-server/private:ro
+    ports:
+      - "9080:8080"
+    networks:
+      - spiffe-e2e
+    healthcheck:
+      test: ["CMD", "curl", "-sfk", "https://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+volumes:
+  spire-server-socket:
+  spire-agent-gc-socket:
+
+networks:
+  spiffe-e2e:
+    name: spiffe-e2e
+    driver: bridge

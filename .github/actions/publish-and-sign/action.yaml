@@ -1,5 +1,5 @@
 name: Publish and Sign Snapshot Image
-description: Publishes and signs a snapshot image using Dagger.
+description: Publishes and signs a snapshot image using Task and docker buildx.
 
 inputs:
   IMAGE_TAGS:
@@ -24,8 +24,21 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Dagger Version
-      uses: sagikazarmark/dagger-version-action@v0.0.1
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: "1.24.11"
+
+    - name: Install Task
+      uses: arduino/setup-task@v2
+      with:
+        version: 3.x
+
+    - name: Set up Docker Buildx with remote BuildKit
+      shell: bash
+      run: |
+        docker buildx inspect remote || docker buildx create --name remote --driver remote tcp://buildkitd.github-runners.svc:1234
+        docker buildx use remote
 
     - name: Install Cosign
       uses: sigstore/cosign-installer@v3.7.0
@@ -36,50 +49,13 @@ runs:
         GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
       run: cosign env
 
-    - name: Satellite Publish and Sign Snapshot Image
-      uses: dagger/dagger-for-github@v7
+    - name: Publish and Sign Both Components
+      shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
-        REGISTRY_ADDRESS: ${{ inputs.REGISTRY_ADDRESS }}
-        REGISTRY_USERNAME: ${{ inputs.REGISTRY_USERNAME }}
-        REGISTRY_PASSWORD: ${{ inputs.REGISTRY_PASSWORD }}
+        REGISTRY: ${{ inputs.REGISTRY_ADDRESS }}
+        REG_USER: ${{ inputs.REGISTRY_USERNAME }}
+        REG_PASS: ${{ inputs.REGISTRY_PASSWORD }}
         PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
-        IMAGE_TAGS: ${{ inputs.IMAGE_TAGS }}
-        SATELLITE: satellite
-      with:
-        version: ${{ steps.dagger_version.outputs.version }}
-        verb: call
-        args: "publish-image-and-sign \
-          --component='${{ env.SATELLITE }}' \
-          --project-name='${{ env.PROJECT_NAME }}' \
-          --registry='${{ env.REGISTRY_ADDRESS }}' \
-          --registry-username='${{ env.REGISTRY_USERNAME }}' \
-          --registry-password=env:REGISTRY_PASSWORD \
-          --image-tags='${{ env.IMAGE_TAGS}}' \
-          --github-token=env:GITHUB_TOKEN \
-          --actions-id-token-request-url=$ACTIONS_ID_TOKEN_REQUEST_URL \
-          --actions-id-token-request-token=env:ACTIONS_ID_TOKEN_REQUEST_TOKEN"
-
-    - name: Ground Control Publish and Sign Snapshot Image
-      uses: dagger/dagger-for-github@v7
-      env:
-        GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
-        REGISTRY_ADDRESS: ${{ inputs.REGISTRY_ADDRESS }}
-        REGISTRY_USERNAME: ${{ inputs.REGISTRY_USERNAME }}
-        REGISTRY_PASSWORD: ${{ inputs.REGISTRY_PASSWORD }}
-        PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
-        IMAGE_TAGS: ${{ inputs.IMAGE_TAGS }}
-        GROUND_CONTROL: ground-control
-      with:
-        version: ${{ steps.dagger_version.outputs.version }}
-        verb: call
-        args: "publish-image-and-sign \
-          --component='${{ env.GROUND_CONTROL }}' \
-          --project-name='${{ env.PROJECT_NAME }}' \
-          --registry='${{ env.REGISTRY_ADDRESS }}' \
-          --registry-username='${{ env.REGISTRY_USERNAME }}' \
-          --registry-password=env:REGISTRY_PASSWORD \
-          --image-tags='${{ env.IMAGE_TAGS}}' \
-          --github-token=env:GITHUB_TOKEN \
-          --actions-id-token-request-url=$ACTIONS_ID_TOKEN_REQUEST_URL \
-          --actions-id-token-request-token=env:ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+        TAG: ${{ inputs.IMAGE_TAGS }}
+      run: task publish-and-sign

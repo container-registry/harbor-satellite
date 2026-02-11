@@ -6,12 +6,14 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 type ZotConfig struct {
-	HTTP ZotHTTPConfig `json:"http"`
-	Log  ZotLogConfig  `json:"log"`
+	HTTP    ZotHTTPConfig    `json:"http"`
+	Log     ZotLogConfig     `json:"log"`
+	Storage ZotStorageConfig `json:"storage"`
 }
 
 type ZotHTTPConfig struct {
@@ -21,6 +23,10 @@ type ZotHTTPConfig struct {
 
 type ZotLogConfig struct {
 	Level string `json:"level"`
+}
+
+type ZotStorageConfig struct {
+	RootDirectory string `json:"rootDirectory"`
 }
 
 func (c *ZotConfig) GetRegistryURL() string {
@@ -33,7 +39,7 @@ func (c *ZotConfig) GetRegistryURL() string {
 
 // ReadConfig reads a JSON file from the specified path and unmarshals it into a ZotConfig struct.
 func ReadZotConfig(filePath string, zotConfig *ZotConfig) error {
-	file, err := os.Open(filePath)
+	file, err := os.Open(filepath.Clean(filePath))
 	if err != nil {
 		return fmt.Errorf("could not open file: %w", err)
 	}

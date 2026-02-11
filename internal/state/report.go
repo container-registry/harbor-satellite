@@ -3,113 +3,127 @@ package state
 import (
 	"context"
 	"fmt"
-	"math"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
-	"github.com/shirou/gopsutil/v4/cpu"
-	"github.com/shirou/gopsutil/v4/disk"
-	"github.com/shirou/gopsutil/v4/mem"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v3/mem"
 )
 
 type StatusReportParams struct {
-	Name                string    `json:"name"`                   // Satellite identifier
-	Activity            string    `json:"activity"`               // Current activity satellite is doing
-	StateReportInterval string    `json:"state_report_interval"`  // Interval between status reports
-	LatestStateDigest   string    `json:"latest_state_digest"`    // Digest of latest state artifact
-	LatestConfigDigest  string    `json:"latest_config_digest"`   // Digest of latest config artifact
-	MemoryUsedBytes     uint64    `json:"memory_used_bytes"`      // Memory currently used by satellite
-	StorageUsedBytes    uint64    `json:"storage_used_bytes"`     // Storage currently used by satellite
-	CPUPercent          float64   `json:"cpu_percent"`            // CPU usage percentage
-	RequestCreatedTime  time.Time `json:"request_created_time"`   // Timestamp of request creation
-	LastSyncDurationMs  int64     `json:"last_sync_duration_ms"`  // How long last sync took
-	ImageCount          int       `json:"image_count"`            // Number of images in local registry
+	Name                string        `json:"name"`
+	Activity            string        `json:"activity"`
+	StateReportInterval string        `json:"state_report_interval"`
+	LatestStateDigest   string        `json:"latest_state_digest"`
+	LatestConfigDigest  string        `json:"latest_config_digest"`
+	MemoryUsedBytes     uint64        `json:"memory_used_bytes"`
+	StorageUsedBytes    uint64        `json:"storage_used_bytes"`
+	CPUPercent          float64       `json:"cpu_percent"`
+	RequestCreatedTime  time.Time     `json:"request_created_time"`
+	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
+	ImageCount          int           `json:"image_count"`
+	CachedImages        []CachedImage `json:"cached_images,omitempty"`
 }
 
-func collectStatusReportParams(ctx context.Context, duration time.Duration, req *StatusReportParams, cfg config.MetricsConfig) error {
-	req.RequestCreatedTime = time.Now()
+func collectStatusReportParams(ctx context.Context, heartbeatInterval time.Duration, req *StatusReportParams, cfg config.MetricsConfig, registryURL string, insecure bool) {
+	log := logger.FromContext(ctx)
 
 	if cfg.CollectCPU {
-		if cpuPercent, err := getAvgCpuUsage(ctx, 1*time.Second, duration); err == nil {
-			req.CPUPercent = cpuPercent
-		}
+		req.CPUPercent = getAvgCPUUsage(ctx, 500*time.Millisecond, heartbeatInterval)
 	}
-
 	if cfg.CollectMemory {
-		if memUsed, err := getMemoryUsedBytes(ctx); err == nil {
-			req.MemoryUsedBytes = memUsed
-		}
+		req.MemoryUsedBytes = getMemoryUsedBytes(ctx)
 	}
-
 	if cfg.CollectStorage {
-		if storUsed, err := getStorageUsedBytes(ctx, "/"); err == nil {
-			req.StorageUsedBytes = storUsed
-		}
+		req.StorageUsedBytes = getStorageUsedBytes(ctx, "/")
 	}
 
-	return nil
+	if registryURL != "" {
+		cached, err := collectCachedImages(ctx, registryURL, insecure)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to collect cached images")
+		} else {
+			req.CachedImages = cached
+			req.ImageCount = len(cached)
+		}
+	}
 }
 
-func getAvgCpuUsage(ctx context.Context, sampleInterval time.Duration, totalDuration time.Duration) (float64, error) {
-	var sum float64
+func getAvgCPUUsage(ctx context.Context, sampleInterval, totalDuration time.Duration) float64 {
+	if totalDuration <= 0 || sampleInterval <= 0 {
+		return 0
+	}
+	samples := int(totalDuration / sampleInterval)
+	if samples < 1 {
+		samples = 1
+	}
+
+	var total float64
 	var count int
+	for i := 0; i < samples; i++ {
+		if ctx.Err() != nil {
+			break
+		}
+		percents, err := cpu.PercentWithContext(ctx, sampleInterval, false)
+		if err != nil || len(percents) == 0 {
+			continue
+		}
+		total += percents[0]
+		count++
+	}
 
-	ticker := time.NewTicker(sampleInterval)
-	defer ticker.Stop()
+	if count == 0 {
+		return 0
+	}
+	return total / float64(count)
+}
 
-	timeout := time.After(totalDuration)
+func getMemoryUsedBytes(ctx context.Context) uint64 {
+	v, err := mem.VirtualMemoryWithContext(ctx)
+	if err != nil {
+		return 0
+	}
+	return v.Used
+}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return 0, ctx.Err()
-		case <-timeout:
-			if count == 0 {
-				return 0, fmt.Errorf("no samples collected")
-			}
-			avg := sum / float64(count)
-			return math.Round(avg*100) / 100, nil
-		case <-ticker.C:
-			percent, err := cpu.PercentWithContext(ctx, 0, false)
-			if err != nil {
-				continue
-			}
-			if len(percent) > 0 {
-				sum += percent[0]
-				count++
-			}
+func getStorageUsedBytes(ctx context.Context, path string) uint64 {
+	usage, err := disk.UsageWithContext(ctx, path)
+	if err != nil {
+		return 0
+	}
+	return usage.Used
+}
+
+// extractSatelliteNameFromURL parses a state URL and returns the satellite name.
+// Supports: "hostname/satellite/satellite-state/<name>/state:latest"
+func extractSatelliteNameFromURL(stateURL string) (string, error) {
+	parsed, err := url.Parse(stateURL)
+	if err != nil {
+		return "", fmt.Errorf("parse state URL: %w", err)
+	}
+
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	// Path format: /satellite/satellite-state/<name>/state:latest
+	for i, part := range parts {
+		if part == "satellite-state" && i+1 < len(parts) {
+			return parts[i+1], nil
 		}
 	}
+
+	return "", fmt.Errorf("could not extract satellite name from URL path: %s", parsed.Path)
 }
 
-func getStorageUsedBytes(ctx context.Context, path string) (uint64, error) {
-	usageStat, err := disk.UsageWithContext(ctx, path)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get storage used: %w", err)
+func parseEveryExpr(expr string) (time.Duration, error) {
+	const prefix = "@every "
+	if expr == "" {
+		return 0, fmt.Errorf("empty expression provided")
 	}
-	return usageStat.Used, nil
-}
-
-func getMemoryUsedBytes(ctx context.Context) (uint64, error) {
-	vmStat, err := mem.VirtualMemoryWithContext(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get memory used: %w", err)
+	if !strings.HasPrefix(expr, prefix) {
+		return 0, fmt.Errorf("unsupported format: must start with %q", prefix)
 	}
-	return vmStat.Used, nil
-}
-
-func extractSatelliteNameFromURL(stateURL string) (string, error) {
-	u, err := url.Parse(stateURL)
-	if err != nil {
-		return "", fmt.Errorf("invalid state URL %q: %w", stateURL, err)
-	}
-
-	parts := strings.FieldsFunc(u.Path, func(r rune) bool { return r == '/' })
-	if len(parts) < 4 {
-		return "", fmt.Errorf("state URL %q does not have enough path segments to extract satellite name", stateURL)
-	}
-
-	return parts[2], nil
+	return time.ParseDuration(strings.TrimPrefix(expr, prefix))
 }

@@ -3,32 +3,39 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache git
+# Install git for go mod download
+RUN apk add --no-cache git ca-certificates
 
-# Copy go mod files first for caching
+# Copy go mod files first for better caching
 COPY go.mod go.sum ./
-
-# Download dependencies with cache mount
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
+RUN go mod download
 
 # Copy source code
 COPY . .
 
-# Build the binary with cache mount
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -o /satellite ./cmd/main.go
+# Build the binary
+RUN CGO_ENABLED=0 GOOS=linux go build -o /satellite ./cmd/main.go
 
-# Final stage
-FROM alpine:3.19
+# Runtime stage
+FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata curl
 
 WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /satellite /app/satellite
+
+# Create data directory
+RUN mkdir -p /data
+
+# Create non-root user
+RUN adduser -D -g '' appuser
+RUN chown -R appuser:appuser /data
+USER appuser
+
+WORKDIR /data
+
+EXPOSE 8585
 
 ENTRYPOINT ["/app/satellite"]

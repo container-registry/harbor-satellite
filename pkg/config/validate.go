@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/container-registry/harbor-satellite/internal/registry"
@@ -22,10 +23,14 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 
 	var warnings []string
 
-	if config.AppConfig.GroundControlURL == "" {
-		warnings = append(warnings, fmt.Sprintf(
-			"ground_control_url not provided. Defaulting to default ground_control_url: %s", defaultGroundControlURL,
-		))
+	// Environment variable/CLI flag always takes precedence over config file
+	if defaultGroundControlURL != "" {
+		if config.AppConfig.GroundControlURL != "" && string(config.AppConfig.GroundControlURL) != defaultGroundControlURL {
+			warnings = append(warnings, fmt.Sprintf(
+				"ground_control_url from env/CLI (%s) takes precedence over config file (%s)",
+				defaultGroundControlURL, config.AppConfig.GroundControlURL,
+			))
+		}
 		config.AppConfig.GroundControlURL = URL(defaultGroundControlURL)
 	}
 
@@ -33,6 +38,53 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url: %w", err)
 	}
 
+	warnings = append(warnings, validateAndEnforceLogLevel(config)...)
+
+	// Check for USE_UNSECURE environment variable
+	if useUnsecure := os.Getenv("USE_UNSECURE"); useUnsecure != "" {
+		config.AppConfig.UseUnsecure = strings.ToLower(useUnsecure) == "true" || useUnsecure == "1"
+	}
+
+	bringOwnRegistry := config.AppConfig.BringOwnRegistry
+
+	if bringOwnRegistry {
+		borWarnings, borErr := validateBringOwnRegistry(config)
+		warnings = append(warnings, borWarnings...)
+		if borErr != nil {
+			return nil, warnings, borErr
+		}
+	}
+
+	zotWarnings, zotErr := validateAndEnforceZotConfig(config, bringOwnRegistry)
+	warnings = append(warnings, zotWarnings...)
+	if zotErr != nil {
+		return nil, warnings, zotErr
+	}
+
+	warnings = append(warnings, validateAndEnforceCronSchedules(config)...)
+
+	tlsWarnings, tlsErr := validateTLSConfig(&config.AppConfig.TLS)
+	warnings = append(warnings, tlsWarnings...)
+	if tlsErr != nil {
+		return nil, warnings, tlsErr
+	}
+
+	warnings = append(warnings, validateRegistryFallbackConfig(config)...)
+
+	return config, warnings, nil
+}
+
+// isValidCronExpression checks the validity of a cron expression.
+func isValidCronExpression(cronExpression string) bool {
+	if _, err := cron.ParseStandard(cronExpression); err != nil {
+		return false
+	}
+	return true
+}
+
+// validateAndEnforceLogLevel validates log level and defaults to info if invalid.
+func validateAndEnforceLogLevel(config *Config) []string {
+	var warnings []string
 	if config.AppConfig.LogLevel == "" {
 		config.AppConfig.LogLevel = zerolog.LevelInfoValue
 	} else if !validLogLevels[strings.ToLower(config.AppConfig.LogLevel)] {
@@ -42,54 +94,36 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		))
 		config.AppConfig.LogLevel = zerolog.LevelInfoValue
 	}
+	return warnings
+}
 
-	bringOwnRegistry := config.AppConfig.BringOwnRegistry
+// validateBringOwnRegistry validates custom registry configuration.
+func validateBringOwnRegistry(config *Config) ([]string, error) {
+	var warnings []string
 
-	if bringOwnRegistry {
-		if config.AppConfig.LocalRegistryCredentials.URL == "" {
-			return nil, nil, fmt.Errorf("custom registry URL is required when BringOwnRegistry is enabled")
-		}
-
-		if _, err := url.ParseRequestURI(string(config.AppConfig.LocalRegistryCredentials.URL)); err != nil {
-			return nil, nil, fmt.Errorf("invalid custom registry URL: %w", err)
-		}
-
-		if config.AppConfig.LocalRegistryCredentials.Username == "" || config.AppConfig.LocalRegistryCredentials.Password == "" {
-			warnings = append(warnings, "username or password for custom registry is empty.")
-		}
-
-		if len(config.ZotConfigRaw) > 0 {
-			warnings = append(warnings,
-				"redundant zot_config provided for bring_own_registry: `true`.",
-			)
-			config.ZotConfigRaw = json.RawMessage{}
-		}
+	if config.AppConfig.LocalRegistryCredentials.URL == "" {
+		return nil, fmt.Errorf("custom registry URL is required when BringOwnRegistry is enabled")
 	}
 
-	if !bringOwnRegistry && len(config.ZotConfigRaw) == 0 {
-		warnings = append(warnings, fmt.Sprintf(
-			"empty zot_config provided. Defaulting to: %v", DefaultZotConfigJSON,
-		))
-		config.ZotConfigRaw = json.RawMessage(DefaultZotConfigJSON)
+	if _, err := url.ParseRequestURI(string(config.AppConfig.LocalRegistryCredentials.URL)); err != nil {
+		return nil, fmt.Errorf("invalid custom registry URL: %w", err)
 	}
 
-	var zotConfig registry.ZotConfig
-	if err := json.Unmarshal(config.ZotConfigRaw, &zotConfig); err != nil {
-		return nil, nil, fmt.Errorf("invalid zot_config: %w", err)
+	if config.AppConfig.LocalRegistryCredentials.Username == "" || config.AppConfig.LocalRegistryCredentials.Password == "" {
+		warnings = append(warnings, "username or password for custom registry is empty.")
 	}
 
-	if !bringOwnRegistry && config.AppConfig.LocalRegistryCredentials.URL == "" {
-		warnings = append(warnings, fmt.Sprintf(
-			"remote registry URL is empty. Defaulting to value from zot_config %s",
-			DefaultRemoteRegistryURL,
-		))
-		config.AppConfig.LocalRegistryCredentials.URL = URL(zotConfig.GetRegistryURL())
+	if len(config.ZotConfigRaw) > 0 {
+		warnings = append(warnings, "redundant zot_config provided for bring_own_registry: `true`.")
+		config.ZotConfigRaw = json.RawMessage{}
 	}
 
-	if config.AppConfig.HeartbeatInterval == "" {
-		config.AppConfig.HeartbeatInterval = DefaultStateReportCronExpr
-		warnings = append(warnings, fmt.Sprintf("heartbeat interval not specified, defaulting to : %s", DefaultStateReportCronExpr))
-	}
+	return warnings, nil
+}
+
+// validateAndEnforceCronSchedules validates and defaults cron schedules.
+func validateAndEnforceCronSchedules(config *Config) []string {
+	var warnings []string
 
 	if !isValidCronExpression(config.AppConfig.StateReplicationInterval) {
 		config.AppConfig.StateReplicationInterval = DefaultFetchAndReplicateCronExpr
@@ -102,17 +136,123 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	}
 
 	if !isValidCronExpression(config.AppConfig.HeartbeatInterval) {
-		config.AppConfig.HeartbeatInterval = DefaultStateReportCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for state_report_interval, using default schedule %s", DefaultStateReportCronExpr))
+		config.AppConfig.HeartbeatInterval = DefaultHeartbeatCronExpr
+		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for heartbeat_interval, using default schedule %s", DefaultHeartbeatCronExpr))
 	}
 
-	return config, warnings, nil
+	return warnings
 }
 
-// validateCronExpression checks the validity of a cron expression.
-func isValidCronExpression(cronExpression string) bool {
-	if _, err := cron.ParseStandard(cronExpression); err != nil {
-		return false
+// validateAndEnforceZotConfig validates and defaults zot registry configuration.
+func validateAndEnforceZotConfig(config *Config, bringOwnRegistry bool) ([]string, error) {
+	var warnings []string
+
+	if bringOwnRegistry {
+		return warnings, nil
 	}
-	return true
+
+	needsDefault := len(config.ZotConfigRaw) == 0 || strings.TrimSpace(string(config.ZotConfigRaw)) == "{}"
+	if needsDefault {
+		warnings = append(warnings, fmt.Sprintf(
+			"empty zot_config provided. Defaulting to: %v", DefaultZotConfigJSON,
+		))
+		config.ZotConfigRaw = json.RawMessage(DefaultZotConfigJSON)
+	}
+
+	var zotConfig registry.ZotConfig
+	if err := json.Unmarshal(config.ZotConfigRaw, &zotConfig); err != nil {
+		return nil, fmt.Errorf("invalid zot_config: %w", err)
+	}
+
+	if zotConfig.HTTP.Address == "" || zotConfig.HTTP.Port == "" {
+		warnings = append(warnings, "zot_config missing required http address/port. Applying defaults.")
+		config.ZotConfigRaw = json.RawMessage(DefaultZotConfigJSON)
+		if err := json.Unmarshal(config.ZotConfigRaw, &zotConfig); err != nil {
+			return nil, fmt.Errorf("invalid default zot_config: %w", err)
+		}
+	}
+
+	if config.AppConfig.LocalRegistryCredentials.URL == "" {
+		warnings = append(warnings, fmt.Sprintf(
+			"remote registry URL is empty. Defaulting to value from zot_config %s",
+			DefaultRemoteRegistryURL,
+		))
+		config.AppConfig.LocalRegistryCredentials.URL = URL(zotConfig.GetRegistryURL())
+	}
+
+	return warnings, nil
+}
+
+// validateRegistryFallbackConfig validates registry fallback settings when enabled.
+func validateRegistryFallbackConfig(config *Config) []string {
+	validRuntimes := map[string]bool{
+		"docker":     true,
+		"containerd": true,
+		"crio":       true,
+		"podman":     true,
+	}
+
+	var warnings []string
+	fb := config.AppConfig.RegistryFallback
+	if !fb.Enabled {
+		return warnings
+	}
+
+	if len(fb.Registries) == 0 {
+		warnings = append(warnings, "registry_fallback is enabled but no registries specified, defaulting to docker.io")
+		config.AppConfig.RegistryFallback.Registries = []string{"docker.io"}
+	}
+
+	for _, r := range config.AppConfig.RegistryFallback.Registries {
+		if strings.TrimSpace(r) == "" {
+			warnings = append(warnings, "registry_fallback contains an empty registry entry")
+		}
+	}
+
+	for _, rt := range config.AppConfig.RegistryFallback.Runtimes {
+		if !validRuntimes[rt] {
+			warnings = append(warnings, fmt.Sprintf(
+				"registry_fallback contains unknown runtime %q, valid values: docker, containerd, crio, podman", rt,
+			))
+		}
+	}
+
+	return warnings
+}
+
+// validateTLSConfig validates TLS configuration.
+func validateTLSConfig(tls *TLSConfig) ([]string, error) {
+	var warnings []string
+
+	if tls.CertFile == "" && tls.KeyFile == "" && tls.CAFile == "" {
+		return warnings, nil
+	}
+
+	if (tls.CertFile != "" && tls.KeyFile == "") || (tls.CertFile == "" && tls.KeyFile != "") {
+		return warnings, fmt.Errorf("both cert_file and key_file must be provided together")
+	}
+
+	if tls.CertFile != "" {
+		if _, err := os.Stat(tls.CertFile); os.IsNotExist(err) {
+			return warnings, fmt.Errorf("TLS cert_file not found: %s", tls.CertFile)
+		}
+	}
+
+	if tls.KeyFile != "" {
+		if _, err := os.Stat(tls.KeyFile); os.IsNotExist(err) {
+			return warnings, fmt.Errorf("TLS key_file not found: %s", tls.KeyFile)
+		}
+	}
+
+	if tls.CAFile != "" {
+		if _, err := os.Stat(tls.CAFile); os.IsNotExist(err) {
+			return warnings, fmt.Errorf("TLS ca_file not found: %s", tls.CAFile)
+		}
+	}
+
+	if tls.SkipVerify {
+		warnings = append(warnings, "TLS skip_verify is enabled, certificate verification will be skipped")
+	}
+
+	return warnings, nil
 }

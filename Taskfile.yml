@@ -1,0 +1,160 @@
+version: "3"
+
+vars:
+  GO_VERSION: "1.24.11"
+  GOLANGCILINT_VERSION: "v2.0.2"
+  GORELEASER_VERSION: "v2.9.0"
+  PLATFORMS_LINUX: "amd64 arm64 ppc64le s390x riscv64"
+  PLATFORMS_DARWIN: "amd64 arm64"
+  VULN_FILTER: "GO-2025-3409|GO-2024-2979"
+  BIN_DIR: "{{.ROOT_DIR}}/bin"
+
+includes:
+  _build:
+    taskfile: ./taskfiles/build.yml
+    dir: "{{.ROOT_DIR}}"
+  _lint:
+    taskfile: ./taskfiles/lint.yml
+    dir: "{{.ROOT_DIR}}"
+  _publish:
+    taskfile: ./taskfiles/publish.yml
+    dir: "{{.ROOT_DIR}}"
+  _e2e:
+    taskfile: ./taskfiles/e2e.yml
+    dir: "{{.ROOT_DIR}}"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Build both components for current platform
+    aliases: [b]
+    cmds:
+      - task: _build:dev
+
+  build-all:
+    desc: Build both components for all platforms
+    cmds:
+      - task: _build:all
+
+  lint:
+    desc: Run golangci-lint
+    aliases: [l]
+    cmds:
+      - task: _lint:lint
+
+  lint-report:
+    desc: Run golangci-lint and export to file
+    cmds:
+      - task: _lint:lint-report
+
+  vuln:
+    desc: Run vulnerability check
+    cmds:
+      - task: _lint:vulnerability-check
+
+  vuln-report:
+    desc: Run vulnerability check and export to file
+    cmds:
+      - task: _lint:vulnerability-check-report
+
+  e2e:
+    desc: Run all E2E tests
+    cmds:
+      - task: _e2e:test
+      - task: _e2e:test-byo
+      - task: _e2e:test-spiffe
+
+  e2e-test:
+    desc: Run main E2E test
+    cmds:
+      - task: _e2e:test
+
+  e2e-byo:
+    desc: Run BYO registry E2E test
+    cmds:
+      - task: _e2e:test-byo
+
+  e2e-spiffe:
+    desc: Run SPIFFE E2E test
+    cmds:
+      - task: _e2e:test-spiffe
+
+  e2e-crash-recovery:
+    desc: Run crash recovery E2E test
+    cmds:
+      - task: _e2e:test-crash-recovery
+
+  e2e-crash-recovery-byo:
+    desc: Run crash recovery BYO registry E2E test
+    cmds:
+      - task: _e2e:test-crash-recovery-byo
+
+  publish:
+    desc: "Publish both components to registry"
+    aliases: [p]
+    vars:
+      TAG: "{{.TAG | default \"dev\"}}"
+    cmds:
+      - task: _publish:both
+        vars:
+          DEST: "{{.DEST}}"
+          TAG: "{{.TAG}}"
+
+  publish-and-sign:
+    desc: Build, push, and sign both components
+    vars:
+      TAG: "{{.TAG | default \"dev\"}}"
+    cmds:
+      - task: _publish:image-and-sign
+        vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT_NAME}}"
+          COMPONENT: satellite
+          IMAGE_TAGS: "{{.TAG}}"
+      - task: _publish:image-and-sign
+        vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT_NAME}}"
+          COMPONENT: ground-control
+          IMAGE_TAGS: "{{.TAG}}"
+
+  release:
+    desc: Create release with GoReleaser
+    cmds:
+      - task: _publish:release
+
+  snapshot:
+    desc: Create snapshot release with GoReleaser
+    cmds:
+      - task: _publish:snapshot-release
+
+  clean:
+    desc: Clean up development environment
+    cmds:
+      - echo "Cleaning up..."
+      - rm -rf bin/ dist/
+      - rm -f golangci-lint.report vulnerability-check.report
+      - echo "Stopping containers..."
+      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f docker/e2e/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f docker-compose.byo.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f satellite satellite-byo byo-registry gc 2>/dev/null || true
+      - echo "Removing e2e images..."
+      - docker rmi -f gc:e2e satellite:e2e 2>/dev/null || true
+      - echo "Done!"
+    silent: true
+
+  byo-up:
+    desc: Start satellite with BYO registry (registry:2 sidecar)
+    cmds:
+      - docker compose -f docker-compose.byo.yml up -d
+      - docker compose -f docker-compose.byo.yml ps
+
+  byo-down:
+    desc: Stop satellite BYO registry setup
+    cmds:
+      - docker compose -f docker-compose.byo.yml down -v
