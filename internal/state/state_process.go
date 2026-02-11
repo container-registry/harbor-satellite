@@ -500,6 +500,16 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, 
 	useUnsecure := f.cm.UseUnsecure()
 	satelliteStateURL := f.cm.GetStateURL()
 
+	// Override source and state URLs if --harbor-registry-url is set
+	if override := f.cm.GetHarborRegistryURL(); override != "" {
+		if replaced, err := config.ReplaceURLHost(string(f.cm.GetSourceRegistryURL()), override); err == nil {
+			sourceURL = utils.FormatRegistryURL(replaced)
+		}
+		if replaced, err := config.ReplaceURLHost(satelliteStateURL, override); err == nil {
+			satelliteStateURL = replaced
+		}
+	}
+
 	replicator := NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure)
 
 	return replicator, sourceURL, srcUsername, srcPassword, remoteURL, useUnsecure, satelliteStateURL
