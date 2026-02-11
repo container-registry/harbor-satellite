@@ -341,6 +341,12 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 
 	result := ConfigFetcherResult{}
 
+	if override := f.cm.GetHarborRegistryURL(); override != "" {
+		if replaced, err := config.ReplaceURLHost(configURL, override); err == nil {
+			configURL = replaced
+		}
+	}
+
 	configStateFetcher, err := getStateFetcherForInput(configURL, srcUsername, srcPassword, useUnsecure, &configFetcherLog)
 	if err != nil {
 		configFetcherLog.Error().Err(err).Msg("Error processing satellite state")
@@ -367,6 +373,7 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 		}
 
 		remoteConfig.StateConfig = f.cm.GetStateConfig()
+		remoteConfig.AppConfig.HarborRegistryURL = f.cm.GetHarborRegistryURL()
 		validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
 		if err != nil {
 			configFetcherLog.Error().Err(err).
@@ -426,9 +433,16 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		URL:   f.stateMap[index].url,
 	}
 
-	stateFetcherLog.Info().Msgf("Processing state for %s", f.stateMap[index].url)
+	groupURL := f.stateMap[index].url
+	if override := f.cm.GetHarborRegistryURL(); override != "" {
+		if replaced, err := config.ReplaceURLHost(groupURL, override); err == nil {
+			groupURL = replaced
+		}
+	}
 
-	groupStateFetcher, err := getStateFetcherForInput(f.stateMap[index].url, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
+	stateFetcherLog.Info().Msgf("Processing state for %s", groupURL)
+
+	groupStateFetcher, err := getStateFetcherForInput(groupURL, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
 	if err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error processing input")
 		result.Error = fmt.Errorf("failed to create state fetcher for %s: %w", f.stateMap[index].url, err)
