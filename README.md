@@ -65,8 +65,20 @@ Harbor Satellite will synchronize with the central Harbor registry, when Interne
 
 Harbor Satellite will also include a toolset enabling the monitoring and management of local decentralized registries.
 
+## Documentation
+
+Comprehensive documentation is available in the [`docs/`](docs/) directory:
+
+- **[Getting Started](docs/getting-started.md)** - Complete setup guide for Ground Control and Satellite
+- **[Configuration Reference](docs/configuration.md)** - All configuration options and examples
+- **[API Reference](docs/api-reference.md)** - Ground Control REST API documentation
+- **[Architecture](docs/architecture.md)** - System architecture and design
+- **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
+- **[Deployment Guides](docs/deployment/)** - Docker and Kubernetes deployment
+
 ## QuickStart
-Please refer to the latest setup instructions in `QUICKSTART.md` file for detailed steps on setting up Harbor Satellite locally.
+
+For rapid local development and evaluation, follow the step-by-step setup guide in [QUICKSTART.md](QUICKSTART.md). This covers satellite registration, Ground Control setup, and basic image replication.
 
 ## BYO (Bring Your Own) Registry
 
