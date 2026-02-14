@@ -116,7 +116,7 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer func(){
+	defer func() {
 		_ = out.Close()
 	}()
 

@@ -28,7 +28,6 @@ func (cm *ConfigManager) GetOwnRegistry() bool {
 	return cm.config.AppConfig.BringOwnRegistry
 }
 
-
 func (cm *ConfigManager) UseUnsecure() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()

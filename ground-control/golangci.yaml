@@ -324,7 +324,7 @@ linters:
     - zerologlint
     # Module / Import
     - depguard
-    - importas
+    - imports
     # Interface quality
     - interfacebloat
     - iface

@@ -19,13 +19,13 @@ import (
 const StatusReportRoute = "satellites/sync"
 
 type StatusReportingProcess struct {
-	name             string
-	isRunning        bool
-	mu               *sync.Mutex
-	cm               *config.ConfigManager
-	spiffeClient     *spiffe.Client
-	pendingCRI      []runtime.CRIConfigResult
-	criReported     bool
+	name         string
+	isRunning    bool
+	mu           *sync.Mutex
+	cm           *config.ConfigManager
+	spiffeClient *spiffe.Client
+	pendingCRI   []runtime.CRIConfigResult
+	criReported  bool
 }
 
 func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess {

@@ -40,4 +40,3 @@ const DefaultZotConfigJSON = `{
 
 const DefaultRemoteRegistryURL = "http://127.0.0.1:8585"
 const DefaultGroundControlURL = "http://127.0.0.1:8080"
-

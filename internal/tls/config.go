@@ -12,15 +12,15 @@ import (
 )
 
 var (
-	ErrCertNotFound      = errors.New("certificate file not found")
-	ErrKeyNotFound       = errors.New("key file not found")
-	ErrCertInvalid       = errors.New("certificate invalid")
-	ErrCertExpired       = errors.New("certificate expired")
-	ErrCertNotYetValid   = errors.New("certificate not yet valid")
-	ErrCANotFound        = errors.New("CA certificate not found")
-	ErrCAInvalid         = errors.New("CA certificate invalid")
-	ErrCertKeyMismatch   = errors.New("certificate and key do not match")
-	ErrNoCertificates    = errors.New("no certificates in file")
+	ErrCertNotFound    = errors.New("certificate file not found")
+	ErrKeyNotFound     = errors.New("key file not found")
+	ErrCertInvalid     = errors.New("certificate invalid")
+	ErrCertExpired     = errors.New("certificate expired")
+	ErrCertNotYetValid = errors.New("certificate not yet valid")
+	ErrCANotFound      = errors.New("CA certificate not found")
+	ErrCAInvalid       = errors.New("CA certificate invalid")
+	ErrCertKeyMismatch = errors.New("certificate and key do not match")
+	ErrNoCertificates  = errors.New("no certificates in file")
 )
 
 // Config holds TLS configuration options.
@@ -199,13 +199,13 @@ func ParseCertificates(pemData []byte) ([]*x509.Certificate, error) {
 
 // CertificateInfo returns information about a certificate.
 type CertificateInfo struct {
-	Subject    string
-	Issuer     string
-	NotBefore  time.Time
-	NotAfter   time.Time
-	IsExpired  bool
+	Subject      string
+	Issuer       string
+	NotBefore    time.Time
+	NotAfter     time.Time
+	IsExpired    bool
 	DaysToExpiry int
-	DNSNames   []string
+	DNSNames     []string
 }
 
 // GetCertificateInfo extracts information from a certificate file.

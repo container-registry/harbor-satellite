@@ -21,7 +21,7 @@ func (m *HarborSatellite) Release(ctx context.Context, githubToken *dagger.Secre
 		WithExec([]string{"goreleaser", "release", "--clean"})
 	_, err := goreleaser.Stderr(ctx)
 	if err != nil {
-		log.Printf("Error occured during release: %s", err)
+		log.Printf("Error occurred during release: %s", err)
 		return
 	}
 	log.Println("Release tasks completed successfully 🎉")

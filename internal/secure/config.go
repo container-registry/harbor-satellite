@@ -11,12 +11,12 @@ import (
 )
 
 var (
-	ErrConfigNotFound    = errors.New("config file not found")
-	ErrConfigCorrupted   = errors.New("config file corrupted")
-	ErrEncryptionFailed  = errors.New("encryption failed")
-	ErrDecryptionFailed  = errors.New("decryption failed")
-	ErrKeyDeriveFailed   = errors.New("key derivation failed")
-	ErrInvalidConfig     = errors.New("invalid config")
+	ErrConfigNotFound   = errors.New("config file not found")
+	ErrConfigCorrupted  = errors.New("config file corrupted")
+	ErrEncryptionFailed = errors.New("encryption failed")
+	ErrDecryptionFailed = errors.New("decryption failed")
+	ErrKeyDeriveFailed  = errors.New("key derivation failed")
+	ErrInvalidConfig    = errors.New("invalid config")
 )
 
 const (

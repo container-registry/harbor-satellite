@@ -74,7 +74,7 @@ func (m *HarborSatellite) startGroundControl(ctx context.Context) {
 	gcDir := m.Source.Directory("./ground-control")
 
 	_, err := dag.Container().
-		From(DEFAULT_GO + "-alpine").
+		From(DEFAULT_GO+"-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -571,13 +571,13 @@ func (m *HarborSatellite) registerSatelliteAndZTR(ctx context.Context) {
 
 	var resp map[string]any
 	if err := json.Unmarshal([]byte(registerResp), &resp); err != nil {
-		log.Fatalf("failed to unmarshal register satellite respone: %v", err)
+		log.Fatalf("failed to unmarshal register satellite response: %v", err)
 	}
 
 	token, exists := resp["token"]
 
 	if !exists {
-		log.Fatal("respone should contain token")
+		log.Fatal("response should contain token")
 	}
 	if token == "" {
 		log.Fatal("token should not be empty")
@@ -587,7 +587,7 @@ func (m *HarborSatellite) registerSatelliteAndZTR(ctx context.Context) {
 
 	//ZTR
 	_, err = dag.Container().
-		From(DEFAULT_GO + "-alpine").
+		From(DEFAULT_GO+"-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -682,7 +682,7 @@ func (m *HarborSatellite) startGroundControlWithEmbeddedSPIRE(ctx context.Contex
 	gcDir := m.Source.Directory("./ground-control")
 
 	_, err := dag.Container().
-		From(DEFAULT_GO + "-alpine").
+		From(DEFAULT_GO+"-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -759,7 +759,7 @@ plugins {
 
 	// Start container with SPIRE agent and verify attestation
 	out, err := dag.Container().
-		From(DEFAULT_GO + "-alpine").
+		From(DEFAULT_GO+"-alpine").
 		WithEnvVariable("CACHEBUSTER", time.Now().String()).
 		// Install SPIRE agent binary and netcat for debugging
 		WithExec([]string{"apk", "add", "--no-cache", "curl", "tar", "netcat-openbsd"}).
