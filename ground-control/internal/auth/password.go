@@ -8,9 +8,21 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/pkg/crypto"
 )
 
+type PasswordPolicyError struct {
+	Err error
+}
+
+func (e *PasswordPolicyError) Error() string { return e.Err.Error() }
+func (e *PasswordPolicyError) Unwrap() error { return e.Err }
+
 // HashPassword creates an Argon2id hash of the password.
 func HashPassword(password string) (string, error) {
-	return crypto.HashSecret(password)
+    policy := LoadPolicyFromEnv()
+    if err := policy.Validate(password); err != nil {
+        return "", &PasswordPolicyError{Err: err}
+    }
+
+    return crypto.HashSecret(password)
 }
 
 // VerifyPassword compares a password against an Argon2id hash.

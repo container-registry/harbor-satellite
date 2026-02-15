@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"errors"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
@@ -29,14 +30,15 @@ func (s *Server) BootstrapSystemAdmin(ctx context.Context) error {
 		return fmt.Errorf("ADMIN_PASSWORD environment variable is required for initial setup")
 	}
 
-	if err := s.passwordPolicy.Validate(password); err != nil {
-		return fmt.Errorf("ADMIN_PASSWORD invalid: %w", err)
-	}
-
 	hash, err := auth.HashPassword(password)
 	if err != nil {
+		var pe *auth.PasswordPolicyError
+		if errors.As(err, &pe) {
+			return fmt.Errorf("ADMIN_PASSWORD invalid: %w", pe)
+		}
 		return fmt.Errorf("failed to hash admin password: %w", err)
 	}
+
 
 	_, err = s.dbQueries.CreateUser(ctx, database.CreateUserParams{
 		Username:     systemAdminUsername,
