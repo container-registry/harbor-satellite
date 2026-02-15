@@ -192,7 +192,7 @@ plugins {
         plugin_data {}
     }
 
-   KeyManager "disk" {
+    KeyManager "disk" {
         plugin_data {
             keys_path = "%s/keys.json"
         }

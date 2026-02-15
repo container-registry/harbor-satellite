@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec" // Added this for LookPath
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -28,17 +28,11 @@ func setupTestConfig(t *testing.T) *EmbeddedSpireConfig {
 func TestSpireConfigUsesDiskPersistence(t *testing.T) {
 	// 1. Setup
 	cfg := setupTestConfig(t)
-
-	// Create DataDir explicitly
-	if err := os.MkdirAll(cfg.DataDir, 0700); err != nil {
-		t.Fatal(err)
-	}
+	// Note: os.MkdirAll is not needed here because t.TempDir() creates it.
 
 	server := NewEmbeddedSpireServer(cfg)
 
 	// 2. Trigger config writing
-	// (Ensure 'writeConfig' is capitalized/exported in your embedded_server.go if it isn't already,
-	// OR just ensure this test is in package 'spiffe' to access unexported methods)
 	if err := server.writeConfig(); err != nil {
 		t.Fatal("Failed to write config:", err)
 	}
@@ -51,12 +45,17 @@ func TestSpireConfigUsesDiskPersistence(t *testing.T) {
 	}
 	content := string(contentBytes)
 
-	// 4. Verify Content
-	if !strings.Contains(content, `KeyManager "disk"`) {
-		t.Errorf("Config missing 'KeyManager \"disk\"'. Got:\n%s", content)
+	// 4. Verify "KeyManager" is set to "disk"
+	expectedKeyManager := `KeyManager "disk"`
+	if !strings.Contains(content, expectedKeyManager) {
+		t.Errorf("Config missing '%s'. Got:\n%s", expectedKeyManager, content)
 	}
-	if !strings.Contains(content, `keys_path =`) {
-		t.Errorf("Config missing 'keys_path'. Got:\n%s", content)
+
+	// 5. Verify "keys_path" points to the correct location
+	// We check the full path to be strict, as requested by review
+	expectedKeysPath := fmt.Sprintf(`keys_path = "%s/keys.json"`, cfg.DataDir)
+	if !strings.Contains(content, expectedKeysPath) {
+		t.Errorf("Config has wrong keys_path. Expected %q in:\n%s", expectedKeysPath, content)
 	}
 }
 
@@ -73,25 +72,58 @@ func TestEndToEndPersistence(t *testing.T) {
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	defer cancel1()
 
-	// 3. Start Server 1
+	// 3. Start Server 1 with Error Propagation
+	errCh := make(chan error, 1)
 	go func() {
-		if err := server1.Start(ctx1); err != nil {
-			fmt.Printf("Server 1 stopped (expected): %v\n", err)
-		}
+		// We send the result of Start() to the channel
+		errCh <- server1.Start(ctx1)
 	}()
 
-	// Give it time to start
-	time.Sleep(500 * time.Millisecond)
+	// Wait for server to be ready or fail (No blind sleep!)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Server 1 failed to start: %v", err)
+		}
+		// If err is nil, Start returned successfully (server is ready)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Timed out waiting for Server 1 to start")
+	}
 
-	// Stop it
+	// 4. Graceful Stop
+	// We must stop explicitly to ensure keys are flushed to disk
+	if err := server1.Stop(); err != nil {
+		t.Logf("Warning: Failed to stop server 1 gracefully: %v", err)
+	}
 	cancel1()
-	time.Sleep(200 * time.Millisecond)
 
-	// 4. Verify keys.json was created
+	// 5. Verify keys.json was created
 	keysPath := filepath.Join(cfg.DataDir, "keys.json")
 	if _, err := os.Stat(keysPath); os.IsNotExist(err) {
 		t.Error("Failure: keys.json was NOT created. Persistence is broken.")
 	} else {
 		t.Log("Success: keys.json persists on disk.")
 	}
+
+	// 6. Restart Check (Server 2)
+	// We want to make sure it can start up again using those existing keys
+	server2 := NewEmbeddedSpireServer(cfg)
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+
+	go func() {
+		errCh <- server2.Start(ctx2)
+	}()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Server 2 failed to restart with persisted keys: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Timed out waiting for Server 2 to restart")
+	}
+
+	// Clean up Server 2
+	_ = server2.Stop()
 }
