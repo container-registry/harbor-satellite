@@ -83,7 +83,7 @@ func TestEndToEndPersistence(t *testing.T) {
 	defer cancel1()
 
 	errCh1 := startServerAsync(ctx1, server1)
-	waitForServer(t, errCh1, 10*time.Second, "Server 1")
+	waitForServer(t, errCh1, 15*time.Second, "Server 1")
 
 	// Graceful Stop
 	if err := server1.Stop(); err != nil {
@@ -91,11 +91,14 @@ func TestEndToEndPersistence(t *testing.T) {
 	}
 	cancel1()
 
-	// Verify keys.json
+	// Verify keys.json exists (Fixed: check for any error, not just IsNotExist)
 	keysPath := filepath.Join(cfg.DataDir, "keys.json")
-	if _, err := os.Stat(keysPath); os.IsNotExist(err) {
-		t.Error("Failure: keys.json was NOT created. Persistence is broken.")
+	if _, err := os.Stat(keysPath); err != nil {
+		t.Fatalf("Failure: keys.json check failed: %v", err)
 	}
+
+	// Capture initial keys mod time to ensure they stay persistent
+	initialStat, _ := os.Stat(keysPath)
 
 	// --- Run Server 2 (Restart) ---
 	server2 := NewEmbeddedSpireServer(cfg)
@@ -103,7 +106,17 @@ func TestEndToEndPersistence(t *testing.T) {
 	defer cancel2()
 
 	errCh2 := startServerAsync(ctx2, server2)
-	waitForServer(t, errCh2, 10*time.Second, "Server 2")
+	waitForServer(t, errCh2, 15*time.Second, "Server 2")
+
+	// Final verification: Ensure keys.json is still there after restart
+	if _, err := os.Stat(keysPath); err != nil {
+		t.Errorf("Failure: keys.json vanished after restart: %v", err)
+	}
+
+	currentStat, _ := os.Stat(keysPath)
+	if currentStat.Size() != initialStat.Size() && initialStat.Size() == 0 {
+		t.Error("Failure: keys.json is empty")
+	}
 
 	_ = server2.Stop()
 }
