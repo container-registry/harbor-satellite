@@ -44,3 +44,30 @@ func Load(path string) (*Config, error) {
 	}
 	return &cfg, nil
 }
+
+func Save(path string, cfg *Config) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to serialize config: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+	return nil
+}
+
+func (c *Config) ClearCredentials() {
+	c.Token = ""
+	c.ExpiresAt = ""
+	c.Username = ""
+}
+
+func (c *Config) HasCredentials() bool {
+	return c.Token != ""
+}
