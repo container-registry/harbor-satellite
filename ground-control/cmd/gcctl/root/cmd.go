@@ -7,9 +7,10 @@
 package root
 
 import (
+	"fmt"
+	"os"
 
-	// "os"
-
+	gcctlconfig "github.com/container-registry/harbor-satellite/ground-control/cmd/gcctl/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -20,6 +21,29 @@ var (
 	serverURL    string
 	verbose      bool
 )
+func GetConfigPath() string {
+	if cfgFile != "" {
+		return cfgFile
+	}
+	path, err := gcctlconfig.DefaultConfigPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not determine default config path: %v\n", err)
+		return ""
+	}
+	return path
+}
+
+// GetOutputFormat returns the output format from the --output flag.
+func GetOutputFormat() string {
+	return outputFormat
+}
+
+// GetServerURL returns the server URL from the --server flag.
+// If not set, returns empty string (callers should fall back to config file).
+func GetServerURL() string {
+	return serverURL
+}
+
 
 // RootCmd creates and returns the root cobra command with all subcommands wired in.
 func RootCmd() *cobra.Command {
@@ -48,4 +72,26 @@ To get started, run:
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 
 	return root
+}
+
+// LoadConfig is a helper used by subcommands to load the CLI config.
+func LoadConfig() (*gcctlconfig.Config, error) {
+	return gcctlconfig.Load(GetConfigPath())
+}
+
+// SaveConfig is a helper used by subcommands to persist the CLI config.
+func SaveConfig(cfg *gcctlconfig.Config) error {
+	return gcctlconfig.Save(GetConfigPath(), cfg)
+}
+
+// ResolveServer determines the Ground Control server URL.
+// Priority: --server flag > config file > error.
+func ResolveServer(cfg *gcctlconfig.Config) (string, error) {
+	if s := GetServerURL(); s != "" {
+		return s, nil
+	}
+	if cfg.Server != "" {
+		return cfg.Server, nil
+	}
+	return "", fmt.Errorf("no server configured; use --server flag or run 'gcctl login'")
 }
