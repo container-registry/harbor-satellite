@@ -74,6 +74,25 @@ func (c *Client) Login(username, password string) (*LoginResponse, error) {
 	}
 	return &result, nil
 }
+
+func (c *Client) Logout() error {
+	req, err := c.newAuthRequest(http.MethodPost, "/api/logout", nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to connect to server: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		return parseAPIError(resp)
+	}
+	return nil
+}
+
 func (c *Client) Ping() error {
 	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/ping", nil)
 	if err != nil {
@@ -90,6 +109,18 @@ func (c *Client) Ping() error {
 		return fmt.Errorf("server returned status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func (c *Client) newAuthRequest(method, path string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequest(method, c.BaseURL+path, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	return req, nil
 }
 
 func parseAPIError(resp *http.Response) error {
