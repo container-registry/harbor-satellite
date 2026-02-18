@@ -27,6 +27,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Logout
 	api.HandleFunc("/logout", s.logoutHandler).Methods("POST")
 
+	// Current user identity
+	api.HandleFunc("/whoami", s.whoamiHandler).Methods("GET")
+
 	// Users
 	api.HandleFunc("/users", s.listUsersHandler).Methods("GET")
 	api.HandleFunc("/users/password", s.changeOwnPasswordHandler).Methods("PATCH")
