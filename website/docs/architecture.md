@@ -224,7 +224,7 @@ Robot account credentials (used to pull images from Harbor) are:
 - Created automatically by Ground Control
 - Delivered over the mTLS connection
 - Encrypted at rest with the device fingerprint
-- Rotated on every ZTR cycle
+- Refreshed when the satellite re-runs ZTR (e.g., after hardware change or config reset)
 
 If the satellite's hardware changes (different machine), the encrypted config becomes unreadable and the satellite re-does ZTR with its new SVID.
 
