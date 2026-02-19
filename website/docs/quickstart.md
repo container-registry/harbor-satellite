@@ -41,7 +41,7 @@ The quickstart uses these defaults. Override them if your Harbor setup differs:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HARBOR_URL` | `http://host.docker.internal:8080` | Harbor registry URL |
+| `HARBOR_URL` | `http://localhost:8080` | Harbor registry URL (containers use `host.docker.internal` internally) |
 | `HARBOR_USERNAME` | `admin` | Harbor admin username |
 | `HARBOR_PASSWORD` | `Harbor12345` | Harbor admin password |
 | `ADMIN_PASSWORD` | `Harbor12345` | Ground Control admin password |
@@ -363,7 +363,7 @@ You should see:
 
 ### Pull from the satellite's local registry
 
-The satellite exposes its Zot registry on port 5050. Docker trusts localhost by default for plain HTTP:
+The satellite exposes its Zot registry on host port 5050 (mapped from container port 8585, as shown in the [architecture](architecture.md) config). Docker trusts localhost by default for plain HTTP:
 
 ```bash
 # Using Docker (localhost is trusted for HTTP by default)
