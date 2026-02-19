@@ -1,6 +1,10 @@
 package config
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"net/url"
+)
 
 // Threadsafe setter functions to modify config data.
 
@@ -106,4 +110,49 @@ func SetRegistryFallbackConfig(fb RegistryFallbackConfig) func(*Config) {
 	return func(cfg *Config) {
 		cfg.AppConfig.RegistryFallback = fb
 	}
+}
+
+func SetHarborRegistryURL(url string) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.HarborRegistryURL = url
+	}
+}
+
+// ReplaceURLHost replaces the scheme and host:port in raw with those from override.
+func ReplaceURLHost(raw, override string) (string, error) {
+	overrideParsed, err := url.Parse(override)
+	if err != nil {
+		return "", fmt.Errorf("parse override URL: %w", err)
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("parse URL %q: %w", raw, err)
+	}
+	parsed.Scheme = overrideParsed.Scheme
+	parsed.Host = overrideParsed.Host
+	return parsed.String(), nil
+}
+
+// ApplyHarborRegistryOverride replaces the scheme and host:port in both auth URL
+// and state URL with the provided override. Used when GC returns a Docker-internal
+// address (e.g., host.docker.internal:8080) that doesn't resolve on bare-metal nodes.
+func ApplyHarborRegistryOverride(sc StateConfig, override string) (StateConfig, error) {
+	authURL := string(sc.RegistryCredentials.URL)
+	if authURL != "" {
+		newAuth, err := ReplaceURLHost(authURL, override)
+		if err != nil {
+			return sc, err
+		}
+		sc.RegistryCredentials.URL = URL(newAuth)
+	}
+
+	if sc.StateURL != "" {
+		newState, err := ReplaceURLHost(sc.StateURL, override)
+		if err != nil {
+			return sc, err
+		}
+		sc.StateURL = newState
+	}
+
+	return sc, nil
 }

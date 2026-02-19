@@ -73,6 +73,16 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		return fmt.Errorf("failed to register satellite: invalid state auth config received")
 	}
 
+	// Override Harbor registry URLs if --harbor-registry-url is set
+	if override := z.cm.GetHarborRegistryURL(); override != "" {
+		stateConfig, err = config.ApplyHarborRegistryOverride(stateConfig, override)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to apply harbor registry URL override")
+			return err
+		}
+		log.Info().Str("override", override).Msg("Applied harbor registry URL override")
+	}
+
 	// Update the state config in app config
 	z.cm.With(config.SetStateConfig(stateConfig))
 	if err := z.cm.WriteConfig(); err != nil {
