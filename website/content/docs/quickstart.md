@@ -273,7 +273,7 @@ services:
       - harbor-satellite
 
   spire-server:
-    image: ghcr.io/spiffe/spire-server:1.12.3
+    image: ghcr.io/spiffe/spire-server:1.14.1
     container_name: spire-server
     hostname: spire-server
     command: ["-config", "/opt/spire/conf/server/server.conf"]
@@ -296,7 +296,7 @@ services:
       - harbor-satellite
 
   spire-agent-gc:
-    image: ghcr.io/spiffe/spire-agent:1.12.3
+    image: ghcr.io/spiffe/spire-agent:1.14.1
     container_name: spire-agent-gc
     hostname: spire-agent-gc
     pid: host
@@ -444,10 +444,10 @@ The satellite's SPIRE agent must be running and attested **before** you register
 ```bash
 # Linux amd64
 curl -Lo spire.tar.gz \
-    https://github.com/spiffe/spire/releases/download/v1.12.3/spire-1.12.3-linux-amd64-musl.tar.gz
+    https://github.com/spiffe/spire/releases/download/v1.14.1/spire-1.14.1-linux-amd64-musl.tar.gz
 tar xzf spire.tar.gz
-sudo cp spire-1.12.3/bin/spire-agent /usr/local/bin/
-rm -rf spire.tar.gz spire-1.12.3
+sudo cp spire-1.14.1/bin/spire-agent /usr/local/bin/
+rm -rf spire.tar.gz spire-1.14.1
 ```
 
 ### 2.2 Copy certificates from cloud
