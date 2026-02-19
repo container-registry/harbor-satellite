@@ -159,7 +159,7 @@ docker run -d \
   --name satellite \
   -e GROUND_CONTROL_URL=http://gc.example.com:8080 \
   -e TOKEN="<your-satellite-token>" \
-  -p 8585:8585 \
+  -p 5000:5000 \
   registry.goharbor.io/harbor-satellite/satellite:latest
 ```
 
@@ -172,7 +172,7 @@ docker run -d \
   -e SPIFFE_ENABLED=true \
   -e SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock \
   -v /run/spire/sockets:/run/spire/sockets:ro \
-  -p 8585:8585 \
+  -p 5000:5000 \
   registry.goharbor.io/harbor-satellite/satellite:latest
 ```
 
@@ -252,13 +252,13 @@ curl -X POST http://localhost:8080/groups/satellite \
 After assigning a group, the satellite begins replicating images on its next sync interval (default: 10 seconds). Check the satellite logs for replication activity and verify images are available locally:
 
 ```bash
-crane catalog localhost:8585
+crane catalog localhost:5000
 ```
 
 Or pull directly:
 
 ```bash
-docker pull localhost:8585/library/nginx:alpine
+docker pull localhost:5000/library/nginx:alpine
 ```
 
 ### Configuring CRI Mirroring

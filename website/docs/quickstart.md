@@ -367,17 +367,17 @@ You should see:
 
 ### Pull from the satellite's local registry
 
-The satellite exposes its Zot registry on host port 5050 (mapped from container port 8585 in the quickstart `docker-compose.yml`). Docker trusts localhost by default for plain HTTP:
+The satellite exposes its Zot registry on port 5000 (Zot's default). Docker trusts localhost by default for plain HTTP:
 
 ```bash
 # Using Docker (localhost is trusted for HTTP by default)
-docker pull localhost:5050/library/nginx:alpine
+docker pull localhost:5000/library/nginx:alpine
 
 # Using Podman
-podman pull localhost:5050/library/nginx:alpine --tls-verify=false
+podman pull localhost:5000/library/nginx:alpine --tls-verify=false
 
 # Using crane (for quick verification)
-crane catalog localhost:5050
+crane catalog localhost:5000
 ```
 
 ### Check SPIRE agents
@@ -411,7 +411,7 @@ Here is what happened end to end:
 9. **Ground Control** verified the SVID, created robot credentials, returned the state URL
 10. **Satellite** used the robot credentials to pull its state from Harbor
 11. **Satellite** saw `nginx:alpine` in its desired state and replicated it to local Zot
-12. **Satellite** now serves `nginx:alpine` locally on port 5050
+12. **Satellite** now serves `nginx:alpine` locally on port 5000
 
 The only secret transported to the edge was a one-time SPIRE join token (Step 2.2), which was invalidated after first use. After that, all identity and credentials were handled automatically: SVID from SPIRE, robot credentials from Ground Control over mTLS.
 
