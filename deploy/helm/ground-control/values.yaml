@@ -1,0 +1,96 @@
+# -- Number of Ground Control replicas
+replicaCount: 1
+
+image:
+  # -- Container registry and repository
+  repository: registry.goharbor.io/harbor-satellite/ground-control
+  # -- Image tag (defaults to Chart.appVersion)
+  tag: ""
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets
+imagePullSecrets: []
+
+# -- Override chart name
+nameOverride: ""
+# -- Override full release name
+fullnameOverride: ""
+
+# -- Harbor registry connection
+harbor:
+  # -- Harbor URL
+  url: "https://harbor.example.com"
+  # -- Harbor admin username
+  username: "admin"
+  # -- Harbor admin password
+  password: "Harbor12345"
+
+# -- Ground Control admin password
+adminPassword: "Harbor12345"
+
+# -- Database configuration
+database:
+  # -- Deploy internal PostgreSQL (set false for external DB)
+  internal:
+    enabled: true
+  # -- Database host (used when internal.enabled is false)
+  host: ""
+  # -- Database port
+  port: 5432
+  # -- Database name
+  name: "groundcontrol"
+  # -- Database username
+  username: "postgres"
+  # -- Database password
+  password: "password"
+
+# -- Internal PostgreSQL settings (only used when database.internal.enabled is true)
+postgresql:
+  image:
+    # -- PostgreSQL image repository
+    repository: postgres
+    # -- PostgreSQL image tag
+    tag: "16"
+    # -- PostgreSQL image pull policy
+    pullPolicy: IfNotPresent
+  # -- Persistent volume size
+  persistence:
+    size: 5Gi
+    # -- Storage class (empty uses default)
+    storageClass: ""
+  # -- PostgreSQL resource requests and limits
+  resources: {}
+
+# -- SPIFFE/SPIRE configuration
+spiffe:
+  # -- Enable SPIFFE/SPIRE authentication
+  enabled: false
+  # -- SPIFFE trust domain
+  trustDomain: "harbor-satellite.local"
+  # -- SPIFFE Workload API socket path
+  endpointSocket: "unix:///run/spire/sockets/agent.sock"
+
+# -- Robot account expiry in days
+robotDurationDays: 30
+
+# -- Skip Harbor health check on startup (dev/test only)
+skipHarborHealthCheck: false
+
+service:
+  # -- Service type
+  type: ClusterIP
+  # -- Service port
+  port: 8080
+
+# -- Container resource requests and limits
+resources: {}
+
+# -- Node selector
+nodeSelector: {}
+
+# -- Tolerations
+tolerations: []
+
+# -- Affinity rules
+affinity: {}
