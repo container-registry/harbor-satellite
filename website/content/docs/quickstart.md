@@ -78,7 +78,7 @@ quickstart/
 ## Step 1: Start the Cloud Side
 
 {{< callout type="info" >}}
-Run all commands in this step on your **cloud server** (the machine running Harbor).
+Run all commands in this step on your **cloud server**.
 {{< /callout >}}
 
 ### 1.1 Create the directory structure
