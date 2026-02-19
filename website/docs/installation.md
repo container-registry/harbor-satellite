@@ -13,7 +13,7 @@ This guide covers all methods for installing Ground Control and Satellite. For a
 
 Ground Control is the cloud-side management service. It needs a PostgreSQL database and access to your Harbor instance.
 
-### Binary
+### Ground Control Binary
 
 Download the latest release for your platform:
 
@@ -46,7 +46,7 @@ Run (requires a running PostgreSQL instance):
 ./ground-control
 ```
 
-### Docker Compose
+### Ground Control Docker Compose
 
 The `ground-control/docker-compose.yml` runs Ground Control with PostgreSQL:
 
@@ -110,7 +110,7 @@ See `deploy/helm/ground-control/values.yaml` for all configurable values.
 
 Satellite runs at each edge location. It needs a Ground Control URL and either a token or SPIFFE agent.
 
-### Binary
+### Satellite Binary
 
 Download the latest release:
 
@@ -138,7 +138,7 @@ Run with SPIFFE auth:
   --spiffe-endpoint-socket unix:///run/spire/sockets/agent.sock
 ```
 
-### Docker Compose
+### Satellite Docker Compose
 
 The root `docker-compose.yml` runs the satellite:
 
@@ -152,7 +152,7 @@ Environment variables in the compose file:
 - `GROUND_CONTROL_URL` - Ground Control endpoint
 - `TOKEN` - Satellite token (token-based auth)
 
-### Docker Run
+### Satellite Docker Run
 
 ```bash
 docker run -d \
