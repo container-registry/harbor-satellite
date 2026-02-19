@@ -105,7 +105,7 @@ Satellite can configure local container runtimes to use its registry as a mirror
 Usage:
 
 ```bash
-satellite --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
+harbor-satellite --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
 ```
 
 Docker only supports mirroring docker.io. Use `--mirrors=docker:true` to enable.

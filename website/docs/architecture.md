@@ -74,7 +74,7 @@ The SPIRE server configuration uses a trust domain (e.g., `harbor-satellite.loca
 
 Ground Control starts up, connects to the local SPIRE agent, and gets its own identity:
 ```text
-spiffe://harbor-satellite.local/gc/main
+spiffe://harbor-satellite.local/ground-control
 ```
 
 Ground Control also needs Harbor credentials (`HARBOR_USERNAME`, `HARBOR_PASSWORD`, `HARBOR_URL`) so it can:
@@ -141,9 +141,9 @@ The agent connects to the SPIRE server, attests itself, and becomes ready to iss
 
 Run the satellite binary with just two pieces of information:
 ```bash
-satellite --ground-control-url https://gc.example.com \
-          --spiffe-enabled \
-          --spiffe-endpoint-socket unix:///run/spire/sockets/agent.sock
+harbor-satellite --ground-control-url https://gc.example.com \
+                 --spiffe-enabled \
+                 --spiffe-endpoint-socket unix:///run/spire/sockets/agent.sock
 ```
 
 No secrets. No credentials. No config files to manage.
@@ -305,7 +305,7 @@ Supported runtimes:
 
 Configure mirroring with the `--mirrors` flag:
 ```bash
-satellite --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
+harbor-satellite --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
 ```
 
 ## Full End-to-End Flow
