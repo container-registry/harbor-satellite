@@ -452,17 +452,27 @@ rm -rf spire.tar.gz spire-1.12.3
 
 ### 2.2 Copy certificates from cloud
 
-Create the satellite directory and copy the certificates from the cloud server:
+The three certificate files were generated on the cloud server in Step 1.2 and live at `quickstart/gc/certs/`. Transfer them to the edge device using any method available to you:
+
+**Option A: SCP from the edge device** (if you have SSH access to the cloud server):
 
 ```bash
 mkdir -p quickstart/sat/certs
 cd quickstart/sat
-
-# Copy these three files from your cloud server's quickstart/gc/certs/ directory
-scp cloud-server:quickstart/gc/certs/ca.crt certs/
-scp cloud-server:quickstart/gc/certs/us-east-1.crt certs/
-scp cloud-server:quickstart/gc/certs/us-east-1.key certs/
+scp <cloud-user>@<cloud-server-ip>:quickstart/gc/certs/ca.crt certs/
+scp <cloud-user>@<cloud-server-ip>:quickstart/gc/certs/us-east-1.crt certs/
+scp <cloud-user>@<cloud-server-ip>:quickstart/gc/certs/us-east-1.key certs/
 ```
+
+**Option B: SCP from the cloud server** (push to the edge device):
+
+```bash
+# Run this on the cloud server
+scp quickstart/gc/certs/ca.crt quickstart/gc/certs/us-east-1.crt quickstart/gc/certs/us-east-1.key \
+    <edge-user>@<edge-device-ip>:quickstart/sat/certs/
+```
+
+**Option C: Manual copy** (USB drive, `rsync`, configuration management tool, etc.)
 
 ### 2.3 Create the SPIRE agent config
 
