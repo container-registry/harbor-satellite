@@ -56,27 +56,29 @@ graph LR
 
 Deploy these components in your cloud environment:
 
-**Step 1 - Deploy Harbor**
+#### Step 1 - Deploy Harbor
 
 Set up your Harbor registry with the images you want to distribute. For example, push `nginx:latest` and `alpine:latest` to a project in Harbor.
 
-**Step 2 - Deploy SPIRE Server and Agent**
+#### Step 2 - Deploy SPIRE Server and Agent
 
 Deploy a SPIRE server and a SPIRE agent in the cloud. The SPIRE agent runs alongside Ground Control and provides it with a hardware-backed X.509 identity (SVID).
 
 The SPIRE server configuration uses a trust domain (e.g., `harbor-satellite.local`) and supports multiple attestation methods:
+
 - **Join Token** - One-time tokens for bootstrapping agents (simplest)
 - **X.509 PoP** - Pre-provisioned certificates (production PKI)
 - **SSH PoP** - SSH host certificates (existing SSH CA infrastructure)
 
-**Step 3 - Deploy Ground Control**
+#### Step 3 - Deploy Ground Control
 
 Ground Control starts up, connects to the local SPIRE agent, and gets its own identity:
-```
+```text
 spiffe://harbor-satellite.local/gc/main
 ```
 
 Ground Control also needs Harbor credentials (`HARBOR_USERNAME`, `HARBOR_PASSWORD`, `HARBOR_URL`) so it can:
+
 - Create robot accounts for satellites
 - Push state and config artifacts to Harbor
 - Manage image group assignments
@@ -85,45 +87,49 @@ Ground Control also needs Harbor credentials (`HARBOR_USERNAME`, `HARBOR_PASSWOR
 
 With the cloud side running, register your first satellite through Ground Control's API.
 
-**Step 4 - Create a Satellite**
+#### Step 4 - Create a Satellite
 
 Register a satellite in Ground Control. You provide:
+
 - A name (e.g., `edge-us-east-01`)
 - Optional region (e.g., `us-east`)
 - SPIFFE selectors for identity verification (e.g., Docker labels, Kubernetes selectors, AWS instance IDs)
 
 Ground Control:
+
 1. Creates a SPIRE workload entry for the satellite with SPIFFE ID:
-   ```
+   ```text
    spiffe://harbor-satellite.local/satellite/region/us-east/edge-us-east-01
    ```
 2. Generates a join token for the satellite's SPIRE agent to bootstrap with
 3. Creates a robot account in Harbor with pull permissions
 4. Creates a default config for the satellite
 
-**Step 5 - Create a Group and Assign Images**
+#### Step 5 - Create a Group and Assign Images
 
 Create a group (e.g., `us-east-group`) and add images to it:
+
 - `library/nginx:latest`
 - `library/alpine:latest`
 
 Then assign this group to the satellite. A satellite can belong to multiple groups, and a group can be assigned to multiple satellites.
 
 Ground Control stores the group state as an OCI artifact in Harbor at:
-```
+```text
 harbor.example.com/satellite/group-state/us-east-group/state:latest
 ```
 
 The satellite's root state (which groups it belongs to and its config) is stored at:
-```
+```text
 harbor.example.com/satellite/satellite-state/edge-us-east-01/state:latest
 ```
 
 ### Phase 3: Edge Deployment
 
-**Step 6 - Deploy SPIRE Agent at the Edge**
+#### Step 6 - Deploy SPIRE Agent at the Edge
 
 Deploy a SPIRE agent on the edge device. Configure it with:
+
 - The SPIRE server address (TCP port 8081 must be reachable from the edge device)
 - The join token generated during satellite registration
 
@@ -131,7 +137,7 @@ The join token is a one-time bootstrap credential. Once the SPIRE agent uses it 
 
 The agent connects to the SPIRE server, attests itself, and becomes ready to issue SVIDs to local workloads.
 
-**Step 7 - Start the Satellite**
+#### Step 7 - Start the Satellite
 
 Run the satellite binary with just two pieces of information:
 ```bash
@@ -146,21 +152,22 @@ No secrets. No credentials. No config files to manage.
 
 When the satellite starts, it goes through Zero-Touch Registration (ZTR):
 
-**Step 8 - Get Identity**
+#### Step 8 - Get Identity
 
 The satellite connects to the local SPIRE agent through the Workload API socket. The SPIRE agent issues an X.509 SVID containing the satellite's SPIFFE ID:
-```
+```text
 spiffe://harbor-satellite.local/satellite/region/us-east/edge-us-east-01
 ```
 
-**Step 9 - Register with Ground Control**
+#### Step 9 - Register with Ground Control
 
 The satellite creates an mTLS HTTP client using its SVID and sends a request to Ground Control:
-```
+```text
 GET https://gc.example.com/satellites/spiffe-ztr
 ```
 
 Ground Control:
+
 1. Extracts the SPIFFE ID from the mTLS client certificate
 2. Parses the satellite name and region from the SPIFFE ID path
 3. Looks up (or auto-registers) the satellite in its database
@@ -176,12 +183,14 @@ The satellite encrypts this config with a device fingerprint (derived from machi
 
 The satellite runs three concurrent schedulers:
 
-**Registration Scheduler** (default: every 30s)
+**Registration Scheduler** (retries every 30s until success)
+
 - Runs ZTR to obtain robot account credentials
-- On each cycle, Ground Control refreshes the robot account secret
-- Once initial registration succeeds and the satellite has valid credentials, the scheduler completes
+- On failure, retries on the next 30s cycle
+- Once registration succeeds and the satellite has valid credentials, the scheduler completes and stops
 
 **State Replication Scheduler** (default: every 10s)
+
 1. Fetches the root satellite state artifact from Harbor (list of group URLs + config URL)
 2. For each group, fetches the group state artifact (list of images)
 3. Compares current state vs desired state
@@ -190,18 +199,19 @@ The satellite runs three concurrent schedulers:
 6. Fetches and applies config changes (replication intervals, Zot settings)
 
 **Heartbeat Scheduler** (default: every 30s)
+
 - Reports satellite status to Ground Control (CPU, memory, storage, cached images)
 - Endpoint: `POST /satellites/sync`
 
 ## Zero-Trust Identity
 
 Traditional approach:
-```
+```text
 Admin generates credentials --> copies to every edge device --> rotates manually
 ```
 
 Harbor Satellite approach:
-```
+```text
 One-time join token --> SPIRE agent attests --> automatic SVID identity --> mTLS to Ground Control
 ```
 
@@ -210,6 +220,7 @@ The only secret transported to the edge is a one-time SPIRE join token used to b
 Ground Control trusts the satellite because SPIRE vouches for it. Ground Control also has privileged access to the SPIRE server API, allowing it to create workload entries and generate join tokens for new satellites.
 
 Robot account credentials (used to pull images from Harbor) are:
+
 - Created automatically by Ground Control
 - Delivered over the mTLS connection
 - Encrypted at rest with the device fingerprint
@@ -286,6 +297,7 @@ If the satellite cannot reach Harbor or Ground Control (network outage), it cont
 Once images are in the local Zot registry, the satellite can configure local container runtimes to use it as a mirror. This means workloads (Kubernetes pods, Docker containers) automatically pull from the local registry first, falling back to the central registry only if needed.
 
 Supported runtimes:
+
 - **containerd** - Configures registry mirrors in `/etc/containerd/config.toml`
 - **Docker** - Configures mirror in `/etc/docker/daemon.json` (docker.io only)
 - **CRI-O** - Configures mirrors in `/etc/crio/crio.conf.d/`
