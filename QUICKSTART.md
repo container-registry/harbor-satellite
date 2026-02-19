@@ -6,8 +6,8 @@ Harbor Satellite extends Harbor container registry to edge computing environment
 
 - A Harbor registry instance with the satellite adapter installed. See [harbor-next](https://github.com/container-registry/harbor-next/tree/satellite).
 - Credentials with permission to create robot accounts in the registry.
-- The latest version of [Dagger](https://docs.dagger.io/install) installed.
-- (Optional) [Docker](https://docs.docker.com/get-docker/) and Docker Compose for non-Dagger setups.
+- [Task](https://taskfile.dev/installation/) installed.
+- (Optional) [Docker](https://docs.docker.com/get-docker/) and Docker Compose.
 
 ## Choose Your Authentication Method
 
