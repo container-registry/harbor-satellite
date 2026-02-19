@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {{- partial "head.html" . -}}
+</head>
+<body>
+  {{- partial "navbar.html" . -}}
+  <main>
+    {{- block "main" . }}{{- end }}
+  </main>
+  {{- partial "footer.html" . -}}
+  {{ if findRE "```mermaid" .RawContent }}
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+
+    document.querySelectorAll('pre > code.language-mermaid').forEach(el => {
+      const container = document.createElement('div');
+      container.classList.add('mermaid');
+      container.textContent = el.textContent;
+      el.parentElement.replaceWith(container);
+    });
+
+    await mermaid.run({ querySelector: '.mermaid' });
+  </script>
+  {{ end }}
+</body>
+</html>
