@@ -57,7 +57,7 @@ export HARBOR_PASSWORD=MyPassword123
 
 You will set up two environments:
 
-```
+```text
 Cloud (gc/ directory):                Edge (sat/ directory):
   PostgreSQL                            SPIRE Agent (satellite)
   SPIRE Server                          Satellite (with embedded Zot registry)
@@ -66,7 +66,7 @@ Cloud (gc/ directory):                Edge (sat/ directory):
 ```
 
 The quickstart files live in:
-```
+```text
 deploy/quickstart/spiffe/join-token/external/
   gc/       <-- Cloud-side components
   sat/      <-- Edge-side components
@@ -201,6 +201,7 @@ AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 ### 2.2 Register the Satellite
 
 This single API call:
+
 - Creates the satellite record in Ground Control
 - Creates a SPIRE workload entry with the satellite's SPIFFE ID
 - Generates a join token for the satellite's SPIRE agent
@@ -242,6 +243,8 @@ SAT_TOKEN=$(echo "$REGISTER_RESP" | jq -r '.join_token')
 
 ### 3.1 Create a group with an image
 
+Note: The `registry` field uses the Docker-internal service name (`http://harbor:8080`), not your host-facing `HARBOR_URL`. Ground Control runs inside Docker and resolves `harbor` via the Compose network.
+
 ```bash
 curl -sk -X POST https://localhost:9080/api/groups/sync \
     -H "Content-Type: application/json" \
@@ -262,7 +265,7 @@ curl -sk -X POST https://localhost:9080/api/groups/sync \
 
 To get the digest from Harbor, use the Harbor API:
 ```bash
-DIGEST=$(curl -sk -u admin:Harbor12345 \
+DIGEST=$(curl -sk -u "${HARBOR_USERNAME:-admin}:${HARBOR_PASSWORD:-Harbor12345}" \
     -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
     "${HARBOR_URL:-http://localhost:8080}/v2/library/nginx/manifests/alpine" \
     -o /dev/null -w '' -D - | grep -i docker-content-digest | awk '{print $2}' | tr -d '\r')
@@ -357,6 +360,7 @@ docker logs satellite
 ```
 
 You should see:
+
 1. SPIFFE connection to the local SPIRE agent
 2. Successful Zero-Touch Registration (ZTR) with Ground Control
 3. State fetching and image replication beginning
