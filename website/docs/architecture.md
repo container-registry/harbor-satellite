@@ -264,11 +264,11 @@ State is stored as OCI artifacts in Harbor. There are three types:
     "log_level": "info",
     "state_replication_interval": "@every 00h00m10s",
     "heartbeat_interval": "@every 00h00m30s",
-    "local_registry": { "url": "http://127.0.0.1:8585" }
+    "local_registry": { "url": "http://127.0.0.1:5000" }
   },
   "zot_config": {
     "storage": { "rootDirectory": "./zot" },
-    "http": { "address": "0.0.0.0", "port": "8585" }
+    "http": { "address": "0.0.0.0", "port": "5000" }
   }
 }
 ```
