@@ -644,17 +644,17 @@ The satellite logs directly to stdout. You should see:
 
 ### Pull from the satellite's local registry (edge device)
 
-The satellite exposes its Zot registry on port 8585. You can verify images are available using [crane](https://github.com/google/go-containerregistry/tree/main/cmd/crane) or any container tool:
+The satellite exposes its Zot registry on port 5000. You can verify images are available using [crane](https://github.com/google/go-containerregistry/tree/main/cmd/crane) or any container tool:
 
 ```bash
 # Using crane (lightweight, no runtime needed)
-crane catalog localhost:8585
+crane catalog localhost:5000
 
 # Using Docker (if available)
-docker pull localhost:8585/library/nginx:alpine
+docker pull localhost:5000/library/nginx:alpine
 
 # Using Podman (if available)
-podman pull localhost:8585/library/nginx:alpine --tls-verify=false
+podman pull localhost:5000/library/nginx:alpine --tls-verify=false
 ```
 
 ### Check SPIRE agents (cloud server)
@@ -689,7 +689,7 @@ Here is what happened end to end:
 10. **Ground Control** verified the SVID, created robot credentials, returned the state URL
 11. **Satellite** used the robot credentials to pull its state from Harbor
 12. **Satellite** saw `nginx:alpine` in its desired state and replicated it to local Zot
-13. **Satellite** now serves `nginx:alpine` locally on port 8585
+13. **Satellite** now serves `nginx:alpine` locally on port 5000
 
 No runtime tokens were used. The only secrets transported to the edge were the X.509 agent certificate and key (Step 2.2), which can be pre-provisioned during device setup. After attestation, all credentials are handled automatically via SPIRE SVIDs and mTLS.
 
