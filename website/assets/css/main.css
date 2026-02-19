@@ -303,13 +303,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: visible;
   }
 
   .hero__visual img,
   .hero__visual svg {
-    width: 100%;
-    max-width: 540px;
+    width: 140%;
+    max-width: none;
     height: auto;
+    position: relative;
+    right: -80px;
   }
 
   /* ---------- Features ---------- */
@@ -872,7 +875,10 @@
 
   .hero__visual img,
   .hero__visual svg {
-    max-width: 400px;
+    width: 100%;
+    max-width: none;
+    right: 0;
+    top: 0;
   }
 
   .features__grid {
