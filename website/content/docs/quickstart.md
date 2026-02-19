@@ -64,14 +64,13 @@ You will set up two directories:
 
 ```text
 quickstart/
-  gc/                              <-- Cloud-side components
+  gc/                              <-- Cloud server (Docker Compose)
     docker-compose.yml
     certs/                         <-- Generated certificates (CA + x509pop CA + agent certs)
     spire/
       server.conf
       agent-gc.conf
-  sat/                             <-- Edge-side components
-    docker-compose.yml
+  sat/                             <-- Edge device (native binaries)
     certs/                         <-- Copied from cloud (ca.crt, agent-satellite.crt, agent-satellite.key)
     agent-satellite.conf
 ```
@@ -438,9 +437,20 @@ Run all commands in this step on your **edge device**. You will need the followi
 
 The satellite's SPIRE agent must be running and attested **before** you register the satellite in Ground Control. GC discovers the agent by matching the certificate CN against the satellite name.
 
-### 2.1 Copy certificates from cloud
+### 2.1 Download the SPIRE agent
 
-On the edge device, create the satellite directory and copy the certificates from the cloud server:
+```bash
+# Linux amd64
+curl -Lo spire.tar.gz \
+    https://github.com/spiffe/spire/releases/download/v1.12.3/spire-1.12.3-linux-amd64-musl.tar.gz
+tar xzf spire.tar.gz
+sudo cp spire-1.12.3/bin/spire-agent /usr/local/bin/
+rm -rf spire.tar.gz spire-1.12.3
+```
+
+### 2.2 Copy certificates from cloud
+
+Create the satellite directory and copy the certificates from the cloud server:
 
 ```bash
 mkdir -p quickstart/sat/certs
@@ -452,41 +462,36 @@ scp cloud-server:quickstart/gc/certs/agent-satellite.crt certs/
 scp cloud-server:quickstart/gc/certs/agent-satellite.key certs/
 ```
 
-### 2.2 Create the satellite SPIRE agent config
+### 2.3 Create the SPIRE agent config
 
-Create `agent-satellite.conf`. Like the GC agent, this uses x509pop attestation with no tokens:
+Create `agent-satellite.conf`. Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname. The agent uses x509pop attestation with no tokens:
 
 ```bash
 cat > agent-satellite.conf << 'EOF'
 agent {
-    data_dir = "/opt/spire/data/agent"
+    data_dir = "./data/agent"
     log_level = "INFO"
-    server_address = "spire-server"
-    server_port = "8081"
-    socket_path = "/run/spire/sockets/agent.sock"
-    trust_bundle_path = "/opt/spire/conf/agent/bootstrap.crt"
+    server_address = "<CLOUD_SERVER_IP>"
+    server_port = "9081"
+    socket_path = "/tmp/spire-agent/agent.sock"
+    trust_bundle_path = "./certs/ca.crt"
     trust_domain = "harbor-satellite.local"
 }
 
 plugins {
     NodeAttestor "x509pop" {
         plugin_data {
-            private_key_path = "/opt/spire/conf/agent/agent.key"
-            certificate_path = "/opt/spire/conf/agent/agent.crt"
+            private_key_path = "./certs/agent-satellite.key"
+            certificate_path = "./certs/agent-satellite.crt"
         }
     }
     KeyManager "disk" {
         plugin_data {
-            directory = "/opt/spire/data/agent"
+            directory = "./data/agent"
         }
     }
     WorkloadAttestor "unix" {
         plugin_data {}
-    }
-    WorkloadAttestor "docker" {
-        plugin_data {
-            docker_socket_path = "unix:///var/run/docker.sock"
-        }
     }
 }
 
@@ -500,80 +505,17 @@ health_checks {
 EOF
 ```
 
-### 2.3 Create the Docker Compose file
-
-Create `docker-compose.yml`:
-
-{{< details summary="sat/docker-compose.yml (click to expand)" >}}
-```yaml
-services:
-  spire-agent-satellite:
-    image: ghcr.io/spiffe/spire-agent:1.12.3
-    container_name: spire-agent-satellite
-    hostname: spire-agent-satellite
-    pid: host
-    command: ["-config", "/opt/spire/conf/agent/agent.conf"]
-    volumes:
-      - ./agent-satellite.conf:/opt/spire/conf/agent/agent.conf:ro
-      - ./certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
-      - ./certs/agent-satellite.crt:/opt/spire/conf/agent/agent.crt:ro
-      - ./certs/agent-satellite.key:/opt/spire/conf/agent/agent.key:ro
-      - spire-agent-satellite-data:/opt/spire/data/agent
-      - spire-agent-satellite-socket:/run/spire/sockets
-      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
-    healthcheck:
-      test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck", "-socketPath", "/run/spire/sockets/agent.sock"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    networks:
-      - harbor-satellite
-
-  satellite:
-    image: registry.goharbor.io/harbor-satellite/satellite:latest
-    container_name: satellite
-    environment:
-      - GROUND_CONTROL_URL=https://ground-control:8080
-      - USE_UNSECURE=true
-      - SPIFFE_ENABLED=true
-      - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
-      - SPIFFE_EXPECTED_SERVER_ID=spiffe://harbor-satellite.local/ground-control
-    volumes:
-      - spire-agent-satellite-socket:/run/spire/sockets:ro
-      - satellite-data:/data
-    ports:
-      - "${SATELLITE_ZOT_PORT:-5050}:8585"
-    depends_on:
-      spire-agent-satellite:
-        condition: service_healthy
-    networks:
-      - harbor-satellite
-
-volumes:
-  spire-agent-satellite-data:
-  spire-agent-satellite-socket:
-  satellite-data:
-
-networks:
-  harbor-satellite:
-    external: true
-```
-{{< /details >}}
-
-### 2.4 Start the satellite SPIRE agent
-
-Start only the SPIRE agent for now. The satellite container will be started after registration in Step 4.
+### 2.4 Start the SPIRE agent
 
 ```bash
-docker compose up -d spire-agent-satellite
+mkdir -p data/agent
+spire-agent run -config agent-satellite.conf &
 ```
 
 Wait for the agent to attest with the SPIRE server:
 
 ```bash
-docker exec spire-agent-satellite /opt/spire/bin/spire-agent healthcheck \
-    -socketPath /run/spire/sockets/agent.sock
+spire-agent healthcheck -socketPath /tmp/spire-agent/agent.sock
 ```
 
 ## Step 3: Register Satellite and Create Groups
@@ -599,13 +541,16 @@ This API call finds the attested satellite agent by matching `x509pop:subject:cn
 - Creates a SPIRE workload entry with the satellite's SPIFFE ID
 - Creates a robot account in Harbor
 
+The `satellite_name` must match the CN in the satellite agent certificate. The `region` is an arbitrary label for organizing satellites (e.g., `us-east-1`, `eu-west-2`, `factory-floor`).
+
 ```bash
 curl -sk -X POST https://localhost:9080/api/satellites/register \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{
       "satellite_name": "edge-01",
-      "selectors": ["docker:label:com.docker.compose.service:satellite"],
+      "region": "us-east-1",
+      "selectors": ["unix:uid:0"],
       "attestation_method": "x509pop"
     }' | jq .
 ```
@@ -657,25 +602,39 @@ Now Ground Control knows that `edge-01` should have all images in the `edge-imag
 ## Step 4: Start the Satellite
 
 {{< callout type="info" >}}
-Run this on your **edge device**.
+Run this on your **edge device** from the `sat/` directory.
 {{< /callout >}}
 
-Now that the satellite is registered and has a group assigned, start the satellite container:
+### 4.1 Download the satellite binary
 
 ```bash
-# From the sat/ directory
-docker compose up -d satellite
+# Linux amd64
+curl -Lo satellite.tar.gz \
+    https://github.com/container-registry/harbor-satellite/releases/latest/download/harbor-satellite_Linux_x86_64.tar.gz
+tar xzf satellite.tar.gz
+rm satellite.tar.gz
+
+# Linux arm64
+# curl -Lo satellite.tar.gz \
+#     https://github.com/container-registry/harbor-satellite/releases/latest/download/harbor-satellite_Linux_arm64.tar.gz
+```
+
+### 4.2 Run the satellite
+
+Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname:
+
+```bash
+./harbor-satellite \
+    --ground-control-url https://<CLOUD_SERVER_IP>:9080 \
+    --spiffe-enabled \
+    --spiffe-endpoint-socket unix:///tmp/spire-agent/agent.sock
 ```
 
 ## Step 5: Verify
 
-### Check satellite logs (edge device)
+### Check satellite output (edge device)
 
-```bash
-docker logs satellite
-```
-
-You should see:
+The satellite logs directly to stdout. You should see:
 
 1. SPIFFE connection to the local SPIRE agent
 2. Successful Zero-Touch Registration (ZTR) with Ground Control
@@ -683,17 +642,17 @@ You should see:
 
 ### Pull from the satellite's local registry (edge device)
 
-The satellite exposes its Zot registry on host port 5050 (mapped from container port 8585, as shown in the [architecture](architecture.md) config). Docker trusts localhost by default for plain HTTP:
+The satellite exposes its Zot registry on port 8585. You can verify images are available using [crane](https://github.com/google/go-containerregistry/tree/main/cmd/crane) or any container tool:
 
 ```bash
-# Using Docker (localhost is trusted for HTTP by default)
-docker pull localhost:5050/library/nginx:alpine
+# Using crane (lightweight, no runtime needed)
+crane catalog localhost:8585
 
-# Using Podman
-podman pull localhost:5050/library/nginx:alpine --tls-verify=false
+# Using Docker (if available)
+docker pull localhost:8585/library/nginx:alpine
 
-# Using crane (for quick verification)
-crane catalog localhost:5050
+# Using Podman (if available)
+podman pull localhost:8585/library/nginx:alpine --tls-verify=false
 ```
 
 ### Check SPIRE agents (cloud server)
@@ -730,15 +689,17 @@ Here is what happened end to end:
 12. **Satellite** saw `nginx:alpine` in its desired state and replicated it to local Zot
 13. **Satellite** now serves `nginx:alpine` locally on port 5050
 
-No runtime tokens were used. The only secrets transported to the edge were the X.509 agent certificate and key (Step 4.1), which can be pre-provisioned during device setup. After attestation, all credentials are handled automatically via SPIRE SVIDs and mTLS.
+No runtime tokens were used. The only secrets transported to the edge were the X.509 agent certificate and key (Step 2.2), which can be pre-provisioned during device setup. After attestation, all credentials are handled automatically via SPIRE SVIDs and mTLS.
 
 ## Cleanup
 
-On the **edge device** first (it depends on the GC network):
+On the **edge device** first:
 
 ```bash
-# From sat/ directory
-docker compose down -v --remove-orphans
+# Stop the satellite (Ctrl+C if running in foreground, or kill the process)
+# Stop the SPIRE agent
+pkill spire-agent
+rm -rf data/
 ```
 
 Then on the **cloud server**:
