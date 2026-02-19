@@ -169,6 +169,15 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
+	// Add authentication header for non-SPIFFE mode
+	// SPIFFE mode uses mTLS for authentication, so no header is needed
+	if s.spiffeClient == nil {
+		creds := s.cm.GetSourceRegistryCredentials()
+		if creds.Username != "" && creds.Password != "" {
+			httpReq.SetBasicAuth(creds.Username, creds.Password)
+		}
+	}
+
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("send request: %w", err)

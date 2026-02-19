@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -32,6 +33,14 @@ func newMockServer(t *testing.T) (*Server, sqlmock.Sqlmock) {
 		db:        db,
 		dbQueries: database.New(db),
 	}, mock
+}
+
+// withSatelliteAuth adds authenticated satellite context to a request for testing.
+// This simulates the context that SatelliteAuthMiddleware would normally add.
+func withSatelliteAuth(req *http.Request, name string, id int32) *http.Request {
+	ctx := context.WithValue(req.Context(), satelliteNameKey, name)
+	ctx = context.WithValue(ctx, satelliteIDKey, id)
+	return req.WithContext(ctx)
 }
 
 func TestSyncHandler_WithCachedImages(t *testing.T) {
@@ -95,6 +104,8 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	// Add authenticated satellite context
+	req = withSatelliteAuth(req, "edge-01", 1)
 
 	rr := httptest.NewRecorder()
 	server.syncHandler(rr, req)
@@ -134,6 +145,8 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	// Add authenticated satellite context
+	req = withSatelliteAuth(req, "edge-01", 1)
 
 	rr := httptest.NewRecorder()
 	server.syncHandler(rr, req)
@@ -156,6 +169,8 @@ func TestSyncHandler_UnknownSatellite(t *testing.T) {
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	// Add authenticated satellite context for an unknown satellite
+	req = withSatelliteAuth(req, "unknown", 0)
 
 	rr := httptest.NewRecorder()
 	server.syncHandler(rr, req)
