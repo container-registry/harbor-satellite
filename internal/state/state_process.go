@@ -103,6 +103,15 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return err
 	}
 
+	// Override host in fetched state URLs if --harbor-registry-url is set
+	if override := f.cm.GetHarborRegistryURL(); override != "" {
+		satelliteState, err = applyHarborOverrideToSatelliteState(satelliteState, override)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to apply harbor registry URL override to satellite state")
+			return err
+		}
+	}
+
 	changed := f.updateStateMap(satelliteState.States)
 
 	// Persist state if groups were added, removed, or swapped
@@ -332,6 +341,12 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 
 	result := ConfigFetcherResult{}
 
+	if override := f.cm.GetHarborRegistryURL(); override != "" {
+		if replaced, err := config.ReplaceURLHost(configURL, override); err == nil {
+			configURL = replaced
+		}
+	}
+
 	configStateFetcher, err := getStateFetcherForInput(configURL, srcUsername, srcPassword, useUnsecure, &configFetcherLog)
 	if err != nil {
 		configFetcherLog.Error().Err(err).Msg("Error processing satellite state")
@@ -358,6 +373,7 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 		}
 
 		remoteConfig.StateConfig = f.cm.GetStateConfig()
+		remoteConfig.AppConfig.HarborRegistryURL = f.cm.GetHarborRegistryURL()
 		validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
 		if err != nil {
 			configFetcherLog.Error().Err(err).
@@ -417,9 +433,16 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		URL:   f.stateMap[index].url,
 	}
 
-	stateFetcherLog.Info().Msgf("Processing state for %s", f.stateMap[index].url)
+	groupURL := f.stateMap[index].url
+	if override := f.cm.GetHarborRegistryURL(); override != "" {
+		if replaced, err := config.ReplaceURLHost(groupURL, override); err == nil {
+			groupURL = replaced
+		}
+	}
 
-	groupStateFetcher, err := getStateFetcherForInput(f.stateMap[index].url, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
+	stateFetcherLog.Info().Msgf("Processing state for %s", groupURL)
+
+	groupStateFetcher, err := getStateFetcherForInput(groupURL, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
 	if err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error processing input")
 		result.Error = fmt.Errorf("failed to create state fetcher for %s: %w", f.stateMap[index].url, err)
@@ -490,6 +513,16 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, 
 	remotePassword := f.cm.GetRemoteRegistryPassword()
 	useUnsecure := f.cm.UseUnsecure()
 	satelliteStateURL := f.cm.GetStateURL()
+
+	// Override source and state URLs if --harbor-registry-url is set
+	if override := f.cm.GetHarborRegistryURL(); override != "" {
+		if replaced, err := config.ReplaceURLHost(string(f.cm.GetSourceRegistryURL()), override); err == nil {
+			sourceURL = utils.FormatRegistryURL(replaced)
+		}
+		if replaced, err := config.ReplaceURLHost(satelliteStateURL, override); err == nil {
+			satelliteStateURL = replaced
+		}
+	}
 
 	replicator := NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure)
 
@@ -571,4 +604,22 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func applyHarborOverrideToSatelliteState(state *SatelliteState, override string) (*SatelliteState, error) {
+	for i, s := range state.States {
+		replaced, err := config.ReplaceURLHost(s, override)
+		if err != nil {
+			return nil, fmt.Errorf("override state URL %q: %w", s, err)
+		}
+		state.States[i] = replaced
+	}
+	if state.Config != "" {
+		replaced, err := config.ReplaceURLHost(state.Config, override)
+		if err != nil {
+			return nil, fmt.Errorf("override config URL %q: %w", state.Config, err)
+		}
+		state.Config = replaced
+	}
+	return state, nil
 }
