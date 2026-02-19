@@ -1,4 +1,4 @@
-baseURL = "https://satellite.bupd.xyz/"
+baseURL = "https://satellite.container-registry.com/"
 languageCode = "en-us"
 title = "Harbor Satellite"
 
