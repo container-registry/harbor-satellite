@@ -367,7 +367,7 @@ You should see:
 
 ### Pull from the satellite's local registry
 
-The satellite exposes its Zot registry on host port 5050 (mapped from container port 8585, as shown in the [architecture](architecture.md) config). Docker trusts localhost by default for plain HTTP:
+The satellite exposes its Zot registry on host port 5050 (mapped from container port 8585 in the quickstart `docker-compose.yml`). Docker trusts localhost by default for plain HTTP:
 
 ```bash
 # Using Docker (localhost is trusted for HTTP by default)
