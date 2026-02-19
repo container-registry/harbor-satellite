@@ -49,10 +49,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
-PostgreSQL fullname.
+PostgreSQL fullname. Pre-truncate base to 52 chars so the -postgresql
+suffix (11 chars) is never silently stripped by the 63-char DNS limit.
 */}}
 {{- define "ground-control.postgresql.fullname" -}}
-{{- printf "%s-postgresql" (include "ground-control.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- printf "%s-postgresql" (include "ground-control.fullname" . | trunc 52 | trimSuffix "-") }}
 {{- end }}
 
 {{/*
