@@ -66,13 +66,14 @@ You will set up two directories:
 quickstart/
   gc/                              <-- Cloud-side components
     docker-compose.yml
-    certs/                         <-- Generated CA certificates
+    certs/                         <-- Generated certificates (CA + x509pop CA + agent certs)
     spire/
       server.conf
-      agent-gc-runtime.conf
+      agent-gc.conf
   sat/                             <-- Edge-side components
     docker-compose.yml
-    agent-satellite-runtime.conf
+    certs/                         <-- Copied from cloud (ca.crt, agent-satellite.crt, agent-satellite.key)
+    agent-satellite.conf
 ```
 
 ## Step 1: Start the Cloud Side
@@ -88,21 +89,65 @@ mkdir -p quickstart/gc/spire quickstart/sat
 cd quickstart/gc
 ```
 
-### 1.2 Generate CA Certificates
+### 1.2 Generate Certificates
 
-Generate a self-signed CA certificate that SPIRE uses to bootstrap trust:
+Generate the SPIRE upstream authority CA, X.509 PoP CA (signs agent certificates), and per-agent leaf certificates:
 
 ```bash
 mkdir -p certs
+
+# SPIRE upstream authority CA
 openssl genrsa -out certs/ca.key 4096
 openssl req -new -x509 -days 365 -key certs/ca.key -out certs/ca.crt \
     -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=SPIRE CA"
-chmod 644 certs/ca.key certs/ca.crt
+
+# X.509 PoP CA (signs agent certificates for attestation)
+openssl genrsa -out certs/x509pop-ca.key 4096
+openssl req -new -x509 -days 365 -key certs/x509pop-ca.key -out certs/x509pop-ca.crt \
+    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=X509 PoP CA"
+
+# Ground Control agent certificate
+openssl genrsa -out certs/agent-gc.key 2048
+openssl req -new -key certs/agent-gc.key -out certs/agent-gc.csr \
+    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=agent-gc"
+cat > certs/agent-gc.ext << 'EXTEOF'
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = clientAuth
+subjectAltName = @alt_names
+[alt_names]
+URI.1 = spiffe://harbor-satellite.local/agent/ground-control
+EXTEOF
+openssl x509 -req -days 365 -in certs/agent-gc.csr \
+    -CA certs/x509pop-ca.crt -CAkey certs/x509pop-ca.key -CAcreateserial \
+    -out certs/agent-gc.crt -extfile certs/agent-gc.ext
+
+# Satellite agent certificate
+openssl genrsa -out certs/agent-satellite.key 2048
+openssl req -new -key certs/agent-satellite.key -out certs/agent-satellite.csr \
+    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=agent-satellite"
+cat > certs/agent-satellite.ext << 'EXTEOF'
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = clientAuth
+subjectAltName = @alt_names
+[alt_names]
+URI.1 = spiffe://harbor-satellite.local/agent/satellite
+EXTEOF
+openssl x509 -req -days 365 -in certs/agent-satellite.csr \
+    -CA certs/x509pop-ca.crt -CAkey certs/x509pop-ca.key -CAcreateserial \
+    -out certs/agent-satellite.crt -extfile certs/agent-satellite.ext
+
+# Cleanup temp files
+rm -f certs/*.csr certs/*.ext certs/*.srl
+chmod 644 certs/*.key certs/*.crt
 ```
 
 ### 1.3 Create the SPIRE Server Config
 
-Create `spire/server.conf`:
+Create `spire/server.conf`. The server uses `NodeAttestor "x509pop"` so agents authenticate with pre-provisioned certificates instead of one-time tokens:
 
 ```bash
 cat > spire/server.conf << 'EOF'
@@ -125,16 +170,20 @@ plugins {
             connection_string = "/opt/spire/data/server/datastore.sqlite3"
         }
     }
-    NodeAttestor "join_token" {
-        plugin_data {}
+    NodeAttestor "x509pop" {
+        plugin_data {
+            ca_bundle_path = "/opt/spire/conf/server/x509pop-ca.crt"
+        }
     }
-    KeyManager "memory" {
-        plugin_data {}
+    KeyManager "disk" {
+        plugin_data {
+            keys_path = "/opt/spire/data/server/keys.json"
+        }
     }
     UpstreamAuthority "disk" {
         plugin_data {
-            key_file_path = "/opt/spire/certs/ca.key"
-            cert_file_path = "/opt/spire/certs/ca.crt"
+            key_file_path = "/opt/spire/conf/server/ca.key"
+            cert_file_path = "/opt/spire/conf/server/ca.crt"
         }
     }
 }
@@ -149,7 +198,55 @@ health_checks {
 EOF
 ```
 
-### 1.4 Create the Docker Compose file
+### 1.4 Create the SPIRE Agent Config for Ground Control
+
+Create `spire/agent-gc.conf`. This is a static config file with no tokens. The agent authenticates using its X.509 certificate:
+
+```bash
+cat > spire/agent-gc.conf << 'EOF'
+agent {
+    data_dir = "/opt/spire/data/agent"
+    log_level = "INFO"
+    server_address = "spire-server"
+    server_port = "8081"
+    socket_path = "/run/spire/sockets/agent.sock"
+    trust_bundle_path = "/opt/spire/conf/agent/bootstrap.crt"
+    trust_domain = "harbor-satellite.local"
+}
+
+plugins {
+    NodeAttestor "x509pop" {
+        plugin_data {
+            private_key_path = "/opt/spire/conf/agent/agent.key"
+            certificate_path = "/opt/spire/conf/agent/agent.crt"
+        }
+    }
+    KeyManager "disk" {
+        plugin_data {
+            directory = "/opt/spire/data/agent"
+        }
+    }
+    WorkloadAttestor "unix" {
+        plugin_data {}
+    }
+    WorkloadAttestor "docker" {
+        plugin_data {
+            docker_socket_path = "unix:///var/run/docker.sock"
+        }
+    }
+}
+
+health_checks {
+    listener_enabled = true
+    bind_address = "0.0.0.0"
+    bind_port = "8080"
+    live_path = "/live"
+    ready_path = "/ready"
+}
+EOF
+```
+
+### 1.5 Create the Docker Compose file
 
 Create `docker-compose.yml` in the `gc/` directory:
 
@@ -181,9 +278,11 @@ services:
     command: ["-config", "/opt/spire/conf/server/server.conf"]
     volumes:
       - ./spire/server.conf:/opt/spire/conf/server/server.conf:ro
+      - ./certs/ca.crt:/opt/spire/conf/server/ca.crt:ro
+      - ./certs/ca.key:/opt/spire/conf/server/ca.key:ro
+      - ./certs/x509pop-ca.crt:/opt/spire/conf/server/x509pop-ca.crt:ro
       - spire-server-data:/opt/spire/data/server
       - spire-server-socket:/tmp/spire-server/private
-      - ./certs:/opt/spire/certs
     ports:
       - "${SPIRE_HOST_PORT:-9081}:8081"
     healthcheck:
@@ -202,8 +301,10 @@ services:
     pid: host
     command: ["-config", "/opt/spire/conf/agent/agent.conf"]
     volumes:
-      - ./spire/agent-gc-runtime.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./spire/agent-gc.conf:/opt/spire/conf/agent/agent.conf:ro
       - ./certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - ./certs/agent-gc.crt:/opt/spire/conf/agent/agent.crt:ro
+      - ./certs/agent-gc.key:/opt/spire/conf/agent/agent.key:ro
       - spire-agent-gc-data:/opt/spire/data/agent
       - spire-agent-gc-socket:/run/spire/sockets
       - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
@@ -274,7 +375,7 @@ networks:
 ```
 {{< /details >}}
 
-### 1.5 Start PostgreSQL and SPIRE Server
+### 1.6 Start PostgreSQL and SPIRE Server
 
 ```bash
 docker compose up -d postgres spire-server
@@ -287,78 +388,34 @@ docker exec spire-server /opt/spire/bin/spire-server healthcheck \
     -socketPath /tmp/spire-server/private/api.sock
 ```
 
-### 1.6 Generate a Join Token for Ground Control's SPIRE Agent
+### 1.7 Start the SPIRE Agent and Register Ground Control
 
-```bash
-GC_TOKEN=$(docker exec spire-server /opt/spire/bin/spire-server token generate \
-    -spiffeID spiffe://harbor-satellite.local/agent/ground-control \
-    -socketPath /tmp/spire-server/private/api.sock | grep "Token:" | awk '{print $2}')
-echo "Token: $GC_TOKEN"
-```
-
-### 1.7 Create the SPIRE Agent Config
-
-Create the agent config file with the token:
-
-```bash
-cat > spire/agent-gc-runtime.conf << EOF
-agent {
-    data_dir = "/opt/spire/data/agent"
-    log_level = "INFO"
-    server_address = "spire-server"
-    server_port = "8081"
-    socket_path = "/run/spire/sockets/agent.sock"
-    trust_bundle_path = "/opt/spire/conf/agent/bootstrap.crt"
-    trust_domain = "harbor-satellite.local"
-    join_token = "$GC_TOKEN"
-}
-
-plugins {
-    NodeAttestor "join_token" {
-        plugin_data {}
-    }
-    KeyManager "disk" {
-        plugin_data {
-            directory = "/opt/spire/data/agent"
-        }
-    }
-    WorkloadAttestor "unix" {
-        plugin_data {}
-    }
-    WorkloadAttestor "docker" {
-        plugin_data {
-            docker_socket_path = "unix:///var/run/docker.sock"
-        }
-    }
-}
-
-health_checks {
-    listener_enabled = true
-    bind_address = "0.0.0.0"
-    bind_port = "8080"
-    live_path = "/live"
-    ready_path = "/ready"
-}
-EOF
-```
-
-### 1.8 Start the SPIRE Agent and Ground Control
+Start the GC agent. It auto-attests using its X.509 certificate (no token needed):
 
 ```bash
 docker compose up -d spire-agent-gc
 ```
 
-Wait for the agent to attest, then register Ground Control as a workload:
+Wait for the agent to attest, then discover its SPIFFE ID. With x509pop, the agent ID is based on the certificate fingerprint rather than a pre-defined path:
+
+```bash
+GC_AGENT_ID=$(docker exec spire-server /opt/spire/bin/spire-server agent list \
+    -socketPath /tmp/spire-server/private/api.sock \
+    | grep "SPIFFE ID" | grep "x509pop" | head -1 | awk '{print $NF}')
+echo "GC agent ID: $GC_AGENT_ID"
+```
+
+Register Ground Control as a workload under this agent:
 
 ```bash
 docker exec spire-server /opt/spire/bin/spire-server entry create \
-    -parentID spiffe://harbor-satellite.local/agent/ground-control \
+    -parentID "$GC_AGENT_ID" \
     -spiffeID spiffe://harbor-satellite.local/ground-control \
     -selector docker:label:com.docker.compose.service:ground-control \
     -socketPath /tmp/spire-server/private/api.sock
 ```
 
-Start Ground Control:
+### 1.8 Start Ground Control
 
 ```bash
 docker compose up -d ground-control
@@ -391,39 +448,17 @@ This single API call:
 
 - Creates the satellite record in Ground Control
 - Creates a SPIRE workload entry with the satellite's SPIFFE ID
-- Generates a join token for the satellite's SPIRE agent
 - Creates a robot account in Harbor
 
 ```bash
-REGISTER_RESP=$(curl -sk -X POST https://localhost:9080/api/satellites/register \
+curl -sk -X POST https://localhost:9080/api/satellites/register \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{
       "satellite_name": "edge-01",
-      "region": "us-west",
       "selectors": ["docker:label:com.docker.compose.service:satellite"],
-      "attestation_method": "join_token"
-    }')
-echo "$REGISTER_RESP" | jq .
-```
-
-Response:
-```json
-{
-  "satellite": "edge-01",
-  "region": "us-west",
-  "spiffe_id": "spiffe://harbor-satellite.local/satellite/region/us-west/edge-01",
-  "parent_agent_id": "spiffe://harbor-satellite.local/agent/edge-01",
-  "join_token": "abc123...",
-  "spire_server_address": "spire-server",
-  "spire_server_port": 8081,
-  "trust_domain": "harbor-satellite.local"
-}
-```
-
-Save the join token:
-```bash
-SAT_TOKEN=$(echo "$REGISTER_RESP" | jq -r '.join_token')
+      "attestation_method": "x509pop"
+    }' | jq .
 ```
 
 ## Step 3: Create a Group and Assign Images
@@ -479,16 +514,78 @@ Now Ground Control knows that `edge-01` should have all images in the `edge-imag
 ## Step 4: Start the Satellite
 
 {{< callout type="info" >}}
-Run all commands in this step on your **edge device**. You will need the join token (`$SAT_TOKEN`) from Step 2 and the CA certificate (`ca.crt`) from Step 1.
+Run all commands in this step on your **edge device**. You will need the following files from the cloud server (generated in Step 1.2):
+- `certs/ca.crt` (bootstrap trust bundle)
+- `certs/agent-satellite.crt` (satellite agent certificate)
+- `certs/agent-satellite.key` (satellite agent private key)
 {{< /callout >}}
 
-### 4.1 Create the Docker Compose file
+### 4.1 Copy certificates from cloud
 
-Switch to the satellite directory:
+On the edge device, create the satellite directory and copy the certificates from the cloud server:
 
 ```bash
-cd ../sat
+mkdir -p quickstart/sat/certs
+cd quickstart/sat
+
+# Copy these three files from your cloud server's quickstart/gc/certs/ directory:
+# - ca.crt
+# - agent-satellite.crt
+# - agent-satellite.key
+scp cloud-server:quickstart/gc/certs/ca.crt certs/
+scp cloud-server:quickstart/gc/certs/agent-satellite.crt certs/
+scp cloud-server:quickstart/gc/certs/agent-satellite.key certs/
 ```
+
+### 4.2 Create the satellite SPIRE agent config
+
+Create `agent-satellite.conf`. Like the GC agent, this uses x509pop attestation with no tokens:
+
+```bash
+cat > agent-satellite.conf << 'EOF'
+agent {
+    data_dir = "/opt/spire/data/agent"
+    log_level = "INFO"
+    server_address = "spire-server"
+    server_port = "8081"
+    socket_path = "/run/spire/sockets/agent.sock"
+    trust_bundle_path = "/opt/spire/conf/agent/bootstrap.crt"
+    trust_domain = "harbor-satellite.local"
+}
+
+plugins {
+    NodeAttestor "x509pop" {
+        plugin_data {
+            private_key_path = "/opt/spire/conf/agent/agent.key"
+            certificate_path = "/opt/spire/conf/agent/agent.crt"
+        }
+    }
+    KeyManager "disk" {
+        plugin_data {
+            directory = "/opt/spire/data/agent"
+        }
+    }
+    WorkloadAttestor "unix" {
+        plugin_data {}
+    }
+    WorkloadAttestor "docker" {
+        plugin_data {
+            docker_socket_path = "unix:///var/run/docker.sock"
+        }
+    }
+}
+
+health_checks {
+    listener_enabled = true
+    bind_address = "0.0.0.0"
+    bind_port = "8080"
+    live_path = "/live"
+    ready_path = "/ready"
+}
+EOF
+```
+
+### 4.3 Create the Docker Compose file
 
 Create `docker-compose.yml`:
 
@@ -502,8 +599,10 @@ services:
     pid: host
     command: ["-config", "/opt/spire/conf/agent/agent.conf"]
     volumes:
-      - ./agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro
-      - ../gc/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - ./agent-satellite.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - ./certs/agent-satellite.crt:/opt/spire/conf/agent/agent.crt:ro
+      - ./certs/agent-satellite.key:/opt/spire/conf/agent/agent.key:ro
       - spire-agent-satellite-data:/opt/spire/data/agent
       - spire-agent-satellite-socket:/run/spire/sockets
       - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
@@ -547,53 +646,7 @@ networks:
 ```
 {{< /details >}}
 
-### 4.2 Create the satellite SPIRE agent config
-
-Create the SPIRE agent config with the join token from Step 2:
-
-```bash
-cat > agent-satellite-runtime.conf << EOF
-agent {
-    data_dir = "/opt/spire/data/agent"
-    log_level = "INFO"
-    server_address = "spire-server"
-    server_port = "8081"
-    socket_path = "/run/spire/sockets/agent.sock"
-    trust_bundle_path = "/opt/spire/conf/agent/bootstrap.crt"
-    trust_domain = "harbor-satellite.local"
-    join_token = "$SAT_TOKEN"
-}
-
-plugins {
-    NodeAttestor "join_token" {
-        plugin_data {}
-    }
-    KeyManager "disk" {
-        plugin_data {
-            directory = "/opt/spire/data/agent"
-        }
-    }
-    WorkloadAttestor "unix" {
-        plugin_data {}
-    }
-    WorkloadAttestor "docker" {
-        plugin_data {
-            docker_socket_path = "unix:///var/run/docker.sock"
-        }
-    }
-}
-
-health_checks {
-    listener_enabled = true
-    bind_address = "0.0.0.0"
-    bind_port = "8080"
-    live_path = "/live"
-    ready_path = "/ready"
-}
-EOF
-```
-
-### 4.3 Start the SPIRE agent and satellite
+### 4.4 Start the SPIRE agent and satellite
 
 ```bash
 docker compose up -d spire-agent-satellite
@@ -651,20 +704,21 @@ curl -sk https://localhost:9080/api/satellites \
 
 Here is what happened end to end:
 
-1. **SPIRE server** started and became the trust authority for `harbor-satellite.local`
-2. **Ground Control's SPIRE agent** attested with a join token, got its identity
-3. **Ground Control** started, connected to its SPIRE agent, got its SVID (`spiffe://harbor-satellite.local/ground-control`)
-4. **You registered a satellite** - GC created a SPIRE workload entry, join token, and Harbor robot account
-5. **You created a group** with `nginx:alpine` and assigned it to the satellite
-6. **Satellite's SPIRE agent** attested with its join token, got its identity
-7. **Satellite** started, connected to its SPIRE agent, got its SVID (`spiffe://harbor-satellite.local/satellite/region/us-west/edge-01`)
-8. **Satellite** sent an mTLS request to Ground Control's `/satellites/spiffe-ztr` endpoint
-9. **Ground Control** verified the SVID, created robot credentials, returned the state URL
-10. **Satellite** used the robot credentials to pull its state from Harbor
-11. **Satellite** saw `nginx:alpine` in its desired state and replicated it to local Zot
-12. **Satellite** now serves `nginx:alpine` locally on port 5050
+1. **You generated X.509 certificates** signed by the x509pop CA for both agents
+2. **SPIRE server** started and became the trust authority for `harbor-satellite.local`
+3. **Ground Control's SPIRE agent** attested using its X.509 certificate (x509pop), got its identity
+4. **Ground Control** started, connected to its SPIRE agent, got its SVID (`spiffe://harbor-satellite.local/ground-control`)
+5. **You registered a satellite** via the GC API, which created a SPIRE workload entry and Harbor robot account
+6. **You created a group** with `nginx:alpine` and assigned it to the satellite
+7. **Satellite's SPIRE agent** attested using its X.509 certificate (x509pop), got its identity
+8. **Satellite** started, connected to its SPIRE agent, got its SVID
+9. **Satellite** sent an mTLS request to Ground Control's `/satellites/spiffe-ztr` endpoint
+10. **Ground Control** verified the SVID, created robot credentials, returned the state URL
+11. **Satellite** used the robot credentials to pull its state from Harbor
+12. **Satellite** saw `nginx:alpine` in its desired state and replicated it to local Zot
+13. **Satellite** now serves `nginx:alpine` locally on port 5050
 
-The only secret transported to the edge was a one-time SPIRE join token (Step 2.2), which was invalidated after first use. After that, all identity and credentials were handled automatically: SVID from SPIRE, robot credentials from Ground Control over mTLS.
+No runtime tokens were used. The only secrets transported to the edge were the X.509 agent certificate and key (Step 4.1), which can be pre-provisioned during device setup. After attestation, all credentials are handled automatically via SPIRE SVIDs and mTLS.
 
 ## Cleanup
 
@@ -681,11 +735,11 @@ Then on the **cloud server**:
 # From gc/ directory
 docker compose down -v --remove-orphans
 docker network rm harbor-satellite 2>/dev/null || true
-rm -rf certs spire/agent-gc-runtime.conf
+rm -rf certs
 ```
 
 ## Next Steps
 
 - Read the [Architecture](architecture.md) doc for the full flow details
-- Try [X.509 PoP attestation](https://github.com/container-registry/harbor-satellite/tree/main/deploy/quickstart/spiffe/x509pop) for production PKI
-- Try [SSH PoP attestation](https://github.com/container-registry/harbor-satellite/tree/main/deploy/quickstart/spiffe/sshpop) for SSH-based environments
+- Try [SSH PoP attestation](https://github.com/container-registry/harbor-satellite/tree/main/deploy/quickstart/spiffe/sshpop) for SSH certificate-based environments
+- Try [join token attestation](https://github.com/container-registry/harbor-satellite/tree/main/deploy/quickstart/spiffe/join-token) for simpler development setups
