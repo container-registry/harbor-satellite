@@ -24,10 +24,10 @@ harbor:
   # -- Harbor admin username
   username: "admin"
   # -- Harbor admin password
-  password: "Harbor12345"
+  password: ""
 
 # -- Ground Control admin password
-adminPassword: "Harbor12345"
+adminPassword: ""
 
 # -- Database configuration
 database:
@@ -43,7 +43,7 @@ database:
   # -- Database username
   username: "postgres"
   # -- Database password
-  password: "password"
+  password: ""
 
 # -- Internal PostgreSQL settings (only used when database.internal.enabled is true)
 postgresql:

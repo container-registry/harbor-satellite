@@ -60,7 +60,7 @@ suffix (11 chars) is never silently stripped by the 63-char DNS limit.
 PostgreSQL selector labels.
 */}}
 {{- define "ground-control.postgresql.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "ground-control.name" . }}-postgresql
+app.kubernetes.io/name: {{ include "ground-control.name" . | trunc 52 | trimSuffix "-" }}-postgresql
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
