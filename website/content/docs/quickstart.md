@@ -86,7 +86,130 @@ cd deploy/quickstart/spiffe/join-token/external/gc
 
 This creates a self-signed CA certificate that SPIRE uses to bootstrap trust.
 
-### 1.2 Start PostgreSQL and SPIRE Server
+### 1.2 Create the Docker Compose file
+
+Create a `docker-compose.yml` in the `gc/` directory with the following content:
+
+```yaml
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: harbor-satellite-postgres
+    environment:
+      POSTGRES_USER: harbor
+      POSTGRES_PASSWORD: harbor
+      POSTGRES_DB: harbor_satellite
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "harbor", "-d", "harbor_satellite"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - harbor-satellite
+
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:1.12.3
+    container_name: spire-server
+    hostname: spire-server
+    command: ["-config", "/opt/spire/conf/server/server.conf"]
+    volumes:
+      - ./spire/server.conf:/opt/spire/conf/server/server.conf:ro
+      - spire-server-data:/opt/spire/data/server
+      - spire-server-socket:/tmp/spire-server/private
+      - ./certs:/opt/spire/certs
+    ports:
+      - "${SPIRE_HOST_PORT:-9081}:8081"
+    healthcheck:
+      test: ["CMD", "/opt/spire/bin/spire-server", "healthcheck", "-socketPath", "/tmp/spire-server/private/api.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - harbor-satellite
+
+  spire-agent-gc:
+    image: ghcr.io/spiffe/spire-agent:1.12.3
+    container_name: spire-agent-gc
+    hostname: spire-agent-gc
+    pid: host
+    command: ["-config", "/opt/spire/conf/agent/agent.conf"]
+    volumes:
+      - ./spire/agent-gc-runtime.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - spire-agent-gc-data:/opt/spire/data/agent
+      - spire-agent-gc-socket:/run/spire/sockets
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    depends_on:
+      spire-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck", "-socketPath", "/run/spire/sockets/agent.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - harbor-satellite
+
+  ground-control:
+    image: registry.goharbor.io/harbor-satellite/ground-control:latest
+    container_name: ground-control
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=harbor_satellite
+      - DB_USERNAME=harbor
+      - DB_PASSWORD=harbor
+      - PORT=8080
+      - APP_ENV=development
+      - HARBOR_URL=${HARBOR_URL:-http://host.docker.internal:8080}
+      - HARBOR_USERNAME=${HARBOR_USERNAME:-admin}
+      - HARBOR_PASSWORD=${HARBOR_PASSWORD:-Harbor12345}
+      - SKIP_HARBOR_HEALTH_CHECK=${SKIP_HARBOR_HEALTH_CHECK:-false}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Harbor12345}
+      - SPIFFE_ENABLED=true
+      - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
+      - SPIFFE_TRUST_DOMAIN=harbor-satellite.local
+      - SPIRE_SERVER_SOCKET=/tmp/spire-server/private/api.sock
+      - SPIRE_SERVER_ADDRESS=spire-server
+      - SPIRE_SERVER_PORT=8081
+      - SPIRE_TRUST_DOMAIN=harbor-satellite.local
+    volumes:
+      - spire-agent-gc-socket:/run/spire/sockets:ro
+      - spire-server-socket:/tmp/spire-server/private:ro
+    ports:
+      - "${GC_HOST_PORT:-9080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spire-agent-gc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sfk", "https://localhost:8080/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - harbor-satellite
+
+volumes:
+  postgres-data:
+  spire-server-data:
+  spire-server-socket:
+  spire-agent-gc-data:
+  spire-agent-gc-socket:
+
+networks:
+  harbor-satellite:
+    name: harbor-satellite
+```
+
+### 1.3 Start PostgreSQL and SPIRE Server
 
 ```bash
 docker compose up -d postgres spire-server
@@ -99,7 +222,7 @@ docker exec spire-server /opt/spire/bin/spire-server healthcheck \
     -socketPath /tmp/spire-server/private/api.sock
 ```
 
-### 1.3 Generate a Join Token for Ground Control's SPIRE Agent
+### 1.4 Generate a Join Token for Ground Control's SPIRE Agent
 
 ```bash
 GC_TOKEN=$(docker exec spire-server /opt/spire/bin/spire-server token generate \
@@ -108,7 +231,7 @@ GC_TOKEN=$(docker exec spire-server /opt/spire/bin/spire-server token generate \
 echo "Token: $GC_TOKEN"
 ```
 
-### 1.4 Create the SPIRE Agent Config
+### 1.5 Create the SPIRE Agent Config
 
 Create the agent config file with the token:
 
@@ -154,7 +277,7 @@ health_checks {
 EOF
 ```
 
-### 1.5 Start the SPIRE Agent and Ground Control
+### 1.6 Start the SPIRE Agent and Ground Control
 
 ```bash
 docker compose up -d spire-agent-gc
@@ -173,7 +296,7 @@ docker exec spire-server /opt/spire/bin/spire-server entry create \
 Start Ground Control:
 
 ```bash
-docker compose up -d ground-control --build
+docker compose up -d ground-control
 ```
 
 Verify it is running (HTTPS since SPIFFE is enabled):
@@ -182,9 +305,9 @@ Verify it is running (HTTPS since SPIFFE is enabled):
 curl -sk https://localhost:9080/ping
 ```
 
-### 1.6 Automated Alternative
+### 1.7 Automated Alternative
 
-Instead of steps 1.1-1.5, you can run the [`setup.sh`](https://github.com/container-registry/harbor-satellite/blob/main/deploy/quickstart/spiffe/join-token/external/gc/setup.sh) script from the cloud-side quickstart directory:
+Instead of steps 1.1-1.6, you can run the [`setup.sh`](https://github.com/container-registry/harbor-satellite/blob/main/deploy/quickstart/spiffe/join-token/external/gc/setup.sh) script from the cloud-side quickstart directory:
 
 ```bash
 cd deploy/quickstart/spiffe/join-token/external/gc
@@ -291,12 +414,69 @@ Now Ground Control knows that `edge-01` should have all images in the `edge-imag
 
 ## Step 4: Start the Satellite
 
-### 4.1 Create the satellite SPIRE agent config
+### 4.1 Create the Docker Compose file
 
-Navigate to the satellite directory:
+Create a `docker-compose.yml` in the `sat/` directory:
+
+```yaml
+services:
+  spire-agent-satellite:
+    image: ghcr.io/spiffe/spire-agent:1.12.3
+    container_name: spire-agent-satellite
+    hostname: spire-agent-satellite
+    pid: host
+    command: ["-config", "/opt/spire/conf/agent/agent.conf"]
+    volumes:
+      - ./spire/agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ../gc/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - spire-agent-satellite-data:/opt/spire/data/agent
+      - spire-agent-satellite-socket:/run/spire/sockets
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck", "-socketPath", "/run/spire/sockets/agent.sock"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - harbor-satellite
+
+  satellite:
+    image: registry.goharbor.io/harbor-satellite/satellite:latest
+    container_name: satellite
+    environment:
+      - GROUND_CONTROL_URL=https://ground-control:8080
+      - USE_UNSECURE=true
+      - SPIFFE_ENABLED=true
+      - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
+      - SPIFFE_EXPECTED_SERVER_ID=spiffe://harbor-satellite.local/ground-control
+    volumes:
+      - spire-agent-satellite-socket:/run/spire/sockets:ro
+      - satellite-data:/data
+    ports:
+      - "${SATELLITE_ZOT_PORT:-5050}:8585"
+    depends_on:
+      spire-agent-satellite:
+        condition: service_healthy
+    networks:
+      - harbor-satellite
+
+volumes:
+  spire-agent-satellite-data:
+  spire-agent-satellite-socket:
+  satellite-data:
+
+networks:
+  harbor-satellite:
+    external: true
+```
+
+### 4.2 Create the satellite SPIRE agent config
+
+Create the SPIRE agent config with the join token from Step 2:
+
 ```bash
-cd deploy/quickstart/spiffe/join-token/external/sat
-
+mkdir -p spire
 cat > spire/agent-satellite-runtime.conf << EOF
 agent {
     data_dir = "/opt/spire/data/agent"
@@ -338,16 +518,16 @@ health_checks {
 EOF
 ```
 
-### 4.2 Start the SPIRE agent and satellite
+### 4.3 Start the SPIRE agent and satellite
 
 ```bash
 docker compose up -d spire-agent-satellite
 # Wait for agent to attest
 sleep 15
-docker compose up -d satellite --build
+docker compose up -d satellite
 ```
 
-### 4.3 Automated alternative
+### 4.4 Automated alternative
 
 Run the [`setup.sh`](https://github.com/container-registry/harbor-satellite/blob/main/deploy/quickstart/spiffe/join-token/external/sat/setup.sh) script from the satellite-side quickstart directory:
 
