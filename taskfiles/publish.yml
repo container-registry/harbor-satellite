@@ -34,12 +34,14 @@ tasks:
           PROJECT_NAME: "{{.PROJECT}}"
           COMPONENT: satellite
           IMAGE_TAGS: "{{.TAG}}"
+          PLATFORMS: "{{.PLATFORMS}}"
       - task: image
         vars:
           REGISTRY: "{{.REGISTRY}}"
           PROJECT_NAME: "{{.PROJECT}}"
           COMPONENT: ground-control
           IMAGE_TAGS: "{{.TAG}}"
+          PLATFORMS: "{{.PLATFORMS}}"
       - echo "Published satellite and ground-control to {{.DEST}}"
     silent: true
 
