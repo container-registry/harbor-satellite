@@ -252,7 +252,7 @@ curl -X POST http://localhost:8080/api/groups/satellite \
 
 ### Verifying Replication
 
-After assigning a group, the satellite begins replicating images on its next sync interval (default: 10 seconds). Check the satellite logs for replication activity and verify images are available locally:
+After assigning a group, the satellite begins replicating images on its next sync interval (default: 30 seconds). Check the satellite logs for replication activity and verify images are available locally:
 
 ```bash
 crane catalog localhost:5000
