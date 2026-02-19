@@ -821,6 +821,11 @@
     color: var(--color-ink);
   }
 
+  /* ---------- Desktop hidden elements ---------- */
+  .docs-menu-toggle {
+    display: none;
+  }
+
   /* ---------- Mobile Menu ---------- */
   .navbar__menu-open .navbar__links {
     display: flex;
