@@ -52,6 +52,7 @@ tasks:
       PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
       COMPONENT: "{{.COMPONENT | default .Env.COMPONENT | default \"satellite\"}}"
       IMAGE_TAGS: "{{.IMAGE_TAGS | default .Env.IMAGE_TAGS | default \"dev\"}}"
+      PLATFORMS: "{{.PLATFORMS | default \"linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/riscv64\"}}"
     preconditions:
       - sh: test -n "{{.REGISTRY}}"
         msg: "REGISTRY is required. Set via task var or REGISTRY env var."
