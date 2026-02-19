@@ -47,7 +47,7 @@ func (m *HarborSatellite) RunGroundControl(
 	source *dagger.Directory,
 ) (*dagger.Service, error) {
 	golang := dag.Container().
-		From(DEFAULT_GO + "-alpine").
+		From(DEFAULT_GO+"-alpine").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -95,7 +95,7 @@ func (m *HarborSatellite) BuildDev(
 	if component == "satellite" || component == "ground-control" {
 		var binaryFile *dagger.File
 		golang := dag.Container().
-			From(DEFAULT_GO + "-alpine").
+			From(DEFAULT_GO+"-alpine").
 			WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 			WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 			WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
@@ -199,4 +199,85 @@ func parsePlatform(platform string) (string, string, error) {
 		return "", "", fmt.Errorf("invalid platform format: %s. Should be os/arch. E.g. darwin/amd64", platform)
 	}
 	return parts[0], parts[1], nil
+}
+
+// Unit Test Report
+func (m *HarborSatellite) TestReport(
+	ctx context.Context,
+	source *dagger.Directory,
+) (*dagger.File, error) {
+
+	reportName := "TestReport.json"
+
+	container := dag.Container().
+		From("golang:1.24.1-alpine").
+		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
+		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
+		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
+		WithEnvVariable("GOCACHE", "/go/build-cache").
+		WithExec([]string{"sh", "-c", "echo test-machine-id > /etc/machine-id"}).
+		WithExec([]string{"go", "install", "gotest.tools/gotestsum@v1.12.0"}).
+		WithMountedDirectory("/src", source).
+		WithWorkdir("/src").
+		WithExec([]string{
+			"gotestsum",
+			"--jsonfile",
+			reportName,
+			"./...",
+		})
+
+	return container.File(reportName), nil
+}
+
+// Coverage Raw Output
+func (m *HarborSatellite) TestCoverage(
+	ctx context.Context,
+	source *dagger.Directory,
+) (*dagger.File, error) {
+
+	coverage := "coverage.out"
+
+	container := dag.Container().
+		From("golang:1.24.1-alpine").
+		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
+		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).
+		WithMountedDirectory("/src", source).
+		WithWorkdir("/src").
+		WithExec([]string{"sh", "-c", "echo test-machine-id > /etc/machine-id"}).
+		WithExec([]string{
+			"go", "test", "./...",
+			"-coverprofile=" + coverage,
+		})
+
+	return container.File(coverage), nil
+}
+
+// Coverage Markdown Report
+func (m *HarborSatellite) TestCoverageReport(
+	ctx context.Context,
+	source *dagger.Directory,
+) (*dagger.File, error) {
+
+	report := "coverage-report.md"
+	coverage := "coverage.out"
+
+	container := dag.Container().
+		From("golang:1.24.1-alpine").
+		WithMountedDirectory("/src", source).
+		WithWorkdir("/src").
+		WithExec([]string{"apk", "add", "--no-cache", "bc"}).
+		WithExec([]string{"sh", "-c", "echo test-machine-id > /etc/machine-id"}).
+		WithExec([]string{
+			"go", "test", "./...",
+			"-coverprofile=" + coverage,
+		})
+
+	return container.WithExec([]string{"sh", "-c", `
+		echo "<h2> Test Coverage</h2>" > ` + report + `
+		total=$(go tool cover -func=` + coverage + ` | grep total: | grep -Eo '[0-9]+\.[0-9]+')
+		echo "<b>Total Coverage:</b> $total%" >> ` + report + `
+		echo "<details><summary>Details</summary><pre>" >> ` + report + `
+		go tool cover -func=` + coverage + ` >> ` + report + `
+		echo "</pre></details>" >> ` + report + `
+	`}).File(report), nil
 }
