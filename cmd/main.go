@@ -53,6 +53,7 @@ type SatelliteOptions struct {
 	RegistryDataDir        string
 	NoRegistryFallback     bool
 	FallbackOnly           bool
+	HarborRegistryURL      string
 }
 
 func main() {
@@ -76,6 +77,7 @@ func main() {
 	flag.StringVar(&shutdownTimeout, "shutdown-timeout", "", "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
 	flag.BoolVar(&opts.NoRegistryFallback, "no-registry-fallback", false, "Disable all CRI registry fallback configuration")
 	flag.BoolVar(&opts.FallbackOnly, "fallback-only", false, "Apply CRI registry fallback configs and exit without starting satellite")
+	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", "", "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
 
 	flag.Parse()
 
@@ -124,6 +126,9 @@ func main() {
 	if !opts.NoRegistryFallback && os.Getenv("NO_REGISTRY_FALLBACK") == "true" {
 		opts.NoRegistryFallback = true
 	}
+	if opts.HarborRegistryURL == "" {
+		opts.HarborRegistryURL = os.Getenv("HARBOR_REGISTRY_URL")
+	}
 
 	// Resolve config directory path
 	if opts.ConfigDir == "" {
@@ -154,6 +159,10 @@ func main() {
 		}
 		if opts.GroundControlURL == "" {
 			fmt.Println("Missing required argument: --ground-control-url or GROUND_CONTROL_URL env var.")
+			os.Exit(1)
+		}
+		if opts.HarborRegistryURL == "" {
+			fmt.Println("Missing required argument: --harbor-registry-url or HARBOR_REGISTRY_URL env var.")
 			os.Exit(1)
 		}
 	}
@@ -200,6 +209,20 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 			config.SetLocalRegistryUsername(opts.RegistryUsername),
 			config.SetLocalRegistryPassword(opts.RegistryPassword),
 		)
+	}
+
+	if opts.HarborRegistryURL != "" {
+		cm.With(config.SetHarborRegistryURL(opts.HarborRegistryURL))
+
+		// Apply override to existing state config (from prior ZTR)
+		if cm.IsZTRDone() {
+			sc := cm.GetStateConfig()
+			sc, err = config.ApplyHarborRegistryOverride(sc, opts.HarborRegistryURL)
+			if err != nil {
+				return fmt.Errorf("apply harbor registry URL override: %w", err)
+			}
+			cm.With(config.SetStateConfig(sc))
+		}
 	}
 
 	// Update Zot config with storage path

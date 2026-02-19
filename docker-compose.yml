@@ -4,6 +4,7 @@ services:
     container_name: satellite
     environment:
       - GROUND_CONTROL_URL=http://172.17.0.1:8888
+      - HARBOR_REGISTRY_URL=http://172.17.0.1:8080
       - TOKEN=c78dc95cae68e73664a067cb8bc0c6d2
     ports:
       - "8090:8080"  # Expose ports as needed
