@@ -55,7 +55,11 @@ func startZotRegistry(t *testing.T, storageDir string) string {
 		if err != nil {
 			return false
 		}
-		resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				t.Logf("error closing response body: %v", err)
+			}
+		}()
 		return resp.StatusCode == http.StatusOK
 	}, 5*time.Second, 50*time.Millisecond, "/v2/ not ready")
 
