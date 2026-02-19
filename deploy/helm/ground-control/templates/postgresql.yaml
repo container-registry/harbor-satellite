@@ -38,6 +38,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "ground-control.fullname" . }}
                   key: DB_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           livenessProbe:
             exec:
               command:
