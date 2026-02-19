@@ -12,7 +12,7 @@ import (
 var validZotConfig = []byte(`{
     "distSpecVersion": "1.1.0",
     "storage": { "rootDirectory": "./zot" },
-    "http": { "address": "127.0.0.1", "port": "8585" },
+    "http": { "address": "127.0.0.1", "port": "5000" },
     "log": { "level": "info" }
 }`)
 

@@ -73,8 +73,8 @@ func TestResolveLocalRegistryEndpoint_Zot(t *testing.T) {
 	}{
 		{
 			name:     "valid zot config",
-			zotJSON:  `{"http":{"address":"0.0.0.0","port":"8585"}}`,
-			expected: "0.0.0.0:8585",
+			zotJSON:  `{"http":{"address":"0.0.0.0","port":"5000"}}`,
+			expected: "0.0.0.0:5000",
 		},
 		{
 			name:     "custom address and port",
@@ -89,7 +89,7 @@ func TestResolveLocalRegistryEndpoint_Zot(t *testing.T) {
 		},
 		{
 			name:        "missing address",
-			zotJSON:     `{"http":{"port":"8585"}}`,
+			zotJSON:     `{"http":{"port":"5000"}}`,
 			expectError: true,
 			errContains: "missing 'address' or 'port'",
 		},
@@ -142,7 +142,7 @@ func TestResolveCRIAndApply(t *testing.T) {
 		}
 		cm := newTestConfigManager(t, cfg)
 
-		results := resolveCRIAndApply(cm, nil, true, "localhost:8585")
+		results := resolveCRIAndApply(cm, nil, true, "localhost:5000")
 		require.Nil(t, results)
 	})
 
@@ -152,7 +152,7 @@ func TestResolveCRIAndApply(t *testing.T) {
 		}
 		cm := newTestConfigManager(t, cfg)
 
-		results := resolveCRIAndApply(cm, nil, false, "localhost:8585")
+		results := resolveCRIAndApply(cm, nil, false, "localhost:5000")
 		require.Nil(t, results)
 	})
 
@@ -170,7 +170,7 @@ func TestResolveCRIAndApply(t *testing.T) {
 		cm := newTestConfigManager(t, cfg)
 
 		mirrors := mirrorFlags{"containerd:quay.io"}
-		results := resolveCRIAndApply(cm, mirrors, false, "localhost:8585")
+		results := resolveCRIAndApply(cm, mirrors, false, "localhost:5000")
 		require.Len(t, results, 1)
 		require.Equal(t, runtime.CRIType("unsupported_cri"), results[0].CRI)
 		require.False(t, results[0].Success)
@@ -183,7 +183,7 @@ func TestResolveCRIAndApply(t *testing.T) {
 		cm := newTestConfigManager(t, cfg)
 
 		mirrors := mirrorFlags{"badformat"}
-		results := resolveCRIAndApply(cm, mirrors, false, "localhost:8585")
+		results := resolveCRIAndApply(cm, mirrors, false, "localhost:5000")
 		require.Nil(t, results)
 	})
 }

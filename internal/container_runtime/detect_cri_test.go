@@ -171,7 +171,7 @@ func TestApplyCRIConfigs_UnsupportedCRI(t *testing.T) {
 	configs := []CRIConfig{
 		{CRI: CRIType("unknown"), Registries: []string{"docker.io"}},
 	}
-	results := ApplyCRIConfigs(configs, "localhost:8585")
+	results := ApplyCRIConfigs(configs, "localhost:5000")
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -184,7 +184,7 @@ func TestApplyCRIConfigs_UnsupportedCRI(t *testing.T) {
 }
 
 func TestApplyCRIConfigs_EmptyConfigs(t *testing.T) {
-	results := ApplyCRIConfigs(nil, "localhost:8585")
+	results := ApplyCRIConfigs(nil, "localhost:5000")
 	if len(results) != 0 {
 		t.Fatalf("expected 0 results for nil configs, got %d", len(results))
 	}
