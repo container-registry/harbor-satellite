@@ -1,5 +1,7 @@
 # Harbor Satellite — Software Distribution to the Edge
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/container-registry/harbor-satellite)](https://goreportcard.com/report/github.com/container-registry/harbor-satellite)
+
 Harbor Satellite brings the power of the Harbor container registry to edge computing. Satellite is a registry fleet management and artifact distribution solution around a central source of truth Harbor cluster.  
 
 A lightweight, standalone registry at edge locations is acting as both a primary registry for local workloads and a fallback for the central Harbor instance. This stateful satellite registry ensures consistent, available, and integrity-checked container images for edge devices, even when network connectivity is intermittent or unavailable (air-gapped). Harbor Satellite optimizes image distribution and management for edge environments, addressing challenges like bandwidth limitations, remote fleet orchestration and artifact distribution.
