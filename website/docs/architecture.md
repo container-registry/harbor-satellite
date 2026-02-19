@@ -189,7 +189,7 @@ The satellite runs three concurrent schedulers:
 - On failure, retries on the next 30s cycle
 - Once registration succeeds and the satellite has valid credentials, the scheduler completes and stops
 
-**State Replication Scheduler** (default: every 10s)
+**State Replication Scheduler** (default: every 30s)
 
 1. Fetches the root satellite state artifact from Harbor (list of group URLs + config URL)
 2. For each group, fetches the group state artifact (list of images)
@@ -262,7 +262,7 @@ State is stored as OCI artifacts in Harbor. There are three types:
 {
   "app_config": {
     "log_level": "info",
-    "state_replication_interval": "@every 00h00m10s",
+    "state_replication_interval": "@every 00h00m30s",
     "heartbeat_interval": "@every 00h00m30s",
     "local_registry": { "url": "http://127.0.0.1:5000" }
   },
@@ -357,7 +357,7 @@ sequenceDiagram
 
     rect rgb(248, 248, 248)
     note right of Satellite: Phase 5 - Steady State
-    loop Every 10s
+    loop Every 30s
         Satellite->>Harbor: Fetch state artifact (robot creds)
         Satellite->>Harbor: Pull new/changed image layers
         Satellite->>Satellite: Store in local Zot registry
