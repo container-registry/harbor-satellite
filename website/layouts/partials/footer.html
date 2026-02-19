@@ -1,0 +1,35 @@
+<footer class="footer">
+  <div class="footer__container">
+    <div class="footer__grid">
+      <div class="footer__col">
+        <h4 class="footer__heading">Documentation</h4>
+        <ul class="footer__list">
+          <li><a href="{{ "docs/" | relURL }}">Introduction</a></li>
+          <li><a href="{{ "docs/overview/" | relURL }}">Overview</a></li>
+          <li><a href="{{ "docs/installation/" | relURL }}">Installation</a></li>
+          <li><a href="{{ "docs/quickstart/" | relURL }}">Quickstart</a></li>
+          <li><a href="{{ "docs/architecture/" | relURL }}">Architecture</a></li>
+        </ul>
+      </div>
+      <div class="footer__col">
+        <h4 class="footer__heading">Community</h4>
+        <ul class="footer__list">
+          <li><a href="https://cloud-native.slack.com/channels/harbor-satellite" target="_blank" rel="noopener">CNCF Slack</a></li>
+          <li><a href="{{ .Site.Params.githubRepo }}" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://goharbor.io/community/" target="_blank" rel="noopener">Harbor Community</a></li>
+        </ul>
+      </div>
+      <div class="footer__col">
+        <h4 class="footer__heading">Project</h4>
+        <ul class="footer__list">
+          <li><a href="{{ .Site.Params.githubRepo }}/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
+          <li><a href="https://goharbor.io" target="_blank" rel="noopener">Harbor</a></li>
+          <li><a href="https://www.cncf.io/" target="_blank" rel="noopener">CNCF</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer__bottom">
+      <p>&copy; {{ now.Year }} Harbor Satellite Contributors. Part of the <a href="https://goharbor.io" target="_blank" rel="noopener">Harbor</a> project.</p>
+    </div>
+  </div>
+</footer>

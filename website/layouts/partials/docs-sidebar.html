@@ -1,0 +1,20 @@
+<aside class="docs-sidebar" id="docs-sidebar">
+  <button class="docs-sidebar__close" onclick="document.getElementById('docs-sidebar').classList.remove('docs-sidebar--open')" aria-label="Close sidebar">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+  <p class="docs-sidebar__title">Documentation</p>
+  <ul class="docs-sidebar__list">
+    {{ $currentPage := . }}
+    {{ $section := .Site.GetPage "section" "docs" }}
+    {{ with $section }}
+      <li>
+        <a href="{{ .RelPermalink }}" class="docs-sidebar__link{{ if eq $currentPage.RelPermalink .RelPermalink }} docs-sidebar__link--active{{ end }}">{{ .Title }}</a>
+      </li>
+      {{ range .Pages.ByWeight }}
+      <li>
+        <a href="{{ .RelPermalink }}" class="docs-sidebar__link{{ if eq $currentPage.RelPermalink .RelPermalink }} docs-sidebar__link--active{{ end }}">{{ .Title }}</a>
+      </li>
+      {{ end }}
+    {{ end }}
+  </ul>
+</aside>

@@ -42,3 +42,8 @@ ground-control/.gc-dev
 # Task build output
 bin/
 .task/
+
+# Hugo
+website/public/
+website/resources/
+.hugo_build.lock
