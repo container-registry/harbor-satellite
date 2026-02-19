@@ -25,10 +25,13 @@ Running containers at the edge creates three problems:
 ## Components
 
 ### Harbor (Central Registry)
+
 Your existing Harbor instance in the cloud. Harbor Satellite does not replace Harbor - it extends it. All your images, projects, and access controls stay in Harbor.
 
 ### Ground Control (Management Plane)
+
 Runs alongside Harbor in the cloud. Ground Control:
+
 - Onboards satellites using SPIFFE/SPIRE identity
 - Creates and rotates robot account credentials in Harbor on behalf of satellites
 - Manages groups (collections of images) and assigns them to satellites
@@ -36,7 +39,9 @@ Runs alongside Harbor in the cloud. Ground Control:
 - Receives heartbeats and status reports from satellites
 
 ### Satellite (Edge Registry)
+
 Runs at each edge location. A single binary that:
+
 - Connects to a local SPIRE agent to get its identity (X.509 SVID - a cryptographic identity document)
 - Registers with Ground Control over mTLS (mutual TLS - both sides verify each other's identity)
 - Receives robot account credentials for pulling from Harbor
