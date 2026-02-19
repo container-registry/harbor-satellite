@@ -2,24 +2,28 @@
 
 This document walks through the complete flow of Harbor Satellite - from deploying the cloud components to a satellite pulling images at the edge.
 
-```
-                     CLOUD                                        EDGE
-  +----------+    +---------------+    +-------------+
-  |  Harbor   |<-->| Ground Control|<-->| SPIRE Server| <--- (attestation) ---+
-  | Registry  |    |               |    |             |                        |
-  +----------+    +-------+-------+    +------+------+                        |
-                          |                   |                                |
-                          |            +------+------+                  +------+------+
-                          |            | SPIRE Agent |                  | SPIRE Agent |
-                          |            |    (GC)     |                  | (Satellite) |
-                          |            +-------------+                  +------+------+
-                          |                                                    |
-                          +------------- mTLS (SVID) -------------------------+
-                                                                               |
-                                                                        +------+------+
-                                                                        |  Satellite   |
-                                                                        |   (Zot)      |
-                                                                        +--------------+
+```mermaid
+graph LR
+    subgraph Cloud
+        Harbor[Harbor Registry]
+        GC[Ground Control]
+        SpireServer[SPIRE Server]
+        SpireAgentGC[SPIRE Agent - GC]
+    end
+
+    subgraph Edge
+        SpireAgentSat[SPIRE Agent - Satellite]
+        Satellite[Satellite + Zot]
+    end
+
+    Harbor <--> GC
+    GC <--> SpireServer
+    SpireServer --- SpireAgentGC
+    SpireAgentGC -.->|SVID| GC
+    SpireServer --->|attestation| SpireAgentSat
+    SpireAgentSat -.->|SVID| Satellite
+    Satellite <-->|mTLS| GC
+    Satellite -->|pull images| Harbor
 ```
 
 ## Key Terms
@@ -290,4 +294,64 @@ Supported runtimes:
 Configure mirroring with the `--mirrors` flag:
 ```bash
 satellite --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
+```
+
+## Full End-to-End Flow
+
+```mermaid
+sequenceDiagram
+    participant Admin
+    participant Harbor
+    participant GC as Ground Control
+    participant SpireServer as SPIRE Server
+    participant SpireAgentSat as SPIRE Agent (Edge)
+    participant Satellite
+
+    rect rgb(240, 248, 255)
+    note right of Admin: Phase 1 - Cloud Setup
+    Admin->>Harbor: Push images
+    Admin->>SpireServer: Deploy with trust domain
+    Admin->>GC: Deploy (connects to SPIRE Agent)
+    GC->>SpireServer: Get SVID via local agent
+    end
+
+    rect rgb(245, 255, 245)
+    note right of Admin: Phase 2 - Register Satellite
+    Admin->>GC: POST /api/satellites/register
+    GC->>SpireServer: Create workload entry + join token
+    GC->>Harbor: Create robot account
+    GC-->>Admin: Return join token
+    Admin->>GC: POST /api/groups/sync (assign images)
+    GC->>Harbor: Push group state as OCI artifact
+    end
+
+    rect rgb(255, 248, 240)
+    note right of Admin: Phase 3 - Edge Deployment
+    Admin->>SpireAgentSat: Deploy with join token
+    SpireAgentSat->>SpireServer: Attest (join token consumed)
+    SpireServer-->>SpireAgentSat: Agent identity
+    Admin->>Satellite: Start (no secrets needed)
+    end
+
+    rect rgb(255, 245, 255)
+    note right of Satellite: Phase 4 - Zero-Trust Registration
+    Satellite->>SpireAgentSat: Request SVID (Workload API)
+    SpireAgentSat-->>Satellite: X.509 SVID
+    Satellite->>GC: GET /satellites/spiffe-ztr (mTLS)
+    GC->>GC: Verify SPIFFE ID
+    GC->>Harbor: Create/refresh robot account
+    GC-->>Satellite: Robot credentials + state URL
+    end
+
+    rect rgb(248, 248, 248)
+    note right of Satellite: Phase 5 - Steady State
+    loop Every 10s
+        Satellite->>Harbor: Fetch state artifact (robot creds)
+        Satellite->>Harbor: Pull new/changed image layers
+        Satellite->>Satellite: Store in local Zot registry
+    end
+    loop Every 30s
+        Satellite->>GC: Heartbeat (CPU, memory, storage)
+    end
+    end
 ```
