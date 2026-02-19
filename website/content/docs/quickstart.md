@@ -71,8 +71,8 @@ quickstart/
       server.conf
       agent-gc.conf
   sat/                             <-- Edge device (native binaries)
-    certs/                         <-- Copied from cloud (ca.crt, agent-satellite.crt, agent-satellite.key)
-    agent-satellite.conf
+    certs/                         <-- Copied from cloud (ca.crt, us-east-1.crt, us-east-1.key)
+    us-east-1.conf
 ```
 
 ## Step 1: Start the Cloud Side
@@ -122,11 +122,13 @@ openssl x509 -req -days 365 -in certs/agent-gc.csr \
     -CA certs/x509pop-ca.crt -CAkey certs/x509pop-ca.key -CAcreateserial \
     -out certs/agent-gc.crt -extfile certs/agent-gc.ext
 
-# Satellite agent certificate (CN must match satellite_name used during registration)
-openssl genrsa -out certs/agent-satellite.key 2048
-openssl req -new -key certs/agent-satellite.key -out certs/agent-satellite.csr \
-    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=edge-01"
-cat > certs/agent-satellite.ext << 'EXTEOF'
+# Satellite agent certificate
+# The CN is an arbitrary name that identifies this satellite.
+# It must match the satellite_name used during registration (Step 3.2).
+openssl genrsa -out certs/us-east-1.key 2048
+openssl req -new -key certs/us-east-1.key -out certs/us-east-1.csr \
+    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=us-east-1"
+cat > certs/us-east-1.ext << 'EXTEOF'
 authorityKeyIdentifier=keyid,issuer
 basicConstraints=CA:FALSE
 keyUsage = digitalSignature, keyEncipherment
@@ -135,9 +137,9 @@ subjectAltName = @alt_names
 [alt_names]
 URI.1 = spiffe://harbor-satellite.local/agent/satellite
 EXTEOF
-openssl x509 -req -days 365 -in certs/agent-satellite.csr \
+openssl x509 -req -days 365 -in certs/us-east-1.csr \
     -CA certs/x509pop-ca.crt -CAkey certs/x509pop-ca.key -CAcreateserial \
-    -out certs/agent-satellite.crt -extfile certs/agent-satellite.ext
+    -out certs/us-east-1.crt -extfile certs/us-east-1.ext
 
 # Cleanup temp files
 rm -f certs/*.csr certs/*.ext certs/*.srl
@@ -431,8 +433,8 @@ curl -sk https://localhost:9080/ping
 {{< callout type="info" >}}
 Run all commands in this step on your **edge device**. You will need the following files from the cloud server (generated in Step 1.2):
 - `certs/ca.crt` (bootstrap trust bundle)
-- `certs/agent-satellite.crt` (satellite agent certificate)
-- `certs/agent-satellite.key` (satellite agent private key)
+- `certs/us-east-1.crt` (satellite agent certificate)
+- `certs/us-east-1.key` (satellite agent private key)
 {{< /callout >}}
 
 The satellite's SPIRE agent must be running and attested **before** you register the satellite in Ground Control. GC discovers the agent by matching the certificate CN against the satellite name.
@@ -458,16 +460,16 @@ cd quickstart/sat
 
 # Copy these three files from your cloud server's quickstart/gc/certs/ directory
 scp cloud-server:quickstart/gc/certs/ca.crt certs/
-scp cloud-server:quickstart/gc/certs/agent-satellite.crt certs/
-scp cloud-server:quickstart/gc/certs/agent-satellite.key certs/
+scp cloud-server:quickstart/gc/certs/us-east-1.crt certs/
+scp cloud-server:quickstart/gc/certs/us-east-1.key certs/
 ```
 
 ### 2.3 Create the SPIRE agent config
 
-Create `agent-satellite.conf`. Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname. The agent uses x509pop attestation with no tokens:
+Create `us-east-1.conf`. Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname. The agent uses x509pop attestation with no tokens:
 
 ```bash
-cat > agent-satellite.conf << 'EOF'
+cat > us-east-1.conf << 'EOF'
 agent {
     data_dir = "./data/agent"
     log_level = "INFO"
@@ -481,8 +483,8 @@ agent {
 plugins {
     NodeAttestor "x509pop" {
         plugin_data {
-            private_key_path = "./certs/agent-satellite.key"
-            certificate_path = "./certs/agent-satellite.crt"
+            private_key_path = "./certs/us-east-1.key"
+            certificate_path = "./certs/us-east-1.crt"
         }
     }
     KeyManager "disk" {
@@ -509,7 +511,7 @@ EOF
 
 ```bash
 mkdir -p data/agent
-spire-agent run -config agent-satellite.conf &
+spire-agent run -config us-east-1.conf &
 ```
 
 Wait for the agent to attest with the SPIRE server:
@@ -535,20 +537,20 @@ AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
 ### 3.2 Register the Satellite
 
-This API call finds the attested satellite agent by matching `x509pop:subject:cn:edge-01` (the CN from the certificate generated in Step 1.2), then:
+This API call finds the attested satellite agent by matching `x509pop:subject:cn:us-east-1` (the CN from the certificate generated in Step 1.2), then:
 
 - Creates the satellite record in Ground Control
 - Creates a SPIRE workload entry with the satellite's SPIFFE ID
 - Creates a robot account in Harbor
 
-The `satellite_name` must match the CN in the satellite agent certificate. The `region` is an arbitrary label for organizing satellites (e.g., `us-east-1`, `eu-west-2`, `factory-floor`).
+Both `satellite_name` and `region` are arbitrary names you choose. The `satellite_name` must match the CN in the satellite agent certificate (Step 1.2). The `region` is a label for organizing satellites (e.g., `us-east-1`, `eu-west-2`, `factory-floor`).
 
 ```bash
 curl -sk -X POST https://localhost:9080/api/satellites/register \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{
-      "satellite_name": "edge-01",
+      "satellite_name": "us-east-1",
       "region": "us-east-1",
       "selectors": ["unix:uid:0"],
       "attestation_method": "x509pop"
@@ -594,10 +596,10 @@ Then replace `YOUR_DIGEST_HERE` in the command above with the digest value.
 curl -sk -X POST https://localhost:9080/api/groups/satellite \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{"satellite": "edge-01", "group": "edge-images"}'
+    -d '{"satellite": "us-east-1", "group": "edge-images"}'
 ```
 
-Now Ground Control knows that `edge-01` should have all images in the `edge-images` group.
+Now Ground Control knows that `us-east-1` should have all images in the `edge-images` group.
 
 ## Step 4: Start the Satellite
 
@@ -675,19 +677,19 @@ curl -sk https://localhost:9080/api/satellites \
 
 Here is what happened end to end:
 
-1. **You generated X.509 certificates** signed by the x509pop CA for both agents (CN=agent-gc and CN=edge-01)
+1. **You generated X.509 certificates** signed by the x509pop CA for both agents (CN=agent-gc and CN=us-east-1)
 2. **SPIRE server** started and became the trust authority for `harbor-satellite.local`
 3. **Ground Control's SPIRE agent** attested using its X.509 certificate (x509pop), got its identity
 4. **Ground Control** started, connected to its SPIRE agent, got its SVID (`spiffe://harbor-satellite.local/ground-control`)
 5. **Satellite's SPIRE agent** attested using its X.509 certificate (x509pop), got its identity
-6. **You registered a satellite** via the GC API. GC found the attested agent by matching `x509pop:subject:cn:edge-01`, created a SPIRE workload entry and Harbor robot account
+6. **You registered a satellite** via the GC API. GC found the attested agent by matching `x509pop:subject:cn:us-east-1`, created a SPIRE workload entry and Harbor robot account
 7. **You created a group** with `nginx:alpine` and assigned it to the satellite
 8. **Satellite** started, connected to its SPIRE agent, got its SVID
 9. **Satellite** sent an mTLS request to Ground Control's `/satellites/spiffe-ztr` endpoint
 10. **Ground Control** verified the SVID, created robot credentials, returned the state URL
 11. **Satellite** used the robot credentials to pull its state from Harbor
 12. **Satellite** saw `nginx:alpine` in its desired state and replicated it to local Zot
-13. **Satellite** now serves `nginx:alpine` locally on port 5050
+13. **Satellite** now serves `nginx:alpine` locally on port 8585
 
 No runtime tokens were used. The only secrets transported to the edge were the X.509 agent certificate and key (Step 2.2), which can be pre-provisioned during device setup. After attestation, all credentials are handled automatically via SPIRE SVIDs and mTLS.
 
