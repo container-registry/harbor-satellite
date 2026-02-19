@@ -765,6 +765,54 @@
     border: 1px solid oklch(0.2 0.04 260 / 0.06);
   }
 
+  /* ---------- Details/Toggle ---------- */
+  .details {
+    margin-bottom: var(--space-lg);
+    border: 1px solid oklch(0.2 0.04 260 / 0.1);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .details__summary {
+    padding: var(--space-md) var(--space-lg);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-ink);
+    background-color: oklch(0.2 0.04 260 / 0.03);
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .details__summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .details__summary::before {
+    content: "\25B6";
+    font-size: var(--text-xs);
+    transition: transform 0.15s;
+  }
+
+  .details[open] .details__summary::before {
+    transform: rotate(90deg);
+  }
+
+  .details__summary:hover {
+    background-color: oklch(0.2 0.04 260 / 0.06);
+  }
+
+  .details__content {
+    padding: var(--space-lg);
+    border-top: 1px solid oklch(0.2 0.04 260 / 0.1);
+  }
+
+  .details__content pre:last-child {
+    margin-bottom: 0;
+  }
+
   /* ---------- Callout ---------- */
   .callout {
     padding: var(--space-lg);

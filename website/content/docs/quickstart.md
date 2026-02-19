@@ -10,12 +10,14 @@ This guide walks you through deploying Harbor Satellite end-to-end with SPIFFE/S
 - Ground Control managing the fleet
 - A satellite at the "edge" pulling images automatically
 
-Everything runs locally with Docker Compose.
+Everything runs locally with Docker Compose. No need to clone the repository.
 
 ## Prerequisites
 
-- Docker and Docker Compose installed
-- `curl` and `jq` available
+- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) (v2+)
+- [curl](https://curl.se/) - HTTP client for API calls
+- [jq](https://jqlang.github.io/jq/download/) - JSON processor for parsing API responses
+- [openssl](https://www.openssl.org/) - for generating CA certificates
 - A Harbor instance running with at least one image pushed (e.g., `library/nginx:alpine`)
 
 If you do not have Harbor running, the quickest option is the [Harbor online installer](https://goharbor.io/docs/latest/install-config/). For a minimal local setup:
@@ -58,38 +60,97 @@ export HARBOR_PASSWORD=MyPassword123
 
 ## Overview
 
-You will set up two environments:
+You will set up two directories:
 
 ```text
-Cloud (gc/ directory):                Edge (sat/ directory):
-  PostgreSQL                            SPIRE Agent (satellite)
-  SPIRE Server                          Satellite (with embedded Zot registry)
-  SPIRE Agent (ground control)
-  Ground Control
-```
-
-The quickstart files live in:
-```text
-deploy/quickstart/spiffe/join-token/external/
-  gc/       <-- Cloud-side components
-  sat/      <-- Edge-side components
+quickstart/
+  gc/                     <-- Cloud-side components
+    docker-compose.yml
+    certs/                <-- Generated CA certificates
+    spire/
+      server.conf
+      agent-gc-runtime.conf
+  sat/                    <-- Edge-side components
+    docker-compose.yml
+    spire/
+      agent-satellite-runtime.conf
 ```
 
 ## Step 1: Start the Cloud Side
 
-### 1.1 Generate CA Certificates
+### 1.1 Create the directory structure
 
 ```bash
-cd deploy/quickstart/spiffe/join-token/external/gc
-./generate-certs.sh
+mkdir -p quickstart/gc/spire quickstart/sat/spire
+cd quickstart/gc
 ```
 
-This creates a self-signed CA certificate that SPIRE uses to bootstrap trust.
+### 1.2 Generate CA Certificates
 
-### 1.2 Create the Docker Compose file
+Generate a self-signed CA certificate that SPIRE uses to bootstrap trust:
 
-Create a `docker-compose.yml` in the `gc/` directory with the following content:
+```bash
+mkdir -p certs
+openssl genrsa -out certs/ca.key 4096
+openssl req -new -x509 -days 365 -key certs/ca.key -out certs/ca.crt \
+    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=SPIRE CA"
+chmod 644 certs/ca.key certs/ca.crt
+```
 
+### 1.3 Create the SPIRE Server Config
+
+Create `spire/server.conf`:
+
+```bash
+cat > spire/server.conf << 'EOF'
+server {
+    bind_address = "0.0.0.0"
+    bind_port = "8081"
+    socket_path = "/tmp/spire-server/private/api.sock"
+    trust_domain = "harbor-satellite.local"
+    data_dir = "/opt/spire/data/server"
+    log_level = "INFO"
+    ca_ttl = "24h"
+    default_x509_svid_ttl = "1h"
+    default_jwt_svid_ttl = "5m"
+}
+
+plugins {
+    DataStore "sql" {
+        plugin_data {
+            database_type = "sqlite3"
+            connection_string = "/opt/spire/data/server/datastore.sqlite3"
+        }
+    }
+    NodeAttestor "join_token" {
+        plugin_data {}
+    }
+    KeyManager "memory" {
+        plugin_data {}
+    }
+    UpstreamAuthority "disk" {
+        plugin_data {
+            key_file_path = "/opt/spire/certs/ca.key"
+            cert_file_path = "/opt/spire/certs/ca.crt"
+        }
+    }
+}
+
+health_checks {
+    listener_enabled = true
+    bind_address = "0.0.0.0"
+    bind_port = "8080"
+    live_path = "/live"
+    ready_path = "/ready"
+}
+EOF
+```
+
+### 1.4 Create the Docker Compose file
+
+Create `docker-compose.yml` in the `gc/` directory:
+
+{{< details summary="gc/docker-compose.yml (click to expand)" >}}
 ```yaml
 services:
   postgres:
@@ -208,8 +269,9 @@ networks:
   harbor-satellite:
     name: harbor-satellite
 ```
+{{< /details >}}
 
-### 1.3 Start PostgreSQL and SPIRE Server
+### 1.5 Start PostgreSQL and SPIRE Server
 
 ```bash
 docker compose up -d postgres spire-server
@@ -222,7 +284,7 @@ docker exec spire-server /opt/spire/bin/spire-server healthcheck \
     -socketPath /tmp/spire-server/private/api.sock
 ```
 
-### 1.4 Generate a Join Token for Ground Control's SPIRE Agent
+### 1.6 Generate a Join Token for Ground Control's SPIRE Agent
 
 ```bash
 GC_TOKEN=$(docker exec spire-server /opt/spire/bin/spire-server token generate \
@@ -231,7 +293,7 @@ GC_TOKEN=$(docker exec spire-server /opt/spire/bin/spire-server token generate \
 echo "Token: $GC_TOKEN"
 ```
 
-### 1.5 Create the SPIRE Agent Config
+### 1.7 Create the SPIRE Agent Config
 
 Create the agent config file with the token:
 
@@ -277,7 +339,7 @@ health_checks {
 EOF
 ```
 
-### 1.6 Start the SPIRE Agent and Ground Control
+### 1.8 Start the SPIRE Agent and Ground Control
 
 ```bash
 docker compose up -d spire-agent-gc
@@ -303,15 +365,6 @@ Verify it is running (HTTPS since SPIFFE is enabled):
 
 ```bash
 curl -sk https://localhost:9080/ping
-```
-
-### 1.7 Automated Alternative
-
-Instead of steps 1.1-1.6, you can run the [`setup.sh`](https://github.com/container-registry/harbor-satellite/blob/main/deploy/quickstart/spiffe/join-token/external/gc/setup.sh) script from the cloud-side quickstart directory:
-
-```bash
-cd deploy/quickstart/spiffe/join-token/external/gc
-./setup.sh
 ```
 
 ## Step 2: Register a Satellite
@@ -416,8 +469,15 @@ Now Ground Control knows that `edge-01` should have all images in the `edge-imag
 
 ### 4.1 Create the Docker Compose file
 
-Create a `docker-compose.yml` in the `sat/` directory:
+Switch to the satellite directory:
 
+```bash
+cd ../sat
+```
+
+Create `docker-compose.yml`:
+
+{{< details summary="sat/docker-compose.yml (click to expand)" >}}
 ```yaml
 services:
   spire-agent-satellite:
@@ -470,13 +530,13 @@ networks:
   harbor-satellite:
     external: true
 ```
+{{< /details >}}
 
 ### 4.2 Create the satellite SPIRE agent config
 
 Create the SPIRE agent config with the join token from Step 2:
 
 ```bash
-mkdir -p spire
 cat > spire/agent-satellite-runtime.conf << EOF
 agent {
     data_dir = "/opt/spire/data/agent"
@@ -526,17 +586,6 @@ docker compose up -d spire-agent-satellite
 sleep 15
 docker compose up -d satellite
 ```
-
-### 4.4 Automated alternative
-
-Run the [`setup.sh`](https://github.com/container-registry/harbor-satellite/blob/main/deploy/quickstart/spiffe/join-token/external/sat/setup.sh) script from the satellite-side quickstart directory:
-
-```bash
-cd deploy/quickstart/spiffe/join-token/external/sat
-./setup.sh
-```
-
-Note: The `setup.sh` scripts handle SPIRE agent setup and satellite launch. You still need to create groups and assign images (Step 3) manually. Without groups, the satellite will register but have no images to replicate.
 
 ## Step 5: Verify
 
@@ -607,15 +656,18 @@ The only secret transported to the edge was a one-time SPIRE join token (Step 2.
 Satellite side first (it depends on the GC network):
 
 ```bash
-cd deploy/quickstart/spiffe/join-token/external/sat
-./cleanup.sh
+# From sat/ directory
+docker compose down -v --remove-orphans
 
+# From gc/ directory
 cd ../gc
-./cleanup.sh
+docker compose down -v --remove-orphans
+docker network rm harbor-satellite 2>/dev/null || true
+rm -rf certs spire/agent-gc-runtime.conf
 ```
 
 ## Next Steps
 
 - Read the [Architecture](architecture.md) doc for the full flow details
-- Try [X.509 PoP attestation](../../deploy/quickstart/spiffe/x509pop/README.md) for production PKI
-- Try [SSH PoP attestation](../../deploy/quickstart/spiffe/sshpop/README.md) for SSH-based environments
+- Try [X.509 PoP attestation](https://github.com/container-registry/harbor-satellite/tree/main/deploy/quickstart/spiffe/x509pop) for production PKI
+- Try [SSH PoP attestation](https://github.com/container-registry/harbor-satellite/tree/main/deploy/quickstart/spiffe/sshpop) for SSH-based environments
