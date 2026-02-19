@@ -64,26 +64,51 @@ tasks:
           CONTEXT="ground-control"
         fi
 
+        # Detect container runtime (docker vs podman)
+        if command -v docker &>/dev/null && ! docker --version 2>&1 | grep -qi podman; then
+          RUNTIME="docker"
+        else
+          RUNTIME="podman"
+        fi
+        echo "Using $RUNTIME runtime..."
+
         # Login if credentials provided (REG_USER/REG_PASS)
         if [ -n "$REG_USER" ] && [ -n "$REG_PASS" ]; then
           echo "Logging into {{.REGISTRY}}..."
-          echo "$REG_PASS" | docker login {{.REGISTRY}} -u "$REG_USER" --password-stdin
+          echo "$REG_PASS" | $RUNTIME login {{.REGISTRY}} -u "$REG_USER" --password-stdin
         fi
 
-        # Build tags list for buildx
-        TAGS=""
-        for tag in $(echo "{{.IMAGE_TAGS}}" | tr ',' ' '); do
-          tag=$(echo "$tag" | sed 's/^v//')
-          TAGS="$TAGS -t {{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
-        done
-
         echo "Building and pushing {{.COMPONENT}} for {{.PLATFORMS}}..."
-        docker buildx build \
-          --platform {{.PLATFORMS}} \
-          -f $DOCKERFILE \
-          $TAGS \
-          --push \
-          $CONTEXT
+
+        if [ "$RUNTIME" = "docker" ]; then
+          TAGS=""
+          for tag in $(echo "{{.IMAGE_TAGS}}" | tr ',' ' '); do
+            tag=$(echo "$tag" | sed 's/^v//')
+            TAGS="$TAGS -t {{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
+          done
+
+          docker buildx build \
+            --platform {{.PLATFORMS}} \
+            -f $DOCKERFILE \
+            $TAGS \
+            --push \
+            $CONTEXT
+        else
+          MANIFEST_NAME="localhost/{{.COMPONENT}}:build"
+          podman manifest rm "$MANIFEST_NAME" 2>/dev/null || true
+
+          podman build \
+            --platform {{.PLATFORMS}} \
+            -f $DOCKERFILE \
+            --manifest "$MANIFEST_NAME" \
+            $CONTEXT
+
+          for tag in $(echo "{{.IMAGE_TAGS}}" | tr ',' ' '); do
+            tag=$(echo "$tag" | sed 's/^v//')
+            podman manifest push --all "$MANIFEST_NAME" \
+              "docker://{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
+          done
+        fi
       - echo "Published {{.COMPONENT}}"
     silent: true
 
