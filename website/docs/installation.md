@@ -186,7 +186,7 @@ Best for development and testing. No SPIFFE infrastructure needed.
 2. Register a satellite via the Ground Control API:
 
    ```bash
-   curl -X POST http://localhost:8080/satellites \
+   curl -X POST http://localhost:8080/api/satellites \
      -H "Content-Type: application/json" \
      -d '{"name": "edge-01", "groups": ["my-group"], "config_name": "default"}'
    ```
@@ -223,7 +223,7 @@ For a full SPIFFE walkthrough, see the [Quickstart](quickstart.md).
 Groups are collections of images that satellites replicate. Create a group and add images:
 
 ```bash
-curl -X POST http://localhost:8080/groups/sync \
+curl -X POST http://localhost:8080/api/groups/sync \
   -H "Content-Type: application/json" \
   -d '{
     "group": "edge-images",
@@ -242,7 +242,7 @@ curl -X POST http://localhost:8080/groups/sync \
 Assign the group to a satellite:
 
 ```bash
-curl -X POST http://localhost:8080/groups/satellite \
+curl -X POST http://localhost:8080/api/groups/satellite \
   -H "Content-Type: application/json" \
   -d '{"satellite": "edge-01", "group": "edge-images"}'
 ```
