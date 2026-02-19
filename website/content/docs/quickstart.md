@@ -123,10 +123,10 @@ openssl x509 -req -days 365 -in certs/agent-gc.csr \
     -CA certs/x509pop-ca.crt -CAkey certs/x509pop-ca.key -CAcreateserial \
     -out certs/agent-gc.crt -extfile certs/agent-gc.ext
 
-# Satellite agent certificate
+# Satellite agent certificate (CN must match satellite_name used during registration)
 openssl genrsa -out certs/agent-satellite.key 2048
 openssl req -new -key certs/agent-satellite.key -out certs/agent-satellite.csr \
-    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=agent-satellite"
+    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=edge-01"
 cat > certs/agent-satellite.ext << 'EXTEOF'
 authorityKeyIdentifier=keyid,issuer
 basicConstraints=CA:FALSE
@@ -427,91 +427,7 @@ Verify it is running (HTTPS since SPIFFE is enabled):
 curl -sk https://localhost:9080/ping
 ```
 
-## Step 2: Register a Satellite
-
-{{< callout type="info" >}}
-Run all commands in this step on your **cloud server**.
-{{< /callout >}}
-
-### 2.1 Login to Ground Control
-
-```bash
-LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
-    -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"Harbor12345"}')
-AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-```
-
-### 2.2 Register the Satellite
-
-This single API call:
-
-- Creates the satellite record in Ground Control
-- Creates a SPIRE workload entry with the satellite's SPIFFE ID
-- Creates a robot account in Harbor
-
-```bash
-curl -sk -X POST https://localhost:9080/api/satellites/register \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{
-      "satellite_name": "edge-01",
-      "selectors": ["docker:label:com.docker.compose.service:satellite"],
-      "attestation_method": "x509pop"
-    }' | jq .
-```
-
-## Step 3: Create a Group and Assign Images
-
-{{< callout type="info" >}}
-Run all commands in this step on your **cloud server**.
-{{< /callout >}}
-
-### 3.1 Create a group with an image
-
-Note: The `registry` field uses the Docker-internal service name (`http://harbor:8080`), not your host-facing `HARBOR_URL`. Ground Control runs inside Docker and resolves `harbor` via the Compose network.
-
-```bash
-curl -sk -X POST https://localhost:9080/api/groups/sync \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{
-      "group": "edge-images",
-      "registry": "http://harbor:8080",
-      "artifacts": [
-        {
-          "repository": "library/nginx",
-          "tag": ["alpine"],
-          "type": "image",
-          "digest": "sha256:YOUR_DIGEST_HERE"
-        }
-      ]
-    }'
-```
-
-To get the digest from Harbor, use the Harbor API:
-```bash
-DIGEST=$(curl -sk -u "${HARBOR_USERNAME:-admin}:${HARBOR_PASSWORD:-Harbor12345}" \
-    -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
-    "${HARBOR_URL:-http://localhost:8080}/v2/library/nginx/manifests/alpine" \
-    -o /dev/null -w '' -D - | grep -i docker-content-digest | awk '{print $2}' | tr -d '\r')
-echo "Digest: $DIGEST"
-```
-
-Then replace `YOUR_DIGEST_HERE` in the command above with the digest value.
-
-### 3.2 Assign the group to the satellite
-
-```bash
-curl -sk -X POST https://localhost:9080/api/groups/satellite \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{"satellite": "edge-01", "group": "edge-images"}'
-```
-
-Now Ground Control knows that `edge-01` should have all images in the `edge-images` group.
-
-## Step 4: Start the Satellite
+## Step 2: Start the Satellite SPIRE Agent
 
 {{< callout type="info" >}}
 Run all commands in this step on your **edge device**. You will need the following files from the cloud server (generated in Step 1.2):
@@ -520,7 +436,9 @@ Run all commands in this step on your **edge device**. You will need the followi
 - `certs/agent-satellite.key` (satellite agent private key)
 {{< /callout >}}
 
-### 4.1 Copy certificates from cloud
+The satellite's SPIRE agent must be running and attested **before** you register the satellite in Ground Control. GC discovers the agent by matching the certificate CN against the satellite name.
+
+### 2.1 Copy certificates from cloud
 
 On the edge device, create the satellite directory and copy the certificates from the cloud server:
 
@@ -528,16 +446,13 @@ On the edge device, create the satellite directory and copy the certificates fro
 mkdir -p quickstart/sat/certs
 cd quickstart/sat
 
-# Copy these three files from your cloud server's quickstart/gc/certs/ directory:
-# - ca.crt
-# - agent-satellite.crt
-# - agent-satellite.key
+# Copy these three files from your cloud server's quickstart/gc/certs/ directory
 scp cloud-server:quickstart/gc/certs/ca.crt certs/
 scp cloud-server:quickstart/gc/certs/agent-satellite.crt certs/
 scp cloud-server:quickstart/gc/certs/agent-satellite.key certs/
 ```
 
-### 4.2 Create the satellite SPIRE agent config
+### 2.2 Create the satellite SPIRE agent config
 
 Create `agent-satellite.conf`. Like the GC agent, this uses x509pop attestation with no tokens:
 
@@ -585,7 +500,7 @@ health_checks {
 EOF
 ```
 
-### 4.3 Create the Docker Compose file
+### 2.3 Create the Docker Compose file
 
 Create `docker-compose.yml`:
 
@@ -646,12 +561,109 @@ networks:
 ```
 {{< /details >}}
 
-### 4.4 Start the SPIRE agent and satellite
+### 2.4 Start the satellite SPIRE agent
+
+Start only the SPIRE agent for now. The satellite container will be started after registration in Step 4.
 
 ```bash
 docker compose up -d spire-agent-satellite
-# Wait for agent to attest
-sleep 15
+```
+
+Wait for the agent to attest with the SPIRE server:
+
+```bash
+docker exec spire-agent-satellite /opt/spire/bin/spire-agent healthcheck \
+    -socketPath /run/spire/sockets/agent.sock
+```
+
+## Step 3: Register Satellite and Create Groups
+
+{{< callout type="info" >}}
+Run all commands in this step on your **cloud server**. The satellite SPIRE agent from Step 2 must be running and attested before proceeding.
+{{< /callout >}}
+
+### 3.1 Login to Ground Control
+
+```bash
+LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
+    -H "Content-Type: application/json" \
+    -d '{"username":"admin","password":"Harbor12345"}')
+AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+```
+
+### 3.2 Register the Satellite
+
+This API call finds the attested satellite agent by matching `x509pop:subject:cn:edge-01` (the CN from the certificate generated in Step 1.2), then:
+
+- Creates the satellite record in Ground Control
+- Creates a SPIRE workload entry with the satellite's SPIFFE ID
+- Creates a robot account in Harbor
+
+```bash
+curl -sk -X POST https://localhost:9080/api/satellites/register \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d '{
+      "satellite_name": "edge-01",
+      "selectors": ["docker:label:com.docker.compose.service:satellite"],
+      "attestation_method": "x509pop"
+    }' | jq .
+```
+
+### 3.3 Create a group with an image
+
+Note: The `registry` field uses the Docker-internal service name (`http://harbor:8080`), not your host-facing `HARBOR_URL`. Ground Control runs inside Docker and resolves `harbor` via the Compose network.
+
+```bash
+curl -sk -X POST https://localhost:9080/api/groups/sync \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d '{
+      "group": "edge-images",
+      "registry": "http://harbor:8080",
+      "artifacts": [
+        {
+          "repository": "library/nginx",
+          "tag": ["alpine"],
+          "type": "image",
+          "digest": "sha256:YOUR_DIGEST_HERE"
+        }
+      ]
+    }'
+```
+
+To get the digest from Harbor, use the Harbor API:
+```bash
+DIGEST=$(curl -sk -u "${HARBOR_USERNAME:-admin}:${HARBOR_PASSWORD:-Harbor12345}" \
+    -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+    "${HARBOR_URL:-http://localhost:8080}/v2/library/nginx/manifests/alpine" \
+    -o /dev/null -w '' -D - | grep -i docker-content-digest | awk '{print $2}' | tr -d '\r')
+echo "Digest: $DIGEST"
+```
+
+Then replace `YOUR_DIGEST_HERE` in the command above with the digest value.
+
+### 3.4 Assign the group to the satellite
+
+```bash
+curl -sk -X POST https://localhost:9080/api/groups/satellite \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${AUTH_TOKEN}" \
+    -d '{"satellite": "edge-01", "group": "edge-images"}'
+```
+
+Now Ground Control knows that `edge-01` should have all images in the `edge-images` group.
+
+## Step 4: Start the Satellite
+
+{{< callout type="info" >}}
+Run this on your **edge device**.
+{{< /callout >}}
+
+Now that the satellite is registered and has a group assigned, start the satellite container:
+
+```bash
+# From the sat/ directory
 docker compose up -d satellite
 ```
 
@@ -704,13 +716,13 @@ curl -sk https://localhost:9080/api/satellites \
 
 Here is what happened end to end:
 
-1. **You generated X.509 certificates** signed by the x509pop CA for both agents
+1. **You generated X.509 certificates** signed by the x509pop CA for both agents (CN=agent-gc and CN=edge-01)
 2. **SPIRE server** started and became the trust authority for `harbor-satellite.local`
 3. **Ground Control's SPIRE agent** attested using its X.509 certificate (x509pop), got its identity
 4. **Ground Control** started, connected to its SPIRE agent, got its SVID (`spiffe://harbor-satellite.local/ground-control`)
-5. **You registered a satellite** via the GC API, which created a SPIRE workload entry and Harbor robot account
-6. **You created a group** with `nginx:alpine` and assigned it to the satellite
-7. **Satellite's SPIRE agent** attested using its X.509 certificate (x509pop), got its identity
+5. **Satellite's SPIRE agent** attested using its X.509 certificate (x509pop), got its identity
+6. **You registered a satellite** via the GC API. GC found the attested agent by matching `x509pop:subject:cn:edge-01`, created a SPIRE workload entry and Harbor robot account
+7. **You created a group** with `nginx:alpine` and assigned it to the satellite
 8. **Satellite** started, connected to its SPIRE agent, got its SVID
 9. **Satellite** sent an mTLS request to Ground Control's `/satellites/spiffe-ztr` endpoint
 10. **Ground Control** verified the SVID, created robot credentials, returned the state URL
