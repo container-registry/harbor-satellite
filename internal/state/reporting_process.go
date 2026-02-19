@@ -13,6 +13,7 @@ import (
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
@@ -99,7 +100,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 	s.mu.Unlock()
 
-	registryURL := s.cm.GetLocalRegistryURL()
+	registryURL := utils.FormatRegistryURL(s.cm.GetLocalRegistryURL())
 	insecure := s.cm.UseUnsecure()
 	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
 

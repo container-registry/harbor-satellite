@@ -1,0 +1,15 @@
+baseURL = "https://satellite.bupd.xyz/"
+languageCode = "en-us"
+title = "Harbor Satellite"
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
+  [markup.highlight]
+    noClasses = false
+    style = "monokai"
+
+[params]
+  description = "Container Registries at the Edge"
+  githubRepo = "https://github.com/container-registry/harbor-satellite"

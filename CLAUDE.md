@@ -14,11 +14,12 @@ Harbor Satellite is a registry fleet management and artifact distribution soluti
 ### Building
 
 ```bash
-# Build satellite binary (Dagger)
-dagger call build --source=. --component=satellite export --path=./bin
+# Build both components (Taskfile)
+task build
 
-# Build ground-control binary (Dagger)
-dagger call build-dev --platform "linux/amd64" --component "ground-control" export --path=./gc-dev
+# Build individual components
+task _build:satellite
+task _build:ground-control
 
 # Run satellite directly
 go run cmd/main.go --token "<token>" --ground-control-url "<url>"
@@ -30,23 +31,20 @@ cd ground-control && go run main.go
 ### Testing
 
 ```bash
-# Run all tests (with Dagger)
-dagger run go test ./... -v -count=1
-
-# Run all tests (without Dagger)
-go test ./... -v -count=1 -args -abs=false
+# Run all tests
+go test ./... -v -count=1
 
 # Run a single test
 go test -v -run TestFunctionName ./path/to/package
 
 # Run E2E tests
-dagger call test-end-to-end
+task e2e-test
 ```
 
 ### Linting
 
 ```bash
-dagger call lint-report export --path=golangci-lint.report
+task lint-report
 ```
 
 Uses strict golangci-lint with 50+ linters (see golangci.yaml). Key rules: no global variables (gochecknoglobals), no init functions (gochecknoinits), cyclomatic complexity limits, function length limits (100 lines, 50 statements).
@@ -159,7 +157,6 @@ Satellite supports hot-reloading configuration changes without restart via confi
 - Unit tests colocated with source files (*_test.go)
 - E2E tests in test/e2e/
 - Test configs in test/e2e/testconfig/
-- Use -args -abs=false for non-Dagger test runs
 
 ## CI/CD
 
@@ -168,7 +165,7 @@ GitHub Actions workflows:
 - .github/workflows/lint.yaml: golangci-lint
 - .github/workflows/release.yaml: GoReleaser
 
-All CI uses Dagger for consistent builds.
+All CI uses Taskfile for consistent builds.
 
 ## Architecture Decisions
 

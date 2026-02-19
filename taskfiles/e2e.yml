@@ -423,6 +423,7 @@ tasks:
         docker run -d --name satellite --network harbor-e2e \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -p 8585:8585 \
           satellite:e2e
 
@@ -677,6 +678,7 @@ tasks:
         docker run -d --name satellite-byo --network harbor-e2e \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e BYO_REGISTRY=true \
           -e REGISTRY_URL=http://byo-registry:5000 \
           -e USE_UNSECURE=true \
@@ -788,6 +790,7 @@ tasks:
           -v sat-state-vol:/satellite-state \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/satellite-state \
           -p 8585:8585 \
           satellite:e2e
@@ -807,6 +810,7 @@ tasks:
           -v sat-state-vol:/satellite-state \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/satellite-state \
           -p 8585:8585 \
           satellite:e2e
@@ -920,6 +924,7 @@ tasks:
           -v sat-byo-state-vol:/satellite-state \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e BYO_REGISTRY=true \
           -e REGISTRY_URL=http://byo-registry:5000 \
           -e USE_UNSECURE=true \
@@ -941,6 +946,7 @@ tasks:
           -v sat-byo-state-vol:/satellite-state \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e BYO_REGISTRY=true \
           -e REGISTRY_URL=http://byo-registry:5000 \
           -e USE_UNSECURE=true \

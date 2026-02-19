@@ -8,8 +8,8 @@ For production deployments with cryptographic identity and mTLS, see the [SPIFFE
 
 - A Harbor registry instance with the satellite adapter installed. You can find the instance [here](https://github.com/container-registry/harbor-next/tree/satellite).
 - Credentials with permission to create robot accounts in the registry
-- The latest version of Dagger installed. [Download and install Dagger](https://docs.dagger.io/install).
-- (Optional) Docker and Docker Compose for non-Dagger setups. [Install Docker](https://docs.docker.com/get-docker/).
+- [Task](https://taskfile.dev/installation/) installed.
+- (Optional) Docker and Docker Compose. [Install Docker](https://docs.docker.com/get-docker/).
 
 ## Step 1: Configure Ground Control
 
@@ -40,7 +40,7 @@ Ground Control is the central service that manages satellite configurations.
    PORT=8080
    APP_ENV=local
 
-   # Database Settings (Use DB_HOST=pgservice for Dagger)
+   # Database Settings
    DB_HOST=127.0.0.1
    DB_PORT=5432
    DB_DATABASE=groundcontrol
@@ -48,7 +48,7 @@ Ground Control is the central service that manages satellite configurations.
    DB_PASSWORD=password
    ```
 
-   > Note: Ensure the database is running and accessible. For Dagger, set `DB_HOST=pgservice`.
+   > Note: Ensure the database is running and accessible.
 
 ## Step 2: Start Ground Control
 
@@ -71,21 +71,13 @@ Choose one of the following options to start Ground Control.
 1. Build the Ground Control binary:
 
    ```bash
-   dagger call build-dev --platform "linux/amd64" --component "ground-control" export --path=./gc-dev
+   task _build:ground-control
    ```
 
 2. Run the binary:
 
    ```bash
    ./gc-dev
-   ```
-
-### Option 3: Using Dagger (Recommended for Developers)
-
-1. Start Ground Control with Dagger:
-
-   ```bash
-   dagger call run-ground-control up
    ```
 
 ## Step 3: Verify Ground Control Health
@@ -105,8 +97,9 @@ A group is a set of images that the satellite needs to replicate from the upstre
 > Note: Modify the body below according to your registry.
 
 ```bash
-curl -X POST http://localhost:8080/groups/sync \
+curl -X POST http://localhost:8080/api/groups/sync \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
   -d '{
     "group": "group1",
     "registry": "https://demo.goharbor.io",
@@ -129,8 +122,9 @@ curl -X POST http://localhost:8080/groups/sync \
 Create a config artifact for the satellite. See [config example](https://github.com/container-registry/harbor-satellite/blob/main/examples/config.json). This artifact tells the satellite where Ground Control is located and defines how and when to replicate artifacts. It also includes the local OCI-compliant registry configuration.
 
 ```bash
-curl -i --location 'http://localhost:8080/configs' \
+curl -i --location 'http://localhost:8080/api/configs' \
 --header 'Content-Type: application/json' \
+--header "Authorization: Bearer ${AUTH_TOKEN}" \
 --data '{
   "config_name": "config1",
   "registry": "http://demo.goharbor.io",
@@ -172,8 +166,9 @@ curl -i --location 'http://localhost:8080/configs' \
 Register the satellite with the group and configuration created earlier. This request returns a token. Save it for the next step.
 
 ```bash
-curl --location 'http://localhost:8080/satellites' \
+curl --location 'http://localhost:8080/api/satellites' \
 --header 'Content-Type: application/json' \
+--header "Authorization: Bearer ${AUTH_TOKEN}" \
 --data '{
     "name": "satellite_1",
     "groups": ["group1"],
@@ -197,12 +192,12 @@ Use the token from Step 6 to start the satellite. See [.env.example](https://git
    docker compose up -d
    ```
 
-### Option 2: Using Dagger
+### Option 2: Build and Run Binary
 
-1. Build and export the satellite binary:
+1. Build the satellite binary:
 
    ```bash
-   dagger call build --source=. --component=satellite export --path=./bin
+   task _build:satellite
    ```
 
 2. Run the binary with the token:
