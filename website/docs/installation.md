@@ -188,6 +188,7 @@ Best for development and testing. No SPIFFE infrastructure needed.
    ```bash
    curl -X POST http://localhost:8080/api/satellites \
      -H "Content-Type: application/json" \
+     -H "Authorization: Bearer ${AUTH_TOKEN}" \
      -d '{"name": "edge-01", "groups": ["my-group"], "config_name": "default"}'
    ```
 
@@ -225,6 +226,7 @@ Groups are collections of images that satellites replicate. Create a group and a
 ```bash
 curl -X POST http://localhost:8080/api/groups/sync \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
   -d '{
     "group": "edge-images",
     "registry": "https://harbor.example.com",
@@ -244,6 +246,7 @@ Assign the group to a satellite:
 ```bash
 curl -X POST http://localhost:8080/api/groups/satellite \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
   -d '{"satellite": "edge-01", "group": "edge-images"}'
 ```
 
