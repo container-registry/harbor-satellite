@@ -77,6 +77,10 @@ quickstart/
 
 ## Step 1: Start the Cloud Side
 
+{{< callout type="info" >}}
+Run all commands in this step on your **cloud server** (the machine running Harbor).
+{{< /callout >}}
+
 ### 1.1 Create the directory structure
 
 ```bash
@@ -368,6 +372,10 @@ curl -sk https://localhost:9080/ping
 
 ## Step 2: Register a Satellite
 
+{{< callout type="info" >}}
+Run all commands in this step on your **cloud server**.
+{{< /callout >}}
+
 ### 2.1 Login to Ground Control
 
 ```bash
@@ -420,6 +428,10 @@ SAT_TOKEN=$(echo "$REGISTER_RESP" | jq -r '.join_token')
 
 ## Step 3: Create a Group and Assign Images
 
+{{< callout type="info" >}}
+Run all commands in this step on your **cloud server**.
+{{< /callout >}}
+
 ### 3.1 Create a group with an image
 
 Note: The `registry` field uses the Docker-internal service name (`http://harbor:8080`), not your host-facing `HARBOR_URL`. Ground Control runs inside Docker and resolves `harbor` via the Compose network.
@@ -465,6 +477,10 @@ curl -sk -X POST https://localhost:9080/api/groups/satellite \
 Now Ground Control knows that `edge-01` should have all images in the `edge-images` group.
 
 ## Step 4: Start the Satellite
+
+{{< callout type="info" >}}
+Run all commands in this step on your **edge device**. You will need the join token (`$SAT_TOKEN`) from Step 2 and the CA certificate (`ca.crt`) from Step 1.
+{{< /callout >}}
 
 ### 4.1 Create the Docker Compose file
 
@@ -588,7 +604,7 @@ docker compose up -d satellite
 
 ## Step 5: Verify
 
-### Check satellite logs
+### Check satellite logs (edge device)
 
 ```bash
 docker logs satellite
@@ -600,7 +616,7 @@ You should see:
 2. Successful Zero-Touch Registration (ZTR) with Ground Control
 3. State fetching and image replication beginning
 
-### Pull from the satellite's local registry
+### Pull from the satellite's local registry (edge device)
 
 The satellite exposes its Zot registry on host port 5050 (mapped from container port 8585, as shown in the [architecture](architecture.md) config). Docker trusts localhost by default for plain HTTP:
 
@@ -615,7 +631,7 @@ podman pull localhost:5050/library/nginx:alpine --tls-verify=false
 crane catalog localhost:5050
 ```
 
-### Check SPIRE agents
+### Check SPIRE agents (cloud server)
 
 ```bash
 docker exec spire-server /opt/spire/bin/spire-server agent list \
@@ -624,7 +640,7 @@ docker exec spire-server /opt/spire/bin/spire-server agent list \
 
 You should see two agents: one for Ground Control and one for the satellite.
 
-### Check satellite status in Ground Control
+### Check satellite status in Ground Control (cloud server)
 
 ```bash
 curl -sk https://localhost:9080/api/satellites \
@@ -652,14 +668,17 @@ The only secret transported to the edge was a one-time SPIRE join token (Step 2.
 
 ## Cleanup
 
-Satellite side first (it depends on the GC network):
+On the **edge device** first (it depends on the GC network):
 
 ```bash
 # From sat/ directory
 docker compose down -v --remove-orphans
+```
 
+Then on the **cloud server**:
+
+```bash
 # From gc/ directory
-cd ../gc
 docker compose down -v --remove-orphans
 docker network rm harbor-satellite 2>/dev/null || true
 rm -rf certs spire/agent-gc-runtime.conf
