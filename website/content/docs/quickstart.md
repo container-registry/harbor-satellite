@@ -64,16 +64,15 @@ You will set up two directories:
 
 ```text
 quickstart/
-  gc/                     <-- Cloud-side components
+  gc/                              <-- Cloud-side components
     docker-compose.yml
-    certs/                <-- Generated CA certificates
+    certs/                         <-- Generated CA certificates
     spire/
       server.conf
       agent-gc-runtime.conf
-  sat/                    <-- Edge-side components
+  sat/                             <-- Edge-side components
     docker-compose.yml
-    spire/
-      agent-satellite-runtime.conf
+    agent-satellite-runtime.conf
 ```
 
 ## Step 1: Start the Cloud Side
@@ -81,7 +80,7 @@ quickstart/
 ### 1.1 Create the directory structure
 
 ```bash
-mkdir -p quickstart/gc/spire quickstart/sat/spire
+mkdir -p quickstart/gc/spire quickstart/sat
 cd quickstart/gc
 ```
 
@@ -487,7 +486,7 @@ services:
     pid: host
     command: ["-config", "/opt/spire/conf/agent/agent.conf"]
     volumes:
-      - ./spire/agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro
       - ../gc/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
       - spire-agent-satellite-data:/opt/spire/data/agent
       - spire-agent-satellite-socket:/run/spire/sockets
@@ -537,7 +536,7 @@ networks:
 Create the SPIRE agent config with the join token from Step 2:
 
 ```bash
-cat > spire/agent-satellite-runtime.conf << EOF
+cat > agent-satellite-runtime.conf << EOF
 agent {
     data_dir = "/opt/spire/data/agent"
     log_level = "INFO"
