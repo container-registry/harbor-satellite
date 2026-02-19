@@ -51,5 +51,7 @@ Runs at each edge location. A single binary that:
 
 ## Next Steps
 
+- [Overview](overview.md) - Deployment models, supported platforms, and how to choose the right setup
+- [Installation](installation.md) - Install Ground Control and Satellite (binary, Docker Compose, Helm)
 - [Architecture](architecture.md) - Understand the full flow of how these components work together
-- [Quickstart](quickstart.md) - Get Harbor Satellite running end-to-end
+- [Quickstart](quickstart.md) - Get Harbor Satellite running end-to-end with SPIFFE
