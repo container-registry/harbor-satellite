@@ -184,9 +184,10 @@ curl -sk https://localhost:9080/ping
 
 ### 1.6 Automated Alternative
 
-Instead of steps 1.1-1.5, you can run the setup script:
+Instead of steps 1.1-1.5, you can run the [`setup.sh`](https://github.com/container-registry/harbor-satellite/blob/main/deploy/quickstart/spiffe/join-token/external/gc/setup.sh) script from the cloud-side quickstart directory:
 
 ```bash
+cd deploy/quickstart/spiffe/join-token/external/gc
 ./setup.sh
 ```
 
@@ -348,7 +349,10 @@ docker compose up -d satellite --build
 
 ### 4.3 Automated alternative
 
+Run the [`setup.sh`](https://github.com/container-registry/harbor-satellite/blob/main/deploy/quickstart/spiffe/join-token/external/sat/setup.sh) script from the satellite-side quickstart directory:
+
 ```bash
+cd deploy/quickstart/spiffe/join-token/external/sat
 ./setup.sh
 ```
 
