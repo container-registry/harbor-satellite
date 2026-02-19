@@ -1,0 +1,18 @@
+apiVersion: v2
+name: ground-control
+description: Harbor Satellite Ground Control - fleet management and artifact distribution for edge registries
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/container-registry/harbor-satellite
+sources:
+  - https://github.com/container-registry/harbor-satellite
+maintainers:
+  - name: Harbor Satellite
+    url: https://github.com/container-registry/harbor-satellite
+keywords:
+  - harbor
+  - satellite
+  - registry
+  - edge
+  - oci

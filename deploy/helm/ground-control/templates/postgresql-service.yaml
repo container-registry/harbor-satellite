@@ -1,0 +1,18 @@
+{{- if .Values.database.internal.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ground-control.postgresql.fullname" . }}
+  labels:
+    {{- include "ground-control.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.database.port }}
+      targetPort: postgresql
+      protocol: TCP
+      name: postgresql
+  selector:
+    {{- include "ground-control.postgresql.selectorLabels" . | nindent 4 }}
+{{- end }}
