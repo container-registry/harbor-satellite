@@ -126,6 +126,21 @@ Download the latest release:
 curl -Lo satellite.tar.gz \
   https://github.com/container-registry/harbor-satellite/releases/latest/download/harbor-satellite_Linux_x86_64.tar.gz
 tar xzf satellite.tar.gz
+
+# Linux arm64
+curl -Lo satellite.tar.gz \
+  https://github.com/container-registry/harbor-satellite/releases/latest/download/harbor-satellite_Linux_arm64.tar.gz
+tar xzf satellite.tar.gz
+```
+
+See the [releases page](https://github.com/container-registry/harbor-satellite/releases) for all available platforms and formats.
+
+### Building from source
+
+```bash
+git clone https://github.com/container-registry/harbor-satellite.git
+cd harbor-satellite
+go build -o harbor-satellite cmd/main.go
 ```
 
 Run with token-based auth:
