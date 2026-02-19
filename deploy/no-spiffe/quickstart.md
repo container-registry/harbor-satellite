@@ -8,8 +8,8 @@ For production deployments with cryptographic identity and mTLS, see the [SPIFFE
 
 - A Harbor registry instance with the satellite adapter installed. You can find the instance [here](https://github.com/container-registry/harbor-next/tree/satellite).
 - Credentials with permission to create robot accounts in the registry
-- The latest version of Dagger installed. [Download and install Dagger](https://docs.dagger.io/install).
-- (Optional) Docker and Docker Compose for non-Dagger setups. [Install Docker](https://docs.docker.com/get-docker/).
+- [Task](https://taskfile.dev/installation/) installed.
+- (Optional) Docker and Docker Compose. [Install Docker](https://docs.docker.com/get-docker/).
 
 ## Step 1: Configure Ground Control
 
@@ -40,7 +40,7 @@ Ground Control is the central service that manages satellite configurations.
    PORT=8080
    APP_ENV=local
 
-   # Database Settings (Use DB_HOST=pgservice for Dagger)
+   # Database Settings
    DB_HOST=127.0.0.1
    DB_PORT=5432
    DB_DATABASE=groundcontrol
@@ -48,7 +48,7 @@ Ground Control is the central service that manages satellite configurations.
    DB_PASSWORD=password
    ```
 
-   > Note: Ensure the database is running and accessible. For Dagger, set `DB_HOST=pgservice`.
+   > Note: Ensure the database is running and accessible.
 
 ## Step 2: Start Ground Control
 
@@ -71,21 +71,13 @@ Choose one of the following options to start Ground Control.
 1. Build the Ground Control binary:
 
    ```bash
-   dagger call build-dev --platform "linux/amd64" --component "ground-control" export --path=./gc-dev
+   task _build:ground-control
    ```
 
 2. Run the binary:
 
    ```bash
    ./gc-dev
-   ```
-
-### Option 3: Using Dagger (Recommended for Developers)
-
-1. Start Ground Control with Dagger:
-
-   ```bash
-   dagger call run-ground-control up
    ```
 
 ## Step 3: Verify Ground Control Health
@@ -200,12 +192,12 @@ Use the token from Step 6 to start the satellite. See [.env.example](https://git
    docker compose up -d
    ```
 
-### Option 2: Using Dagger
+### Option 2: Build and Run Binary
 
-1. Build and export the satellite binary:
+1. Build the satellite binary:
 
    ```bash
-   dagger call build --source=. --component=satellite export --path=./bin
+   task _build:satellite
    ```
 
 2. Run the binary with the token:
