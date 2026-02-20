@@ -378,6 +378,15 @@ networks:
 
 ### 1.6 Start PostgreSQL and SPIRE Server
 
+Create the SPIRE data volume with the correct permissions (the SPIRE server runs as a non-root user):
+
+```bash
+docker volume create gc_spire-server-data
+docker run --rm -v gc_spire-server-data:/data alpine chmod 777 /data
+```
+
+Start the services:
+
 ```bash
 docker compose up -d postgres spire-server
 ```
@@ -441,14 +450,25 @@ The satellite's SPIRE agent must be running and attested **before** you register
 
 ### 2.1 Download the SPIRE agent
 
+{{< details summary="Linux amd64" >}}
 ```bash
-# Linux amd64
 curl -Lo spire.tar.gz \
     https://github.com/spiffe/spire/releases/download/v1.14.1/spire-1.14.1-linux-amd64-musl.tar.gz
 tar xzf spire.tar.gz
 sudo cp spire-1.14.1/bin/spire-agent /usr/local/bin/
 rm -rf spire.tar.gz spire-1.14.1
 ```
+{{< /details >}}
+
+{{< details summary="Linux arm64 (Raspberry Pi, Jetson, etc.)" >}}
+```bash
+curl -Lo spire.tar.gz \
+    https://github.com/spiffe/spire/releases/download/v1.14.1/spire-1.14.1-linux-arm64-musl.tar.gz
+tar xzf spire.tar.gz
+sudo cp spire-1.14.1/bin/spire-agent /usr/local/bin/
+rm -rf spire.tar.gz spire-1.14.1
+```
+{{< /details >}}
 
 ### 2.2 Copy certificates from cloud
 
@@ -468,6 +488,7 @@ scp <cloud-user>@<cloud-server-ip>:quickstart/gc/certs/us-east-1.key certs/
 
 ```bash
 # Run this on the cloud server
+ssh <edge-user>@<edge-device-ip> "mkdir -p quickstart/sat/certs"
 scp quickstart/gc/certs/ca.crt quickstart/gc/certs/us-east-1.crt quickstart/gc/certs/us-east-1.key \
     <edge-user>@<edge-device-ip>:quickstart/sat/certs/
 ```
@@ -475,6 +496,12 @@ scp quickstart/gc/certs/ca.crt quickstart/gc/certs/us-east-1.crt quickstart/gc/c
 **Option C: Manual copy** (USB drive, `rsync`, configuration management tool, etc.)
 
 ### 2.3 Create the SPIRE agent config
+
+All remaining edge commands run from the `quickstart/sat` directory so relative paths in the config resolve correctly:
+
+```bash
+cd ~/quickstart/sat
+```
 
 Create `us-east-1.conf`. Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname. The agent uses x509pop attestation with no tokens:
 
@@ -562,7 +589,7 @@ curl -sk -X POST https://localhost:9080/api/satellites/register \
     -d '{
       "satellite_name": "us-east-1",
       "region": "us-east-1",
-      "selectors": ["unix:uid:0"],
+      "selectors": ["unix:uid:1000"],
       "attestation_method": "x509pop"
     }' | jq .
 ```
