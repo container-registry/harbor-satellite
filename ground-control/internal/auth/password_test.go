@@ -7,7 +7,7 @@ import (
 )
 
 func TestVerifyPassword(t *testing.T) {
-	password := "test-password-123"
+	password := "Test-password-123"
 	hash, err := HashPassword(password)
 	require.NoError(t, err)
 
@@ -61,28 +61,41 @@ func TestHashPassword(t *testing.T) {
 	tests := []struct {
 		name     string
 		password string
+		wantErr  bool
 	}{
 		{
 			name:     "normal password",
 			password: "MySecurePassword123!",
+			wantErr:  false,
 		},
 		{
 			name:     "empty password",
 			password: "",
+			wantErr:  true,
 		},
 		{
+			// Make it long AND policy-compliant (upper/lower/number) so if it fails,
+			// it's likely due to max length, not missing character classes.
+			// NOTE: if this ends up under 128 chars in your policy, it will pass.
 			name:     "long password",
-			password: "a very long password that exceeds typical password length requirements for testing purposes",
+			password: "A1" + "this-is-a-very-long-password-used-for-testing-length-behavior-and-it-has-lowercase-too",
+			wantErr:  false, // flip to true if you change this to exceed policy MaxLength
 		},
 		{
 			name:     "special characters",
-			password: "p@$$w0rd!#%&*()[]{}",
+			password: "Test@#$%^&*123",
+			wantErr:  false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			hash, err := HashPassword(tt.password)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
 			require.NoError(t, err)
 			require.NotEmpty(t, hash)
 			require.Contains(t, hash, "$argon2id$")
@@ -95,7 +108,7 @@ func TestHashPassword(t *testing.T) {
 }
 
 func TestHashPassword_UniqueHashes(t *testing.T) {
-	password := "same-password"
+	password := "SamePassword1!"
 	hash1, err := HashPassword(password)
 	require.NoError(t, err)
 
