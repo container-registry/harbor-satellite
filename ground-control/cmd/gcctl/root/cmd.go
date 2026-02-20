@@ -71,6 +71,20 @@ To get started, run:
 	root.PersistentFlags().StringVarP(&serverURL, "server", "s", "", "Ground Control server URL (overrides config)")
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 
+	root.AddGroup(&cobra.Group{ID: "auth", Title: "Authentication:"})
+
+	loginCmd := LoginCommand()
+	loginCmd.GroupID = "auth"
+	root.AddCommand(loginCmd)
+
+	logoutCmd := LogoutCommand()
+	logoutCmd.GroupID = "auth"
+	root.AddCommand(logoutCmd)
+
+	whoamiCmd := WhoamiCommand()
+	whoamiCmd.GroupID = "auth"
+	root.AddCommand(whoamiCmd)
+
 	return root
 }
 
