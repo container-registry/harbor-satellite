@@ -45,6 +45,12 @@ type LoginResponse struct {
 	ExpiresAt string `json:"expires_at"`
 }
 
+type WhoamiResponse struct {
+	Username string `json:"username"`
+	Role     string `json:"role"`
+	Server   string `json:"server,omitempty"`
+}
+
 func (c *Client) Login(username, password string) (*LoginResponse, error) {
 	payload := LoginRequest{Username: username, Password: password}
 	body, err := json.Marshal(payload)
@@ -91,6 +97,29 @@ func (c *Client) Logout() error {
 		return parseAPIError(resp)
 	}
 	return nil
+}
+
+func (c *Client) Whoami() (*WhoamiResponse, error) {
+	req, err := c.newAuthRequest(http.MethodGet, "/api/whoami", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to server: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, parseAPIError(resp)
+	}
+
+	var result WhoamiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode whoami response: %w", err)
+	}
+	return &result, nil
 }
 
 func (c *Client) Ping() error {
