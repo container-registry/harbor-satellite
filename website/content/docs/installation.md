@@ -51,7 +51,7 @@ Run (requires a running PostgreSQL instance):
 
 ### Ground Control Docker Compose
 
-The `ground-control/docker-compose.yml` runs Ground Control with PostgreSQL:
+The [`ground-control/docker-compose.yml`](https://github.com/container-registry/harbor-satellite/blob/main/ground-control/docker-compose.yml) in the repository runs Ground Control with PostgreSQL:
 
 ```bash
 cd ground-control
@@ -74,7 +74,11 @@ curl http://localhost:8080/health
 
 ### Helm (Kubernetes)
 
-Install with the Helm chart in `deploy/helm/ground-control`:
+{{< callout type="warning" >}}
+The Helm chart is experimental and not fully tested. Use it at your own risk in production environments.
+{{< /callout >}}
+
+Install with the [Helm chart](https://github.com/container-registry/harbor-satellite/tree/main/deploy/helm/ground-control):
 
 ```bash
 helm install ground-control deploy/helm/ground-control \
@@ -122,6 +126,21 @@ Download the latest release:
 curl -Lo satellite.tar.gz \
   https://github.com/container-registry/harbor-satellite/releases/latest/download/harbor-satellite_Linux_x86_64.tar.gz
 tar xzf satellite.tar.gz
+
+# Linux arm64
+curl -Lo satellite.tar.gz \
+  https://github.com/container-registry/harbor-satellite/releases/latest/download/harbor-satellite_Linux_arm64.tar.gz
+tar xzf satellite.tar.gz
+```
+
+See the [releases page](https://github.com/container-registry/harbor-satellite/releases) for all available platforms and formats.
+
+### Building from source
+
+```bash
+git clone https://github.com/container-registry/harbor-satellite.git
+cd harbor-satellite
+go build -o harbor-satellite cmd/main.go
 ```
 
 Run with token-based auth:
