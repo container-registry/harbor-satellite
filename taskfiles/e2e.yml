@@ -1001,3 +1001,116 @@ tasks:
       - rm -f /tmp/e2e_byo_satellite_token 2>/dev/null || true
       - echo "BYO crash recovery cleanup complete"
     silent: true
+  test-crash-ztr:
+    desc: Test crash recovery during normal ZTR registration
+    cmds:
+      - task: setup
+      - defer: { task: cleanup-crash-ztr }
+      - task: wait-harbor
+      - task: wait-gc
+      - task: init-harbor
+      - task: init-gc
+      - task: generate-token
+      - task: start-satellite-ztr-paused
+      - task: crash-and-restart-ztr
+      - task: verify-ztr-recovery
+      - echo "Crash during ZTR registration E2E test passed"
+
+  generate-token:
+    desc: Register satellite to generate token for ZTR crash test
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sf -X POST {{.GC_URL}}/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Registering satellite to generate token..."
+        RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name": "ztr-crash-satellite",
+            "groups": ["{{.DEST_NAMESPACE}}"],
+            "config_name": "test-config"
+          }')
+
+        TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$TOKEN" ]; then
+          echo "Failed to get satellite token"
+          exit 1
+        fi
+        
+        echo "Token successfully generated!"
+        echo "$TOKEN" > /tmp/e2e_satellite_token
+        
+        echo "Building satellite image..."
+        docker build -t satellite:e2e -f Dockerfile .    
+
+  start-satellite-ztr-paused:
+    desc: Start satellite with a pause during ZTR to allow killing
+    cmds:
+      - |
+        TOKEN=$(cat /tmp/e2e_satellite_token)
+        echo "Starting satellite with ZTR pause flag..."
+        docker run -d --name satellite --network harbor-e2e \
+          -v sat-state-vol:/data \
+          -e GROUND_CONTROL_URL=http://gc:8080 \
+          -e GROUND_CONTROL_TOKEN=$TOKEN \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
+          -e CONFIG_DIR=/data \
+          -e E2E_SIMULATE_ZTR_CRASH=true \
+          -p 8585:8585 \
+          satellite:e2e
+        
+        echo "Waiting 3 seconds for container to start and hit the registration pause..."
+        sleep 3
+
+  crash-and-restart-ztr:
+    desc: Kill satellite during ZTR pause and restart normally
+    cmds:
+      - |
+        echo "Killing satellite mid-ZTR registration (SIGKILL)..."
+        docker kill satellite
+        docker rm satellite
+
+        TOKEN=$(cat /tmp/e2e_satellite_token)
+        echo "Restarting satellite normally (without pause flag)..."
+        docker run -d --name satellite --network harbor-e2e \
+          -v sat-state-vol:/data \
+          -e GROUND_CONTROL_URL=http://gc:8080 \
+          -e GROUND_CONTROL_TOKEN=$TOKEN \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
+          -e CONFIG_DIR=/data \
+          -p 8585:8585 \
+          satellite:e2e
+          
+        echo "Waiting 15 seconds for satellite to recover and finish registration..."
+        sleep 15
+
+  verify-ztr-recovery:
+    desc: Verify satellite successfully recovered and completed registration
+    cmds:
+      - |
+        echo "Checking logs to ensure registration and replication proceeded..."
+        # If it recovered, it should move past registration and start normal operations/replication
+        if docker logs satellite 2>&1 | grep -i -E "registration successful|starting replication|replicating"; then
+          echo "PASS: Satellite recovered from ZTR crash and continued operations."
+          exit 0
+        else
+          echo "FAIL: Satellite did not recover properly after ZTR crash."
+          docker logs satellite 2>&1 | tail -50
+          exit 1
+        fi
+
+  cleanup-crash-ztr:
+    desc: Stop and remove ZTR crash E2E containers
+    silent: true
+    cmds:
+      - echo "Stopping ZTR crash recovery containers..."
+      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f satellite 2>/dev/null || true
+      - docker volume rm -f sat-state-vol 2>/dev/null || true
+      - rm -f /tmp/e2e_satellite_token 2>/dev/null || true

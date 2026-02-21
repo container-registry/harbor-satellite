@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"os"
 	"net/http"
 	"strings"
 	"sync"
@@ -152,6 +153,13 @@ func (z *ZtrProcess) stop() {
 }
 
 func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSConfig, useUnsecure bool, ctx context.Context) (config.StateConfig, error) {
+	
+	// We pause here to give the bash script time to run `docker kill`
+	if os.Getenv("E2E_SIMULATE_ZTR_CRASH") == "true" {
+		logger.FromContext(ctx).Warn().Msg("E2E TEST: Pausing ZTR registration for 10 seconds to simulate crash...")
+		time.Sleep(10 * time.Second)
+	}
+
 	ztrURL := fmt.Sprintf("%s/%s/%s", groundControlURL, path, token)
 
 	client, err := createHTTPClient(tlsCfg, useUnsecure)
