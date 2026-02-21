@@ -696,6 +696,7 @@
   }
 
   .docs-content pre {
+    position: relative;
     margin-bottom: var(--space-lg);
     padding: var(--space-lg);
     background-color: var(--color-navy);
@@ -704,6 +705,35 @@
     overflow-x: auto;
     font-size: var(--text-sm);
     line-height: 1.6;
+  }
+
+  .copy-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: oklch(0.3 0.02 260);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: oklch(0.7 0.01 260);
+    cursor: pointer;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.75rem;
+    font-family: var(--font-sans);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .docs-content pre:hover .copy-btn {
+    opacity: 1;
+  }
+
+  .copy-btn:hover {
+    background: oklch(0.4 0.02 260);
+    color: oklch(0.9 0.01 260);
+  }
+
+  .copy-btn--copied {
+    color: oklch(0.8 0.1 160);
   }
 
   .docs-content pre code {
@@ -763,6 +793,54 @@
     padding: var(--space-lg);
     border-radius: var(--radius-lg);
     border: 1px solid oklch(0.2 0.04 260 / 0.06);
+  }
+
+  /* ---------- Details/Toggle ---------- */
+  .details {
+    margin-bottom: var(--space-lg);
+    border: 1px solid oklch(0.2 0.04 260 / 0.1);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .details__summary {
+    padding: var(--space-md) var(--space-lg);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-ink);
+    background-color: oklch(0.2 0.04 260 / 0.03);
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .details__summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .details__summary::before {
+    content: "\25B6";
+    font-size: var(--text-xs);
+    transition: transform 0.15s;
+  }
+
+  .details[open] .details__summary::before {
+    transform: rotate(90deg);
+  }
+
+  .details__summary:hover {
+    background-color: oklch(0.2 0.04 260 / 0.06);
+  }
+
+  .details__content {
+    padding: var(--space-lg);
+    border-top: 1px solid oklch(0.2 0.04 260 / 0.1);
+  }
+
+  .details__content pre:last-child {
+    margin-bottom: 0;
   }
 
   /* ---------- Callout ---------- */
