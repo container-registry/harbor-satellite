@@ -16,6 +16,7 @@ var (
 	serverURL    string
 	verbose      bool
 )
+
 func GetConfigPath() string {
 	if cfgFile != "" {
 		return cfgFile
@@ -38,7 +39,6 @@ func GetOutputFormat() string {
 func GetServerURL() string {
 	return serverURL
 }
-
 
 // RootCmd creates and returns the root cobra command with all subcommands wired in.
 func RootCmd() *cobra.Command {
