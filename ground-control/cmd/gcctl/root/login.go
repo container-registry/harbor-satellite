@@ -109,7 +109,7 @@ If --server is not provided, the value from the config file is used.`,
 				return fmt.Errorf("login succeeded but failed to save config: %w", err)
 			}
 
-			fmt.Printf("✓ Logged in as %s to %s\n", username, server)
+			fmt.Printf("Logged in as %s to %s\n", username, server)
 			fmt.Printf("  Token expires: %s\n", resp.ExpiresAt)
 			return nil
 		},

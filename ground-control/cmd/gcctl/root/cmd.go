@@ -1,9 +1,4 @@
 // Package root defines the gcctl root command and wires all subcommands.
-//
-// Following the Harbor CLI pattern, each resource area (satellite, group, etc.)
-// is a subcommand group with its own package. The root command sets up global
-// flags (--config, --output, --server, --verbose) and Cobra groups for
-// organized help output.
 package root
 
 import (
@@ -58,9 +53,7 @@ To get started, run:
 		Example: `  # Login to Ground Control
   gcctl login --server https://gc.example.com
   # Show current user
-  gcctl whoami
-  # List satellites (future)
-  gcctl satellite list`,
+  gcctl whoami`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}

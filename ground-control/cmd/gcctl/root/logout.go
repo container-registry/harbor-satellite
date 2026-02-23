@@ -53,7 +53,7 @@ func LogoutCommand() *cobra.Command {
 				return fmt.Errorf("failed to save config: %w", err)
 			}
 
-			fmt.Println("✓ Logged out successfully.")
+			fmt.Println("Logged out successfully.")
 			return nil
 		},
 	}
