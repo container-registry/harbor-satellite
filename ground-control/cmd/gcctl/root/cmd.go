@@ -72,6 +72,7 @@ To get started, run:
 	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 
 	root.AddGroup(&cobra.Group{ID: "auth", Title: "Authentication:"})
+	root.AddGroup(&cobra.Group{ID: "utils", Title: "Utility:"})
 
 	loginCmd := LoginCommand()
 	loginCmd.GroupID = "auth"
@@ -84,6 +85,10 @@ To get started, run:
 	whoamiCmd := WhoamiCommand()
 	whoamiCmd.GroupID = "auth"
 	root.AddCommand(whoamiCmd)
+
+	versionCmd := VersionCommand()
+	versionCmd.GroupID = "utils"
+	root.AddCommand(versionCmd)
 
 	return root
 }
