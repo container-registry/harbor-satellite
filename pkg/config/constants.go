@@ -31,13 +31,13 @@ const DefaultZotConfigJSON = `{
   },
   "http": {
     "address": "0.0.0.0",
-    "port": "8585"
+    "port": "5000"
   },
   "log": {
     "level": "info"
   }
 }`
 
-const DefaultRemoteRegistryURL = "http://127.0.0.1:8585"
+const DefaultRemoteRegistryURL = "http://127.0.0.1:5000"
 const DefaultGroundControlURL = "http://127.0.0.1:8080"
 

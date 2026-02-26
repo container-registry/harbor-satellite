@@ -824,13 +824,13 @@ func ensureSatelliteConfig(r *http.Request, q *database.Queries, satellite datab
     "register_satellite_interval": "@every 00h00m05s",
     "heartbeat_interval": "@every 00h00m30s",
     "local_registry": {
-      "url": "http://127.0.0.1:8585"
+      "url": "http://127.0.0.1:5000"
     }
   },
   "zot_config": {
     "distSpecVersion": "1.1.0",
     "storage": { "rootDirectory": "./zot" },
-    "http": { "address": "0.0.0.0", "port": "8585" },
+    "http": { "address": "0.0.0.0", "port": "5000" },
     "log": { "level": "info" }
   }
 }`)
