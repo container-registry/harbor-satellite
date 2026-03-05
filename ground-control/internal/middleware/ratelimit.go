@@ -154,10 +154,12 @@ func (rl *RateLimiter) getClientIP(r *http.Request) string {
 	if !rl.isTrusted(ip) {
 		return ip
 	}
+	// Retrieve ALL X-Forwarded-For header lines (prevents multi-header bypass)
 	xffValues := r.Header.Values("X-Forwarded-For")
 	if len(xffValues) == 0 {
 		return ip
 	}
+	// Join multiple header lines with a comma, then split them all
 	ips := strings.Split(strings.Join(xffValues, ","), ",")
 
 	for i := len(ips) - 1; i >= 0; i-- {
