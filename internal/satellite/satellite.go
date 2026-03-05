@@ -15,20 +15,27 @@ type Satellite struct {
 	criResults    []runtime.CRIConfigResult
 	schedulers    []*scheduler.Scheduler
 	stateFilePath string
+	headless      bool
 }
 
-func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string) *Satellite {
+func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string, headless bool) *Satellite {
 	return &Satellite{
 		cm:            cm,
 		criResults:    criResults,
 		schedulers:    make([]*scheduler.Scheduler, 0),
 		stateFilePath: stateFilePath,
+		headless:      headless,
 	}
 }
 
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
+
+	if s.headless {
+		log.Info().Msg("Headless mode enabled: Skipping Ground Control schedulers (ZTR, State Replication, and Status Reporting)")
+		return ctx.Err()
+	}
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, log)
 

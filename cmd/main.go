@@ -54,6 +54,7 @@ type SatelliteOptions struct {
 	NoRegistryFallback     bool
 	FallbackOnly           bool
 	HarborRegistryURL      string
+	Headless               bool
 }
 
 func main() {
@@ -78,6 +79,7 @@ func main() {
 	flag.BoolVar(&opts.NoRegistryFallback, "no-registry-fallback", false, "Disable all CRI registry fallback configuration")
 	flag.BoolVar(&opts.FallbackOnly, "fallback-only", false, "Apply CRI registry fallback configs and exit without starting satellite")
 	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", "", "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
+	flag.BoolVar(&opts.Headless, "headless", false, "Start in headless mode (disables Ground Control connection, ZTR, and state syncing)")
 
 	flag.Parse()
 
@@ -129,6 +131,9 @@ func main() {
 	if opts.HarborRegistryURL == "" {
 		opts.HarborRegistryURL = os.Getenv("HARBOR_REGISTRY_URL")
 	}
+	if !opts.Headless && os.Getenv("HEADLESS") == "true" {
+		opts.Headless = true
+	}
 
 	// Resolve config directory path
 	if opts.ConfigDir == "" {
@@ -152,7 +157,7 @@ func main() {
 	}
 
 	// For --fallback-only mode, relax token/gc-url requirements
-	if !opts.FallbackOnly {
+	if !opts.FallbackOnly && !opts.Headless {
 		if !opts.SPIFFEEnabled && (opts.Token == "" || opts.GroundControlURL == "") {
 			fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars (or enable SPIFFE with --spiffe-enabled).")
 			os.Exit(1)
@@ -306,7 +311,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	})
 
-	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile)
+	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, opts.Headless)
 	err = s.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("unable to start satellite: %w", err)
