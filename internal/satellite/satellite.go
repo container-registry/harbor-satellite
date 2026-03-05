@@ -10,6 +10,7 @@ import (
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
+// Satellite represents the core application state and scheduler manager.
 type Satellite struct {
 	cm            *config.ConfigManager
 	criResults    []runtime.CRIConfigResult
@@ -18,6 +19,7 @@ type Satellite struct {
 	headless      bool
 }
 
+// NewSatellite creates and returns a new instance of Satellite.
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string, headless bool) *Satellite {
 	return &Satellite{
 		cm:            cm,
@@ -28,6 +30,8 @@ func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult
 	}
 }
 
+// Run starts the satellite's core processes and schedulers.
+// In headless mode, it returns early and skips initializing Ground Control schedulers.
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
@@ -107,11 +111,12 @@ func (s *Satellite) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
+// GetSchedulers returns the list of active background schedulers managed by the Satellite.
 func (s *Satellite) GetSchedulers() []*scheduler.Scheduler {
 	return s.schedulers
 }
 
-// Stop gracefully stops all schedulers and logs the shutdown process
+// Stop gracefully stops all schedulers and logs the shutdown process.
 func (s *Satellite) Stop(ctx context.Context) {
 	log := logger.FromContext(ctx)
 	log.Info().Int("scheduler_count", len(s.schedulers)).

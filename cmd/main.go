@@ -310,6 +310,9 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 			}
 		}
 	})
+	if opts.Headless {
+		log.Info().Msg("Satellite starting in headless mode")
+	}
 
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, opts.Headless)
 	err = s.Run(ctx)

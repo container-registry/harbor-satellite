@@ -11,7 +11,9 @@ import (
 func TestNewSatellite(t *testing.T) {
 	var dummyCM *config.ConfigManager // nil is fine for simple initialization checks
 	dummyCRI := []runtime.CRIConfigResult{}
-	dummyPath := "/tmp/dummy.json"
+
+	// FIX: Use t.TempDir() instead of hardcoded "/tmp/dummy.json"
+	dummyPath := t.TempDir() + "/dummy.json"
 	headless := true
 
 	s := NewSatellite(dummyCM, dummyCRI, dummyPath, headless)
@@ -34,16 +36,30 @@ func TestSatellite_Run_Headless(t *testing.T) {
 	s := NewSatellite(nil, nil, "", true)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	cancel() // Cancel it immediately
 
 	err := s.Run(ctx)
 
 	if err != context.Canceled {
 		t.Errorf("Expected context.Canceled error, got: %v", err)
 	}
-
 	if len(s.GetSchedulers()) != 0 {
 		t.Errorf("Expected 0 schedulers to be created in headless mode, got %d", len(s.GetSchedulers()))
+	}
+}
+
+func TestSatellite_Run_Headless_ActiveContext(t *testing.T) {
+	s := NewSatellite(nil, nil, "", true)
+
+	ctx := context.Background()
+	err := s.Run(ctx)
+
+	if err != nil {
+		t.Errorf("Expected nil error with active context in headless mode, got: %v", err)
+	}
+
+	if len(s.GetSchedulers()) != 0 {
+		t.Errorf("Expected 0 schedulers in headless mode, got %d", len(s.GetSchedulers()))
 	}
 }
 
