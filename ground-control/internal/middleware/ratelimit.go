@@ -38,7 +38,6 @@ func NewRateLimiter(maxRequests int, windowPeriod time.Duration, trustedProxies 
 func parseProxies(proxies []string) []*net.IPNet {
 	var nets []*net.IPNet
 	for _, p := range proxies {
-
 		_, ipnet, err := net.ParseCIDR(p)
 		if err == nil {
 			nets = append(nets, ipnet)
@@ -154,6 +153,7 @@ func (rl *RateLimiter) getClientIP(r *http.Request) string {
 	if !rl.isTrusted(ip) {
 		return ip
 	}
+	remoteIP := ip
 	// Retrieve ALL X-Forwarded-For header lines (prevents multi-header bypass)
 	xffValues := r.Header.Values("X-Forwarded-For")
 	if len(xffValues) == 0 {
@@ -170,7 +170,7 @@ func (rl *RateLimiter) getClientIP(r *http.Request) string {
 		parsed := net.ParseIP(headerIP)
 		if parsed == nil {
 			log.Printf("Warning: invalid X-Forwarded-For hop: %q", headerIP)
-			return ip
+			return remoteIP
 		}
 		candidate := parsed.String()
 		ip = candidate
