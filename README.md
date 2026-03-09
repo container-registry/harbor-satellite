@@ -167,6 +167,32 @@ In each of these use cases, we need to ensure that IoT edge devices needing to r
 
 The project is currently in active development. If you are interested in participating or using the product, [reach out](https://container-registry.com/contact/).
 
+## Website
+
+The project website lives in `website/` and is built with [Hugo](https://gohugo.io).
+
+### Prerequisites
+
+- [Hugo](https://gohugo.io/installation/) (v0.138.0 or later, extended edition)
+
+### Running locally
+
+```bash
+cd website
+hugo server
+```
+
+Opens at `http://localhost:1313` with live reload.
+
+### Production build
+
+```bash
+cd website
+hugo --gc --minify
+```
+
+Output goes to `website/public/`.
+
 ## Community, Discussion, Contribution, and Support
 
 You can reach the Harbor community and developers via the following channels:

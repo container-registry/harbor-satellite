@@ -98,11 +98,13 @@ tasks:
     aliases: [p]
     vars:
       TAG: "{{.TAG | default \"dev\"}}"
+      PLATFORMS: "{{.PLATFORMS}}"
     cmds:
       - task: _publish:both
         vars:
           DEST: "{{.DEST}}"
           TAG: "{{.TAG}}"
+          PLATFORMS: "{{.PLATFORMS}}"
 
   publish-and-sign:
     desc: Build, push, and sign both components

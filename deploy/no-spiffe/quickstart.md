@@ -97,8 +97,9 @@ A group is a set of images that the satellite needs to replicate from the upstre
 > Note: Modify the body below according to your registry.
 
 ```bash
-curl -X POST http://localhost:8080/groups/sync \
+curl -X POST http://localhost:8080/api/groups/sync \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
   -d '{
     "group": "group1",
     "registry": "https://demo.goharbor.io",
@@ -121,8 +122,9 @@ curl -X POST http://localhost:8080/groups/sync \
 Create a config artifact for the satellite. See [config example](https://github.com/container-registry/harbor-satellite/blob/main/examples/config.json). This artifact tells the satellite where Ground Control is located and defines how and when to replicate artifacts. It also includes the local OCI-compliant registry configuration.
 
 ```bash
-curl -i --location 'http://localhost:8080/configs' \
+curl -i --location 'http://localhost:8080/api/configs' \
 --header 'Content-Type: application/json' \
+--header "Authorization: Bearer ${AUTH_TOKEN}" \
 --data '{
   "config_name": "config1",
   "registry": "http://demo.goharbor.io",
@@ -164,8 +166,9 @@ curl -i --location 'http://localhost:8080/configs' \
 Register the satellite with the group and configuration created earlier. This request returns a token. Save it for the next step.
 
 ```bash
-curl --location 'http://localhost:8080/satellites' \
+curl --location 'http://localhost:8080/api/satellites' \
 --header 'Content-Type: application/json' \
+--header "Authorization: Bearer ${AUTH_TOKEN}" \
 --data '{
     "name": "satellite_1",
     "groups": ["group1"],
