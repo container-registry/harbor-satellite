@@ -69,6 +69,8 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		return nil, warnings, tlsErr
 	}
 
+	warnings = append(warnings, validateRegistryFallbackConfig(config)...)
+
 	return config, warnings, nil
 }
 
@@ -179,6 +181,43 @@ func validateAndEnforceZotConfig(config *Config, bringOwnRegistry bool) ([]strin
 	}
 
 	return warnings, nil
+}
+
+// validateRegistryFallbackConfig validates registry fallback settings when enabled.
+func validateRegistryFallbackConfig(config *Config) []string {
+	validRuntimes := map[string]bool{
+		"docker":     true,
+		"containerd": true,
+		"crio":       true,
+		"podman":     true,
+	}
+
+	var warnings []string
+	fb := config.AppConfig.RegistryFallback
+	if !fb.Enabled {
+		return warnings
+	}
+
+	if len(fb.Registries) == 0 {
+		warnings = append(warnings, "registry_fallback is enabled but no registries specified, defaulting to docker.io")
+		config.AppConfig.RegistryFallback.Registries = []string{"docker.io"}
+	}
+
+	for _, r := range config.AppConfig.RegistryFallback.Registries {
+		if strings.TrimSpace(r) == "" {
+			warnings = append(warnings, "registry_fallback contains an empty registry entry")
+		}
+	}
+
+	for _, rt := range config.AppConfig.RegistryFallback.Runtimes {
+		if !validRuntimes[rt] {
+			warnings = append(warnings, fmt.Sprintf(
+				"registry_fallback contains unknown runtime %q, valid values: docker, containerd, crio, podman", rt,
+			))
+		}
+	}
+
+	return warnings
 }
 
 // validateTLSConfig validates TLS configuration.

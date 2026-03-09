@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
 )
@@ -132,4 +133,78 @@ func TestResolveLocalRegistryEndpoint_Zot(t *testing.T) {
 			require.Equal(t, tt.expected, endpoint)
 		})
 	}
+}
+
+func TestResolveCRIAndApply(t *testing.T) {
+	t.Run("noFallback returns nil", func(t *testing.T) {
+		cfg := &config.Config{
+			ZotConfigRaw: json.RawMessage(`{}`),
+		}
+		cm := newTestConfigManager(t, cfg)
+
+		results := resolveCRIAndApply(cm, nil, true, "localhost:8585")
+		require.Nil(t, results)
+	})
+
+	t.Run("no config no mirrors returns nil", func(t *testing.T) {
+		cfg := &config.Config{
+			ZotConfigRaw: json.RawMessage(`{}`),
+		}
+		cm := newTestConfigManager(t, cfg)
+
+		results := resolveCRIAndApply(cm, nil, false, "localhost:8585")
+		require.Nil(t, results)
+	})
+
+	t.Run("config file wins over mirrors", func(t *testing.T) {
+		cfg := &config.Config{
+			AppConfig: config.AppConfig{
+				RegistryFallback: config.RegistryFallbackConfig{
+					Enabled:    true,
+					Registries: []string{"docker.io"},
+					Runtimes:   []string{"unsupported_cri"},
+				},
+			},
+			ZotConfigRaw: json.RawMessage(`{}`),
+		}
+		cm := newTestConfigManager(t, cfg)
+
+		mirrors := mirrorFlags{"containerd:quay.io"}
+		results := resolveCRIAndApply(cm, mirrors, false, "localhost:8585")
+		require.Len(t, results, 1)
+		require.Equal(t, runtime.CRIType("unsupported_cri"), results[0].CRI)
+		require.False(t, results[0].Success)
+	})
+
+	t.Run("mirrors used when config disabled", func(t *testing.T) {
+		cfg := &config.Config{
+			ZotConfigRaw: json.RawMessage(`{}`),
+		}
+		cm := newTestConfigManager(t, cfg)
+
+		mirrors := mirrorFlags{"badformat"}
+		results := resolveCRIAndApply(cm, mirrors, false, "localhost:8585")
+		require.Nil(t, results)
+	})
+}
+
+func TestMirrorFlags(t *testing.T) {
+	t.Run("Set accumulates values", func(t *testing.T) {
+		var m mirrorFlags
+		require.NoError(t, m.Set("containerd:docker.io"))
+		require.NoError(t, m.Set("docker:true"))
+		require.Len(t, m, 2)
+		require.Equal(t, "containerd:docker.io", m[0])
+		require.Equal(t, "docker:true", m[1])
+	})
+
+	t.Run("String returns formatted output", func(t *testing.T) {
+		m := mirrorFlags{"containerd:docker.io", "docker:true"}
+		require.Equal(t, "[containerd:docker.io docker:true]", m.String())
+	})
+
+	t.Run("empty String", func(t *testing.T) {
+		var m mirrorFlags
+		require.Equal(t, "[]", m.String())
+	})
 }

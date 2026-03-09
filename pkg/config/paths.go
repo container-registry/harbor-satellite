@@ -15,6 +15,7 @@ type PathConfig struct {
 	PrevConfigFile string
 	ZotTempConfig  string
 	ZotStorageDir  string
+	StateFile      string
 }
 
 // expandPath expands ~ and ~/ to the user's home directory in paths.
@@ -88,6 +89,7 @@ func ResolvePathConfig(configDir string) (*PathConfig, error) {
 		PrevConfigFile: filepath.Join(expanded, "prev_config.json"),
 		ZotTempConfig:  filepath.Join(expanded, "zot-hot.json"),
 		ZotStorageDir:  filepath.Join(expanded, "zot"),
+		StateFile:      filepath.Join(expanded, "state.json"),
 	}, nil
 }
 

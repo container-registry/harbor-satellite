@@ -19,6 +19,7 @@ type FetchAndReplicateStateProcess struct {
 	currentConfigDigest string
 	cm                  *config.ConfigManager
 	mu                  sync.Mutex
+	stateFilePath       string
 }
 
 // Define result types for channels
@@ -35,13 +36,29 @@ type ConfigFetcherResult struct {
 	Cancelled    bool
 }
 
-func NewFetchAndReplicateStateProcess(cm *config.ConfigManager) *FetchAndReplicateStateProcess {
-	return &FetchAndReplicateStateProcess{
-		name:                config.ReplicateStateJobName,
-		isRunning:           false,
-		currentConfigDigest: "",
-		cm:                  cm,
+func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath string, log *zerolog.Logger) *FetchAndReplicateStateProcess {
+	p := &FetchAndReplicateStateProcess{
+		name:          config.ReplicateStateJobName,
+		cm:            cm,
+		stateFilePath: stateFilePath,
 	}
+
+	if stateFilePath != "" {
+		persisted, err := LoadState(stateFilePath)
+		if err != nil {
+			log.Warn().Err(err).Str("path", stateFilePath).Msg("Corrupted state file, starting fresh")
+		} else if persisted != nil {
+			p.currentConfigDigest = persisted.ConfigDigest
+			for _, g := range persisted.Groups {
+				p.stateMap = append(p.stateMap, StateMap{
+					url:      g.URL,
+					Entities: g.Entities,
+				})
+			}
+		}
+	}
+
+	return p
 }
 
 type StateMap struct {
@@ -86,7 +103,23 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return err
 	}
 
-	f.updateStateMap(satelliteState.States)
+	// Override host in fetched state URLs if --harbor-registry-url is set
+	if override := f.cm.GetHarborRegistryURL(); override != "" {
+		satelliteState, err = applyHarborOverrideToSatelliteState(satelliteState, override)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to apply harbor registry URL override to satellite state")
+			return err
+		}
+	}
+
+	changed := f.updateStateMap(satelliteState.States)
+
+	// Persist state if groups were added, removed, or swapped
+	if f.stateFilePath != "" && changed {
+		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist state after group changes")
+		}
+	}
 
 	// Create channels for results
 	stateFetcherResults := make(chan StateFetcherResult, len(f.stateMap))
@@ -105,14 +138,14 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 	// Launch config fetcher goroutine
 	go func() {
-		result := f.reconcileRemoteConfig(ctx, satelliteState.Config, srcUsername, srcPassword, useUnsecure, &log)
+		result := f.reconcileRemoteConfig(ctx, satelliteState.Config, srcUsername, srcPassword, useUnsecure, mutex, &log)
 		configFetcherResult <- result
 	}()
 
 	return f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), &log)
 }
 
-func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
+func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) bool {
 	var newStates []string
 	for _, state := range states {
 		found := false
@@ -129,15 +162,20 @@ func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) {
 
 	// Remove states that are no longer needed
 	var updatedStateMap []StateMap
+	removed := 0
 	for _, stateMap := range f.stateMap {
 		if contains(states, stateMap.url) {
 			updatedStateMap = append(updatedStateMap, stateMap)
+		} else {
+			removed++
 		}
 	}
 
 	// Add new states
 	updatedStateMap = append(updatedStateMap, NewStateMap(newStates)...)
 	f.stateMap = updatedStateMap
+
+	return len(newStates) > 0 || removed > 0
 }
 
 func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *zerolog.Logger, oldEntites []Entity) ([]Entity, []Entity, StateReader) {
@@ -149,7 +187,7 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 	var entityToReplicate []Entity
 
 	if oldEntites == nil {
-		log.Warn().Msg("Old state has zero entites, replicating the complete state")
+		log.Warn().Msg("Old state has zero entities, replicating the complete state")
 		return entityToDelete, newEntites, newState
 	}
 
@@ -294,6 +332,7 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 	ctx context.Context,
 	configURL, srcUsername, srcPassword string,
 	useUnsecure bool,
+	mutex *sync.Mutex,
 	log *zerolog.Logger,
 ) ConfigFetcherResult {
 	configFetcherLog := log.With().
@@ -301,6 +340,12 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 		Logger()
 
 	result := ConfigFetcherResult{}
+
+	if override := f.cm.GetHarborRegistryURL(); override != "" {
+		if replaced, err := config.ReplaceURLHost(configURL, override); err == nil {
+			configURL = replaced
+		}
+	}
 
 	configStateFetcher, err := getStateFetcherForInput(configURL, srcUsername, srcPassword, useUnsecure, &configFetcherLog)
 	if err != nil {
@@ -328,6 +373,7 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 		}
 
 		remoteConfig.StateConfig = f.cm.GetStateConfig()
+		remoteConfig.AppConfig.HarborRegistryURL = f.cm.GetHarborRegistryURL()
 		validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
 		if err != nil {
 			configFetcherLog.Error().Err(err).
@@ -353,7 +399,14 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 			result.Error = fmt.Errorf("failed to write new config to disk: %w", err)
 			return result
 		}
+		mutex.Lock()
 		f.currentConfigDigest = configDigest
+		if f.stateFilePath != "" {
+			if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+				configFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
+			}
+		}
+		mutex.Unlock()
 	}
 
 	result.ConfigDigest = configDigest
@@ -380,9 +433,16 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		URL:   f.stateMap[index].url,
 	}
 
-	stateFetcherLog.Info().Msgf("Processing state for %s", f.stateMap[index].url)
+	groupURL := f.stateMap[index].url
+	if override := f.cm.GetHarborRegistryURL(); override != "" {
+		if replaced, err := config.ReplaceURLHost(groupURL, override); err == nil {
+			groupURL = replaced
+		}
+	}
 
-	groupStateFetcher, err := getStateFetcherForInput(f.stateMap[index].url, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
+	stateFetcherLog.Info().Msgf("Processing state for %s", groupURL)
+
+	groupStateFetcher, err := getStateFetcherForInput(groupURL, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
 	if err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error processing input")
 		result.Error = fmt.Errorf("failed to create state fetcher for %s: %w", f.stateMap[index].url, err)
@@ -415,6 +475,11 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	mutex.Lock()
 	f.stateMap[index].State = newState
 	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
+	if f.stateFilePath != "" {
+		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
+		}
+	}
 	mutex.Unlock()
 
 	return result
@@ -448,6 +513,16 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, 
 	remotePassword := f.cm.GetRemoteRegistryPassword()
 	useUnsecure := f.cm.UseUnsecure()
 	satelliteStateURL := f.cm.GetStateURL()
+
+	// Override source and state URLs if --harbor-registry-url is set
+	if override := f.cm.GetHarborRegistryURL(); override != "" {
+		if replaced, err := config.ReplaceURLHost(string(f.cm.GetSourceRegistryURL()), override); err == nil {
+			sourceURL = utils.FormatRegistryURL(replaced)
+		}
+		if replaced, err := config.ReplaceURLHost(satelliteStateURL, override); err == nil {
+			satelliteStateURL = replaced
+		}
+	}
 
 	replicator := NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure)
 
@@ -529,4 +604,22 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func applyHarborOverrideToSatelliteState(state *SatelliteState, override string) (*SatelliteState, error) {
+	for i, s := range state.States {
+		replaced, err := config.ReplaceURLHost(s, override)
+		if err != nil {
+			return nil, fmt.Errorf("override state URL %q: %w", s, err)
+		}
+		state.States[i] = replaced
+	}
+	if state.Config != "" {
+		replaced, err := config.ReplaceURLHost(state.Config, override)
+		if err != nil {
+			return nil, fmt.Errorf("override config URL %q: %w", state.Config, err)
+		}
+		state.Config = replaced
+	}
+	return state, nil
 }

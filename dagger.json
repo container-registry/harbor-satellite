@@ -1,8 +1,0 @@
-{
-  "name": "harbor-satellite",
-  "engineVersion": "v0.18.12",
-  "sdk": {
-    "source": "go"
-  },
-  "source": ".dagger"
-}

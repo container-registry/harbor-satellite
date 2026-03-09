@@ -256,7 +256,7 @@ sequenceDiagram
 - For `join_token`: generates and returns join token
 - For `x509pop`: auto-matches agent by CN selector
 - For `sshpop`: requires `parent_agent_id` (discover via `GET /api/spire/agents`)
-- E2E tested: `TestSpiffeJoinTokenE2E` in `.dagger/e2e.go`
+- E2E tested: `TestSpiffeJoinTokenE2E` in `taskfiles/e2e.yml`
 
 ```mermaid
 sequenceDiagram
@@ -411,7 +411,7 @@ sequenceDiagram
 
 ## Validation
 
-- E2E: `TestSpiffeJoinTokenE2E` in `.dagger/e2e.go`
+- E2E: `TestSpiffeJoinTokenE2E` in `taskfiles/e2e.yml`
 - `nospiffe` build compiles without SPIFFE dependencies
 - Token-based ZTR works when SPIFFE disabled
 - Embedded SPIRE agent in satellite (to be implemented and tested)
@@ -448,5 +448,5 @@ sequenceDiagram
 - `ground-control/internal/spiffe/` - All GC SPIFFE files
 - `ground-control/internal/server/routes.go` - Route structure
 - `ground-control/internal/server/spire_handlers.go` - Join token handlers
-- `.dagger/e2e.go:635` - SPIFFE E2E test
+- `taskfiles/e2e.yml` - SPIFFE E2E test
 - `deploy/quickstart/spiffe/` - SPIFFE quickstart configs

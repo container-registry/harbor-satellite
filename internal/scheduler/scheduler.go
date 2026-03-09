@@ -18,6 +18,7 @@ type Scheduler struct {
 	log      *zerolog.Logger
 	interval time.Duration
 	mu       sync.Mutex
+	wg       sync.WaitGroup
 }
 
 // NewSchedulerWithInterval creates a new scheduler with a parsed interval string
@@ -39,8 +40,16 @@ func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog
 	return scheduler, nil
 }
 
-// Run starts the scheduler and blocks until context is cancelled
-func (s *Scheduler) Run(ctx context.Context) {
+// Start launches Run in a goroutine with proper WaitGroup tracking.
+// wg.Add must happen before the goroutine to avoid a race with Stop.
+func (s *Scheduler) Start(ctx context.Context) {
+	s.wg.Add(1)
+	go s.run(ctx)
+}
+
+// run starts the scheduler and blocks until context is cancelled
+func (s *Scheduler) run(ctx context.Context) {
+	defer s.wg.Done()
 	defer s.ticker.Stop()
 
 	s.log.Info().
@@ -107,9 +116,20 @@ func (s *Scheduler) Name() string {
 	return s.name
 }
 
-// Stop stops the scheduler
-func (s *Scheduler) Stop() {
-	s.ticker.Stop()
+// Stop signals the scheduler to stop and waits for all goroutines to complete
+func (s *Scheduler) Stop(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *Scheduler) launchProcess(ctx context.Context) {
@@ -121,7 +141,9 @@ func (s *Scheduler) launchProcess(ctx context.Context) {
 			Str("Process", s.process.Name()).
 			Msg("Scheduler triggering task execution")
 
+		s.wg.Add(1)
 		go func() {
+			defer s.wg.Done()
 			if err := s.process.Execute(ctx); err != nil {
 				s.log.Warn().
 					Str("Process", s.process.Name()).

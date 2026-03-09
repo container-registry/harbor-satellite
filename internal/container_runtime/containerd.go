@@ -15,18 +15,19 @@ const (
 )
 
 // setContainerdConfig writes hosts.toml for multiple upstream registries and updates containerd registry plugin
-func setContainerdConfig(upstreamRegistries []string, localMirror string) error {
-	if err := configureContainerd(containerdCertsDir); err != nil {
-		return fmt.Errorf("failed to configure registry plugin: %w", err)
+func setContainerdConfig(upstreamRegistries []string, localMirror string) (string, error) {
+	backupPath, err := configureContainerd(containerdCertsDir)
+	if err != nil {
+		return backupPath, fmt.Errorf("failed to configure registry plugin: %w", err)
 	}
 
 	for _, registryURL := range upstreamRegistries {
 		if err := writeContainerdHostToml(registryURL, localMirror); err != nil {
-			return fmt.Errorf("failed to configure containerd for %s: %w", registryURL, err)
+			return backupPath, fmt.Errorf("failed to configure containerd for %s: %w", registryURL, err)
 		}
 	}
 
-	return nil
+	return backupPath, nil
 }
 
 // writeContainerdHostToml creates or updates hosts.toml for a registry
@@ -41,6 +42,13 @@ func writeContainerdHostToml(registryURL, localMirror string) error {
 	}
 
 	path := filepath.Join(dir, "hosts.toml")
+
+	// backup existing hosts.toml before overwrite
+	bkPath, err := backupFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to backup %s: %w", path, err)
+	}
+
 	var cfg ContainerdHosts
 
 	if _, err := os.Stat(path); err == nil {
@@ -70,14 +78,26 @@ func writeContainerdHostToml(registryURL, localMirror string) error {
 		_ = f.Close()
 	}()
 
-	return toml.NewEncoder(f).Encode(cfg)
+	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
+		if bkPath != "" {
+			_ = restoreBackup(bkPath, path)
+		}
+		return fmt.Errorf("failed to encode hosts.toml, rolled back: %w", err)
+	}
+
+	return nil
 }
 
 // configureContainerd updates only the registry config path in containerd main config
-func configureContainerd(certDir string) error {
+func configureContainerd(certDir string) (string, error) {
+	bkPath, err := backupFile(containerdConfigPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to backup containerd config: %w", err)
+	}
+
 	cfg, err := loadToml(containerdConfigPath)
 	if err != nil {
-		return err
+		return bkPath, err
 	}
 
 	// do not overwrite existing config
@@ -89,13 +109,20 @@ func configureContainerd(certDir string) error {
 
 	f, err := os.Create(containerdConfigPath)
 	if err != nil {
-		return fmt.Errorf("failed to open %s for writing: %w", containerdConfigPath, err)
+		return bkPath, fmt.Errorf("failed to open %s for writing: %w", containerdConfigPath, err)
 	}
 	defer func() {
 		_ = f.Close()
 	}()
 
-	return toml.NewEncoder(f).Encode(cfg)
+	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
+		if bkPath != "" {
+			_ = restoreBackup(bkPath, containerdConfigPath)
+		}
+		return bkPath, fmt.Errorf("failed to write containerd config, rolled back: %w", err)
+	}
+
+	return bkPath, nil
 }
 
 // loadToml loads existing TOML into a flexible type

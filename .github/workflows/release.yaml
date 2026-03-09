@@ -83,6 +83,10 @@ jobs:
           install-only: true
           version: v2.9.0
 
+      - name: Install Syft
+        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
+        uses: anchore/sbom-action/download-syft@v0.22.2
+
       - name: Create Release
         if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
         env:

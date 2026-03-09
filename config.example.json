@@ -24,7 +24,12 @@
       "ca_file": "",
       "skip_verify": false
     },
-    "encrypt_config": false
+    "encrypt_config": false,
+    "registry_fallback": {
+      "enabled": false,
+      "registries": ["docker.io"],
+      "runtimes": []
+    }
   },
   "zot_config": {
     "distSpecVersion": "1.1.0",

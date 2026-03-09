@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ground-control.fullname" . }}
+  labels:
+    {{- include "ground-control.labels" . | nindent 4 }}
+data:
+  PORT: {{ .Values.service.port | quote }}
+  DB_HOST: {{ include "ground-control.databaseHost" . | quote }}
+  DB_PORT: {{ .Values.database.port | quote }}
+  DB_DATABASE: {{ .Values.database.name | quote }}
+  SPIFFE_ENABLED: {{ .Values.spiffe.enabled | quote }}
+  {{- if .Values.spiffe.enabled }}
+  SPIFFE_TRUST_DOMAIN: {{ .Values.spiffe.trustDomain | quote }}
+  SPIFFE_ENDPOINT_SOCKET: {{ .Values.spiffe.endpointSocket | quote }}
+  {{- end }}
+  ROBOT_DURATION_DAYS: {{ .Values.robotDurationDays | quote }}
+  SKIP_HARBOR_HEALTH_CHECK: {{ .Values.skipHarborHealthCheck | quote }}
