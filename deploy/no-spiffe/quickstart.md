@@ -119,7 +119,7 @@ curl -X POST http://localhost:8080/api/groups/sync \
 
 ## Step 5: Configure the Satellite
 
-Create a config artifact for the satellite. See [config example](https://github.com/container-registry/harbor-satellite/blob/main/examples/config.json). This artifact tells the satellite where Ground Control is located and defines how and when to replicate artifacts. It also includes the local OCI-compliant registry configuration.
+Create a config artifact for the satellite. See [config.example.json](https://github.com/container-registry/harbor-satellite/blob/main/config.example.json) for reference. This artifact tells the satellite where Ground Control is located and defines how and when to replicate artifacts. It also includes the local OCI-compliant registry configuration.
 
 ```bash
 curl -i --location 'http://localhost:8080/api/configs' \

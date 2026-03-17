@@ -63,7 +63,7 @@ graph TB
 
 ## Further Reading
 
-- [Architecture overview](docs/architecture/README.md)
+- [Architecture overview](website/content/docs/architecture.md)
 - [SPIFFE quickstart guide](deploy/quickstart/spiffe/README.md)
 - [ADR: Ground Control authentication](docs/decisions/0004-ground-control-authentication.md)
 - [ADR: SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md)
