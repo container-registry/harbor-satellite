@@ -11,18 +11,24 @@ import (
 )
 
 type Satellite struct {
-	cm            *config.ConfigManager
-	criResults    []runtime.CRIConfigResult
-	schedulers    []*scheduler.Scheduler
-	stateFilePath string
+	cm                  *config.ConfigManager
+	criResults          []runtime.CRIConfigResult
+	schedulers          []*scheduler.Scheduler
+	stateFilePath       string
+	syncCredentialsFile string
+	zotTempConfigPath   string
 }
 
-func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string) *Satellite {
+// NewSatellite creates a new Satellite instance.
+// syncCredentialsFile and zotTempConfigPath are only needed for proxy-cache mode.
+func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, syncCredentialsFile, zotTempConfigPath string) *Satellite {
 	return &Satellite{
-		cm:            cm,
-		criResults:    criResults,
-		schedulers:    make([]*scheduler.Scheduler, 0),
-		stateFilePath: stateFilePath,
+		cm:                  cm,
+		criResults:          criResults,
+		schedulers:          make([]*scheduler.Scheduler, 0),
+		stateFilePath:       stateFilePath,
+		syncCredentialsFile: syncCredentialsFile,
+		zotTempConfigPath:   zotTempConfigPath,
 	}
 }
 
@@ -30,7 +36,10 @@ func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
 
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, log)
+	proxyCache := s.cm.IsProxyCacheMode()
+	if proxyCache {
+		log.Info().Msg("Running in transparent proxy-cache mode")
+	}
 
 	// Create ZTR scheduler if not already done
 	if !s.cm.IsZTRDone() {
@@ -67,20 +76,42 @@ func (s *Satellite) Run(ctx context.Context) error {
 		ztrScheduler.Start(ctx)
 	}
 
-	// Create state replication scheduler
-	stateScheduler, err := scheduler.NewSchedulerWithInterval(
-		s.cm.GetStateReplicationInterval(),
-		fetchAndReplicateStateProcess,
-		log,
-	)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create state replication scheduler")
-		return err
+	if proxyCache {
+		// Proxy-cache mode: schedule a one-shot setup process that configures
+		// Zot's sync extension after ZTR provides credentials.
+		setupProcess := state.NewProxyCacheSetupProcess(
+			s.cm,
+			s.syncCredentialsFile,
+			s.zotTempConfigPath,
+		)
+		setupScheduler, err := scheduler.NewSchedulerWithInterval(
+			s.cm.GetRegistrationInterval(),
+			setupProcess,
+			log,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to create proxy-cache setup scheduler")
+			return err
+		}
+		s.schedulers = append(s.schedulers, setupScheduler)
+		setupScheduler.Start(ctx)
+	} else {
+		// Normal mode: create state replication scheduler
+		fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, log)
+		stateScheduler, err := scheduler.NewSchedulerWithInterval(
+			s.cm.GetStateReplicationInterval(),
+			fetchAndReplicateStateProcess,
+			log,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to create state replication scheduler")
+			return err
+		}
+		s.schedulers = append(s.schedulers, stateScheduler)
+		stateScheduler.Start(ctx)
 	}
-	s.schedulers = append(s.schedulers, stateScheduler)
-	stateScheduler.Start(ctx)
 
-	// Create status report scheduler with pending CRI results
+	// Create status report scheduler (both modes)
 	statusReportProcess := state.NewStatusReportingProcess(s.cm)
 	if len(s.criResults) > 0 {
 		statusReportProcess.SetPendingCRIResults(s.criResults)
