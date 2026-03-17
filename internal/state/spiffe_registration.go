@@ -81,10 +81,15 @@ func (s *SpiffeZtrProcess) Execute(ctx context.Context) error {
 
 	if stateConfig.RegistryCredentials.Username == "" ||
 		stateConfig.RegistryCredentials.Password == "" ||
-		stateConfig.RegistryCredentials.URL == "" ||
-		stateConfig.StateURL == "" {
-		log.Error().Msg("Invalid state auth config received")
-		return fmt.Errorf("invalid state auth config received")
+		stateConfig.RegistryCredentials.URL == "" {
+		log.Error().Msg("Invalid registry credentials received")
+		return fmt.Errorf("invalid registry credentials received")
+	}
+
+	// In normal mode StateURL is required; proxy-cache mode may omit it
+	if stateConfig.StateURL == "" && !s.cm.IsProxyCacheMode() {
+		log.Error().Msg("No state URL received")
+		return fmt.Errorf("no state URL received")
 	}
 
 	s.cm.With(config.SetStateConfig(stateConfig))

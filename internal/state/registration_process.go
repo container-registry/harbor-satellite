@@ -68,9 +68,15 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		return err
 	}
 
-	if stateConfig.RegistryCredentials.Username == "" || stateConfig.RegistryCredentials.Password == "" || stateConfig.RegistryCredentials.URL == "" || stateConfig.StateURL == "" {
+	if stateConfig.RegistryCredentials.Username == "" || stateConfig.RegistryCredentials.Password == "" || stateConfig.RegistryCredentials.URL == "" {
 		log.Error().Msgf("Failed to register satellite: invalid state auth config received")
-		return fmt.Errorf("failed to register satellite: invalid state auth config received")
+		return fmt.Errorf("failed to register satellite: invalid registry credentials received")
+	}
+
+	// In normal mode StateURL is required; proxy-cache mode may omit it
+	if stateConfig.StateURL == "" && !z.cm.IsProxyCacheMode() {
+		log.Error().Msgf("Failed to register satellite: no state URL received")
+		return fmt.Errorf("failed to register satellite: no state URL received")
 	}
 
 	// Override Harbor registry URLs if --harbor-registry-url is set
@@ -187,9 +193,9 @@ func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSCo
 
 func createHTTPClient(tlsCfg config.TLSConfig, useUnsecure bool) (*http.Client, error) {
 	transport := &http.Transport{
-		MaxIdleConns:        10,
-		IdleConnTimeout:     30 * time.Second,
-		DisableCompression:  true,
+		MaxIdleConns:       10,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,
 	}
 
 	if useUnsecure {
