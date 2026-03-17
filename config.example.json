@@ -29,7 +29,9 @@
       "enabled": false,
       "registries": ["docker.io"],
       "runtimes": []
-    }
+    },
+    "proxy_cache_mode": false,
+    "sync_poll_interval": "6h"
   },
   "zot_config": {
     "distSpecVersion": "1.1.0",
