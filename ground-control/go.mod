@@ -8,9 +8,17 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/container-registry/harbor-satellite v0.0.0-20250428155801-b2a3f5a849f9
 	github.com/evanphx/json-patch v5.9.11+incompatible
+	github.com/go-openapi/errors v0.22.0
+	github.com/go-openapi/loads v0.22.0
+	github.com/go-openapi/runtime v0.28.0
+	github.com/go-openapi/spec v0.21.0
+	github.com/go-openapi/strfmt v0.23.0
+	github.com/go-openapi/swag v0.23.0
+	github.com/go-openapi/validate v0.24.0
 	github.com/goharbor/go-client v0.210.0
 	github.com/google/go-containerregistry v0.20.3
 	github.com/gorilla/mux v1.8.1
+	github.com/jessevdk/go-flags v1.6.1
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	github.com/pressly/goose/v3 v3.24.3
@@ -18,6 +26,7 @@ require (
 	github.com/spiffe/spire-api-sdk v1.12.0
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/crypto v0.39.0
+	golang.org/x/net v0.41.0
 	google.golang.org/grpc v1.75.0
 )
 
@@ -29,19 +38,13 @@ require (
 	github.com/docker/cli v28.0.1+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.2 // indirect
+	github.com/docker/go-units v0.5.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/analysis v0.23.0 // indirect
-	github.com/go-openapi/errors v0.22.0 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
-	github.com/go-openapi/loads v0.22.0 // indirect
-	github.com/go-openapi/runtime v0.28.0 // indirect
-	github.com/go-openapi/spec v0.21.0 // indirect
-	github.com/go-openapi/strfmt v0.23.0 // indirect
-	github.com/go-openapi/swag v0.23.0 // indirect
-	github.com/go-openapi/validate v0.24.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
@@ -68,7 +71,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sync v0.15.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
