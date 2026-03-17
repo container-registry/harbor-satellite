@@ -520,63 +520,62 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	groups, err := q.SatelliteGroupList(r.Context(), satellite.ID)
-	if err != nil {
-		log.Printf("SPIFFE ZTR: Failed to list groups for satellite %s: %v", satelliteName, err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Satellite Groups List Failed",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
-	states, err := getGroupStates(r.Context(), groups, q)
-	if err != nil {
-		log.Printf("SPIFFE ZTR: Error retrieving group states: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Get Group By ID Failed",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
-	// When Harbor is available, create state artifacts; otherwise just return credentials
-	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
-	var satelliteState string
-
-	if !skipHarborCheck {
-		configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satellite.ID)
-		if err != nil {
-			log.Printf("SPIFFE ZTR: Failed to fetch satellite config: %v", err)
-			HandleAppError(w, err)
-			return
-		}
-
-		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
-		if err != nil {
-			log.Printf("SPIFFE ZTR: Failed to create state artifact: %v", err)
-			HandleAppError(w, err)
-			return
-		}
-		satelliteState = utils.AssembleSatelliteState(satellite.Name)
-	} else {
-		// Use placeholder state URL when Harbor is not available
-		satelliteState = "placeholder://spiffe-testing/" + satellite.Name
-		log.Printf("SPIFFE ZTR: Harbor not available, using placeholder state for satellite %s", satelliteName)
-	}
-
 	harborURL := os.Getenv("HARBOR_URL")
 	if harborURL == "" {
 		harborURL = "http://placeholder-registry:5000"
 	}
 
 	result := config.StateConfig{
-		StateURL: satelliteState,
+		Name: satellite.Name,
 		RegistryCredentials: config.RegistryCredentials{
 			Username: robot.RobotName,
 			Password: freshSecret,
 			URL:      config.URL(harborURL),
 		},
+	}
+
+	// Proxy-cache mode: skip group states and state artifact entirely
+	if satellite.Mode != harbor.SatelliteModeProxyCache {
+		groups, err := q.SatelliteGroupList(r.Context(), satellite.ID)
+		if err != nil {
+			log.Printf("SPIFFE ZTR: Failed to list groups for satellite %s: %v", satelliteName, err)
+			HandleAppError(w, &AppError{
+				Message: "Error: Satellite Groups List Failed",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+
+		states, err := getGroupStates(r.Context(), groups, q)
+		if err != nil {
+			log.Printf("SPIFFE ZTR: Error retrieving group states: %v", err)
+			HandleAppError(w, &AppError{
+				Message: "Error: Get Group By ID Failed",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+
+		skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
+		if !skipHarborCheck {
+			configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satellite.ID)
+			if err != nil {
+				log.Printf("SPIFFE ZTR: Failed to fetch satellite config: %v", err)
+				HandleAppError(w, err)
+				return
+			}
+
+			err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
+			if err != nil {
+				log.Printf("SPIFFE ZTR: Failed to create state artifact: %v", err)
+				HandleAppError(w, err)
+				return
+			}
+			result.StateURL = utils.AssembleSatelliteState(satellite.Name)
+		} else {
+			result.StateURL = "placeholder://spiffe-testing/" + satellite.Name
+			log.Printf("SPIFFE ZTR: Harbor not available, using placeholder state for satellite %s", satelliteName)
+		}
 	}
 
 	log.Printf("SPIFFE ZTR: Successfully registered satellite %s", satelliteName)
@@ -1092,11 +1091,19 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), req.Satellite)
 	if err != nil {
 		log.Printf("Error: Satellite Not Found: %v", err)
-		err := &AppError{
+		HandleAppError(w, &AppError{
 			Message: "Error: Satellite Not Found",
 			Code:    http.StatusBadRequest,
-		}
-		HandleAppError(w, err)
+		})
+		return
+	}
+
+	// Proxy-cache satellites cannot be added to groups
+	if sat.Mode == harbor.SatelliteModeProxyCache {
+		HandleAppError(w, &AppError{
+			Message: "proxy-cache mode satellites cannot be assigned to groups",
+			Code:    http.StatusBadRequest,
+		})
 		return
 	}
 
