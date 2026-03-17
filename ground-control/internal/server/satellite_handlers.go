@@ -26,6 +26,7 @@ type RegisterSatelliteParams struct {
 	Name       string    `json:"name"`
 	Groups     *[]string `json:"groups,omitempty"`
 	ConfigName string    `json:"config_name"`
+	Mode       string    `json:"mode,omitempty"`
 }
 
 type RegisterSatelliteResponse struct {
@@ -140,8 +141,17 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		}
 	}()
 
+	// Resolve satellite mode (default to "normal")
+	mode := "normal"
+	if req.Mode == "proxy-cache" {
+		mode = "proxy-cache"
+	}
+
 	// Create satellite
-	satellite, err := q.CreateSatellite(r.Context(), req.Name)
+	satellite, err := q.CreateSatellite(r.Context(), database.CreateSatelliteParams{
+		Name: req.Name,
+		Mode: mode,
+	})
 	if err != nil {
 		log.Printf("Error creating satellite %s: %v", req.Name, err)
 		err := &AppError{
@@ -885,7 +895,10 @@ func (s *Server) autoRegisterSatellite(r *http.Request, name string) (database.S
 		}
 	}()
 
-	satellite, err := q.CreateSatellite(r.Context(), name)
+	satellite, err := q.CreateSatellite(r.Context(), database.CreateSatelliteParams{
+		Name: name,
+		Mode: "normal",
+	})
 	if err != nil {
 		return database.Satellite{}, fmt.Errorf("create satellite: %w", err)
 	}

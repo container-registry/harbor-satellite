@@ -1,6 +1,6 @@
 -- name: CreateSatellite :one
-INSERT INTO satellites (name, created_at, updated_at)
-VALUES ($1, NOW(), NOW())
+INSERT INTO satellites (name, mode, created_at, updated_at)
+VALUES ($1, $2, NOW(), NOW())
 RETURNING *;
 
 -- name: ListSatellites :many
