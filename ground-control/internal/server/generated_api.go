@@ -2,11 +2,8 @@ package server
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	openapierrors "github.com/go-openapi/errors"
@@ -14,7 +11,6 @@ import (
 	openapimiddleware "github.com/go-openapi/runtime/middleware"
 	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
-	"github.com/lib/pq"
 
 	apimodels "github.com/container-registry/harbor-satellite/ground-control/internal/api/generated/models"
 	apirest "github.com/container-registry/harbor-satellite/ground-control/internal/api/generated/restapi"
@@ -22,8 +18,6 @@ import (
 	apiauth "github.com/container-registry/harbor-satellite/ground-control/internal/api/generated/restapi/operations/auth"
 	apisystem "github.com/container-registry/harbor-satellite/ground-control/internal/api/generated/restapi/operations/system"
 	apiusers "github.com/container-registry/harbor-satellite/ground-control/internal/api/generated/restapi/operations/users"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	internalmiddleware "github.com/container-registry/harbor-satellite/ground-control/internal/middleware"
 )
 
@@ -60,47 +54,33 @@ func (s *Server) newGeneratedAPIHandler() http.Handler {
 }
 
 func serveGeneratedAPIError(rw http.ResponseWriter, _ *http.Request, err error) {
-	statusCode := http.StatusInternalServerError
-	if codedErr, ok := err.(openapierrors.Error); ok {
-		statusCode = int(codedErr.Code())
+	statusCode, message := operationStatus(err)
+	if statusCode == http.StatusInternalServerError {
+		if codedErr, ok := err.(openapierrors.Error); ok {
+			statusCode = int(codedErr.Code())
+			message = err.Error()
+		}
 	}
 
-	WriteJSONError(rw, err.Error(), statusCode)
+	WriteJSONError(rw, message, statusCode)
 }
 
 func (s *Server) authenticateBearerPrincipal(token string) (any, error) {
-	session, err := s.dbQueries.GetSessionByToken(context.Background(), token)
+	principal, err := s.authenticateBearer(context.Background(), token)
 	if err != nil {
 		return nil, openapierrors.Unauthenticated("BearerAuth")
 	}
 
-	return apiPrincipal{
-		User: AuthUser{
-			ID:       session.UserID,
-			Username: session.Username,
-			Role:     session.Role,
-		},
-		SessionToken: token,
-	}, nil
+	return principal, nil
 }
 
 func (s *Server) authenticateBasicPrincipal(username, password string) (any, error) {
-	user, err := s.dbQueries.GetUserByUsername(context.Background(), username)
+	principal, err := s.authenticateBasic(context.Background(), username, password)
 	if err != nil {
 		return nil, openapierrors.Unauthenticated("BasicAuth")
 	}
 
-	if !auth.VerifyPassword(password, user.PasswordHash) {
-		return nil, openapierrors.Unauthenticated("BasicAuth")
-	}
-
-	return apiPrincipal{
-		User: AuthUser{
-			ID:       user.ID,
-			Username: user.Username,
-			Role:     user.Role,
-		},
-	}, nil
+	return principal, nil
 }
 
 func (s *Server) handleGeneratedPing(_ apisystem.PingParams) openapimiddleware.Responder {
@@ -110,14 +90,10 @@ func (s *Server) handleGeneratedPing(_ apisystem.PingParams) openapimiddleware.R
 func (s *Server) handleGeneratedHealth(_ apisystem.GetHealthParams) openapimiddleware.Responder {
 	if err := s.db.Ping(); err != nil {
 		log.Printf("error pinging db: %v", err)
-		return apisystem.NewGetHealthServiceUnavailable().WithPayload(&apimodels.HealthResponse{
-			Status: swag.String("unhealthy"),
-		})
+		return apisystem.NewGetHealthServiceUnavailable().WithPayload(&apimodels.HealthResponse{Status: swag.String("unhealthy")})
 	}
 
-	return apisystem.NewGetHealthOK().WithPayload(&apimodels.HealthResponse{
-		Status: swag.String("healthy"),
-	})
+	return apisystem.NewGetHealthOK().WithPayload(&apimodels.HealthResponse{Status: swag.String("healthy")})
 }
 
 func (s *Server) handleGeneratedLogin(params apiauth.LoginParams) openapimiddleware.Responder {
@@ -126,52 +102,14 @@ func (s *Server) handleGeneratedLogin(params apiauth.LoginParams) openapimiddlew
 		return apiauth.NewLoginBadRequest().WithPayload(newAPIError("Invalid request body"))
 	}
 
-	username := strings.TrimSpace(swag.StringValue(credentials.Username))
-	password := string(*credentials.Password)
-	if username == "" || password == "" {
-		return apiauth.NewLoginUnauthorized().WithPayload(newAPIError("Invalid credentials"))
-	}
-
-	attempts, err := s.dbQueries.GetLoginAttempts(params.HTTPRequest.Context(), username)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return apiauth.NewLoginInternalServerError().WithPayload(newAPIError("Internal server error"))
-	}
-
-	if err == nil && attempts.LockedUntil.Valid && attempts.LockedUntil.Time.After(time.Now()) {
-		return apiauth.NewLoginUnauthorized().WithPayload(newAPIError("Invalid credentials"))
-	}
-
-	user, err := s.dbQueries.GetUserByUsername(params.HTTPRequest.Context(), username)
+	result, err := s.login(params.HTTPRequest.Context(), swag.StringValue(credentials.Username), string(*credentials.Password))
 	if err != nil {
-		s.recordFailedAttempt(params.HTTPRequest, username)
-		return apiauth.NewLoginUnauthorized().WithPayload(newAPIError("Invalid credentials"))
-	}
-
-	if !auth.VerifyPassword(password, user.PasswordHash) {
-		s.recordFailedAttempt(params.HTTPRequest, username)
-		return apiauth.NewLoginUnauthorized().WithPayload(newAPIError("Invalid credentials"))
-	}
-
-	_ = s.dbQueries.ResetLoginAttempts(params.HTTPRequest.Context(), username)
-
-	token, err := auth.GenerateSessionToken()
-	if err != nil {
-		return apiauth.NewLoginInternalServerError().WithPayload(newAPIError("Internal server error"))
-	}
-
-	expiresAt := time.Now().Add(s.sessionDuration)
-	_, err = s.dbQueries.CreateSession(params.HTTPRequest.Context(), database.CreateSessionParams{
-		UserID:    user.ID,
-		Token:     token,
-		ExpiresAt: expiresAt,
-	})
-	if err != nil {
-		return apiauth.NewLoginInternalServerError().WithPayload(newAPIError("Internal server error"))
+		return loginErrorResponder(err)
 	}
 
 	return apiauth.NewLoginOK().WithPayload(&apimodels.LoginResponse{
-		Token:     swag.String(token),
-		ExpiresAt: dateTimePtr(expiresAt),
+		Token:     swag.String(result.Token),
+		ExpiresAt: dateTimePtr(result.ExpiresAt),
 	})
 }
 
@@ -181,8 +119,8 @@ func (s *Server) handleGeneratedLogout(params apiauth.LogoutParams, principal an
 		return apiauth.NewLogoutUnauthorized().WithPayload(newAPIError("Unauthorized"))
 	}
 
-	if err := s.dbQueries.DeleteSession(params.HTTPRequest.Context(), p.SessionToken); err != nil {
-		return apiauth.NewLogoutInternalServerError().WithPayload(newAPIError("Internal server error"))
+	if err := s.logout(params.HTTPRequest.Context(), p.SessionToken); err != nil {
+		return logoutErrorResponder(err)
 	}
 
 	return apiauth.NewLogoutNoContent()
@@ -193,14 +131,14 @@ func (s *Server) handleGeneratedListUsers(params apiusers.ListUsersParams, princ
 		return apiusers.NewListUsersUnauthorized().WithPayload(newAPIError("Unauthorized"))
 	}
 
-	users, err := s.dbQueries.ListUsers(params.HTTPRequest.Context())
+	users, err := s.listUsers(params.HTTPRequest.Context())
 	if err != nil {
-		return apiusers.NewListUsersInternalServerError().WithPayload(newAPIError("Internal server error"))
+		return listUsersErrorResponder(err)
 	}
 
 	response := make(apimodels.Users, 0, len(users))
 	for _, user := range users {
-		response = append(response, newAPIUser(user.ID, user.Username, user.Role, user.CreatedAt))
+		response = append(response, newAPIUser(user))
 	}
 
 	return apiusers.NewListUsersOK().WithPayload(response)
@@ -211,19 +149,12 @@ func (s *Server) handleGeneratedGetUser(params apiusers.GetUserParams, principal
 		return apiusers.NewGetUserUnauthorized().WithPayload(newAPIError("Unauthorized"))
 	}
 
-	user, err := s.dbQueries.GetUserByUsername(params.HTTPRequest.Context(), params.Username)
+	user, err := s.getUser(params.HTTPRequest.Context(), params.Username)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return apiusers.NewGetUserNotFound().WithPayload(newAPIError("User not found"))
-		}
-		return apiusers.NewGetUserInternalServerError().WithPayload(newAPIError("Internal server error"))
+		return getUserErrorResponder(err)
 	}
 
-	if user.Role == roleSystemAdmin {
-		return apiusers.NewGetUserNotFound().WithPayload(newAPIError("User not found"))
-	}
-
-	return apiusers.NewGetUserOK().WithPayload(newAPIUser(user.ID, user.Username, user.Role, user.CreatedAt))
+	return apiusers.NewGetUserOK().WithPayload(newAPIUser(user))
 }
 
 func (s *Server) handleGeneratedCreateUser(params apiusers.CreateUserParams, principal any) openapimiddleware.Responder {
@@ -235,43 +166,17 @@ func (s *Server) handleGeneratedCreateUser(params apiusers.CreateUserParams, pri
 		return apiusers.NewCreateUserForbidden().WithPayload(newAPIError("Forbidden"))
 	}
 
-	userParams := params.User
-	if userParams == nil || userParams.Username == nil || userParams.Password == nil {
+	request := params.User
+	if request == nil || request.Username == nil || request.Password == nil {
 		return apiusers.NewCreateUserBadRequest().WithPayload(newAPIError("Invalid request body"))
 	}
 
-	username := strings.TrimSpace(swag.StringValue(userParams.Username))
-	if username == "" {
-		return apiusers.NewCreateUserBadRequest().WithPayload(newAPIError("Username is required"))
-	}
-	if username == "admin" {
-		return apiusers.NewCreateUserBadRequest().WithPayload(newAPIError("Username 'admin' is reserved"))
-	}
-
-	password := string(*userParams.Password)
-	if err := s.passwordPolicy.Validate(password); err != nil {
-		return apiusers.NewCreateUserBadRequest().WithPayload(newAPIError(err.Error()))
-	}
-
-	hash, err := auth.HashPassword(password)
+	user, err := s.createUser(params.HTTPRequest.Context(), swag.StringValue(request.Username), string(*request.Password))
 	if err != nil {
-		return apiusers.NewCreateUserInternalServerError().WithPayload(newAPIError("Internal server error"))
+		return createUserErrorResponder(err)
 	}
 
-	user, err := s.dbQueries.CreateUser(params.HTTPRequest.Context(), database.CreateUserParams{
-		Username:     username,
-		PasswordHash: hash,
-		Role:         roleAdmin,
-	})
-	if err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
-			return apiusers.NewCreateUserConflict().WithPayload(newAPIError("User already exists"))
-		}
-		return apiusers.NewCreateUserInternalServerError().WithPayload(newAPIError("Internal server error"))
-	}
-
-	return apiusers.NewCreateUserCreated().WithPayload(newAPIUser(user.ID, user.Username, user.Role, user.CreatedAt))
+	return apiusers.NewCreateUserCreated().WithPayload(newAPIUser(user))
 }
 
 func (s *Server) handleGeneratedDeleteUser(params apiusers.DeleteUserParams, principal any) openapimiddleware.Responder {
@@ -283,27 +188,8 @@ func (s *Server) handleGeneratedDeleteUser(params apiusers.DeleteUserParams, pri
 		return apiusers.NewDeleteUserForbidden().WithPayload(newAPIError("Forbidden"))
 	}
 
-	username := params.Username
-	if username == p.User.Username {
-		return apiusers.NewDeleteUserBadRequest().WithPayload(newAPIError("Cannot delete yourself"))
-	}
-	if username == "admin" {
-		return apiusers.NewDeleteUserBadRequest().WithPayload(newAPIError("Cannot delete system admin"))
-	}
-
-	user, err := s.dbQueries.GetUserByUsername(params.HTTPRequest.Context(), username)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return apiusers.NewDeleteUserNotFound().WithPayload(newAPIError("User not found"))
-		}
-		return apiusers.NewDeleteUserInternalServerError().WithPayload(newAPIError("Internal server error"))
-	}
-
-	if err := s.dbQueries.DeleteUserSessions(params.HTTPRequest.Context(), user.ID); err != nil {
-		return apiusers.NewDeleteUserInternalServerError().WithPayload(newAPIError("Internal server error"))
-	}
-	if err := s.dbQueries.DeleteUser(params.HTTPRequest.Context(), username); err != nil {
-		return apiusers.NewDeleteUserInternalServerError().WithPayload(newAPIError("Internal server error"))
+	if err := s.deleteUser(params.HTTPRequest.Context(), p.User, params.Username); err != nil {
+		return deleteUserErrorResponder(err)
 	}
 
 	return apiusers.NewDeleteUserNoContent()
@@ -320,34 +206,9 @@ func (s *Server) handleGeneratedChangeOwnPassword(params apiusers.ChangeOwnPassw
 		return apiusers.NewChangeOwnPasswordBadRequest().WithPayload(newAPIError("Invalid request body"))
 	}
 
-	newPassword := string(*request.NewPassword)
-	if err := s.passwordPolicy.Validate(newPassword); err != nil {
-		return apiusers.NewChangeOwnPasswordBadRequest().WithPayload(newAPIError(err.Error()))
-	}
-
-	user, err := s.dbQueries.GetUserByUsername(params.HTTPRequest.Context(), p.User.Username)
+	err := s.changeOwnPassword(params.HTTPRequest.Context(), p.User, string(*request.CurrentPassword), string(*request.NewPassword))
 	if err != nil {
-		return apiusers.NewChangeOwnPasswordInternalServerError().WithPayload(newAPIError("Internal server error"))
-	}
-
-	if !auth.VerifyPassword(string(*request.CurrentPassword), user.PasswordHash) {
-		return apiusers.NewChangeOwnPasswordUnauthorized().WithPayload(newAPIError("Current password is incorrect"))
-	}
-
-	hash, err := auth.HashPassword(newPassword)
-	if err != nil {
-		return apiusers.NewChangeOwnPasswordInternalServerError().WithPayload(newAPIError("Internal server error"))
-	}
-
-	if err := s.dbQueries.UpdateUserPassword(params.HTTPRequest.Context(), database.UpdateUserPasswordParams{
-		Username:     p.User.Username,
-		PasswordHash: hash,
-	}); err != nil {
-		return apiusers.NewChangeOwnPasswordInternalServerError().WithPayload(newAPIError("Internal server error"))
-	}
-
-	if err := s.dbQueries.DeleteUserSessions(params.HTTPRequest.Context(), user.ID); err != nil {
-		return apiusers.NewChangeOwnPasswordInternalServerError().WithPayload(newAPIError("Internal server error"))
+		return changeOwnPasswordErrorResponder(err)
 	}
 
 	return apiusers.NewChangeOwnPasswordNoContent()
@@ -367,33 +228,9 @@ func (s *Server) handleGeneratedChangeUserPassword(params apiusers.ChangeUserPas
 		return apiusers.NewChangeUserPasswordBadRequest().WithPayload(newAPIError("Invalid request body"))
 	}
 
-	newPassword := string(*request.NewPassword)
-	if err := s.passwordPolicy.Validate(newPassword); err != nil {
-		return apiusers.NewChangeUserPasswordBadRequest().WithPayload(newAPIError(err.Error()))
-	}
-
-	user, err := s.dbQueries.GetUserByUsername(params.HTTPRequest.Context(), params.Username)
+	err := s.changeUserPassword(params.HTTPRequest.Context(), params.Username, string(*request.NewPassword))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return apiusers.NewChangeUserPasswordNotFound().WithPayload(newAPIError("User not found"))
-		}
-		return apiusers.NewChangeUserPasswordInternalServerError().WithPayload(newAPIError("Internal server error"))
-	}
-
-	hash, err := auth.HashPassword(newPassword)
-	if err != nil {
-		return apiusers.NewChangeUserPasswordInternalServerError().WithPayload(newAPIError("Internal server error"))
-	}
-
-	if err := s.dbQueries.UpdateUserPassword(params.HTTPRequest.Context(), database.UpdateUserPasswordParams{
-		Username:     params.Username,
-		PasswordHash: hash,
-	}); err != nil {
-		return apiusers.NewChangeUserPasswordInternalServerError().WithPayload(newAPIError("Internal server error"))
-	}
-
-	if err := s.dbQueries.DeleteUserSessions(params.HTTPRequest.Context(), user.ID); err != nil {
-		return apiusers.NewChangeUserPasswordInternalServerError().WithPayload(newAPIError("Internal server error"))
+		return changeUserPasswordErrorResponder(err)
 	}
 
 	return apiusers.NewChangeUserPasswordNoContent()
@@ -408,16 +245,101 @@ func newAPIError(message string) *apimodels.ErrorResponse {
 	return &apimodels.ErrorResponse{Error: swag.String(message)}
 }
 
-func newAPIUser(id int32, username, role string, createdAt time.Time) *apimodels.User {
+func newAPIUser(user userView) *apimodels.User {
 	return &apimodels.User{
-		ID:        swag.Int32(id),
-		Username:  swag.String(username),
-		Role:      swag.String(role),
-		CreatedAt: dateTimePtr(createdAt),
+		ID:        swag.Int32(user.ID),
+		Username:  swag.String(user.Username),
+		Role:      swag.String(user.Role),
+		CreatedAt: dateTimePtr(user.CreatedAt),
 	}
 }
 
 func dateTimePtr(value time.Time) *strfmt.DateTime {
 	dateTime := strfmt.DateTime(value)
 	return &dateTime
+}
+
+func loginErrorResponder(err error) openapimiddleware.Responder {
+	statusCode, message := operationStatus(err)
+	if statusCode == http.StatusBadRequest {
+		return apiauth.NewLoginBadRequest().WithPayload(newAPIError(message))
+	}
+	if statusCode == http.StatusUnauthorized {
+		return apiauth.NewLoginUnauthorized().WithPayload(newAPIError(message))
+	}
+	return apiauth.NewLoginInternalServerError().WithPayload(newAPIError(message))
+}
+
+func logoutErrorResponder(err error) openapimiddleware.Responder {
+	statusCode, message := operationStatus(err)
+	if statusCode == http.StatusUnauthorized {
+		return apiauth.NewLogoutUnauthorized().WithPayload(newAPIError(message))
+	}
+	return apiauth.NewLogoutInternalServerError().WithPayload(newAPIError(message))
+}
+
+func listUsersErrorResponder(err error) openapimiddleware.Responder {
+	statusCode, message := operationStatus(err)
+	if statusCode == http.StatusUnauthorized {
+		return apiusers.NewListUsersUnauthorized().WithPayload(newAPIError(message))
+	}
+	return apiusers.NewListUsersInternalServerError().WithPayload(newAPIError(message))
+}
+
+func getUserErrorResponder(err error) openapimiddleware.Responder {
+	statusCode, message := operationStatus(err)
+	if statusCode == http.StatusUnauthorized {
+		return apiusers.NewGetUserUnauthorized().WithPayload(newAPIError(message))
+	}
+	if statusCode == http.StatusNotFound {
+		return apiusers.NewGetUserNotFound().WithPayload(newAPIError(message))
+	}
+	return apiusers.NewGetUserInternalServerError().WithPayload(newAPIError(message))
+}
+
+func createUserErrorResponder(err error) openapimiddleware.Responder {
+	statusCode, message := operationStatus(err)
+	switch statusCode {
+	case http.StatusBadRequest:
+		return apiusers.NewCreateUserBadRequest().WithPayload(newAPIError(message))
+	case http.StatusConflict:
+		return apiusers.NewCreateUserConflict().WithPayload(newAPIError(message))
+	default:
+		return apiusers.NewCreateUserInternalServerError().WithPayload(newAPIError(message))
+	}
+}
+
+func deleteUserErrorResponder(err error) openapimiddleware.Responder {
+	statusCode, message := operationStatus(err)
+	switch statusCode {
+	case http.StatusBadRequest:
+		return apiusers.NewDeleteUserBadRequest().WithPayload(newAPIError(message))
+	case http.StatusNotFound:
+		return apiusers.NewDeleteUserNotFound().WithPayload(newAPIError(message))
+	default:
+		return apiusers.NewDeleteUserInternalServerError().WithPayload(newAPIError(message))
+	}
+}
+
+func changeOwnPasswordErrorResponder(err error) openapimiddleware.Responder {
+	statusCode, message := operationStatus(err)
+	if statusCode == http.StatusBadRequest {
+		return apiusers.NewChangeOwnPasswordBadRequest().WithPayload(newAPIError(message))
+	}
+	if statusCode == http.StatusUnauthorized {
+		return apiusers.NewChangeOwnPasswordUnauthorized().WithPayload(newAPIError(message))
+	}
+	return apiusers.NewChangeOwnPasswordInternalServerError().WithPayload(newAPIError(message))
+}
+
+func changeUserPasswordErrorResponder(err error) openapimiddleware.Responder {
+	statusCode, message := operationStatus(err)
+	switch statusCode {
+	case http.StatusBadRequest:
+		return apiusers.NewChangeUserPasswordBadRequest().WithPayload(newAPIError(message))
+	case http.StatusNotFound:
+		return apiusers.NewChangeUserPasswordNotFound().WithPayload(newAPIError(message))
+	default:
+		return apiusers.NewChangeUserPasswordInternalServerError().WithPayload(newAPIError(message))
+	}
 }

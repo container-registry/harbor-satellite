@@ -1,16 +1,11 @@
 package server
 
 import (
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/lib/pq"
-
-	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 )
 
 const (
@@ -47,66 +42,28 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Username == "" {
-		WriteJSONError(w, "Username is required", http.StatusBadRequest)
-		return
-	}
-
-	if req.Username == "admin" {
-		WriteJSONError(w, "Username 'admin' is reserved", http.StatusBadRequest)
-		return
-	}
-
-	if err := s.passwordPolicy.Validate(req.Password); err != nil {
-		WriteJSONError(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	hash, err := auth.HashPassword(req.Password)
+	user, err := s.createUser(r.Context(), req.Username, req.Password)
 	if err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
+		statusCode, message := operationStatus(err)
+		WriteJSONError(w, message, statusCode)
 		return
 	}
 
-	user, err := s.dbQueries.CreateUser(r.Context(), database.CreateUserParams{
-		Username:     req.Username,
-		PasswordHash: hash,
-		Role:         roleAdmin,
-	})
-	if err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
-			WriteJSONError(w, "User already exists", http.StatusConflict)
-			return
-		}
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	WriteJSONResponse(w, http.StatusCreated, userResponse{
-		ID:        user.ID,
-		Username:  user.Username,
-		Role:      user.Role,
-		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	})
+	WriteJSONResponse(w, http.StatusCreated, newUserResponse(user))
 }
 
 // listUsersHandler lists all users except system_admin
 func (s *Server) listUsersHandler(w http.ResponseWriter, r *http.Request) {
-	users, err := s.dbQueries.ListUsers(r.Context())
+	users, err := s.listUsers(r.Context())
 	if err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
+		statusCode, message := operationStatus(err)
+		WriteJSONError(w, message, statusCode)
 		return
 	}
 
 	response := make([]userResponse, 0, len(users))
-	for _, u := range users {
-		response = append(response, userResponse{
-			ID:        u.ID,
-			Username:  u.Username,
-			Role:      u.Role,
-			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		})
+	for _, user := range users {
+		response = append(response, newUserResponse(user))
 	}
 
 	WriteJSONResponse(w, http.StatusOK, response)
@@ -117,28 +74,14 @@ func (s *Server) getUserHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	username := vars["username"]
 
-	user, err := s.dbQueries.GetUserByUsername(r.Context(), username)
+	user, err := s.getUser(r.Context(), username)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			WriteJSONError(w, "User not found", http.StatusNotFound)
-			return
-		}
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
+		statusCode, message := operationStatus(err)
+		WriteJSONError(w, message, statusCode)
 		return
 	}
 
-	// Hide system_admin from regular queries
-	if user.Role == roleSystemAdmin {
-		WriteJSONError(w, "User not found", http.StatusNotFound)
-		return
-	}
-
-	WriteJSONResponse(w, http.StatusOK, userResponse{
-		ID:        user.ID,
-		Username:  user.Username,
-		Role:      user.Role,
-		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	})
+	WriteJSONResponse(w, http.StatusOK, newUserResponse(user))
 }
 
 // deleteUserHandler deletes a user (system_admin only, cannot delete self)
@@ -152,35 +95,9 @@ func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if username == currentUser.Username {
-		WriteJSONError(w, "Cannot delete yourself", http.StatusBadRequest)
-		return
-	}
-
-	if username == "admin" {
-		WriteJSONError(w, "Cannot delete system admin", http.StatusBadRequest)
-		return
-	}
-
-	// Get user to delete their sessions
-	user, err := s.dbQueries.GetUserByUsername(r.Context(), username)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			WriteJSONError(w, "User not found", http.StatusNotFound)
-			return
-		}
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	// Delete user's sessions first (CASCADE should handle this, but explicit)
-	if err := s.dbQueries.DeleteUserSessions(r.Context(), user.ID); err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if err := s.dbQueries.DeleteUser(r.Context(), username); err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
+	if err := s.deleteUser(r.Context(), currentUser, username); err != nil {
+		statusCode, message := operationStatus(err)
+		WriteJSONError(w, message, statusCode)
 		return
 	}
 
@@ -201,41 +118,9 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := s.passwordPolicy.Validate(req.NewPassword); err != nil {
-		WriteJSONError(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Verify current password
-	user, err := s.dbQueries.GetUserByUsername(r.Context(), currentUser.Username)
-	if err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	valid := auth.VerifyPassword(req.CurrentPassword, user.PasswordHash)
-	if !valid {
-		WriteJSONError(w, "Current password is incorrect", http.StatusUnauthorized)
-		return
-	}
-
-	hash, err := auth.HashPassword(req.NewPassword)
-	if err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if err := s.dbQueries.UpdateUserPassword(r.Context(), database.UpdateUserPasswordParams{
-		Username:     currentUser.Username,
-		PasswordHash: hash,
-	}); err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	// Invalidate all sessions including current session
-	if err := s.dbQueries.DeleteUserSessions(r.Context(), user.ID); err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
+	if err := s.changeOwnPassword(r.Context(), currentUser, req.CurrentPassword, req.NewPassword); err != nil {
+		statusCode, message := operationStatus(err)
+		WriteJSONError(w, message, statusCode)
 		return
 	}
 
@@ -253,41 +138,20 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := s.passwordPolicy.Validate(req.NewPassword); err != nil {
-		WriteJSONError(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Check if user exists
-	user, err := s.dbQueries.GetUserByUsername(r.Context(), username)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			WriteJSONError(w, "User not found", http.StatusNotFound)
-			return
-		}
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	hash, err := auth.HashPassword(req.NewPassword)
-	if err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if err := s.dbQueries.UpdateUserPassword(r.Context(), database.UpdateUserPasswordParams{
-		Username:     username,
-		PasswordHash: hash,
-	}); err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	// Invalidate all sessions for the user whose password was changed
-	if err := s.dbQueries.DeleteUserSessions(r.Context(), user.ID); err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
+	if err := s.changeUserPassword(r.Context(), username, req.NewPassword); err != nil {
+		statusCode, message := operationStatus(err)
+		WriteJSONError(w, message, statusCode)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func newUserResponse(user userView) userResponse {
+	return userResponse{
+		ID:        user.ID,
+		Username:  user.Username,
+		Role:      user.Role,
+		CreatedAt: user.CreatedAt.Format(time.RFC3339),
+	}
 }
