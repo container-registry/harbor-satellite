@@ -14,6 +14,7 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 	"github.com/gorilla/mux"
 )
 
@@ -81,6 +82,26 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	if !utils.IsValidName(req.ConfigName) {
 		HandleAppError(w, &AppError{
 			Message: "invalid or empty config_name",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	// Validate mode
+	if req.Mode != "" && req.Mode != harbor.SatelliteModeNormal && req.Mode != harbor.SatelliteModeProxyCache {
+		HandleAppError(w, &AppError{
+			Message: fmt.Sprintf("invalid mode %q: must be %q or %q", req.Mode, harbor.SatelliteModeNormal, harbor.SatelliteModeProxyCache),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	isProxyCache := req.Mode == harbor.SatelliteModeProxyCache
+
+	// Proxy-cache mode does not use groups
+	if isProxyCache && req.Groups != nil && len(*req.Groups) > 0 {
+		HandleAppError(w, &AppError{
+			Message: "proxy-cache mode satellites cannot be assigned to groups",
 			Code:    http.StatusBadRequest,
 		})
 		return
@@ -162,11 +183,14 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	groupStates, err := addSatelliteToGroups(r.Context(), q, req.Groups, satellite.ID)
-	if err != nil {
-		log.Println("Error adding satellite to groups:", err)
-		HandleAppError(w, err)
-		return
+	var groupStates []string
+	if !isProxyCache {
+		groupStates, err = addSatelliteToGroups(r.Context(), q, req.Groups, satellite.ID)
+		if err != nil {
+			log.Println("Error adding satellite to groups:", err)
+			HandleAppError(w, err)
+			return
+		}
 	}
 
 	if err := ensureSatelliteProjectExists(r.Context()); err != nil {
@@ -176,15 +200,18 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create Robot Account for Satellite
-	projects := []string{"satellite"}
-	rbt, err := utils.CreateRobotAccForSatellite(r.Context(), projects, satellite.Name)
+	var rbt *models.RobotCreated
+	if isProxyCache {
+		rbt, err = utils.CreateProxyCacheRobotAcc(r.Context(), satellite.Name)
+	} else {
+		rbt, err = utils.CreateRobotAccForSatellite(r.Context(), []string{"satellite"}, satellite.Name)
+	}
 	if err != nil {
 		log.Printf("Error creating robot account for satellite %s: %v", satellite.Name, err)
-		err := &AppError{
+		HandleAppError(w, &AppError{
 			Message: "Error: failed to create robot account",
 			Code:    http.StatusBadRequest,
-		}
-		HandleAppError(w, err)
+		})
 		return
 	}
 	robotID = rbt.ID
@@ -205,13 +232,15 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := assignPermissionsToRobot(r.Context(), q, req.Groups, rbt.ID); err != nil {
-		log.Println("Error assigning permissions to robot:", err)
-		HandleAppError(w, err)
-		return
+	if !isProxyCache {
+		if err := assignPermissionsToRobot(r.Context(), q, req.Groups, rbt.ID); err != nil {
+			log.Println("Error assigning permissions to robot:", err)
+			HandleAppError(w, err)
+			return
+		}
 	}
 
-	config, err := q.GetConfigByName(r.Context(), req.ConfigName)
+	cfg, err := q.GetConfigByName(r.Context(), req.ConfigName)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -220,7 +249,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 
 	setSatelliteConfigParams := database.SetSatelliteConfigParams{
 		SatelliteID: satellite.ID,
-		ConfigID:    config.ID,
+		ConfigID:    cfg.ID,
 	}
 
 	if err := q.SetSatelliteConfig(r.Context(), setSatelliteConfigParams); err != nil {
@@ -229,12 +258,14 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Create the satellite's state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates, req.ConfigName)
-	if err != nil {
-		log.Println(err)
-		HandleAppError(w, err)
-		return
+	// Proxy-cache mode skips state artifact creation
+	if !isProxyCache {
+		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates, req.ConfigName)
+		if err != nil {
+			log.Println(err)
+			HandleAppError(w, err)
+			return
+		}
 	}
 
 	// Add token to DB with 24-hour expiry
@@ -326,54 +357,14 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// groups attached to satellite
-	groups, err := q.SatelliteGroupList(r.Context(), satelliteID)
-	if err != nil {
-		log.Printf("failed to list groups for satellite: %v, %v", satelliteID, err)
-		log.Println(err)
-		err := &AppError{
-			Message: "Error: Satellite Groups List Failed",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	states, err := getGroupStates(r.Context(), groups, q)
-	if err != nil {
-		log.Println("Error retrieving group states:", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Get Group By ID Failed",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
 	satellite, err := q.GetSatellite(r.Context(), satelliteID)
 	if err != nil {
 		HandleAppError(w, &AppError{Message: "satellite not found", Code: http.StatusNotFound})
 		return
 	}
 
-	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satelliteID)
-	if err != nil {
-		log.Printf("Error: Failed to fetch Satellite config: %v", err)
-		HandleAppError(w, err)
-		return
-	}
-
-	// For sanity, create (update) the state artifact during the registration process as well.
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
-	if err != nil {
-		log.Println(err)
-		HandleAppError(w, err)
-		return
-	}
-
-	satelliteState := utils.AssembleSatelliteState(satellite.Name)
-
 	result := config.StateConfig{
-		StateURL: satelliteState,
+		Name: satellite.Name,
 		RegistryCredentials: config.RegistryCredentials{
 			Username: robot.RobotName,
 			Password: freshSecret,
@@ -381,15 +372,53 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	// Proxy-cache mode: skip group states and state artifact
+	if satellite.Mode != harbor.SatelliteModeProxyCache {
+		groups, err := q.SatelliteGroupList(r.Context(), satelliteID)
+		if err != nil {
+			log.Printf("failed to list groups for satellite: %v, %v", satelliteID, err)
+			HandleAppError(w, &AppError{
+				Message: "Error: Satellite Groups List Failed",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+
+		states, err := getGroupStates(r.Context(), groups, q)
+		if err != nil {
+			log.Println("Error retrieving group states:", err)
+			HandleAppError(w, &AppError{
+				Message: "Error: Get Group By ID Failed",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+
+		configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satelliteID)
+		if err != nil {
+			log.Printf("Error: Failed to fetch Satellite config: %v", err)
+			HandleAppError(w, err)
+			return
+		}
+
+		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
+		if err != nil {
+			log.Println(err)
+			HandleAppError(w, err)
+			return
+		}
+
+		result.StateURL = utils.AssembleSatelliteState(satellite.Name)
+	}
+
 	err = q.DeleteToken(r.Context(), token)
 	if err != nil {
 		log.Println("error deleting token")
 		log.Println(err)
-		err := &AppError{
+		HandleAppError(w, &AppError{
 			Message: "Error: Error deleting token",
 			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
+		})
 		return
 	}
 
