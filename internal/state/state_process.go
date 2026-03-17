@@ -20,6 +20,7 @@ type FetchAndReplicateStateProcess struct {
 	cm                  *config.ConfigManager
 	mu                  sync.Mutex
 	stateFilePath       string
+	directDeliverer     *DirectDeliverer
 }
 
 // Define result types for channels
@@ -472,6 +473,16 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		return result
 	}
 
+	// Direct delivery: write tarballs to k3s/RKE2 image dir after registry push
+	if f.directDeliverer != nil {
+		if err := f.directDeliverer.Delete(ctx, deleteEntity); err != nil {
+			stateFetcherLog.Warn().Err(err).Msg("Direct delivery: failed to remove old tarballs")
+		}
+		if err := f.directDeliverer.Deliver(ctx, replicateEntity); err != nil {
+			stateFetcherLog.Warn().Err(err).Msg("Direct delivery: failed to write tarballs")
+		}
+	}
+
 	mutex.Lock()
 	f.stateMap[index].State = newState
 	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
@@ -525,6 +536,12 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, 
 	}
 
 	replicator := NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure)
+
+	// Set up direct delivery if enabled
+	dd := f.cm.GetDirectDeliveryConfig()
+	if dd.Enabled && dd.ImageDir != "" {
+		f.directDeliverer = NewDirectDeliverer(dd.ImageDir, srcUsername, srcPassword, sourceURL, useUnsecure)
+	}
 
 	return replicator, sourceURL, srcUsername, srcPassword, remoteURL, useUnsecure, satelliteStateURL
 }
