@@ -451,7 +451,8 @@ tasks:
           sleep 10
         done
         echo "Timeout waiting for replication"
-        docker logs satellite 2>&1 | tail -50
+        echo "=== Full satellite logs ==="
+        docker logs satellite 2>&1
         exit 1
 
   generate-join-token:
