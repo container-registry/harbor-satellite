@@ -41,3 +41,9 @@ const DefaultZotConfigJSON = `{
 const DefaultRemoteRegistryURL = "http://127.0.0.1:5000"
 const DefaultGroundControlURL = "http://127.0.0.1:8080"
 
+// ProxyCacheSetupJobName is the process name for the one-shot proxy-cache setup.
+const ProxyCacheSetupJobName string = "proxy_cache_setup"
+
+// DefaultSyncPollInterval is the default polling interval for Zot sync
+// to check for updates to already-cached images.
+const DefaultSyncPollInterval = "6h"

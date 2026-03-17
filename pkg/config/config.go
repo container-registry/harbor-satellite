@@ -55,12 +55,15 @@ type AppConfig struct {
 	SPIFFE                    SPIFFEConfig           `json:"spiffe,omitempty"`
 	EncryptConfig             bool                   `json:"encrypt_config,omitempty"`
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty"`
-	HarborRegistryURL        string                 `json:"harbor_registry_url,omitempty"`
+	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty"`
+	ProxyCacheMode            bool                   `json:"proxy_cache_mode,omitempty"`
+	SyncPollInterval          string                 `json:"sync_poll_interval,omitempty"`
 }
 
 type StateConfig struct {
 	RegistryCredentials RegistryCredentials `json:"auth,omitempty"`
 	StateURL            string              `json:"state,omitempty"`
+	Name                string              `json:"name,omitempty"`
 }
 
 type Config struct {

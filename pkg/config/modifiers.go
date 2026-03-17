@@ -118,6 +118,24 @@ func SetHarborRegistryURL(url string) func(*Config) {
 	}
 }
 
+func SetProxyCacheMode(enabled bool) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.ProxyCacheMode = enabled
+	}
+}
+
+func SetSyncPollInterval(interval string) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.SyncPollInterval = interval
+	}
+}
+
+func SetSatelliteName(name string) func(*Config) {
+	return func(cfg *Config) {
+		cfg.StateConfig.Name = name
+	}
+}
+
 // ReplaceURLHost replaces the scheme and host:port in raw with those from override.
 func ReplaceURLHost(raw, override string) (string, error) {
 	overrideParsed, err := url.Parse(override)
