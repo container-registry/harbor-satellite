@@ -10,30 +10,26 @@ import (
 
 func (s *Server) RegisterRoutes() http.Handler {
 	r := mux.NewRouter()
+	generated := s.newGeneratedAPIHandler()
 
 	// Public routes
-	r.HandleFunc("/ping", s.Ping).Methods("GET")
-	r.HandleFunc("/health", s.healthHandler).Methods("GET")
+	r.Handle("/ping", generated).Methods("GET")
+	r.Handle("/health", generated).Methods("GET")
 
 	// Login (rate limited, public)
 	loginRouter := r.PathPrefix("/login").Subrouter()
-	loginRouter.Use(middleware.RateLimitMiddleware(s.rateLimiter))
-	loginRouter.HandleFunc("", s.loginHandler).Methods("POST")
+	loginRouter.Handle("", generated).Methods("POST")
+
+	// Generated auth and user routes
+	r.Handle("/api/logout", generated).Methods("POST")
+	r.Handle("/api/users", generated).Methods("GET", "POST")
+	r.Handle("/api/users/password", generated).Methods("PATCH")
+	r.Handle("/api/users/{username}", generated).Methods("GET", "DELETE")
+	r.Handle("/api/users/{username}/password", generated).Methods("PATCH")
 
 	// Human API routes (user auth required)
 	api := r.PathPrefix("/api").Subrouter()
 	api.Use(s.AuthMiddleware)
-
-	// Logout
-	api.HandleFunc("/logout", s.logoutHandler).Methods("POST")
-
-	// Users
-	api.HandleFunc("/users", s.listUsersHandler).Methods("GET")
-	api.HandleFunc("/users/password", s.changeOwnPasswordHandler).Methods("PATCH")
-	api.HandleFunc("/users/{username}", s.getUserHandler).Methods("GET")
-	api.HandleFunc("/users", s.RequireRole(roleSystemAdmin, s.createUserHandler)).Methods("POST")
-	api.HandleFunc("/users/{username}", s.RequireRole(roleSystemAdmin, s.deleteUserHandler)).Methods("DELETE")
-	api.HandleFunc("/users/{username}/password", s.RequireRole(roleSystemAdmin, s.changeUserPasswordHandler)).Methods("PATCH")
 
 	// Groups
 	api.HandleFunc("/groups", s.listGroupHandler).Methods("GET")
