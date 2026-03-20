@@ -11,6 +11,7 @@ import (
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/hotreload"
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/parsec"
 	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	"github.com/container-registry/harbor-satellite/internal/utils"
@@ -54,6 +55,9 @@ type SatelliteOptions struct {
 	NoRegistryFallback     bool
 	FallbackOnly           bool
 	HarborRegistryURL      string
+	// PARSEC hardware-backed identity (optional; requires parsec build tag and running daemon)
+	ParsecEnabled    bool
+	ParsecSocketPath string
 }
 
 func main() {
@@ -78,6 +82,8 @@ func main() {
 	flag.BoolVar(&opts.NoRegistryFallback, "no-registry-fallback", false, "Disable all CRI registry fallback configuration")
 	flag.BoolVar(&opts.FallbackOnly, "fallback-only", false, "Apply CRI registry fallback configs and exit without starting satellite")
 	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", "", "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
+	flag.BoolVar(&opts.ParsecEnabled, "parsec-enabled", false, "Enable hardware-backed identity via PARSEC (requires parsec build tag and running PARSEC daemon)")
+	flag.StringVar(&opts.ParsecSocketPath, "parsec-socket", parsec.DefaultSocketPath, "PARSEC daemon socket path")
 
 	flag.Parse()
 
@@ -128,6 +134,12 @@ func main() {
 	}
 	if opts.HarborRegistryURL == "" {
 		opts.HarborRegistryURL = os.Getenv("HARBOR_REGISTRY_URL")
+	}
+	if !opts.ParsecEnabled && os.Getenv("PARSEC_ENABLED") == "true" {
+		opts.ParsecEnabled = true
+	}
+	if opts.ParsecSocketPath == parsec.DefaultSocketPath && os.Getenv("PARSEC_SOCKET") != "" {
+		opts.ParsecSocketPath = os.Getenv("PARSEC_SOCKET")
 	}
 
 	// Resolve config directory path
@@ -190,6 +202,15 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v\n", err)
 		return err
+	}
+
+	// Validate PARSEC daemon reachability when hardware-backed identity is requested.
+	// Like SPIFFE, this is fail-hard: if the operator asked for hardware security and
+	// the daemon is unreachable, we halt rather than silently degrade.
+	if opts.ParsecEnabled {
+		if err := parsec.MustDetect(opts.ParsecSocketPath); err != nil {
+			return fmt.Errorf("parsec startup check failed: %w", err)
+		}
 	}
 
 	// Apply SPIFFE config from CLI flags
