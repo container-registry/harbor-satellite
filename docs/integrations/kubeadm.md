@@ -1,5 +1,3 @@
-***
-
 # Harbor Satellite — kubeadm Integration
 
 Standard Kubernetes clusters created with kubeadm use `containerd` as the default container runtime. This guide covers deploying Harbor Satellite as a DaemonSet to automatically mirror images at the edge.
@@ -138,7 +136,7 @@ spec:
             - |
               mkdir -p /host/etc/containerd/certs.d/docker.io
               cat > /host/etc/containerd/certs.d/docker.io/hosts.toml << 'TOML'
-              server = "[https://registry-1.docker.io](https://registry-1.docker.io)"
+              server = "[https://registry-1.docker.io]"
               [host."http://localhost:5000"]
                 capabilities = ["pull", "resolve"]
                 skip_verify = true

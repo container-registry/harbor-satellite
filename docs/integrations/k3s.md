@@ -1,8 +1,4 @@
-***
-
 ### 2. `k3s.md` (Lightweight Edge Kubernetes)
-
-```markdown
 # Harbor Satellite — K3s Integration
 
 K3s is highly optimized for edge environments. Unlike kubeadm, K3s manages its containerd configuration centrally via `registries.yaml`. This guide covers deploying Harbor Satellite on K3s.
@@ -50,7 +46,7 @@ spec:
                 docker.io:
                   endpoint:
                     - "http://localhost:5000"
-                    - "[https://registry-1.docker.io](https://registry-1.docker.io)"
+                    - "https://registry-1.docker.io"
               configs:
                 "localhost:5000":
                   tls:

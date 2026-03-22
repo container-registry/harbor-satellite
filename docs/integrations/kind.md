@@ -1,8 +1,4 @@
-***
-
 ### 3. `kind.md` (Kubernetes IN Docker for Local Testing)
-
-```markdown
 # Harbor Satellite — kind Integration
 
 `kind` (Kubernetes IN Docker) is ideal for locally testing Harbor Satellite. Because kind nodes run entirely inside Docker containers, we configure the registry mirror at the time of cluster creation.
@@ -27,7 +23,7 @@ nodes:
 containerdConfigPatches:
 - |-
   [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-    endpoint = ["http://localhost:5000", "[https://registry-1.docker.io](https://registry-1.docker.io)"]
+    endpoint = ["http://localhost:5000", "https://registry-1.docker.io"]
   [plugins."io.containerd.grpc.v1.cri".registry.configs."localhost:5000".tls]
     insecure_skip_verify = true
 EOF
@@ -55,6 +51,7 @@ curl -s -X POST http://localhost:8080/api/groups/sync \
 curl -s -X POST http://localhost:8080/api/groups/satellite \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{"satellite":"kind-satellite","group":"k8s-images"}'
+
 Step 3 — Deploy Satellite DaemonSet
 Because kind nodes are isolated Docker containers, hostNetwork: true binds to the kind node's network, effectively making localhost:5000 resolvable by containerd inside the node.
 
