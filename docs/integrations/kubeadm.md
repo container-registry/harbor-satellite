@@ -136,7 +136,7 @@ spec:
             - |
               mkdir -p /host/etc/containerd/certs.d/docker.io
               cat > /host/etc/containerd/certs.d/docker.io/hosts.toml << 'TOML'
-              server = "[https://registry-1.docker.io]"
+              server = "https://registry-1.docker.io"
               [host."http://localhost:5000"]
                 capabilities = ["pull", "resolve"]
                 skip_verify = true
