@@ -1,0 +1,406 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.6.1 Chrome/142.0.7444.265 Electron/39.8.0 Safari/537.36" version="29.6.1">
+  <diagram id="parsec-harbor-architecture" name="PARSEC-Harbor Architecture">
+    <mxGraphModel dx="2216" dy="1171" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=24;fontStyle=1" value="PARSEC Integration with Harbor - System Architecture" vertex="1">
+          <mxGeometry height="40" width="730" x="460" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="harbor-layer" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=top;fontSize=16;fontStyle=1" value="Harbor Application Layer" vertex="1">
+          <mxGeometry height="160" width="1400" x="100" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="harbor-core" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" value="Harbor Core&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="150" x="150" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="harbor-core-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" value="- API Server&#xa;- Authentication&#xa;- Authorization&#xa;- Webhooks" vertex="1">
+          <mxGeometry height="50" width="140" x="155" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="harbor-registry" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" value="Registry Service&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="150" x="350" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="harbor-registry-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" value="- Image Storage&#xa;- Distribution&#xa;- Content Trust&#xa;- Replication" vertex="1">
+          <mxGeometry height="50" width="140" x="355" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="job-service" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1;arcSize=31;" value="Job Service&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="150" x="551" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="job-service-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" value="- Scan Jobs&#xa;- Replication&#xa;- Garbage Collection&#xa;- Retention" vertex="1">
+          <mxGeometry height="50" width="140" x="555" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="portal" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" value="Portal (UI)&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="150" x="750" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="portal-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" value="- Web Interface&#xa;- User Management&#xa;- Key Management&#xa;- Configuration" vertex="1">
+          <mxGeometry height="50" width="140" x="755" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="notary" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" value="Notary(2) Service&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="150" x="950" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="notary-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" value="- Image Signing&#xa;- Signature Verify&#xa;- Trust Delegation&#xa;- Content Trust" vertex="1">
+          <mxGeometry height="50" width="140" x="955" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="database" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" value="Database&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="150" x="1150" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="database-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" value="- PostgreSQL&#xa;- Metadata&#xa;- User Data&#xa;- Audit Logs" vertex="1">
+          <mxGeometry height="50" width="140" x="1155" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="nginx" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1;arcSize=26;" value="NGINX (TLS)&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="120" x="1350" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="nginx-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10;" value="- Reverse Proxy&#xa;- TLS Term&#xa;- Load Balance" vertex="1">
+          <mxGeometry height="50" width="110" x="1355" y="175" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-client-layer" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=16;fontStyle=1;verticalAlign=top;" value="Harbor PARSEC Client Library (Go)" vertex="1">
+          <mxGeometry height="120" width="1400" x="100" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="cert-manager" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1" value="Certificate Manager&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="180" x="150" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="cert-manager-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- Key Generation&#xa;- Cert Generation&#xa;- TLS Config&#xa;- Cert Rotation" vertex="1">
+          <mxGeometry height="40" width="170" x="155" y="405" as="geometry" />
+        </mxCell>
+        <mxCell id="signing-manager" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1" value="Signing Manager&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="180" x="370" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="signing-manager-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- Image Signing&#xa;- JWT Signing&#xa;- Signature Verify&#xa;- Key Management" vertex="1">
+          <mxGeometry height="40" width="170" x="375" y="405" as="geometry" />
+        </mxCell>
+        <mxCell id="encryption-manager" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1" value="Encryption Manager&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="180" x="590" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="encryption-manager-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- DB Encryption&#xa;- Secret Encryption&#xa;- Key Wrapping&#xa;- Data Protection" vertex="1">
+          <mxGeometry height="55" width="170" x="595" y="405" as="geometry" />
+        </mxCell>
+        <mxCell id="attestation-manager" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1" value="Attestation Manager&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="180" x="810" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="attestation-manager-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- Quote Generation&#xa;- Quote Verification&#xa;- Platform Identity&#xa;- Integrity Check" vertex="1">
+          <mxGeometry height="40" width="170" x="815" y="405" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-client" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1" value="PARSEC Go Client&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="200" x="1030" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-client-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- Wire Protocol&#xa;- Socket Communication&#xa;- Request/Response&#xa;- Error Handling" vertex="1">
+          <mxGeometry height="40" width="190" x="1035" y="405" as="geometry" />
+        </mxCell>
+        <mxCell id="config-manager" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1" value="Config Manager&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="70" width="200" x="1270" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="config-manager-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- Provider Selection&#xa;- Authenticator Config&#xa;- Connection Pool&#xa;- Fallback Logic" vertex="1">
+          <mxGeometry height="40" width="190" x="1275" y="405" as="geometry" />
+        </mxCell>
+        <mxCell id="ipc-layer" edge="1" parent="1" style="shape=flexArrow;endArrow=classic;startArrow=classic;html=1;fillColor=#f8cecc;strokeColor=#b85450;width=20;endSize=6;startSize=6;" value="">
+          <mxGeometry height="100" relative="1" width="100" as="geometry">
+            <mxPoint x="800" y="490" as="sourcePoint" />
+            <mxPoint x="800" y="540" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ipc-label" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Unix Domain Socket&#xa;/run/parsec/parsec.sock" vertex="1">
+          <mxGeometry height="30" width="300" x="650" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-service-layer" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=16;fontStyle=1;verticalAlign=top;" value="PARSEC Service (Rust)" vertex="1">
+          <mxGeometry height="180" width="1400" x="100" y="560" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-frontend" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1" value="Front End&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="200" x="150" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-frontend-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- Listener (Unix Socket)&#xa;- Request Parser&#xa;- Response Builder" vertex="1">
+          <mxGeometry height="30" width="190" x="155" y="625" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-auth" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1" value="Authenticator&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="200" x="400" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-auth-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- UnixPeerCredentials&#xa;- Direct Auth&#xa;- JWT SVID" vertex="1">
+          <mxGeometry height="30" width="190" x="405" y="625" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-dispatcher" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1" value="Dispatcher&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="200" x="650" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-dispatcher-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- Operation Router&#xa;- Provider Selection&#xa;- Request Handler" vertex="1">
+          <mxGeometry height="30" width="190" x="655" y="625" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-kim" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1" value="Key Info Manager&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="200" x="900" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-kim-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- SQLite Backend&#xa;- Key Mappings&#xa;- Metadata Storage" vertex="1">
+          <mxGeometry height="30" width="190" x="905" y="625" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-core" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1" value="Core Provider&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="150" x="1150" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-core-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- List Providers&#xa;- List Opcodes&#xa;- Ping" vertex="1">
+          <mxGeometry height="30" width="140" x="1155" y="625" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-threadpool" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1" value="Thread Pool&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="130" x="1340" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="parsec-threadpool-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- Worker Threads&#xa;- Request Queue&#xa;- Load Balance" vertex="1">
+          <mxGeometry height="30" width="120" x="1345" y="625" as="geometry" />
+        </mxCell>
+        <mxCell id="provider-layer" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=16;fontStyle=1;verticalAlign=top;" value="Crypto Provider Backends" vertex="1">
+          <mxGeometry height="160" width="1400" x="100" y="780" as="geometry" />
+        </mxCell>
+        <mxCell id="tpm-provider" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcccc;strokeColor=#b85450;fontSize=12;fontStyle=1" value="TPM Provider&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="180" x="150" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="tpm-provider-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- TPM 2.0 Support&#xa;- TCTI Interface&#xa;- Owner Hierarchy&#xa;- Endorsement Key" vertex="1">
+          <mxGeometry height="50" width="170" x="155" y="850" as="geometry" />
+        </mxCell>
+        <mxCell id="pkcs11-provider" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcccc;strokeColor=#b85450;fontSize=12;fontStyle=1" value="PKCS#11 Provider&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="180" x="370" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="pkcs11-provider-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- HSM Support&#xa;- Smart Cards&#xa;- Token Management&#xa;- Slot Selection" vertex="1">
+          <mxGeometry height="50" width="170" x="375" y="850" as="geometry" />
+        </mxCell>
+        <mxCell id="mbedcrypto-provider" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcccc;strokeColor=#b85450;fontSize=12;fontStyle=1" value="Mbed Crypto Provider&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="180" x="590" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="mbedcrypto-provider-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- Software Crypto&#xa;- PSA Crypto API&#xa;- No Hardware Req&#xa;- Development" vertex="1">
+          <mxGeometry height="50" width="170" x="595" y="850" as="geometry" />
+        </mxCell>
+        <mxCell id="cryptoauthlib-provider" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcccc;strokeColor=#b85450;fontSize=12;fontStyle=1" value="CryptoAuthLib Provider&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="180" x="810" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="cryptoauthlib-provider-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- ATECC508A&#xa;- ATECC608A&#xa;- Secure Elements&#xa;- IoT/Edge" vertex="1">
+          <mxGeometry height="50" width="170" x="820" y="850" as="geometry" />
+        </mxCell>
+        <mxCell id="trustedservice-provider" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcccc;strokeColor=#b85450;fontSize=12;fontStyle=1" value="Trusted Service Provider&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="180" x="1030" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="trustedservice-provider-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- ARM TrustZone&#xa;- Secure World&#xa;- TEE Support&#xa;- ARM Platform" vertex="1">
+          <mxGeometry height="50" width="170" x="1035" y="850" as="geometry" />
+        </mxCell>
+        <mxCell id="future-providers" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcccc;strokeColor=#b85450;fontSize=12;fontStyle=1;dashed=1" value="Future Providers&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="220" x="1250" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="future-providers-detail" parent="1" style="text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;" value="- Azure Key Vault&#xa;- AWS CloudHSM&#xa;- Google Cloud KMS&#xa;- Custom Providers" vertex="1">
+          <mxGeometry height="50" width="210" x="1255" y="850" as="geometry" />
+        </mxCell>
+        <mxCell id="hardware-layer" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=16;fontStyle=1;verticalAlign=top;" value="Hardware / Backend Systems" vertex="1">
+          <mxGeometry height="140" width="1400" x="100" y="980" as="geometry" />
+        </mxCell>
+        <mxCell id="tpm-hardware" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#b1ddf0;strokeColor=#10739e;fontSize=12;fontStyle=1" value="TPM 2.0 Hardware" vertex="1">
+          <mxGeometry height="60" width="120" x="180" y="1030" as="geometry" />
+        </mxCell>
+        <mxCell id="tpm-hardware-detail" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;" value="/dev/tpmrm0" vertex="1">
+          <mxGeometry height="15" width="120" x="180" y="1095" as="geometry" />
+        </mxCell>
+        <mxCell id="hsm-hardware" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#b1ddf0;strokeColor=#10739e;fontSize=12;fontStyle=1" value="HSM / Smart Card" vertex="1">
+          <mxGeometry height="60" width="120" x="400" y="1030" as="geometry" />
+        </mxCell>
+        <mxCell id="hsm-hardware-detail" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;" value="PKCS#11 Token" vertex="1">
+          <mxGeometry height="15" width="120" x="400" y="1095" as="geometry" />
+        </mxCell>
+        <mxCell id="software-crypto" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#b1ddf0;strokeColor=#10739e;fontSize=12;fontStyle=1" value="Software Crypto" vertex="1">
+          <mxGeometry height="60" width="120" x="620" y="1030" as="geometry" />
+        </mxCell>
+        <mxCell id="software-crypto-detail" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;" value="File-based Keys" vertex="1">
+          <mxGeometry height="15" width="120" x="620" y="1095" as="geometry" />
+        </mxCell>
+        <mxCell id="secure-element" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#b1ddf0;strokeColor=#10739e;fontSize=12;fontStyle=1" value="Secure Element" vertex="1">
+          <mxGeometry height="60" width="120" x="840" y="1030" as="geometry" />
+        </mxCell>
+        <mxCell id="secure-element-detail" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;" value="I2C/SPI Device" vertex="1">
+          <mxGeometry height="15" width="120" x="840" y="1095" as="geometry" />
+        </mxCell>
+        <mxCell id="trustzone" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#b1ddf0;strokeColor=#10739e;fontSize=12;fontStyle=1" value="TrustZone TEE" vertex="1">
+          <mxGeometry height="60" width="120" x="1060" y="1030" as="geometry" />
+        </mxCell>
+        <mxCell id="trustzone-detail" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;" value="ARM Secure World" vertex="1">
+          <mxGeometry height="15" width="120" x="1060" y="1095" as="geometry" />
+        </mxCell>
+        <mxCell id="cloud-kms" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#b1ddf0;strokeColor=#10739e;fontSize=12;fontStyle=1;dashed=1" value="Cloud KMS" vertex="1">
+          <mxGeometry height="60" width="120" x="1300" y="1030" as="geometry" />
+        </mxCell>
+        <mxCell id="cloud-kms-detail" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;" value="Future Support" vertex="1">
+          <mxGeometry height="15" width="120" x="1300" y="1095" as="geometry" />
+        </mxCell>
+        <mxCell id="conn1" edge="1" parent="1" source="harbor-core" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#d79b00;" target="cert-manager" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="750" y="550" as="sourcePoint" />
+            <mxPoint x="800" y="500" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn2" edge="1" parent="1" source="harbor-registry" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#d79b00;" target="signing-manager" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="750" y="550" as="sourcePoint" />
+            <mxPoint x="800" y="500" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn3" edge="1" parent="1" source="database" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#d79b00;" target="encryption-manager" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="750" y="550" as="sourcePoint" />
+            <mxPoint x="800" y="500" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn4" edge="1" parent="1" source="notary" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#d79b00;" target="attestation-manager" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="750" y="550" as="sourcePoint" />
+            <mxPoint x="800" y="500" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn5" edge="1" parent="1" source="nginx" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#d79b00;" target="config-manager" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="750" y="550" as="sourcePoint" />
+            <mxPoint x="800" y="500" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn6" edge="1" parent="1" source="parsec-client" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=3;strokeColor=#9673a6;startArrow=classic;startFill=1;" target="parsec-dispatcher" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="750" y="650" as="sourcePoint" />
+            <mxPoint x="800" y="600" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn7" edge="1" parent="1" source="tpm-provider" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;strokeWidth=2;strokeColor=#10739e;" target="tpm-hardware" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="750" y="950" as="sourcePoint" />
+            <mxPoint x="800" y="900" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn8" edge="1" parent="1" source="pkcs11-provider" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;strokeWidth=2;strokeColor=#10739e;" target="hsm-hardware" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="750" y="950" as="sourcePoint" />
+            <mxPoint x="800" y="900" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn9" edge="1" parent="1" source="mbedcrypto-provider" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;strokeWidth=2;strokeColor=#10739e;" target="software-crypto" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="750" y="950" as="sourcePoint" />
+            <mxPoint x="800" y="900" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn10" edge="1" parent="1" source="cryptoauthlib-provider" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;strokeWidth=2;strokeColor=#10739e;" target="secure-element" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="750" y="950" as="sourcePoint" />
+            <mxPoint x="800" y="900" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="conn11" edge="1" parent="1" source="trustedservice-provider" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;strokeWidth=2;strokeColor=#10739e;" target="trustzone" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="750" y="950" as="sourcePoint" />
+            <mxPoint x="800" y="900" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontSize=14;fontStyle=1" value="Legend" vertex="1">
+          <mxGeometry height="320" width="220" x="1550" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="legend1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="" vertex="1">
+          <mxGeometry height="20" width="30" x="1570" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="legend1-text" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="Harbor Components" vertex="1">
+          <mxGeometry height="30" width="150" x="1610" y="135" as="geometry" />
+        </mxCell>
+        <mxCell id="legend2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="" vertex="1">
+          <mxGeometry height="20" width="30" x="1570" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="legend2-text" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="PARSEC Client Library" vertex="1">
+          <mxGeometry height="30" width="150" x="1610" y="165" as="geometry" />
+        </mxCell>
+        <mxCell id="legend3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="" vertex="1">
+          <mxGeometry height="20" width="30" x="1570" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="legend3-text" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="PARSEC Service" vertex="1">
+          <mxGeometry height="30" width="150" x="1610" y="195" as="geometry" />
+        </mxCell>
+        <mxCell id="legend4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="" vertex="1">
+          <mxGeometry height="20" width="30" x="1570" y="230" as="geometry" />
+        </mxCell>
+        <mxCell id="legend4-text" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="Crypto Providers" vertex="1">
+          <mxGeometry height="30" width="150" x="1610" y="225" as="geometry" />
+        </mxCell>
+        <mxCell id="legend5" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=5;fillColor=#b1ddf0;strokeColor=#10739e;" value="" vertex="1">
+          <mxGeometry height="25" width="30" x="1570" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="legend5-text" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="Hardware/Backend" vertex="1">
+          <mxGeometry height="30" width="150" x="1610" y="257" as="geometry" />
+        </mxCell>
+        <mxCell id="legend6" edge="1" parent="1" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#d79b00;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="1570" y="305" as="sourcePoint" />
+            <mxPoint x="1600" y="305" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend6-text" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="API Calls" vertex="1">
+          <mxGeometry height="30" width="150" x="1610" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="legend7" edge="1" parent="1" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#9673a6;startArrow=classic;startFill=1;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="1570" y="335" as="sourcePoint" />
+            <mxPoint x="1600" y="335" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend7-text" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="IPC (Unix Socket)" vertex="1">
+          <mxGeometry height="30" width="150" x="1610" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="legend8" edge="1" parent="1" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#10739e;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="1570" y="365" as="sourcePoint" />
+            <mxPoint x="1600" y="365" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend8-text" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="Hardware Access" vertex="1">
+          <mxGeometry height="30" width="150" x="1610" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="benefits-box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=top;fontSize=14;fontStyle=1" value="Security Benefits" vertex="1">
+          <mxGeometry height="250" width="220" x="1550" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="benefit1" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;" value="✓ Hardware-backed Keys" vertex="1">
+          <mxGeometry height="25" width="190" x="1565" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="benefit2" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;" value="✓ Keys Never Leave TPM/HSM" vertex="1">
+          <mxGeometry height="25" width="190" x="1565" y="515" as="geometry" />
+        </mxCell>
+        <mxCell id="benefit3" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;" value="✓ Multi-tenancy Support" vertex="1">
+          <mxGeometry height="25" width="190" x="1565" y="540" as="geometry" />
+        </mxCell>
+        <mxCell id="benefit4" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;" value="✓ Platform Abstraction" vertex="1">
+          <mxGeometry height="25" width="190" x="1565" y="565" as="geometry" />
+        </mxCell>
+        <mxCell id="benefit5" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;" value="✓ Attestation Support" vertex="1">
+          <mxGeometry height="25" width="190" x="1565" y="590" as="geometry" />
+        </mxCell>
+        <mxCell id="benefit6" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;" value="✓ Audit Logging" vertex="1">
+          <mxGeometry height="25" width="190" x="1565" y="615" as="geometry" />
+        </mxCell>
+        <mxCell id="benefit7" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;" value="✓ Compliance (FIPS, CC)" vertex="1">
+          <mxGeometry height="25" width="190" x="1565" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="benefit8" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;" value="✓ Zero Trust Architecture" vertex="1">
+          <mxGeometry height="25" width="190" x="1565" y="665" as="geometry" />
+        </mxCell>
+        <mxCell id="usecases-box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=top;fontSize=14;fontStyle=1" value="Key Use Cases" vertex="1">
+          <mxGeometry height="240" width="220" x="1550" y="730" as="geometry" />
+        </mxCell>
+        <mxCell id="usecase1" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="• TLS Certificate Management" vertex="1">
+          <mxGeometry height="20" width="190" x="1565" y="765" as="geometry" />
+        </mxCell>
+        <mxCell id="usecase2" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="• Image Signing (Notary)" vertex="1">
+          <mxGeometry height="20" width="190" x="1565" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="usecase3" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="• Database Encryption" vertex="1">
+          <mxGeometry height="20" width="190" x="1565" y="815" as="geometry" />
+        </mxCell>
+        <mxCell id="usecase4" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="• JWT/API Token Signing" vertex="1">
+          <mxGeometry height="20" width="190" x="1565" y="840" as="geometry" />
+        </mxCell>
+        <mxCell id="usecase5" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="• Replication Authentication" vertex="1">
+          <mxGeometry height="20" width="190" x="1565" y="865" as="geometry" />
+        </mxCell>
+        <mxCell id="usecase6" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="• Platform Attestation" vertex="1">
+          <mxGeometry height="20" width="190" x="1565" y="890" as="geometry" />
+        </mxCell>
+        <mxCell id="usecase7" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="• Secrets Management" vertex="1">
+          <mxGeometry height="20" width="190" x="1565" y="915" as="geometry" />
+        </mxCell>
+        <mxCell id="usecase8" parent="1" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" value="• Workload Identity" vertex="1">
+          <mxGeometry height="20" width="190" x="1565" y="940" as="geometry" />
+        </mxCell>
+        <mxCell id="footer" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=2" value="PARSEC provides hardware-backed security for Harbor through a unified abstraction layer" vertex="1">
+          <mxGeometry height="30" width="600" x="500" y="1140" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
