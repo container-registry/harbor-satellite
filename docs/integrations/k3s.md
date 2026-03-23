@@ -6,7 +6,7 @@ K3s is highly optimized for edge environments. Unlike kubeadm, K3s manages its c
 
 ## Step 1 & 2 — Register and Deploy Satellite
 
-*(Note: Follow Step 1 and Step 2 exactly as documented in the kubeadm.md guide. The API calls and the Harbor Satellite DaemonSet are identical across Kubernetes distributions.)*
+Note: Follow Step 1 and Step 2 exactly as documented in the kubeadm.md guide. The API calls and the Harbor Satellite DaemonSet are identical across Kubernetes distributions.
 
 ## Step 3 — Configure K3s Registry Mirror (Automated)
 
