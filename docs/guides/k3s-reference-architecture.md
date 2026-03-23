@@ -21,7 +21,7 @@
 | 3 | [Security Model : SPIFFE/SPIRE Integration](#3-security-model--spiffespire-integration) |
 | 4 | [Connectivity Model](#4-connectivity-model) |
 | 5 | [Setup Guide : Method 1: Network-Based Registry Mirror](#5-setup-guide) |
-| 6 | [Setup Guide : Method 2: Absolute Air-Gap via Disk Auto-Import](#6-setup-guide) |
+| 6 | [Setup Guide : Method 2: Automated Air-Gap via Direct Delivery](#6-setup-guide) |
 | 7 | [Enterprise Use Cases](#7-enterprise-use-cases) |
 | 8 | [Ecosystem Alignment](#8-ecosystem-alignment) |
 | 9 | [References & Further Reading](#9-references--further-reading) |
@@ -40,7 +40,7 @@ Deploying Kubernetes at the edge introduces architectural challenges that are no
 |---|---|
 | **Workload failures during network partitions** | Local Zot cache serves images over the loopback interface; WAN status becomes irrelevant. |
 | **High bandwidth costs on metered links** | Layer-diff synchronization transfers only modified image layers, drastically reducing payload sizes. |
-| **Bootstrapping restricted clusters** | Disk-based auto-importing requires zero network configuration at deploy time. |
+| **Bootstrapping restricted clusters** | Automated direct delivery injects images into K3s auto-import without manual tarball handling. |
 | **Credential management at scale** | SPIFFE/SPIRE Zero-Touch Registration (ZTR) eliminates all static secrets from edge devices. |
 | **Widespread certificate rotation** | SPIRE Workload API rotates X.509 SVIDs automatically without application downtime. |
 
@@ -326,102 +326,120 @@ docker logs satellite | grep "nginx/blobs"
 ---
 
 ## 6. Setup Guide 
-## Method 2: Absolute Air-Gap via Disk Auto-Import
+## Method 2: Automated Air-Gap via Direct Delivery
 
-This guide details the **Disk-Based Auto-Import** method for integrating Harbor Satellite with K3s. This method relies entirely on the local filesystem and K3s's native containerd auto-import capabilities, providing an absolute air-gapped solution that survives total network outages and local registry failures.
+This guide documents the automated **Direct Delivery** workflow for integrating Harbor Satellite with K3s. Instead of manually running `docker pull`, `docker tag`, and `docker save`, Satellite writes image tarballs directly into the K3s import directory, where `containerd` loads them automatically.
 
-### Architectural Concept: Upstream Registry Retagging
+### Architectural Concept: Automated Tarball Injection
 
-Before exporting an image for offline use, it must be retagged to match the Central Harbor URL.
+When Direct Delivery is enabled, each synchronized artifact is written to the K3s image directory (`/var/lib/rancher/k3s/agent/images/`).
 
-**Why is this required?**
-In enterprise environments, Kubernetes Deployment manifests typically hardcode the upstream registry URL (e.g., `image: <CENTRAL_HARBOR_IP>:80/library/nginx:alpine`). When K3s is entirely offline and has no active registry mirror, it relies on a strict string-matching policy.
+**Why this matters:**
+K3s automatically imports tar archives placed in this directory. This preserves the original image reference (`<CENTRAL_HARBOR_IP>:80/library/nginx:alpine`) and removes manual export steps.
 
-If the image inside the tarball is labeled as `localhost:5050/...`, K3s will fail to match it with the deployment manifest's request for `<CENTRAL_HARBOR_IP>:80/...` and will attempt to reach the dead network. By retagging the image locally *before* creating the tarball, we satisfy K3s's strict string-matching requirements without needing to alter the original infrastructure-as-code manifests.
+Method 2 is fully automated after group assignment.
 
 ---
 
 ### Prerequisites
 
 * A Linux Edge node running **K3s**.
-* Harbor Satellite deployed and successfully synced with the required image (`library/nginx:alpine`) on port `5050`.
-* Root privileges to write to the K3s agent directory.
+* Method 1 completed through group assignment (`library/nginx:alpine` synced to `edge-01`).
+* Root privileges on the K3s node.
+* Ability to edit `deploy/quickstart/spiffe/join-token/external/sat/docker-compose.yml`.
 
 ---
 
-### Step 1: Retrieve and Retag the Image Locally
+### Step 1: Enable Direct Delivery in Satellite
 
-First, pull the synced image from the local Harbor Satellite instance and apply the upstream registry tag.
+Update the Satellite service so it can write to the host K3s image directory:
 
-```bash
-# Pull the image from the local Edge Satellite
-docker pull localhost:5050/library/nginx:alpine
-
-# Retag the image to match the upstream Central Harbor URL
-docker tag localhost:5050/library/nginx:alpine <CENTRAL_HARBOR_IP>:80/library/nginx:alpine
-```
-
----
-
-### Step 2: Export to the K3s Auto-Import Directory
-
-K3s includes a built-in filesystem watcher that monitors the `/var/lib/rancher/k3s/agent/images/` directory. Any `.tar` archives placed in this directory are automatically unpacked and loaded into the local containerd image store.
-
-```bash
-# Ensure the K3s auto-import directory exists
-sudo mkdir -p /var/lib/rancher/k3s/agent/images/
-
-# Export the retagged image directly into the auto-import directory
-sudo docker save <CENTRAL_HARBOR_IP>:80/library/nginx:alpine -o /var/lib/rancher/k3s/agent/images/nginx-offline.tar
-```
-
-*(Note: Allow 10–15 seconds for the K3s background process to detect and import the archive).*
-
----
-
-### Step 3: Clean Up Local Evidence (Optional but Recommended for Testing)
-
-To definitively prove the architecture relies on the auto-imported tarball and not the local Docker daemon cache, remove the images from the Docker engine.
-
-```bash
-docker rmi -f <CENTRAL_HARBOR_IP>:80/library/nginx:alpine
-docker rmi -f localhost:5050/library/nginx:alpine
+```yaml
+# deploy/quickstart/spiffe/join-token/external/sat/docker-compose.yml
+services:
+  satellite:
+    environment:
+      - DIRECT_DELIVERY=true
+      - IMAGE_DIR=/var/lib/rancher/k3s/agent/images
+    volumes:
+      - /var/lib/rancher/k3s/agent/images:/var/lib/rancher/k3s/agent/images
 ```
 
 ---
 
-### Step 4: Simulate Air-Gap and Deploy
-
-We will now sever all network components and attempt to deploy the pod utilizing the original Cloud URL.
-
-1. **Simulate Total Infrastructure Outage:**
-   Stop the Harbor Satellite and Ground Control containers to simulate a localized outage.
+Restart Satellite after editing:
 
 ```bash
-docker stop satellite spire-agent-satellite
+cd harbor-satellite/deploy/quickstart/spiffe/join-token/external/sat
+docker compose up -d satellite --build
+
+# Optional: confirm Direct Delivery is active
+docker logs satellite | grep -E "direct delivery enabled|Direct delivery: tarball written"
 ```
 
-2. **Deploy the Workload:**
-   Request the original upstream image. K3s will automatically utilize the archive loaded from the auto-import directory.
+If your target runtime is RKE2, use `/var/lib/rancher/rke2/agent/images` as `IMAGE_DIR`.
+
+---
+
+### Step 2: Trigger Sync and Verify Auto-Import
+
+From Ground Control, create the sync group and assign the satellite:
 
 ```bash
-kubectl run edge-offline-pod --image=<CENTRAL_HARBOR_IP>:80/library/nginx:alpine
+# Get Ground Control Bearer Token
+TOKEN=$(curl -sk -X POST "https://localhost:9080/login" -d '{"username":"admin","password":"<HARBOR_PASSWORD>"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+# Get image digest from Harbor
+DIGEST=$(curl -sk -u "admin:<HARBOR_PASSWORD>" "http://<CENTRAL_HARBOR_IP>/api/v2.0/projects/library/repositories/nginx/artifacts?q=tags%3Dalpine&page_size=1" | grep -m1 '"digest":' | cut -d'"' -f4)
+
+# Create sync group
+curl -sk -X POST "https://localhost:9080/api/groups/sync" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -d "{\"group\": \"edge-group\", \"registry\": \"http://<CENTRAL_HARBOR_IP>:80\", \"artifacts\": [{\"repository\": \"library/nginx\", \"tag\": [\"alpine\"], \"type\": \"image\", \"digest\": \"${DIGEST}\"}]}"
+
+# Assign satellite to group
+curl -sk -X POST "https://localhost:9080/api/groups/satellite" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -d '{"satellite": "edge-01", "group": "edge-group"}'
+
+# Confirm Satellite has the artifact
+curl -s http://127.0.0.1:5050/v2/_catalog
 ```
 
-3. **Verify Deployment:**
+---
+
+Allow 20-60 seconds for replication and auto-import, then validate that K3s sees the image:
 
 ```bash
-kubectl get pods
+sudo k3s crictl rmi --prune
+sudo k3s crictl images | grep "<CENTRAL_HARBOR_IP>:80/library/nginx"
 ```
 
-*The pod will transition to a `Running` state despite the network and local registry being entirely offline.*
+---
+
+### Step 3: Simulate Air-Gap and Deploy
+
+Run the offline validation using the original Harbor image reference:
+
+```bash
+# Simulate outage
+docker stop satellite spire-agent-satellite ground-control harbor-core harbor-db harbor-jobservice harbor-portal harbor-satellite-postgres harbor-log
+
+# Deploy with upstream Harbor URL (not localhost)
+sudo kubectl run test --image=<CENTRAL_HARBOR_IP>:80/library/nginx:alpine
+sudo kubectl get pod test
+```
+
+*Expected result: the pod reaches `Running` even with Satellite and Ground Control stopped, because K3s has already imported the image via Direct Delivery.*
 
 ### Verification Logging
 
-You can further verify the offline pull by checking the pod's event logs:
+You can further verify the offline cache hit with pod events:
 
 ```bash
-kubectl describe pod edge-offline-pod | grep "Container image"
+sudo kubectl describe pod test | grep "Container image"
 ```
 
 *You should see the event: `Container image "<CENTRAL_HARBOR_IP>:80/library/nginx:alpine" already present on machine`, confirming a successful offline cache hit.*
@@ -441,7 +459,7 @@ SUSE and Bosch have pioneered a hybrid cloud control architecture for Industrial
 
 * **The Edge Workloads:** The factory operates a local **Private 5G Network** (Open5gs, AMF, SMF, UPF components) combined with advanced service meshes (Istio/Envoy), networking policies (Cilium/eBPF), and observability stacks (Prometheus/Grafana).
 * **The Challenge:** These factory environments are heavily restricted or entirely air-gapped for security. A severed fiber link to the central cloud cannot be allowed to halt robotic manufacturing lines. If a local K3s node restarts, it must be able to pull these complex 5G and security images immediately to restore the control plane.
-* **The Solution:** Harbor Satellite acts as the localized OCI registry layer within this architecture. During authorized maintenance windows, Ground Control synchronizes the required 5G Core and security images to the local Satellite. If the WAN drops during production, K3s pulls the critical Open5gs, Cilium, and Istio images directly from `127.0.0.1:5050`. For fully isolated environments, **Method 2 (Tarball Drop)** injects these updates via secure USB media, ensuring continuous, uninterrupted manufacturing operations. *(Reference: [SUSE + Bosch Joint Architecture](https://www.suse.com/c/suse-and-bosch-pioneering-industrial-iot-with-a-hybrid-cloud-control-and-monitoring-architecture/))*
+* **The Solution:** Harbor Satellite acts as the localized OCI registry layer within this architecture. During authorized maintenance windows, Ground Control synchronizes the required 5G Core and security images to the local Satellite. If the WAN drops during production, K3s pulls the critical Open5gs, Cilium, and Istio images directly from `127.0.0.1:5050`. For fully isolated environments, **Method 2 (Automated Direct Delivery)** injects these updates into K3s auto-import, ensuring continuous, uninterrupted manufacturing operations. *(Reference: [SUSE + Bosch Joint Architecture](https://www.suse.com/c/suse-and-bosch-pioneering-industrial-iot-with-a-hybrid-cloud-control-and-monitoring-architecture/))*
 
 ### 7.3 Remote Fleet Management (Energy/Telecom)
 
