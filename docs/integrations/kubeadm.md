@@ -4,12 +4,11 @@ Standard Kubernetes clusters created with kubeadm use `containerd` as the defaul
 
 > **Note:** This guide uses **Token-based registration** for simplicity. For Zero-Trust identity, refer to the [SPIFFE/SPIRE Quickstart](../quickstart.md).
 
----
+## Step 1 — Register Satellite
 
-Step 1 — Register Satellite
 Run these commands on your Ground Control server to register the cluster and assign an image group.
 
-Bash
+```bash
 # 1. Login to Ground Control
 LOGIN_RESP=$(curl -s -X POST http://localhost:8080/login \
     -H "Content-Type: application/json" \
@@ -40,10 +39,13 @@ curl -s -X POST http://localhost:8080/api/groups/satellite \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{"satellite":"kubeadm-satellite","group":"k8s-images"}'
-Step 2 — Deploy Satellite DaemonSet
-Deploy the Satellite agents to the cluster. Update GC_IP, HARBOR_IP, and SAT_TOKEN before applying.
+```
 
-Bash
+## Step 2 — Deploy Satellite DaemonSet
+
+Deploy the Satellite agents to the cluster. Update `GC_IP`, `HARBOR_IP`, and `SAT_TOKEN` before applying.
+
+```bash
 GC_IP="<GROUND_CONTROL_IP>"
 HARBOR_IP="<HARBOR_IP>"
 SAT_TOKEN="<YOUR_TOKEN>"
@@ -53,7 +55,9 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: harbor-satellite
+
 ---
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -63,7 +67,9 @@ data:
   GROUND_CONTROL_URL: "http://${GC_IP}:8080"
   TOKEN: "${SAT_TOKEN}"
   HARBOR_REGISTRY_URL: "http://${HARBOR_IP}:8090"
+
 ---
+
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -102,11 +108,13 @@ EOF
 
 kubectl apply -f satellite-kubeadm.yaml
 kubectl rollout status daemonset/harbor-satellite -n harbor-satellite
+```
 
-Step 3 — Configure containerd Mirror (Automated)
-This DaemonSet runs a privileged Init Container to write the mirror configuration (hosts.toml) to every node and seamlessly restarts containerd.
+## Step 3 — Configure containerd Mirror (Automated)
 
-Bash
+This DaemonSet runs a privileged Init Container to write the mirror configuration (`hosts.toml`) to every node and seamlessly restarts containerd.
+
+```bash
 cat > mirror-config.yaml << 'EOF'
 apiVersion: apps/v1
 kind: DaemonSet
@@ -136,7 +144,7 @@ spec:
             - |
               mkdir -p /host/etc/containerd/certs.d/docker.io
               cat > /host/etc/containerd/certs.d/docker.io/hosts.toml << 'TOML'
-              server = "[https://registry-1.docker.io]"
+              server = "[https://registry-1.docker.io](https://registry-1.docker.io)"
               [host."http://localhost:5000"]
                 capabilities = ["pull", "resolve"]
                 skip_verify = true
@@ -155,8 +163,11 @@ spec:
 EOF
 
 kubectl apply -f mirror-config.yaml
-Step 4 — Verify
-Bash
+```
+
+## Step 4 — Verify
+
+```bash
 # 1. Wait for image sync
 sleep 30
 
@@ -167,3 +178,4 @@ kubectl wait pod test-nginx --for=condition=Ready --timeout=60s
 # 3. Check events to confirm local pull
 kubectl describe pod test-nginx | grep "Events" -A 10
 kubectl delete pod test-nginx
+```

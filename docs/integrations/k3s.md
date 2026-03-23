@@ -1,18 +1,18 @@
-### 2. `k3s.md` (Lightweight Edge Kubernetes)
 # Harbor Satellite — K3s Integration
 
 K3s is highly optimized for edge environments. Unlike kubeadm, K3s manages its containerd configuration centrally via `registries.yaml`. This guide covers deploying Harbor Satellite on K3s.
 
 > **Note:** This guide uses **Token-based registration** for simplicity. For Zero-Trust identity, refer to the [SPIFFE/SPIRE Quickstart](../quickstart.md).
 
----
-Step 1 & 2 — Register and Deploy Satellite
-(Note: Follow Step 1 and Step 2 exactly as documented in the kubeadm.md guide. The API calls and the Harbor Satellite DaemonSet are identical across Kubernetes distributions.)
+## Step 1 & 2 — Register and Deploy Satellite
 
-Step 3 — Configure K3s Registry Mirror (Automated)
-K3s requires mirror configurations to be placed in /etc/rancher/k3s/registries.yaml. This DaemonSet automatically generates this file across all K3s server and agent nodes and restarts the K3s service.
+*(Note: Follow Step 1 and Step 2 exactly as documented in the kubeadm.md guide. The API calls and the Harbor Satellite DaemonSet are identical across Kubernetes distributions.)*
 
-Bash
+## Step 3 — Configure K3s Registry Mirror (Automated)
+
+K3s requires mirror configurations to be placed in `/etc/rancher/k3s/registries.yaml`. This DaemonSet automatically generates this file across all K3s server and agent nodes and restarts the K3s service.
+
+```bash
 cat > k3s-mirror-config.yaml << 'EOF'
 apiVersion: apps/v1
 kind: DaemonSet
@@ -46,7 +46,7 @@ spec:
                 docker.io:
                   endpoint:
                     - "http://localhost:5000"
-                    - "https://registry-1.docker.io"
+                    - "[https://registry-1.docker.io](https://registry-1.docker.io)"
               configs:
                 "localhost:5000":
                   tls:
@@ -68,8 +68,11 @@ spec:
 EOF
 
 kubectl apply -f k3s-mirror-config.yaml
-Step 4 — Verify
-Bash
+```
+
+## Step 4 — Verify
+
+```bash
 # 1. Wait for image sync
 sleep 30
 
@@ -80,3 +83,4 @@ kubectl wait pod test-nginx --for=condition=Ready --timeout=60s
 # 3. Check events to confirm local pull
 kubectl describe pod test-nginx | grep "Events" -A 10
 kubectl delete pod test-nginx
+```

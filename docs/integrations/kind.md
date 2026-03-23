@@ -1,11 +1,8 @@
-### 3. `kind.md` (Kubernetes IN Docker for Local Testing)
 # Harbor Satellite — kind Integration
 
 `kind` (Kubernetes IN Docker) is ideal for locally testing Harbor Satellite. Because kind nodes run entirely inside Docker containers, we configure the registry mirror at the time of cluster creation.
 
 > **Note:** This guide assumes Harbor and Ground Control are reachable from your host machine's Docker network.
-
----
 
 ## Step 1 — Create kind Cluster with Mirror Config
 
@@ -23,16 +20,19 @@ nodes:
 containerdConfigPatches:
 - |-
   [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-    endpoint = ["http://localhost:5000", "https://registry-1.docker.io"]
+    endpoint = ["http://localhost:5000", "[https://registry-1.docker.io](https://registry-1.docker.io)"]
   [plugins."io.containerd.grpc.v1.cri".registry.configs."localhost:5000".tls]
     insecure_skip_verify = true
 EOF
 
 kind create cluster --config kind-cluster.yaml
-Step 2 — Register Satellite
+```
+
+## Step 2 — Register Satellite
+
 Run these commands on your Ground Control server:
 
-Bash
+```bash
 # 1. Login
 AUTH_TOKEN=$(curl -s -X POST http://localhost:8080/login -d '{"username":"admin","password":"Harbor12345"}' | jq -r '.token')
 
@@ -51,11 +51,13 @@ curl -s -X POST http://localhost:8080/api/groups/sync \
 curl -s -X POST http://localhost:8080/api/groups/satellite \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{"satellite":"kind-satellite","group":"k8s-images"}'
+```
 
-Step 3 — Deploy Satellite DaemonSet
-Because kind nodes are isolated Docker containers, hostNetwork: true binds to the kind node's network, effectively making localhost:5000 resolvable by containerd inside the node.
+## Step 3 — Deploy Satellite DaemonSet
 
-Bash
+Because kind nodes are isolated Docker containers, `hostNetwork: true` binds to the kind node's network, effectively making `localhost:5000` resolvable by containerd inside the node.
+
+```bash
 GC_IP="<GROUND_CONTROL_IP>"
 HARBOR_IP="<HARBOR_IP>"
 
@@ -64,7 +66,9 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: harbor-satellite
+
 ---
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -74,7 +78,9 @@ data:
   GROUND_CONTROL_URL: "http://${GC_IP}:8080"
   TOKEN: "${SAT_TOKEN}"
   HARBOR_REGISTRY_URL: "http://${HARBOR_IP}:8090"
+
 ---
+
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -113,10 +119,14 @@ EOF
 
 kubectl apply -f satellite-kind.yaml
 kubectl rollout status daemonset/harbor-satellite -n harbor-satellite
-Step 4 — Verify
-Bash
+```
+
+## Step 4 — Verify
+
+```bash
 sleep 30
 kubectl run test-nginx --image=nginx:alpine --restart=Never
 kubectl wait pod test-nginx --for=condition=Ready --timeout=60s
 kubectl describe pod test-nginx | grep "Events" -A 10
 kubectl delete pod test-nginx
+```
