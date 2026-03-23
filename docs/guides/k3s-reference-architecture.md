@@ -520,9 +520,6 @@ Harbor Satellite serves as a critical **registry layer** within the broader SUSE
 | **Elemental** | Node provisioning automatically registers the Harbor Satellite via ZTR, providing end-to-end zero-touch edge bootstrapping. |
 
 ---
-
-> Note: SPIFFE/SPIRE is intentionally covered in the dedicated security section above as a cross-cutting identity layer, rather than a SUSE-edge component row.
-
 ## 9. References & Further Reading
 
 To explore the underlying technologies and concepts discussed in this reference architecture, consult the following official resources:
