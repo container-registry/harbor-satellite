@@ -486,13 +486,13 @@ sudo kubectl describe pod test | grep "Container image"
 * **Challenge:** A WAN outage at a retail store prevents POS terminals from restarting, halting revenue.
 * **Solution:** Satellites cache critical POS images locally. If the WAN fails, terminals pull from `127.0.0.1:5050`. Updates are staged geographically via Ground Control groups to prevent global WAN saturation.
 
-### 7.2 Industrial IoT / Manufacturing (SUSE + Bosch Private 5G)
+### 7.2 Industrial IoT / Manufacturing (SUSE + Bosch IIoT)
 
-SUSE and Bosch have pioneered a hybrid cloud control architecture for Industrial IoT (IIoT), deploying highly complex microservices directly onto the factory floor via **K3s**.
+SUSE and Bosch describe a hybrid cloud control and monitoring architecture for Industrial IoT (IIoT), where edge environments must remain secure and operational under constrained connectivity.
 
-* **The Edge Workloads:** The factory operates a local **Private 5G Network** (Open5gs, AMF, SMF, UPF components) combined with advanced service meshes (Istio/Envoy), networking policies (Cilium/eBPF), and observability stacks (Prometheus/Grafana).
-* **The Challenge:** These factory environments are heavily restricted or entirely air-gapped for security. A severed fiber link to the central cloud cannot be allowed to halt robotic manufacturing lines. If a local K3s node restarts, it must be able to pull these complex 5G and security images immediately to restore the control plane.
-* **The Solution:** Harbor Satellite acts as the localized OCI registry layer within this architecture. During authorized maintenance windows, Ground Control synchronizes the required 5G Core and security images to the local Satellite. If the WAN drops during production, K3s pulls the critical Open5gs, Cilium, and Istio images directly from `127.0.0.1:5050`. For fully isolated environments, **Method 2 (Automated Direct Delivery)** injects these updates into K3s auto-import, ensuring continuous, uninterrupted manufacturing operations. *(Reference: [SUSE + Bosch Joint Architecture](https://www.suse.com/c/suse-and-bosch-pioneering-industrial-iot-with-a-hybrid-cloud-control-and-monitoring-architecture/))*
+* **The Edge Workloads:** Manufacturing control, monitoring, and analytics workloads run on local edge Kubernetes nodes.
+* **The Challenge:** Industrial sites often run on restricted networks and cannot afford downtime when WAN links degrade or fail.
+* **The Solution:** Harbor Satellite acts as the local OCI registry layer. During connectivity windows, Ground Control synchronizes required images to each site. During outages, K3s pulls from the local Satellite mirror (`127.0.0.1:5050`), and for fully isolated environments, **Method 2 (Automated Direct Delivery)** preloads images into K3s auto-import. *(Reference: [SUSE + Bosch Joint Architecture](https://www.suse.com/c/suse-and-bosch-pioneering-industrial-iot-with-a-hybrid-cloud-control-and-monitoring-architecture/))*
 
 ### 7.3 Remote Fleet Management (Energy/Telecom)
 
@@ -518,9 +518,10 @@ Harbor Satellite serves as a critical **registry layer** within the broader SUSE
 | **ATIP (Adaptive Telecom Infrastructure Platform)** | Complements telecom edge platforms with local image availability under constrained WAN links. |
 | **Akri** | Works with edge device discovery workflows by ensuring discovered workloads have local image availability. |
 | **Elemental** | Node provisioning automatically registers the Harbor Satellite via ZTR, providing end-to-end zero-touch edge bootstrapping. |
-| **SPIFFE/SPIRE** | Replaces all rigid credential arrays with ephemeral cryptographic machine identities. |
 
 ---
+
+> Note: SPIFFE/SPIRE is intentionally covered in the dedicated security section above as a cross-cutting identity layer, rather than a SUSE-edge component row.
 
 ## 9. References & Further Reading
 
@@ -537,6 +538,10 @@ To explore the underlying technologies and concepts discussed in this reference 
 * **[K3s Private Registry Configuration](https://docs.k3s.io/installation/private-registry)**  : *Official Rancher/K3s documentation detailing how to configure `registries.yaml` for mirror routing and auto-importing.*
 * **[SUSE + Bosch IIoT Architecture](https://www.suse.com/c/suse-and-bosch-pioneering-industrial-iot-with-a-hybrid-cloud-control-and-monitoring-architecture/)** : *The real-world enterprise case study demonstrating K3s running mission-critical workloads on restricted factory floors.*
 * **[SUSE Edge Framework](https://documentation.suse.com/suse-edge/3.4/single-html/edge/edge.html)** : *Broader documentation on integrating SLE Micro, K3s, and GitOps at the edge.*
+* **[Rancher Fleet Overview](https://ranchermanager.docs.rancher.com/v2.10/integrations-in-rancher/fleet/overview)** : *Official Fleet overview for multi-cluster GitOps operations.*
+* **[SUSE ATIP Overview](https://documentation.suse.com/suse-edge/3.1/html/edge/atip.html)** : *SUSE documentation for the Adaptive Telecom Infrastructure Platform (ATIP).*
+* **[SUSE Edge Akri Component](https://documentation.suse.com/en-us/suse-edge/3.1/html/edge/components-akri.html)** : *SUSE documentation for Akri integration in edge environments.*
+* **[SUSE Edge Elemental Component](https://documentation.suse.com/suse-edge/3.5/html/edge/components-elemental.html)** : *SUSE documentation for Elemental-based node onboarding and lifecycle.*
 
 ### Security & Identity (Zero-Trust)
 
