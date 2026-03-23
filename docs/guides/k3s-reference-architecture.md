@@ -20,8 +20,8 @@
 | 2 | [Reference Architecture](#2-reference-architecture) |
 | 3 | [Security Model : SPIFFE/SPIRE Integration](#3-security-model--spiffespire-integration) |
 | 4 | [Connectivity Model](#4-connectivity-model) |
-| 5 | [Setup Guide : Method 1: Network-Based Registry Mirror](#5-setup-guide) |
-| 6 | [Setup Guide : Method 2: Automated Air-Gap via Direct Delivery](#6-setup-guide) |
+| 5 | [Setup Guide: Method 1 - Network-Based Registry Mirror](#setup-method-1) |
+| 6 | [Setup Guide: Method 2 - Automated Air-Gap via Direct Delivery](#setup-method-2) |
 | 7 | [Enterprise Use Cases](#7-enterprise-use-cases) |
 | 8 | [Ecosystem Alignment](#8-ecosystem-alignment) |
 | 9 | [References & Further Reading](#9-references--further-reading) |
@@ -124,6 +124,21 @@ Distributing static registry credentials (`docker login` tokens) to thousands of
 * **Automated Rotation:** SVIDs maintain a strict Time-To-Live (TTL). The SPIRE Workload API seamlessly renews certificates before expiration, eliminating maintenance windows and human intervention.
 * **Hardware-Change Protection:** Credentials are encrypted at rest using a device fingerprint derived from the `machine-id`, MAC address, and disk serial number. If an edge device is physically stolen or its storage is cloned, the credentials become unreadable.
 
+### 3.3 SPIRE Attestation Methods for K3s Edge Nodes
+
+Harbor Satellite supports multiple SPIRE node attestation methods:
+
+| Method | Best Fit | Notes |
+| --- | --- | --- |
+| **join-token** | Fast onboarding, test environments | One-time token flow with minimal prerequisites. |
+| **x509pop** | Production PKI environments | Uses pre-provisioned X.509 certs for proof-of-possession attestation. |
+| **sshpop** | SSH CA-backed environments | Uses host SSH identity for proof-of-possession attestation. |
+
+### 3.4 Trust Domain Design
+
+- **Single trust domain:** Recommended when cloud and edge are under one platform/security team.
+- **Federated trust domains:** Recommended when multiple organizations, regions, or teams need separate trust roots with controlled federation between them.
+
 ---
 
 ## 4. Connectivity Model
@@ -136,7 +151,7 @@ The Satellite utilizes three concurrent scheduling loops:
 
 | Scheduler | Default Interval | Behavior |
 | --- | --- | --- |
-| **State Replication** | 10 seconds | Fetches the desired state from Harbor; pulls missing layers; purges stale artifacts. |
+| **State Replication** | 10 seconds | Fetches desired state from Ground Control, then pulls missing layers from Harbor and purges stale artifacts. |
 | **Telemetry Heartbeat** | 30 seconds | Transmits CPU, memory, disk utilization, and local inventory to Ground Control. |
 | **Registration** | 30 seconds (Retry) | Re-authenticates via ZTR to refresh Harbor credentials if required. |
 
@@ -154,16 +169,20 @@ During a WAN partition, the State Replication and Heartbeat schedulers enter a s
 
 ---
 
-## 5. Setup Guide 
-## Method 1: Network-Based Registry Mirror
+<a id="setup-method-1"></a>
+
+## 5. Setup Guide: Method 1 - Network-Based Registry Mirror
 
 This guide provides end-to-end instructions on how to integrate Harbor Satellite with K3s. By the end of this guide, you will have a resilient Edge node capable of deploying container workloads even when completely disconnected from the central cloud registry.
+This reference uses the **standalone Satellite deployment** path on K3s nodes (valid scope: `DaemonSet` or standalone).
 
 ### Prerequisites
 
 * A Linux machine (Edge Node) with **K3s** installed.
+* A reachable **Central Harbor Registry** with at least one test image.
+* **Ground Control** deployment for group/config orchestration.
+* **SPIRE Server + SPIRE Agents** (Ground Control side and Edge side).
 * **Docker** and **Docker Compose** installed.
-* Access to deploy a Central Harbor Registry.
 
 ---
 
@@ -218,16 +237,29 @@ sudo systemctl restart k3s
 sudo k3s crictl rmi --prune
 ```
 
+3. **Alternative Mirror Configuration via Satellite Flag (Optional):**
+
+If Satellite is launched directly, you can configure containerd mirror wiring with:
+
+```bash
+go run cmd/main.go \
+  --token "<token>" \
+  --ground-control-url "https://<GROUND_CONTROL_HOST>:9080" \
+  --mirrors=containerd:docker.io
+```
+
 ---
 
 ### Step 3: Deploy Ground Control & Satellite (Zero-Touch)
 
 Deploy the Harbor Satellite components. This utilizes SPIFFE/SPIRE for Zero-Touch Registration (ZTR), automatically authenticating the Edge node without manual secrets.
+This walkthrough uses the **external SPIRE** quickstart; embedded SPIRE is an alternative deployment model.
+The setup scripts start the required SPIRE agents (including the edge-side agent on the K3s node).
 
 1. **Start Ground Control:**
 
 ```bash
-cd harbor-satellite/deploy/quickstart/spiffe/join-token/external/gc
+cd deploy/quickstart/spiffe/join-token/external/gc
 HARBOR_URL=http://<CENTRAL_HARBOR_IP>:80 ./setup.sh
 ```
 
@@ -325,8 +357,9 @@ docker logs satellite | grep "nginx/blobs"
 
 ---
 
-## 6. Setup Guide 
-## Method 2: Automated Air-Gap via Direct Delivery
+<a id="setup-method-2"></a>
+
+## 6. Setup Guide: Method 2 - Automated Air-Gap via Direct Delivery
 
 This guide documents the automated **Direct Delivery** workflow for integrating Harbor Satellite with K3s. Instead of manually running `docker pull`, `docker tag`, and `docker save`, Satellite writes image tarballs directly into the K3s import directory, where `containerd` loads them automatically.
 
@@ -370,7 +403,7 @@ services:
 Restart Satellite after editing:
 
 ```bash
-cd harbor-satellite/deploy/quickstart/spiffe/join-token/external/sat
+cd deploy/quickstart/spiffe/join-token/external/sat
 docker compose up -d satellite --build
 
 # Optional: confirm Direct Delivery is active
@@ -480,8 +513,10 @@ Harbor Satellite serves as a critical **registry layer** within the broader SUSE
 | Component | Integration Value |
 | --- | --- |
 | **K3s** | Native integration via `registries.yaml` or auto-import; requires zero external CRDs or operators. |
-| **SLE Micro** | Harbor Satellite executes seamlessly atop immutable, read-only operating systems. |
+| **SUSE Edge 3.x Stack (SLE Micro + K3s + Rancher)** | Satellite serves as the local registry layer while the SUSE stack handles OS, orchestration, and lifecycle. |
 | **Rancher Fleet** | While Fleet synchronizes GitOps YAML manifests, Satellite guarantees the binary image blobs are physically present at the edge site before execution. |
+| **ATIP (Adaptive Telecom Infrastructure Platform)** | Complements telecom edge platforms with local image availability under constrained WAN links. |
+| **Akri** | Works with edge device discovery workflows by ensuring discovered workloads have local image availability. |
 | **Elemental** | Node provisioning automatically registers the Harbor Satellite via ZTR, providing end-to-end zero-touch edge bootstrapping. |
 | **SPIFFE/SPIRE** | Replaces all rigid credential arrays with ephemeral cryptographic machine identities. |
 
@@ -506,5 +541,6 @@ To explore the underlying technologies and concepts discussed in this reference 
 ### Security & Identity (Zero-Trust)
 
 * **[SPIFFE & SPIRE Architecture](https://spiffe.io/docs/latest/spire-about/)** : *Foundational reading on how SPIFFE cryptographic identities and SPIRE workload attestation replace static secrets at scale.*
+* **[Harbor Satellite SPIFFE Quickstarts](https://github.com/container-registry/harbor-satellite/tree/main/deploy/quickstart/spiffe)** : *Join token, x509pop, and sshpop setup variants for practical deployment paths.*
 
 ---
