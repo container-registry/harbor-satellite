@@ -1,0 +1,13 @@
+harbor-team:
+  name: Harbor Satellite Team
+  role: Maintainers
+  bio: Building secure and reliable container registry distribution for edge environments.
+  repository: https://github.com/container-registry/harbor-satellite
+  github: https://github.com/container-registry/harbor-satellite
+
+aloui-ikram:
+  name: Ikram Aloui
+  role: Contributor
+  repository: https://github.com/Aloui-Ikram
+  github: https://github.com/Aloui-Ikram
+  avatar: https://media.licdn.com/dms/image/v2/D4D03AQH8ytxhT5OyHw/profile-displayphoto-scale_400_400/B4DZx0_I.SKYAo-/0/1771489235692?e=1775692800&v=beta&t=0Uy1yy1cbltfaWYGIkuhmxUSdVd7GJx6UQ2BZIYUkrI

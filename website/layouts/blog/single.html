@@ -1,0 +1,78 @@
+{{ define "main" }}
+{{ $root := . }}
+{{ $blogSection := .Site.GetPage "section" "blog" }}
+{{ $allPosts := slice }}
+{{ with $blogSection }}{{ $allPosts = .RegularPages.ByDate.Reverse }}{{ end }}
+{{ $authorName := "Harbor Satellite Team" }}
+{{ $authorRole := "" }}
+{{ $authorBio := "" }}
+{{ $authorURL := "" }}
+{{ $authorAvatar := "" }}
+{{ with .Params.author }}
+{{ $authorName = . }}
+{{ with index hugo.Data.authors . }}
+{{ with .name }}{{ $authorName = . }}{{ end }}
+{{ with .role }}{{ $authorRole = . }}{{ end }}
+{{ with .bio }}{{ $authorBio = . }}{{ end }}
+{{ with .repository }}{{ $authorURL = . }}{{ end }}
+{{ if eq $authorURL "" }}{{ with .github }}{{ $authorURL = . }}{{ end }}{{ end }}
+{{ with .avatar }}{{ $authorAvatar = . }}{{ end }}
+{{ end }}
+{{ end }}
+
+<section class="k3s-blog">
+  <div class="k3s-blog__layout">
+    <aside class="k3s-blog-sidebar" aria-label="All blog posts">
+      <p class="k3s-blog-sidebar__title">All our posts</p>
+      {{ range $allPosts.GroupByDate "2006" }}
+      <div class="k3s-blog-sidebar__year-group">
+        <h2 class="k3s-blog-sidebar__year">{{ .Key }}</h2>
+        <ul class="k3s-blog-sidebar__list">
+          {{ range .Pages }}
+          <li>
+            <a href="{{ .RelPermalink }}" class="k3s-blog-sidebar__link{{ if eq .RelPermalink $root.RelPermalink }} k3s-blog-sidebar__link--active{{ end }}">{{ .Title }}</a>
+          </li>
+          {{ end }}
+        </ul>
+      </div>
+      {{ end }}
+    </aside>
+
+    <article class="k3s-blog-article">
+      <h1 class="k3s-blog-article__title">{{ .Title }}</h1>
+      <p class="k3s-blog-article__date">{{ .Date.Format "January 2, 2006" }}</p>
+      <div class="k3s-blog-article__author">
+        {{ if ne $authorAvatar "" }}
+        <img class="k3s-blog-entry__avatar-image" src="{{ $authorAvatar }}" alt="{{ $authorName }} profile photo" loading="lazy">
+        {{ else }}
+        <span class="k3s-blog-entry__avatar" aria-hidden="true">{{ upper (substr $authorName 0 1) }}</span>
+        {{ end }}
+        <div>
+          {{ if ne $authorURL "" }}
+          <a class="k3s-blog-entry__author-name" href="{{ $authorURL }}" target="_blank" rel="noopener">{{ $authorName }}</a>
+          {{ else }}
+          <span class="k3s-blog-entry__author-name">{{ $authorName }}</span>
+          {{ end }}
+          {{ with $authorRole }}
+          <p class="k3s-blog-entry__author-role">{{ . }}</p>
+          {{ end }}
+        </div>
+      </div>
+      {{ with $authorBio }}
+      <p class="k3s-blog-article__author-bio">{{ . }}</p>
+      {{ end }}
+      {{ with .Params.tags }}
+      <p class="k3s-blog-entry__tags">
+        Tags:
+        {{ range $index, $tag := . }}
+        {{ if gt $index 0 }}, {{ end }}{{ $tag }}
+        {{ end }}
+      </p>
+      {{ end }}
+      <div class="docs-content k3s-blog-article__content">
+        {{ .Content }}
+      </div>
+    </article>
+  </div>
+</section>
+{{ end }}
