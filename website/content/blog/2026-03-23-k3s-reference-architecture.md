@@ -12,72 +12,105 @@ tags:
   - Zot
 ---
 
-This tutorial is based on my architecture notes and gives the full command flow I used. We keep one objective: make K3s pull images locally at the edge, with two implementation paths.
+Deploying Kubernetes at the edge introduces architectural challenges not seen in centralized datacenters. Edge nodes often run with intermittent, low-bandwidth, or metered connectivity. At scale, relying on a centralized registry over WAN becomes a fragile single point of failure.
 
-## What you will build
+Harbor Satellite mitigates this by placing a lightweight local OCI registry at each edge site, powered by Zot. It synchronizes layers from Central Harbor when connectivity is available, then serves local K3s workloads without external dependency.
 
-- A cloud control plane with Harbor + Ground Control + SPIRE.
-- An edge site with Harbor Satellite + K3s.
-- Local image delivery for K3s from `127.0.0.1:5050`.
+## 1. Introduction & Challenges Addressed
 
-## Challenges & Solutions
+### Challenges & Solutions
 
 | Edge challenge | Harbor Satellite solution |
 |---|---|
-| Workload failures during network partitions | Local Zot cache serves images over loopback; WAN becomes non-blocking for runtime pulls. |
-| High bandwidth costs on metered links | Layer-diff synchronization downloads only changed layers. |
-| Bootstrapping restricted clusters | Direct Delivery writes artifacts into K3s auto-import path. |
-| Credential management at scale | SPIFFE/SPIRE Zero-Touch Registration removes static secrets from edge devices. |
-| Certificate lifecycle overhead | SPIRE Workload API handles automated SVID rotation. |
+| Workload failures during network partitions | Local Zot cache serves images over loopback; WAN status becomes non-blocking for runtime pulls. |
+| High bandwidth costs on metered links | Layer-diff synchronization transfers only changed layers. |
+| Bootstrapping restricted clusters | Direct Delivery injects images into K3s auto-import path. |
+| Credential management at scale | SPIFFE/SPIRE Zero-Touch Registration (ZTR) removes static secrets from edge devices. |
+| Certificate lifecycle overhead | SPIRE Workload API rotates X.509 SVIDs automatically. |
 
-## Architecture
+## 2. Reference Architecture
+
+### 2.1 Network topology
+
+- Cloud/datacenter plane: central registry, fleet management, and identity authority.
+- Edge site plane: localized caching, workload runtime, and node attestation.
 
 ![Architecture Overview](/images/blog/architecture-overview.png)
 
-## Security model (SPIFFE/SPIRE)
+### 2.2 Diagram workflow
+
+| Flow | Description |
+|---|---|
+| Desired state | Satellite polls Ground Control for assignments, then pulls required OCI layers from Harbor over mTLS. |
+| Reconciliation loop | Satellite compares local state to cloud state, pulls new layers, and prunes stale content. |
+| Containerd mirroring | K3s `containerd` routes pulls to `127.0.0.1:5050` for local delivery. |
+| Event streaming | Event Forwarder/Executor handles telemetry and execution command exchange. |
+
+### 2.3 Component placement
+
+| Component | Deployment location | Primary role |
+|---|---|---|
+| Central Harbor | Cloud | Source of truth for enterprise images |
+| Ground Control | Cloud | Fleet orchestration and credential brokering |
+| SPIRE Server | Cloud | Root identity authority |
+| SPIRE Agent (GC) | Cloud | Issues SVIDs to Ground Control |
+| SPIRE Agent (Edge) | Edge node | Attests node and issues SVIDs to Satellite |
+| Harbor Satellite | Edge node | Local OCI cache and replication engine |
+| K3s + containerd | Edge node | Runtime configured to use the local mirror |
+
+## 3. Security Model: SPIFFE/SPIRE Integration
+
+Static registry credentials at edge scale are high risk. This architecture uses SPIFFE/SPIRE cryptographic identity with Zero-Touch Registration instead of distributing long-lived secrets.
 
 ![SPIFFE Security Model](/images/blog/spiffe-security-model.png)
 
-### Zero-Touch Registration (ZTR) provisioning flow
+### 3.1 Zero-Touch Registration provisioning flow
 
-1. Token generation: Admin registers a satellite in Ground Control, and SPIRE generates a one-time join token.
-2. Device attestation: Edge SPIRE Agent consumes the token and receives certificate-based identity.
-3. Workload identity: Harbor Satellite gets an X.509 SVID from the local SPIRE Agent.
-4. Credential brokering: Satellite presents SVID to Ground Control over mTLS; Ground Control verifies SPIFFE ID and issues scoped Harbor robot credentials.
-5. Steady state: Satellite stores credentials encrypted with device-bound material and continues autonomous sync.
+1. Token generation: Ground Control registers a new Satellite and SPIRE issues a one-time join token.
+2. Device attestation: Edge SPIRE Agent consumes the token and receives node identity.
+3. Workload identity: Harbor Satellite requests an X.509 SVID from local SPIRE Agent.
+4. Credential brokering: Satellite presents SVID to Ground Control over mTLS; Ground Control validates SPIFFE ID and returns scoped Harbor robot credentials.
+5. Steady state: Satellite encrypts credentials with device-bound fingerprint material and continues autonomous sync.
 
-### Rotation and hardware-bound protection
+### 3.2 Certificate rotation and device-bound encryption
 
-- Certificate rotation: SVIDs are short-lived and renewed automatically by SPIRE before expiration.
-- Hardware-bound encryption: credentials are encrypted at rest using device fingerprint attributes (for example machine-id, MAC, disk traits), reducing replay risk after disk cloning/theft.
+- Automated rotation: short-lived SVIDs are renewed by SPIRE before expiration.
+- Hardware-change protection: credentials are encrypted with a fingerprint derived from machine-id, MAC, and disk attributes.
 
-### SPIRE attestation methods
+### 3.3 SPIRE attestation methods
 
 | Method | Best fit | Notes |
 |---|---|---|
-| `join-token` | Fast onboarding and lab/test | One-time token, minimal prerequisites |
+| `join-token` | Fast onboarding and test environments | One-time token, minimal prerequisites |
 | `x509pop` | PKI-centric production environments | X.509 proof-of-possession attestation |
 | `sshpop` | SSH CA-backed fleets | SSH host identity proof-of-possession |
 
-## Connectivity model
+### 3.4 Trust domain design
 
-Harbor Satellite treats WAN as an optimization, not a runtime requirement.
+- Single trust domain: suitable when cloud and edge are managed by one platform/security team.
+- Federated trust domains: suitable when regions or organizations require separate trust roots.
 
-### Background schedulers
+## 4. Connectivity Model
+
+Harbor Satellite treats WAN as an optional optimization, not an operational requirement.
+
+### 4.1 Background schedulers
 
 | Scheduler | Interval | Behavior |
 |---|---|---|
-| State Replication | 10s | Fetch desired state, pull missing layers, prune stale artifacts |
-| Telemetry Heartbeat | 30s | Report resource and inventory status to Ground Control |
-| Registration retry | 30s | Re-authenticate to refresh credentials when required |
+| State Replication | 10 seconds | Fetch desired state, pull missing layers, prune stale artifacts |
+| Telemetry Heartbeat | 30 seconds | Report CPU/memory/disk and inventory status |
+| Registration retry | 30 seconds | Re-authenticate and refresh credentials when required |
 
-### Layer-Diff bandwidth optimization
+### 4.2 Bandwidth optimization with layer-diff
 
-1. Fetch image manifests from Harbor.
+1. Fetch lightweight image manifests from Harbor.
 2. Compare layer digests with local Zot cache.
-3. Pull only missing/changed layers.
+3. Pull only missing or changed layers.
 
-This avoids repeated full-image transfers across constrained links.
+### 4.3 WAN outage behavior
+
+When WAN is unavailable, replication and heartbeat enter retry mode. Local Zot on port `5050` remains operational, and K3s continues pulling images locally without disrupting workload startup.
 
 ---
 
