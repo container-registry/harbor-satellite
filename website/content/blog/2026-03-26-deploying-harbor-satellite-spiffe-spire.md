@@ -13,14 +13,6 @@ tags:
 
 This is a practical walkthrough to deploy Harbor Satellite with SPIFFE/SPIRE and validate offline image pulls.
 
-## Prerequisites
-
-- Linux machine with Docker and Docker Compose
-- `curl`, `grep`, `tar`, and `wget`
-- Harbor Satellite repository cloned locally
-- Harbor admin password available
-- Open ports: `80`, `9080`, `5050`
-
 ## What you will achieve
 
 - Run Central Harbor as source registry
