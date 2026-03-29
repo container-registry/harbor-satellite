@@ -158,6 +158,37 @@ func RobotAccountTemplate(name string, projects []string) *models.RobotCreate {
 	return robotAccount
 }
 
+// SatelliteModeNormal is the default satellite mode with group-based replication.
+const SatelliteModeNormal = "normal"
+
+// SatelliteModeProxyCache is the transparent proxy-cache satellite mode.
+const SatelliteModeProxyCache = "proxy-cache"
+
+// ProxyCacheRobotAccountTemplate creates a robot account with wildcard pull
+// access to all Harbor projects. Duration is set to -1 (no expiry).
+func ProxyCacheRobotAccountTemplate(name string) *models.RobotCreate {
+	return &models.RobotCreate{
+		Description: "managed by ground-control should not edit",
+		Disable:     false,
+		Duration:    -1,
+		Level:       "system",
+		Name:        name,
+		Permissions: GenProxyCacheRobotPerms(),
+	}
+}
+
+// GenProxyCacheRobotPerms generates a wildcard pull permission covering all
+// current and future Harbor projects.
+func GenProxyCacheRobotPerms() []*models.RobotPermission {
+	return []*models.RobotPermission{{
+		Access: []*models.Access{
+			{Action: "pull", Resource: "repository"},
+		},
+		Kind:      "project",
+		Namespace: "*",
+	}}
+}
+
 func GenRobotPerms(projects []string) []*models.RobotPermission {
 	robotAccess := []*models.Access{
 		{Action: "read", Resource: "artifact"},

@@ -61,6 +61,17 @@ func CreateRobotAccForSatellite(ctx context.Context, projects []string, name str
 	return robt.Payload, nil
 }
 
+// CreateProxyCacheRobotAcc creates a robot account with wildcard pull access
+// to all Harbor projects for use in proxy-cache mode.
+func CreateProxyCacheRobotAcc(ctx context.Context, name string) (*models.RobotCreated, error) {
+	robotTemp := harbor.ProxyCacheRobotAccountTemplate(name)
+	robt, err := harbor.CreateRobotAccount(ctx, robotTemp)
+	if err != nil {
+		return nil, fmt.Errorf("create proxy-cache robot account: %w", err)
+	}
+	return robt.Payload, nil
+}
+
 // Update robot account
 func UpdateRobotProjects(ctx context.Context, projects []string, id string) (*robot.UpdateRobotOK, error) {
 	ID, err := strconv.ParseInt(id, 10, 64)

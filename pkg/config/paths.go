@@ -10,12 +10,13 @@ import (
 
 // PathConfig holds all resolved file paths for satellite storage.
 type PathConfig struct {
-	ConfigDir      string
-	ConfigFile     string
-	PrevConfigFile string
-	ZotTempConfig  string
-	ZotStorageDir  string
-	StateFile      string
+	ConfigDir           string
+	ConfigFile          string
+	PrevConfigFile      string
+	ZotTempConfig       string
+	ZotStorageDir       string
+	StateFile           string
+	SyncCredentialsFile string
 }
 
 // expandPath expands ~ and ~/ to the user's home directory in paths.
@@ -84,12 +85,13 @@ func ResolvePathConfig(configDir string) (*PathConfig, error) {
 	}
 
 	return &PathConfig{
-		ConfigDir:      expanded,
-		ConfigFile:     filepath.Join(expanded, "config.json"),
-		PrevConfigFile: filepath.Join(expanded, "prev_config.json"),
-		ZotTempConfig:  filepath.Join(expanded, "zot-hot.json"),
-		ZotStorageDir:  filepath.Join(expanded, "zot"),
-		StateFile:      filepath.Join(expanded, "state.json"),
+		ConfigDir:           expanded,
+		ConfigFile:          filepath.Join(expanded, "config.json"),
+		PrevConfigFile:      filepath.Join(expanded, "prev_config.json"),
+		ZotTempConfig:       filepath.Join(expanded, "zot-hot.json"),
+		ZotStorageDir:       filepath.Join(expanded, "zot"),
+		StateFile:           filepath.Join(expanded, "state.json"),
+		SyncCredentialsFile: filepath.Join(expanded, "sync-auth.json"),
 	}, nil
 }
 

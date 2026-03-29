@@ -40,8 +40,8 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	// Mock GetSatelliteByName
-	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
-		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval", "mode"}).
+		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{}, "normal")
 	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
 		WithArgs("edge-01").
 		WillReturnRows(satRows)
@@ -108,8 +108,8 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 
-	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
-		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval", "mode"}).
+		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{}, "normal")
 	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
 		WithArgs("edge-01").
 		WillReturnRows(satRows)
@@ -170,8 +170,8 @@ func TestGetCachedImagesHandler(t *testing.T) {
 
 		now := time.Now().UTC().Truncate(time.Second)
 
-		satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
-			AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+		satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval", "mode"}).
+			AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{}, "normal")
 		mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
 			WithArgs("edge-01").
 			WillReturnRows(satRows)
@@ -225,8 +225,8 @@ func TestGetCachedImagesHandler(t *testing.T) {
 
 		now := time.Now().UTC().Truncate(time.Second)
 
-		satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
-			AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+		satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval", "mode"}).
+			AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{}, "normal")
 		mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
 			WithArgs("edge-01").
 			WillReturnRows(satRows)
@@ -264,8 +264,8 @@ func TestSyncHandler_InvalidHeartbeatInterval(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 
-	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
-		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval", "mode"}).
+		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{}, "normal")
 	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
 		WithArgs("edge-01").
 		WillReturnRows(satRows)
@@ -291,8 +291,8 @@ func TestSyncHandler_BatchInsertArtifactsFails(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 
-	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
-		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval", "mode"}).
+		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{}, "normal")
 	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
 		WithArgs("edge-01").
 		WillReturnRows(satRows)
@@ -327,8 +327,8 @@ func TestGetCachedImagesHandler_DBFailure(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 
-	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
-		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval", "mode"}).
+		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{}, "normal")
 	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
 		WithArgs("edge-01").
 		WillReturnRows(satRows)

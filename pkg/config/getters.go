@@ -28,7 +28,6 @@ func (cm *ConfigManager) GetOwnRegistry() bool {
 	return cm.config.AppConfig.BringOwnRegistry
 }
 
-
 func (cm *ConfigManager) UseUnsecure() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -183,4 +182,22 @@ func (cm *ConfigManager) GetHarborRegistryURL() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.config.AppConfig.HarborRegistryURL
+}
+
+func (cm *ConfigManager) IsProxyCacheMode() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.ProxyCacheMode
+}
+
+func (cm *ConfigManager) GetSyncPollInterval() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.SyncPollInterval
+}
+
+func (cm *ConfigManager) GetSatelliteName() string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.StateConfig.Name
 }

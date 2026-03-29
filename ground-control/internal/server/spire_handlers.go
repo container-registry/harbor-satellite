@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
 )
 
@@ -278,7 +279,10 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 			}
 		}()
 
-		satellite, err = txQueries.CreateSatellite(r.Context(), req.SatelliteName)
+		satellite, err = txQueries.CreateSatellite(r.Context(), database.CreateSatelliteParams{
+			Name: req.SatelliteName,
+			Mode: "normal",
+		})
 		if err != nil {
 			log.Printf("Register: Failed to create satellite record for %s: %v", req.SatelliteName, err)
 			HandleAppError(w, &AppError{

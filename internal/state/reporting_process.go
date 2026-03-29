@@ -20,13 +20,13 @@ import (
 const StatusReportRoute = "satellites/sync"
 
 type StatusReportingProcess struct {
-	name             string
-	isRunning        bool
-	mu               *sync.Mutex
-	cm               *config.ConfigManager
-	spiffeClient     *spiffe.Client
-	pendingCRI      []runtime.CRIConfigResult
-	criReported     bool
+	name         string
+	isRunning    bool
+	mu           *sync.Mutex
+	cm           *config.ConfigManager
+	spiffeClient *spiffe.Client
+	pendingCRI   []runtime.CRIConfigResult
+	criReported  bool
 }
 
 func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess {
@@ -64,16 +64,20 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 
 	log := logger.FromContext(ctx).With().Str("process", s.name).Logger()
 
-	stateURL := s.cm.GetStateURL()
-	if stateURL == "" {
-		log.Warn().Msg("State URL not available yet, skipping status report")
-		return nil
-	}
-
-	satelliteName, err := extractSatelliteNameFromURL(stateURL)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to extract satellite name from state URL")
-		return err
+	// Resolve satellite name: prefer explicit name from ZTR, fall back to URL parsing
+	satelliteName := s.cm.GetSatelliteName()
+	if satelliteName == "" {
+		stateURL := s.cm.GetStateURL()
+		if stateURL == "" {
+			log.Warn().Msg("Satellite name and state URL not available yet, skipping status report")
+			return nil
+		}
+		var err error
+		satelliteName, err = extractSatelliteNameFromURL(stateURL)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to extract satellite name from state URL")
+			return err
+		}
 	}
 
 	heartbeatExpr := s.cm.GetHeartbeatInterval()
