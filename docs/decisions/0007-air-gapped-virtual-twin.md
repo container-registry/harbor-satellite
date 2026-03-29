@@ -86,519 +86,333 @@ Chosen option: "Virtual Twin with OCI Image Layout bundles", because it provides
 ### System Architecture: Connected vs Air-Gapped
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          CLOUD / CONNECTED SIDE                        │
-│                                                                        │
-│  ┌──────────────┐       ┌──────────────────┐       ┌───────────────┐  │
-│  │              │       │                  │       │               │  │
-│  │    Harbor    │──────►│  Ground Control  │──────►│  Bundle Store │  │
-│  │   Registry   │ push  │                  │ store │  (Disk / S3)  │  │
-│  │              │ state │  ┌────────────┐  │       │               │  │
-│  │  ┌────────┐  │◄──────│  │  Virtual   │  │       └───────┬───────┘  │
-│  │  │ Images │  │ push  │  │   Twins    │  │               │          │
-│  │  │ State  │  │ state │  │ (airgapped │  │          presigned       │
-│  │  │Artifacts│  │ artif.│  │ satellites)│  │           URLs           │
-│  │  └────────┘  │       │  └────────────┘  │               │          │
-│  └──┬───────┬───┘       └────────┬─────────┘               │          │
-│     │       │                    │                          │          │
-└─────┼───────┼────────────────────┼──────────────────────────┼──────────┘
-      │       │                    │                          │
-      │       │ OCI pull           │ pull images              │ download
-      │       │ (images +          │ (bundle gen              │ .tar.gz
-      │       │  state artifacts)  │  only)                   │
-      │       │                    │                          │
-      │ ┌─────▼─────┐       ┌─────▼─────┐            ┌──────▼───────┐
-      │ │ Connected │       │ Connected │            │   Operator   │
-      │ │ Satellite │       │ Satellite │            │   Workstation│
-      │ │   Site A  │       │   Site B  │            │              │
-      │ │           │       │           │            └──────┬───────┘
-      │ │ ┌───────┐ │       │ ┌───────┐ │                   │
-      │ │ │  Zot  │ │       │ │  Zot  │ │          physical transport
-      │ │ └───────┘ │       │ └───────┘ │           (USB / DVD / etc)
-      │ └───────────┘       └───────────┘                   │
-      │                                                      │
-      ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  AIR GAP  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┼ ─ ─ ─ ─
-                                                             │
-                                                      ┌──────▼───────┐
-                                                      │  Air-Gapped  │
-                                                      │  Satellite   │
-                                                      │   Site C     │
-                                                      │              │
-                                                      │  ┌────────┐  │
-                                                      │  │  Zot   │  │
-                                                      │  └────────┘  │
-                                                      │  ┌────────┐  │
-                                                      │  │bundle  │  │
-                                                      │  │watcher │  │
-                                                      │  └────────┘  │
-                                                      └──────────────┘
+  "CLOUD / CONNECTED SIDE"
+ +----------------------------------------------------+
+ |                                                    |
+ | +-----------+   +--------------+   +-------------+ |
+ | | "Harbor"  |-->| "Ground"     |-->| "Bundle"    | |
+ | | "Registry"|<--| "Control"    |   | "Store"     | |
+ | |           |   |              |   | "(Disk/S3)" | |
+ | | +-------+ |   | +----------+|   +------+------+ |
+ | | |"Images| |   | |"Virtual" ||          |        |
+ | | |"State"| |   | |"Twins"   ||     "presigned"   |
+ | | |"Artfs"| |   | +----------+|       "URLs"      |
+ | | +-------+ |   |             |          |        |
+ | +-----+-----+   +--+-------+--+          |        |
+ |       |            |       |              |        |
+ +-------+------------+-------+--------------+--------+
+          ^            ^       ^              |
+          |            |       |              |
+     "pull images"     |  "register,"        "download"
+     "and state"       |  "status,"          ".tar.gz"
+     "artifacts"       |  "heartbeat"             |
+          |            |       |              |
+          |            |       |              |
+ +--------+--+   +----+-------+-+   +--------+---+
+ |"Connected" |   | "Connected"  |   | "Operator"  |
+ |"Satellite" |   | "Satellite"  |   |"Workstation"|
+ |"Site A"    |   | "Site B"     |   +------+------+
+ |            |   |              |          |
+ | +--------+ |   | +--------+  |   "physical"
+ | | "Zot"  | |   | | "Zot"  |  |   "transport"
+ | +--------+ |   | +--------+  |   "(USB/DVD)"
+ +-------------+   +--------------+          |
+                                             |
+   "Satellites only make"                    |
+   "outbound connections"                    |
+   "(to Harbor and GC)"                     |
+                                             |
+ - - - - - - "AIR GAP" - - - - - - -+- - - -
+                                     |
+                              +------+------+
+                              | "Air-Gapped"|
+                              | "Satellite" |
+                              | "Site C"    |
+                              |             |
+                              | +--------+  |
+                              | | "Zot"  |  |
+                              | +--------+  |
+                              | +--------+  |
+                              | |"bundle"|  |
+                              | |"watcher"|  |
+                              | +--------+  |
+                              +-------------+
 ```
 
-**Data flow clarification:**
-- Harbor pushes artifact metadata to GC via webhook/API (`POST /api/groups/sync`)
-- GC pushes state artifacts (OCI images containing `artifacts.json`) back into Harbor
-- Connected satellites pull both state artifacts and container images directly from Harbor
-- For bundle generation only: GC pulls actual container images from Harbor (new capability)
+**Data flow:**
+- Harbor pushes artifact metadata to GC (`POST /api/groups/sync`)
+- GC pushes state artifacts back into Harbor
+- Satellites only make outbound connections:
+  - To Harbor: pull state artifacts + container images
+  - To GC: ZTR registration, heartbeat, status
+- Bundle generation (new): GC pulls images from Harbor
 
 ### Flow 1: Day-Zero Setup (Air-Gapped Satellite)
 
-**Persona: Fleet Admin** — manages both connected and air-gapped sites from GC.
-**Persona: Site Operator** — physically present at the air-gapped site.
+**Fleet Admin** manages sites from GC.
+**Site Operator** is at the air-gapped site.
 
 ```
-  Fleet Admin                     Ground Control                 Site Operator
-  (browser/CLI)                   (cloud)                        (air-gapped site)
-       │                               │                               │
-       │  1. Register satellite        │                               │
-       │  POST /api/satellites         │                               │
-       │  { name: "classified-01",     │                               │
-       │    mode: "airgapped",         │                               │
-       │    groups: ["mil-images"] }   │                               │
-       ├──────────────────────────────►│                               │
-       │                               │── creates virtual twin        │
-       │                               │── creates robot account       │
-       │                               │                               │
-       │  2. Generate first bundle     │                               │
-       │  POST /api/satellites/        │                               │
-       │    classified-01/bundles      │                               │
-       │  { type: "full" }             │                               │
-       ├──────────────────────────────►│                               │
-       │                               │── pull images from Harbor     │
-       │                               │── build OCI layout            │
-       │                               │── sign bundle.json            │
-       │                               │── create .tar.gz              │
-       │                               │── store + record              │
-       │  ◄── presigned URL (30min) ───│                               │
-       │                               │                               │
-       │  3. Download bundle           │                               │
-       │  GET /bundles/{id}/download   │                               │
-       │  ?token=hmac&expires=...      │                               │
-       ├──────────────────────────────►│                               │
-       │  ◄── bundle.tar.gz stream ────│                               │
-       │                               │                               │
-       │  4. Export signing key        │                               │
-       │  (for OOB trust mode)         │                               │
-       │  GET /api/signing-keys        │                               │
-       ├──────────────────────────────►│                               │
-       │  ◄── public key PEM ──────────│                               │
-       │                               │                               │
-       │                                                               │
-       │  5. Transfer to air-gapped site                               │
-       │  ┌───────────────────────────────────────────────────────┐    │
-       │  │  USB drive contains:                                  │    │
-       │  │  - bundle.tar.gz                                      │    │
-       │  │  - cosign-verify.pub  (OOB trust mode)                │    │
-       │  │  - satellite binary   (first-time only)               │    │
-       │  └───────────────────────────────────────────────────────┘    │
-       │                                ···physical transport···       │
-       │                                                               │
-       │                                               6. Deploy       │
-       │                                               ┌───────────────┤
-       │                                               │ Install       │
-       │                                               │ satellite     │
-       │                                               │ binary        │
-       │                                               │               │
-       │                                               │ Place key at  │
-       │                                               │ /etc/sat/     │
-       │                                               │   cosign.pub  │
-       │                                               │               │
-       │                                               │ Place bundle  │
-       │                                               │ at /bundles/  │
-       │                                               ├───────────────┘
-       │                                               │
-       │                                               │  7. Start satellite
-       │                                               │  $ satellite \
-       │                                               │    --air-gapped \
-       │                                               │    --bundle-watch-dir /bundles \
-       │                                               │    --bundle-verify-key /etc/sat/cosign.pub
-       │                                               │
-       │                                               │── verify bundle.sig
-       │                                               │── extract OCI layout
-       │                                               │── import images to Zot
-       │                                               │── write state.json
-       │                                               │── Zot serves images
-       │                                               │
-       │                                               │  8. Workloads pull
-       │                                               │  from local Zot
-       │                                               │  (containerd/docker
-       │                                               │   configured as mirror)
-       ▼                                               ▼
+ "Fleet Admin"     "Ground Control"    "Site Operator"
+       |                  |                   |
+       | "1. Register"    |                   |
+       | "POST /api/sats" |                   |
+       | "{mode:airgapped}"|                   |
+       |----------------->|                   |
+       |                  |-- "create twin"   |
+       |                  |-- "create robot"  |
+       |                  |                   |
+       | "2. Generate"    |                   |
+       | "POST .../bundles"|                   |
+       | "{type: full}"   |                   |
+       |----------------->|                   |
+       |                  |-- "pull Harbor"   |
+       |                  |-- "OCI layout"    |
+       |                  |-- "sign + tar.gz" |
+       |<-"presigned URL"-|                   |
+       |                  |                   |
+       | "3. Download"    |                   |
+       |----------------->|                   |
+       |<-"bundle.tar.gz"-|                   |
+       |                  |                   |
+       | "4. Export key"   |                   |
+       |----------------->|                   |
+       |<--"public key"---|                   |
+       |                  |                   |
+       |                                      |
+       | "5. USB: bundle.tar.gz,"             |
+       |    "cosign.pub, satellite binary"    |
+       |        "...physical transport..."    |
+       |                                      |
+       |                    "6. Deploy:"      |
+       |                    "install binary," |
+       |                    "place key,"      |
+       |                    "place bundle"    |
+       |                                      |
+       |                    "7. Start:"       |
+       |                    "$ satellite"     |
+       |                    "  --air-gapped"  |
+       |                    "  --bundle-watch" |
+       |                    "  --verify-key"  |
+       |                                      |
+       |                    "-- verify sig"   |
+       |                    "-- import to Zot"|
+       |                    "-- write state"  |
+       |                                      |
+       |                    "8. Workloads"    |
+       |                    "pull from Zot"   |
+       v                                      v
 ```
 
-### Flow 2: Ongoing Updates (Differential Bundle)
+### Flow 2: Ongoing Updates (Differential)
 
 ```
-  Fleet Admin                     Ground Control                 Site Operator
-       │                               │                               │
-       │  1. Update group images       │                               │
-       │  POST /api/groups/sync        │                               │
-       │  { group: "mil-images",       │                               │
-       │    artifacts: [...updated] }  │                               │
-       ├──────────────────────────────►│                               │
-       │                               │── update group state          │
-       │                               │   artifact in Harbor          │
-       │                               │                               │
-       │  2. Generate diff bundle      │                               │
-       │  POST /api/satellites/        │                               │
-       │    classified-01/bundles      │                               │
-       │  { type: "differential" }     │                               │
-       ├──────────────────────────────►│                               │
-       │                               │── load last applied bundle    │
-       │                               │── diff: 2 new, 1 updated,    │
-       │                               │         1 removed             │
-       │                               │── pull only 3 images (not     │
-       │                               │   the 20 unchanged ones)      │
-       │                               │── sign + tar.gz               │
-       │  ◄── presigned URL ───────────│                               │
-       │                               │                               │
-       │  3. Download + transport      │                               │
-       │  (much smaller than full)     │                               │
-       │  ─ ─ ─ ─ ─ ─ ─ physical ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─►│
-       │                               │                               │
-       │                               │               4. Drop bundle  │
-       │                               │               in watch dir    │
-       │                               │               $ cp bundle.tar.gz
-       │                               │                  /bundles/    │
-       │                               │                               │
-       │                               │               5. Auto-import  │
-       │                               │               BundleWatcher   │
-       │                               │               detects file    │
-       │                               │               ── verify sig   │
-       │                               │               ── import 3 new │
-       │                               │               ── delete 1     │
-       │                               │               ── update state │
-       │                               │               ── move to      │
-       │                               │                  processed/   │
-       │                               │                               │
-       │  6. Mark applied (optional,   │                               │
-       │     for tracking)             │                               │
-       │  POST /api/satellites/        │                               │
-       │    classified-01/bundles/     │                               │
-       │    42/applied                 │                               │
-       ├──────────────────────────────►│                               │
-       │                               │── record applied_at           │
-       │                               │── enables next differential   │
-       ▼                               ▼                               ▼
+ "Fleet Admin"     "Ground Control"    "Site Operator"
+       |                  |                   |
+       | "1. Update group" |                   |
+       | "POST groups/sync"|                   |
+       |----------------->|                   |
+       |                  |-- "update state"  |
+       |                  |   "in Harbor"     |
+       |                  |                   |
+       | "2. Gen diff"    |                   |
+       | "POST .../bundles"|                   |
+       | "{differential}" |                   |
+       |----------------->|                   |
+       |                  |-- "diff manifests"|
+       |                  |-- "pull 3 images" |
+       |                  |-- "sign + tar.gz" |
+       |<-"presigned URL"-|                   |
+       |                  |                   |
+       | "3. Download + transport"            |
+       | "(much smaller than full)"           |
+       |  - - - "physical" - - - - - - - - ->|
+       |                  |                   |
+       |                  |   "4. Drop in"    |
+       |                  |   "watch dir"     |
+       |                  |                   |
+       |                  |   "5. Auto-import"|
+       |                  |   "-- verify sig" |
+       |                  |   "-- import 3"   |
+       |                  |   "-- delete 1"   |
+       |                  |   "-- update state"|
+       |                  |   "-- mv processed"|
+       |                  |                   |
+       | "6. Mark applied" |                   |
+       | "(optional)"     |                   |
+       |----------------->|                   |
+       |                  |-- "record"        |
+       |                  |-- "enable next"   |
+       |                  |   "differential"  |
+       v                  v                   v
 ```
 
 ### Flow 3: Reconciliation (Air-Gapped to Connected)
 
 ```
-  Fleet Admin                     Ground Control           Satellite (was air-gapped)
-       │                               │                               │
-       │                               │                    ┌──────────┤
-       │                               │                    │ Currently│
-       │                               │                    │ running  │
-       │                               │                    │ --air-   │
-       │                               │                    │ gapped   │
-       │                               │                    │          │
-       │                               │                    │ Has 25   │
-       │                               │                    │ images   │
-       │                               │                    │ from last│
-       │                               │                    │ bundle   │
-       │                               │                    │          │
-       │                               │                    │ state.json
-       │                               │                    │ is up to │
-       │                               │                    │ date     │
-       │                               │                    └──────────┤
-       │                               │                               │
-       │  1. Switch mode in GC         │                               │
-       │  PATCH /api/satellites/       │                               │
-       │    classified-01              │                               │
-       │  { mode: "connected" }        │                               │
-       ├──────────────────────────────►│                               │
-       │                               │── now expects heartbeats      │
-       │                               │                               │
-       │                               │              2. Reconfigure   │
-       │                               │              satellite        │
-       │                               │              $ satellite \    │
-       │                               │                --token "abc" \│
-       │                               │                --ground-control-url
-       │                               │                  https://gc.. │
-       │                               │                               │
-       │                               │◄── 3. ZTR registration ──────┤
-       │                               │──── credentials + state URL ─►│
-       │                               │                               │
-       │                               │         4. State replication  │
-       │                               │         loads state.json      │
-       │                               │         (from last bundle)    │
-       │                               │                               │
-       │                               │         compares persisted    │
-       │                               │         entities vs remote:   │
-       │                               │                               │
-       │                               │         ┌─────────────────┐   │
-       │                               │         │ 25 images match │   │
-       │                               │         │  -> skip (have) │   │
-       │                               │         │  3 new remote   │   │
-       │                               │         │  -> pull         │   │
-       │                               │         │  1 removed      │   │
-       │                               │         │  -> delete       │   │
-       │                               │         └─────────────────┘   │
-       │                               │                               │
-       │                               │◄── 5. Heartbeat reporting ───┤
-       │                               │    (CPU, memory, images, etc) │
-       │                               │                               │
-       │                               │    6. Ongoing: satellite      │
-       │                               │    polls normally, like       │
-       │                               │    any connected satellite    │
-       ▼                               ▼                               ▼
+ "Fleet Admin"     "Ground Control"    "Satellite"
+       |                  |                   |
+       |                  |    "Currently"    |
+       |                  |    "air-gapped,"  |
+       |                  |    "25 images,"   |
+       |                  |    "state.json"   |
+       |                  |    "up to date"   |
+       |                  |                   |
+       | "1. Switch mode"  |                   |
+       | "{mode:connected}"|                   |
+       |----------------->|                   |
+       |                  |-- "expects"       |
+       |                  |   "heartbeats"    |
+       |                  |                   |
+       |                  |   "2. Reconfig"   |
+       |                  |   "$ satellite"   |
+       |                  |   "  --token abc" |
+       |                  |   "  --gc-url .." |
+       |                  |                   |
+       |                  |<- "3. ZTR reg" ---|
+       |                  |- "creds + URL" -->|
+       |                  |                   |
+       |                  |   "4. State sync" |
+       |                  |   "loads state"   |
+       |                  |   "from bundle"   |
+       |                  |                   |
+       |                  |   "25 match: skip"|
+       |                  |   "3 new: pull"   |
+       |                  |   "1 removed: del"|
+       |                  |                   |
+       |                  |<-"5. Heartbeat"---|
+       |                  |                   |
+       |                  |   "6. Polls"      |
+       |                  |   "normally"      |
+       v                  v                   v
 ```
+
+All satellite connections are outbound (to GC for
+ZTR/heartbeat, to Harbor for image pull).
 
 ### Flow 4: Trust Verification
 
 ```
-                    OOB Trust Mode                          TOFU Trust Mode
-                    (out-of-band)                           (trust on first use)
+  "OOB Trust Mode"             "TOFU Trust Mode"
+  "(out-of-band)"              "(trust on first use)"
 
-    ┌─────────────────────────────┐        ┌─────────────────────────────┐
-    │  BEFORE FIRST BUNDLE        │        │  FIRST BUNDLE               │
-    │                             │        │                             │
-    │  Admin exports public key   │        │  bundle.json contains:      │
-    │  from GC and delivers it    │        │  { ...                      │
-    │  separately to satellite    │        │    verification_key:        │
-    │                             │        │    "-----BEGIN PUBLIC..."   │
-    │  satellite --bundle-verify  │        │  }                          │
-    │    -key /etc/sat/cosign.pub │        │                             │
-    │                             │        │  Satellite has no key yet   │
-    │  Key is pre-loaded before   │        │  -> accepts key from bundle │
-    │  any bundle is ever opened  │        │  -> pins it locally         │
-    │                             │        │  -> logs WARNING: TOFU pin  │
-    └──────────────┬──────────────┘        └──────────────┬──────────────┘
-                   │                                      │
-                   ▼                                      ▼
-    ┌─────────────────────────────┐        ┌─────────────────────────────┐
-    │  EVERY BUNDLE               │        │  SUBSEQUENT BUNDLES         │
-    │                             │        │                             │
-    │  1. Read bundle.sig         │        │  1. Read bundle.sig         │
-    │  2. Read bundle.json        │        │  2. Read bundle.json        │
-    │  3. Verify sig against      │        │  3. Verify sig against      │
-    │     pre-loaded public key   │        │     pinned public key       │
-    │  4. Pass -> proceed         │        │  4. Pass -> proceed         │
-    │     Fail -> reject          │        │     Fail -> reject          │
-    │                             │        │                             │
-    │  Trust: STRONG              │        │  Trust: MODERATE            │
-    │  (key never came from       │        │  (first bundle unverified,  │
-    │   an unverified source)     │        │   subsequent ones verified) │
-    └─────────────────────────────┘        └─────────────────────────────┘
+ +---------------------------+ +---------------------------+
+ | "BEFORE FIRST BUNDLE"     | | "FIRST BUNDLE"            |
+ |                           | |                           |
+ | "Admin exports public"    | | "bundle.json contains"    |
+ | "key from GC, delivers"   | | "verification_key field"  |
+ | "separately to satellite" | |                           |
+ |                           | | "Satellite has no key"    |
+ | "satellite"               | | "-> accepts from bundle"  |
+ | "  --bundle-verify-key"   | | "-> pins it locally"      |
+ | "  /etc/sat/cosign.pub"   | | "-> logs WARNING: TOFU"   |
+ |                           | |                           |
+ +-------------+-------------+ +-------------+-------------+
+               |                              |
+               v                              v
+ +---------------------------+ +---------------------------+
+ | "EVERY BUNDLE"            | | "SUBSEQUENT BUNDLES"      |
+ |                           | |                           |
+ | "1. Read bundle.sig"      | | "1. Read bundle.sig"      |
+ | "2. Read bundle.json"     | | "2. Read bundle.json"     |
+ | "3. Verify sig against"   | | "3. Verify sig against"   |
+ |    "pre-loaded key"       | |    "pinned key"           |
+ | "4. Pass: proceed"        | | "4. Pass: proceed"        |
+ |    "Fail: reject"         | |    "Fail: reject"         |
+ |                           | |                           |
+ | "Trust: STRONG"           | | "Trust: MODERATE"         |
+ | "(key never came from"    | | "(first bundle unverified"|
+ |  "an unverified source)"  | |  "subsequent verified)"   |
+ +---------------------------+ +---------------------------+
 ```
 
-### Flow 5: Operator Experience — Side by Side
+### Flow 5: Operator Experience Side by Side
 
-```
-    ╔══════════════════════════════════╦══════════════════════════════════╗
-    ║       CONNECTED SATELLITE       ║      AIR-GAPPED SATELLITE       ║
-    ╠══════════════════════════════════╬══════════════════════════════════╣
-    ║                                  ║                                  ║
-    ║  DAY 0: REGISTER                ║  DAY 0: REGISTER                ║
-    ║  ─────────────────              ║  ─────────────────              ║
-    ║  POST /api/satellites           ║  POST /api/satellites           ║
-    ║  { name: "site-a",             ║  { name: "site-c",             ║
-    ║    mode: "connected",          ║    mode: "airgapped",          ║
-    ║    groups: ["prod"] }          ║    groups: ["prod"] }          ║
-    ║                                  ║                                  ║
-    ║  Same API. Same groups.         ║  Same API. Same groups.         ║
-    ║                                  ║                                  ║
-    ╠══════════════════════════════════╬══════════════════════════════════╣
-    ║                                  ║                                  ║
-    ║  DAY 0: DEPLOY                  ║  DAY 0: DEPLOY                  ║
-    ║  ────────────────               ║  ────────────────               ║
-    ║  $ satellite \                  ║  Generate bundle:               ║
-    ║    --token "abc" \             ║  POST .../bundles {type:"full"} ║
-    ║    --ground-control-url \      ║  Download + transport           ║
-    ║    https://gc.example.com      ║                                  ║
-    ║                                  ║  $ satellite \                  ║
-    ║  Auto: ZTR -> credentials      ║    --air-gapped \               ║
-    ║  Auto: pull state -> replicate ║    --bundle-watch-dir /bundles\ ║
-    ║  Auto: Zot serves images       ║    --bundle-verify-key cosign   ║
-    ║                                  ║                                  ║
-    ║                                  ║  Auto: verify -> import -> Zot ║
-    ║                                  ║                                  ║
-    ╠══════════════════════════════════╬══════════════════════════════════╣
-    ║                                  ║                                  ║
-    ║  ONGOING: UPDATES               ║  ONGOING: UPDATES               ║
-    ║  ────────────────               ║  ────────────────               ║
-    ║  Update group in GC             ║  Update group in GC             ║
-    ║  (same API)                     ║  (same API)                     ║
-    ║                                  ║                                  ║
-    ║  Satellite auto-syncs.          ║  Generate diff bundle.          ║
-    ║  Nothing to do.                 ║  Transport to site.             ║
-    ║                                  ║  Drop in /bundles/ dir.         ║
-    ║                                  ║  Satellite auto-imports.        ║
-    ║                                  ║                                  ║
-    ╠══════════════════════════════════╬══════════════════════════════════╣
-    ║                                  ║                                  ║
-    ║  LOCAL WORKLOADS                ║  LOCAL WORKLOADS                ║
-    ║  ───────────────                ║  ───────────────                ║
-    ║  containerd/docker pulls from  ║  containerd/docker pulls from  ║
-    ║  local Zot (mirror mode)       ║  local Zot (mirror mode)       ║
-    ║                                  ║                                  ║
-    ║  Identical experience.          ║  Identical experience.          ║
-    ║                                  ║                                  ║
-    ╠══════════════════════════════════╬══════════════════════════════════╣
-    ║                                  ║                                  ║
-    ║  MONITORING                     ║  MONITORING                     ║
-    ║  ──────────                     ║  ──────────                     ║
-    ║  Heartbeats to GC.             ║  No heartbeats (offline).       ║
-    ║  Dashboard shows status.       ║  Dashboard shows "air-gapped"   ║
-    ║                                  ║  + last bundle applied.         ║
-    ║                                  ║                                  ║
-    ╚══════════════════════════════════╩══════════════════════════════════╝
-```
+**Connected vs Air-Gapped** — same GC API, same binary.
+
+| Stage | Connected | Air-Gapped |
+|---|---|---|
+| Register | `POST /api/satellites {mode:"connected"}` | `POST /api/satellites {mode:"airgapped"}` |
+| Groups | Same API | Same API |
+| Deploy | `satellite --token --gc-url` | Generate bundle, transport, `satellite --air-gapped --bundle-watch-dir` |
+| Updates | Auto-sync, nothing to do | Generate diff bundle, drop in watch dir |
+| Workloads | Pull from local Zot | Pull from local Zot (identical) |
+| Monitoring | Heartbeats to GC | Dashboard shows last bundle applied |
+| Come online | Already online | Remove `--air-gapped`, add `--token`. Auto-syncs. |
 
 ### Data Flow: Bundle Generation (Ground Control)
 
-Note: In normal connected operation, GC only handles metadata — it receives artifact
-lists via API and pushes state OCI artifacts into Harbor. Satellites pull images directly
-from Harbor. Bundle generation is new: GC must pull actual container images from Harbor
-to package them into the OCI Image Layout for offline transport.
+In normal operation, GC only handles metadata. Bundle
+generation is new: GC pulls actual images from Harbor.
 
 ```
-    Harbor Registry              Ground Control
-    ┌──────────────┐          ┌─────────────────────────────────────────┐
-    │              │          │                                         │
-    │  ┌────────┐  │          │  POST /api/satellites/{name}/bundles    │
-    │  │ nginx  │  │          │                                         │
-    │  │ redis  │  │  crane   │  1. Resolve desired state               │
-    │  │ app-v2 │  │  .Pull() │     ┌──────────────────────────┐        │
-    │  │  ...   │  │─────────►│     │ satellite -> groups      │        │
-    │  └────────┘  │  (NEW:   │     │ groups -> artifact list  │        │
-    │              │  GC pulls│     │ (reuse AssembleGroupState)│        │
-    │  State       │  images  │     └──────────┬───────────────┘        │
-    │  artifacts   │  for     │                │                        │
-    │  (pushed by  │  bundle  │  2. If differential:                    │
-    │   GC earlier)│  gen)    │     ┌──────────▼───────────────┐        │
-    │              │          │     │ Load last applied bundle │        │
-    └──────────────┘          │     │ Diff artifact manifests  │        │
-                              │     │ Keep only: new + changed │        │
-                              │     └──────────┬───────────────┘        │
-                              │                │                        │
-                              │  3. Build OCI Image Layout              │
-                              │     ┌──────────▼───────────────┐        │
-                              │     │ For each image:          │        │
-                              │     │   v1.Image -> layout.Wrt │        │
-                              │     │                          │        │
-                              │     │ oci/                     │        │
-                              │     │ ├── oci-layout           │        │
-                              │     │ ├── index.json           │        │
-                              │     │ └── blobs/sha256/        │        │
-                              │     │     ├── <shared layers>  │  <-- auto-dedup
-                              │     │     ├── <config blobs>   │        │
-                              │     │     └── <manifests>      │        │
-                              │     └──────────┬───────────────┘        │
-                              │                │                        │
-                              │  4. Write state files                   │
-                              │     ┌──────────▼───────────────┐        │
-                              │     │ state/                   │        │
-                              │     │ ├── satellite-state.json │  <-- same format
-                              │     │ ├── groups/              │      as PersistedState
-                              │     │ │   └── group.json       │        │
-                              │     │ └── config.json          │        │
-                              │     └──────────┬───────────────┘        │
-                              │                │                        │
-                              │  5. Sign + Package                      │
-                              │     ┌──────────▼───────────────┐        │
-                              │     │ bundle.json --cosign-->  │        │
-                              │     │              bundle.sig  │        │
-                              │     │                          │        │
-                              │     │ tar czf bundle.tar.gz    │        │
-                              │     │   bundle.json            │        │
-                              │     │   bundle.sig             │        │
-                              │     │   oci/                   │        │
-                              │     │   state/                 │        │
-                              │     └──────────┬───────────────┘        │
-                              │                │                        │
-                              │  6. Store + Record                      │
-                              │     ┌──────────▼───────────────┐        │
-                              │     │ BundleStorage.Store()    │        │
-                              │     │ (disk or S3)             │        │
-                              │     │                          │        │
-                              │     │ INSERT INTO bundles (...) │        │
-                              │     │                          │        │
-                              │     │ Return presigned URL     │        │
-                              │     │ (30-min HMAC or S3)      │        │
-                              │     └──────────────────────────┘        │
-                              │                                         │
-                              └─────────────────────────────────────────┘
+ "Harbor"               "Ground Control"
+ +-----------+    +-------------------------------+
+ |           |    |                               |
+ | +-------+ |    | "POST .../bundles"            |
+ | |"nginx"| |    |                               |
+ | |"redis"| |    | "1. Resolve desired state"    |
+ | |"app"  | |    |    "satellite -> groups"      |
+ | +-------+ |    |    "groups -> artifact list"  |
+ |           |    |                               |
+ |    "GC pulls"  | "2. If differential:"         |
+ |    "images"    |    "diff against last bundle" |
+ |    "for"  |    |    "keep only new+changed"    |
+ |    "bundle"    |                               |
+ |    "gen"  |    | "3. Build OCI Image Layout"   |
+ |           |    |    "v1.Image -> layout.Write"  |
+ |   ------->|    |    "blobs dedup by digest"    |
+ |           |    |                               |
+ +-----------+    | "4. Write state files"         |
+                  |    "same PersistedState format"|
+                  |                               |
+                  | "5. Sign bundle.json"          |
+                  |    "-> bundle.sig (cosign)"    |
+                  |                               |
+                  | "6. tar.gz + store + record"   |
+                  |    "-> presigned URL (30min)"  |
+                  +-------------------------------+
 ```
 
 ### Data Flow: Bundle Import (Satellite)
 
 ```
-    Air-Gapped Satellite
-    ┌────────────────────────────────────────────────────────────┐
-    │                                                            │
-    │  /bundles/bundle.tar.gz  <-- placed by operator           │
-    │       │                                                    │
-    │  1. BundleImportProcess detects new file                   │
-    │       │                                                    │
-    │  2. Extract to temp dir                                    │
-    │       │                                                    │
-    │       ▼                                                    │
-    │  ┌──────────────────────────────────────┐                  │
-    │  │ VERIFY                               │                  │
-    │  │                                      │                  │
-    │  │ bundle.json ---- cosign verify <---- cosign.pub         │
-    │  │ bundle.sig  -----/                   (pre-loaded        │
-    │  │                                       or TOFU-pinned)   │
-    │  │                                      │                  │
-    │  │ FAIL -> reject, log error, skip     │                  │
-    │  │ PASS -> continue                    │                  │
-    │  └──────────────┬───────────────────────┘                  │
-    │                 │                                          │
-    │  3. Parse state files                                      │
-    │       │                                                    │
-    │       ▼                                                    │
-    │  ┌──────────────────────────────────────┐                  │
-    │  │ state/satellite-state.json           │                  │
-    │  │ state/groups/prod.json               │                  │
-    │  │ state/config.json                    │                  │
-    │  │                                      │                  │
-    │  │ -> Parse into Entity[] list          │                  │
-    │  │   (same structs as connected mode)   │                  │
-    │  └──────────────┬───────────────────────┘                  │
-    │                 │                                          │
-    │  4. Import images                                          │
-    │       │                                                    │
-    │       ▼                                                    │
-    │  ┌──────────────────────────────────────┐   ┌───────────┐ │
-    │  │ LayoutReplicator                     │   │           │ │
-    │  │                                      │   │    Zot    │ │
-    │  │ For each entity:                     │   │  (local)  │ │
-    │  │   img = layout.Image(digest)         │   │           │ │
-    │  │   remote.Write(img, zot_ref) -----------►│  ┌─────┐  │ │
-    │  │                                      │   │  │nginx│  │ │
-    │  │ Same Replicator interface as         │   │  │redis│  │ │
-    │  │ BasicReplicator -- just different    │   │  │app  │  │ │
-    │  │ image source                         │   │  └─────┘  │ │
-    │  └──────────────┬───────────────────────┘   └───────────┘ │
-    │                 │                                          │
-    │  5. Handle removals (differential only)                    │
-    │       │                                                    │
-    │       ▼                                                    │
-    │  ┌──────────────────────────────────────┐                  │
-    │  │ differential.removed:                │                  │
-    │  │   ["library/redis:7.0"]              │                  │
-    │  │                                      │                  │
-    │  │ -> crane.Delete(zot/library/redis:7.0│                  │
-    │  └──────────────┬───────────────────────┘                  │
-    │                 │                                          │
-    │  6. Persist state                                          │
-    │       │                                                    │
-    │       ▼                                                    │
-    │  ┌──────────────────────────────────────┐                  │
-    │  │ SaveState(state.json, entities,      │                  │
-    │  │          configDigest)               │                  │
-    │  │                                      │                  │
-    │  │ SAME FORMAT as connected mode        │                  │
-    │  │ <-- this is what makes               │                  │
-    │  │     reconciliation seamless          │                  │
-    │  └──────────────┬───────────────────────┘                  │
-    │                 │                                          │
-    │  7. Cleanup                                                │
-    │     mv bundle.tar.gz -> /bundles/processed/                │
-    │     rm -rf temp dir                                        │
-    │                                                            │
-    └────────────────────────────────────────────────────────────┘
+ "Air-Gapped Satellite"
+ +----------------------------------------------------+
+ |                                                    |
+ | "/bundles/bundle.tar.gz" "<- placed by operator"   |
+ |                                                    |
+ | "1. BundleImportProcess detects new file"          |
+ | "2. Extract to temp dir"                           |
+ |                                                    |
+ | "3. VERIFY"                                        |
+ |    "bundle.json + bundle.sig"                      |
+ |    "verify against cosign.pub"                     |
+ |    "FAIL -> reject    PASS -> continue"            |
+ |                                                    |
+ | "4. Parse state files"                             |
+ |    "-> Entity[] list (same as connected)"          |
+ |                                                    |
+ | "5. Import images"           +-----------+         |
+ |    "LayoutReplicator"        |           |         |
+ |    "layout.Image(digest)"    |  "Zot"    |         |
+ |    "remote.Write(img,ref)"-->| "(local)" |         |
+ |                              |           |         |
+ |    "Same Replicator"         +-----------+         |
+ |    "interface as"                                  |
+ |    "BasicReplicator"                               |
+ |                                                    |
+ | "6. Removals (differential)"                       |
+ |    "crane.Delete removed images"                   |
+ |                                                    |
+ | "7. Persist state"                                 |
+ |    "SaveState(state.json, entities)"               |
+ |    "SAME FORMAT as connected mode"                 |
+ |    "<- makes reconciliation seamless"              |
+ |                                                    |
+ | "8. Cleanup"                                       |
+ |    "mv bundle.tar.gz -> processed/"                |
+ +----------------------------------------------------+
 ```
 
 ---
