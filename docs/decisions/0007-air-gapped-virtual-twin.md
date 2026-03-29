@@ -440,7 +440,8 @@ CREATE TABLE bundles (
     id                SERIAL PRIMARY KEY,
     satellite_id      INT NOT NULL REFERENCES satellites(id) ON DELETE CASCADE,
     bundle_type       VARCHAR(20) NOT NULL CHECK (bundle_type IN ('full', 'differential')),
-    base_bundle_id    INT REFERENCES bundles(id),
+    sequence          INT NOT NULL,
+    requires_sequence INT,
     state_digest      VARCHAR(255) NOT NULL,
     config_digest     VARCHAR(255) NOT NULL,
     group_digests     JSONB NOT NULL,
@@ -491,8 +492,10 @@ bundle.tar.gz
 **Key design principle:** The `state/` directory contains the exact same JSON that the satellite would receive by pulling state OCI artifacts from Harbor. The `groups/<group>.json` files are the same `artifacts.json` content that `CreateStateArtifact()` embeds into OCI images. This means the satellite's state parsing code works unchanged — the only difference is the source (local file vs OCI pull).
 
 **Full vs differential bundles:**
-- **Full bundle:** Contains all state files + all container images. Used for first deployment or when differential chain is broken. Larger but self-contained.
+- **Full bundle:** Contains all state files + all container images. Used for first deployment or to reset the chain. Larger but self-contained. Can be applied at any time regardless of current state.
 - **Differential bundle:** Contains updated state files + only changed/added container images. The `bundle.json.differential` field lists removals. Much smaller for incremental updates — critical when physically transporting media.
+
+**Sequential application:** Differential bundles form a strict chain. Each differential bundle records a `sequence` number and a `requires_sequence` referencing the previous bundle. The satellite tracks the last applied sequence number and rejects any differential bundle whose `requires_sequence` does not match. This guarantees state consistency — you cannot skip a bundle in the chain. If a bundle is lost or skipped, the operator must generate a new full bundle to reset the chain. Full bundles always reset the sequence (they have no `requires_sequence`).
 
 **Why OCI Image Layout:** `go-containerregistry/pkg/v1/layout` is already available (v0.20.3 in go.mod). Layer deduplication is automatic via content-addressed blobs. Same format Zarf uses.
 
@@ -503,7 +506,8 @@ bundle.tar.gz
   "version": 1,
   "satellite_name": "edge-site-01",
   "bundle_type": "full",
-  "base_bundle_id": null,
+  "sequence": 1,
+  "requires_sequence": null,
   "created_at": "2026-03-29T10:00:00Z",
   "ground_control_url": "https://gc.example.com",
   "state_digest": "sha256:...",
@@ -527,6 +531,20 @@ bundle.tar.gz
   "differential": null
 }
 ```
+
+**Sequence fields:**
+- `sequence`: Monotonically increasing per satellite. GC assigns it on bundle generation.
+- `requires_sequence`: For differential bundles, the sequence number of the bundle that must be applied before this one. Null for full bundles.
+
+Example chain:
+1. Full bundle: `sequence: 1, requires_sequence: null` — can always be applied
+2. Diff bundle: `sequence: 2, requires_sequence: 1` — requires bundle 1
+3. Diff bundle: `sequence: 3, requires_sequence: 2` — requires bundle 2
+4. If bundle 2 is lost: generate a new full bundle (`sequence: 4, requires_sequence: null`) to reset
+
+The satellite stores `last_applied_sequence` locally. On import:
+- Full bundle: always accepted, resets `last_applied_sequence`
+- Differential bundle: rejected if `requires_sequence != last_applied_sequence`
 
 For differential bundles, the `differential` field contains:
 
