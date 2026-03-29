@@ -469,24 +469,32 @@ CREATE TABLE bundle_signing_keys (
 
 ### 2. Bundle Format
 
+A bundle is a portable snapshot of exactly what the satellite would normally pull from Harbor. It reuses the same state OCI artifact and state JSON formats that connected satellites already consume — the bundle just packages them alongside the actual container images so everything is available offline.
+
 ```
 bundle.tar.gz
-├── bundle.json              # Manifest: metadata, artifact list, signing info
+├── bundle.json              # Manifest: metadata, signing info, bundle type
 ├── bundle.sig               # Cosign detached signature of bundle.json
-├── oci/                     # OCI Image Layout (go-containerregistry v1/layout)
+├── state/                   # Same state artifacts the satellite pulls from Harbor
+│   ├── satellite-state.json # SatelliteStateArtifact (group URLs, config URL)
+│   ├── groups/
+│   │   └── <group>.json     # StateArtifact per group (artifacts.json content)
+│   └── config.json          # Satellite config (app_config + zot_config)
+├── oci/                     # OCI Image Layout with actual container images
 │   ├── oci-layout           # {"imageLayoutVersion": "1.0.0"}
 │   ├── index.json           # OCI Image Index
 │   └── blobs/sha256/        # Content-addressed blobs (layer dedup automatic)
-├── state/                   # State files (same JSON format satellite uses)
-│   ├── satellite-state.json # SatelliteStateArtifact
-│   ├── groups/
-│   │   └── <group>.json     # StateArtifact per group
-│   └── config.json          # Satellite config
 └── sbom/                    # (Phase 2) Per-image SBOMs via Syft
     └── <digest>.spdx.json
 ```
 
-**Why OCI Image Layout:** `go-containerregistry/pkg/v1/layout` is already available (v0.20.3 in go.mod, just not imported yet). Layer deduplication is automatic via content-addressed blobs. This is exactly what Zarf uses.
+**Key design principle:** The `state/` directory contains the exact same JSON that the satellite would receive by pulling state OCI artifacts from Harbor. The `groups/<group>.json` files are the same `artifacts.json` content that `CreateStateArtifact()` embeds into OCI images. This means the satellite's state parsing code works unchanged — the only difference is the source (local file vs OCI pull).
+
+**Full vs differential bundles:**
+- **Full bundle:** Contains all state files + all container images. Used for first deployment or when differential chain is broken. Larger but self-contained.
+- **Differential bundle:** Contains updated state files + only changed/added container images. The `bundle.json.differential` field lists removals. Much smaller for incremental updates — critical when physically transporting media.
+
+**Why OCI Image Layout:** `go-containerregistry/pkg/v1/layout` is already available (v0.20.3 in go.mod). Layer deduplication is automatic via content-addressed blobs. Same format Zarf uses.
 
 #### bundle.json Schema
 
