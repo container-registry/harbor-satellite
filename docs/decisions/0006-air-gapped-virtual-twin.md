@@ -91,32 +91,33 @@ Chosen option: "Virtual Twin with OCI Image Layout bundles", because it provides
 │                                                                        │
 │  ┌──────────────┐       ┌──────────────────┐       ┌───────────────┐  │
 │  │              │       │                  │       │               │  │
-│  │    Harbor    │◄──────│  Ground Control  │──────►│  Bundle Store │  │
-│  │   Registry   │ pull  │                  │ store │  (Disk / S3)  │  │
-│  │              │ images│  ┌────────────┐  │       │               │  │
-│  │  ┌────────┐  │       │  │  Virtual   │  │       └───────┬───────┘  │
-│  │  │ Images │  │       │  │   Twins    │  │               │          │
-│  │  │ State  │  │       │  │ (airgapped │  │          presigned       │
-│  │  │Artifacts│  │       │  │ satellites)│  │           URLs           │
+│  │    Harbor    │──────►│  Ground Control  │──────►│  Bundle Store │  │
+│  │   Registry   │ push  │                  │ store │  (Disk / S3)  │  │
+│  │              │ state │  ┌────────────┐  │       │               │  │
+│  │  ┌────────┐  │◄──────│  │  Virtual   │  │       └───────┬───────┘  │
+│  │  │ Images │  │ push  │  │   Twins    │  │               │          │
+│  │  │ State  │  │ state │  │ (airgapped │  │          presigned       │
+│  │  │Artifacts│  │ artif.│  │ satellites)│  │           URLs           │
 │  │  └────────┘  │       │  └────────────┘  │               │          │
-│  └──────┬───────┘       └────────┬─────────┘               │          │
-│         │                        │                          │          │
-└─────────┼────────────────────────┼──────────────────────────┼──────────┘
-          │                        │                          │
-          │ OCI pull               │ state sync               │ download
-          │ (live)                 │ (live)                   │ .tar.gz
-          │                        │                          │
-    ┌─────▼─────┐            ┌─────▼─────┐            ┌──────▼───────┐
-    │ Connected │            │ Connected │            │   Operator   │
-    │ Satellite │            │ Satellite │            │   Workstation│
-    │   Site A  │            │   Site B  │            │              │
-    │           │            │           │            └──────┬───────┘
-    │ ┌───────┐ │            │ ┌───────┐ │                   │
-    │ │  Zot  │ │            │ │  Zot  │ │          physical transport
-    │ └───────┘ │            │ └───────┘ │           (USB / DVD / etc)
-    └───────────┘            └───────────┘                   │
-                                                             │
-    ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  AIR GAP  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┼ ─ ─ ─ ─
+│  └──┬───────┬───┘       └────────┬─────────┘               │          │
+│     │       │                    │                          │          │
+└─────┼───────┼────────────────────┼──────────────────────────┼──────────┘
+      │       │                    │                          │
+      │       │ OCI pull           │ pull images              │ download
+      │       │ (images +          │ (bundle gen              │ .tar.gz
+      │       │  state artifacts)  │  only)                   │
+      │       │                    │                          │
+      │ ┌─────▼─────┐       ┌─────▼─────┐            ┌──────▼───────┐
+      │ │ Connected │       │ Connected │            │   Operator   │
+      │ │ Satellite │       │ Satellite │            │   Workstation│
+      │ │   Site A  │       │   Site B  │            │              │
+      │ │           │       │           │            └──────┬───────┘
+      │ │ ┌───────┐ │       │ ┌───────┐ │                   │
+      │ │ │  Zot  │ │       │ │  Zot  │ │          physical transport
+      │ │ └───────┘ │       │ └───────┘ │           (USB / DVD / etc)
+      │ └───────────┘       └───────────┘                   │
+      │                                                      │
+      ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  AIR GAP  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┼ ─ ─ ─ ─
                                                              │
                                                       ┌──────▼───────┐
                                                       │  Air-Gapped  │
@@ -132,6 +133,12 @@ Chosen option: "Virtual Twin with OCI Image Layout bundles", because it provides
                                                       │  └────────┘  │
                                                       └──────────────┘
 ```
+
+**Data flow clarification:**
+- Harbor pushes artifact metadata to GC via webhook/API (`POST /api/groups/sync`)
+- GC pushes state artifacts (OCI images containing `artifacts.json`) back into Harbor
+- Connected satellites pull both state artifacts and container images directly from Harbor
+- For bundle generation only: GC pulls actual container images from Harbor (new capability)
 
 ### Flow 1: Day-Zero Setup (Air-Gapped Satellite)
 
@@ -440,73 +447,78 @@ Chosen option: "Virtual Twin with OCI Image Layout bundles", because it provides
 
 ### Data Flow: Bundle Generation (Ground Control)
 
+Note: In normal connected operation, GC only handles metadata — it receives artifact
+lists via API and pushes state OCI artifacts into Harbor. Satellites pull images directly
+from Harbor. Bundle generation is new: GC must pull actual container images from Harbor
+to package them into the OCI Image Layout for offline transport.
+
 ```
-    Ground Control                                        Harbor Registry
-    ┌─────────────────────────────────────────┐          ┌──────────────┐
-    │                                         │          │              │
-    │  POST /api/satellites/{name}/bundles    │          │  ┌────────┐  │
-    │                                         │          │  │ nginx  │  │
-    │  1. Resolve desired state               │   crane  │  │ redis  │  │
-    │     ┌──────────────────────────┐        │  .Pull() │  │ app-v2 │  │
-    │     │ satellite -> groups      │        │◄────────►│  │  ...   │  │
-    │     │ groups -> artifact list  │        │          │  └────────┘  │
-    │     │ (reuse AssembleGroupState│        │          │              │
-    │     └──────────┬───────────────┘        │          └──────────────┘
-    │                │                        │
-    │  2. If differential:                    │
-    │     ┌──────────▼───────────────┐        │
-    │     │ Load last applied bundle │        │
-    │     │ Diff artifact manifests  │        │
-    │     │ Keep only: new + changed │        │
-    │     └──────────┬───────────────┘        │
-    │                │                        │
-    │  3. Build OCI Image Layout              │
-    │     ┌──────────▼───────────────┐        │
-    │     │ For each image:          │        │
-    │     │   v1.Image -> layout.Wrt │        │
-    │     │                          │        │
-    │     │ oci/                     │        │
-    │     │ ├── oci-layout           │        │
-    │     │ ├── index.json           │        │
-    │     │ └── blobs/sha256/        │        │
-    │     │     ├── <shared layers>  │  <-- auto-dedup by digest
-    │     │     ├── <config blobs>   │        │
-    │     │     └── <manifests>      │        │
-    │     └──────────┬───────────────┘        │
-    │                │                        │
-    │  4. Write state files                   │
-    │     ┌──────────▼───────────────┐        │
-    │     │ state/                   │        │
-    │     │ ├── satellite-state.json │  <-- same format as
-    │     │ ├── groups/              │      PersistedState
-    │     │ │   └── group.json       │        │
-    │     │ └── config.json          │        │
-    │     └──────────┬───────────────┘        │
-    │                │                        │
-    │  5. Sign + Package                      │
-    │     ┌──────────▼───────────────┐        │
-    │     │ bundle.json --cosign-->  │        │
-    │     │              bundle.sig  │        │
-    │     │                          │        │
-    │     │ tar czf bundle.tar.gz    │        │
-    │     │   bundle.json            │        │
-    │     │   bundle.sig             │        │
-    │     │   oci/                   │        │
-    │     │   state/                 │        │
-    │     └──────────┬───────────────┘        │
-    │                │                        │
-    │  6. Store + Record                      │
-    │     ┌──────────▼───────────────┐        │
-    │     │ BundleStorage.Store()    │        │
-    │     │ (disk or S3)             │        │
-    │     │                          │        │
-    │     │ INSERT INTO bundles (...) │        │
-    │     │                          │        │
-    │     │ Return presigned URL     │        │
-    │     │ (30-min HMAC or S3)      │        │
-    │     └──────────────────────────┘        │
-    │                                         │
-    └─────────────────────────────────────────┘
+    Harbor Registry              Ground Control
+    ┌──────────────┐          ┌─────────────────────────────────────────┐
+    │              │          │                                         │
+    │  ┌────────┐  │          │  POST /api/satellites/{name}/bundles    │
+    │  │ nginx  │  │          │                                         │
+    │  │ redis  │  │  crane   │  1. Resolve desired state               │
+    │  │ app-v2 │  │  .Pull() │     ┌──────────────────────────┐        │
+    │  │  ...   │  │─────────►│     │ satellite -> groups      │        │
+    │  └────────┘  │  (NEW:   │     │ groups -> artifact list  │        │
+    │              │  GC pulls│     │ (reuse AssembleGroupState)│        │
+    │  State       │  images  │     └──────────┬───────────────┘        │
+    │  artifacts   │  for     │                │                        │
+    │  (pushed by  │  bundle  │  2. If differential:                    │
+    │   GC earlier)│  gen)    │     ┌──────────▼───────────────┐        │
+    │              │          │     │ Load last applied bundle │        │
+    └──────────────┘          │     │ Diff artifact manifests  │        │
+                              │     │ Keep only: new + changed │        │
+                              │     └──────────┬───────────────┘        │
+                              │                │                        │
+                              │  3. Build OCI Image Layout              │
+                              │     ┌──────────▼───────────────┐        │
+                              │     │ For each image:          │        │
+                              │     │   v1.Image -> layout.Wrt │        │
+                              │     │                          │        │
+                              │     │ oci/                     │        │
+                              │     │ ├── oci-layout           │        │
+                              │     │ ├── index.json           │        │
+                              │     │ └── blobs/sha256/        │        │
+                              │     │     ├── <shared layers>  │  <-- auto-dedup
+                              │     │     ├── <config blobs>   │        │
+                              │     │     └── <manifests>      │        │
+                              │     └──────────┬───────────────┘        │
+                              │                │                        │
+                              │  4. Write state files                   │
+                              │     ┌──────────▼───────────────┐        │
+                              │     │ state/                   │        │
+                              │     │ ├── satellite-state.json │  <-- same format
+                              │     │ ├── groups/              │      as PersistedState
+                              │     │ │   └── group.json       │        │
+                              │     │ └── config.json          │        │
+                              │     └──────────┬───────────────┘        │
+                              │                │                        │
+                              │  5. Sign + Package                      │
+                              │     ┌──────────▼───────────────┐        │
+                              │     │ bundle.json --cosign-->  │        │
+                              │     │              bundle.sig  │        │
+                              │     │                          │        │
+                              │     │ tar czf bundle.tar.gz    │        │
+                              │     │   bundle.json            │        │
+                              │     │   bundle.sig             │        │
+                              │     │   oci/                   │        │
+                              │     │   state/                 │        │
+                              │     └──────────┬───────────────┘        │
+                              │                │                        │
+                              │  6. Store + Record                      │
+                              │     ┌──────────▼───────────────┐        │
+                              │     │ BundleStorage.Store()    │        │
+                              │     │ (disk or S3)             │        │
+                              │     │                          │        │
+                              │     │ INSERT INTO bundles (...) │        │
+                              │     │                          │        │
+                              │     │ Return presigned URL     │        │
+                              │     │ (30-min HMAC or S3)      │        │
+                              │     └──────────────────────────┘        │
+                              │                                         │
+                              └─────────────────────────────────────────┘
 ```
 
 ### Data Flow: Bundle Import (Satellite)
@@ -740,11 +752,13 @@ Bundles are generated on-demand only (no auto-generation).
 
 New package: `ground-control/internal/bundle/`
 
+Note: In normal connected operation, GC only handles metadata — it receives artifact lists via `POST /api/groups/sync` and pushes state OCI artifacts into Harbor. Satellites pull images directly from Harbor. Bundle generation is a new capability where GC must also pull actual container images from Harbor to package them into the OCI Image Layout for offline transport.
+
 Generation flow:
 
 1. **Resolve desired state**: Fetch satellite's groups and config. Reuse `AssembleGroupState()` from `ground-control/internal/utils/helper.go`.
 2. **Compute differential** (if applicable): Load last applied bundle's `artifact_manifest` from DB. Diff against current artifact list.
-3. **Pull images into OCI layout**: `crane.Pull()` to get `v1.Image`, then `layout.Write()` into `oci/` directory. Blobs dedup automatically by digest.
+3. **Pull images from Harbor into OCI layout**: `crane.Pull()` from Harbor registry to get `v1.Image`, then `layout.Write()` into `oci/` directory. This is new — GC normally only pushes state artifacts to Harbor, it does not pull container images. Bundle generation requires GC to have read access to the actual images. Blobs dedup automatically by digest.
 4. **Write state files**: Same JSON format as existing state artifacts in Harbor.
 5. **Build bundle.json**: Assemble manifest with all metadata.
 6. **Sign**: Cosign library signs `bundle.json`, produces `bundle.sig`.
