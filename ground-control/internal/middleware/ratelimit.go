@@ -5,30 +5,70 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
 
 // RateLimiter tracks request rates per IP address.
 type RateLimiter struct {
-	mu           sync.RWMutex
-	requests     map[string][]time.Time
-	maxRequests  int
-	windowPeriod time.Duration
+	mu             sync.RWMutex
+	requests       map[string][]time.Time
+	maxRequests    int
+	windowPeriod   time.Duration
+	trustedProxies []*net.IPNet
 }
 
 // NewRateLimiter creates a new rate limiter.
-func NewRateLimiter(maxRequests int, windowPeriod time.Duration) *RateLimiter {
+func NewRateLimiter(maxRequests int, windowPeriod time.Duration, trustedProxies []string) *RateLimiter {
 	rl := &RateLimiter{
-		requests:     make(map[string][]time.Time),
-		maxRequests:  maxRequests,
-		windowPeriod: windowPeriod,
+		requests:       make(map[string][]time.Time),
+		maxRequests:    maxRequests,
+		windowPeriod:   windowPeriod,
+		trustedProxies: parseProxies(trustedProxies),
 	}
 
 	// Start cleanup goroutine
 	go rl.cleanup()
 
 	return rl
+}
+
+// parseProxies converts a slice of IP strings or CIDRs into net.IPNet objects.
+func parseProxies(proxies []string) []*net.IPNet {
+	var nets []*net.IPNet
+	for _, p := range proxies {
+		_, ipnet, err := net.ParseCIDR(p)
+		if err == nil {
+			nets = append(nets, ipnet)
+			continue
+		}
+		ip := net.ParseIP(p)
+		if ip != nil {
+			if ip.To4() != nil {
+				nets = append(nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)})
+			} else {
+				nets = append(nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)})
+			}
+		} else {
+			log.Printf("Warning: Invalid trusted proxy configuration: %s", p)
+		}
+	}
+	return nets
+}
+
+// isTrusted checks if an IP belongs to our trusted proxies list.
+func (rl *RateLimiter) isTrusted(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	for _, network := range rl.trustedProxies {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // Allow checks if a request from the given IP is allowed.
@@ -88,7 +128,7 @@ func (rl *RateLimiter) cleanup() {
 func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := getClientIP(r)
+			ip := rl.getClientIP(r)
 
 			if !rl.Allow(ip) {
 				log.Printf("Rate limit exceeded for IP: %s", ip)
@@ -103,13 +143,40 @@ func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
 	}
 }
 
-// getClientIP extracts the client IP from the request.
-// Only uses RemoteAddr to prevent IP spoofing via X-Forwarded-For/X-Real-IP headers.
-// If behind a trusted proxy, configure the proxy to set RemoteAddr correctly.
-func getClientIP(r *http.Request) string {
+// getClientIP securely extracts the client IP, evaluating X-Forwarded-For
+// from right to left, stopping at the first untrusted IP.
+func (rl *RateLimiter) getClientIP(r *http.Request) string {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		ip = r.RemoteAddr
+	}
+	if !rl.isTrusted(ip) {
+		return ip
+	}
+	remoteIP := ip
+	// Retrieve ALL X-Forwarded-For header lines (prevents multi-header bypass)
+	xffValues := r.Header.Values("X-Forwarded-For")
+	if len(xffValues) == 0 {
+		return ip
+	}
+	// Join multiple header lines with a comma, then split them all
+	ips := strings.Split(strings.Join(xffValues, ","), ",")
+
+	for i := len(ips) - 1; i >= 0; i-- {
+		headerIP := strings.TrimSpace(ips[i])
+		if headerIP == "" {
+			continue
+		}
+		parsed := net.ParseIP(headerIP)
+		if parsed == nil {
+			log.Printf("Warning: invalid X-Forwarded-For hop: %q", headerIP)
+			return remoteIP
+		}
+		candidate := parsed.String()
+		ip = candidate
+		if !rl.isTrusted(candidate) {
+			break
+		}
 	}
 	return ip
 }
