@@ -22,6 +22,9 @@ includes:
   _e2e:
     taskfile: ./taskfiles/e2e.yml
     dir: "{{.ROOT_DIR}}"
+  _api:
+    taskfile: ./taskfiles/api.yml
+    dir: "{{.ROOT_DIR}}"
 
 tasks:
   default:
@@ -45,6 +48,26 @@ tasks:
     aliases: [l]
     cmds:
       - task: _lint:lint
+
+  swagger-validate:
+    desc: Validate Ground Control swagger spec
+    cmds:
+      - task: _api:swagger-validate
+
+  swagger-json:
+    desc: Generate Ground Control swagger.json
+    cmds:
+      - task: _api:swagger-json
+
+  gen-apis:
+    desc: Generate Ground Control API server code
+    cmds:
+      - task: _api:gen-apis
+
+  gen-apis-check:
+    desc: Check Ground Control generated API drift
+    cmds:
+      - task: _api:gen-apis-check
 
   lint-report:
     desc: Run golangci-lint and export to file
