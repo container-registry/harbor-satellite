@@ -537,10 +537,12 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, 
 
 	replicator := NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure)
 
-	// Set up direct delivery if enabled
+	// Set up direct delivery if enabled, clear if disabled
 	dd := f.cm.GetDirectDeliveryConfig()
 	if dd.Enabled && dd.ImageDir != "" {
 		f.directDeliverer = NewDirectDeliverer(dd.ImageDir, srcUsername, srcPassword, sourceURL, useUnsecure)
+	} else {
+		f.directDeliverer = nil
 	}
 
 	return replicator, sourceURL, srcUsername, srcPassword, remoteURL, useUnsecure, satelliteStateURL

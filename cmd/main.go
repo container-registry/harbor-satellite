@@ -235,25 +235,6 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	}
 
-	// Configure direct delivery if enabled
-	if opts.DirectDelivery {
-		imageDir := opts.ImageDir
-		if imageDir == "" {
-			imageDir = runtime.DetectImageDir()
-		}
-		if imageDir == "" {
-			return fmt.Errorf("--direct-delivery enabled but no k3s/RKE2 image directory found; use --image-dir to specify one")
-		}
-		if err := os.MkdirAll(imageDir, 0o755); err != nil {
-			return fmt.Errorf("create image directory %s: %w", imageDir, err)
-		}
-		cm.With(config.SetDirectDelivery(config.DirectDeliveryConfig{
-			Enabled:  true,
-			ImageDir: imageDir,
-		}))
-		fmt.Printf("EXPERIMENTAL: direct delivery enabled, images will be written to %s\n", imageDir)
-	}
-
 	// Update Zot config with storage path
 	zotConfigJSON, err := config.BuildZotConfigWithStoragePath(pathConfig.ZotStorageDir)
 	if err != nil {
@@ -280,6 +261,25 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	if opts.FallbackOnly {
 		fmt.Println("--fallback-only: CRI configs applied, exiting.")
 		return nil
+	}
+
+	// Configure direct delivery if enabled (after fallback-only exit)
+	if opts.DirectDelivery {
+		imageDir := opts.ImageDir
+		if imageDir == "" {
+			imageDir = runtime.DetectImageDir()
+		}
+		if imageDir == "" {
+			return fmt.Errorf("--direct-delivery enabled but no k3s/RKE2 image directory found; use --image-dir to specify one")
+		}
+		if err := os.MkdirAll(imageDir, 0o755); err != nil {
+			return fmt.Errorf("create image directory %s: %w", imageDir, err)
+		}
+		cm.With(config.SetDirectDelivery(config.DirectDeliveryConfig{
+			Enabled:  true,
+			ImageDir: imageDir,
+		}))
+		fmt.Printf("EXPERIMENTAL: direct delivery enabled, images will be written to %s\n", imageDir)
 	}
 
 	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), opts.JSONLogging, warnings)

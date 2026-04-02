@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -23,6 +24,7 @@ const digestMapFile = ".satellite-digests.json"
 // DirectDeliverer writes Docker-save format tarballs into a directory that
 // k3s/RKE2 watches for automatic import into the containerd image store.
 type DirectDeliverer struct {
+	mu          sync.Mutex
 	imageDir    string
 	useUnsecure bool
 	srcUsername string
@@ -42,14 +44,18 @@ func NewDirectDeliverer(imageDir, srcUsername, srcPassword, srcRegistry string, 
 }
 
 // Deliver writes a Docker-save tarball for each entity into the image directory.
-// Existing tarballs with matching digests are skipped.
+// Existing tarballs with matching digests are skipped. Errors for individual
+// entities are logged and skipped so that one failure does not block the rest.
 func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error {
 	if len(entities) == 0 {
 		return nil
 	}
 
 	log := logger.FromContext(ctx)
+
+	d.mu.Lock()
 	digests := d.loadDigestMap()
+	d.mu.Unlock()
 
 	auth := authn.FromConfig(authn.AuthConfig{
 		Username: d.srcUsername,
@@ -79,24 +85,29 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 		srcRef := fmt.Sprintf("%s/%s/%s:%s", d.srcRegistry, entity.Repository, entity.Name, entity.Tag)
 		ref, err := name.ParseReference(srcRef, nameOpts...)
 		if err != nil {
-			return fmt.Errorf("parse ref %s: %w", srcRef, err)
+			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to parse reference, skipping")
+			continue
 		}
 
 		opts := []remote.Option{remote.WithAuth(auth), remote.WithContext(ctx)}
 		img, err := remote.Image(ref, opts...)
 		if err != nil {
-			return fmt.Errorf("pull image %s: %w", srcRef, err)
+			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to pull image, skipping")
+			continue
 		}
 
 		dstPath := filepath.Join(d.imageDir, filename)
 		if err := d.writeAtomically(dstPath, ref, img); err != nil {
-			return fmt.Errorf("write tarball %s: %w", dstPath, err)
+			log.Warn().Err(err).Str("file", filename).Msg("Direct delivery: failed to write tarball, skipping")
+			continue
 		}
 
 		digests[filename] = entity.Digest
 		log.Info().Str("file", filename).Str("ref", srcRef).Msg("Direct delivery: tarball written")
 	}
 
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return d.saveDigestMap(digests)
 }
 
@@ -107,7 +118,10 @@ func (d *DirectDeliverer) Delete(ctx context.Context, entities []Entity) error {
 	}
 
 	log := logger.FromContext(ctx)
+
+	d.mu.Lock()
 	digests := d.loadDigestMap()
+	d.mu.Unlock()
 
 	for _, entity := range entities {
 		select {
@@ -128,6 +142,8 @@ func (d *DirectDeliverer) Delete(ctx context.Context, entities []Entity) error {
 		log.Info().Str("file", filename).Msg("Direct delivery: tarball removed")
 	}
 
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return d.saveDigestMap(digests)
 }
 
@@ -160,10 +176,11 @@ func (d *DirectDeliverer) writeAtomically(dstPath string, ref name.Reference, im
 }
 
 // tarballFilename produces a filesystem-safe filename for an entity.
-// Format: {repository}_{name}_{tag}.tar with path separators replaced.
+// Format: {repository}--{name}--{tag}.tar with path separators replaced by _.
+// The -- delimiter is unambiguous because _ is used within fields for /.
 func tarballFilename(e Entity) string {
 	safe := strings.NewReplacer("/", "_", ":", "_", " ", "_")
-	return safe.Replace(fmt.Sprintf("%s_%s_%s.tar", e.Repository, e.Name, e.Tag))
+	return fmt.Sprintf("%s--%s--%s.tar", safe.Replace(e.Repository), safe.Replace(e.Name), safe.Replace(e.Tag))
 }
 
 func (d *DirectDeliverer) digestMapPath() string {

@@ -16,17 +16,22 @@ func TestTarballFilename(t *testing.T) {
 		{
 			name:   "simple",
 			entity: Entity{Repository: "library", Name: "nginx", Tag: "latest"},
-			want:   "library_nginx_latest.tar",
+			want:   "library--nginx--latest.tar",
 		},
 		{
 			name:   "nested repository",
 			entity: Entity{Repository: "project/repo", Name: "app", Tag: "v1.0"},
-			want:   "project_repo_app_v1.0.tar",
+			want:   "project_repo--app--v1.0.tar",
 		},
 		{
 			name:   "deep path",
 			entity: Entity{Repository: "harbor/satellite/images", Name: "worker", Tag: "sha-abc123"},
-			want:   "harbor_satellite_images_worker_sha-abc123.tar",
+			want:   "harbor_satellite_images--worker--sha-abc123.tar",
+		},
+		{
+			name:   "no collision with slash vs underscore",
+			entity: Entity{Repository: "foo/bar", Name: "baz", Tag: "v1"},
+			want:   "foo_bar--baz--v1.tar",
 		},
 	}
 
