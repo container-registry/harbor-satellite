@@ -192,8 +192,10 @@ plugins {
         plugin_data {}
     }
 
-    KeyManager "memory" {
-        plugin_data {}
+    KeyManager "disk" {
+        plugin_data {
+            keys_path = "%s/keys.json"
+        }
     }
 }
 `,
@@ -201,6 +203,7 @@ plugins {
 		s.config.BindPort,
 		s.socketPath,
 		s.config.TrustDomain,
+		s.config.DataDir,
 		s.config.DataDir,
 		s.config.DataDir,
 	)
