@@ -25,7 +25,7 @@ go.work
 dist/
 
 # Remove DS_Store
-.DS_Store
+**/.DS_Store
 zot/cache.db
 secrets.txt
 __debug_bin1949266242
