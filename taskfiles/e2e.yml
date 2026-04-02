@@ -424,8 +424,15 @@ tasks:
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
+          -e JSON_LOGGING=true \
           -p 8585:8585 \
           satellite:e2e
+
+        echo "Waiting for satellite Zot registry to start..."
+        sleep 5
+        echo "--- Early satellite logs ---"
+        docker logs satellite 2>&1 | head -30
+        echo "---"
 
   verify:
     desc: Verify image replication to local Zot
@@ -451,7 +458,9 @@ tasks:
           sleep 10
         done
         echo "Timeout waiting for replication"
-        docker logs satellite 2>&1 | tail -50
+        echo "--- Full satellite logs ---"
+        docker logs satellite 2>&1
+        echo "---"
         exit 1
 
   generate-join-token:
