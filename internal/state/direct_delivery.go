@@ -53,8 +53,9 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 
 	log := logger.FromContext(ctx)
 
+	// Snapshot current digests for skip checks (non-critical read).
 	d.mu.Lock()
-	digests := d.loadDigestMap()
+	currentDigests := d.loadDigestMap()
 	d.mu.Unlock()
 
 	auth := authn.FromConfig(authn.AuthConfig{
@@ -67,6 +68,9 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 		nameOpts = append(nameOpts, name.Insecure)
 	}
 
+	// Collect successful writes to merge atomically at the end.
+	updates := make(map[string]string)
+
 	for _, entity := range entities {
 		select {
 		case <-ctx.Done():
@@ -77,7 +81,7 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 		filename := tarballFilename(entity)
 
 		// Skip if digest matches what we already wrote.
-		if prev, ok := digests[filename]; ok && prev == entity.Digest {
+		if prev, ok := currentDigests[filename]; ok && prev == entity.Digest {
 			log.Debug().Str("file", filename).Msg("Direct delivery: tarball up-to-date, skipping")
 			continue
 		}
@@ -102,12 +106,22 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 			continue
 		}
 
-		digests[filename] = entity.Digest
+		updates[filename] = entity.Digest
 		log.Info().Str("file", filename).Str("ref", srcRef).Msg("Direct delivery: tarball written")
 	}
 
+	if len(updates) == 0 {
+		return nil
+	}
+
+	// Merge updates atomically: re-load from disk under lock so concurrent
+	// Deliver/Delete calls don't overwrite each other's changes.
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	digests := d.loadDigestMap()
+	for k, v := range updates {
+		digests[k] = v
+	}
 	return d.saveDigestMap(digests)
 }
 
@@ -119,9 +133,8 @@ func (d *DirectDeliverer) Delete(ctx context.Context, entities []Entity) error {
 
 	log := logger.FromContext(ctx)
 
-	d.mu.Lock()
-	digests := d.loadDigestMap()
-	d.mu.Unlock()
+	// Collect filenames that were successfully removed.
+	var removed []string
 
 	for _, entity := range entities {
 		select {
@@ -138,12 +151,22 @@ func (d *DirectDeliverer) Delete(ctx context.Context, entities []Entity) error {
 			continue
 		}
 
-		delete(digests, filename)
+		removed = append(removed, filename)
 		log.Info().Str("file", filename).Msg("Direct delivery: tarball removed")
 	}
 
+	if len(removed) == 0 {
+		return nil
+	}
+
+	// Merge deletions atomically: re-load from disk under lock so concurrent
+	// Deliver/Delete calls don't overwrite each other's changes.
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	digests := d.loadDigestMap()
+	for _, filename := range removed {
+		delete(digests, filename)
+	}
 	return d.saveDigestMap(digests)
 }
 
