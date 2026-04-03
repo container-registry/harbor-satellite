@@ -291,4 +291,3 @@ func buildServerTLSConfigWithWatcher(cfg *TLSConfig, cw *middleware.CertWatcher)
 
 	return tlsConfig, nil
 }
-
