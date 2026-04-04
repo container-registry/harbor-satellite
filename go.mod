@@ -490,7 +490,7 @@ require (
 
 // parsec-client-go: use local checkout for development.
 // Replace with a versioned module path once upstreamed or published.
-replace github.com/parallaxsecond/parsec-client-go => ../parsec-client-go
+replace github.com/parallaxsecond/parsec-client-go => ./parsec-client-go
 
 replace go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc => go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.12.2
 

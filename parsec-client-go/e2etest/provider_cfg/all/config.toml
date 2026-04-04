@@ -1,0 +1,42 @@
+[core_settings]
+# The CI already timestamps the logs
+log_timestamp = false
+log_error_details = true
+
+# The container runs the Parsec service as root, so make sure we disable root
+# checks.
+allow_root = true
+
+[listener]
+listener_type = "DomainSocket"
+timeout = 200 # in milliseconds
+socket_path = "/run/parsec/parsec.sock"
+
+[authenticator]
+#auth_type = "Direct"
+auth_type = "UnixPeerCredentials"
+#workload_endpoint="unix:///tmp/agent.sock"
+admins = [ { name = "0" } ]
+
+[[key_manager]]
+name = "on-disk-manager"
+manager_type = "OnDisk"
+store_path = "./mappings"
+
+[[provider]]
+provider_type = "MbedCrypto"
+key_info_manager = "on-disk-manager"
+
+[[provider]]
+provider_type = "Tpm"
+key_info_manager = "on-disk-manager"
+tcti = "mssim"
+owner_hierarchy_auth = "tpm_pass"
+
+[[provider]]
+provider_type = "Pkcs11"
+key_info_manager = "on-disk-manager"
+library_path = "/usr/local/lib/softhsm/libsofthsm2.so"
+user_pin = "123456"
+# The slot_number field is optional and when not present the first used slot will be used
+# slot_number

@@ -13,6 +13,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/parsec"
 	"github.com/container-registry/harbor-satellite/internal/registry"
+	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
@@ -197,8 +198,27 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
+    
+	var cryptoProvider crypto.Provider
+	var err error
 
-	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
+	if opts.ParsecEnabled {
+		// Fail-hard if they asked for hardware security but it's offline
+		if err := parsec.MustDetect(opts.ParsecSocketPath); err != nil {
+			return fmt.Errorf("parsec startup check failed: %w", err)
+		}
+		// Create the hardware provider
+		cryptoProvider, err = parsec.NewKeyProvider(opts.ParsecSocketPath)
+		if err != nil {
+			return fmt.Errorf("failed to init parsec provider: %w", err)
+		}
+	} else {
+		// Fallback to software security if PARSEC is disabled
+		cryptoProvider = crypto.NewAESProvider()
+	}
+
+	// Now pass our provider into the config manager
+	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure, cryptoProvider)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v\n", err)
 		return err

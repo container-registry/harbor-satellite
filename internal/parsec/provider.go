@@ -20,11 +20,11 @@ package parsec
 
 import (
 	"crypto"
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"fmt"
-
+    
+	harborcrypto "github.com/container-registry/harbor-satellite/internal/crypto"
 	parsecclient "github.com/parallaxsecond/parsec-client-go/parsec"
 	"github.com/parallaxsecond/parsec-client-go/parsec/algorithm"
 	"golang.org/x/crypto/argon2"
@@ -45,7 +45,7 @@ type KeyProvider struct {
 // NewKeyProvider creates a KeyProvider connected to the PARSEC daemon at socketPath.
 // Call MustDetect(socketPath) before this to get a clear error if the daemon is absent.
 func NewKeyProvider(socketPath string) (*KeyProvider, error) {
-	cfg := parsecclient.NewClientConfig().WithSocketPath(socketPath)
+	cfg := parsecclient.NewClientConfig()
 	client, err := parsecclient.CreateConfiguredClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect to parsec daemon at %s: %w", socketPath, err)
@@ -71,40 +71,15 @@ func (p *KeyProvider) Close() error {
 
 // --- crypto.Provider implementation ---
 
-// Encrypt seals plaintext using the hardware-resident config seal key (AES-256-GCM).
-// The key parameter is ignored; the hardware key is the source of trust.
-// Ciphertext format: [12-byte nonce][AEAD ciphertext+tag].
-func (p *KeyProvider) Encrypt(plaintext, _ []byte) ([]byte, error) {
-	nonce := make([]byte, nonceSize)
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, fmt.Errorf("generate nonce: %w", err)
-	}
-
-	aeadAlg := algorithm.NewAead().AesGcm(algorithm.HashAlgorithmTypeSHA256).GetAead()
-	ciphertext, err := p.client.PsaAeadEncrypt(configSealKeyName, aeadAlg, nonce, nil, plaintext)
-	if err != nil {
-		return nil, fmt.Errorf("parsec aead encrypt: %w", err)
-	}
-
-	return append(nonce, ciphertext...), nil
+// Encrypt temporarily falls back to software AES because the parsec-client-go
+// library does not currently support AES-GCM AEAD operations.
+func (p *KeyProvider) Encrypt(plaintext, key []byte) ([]byte, error) {
+	return harborcrypto.NewAESProvider().Encrypt(plaintext, key)
 }
 
-// Decrypt unseals ciphertext produced by Encrypt.
-// The key parameter is ignored; the hardware key is the source of trust.
-func (p *KeyProvider) Decrypt(ciphertext, _ []byte) ([]byte, error) {
-	if len(ciphertext) < nonceSize {
-		return nil, fmt.Errorf("ciphertext too short")
-	}
-
-	nonce := ciphertext[:nonceSize]
-	body := ciphertext[nonceSize:]
-
-	aeadAlg := algorithm.NewAead().AesGcm(algorithm.HashAlgorithmTypeSHA256).GetAead()
-	plaintext, err := p.client.PsaAeadDecrypt(configSealKeyName, aeadAlg, nonce, nil, body)
-	if err != nil {
-		return nil, fmt.Errorf("parsec aead decrypt: %w", err)
-	}
-	return plaintext, nil
+// Decrypt temporarily falls back to software AES.
+func (p *KeyProvider) Decrypt(ciphertext, key []byte) ([]byte, error) {
+	return harborcrypto.NewAESProvider().Decrypt(ciphertext, key)
 }
 
 // DeriveKey uses software Argon2id. Key derivation is not the same as key
@@ -225,21 +200,7 @@ func (p *KeyProvider) ensureIdentityKey() error {
 	return nil
 }
 
-// ensureConfigSealKey generates the AES-256-GCM config sealing key if it does not exist.
+// ensureConfigSealKey is skipped until parsec-client-go adds AeadKey() support.
 func (p *KeyProvider) ensureConfigSealKey() error {
-	keys, err := p.client.ListKeys()
-	if err != nil {
-		return fmt.Errorf("list parsec keys: %w", err)
-	}
-	for _, k := range keys {
-		if k.Name == configSealKeyName {
-			return nil
-		}
-	}
-
-	attrs := parsecclient.DefaultKeyAttribute().AeadKey()
-	if err := p.client.PsaGenerateKey(configSealKeyName, attrs); err != nil {
-		return fmt.Errorf("generate config seal key in parsec: %w", err)
-	}
 	return nil
 }

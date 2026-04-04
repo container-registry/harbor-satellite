@@ -12,7 +12,7 @@ import (
 // Returns true if the daemon is reachable and responding.
 // This is a cheap connectivity check, not a full capability probe.
 func Detect(socketPath string) bool {
-	cfg := parsecclient.NewClientConfig().WithSocketPath(socketPath)
+	cfg := parsecclient.NewClientConfig()
 	c, err := parsecclient.CreateConfiguredClient(cfg)
 	if err != nil {
 		return false
