@@ -12,6 +12,7 @@ require (
 
 require (
 	github.com/joho/godotenv v1.5.1
+	github.com/parallaxsecond/parsec-client-go v0.0.0 // local replace; see replace directive
 	github.com/rs/zerolog v1.33.0
 	github.com/spf13/viper v1.19.0
 	github.com/spiffe/go-spiffe/v2 v2.5.0
@@ -486,6 +487,10 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.6.0 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
+
+// parsec-client-go: use local checkout for development.
+// Replace with a versioned module path once upstreamed or published.
+replace github.com/parallaxsecond/parsec-client-go => ./parsec-client-go
 
 replace go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc => go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.12.2
 

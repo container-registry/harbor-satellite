@@ -5,7 +5,8 @@ WORKDIR /app
 
 # Install git for go mod download
 RUN apk add --no-cache git ca-certificates
-
+# copy the local module folder 
+COPY parsec-client-go/ /app/parsec-client-go/
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
 RUN go mod download
@@ -14,8 +15,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -o /satellite ./cmd/main.go
-
+RUN CGO_ENABLED=0 GOOS=linux go build -tags parsec -o /satellite ./cmd/main.go
 # Runtime stage
 FROM alpine:3.20
 

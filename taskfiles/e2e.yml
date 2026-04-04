@@ -49,6 +49,98 @@ tasks:
       - task: generate-join-token
       - task: verify-spiffe-attestation
       - echo "SPIFFE join token E2E test passed"
+  test-parsec:
+    desc: Run PARSEC hardware identity E2E test (Phase 1 & Application-Level Hardware Integration)
+    cmds:
+      - task: setup
+      - defer: { task: cleanup-parsec }
+      - task: wait-harbor
+      - task: wait-gc
+      - task: init-harbor
+      - task: init-gc
+      - task: start-parsec-daemon
+      - task: register-and-run-parsec-satellite
+      - task: verify-parsec
+      - echo "PARSEC hardware identity E2E test passed!"
+  start-parsec-daemon:
+    desc: Start PARSEC Hardware Simulator
+    cmds:
+      - echo "Starting PARSEC Daemon..."
+      - docker run -d --name parsec-daemon -u root --network harbor-e2e --privileged -v parsec-socket:/run/parsec ghcr.io/parallaxsecond/parsec-quickstart:latest bash -c "rm -f /run/parsec/parsec.sock && chmod 777 /run/parsec && sed -i 's|\"./parsec.sock\"|\"/run/parsec/parsec.sock\"|g' config.toml && parsec"
+      - sleep 5
+
+  register-and-run-parsec-satellite:
+    desc: Register satellite and run with PARSEC enabled
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sf -X POST {{.GC_URL}}/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Registering satellite..."
+        RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name": "test-parsec-satellite",
+            "groups": ["{{.DEST_NAMESPACE}}"],
+            "config_name": "test-config"
+          }')
+        TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+        echo "Building satellite with PARSEC tags..."
+        docker build -t satellite:e2e -f Dockerfile .
+
+        echo "Starting Satellite (As ROOT to read the socket)..."
+        docker run -d --name satellite \
+          -u root \
+          --network harbor-e2e \
+          -e TOKEN="$TOKEN" \
+          -e PARSEC_ENABLED=true \
+          -e PARSEC_SERVICE_ENDPOINT=unix:///run/parsec/parsec.sock \
+          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
+          -v parsec-socket:/run/parsec \
+          -p 8585:8585 \
+          satellite:e2e
+        sleep 5
+
+  verify-parsec:
+    desc: Verify PARSEC hardware key generation
+    cmds:
+      - |
+        echo "Verifying Hardware Identity in Satellite Logs..."
+        if docker logs satellite 2>&1 | grep -q "keyattributes: key_type:{rsa_key_pair"; then
+          echo "=========================================================="
+          echo "SUCCESS: Satellite dynamically generated a hardware-bound "
+          echo "RSA-2048 identity key via PARSEC and joined the network!"
+          echo "=========================================================="
+        else
+          echo "ERROR: Satellite failed to generate hardware key."
+          docker logs satellite
+          exit 1
+        fi
+
+        echo "Verifying key extraction directly from PARSEC Simulator..."
+        if docker exec -e PARSEC_SERVICE_ENDPOINT="unix:///run/parsec/parsec.sock" parsec-daemon parsec-tool list-keys | grep -q "satellite-identity-key"; then
+          echo "SUCCESS: Key successfully verified in PARSEC secure memory!"
+          docker exec -e PARSEC_SERVICE_ENDPOINT="unix:///run/parsec/parsec.sock" parsec-daemon parsec-tool list-keys
+        else
+          echo "ERROR: Key not found in PARSEC"
+          exit 1
+        fi
+
+  cleanup-parsec:
+    desc: Cleanup PARSEC E2E containers
+    cmds:
+      - echo "Cleaning up PARSEC test..."
+      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f satellite parsec-daemon 2>/dev/null || true
+      - docker volume rm parsec-socket 2>/dev/null || true
+    silent: true
 
   setup:
     desc: Start Harbor and Ground Control stack
