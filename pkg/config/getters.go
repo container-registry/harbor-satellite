@@ -28,7 +28,6 @@ func (cm *ConfigManager) GetOwnRegistry() bool {
 	return cm.config.AppConfig.BringOwnRegistry
 }
 
-
 func (cm *ConfigManager) UseUnsecure() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -183,4 +182,10 @@ func (cm *ConfigManager) GetHarborRegistryURL() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return cm.config.AppConfig.HarborRegistryURL
+}
+
+func (cm *ConfigManager) GetDirectDeliveryConfig() DirectDeliveryConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.DirectDelivery
 }

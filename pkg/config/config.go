@@ -41,6 +41,15 @@ type RegistryFallbackConfig struct {
 	Runtimes   []string `json:"runtimes,omitempty"`
 }
 
+// DirectDeliveryConfig holds settings for writing image tarballs directly
+// to a Kubernetes node's image directory (e.g. k3s/RKE2 agent images dir).
+// This is an experimental feature that enables satellite to deliver images
+// without requiring pods to pull from a registry.
+type DirectDeliveryConfig struct {
+	Enabled  bool   `json:"enabled,omitempty"`
+	ImageDir string `json:"image_dir,omitempty"` // auto-detected if empty
+}
+
 type AppConfig struct {
 	GroundControlURL          URL                    `json:"ground_control_url,omitempty"`
 	LogLevel                  string                 `json:"log_level,omitempty"`
@@ -55,7 +64,8 @@ type AppConfig struct {
 	SPIFFE                    SPIFFEConfig           `json:"spiffe,omitempty"`
 	EncryptConfig             bool                   `json:"encrypt_config,omitempty"`
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty"`
-	HarborRegistryURL        string                 `json:"harbor_registry_url,omitempty"`
+	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty"`
+	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
 }
 
 type StateConfig struct {
