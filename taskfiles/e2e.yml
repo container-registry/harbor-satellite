@@ -54,7 +54,7 @@ tasks:
     desc: Start Harbor and Ground Control stack
     cmds:
       - echo "Building ground-control image..."
-      - docker build -t gc:e2e -f ground-control/Dockerfile ground-control/
+      - docker build -t gc:e2e --build-arg VERSION=e2e -f ground-control/Dockerfile ground-control/
       - echo "Starting Harbor and GC stack..."
       - docker compose -f docker/e2e/docker-compose.yml up -d
       - sleep 5
@@ -65,7 +65,7 @@ tasks:
     desc: Start SPIFFE test stack with external SPIRE
     cmds:
       - echo "Building ground-control image..."
-      - docker build -t gc:e2e -f ground-control/Dockerfile ground-control/
+      - docker build -t gc:e2e --build-arg VERSION=e2e -f ground-control/Dockerfile ground-control/
       - task: generate-spiffe-certs
       - task: start-spire-server
       - task: setup-gc-agent
@@ -417,7 +417,7 @@ tasks:
         echo "Satellite registered with token: $TOKEN"
 
         echo "Building satellite from local code..."
-        docker build -t satellite:e2e -f Dockerfile .
+        docker build -t satellite:e2e --build-arg VERSION=e2e -f Dockerfile .
 
         echo "Starting satellite..."
         docker run -d --name satellite --network harbor-e2e \
@@ -681,7 +681,7 @@ tasks:
         done
 
         echo "Building satellite from local code..."
-        docker build -t satellite:e2e -f Dockerfile .
+        docker build -t satellite:e2e --build-arg VERSION=e2e -f Dockerfile .
 
         echo "Starting satellite in BYO mode..."
         docker run -d --name satellite-byo --network harbor-e2e \
@@ -792,7 +792,7 @@ tasks:
         echo "$TOKEN" > /tmp/e2e_satellite_token
 
         echo "Building satellite from local code..."
-        docker build -t satellite:e2e -f Dockerfile .
+        docker build -t satellite:e2e --build-arg VERSION=e2e -f Dockerfile .
 
         echo "Starting satellite with named volume..."
         docker run -d --name satellite --network harbor-e2e \

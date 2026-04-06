@@ -5,6 +5,8 @@ vars:
     sh: go env GOOS
   GOARCH:
     sh: go env GOARCH
+  VERSION:
+    sh: (git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//') || echo "dev"
 
 tasks:
   satellite:
@@ -12,7 +14,7 @@ tasks:
     cmds:
       - echo "Building satellite for {{.GOOS}}/{{.GOARCH}}..."
       - mkdir -p {{.BIN_DIR}}
-      - go build -o {{.BIN_DIR}}/satellite ./cmd/main.go
+      - go build -ldflags "-X github.com/container-registry/harbor-satellite/pkg/version.Version={{.VERSION}} -X github.com/container-registry/harbor-satellite/internal/version.Version={{.VERSION}}" -o {{.BIN_DIR}}/satellite ./cmd/main.go
       - echo "Built bin/satellite"
     sources:
       - "**/*.go"
@@ -28,7 +30,7 @@ tasks:
     cmds:
       - echo "Building ground-control for {{.GOOS}}/{{.GOARCH}}..."
       - mkdir -p {{.BIN_DIR}}
-      - go build -o {{.BIN_DIR}}/ground-control ./main.go
+      - go build -ldflags "-X github.com/container-registry/harbor-satellite/ground-control/pkg/version.Version={{.VERSION}}" -o {{.BIN_DIR}}/ground-control ./main.go
       - echo "Built bin/ground-control"
     sources:
       - "**/*.go"
@@ -49,9 +51,9 @@ tasks:
       - echo "Building satellite and ground-control for {{.GOOS}}/{{.GOARCH}}..."
       - mkdir -p {{.BIN_DIR}}
       - echo "  Compiling satellite..."
-      - go build -o {{.BIN_DIR}}/satellite ./cmd/main.go
+      - go build -ldflags "-X github.com/container-registry/harbor-satellite/pkg/version.Version={{.VERSION}} -X github.com/container-registry/harbor-satellite/internal/version.Version={{.VERSION}}" -o {{.BIN_DIR}}/satellite ./cmd/main.go
       - echo "  Compiling ground-control..."
-      - cd ground-control && go build -o {{.BIN_DIR}}/ground-control ./main.go
+      - cd ground-control && go build -ldflags "-X github.com/container-registry/harbor-satellite/ground-control/pkg/version.Version={{.VERSION}}" -o {{.BIN_DIR}}/ground-control ./main.go
       - echo "Done! Binaries in bin/"
     silent: true
 
@@ -74,14 +76,14 @@ tasks:
             GOARCH: [amd64, arm64, ppc64le, s390x, riscv64]
         cmd: |
           echo "  {{.ITEM.GOOS}}/{{.ITEM.GOARCH}}..."
-          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/satellite/satellite-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./cmd/main.go
+          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -ldflags "-X github.com/container-registry/harbor-satellite/pkg/version.Version={{.VERSION}} -X github.com/container-registry/harbor-satellite/internal/version.Version={{.VERSION}}" -o {{.BIN_DIR}}/satellite/satellite-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./cmd/main.go
       - for:
           matrix:
             GOOS: [darwin]
             GOARCH: [amd64, arm64]
         cmd: |
           echo "  {{.ITEM.GOOS}}/{{.ITEM.GOARCH}}..."
-          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/satellite/satellite-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./cmd/main.go
+          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -ldflags "-X github.com/container-registry/harbor-satellite/pkg/version.Version={{.VERSION}} -X github.com/container-registry/harbor-satellite/internal/version.Version={{.VERSION}}" -o {{.BIN_DIR}}/satellite/satellite-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./cmd/main.go
     silent: true
 
   all-ground-control:
@@ -96,12 +98,12 @@ tasks:
             GOARCH: [amd64, arm64, ppc64le, s390x, riscv64]
         cmd: |
           echo "  {{.ITEM.GOOS}}/{{.ITEM.GOARCH}}..."
-          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/ground-control/ground-control-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./main.go
+          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -ldflags "-X github.com/container-registry/harbor-satellite/ground-control/pkg/version.Version={{.VERSION}}" -o {{.BIN_DIR}}/ground-control/ground-control-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./main.go
       - for:
           matrix:
             GOOS: [darwin]
             GOARCH: [amd64, arm64]
         cmd: |
           echo "  {{.ITEM.GOOS}}/{{.ITEM.GOARCH}}..."
-          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/ground-control/ground-control-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./main.go
+          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -ldflags "-X github.com/container-registry/harbor-satellite/ground-control/pkg/version.Version={{.VERSION}}" -o {{.BIN_DIR}}/ground-control/ground-control-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./main.go
     silent: true
