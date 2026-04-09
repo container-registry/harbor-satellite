@@ -1,7 +1,7 @@
 <div align="center">
 
 # K3s & Harbor Satellite
-### End-to-End Reference Guide and Architecture
+## End-to-End Reference Guide and Architecture
 
 [![Harbor](https://img.shields.io/badge/Harbor-Satellite-blue?logo=harbor)](https://satellite.container-registry.com)
 [![K3s](https://img.shields.io/badge/K3s-Edge-orange?logo=k3s)](https://k3s.io)
@@ -107,12 +107,9 @@ The architecture is strictly divided into two distinct operational planes, separ
 ## 3. Security Model : SPIFFE/SPIRE Integration
 
 Distributing static registry credentials (`docker login` tokens) to thousands of edge devices is a critical security anti-pattern; a single compromised physical device exposes the credentials for the entire fleet. This architecture replaces all static secrets with **cryptographic identity** utilizing SPIFFE/SPIRE and **Zero-Touch Registration (ZTR)**.
-
 ![SPIFFE Security Model](../images/spiffe-security-model.png)
 
-
 ### 3.1 Zero-Touch Registration (ZTR) Provisioning Flow
-
 1. **Token Generation:** Administrator registers a new Satellite in Ground Control. The SPIRE Server generates a secure, one-time Join Token.
 2. **Device Attestation:** The SPIRE Agent deployed on the edge node consumes the Join Token. It is permanently invalidated, and the Agent receives a certificate-based identity.
 3. **Workload Identity:** The Harbor Satellite binary starts, connects to the local SPIRE Agent via a Unix socket, and is issued an X.509 SVID.
@@ -201,7 +198,7 @@ docker pull nginx:alpine
 docker tag nginx:alpine <CENTRAL_HARBOR_IP>:80/library/nginx:alpine
 
 # Login and push the image to Central Harbor
-docker login -u admin -p <HARBOR_PASSWORD> <CENTRAL_HARBOR_IP>:80
+docker login -u admin -p Harbor12345 <CENTRAL_HARBOR_IP>:80
 docker push <CENTRAL_HARBOR_IP>:80/library/nginx:alpine
 
 # Remove local copies to ensure a clean test later
@@ -219,7 +216,7 @@ We must instruct the K3s `containerd` engine to intercept requests for standard 
 
 ```bash
 sudo mkdir -p /etc/rancher/k3s
-sudo cat <<EOF > /etc/rancher/k3s/registries.yaml
+sudo tee /etc/rancher/k3s/registries.yaml > /dev/null << 'EOF'
 mirrors:
   "docker.io":
     endpoint:
@@ -288,10 +285,12 @@ Use the Ground Control API to assign the `nginx:alpine` image to your Edge Satel
 
 ```bash
 # Get Ground Control Bearer Token
-TOKEN=$(curl -sk -X POST "https://localhost:9080/login" -d '{"username":"admin","password":"<HARBOR_PASSWORD>"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+TOKEN=$(curl -sk -X POST "https://localhost:9080/login" -d '{"username":"admin","password":"Harbor12345"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
 
 # Get the SHA256 Digest from Central Harbor
-DIGEST=$(curl -sk -u "admin:<HARBOR_PASSWORD>" "http://<CENTRAL_HARBOR_IP>/api/v2.0/projects/library/repositories/nginx/artifacts?q=tags%3Dalpine&page_size=1" | grep -m1 '"digest":' | cut -d'"' -f4)
+DIGEST=$(curl -sk -u "admin:Harbor12345" "http://<CENTRAL_HARBOR_IP>/api/v2.0/projects/library/repositories/nginx/artifacts?q=tags%3Dalpine&page_size=1" | grep -m1 '"digest":' | cut -d'"' -f4)
+
 ```
 
 2. **Create Sync Group & Assign Satellite:**
@@ -374,7 +373,7 @@ Method 2 is fully automated after group assignment.
 
 ---
 
-### Prerequisites
+### Method 2 Prerequisites
 
 * A Linux Edge node running **K3s**.
 * Method 1 completed through group assignment (`library/nginx:alpine` synced to `edge-01`).
@@ -420,10 +419,10 @@ From Ground Control, create the sync group and assign the satellite:
 
 ```bash
 # Get Ground Control Bearer Token
-TOKEN=$(curl -sk -X POST "https://localhost:9080/login" -d '{"username":"admin","password":"<HARBOR_PASSWORD>"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+TOKEN=$(curl -sk -X POST "https://localhost:9080/login" -d '{"username":"admin","password":"Harbor12345"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
 # Get image digest from Harbor
-DIGEST=$(curl -sk -u "admin:<HARBOR_PASSWORD>" "http://<CENTRAL_HARBOR_IP>/api/v2.0/projects/library/repositories/nginx/artifacts?q=tags%3Dalpine&page_size=1" | grep -m1 '"digest":' | cut -d'"' -f4)
+DIGEST=$(curl -sk -u "admin:Harbor12345" "http://<CENTRAL_HARBOR_IP>/api/v2.0/projects/library/repositories/nginx/artifacts?q=tags%3Dalpine&page_size=1" | grep -m1 '"digest":' | cut -d'"' -f4)
 
 # Create sync group
 curl -sk -X POST "https://localhost:9080/api/groups/sync" \
