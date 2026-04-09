@@ -446,7 +446,6 @@ curl -s http://127.0.0.1:5050/v2/_catalog
 Allow 20-60 seconds for replication and auto-import, then validate that K3s sees the image:
 
 ```bash
-sudo k3s crictl rmi --prune
 sudo k3s crictl images | grep "<CENTRAL_HARBOR_IP>:80/library/nginx"
 ```
 
