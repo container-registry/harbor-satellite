@@ -110,6 +110,7 @@ Distributing static registry credentials (`docker login` tokens) to thousands of
 ![SPIFFE Security Model](../images/spiffe-security-model.png)
 
 ### 3.1 Zero-Touch Registration (ZTR) Provisioning Flow
+
 1. **Token Generation:** Administrator registers a new Satellite in Ground Control. The SPIRE Server generates a secure, one-time Join Token.
 2. **Device Attestation:** The SPIRE Agent deployed on the edge node consumes the Join Token. It is permanently invalidated, and the Agent receives a certificate-based identity.
 3. **Workload Identity:** The Harbor Satellite binary starts, connects to the local SPIRE Agent via a Unix socket, and is issued an X.509 SVID.
