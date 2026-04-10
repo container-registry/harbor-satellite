@@ -1,19 +1,16 @@
-# Docker Compose for Satellite with External SPIRE Agent (Join Token Attestation)
-# Requires the GC-side SPIRE server to be running (from ../gc/)
-
 services:
   spire-agent-satellite:
     image: ghcr.io/spiffe/spire-agent:1.12.3
     container_name: spire-agent-satellite
     hostname: spire-agent-satellite
     pid: host
+    user: "0:0"
     command: ["-config", "/opt/spire/conf/agent/agent.conf"]
     volumes:
       - ./spire/agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro
       - ../gc/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
       - spire-agent-satellite-data:/opt/spire/data/agent
       - spire-agent-satellite-socket:/run/spire/sockets
-      # Required for SPIRE workload attestor (identifies containers by Docker labels)
       - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
     healthcheck:
       test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck", "-socketPath", "/run/spire/sockets/agent.sock"]
@@ -31,6 +28,7 @@ services:
     container_name: satellite
     environment:
       - GROUND_CONTROL_URL=https://ground-control:8080
+      - HARBOR_REGISTRY_URL=http://192.168.100.64:80
       - USE_UNSECURE=true
       - SPIFFE_ENABLED=true
       - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
@@ -39,7 +37,7 @@ services:
       - spire-agent-satellite-socket:/run/spire/sockets:ro
       - satellite-data:/data
     ports:
-      - "${SATELLITE_ZOT_PORT:-5050}:8585"
+      - "${SATELLITE_ZOT_PORT:-5050}:5000"
     depends_on:
       spire-agent-satellite:
         condition: service_healthy
