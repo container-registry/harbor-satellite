@@ -20,6 +20,7 @@ author-id:
 ```
 
 Notes:
+
 - `repository` is used for clickable author profile links.
 - `avatar` can be a remote URL or local image path.
 
@@ -30,6 +31,7 @@ Put blog images in:
 `website/static/images/blog/`
 
 Use descriptive names, for example:
+
 - `architecture-overview.png`
 - `spiffe-security-model.png`
 
@@ -69,6 +71,7 @@ tags:
 ```
 
 Notes:
+
 - `author` must match a key inside `website/data/authors.yml`.
 - Tags are rendered as plain text in this project (not links).
 
@@ -97,10 +100,12 @@ It enables the blog section listing page.
 ## 6) Templates Used by Blog
 
 These templates control rendering:
+
 - `website/layouts/blog/list.html`
 - `website/layouts/blog/single.html`
 
 Current behavior:
+
 - Author name can link to `repository` or `github`.
 - Tags are printed as plain text.
 - No taxonomy pages are generated for tags/categories.
@@ -114,6 +119,7 @@ hugo server -D
 ```
 
 Open the local URL shown by Hugo and verify:
+
 - `/blog/` list page
 - Your new post page
 - Images and author information

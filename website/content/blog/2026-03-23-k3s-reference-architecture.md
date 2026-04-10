@@ -248,7 +248,7 @@ docker logs satellite | grep "nginx/blobs"
 
 Use this when sites must run with no live registry path.
 
-### Prerequisites
+### Method 2 Prerequisites
 
 - Method 1 completed through sync assignment
 - Root access on K3s node
@@ -357,7 +357,7 @@ Both methods follow the same architecture: centralized policy, edge-local artifa
 
 ## References & Further Reading
 
-- Zot project: https://zotregistry.dev/
-- K3s private registry docs: https://docs.k3s.io/installation/private-registry
-- SPIFFE/SPIRE docs: https://spiffe.io/docs/latest/spire-about/
-- SUSE Edge docs: https://documentation.suse.com/suse-edge/
+- [Zot project](https://zotregistry.dev/)
+- [K3s private registry docs](https://docs.k3s.io/installation/private-registry)
+- [SPIFFE/SPIRE docs](https://spiffe.io/docs/latest/spire-about/)
+- [SUSE Edge docs](https://documentation.suse.com/suse-edge/)
