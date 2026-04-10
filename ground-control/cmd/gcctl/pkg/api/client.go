@@ -19,7 +19,8 @@ type Client struct {
 }
 
 // NewClient creates an API client for the given server URL and token.
-// It returns an error if the URL is missing an HTTPS scheme (except for localhost).
+// Callers must invoke ValidateScheme before constructing a client that will
+// send credentials, to ensure the URL uses HTTPS outside of localhost.
 func NewClient(baseURL, token string) *Client {
 	return &Client{
 		BaseURL: strings.TrimRight(baseURL, "/"),

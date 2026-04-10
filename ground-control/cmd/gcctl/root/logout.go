@@ -42,6 +42,11 @@ func LogoutCommand(opts *rootOpts) *cobra.Command {
 				return nil
 			}
 
+			// Reject non-HTTPS servers before sending the Bearer token.
+			if err := api.ValidateScheme(server); err != nil {
+				return err
+			}
+
 			// Try to invalidate the session on the server
 			client := api.NewClient(server, cfg.Token)
 			if err := client.Logout(cmd.Context()); err != nil {

@@ -39,6 +39,11 @@ current session. Requires a prior 'gcctl login'.`,
 				return err
 			}
 
+			// Reject non-HTTPS servers before sending the Bearer token.
+			if err := api.ValidateScheme(server); err != nil {
+				return err
+			}
+
 			// Query the server for live user info
 			client := api.NewClient(server, cfg.Token)
 			resp, err := client.Whoami(cmd.Context())
@@ -60,8 +65,7 @@ current session. Requires a prior 'gcctl login'.`,
 			switch opts.outputFormat {
 			case "json", "yaml":
 				return utils.PrintFormat(display, opts.outputFormat)
-			default:
-				// Default table/key-value output
+			case "", "table":
 				utils.PrintKeyValue([][]string{
 					{"Username", display.Username},
 					{"Role", display.Role},
@@ -69,6 +73,8 @@ current session. Requires a prior 'gcctl login'.`,
 					{"Token Expires", display.ExpiresAt},
 				})
 				return nil
+			default:
+				return fmt.Errorf("unsupported output format %q; use table, json, or yaml", opts.outputFormat)
 			}
 		},
 	}
