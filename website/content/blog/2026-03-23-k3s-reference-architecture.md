@@ -146,7 +146,7 @@ docker rmi <CENTRAL_HARBOR_IP>:80/library/nginx:alpine
 
 ```bash
 sudo mkdir -p /etc/rancher/k3s
-sudo cat <<EOF_K3S > /etc/rancher/k3s/registries.yaml
+sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF_K3S
 mirrors:
   "docker.io":
     endpoint:

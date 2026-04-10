@@ -117,7 +117,7 @@ docker rmi localhost:5050/library/nginx:alpine
 ### Step 2: Stop central services
 
 ```bash
-docker stop harbor ground-control
+docker stop satellite ground-control
 # Expected: central side is unavailable
 ```
 
