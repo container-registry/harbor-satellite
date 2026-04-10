@@ -73,3 +73,57 @@ func (q *Queries) GetArtifactIDsByReferences(ctx context.Context, refs []string)
 	}
 	return items, nil
 }
+
+const getImageDistribution = `-- name: GetImageDistribution :many
+WITH latest_status AS (
+    SELECT DISTINCT ON (satellite_id) 
+        satellite_id, artifact_ids
+    FROM satellite_status
+    ORDER BY satellite_id, reported_at DESC
+)
+SELECT 
+    a.reference,
+    a.size_bytes,
+    COUNT(DISTINCT ls.satellite_id)::BIGINT AS satellite_count,
+    ARRAY_AGG(DISTINCT sat.name) AS satellites
+FROM artifacts a
+JOIN latest_status ls ON a.id = ANY(ls.artifact_ids)
+JOIN satellites sat ON ls.satellite_id = sat.id
+GROUP BY a.id, a.reference, a.size_bytes
+ORDER BY satellite_count DESC
+`
+
+type GetImageDistributionRow struct {
+	Reference      string
+	SizeBytes      int64
+	SatelliteCount int64
+	Satellites     interface{}
+}
+
+func (q *Queries) GetImageDistribution(ctx context.Context) ([]GetImageDistributionRow, error) {
+	rows, err := q.db.QueryContext(ctx, getImageDistribution)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetImageDistributionRow
+	for rows.Next() {
+		var i GetImageDistributionRow
+		if err := rows.Scan(
+			&i.Reference,
+			&i.SizeBytes,
+			&i.SatelliteCount,
+			&i.Satellites,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
