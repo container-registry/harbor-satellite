@@ -18,8 +18,8 @@
 | 2 | [Reference Architecture](#2-reference-architecture) |
 | 3 | [Security Model : SPIFFE/SPIRE Integration](#3-security-model--spiffespire-integration) |
 | 4 | [Connectivity Model](#4-connectivity-model) |
-| 5 | [Setup Guide: Method 1 - Network-Based Registry Mirror](#setup-method-1) |
-| 6 | [Setup Guide: Method 2 - Automated Air-Gap via Direct Delivery](#setup-method-2) |
+| 5 | [Setup Guide: Method 1 - Network-Based Registry Mirror](#5-setup-guide-method-1---network-based-registry-mirror) |
+| 6 | [Setup Guide: Method 2 - Automated Air-Gap via Direct Delivery](#6-setup-guide-method-2---automated-air-gap-via-direct-delivery) |
 | 7 | [Enterprise Use Cases](#7-enterprise-use-cases) |
 | 8 | [Ecosystem Alignment](#8-ecosystem-alignment) |
 | 9 | [References & Further Reading](#9-references--further-reading) |
