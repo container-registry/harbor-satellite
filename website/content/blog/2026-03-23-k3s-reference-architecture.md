@@ -134,7 +134,7 @@ docker pull nginx:alpine
 docker tag nginx:alpine <CENTRAL_HARBOR_IP>:80/library/nginx:alpine
 
 # Login and push the image to Central Harbor
-docker login -u admin -p <HARBOR_PASSWORD> <CENTRAL_HARBOR_IP>:80
+printf '%s\n' "<HARBOR_PASSWORD>" | docker login -u admin --password-stdin <CENTRAL_HARBOR_IP>:80
 docker push <CENTRAL_HARBOR_IP>:80/library/nginx:alpine
 
 # Remove local copies to ensure a clean test later

@@ -106,7 +106,7 @@ These templates control rendering:
 
 Current behavior:
 
-- Author name can link to `repository` or `github`.
+- Author name can link to `repository` (GitHub profile/repository URL).
 - Tags are printed as plain text.
 - No taxonomy pages are generated for tags/categories.
 
