@@ -30,7 +30,7 @@
 
 Deploying Kubernetes at the edge introduces architectural challenges that are not present in centralized cloud datacenters. Edge nodes frequently operate in resource-constrained environments constrained by intermittent, low-bandwidth, or highly metered network connections. When orchestrating K3s across thousands of remote sites, relying on a centralized container registry over a Wide Area Network (WAN) introduces a critical single point of failure.
 
-**Harbor Satellite** an edge extension of the CNCF-graduated Harbor registry mitigates this vulnerability by distributing a lightweight, localized OCI registry directly to each edge site. Powered by [Zot](https://zotregistry.dev/), it continuously synchronizes cryptographic image layers from a Central Harbor registry during optimal network conditions, subsequently serving them to local K3s workloads with zero external network dependency.
+**Harbor Satellite** — an edge extension of the CNCF-graduated Harbor registry — mitigates this vulnerability by distributing a lightweight, localized OCI registry directly to each edge site. Powered by [Zot](https://zotregistry.dev/), it continuously synchronizes cryptographic image layers from a Central Harbor registry during optimal network conditions, subsequently serving them to local K3s workloads with zero external network dependency.
 
 ### Challenges & Solutions
 
@@ -147,9 +147,9 @@ The Satellite utilizes three concurrent scheduling loops:
 
 | Scheduler | Default Interval | Behavior |
 | --- | --- | --- |
-| **State Replication** | 10 seconds | Fetches desired state from Ground Control, then pulls missing layers from Harbor and purges stale artifacts. |
+| **State Replication** | 30 seconds | Fetches desired state from Ground Control, then pulls missing layers from Harbor and purges stale artifacts. |
 | **Telemetry Heartbeat** | 30 seconds | Transmits CPU, memory, disk utilization, and local inventory to Ground Control. |
-| **Registration** | 30 seconds (Retry) | Re-authenticates via ZTR to refresh Harbor credentials if required. |
+| **Registration** | 5 seconds (Retry) | Re-authenticates via ZTR to refresh Harbor credentials if required. |
 
 ### 4.2 Bandwidth Optimization (Layer-Diff Strategy)
 
@@ -283,7 +283,6 @@ Use the Ground Control API to assign the `nginx:alpine` image to your Edge Satel
 ```bash
 # Get Ground Control Bearer Token
 TOKEN=$(curl -sk -X POST "https://localhost:9080/login" -d '{"username":"admin","password":"Harbor12345"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-
 
 # Get the SHA256 Digest from Central Harbor
 DIGEST=$(curl -sk -u "admin:Harbor12345" "http://<CENTRAL_HARBOR_IP>/api/v2.0/projects/library/repositories/nginx/artifacts?q=tags%3Dalpine&page_size=1" | grep -m1 '"digest":' | cut -d'"' -f4)
