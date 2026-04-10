@@ -28,7 +28,7 @@
 
 ## 1. Introduction & Challenges Addressed
 
-Deploying Kubernetes at the edge introduces architectural challenges that are not present in centralized cloud datacenters. Edge nodes frequently operate in resource-constrained environments constrained by intermittent, low-bandwidth, or highly metered network connections. When orchestrating K3s across thousands of remote sites, relying on a centralized container registry over a Wide Area Network (WAN) introduces a critical single point of failure.
+Deploying Kubernetes at the edge introduces architectural challenges that are not present in centralized cloud datacenters. Edge nodes frequently operate in resource-constrained environments with intermittent, low-bandwidth, or highly metered network connections. When orchestrating K3s across thousands of remote sites, relying on a centralized container registry over a Wide Area Network (WAN) introduces a critical single point of failure.
 
 **Harbor Satellite** — an edge extension of the CNCF-graduated Harbor registry — mitigates this vulnerability by distributing a lightweight, localized OCI registry directly to each edge site. Powered by [Zot](https://zotregistry.dev/), it continuously synchronizes cryptographic image layers from a Central Harbor registry during optimal network conditions, subsequently serving them to local K3s workloads with zero external network dependency.
 
