@@ -27,7 +27,11 @@ func printJSON(data any) error {
 }
 
 func printYAML(data any) error {
-	return yaml.NewEncoder(os.Stdout).Encode(data)
+	enc := yaml.NewEncoder(os.Stdout)
+	if err := enc.Encode(data); err != nil {
+		return err
+	}
+	return enc.Close()
 }
 
 func PrintKeyValue(pairs [][]string) {

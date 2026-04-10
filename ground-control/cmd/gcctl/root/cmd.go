@@ -3,45 +3,64 @@ package root
 
 import (
 	"fmt"
-	"os"
 
 	gcctlconfig "github.com/container-registry/harbor-satellite/ground-control/cmd/gcctl/pkg/config"
 	"github.com/spf13/cobra"
 )
 
-var (
-	// Global flags bound to persistent flags on the root command.
+// rootOpts holds global CLI flag values, scoped to the root command's lifetime.
+// Keeping them here (rather than as package-level vars) satisfies gochecknoglobals
+// and makes each command invocation own its own state.
+type rootOpts struct {
 	cfgFile      string
 	outputFormat string
 	serverURL    string
 	verbose      bool
-)
+}
 
-func GetConfigPath() string {
-	if cfgFile != "" {
-		return cfgFile
+func (o *rootOpts) configPath() (string, error) {
+	if o.cfgFile != "" {
+		return o.cfgFile, nil
 	}
 	path, err := gcctlconfig.DefaultConfigPath()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not determine default config path: %v\n", err)
-		return ""
+		return "", fmt.Errorf("could not determine default config path: %w", err)
 	}
-	return path
+	return path, nil
 }
 
-// GetOutputFormat returns the output format from the --output flag.
-func GetOutputFormat() string {
-	return outputFormat
+func (o *rootOpts) loadConfig() (*gcctlconfig.Config, error) {
+	path, err := o.configPath()
+	if err != nil {
+		return nil, err
+	}
+	return gcctlconfig.Load(path)
 }
 
-// GetServerURL returns the server URL from the --server flag.
-// If not set, returns empty string (callers should fall back to config file).
-func GetServerURL() string {
-	return serverURL
+func (o *rootOpts) saveConfig(cfg *gcctlconfig.Config) error {
+	path, err := o.configPath()
+	if err != nil {
+		return err
+	}
+	return gcctlconfig.Save(path, cfg)
+}
+
+// resolveServer determines the Ground Control server URL.
+// Priority: --server flag > config file > error.
+func (o *rootOpts) resolveServer(cfg *gcctlconfig.Config) (string, error) {
+	if o.serverURL != "" {
+		return o.serverURL, nil
+	}
+	if cfg != nil && cfg.Server != "" {
+		return cfg.Server, nil
+	}
+	return "", fmt.Errorf("no server configured; use --server flag or run 'gcctl login'")
 }
 
 // RootCmd creates and returns the root cobra command with all subcommands wired in.
 func RootCmd() *cobra.Command {
+	opts := &rootOpts{}
+
 	root := &cobra.Command{
 		Use:   "gcctl",
 		Short: "Ground Control CLI for Harbor Satellite",
@@ -58,24 +77,24 @@ To get started, run:
 		SilenceErrors: true,
 	}
 
-	// Global persistent flags (available to all subcommands)
-	root.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is ~/.gcctl/config.yaml)")
-	root.PersistentFlags().StringVarP(&outputFormat, "output", "o", "", "output format: table, json, yaml")
-	root.PersistentFlags().StringVarP(&serverURL, "server", "s", "", "Ground Control server URL (overrides config)")
-	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	// Persistent flags are bound to the opts struct, not package-level vars.
+	root.PersistentFlags().StringVarP(&opts.cfgFile, "config", "c", "", "config file (default is ~/.gcctl/config.yaml)")
+	root.PersistentFlags().StringVarP(&opts.outputFormat, "output", "o", "", "output format: table, json, yaml")
+	root.PersistentFlags().StringVarP(&opts.serverURL, "server", "s", "", "Ground Control server URL (overrides config)")
+	root.PersistentFlags().BoolVarP(&opts.verbose, "verbose", "v", false, "verbose output")
 
 	root.AddGroup(&cobra.Group{ID: "auth", Title: "Authentication:"})
 	root.AddGroup(&cobra.Group{ID: "utils", Title: "Utility:"})
 
-	loginCmd := LoginCommand()
+	loginCmd := LoginCommand(opts)
 	loginCmd.GroupID = "auth"
 	root.AddCommand(loginCmd)
 
-	logoutCmd := LogoutCommand()
+	logoutCmd := LogoutCommand(opts)
 	logoutCmd.GroupID = "auth"
 	root.AddCommand(logoutCmd)
 
-	whoamiCmd := WhoamiCommand()
+	whoamiCmd := WhoamiCommand(opts)
 	whoamiCmd.GroupID = "auth"
 	root.AddCommand(whoamiCmd)
 
@@ -84,26 +103,4 @@ To get started, run:
 	root.AddCommand(versionCmd)
 
 	return root
-}
-
-// LoadConfig is a helper used by subcommands to load the CLI config.
-func LoadConfig() (*gcctlconfig.Config, error) {
-	return gcctlconfig.Load(GetConfigPath())
-}
-
-// SaveConfig is a helper used by subcommands to persist the CLI config.
-func SaveConfig(cfg *gcctlconfig.Config) error {
-	return gcctlconfig.Save(GetConfigPath(), cfg)
-}
-
-// ResolveServer determines the Ground Control server URL.
-// Priority: --server flag > config file > error.
-func ResolveServer(cfg *gcctlconfig.Config) (string, error) {
-	if s := GetServerURL(); s != "" {
-		return s, nil
-	}
-	if cfg.Server != "" {
-		return cfg.Server, nil
-	}
-	return "", fmt.Errorf("no server configured; use --server flag or run 'gcctl login'")
 }

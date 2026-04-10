@@ -13,7 +13,7 @@ import (
 // Whoami queries the Ground Control server for the current authenticated
 // user's identity and displays their username, role, server, and
 // token expiry. Supports table, json, and yaml output formats.
-func WhoamiCommand() *cobra.Command {
+func WhoamiCommand(opts *rootOpts) *cobra.Command {
 	return &cobra.Command{
 		Use:   "whoami",
 		Short: "Show current authenticated user",
@@ -25,7 +25,7 @@ current session. Requires a prior 'gcctl login'.`,
   gcctl whoami -o yaml`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := LoadConfig()
+			cfg, err := opts.loadConfig()
 			if err != nil {
 				return fmt.Errorf("failed to load config: %w", err)
 			}
@@ -34,14 +34,14 @@ current session. Requires a prior 'gcctl login'.`,
 				return fmt.Errorf("not logged in; run 'gcctl login' first")
 			}
 
-			server, err := ResolveServer(cfg)
+			server, err := opts.resolveServer(cfg)
 			if err != nil {
 				return err
 			}
 
 			// Query the server for live user info
 			client := api.NewClient(server, cfg.Token)
-			resp, err := client.Whoami()
+			resp, err := client.Whoami(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("failed to get user info: %w", err)
 			}
@@ -57,10 +57,9 @@ current session. Requires a prior 'gcctl login'.`,
 				ExpiresAt: cfg.ExpiresAt,
 			}
 
-			format := GetOutputFormat()
-			switch format {
+			switch opts.outputFormat {
 			case "json", "yaml":
-				return utils.PrintFormat(display, format)
+				return utils.PrintFormat(display, opts.outputFormat)
 			default:
 				// Default table/key-value output
 				utils.PrintKeyValue([][]string{

@@ -2,10 +2,12 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -16,6 +18,8 @@ type Client struct {
 	HTTP    *http.Client
 }
 
+// NewClient creates an API client for the given server URL and token.
+// It returns an error if the URL is missing an HTTPS scheme (except for localhost).
 func NewClient(baseURL, token string) *Client {
 	return &Client{
 		BaseURL: strings.TrimRight(baseURL, "/"),
@@ -24,6 +28,21 @@ func NewClient(baseURL, token string) *Client {
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// ValidateScheme returns an error if baseURL uses a non-HTTPS scheme against
+// a non-localhost host. Call this before sending credentials.
+func ValidateScheme(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid server URL: %w", err)
+	}
+	host := u.Hostname()
+	isLocal := host == "localhost" || host == "127.0.0.1" || host == "::1"
+	if !isLocal && u.Scheme != "https" {
+		return fmt.Errorf("refusing to send credentials over %s; use https:// or a localhost address", u.Scheme)
+	}
+	return nil
 }
 
 type APIError struct {
@@ -51,14 +70,14 @@ type WhoamiResponse struct {
 	Server   string `json:"server,omitempty"`
 }
 
-func (c *Client) Login(username, password string) (*LoginResponse, error) {
+func (c *Client) Login(ctx context.Context, username, password string) (*LoginResponse, error) {
 	payload := LoginRequest{Username: username, Password: password}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal login request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/login", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/login", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create login request: %w", err)
 	}
@@ -81,8 +100,8 @@ func (c *Client) Login(username, password string) (*LoginResponse, error) {
 	return &result, nil
 }
 
-func (c *Client) Logout() error {
-	req, err := c.newAuthRequest(http.MethodPost, "/api/logout", nil)
+func (c *Client) Logout(ctx context.Context) error {
+	req, err := c.newAuthRequest(ctx, http.MethodPost, "/api/logout", nil)
 	if err != nil {
 		return err
 	}
@@ -99,8 +118,8 @@ func (c *Client) Logout() error {
 	return nil
 }
 
-func (c *Client) Whoami() (*WhoamiResponse, error) {
-	req, err := c.newAuthRequest(http.MethodGet, "/api/whoami", nil)
+func (c *Client) Whoami(ctx context.Context) (*WhoamiResponse, error) {
+	req, err := c.newAuthRequest(ctx, http.MethodGet, "/api/whoami", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -122,8 +141,8 @@ func (c *Client) Whoami() (*WhoamiResponse, error) {
 	return &result, nil
 }
 
-func (c *Client) Ping() error {
-	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/ping", nil)
+func (c *Client) Ping(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/ping", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create ping request: %w", err)
 	}
@@ -140,8 +159,8 @@ func (c *Client) Ping() error {
 	return nil
 }
 
-func (c *Client) newAuthRequest(method, path string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequest(method, c.BaseURL+path, body)
+func (c *Client) newAuthRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -153,7 +172,10 @@ func (c *Client) newAuthRequest(method, path string, body io.Reader) (*http.Requ
 }
 
 func parseAPIError(resp *http.Response) error {
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return &APIError{StatusCode: resp.StatusCode, Message: fmt.Sprintf("(failed to read error body: %v)", err)}
+	}
 
 	var errResp struct {
 		Error string `json:"error"`

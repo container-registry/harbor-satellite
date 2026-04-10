@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	gcctlconfig "github.com/container-registry/harbor-satellite/ground-control/cmd/gcctl/pkg/config"
+
 	"github.com/container-registry/harbor-satellite/ground-control/cmd/gcctl/pkg/api"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -23,7 +25,7 @@ import (
 //
 // Username and password can be provided via flags or interactive prompt.
 // For scripting, use --password-stdin to pipe the password securely.
-func LoginCommand() *cobra.Command {
+func LoginCommand(opts *rootOpts) *cobra.Command {
 	var (
 		username      string
 		password      string
@@ -44,74 +46,7 @@ If --server is not provided, the value from the config file is used.`,
   echo "secret" | gcctl login --server https://gc.example.com -u admin --password-stdin`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := LoadConfig()
-			if err != nil {
-				return fmt.Errorf("failed to load config: %w", err)
-			}
-
-			// Resolve server URL
-			server, err := ResolveServer(cfg)
-			if err != nil {
-				// Neither flag nor config has a server; prompt interactively
-				server, err = promptInput("Ground Control Server URL")
-				if err != nil {
-					return err
-				}
-			}
-
-			// Prompt for username if not provided via flag
-			if username == "" {
-				username, err = promptInput("Username")
-				if err != nil {
-					return err
-				}
-			}
-
-			// Read password from stdin if --password-stdin is set
-			if passwordStdin {
-				password, err = readStdin()
-				if err != nil {
-					return fmt.Errorf("failed to read password from stdin: %w", err)
-				}
-			}
-
-			// Prompt for password if still empty
-			if password == "" {
-				password, err = promptPassword("Password")
-				if err != nil {
-					return err
-				}
-			}
-
-			if username == "" || password == "" {
-				return fmt.Errorf("username and password are required")
-			}
-
-			// Ping the server first to check connectivity
-			client := api.NewClient(server, "")
-			if err := client.Ping(); err != nil {
-				return fmt.Errorf("cannot reach server %s: %w", server, err)
-			}
-
-			// Authenticate
-			resp, err := client.Login(username, password)
-			if err != nil {
-				return fmt.Errorf("login failed: %w", err)
-			}
-
-			// Save credentials to config file
-			cfg.Server = server
-			cfg.Token = resp.Token
-			cfg.ExpiresAt = resp.ExpiresAt
-			cfg.Username = username
-
-			if err := SaveConfig(cfg); err != nil {
-				return fmt.Errorf("login succeeded but failed to save config: %w", err)
-			}
-
-			fmt.Printf("Logged in as %s to %s\n", username, server)
-			fmt.Printf("  Token expires: %s\n", resp.ExpiresAt)
-			return nil
+			return runLogin(cmd, opts, username, password, passwordStdin)
 		},
 	}
 
@@ -122,10 +57,104 @@ If --server is not provided, the value from the config file is used.`,
 	return cmd
 }
 
-// promptInput reads a line of text from stdin with the given prompt label.
-func promptInput(label string) (string, error) {
-	fmt.Printf("%s: ", label)
+// loginCredentials holds the resolved server, username, and password.
+type loginCredentials struct {
+	server   string
+	username string
+	password string
+}
+
+// runLogin contains the core login logic, extracted to keep RunE within
+// function-length and cyclomatic-complexity linter limits.
+func runLogin(cmd *cobra.Command, opts *rootOpts, username, password string, passwordStdin bool) error {
+	cfg, err := opts.loadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	creds, err := gatherCredentials(cmd, opts, cfg, username, password, passwordStdin)
+	if err != nil {
+		return err
+	}
+
+	if err := api.ValidateScheme(creds.server); err != nil {
+		return err
+	}
+
+	client := api.NewClient(creds.server, "")
+	if err := client.Ping(cmd.Context()); err != nil {
+		return fmt.Errorf("cannot reach server %s: %w", creds.server, err)
+	}
+
+	resp, err := client.Login(cmd.Context(), creds.username, creds.password)
+	if err != nil {
+		return fmt.Errorf("login failed: %w", err)
+	}
+
+	cfg.Server = creds.server
+	cfg.Token = resp.Token
+	cfg.ExpiresAt = resp.ExpiresAt
+	cfg.Username = creds.username
+
+	if err := opts.saveConfig(cfg); err != nil {
+		return fmt.Errorf("login succeeded but failed to save config: %w", err)
+	}
+
+	fmt.Printf("Logged in as %s to %s\n", creds.username, creds.server)
+	fmt.Printf("  Token expires: %s\n", resp.ExpiresAt)
+	return nil
+}
+
+// gatherCredentials resolves server, username, and password from flags,
+// config, or interactive prompts. A single bufio.Reader is shared across
+// all prompt calls to avoid consuming buffered stdin bytes prematurely.
+func gatherCredentials(cmd *cobra.Command, opts *rootOpts, cfg *gcctlconfig.Config, username, password string, passwordStdin bool) (*loginCredentials, error) {
 	reader := bufio.NewReader(os.Stdin)
+
+	// resolveServer checks --server flag first, then cfg.Server, then errors.
+	server, err := opts.resolveServer(cfg)
+	if err != nil {
+		server, err = promptInput(reader, "Ground Control Server URL")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if username == "" {
+		username, err = promptInput(reader, "Username")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if passwordStdin {
+		password, err = readStdin(reader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read password from stdin: %w", err)
+		}
+	} else if password != "" {
+		// Warn: -p exposes the password in shell history and `ps aux` output.
+		fmt.Fprintln(cmd.ErrOrStderr(), "Warning: --password/-p exposes credentials in shell history and process list. Use --password-stdin for scripts.")
+	}
+
+	if password == "" {
+		password, err = promptPassword("Password")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if username == "" || password == "" {
+		return nil, fmt.Errorf("username and password are required")
+	}
+
+	return &loginCredentials{server: server, username: username, password: password}, nil
+}
+
+// promptInput reads a line of text from stdin with the given prompt label.
+// Accepts a shared reader to avoid buffered-input loss across multiple prompts.
+func promptInput(reader *bufio.Reader, label string) (string, error) {
+	fmt.Printf("%s: ", label)
 	input, err := reader.ReadString('\n')
 	if err != nil {
 		return "", fmt.Errorf("failed to read input: %w", err)
@@ -145,11 +174,11 @@ func promptPassword(label string) (string, error) {
 }
 
 // readStdin reads the first line from stdin (for --password-stdin).
-func readStdin() (string, error) {
-	reader := bufio.NewReader(os.Stdin)
+// Accepts a shared reader to avoid buffered-input loss across multiple prompts.
+func readStdin(reader *bufio.Reader) (string, error) {
 	input, err := reader.ReadString('\n')
 	if err != nil {
-		// If EOF without newline, that's okay (e.g. echo -n "pass" | gcctl login)
+		// EOF without newline is acceptable (e.g. echo -n "pass" | gcctl login)
 		if len(input) > 0 {
 			return strings.TrimSpace(input), nil
 		}
