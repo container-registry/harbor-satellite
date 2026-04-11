@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -206,6 +207,85 @@ func DecodeRequestBody(r *http.Request, v any) error {
 			Message: "Invalid request body",
 			Code:    http.StatusBadRequest,
 		}
+	}
+	return nil
+}
+
+// DecodeRequestParams decodes query and path params into a struct.
+// Use `query:"name"` and `path:"name"` struct tags.
+// Path param extraction requires a helper — pass in a pathVar func
+// (e.g. r.PathValue for Go 1.22+, or chi.URLParam, etc.)
+func DecodeRequestParams(r *http.Request, dst any, pathVar func(key string) string) error {
+	v := reflect.ValueOf(dst)
+	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("dst must be a pointer to a struct")
+	}
+	v = v.Elem()
+	t := v.Type()
+
+	q := r.URL.Query()
+
+	for i := range t.NumField() {
+		field := t.Field(i)
+		fv := v.Field(i)
+
+		if !fv.CanSet() {
+			continue
+		}
+
+		var raw string
+		var ok bool
+
+		if tag, exists := field.Tag.Lookup("query"); exists {
+			raw = q.Get(tag)
+			ok = raw != ""
+		} else if tag, exists := field.Tag.Lookup("path"); exists && pathVar != nil {
+			raw = pathVar(tag)
+			ok = raw != ""
+		}
+
+		if !ok {
+			continue
+		}
+
+		if err := setField(fv, raw); err != nil {
+			return fmt.Errorf("field %s: %w", field.Name, err)
+		}
+	}
+
+	return nil
+}
+
+func setField(fv reflect.Value, raw string) error {
+	switch fv.Kind() {
+	case reflect.String:
+		fv.SetString(raw)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid int %q", raw)
+		}
+		fv.SetInt(n)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		n, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid uint %q", raw)
+		}
+		fv.SetUint(n)
+	case reflect.Float32, reflect.Float64:
+		n, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return fmt.Errorf("invalid float %q", raw)
+		}
+		fv.SetFloat(n)
+	case reflect.Bool:
+		b, err := strconv.ParseBool(raw)
+		if err != nil {
+			return fmt.Errorf("invalid bool %q", raw)
+		}
+		fv.SetBool(b)
+	default:
+		return fmt.Errorf("unsupported kind %s", fv.Kind())
 	}
 	return nil
 }
