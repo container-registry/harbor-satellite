@@ -127,21 +127,9 @@ func gatherCredentials(cmd *cobra.Command, opts *rootOpts, cfg *gcctlconfig.Conf
 		}
 	}
 
-	if passwordStdin {
-		password, err = readStdin(reader)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read password from stdin: %w", err)
-		}
-	} else if password != "" {
-		// Warn: -p exposes the password in shell history and `ps aux` output.
-		fmt.Fprintln(cmd.ErrOrStderr(), "Warning: --password/-p exposes credentials in shell history and process list. Use --password-stdin for scripts.")
-	}
-
-	if password == "" {
-		password, err = promptPassword("Password")
-		if err != nil {
-			return nil, err
-		}
+	password, err = resolvePassword(cmd, reader, password, passwordStdin)
+	if err != nil {
+		return nil, err
 	}
 
 	if username == "" || password == "" {
@@ -149,6 +137,31 @@ func gatherCredentials(cmd *cobra.Command, opts *rootOpts, cfg *gcctlconfig.Conf
 	}
 
 	return &loginCredentials{server: server, username: username, password: password}, nil
+}
+
+// resolvePassword determines the password from (in priority order):
+// stdin (--password-stdin), the --password flag, or an interactive prompt.
+// Extracted from gatherCredentials to keep cyclomatic complexity within limits.
+func resolvePassword(cmd *cobra.Command, reader *bufio.Reader, password string, passwordStdin bool) (string, error) {
+	if passwordStdin {
+		pw, err := readStdin(reader)
+		if err != nil {
+			return "", fmt.Errorf("failed to read password from stdin: %w", err)
+		}
+		return pw, nil
+	}
+
+	if password != "" {
+		// Warn: -p exposes the password in shell history and `ps aux` output.
+		fmt.Fprintln(cmd.ErrOrStderr(), "Warning: --password/-p exposes credentials in shell history and process list. Use --password-stdin for scripts.")
+		return password, nil
+	}
+
+	pw, err := promptPassword("Password")
+	if err != nil {
+		return "", err
+	}
+	return pw, nil
 }
 
 // promptInput reads a line of text from stdin with the given prompt label.
