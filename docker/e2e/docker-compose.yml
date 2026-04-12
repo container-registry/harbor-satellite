@@ -1,6 +1,6 @@
 services:
   postgresql:
-    image: goharbor/harbor-db:v2.14.0
+    image: docker.io/goharbor/harbor-db:v2.14.0
     container_name: postgresql
     networks:
       - harbor-e2e
@@ -11,7 +11,7 @@ services:
       retries: 12
 
   redis:
-    image: goharbor/redis-photon:v2.14.0
+    image: docker.io/goharbor/redis-photon:v2.14.0
     container_name: redis
     networks:
       - harbor-e2e
@@ -86,7 +86,7 @@ services:
       - harbor-e2e
 
   postgres:
-    image: postgres:17
+    image: docker.io/library/postgres:17
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
