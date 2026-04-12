@@ -50,8 +50,8 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 	mock.ExpectExec("INSERT INTO artifacts").
 		WithArgs(
 			pq.Array([]string{
-				"localhost:8585/library/nginx:latest@sha256:abc",
-				"localhost:8585/library/alpine:3.18@sha256:def",
+				"localhost:5000/library/nginx:latest@sha256:abc",
+				"localhost:5000/library/alpine:3.18@sha256:def",
 			}),
 			pq.Array([]int64{50000, 5000}),
 		).
@@ -59,12 +59,12 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 
 	// Mock GetArtifactIDsByReferences
 	artifactRows := sqlmock.NewRows([]string{"id", "reference", "size_bytes", "created_at"}).
-		AddRow(int32(10), "localhost:8585/library/nginx:latest@sha256:abc", int64(50000), now).
-		AddRow(int32(11), "localhost:8585/library/alpine:3.18@sha256:def", int64(5000), now)
+		AddRow(int32(10), "localhost:5000/library/nginx:latest@sha256:abc", int64(50000), now).
+		AddRow(int32(11), "localhost:5000/library/alpine:3.18@sha256:def", int64(5000), now)
 	mock.ExpectQuery("SELECT .+ FROM artifacts").
 		WithArgs(pq.Array([]string{
-			"localhost:8585/library/nginx:latest@sha256:abc",
-			"localhost:8585/library/alpine:3.18@sha256:def",
+			"localhost:5000/library/nginx:latest@sha256:abc",
+			"localhost:5000/library/alpine:3.18@sha256:def",
 		})).
 		WillReturnRows(artifactRows)
 
@@ -88,8 +88,8 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 		ImageCount:         2,
 		RequestCreatedTime: now,
 		CachedImages: []CachedImage{
-			{Reference: "localhost:8585/library/nginx:latest@sha256:abc", SizeBytes: 50000},
-			{Reference: "localhost:8585/library/alpine:3.18@sha256:def", SizeBytes: 5000},
+			{Reference: "localhost:5000/library/nginx:latest@sha256:abc", SizeBytes: 50000},
+			{Reference: "localhost:5000/library/alpine:3.18@sha256:def", SizeBytes: 5000},
 		},
 	}
 	body, _ := json.Marshal(reqBody)
@@ -177,8 +177,8 @@ func TestGetCachedImagesHandler(t *testing.T) {
 			WillReturnRows(satRows)
 
 		artifactRows := sqlmock.NewRows([]string{"id", "reference", "size_bytes", "created_at"}).
-			AddRow(int32(10), "localhost:8585/library/nginx:latest@sha256:abc", int64(50000), now).
-			AddRow(int32(11), "localhost:8585/library/alpine:3.18@sha256:def", int64(5000), now)
+			AddRow(int32(10), "localhost:5000/library/nginx:latest@sha256:abc", int64(50000), now).
+			AddRow(int32(11), "localhost:5000/library/alpine:3.18@sha256:def", int64(5000), now)
 		mock.ExpectQuery("SELECT .+ FROM artifacts").
 			WithArgs(int32(1)).
 			WillReturnRows(artifactRows)
@@ -195,9 +195,9 @@ func TestGetCachedImagesHandler(t *testing.T) {
 		err := json.NewDecoder(rr.Body).Decode(&artifacts)
 		require.NoError(t, err)
 		require.Len(t, artifacts, 2)
-		require.Equal(t, "localhost:8585/library/nginx:latest@sha256:abc", artifacts[0].Reference)
+		require.Equal(t, "localhost:5000/library/nginx:latest@sha256:abc", artifacts[0].Reference)
 		require.Equal(t, int64(50000), artifacts[0].SizeBytes)
-		require.Equal(t, "localhost:8585/library/alpine:3.18@sha256:def", artifacts[1].Reference)
+		require.Equal(t, "localhost:5000/library/alpine:3.18@sha256:def", artifacts[1].Reference)
 		require.Equal(t, int64(5000), artifacts[1].SizeBytes)
 
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -299,7 +299,7 @@ func TestSyncHandler_BatchInsertArtifactsFails(t *testing.T) {
 
 	mock.ExpectExec("INSERT INTO artifacts").
 		WithArgs(
-			pq.Array([]string{"localhost:8585/nginx:latest@sha256:abc"}),
+			pq.Array([]string{"localhost:5000/nginx:latest@sha256:abc"}),
 			pq.Array([]int64{50000}),
 		).
 		WillReturnError(fmt.Errorf("db connection lost"))
@@ -308,7 +308,7 @@ func TestSyncHandler_BatchInsertArtifactsFails(t *testing.T) {
 		Name:               "edge-01",
 		RequestCreatedTime: now,
 		CachedImages: []CachedImage{
-			{Reference: "localhost:8585/nginx:latest@sha256:abc", SizeBytes: 50000},
+			{Reference: "localhost:5000/nginx:latest@sha256:abc", SizeBytes: 50000},
 		},
 	}
 	body, _ := json.Marshal(reqBody)
@@ -353,8 +353,8 @@ func TestCachedImageJSON(t *testing.T) {
 			Name:       "edge-01",
 			ImageCount: 2,
 			CachedImages: []CachedImage{
-				{Reference: "localhost:8585/nginx:latest@sha256:abc", SizeBytes: 50000},
-				{Reference: "localhost:8585/alpine:3.18@sha256:def", SizeBytes: 5000},
+				{Reference: "localhost:5000/nginx:latest@sha256:abc", SizeBytes: 50000},
+				{Reference: "localhost:5000/alpine:3.18@sha256:def", SizeBytes: 5000},
 			},
 		}
 

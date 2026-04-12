@@ -148,7 +148,7 @@ create_test_config() {
                     "state_replication_interval": "@every 00h00m30s",
                     "register_satellite_interval": "@every 00h00m30s",
                     "local_registry": {
-                        "url": "http://0.0.0.0:8585"
+                        "url": "http://0.0.0.0:5000"
                     },
                     "encrypt_config": false
                 },
@@ -159,7 +159,7 @@ create_test_config() {
                     },
                     "http": {
                         "address": "0.0.0.0",
-                        "port": "8585"
+                        "port": "5000"
                     },
                     "log": {
                         "level": "info"
@@ -217,7 +217,7 @@ run_satellite() {
         "state_replication_interval": "@every 00h00m30s",
         "register_satellite_interval": "@every 00h00m30s",
         "local_registry": {
-            "url": "http://0.0.0.0:8585"
+            "url": "http://0.0.0.0:5000"
         }
     },
     "zot_config": {
@@ -227,7 +227,7 @@ run_satellite() {
         },
         "http": {
             "address": "0.0.0.0",
-            "port": "8585"
+            "port": "5000"
         },
         "log": {
             "level": "info"

@@ -41,7 +41,7 @@ services:
       - spire-agent-satellite-socket:/run/spire/sockets:ro
       - satellite-data:/data
     ports:
-      - "${SATELLITE_ZOT_PORT:-5050}:8585"
+      - "${SATELLITE_ZOT_PORT:-5050}:5000"
     depends_on:
       spire-agent-satellite:
         condition: service_healthy

@@ -365,12 +365,12 @@ tasks:
                 "update_config_interval": "@every 00h00m10s",
                 "register_satellite_interval": "@every 00h00m10s",
                 "bring_own_registry": false,
-                "local_registry": {"url": "http://127.0.0.1:8585"}
+                "local_registry": {"url": "http://127.0.0.1:5000"}
               },
               "zot_config": {
                 "distSpecVersion": "1.1.0",
                 "storage": {"rootDirectory": "./zot"},
-                "http": {"address": "0.0.0.0", "port": "8585"},
+                "http": {"address": "0.0.0.0", "port": "5000"},
                 "log": {"level": "info"}
               }
             }
@@ -424,7 +424,8 @@ tasks:
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
-          -p 8585:8585 \
+          -e JSON_LOGGING=true \
+          -p 5000:5000 \
           satellite:e2e
 
   verify:
@@ -436,12 +437,12 @@ tasks:
           echo "Checking replication status... ($i/12)"
           if docker run --rm --network harbor-e2e alpine:latest sh -c "
             apk add --no-cache crane > /dev/null 2>&1 &&
-            crane manifest satellite:8585/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
+            crane manifest satellite:5000/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
           "; then
             echo "Image available, pulling..."
             docker run --rm --network harbor-e2e alpine:latest sh -c "
               apk add --no-cache crane &&
-              crane pull satellite:8585/{{.PROJECT_NAME}}/alpine:latest alpine.tar --insecure &&
+              crane pull satellite:5000/{{.PROJECT_NAME}}/alpine:latest alpine.tar --insecure &&
               tar -xf alpine.tar &&
               cat manifest.json
             "
@@ -792,7 +793,7 @@ tasks:
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/satellite-state \
-          -p 8585:8585 \
+          -p 5000:5000 \
           satellite:e2e
 
   crash-and-restart-satellite:
@@ -812,7 +813,7 @@ tasks:
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/satellite-state \
-          -p 8585:8585 \
+          -p 5000:5000 \
           satellite:e2e
 
         echo "Waiting for satellite to start..."
@@ -841,7 +842,7 @@ tasks:
         for i in $(seq 1 6); do
           if docker run --rm --network harbor-e2e alpine:latest sh -c "
             apk add --no-cache crane > /dev/null 2>&1 &&
-            crane manifest satellite:8585/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
+            crane manifest satellite:5000/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
           "; then
             echo "PASS: Image still accessible after crash recovery"
             exit 0

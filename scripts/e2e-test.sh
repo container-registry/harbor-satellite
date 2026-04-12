@@ -114,13 +114,13 @@ CONFIG_RESP=$(curl -s -X POST "http://localhost:$GC_PORT/configs" \
                 "use_unsecure": true,
                 "state_replication_interval": "@every 00h01m00s",
                 "register_satellite_interval": "@every 00h01m00s",
-                "local_registry": {"url": "http://0.0.0.0:8585"},
+                "local_registry": {"url": "http://0.0.0.0:5000"},
                 "encrypt_config": false
             },
             "zot_config": {
                 "distSpecVersion": "1.1.0",
                 "storage": {"rootDirectory": "./zot-data"},
-                "http": {"address": "0.0.0.0", "port": "8585"},
+                "http": {"address": "0.0.0.0", "port": "5000"},
                 "log": {"level": "info"}
             }
         }
@@ -157,12 +157,12 @@ cat > config.json << EOF
         "ground_control_url": "http://127.0.0.1:$GC_PORT",
         "log_level": "debug",
         "use_unsecure": true,
-        "local_registry": {"url": "http://0.0.0.0:8585"}
+        "local_registry": {"url": "http://0.0.0.0:5000"}
     },
     "zot_config": {
         "distSpecVersion": "1.1.0",
         "storage": {"rootDirectory": "./zot-data"},
-        "http": {"address": "0.0.0.0", "port": "8585"},
+        "http": {"address": "0.0.0.0", "port": "5000"},
         "log": {"level": "info"}
     }
 }

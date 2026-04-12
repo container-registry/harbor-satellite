@@ -36,6 +36,6 @@ USER appuser
 
 WORKDIR /data
 
-EXPOSE 8585
+EXPOSE 5000
 
 ENTRYPOINT ["/app/satellite"]

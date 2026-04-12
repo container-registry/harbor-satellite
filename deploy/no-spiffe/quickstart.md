@@ -138,7 +138,7 @@ curl -i --location 'http://localhost:8080/api/configs' \
         "state_replication_interval": "@every 00h00m10s",
         "register_satellite_interval": "@every 00h00m10s",
         "local_registry": {
-            "url": "http://0.0.0.0:8585"
+            "url": "http://0.0.0.0:5000"
         }
     },
     "zot_config": {
@@ -148,7 +148,7 @@ curl -i --location 'http://localhost:8080/api/configs' \
         },
         "http": {
             "address": "0.0.0.0",
-            "port": "8585"
+            "port": "5000"
         },
         "log": {
             "level": "info"
@@ -253,7 +253,7 @@ Harbor Satellite allows setting up a local registry as a mirror for upstream reg
 3. Satellite Not Replicating Artifacts
    - Verify the group and config names in the satellite registration.
    - Check the artifact digest and repository details in the group configuration.
-   - Ensure the local registry (`http://127.0.0.1:8585`) is running.
+   - Ensure the local registry (`http://127.0.0.1:5000`) is running.
 
 ## Need Help?
 

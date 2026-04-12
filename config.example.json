@@ -16,7 +16,7 @@
       "collect_storage": true
     },
     "local_registry": {
-      "url": "http://0.0.0.0:8585"
+      "url": "http://0.0.0.0:5000"
     },
     "tls": {
       "cert_file": "",
@@ -38,7 +38,7 @@
     },
     "http": {
       "address": "0.0.0.0",
-      "port": "8585"
+      "port": "5000"
     },
     "log": {
       "level": "info"

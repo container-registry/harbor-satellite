@@ -8,5 +8,5 @@ services:
       - TOKEN=c78dc95cae68e73664a067cb8bc0c6d2
     ports:
       - "8090:8080"  # Expose ports as needed
-      - "8585:8585"  # Expose ports as needed
+      - "5000:5000"  # Expose ports as needed
     restart: always

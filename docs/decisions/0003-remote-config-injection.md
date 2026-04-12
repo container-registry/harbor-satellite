@@ -205,7 +205,7 @@ after the initial deployment.
     "register_satellite_interval": "@every 00h00m10s",
     "bring_own_registry": false,
     "local_registry": {
-        "url": "http://127.0.0.1:8585",
+        "url": "http://127.0.0.1:5000",
         "username": "",
         "password": ""
     }

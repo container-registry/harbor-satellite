@@ -255,13 +255,13 @@ curl -sk -X POST https://localhost:9080/api/configs \
             "collect_storage": true
           },
           "local_registry": {
-            "url": "http://127.0.0.1:8585"
+            "url": "http://127.0.0.1:5000"
           }
         },
         "zot_config": {
           "distSpecVersion": "1.1.0",
           "storage": { "rootDirectory": "./zot" },
-          "http": { "address": "0.0.0.0", "port": "8585" },
+          "http": { "address": "0.0.0.0", "port": "5000" },
           "log": { "level": "info" }
         }
       }
