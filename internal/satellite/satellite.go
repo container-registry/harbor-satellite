@@ -2,10 +2,13 @@ package satellite
 
 import (
 	"context"
+	"net/http"
+	"time"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
+	"github.com/container-registry/harbor-satellite/internal/server"
 	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
@@ -15,6 +18,7 @@ type Satellite struct {
 	criResults    []runtime.CRIConfigResult
 	schedulers    []*scheduler.Scheduler
 	stateFilePath string
+	app           *server.App
 }
 
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string) *Satellite {
@@ -96,6 +100,26 @@ func (s *Satellite) Run(ctx context.Context) error {
 	}
 	s.schedulers = append(s.schedulers, statusScheduler)
 	statusScheduler.Start(ctx)
+
+	// Start health server
+	router := server.NewDefaultRouter("")
+	s.app = server.NewApp(router, ctx, log, &HealthRegistrar{})
+	s.app.SetupRoutes()
+
+	go func() {
+		if err := s.app.Start(); err != nil && err != http.ErrServerClosed {
+			log.Error().Err(err).Msg("Failed to start health server")
+		}
+	}()
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.app.Shutdown(shutdownCtx); err != nil {
+			log.Error().Err(err).Msg("Error during health server shutdown")
+		}
+	}()
 
 	return ctx.Err()
 }
