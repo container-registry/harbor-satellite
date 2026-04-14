@@ -24,6 +24,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 				Region:            "us-west",
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "join_token",
+				Version:           "0.1.0",
 			},
 			expectError: false,
 		},
@@ -33,6 +34,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 				SatelliteName:     "edge-02",
 				Selectors:         []string{"docker:label:bar"},
 				AttestationMethod: "x509pop",
+				Version:           "0.1.0",
 			},
 			expectError: false,
 		},
@@ -43,6 +45,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 				Selectors:         []string{"docker:label:baz"},
 				AttestationMethod: "sshpop",
 				ParentAgentID:     "spiffe://domain/agent/foo",
+				Version:           "0.1.0",
 			},
 			expectError: false,
 		},
@@ -51,6 +54,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 			request: RegisterSatelliteRequest{
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "join_token",
+				Version:           "0.1.0",
 			},
 			expectError:    true,
 			expectedErrMsg: "satellite_name is required",
@@ -60,6 +64,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 			request: RegisterSatelliteRequest{
 				SatelliteName:     "edge-01",
 				AttestationMethod: "join_token",
+				Version:           "0.1.0",
 			},
 			expectError:    true,
 			expectedErrMsg: "selectors is required",
@@ -70,6 +75,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 				SatelliteName:     "edge-01",
 				Selectors:         []string{"invalid-selector"},
 				AttestationMethod: "join_token",
+				Version:           "0.1.0",
 			},
 			expectError:    true,
 			expectedErrMsg: "must contain ':'",
@@ -80,6 +86,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 				SatelliteName:     "edge-01",
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "invalid",
+				Version:           "0.1.0",
 			},
 			expectError:    true,
 			expectedErrMsg: "attestation_method must be one of",
@@ -90,6 +97,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 				SatelliteName:     "edge-01",
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "sshpop",
+				Version:           "0.1.0",
 			},
 			expectError:    true,
 			expectedErrMsg: "parent_agent_id is required for sshpop",
@@ -161,6 +169,7 @@ func TestRegisterSatelliteRequest_DefaultValues(t *testing.T) {
 		SatelliteName:     "edge-01",
 		Selectors:         []string{"docker:label:foo"},
 		AttestationMethod: "join_token",
+		Version:           "0.1.0",
 	}
 
 	body, err := json.Marshal(req)

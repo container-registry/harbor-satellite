@@ -26,6 +26,7 @@ type StatusReportParams struct {
 	RequestCreatedTime  time.Time     `json:"request_created_time"`
 	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
 	ImageCount          int           `json:"image_count"`
+	Version             string        `json:"version"`
 	CachedImages        []CachedImage `json:"cached_images,omitempty"`
 }
 

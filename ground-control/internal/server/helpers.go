@@ -17,6 +17,7 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/pkg/crypto"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
+	"github.com/Masterminds/semver/v3"
 )
 
 func isConfigInUse(ctx context.Context, q *database.Queries, config database.Config) (bool, error) {
@@ -288,6 +289,47 @@ func toNullInt64(n int64) sql.NullInt64 {
 
 func toNullInt32(n int32) sql.NullInt32 {
 	return sql.NullInt32{Int32: n, Valid: true}
+}
+
+func (s *Server) validateSatelliteVersion(satVersion string) error {
+	// Treat "dev" or empty as always valid for development ease
+	if satVersion == "" || satVersion == "dev" || s.gcVersion == "dev" {
+		return nil
+	}
+
+	sv, err := semver.NewVersion(satVersion)
+	if err != nil {
+		return fmt.Errorf("invalid satellite version format %q: %w", satVersion, err)
+	}
+
+	gv, err := semver.NewVersion(s.gcVersion)
+	if err != nil {
+		// If for some reason the build process fails to inject a proper semantic version into the binary
+		// and on returning that error every single satellite will be blocked from connecting.
+		// If GC version is somehow invalid (not "dev" and not semver), skip checks
+		return nil
+	}
+
+	if sv.Major() != gv.Major() {
+		return fmt.Errorf("incompatible satellite version %s: ground-control %s requires same major version", satVersion, s.gcVersion)
+	}
+
+	var minorSkew uint64
+	if sv.Minor() >= gv.Minor() {
+		minorSkew = sv.Minor() - gv.Minor()
+	} else {
+		minorSkew = gv.Minor() - sv.Minor()
+	}
+
+	if s.maxMinorSkew < 0 {
+		return fmt.Errorf("invalid server configuration: MAX_MINOR_SKEW cannot be negative (%d)", s.maxMinorSkew)
+	}
+
+	if minorSkew > uint64(s.maxMinorSkew) {
+		return fmt.Errorf("incompatible satellite version %s: ground-control %s allows same major and minor skew <= %d", satVersion, s.gcVersion, s.maxMinorSkew)
+	}
+
+	return nil
 }
 
 // normalizeHeartbeatInterval validates and normalizes the heartbeat interval to a canonical format.

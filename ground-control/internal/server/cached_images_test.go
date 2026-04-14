@@ -85,6 +85,7 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 
 	reqBody := SatelliteStatusParams{
 		Name:               "edge-01",
+		Version:            "0.1.0",
 		ImageCount:         2,
 		RequestCreatedTime: now,
 		CachedImages: []CachedImage{
@@ -129,6 +130,7 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 
 	reqBody := SatelliteStatusParams{
 		Name:               "edge-01",
+		Version:            "0.1.0",
 		RequestCreatedTime: now,
 	}
 	body, _ := json.Marshal(reqBody)
@@ -151,6 +153,7 @@ func TestSyncHandler_UnknownSatellite(t *testing.T) {
 
 	reqBody := SatelliteStatusParams{
 		Name:               "unknown",
+		Version:            "0.1.0",
 		RequestCreatedTime: time.Now().UTC(),
 	}
 	body, _ := json.Marshal(reqBody)
@@ -272,6 +275,7 @@ func TestSyncHandler_InvalidHeartbeatInterval(t *testing.T) {
 
 	reqBody := SatelliteStatusParams{
 		Name:                "edge-01",
+		Version:             "0.1.0",
 		StateReportInterval: "bad-format",
 		RequestCreatedTime:  now,
 	}
@@ -306,6 +310,7 @@ func TestSyncHandler_BatchInsertArtifactsFails(t *testing.T) {
 
 	reqBody := SatelliteStatusParams{
 		Name:               "edge-01",
+		Version:            "0.1.0",
 		RequestCreatedTime: now,
 		CachedImages: []CachedImage{
 			{Reference: "localhost:8585/nginx:latest@sha256:abc", SizeBytes: 50000},

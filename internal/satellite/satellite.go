@@ -2,8 +2,6 @@ package satellite
 
 import (
 	"context"
-	"net/http"
-	"time"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/logger"
@@ -11,6 +9,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/server"
 	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"golang.org/x/sync/errgroup"
 )
 
 type Satellite struct {
@@ -30,7 +29,7 @@ func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult
 	}
 }
 
-func (s *Satellite) Run(ctx context.Context) error {
+func (s *Satellite) Run(ctx context.Context, wg *errgroup.Group) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
 
@@ -105,21 +104,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	router := server.NewDefaultRouter("")
 	s.app = server.NewApp(router, ctx, log, &HealthRegistrar{})
 	s.app.SetupRoutes()
-
-	go func() {
-		if err := s.app.Start(); err != nil && err != http.ErrServerClosed {
-			log.Error().Err(err).Msg("Failed to start health server")
-		}
-	}()
-
-	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := s.app.Shutdown(shutdownCtx); err != nil {
-			log.Error().Err(err).Msg("Error during health server shutdown")
-		}
-	}()
+	s.app.SetupServer(wg)
 
 	return ctx.Err()
 }

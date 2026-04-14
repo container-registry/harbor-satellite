@@ -19,6 +19,7 @@ type RegisterSatelliteRequest struct {
 	AttestationMethod string   `json:"attestation_method"` // join_token, x509pop, sshpop
 	TTLSeconds        int      `json:"ttl_seconds,omitempty"`
 	ParentAgentID     string   `json:"parent_agent_id,omitempty"`
+	Version           string   `json:"version"`
 }
 
 // RegisterSatelliteWithSPIFFEResponse contains satellite registration details.
@@ -87,6 +88,23 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, &AppError{
 			Message: "Invalid request body",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	if req.Version == "" {
+		HandleAppError(w, &AppError{
+			Message: "version is required",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	if err := s.validateSatelliteVersion(req.Version); err != nil {
+		log.Printf("Register: %v", err)
+		HandleAppError(w, &AppError{
+			Message: err.Error(),
 			Code:    http.StatusBadRequest,
 		})
 		return
