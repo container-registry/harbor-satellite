@@ -3,6 +3,7 @@ package server
 import (
 	"log"
 	"net/http"
+	"github.com/container-registry/harbor-satellite/ground-control/pkg/version"
 )
 
 const (
@@ -17,9 +18,15 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	err := s.db.Ping()
 	if err != nil {
 		log.Printf("error pinging db: %v", err)
-		WriteJSONResponse(w, http.StatusServiceUnavailable, map[string]string{"status": "unhealthy"})
+		WriteJSONResponse(w, http.StatusServiceUnavailable, map[string]string{
+			"status":  "unhealthy",
+			"version": version.Version,
+		})
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, map[string]string{"status": "healthy"})
+	WriteJSONResponse(w, http.StatusOK, map[string]string{
+		"status":  "healthy",
+		"version": version.Version,
+	})
 }
