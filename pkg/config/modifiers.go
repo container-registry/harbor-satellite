@@ -118,6 +118,12 @@ func SetHarborRegistryURL(url string) func(*Config) {
 	}
 }
 
+func SetDirectDelivery(dd DirectDeliveryConfig) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.DirectDelivery = dd
+	}
+}
+
 // ReplaceURLHost replaces the scheme and host:port in raw with those from override.
 func ReplaceURLHost(raw, override string) (string, error) {
 	overrideParsed, err := url.Parse(override)
