@@ -10,7 +10,7 @@
 {{ $authorAvatar := "" }}
 {{ with .Params.author }}
 {{ $authorName = . }}
-{{ with index hugo.Data.authors . }}
+{{ with index $.Site.Data.authors . }}
 {{ with .name }}{{ $authorName = . }}{{ end }}
 {{ with .role }}{{ $authorRole = . }}{{ end }}
 {{ with .bio }}{{ $authorBio = . }}{{ end }}
