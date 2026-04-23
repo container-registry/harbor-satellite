@@ -1,0 +1,14 @@
+name: Continuous Integration
+
+on: [push, pull_request]
+
+jobs:
+  all-providers:
+    name: Various tests targeting a Parsec image with all providers included
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build Parsec base CI container
+        run: ./e2etest/scripts/build-parsec-ci-base.sh
+      - name: Run CI Tests
+        run: ./e2etest/scripts/ci-all.sh
