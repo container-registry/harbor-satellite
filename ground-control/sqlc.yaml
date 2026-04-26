@@ -6,4 +6,6 @@ sql:
     gen:
       go:
         out: "internal/database"
+        emit_json_tags: true
+        json_tags_case_style: "snake"
         # sql_package: "pgx/v5"

@@ -17,9 +17,9 @@ RETURNING id, username, password_hash, role, created_at, updated_at
 `
 
 type CreateUserParams struct {
-	Username     string
-	PasswordHash string
-	Role         string
+	Username     string `json:"username"`
+	PasswordHash string `json:"password_hash"`
+	Role         string `json:"role"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
@@ -91,11 +91,11 @@ ORDER BY created_at DESC
 `
 
 type ListUsersRow struct {
-	ID        int32
-	Username  string
-	Role      string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        int32     `json:"id"`
+	Username  string    `json:"username"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
@@ -145,8 +145,8 @@ WHERE username = $1
 `
 
 type UpdateUserPasswordParams struct {
-	Username     string
-	PasswordHash string
+	Username     string `json:"username"`
+	PasswordHash string `json:"password_hash"`
 }
 
 func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {

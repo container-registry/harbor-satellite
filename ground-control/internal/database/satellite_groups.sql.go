@@ -16,8 +16,8 @@ ON CONFLICT DO NOTHING
 `
 
 type AddSatelliteToGroupParams struct {
-	SatelliteID int32
-	GroupID     int32
+	SatelliteID int32 `json:"satellite_id"`
+	GroupID     int32 `json:"group_id"`
 }
 
 func (q *Queries) AddSatelliteToGroup(ctx context.Context, arg AddSatelliteToGroupParams) error {
@@ -34,8 +34,8 @@ SELECT EXISTS (
 `
 
 type CheckSatelliteInGroupParams struct {
-	SatelliteID int32
-	GroupID     int32
+	SatelliteID int32 `json:"satellite_id"`
+	GroupID     int32 `json:"group_id"`
 }
 
 func (q *Queries) CheckSatelliteInGroup(ctx context.Context, arg CheckSatelliteInGroupParams) (bool, error) {
@@ -79,8 +79,8 @@ WHERE satellite_id = $1 AND group_id = $2
 `
 
 type RemoveSatelliteFromGroupParams struct {
-	SatelliteID int32
-	GroupID     int32
+	SatelliteID int32 `json:"satellite_id"`
+	GroupID     int32 `json:"group_id"`
 }
 
 func (q *Queries) RemoveSatelliteFromGroup(ctx context.Context, arg RemoveSatelliteFromGroupParams) error {

@@ -45,14 +45,14 @@ WHERE s.last_seen IS NOT NULL
 `
 
 type GetActiveSatellitesRow struct {
-	ID                int32
-	Name              string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	LastSeen          sql.NullTime
-	HeartbeatInterval sql.NullString
-	LastActivity      string
-	LastStatusTime    time.Time
+	ID                int32          `json:"id"`
+	Name              string         `json:"name"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	LastSeen          sql.NullTime   `json:"last_seen"`
+	HeartbeatInterval sql.NullString `json:"heartbeat_interval"`
+	LastActivity      string         `json:"last_activity"`
+	LastStatusTime    time.Time      `json:"last_status_time"`
 }
 
 func (q *Queries) GetActiveSatellites(ctx context.Context) ([]GetActiveSatellitesRow, error) {
@@ -160,8 +160,8 @@ LIMIT $2
 `
 
 type GetSatelliteStatusHistoryParams struct {
-	SatelliteID int32
-	Limit       int32
+	SatelliteID int32 `json:"satellite_id"`
+	Limit       int32 `json:"limit"`
 }
 
 func (q *Queries) GetSatelliteStatusHistory(ctx context.Context, arg GetSatelliteStatusHistoryParams) ([]SatelliteStatus, error) {
@@ -217,13 +217,13 @@ WHERE s.last_seen IS NOT NULL
 `
 
 type GetStaleSatellitesRow struct {
-	ID                int32
-	Name              string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	LastSeen          sql.NullTime
-	HeartbeatInterval sql.NullString
-	SecondsSinceSeen  int64
+	ID                int32          `json:"id"`
+	Name              string         `json:"name"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	LastSeen          sql.NullTime   `json:"last_seen"`
+	HeartbeatInterval sql.NullString `json:"heartbeat_interval"`
+	SecondsSinceSeen  int64          `json:"seconds_since_seen"`
 }
 
 func (q *Queries) GetStaleSatellites(ctx context.Context) ([]GetStaleSatellitesRow, error) {
@@ -268,17 +268,17 @@ RETURNING id, satellite_id, activity, latest_state_digest, latest_config_digest,
 `
 
 type InsertSatelliteStatusParams struct {
-	SatelliteID        int32
-	Activity           string
-	LatestStateDigest  sql.NullString
-	LatestConfigDigest sql.NullString
-	CpuPercent         sql.NullString
-	MemoryUsedBytes    sql.NullInt64
-	StorageUsedBytes   sql.NullInt64
-	LastSyncDurationMs sql.NullInt64
-	ImageCount         sql.NullInt32
-	ReportedAt         time.Time
-	ArtifactIds        []int32
+	SatelliteID        int32          `json:"satellite_id"`
+	Activity           string         `json:"activity"`
+	LatestStateDigest  sql.NullString `json:"latest_state_digest"`
+	LatestConfigDigest sql.NullString `json:"latest_config_digest"`
+	CpuPercent         sql.NullString `json:"cpu_percent"`
+	MemoryUsedBytes    sql.NullInt64  `json:"memory_used_bytes"`
+	StorageUsedBytes   sql.NullInt64  `json:"storage_used_bytes"`
+	LastSyncDurationMs sql.NullInt64  `json:"last_sync_duration_ms"`
+	ImageCount         sql.NullInt32  `json:"image_count"`
+	ReportedAt         time.Time      `json:"reported_at"`
+	ArtifactIds        []int32        `json:"artifact_ids"`
 }
 
 func (q *Queries) InsertSatelliteStatus(ctx context.Context, arg InsertSatelliteStatusParams) (SatelliteStatus, error) {
@@ -319,8 +319,8 @@ UPDATE satellites SET last_seen = NOW(), heartbeat_interval = $2 WHERE id = $1
 `
 
 type UpdateSatelliteLastSeenParams struct {
-	ID                int32
-	HeartbeatInterval sql.NullString
+	ID                int32          `json:"id"`
+	HeartbeatInterval sql.NullString `json:"heartbeat_interval"`
 }
 
 func (q *Queries) UpdateSatelliteLastSeen(ctx context.Context, arg UpdateSatelliteLastSeenParams) error {

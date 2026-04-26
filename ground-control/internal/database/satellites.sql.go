@@ -113,10 +113,10 @@ WHERE g.group_name = $1
 `
 
 type GetSatellitesByGroupNameRow struct {
-	ID        int32
-	Name      string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        int32     `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (q *Queries) GetSatellitesByGroupName(ctx context.Context, groupName string) ([]GetSatellitesByGroupNameRow, error) {

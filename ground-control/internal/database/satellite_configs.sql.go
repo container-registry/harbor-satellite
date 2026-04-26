@@ -43,8 +43,8 @@ WHERE satellite_id = $1 AND config_id = $2
 `
 
 type RemoveSatelliteFromConfigParams struct {
-	SatelliteID int32
-	ConfigID    int32
+	SatelliteID int32 `json:"satellite_id"`
+	ConfigID    int32 `json:"config_id"`
 }
 
 func (q *Queries) RemoveSatelliteFromConfig(ctx context.Context, arg RemoveSatelliteFromConfigParams) error {
@@ -72,8 +72,8 @@ DO UPDATE SET config_id = EXCLUDED.config_id
 `
 
 type SetSatelliteConfigParams struct {
-	SatelliteID int32
-	ConfigID    int32
+	SatelliteID int32 `json:"satellite_id"`
+	ConfigID    int32 `json:"config_id"`
 }
 
 func (q *Queries) SetSatelliteConfig(ctx context.Context, arg SetSatelliteConfigParams) error {
