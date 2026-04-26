@@ -46,7 +46,7 @@ type LoginAttempt struct {
 type RobotAccount struct {
 	ID              int32        `json:"id"`
 	RobotName       string       `json:"robot_name"`
-	RobotSecretHash string       `json:"robot_secret_hash"`
+	RobotSecretHash string       `json:"-"`
 	RobotID         string       `json:"robot_id"`
 	SatelliteID     int32        `json:"satellite_id"`
 	RobotExpiry     sql.NullTime `json:"robot_expiry"`
@@ -101,7 +101,7 @@ type SatelliteToken struct {
 type Session struct {
 	ID        int32     `json:"id"`
 	UserID    int32     `json:"user_id"`
-	Token     string    `json:"token"`
+	Token     string    `json:"-"`
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -109,7 +109,7 @@ type Session struct {
 type User struct {
 	ID           int32     `json:"id"`
 	Username     string    `json:"username"`
-	PasswordHash string    `json:"password_hash"`
+	PasswordHash string    `json:"-"`
 	Role         string    `json:"role"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`

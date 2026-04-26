@@ -18,7 +18,7 @@ RETURNING id, username, password_hash, role, created_at, updated_at
 
 type CreateUserParams struct {
 	Username     string `json:"username"`
-	PasswordHash string `json:"password_hash"`
+	PasswordHash string `json:"-"`
 	Role         string `json:"role"`
 }
 
@@ -146,7 +146,7 @@ WHERE username = $1
 
 type UpdateUserPasswordParams struct {
 	Username     string `json:"username"`
-	PasswordHash string `json:"password_hash"`
+	PasswordHash string `json:"-"`
 }
 
 func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {

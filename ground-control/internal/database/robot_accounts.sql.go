@@ -24,7 +24,7 @@ RETURNING id, robot_name, robot_secret_hash, robot_id, satellite_id, robot_expir
 
 type AddRobotAccountParams struct {
 	RobotName       string       `json:"robot_name"`
-	RobotSecretHash string       `json:"robot_secret_hash"`
+	RobotSecretHash string       `json:"-"`
 	RobotID         string       `json:"robot_id"`
 	SatelliteID     int32        `json:"satellite_id"`
 	RobotExpiry     sql.NullTime `json:"robot_expiry"`
@@ -153,7 +153,7 @@ WHERE id = $1
 type UpdateRobotAccountParams struct {
 	ID              int32        `json:"id"`
 	RobotName       string       `json:"robot_name"`
-	RobotSecretHash string       `json:"robot_secret_hash"`
+	RobotSecretHash string       `json:"-"`
 	RobotID         string       `json:"robot_id"`
 	RobotExpiry     sql.NullTime `json:"robot_expiry"`
 }
