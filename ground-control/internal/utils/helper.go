@@ -152,7 +152,7 @@ func CreateStateArtifact(ctx context.Context, stateArtifact *m.StateArtifact) er
 }
 
 // Create and Push State Artifact for Config
-func CreateAndPushConfigStateArtifact(ctx context.Context, configData []byte, configName string) error {
+func CreateAndPushConfigStateArtifact(ctx context.Context, configData []byte, configName string) (string, error) {
 	// func CreateAndPushConfigStateArtifact(ctx context.Context, configObject *m.ConfigObject) error {
 	// Marshal the state artifact to JSON format
 	// configData, err := json.Marshal(configObject.Config)
@@ -163,11 +163,16 @@ func CreateAndPushConfigStateArtifact(ctx context.Context, configData []byte, co
 	// Create the image with the state artifact JSON
 	img, err := crane.Image(map[string][]byte{"artifacts.json": configData})
 	if err != nil {
-		return fmt.Errorf("failed to create image: %v", err)
+		return "", fmt.Errorf("failed to create image: %v", err)
+	}
+
+	digest, err := img.Digest()
+	if err != nil {
+		return "", fmt.Errorf("failed to calculate image digest: %v", err)
 	}
 
 	if err := envSanityCheck(); err != nil {
-		return err
+		return "", err
 	}
 
 	auth := authn.FromConfig(authn.AuthConfig{
@@ -185,10 +190,14 @@ func CreateAndPushConfigStateArtifact(ctx context.Context, configData []byte, co
 
 	// Push the image to the repository
 	if err := crane.Push(img, destinationRepo, options...); err != nil {
-		return fmt.Errorf("failed to push image: %v", err)
+		return "", fmt.Errorf("failed to push image: %v", err)
 	}
 
-	return tagImage(destinationRepo, options)
+	if err := tagImage(destinationRepo, options); err != nil {
+		return "", err
+	}
+
+	return digest.String(), nil
 }
 
 func AssembleSatelliteState(satelliteName string) string {
@@ -199,28 +208,33 @@ func AssembleConfigState(configName string) string {
 	return fmt.Sprintf("%s/satellite/config-state/%s/state:latest", os.Getenv("HARBOR_URL"), configName)
 }
 
-func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, states []string, config string) error {
+func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, states []string, config string) (string, error) {
 	if satelliteName == "" {
-		return fmt.Errorf("the satellite name must be atleast one character long")
+		return "", fmt.Errorf("the satellite name must be atleast one character long")
 	}
 
 	if len(states) == 0 {
-		return nil
+		return "", nil
 	}
 
 	if err := envSanityCheck(); err != nil {
-		return err
+		return "", err
 	}
 
 	satelliteState := &m.SatelliteStateArtifact{States: states, Config: AssembleConfigState(config)}
 	data, err := json.Marshal(satelliteState)
 	if err != nil {
-		return fmt.Errorf("failed to marshal satellite state artifact to JSON: %v", err)
+		return "", fmt.Errorf("failed to marshal satellite state artifact to JSON: %v", err)
 	}
 
 	img, err := crane.Image(map[string][]byte{"artifacts.json": data})
 	if err != nil {
-		return fmt.Errorf("failed to create image: %v", err)
+		return "", fmt.Errorf("failed to create image: %v", err)
+	}
+
+	digest, err := img.Digest()
+	if err != nil {
+		return "", fmt.Errorf("failed to calculate image digest: %v", err)
 	}
 
 	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
@@ -233,10 +247,14 @@ func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, s
 	destinationRepo = stripProtocol(destinationRepo)
 
 	if err := pushImage(img, destinationRepo, options); err != nil {
-		return err
+		return "", err
 	}
 
-	return tagImage(destinationRepo, options)
+	if err := tagImage(destinationRepo, options); err != nil {
+		return "", err
+	}
+
+	return digest.String(), nil
 }
 
 func DeleteArtifact(deleteURL string) error {

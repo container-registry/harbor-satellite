@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -276,6 +277,62 @@ func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, sate
 		}
 	}
 	return configObject, nil
+}
+
+func upsertConfigDigest(ctx context.Context, q *database.Queries, configID int32, digest string) error {
+	if digest == "" {
+		return nil
+	}
+	return q.UpsertConfigDigest(ctx, database.UpsertConfigDigestParams{
+		ConfigID: configID,
+		Digest:   digest,
+	})
+}
+
+func updateAssignedConfigDigest(ctx context.Context, q *database.Queries, configID int32, digest string) error {
+	if digest == "" {
+		return nil
+	}
+	return q.UpdateSatelliteDesiredConfigDigestForConfig(ctx, database.UpdateSatelliteDesiredConfigDigestForConfigParams{
+		ConfigID: configID,
+		Digest:   digest,
+	})
+}
+
+func updateSatelliteDesiredState(ctx context.Context, q *database.Queries, satelliteID int32, configID int32, stateDigest string) error {
+	configDigest, err := q.GetConfigDigest(ctx, configID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
+	params := database.UpsertSatelliteDesiredStateParams{
+		SatelliteID:          satelliteID,
+		ExpectedStateDigest:  toNullString(stateDigest),
+		ExpectedConfigDigest: sql.NullString{},
+	}
+	if err == nil {
+		params.ExpectedConfigDigest = toNullString(configDigest.Digest)
+	}
+	return q.UpsertSatelliteDesiredState(ctx, params)
+}
+
+func updateSatelliteConvergence(ctx context.Context, q *database.Queries, satelliteID int32, stateDigest string, configDigest string, convergedAt time.Time) error {
+	desired, err := q.GetSatelliteDesiredState(ctx, satelliteID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if digestsMatch(desired.ExpectedStateDigest, toNullString(stateDigest)) &&
+		digestsMatch(desired.ExpectedConfigDigest, toNullString(configDigest)) {
+		return q.UpdateSatelliteLastConvergedAt(ctx, database.UpdateSatelliteLastConvergedAtParams{
+			SatelliteID:     satelliteID,
+			LastConvergedAt: convergedAt,
+		})
+	}
+	return nil
 }
 
 func toNullString(s string) sql.NullString {

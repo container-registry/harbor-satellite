@@ -86,7 +86,7 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 		Config:      configJson,
 	}
 
-	_, err = q.CreateConfig(r.Context(), params)
+	result, err := q.CreateConfig(r.Context(), params)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
@@ -103,9 +103,14 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Push config as OCI artifact
-	err = utils.CreateAndPushConfigStateArtifact(r.Context(), configJson, req.ConfigName)
+	configDigest, err := utils.CreateAndPushConfigStateArtifact(r.Context(), configJson, req.ConfigName)
 	if err != nil {
 		log.Println("Error while creating config state artifact: ", err)
+		HandleAppError(w, err)
+		return
+	}
+	if err := upsertConfigDigest(r.Context(), q, result.ID, configDigest); err != nil {
+		log.Println("Error while storing config digest: ", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -229,9 +234,19 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Push config as OCI artifact
-	err = utils.CreateAndPushConfigStateArtifact(r.Context(), patchedJson, configName)
+	configDigest, err := utils.CreateAndPushConfigStateArtifact(r.Context(), patchedJson, configName)
 	if err != nil {
 		log.Println("Error while creating config state artifact: ", err)
+		HandleAppError(w, err)
+		return
+	}
+	if err := upsertConfigDigest(r.Context(), q, result.ID, configDigest); err != nil {
+		log.Println("Error while storing config digest: ", err)
+		HandleAppError(w, err)
+		return
+	}
+	if err := updateAssignedConfigDigest(r.Context(), q, result.ID, configDigest); err != nil {
+		log.Println("Error while updating assigned satellite config digests: ", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -329,7 +344,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-    // TODO: Store the groupStates in memory to survive hot reloads
+	// TODO: Store the groupStates in memory to survive hot reloads
 	var groupStates []string
 	for _, group := range groupList {
 		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
@@ -345,9 +360,20 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, req.ConfigName)
+	stateDigest, err := utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, req.ConfigName)
 	if err != nil {
 		log.Printf("Could not update satellite state artifact: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+	configObject, err := q.GetConfigByName(r.Context(), req.ConfigName)
+	if err != nil {
+		log.Printf("Could not get satellite config: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+	if err := updateSatelliteDesiredState(r.Context(), q, sat.ID, configObject.ID, stateDigest); err != nil {
+		log.Printf("Could not update satellite desired state: %v", err)
 		HandleAppError(w, err)
 		return
 	}
