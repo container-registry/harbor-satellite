@@ -41,5 +41,4 @@ JOIN latest_status ls ON a.id = ANY(ls.artifact_ids)
 JOIN satellites sat ON ls.satellite_id = sat.id
 LEFT JOIN satellite_groups_agg sga ON ls.satellite_id = sga.satellite_id
 GROUP BY a.id, a.reference, a.size_bytes
-ORDER BY satellite_count DESC
-LIMIT $1 OFFSET $2;
+ORDER BY satellite_count DESC;

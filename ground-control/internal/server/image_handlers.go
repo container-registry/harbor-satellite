@@ -35,11 +35,7 @@ func (s *Server) getImageDistribution(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	params := database.GetImageDistributionParams{
-		Limit:  int32(req.PageSize),
-		Offset: int32((req.Page - 1) * req.PageSize),
-	}
-	result, err := s.dbQueries.GetImageDistribution(r.Context(), params)
+	result, err := s.dbQueries.GetImageDistribution(r.Context())
 	if err != nil {
 		log.Printf("Could not get image distribution: %v", err)
 		WriteJSONError(w, "error providing image distribution", http.StatusInternalServerError)
@@ -47,24 +43,26 @@ func (s *Server) getImageDistribution(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Compiling RegEx
-	satReg, err := regexp.Compile(req.SatelliteFilter)
-	if err != nil {
-		log.Printf("regex compilation failed: %v", err)
-		WriteJSONError(w, "error creating regex for satellite", http.StatusInternalServerError)
-		return
+	var satReg, grpReg *regexp.Regexp
+	if req.SatelliteFilter != "" {
+		satReg, err = regexp.Compile(req.SatelliteFilter)
+		if err != nil {
+			WriteJSONError(w, "invalid satellite regex", http.StatusBadRequest)
+			return
+		}
 	}
-	grpReg, err := regexp.Compile(req.GroupFilter)
-	if err != nil {
-		log.Printf("regex compilation failed: %v", err)
-		WriteJSONError(w, "error creating regex for group", http.StatusInternalServerError)
-		return
+	if req.GroupFilter != "" {
+		grpReg, err = regexp.Compile(req.GroupFilter)
+		if err != nil {
+			WriteJSONError(w, "invalid group regex", http.StatusBadRequest)
+			return
+		}
 	}
-
 	// Filtering
 	filtered := make([]database.GetImageDistributionRow, 0)
 	for _, art := range result {
-		if matchRegexFilter(art.Satellites, satReg) &&
-			matchRegexFilter(art.Groups, grpReg) &&
+		if (satReg == nil || matchRegexFilter(art.Satellites, satReg)) &&
+			(grpReg == nil || matchRegexFilter(art.Groups, grpReg)) &&
 			matchStringFilter(art.Reference, req.ImageFilter) {
 			filtered = append(filtered, art)
 		}
@@ -89,10 +87,21 @@ func (s *Server) getImageDistribution(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Paginating
+	start := (req.Page - 1) * req.PageSize
+	end := start + req.PageSize
+	if start > len(filtered) {
+		start = len(filtered)
+	}
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	paginated := filtered[start:end]
+
 	WriteJSONResponse(w, http.StatusOK, ImageDistributionResponse{
 		ImageCount:          len(filtered),
 		ReportingSatellites: len(reportingSatellites),
 		ReportingGroups:     len(reportingGroups),
-		Images:              filtered,
+		Images:              paginated,
 	})
 }

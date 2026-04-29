@@ -101,13 +101,7 @@ JOIN satellites sat ON ls.satellite_id = sat.id
 LEFT JOIN satellite_groups_agg sga ON ls.satellite_id = sga.satellite_id
 GROUP BY a.id, a.reference, a.size_bytes
 ORDER BY satellite_count DESC
-LIMIT $1 OFFSET $2
 `
-
-type GetImageDistributionParams struct {
-	Limit  int32
-	Offset int32
-}
 
 type GetImageDistributionRow struct {
 	Reference      string
@@ -118,8 +112,8 @@ type GetImageDistributionRow struct {
 	Groups         []string
 }
 
-func (q *Queries) GetImageDistribution(ctx context.Context, arg GetImageDistributionParams) ([]GetImageDistributionRow, error) {
-	rows, err := q.db.QueryContext(ctx, getImageDistribution, arg.Limit, arg.Offset)
+func (q *Queries) GetImageDistribution(ctx context.Context) ([]GetImageDistributionRow, error) {
+	rows, err := q.db.QueryContext(ctx, getImageDistribution)
 	if err != nil {
 		return nil, err
 	}
