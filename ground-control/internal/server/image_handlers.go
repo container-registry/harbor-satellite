@@ -3,18 +3,17 @@ package server
 import (
 	"log"
 	"net/http"
+	"regexp"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 )
 
-// TODO: Add:-
-//
-//  1. Pagination
-//  2. Group/Satellite/Pattern based filtering
-//  3. Output Format
 type ImageDistributionParams struct {
-	Page     int `json:"page" query:"page"`
-	PageSize int `json:"page_size" query:"page_size"`
+	SatelliteFilter string `json:"satellite"`
+	GroupFilter     string `json:"group"`
+	ImageFilter     string `json:"image"`
+	Page            int    `json:"page"`
+	PageSize        int    `json:"page_size"`
 }
 
 type ImageDistributionResponse struct {
@@ -30,27 +29,53 @@ func (s *Server) getImageDistribution(w http.ResponseWriter, r *http.Request) {
 		Page:     1,
 		PageSize: 50,
 	}
-	if err := DecodeRequestParams(r, &req, r.PathValue); err != nil {
+	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println("Error decoding request params:", err)
 		HandleAppError(w, err)
 		return
 	}
 
-	result, err := s.dbQueries.GetImageDistribution(r.Context(), database.GetImageDistributionParams{
+	params := database.GetImageDistributionParams{
 		Limit:  int32(req.PageSize),
 		Offset: int32((req.Page - 1) * req.PageSize),
-	})
+	}
+	result, err := s.dbQueries.GetImageDistribution(r.Context(), params)
 	if err != nil {
 		log.Printf("Could not get image distribution: %v", err)
 		WriteJSONError(w, "error providing image distribution", http.StatusInternalServerError)
 		return
 	}
 
+	// Compiling RegEx
+	satReg, err := regexp.Compile(req.SatelliteFilter)
+	if err != nil {
+		log.Printf("regex compilation failed: %v", err)
+		WriteJSONError(w, "error creating regex for satellite", http.StatusInternalServerError)
+		return
+	}
+	grpReg, err := regexp.Compile(req.GroupFilter)
+	if err != nil {
+		log.Printf("regex compilation failed: %v", err)
+		WriteJSONError(w, "error creating regex for group", http.StatusInternalServerError)
+		return
+	}
+
+	// Filtering
+	filtered := make([]database.GetImageDistributionRow, 0)
+	for _, art := range result {
+		if matchRegexFilter(art.Satellites, satReg) &&
+			matchRegexFilter(art.Groups, grpReg) &&
+			matchStringFilter(art.Reference, req.ImageFilter) {
+			filtered = append(filtered, art)
+		}
+	}
+
+	// Calculating Count
 	var (
 		reportingSatellites = map[string]bool{}
 		reportingGroups     = map[string]bool{}
 	)
-	for _, v := range result {
+	for _, v := range filtered {
 		for _, sat := range v.Satellites {
 			if _, ok := reportingSatellites[sat]; !ok {
 				reportingSatellites[sat] = true
@@ -65,9 +90,9 @@ func (s *Server) getImageDistribution(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, ImageDistributionResponse{
-		ImageCount:          len(result),
+		ImageCount:          len(filtered),
 		ReportingSatellites: len(reportingSatellites),
 		ReportingGroups:     len(reportingGroups),
-		Images:              result,
+		Images:              filtered,
 	})
 }

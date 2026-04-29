@@ -10,6 +10,8 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -211,51 +213,6 @@ func DecodeRequestBody(r *http.Request, v any) error {
 	return nil
 }
 
-// DecodeRequestParams decodes query and path params into a struct.
-// Use `query:"name"` and `path:"name"` struct tags.
-// Path param extraction requires a helper — pass in a pathVar func
-// (e.g. r.PathValue for Go 1.22+, or chi.URLParam, etc.)
-func DecodeRequestParams(r *http.Request, dst any, pathVar func(key string) string) error {
-	v := reflect.ValueOf(dst)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		return fmt.Errorf("dst must be a pointer to a struct")
-	}
-	v = v.Elem()
-	t := v.Type()
-
-	q := r.URL.Query()
-
-	for i := range t.NumField() {
-		field := t.Field(i)
-		fv := v.Field(i)
-
-		if !fv.CanSet() {
-			continue
-		}
-
-		var raw string
-		var ok bool
-
-		if tag, exists := field.Tag.Lookup("query"); exists {
-			raw = q.Get(tag)
-			ok = raw != ""
-		} else if tag, exists := field.Tag.Lookup("path"); exists && pathVar != nil {
-			raw = pathVar(tag)
-			ok = raw != ""
-		}
-
-		if !ok {
-			continue
-		}
-
-		if err := setField(fv, raw); err != nil {
-			return fmt.Errorf("field %s: %w", field.Name, err)
-		}
-	}
-
-	return nil
-}
-
 func setField(fv reflect.Value, raw string) error {
 	switch fv.Kind() {
 	case reflect.String:
@@ -368,6 +325,14 @@ func toNullInt64(n int64) sql.NullInt64 {
 
 func toNullInt32(n int32) sql.NullInt32 {
 	return sql.NullInt32{Int32: n, Valid: true}
+}
+
+func matchRegexFilter(values []string, pattern *regexp.Regexp) bool {
+	return slices.ContainsFunc(values, pattern.MatchString)
+}
+
+func matchStringFilter(val string, pattern string) bool {
+	return strings.Contains(val, pattern)
 }
 
 // normalizeHeartbeatInterval validates and normalizes the heartbeat interval to a canonical format.
