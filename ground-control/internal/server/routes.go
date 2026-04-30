@@ -10,6 +10,10 @@ import (
 
 func (s *Server) RegisterRoutes() http.Handler {
 	r := mux.NewRouter()
+	if s.metrics != nil {
+		r.Use(s.metrics.HTTPMiddleware)
+		r.Handle("/metrics", s.metrics.Handler()).Methods("GET")
+	}
 
 	// Public routes
 	r.HandleFunc("/ping", s.Ping).Methods("GET")
