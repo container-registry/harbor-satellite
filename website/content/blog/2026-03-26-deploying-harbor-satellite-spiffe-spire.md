@@ -24,8 +24,8 @@ This is a practical walkthrough to deploy Harbor Satellite with SPIFFE/SPIRE and
 
 ```bash
 # Download Harbor
-wget https://github.com/goharbor/harbor/releases/download/v2.8.0/harbor-offline-installer-v2.8.0.tgz
-tar xzvf harbor-offline-installer-v2.8.0.tgz
+wget https://github.com/goharbor/harbor/releases/download/v2.10.0/harbor-offline-installer-v2.10.0.tgz
+tar xzvf harbor-offline-installer-v2.10.0.tgz
 cd harbor
 
 # Configure for your machine

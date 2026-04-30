@@ -98,9 +98,9 @@ Harbor Satellite treats WAN as an optional optimization, not an operational requ
 
 | Scheduler | Interval | Behavior |
 |---|---|---|
-| State Replication | 10 seconds | Fetch desired state, pull missing layers, prune stale artifacts |
+| State Replication | 30 seconds | Fetch desired state, pull missing layers, prune stale artifacts |
 | Telemetry Heartbeat | 30 seconds | Report CPU/memory/disk and inventory status |
-| Registration retry | 30 seconds | Re-authenticate and refresh credentials when required |
+| Registration retry | 5 seconds | Re-authenticate and refresh credentials when required |
 
 ### 4.2 Bandwidth optimization with layer-diff
 
