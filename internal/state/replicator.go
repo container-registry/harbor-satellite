@@ -133,6 +133,34 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 			return err
 		}
 
+		// Multi-arch source: preserve the index rather than flattening to a single platform.
+		if desc.MediaType.IsIndex() {
+			idx, err := desc.ImageIndex()
+			if err != nil {
+				log.Error().Msgf("Failed to resolve image index: %v", err)
+				return err
+			}
+
+			srcDigest, err := idx.Digest()
+			if err != nil {
+				return fmt.Errorf("compute source index digest: %w", err)
+			}
+
+			dstDesc, dstErr := remote.Head(dst, pushOpts...)
+			if dstErr == nil && dstDesc.Digest == srcDigest {
+				log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
+				continue
+			}
+
+			log.Info().Msgf("Replicating multi-arch image %s", entity.GetName())
+			if err := remote.WriteIndex(dst, idx, pushOpts...); err != nil {
+				log.Error().Msgf("Failed to replicate image index: %v", err)
+				return err
+			}
+			log.Info().Msgf("Image %s replicated successfully", entity.GetName())
+			continue
+		}
+
 		img, err := desc.Image()
 		if err != nil {
 			log.Error().Msgf("Failed to resolve image: %v", err)
