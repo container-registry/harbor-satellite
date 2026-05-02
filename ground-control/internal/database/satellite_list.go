@@ -1,0 +1,95 @@
+package database
+
+import (
+	"context"
+	"fmt"
+	"strings"
+)
+
+type ListSatellitesFilteredParams struct {
+	Limit      int32
+	Offset     int32
+	Sort       string
+	Order      string
+	NamePrefix string
+}
+
+func (q *Queries) ListSatellitesFiltered(ctx context.Context, arg ListSatellitesFilteredParams) ([]Satellite, int32, error) {
+	sortColumn := map[string]string{
+		"id":         "id",
+		"name":       "name",
+		"created_at": "created_at",
+		"updated_at": "updated_at",
+		"last_seen":  "last_seen",
+	}[arg.Sort]
+	if sortColumn == "" {
+		sortColumn = "name"
+	}
+
+	order := strings.ToUpper(arg.Order)
+	if order != "DESC" {
+		order = "ASC"
+	}
+
+	whereSQL, args := satelliteListWhere(arg)
+	countQuery := "SELECT COUNT(*) FROM satellites" + whereSQL
+
+	var total int32
+	if err := q.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	limitArg := len(args) + 1
+	offsetArg := len(args) + 2
+	queryArgs := append(args, arg.Limit, arg.Offset)
+	listQuery := fmt.Sprintf(`SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval
+FROM satellites%s
+ORDER BY %s %s, id ASC
+LIMIT $%d OFFSET $%d`, whereSQL, sortColumn, order, limitArg, offsetArg)
+
+	rows, err := q.db.QueryContext(ctx, listQuery, queryArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var items []Satellite
+	for rows.Next() {
+		var i Satellite
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastSeen,
+			&i.HeartbeatInterval,
+		); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, 0, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	return items, total, nil
+}
+
+func satelliteListWhere(arg ListSatellitesFilteredParams) (string, []any) {
+	var clauses []string
+	var args []any
+
+	if arg.NamePrefix != "" {
+		args = append(args, arg.NamePrefix)
+		clauses = append(clauses, fmt.Sprintf("lower(name) LIKE lower($%d) || '%%'", len(args)))
+	}
+
+	if len(clauses) == 0 {
+		return "", args
+	}
+
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
