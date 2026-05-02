@@ -149,6 +149,7 @@ func (q *Queries) GetSatellitesByGroupName(ctx context.Context, groupName string
 
 const listSatellites = `-- name: ListSatellites :many
 SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval FROM satellites
+ORDER BY name ASC, id ASC
 `
 
 func (q *Queries) ListSatellites(ctx context.Context) ([]Satellite, error) {

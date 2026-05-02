@@ -60,6 +60,56 @@ func TestListSatelliteHandler(t *testing.T) {
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("returns filtered paginated satellites", func(t *testing.T) {
+		server, mock := newMockServer(t)
+		now := time.Now().UTC().Truncate(time.Second)
+
+		mock.ExpectQuery(`SELECT COUNT\(\*\) FROM satellites WHERE lower\(name\) LIKE lower\(\$1\) \|\| '%'`).
+			WithArgs("edge").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+
+		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
+			AddRow(2, "edge-02", now, now, sql.NullTime{}, sql.NullString{})
+		mock.ExpectQuery("SELECT .+ FROM satellites").
+			WithArgs("edge", int32(1), int32(1)).
+			WillReturnRows(rows)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?limit=1&offset=1&name_prefix=edge&sort=name&order=asc", nil)
+		rr := httptest.NewRecorder()
+		server.listSatelliteHandler(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		require.Contains(t, rr.Body.String(), "edge-02")
+		require.Contains(t, rr.Body.String(), `"limit":1`)
+		require.Contains(t, rr.Body.String(), `"offset":1`)
+		require.Contains(t, rr.Body.String(), `"total":2`)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("rejects invalid limit", func(t *testing.T) {
+		server, mock := newMockServer(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?limit=0", nil)
+		rr := httptest.NewRecorder()
+		server.listSatelliteHandler(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Contains(t, rr.Body.String(), "limit must be between 1 and 500")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("rejects invalid sort", func(t *testing.T) {
+		server, mock := newMockServer(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?sort=token", nil)
+		rr := httptest.NewRecorder()
+		server.listSatelliteHandler(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Contains(t, rr.Body.String(), "sort must be one of")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestGetActiveSatellitesHandler(t *testing.T) {
