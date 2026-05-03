@@ -602,6 +602,16 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 
 func parseSatelliteListQuery(r *http.Request) (database.ListSatellitesFilteredParams, *AppError) {
 	query := r.URL.Query()
+	for key := range query {
+		switch key {
+		case "limit", "offset", "sort", "order", "name_prefix":
+		default:
+			return database.ListSatellitesFilteredParams{}, &AppError{
+				Message: "unsupported query parameter: " + key,
+				Code:    http.StatusBadRequest,
+			}
+		}
+	}
 
 	limit := int32(100)
 	if rawLimit := strings.TrimSpace(query.Get("limit")); rawLimit != "" {
