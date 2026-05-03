@@ -53,7 +53,7 @@ LIMIT $%d OFFSET $%d`, whereSQL, sortColumn, order, limitArg, offsetArg)
 	}
 	defer rows.Close()
 
-	var items []Satellite
+	items := make([]Satellite, 0)
 	for rows.Next() {
 		var i Satellite
 		if err := rows.Scan(
@@ -83,8 +83,8 @@ func satelliteListWhere(arg ListSatellitesFilteredParams) (string, []any) {
 	var args []any
 
 	if arg.NamePrefix != "" {
-		args = append(args, arg.NamePrefix)
-		clauses = append(clauses, fmt.Sprintf("lower(name) LIKE lower($%d) || '%%'", len(args)))
+		args = append(args, escapePostgresLikePattern(arg.NamePrefix))
+		clauses = append(clauses, fmt.Sprintf("lower(name) LIKE lower($%d) || '%%' ESCAPE '\\'", len(args)))
 	}
 
 	if len(clauses) == 0 {
@@ -92,4 +92,11 @@ func satelliteListWhere(arg ListSatellitesFilteredParams) (string, []any) {
 	}
 
 	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func escapePostgresLikePattern(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `%`, `\%`)
+	value = strings.ReplaceAll(value, `_`, `\_`)
+	return value
 }
