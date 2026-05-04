@@ -2,6 +2,7 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -30,8 +31,11 @@ func TestListSatelliteHandler(t *testing.T) {
 		server.listSatelliteHandler(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
-		require.Contains(t, rr.Body.String(), "edge-01")
-		require.Contains(t, rr.Body.String(), "edge-02")
+		var got []map[string]any
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+		require.Len(t, got, 2)
+		require.Equal(t, "edge-01", got[0]["name"])
+		require.Equal(t, "edge-02", got[1]["name"])
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -79,7 +83,7 @@ LIMIT $2 OFFSET $3`)).
 			WithArgs(`edge\_\%`, int32(1), int32(1)).
 			WillReturnRows(rows)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/satellites?limit=1&offset=1&name_prefix=edge_%&sort=name&order=asc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?limit=1&offset=1&name_prefix=edge_%25&sort=name&order=asc", nil)
 		rr := httptest.NewRecorder()
 		server.listSatelliteHandler(rr, req)
 

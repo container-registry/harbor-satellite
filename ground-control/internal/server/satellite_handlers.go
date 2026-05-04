@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -600,11 +601,59 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+func parseLimitParam(query url.Values) (int32, *AppError) {
+	raw := strings.TrimSpace(query.Get("limit"))
+	if raw == "" {
+		return 100, nil
+	}
+	parsed, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || parsed < 1 || parsed > 500 {
+		return 0, &AppError{Message: "limit must be between 1 and 500", Code: http.StatusBadRequest}
+	}
+	return int32(parsed), nil
+}
+
+func parseOffsetParam(query url.Values) (int32, *AppError) {
+	raw := strings.TrimSpace(query.Get("offset"))
+	if raw == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || parsed < 0 {
+		return 0, &AppError{Message: "offset must be greater than or equal to 0", Code: http.StatusBadRequest}
+	}
+	return int32(parsed), nil
+}
+
+func parseSortParam(query url.Values) (string, *AppError) {
+	sort := strings.TrimSpace(query.Get("sort"))
+	if sort == "" {
+		return "name", nil
+	}
+	switch sort {
+	case "id", "name", "created_at", "updated_at", "last_seen":
+		return sort, nil
+	default:
+		return "", &AppError{Message: "sort must be one of id, name, created_at, updated_at, last_seen", Code: http.StatusBadRequest}
+	}
+}
+
+func parseOrderParam(query url.Values) (string, *AppError) {
+	order := strings.ToLower(strings.TrimSpace(query.Get("order")))
+	if order == "" {
+		return "asc", nil
+	}
+	if order != "asc" && order != "desc" {
+		return "", &AppError{Message: "order must be asc or desc", Code: http.StatusBadRequest}
+	}
+	return order, nil
+}
+
 func parseSatelliteListQuery(r *http.Request) (database.ListSatellitesFilteredParams, *AppError) {
 	query := r.URL.Query()
 	for key := range query {
 		switch key {
-		case "limit", "offset", "sort", "order", "name_prefix":
+		case "limit", "offset", "sort", "order", "name_prefix", "label":
 		default:
 			return database.ListSatellitesFilteredParams{}, &AppError{
 				Message: "unsupported query parameter: " + key,
@@ -613,61 +662,54 @@ func parseSatelliteListQuery(r *http.Request) (database.ListSatellitesFilteredPa
 		}
 	}
 
-	limit := int32(100)
-	if rawLimit := strings.TrimSpace(query.Get("limit")); rawLimit != "" {
-		parsed, err := strconv.ParseInt(rawLimit, 10, 32)
-		if err != nil || parsed < 1 || parsed > 500 {
-			return database.ListSatellitesFilteredParams{}, &AppError{
-				Message: "limit must be between 1 and 500",
-				Code:    http.StatusBadRequest,
-			}
-		}
-		limit = int32(parsed)
+	limit, appErr := parseLimitParam(query)
+	if appErr != nil {
+		return database.ListSatellitesFilteredParams{}, appErr
 	}
-
-	offset := int32(0)
-	if rawOffset := strings.TrimSpace(query.Get("offset")); rawOffset != "" {
-		parsed, err := strconv.ParseInt(rawOffset, 10, 32)
-		if err != nil || parsed < 0 {
-			return database.ListSatellitesFilteredParams{}, &AppError{
-				Message: "offset must be greater than or equal to 0",
-				Code:    http.StatusBadRequest,
-			}
-		}
-		offset = int32(parsed)
+	offset, appErr := parseOffsetParam(query)
+	if appErr != nil {
+		return database.ListSatellitesFilteredParams{}, appErr
 	}
-
-	sort := strings.TrimSpace(query.Get("sort"))
-	if sort == "" {
-		sort = "name"
+	sort, appErr := parseSortParam(query)
+	if appErr != nil {
+		return database.ListSatellitesFilteredParams{}, appErr
 	}
-	switch sort {
-	case "id", "name", "created_at", "updated_at", "last_seen":
-	default:
-		return database.ListSatellitesFilteredParams{}, &AppError{
-			Message: "sort must be one of id, name, created_at, updated_at, last_seen",
-			Code:    http.StatusBadRequest,
-		}
+	order, appErr := parseOrderParam(query)
+	if appErr != nil {
+		return database.ListSatellitesFilteredParams{}, appErr
 	}
-
-	order := strings.ToLower(strings.TrimSpace(query.Get("order")))
-	if order == "" {
-		order = "asc"
-	}
-	if order != "asc" && order != "desc" {
-		return database.ListSatellitesFilteredParams{}, &AppError{
-			Message: "order must be asc or desc",
-			Code:    http.StatusBadRequest,
-		}
+	labelSelectors, appErr := parseLabelSelectors(query)
+	if appErr != nil {
+		return database.ListSatellitesFilteredParams{}, appErr
 	}
 
 	return database.ListSatellitesFilteredParams{
-		Limit:      limit,
-		Offset:     offset,
-		Sort:       sort,
-		Order:      order,
-		NamePrefix: strings.TrimSpace(query.Get("name_prefix")),
+		Limit:          limit,
+		Offset:         offset,
+		Sort:           sort,
+		Order:          order,
+		NamePrefix:     strings.TrimSpace(query.Get("name_prefix")),
+		LabelSelectors: labelSelectors,
 	}, nil
+}
+
+func parseLabelSelectors(query url.Values) (map[string]string, *AppError) {
+	rawLabels := query["label"]
+	if len(rawLabels) == 0 {
+		return nil, nil
+	}
+	selectors := make(map[string]string, len(rawLabels))
+	for _, raw := range rawLabels {
+		k, v, ok := strings.Cut(raw, "=")
+		if !ok || k == "" {
+			return nil, &AppError{
+				Message: fmt.Sprintf("invalid label selector %q: expected key=value", raw),
+				Code:    http.StatusBadRequest,
+			}
+		}
+		selectors[k] = v
+	}
+	return selectors, nil
 }
 
 func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {

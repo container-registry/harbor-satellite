@@ -7,29 +7,34 @@ import (
 )
 
 type ListSatellitesFilteredParams struct {
-	Limit      int32
-	Offset     int32
-	Sort       string
-	Order      string
-	NamePrefix string
+	Limit          int32
+	Offset         int32
+	Sort           string
+	Order          string
+	NamePrefix     string
+	LabelSelectors map[string]string
 }
 
-func (q *Queries) ListSatellitesFiltered(ctx context.Context, arg ListSatellitesFilteredParams) ([]Satellite, int32, error) {
+func normalizeSortOrder(sort, order string) (string, string) {
 	sortColumn := map[string]string{
 		"id":         "id",
 		"name":       "name",
 		"created_at": "created_at",
 		"updated_at": "updated_at",
 		"last_seen":  "last_seen",
-	}[arg.Sort]
+	}[sort]
 	if sortColumn == "" {
 		sortColumn = "name"
 	}
-
-	order := strings.ToUpper(arg.Order)
-	if order != "DESC" {
-		order = "ASC"
+	orderUpper := strings.ToUpper(order)
+	if orderUpper != "DESC" {
+		orderUpper = "ASC"
 	}
+	return sortColumn, orderUpper
+}
+
+func (q *Queries) ListSatellitesFiltered(ctx context.Context, arg ListSatellitesFilteredParams) ([]Satellite, int32, error) {
+	sortColumn, order := normalizeSortOrder(arg.Sort, arg.Order)
 
 	whereSQL, args := satelliteListWhere(arg)
 	countQuery := "SELECT COUNT(*) FROM satellites" + whereSQL
@@ -85,6 +90,12 @@ func satelliteListWhere(arg ListSatellitesFilteredParams) (string, []any) {
 	if arg.NamePrefix != "" {
 		args = append(args, escapePostgresLikePattern(arg.NamePrefix))
 		clauses = append(clauses, fmt.Sprintf("lower(name) LIKE lower($%d) || '%%' ESCAPE '\\'", len(args)))
+	}
+
+	if len(arg.LabelSelectors) > 0 {
+		clause, extra := labelSelectorClause(arg.LabelSelectors, len(args)+1)
+		args = append(args, extra...)
+		clauses = append(clauses, clause)
 	}
 
 	if len(clauses) == 0 {
