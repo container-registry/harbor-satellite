@@ -85,7 +85,13 @@ func (s *Server) replaceLabels(ctx context.Context, satelliteID int32, labels ma
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	if err := s.runReplaceLabels(ctx, tx, satelliteID, labels); err != nil {
+		return errors.Join(err, tx.Rollback())
+	}
+	return tx.Commit()
+}
+
+func (s *Server) runReplaceLabels(ctx context.Context, tx *sql.Tx, satelliteID int32, labels map[string]string) error {
 	txQ := s.dbQueries.WithTx(tx)
 	if err := txQ.DeleteLabelsBySatelliteID(ctx, satelliteID); err != nil {
 		return err
@@ -95,7 +101,7 @@ func (s *Server) replaceLabels(ctx context.Context, satelliteID int32, labels ma
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // applyLabelPatch atomically applies a patch: nil value removes a key, non-nil upserts.
@@ -104,7 +110,13 @@ func (s *Server) applyLabelPatch(ctx context.Context, satelliteID int32, patch m
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	if err := s.runPatchLabels(ctx, tx, satelliteID, patch); err != nil {
+		return errors.Join(err, tx.Rollback())
+	}
+	return tx.Commit()
+}
+
+func (s *Server) runPatchLabels(ctx context.Context, tx *sql.Tx, satelliteID int32, patch map[string]*string) error {
 	txQ := s.dbQueries.WithTx(tx)
 	for k, v := range patch {
 		if v == nil {
@@ -117,7 +129,7 @@ func (s *Server) applyLabelPatch(ctx context.Context, satelliteID int32, patch m
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // resolveSatellite looks up a satellite by the {satellite} mux var.

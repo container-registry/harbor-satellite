@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -54,8 +55,13 @@ type SatelliteStatusParams struct {
 	CachedImages        []CachedImage `json:"cached_images,omitempty"`
 }
 
+type SatelliteListItem struct {
+	database.Satellite
+	Labels map[string]string `json:"labels"`
+}
+
 type SatelliteListResponse struct {
-	Satellites []database.Satellite  `json:"satellites"`
+	Satellites []SatelliteListItem   `json:"satellites"`
 	Pagination SatelliteListPageInfo `json:"pagination"`
 }
 
@@ -570,8 +576,14 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 			HandleAppError(w, &AppError{Message: "Error: Failed to List Satellites", Code: http.StatusInternalServerError})
 			return
 		}
+		items, err := s.enrichWithLabels(r.Context(), satellites)
+		if err != nil {
+			log.Printf("Error: Failed to enrich satellites with labels: %v", err)
+			HandleAppError(w, &AppError{Message: "Error: Failed to List Satellites", Code: http.StatusInternalServerError})
+			return
+		}
 		WriteJSONResponse(w, http.StatusOK, SatelliteListResponse{
-			Satellites: satellites,
+			Satellites: items,
 			Pagination: SatelliteListPageInfo{Limit: params.Limit, Offset: params.Offset, Total: total},
 		})
 		return
@@ -583,10 +595,39 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, &AppError{Message: "Error: Failed to List Satellites", Code: http.StatusInternalServerError})
 		return
 	}
+	items, err := s.enrichWithLabels(r.Context(), result)
+	if err != nil {
+		log.Printf("Error: Failed to enrich satellites with labels: %v", err)
+		HandleAppError(w, &AppError{Message: "Error: Failed to List Satellites", Code: http.StatusInternalServerError})
+		return
+	}
 	WriteJSONResponse(w, http.StatusOK, SatelliteListResponse{
-		Satellites: result,
+		Satellites: items,
 		Pagination: SatelliteListPageInfo{Total: int32(len(result))},
 	})
+}
+
+func (s *Server) enrichWithLabels(ctx context.Context, sats []database.Satellite) ([]SatelliteListItem, error) {
+	if len(sats) == 0 {
+		return []SatelliteListItem{}, nil
+	}
+	ids := make([]int32, len(sats))
+	for i, sat := range sats {
+		ids[i] = sat.ID
+	}
+	labelMap, err := s.dbQueries.GetLabelsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]SatelliteListItem, len(sats))
+	for i, sat := range sats {
+		labels := labelMap[sat.ID]
+		if labels == nil {
+			labels = map[string]string{}
+		}
+		items[i] = SatelliteListItem{Satellite: sat, Labels: labels}
+	}
+	return items, nil
 }
 
 func parseLimitParam(query url.Values) (int32, *AppError) {

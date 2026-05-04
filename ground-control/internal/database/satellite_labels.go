@@ -3,7 +3,10 @@ package database
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+
+	"github.com/lib/pq"
 )
 
 // GetLabelsBySatelliteID returns all labels for a satellite as a key→value map.
@@ -51,6 +54,32 @@ func (q *Queries) DeleteLabel(ctx context.Context, satelliteID int32, key string
 	return err
 }
 
+// GetLabelsByIDs returns labels for multiple satellites as a map of satelliteID → key → value.
+func (q *Queries) GetLabelsByIDs(ctx context.Context, ids []int32) (map[int32]map[string]string, error) {
+	if len(ids) == 0 {
+		return map[int32]map[string]string{}, nil
+	}
+	query := `SELECT satellite_id, key, value FROM satellite_labels WHERE satellite_id = ANY($1) ORDER BY satellite_id, key`
+	rows, err := q.db.QueryContext(ctx, query, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[int32]map[string]string)
+	for rows.Next() {
+		var satID int32
+		var k, v string
+		if err := rows.Scan(&satID, &k, &v); err != nil {
+			return nil, err
+		}
+		if result[satID] == nil {
+			result[satID] = make(map[string]string)
+		}
+		result[satID][k] = v
+	}
+	return result, rows.Err()
+}
+
 // labelSelectorClause builds a WHERE sub-clause and args for AND-semantics label selectors.
 // A nil value means "key must exist"; a non-nil value means "key=value" equality.
 // Returns ("", nil) when selectors is empty.
@@ -58,10 +87,16 @@ func labelSelectorClause(selectors map[string]*string, startIdx int) (string, []
 	if len(selectors) == 0 {
 		return "", nil
 	}
+	keys := make([]string, 0, len(selectors))
+	for k := range selectors {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 	var orConds []string
 	var args []any
 	idx := startIdx
-	for k, v := range selectors {
+	for _, k := range keys {
+		v := selectors[k]
 		if v == nil {
 			args = append(args, k)
 			orConds = append(orConds, fmt.Sprintf("(key = $%d)", idx))

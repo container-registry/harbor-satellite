@@ -25,6 +25,8 @@ func TestListSatelliteHandler(t *testing.T) {
 			AddRow(1, "edge-01", now, now, sql.NullTime{Time: now, Valid: true}, sql.NullString{String: "30s", Valid: true}).
 			AddRow(2, "edge-02", now, now, sql.NullTime{}, sql.NullString{})
 		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT .+ FROM satellite_labels WHERE satellite_id = ANY").
+			WillReturnRows(sqlmock.NewRows([]string{"satellite_id", "key", "value"}))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
 		rr := httptest.NewRecorder()
@@ -86,6 +88,8 @@ ORDER BY name ASC, id ASC
 LIMIT $2 OFFSET $3`)).
 			WithArgs(`edge\_\%`, int32(1), int32(1)).
 			WillReturnRows(rows)
+		mock.ExpectQuery("SELECT .+ FROM satellite_labels WHERE satellite_id = ANY").
+			WillReturnRows(sqlmock.NewRows([]string{"satellite_id", "key", "value"}))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites?limit=1&offset=1&name_prefix=edge_%25&sort=name&order=asc", nil)
 		rr := httptest.NewRecorder()
