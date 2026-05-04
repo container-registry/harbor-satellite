@@ -12,7 +12,7 @@ type ListSatellitesFilteredParams struct {
 	Sort           string
 	Order          string
 	NamePrefix     string
-	LabelSelectors map[string]string
+	LabelSelectors map[string]*string
 }
 
 func normalizeSortOrder(sort, order string) (string, string) {

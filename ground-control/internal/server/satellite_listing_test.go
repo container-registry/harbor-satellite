@@ -31,11 +31,15 @@ func TestListSatelliteHandler(t *testing.T) {
 		server.listSatelliteHandler(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
-		var got []map[string]any
+		var got struct {
+			Satellites []map[string]any `json:"satellites"`
+			Pagination map[string]any   `json:"pagination"`
+		}
 		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
-		require.Len(t, got, 2)
-		require.Equal(t, "edge-01", got[0]["name"])
-		require.Equal(t, "edge-02", got[1]["name"])
+		require.Len(t, got.Satellites, 2)
+		require.Equal(t, "edge-01", got.Satellites[0]["Name"])
+		require.Equal(t, "edge-02", got.Satellites[1]["Name"])
+		require.NotNil(t, got.Pagination)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 

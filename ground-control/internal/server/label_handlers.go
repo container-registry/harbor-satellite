@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -11,8 +12,6 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/gorilla/mux"
 )
-
-var labelKeyRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$`)
 
 type patchLabelsRequest map[string]*string
 
@@ -44,7 +43,7 @@ func (s *Server) setLabelsHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, appErr)
 		return
 	}
-	if err := s.dbQueries.SetLabels(r.Context(), sat.ID, labels); err != nil {
+	if err := s.replaceLabels(r.Context(), sat.ID, labels); err != nil {
 		log.Printf("Error: Failed to set labels for satellite %s: %v", sat.Name, err)
 		HandleAppError(w, &AppError{Message: "failed to set labels", Code: http.StatusInternalServerError})
 		return
@@ -66,7 +65,7 @@ func (s *Server) patchLabelsHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, appErr)
 		return
 	}
-	if err := s.dbQueries.PatchLabels(r.Context(), sat.ID, map[string]*string(patch)); err != nil {
+	if err := s.applyLabelPatch(r.Context(), sat.ID, map[string]*string(patch)); err != nil {
 		log.Printf("Error: Failed to patch labels for satellite %s: %v", sat.Name, err)
 		HandleAppError(w, &AppError{Message: "failed to patch labels", Code: http.StatusInternalServerError})
 		return
@@ -78,6 +77,47 @@ func (s *Server) patchLabelsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSONResponse(w, http.StatusOK, labels)
+}
+
+// replaceLabels atomically replaces all labels for a satellite.
+func (s *Server) replaceLabels(ctx context.Context, satelliteID int32, labels map[string]string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	txQ := s.dbQueries.WithTx(tx)
+	if err := txQ.DeleteLabelsBySatelliteID(ctx, satelliteID); err != nil {
+		return err
+	}
+	for k, v := range labels {
+		if err := txQ.UpsertLabel(ctx, satelliteID, k, v); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// applyLabelPatch atomically applies a patch: nil value removes a key, non-nil upserts.
+func (s *Server) applyLabelPatch(ctx context.Context, satelliteID int32, patch map[string]*string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	txQ := s.dbQueries.WithTx(tx)
+	for k, v := range patch {
+		if v == nil {
+			if err := txQ.DeleteLabel(ctx, satelliteID, k); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := txQ.UpsertLabel(ctx, satelliteID, k, *v); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // resolveSatellite looks up a satellite by the {satellite} mux var.
@@ -126,7 +166,8 @@ func validateLabelKey(k string) error {
 	if k == "" || len(k) > 316 {
 		return fmt.Errorf("label key %q: must be 1–316 characters", k)
 	}
-	if !labelKeyRe.MatchString(k) {
+	matched, _ := regexp.MatchString(`^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$`, k)
+	if !matched {
 		return fmt.Errorf("label key %q: only alphanumeric, '.', '_', '-', '/' allowed", k)
 	}
 	return nil

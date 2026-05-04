@@ -182,11 +182,23 @@ func TestPatchLabelsHandler(t *testing.T) {
 }
 
 func TestParseLabelSelectors(t *testing.T) {
-	t.Run("parses valid selectors", func(t *testing.T) {
+	t.Run("parses equality selectors", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites?label=env%3Dproduction&label=region%3Dus-east", nil)
 		got, appErr := parseLabelSelectors(req.URL.Query())
 		require.Nil(t, appErr)
-		require.Equal(t, map[string]string{"env": "production", "region": "us-east"}, got)
+		require.Len(t, got, 2)
+		require.NotNil(t, got["env"])
+		require.Equal(t, "production", *got["env"])
+		require.NotNil(t, got["region"])
+		require.Equal(t, "us-east", *got["region"])
+	})
+
+	t.Run("parses bare-key existence selector", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?label=env", nil)
+		got, appErr := parseLabelSelectors(req.URL.Query())
+		require.Nil(t, appErr)
+		require.Len(t, got, 1)
+		require.Nil(t, got["env"]) // nil means "key must exist"
 	})
 
 	t.Run("returns nil when no label params", func(t *testing.T) {
@@ -196,12 +208,12 @@ func TestParseLabelSelectors(t *testing.T) {
 		require.Nil(t, got)
 	})
 
-	t.Run("rejects malformed selector missing equals", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/satellites?label=envonly", nil)
+	t.Run("rejects empty key in equality selector", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?label=%3Dvalue", nil)
 		_, appErr := parseLabelSelectors(req.URL.Query())
 		require.NotNil(t, appErr)
 		require.Equal(t, http.StatusBadRequest, appErr.Code)
-		require.Contains(t, appErr.Message, "key=value")
+		require.Contains(t, appErr.Message, "key must not be empty")
 	})
 }
 

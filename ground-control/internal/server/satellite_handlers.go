@@ -558,31 +558,21 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-	if len(query) > 0 {
-		params, err := parseSatelliteListQuery(r)
-		if err != nil {
-			HandleAppError(w, err)
+	if len(r.URL.Query()) > 0 {
+		params, appErr := parseSatelliteListQuery(r)
+		if appErr != nil {
+			HandleAppError(w, appErr)
 			return
 		}
-
 		satellites, total, err := s.dbQueries.ListSatellitesFiltered(r.Context(), params)
 		if err != nil {
 			log.Printf("Error: Failed to List Satellites: %v", err)
-			HandleAppError(w, &AppError{
-				Message: "Error: Failed to List Satellites",
-				Code:    http.StatusInternalServerError,
-			})
+			HandleAppError(w, &AppError{Message: "Error: Failed to List Satellites", Code: http.StatusInternalServerError})
 			return
 		}
-
 		WriteJSONResponse(w, http.StatusOK, SatelliteListResponse{
 			Satellites: satellites,
-			Pagination: SatelliteListPageInfo{
-				Limit:  params.Limit,
-				Offset: params.Offset,
-				Total:  total,
-			},
+			Pagination: SatelliteListPageInfo{Limit: params.Limit, Offset: params.Offset, Total: total},
 		})
 		return
 	}
@@ -590,15 +580,13 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListSatellites(r.Context())
 	if err != nil {
 		log.Printf("Error: Failed to List Satellites: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to List Satellites",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
+		HandleAppError(w, &AppError{Message: "Error: Failed to List Satellites", Code: http.StatusInternalServerError})
 		return
 	}
-
-	WriteJSONResponse(w, http.StatusOK, result)
+	WriteJSONResponse(w, http.StatusOK, SatelliteListResponse{
+		Satellites: result,
+		Pagination: SatelliteListPageInfo{Total: int32(len(result))},
+	})
 }
 
 func parseLimitParam(query url.Values) (int32, *AppError) {
@@ -689,25 +677,36 @@ func parseSatelliteListQuery(r *http.Request) (database.ListSatellitesFilteredPa
 		Sort:           sort,
 		Order:          order,
 		NamePrefix:     strings.TrimSpace(query.Get("name_prefix")),
-		LabelSelectors: labelSelectors,
+		LabelSelectors: labelSelectors, // map[string]*string; nil value = existence check
 	}, nil
 }
 
-func parseLabelSelectors(query url.Values) (map[string]string, *AppError) {
+func parseLabelSelectors(query url.Values) (map[string]*string, *AppError) {
 	rawLabels := query["label"]
 	if len(rawLabels) == 0 {
 		return nil, nil
 	}
-	selectors := make(map[string]string, len(rawLabels))
+	selectors := make(map[string]*string, len(rawLabels))
 	for _, raw := range rawLabels {
-		k, v, ok := strings.Cut(raw, "=")
-		if !ok || k == "" {
-			return nil, &AppError{
-				Message: fmt.Sprintf("invalid label selector %q: expected key=value", raw),
-				Code:    http.StatusBadRequest,
+		if k, v, ok := strings.Cut(raw, "="); ok {
+			if k == "" {
+				return nil, &AppError{
+					Message: fmt.Sprintf("invalid label selector %q: key must not be empty", raw),
+					Code:    http.StatusBadRequest,
+				}
 			}
+			val := v
+			selectors[k] = &val
+		} else {
+			// bare key: existence selector (label=env means "env key must exist")
+			if raw == "" {
+				return nil, &AppError{
+					Message: "invalid label selector: key must not be empty",
+					Code:    http.StatusBadRequest,
+				}
+			}
+			selectors[raw] = nil
 		}
-		selectors[k] = v
 	}
 	return selectors, nil
 }
