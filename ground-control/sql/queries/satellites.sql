@@ -9,8 +9,8 @@ SELECT * FROM satellites;
 -- name: ListSatellitesFiltered :many
 SELECT * FROM satellites
 WHERE
-  (sqlc.narg('search')::text IS NULL OR name ILIKE '%' || sqlc.narg('search') || '%')
-  AND (sqlc.narg('group_name')::text IS NULL OR id IN (
+  (CAST(sqlc.narg('search') AS text) IS NULL OR name ILIKE '%' || sqlc.narg('search') || '%')
+  AND (CAST(sqlc.narg('group_name') AS text) IS NULL OR id IN (
     SELECT sg.satellite_id FROM satellite_groups sg
     JOIN groups g ON g.id = sg.group_id
     WHERE g.group_name = sqlc.narg('group_name')
@@ -21,8 +21,8 @@ LIMIT sqlc.narg('page_size') OFFSET sqlc.narg('offset');
 -- name: CountSatellitesFiltered :one
 SELECT COUNT(*) FROM satellites
 WHERE
-  (sqlc.narg('search')::text IS NULL OR name ILIKE '%' || sqlc.narg('search') || '%')
-  AND (sqlc.narg('group_name')::text IS NULL OR id IN (
+  (CAST(sqlc.narg('search') AS text) IS NULL OR name ILIKE '%' || sqlc.narg('search') || '%')
+  AND (CAST(sqlc.narg('group_name') AS text) IS NULL OR id IN (
     SELECT sg.satellite_id FROM satellite_groups sg
     JOIN groups g ON g.id = sg.group_id
     WHERE g.group_name = sqlc.narg('group_name')
