@@ -1,0 +1,16 @@
+apiVersion: v2
+name: satellite-operator
+description: Kubernetes operator for Harbor Satellite fleet management.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - harbor
+  - satellite
+  - registry
+  - edge
+home: https://github.com/container-registry/harbor-satellite
+sources:
+  - https://github.com/container-registry/harbor-satellite
+maintainers:
+  - name: Harbor Satellite Maintainers
