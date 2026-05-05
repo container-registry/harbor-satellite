@@ -263,7 +263,7 @@ func (r *BasicReplicator) DeleteReplicationEntity(ctx context.Context, replicati
 // buildTLSTransport returns an http.Transport with TLS configured, or nil when
 // no TLS config is set (callers then use the default transport).
 func (r *BasicReplicator) buildTLSTransport() (http.RoundTripper, error) {
-	if r.tlsCfg.CertFile == "" && r.tlsCfg.CAFile == "" {
+	if r.tlsCfg.CertFile == "" && r.tlsCfg.CAFile == "" && !r.tlsCfg.SkipVerify {
 		return nil, nil
 	}
 	cfg := &satTLS.Config{
@@ -277,5 +277,7 @@ func (r *BasicReplicator) buildTLSTransport() (http.RoundTripper, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load TLS config: %w", err)
 	}
-	return &http.Transport{TLSClientConfig: tlsConfig}, nil
+	base := http.DefaultTransport.(*http.Transport).Clone()
+	base.TLSClientConfig = tlsConfig
+	return base, nil
 }
