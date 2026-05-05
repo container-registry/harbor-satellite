@@ -176,12 +176,16 @@ func validatePatch(patch patchLabelsRequest) *AppError {
 
 func validateLabelKey(k string) error {
 	if k == "" || len(k) > 316 {
-		return fmt.Errorf("label key %q: must be 1–316 characters", k)
+		return fmt.Errorf("label key %q: must be 1-316 characters", k)
 	}
-	matched, _ := regexp.MatchString(`^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$`, k)
+	matched, err := regexp.MatchString(`^[a-zA-Z0-9][a-zA-Z0-9._/\-]*$`, k)
+	if err != nil {
+		return fmt.Errorf("validate label key: %w", err)
+	}
 	if !matched {
 		return fmt.Errorf("label key %q: only alphanumeric, '.', '_', '-', '/' allowed", k)
 	}
+
 	return nil
 }
 
