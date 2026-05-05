@@ -2,6 +2,7 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -30,8 +31,12 @@ func TestListSatelliteHandler(t *testing.T) {
 		server.listSatelliteHandler(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
-		require.Contains(t, rr.Body.String(), "edge-01")
-		require.Contains(t, rr.Body.String(), "edge-02")
+		var resp SatelliteListResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.Len(t, resp.Satellites, 2)
+		require.Equal(t, "edge-01", resp.Satellites[0].Name)
+		require.Equal(t, "edge-02", resp.Satellites[1].Name)
+		require.Equal(t, int32(2), resp.Pagination.Total)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -46,6 +51,10 @@ func TestListSatelliteHandler(t *testing.T) {
 		server.listSatelliteHandler(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
+		var resp SatelliteListResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.Empty(t, resp.Satellites)
+		require.Equal(t, int32(0), resp.Pagination.Total)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -84,10 +93,13 @@ LIMIT $2 OFFSET $3`)).
 		server.listSatelliteHandler(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
-		require.Contains(t, rr.Body.String(), "edge-02")
-		require.Contains(t, rr.Body.String(), `"limit":1`)
-		require.Contains(t, rr.Body.String(), `"offset":1`)
-		require.Contains(t, rr.Body.String(), `"total":2`)
+		var resp SatelliteListResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.Len(t, resp.Satellites, 1)
+		require.Equal(t, "edge-02", resp.Satellites[0].Name)
+		require.Equal(t, int32(1), resp.Pagination.Limit)
+		require.Equal(t, int32(1), resp.Pagination.Offset)
+		require.Equal(t, int32(2), resp.Pagination.Total)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -111,8 +123,10 @@ LIMIT $2 OFFSET $3`)).
 		server.listSatelliteHandler(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
-		require.Contains(t, rr.Body.String(), `"satellites":[]`)
-		require.Contains(t, rr.Body.String(), `"total":0`)
+		var resp SatelliteListResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.Empty(t, resp.Satellites)
+		require.Equal(t, int32(0), resp.Pagination.Total)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
