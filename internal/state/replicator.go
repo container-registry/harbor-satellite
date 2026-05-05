@@ -95,19 +95,26 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 
 	if r.useUnsecure {
 		nameOpts = append(nameOpts, name.Insecure)
-		// Still apply throttling even for insecure (HTTP) connections.
 		if r.syncCfg.MaxBandwidthMbps > 0 {
 			tr := newThrottledTransport(http.DefaultTransport, r.syncCfg.MaxBandwidthMbps)
 			pullOpts = append(pullOpts, remote.WithTransport(tr))
 		}
 	} else {
-		transport, err := r.buildTransport()
+		tlsTransport, err := r.buildTLSTransport()
 		if err != nil {
 			return fmt.Errorf("build transport: %w", err)
 		}
-		if transport != nil {
-			pullOpts = append(pullOpts, remote.WithTransport(transport))
-			pushOpts = append(pushOpts, remote.WithTransport(transport))
+		if tlsTransport != nil {
+			pushOpts = append(pushOpts, remote.WithTransport(tlsTransport))
+		}
+		var pullBase http.RoundTripper = http.DefaultTransport
+		if tlsTransport != nil {
+			pullBase = tlsTransport
+		}
+		if r.syncCfg.MaxBandwidthMbps > 0 {
+			pullOpts = append(pullOpts, remote.WithTransport(newThrottledTransport(pullBase, r.syncCfg.MaxBandwidthMbps)))
+		} else if tlsTransport != nil {
+			pullOpts = append(pullOpts, remote.WithTransport(tlsTransport))
 		}
 	}
 
@@ -253,34 +260,22 @@ func (r *BasicReplicator) DeleteReplicationEntity(ctx context.Context, replicati
 	return nil
 }
 
-// buildTransport assembles the HTTP transport for pull operations.
-// It layers TLS (if configured) and bandwidth throttling (if max_bandwidth_mbps > 0).
-func (r *BasicReplicator) buildTransport() (http.RoundTripper, error) {
-	var base http.RoundTripper = http.DefaultTransport
-
-	if r.tlsCfg.CertFile != "" || r.tlsCfg.CAFile != "" {
-		cfg := &satTLS.Config{
-			CertFile:   r.tlsCfg.CertFile,
-			KeyFile:    r.tlsCfg.KeyFile,
-			CAFile:     r.tlsCfg.CAFile,
-			SkipVerify: r.tlsCfg.SkipVerify,
-			MinVersion: tls.VersionTLS12,
-		}
-		tlsConfig, err := satTLS.LoadClientTLSConfig(cfg)
-		if err != nil {
-			return nil, fmt.Errorf("load TLS config: %w", err)
-		}
-		base = &http.Transport{TLSClientConfig: tlsConfig}
-	}
-
-	if r.syncCfg.MaxBandwidthMbps > 0 {
-		return newThrottledTransport(base, r.syncCfg.MaxBandwidthMbps), nil
-	}
-
-	// Return nil when only the default transport would be used so callers
-	// can skip setting WithTransport and let go-containerregistry use its own defaults.
-	if base == http.DefaultTransport {
+// buildTLSTransport returns an http.Transport with TLS configured, or nil when
+// no TLS config is set (callers then use the default transport).
+func (r *BasicReplicator) buildTLSTransport() (http.RoundTripper, error) {
+	if r.tlsCfg.CertFile == "" && r.tlsCfg.CAFile == "" {
 		return nil, nil
 	}
-	return base, nil
+	cfg := &satTLS.Config{
+		CertFile:   r.tlsCfg.CertFile,
+		KeyFile:    r.tlsCfg.KeyFile,
+		CAFile:     r.tlsCfg.CAFile,
+		SkipVerify: r.tlsCfg.SkipVerify,
+		MinVersion: tls.VersionTLS12,
+	}
+	tlsConfig, err := satTLS.LoadClientTLSConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("load TLS config: %w", err)
+	}
+	return &http.Transport{TLSClientConfig: tlsConfig}, nil
 }

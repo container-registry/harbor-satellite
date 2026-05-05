@@ -49,14 +49,18 @@ type throttledReader struct {
 func (r *throttledReader) Read(p []byte) (int, error) {
 	n, err := r.body.Read(p)
 	if n > 0 {
-		// Clamp to burst so WaitN never returns an error for n > burst.
-		// Oversized reads still consume tokens proportionally on the next call.
-		tokens := n
-		if tokens > r.limiter.Burst() {
-			tokens = r.limiter.Burst()
-		}
-		if waitErr := r.limiter.WaitN(r.ctx, tokens); waitErr != nil {
-			return n, waitErr
+		// WaitN rejects n > Burst, so charge in burst-sized chunks to ensure
+		// all transferred bytes are accounted for.
+		remaining := n
+		for remaining > 0 {
+			chunk := remaining
+			if chunk > r.limiter.Burst() {
+				chunk = r.limiter.Burst()
+			}
+			if waitErr := r.limiter.WaitN(r.ctx, chunk); waitErr != nil {
+				return n, waitErr
+			}
+			remaining -= chunk
 		}
 	}
 	return n, err
