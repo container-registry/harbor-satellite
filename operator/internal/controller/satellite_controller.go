@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-logr/logr"
 	harborv1alpha1 "github.com/container-registry/harbor-satellite/operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -21,20 +22,17 @@ type SatelliteReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	// GroundControlURL is the default Ground Control server URL.
 	GroundControlURL string
 
 	httpClient *http.Client
 }
 
-// registerSatelliteRequest is the payload for POST /api/satellites.
 type registerSatelliteRequest struct {
 	Name       string    `json:"name"`
 	Groups     *[]string `json:"groups,omitempty"`
 	ConfigName string    `json:"config_name"`
 }
 
-// registerSatelliteResponse is the response from POST /api/satellites.
 type registerSatelliteResponse struct {
 	Token string `json:"token"`
 }
@@ -48,114 +46,102 @@ func (r *SatelliteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	gcURL := satellite.Spec.GroundControlURL
-	if gcURL == "" {
-		gcURL = r.GroundControlURL
-	}
+	gcURL := r.resolveGCURL(&satellite)
+	r.ensureHTTPClient()
 
-	if r.httpClient == nil {
-		r.httpClient = &http.Client{Timeout: 30 * time.Second}
-	}
-
-	// Handle deletion: call Ground Control to deregister.
 	if !satellite.DeletionTimestamp.IsZero() {
-		if err := r.handleDelete(ctx, gcURL, satellite.Name); err != nil {
-			logger.Error(err, "Failed to delete satellite from Ground Control")
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, nil
+		return r.handleDeletion(ctx, logger, gcURL, satellite.Name)
 	}
 
-	// If already registered, skip.
 	if satellite.Status.Registered {
 		return ctrl.Result{}, nil
 	}
 
-	// Register with Ground Control.
-	token, err := r.registerWithGroundControl(ctx, gcURL, satellite.Name, satellite.Spec.Group, satellite.Spec.ConfigName)
+	return r.registerSatellite(ctx, logger, gcURL, &satellite)
+}
+
+func (r *SatelliteReconciler) resolveGCURL(sat *harborv1alpha1.Satellite) string {
+	if sat.Spec.GroundControlURL != "" {
+		return sat.Spec.GroundControlURL
+	}
+	return r.GroundControlURL
+}
+
+func (r *SatelliteReconciler) ensureHTTPClient() {
+	if r.httpClient == nil {
+		r.httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
+}
+
+func (r *SatelliteReconciler) handleDeletion(ctx context.Context, logger logr.Logger, gcURL, name string) (ctrl.Result, error) {
+	if err := r.deleteFromGroundControl(ctx, gcURL, name); err != nil {
+		logger.Error(err, "Failed to delete satellite from Ground Control")
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *SatelliteReconciler) registerSatellite(ctx context.Context, logger logr.Logger, gcURL string, sat *harborv1alpha1.Satellite) (ctrl.Result, error) {
+	token, err := r.registerWithGroundControl(ctx, gcURL, sat.Name, sat.Spec.Group, sat.Spec.ConfigName)
 	if err != nil {
-		satellite.Status.Phase = harborv1alpha1.SatellitePhaseFailed
-		satellite.Status.Message = fmt.Sprintf("Registration failed: %v", err)
-		satellite.Status.Conditions = append(satellite.Status.Conditions, metav1.Condition{
-			Type:               "Registered",
-			Status:             metav1.ConditionFalse,
-			Reason:             "RegistrationFailed",
-			Message:            err.Error(),
-			LastTransitionTime: metav1.Now(),
-		})
-		if updateErr := r.Status().Update(ctx, &satellite); updateErr != nil {
-			logger.Error(updateErr, "Failed to update satellite status")
-		}
+		r.updateFailedStatus(ctx, sat, err)
+		logger.Error(err, "Failed to register satellite")
 		return ctrl.Result{}, err
 	}
 
-	// Update status to Registered.
-	satellite.Status.Phase = harborv1alpha1.SatellitePhaseRegistered
-	satellite.Status.Registered = true
-	satellite.Status.TokenRef = token
-	satellite.Status.Message = "Successfully registered with Ground Control"
-	satellite.Status.Conditions = append(satellite.Status.Conditions, metav1.Condition{
+	r.updateRegisteredStatus(ctx, sat, token)
+	logger.Info("Satellite registered successfully", "name", sat.Name, "phase", sat.Status.Phase)
+	return ctrl.Result{}, nil
+}
+
+func (r *SatelliteReconciler) updateFailedStatus(ctx context.Context, sat *harborv1alpha1.Satellite, err error) {
+	sat.Status.Phase = harborv1alpha1.SatellitePhaseFailed
+	sat.Status.Message = fmt.Sprintf("Registration failed: %v", err)
+	sat.Status.Conditions = append(sat.Status.Conditions, metav1.Condition{
+		Type:               "Registered",
+		Status:             metav1.ConditionFalse,
+		Reason:             "RegistrationFailed",
+		Message:            err.Error(),
+		LastTransitionTime: metav1.Now(),
+	})
+	_ = r.Status().Update(ctx, sat)
+}
+
+func (r *SatelliteReconciler) updateRegisteredStatus(ctx context.Context, sat *harborv1alpha1.Satellite, token string) {
+	sat.Status.Phase = harborv1alpha1.SatellitePhaseRegistered
+	sat.Status.Registered = true
+	sat.Status.TokenRef = token
+	sat.Status.Message = "Successfully registered with Ground Control"
+	sat.Status.Conditions = append(sat.Status.Conditions, metav1.Condition{
 		Type:               "Registered",
 		Status:             metav1.ConditionTrue,
 		Reason:             "RegistrationSucceeded",
 		Message:            "Satellite registered with Ground Control",
 		LastTransitionTime: metav1.Now(),
 	})
-
-	if err := r.Status().Update(ctx, &satellite); err != nil {
-		logger.Error(err, "Failed to update satellite status")
-		return ctrl.Result{}, err
-	}
-
-	logger.Info("Satellite registered successfully", "name", satellite.Name, "phase", satellite.Status.Phase)
-	return ctrl.Result{}, nil
+	_ = r.Status().Update(ctx, sat)
 }
 
-// registerWithGroundControl creates a satellite via the Ground Control REST API.
 func (r *SatelliteReconciler) registerWithGroundControl(ctx context.Context, gcURL, name, group, configName string) (string, error) {
-	groups := &[]string{}
-	if group != "" {
-		*groups = append(*groups, group)
-	}
+	groups := buildGroupsPtr(group)
 
-	reqBody := registerSatelliteRequest{
+	body, err := json.Marshal(registerSatelliteRequest{
 		Name:       name,
 		Groups:     groups,
 		ConfigName: configName,
-	}
-
-	body, err := json.Marshal(reqBody)
+	})
 	if err != nil {
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := gcURL + "/api/satellites"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	resp, err := r.sendRequest(ctx, http.MethodPost, gcURL+"/api/satellites", body)
 	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := r.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("http request: %w", err)
+		return "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		var errResp struct {
-			Error   string `json:"error"`
-			Message string `json:"message"`
-		}
-		json.NewDecoder(resp.Body).Decode(&errResp)
-		msg := errResp.Error
-		if msg == "" {
-			msg = errResp.Message
-		}
-		if msg == "" {
-			msg = resp.Status
-		}
-		return "", fmt.Errorf("API error (status %d): %s", resp.StatusCode, msg)
+		return "", parseAPIError(resp)
 	}
 
 	var regResp registerSatelliteResponse
@@ -166,29 +152,64 @@ func (r *SatelliteReconciler) registerWithGroundControl(ctx context.Context, gcU
 	return regResp.Token, nil
 }
 
-// handleDelete calls DELETE /api/satellites/{name} on Ground Control.
-func (r *SatelliteReconciler) handleDelete(ctx context.Context, gcURL, name string) error {
-	url := gcURL + "/api/satellites/" + name
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+func (r *SatelliteReconciler) deleteFromGroundControl(ctx context.Context, gcURL, name string) error {
+	resp, err := r.sendRequest(ctx, http.MethodDelete, gcURL+"/api/satellites/"+name, nil)
 	if err != nil {
-		return fmt.Errorf("create delete request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := r.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("http delete request: %w", err)
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("API error (status %d)", resp.StatusCode)
+		return parseAPIError(resp)
 	}
 
 	return nil
 }
 
-// SetupWithManager sets up the controller with the manager.
+func (r *SatelliteReconciler) sendRequest(ctx context.Context, method, url string, body []byte) (*http.Response, error) {
+	var bodyReader *bytes.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := r.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http request: %w", err)
+	}
+
+	return resp, nil
+}
+
+func buildGroupsPtr(group string) *[]string {
+	if group == "" {
+		return &[]string{}
+	}
+	return &[]string{group}
+}
+
+func parseAPIError(resp *http.Response) error {
+	var errResp struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	json.NewDecoder(resp.Body).Decode(&errResp)
+
+	msg := errResp.Error
+	if msg == "" {
+		msg = errResp.Message
+	}
+	if msg == "" {
+		msg = resp.Status
+	}
+	return fmt.Errorf("API error (status %d): %s", resp.StatusCode, msg)
+}
+
 func (r *SatelliteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&harborv1alpha1.Satellite{}).
