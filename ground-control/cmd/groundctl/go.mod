@@ -1,6 +1,6 @@
 module github.com/container-registry/harbor-satellite/ground-control/cmd/groundctl
 
-go 1.24.1
+go 1.24.11
 
 require (
 	github.com/spf13/cobra v1.9.1
