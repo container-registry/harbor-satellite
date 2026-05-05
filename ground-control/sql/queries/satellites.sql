@@ -6,6 +6,28 @@ RETURNING *;
 -- name: ListSatellites :many
 SELECT * FROM satellites;
 
+-- name: ListSatellitesFiltered :many
+SELECT * FROM satellites
+WHERE
+  (sqlc.narg('search')::text IS NULL OR name ILIKE '%' || sqlc.narg('search') || '%')
+  AND (sqlc.narg('group_name')::text IS NULL OR id IN (
+    SELECT sg.satellite_id FROM satellite_groups sg
+    JOIN groups g ON g.id = sg.group_id
+    WHERE g.group_name = sqlc.narg('group_name')
+  ))
+ORDER BY created_at DESC
+LIMIT sqlc.narg('page_size') OFFSET sqlc.narg('offset');
+
+-- name: CountSatellitesFiltered :one
+SELECT COUNT(*) FROM satellites
+WHERE
+  (sqlc.narg('search')::text IS NULL OR name ILIKE '%' || sqlc.narg('search') || '%')
+  AND (sqlc.narg('group_name')::text IS NULL OR id IN (
+    SELECT sg.satellite_id FROM satellite_groups sg
+    JOIN groups g ON g.id = sg.group_id
+    WHERE g.group_name = sqlc.narg('group_name')
+  ));
+
 -- name: GetSatellitesByGroupName :many
 SELECT s.id, s.name, s.created_at, s.updated_at
 FROM satellites s
