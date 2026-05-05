@@ -97,6 +97,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -113,6 +114,7 @@ func (r *BasicReplicator) buildRemoteOptions(ctx context.Context) ([]name.Option
 		if r.syncCfg.MaxBandwidthMbps > 0 {
 			pullOpts = append(pullOpts, remote.WithTransport(newThrottledTransport(http.DefaultTransport, r.syncCfg.MaxBandwidthMbps)))
 		}
+
 		return nameOpts, pullOpts, pushOpts, nil
 	}
 
@@ -120,18 +122,22 @@ func (r *BasicReplicator) buildRemoteOptions(ctx context.Context) ([]name.Option
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("build transport: %w", err)
 	}
+
 	if tlsTransport != nil {
 		pushOpts = append(pushOpts, remote.WithTransport(tlsTransport))
 	}
+
 	var pullBase http.RoundTripper = http.DefaultTransport
 	if tlsTransport != nil {
 		pullBase = tlsTransport
 	}
+
 	if r.syncCfg.MaxBandwidthMbps > 0 {
 		pullOpts = append(pullOpts, remote.WithTransport(newThrottledTransport(pullBase, r.syncCfg.MaxBandwidthMbps)))
 	} else if tlsTransport != nil {
 		pullOpts = append(pullOpts, remote.WithTransport(tlsTransport))
 	}
+
 	return nameOpts, pullOpts, pushOpts, nil
 }
 
@@ -192,7 +198,9 @@ func (r *BasicReplicator) replicateOne(ctx context.Context, entity Entity, nameO
 		log.Error().Msgf("Failed to replicate image: %v", err)
 		return err
 	}
+
 	log.Info().Msgf("Image %s replicated successfully", entity.GetName())
+
 	return nil
 }
 
