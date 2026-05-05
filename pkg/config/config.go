@@ -50,6 +50,12 @@ type DirectDeliveryConfig struct {
 	ImageDir string `json:"image_dir,omitempty"` // auto-detected if empty
 }
 
+// SyncConfig controls bandwidth usage during image replication.
+// MaxBandwidthMbps caps bytes-on-wire; 0 means unlimited.
+type SyncConfig struct {
+	MaxBandwidthMbps float64 `json:"max_bandwidth_mbps,omitempty"`
+}
+
 type AppConfig struct {
 	GroundControlURL          URL                    `json:"ground_control_url,omitempty"`
 	LogLevel                  string                 `json:"log_level,omitempty"`
@@ -66,6 +72,7 @@ type AppConfig struct {
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty"`
 	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty"`
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
+	Sync                      SyncConfig             `json:"sync,omitempty"`
 }
 
 type StateConfig struct {
