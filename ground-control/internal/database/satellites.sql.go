@@ -185,7 +185,7 @@ func (q *Queries) ListSatellites(ctx context.Context) ([]Satellite, error) {
 const listSatellitesFiltered = `-- name: ListSatellitesFiltered :many
 SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval FROM satellites
 WHERE
-  ($1::text IS NULL OR name ILIKE '%' || $1 || '%')
+  ($1::text IS NULL OR LOWER(name) LIKE LOWER('%' || $1 || '%'))
   AND ($2::text IS NULL OR id IN (
     SELECT sg.satellite_id FROM satellite_groups sg
     JOIN groups g ON g.id = sg.group_id
@@ -237,7 +237,7 @@ func (q *Queries) ListSatellitesFiltered(ctx context.Context, arg ListSatellites
 const countSatellitesFiltered = `-- name: CountSatellitesFiltered :one
 SELECT COUNT(*) FROM satellites
 WHERE
-  ($1::text IS NULL OR name ILIKE '%' || $1 || '%')
+  ($1::text IS NULL OR LOWER(name) LIKE LOWER('%' || $1 || '%'))
   AND ($2::text IS NULL OR id IN (
     SELECT sg.satellite_id FROM satellite_groups sg
     JOIN groups g ON g.id = sg.group_id
