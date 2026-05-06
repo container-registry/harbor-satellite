@@ -90,8 +90,7 @@ func TestNewBasicReplicatorWithTLS_ThrottledReplication(t *testing.T) {
 	pushImage(t, srcAddr, "library", "busybox", "latest", 1)
 
 	r := NewBasicReplicatorWithTLS("", "", srcAddr, dstAddr, "", "", true,
-		config.TLSConfig{},
-		config.SyncConfig{MaxBandwidthMbps: 100},
+		ReplicatorOptions{SyncConfig: config.SyncConfig{MaxBandwidthMbps: 100}},
 	)
 
 	ctx := testContext()
