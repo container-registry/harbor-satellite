@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -16,14 +17,16 @@ func (q *Queries) GetLabelsBySatelliteID(ctx context.Context, satelliteID int32)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	labels := make(map[string]string)
 	for rows.Next() {
 		var k, v string
 		if err := rows.Scan(&k, &v); err != nil {
-			return nil, err
+			return nil, errors.Join(err, rows.Close())
 		}
 		labels[k] = v
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	return labels, rows.Err()
 }
@@ -64,18 +67,20 @@ func (q *Queries) GetLabelsByIDs(ctx context.Context, ids []int32) (map[int32]ma
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	result := make(map[int32]map[string]string)
 	for rows.Next() {
 		var satID int32
 		var k, v string
 		if err := rows.Scan(&satID, &k, &v); err != nil {
-			return nil, err
+			return nil, errors.Join(err, rows.Close())
 		}
 		if result[satID] == nil {
 			result[satID] = make(map[string]string)
 		}
 		result[satID][k] = v
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
 	}
 	return result, rows.Err()
 }

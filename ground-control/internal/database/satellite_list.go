@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -56,7 +57,6 @@ LIMIT $%d OFFSET $%d`, whereSQL, sortColumn, order, limitArg, offsetArg)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
 
 	items := make([]Satellite, 0)
 	for rows.Next() {
@@ -69,7 +69,7 @@ LIMIT $%d OFFSET $%d`, whereSQL, sortColumn, order, limitArg, offsetArg)
 			&i.LastSeen,
 			&i.HeartbeatInterval,
 		); err != nil {
-			return nil, 0, err
+			return nil, 0, errors.Join(err, rows.Close())
 		}
 		items = append(items, i)
 	}
