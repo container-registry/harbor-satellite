@@ -37,11 +37,16 @@ type BasicReplicator struct {
 	syncCfg           config.SyncConfig
 }
 
-func NewBasicReplicator(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool) Replicator {
-	return NewBasicReplicatorWithTLS(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword, useUnsecure, config.TLSConfig{}, config.SyncConfig{})
+type ReplicatorOptions struct {
+	TLSConfig  config.TLSConfig
+	SyncConfig config.SyncConfig
 }
 
-func NewBasicReplicatorWithTLS(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool, tlsCfg config.TLSConfig, syncCfg config.SyncConfig) Replicator {
+func NewBasicReplicator(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool) Replicator {
+	return NewBasicReplicatorWithTLS(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword, useUnsecure, ReplicatorOptions{})
+}
+
+func NewBasicReplicatorWithTLS(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool, opts ReplicatorOptions) Replicator {
 	return &BasicReplicator{
 		sourceUsername:    sourceUsername,
 		sourcePassword:    sourcePassword,
@@ -50,8 +55,8 @@ func NewBasicReplicatorWithTLS(sourceUsername, sourcePassword, sourceRegistry, r
 		sourceRegistry:    sourceRegistry,
 		remoteUsername:    remoteUsername,
 		remotePassword:    remotePassword,
-		tlsCfg:            tlsCfg,
-		syncCfg:           syncCfg,
+		tlsCfg:            opts.TLSConfig,
+		syncCfg:           opts.SyncConfig,
 	}
 }
 

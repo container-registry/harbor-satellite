@@ -535,7 +535,7 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, 
 		}
 	}
 
-	replicator := NewBasicReplicatorWithTLS(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure, f.cm.GetTLSConfig(), f.cm.GetSyncConfig())
+	replicator := NewBasicReplicatorWithTLS(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure, ReplicatorOptions{TLSConfig: f.cm.GetTLSConfig(), SyncConfig: f.cm.GetSyncConfig()})
 
 	// Set up direct delivery if enabled, clear if disabled
 	dd := f.cm.GetDirectDeliveryConfig()
