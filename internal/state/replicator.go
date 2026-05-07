@@ -150,34 +150,16 @@ func (r *BasicReplicator) buildRemoteOptions(ctx context.Context) ([]name.Option
 func (r *BasicReplicator) replicateOne(ctx context.Context, entity Entity, nameOpts []name.Option, pullOpts []remote.Option, pushOpts []remote.Option) error {
 	log := logger.FromContext(ctx)
 
-	srcRef := fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, entity.GetRepository(), entity.GetName(), entity.GetTag())
-	dstRef := fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag())
-
-	src, err := name.ParseReference(srcRef, nameOpts...)
+	src, dst, err := r.parseReplicationRefs(entity, nameOpts)
 	if err != nil {
-		return fmt.Errorf("parse source ref %s: %w", srcRef, err)
-	}
-
-	dst, err := name.ParseReference(dstRef, nameOpts...)
-	if err != nil {
-		return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
-	}
-
-	// Lazy fetch: only the manifest is downloaded, no layer data yet
-	desc, err := remote.Get(src, pullOpts...)
-	if err != nil {
-		log.Error().Msgf("Failed to fetch image descriptor: %v", err)
 		return err
 	}
 
-	img, err := desc.Image()
+	ociImage, err := fetchOCIImage(src, pullOpts)
 	if err != nil {
-		log.Error().Msgf("Failed to resolve image: %v", err)
+		log.Error().Msgf("Failed to fetch image: %v", err)
 		return err
 	}
-
-	// Lazy OCI conversion, no data materialized
-	ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
 
 	srcDigest, err := ociImage.Digest()
 	if err != nil {
@@ -208,6 +190,39 @@ func (r *BasicReplicator) replicateOne(ctx context.Context, entity Entity, nameO
 	log.Info().Msgf("Image %s replicated successfully", entity.GetName())
 
 	return nil
+}
+
+func (r *BasicReplicator) parseReplicationRefs(entity Entity, nameOpts []name.Option) (name.Reference, name.Reference, error) {
+	srcRef := fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, entity.GetRepository(), entity.GetName(), entity.GetTag())
+	dstRef := fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag())
+
+	src, err := name.ParseReference(srcRef, nameOpts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse source ref %s: %w", srcRef, err)
+	}
+
+	dst, err := name.ParseReference(dstRef, nameOpts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse dest ref %s: %w", dstRef, err)
+	}
+
+	return src, dst, nil
+}
+
+func fetchOCIImage(src name.Reference, pullOpts []remote.Option) (v1.Image, error) {
+	// Lazy fetch: only the manifest is downloaded, no layer data yet
+	desc, err := remote.Get(src, pullOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("fetch image descriptor: %w", err)
+	}
+
+	img, err := desc.Image()
+	if err != nil {
+		return nil, fmt.Errorf("resolve image: %w", err)
+	}
+
+	// Lazy OCI conversion, no data materialized
+	return mutate.MediaType(img, types.OCIManifestSchema1), nil
 }
 
 // countMissingLayers checks which source layers are absent from the destination
