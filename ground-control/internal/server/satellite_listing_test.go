@@ -88,7 +88,7 @@ LIMIT $2 OFFSET $3`)).
 			WithArgs(`edge\_\%`, int32(1), int32(1)).
 			WillReturnRows(rows)
 
-		req := httptest.NewRequest(http.MethodGet, "/api/satellites?limit=1&offset=1&name_prefix=edge_%&sort=name&order=asc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?limit=1&offset=1&name_prefix=edge_%25&sort=name&order=asc", nil)
 		rr := httptest.NewRecorder()
 		server.listSatelliteHandler(rr, req)
 
