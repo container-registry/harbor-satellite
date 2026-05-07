@@ -24,7 +24,7 @@ func TestListSatelliteHandler(t *testing.T) {
 		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
 			AddRow(1, "edge-01", now, now, sql.NullTime{Time: now, Valid: true}, sql.NullString{String: "30s", Valid: true}).
 			AddRow(2, "edge-02", now, now, sql.NullTime{}, sql.NullString{})
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnRows(rows)
+		mock.ExpectQuery(`(?s)SELECT .+FROM PUBLIC\.satellites`).WillReturnRows(rows)
 		mock.ExpectQuery("SELECT .+ FROM satellite_labels WHERE satellite_id = ANY").
 			WillReturnRows(sqlmock.NewRows([]string{"satellite_id", "key", "value"}))
 
@@ -46,7 +46,7 @@ func TestListSatelliteHandler(t *testing.T) {
 		server, mock := newMockServer(t)
 
 		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"})
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnRows(rows)
+		mock.ExpectQuery(`(?s)SELECT .+FROM PUBLIC\.satellites`).WillReturnRows(rows)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
 		rr := httptest.NewRecorder()
@@ -59,7 +59,7 @@ func TestListSatelliteHandler(t *testing.T) {
 	t.Run("db error returns 500", func(t *testing.T) {
 		server, mock := newMockServer(t)
 
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnError(fmt.Errorf("db error"))
+		mock.ExpectQuery(`(?s)SELECT .+FROM PUBLIC\.satellites`).WillReturnError(fmt.Errorf("db error"))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
 		rr := httptest.NewRecorder()

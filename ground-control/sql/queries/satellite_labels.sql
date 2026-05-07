@@ -1,3 +1,5 @@
+/* tsqllint-disable */
+
 -- name: GetLabelsBySatelliteID :many
 SELECT key, value FROM satellite_labels
 WHERE satellite_id = $1
