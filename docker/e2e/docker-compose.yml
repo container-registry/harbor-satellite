@@ -22,7 +22,7 @@ services:
       retries: 12
 
   registry:
-    image: registry.goharbor.io/harbor-next/harbor-registry:satellite
+    image: 8gears.container-registry.com/harbor-next/harbor-registry:latest
     container_name: registry
     depends_on:
       postgresql:
@@ -35,7 +35,7 @@ services:
       - harbor-e2e
 
   registryctl:
-    image: registry.goharbor.io/harbor-next/harbor-registryctl:satellite
+    image: 8gears.container-registry.com/harbor-next/harbor-registryctl:latest
     container_name: registryctl
     depends_on:
       - registry
@@ -49,7 +49,7 @@ services:
       - harbor-e2e
 
   core:
-    image: registry.goharbor.io/harbor-next/harbor-core:satellite
+    image: 8gears.container-registry.com/harbor-next/harbor-core:latest
     container_name: core
     depends_on:
       - registry
@@ -72,7 +72,7 @@ services:
       start_period: 30s
 
   jobservice:
-    image: registry.goharbor.io/harbor-next/harbor-jobservice:satellite
+    image: 8gears.container-registry.com/harbor-next/harbor-jobservice:latest
     container_name: jobservice
     depends_on:
       core:
