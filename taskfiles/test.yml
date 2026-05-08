@@ -1,0 +1,97 @@
+version: "3"
+
+tasks:
+  unit:
+    desc: Run unit tests for both modules (satellite + ground-control)
+    cmds:
+      - task: unit-satellite
+      - task: unit-ground-control
+    silent: true
+
+  unit-satellite:
+    desc: Run unit tests for the satellite module
+    cmds:
+      - echo "Running satellite unit tests..."
+      - |
+        gotestsum \
+          --format short-verbose \
+          --jsonfile satellite-report.json \
+          -- ./... -count=1
+      - echo "Satellite tests complete."
+    silent: true
+
+  unit-ground-control:
+    desc: Run unit tests for the ground-control module
+    dir: "{{.ROOT_DIR}}/ground-control"
+    cmds:
+      - echo "Running ground-control unit tests..."
+      - |
+        gotestsum \
+          --format short-verbose \
+          --jsonfile ../gc-report.json \
+          -- ./... -count=1
+      - echo "Ground-control tests complete."
+    silent: true
+
+  coverage:
+    desc: Generate coverage profiles for both modules
+    cmds:
+      - task: coverage-satellite
+      - task: coverage-ground-control
+    silent: true
+
+  coverage-satellite:
+    desc: Generate coverage profile for the satellite module
+    cmds:
+      - echo "Generating satellite coverage..."
+      - go test ./... -count=1 -coverprofile=satellite-coverage.out -covermode=atomic
+      - echo "Satellite coverage saved to satellite-coverage.out"
+    silent: true
+
+  coverage-ground-control:
+    desc: Generate coverage profile for the ground-control module
+    dir: "{{.ROOT_DIR}}/ground-control"
+    cmds:
+      - echo "Generating ground-control coverage..."
+      - go test ./... -count=1 -coverprofile=../gc-coverage.out -covermode=atomic
+      - echo "Ground-control coverage saved to gc-coverage.out"
+    silent: true
+
+  coverage-summary:
+    desc: Append per-module coverage summaries to GITHUB_STEP_SUMMARY
+    cmds:
+      - |
+        echo "## Test Coverage Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        echo "### Satellite" >> $GITHUB_STEP_SUMMARY
+        if [ -f satellite-coverage.out ]; then
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=satellite-coverage.out | tail -1 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "<details><summary>Full function coverage</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=satellite-coverage.out >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "_No coverage data found for satellite._" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Ground Control" >> $GITHUB_STEP_SUMMARY
+        if [ -f gc-coverage.out ]; then
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=gc-coverage.out | tail -1 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "<details><summary>Full function coverage</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=gc-coverage.out >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "_No coverage data found for ground-control._" >> $GITHUB_STEP_SUMMARY
+        fi
+    silent: true

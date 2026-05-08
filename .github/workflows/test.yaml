@@ -1,6 +1,12 @@
 name: Test Pipeline
 
 on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "*.md"
+      - "assets/**"
   pull_request:
     paths-ignore:
       - "*.md"
@@ -40,6 +46,58 @@ jobs:
               echo "vulnerabilities found!" >> $GITHUB_STEP_SUMMARY
               exit 0
           fi
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+          cache: true
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@v1.13.0
+
+      - name: Run unit tests (satellite)
+        run: task unit-test-satellite
+
+      - name: Run unit tests (ground-control)
+        if: always()
+        run: task unit-test-ground-control
+
+      - name: Merge JSON test reports
+        if: always()
+        run: |
+          # Merge both per-module JSON reports into one for the annotation action
+          touch TestReport.json
+          [ -f satellite-report.json ] && cat satellite-report.json >> TestReport.json || true
+          [ -f gc-report.json ]        && cat gc-report.json        >> TestReport.json || true
+
+      - name: Summarize test results
+        if: always()
+        uses: robherley/go-test-action@v0.6.0
+        with:
+          fromJSONFile: TestReport.json
+
+      - name: Generate coverage profiles
+        if: always()
+        run: task coverage
+
+      - name: Append coverage to workflow summary
+        if: always()
+        run: task coverage-summary
 
   test-release:
     runs-on: container-registry

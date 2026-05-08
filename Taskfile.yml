@@ -22,6 +22,9 @@ includes:
   _e2e:
     taskfile: ./taskfiles/e2e.yml
     dir: "{{.ROOT_DIR}}"
+  _test:
+    taskfile: ./taskfiles/test.yml
+    dir: "{{.ROOT_DIR}}"
 
 tasks:
   default:
@@ -60,6 +63,32 @@ tasks:
     desc: Run vulnerability check and export to file
     cmds:
       - task: _lint:vulnerability-check-report
+
+  unit-test:
+    desc: Run unit tests for both satellite and ground-control modules
+    aliases: [test]
+    cmds:
+      - task: _test:unit
+
+  unit-test-satellite:
+    desc: Run unit tests for the satellite module only
+    cmds:
+      - task: _test:unit-satellite
+
+  unit-test-ground-control:
+    desc: Run unit tests for the ground-control module only
+    cmds:
+      - task: _test:unit-ground-control
+
+  coverage:
+    desc: Generate coverage profiles for both modules
+    cmds:
+      - task: _test:coverage
+
+  coverage-summary:
+    desc: Append coverage summaries to GITHUB_STEP_SUMMARY
+    cmds:
+      - task: _test:coverage-summary
 
   e2e:
     desc: Run all E2E tests
