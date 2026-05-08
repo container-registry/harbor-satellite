@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/policy"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
@@ -535,7 +536,18 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, 
 		}
 	}
 
-	replicator := NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure)
+	var verifier policy.Verifier
+	if sp := f.cm.GetSignaturePolicyConfig(); sp.Enabled {
+		v, err := policy.New(policy.Config{
+			Enabled:    sp.Enabled,
+			PublicKeys: sp.PublicKeys,
+			Action:     policy.Action(sp.Action),
+		})
+		if err == nil {
+			verifier = v
+		}
+	}
+	replicator := NewBasicReplicatorWithVerifier(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure, f.cm.GetTLSConfig(), verifier)
 
 	// Set up direct delivery if enabled, clear if disabled
 	dd := f.cm.GetDirectDeliveryConfig()
