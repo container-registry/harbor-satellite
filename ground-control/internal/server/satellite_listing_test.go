@@ -2,6 +2,7 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -165,6 +166,13 @@ func TestGetSatelliteStatusHandler(t *testing.T) {
 			WithArgs(int32(1)).
 			WillReturnRows(statusRows)
 
+		artifactRows := sqlmock.NewRows([]string{"id", "reference", "size_bytes", "created_at"}).
+			AddRow(2, "localhost:8585/library/alpine:3.18@sha256:def", int64(5000), now).
+			AddRow(1, "localhost:8585/library/nginx:latest@sha256:abc", int64(50000), now)
+		mock.ExpectQuery("SELECT .+ FROM artifacts").
+			WithArgs(int32(1)).
+			WillReturnRows(artifactRows)
+
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/edge-01/status", nil)
 		req = mux.SetURLVars(req, map[string]string{"satellite": "edge-01"})
 
@@ -172,7 +180,23 @@ func TestGetSatelliteStatusHandler(t *testing.T) {
 		server.getSatelliteStatusHandler(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
-		require.Contains(t, rr.Body.String(), "syncing")
+		require.NotContains(t, rr.Body.String(), "ArtifactIds")
+		require.NotContains(t, rr.Body.String(), "artifact_ids")
+
+		var response SatelliteStatusResponse
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&response))
+		require.Equal(t, int32(1), response.ID)
+		require.Equal(t, int32(1), response.SatelliteID)
+		require.Equal(t, "syncing", response.Activity)
+		require.Equal(t, "sha256:abc", response.LatestStateDigest)
+		require.Equal(t, "12.50", response.CPUPercent)
+		require.Equal(t, int64(1024), response.MemoryUsedBytes)
+		require.Equal(t, int32(3), response.ImageCount)
+		require.Len(t, response.CachedImages, 2)
+		require.Equal(t, "localhost:8585/library/alpine:3.18@sha256:def", response.CachedImages[0].Reference)
+		require.Equal(t, int64(5000), response.CachedImages[0].SizeBytes)
+		require.Equal(t, "localhost:8585/library/nginx:latest@sha256:abc", response.CachedImages[1].Reference)
+		require.Equal(t, int64(50000), response.CachedImages[1].SizeBytes)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
