@@ -55,10 +55,17 @@ func NewBasicReplicatorWithTLS(sourceUsername, sourcePassword, sourceRegistry, r
 	}
 }
 
+// VerificationConfig bundles optional TLS and signature verification settings.
+type VerificationConfig struct {
+	TLS      config.TLSConfig
+	Verifier policy.Verifier
+}
+
 // NewBasicReplicatorWithVerifier creates a replicator that checks cosign
-// signatures before pushing each image. Pass nil to skip verification.
-func NewBasicReplicatorWithVerifier(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool, tlsCfg config.TLSConfig, v policy.Verifier) Replicator {
-	r := &BasicReplicator{
+// signatures before pushing each image. Pass a zero VerificationConfig to
+// disable both TLS and verification.
+func NewBasicReplicatorWithVerifier(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool, vcfg VerificationConfig) Replicator {
+	return &BasicReplicator{
 		sourceUsername:    sourceUsername,
 		sourcePassword:    sourcePassword,
 		useUnsecure:       useUnsecure,
@@ -66,10 +73,9 @@ func NewBasicReplicatorWithVerifier(sourceUsername, sourcePassword, sourceRegist
 		sourceRegistry:    sourceRegistry,
 		remoteUsername:    remoteUsername,
 		remotePassword:    remotePassword,
-		tlsCfg:            tlsCfg,
-		verifier:          v,
+		tlsCfg:            vcfg.TLS,
+		verifier:          vcfg.Verifier,
 	}
-	return r
 }
 
 // Entity represents an image or artifact which needs to be handled by the replicator
@@ -133,6 +139,41 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 	return nil
 }
 
+type ociImageInfo struct {
+	image  v1.Image
+	digest v1.Hash
+	layers []v1.Layer
+}
+
+// fetchOCIImage pulls the image descriptor, resolves the image, converts it to
+// OCI media type, and returns the image together with its digest and layers.
+func fetchOCIImage(src name.Reference, opts []remote.Option) (ociImageInfo, error) {
+	desc, err := remote.Get(src, opts...)
+	if err != nil {
+		return ociImageInfo{}, err
+	}
+	img, err := desc.Image()
+	if err != nil {
+		return ociImageInfo{}, err
+	}
+	ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
+	digest, err := ociImage.Digest()
+	if err != nil {
+		return ociImageInfo{}, fmt.Errorf("compute source digest: %w", err)
+	}
+	layers, err := ociImage.Layers()
+	if err != nil {
+		return ociImageInfo{}, fmt.Errorf("get source layers: %w", err)
+	}
+	return ociImageInfo{image: ociImage, digest: digest, layers: layers}, nil
+}
+
+// isUpToDate returns true when the image at dst already matches srcDigest.
+func isUpToDate(dst name.Reference, srcDigest v1.Hash, opts []remote.Option) bool {
+	dstDesc, err := remote.Head(dst, opts...)
+	return err == nil && dstDesc.Digest == srcDigest
+}
+
 // replicateOne handles a single entity: optional signature check, skip-if-current,
 // layer dedup logging, and final push.
 func (r *BasicReplicator) replicateOne(
@@ -160,45 +201,23 @@ func (r *BasicReplicator) replicateOne(
 		return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
 	}
 
-	// Lazy fetch: only the manifest is downloaded, no layer data yet
-	desc, err := remote.Get(src, pullOpts...)
+	info, err := fetchOCIImage(src, pullOpts)
 	if err != nil {
-		log.Error().Msgf("Failed to fetch image descriptor: %v", err)
+		log.Error().Msgf("Failed to fetch image: %v", err)
 		return err
 	}
 
-	img, err := desc.Image()
-	if err != nil {
-		log.Error().Msgf("Failed to resolve image: %v", err)
-		return err
-	}
-
-	// Lazy OCI conversion, no data materialized
-	ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
-
-	srcDigest, err := ociImage.Digest()
-	if err != nil {
-		return fmt.Errorf("compute source digest: %w", err)
-	}
-
-	dstDesc, dstErr := remote.Head(dst, pushOpts...)
-	if dstErr == nil && dstDesc.Digest == srcDigest {
+	if isUpToDate(dst, info.digest, pushOpts) {
 		log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
 		return nil
 	}
 
-	srcLayers, err := ociImage.Layers()
-	if err != nil {
-		return fmt.Errorf("get source layers: %w", err)
-	}
+	missing := r.countMissingLayers(dst, info.layers, pushOpts)
+	log.Info().Msgf("Replicating image %s: %d/%d layers to pull", entity.GetName(), missing, len(info.layers))
 
-	missing := r.countMissingLayers(dst, srcLayers, pushOpts)
-	log.Info().Msgf("Replicating image %s: %d/%d layers to pull", entity.GetName(), missing, len(srcLayers))
-
-	// remote.Write streams layers one-by-one. For each layer it HEAD-checks
-	// the destination first; only missing blobs are pulled from source.
-	// Manifest is pushed last.
-	if err := remote.Write(dst, ociImage, pushOpts...); err != nil {
+	// remote.Write streams layers one-by-one, HEAD-checking each blob at the
+	// destination first; only missing blobs are pulled from source.
+	if err := remote.Write(dst, info.image, pushOpts...); err != nil {
 		log.Error().Msgf("Failed to replicate image: %v", err)
 		return err
 	}

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/policy"
-	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
@@ -373,7 +372,7 @@ func TestReplicate_SignatureBlock(t *testing.T) {
 	pushImage(t, srcAddr, "library", "alpine", "latest", 1)
 
 	verifier := &fakeVerifier{err: fmt.Errorf("image is not signed")}
-	r := NewBasicReplicatorWithVerifier("", "", srcAddr, dstAddr, "", "", true, config.TLSConfig{}, verifier)
+	r := NewBasicReplicatorWithVerifier("", "", srcAddr, dstAddr, "", "", true, VerificationConfig{Verifier: verifier})
 
 	err := r.Replicate(testContext(), []Entity{
 		{Name: "alpine", Repository: "library", Tag: "latest"},
@@ -387,7 +386,7 @@ func TestReplicate_SignatureWarn(t *testing.T) {
 	pushImage(t, srcAddr, "library", "alpine", "latest", 1)
 
 	verifier := &fakeVerifier{err: &policy.WarnError{Ref: "alpine:latest"}}
-	r := NewBasicReplicatorWithVerifier("", "", srcAddr, dstAddr, "", "", true, config.TLSConfig{}, verifier)
+	r := NewBasicReplicatorWithVerifier("", "", srcAddr, dstAddr, "", "", true, VerificationConfig{Verifier: verifier})
 
 	err := r.Replicate(testContext(), []Entity{
 		{Name: "alpine", Repository: "library", Tag: "latest"},
@@ -406,7 +405,7 @@ func TestReplicate_SignaturePass(t *testing.T) {
 	pushImage(t, srcAddr, "library", "alpine", "latest", 1)
 
 	verifier := &fakeVerifier{err: nil}
-	r := NewBasicReplicatorWithVerifier("", "", srcAddr, dstAddr, "", "", true, config.TLSConfig{}, verifier)
+	r := NewBasicReplicatorWithVerifier("", "", srcAddr, dstAddr, "", "", true, VerificationConfig{Verifier: verifier})
 
 	err := r.Replicate(testContext(), []Entity{
 		{Name: "alpine", Repository: "library", Tag: "latest"},

@@ -77,6 +77,42 @@ type cosignVerifier struct {
 	keys []*ecdsa.PublicKey
 }
 
+// buildRemoteOpts returns the name and remote options for the given credentials.
+func buildRemoteOpts(ctx context.Context, insecure bool, username, password string) ([]name.Option, []remote.Option) {
+	var nameOpts []name.Option
+	opts := []remote.Option{remote.WithContext(ctx)}
+	if insecure {
+		nameOpts = append(nameOpts, name.Insecure)
+	}
+	if username != "" || password != "" {
+		opts = append(opts, remote.WithAuth(authn.FromConfig(authn.AuthConfig{
+			Username: username,
+			Password: password,
+		})))
+	}
+	return nameOpts, opts
+}
+
+// fetchSigImage resolves the cosign signature artifact tag for ref and pulls it.
+func fetchSigImage(ref name.Reference, nameOpts []name.Option, opts []remote.Option) (v1.Image, error) {
+	head, err := remote.Head(ref, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("resolve digest for %q: %w", ref, err)
+	}
+	sigRef, err := name.ParseReference(
+		fmt.Sprintf("%s:sha256-%s.sig", ref.Context().String(), head.Digest.Hex),
+		nameOpts...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("build sig ref: %w", err)
+	}
+	img, err := remote.Image(sigRef, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("fetch signature artifact: %w", err)
+	}
+	return img, nil
+}
+
 // Verify fetches the cosign signature artifact for imageRef from the source
 // registry and checks it against each configured public key. Returns nil when
 // at least one key verifies a signature.
@@ -89,41 +125,16 @@ type cosignVerifier struct {
 // the annotation dev.cosignproject.cosign/signature; the layer blob is the
 // simple-signing payload that was signed.
 func (v *cosignVerifier) Verify(ctx context.Context, imageRef string, insecure bool, username, password string) error {
-	var nameOpts []name.Option
-	if insecure {
-		nameOpts = append(nameOpts, name.Insecure)
-	}
-
-	opts := []remote.Option{remote.WithContext(ctx)}
-	if username != "" || password != "" {
-		opts = append(opts, remote.WithAuth(authn.FromConfig(authn.AuthConfig{
-			Username: username,
-			Password: password,
-		})))
-	}
+	nameOpts, opts := buildRemoteOpts(ctx, insecure, username, password)
 
 	ref, err := name.ParseReference(imageRef, nameOpts...)
 	if err != nil {
 		return fmt.Errorf("parse ref %q: %w", imageRef, err)
 	}
 
-	head, err := remote.Head(ref, opts...)
+	sigImg, err := fetchSigImage(ref, nameOpts, opts)
 	if err != nil {
-		return fmt.Errorf("resolve digest for %q: %w", imageRef, err)
-	}
-
-	sigTagStr := fmt.Sprintf("sha256-%s.sig", head.Digest.Hex)
-	sigRef, err := name.ParseReference(
-		fmt.Sprintf("%s:%s", ref.Context().String(), sigTagStr),
-		nameOpts...,
-	)
-	if err != nil {
-		return fmt.Errorf("build sig ref: %w", err)
-	}
-
-	sigImg, err := remote.Image(sigRef, opts...)
-	if err != nil {
-		return v.handleMissing(imageRef, fmt.Errorf("fetch signature artifact: %w", err))
+		return v.handleMissing(imageRef, err)
 	}
 
 	manifest, err := sigImg.Manifest()
