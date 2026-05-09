@@ -40,6 +40,11 @@ tasks:
     cmds:
       - task: _build:all
 
+  build-operator:
+    desc: Build the Kubernetes fleet operator binary
+    cmds:
+      - task: _build:operator
+
   lint:
     desc: Run golangci-lint
     aliases: [l]
