@@ -20,11 +20,6 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
 )
 
-var (
-	ensureSatelliteProjectExistsFn     = ensureSatelliteProjectExists
-	createAndPushConfigStateArtifactFn = utils.CreateAndPushConfigStateArtifact
-)
-
 func isConfigInUse(ctx context.Context, q *database.Queries, config database.Config) (bool, error) {
 	// Check if any satellite is using this config
 	satellites, err := q.ConfigSatelliteList(ctx, config.ID)

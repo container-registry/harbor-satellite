@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
@@ -21,6 +23,30 @@ import (
 type SatelliteConfigParams struct {
 	Satellite  string `json:"satellite,omitempty"`
 	ConfigName string `json:"config_name"`
+}
+
+const configPostCommitTimeout = 30 * time.Second
+
+func newConfigPostCommitContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), configPostCommitTimeout)
+}
+
+func (s *Server) restoreConfigIfUnchanged(ctx context.Context, configName string, existing, saved database.Config) error {
+	_, err := s.dbQueries.UpdateConfigIfMatch(ctx, database.UpdateConfigIfMatchParams{
+		ConfigName:        configName,
+		RegistryUrl:       existing.RegistryUrl,
+		Config:            existing.Config,
+		ExpectedID:        saved.ID,
+		ExpectedCreatedAt: saved.CreatedAt,
+		ExpectedUpdatedAt: saved.UpdatedAt,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return &AppError{
+			Message: "Error: config updated but rollback skipped because a newer config was saved",
+			Code:    http.StatusConflict,
+		}
+	}
+	return err
 }
 
 func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
@@ -121,8 +147,11 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	if err := ensureSatelliteProjectExistsFn(r.Context()); err != nil {
-		if cleanupErr := s.dbQueries.DeleteConfig(r.Context(), result.ID); cleanupErr != nil {
+	postCommitCtx, cancel := newConfigPostCommitContext()
+	defer cancel()
+
+	if err := s.EnsureSatelliteProjectExistsFn(postCommitCtx); err != nil {
+		if cleanupErr := s.dbQueries.DeleteConfig(postCommitCtx, result.ID); cleanupErr != nil {
 			log.Printf("Error cleaning up config after project ensure failure: %v", cleanupErr)
 			HandleAppError(w, &AppError{
 				Message: "Error: config saved but cleanup failed after publication setup error",
@@ -135,8 +164,8 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := createAndPushConfigStateArtifactFn(r.Context(), configJson, req.ConfigName); err != nil {
-		if cleanupErr := s.dbQueries.DeleteConfig(r.Context(), result.ID); cleanupErr != nil {
+	if err := s.CreateAndPushConfigStateArtifactFn(postCommitCtx, configJson, req.ConfigName); err != nil {
+		if cleanupErr := s.dbQueries.DeleteConfig(postCommitCtx, result.ID); cleanupErr != nil {
 			log.Printf("Error cleaning up config after artifact publish failure: %v", cleanupErr)
 			HandleAppError(w, &AppError{
 				Message: "Error: config saved but cleanup failed after artifact publication error",
@@ -278,17 +307,17 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	if err := ensureSatelliteProjectExistsFn(r.Context()); err != nil {
-		if _, restoreErr := s.dbQueries.UpdateConfig(r.Context(), database.UpdateConfigParams{
-			ConfigName:  configName,
-			RegistryUrl: existing.RegistryUrl,
-			Config:      existing.Config,
-		}); restoreErr != nil {
-			log.Printf("Error restoring config after project ensure failure: %v", restoreErr)
-			HandleAppError(w, &AppError{
-				Message: "Error: config updated but rollback failed after publication setup error",
-				Code:    http.StatusInternalServerError,
-			})
+	postCommitCtx, cancel := newConfigPostCommitContext()
+	defer cancel()
+
+	if err := s.EnsureSatelliteProjectExistsFn(postCommitCtx); err != nil {
+		if restoreErr := s.restoreConfigIfUnchanged(postCommitCtx, configName, existing, result); restoreErr != nil {
+			if appErr, ok := restoreErr.(*AppError); ok && appErr.Code == http.StatusConflict {
+				log.Printf("Skipped config restore after project ensure failure because the config changed concurrently: %v", restoreErr)
+			} else {
+				log.Printf("Error restoring config after project ensure failure: %v", restoreErr)
+			}
+			HandleAppError(w, restoreErr)
 			return
 		}
 		log.Println("Error while ensuring project satellite: ", err)
@@ -296,17 +325,14 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := createAndPushConfigStateArtifactFn(r.Context(), patchedJson, configName); err != nil {
-		if _, restoreErr := s.dbQueries.UpdateConfig(r.Context(), database.UpdateConfigParams{
-			ConfigName:  configName,
-			RegistryUrl: existing.RegistryUrl,
-			Config:      existing.Config,
-		}); restoreErr != nil {
-			log.Printf("Error restoring config after artifact publish failure: %v", restoreErr)
-			HandleAppError(w, &AppError{
-				Message: "Error: config updated but rollback failed after artifact publication error",
-				Code:    http.StatusInternalServerError,
-			})
+	if err := s.CreateAndPushConfigStateArtifactFn(postCommitCtx, patchedJson, configName); err != nil {
+		if restoreErr := s.restoreConfigIfUnchanged(postCommitCtx, configName, existing, result); restoreErr != nil {
+			if appErr, ok := restoreErr.(*AppError); ok && appErr.Code == http.StatusConflict {
+				log.Printf("Skipped config restore after artifact publish failure because the config changed concurrently: %v", restoreErr)
+			} else {
+				log.Printf("Error restoring config after artifact publish failure: %v", restoreErr)
+			}
+			HandleAppError(w, restoreErr)
 			return
 		}
 		log.Println("Error while creating config state artifact: ", err)
