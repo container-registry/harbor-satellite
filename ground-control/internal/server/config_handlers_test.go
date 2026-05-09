@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -11,9 +12,36 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
 )
+
+func stubConfigPublicationSideEffects(t *testing.T) {
+	t.Helper()
+
+	origEnsure := ensureSatelliteProjectExistsFn
+	origPush := createAndPushConfigStateArtifactFn
+
+	ensureSatelliteProjectExistsFn = func(context.Context) error { return nil }
+	createAndPushConfigStateArtifactFn = func(context.Context, []byte, string) error { return nil }
+
+	t.Cleanup(func() {
+		ensureSatelliteProjectExistsFn = origEnsure
+		createAndPushConfigStateArtifactFn = origPush
+	})
+}
+
+func mustMarshalRequestConfig(t *testing.T, body []byte) json.RawMessage {
+	t.Helper()
+
+	var req models.ConfigObject
+	require.NoError(t, json.Unmarshal(body, &req))
+
+	configJSON, err := json.Marshal(req.Config)
+	require.NoError(t, err)
+	return configJSON
+}
 
 func TestListConfigsHandler(t *testing.T) {
 	t.Run("returns config list", func(t *testing.T) {
@@ -126,6 +154,41 @@ func TestCreateConfigHandler_EmptyName(t *testing.T) {
 	server.createConfigHandler(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+func TestCreateConfigHandler_PublishFailureDeletesCommittedConfig(t *testing.T) {
+	server, mock := newMockServer(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	body := []byte(`{"config_name":"test-config","config":{"app_config":{"log_level":"info"}}}`)
+	configJSON := mustMarshalRequestConfig(t, body)
+
+	origEnsure := ensureSatelliteProjectExistsFn
+	origPush := createAndPushConfigStateArtifactFn
+	ensureSatelliteProjectExistsFn = func(context.Context) error { return nil }
+	createAndPushConfigStateArtifactFn = func(context.Context, []byte, string) error { return fmt.Errorf("push failed") }
+	t.Cleanup(func() {
+		ensureSatelliteProjectExistsFn = origEnsure
+		createAndPushConfigStateArtifactFn = origPush
+	})
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("INSERT INTO configs").
+		WithArgs("test-config", "", configJSON).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "config_name", "registry_url", "config", "created_at", "updated_at"}).
+			AddRow(1, "test-config", "", configJSON, now, now))
+	mock.ExpectCommit()
+	mock.ExpectExec("DELETE FROM configs").
+		WithArgs(int32(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/configs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.createConfigHandler(rr, req)
+
+	require.Equal(t, http.StatusBadGateway, rr.Code)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestDeleteConfigHandler_NotFound(t *testing.T) {

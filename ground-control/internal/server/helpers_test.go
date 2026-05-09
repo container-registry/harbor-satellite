@@ -92,3 +92,15 @@ func TestVerifyRobotCredentials(t *testing.T) {
 		require.False(t, crypto.VerifySecret(secret, "not-a-valid-hash"))
 	})
 }
+
+func TestJSONSemanticallyEqual(t *testing.T) {
+	require.True(t, jsonSemanticallyEqual(
+		[]byte(`{"app_config":{"log_level":"info","use_unsecure":true}}`),
+		[]byte(`{"app_config":{"use_unsecure":true,"log_level":"info"}}`),
+	))
+
+	require.False(t, jsonSemanticallyEqual(
+		[]byte(`{"app_config":{"log_level":"info"}}`),
+		[]byte(`{"app_config":{"log_level":"debug"}}`),
+	))
+}

@@ -74,22 +74,31 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := ensureSatelliteProjectExists(r.Context()); err != nil {
-		log.Println("Error while ensuring project satellite: ", err)
-		HandleAppError(w, err)
-		return
-	}
-
 	params := database.CreateConfigParams{
 		ConfigName:  req.ConfigName,
 		RegistryUrl: os.Getenv("HARBOR_URL"),
 		Config:      configJson,
 	}
 
-	_, err = q.CreateConfig(r.Context(), params)
+	result, err := q.CreateConfig(r.Context(), params)
 	if err != nil {
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			existing, fetchErr := s.dbQueries.GetConfigByName(r.Context(), req.ConfigName)
+			if fetchErr == nil && jsonSemanticallyEqual(existing.Config, configJson) {
+				committed = true
+				if rollbackErr := tx.Rollback(); rollbackErr != nil {
+					log.Printf("Error: Failed to rollback duplicate config transaction: %v", rollbackErr)
+					HandleAppError(w, &AppError{
+						Message: "Error: Failed to rollback transaction",
+						Code:    http.StatusInternalServerError,
+					})
+					return
+				}
+				WriteJSONResponse(w, http.StatusOK, existing)
+				return
+			}
+
 			log.Printf("error: config with name '%s' already exists", req.ConfigName)
 			HandleAppError(w, &AppError{
 				Message: "error: config already exists",
@@ -98,14 +107,6 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Println("Error persisting config object to database: ", err)
-		HandleAppError(w, err)
-		return
-	}
-
-	// Push config as OCI artifact
-	err = utils.CreateAndPushConfigStateArtifact(r.Context(), configJson, req.ConfigName)
-	if err != nil {
-		log.Println("Error while creating config state artifact: ", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -120,7 +121,38 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	w.WriteHeader(http.StatusCreated)
+	if err := ensureSatelliteProjectExistsFn(r.Context()); err != nil {
+		if cleanupErr := s.dbQueries.DeleteConfig(r.Context(), result.ID); cleanupErr != nil {
+			log.Printf("Error cleaning up config after project ensure failure: %v", cleanupErr)
+			HandleAppError(w, &AppError{
+				Message: "Error: config saved but cleanup failed after publication setup error",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		log.Println("Error while ensuring project satellite: ", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	if err := createAndPushConfigStateArtifactFn(r.Context(), configJson, req.ConfigName); err != nil {
+		if cleanupErr := s.dbQueries.DeleteConfig(r.Context(), result.ID); cleanupErr != nil {
+			log.Printf("Error cleaning up config after artifact publish failure: %v", cleanupErr)
+			HandleAppError(w, &AppError{
+				Message: "Error: config saved but cleanup failed after artifact publication error",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		log.Println("Error while creating config state artifact: ", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: failed to publish config artifact",
+			Code:    http.StatusBadGateway,
+		})
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusCreated, result)
 }
 
 func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
@@ -209,9 +241,17 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := ensureSatelliteProjectExists(r.Context()); err != nil {
-		log.Println("Error while ensuring project satellite: ", err)
-		HandleAppError(w, err)
+	if jsonSemanticallyEqual(existing.Config, patchedJson) {
+		committed = true
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("Error: Failed to rollback no-op config update transaction: %v", rollbackErr)
+			HandleAppError(w, &AppError{
+				Message: "Error: Failed to rollback transaction",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		WriteJSONResponse(w, http.StatusOK, existing)
 		return
 	}
 
@@ -228,14 +268,6 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Push config as OCI artifact
-	err = utils.CreateAndPushConfigStateArtifact(r.Context(), patchedJson, configName)
-	if err != nil {
-		log.Println("Error while creating config state artifact: ", err)
-		HandleAppError(w, err)
-		return
-	}
-
 	if err := tx.Commit(); err != nil {
 		log.Printf("Failed to commit transaction: %v", err)
 		HandleAppError(w, &AppError{
@@ -245,6 +277,45 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	committed = true
+
+	if err := ensureSatelliteProjectExistsFn(r.Context()); err != nil {
+		if _, restoreErr := s.dbQueries.UpdateConfig(r.Context(), database.UpdateConfigParams{
+			ConfigName:  configName,
+			RegistryUrl: existing.RegistryUrl,
+			Config:      existing.Config,
+		}); restoreErr != nil {
+			log.Printf("Error restoring config after project ensure failure: %v", restoreErr)
+			HandleAppError(w, &AppError{
+				Message: "Error: config updated but rollback failed after publication setup error",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		log.Println("Error while ensuring project satellite: ", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	if err := createAndPushConfigStateArtifactFn(r.Context(), patchedJson, configName); err != nil {
+		if _, restoreErr := s.dbQueries.UpdateConfig(r.Context(), database.UpdateConfigParams{
+			ConfigName:  configName,
+			RegistryUrl: existing.RegistryUrl,
+			Config:      existing.Config,
+		}); restoreErr != nil {
+			log.Printf("Error restoring config after artifact publish failure: %v", restoreErr)
+			HandleAppError(w, &AppError{
+				Message: "Error: config updated but rollback failed after artifact publication error",
+				Code:    http.StatusInternalServerError,
+			})
+			return
+		}
+		log.Println("Error while creating config state artifact: ", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: failed to publish config artifact",
+			Code:    http.StatusBadGateway,
+		})
+		return
+	}
 
 	WriteJSONResponse(w, http.StatusOK, result)
 }
@@ -329,7 +400,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-    // TODO: Store the groupStates in memory to survive hot reloads
+	// TODO: Store the groupStates in memory to survive hot reloads
 	var groupStates []string
 	for _, group := range groupList {
 		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
