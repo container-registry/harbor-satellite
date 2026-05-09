@@ -12,6 +12,7 @@ info:
 basePath: /
 schemes:
   - http
+  - https
 consumes:
   - application/json
 produces:
@@ -195,6 +196,80 @@ definitions:
     type: array
     items:
       $ref: '#/definitions/Satellite'
+  ActiveSatellite:
+    type: object
+    required:
+      - ID
+      - Name
+      - CreatedAt
+      - UpdatedAt
+      - LastActivity
+      - LastStatusTime
+    properties:
+      ID:
+        type: integer
+        format: int32
+      Name:
+        type: string
+      CreatedAt:
+        type: string
+        format: date-time
+      UpdatedAt:
+        type: string
+        format: date-time
+      LastSeen:
+        type: string
+        format: date-time
+        x-nullable: true
+      HeartbeatInterval:
+        type: string
+        x-nullable: true
+      LastActivity:
+        type: string
+        description: Most recent activity reported by the satellite
+      LastStatusTime:
+        type: string
+        format: date-time
+        description: Timestamp of the most recent status report
+  ActiveSatelliteList:
+    type: array
+    items:
+      $ref: '#/definitions/ActiveSatellite'
+  StaleSatellite:
+    type: object
+    required:
+      - ID
+      - Name
+      - CreatedAt
+      - UpdatedAt
+      - SecondsSinceSeen
+    properties:
+      ID:
+        type: integer
+        format: int32
+      Name:
+        type: string
+      CreatedAt:
+        type: string
+        format: date-time
+      UpdatedAt:
+        type: string
+        format: date-time
+      LastSeen:
+        type: string
+        format: date-time
+        x-nullable: true
+      HeartbeatInterval:
+        type: string
+        x-nullable: true
+      SecondsSinceSeen:
+        type: integer
+        format: int64
+        description: Seconds elapsed since the satellite was last seen
+  StaleSatelliteList:
+    type: array
+    items:
+      $ref: '#/definitions/StaleSatellite'
   SatelliteStatus:
     type: object
     required:
@@ -522,8 +597,6 @@ definitions:
     type: object
     required:
       - name
-      - activity
-      - state_report_interval
     properties:
       name:
         type: string
@@ -532,17 +605,19 @@ definitions:
         type: string
       state_report_interval:
         type: string
-        description: Cron expression for heartbeat (e.g. "@every 00h00m30s")
+        description: Heartbeat interval in "@every <duration>" format (e.g. "@every 00h00m30s")
       latest_state_digest:
         type: string
       latest_config_digest:
         type: string
       memory_used_bytes:
         type: integer
-        format: uint64
+        format: int64
+        minimum: 0
       storage_used_bytes:
         type: integer
-        format: uint64
+        format: int64
+        minimum: 0
       cpu_percent:
         type: number
         format: double
@@ -573,11 +648,17 @@ definitions:
   # --- Generic ---
   ErrorResponse:
     type: object
-    required:
-      - error
     properties:
+      message:
+        type: string
+        description: Application-level error message
+      code:
+        type: integer
+        format: int32
+        description: HTTP status code
       error:
         type: string
+        description: Legacy error message (used by some endpoints)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -951,7 +1032,7 @@ paths:
         '200':
           description: Active satellites
           schema:
-            $ref: '#/definitions/SatelliteList'
+            $ref: '#/definitions/ActiveSatelliteList'
         '401':
           description: Unauthorized
           schema:
@@ -974,7 +1055,7 @@ paths:
         '200':
           description: Stale satellites
           schema:
-            $ref: '#/definitions/SatelliteList'
+            $ref: '#/definitions/StaleSatelliteList'
         '401':
           description: Unauthorized
           schema:
@@ -1058,6 +1139,10 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: Satellite not found or no status reported yet
+          schema:
+            $ref: '#/definitions/ErrorResponse'
         '500':
           description: Internal server error
           schema:
@@ -1085,6 +1170,10 @@ paths:
             $ref: '#/definitions/CachedImages'
         '401':
           description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: Satellite not found
           schema:
             $ref: '#/definitions/ErrorResponse'
         '500':
@@ -1604,8 +1693,12 @@ paths:
           description: ZTR credentials
           schema:
             $ref: '#/definitions/ZtrResponse'
+        '400':
+          description: Invalid or unknown token
+          schema:
+            $ref: '#/definitions/ErrorResponse'
         '401':
-          description: Invalid or expired token
+          description: Token has expired
           schema:
             $ref: '#/definitions/ErrorResponse'
         '429':
@@ -1627,17 +1720,20 @@ paths:
       operationId: spiffeZtr
       summary: Perform Zero Touch Registration via SPIFFE
       description: >-
-        Rate limited (10 requests per minute per IP). Requires SPIFFE mTLS
-        (client certificate from SPIRE agent). Auto-registers the satellite if
-        not found. Refreshes robot secret. Returns registry credentials and
-        state artifact URL.
-      security:
-        - BearerAuth: []
+        Rate limited (10 requests per minute per IP). Authentication is handled
+        via SPIFFE mTLS (client certificate from SPIRE agent). OpenAPI 2.0 cannot
+        model mTLS authentication schemes, so no security definition is declared
+        here. Auto-registers the satellite if not found. Refreshes robot secret.
+        Returns registry credentials and state artifact URL.
       responses:
         '200':
           description: ZTR credentials
           schema:
             $ref: '#/definitions/ZtrResponse'
+        '400':
+          description: Invalid SPIFFE ID format or malformed identity
+          schema:
+            $ref: '#/definitions/ErrorResponse'
         '401':
           description: SPIFFE authentication failed
           schema:
@@ -1661,9 +1757,10 @@ paths:
       operationId: sync
       summary: Satellite state sync and heartbeat
       description: >-
-        Dual authentication: SPIFFE identity from TLS context or satellite name
-        in the request body. Updates last_seen, heartbeat_interval, batch-inserts
-        cached image artifacts, and records a satellite status entry.
+        Uses SPIFFE identity from the TLS context when available; otherwise the
+        satellite is identified by the name provided in the request body. Updates
+        last_seen, heartbeat_interval, batch-inserts cached image artifacts, and
+        records a satellite status entry.
       parameters:
         - in: body
           name: status
