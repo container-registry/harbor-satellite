@@ -65,5 +65,7 @@ func main() {
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("HTTP shutdown error: %v", err)
+
 	}
+	serverResult.AppServer.Stop()
 }
