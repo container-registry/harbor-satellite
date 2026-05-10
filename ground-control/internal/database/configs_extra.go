@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"time"
 )
@@ -49,4 +50,37 @@ func (q *Queries) UpdateConfigIfMatch(ctx context.Context, arg UpdateConfigIfMat
 		&cfg.UpdatedAt,
 	)
 	return cfg, err
+}
+
+const deleteConfigIfMatch = `
+DELETE FROM configs
+WHERE id = $1
+  AND updated_at = $2
+`
+
+type DeleteConfigIfMatchParams struct {
+	ID                int32
+	ExpectedUpdatedAt time.Time
+}
+
+func (q *Queries) DeleteConfigIfMatch(ctx context.Context, arg DeleteConfigIfMatchParams) error {
+	result, err := q.db.ExecContext(
+		ctx,
+		deleteConfigIfMatch,
+		arg.ID,
+		arg.ExpectedUpdatedAt,
+	)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }

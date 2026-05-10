@@ -49,6 +49,20 @@ func (s *Server) restoreConfigIfUnchanged(ctx context.Context, configName string
 	return err
 }
 
+func (s *Server) deleteConfigIfUnchanged(ctx context.Context, saved database.Config) error {
+	err := s.dbQueries.DeleteConfigIfMatch(ctx, database.DeleteConfigIfMatchParams{
+		ID:                saved.ID,
+		ExpectedUpdatedAt: saved.UpdatedAt,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return &AppError{
+			Message: "Error: config saved but cleanup skipped because a newer config was saved",
+			Code:    http.StatusConflict,
+		}
+	}
+	return err
+}
+
 func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 	var req models.ConfigObject
 
@@ -151,12 +165,13 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if err := s.EnsureSatelliteProjectExistsFn(postCommitCtx); err != nil {
-		if cleanupErr := s.dbQueries.DeleteConfig(postCommitCtx, result.ID); cleanupErr != nil {
-			log.Printf("Error cleaning up config after project ensure failure: %v", cleanupErr)
-			HandleAppError(w, &AppError{
-				Message: "Error: config saved but cleanup failed after publication setup error",
-				Code:    http.StatusInternalServerError,
-			})
+		if cleanupErr := s.deleteConfigIfUnchanged(postCommitCtx, result); cleanupErr != nil {
+			if appErr, ok := cleanupErr.(*AppError); ok && appErr.Code == http.StatusConflict {
+				log.Printf("Skipped config cleanup after project ensure failure because the config changed concurrently: %v", cleanupErr)
+			} else {
+				log.Printf("Error cleaning up config after project ensure failure: %v", cleanupErr)
+			}
+			HandleAppError(w, cleanupErr)
 			return
 		}
 		log.Println("Error while ensuring project satellite: ", err)
@@ -165,12 +180,13 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.CreateAndPushConfigStateArtifactFn(postCommitCtx, configJson, req.ConfigName); err != nil {
-		if cleanupErr := s.dbQueries.DeleteConfig(postCommitCtx, result.ID); cleanupErr != nil {
-			log.Printf("Error cleaning up config after artifact publish failure: %v", cleanupErr)
-			HandleAppError(w, &AppError{
-				Message: "Error: config saved but cleanup failed after artifact publication error",
-				Code:    http.StatusInternalServerError,
-			})
+		if cleanupErr := s.deleteConfigIfUnchanged(postCommitCtx, result); cleanupErr != nil {
+			if appErr, ok := cleanupErr.(*AppError); ok && appErr.Code == http.StatusConflict {
+				log.Printf("Skipped config cleanup after artifact publish failure because the config changed concurrently: %v", cleanupErr)
+			} else {
+				log.Printf("Error cleaning up config after artifact publish failure: %v", cleanupErr)
+			}
+			HandleAppError(w, cleanupErr)
 			return
 		}
 		log.Println("Error while creating config state artifact: ", err)

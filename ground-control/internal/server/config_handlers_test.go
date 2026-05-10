@@ -159,6 +159,8 @@ func TestCreateConfigHandler_EmptyName(t *testing.T) {
 }
 
 func TestCreateConfigHandler_PublishFailureDeletesCommittedConfig(t *testing.T) {
+	t.Setenv("HARBOR_URL", "")
+
 	server, mock := newMockServer(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	body := []byte(`{"config_name":"test-config","config":{"app_config":{"log_level":"info"}}}`)
@@ -174,7 +176,7 @@ func TestCreateConfigHandler_PublishFailureDeletesCommittedConfig(t *testing.T) 
 			AddRow(1, "test-config", "", configJSON, now, now))
 	mock.ExpectCommit()
 	mock.ExpectExec("DELETE FROM configs").
-		WithArgs(int32(1)).
+		WithArgs(int32(1), now).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/configs", bytes.NewReader(body))
@@ -188,6 +190,8 @@ func TestCreateConfigHandler_PublishFailureDeletesCommittedConfig(t *testing.T) 
 }
 
 func TestCreateConfigHandler_PostCommitUsesDeadlineContext(t *testing.T) {
+	t.Setenv("HARBOR_URL", "")
+
 	server, mock := newMockServer(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	body := []byte(`{"config_name":"test-config","config":{"app_config":{"log_level":"info"}}}`)
@@ -207,7 +211,7 @@ func TestCreateConfigHandler_PostCommitUsesDeadlineContext(t *testing.T) {
 			AddRow(1, "test-config", "", configJSON, now, now))
 	mock.ExpectCommit()
 	mock.ExpectExec("DELETE FROM configs").
-		WithArgs(int32(1)).
+		WithArgs(int32(1), now).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/configs", bytes.NewReader(body))
@@ -220,7 +224,41 @@ func TestCreateConfigHandler_PostCommitUsesDeadlineContext(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestCreateConfigHandler_PublishFailureSkipsCleanupAfterConcurrentUpdate(t *testing.T) {
+	t.Setenv("HARBOR_URL", "")
+
+	server, mock := newMockServer(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	body := []byte(`{"config_name":"test-config","config":{"app_config":{"log_level":"info"}}}`)
+	configJSON := mustMarshalRequestConfig(t, body)
+
+	server.EnsureSatelliteProjectExistsFn = func(context.Context) error { return nil }
+	server.CreateAndPushConfigStateArtifactFn = func(context.Context, []byte, string) error { return fmt.Errorf("push failed") }
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("INSERT INTO configs").
+		WithArgs("test-config", "", configJSON).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "config_name", "registry_url", "config", "created_at", "updated_at"}).
+			AddRow(1, "test-config", "", configJSON, now, now))
+	mock.ExpectCommit()
+	mock.ExpectExec("DELETE FROM configs").
+		WithArgs(int32(1), now).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/configs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.createConfigHandler(rr, req)
+
+	require.Equal(t, http.StatusConflict, rr.Code)
+	require.Contains(t, rr.Body.String(), "cleanup skipped")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUpdateConfigHandler_PublishFailureRestoresCommittedConfigWhenUnchanged(t *testing.T) {
+	t.Setenv("HARBOR_URL", "")
+
 	server, mock := newMockServer(t)
 	createdAt := time.Now().UTC().Add(-2 * time.Minute).Truncate(time.Second)
 	originalUpdatedAt := createdAt.Add(30 * time.Second)
@@ -278,6 +316,8 @@ func TestUpdateConfigHandler_PublishFailureRestoresCommittedConfigWhenUnchanged(
 }
 
 func TestUpdateConfigHandler_PublishFailureSkipsRestoreAfterConcurrentUpdate(t *testing.T) {
+	t.Setenv("HARBOR_URL", "")
+
 	server, mock := newMockServer(t)
 	createdAt := time.Now().UTC().Add(-2 * time.Minute).Truncate(time.Second)
 	originalUpdatedAt := createdAt.Add(30 * time.Second)
