@@ -134,6 +134,12 @@ tasks:
     cmds:
       - task: _publish:snapshot-release
 
+  generate-client:
+    desc: Generate Go client from Ground Control OpenAPI spec
+    dir: "{{.ROOT_DIR}}/ground-control/api"
+    cmds:
+      - oapi-codegen -config oapi-codegen.yaml openapi.yaml
+
   clean:
     desc: Clean up development environment
     cmds:
