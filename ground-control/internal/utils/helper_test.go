@@ -6,12 +6,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestConstructHarborDeleteURL(t *testing.T) {
+func TestConstructHarborDeleteURL_valid(t *testing.T) {
 	tests := []struct {
 		name      string
 		repo      string
 		repoType  string
-		wantErr   bool
 		wantInURL string
 	}{
 		{
@@ -32,43 +31,33 @@ func TestConstructHarborDeleteURL(t *testing.T) {
 			repoType:  "config",
 			wantInURL: "config-state%252Fdefault-config%252Fstate",
 		},
-		{
-			name:     "empty repo",
-			repo:     "",
-			repoType: "satellite",
-			wantErr:  true,
-		},
-		{
-			name:     "invalid repoType",
-			repo:     "some-repo",
-			repoType: "unknown",
-			wantErr:  true,
-		},
-		{
-			name:     "empty repoType",
-			repo:     "some-repo",
-			repoType: "",
-			wantErr:  true,
-		},
-		{
-			name:     "both empty",
-			repo:     "",
-			repoType: "",
-			wantErr:  true,
-		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ConstructHarborDeleteURL(tt.repo, tt.repoType)
-			if tt.wantErr {
-				require.Error(t, err)
-				require.Empty(t, got)
-				return
-			}
 			require.NoError(t, err)
 			require.Contains(t, got, "/api/v2.0/projects/satellite/repositories/")
 			require.Contains(t, got, tt.wantInURL)
+		})
+	}
+}
+
+func TestConstructHarborDeleteURL_errors(t *testing.T) {
+	tests := []struct {
+		name     string
+		repo     string
+		repoType string
+	}{
+		{name: "empty repo", repo: "", repoType: "satellite"},
+		{name: "invalid repoType", repo: "some-repo", repoType: "unknown"},
+		{name: "empty repoType", repo: "some-repo", repoType: ""},
+		{name: "both empty", repo: "", repoType: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ConstructHarborDeleteURL(tt.repo, tt.repoType)
+			require.Error(t, err)
+			require.Empty(t, got)
 		})
 	}
 }
