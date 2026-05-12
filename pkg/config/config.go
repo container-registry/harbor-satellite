@@ -41,6 +41,16 @@ type RegistryFallbackConfig struct {
 	Runtimes   []string `json:"runtimes,omitempty"`
 }
 
+// AuditConfig controls the security-event audit log destination and rotation policy.
+// When Enabled is false (default), audit events are discarded.
+type AuditConfig struct {
+	Enabled    bool   `json:"enabled,omitempty"`
+	FilePath   string `json:"file_path,omitempty"`
+	MaxSizeMB  int    `json:"max_size_mb,omitempty"`
+	MaxBackups int    `json:"max_backups,omitempty"`
+	MaxAgeDays int    `json:"max_age_days,omitempty"`
+}
+
 // DirectDeliveryConfig holds settings for writing image tarballs directly
 // to a Kubernetes node's image directory (e.g. k3s/RKE2 agent images dir).
 // This is an experimental feature that enables satellite to deliver images
@@ -66,6 +76,7 @@ type AppConfig struct {
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty"`
 	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty"`
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
+	Audit                     AuditConfig            `json:"audit,omitempty"`
 }
 
 type StateConfig struct {

@@ -284,6 +284,20 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), opts.JSONLogging, warnings)
 
+	// Initialize audit logger from config and attach to context
+	auditCfg := cm.GetAuditConfig()
+	audit := logger.NewAuditLogger(logger.AuditConfig{
+		Enabled:    auditCfg.Enabled,
+		FilePath:   auditCfg.FilePath,
+		MaxSizeMB:  auditCfg.MaxSizeMB,
+		MaxBackups: auditCfg.MaxBackups,
+		MaxAgeDays: auditCfg.MaxAgeDays,
+	})
+	ctx = logger.WithAuditLogger(ctx, audit)
+	if audit.Enabled() {
+		log.Info().Str("file_path", auditCfg.FilePath).Msg("Audit logging enabled")
+	}
+
 	// Write the config to disk, in case any defaults were enforced at runtime
 	if err := cm.WriteConfig(); err != nil {
 		log.Error().Err(err).Msg("Error writing config to disk")
@@ -326,6 +340,14 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 						}
 					}
 					if len(changes) > 0 {
+						changedKeys := make([]string, 0, len(changes))
+						for _, c := range changes {
+							changedKeys = append(changedKeys, string(c.Type))
+						}
+						audit.Log(logger.EventConfigChanged, "satellite", "", map[string]any{
+							"changed_keys": changedKeys,
+							"source":       "hot_reload",
+						})
 						if err := hotReloadManager.ProcessConfigChanges(changes); err != nil {
 							log.Error().Err(err).Msg("Error processing configuration changes")
 						}

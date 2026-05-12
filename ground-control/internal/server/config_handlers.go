@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -119,6 +120,11 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	committed = true
+
+	s.auditEvent(r, auditlog.EventConfigChanged, actorFromContext(r.Context()), map[string]any{
+		"config_name": req.ConfigName,
+		"action":      "create",
+	})
 
 	w.WriteHeader(http.StatusCreated)
 }
@@ -245,6 +251,11 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	committed = true
+
+	s.auditEvent(r, auditlog.EventConfigChanged, actorFromContext(r.Context()), map[string]any{
+		"config_name": configName,
+		"action":      "update",
+	})
 
 	WriteJSONResponse(w, http.StatusOK, result)
 }
@@ -413,6 +424,11 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
+
+	s.auditEvent(r, auditlog.EventConfigChanged, actorFromContext(r.Context()), map[string]any{
+		"config_name": configName,
+		"action":      "delete",
+	})
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }

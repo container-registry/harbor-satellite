@@ -71,7 +71,34 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 
 	warnings = append(warnings, validateRegistryFallbackConfig(config)...)
 
+	warnings = append(warnings, validateAndEnforceAuditConfig(config)...)
+
 	return config, warnings, nil
+}
+
+// validateAndEnforceAuditConfig fills in defaults for audit log rotation when
+// audit logging is enabled.
+func validateAndEnforceAuditConfig(config *Config) []string {
+	var warnings []string
+	a := &config.AppConfig.Audit
+	if !a.Enabled {
+		return warnings
+	}
+
+	if a.FilePath == "" {
+		warnings = append(warnings, fmt.Sprintf("audit.file_path empty, defaulting to %s", DefaultAuditFilePath))
+		a.FilePath = DefaultAuditFilePath
+	}
+	if a.MaxSizeMB <= 0 {
+		a.MaxSizeMB = DefaultAuditMaxSizeMB
+	}
+	if a.MaxBackups <= 0 {
+		a.MaxBackups = DefaultAuditMaxBackups
+	}
+	if a.MaxAgeDays <= 0 {
+		a.MaxAgeDays = DefaultAuditMaxAgeDays
+	}
+	return warnings
 }
 
 // isValidCronExpression checks the validity of a cron expression.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
 )
 
 const maxFailedAttempts = 5
@@ -32,6 +33,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Username == "" || req.Password == "" {
+		s.auditEvent(r, auditlog.EventUserLoginFailure, req.Username, map[string]any{"reason": "missing_credentials"})
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -44,6 +46,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err == nil && attempts.LockedUntil.Valid && attempts.LockedUntil.Time.After(time.Now()) {
+		s.auditEvent(r, auditlog.EventUserLoginFailure, req.Username, map[string]any{"reason": "account_locked"})
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -52,6 +55,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := s.dbQueries.GetUserByUsername(r.Context(), req.Username)
 	if err != nil {
 		s.recordFailedAttempt(r, req.Username)
+		s.auditEvent(r, auditlog.EventUserLoginFailure, req.Username, map[string]any{"reason": "unknown_user"})
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -60,6 +64,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	valid := auth.VerifyPassword(req.Password, user.PasswordHash)
 	if !valid {
 		s.recordFailedAttempt(r, req.Username)
+		s.auditEvent(r, auditlog.EventUserLoginFailure, req.Username, map[string]any{"reason": "bad_password"})
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -84,6 +89,8 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	s.auditEvent(r, auditlog.EventUserLoginSuccess, req.Username, nil)
 
 	WriteJSONResponse(w, http.StatusOK, loginResponse{
 		Token:     token,

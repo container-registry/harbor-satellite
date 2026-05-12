@@ -54,9 +54,12 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	}
 	log.Info().Msgf("Executing process")
 
+	gcURL := z.cm.ResolveGroundControlURL()
+	audit := logger.AuditFromContext(ctx)
+
 	// Register the satellite
 	stateConfig, err := registerSatellite(
-		z.cm.ResolveGroundControlURL(),
+		gcURL,
 		ZeroTouchRegistrationRoute,
 		z.cm.GetToken(),
 		z.cm.GetTLSConfig(),
@@ -65,11 +68,19 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	)
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to register satellite")
+		audit.Log(logger.EventSatelliteAuthFailure, gcURL, "", map[string]any{
+			"reason": err.Error(),
+			"flow":   "ztr",
+		})
 		return err
 	}
 
 	if stateConfig.RegistryCredentials.Username == "" || stateConfig.RegistryCredentials.Password == "" || stateConfig.RegistryCredentials.URL == "" || stateConfig.StateURL == "" {
 		log.Error().Msgf("Failed to register satellite: invalid state auth config received")
+		audit.Log(logger.EventSatelliteAuthFailure, gcURL, "", map[string]any{
+			"reason": "invalid_state_auth_config",
+			"flow":   "ztr",
+		})
 		return fmt.Errorf("failed to register satellite: invalid state auth config received")
 	}
 
@@ -89,6 +100,10 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		log.Error().Msgf("Failed to register satellite: could not update state auth config")
 		return fmt.Errorf("failed to register satellite: could not update state auth config")
 	}
+
+	audit.Log(logger.EventSatelliteRegistered, gcURL, "", map[string]any{
+		"flow": "ztr",
+	})
 
 	// Close the z.Done channel on successful ZTR alone.
 	close(z.Done)

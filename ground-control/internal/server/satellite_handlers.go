@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
@@ -258,6 +259,12 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 	committed = true
 
+	s.auditEvent(r, auditlog.EventSatelliteRegistered, satellite.Name, map[string]any{
+		"config_name": req.ConfigName,
+		"groups":      req.Groups,
+		"flow":        "token",
+	})
+
 	resp := RegisterSatelliteResponse{
 		Token: tk,
 	}
@@ -276,6 +283,10 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		masked := maskToken(token)
 		log.Printf("Invalid Satellite Token %s: %v", masked, err)
+		s.auditEvent(r, auditlog.EventSatelliteAuthFailure, "", map[string]any{
+			"reason":       "invalid_token",
+			"masked_token": masked,
+		})
 		HandleAppError(w, &AppError{
 			Message: "Error: Invalid Token",
 			Code:    http.StatusBadRequest,
@@ -287,6 +298,11 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	if time.Now().After(tokenInfo.ExpiresAt) {
 		masked := maskToken(token)
 		log.Printf("Expired Satellite Token %s (expired at %v)", masked, tokenInfo.ExpiresAt)
+		s.auditEvent(r, auditlog.EventSatelliteAuthFailure, "", map[string]any{
+			"reason":       "token_expired",
+			"masked_token": masked,
+			"expired_at":   tokenInfo.ExpiresAt.Format(time.RFC3339),
+		})
 		HandleAppError(w, &AppError{
 			Message: "Error: Token Expired",
 			Code:    http.StatusUnauthorized,
@@ -383,6 +399,10 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.auditEvent(r, auditlog.EventSatelliteRegistered, satellite.Name, map[string]any{
+		"flow": "ztr",
+	})
+
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
@@ -396,6 +416,10 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		spiffeID, ok := spiffe.GetSPIFFEID(r.Context())
 		if !ok {
 			log.Println("SPIFFE ZTR: No SPIFFE identity in request")
+			s.auditEvent(r, auditlog.EventSatelliteAuthFailure, "", map[string]any{
+				"reason": "missing_spiffe_identity",
+				"flow":   "spiffe_ztr",
+			})
 			HandleAppError(w, &AppError{
 				Message: "Error: SPIFFE authentication required",
 				Code:    http.StatusUnauthorized,
@@ -407,6 +431,10 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		satelliteName, err = spiffe.ExtractSatelliteNameFromSPIFFEID(spiffeID)
 		if err != nil {
 			log.Printf("SPIFFE ZTR: Invalid SPIFFE ID format: %v", err)
+			s.auditEvent(r, auditlog.EventSatelliteAuthFailure, spiffeID.String(), map[string]any{
+				"reason": "invalid_spiffe_id",
+				"flow":   "spiffe_ztr",
+			})
 			HandleAppError(w, &AppError{
 				Message: "Error: Invalid SPIFFE ID format for satellite",
 				Code:    http.StatusBadRequest,
@@ -541,6 +569,9 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("SPIFFE ZTR: Successfully registered satellite %s", satelliteName)
+	s.auditEvent(r, auditlog.EventSatelliteRegistered, satellite.Name, map[string]any{
+		"flow": "spiffe_ztr",
+	})
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
@@ -1025,6 +1056,14 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	committed = true
+
+	actor := "unknown"
+	if u, ok := GetUserFromContext(r.Context()); ok {
+		actor = u.Username
+	}
+	s.auditEvent(r, auditlog.EventSatelliteDeregistered, actor, map[string]any{
+		"satellite": satellite,
+	})
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }

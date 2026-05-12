@@ -17,6 +17,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/middleware"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
 )
@@ -42,6 +43,9 @@ type Server struct {
 
 	// Satellite status
 	staleThreshold time.Duration
+
+	// Audit logger for security events
+	audit *auditlog.AuditLogger
 }
 
 // TLSConfig holds TLS settings for the server.
@@ -168,6 +172,9 @@ func NewServer() *ServerResult {
 
 		// Satellite status
 		staleThreshold: parseDurationEnv("STALE_THRESHOLD", time.Hour),
+
+		// Audit logger
+		audit: auditlog.NewAuditLogger(loadAuditConfig()),
 	}
 
 	// Bootstrap system admin user if not exists
@@ -290,5 +297,23 @@ func buildServerTLSConfigWithWatcher(cfg *TLSConfig, cw *middleware.CertWatcher)
 	}
 
 	return tlsConfig, nil
+}
+
+// loadAuditConfig reads audit log settings from environment variables.
+// Disabled by default; set AUDIT_LOG_ENABLED=true to turn on.
+func loadAuditConfig() auditlog.AuditConfig {
+	enabled := os.Getenv("AUDIT_LOG_ENABLED") == "true"
+	if !enabled {
+		return auditlog.AuditConfig{}
+	}
+
+	path := getEnvOrDefault("AUDIT_LOG_PATH", "./audit.log")
+	return auditlog.AuditConfig{
+		Enabled:    true,
+		FilePath:   path,
+		MaxSizeMB:  parseIntEnv("AUDIT_LOG_MAX_SIZE_MB", 100),
+		MaxBackups: parseIntEnv("AUDIT_LOG_MAX_BACKUPS", 7),
+		MaxAgeDays: parseIntEnv("AUDIT_LOG_MAX_AGE_DAYS", 30),
+	}
 }
 

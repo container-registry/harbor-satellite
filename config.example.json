@@ -29,6 +29,13 @@
       "enabled": false,
       "registries": ["docker.io"],
       "runtimes": []
+    },
+    "audit": {
+      "enabled": false,
+      "file_path": "./audit.log",
+      "max_size_mb": 100,
+      "max_backups": 7,
+      "max_age_days": 30
     }
   },
   "zot_config": {

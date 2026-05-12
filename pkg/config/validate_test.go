@@ -536,3 +536,65 @@ func TestUseUnsecureEnvVar(t *testing.T) {
 		require.False(t, result.AppConfig.UseUnsecure)
 	})
 }
+
+func TestValidateAndEnforceAuditConfig(t *testing.T) {
+	t.Run("disabled leaves zero values untouched", func(t *testing.T) {
+		cfg := &Config{}
+		warnings := validateAndEnforceAuditConfig(cfg)
+		require.Empty(t, warnings)
+		require.Equal(t, AuditConfig{}, cfg.AppConfig.Audit)
+	})
+
+	t.Run("enabled with empty path applies all defaults and warns", func(t *testing.T) {
+		cfg := &Config{
+			AppConfig: AppConfig{
+				Audit: AuditConfig{Enabled: true},
+			},
+		}
+		warnings := validateAndEnforceAuditConfig(cfg)
+		require.Len(t, warnings, 1)
+		require.Equal(t, DefaultAuditFilePath, cfg.AppConfig.Audit.FilePath)
+		require.Equal(t, DefaultAuditMaxSizeMB, cfg.AppConfig.Audit.MaxSizeMB)
+		require.Equal(t, DefaultAuditMaxBackups, cfg.AppConfig.Audit.MaxBackups)
+		require.Equal(t, DefaultAuditMaxAgeDays, cfg.AppConfig.Audit.MaxAgeDays)
+	})
+
+	t.Run("user-provided values are preserved", func(t *testing.T) {
+		cfg := &Config{
+			AppConfig: AppConfig{
+				Audit: AuditConfig{
+					Enabled:    true,
+					FilePath:   "/var/log/audit.log",
+					MaxSizeMB:  50,
+					MaxBackups: 10,
+					MaxAgeDays: 90,
+				},
+			},
+		}
+		warnings := validateAndEnforceAuditConfig(cfg)
+		require.Empty(t, warnings)
+		require.Equal(t, "/var/log/audit.log", cfg.AppConfig.Audit.FilePath)
+		require.Equal(t, 50, cfg.AppConfig.Audit.MaxSizeMB)
+		require.Equal(t, 10, cfg.AppConfig.Audit.MaxBackups)
+		require.Equal(t, 90, cfg.AppConfig.Audit.MaxAgeDays)
+	})
+
+	t.Run("non-positive rotation values get defaulted silently", func(t *testing.T) {
+		cfg := &Config{
+			AppConfig: AppConfig{
+				Audit: AuditConfig{
+					Enabled:    true,
+					FilePath:   "./a.log",
+					MaxSizeMB:  -1,
+					MaxBackups: -5,
+					MaxAgeDays: 0,
+				},
+			},
+		}
+		warnings := validateAndEnforceAuditConfig(cfg)
+		require.Empty(t, warnings)
+		require.Equal(t, DefaultAuditMaxSizeMB, cfg.AppConfig.Audit.MaxSizeMB)
+		require.Equal(t, DefaultAuditMaxBackups, cfg.AppConfig.Audit.MaxBackups)
+		require.Equal(t, DefaultAuditMaxAgeDays, cfg.AppConfig.Audit.MaxAgeDays)
+	})
+}

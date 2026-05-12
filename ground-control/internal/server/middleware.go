@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	"net"
 	"net/http"
 	"strings"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
+	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
 )
 
 type contextKey string
@@ -107,6 +109,27 @@ func extractBearerToken(r *http.Request) string {
 	}
 
 	return parts[1]
+}
+
+// clientIP returns the request's source IP, honoring X-Forwarded-For when
+// present and falling back to RemoteAddr.
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if comma := strings.Index(xff, ","); comma > 0 {
+			return strings.TrimSpace(xff[:comma])
+		}
+		return strings.TrimSpace(xff)
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+// auditEvent records a security-relevant event with source IP filled in from
+// the request. It is safe to call when the audit logger is disabled.
+func (s *Server) auditEvent(r *http.Request, eventType auditlog.AuditEventType, actor string, details map[string]any) {
+	s.audit.Log(eventType, actor, clientIP(r), details)
 }
 
 func extractBasicAuth(r *http.Request) (username, password string, ok bool) {
