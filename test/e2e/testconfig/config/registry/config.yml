@@ -14,16 +14,16 @@ storage:
   delete:
     enabled: true
 redis:
-  addr: redis:6379
+  addrs:
+    - redis:6379
   readtimeout: 10s
   writetimeout: 10s
   dialtimeout: 10s
   password:
   db: 1
-  pool:
-    maxidle: 100
-    maxactive: 500
-    idletimeout: 60s
+  maxidleconns: 100
+  maxactiveconns: 500
+  connmaxidletime: 60s
 http:
   addr: :5000
   secret: placeholder
