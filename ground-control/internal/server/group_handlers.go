@@ -315,6 +315,10 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 
 	committed = true
 
+	for _, satellite := range satellites {
+		s.invalidateGroupStatesCache(int64(satellite.SatelliteID))
+	}
+
 	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(groupName, "group"))
 	if err != nil {
 		log.Println(err)

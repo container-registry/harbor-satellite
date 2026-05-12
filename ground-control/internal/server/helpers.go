@@ -200,6 +200,45 @@ func getGroupStates(ctx context.Context, groups []database.SatelliteGroup, q *da
 	return states, nil
 }
 
+func (s *Server) cachedGroupStates(ctx context.Context, satelliteID int64, q *database.Queries) ([]string, error) {
+	s.groupStatesCacheMu.RLock()
+	if cached, ok := s.groupStatesCache[satelliteID]; ok {
+		copied := make([]string, len(cached))
+		copy(copied, cached)
+		s.groupStatesCacheMu.RUnlock()
+		return copied, nil
+	}
+	s.groupStatesCacheMu.RUnlock()
+
+	groups, err := q.SatelliteGroupList(ctx, int32(satelliteID))
+	if err != nil {
+		return nil, &AppError{
+			Message: "Error: Satellite Group List Failed",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+
+	states, err := getGroupStates(ctx, groups, q)
+	if err != nil {
+		return nil, err
+	}
+
+	s.groupStatesCacheMu.Lock()
+	if s.groupStatesCache == nil {
+		s.groupStatesCache = make(map[int64][]string)
+	}
+	s.groupStatesCache[satelliteID] = states
+	s.groupStatesCacheMu.Unlock()
+
+	return states, nil
+}
+
+func (s *Server) invalidateGroupStatesCache(satelliteID int64) {
+	s.groupStatesCacheMu.Lock()
+	delete(s.groupStatesCache, satelliteID)
+	s.groupStatesCacheMu.Unlock()
+}
+
 func DecodeRequestBody(r *http.Request, v any) error {
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
 		return &AppError{
