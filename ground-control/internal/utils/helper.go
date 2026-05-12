@@ -276,7 +276,9 @@ func ConstructHarborDeleteURL(repo string, repoType string) (string, error) {
 	if repo == "" {
 		return "", fmt.Errorf("repo must not be empty")
 	}
-	if repoType != "satellite" && repoType != "group" && repoType != "config" {
+	switch repoType {
+	case "satellite", "group", "config":
+	default:
 		return "", fmt.Errorf("repoType %q is not valid: must be one of satellite, group, config", repoType)
 	}
 	repositoryName := fmt.Sprintf("%s-state/%s/state", repoType, repo)
