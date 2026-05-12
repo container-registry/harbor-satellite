@@ -399,7 +399,13 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := utils.DeleteArtifact(utils.ConstructHarborDeleteURL(configName, "config")); err != nil {
+	deleteURL, err := utils.ConstructHarborDeleteURL(configName, "config")
+	if err != nil {
+		log.Printf("Could not construct delete URL for config: %v", err)
+		HandleAppError(w, &AppError{Message: "Error: Could not delete config state artifact", Code: http.StatusInternalServerError})
+		return
+	}
+	if err := utils.DeleteArtifact(deleteURL); err != nil {
 		log.Printf("Could not delete config state artifact: %v", err)
 		HandleAppError(w, &AppError{
 			Message: "Error: Could not delete config state artifact",

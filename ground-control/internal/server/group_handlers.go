@@ -315,14 +315,15 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 
 	committed = true
 
-	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(groupName, "group"))
+	deleteURL, err := utils.ConstructHarborDeleteURL(groupName, "group")
 	if err != nil {
+		log.Printf("error: failed to construct delete URL: %v", err)
+		HandleAppError(w, &AppError{Message: "Error: Failed to delete group state", Code: http.StatusInternalServerError})
+		return
+	}
+	if err = utils.DeleteArtifact(deleteURL); err != nil {
 		log.Println(err)
-		err := &AppError{
-			Message: "Error: Failed to delete group state",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
+		HandleAppError(w, &AppError{Message: "Error: Failed to delete group state", Code: http.StatusInternalServerError})
 		return
 	}
 
