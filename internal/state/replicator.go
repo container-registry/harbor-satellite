@@ -104,6 +104,19 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		}
 	}
 
+	// Puller and pusher handle index vs image polymorphically: pusher.Push on a
+	// multi-arch descriptor preserves the index and its child manifests without
+	// flattening to a single platform. This matches crane.Copy's internal flow
+	// (no WithPlatform → multi-arch preserved by default).
+	puller, err := remote.NewPuller(pullOpts...)
+	if err != nil {
+		return fmt.Errorf("create puller: %w", err)
+	}
+	pusher, err := remote.NewPusher(pushOpts...)
+	if err != nil {
+		return fmt.Errorf("create pusher: %w", err)
+	}
+
 	for _, entity := range replicationEntities {
 		// Check context cancellation before processing each image
 		select {
@@ -126,34 +139,25 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 			return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
 		}
 
-		// Lazy fetch: only the manifest is downloaded, no layer data yet
-		desc, err := remote.Get(src, pullOpts...)
+		// Lazy fetch: only the manifest is downloaded, no layer data yet.
+		desc, err := puller.Get(ctx, src)
 		if err != nil {
 			log.Error().Msgf("Failed to fetch image descriptor: %v", err)
 			return err
 		}
 
-		// Multi-arch source: preserve the index rather than flattening to a single platform.
+		// Multi-arch source: hand the full descriptor to the pusher. It walks the
+		// index, pushes each referenced platform manifest and the index itself,
+		// and preserves the original media types. The index digest is stable across
+		// pull/push (no mutation), so we use desc.Digest directly for idempotency.
 		if desc.MediaType.IsIndex() {
-			idx, err := desc.ImageIndex()
-			if err != nil {
-				log.Error().Msgf("Failed to resolve image index: %v", err)
-				return err
-			}
-
-			srcDigest, err := idx.Digest()
-			if err != nil {
-				return fmt.Errorf("compute source index digest: %w", err)
-			}
-
-			dstDesc, dstErr := remote.Head(dst, pushOpts...)
-			if dstErr == nil && dstDesc.Digest == srcDigest {
+			if dstHead, dstErr := remote.Head(dst, pushOpts...); dstErr == nil && dstHead.Digest == desc.Digest {
 				log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
 				continue
 			}
 
 			log.Info().Msgf("Replicating multi-arch image %s", entity.GetName())
-			if err := remote.WriteIndex(dst, idx, pushOpts...); err != nil {
+			if err := pusher.Push(ctx, dst, desc); err != nil {
 				log.Error().Msgf("Failed to replicate image index: %v", err)
 				return err
 			}
@@ -167,22 +171,22 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 			return err
 		}
 
-		// Lazy OCI conversion, no data materialized
+		// Lazy OCI conversion for single-image manifests. The embedded Zot
+		// registry rejects Docker v2 manifests, so we rewrite the media type
+		// before pushing. Idempotency uses the post-mutation digest, which is
+		// what the destination actually stores.
 		ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
 
-		// Check if image already exists at destination with same digest
 		srcDigest, err := ociImage.Digest()
 		if err != nil {
 			return fmt.Errorf("compute source digest: %w", err)
 		}
-
-		dstDesc, dstErr := remote.Head(dst, pushOpts...)
-		if dstErr == nil && dstDesc.Digest == srcDigest {
+		if dstHead, dstErr := remote.Head(dst, pushOpts...); dstErr == nil && dstHead.Digest == srcDigest {
 			log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
 			continue
 		}
 
-		// Log which layers need pulling vs already present
+		// Log which layers need pulling vs already present.
 		srcLayers, err := ociImage.Layers()
 		if err != nil {
 			return fmt.Errorf("get source layers: %w", err)
@@ -191,10 +195,10 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		missing := r.countMissingLayers(dst, srcLayers, pushOpts)
 		log.Info().Msgf("Replicating image %s: %d/%d layers to pull", entity.GetName(), missing, len(srcLayers))
 
-		// remote.Write streams layers one-by-one. For each layer it HEAD-checks
+		// pusher.Push streams layers one-by-one. Each blob is HEAD-checked at
 		// the destination first; only missing blobs are pulled from source.
 		// Manifest is pushed last.
-		if err := remote.Write(dst, ociImage, pushOpts...); err != nil {
+		if err := pusher.Push(ctx, dst, ociImage); err != nil {
 			log.Error().Msgf("Failed to replicate image: %v", err)
 			return err
 		}

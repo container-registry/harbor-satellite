@@ -44,4 +44,6 @@ func TestReplicate_PreservesMultiArchIndex(t *testing.T) {
 
 	require.True(t, dstDesc.MediaType.IsIndex(),
 		"expected destination to preserve multi-arch index, got %s", dstDesc.MediaType)
+	require.Equal(t, srcDesc.Digest, dstDesc.Digest,
+		"expected destination index digest to match source (byte-for-byte preservation)")
 }
