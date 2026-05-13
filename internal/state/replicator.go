@@ -183,32 +183,10 @@ func (r *BasicReplicator) replicateIndex(
 		log.Error().Msgf("Failed to resolve image index: %v", err)
 		return err
 	}
-	manifest, err := srcIdx.IndexManifest()
-	if err != nil {
-		return fmt.Errorf("read source index manifest: %w", err)
-	}
 
-	ociIdx := mutate.IndexMediaType(empty.Index, types.OCIImageIndex)
-	for _, m := range manifest.Manifests {
-		switch {
-		case m.MediaType.IsImage():
-			img, err := srcIdx.Image(m.Digest)
-			if err != nil {
-				return fmt.Errorf("load child image %s: %w", m.Digest, err)
-			}
-			ociImg := mutate.MediaType(img, types.OCIManifestSchema1)
-			ociIdx = mutate.AppendManifests(ociIdx, mutate.IndexAddendum{
-				Add: ociImg,
-				Descriptor: v1.Descriptor{
-					MediaType: types.OCIManifestSchema1,
-					Platform:  m.Platform,
-				},
-			})
-		case m.MediaType.IsIndex():
-			return fmt.Errorf("nested image indexes not supported (entity %s)", entity.GetName())
-		default:
-			return fmt.Errorf("unsupported manifest entry media type %s (entity %s)", m.MediaType, entity.GetName())
-		}
+	ociIdx, platforms, err := buildOCIIndex(srcIdx, entity.GetName())
+	if err != nil {
+		return err
 	}
 
 	dstDigest, err := ociIdx.Digest()
@@ -220,13 +198,56 @@ func (r *BasicReplicator) replicateIndex(
 		return nil
 	}
 
-	log.Info().Msgf("Replicating multi-arch image %s (%d platforms)", entity.GetName(), len(manifest.Manifests))
+	log.Info().Msgf("Replicating multi-arch image %s (%d platforms)", entity.GetName(), platforms)
 	if err := pusher.Push(ctx, dst, ociIdx); err != nil {
 		log.Error().Msgf("Failed to replicate image index: %v", err)
 		return err
 	}
 	log.Info().Msgf("Image %s replicated successfully", entity.GetName())
 	return nil
+}
+
+// buildOCIIndex walks the source index and emits a new index whose children
+// have been rewritten to OCI media types.
+func buildOCIIndex(srcIdx v1.ImageIndex, entityName string) (v1.ImageIndex, int, error) {
+	manifest, err := srcIdx.IndexManifest()
+	if err != nil {
+		return nil, 0, fmt.Errorf("read source index manifest: %w", err)
+	}
+
+	ociIdx := mutate.IndexMediaType(empty.Index, types.OCIImageIndex)
+	for _, m := range manifest.Manifests {
+		addendum, err := toOCIAddendum(srcIdx, m, entityName)
+		if err != nil {
+			return nil, 0, err
+		}
+		ociIdx = mutate.AppendManifests(ociIdx, addendum)
+	}
+	return ociIdx, len(manifest.Manifests), nil
+}
+
+// toOCIAddendum loads one child manifest from the source index and returns it
+// wrapped in an OCI-typed IndexAddendum. Nested indexes and unknown media
+// types are rejected to keep the conversion bounded.
+func toOCIAddendum(srcIdx v1.ImageIndex, m v1.Descriptor, entityName string) (mutate.IndexAddendum, error) {
+	if !m.MediaType.IsImage() {
+		if m.MediaType.IsIndex() {
+			return mutate.IndexAddendum{}, fmt.Errorf("nested image indexes not supported (entity %s)", entityName)
+		}
+		return mutate.IndexAddendum{}, fmt.Errorf("unsupported manifest entry media type %s (entity %s)", m.MediaType, entityName)
+	}
+
+	img, err := srcIdx.Image(m.Digest)
+	if err != nil {
+		return mutate.IndexAddendum{}, fmt.Errorf("load child image %s: %w", m.Digest, err)
+	}
+	return mutate.IndexAddendum{
+		Add: mutate.MediaType(img, types.OCIManifestSchema1),
+		Descriptor: v1.Descriptor{
+			MediaType: types.OCIManifestSchema1,
+			Platform:  m.Platform,
+		},
+	}, nil
 }
 
 // replicateImage pushes a single-platform image, rewriting its manifest media
