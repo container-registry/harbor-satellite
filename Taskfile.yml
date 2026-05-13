@@ -40,6 +40,14 @@ tasks:
     cmds:
       - task: _build:all
 
+  build-groundctl:
+    desc: Build the groundctl CLI binary
+    dir: groundctl
+    cmds:
+      - go build -ldflags "-X github.com/container-registry/harbor-satellite/groundctl/cmd.Version={{.VERSION}}" -o ../bin/groundctl{{exeExt}} .
+    vars:
+      VERSION: '{{.VERSION | default "dev"}}'
+
   lint:
     desc: Run golangci-lint
     aliases: [l]
