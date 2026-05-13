@@ -13,9 +13,11 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/empty"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
+	"github.com/rs/zerolog"
 )
 
 type Replicator interface {
@@ -73,41 +75,17 @@ func (e Entity) GetTag() string {
 	return e.Tag
 }
 
-// Replicate replicates images from the source registry to the local registry.
-// Before pulling, it checks which blobs already exist at the destination and
-// only downloads missing layers from source, saving bandwidth on crash recovery.
+// Replicate copies images from the source registry to the local registry using
+// crane's puller/pusher pattern. Multi-arch indexes are rebuilt as OCI before
+// push because the embedded Zot registry rejects Docker v2 manifests.
 func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []Entity) error {
 	log := logger.FromContext(ctx)
-	pullAuth := authn.FromConfig(authn.AuthConfig{
-		Username: r.sourceUsername,
-		Password: r.sourcePassword,
-	})
-	pushAuth := authn.FromConfig(authn.AuthConfig{
-		Username: r.remoteUsername,
-		Password: r.remotePassword,
-	})
 
-	var nameOpts []name.Option
-	pullOpts := []remote.Option{remote.WithAuth(pullAuth), remote.WithContext(ctx)}
-	pushOpts := []remote.Option{remote.WithAuth(pushAuth), remote.WithContext(ctx)}
-
-	if r.useUnsecure {
-		nameOpts = append(nameOpts, name.Insecure)
-	} else {
-		transport, err := r.buildTLSTransport()
-		if err != nil {
-			return fmt.Errorf("build TLS transport: %w", err)
-		}
-		if transport != nil {
-			pullOpts = append(pullOpts, remote.WithTransport(transport))
-			pushOpts = append(pushOpts, remote.WithTransport(transport))
-		}
+	nameOpts, pullOpts, pushOpts, err := r.buildOpts(ctx)
+	if err != nil {
+		return err
 	}
 
-	// Puller and pusher handle index vs image polymorphically: pusher.Push on a
-	// multi-arch descriptor preserves the index and its child manifests without
-	// flattening to a single platform. This matches crane.Copy's internal flow
-	// (no WithPlatform → multi-arch preserved by default).
 	puller, err := remote.NewPuller(pullOpts...)
 	if err != nil {
 		return fmt.Errorf("create puller: %w", err)
@@ -118,7 +96,6 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 	}
 
 	for _, entity := range replicationEntities {
-		// Check context cancellation before processing each image
 		select {
 		case <-ctx.Done():
 			log.Warn().Err(ctx.Err()).Msg("Context cancelled, stopping replication")
@@ -126,84 +103,167 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		default:
 		}
 
-		srcRef := fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, entity.GetRepository(), entity.GetName(), entity.GetTag())
-		dstRef := fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag())
-
-		src, err := name.ParseReference(srcRef, nameOpts...)
-		if err != nil {
-			return fmt.Errorf("parse source ref %s: %w", srcRef, err)
-		}
-
-		dst, err := name.ParseReference(dstRef, nameOpts...)
-		if err != nil {
-			return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
-		}
-
-		// Lazy fetch: only the manifest is downloaded, no layer data yet.
-		desc, err := puller.Get(ctx, src)
-		if err != nil {
-			log.Error().Msgf("Failed to fetch image descriptor: %v", err)
+		if err := r.replicateEntity(ctx, log, entity, nameOpts, pushOpts, puller, pusher); err != nil {
 			return err
 		}
-
-		// Multi-arch source: hand the full descriptor to the pusher. It walks the
-		// index, pushes each referenced platform manifest and the index itself,
-		// and preserves the original media types. The index digest is stable across
-		// pull/push (no mutation), so we use desc.Digest directly for idempotency.
-		if desc.MediaType.IsIndex() {
-			if dstHead, dstErr := remote.Head(dst, pushOpts...); dstErr == nil && dstHead.Digest == desc.Digest {
-				log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
-				continue
-			}
-
-			log.Info().Msgf("Replicating multi-arch image %s", entity.GetName())
-			if err := pusher.Push(ctx, dst, desc); err != nil {
-				log.Error().Msgf("Failed to replicate image index: %v", err)
-				return err
-			}
-			log.Info().Msgf("Image %s replicated successfully", entity.GetName())
-			continue
-		}
-
-		img, err := desc.Image()
-		if err != nil {
-			log.Error().Msgf("Failed to resolve image: %v", err)
-			return err
-		}
-
-		// Lazy OCI conversion for single-image manifests. The embedded Zot
-		// registry rejects Docker v2 manifests, so we rewrite the media type
-		// before pushing. Idempotency uses the post-mutation digest, which is
-		// what the destination actually stores.
-		ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
-
-		srcDigest, err := ociImage.Digest()
-		if err != nil {
-			return fmt.Errorf("compute source digest: %w", err)
-		}
-		if dstHead, dstErr := remote.Head(dst, pushOpts...); dstErr == nil && dstHead.Digest == srcDigest {
-			log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
-			continue
-		}
-
-		// Log which layers need pulling vs already present.
-		srcLayers, err := ociImage.Layers()
-		if err != nil {
-			return fmt.Errorf("get source layers: %w", err)
-		}
-
-		missing := r.countMissingLayers(dst, srcLayers, pushOpts)
-		log.Info().Msgf("Replicating image %s: %d/%d layers to pull", entity.GetName(), missing, len(srcLayers))
-
-		// pusher.Push streams layers one-by-one. Each blob is HEAD-checked at
-		// the destination first; only missing blobs are pulled from source.
-		// Manifest is pushed last.
-		if err := pusher.Push(ctx, dst, ociImage); err != nil {
-			log.Error().Msgf("Failed to replicate image: %v", err)
-			return err
-		}
-		log.Info().Msgf("Image %s replicated successfully", entity.GetName())
 	}
+	return nil
+}
+
+// buildOpts assembles the auth, transport, and name options used by both pull
+// and push sides. Pull and push auth can differ — source and destination
+// registries are typically separate.
+func (r *BasicReplicator) buildOpts(ctx context.Context) ([]name.Option, []remote.Option, []remote.Option, error) {
+	pullAuth := authn.FromConfig(authn.AuthConfig{Username: r.sourceUsername, Password: r.sourcePassword})
+	pushAuth := authn.FromConfig(authn.AuthConfig{Username: r.remoteUsername, Password: r.remotePassword})
+
+	var nameOpts []name.Option
+	pullOpts := []remote.Option{remote.WithAuth(pullAuth), remote.WithContext(ctx)}
+	pushOpts := []remote.Option{remote.WithAuth(pushAuth), remote.WithContext(ctx)}
+
+	if r.useUnsecure {
+		nameOpts = append(nameOpts, name.Insecure)
+		return nameOpts, pullOpts, pushOpts, nil
+	}
+
+	transport, err := r.buildTLSTransport()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("build TLS transport: %w", err)
+	}
+	if transport != nil {
+		pullOpts = append(pullOpts, remote.WithTransport(transport))
+		pushOpts = append(pushOpts, remote.WithTransport(transport))
+	}
+	return nameOpts, pullOpts, pushOpts, nil
+}
+
+// replicateEntity parses refs, fetches the source descriptor, and dispatches
+// to the index- or image-specific replication path.
+func (r *BasicReplicator) replicateEntity(
+	ctx context.Context, log *zerolog.Logger, entity Entity,
+	nameOpts []name.Option, pushOpts []remote.Option,
+	puller *remote.Puller, pusher *remote.Pusher,
+) error {
+	srcRef := fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, entity.GetRepository(), entity.GetName(), entity.GetTag())
+	dstRef := fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag())
+
+	src, err := name.ParseReference(srcRef, nameOpts...)
+	if err != nil {
+		return fmt.Errorf("parse source ref %s: %w", srcRef, err)
+	}
+	dst, err := name.ParseReference(dstRef, nameOpts...)
+	if err != nil {
+		return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
+	}
+
+	// Lazy fetch: only the manifest is downloaded, no layer data yet.
+	desc, err := puller.Get(ctx, src)
+	if err != nil {
+		log.Error().Msgf("Failed to fetch image descriptor: %v", err)
+		return err
+	}
+
+	if desc.MediaType.IsIndex() {
+		return r.replicateIndex(ctx, log, entity, desc, dst, pusher, pushOpts)
+	}
+	return r.replicateImage(ctx, log, entity, desc, dst, pusher, pushOpts)
+}
+
+// replicateIndex rebuilds a multi-arch index with OCI media types on every
+// referenced manifest and pushes it. Zot rejects Docker v2 manifests, so the
+// source index (whose children are often Docker schema2) cannot be pushed
+// as-is even though the index media type itself may already be OCI.
+func (r *BasicReplicator) replicateIndex(
+	ctx context.Context, log *zerolog.Logger, entity Entity,
+	desc *remote.Descriptor, dst name.Reference,
+	pusher *remote.Pusher, pushOpts []remote.Option,
+) error {
+	srcIdx, err := desc.ImageIndex()
+	if err != nil {
+		log.Error().Msgf("Failed to resolve image index: %v", err)
+		return err
+	}
+	manifest, err := srcIdx.IndexManifest()
+	if err != nil {
+		return fmt.Errorf("read source index manifest: %w", err)
+	}
+
+	ociIdx := mutate.IndexMediaType(empty.Index, types.OCIImageIndex)
+	for _, m := range manifest.Manifests {
+		switch {
+		case m.MediaType.IsImage():
+			img, err := srcIdx.Image(m.Digest)
+			if err != nil {
+				return fmt.Errorf("load child image %s: %w", m.Digest, err)
+			}
+			ociImg := mutate.MediaType(img, types.OCIManifestSchema1)
+			ociIdx = mutate.AppendManifests(ociIdx, mutate.IndexAddendum{
+				Add: ociImg,
+				Descriptor: v1.Descriptor{
+					MediaType: types.OCIManifestSchema1,
+					Platform:  m.Platform,
+				},
+			})
+		case m.MediaType.IsIndex():
+			return fmt.Errorf("nested image indexes not supported (entity %s)", entity.GetName())
+		default:
+			return fmt.Errorf("unsupported manifest entry media type %s (entity %s)", m.MediaType, entity.GetName())
+		}
+	}
+
+	dstDigest, err := ociIdx.Digest()
+	if err != nil {
+		return fmt.Errorf("compute destination index digest: %w", err)
+	}
+	if dstHead, dstErr := remote.Head(dst, pushOpts...); dstErr == nil && dstHead.Digest == dstDigest {
+		log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
+		return nil
+	}
+
+	log.Info().Msgf("Replicating multi-arch image %s (%d platforms)", entity.GetName(), len(manifest.Manifests))
+	if err := pusher.Push(ctx, dst, ociIdx); err != nil {
+		log.Error().Msgf("Failed to replicate image index: %v", err)
+		return err
+	}
+	log.Info().Msgf("Image %s replicated successfully", entity.GetName())
+	return nil
+}
+
+// replicateImage pushes a single-platform image, rewriting its manifest media
+// type to OCI for Zot compatibility.
+func (r *BasicReplicator) replicateImage(
+	ctx context.Context, log *zerolog.Logger, entity Entity,
+	desc *remote.Descriptor, dst name.Reference,
+	pusher *remote.Pusher, pushOpts []remote.Option,
+) error {
+	img, err := desc.Image()
+	if err != nil {
+		log.Error().Msgf("Failed to resolve image: %v", err)
+		return err
+	}
+	ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
+
+	srcDigest, err := ociImage.Digest()
+	if err != nil {
+		return fmt.Errorf("compute source digest: %w", err)
+	}
+	if dstHead, dstErr := remote.Head(dst, pushOpts...); dstErr == nil && dstHead.Digest == srcDigest {
+		log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
+		return nil
+	}
+
+	srcLayers, err := ociImage.Layers()
+	if err != nil {
+		return fmt.Errorf("get source layers: %w", err)
+	}
+	missing := r.countMissingLayers(dst, srcLayers, pushOpts)
+	log.Info().Msgf("Replicating image %s: %d/%d layers to pull", entity.GetName(), missing, len(srcLayers))
+
+	if err := pusher.Push(ctx, dst, ociImage); err != nil {
+		log.Error().Msgf("Failed to replicate image: %v", err)
+		return err
+	}
+	log.Info().Msgf("Image %s replicated successfully", entity.GetName())
 	return nil
 }
 
