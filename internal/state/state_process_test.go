@@ -206,6 +206,38 @@ func TestGetChanges(t *testing.T) {
 	})
 }
 
+func TestSubtractEntities(t *testing.T) {
+	t.Run("no failures returns all", func(t *testing.T) {
+		all := []Entity{
+			{Name: "img1", Tag: "v1"},
+			{Name: "img2", Tag: "v1"},
+		}
+		result := subtractEntities(all, nil)
+		require.Equal(t, all, result)
+	})
+
+	t.Run("removes failed entity", func(t *testing.T) {
+		all := []Entity{
+			{Name: "img1", Tag: "v1"},
+			{Name: "img2", Tag: "v1"},
+			{Name: "img3", Tag: "v1"},
+		}
+		failed := []Entity{{Name: "img2", Tag: "v1"}}
+		result := subtractEntities(all, failed)
+		require.Len(t, result, 2)
+		require.Equal(t, "img1", result[0].Name)
+		require.Equal(t, "img3", result[1].Name)
+	})
+
+	t.Run("all failed returns empty", func(t *testing.T) {
+		all := []Entity{
+			{Name: "img1", Tag: "v1"},
+		}
+		result := subtractEntities(all, all)
+		require.Empty(t, result)
+	})
+}
+
 func TestContains(t *testing.T) {
 	t.Run("item in slice returns true", func(t *testing.T) {
 		slice := []string{"a", "b", "c"}

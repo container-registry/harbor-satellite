@@ -47,7 +47,7 @@ func TestReplicate_NewImage(t *testing.T) {
 	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
 	ctx := testContext()
 
-	err := r.Replicate(ctx, []Entity{
+	_, err := r.Replicate(ctx, []Entity{
 		{Name: "alpine", Repository: "library", Tag: "latest"},
 	})
 	require.NoError(t, err)
@@ -74,7 +74,7 @@ func TestReplicate_SkipsExistingImage(t *testing.T) {
 	ctx := testContext()
 
 	// Should succeed without error and skip the image
-	err = r.Replicate(ctx, []Entity{
+	_, err = r.Replicate(ctx, []Entity{
 		{Name: "nginx", Repository: "library", Tag: "1.25"},
 	})
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestReplicate_UpdatesChangedImage(t *testing.T) {
 	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
 	ctx := testContext()
 
-	err := r.Replicate(ctx, []Entity{
+	_, err := r.Replicate(ctx, []Entity{
 		{Name: "redis", Repository: "library", Tag: "7"},
 	})
 	require.NoError(t, err)
@@ -124,7 +124,7 @@ func TestReplicate_MultipleEntities(t *testing.T) {
 	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
 	ctx := testContext()
 
-	err := r.Replicate(ctx, []Entity{
+	_, err := r.Replicate(ctx, []Entity{
 		{Name: "alpine", Repository: "library", Tag: "latest"},
 		{Name: "nginx", Repository: "library", Tag: "1.25"},
 	})
@@ -150,10 +150,12 @@ func TestReplicate_SourceNotFound(t *testing.T) {
 	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
 	ctx := testContext()
 
-	err := r.Replicate(ctx, []Entity{
+	failed, err := r.Replicate(ctx, []Entity{
 		{Name: "missing", Repository: "library", Tag: "latest"},
 	})
 	require.Error(t, err)
+	require.Len(t, failed, 1)
+	require.Equal(t, "missing", failed[0].Name)
 }
 
 func TestReplicate_EmptyEntities(t *testing.T) {
@@ -163,8 +165,53 @@ func TestReplicate_EmptyEntities(t *testing.T) {
 	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
 	ctx := testContext()
 
-	err := r.Replicate(ctx, []Entity{})
+	failed, err := r.Replicate(ctx, []Entity{})
 	require.NoError(t, err)
+	require.Empty(t, failed)
+}
+
+// TestReplicate_ContinuesAfterOneFailure verifies the core fix for issue #434:
+// a single unavailable image must not block replication of subsequent images.
+func TestReplicate_ContinuesAfterOneFailure(t *testing.T) {
+	_, srcAddr := newTestRegistry(t)
+	_, dstAddr := newTestRegistry(t)
+
+	// Push img1 and img3 — img2 is intentionally absent from source.
+	pushImage(t, srcAddr, "library", "img1", "v1", 1)
+	pushImage(t, srcAddr, "library", "img3", "v1", 1)
+
+	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
+	ctx := testContext()
+
+	failed, err := r.Replicate(ctx, []Entity{
+		{Name: "img1", Repository: "library", Tag: "v1"},
+		{Name: "img2", Repository: "library", Tag: "v1"}, // missing in source
+		{Name: "img3", Repository: "library", Tag: "v1"},
+	})
+
+	// Must return an error because img2 failed.
+	require.Error(t, err)
+
+	// Only img2 should be in the failed list.
+	require.Len(t, failed, 1)
+	require.Equal(t, "img2", failed[0].Name)
+
+	// img1 and img3 must exist at destination despite img2 failing.
+	for _, ref := range []string{
+		dstAddr + "/library/img1:v1",
+		dstAddr + "/library/img3:v1",
+	} {
+		parsed, parseErr := name.ParseReference(ref, name.Insecure)
+		require.NoError(t, parseErr)
+		_, headErr := remote.Head(parsed)
+		require.NoError(t, headErr, "image should be replicated: %s", ref)
+	}
+
+	// img2 must not exist at destination.
+	img2Ref, parseErr := name.ParseReference(dstAddr+"/library/img2:v1", name.Insecure)
+	require.NoError(t, parseErr)
+	_, headErr := remote.Head(img2Ref)
+	require.Error(t, headErr, "failed image must not exist at destination")
 }
 
 func TestCountMissingLayers_AllMissing(t *testing.T) {
@@ -293,7 +340,7 @@ func TestReplicate_LayerResume(t *testing.T) {
 	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
 	ctx := testContext()
 
-	err = r.Replicate(ctx, []Entity{
+	_, err = r.Replicate(ctx, []Entity{
 		{Name: "app", Repository: "library", Tag: "extended"},
 	})
 	require.NoError(t, err, "replication should succeed with layer-level resume")
@@ -331,7 +378,7 @@ func TestReplicate_CancelledContextStopsProcessing(t *testing.T) {
 	ctx, cancel := context.WithCancel(testContext())
 	cancel() // cancel immediately
 
-	err := r.Replicate(ctx, []Entity{
+	_, err := r.Replicate(ctx, []Entity{
 		{Name: "img1", Repository: "library", Tag: "v1"},
 		{Name: "img2", Repository: "library", Tag: "v1"},
 		{Name: "img3", Repository: "library", Tag: "v1"},

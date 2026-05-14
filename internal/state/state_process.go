@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -467,9 +468,12 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		return result
 	}
 
-	if err := replicator.Replicate(ctx, replicateEntity); err != nil {
-		stateFetcherLog.Error().Err(err).Msg("Error replicating state")
-		result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
+	failedEntities, replicateErr := replicator.Replicate(ctx, replicateEntity)
+
+	// Context cancellation means nothing was completed — skip state update entirely.
+	if replicateErr != nil && (errors.Is(replicateErr, context.Canceled) || errors.Is(replicateErr, context.DeadlineExceeded)) {
+		result.Cancelled = true
+		result.Error = replicateErr
 		return result
 	}
 
@@ -483,9 +487,11 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		}
 	}
 
+	// Update entity tracking for successfully replicated images only.
+	// Failed images are excluded so they will be retried on the next cycle.
 	mutex.Lock()
 	f.stateMap[index].State = newState
-	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
+	f.stateMap[index].Entities = subtractEntities(FetchEntitiesFromState(newState), failedEntities)
 	if f.stateFilePath != "" {
 		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
 			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
@@ -493,6 +499,10 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	}
 	mutex.Unlock()
 
+	if replicateErr != nil {
+		stateFetcherLog.Error().Err(replicateErr).Msgf("%d image(s) failed to replicate for %s", len(failedEntities), f.stateMap[index].url)
+		result.Error = fmt.Errorf("%d image(s) failed to replicate for %s: %w", len(failedEntities), f.stateMap[index].url, replicateErr)
+	}
 	return result
 }
 
@@ -613,6 +623,25 @@ func FetchEntitiesFromState(state StateReader) []Entity {
 		}
 	}
 	return entities
+}
+
+// subtractEntities returns all entities in `all` that are not present in `failed`.
+// Used to track only successfully replicated images in the state map.
+func subtractEntities(all, failed []Entity) []Entity {
+	if len(failed) == 0 {
+		return all
+	}
+	failedKeys := make(map[string]struct{}, len(failed))
+	for _, e := range failed {
+		failedKeys[e.Name+"|"+e.Tag] = struct{}{}
+	}
+	result := make([]Entity, 0, len(all)-len(failed))
+	for _, e := range all {
+		if _, skip := failedKeys[e.Name+"|"+e.Tag]; !skip {
+			result = append(result, e)
+		}
+	}
+	return result
 }
 
 // contains takes in a slice and checks if the item is in the slice if preset it returns true else false
