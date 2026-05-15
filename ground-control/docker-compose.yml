@@ -31,6 +31,7 @@ services:
       HARBOR_PASSWORD: Harbor12345
       HARBOR_URL: http://harbor-sat.kube.bupd.xyz
       PORT: 8080
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set}"
       # Skip Harbor health check for local testing (set to false in production)
       SKIP_HARBOR_HEALTH_CHECK: "true"
       # SPIFFE Configuration (disabled by default)

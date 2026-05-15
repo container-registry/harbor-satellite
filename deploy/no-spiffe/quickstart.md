@@ -9,6 +9,7 @@ For production deployments with cryptographic identity and mTLS, see the [SPIFFE
 - A Harbor registry instance with the satellite adapter installed. You can find the instance [here](https://github.com/container-registry/harbor-next/tree/satellite).
 - Credentials with permission to create robot accounts in the registry
 - [Task](https://taskfile.dev/installation/) installed.
+- [jq](https://jqlang.github.io/jq/download/) installed (used to parse JSON responses).
 - (Optional) Docker and Docker Compose. [Install Docker](https://docs.docker.com/get-docker/).
 
 ## Step 1: Configure Ground Control
@@ -46,6 +47,10 @@ Ground Control is the central service that manages satellite configurations.
    DB_DATABASE=groundcontrol
    DB_USERNAME=postgres
    DB_PASSWORD=password
+
+   # Ground Control admin (created on first run)
+   # Must be 8+ chars with uppercase, lowercase, and number
+   ADMIN_PASSWORD=Admin1234
    ```
 
    > Note: Ensure the database is running and accessible.
@@ -90,7 +95,23 @@ curl http://localhost:8080/health
 
 A `200 OK` response indicates Ground Control is healthy.
 
-## Step 4: Create a Group for Artifacts
+## Step 4: Login to Ground Control
+
+All `/api/*` endpoints require a Bearer token. Obtain one by logging in with the
+admin account you configured via `ADMIN_PASSWORD`:
+
+```bash
+AUTH_TOKEN=$(curl -s -X POST http://localhost:8080/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "Admin1234"}' | jq -r '.token')
+
+echo $AUTH_TOKEN
+```
+
+> Note: Replace the password with whatever you set as `ADMIN_PASSWORD` in your `.env`.
+> The token is valid for 24 hours by default.
+
+## Step 5: Create a Group for Artifacts
 
 A group is a set of images that the satellite needs to replicate from the upstream registry. It also contains information about all the artifacts present in it.
 
@@ -117,7 +138,7 @@ curl -X POST http://localhost:8080/api/groups/sync \
 
 > Note: Replace `repository`, `tag`, and `digest` with your artifact details. Use `docker inspect` or Harbor's UI to find the digest.
 
-## Step 5: Configure the Satellite
+## Step 6: Configure the Satellite
 
 Create a config artifact for the satellite. See [config example](https://github.com/container-registry/harbor-satellite/blob/main/examples/config.json). This artifact tells the satellite where Ground Control is located and defines how and when to replicate artifacts. It also includes the local OCI-compliant registry configuration.
 
@@ -161,7 +182,7 @@ curl -i --location 'http://localhost:8080/api/configs' \
 
 > Tip: Adjust `ground_control_url` and `local_registry.url` if running on a different host or port.
 
-## Step 6: Register the Satellite
+## Step 7: Register the Satellite
 
 Register the satellite with the group and configuration created earlier. This request returns a token. Save it for the next step.
 
@@ -178,9 +199,9 @@ curl --location 'http://localhost:8080/api/satellites' \
 
 > Important: Copy the token from the response and store it securely.
 
-## Step 7: Start the Satellite
+## Step 8: Start the Satellite
 
-Use the token from Step 6 to start the satellite. See [.env.example](https://github.com/container-registry/harbor-satellite/blob/main/.env.example).
+Use the token from Step 7 to start the satellite. See [.env.example](https://github.com/container-registry/harbor-satellite/blob/main/.env.example).
 
 ### Option 1: Using Docker Compose (Recommended for End Users)
 
