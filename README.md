@@ -76,6 +76,7 @@ Satellite embeds a Zot registry by default. To use an external registry instead 
 
 | CLI Flag | Env Var | Description |
 |---|---|---|
+| `--harbor-registry-url` | `HARBOR_REGISTRY_URL` | Harbor registry URL as reachable from this satellite |
 | `--byo-registry` | `BYO_REGISTRY` | Enable BYO mode |
 | `--registry-url` | `REGISTRY_URL` | External registry URL (required if BYO) |
 | `--registry-username` | `REGISTRY_USERNAME` | External registry username (optional) |
