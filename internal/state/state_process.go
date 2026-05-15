@@ -473,12 +473,15 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		return result
 	}
 
-	// Direct delivery: write tarballs to k3s/RKE2 image dir after registry push
+	// Direct delivery: write tarballs to k3s/RKE2 image dir after registry push.
+	// Pass the full desired entity list so that any tarball that failed to write
+	// in a prior cycle is retried — the digest map inside DirectDeliverer skips
+	// entries that were already written successfully.
 	if f.directDeliverer != nil {
 		if err := f.directDeliverer.Delete(ctx, deleteEntity); err != nil {
 			stateFetcherLog.Warn().Err(err).Msg("Direct delivery: failed to remove old tarballs")
 		}
-		if err := f.directDeliverer.Deliver(ctx, replicateEntity); err != nil {
+		if err := f.directDeliverer.Deliver(ctx, FetchEntitiesFromState(newState)); err != nil {
 			stateFetcherLog.Warn().Err(err).Msg("Direct delivery: failed to write tarballs")
 		}
 	}
