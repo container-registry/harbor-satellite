@@ -88,9 +88,20 @@ AUDIT_LOG_PATH=/var/log/ground-control/audit.log
 AUDIT_LOG_MAX_SIZE_MB=100
 AUDIT_LOG_MAX_BACKUPS=7
 AUDIT_LOG_MAX_AGE_DAYS=30
+AUDIT_TRUST_FORWARDED_HEADERS=false
 ```
 
 `AUDIT_LOG_ENABLED=false` (default) disables the logger entirely.
+
+`AUDIT_TRUST_FORWARDED_HEADERS=false` (default) is the secure setting: the
+audit `source_ip` is taken from the TCP `RemoteAddr` and cannot be forged by
+clients. Set this to `true` only when GC sits behind a trusted reverse proxy
+that you control; then the first entry of `X-Forwarded-For` (falling back to
+`X-Real-IP`) is used.
+
+When `AUDIT_LOG_ENABLED=true`, the rotation values must be non-negative
+(`MAX_SIZE_MB >= 1`, `MAX_BACKUPS >= 0`, `MAX_AGE_DAYS >= 0`). Invalid input
+causes GC to refuse to start rather than silently drop events.
 
 ## Operational notes
 

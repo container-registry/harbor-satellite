@@ -46,6 +46,12 @@ type Server struct {
 
 	// Audit logger for security events
 	audit *auditlog.AuditLogger
+
+	// trustForwardedHeaders controls whether clientIP() honors
+	// X-Forwarded-For / X-Real-IP. Disabled by default to prevent clients
+	// from spoofing the audit source_ip. Enable only when GC sits behind a
+	// trusted reverse proxy.
+	trustForwardedHeaders bool
 }
 
 // TLSConfig holds TLS settings for the server.
@@ -174,7 +180,8 @@ func NewServer() *ServerResult {
 		staleThreshold: parseDurationEnv("STALE_THRESHOLD", time.Hour),
 
 		// Audit logger
-		audit: auditlog.NewAuditLogger(loadAuditConfig()),
+		audit:                 auditlog.NewAuditLogger(loadAuditConfig()),
+		trustForwardedHeaders: os.Getenv("AUDIT_TRUST_FORWARDED_HEADERS") == "true",
 	}
 
 	// Bootstrap system admin user if not exists
@@ -300,7 +307,9 @@ func buildServerTLSConfigWithWatcher(cfg *TLSConfig, cw *middleware.CertWatcher)
 }
 
 // loadAuditConfig reads audit log settings from environment variables.
-// Disabled by default; set AUDIT_LOG_ENABLED=true to turn on.
+// Disabled by default; set AUDIT_LOG_ENABLED=true to turn on. When enabled,
+// rotation values are validated and the process exits on invalid input rather
+// than silently propagating them to the logger config.
 func loadAuditConfig() auditlog.AuditConfig {
 	enabled := os.Getenv("AUDIT_LOG_ENABLED") == "true"
 	if !enabled {
@@ -308,12 +317,30 @@ func loadAuditConfig() auditlog.AuditConfig {
 	}
 
 	path := getEnvOrDefault("AUDIT_LOG_PATH", "./audit.log")
+	if path == "" {
+		log.Fatalf("AUDIT_LOG_ENABLED=true but AUDIT_LOG_PATH is empty")
+	}
+
+	maxSizeMB := parseIntEnv("AUDIT_LOG_MAX_SIZE_MB", 100)
+	maxBackups := parseIntEnv("AUDIT_LOG_MAX_BACKUPS", 7)
+	maxAgeDays := parseIntEnv("AUDIT_LOG_MAX_AGE_DAYS", 30)
+
+	if maxSizeMB < 1 {
+		log.Fatalf("AUDIT_LOG_MAX_SIZE_MB must be >= 1, got %d", maxSizeMB)
+	}
+	if maxBackups < 0 {
+		log.Fatalf("AUDIT_LOG_MAX_BACKUPS must be >= 0, got %d", maxBackups)
+	}
+	if maxAgeDays < 0 {
+		log.Fatalf("AUDIT_LOG_MAX_AGE_DAYS must be >= 0, got %d", maxAgeDays)
+	}
+
 	return auditlog.AuditConfig{
 		Enabled:    true,
 		FilePath:   path,
-		MaxSizeMB:  parseIntEnv("AUDIT_LOG_MAX_SIZE_MB", 100),
-		MaxBackups: parseIntEnv("AUDIT_LOG_MAX_BACKUPS", 7),
-		MaxAgeDays: parseIntEnv("AUDIT_LOG_MAX_AGE_DAYS", 30),
+		MaxSizeMB:  maxSizeMB,
+		MaxBackups: maxBackups,
+		MaxAgeDays: maxAgeDays,
 	}
 }
 

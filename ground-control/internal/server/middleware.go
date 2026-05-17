@@ -111,14 +111,23 @@ func extractBearerToken(r *http.Request) string {
 	return parts[1]
 }
 
-// clientIP returns the request's source IP, honoring X-Forwarded-For when
-// present and falling back to RemoteAddr.
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if comma := strings.Index(xff, ","); comma > 0 {
-			return strings.TrimSpace(xff[:comma])
+// clientIP returns the request's source IP. By default it returns the host
+// portion of RemoteAddr, ignoring X-Forwarded-For and X-Real-IP because those
+// headers can be set by any client and would make audit source_ip values
+// unreliable. When s.trustForwardedHeaders is true (i.e. GC is behind a
+// trusted reverse proxy), the first entry of X-Forwarded-For is used, then
+// X-Real-IP, then RemoteAddr.
+func (s *Server) clientIP(r *http.Request) string {
+	if s != nil && s.trustForwardedHeaders {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if comma := strings.Index(xff, ","); comma > 0 {
+				return strings.TrimSpace(xff[:comma])
+			}
+			return strings.TrimSpace(xff)
 		}
-		return strings.TrimSpace(xff)
+		if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+			return xri
+		}
 	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host
@@ -129,7 +138,7 @@ func clientIP(r *http.Request) string {
 // auditEvent records a security-relevant event with source IP filled in from
 // the request. It is safe to call when the audit logger is disabled.
 func (s *Server) auditEvent(r *http.Request, eventType auditlog.AuditEventType, actor string, details map[string]any) {
-	s.audit.Log(eventType, actor, clientIP(r), details)
+	s.audit.Log(eventType, actor, s.clientIP(r), details)
 }
 
 func extractBasicAuth(r *http.Request) (username, password string, ok bool) {

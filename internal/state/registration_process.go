@@ -69,7 +69,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to register satellite")
 		audit.Log(logger.EventSatelliteAuthFailure, gcURL, "", map[string]any{
-			"reason": err.Error(),
+			"reason": sanitizeAuditReason(err, z.cm.GetToken()),
 			"flow":   "ztr",
 		})
 		return err
@@ -164,6 +164,22 @@ func (z *ZtrProcess) stop() {
 	z.mu.Lock()
 	defer z.mu.Unlock()
 	z.isRunning = false
+}
+
+// sanitizeAuditReason returns an error string with the satellite token redacted
+// so it is safe to write to the audit log. The token appears as a URL path
+// segment in Go's default HTTP client error messages, so a naive err.Error()
+// emit would leak the secret. The unredacted error is still available via the
+// regular zerolog stream for debugging.
+func sanitizeAuditReason(err error, token string) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	if token != "" {
+		s = strings.ReplaceAll(s, token, "[REDACTED]")
+	}
+	return s
 }
 
 func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSConfig, useUnsecure bool, ctx context.Context) (config.StateConfig, error) {
