@@ -68,6 +68,13 @@ func TestWriteJSONResponse(t *testing.T) {
 			t.Errorf("expected value, got %s", body["key"])
 		}
 	})
+	t.Run("unmarshallable data fallback", func(t *testing.T) {
+    w := httptest.NewRecorder()
+    WriteJSONResponse(w, http.StatusOK, make(chan int))
+    if w.Code != http.StatusInternalServerError {
+        t.Errorf("expected 500, got %d", w.Code)
+    }
+	})
 }
 
 func TestHandleAppError(t *testing.T) {
