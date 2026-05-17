@@ -332,8 +332,13 @@ func loadAuditConfig() auditlog.AuditConfig {
 		return auditlog.AuditConfig{}
 	}
 
-	path := getEnvOrDefault("AUDIT_LOG_PATH", "./audit.log")
-	if path == "" {
+	// Distinguish unset (fall back to default) from set-but-empty
+	// (operator typo — fail loudly). getEnvOrDefault collapses both,
+	// which would make the validation below dead code.
+	path, isSet := os.LookupEnv("AUDIT_LOG_PATH")
+	if !isSet {
+		path = "./audit.log"
+	} else if path == "" {
 		log.Fatalf("AUDIT_LOG_ENABLED=true but AUDIT_LOG_PATH is empty")
 	}
 
