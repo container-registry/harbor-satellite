@@ -154,18 +154,11 @@ func (r *BasicReplicator) replicateOne(
 		return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
 	}
 
-	// Lazy fetch: only the manifest is downloaded, no layer data yet
-	desc, err := remote.Get(src, pullOpts...)
+	// Fetch manifest and resolve to OCI image (no layer data yet).
+	img, err := fetchOCIImage(src, pullOpts)
 	if err != nil {
-		return fmt.Errorf("fetch image descriptor for %s: %w", entity.GetName(), err)
+		return fmt.Errorf("fetch image %s: %w", entity.GetName(), err)
 	}
-
-	img, err := desc.Image()
-	if err != nil {
-		return fmt.Errorf("resolve image %s: %w", entity.GetName(), err)
-	}
-
-	// Lazy OCI conversion, no data materialized
 	ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
 
 	srcDigest, err := ociImage.Digest()
@@ -192,6 +185,20 @@ func (r *BasicReplicator) replicateOne(
 		return fmt.Errorf("write image %s: %w", entity.GetName(), err)
 	}
 	return nil
+}
+
+// fetchOCIImage fetches the manifest from src and resolves it to a v1.Image.
+// Only the manifest is downloaded; layers remain lazy until explicitly read.
+func fetchOCIImage(src name.Reference, pullOpts []remote.Option) (v1.Image, error) {
+	desc, err := remote.Get(src, pullOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("fetch descriptor: %w", err)
+	}
+	img, err := desc.Image()
+	if err != nil {
+		return nil, fmt.Errorf("resolve image: %w", err)
+	}
+	return img, nil
 }
 
 // isUpToDate reports whether the destination already holds an image with the
