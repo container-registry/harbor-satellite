@@ -173,8 +173,7 @@ func (r *BasicReplicator) replicateOne(
 		return fmt.Errorf("compute source digest: %w", err)
 	}
 
-	dstDesc, dstErr := remote.Head(dst, pushOpts...)
-	if dstErr == nil && dstDesc.Digest == srcDigest {
+	if r.isUpToDate(dst, srcDigest, pushOpts) {
 		log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
 		return nil
 	}
@@ -193,6 +192,13 @@ func (r *BasicReplicator) replicateOne(
 		return fmt.Errorf("write image %s: %w", entity.GetName(), err)
 	}
 	return nil
+}
+
+// isUpToDate reports whether the destination already holds an image with the
+// same digest as srcDigest, meaning no transfer is needed.
+func (r *BasicReplicator) isUpToDate(dst name.Reference, srcDigest v1.Hash, pushOpts []remote.Option) bool {
+	dstDesc, err := remote.Head(dst, pushOpts...)
+	return err == nil && dstDesc.Digest == srcDigest
 }
 
 // countMissingLayers checks which source layers are absent from the destination
