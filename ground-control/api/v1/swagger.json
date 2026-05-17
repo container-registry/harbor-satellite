@@ -6,6 +6,7 @@
     "application/json"
   ],
   "schemes": [
+    "https",
     "http"
   ],
   "swagger": "2.0",
@@ -16,13 +17,613 @@
   },
   "basePath": "/",
   "paths": {
-    "/api/logout": {
-      "post": {
+    "/api/configs": {
+      "get": {
+        "tags": [
+          "configs"
+        ],
+        "summary": "List all configs",
+        "operationId": "listConfigs",
+        "responses": {
+          "200": {
+            "description": "Configs listed",
+            "schema": {
+              "$ref": "#/definitions/Configs"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
         "security": [
           {
             "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "post": {
+        "description": "Creates a new satellite configuration and pushes it as an OCI artifact to Harbor.\n",
+        "tags": [
+          "configs"
+        ],
+        "summary": "Create a config",
+        "operationId": "createConfig",
+        "parameters": [
+          {
+            "name": "config",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/CreateConfigRequest"
+            }
           }
         ],
+        "responses": {
+          "201": {
+            "description": "Config created"
+          },
+          "400": {
+            "description": "Invalid config name",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "409": {
+            "description": "Config already exists",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      }
+    },
+    "/api/configs/satellite": {
+      "post": {
+        "tags": [
+          "configs"
+        ],
+        "summary": "Assign a config to a satellite",
+        "operationId": "setSatelliteConfig",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/SatelliteConfigRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Config assigned to satellite",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      }
+    },
+    "/api/configs/{config}": {
+      "get": {
+        "tags": [
+          "configs"
+        ],
+        "summary": "Get a config by name",
+        "operationId": "getConfig",
+        "responses": {
+          "200": {
+            "description": "Config found",
+            "schema": {
+              "$ref": "#/definitions/Config"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Config not found",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "description": "Cannot delete a config that is currently assigned to a satellite.",
+        "tags": [
+          "configs"
+        ],
+        "summary": "Delete a config",
+        "operationId": "deleteConfig",
+        "responses": {
+          "200": {
+            "description": "Config deleted",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "400": {
+            "description": "Config is in use",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "description": "Applies a JSON merge patch to the existing config and pushes the updated OCI artifact.\n",
+        "tags": [
+          "configs"
+        ],
+        "summary": "Update a config",
+        "operationId": "updateConfig",
+        "parameters": [
+          {
+            "name": "config_patch",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/UpdateConfigRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Config updated",
+            "schema": {
+              "$ref": "#/definitions/Config"
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Config not found",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "type": "string",
+          "name": "config",
+          "in": "path",
+          "required": true
+        }
+      ]
+    },
+    "/api/groups": {
+      "get": {
+        "tags": [
+          "groups"
+        ],
+        "summary": "List all groups",
+        "operationId": "listGroups",
+        "responses": {
+          "200": {
+            "description": "Groups listed",
+            "schema": {
+              "$ref": "#/definitions/Groups"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      }
+    },
+    "/api/groups/satellite": {
+      "post": {
+        "tags": [
+          "groups"
+        ],
+        "summary": "Add a satellite to a group",
+        "operationId": "addSatelliteToGroup",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/SatelliteGroupRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Satellite added to group",
+            "schema": {
+              "$ref": "#/definitions/MessageResponse"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "groups"
+        ],
+        "summary": "Remove a satellite from a group",
+        "operationId": "removeSatelliteFromGroup",
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/SatelliteGroupRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Satellite removed from group",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      }
+    },
+    "/api/groups/sync": {
+      "post": {
+        "description": "Creates the group if it does not exist, updates its artifact list, syncs Harbor robot account permissions, and pushes an OCI state artifact.\n",
+        "tags": [
+          "groups"
+        ],
+        "summary": "Create or update a group with its artifact list",
+        "operationId": "syncGroup",
+        "parameters": [
+          {
+            "name": "group",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/GroupSyncRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Group synced",
+            "schema": {
+              "$ref": "#/definitions/Group"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "502": {
+            "description": "Harbor registry unreachable",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      }
+    },
+    "/api/groups/{group}": {
+      "get": {
+        "tags": [
+          "groups"
+        ],
+        "summary": "Get a group by name",
+        "operationId": "getGroup",
+        "responses": {
+          "200": {
+            "description": "Group found",
+            "schema": {
+              "$ref": "#/definitions/Group"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Group not found",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "description": "Requires system admin role.",
+        "tags": [
+          "groups"
+        ],
+        "summary": "Delete a group",
+        "operationId": "deleteGroup",
+        "responses": {
+          "200": {
+            "description": "Group deleted",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "403": {
+            "description": "Forbidden – requires system admin",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "type": "string",
+          "name": "group",
+          "in": "path",
+          "required": true
+        }
+      ]
+    },
+    "/api/groups/{group}/satellites": {
+      "get": {
+        "tags": [
+          "groups"
+        ],
+        "summary": "List satellites in a group",
+        "operationId": "listGroupSatellites",
+        "responses": {
+          "200": {
+            "description": "Satellites listed",
+            "schema": {
+              "$ref": "#/definitions/Satellites"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Group not found",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "type": "string",
+          "name": "group",
+          "in": "path",
+          "required": true
+        }
+      ]
+    },
+    "/api/logout": {
+      "post": {
         "description": "Requires a bearer token for session invalidation.",
         "tags": [
           "auth"
@@ -45,11 +646,41 @@
               "$ref": "#/definitions/ErrorResponse"
             }
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
-    "/api/users": {
+    "/api/satellites": {
       "get": {
+        "tags": [
+          "satellites"
+        ],
+        "summary": "List all satellites",
+        "operationId": "listSatellites",
+        "responses": {
+          "200": {
+            "description": "Satellites listed",
+            "schema": {
+              "$ref": "#/definitions/Satellites"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
         "security": [
           {
             "BearerAuth": []
@@ -57,7 +688,317 @@
           {
             "BasicAuth": []
           }
+        ]
+      },
+      "post": {
+        "description": "Registers a satellite, creates a Harbor robot account, and returns a one-time Zero-Touch Registration token. Disabled when SPIFFE authentication is enabled.\n",
+        "tags": [
+          "satellites"
         ],
+        "summary": "Register a new satellite",
+        "operationId": "registerSatellite",
+        "parameters": [
+          {
+            "name": "satellite",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/RegisterSatelliteRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Satellite registered",
+            "schema": {
+              "$ref": "#/definitions/RegisterSatelliteResponse"
+            }
+          },
+          "400": {
+            "description": "Invalid request or SPIFFE is enabled",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      }
+    },
+    "/api/satellites/active": {
+      "get": {
+        "tags": [
+          "satellites"
+        ],
+        "summary": "List satellites that reported recently",
+        "operationId": "getActiveSatellites",
+        "responses": {
+          "200": {
+            "description": "Active satellites listed",
+            "schema": {
+              "$ref": "#/definitions/Satellites"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      }
+    },
+    "/api/satellites/stale": {
+      "get": {
+        "tags": [
+          "satellites"
+        ],
+        "summary": "List satellites that have not reported recently",
+        "operationId": "getStaleSatellites",
+        "responses": {
+          "200": {
+            "description": "Stale satellites listed",
+            "schema": {
+              "$ref": "#/definitions/Satellites"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      }
+    },
+    "/api/satellites/{satellite}": {
+      "get": {
+        "tags": [
+          "satellites"
+        ],
+        "summary": "Get a satellite by name",
+        "operationId": "getSatellite",
+        "responses": {
+          "200": {
+            "description": "Satellite found",
+            "schema": {
+              "$ref": "#/definitions/Satellite"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Satellite not found or internal error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "description": "Deletes the satellite record, its Harbor robot account, and the associated state artifact.\n",
+        "tags": [
+          "satellites"
+        ],
+        "summary": "Delete a satellite",
+        "operationId": "deleteSatellite",
+        "responses": {
+          "200": {
+            "description": "Satellite deleted",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "type": "string",
+          "name": "satellite",
+          "in": "path",
+          "required": true
+        }
+      ]
+    },
+    "/api/satellites/{satellite}/images": {
+      "get": {
+        "tags": [
+          "satellites"
+        ],
+        "summary": "Get cached images for a satellite",
+        "operationId": "getCachedImages",
+        "responses": {
+          "200": {
+            "description": "Cached images listed",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/CachedArtifact"
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Satellite not found",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "type": "string",
+          "name": "satellite",
+          "in": "path",
+          "required": true
+        }
+      ]
+    },
+    "/api/satellites/{satellite}/status": {
+      "get": {
+        "tags": [
+          "satellites"
+        ],
+        "summary": "Get latest status for a satellite",
+        "operationId": "getSatelliteStatus",
+        "responses": {
+          "200": {
+            "description": "Status returned",
+            "schema": {
+              "$ref": "#/definitions/SatelliteStatus"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          },
+          "404": {
+            "description": "Satellite or status not found",
+            "schema": {
+              "$ref": "#/definitions/ErrorResponse"
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
+      },
+      "parameters": [
+        {
+          "type": "string",
+          "name": "satellite",
+          "in": "path",
+          "required": true
+        }
+      ]
+    },
+    "/api/users": {
+      "get": {
         "description": "Bearer auth is recommended. Basic auth remains supported.",
         "tags": [
           "users"
@@ -83,9 +1024,7 @@
               "$ref": "#/definitions/ErrorResponse"
             }
           }
-        }
-      },
-      "post": {
+        },
         "security": [
           {
             "BearerAuth": []
@@ -93,7 +1032,9 @@
           {
             "BasicAuth": []
           }
-        ],
+        ]
+      },
+      "post": {
         "description": "Requires a system admin user. Bearer auth is recommended.",
         "tags": [
           "users"
@@ -147,11 +1088,7 @@
               "$ref": "#/definitions/ErrorResponse"
             }
           }
-        }
-      }
-    },
-    "/api/users/password": {
-      "patch": {
+        },
         "security": [
           {
             "BearerAuth": []
@@ -159,7 +1096,11 @@
           {
             "BasicAuth": []
           }
-        ],
+        ]
+      }
+    },
+    "/api/users/password": {
+      "patch": {
         "description": "Bearer auth is recommended. Basic auth remains supported.",
         "tags": [
           "users"
@@ -198,11 +1139,7 @@
               "$ref": "#/definitions/ErrorResponse"
             }
           }
-        }
-      }
-    },
-    "/api/users/{username}": {
-      "get": {
+        },
         "security": [
           {
             "BearerAuth": []
@@ -210,7 +1147,11 @@
           {
             "BasicAuth": []
           }
-        ],
+        ]
+      }
+    },
+    "/api/users/{username}": {
+      "get": {
         "description": "Bearer auth is recommended. Basic auth remains supported.",
         "tags": [
           "users"
@@ -242,9 +1183,7 @@
               "$ref": "#/definitions/ErrorResponse"
             }
           }
-        }
-      },
-      "delete": {
+        },
         "security": [
           {
             "BearerAuth": []
@@ -252,7 +1191,9 @@
           {
             "BasicAuth": []
           }
-        ],
+        ]
+      },
+      "delete": {
         "description": "Requires a system admin user. Bearer auth is recommended.",
         "tags": [
           "users"
@@ -293,7 +1234,15 @@
               "$ref": "#/definitions/ErrorResponse"
             }
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
       },
       "parameters": [
         {
@@ -306,14 +1255,6 @@
     },
     "/api/users/{username}/password": {
       "patch": {
-        "security": [
-          {
-            "BearerAuth": []
-          },
-          {
-            "BasicAuth": []
-          }
-        ],
         "description": "Requires a system admin user. Bearer auth is recommended.",
         "tags": [
           "users"
@@ -364,7 +1305,15 @@
               "$ref": "#/definitions/ErrorResponse"
             }
           }
-        }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "BasicAuth": []
+          }
+        ]
       },
       "parameters": [
         {
@@ -462,6 +1411,26 @@
     }
   },
   "definitions": {
+    "CachedArtifact": {
+      "type": "object",
+      "properties": {
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "id": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "reference": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
     "ChangeOwnPasswordRequest": {
       "type": "object",
       "required": [
@@ -491,6 +1460,64 @@
         }
       }
     },
+    "Config": {
+      "type": "object",
+      "required": [
+        "id",
+        "config_name",
+        "registry_url",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "config": {
+          "description": "Satellite configuration (state_config, app_config, zot_config)",
+          "type": "object"
+        },
+        "config_name": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "id": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "registry_url": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "Configs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Config"
+      }
+    },
+    "CreateConfigRequest": {
+      "type": "object",
+      "required": [
+        "config_name"
+      ],
+      "properties": {
+        "config": {
+          "description": "Satellite configuration object with state_config, app_config, and zot_config",
+          "type": "object"
+        },
+        "config_name": {
+          "type": "string"
+        },
+        "registry": {
+          "type": "string"
+        }
+      }
+    },
     "CreateUserRequest": {
       "type": "object",
       "required": [
@@ -516,6 +1543,94 @@
         "error": {
           "type": "string"
         }
+      }
+    },
+    "Group": {
+      "type": "object",
+      "required": [
+        "id",
+        "group_name",
+        "registry_url",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "group_name": {
+          "type": "string"
+        },
+        "id": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "registry_url": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "GroupArtifact": {
+      "type": "object",
+      "properties": {
+        "deleted": {
+          "type": "boolean"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "object"
+        },
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "type": {
+          "type": "string"
+        }
+      }
+    },
+    "GroupSyncRequest": {
+      "type": "object",
+      "required": [
+        "group"
+      ],
+      "properties": {
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/GroupArtifact"
+          }
+        },
+        "group": {
+          "type": "string"
+        },
+        "registry": {
+          "type": "string"
+        }
+      }
+    },
+    "Groups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Group"
       }
     },
     "HealthResponse": {
@@ -565,9 +1680,191 @@
         }
       }
     },
+    "MessageResponse": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      }
+    },
     "PingResponse": {
       "type": "string",
       "example": "pong"
+    },
+    "RegisterSatelliteRequest": {
+      "type": "object",
+      "required": [
+        "name",
+        "config_name"
+      ],
+      "properties": {
+        "config_name": {
+          "type": "string"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "RegisterSatelliteResponse": {
+      "type": "object",
+      "required": [
+        "token"
+      ],
+      "properties": {
+        "token": {
+          "type": "string"
+        }
+      }
+    },
+    "Satellite": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "heartbeat_interval": {
+          "type": "string",
+          "x-nullable": true
+        },
+        "id": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "last_seen": {
+          "type": "string",
+          "format": "date-time",
+          "x-nullable": true
+        },
+        "name": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "SatelliteConfigRequest": {
+      "type": "object",
+      "required": [
+        "satellite",
+        "config_name"
+      ],
+      "properties": {
+        "config_name": {
+          "type": "string"
+        },
+        "satellite": {
+          "type": "string"
+        }
+      }
+    },
+    "SatelliteGroupRequest": {
+      "type": "object",
+      "required": [
+        "satellite",
+        "group"
+      ],
+      "properties": {
+        "group": {
+          "type": "string"
+        },
+        "satellite": {
+          "type": "string"
+        }
+      }
+    },
+    "SatelliteStatus": {
+      "type": "object",
+      "properties": {
+        "activity": {
+          "type": "string"
+        },
+        "cpu_percent": {
+          "type": "string",
+          "x-nullable": true
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "id": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "image_count": {
+          "type": "integer",
+          "format": "int32",
+          "x-nullable": true
+        },
+        "last_sync_duration_ms": {
+          "type": "integer",
+          "format": "int64",
+          "x-nullable": true
+        },
+        "latest_config_digest": {
+          "type": "string",
+          "x-nullable": true
+        },
+        "latest_state_digest": {
+          "type": "string",
+          "x-nullable": true
+        },
+        "memory_used_bytes": {
+          "type": "integer",
+          "format": "int64",
+          "x-nullable": true
+        },
+        "reported_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "satellite_id": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "storage_used_bytes": {
+          "type": "integer",
+          "format": "int64",
+          "x-nullable": true
+        }
+      }
+    },
+    "Satellites": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Satellite"
+      }
+    },
+    "UpdateConfigRequest": {
+      "description": "Partial config object used as a JSON merge patch",
+      "type": "object",
+      "properties": {
+        "app_config": {
+          "type": "object"
+        },
+        "state_config": {
+          "type": "object"
+        },
+        "zot_config": {
+          "type": "object"
+        }
+      }
     },
     "User": {
       "type": "object",
@@ -621,6 +1918,15 @@
     },
     {
       "name": "users"
+    },
+    {
+      "name": "satellites"
+    },
+    {
+      "name": "groups"
+    },
+    {
+      "name": "configs"
     }
   ]
 }

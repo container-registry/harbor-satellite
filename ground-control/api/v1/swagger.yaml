@@ -8,6 +8,7 @@ info:
     authenticated human endpoints for automation compatibility.
 basePath: /
 schemes:
+  - https
   - http
 consumes:
   - application/json
@@ -17,6 +18,9 @@ tags:
   - name: system
   - name: auth
   - name: users
+  - name: satellites
+  - name: groups
+  - name: configs
 securityDefinitions:
   BearerAuth:
     type: apiKey
@@ -120,6 +124,249 @@ definitions:
       - error
     properties:
       error:
+        type: string
+  MessageResponse:
+    type: object
+    properties:
+      message:
+        type: string
+  Satellite:
+    type: object
+    required:
+      - id
+      - name
+      - created_at
+      - updated_at
+    properties:
+      id:
+        type: integer
+        format: int32
+      name:
+        type: string
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time
+      last_seen:
+        type: string
+        format: date-time
+        x-nullable: true
+      heartbeat_interval:
+        type: string
+        x-nullable: true
+  Satellites:
+    type: array
+    items:
+      $ref: '#/definitions/Satellite'
+  RegisterSatelliteRequest:
+    type: object
+    required:
+      - name
+      - config_name
+    properties:
+      name:
+        type: string
+      groups:
+        type: array
+        items:
+          type: string
+      config_name:
+        type: string
+  RegisterSatelliteResponse:
+    type: object
+    required:
+      - token
+    properties:
+      token:
+        type: string
+  SatelliteStatus:
+    type: object
+    properties:
+      id:
+        type: integer
+        format: int32
+      satellite_id:
+        type: integer
+        format: int32
+      activity:
+        type: string
+      latest_state_digest:
+        type: string
+        x-nullable: true
+      latest_config_digest:
+        type: string
+        x-nullable: true
+      cpu_percent:
+        type: string
+        x-nullable: true
+      memory_used_bytes:
+        type: integer
+        format: int64
+        x-nullable: true
+      storage_used_bytes:
+        type: integer
+        format: int64
+        x-nullable: true
+      last_sync_duration_ms:
+        type: integer
+        format: int64
+        x-nullable: true
+      image_count:
+        type: integer
+        format: int32
+        x-nullable: true
+      reported_at:
+        type: string
+        format: date-time
+      created_at:
+        type: string
+        format: date-time
+  CachedArtifact:
+    type: object
+    properties:
+      id:
+        type: integer
+        format: int32
+      reference:
+        type: string
+      size_bytes:
+        type: integer
+        format: int64
+      created_at:
+        type: string
+        format: date-time
+  Group:
+    type: object
+    required:
+      - id
+      - group_name
+      - registry_url
+      - created_at
+      - updated_at
+    properties:
+      id:
+        type: integer
+        format: int32
+      group_name:
+        type: string
+      registry_url:
+        type: string
+      projects:
+        type: array
+        items:
+          type: string
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time
+  Groups:
+    type: array
+    items:
+      $ref: '#/definitions/Group'
+  GroupArtifact:
+    type: object
+    properties:
+      repository:
+        type: string
+      tag:
+        type: array
+        items:
+          type: string
+      labels:
+        type: object
+      type:
+        type: string
+      digest:
+        type: string
+      deleted:
+        type: boolean
+  GroupSyncRequest:
+    type: object
+    required:
+      - group
+    properties:
+      group:
+        type: string
+      registry:
+        type: string
+      artifacts:
+        type: array
+        items:
+          $ref: '#/definitions/GroupArtifact'
+  SatelliteGroupRequest:
+    type: object
+    required:
+      - satellite
+      - group
+    properties:
+      satellite:
+        type: string
+      group:
+        type: string
+  Config:
+    type: object
+    required:
+      - id
+      - config_name
+      - registry_url
+      - created_at
+      - updated_at
+    properties:
+      id:
+        type: integer
+        format: int32
+      config_name:
+        type: string
+      registry_url:
+        type: string
+      config:
+        type: object
+        description: Satellite configuration (state_config, app_config, zot_config)
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time
+  Configs:
+    type: array
+    items:
+      $ref: '#/definitions/Config'
+  CreateConfigRequest:
+    type: object
+    required:
+      - config_name
+    properties:
+      config_name:
+        type: string
+      registry:
+        type: string
+      config:
+        type: object
+        description: Satellite configuration object with state_config, app_config, and zot_config
+  UpdateConfigRequest:
+    type: object
+    description: Partial config object used as a JSON merge patch
+    properties:
+      state_config:
+        type: object
+      app_config:
+        type: object
+      zot_config:
+        type: object
+  SatelliteConfigRequest:
+    type: object
+    required:
+      - satellite
+      - config_name
+    properties:
+      satellite:
+        type: string
+      config_name:
         type: string
 paths:
   /ping:
@@ -393,6 +640,595 @@ paths:
             $ref: '#/definitions/ErrorResponse'
         '404':
           description: User not found
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  # ── Satellite endpoints ──────────────────────────────────────────
+  /api/satellites:
+    get:
+      tags:
+        - satellites
+      operationId: listSatellites
+      summary: List all satellites
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Satellites listed
+          schema:
+            $ref: '#/definitions/Satellites'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+    post:
+      tags:
+        - satellites
+      operationId: registerSatellite
+      summary: Register a new satellite
+      description: >
+        Registers a satellite, creates a Harbor robot account, and returns
+        a one-time Zero-Touch Registration token. Disabled when SPIFFE
+        authentication is enabled.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      parameters:
+        - in: body
+          name: satellite
+          required: true
+          schema:
+            $ref: '#/definitions/RegisterSatelliteRequest'
+      responses:
+        '200':
+          description: Satellite registered
+          schema:
+            $ref: '#/definitions/RegisterSatelliteResponse'
+        '400':
+          description: Invalid request or SPIFFE is enabled
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/satellites/active:
+    get:
+      tags:
+        - satellites
+      operationId: getActiveSatellites
+      summary: List satellites that reported recently
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Active satellites listed
+          schema:
+            $ref: '#/definitions/Satellites'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/satellites/stale:
+    get:
+      tags:
+        - satellites
+      operationId: getStaleSatellites
+      summary: List satellites that have not reported recently
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Stale satellites listed
+          schema:
+            $ref: '#/definitions/Satellites'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/satellites/{satellite}:
+    parameters:
+      - name: satellite
+        in: path
+        required: true
+        type: string
+    get:
+      tags:
+        - satellites
+      operationId: getSatellite
+      summary: Get a satellite by name
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Satellite found
+          schema:
+            $ref: '#/definitions/Satellite'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Satellite not found or internal error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+    delete:
+      tags:
+        - satellites
+      operationId: deleteSatellite
+      summary: Delete a satellite
+      description: >
+        Deletes the satellite record, its Harbor robot account, and the
+        associated state artifact.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Satellite deleted
+          schema:
+            type: object
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/satellites/{satellite}/status:
+    parameters:
+      - name: satellite
+        in: path
+        required: true
+        type: string
+    get:
+      tags:
+        - satellites
+      operationId: getSatelliteStatus
+      summary: Get latest status for a satellite
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Status returned
+          schema:
+            $ref: '#/definitions/SatelliteStatus'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: Satellite or status not found
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/satellites/{satellite}/images:
+    parameters:
+      - name: satellite
+        in: path
+        required: true
+        type: string
+    get:
+      tags:
+        - satellites
+      operationId: getCachedImages
+      summary: Get cached images for a satellite
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Cached images listed
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/CachedArtifact'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: Satellite not found
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  # ── Group endpoints ──────────────────────────────────────────────
+  /api/groups:
+    get:
+      tags:
+        - groups
+      operationId: listGroups
+      summary: List all groups
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Groups listed
+          schema:
+            $ref: '#/definitions/Groups'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/groups/sync:
+    post:
+      tags:
+        - groups
+      operationId: syncGroup
+      summary: Create or update a group with its artifact list
+      description: >
+        Creates the group if it does not exist, updates its artifact list,
+        syncs Harbor robot account permissions, and pushes an OCI state
+        artifact.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      parameters:
+        - in: body
+          name: group
+          required: true
+          schema:
+            $ref: '#/definitions/GroupSyncRequest'
+      responses:
+        '200':
+          description: Group synced
+          schema:
+            $ref: '#/definitions/Group'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '502':
+          description: Harbor registry unreachable
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/groups/{group}:
+    parameters:
+      - name: group
+        in: path
+        required: true
+        type: string
+    get:
+      tags:
+        - groups
+      operationId: getGroup
+      summary: Get a group by name
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Group found
+          schema:
+            $ref: '#/definitions/Group'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: Group not found
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+    delete:
+      tags:
+        - groups
+      operationId: deleteGroup
+      summary: Delete a group
+      description: Requires system admin role.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Group deleted
+          schema:
+            type: object
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '403':
+          description: Forbidden – requires system admin
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/groups/{group}/satellites:
+    parameters:
+      - name: group
+        in: path
+        required: true
+        type: string
+    get:
+      tags:
+        - groups
+      operationId: listGroupSatellites
+      summary: List satellites in a group
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Satellites listed
+          schema:
+            $ref: '#/definitions/Satellites'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: Group not found
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/groups/satellite:
+    post:
+      tags:
+        - groups
+      operationId: addSatelliteToGroup
+      summary: Add a satellite to a group
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/SatelliteGroupRequest'
+      responses:
+        '200':
+          description: Satellite added to group
+          schema:
+            $ref: '#/definitions/MessageResponse'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+    delete:
+      tags:
+        - groups
+      operationId: removeSatelliteFromGroup
+      summary: Remove a satellite from a group
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/SatelliteGroupRequest'
+      responses:
+        '200':
+          description: Satellite removed from group
+          schema:
+            type: object
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  # ── Config endpoints ─────────────────────────────────────────────
+  /api/configs:
+    get:
+      tags:
+        - configs
+      operationId: listConfigs
+      summary: List all configs
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Configs listed
+          schema:
+            $ref: '#/definitions/Configs'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+    post:
+      tags:
+        - configs
+      operationId: createConfig
+      summary: Create a config
+      description: >
+        Creates a new satellite configuration and pushes it as an OCI
+        artifact to Harbor.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      parameters:
+        - in: body
+          name: config
+          required: true
+          schema:
+            $ref: '#/definitions/CreateConfigRequest'
+      responses:
+        '201':
+          description: Config created
+        '400':
+          description: Invalid config name
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '409':
+          description: Config already exists
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/configs/{config}:
+    parameters:
+      - name: config
+        in: path
+        required: true
+        type: string
+    get:
+      tags:
+        - configs
+      operationId: getConfig
+      summary: Get a config by name
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Config found
+          schema:
+            $ref: '#/definitions/Config'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: Config not found
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+    patch:
+      tags:
+        - configs
+      operationId: updateConfig
+      summary: Update a config
+      description: >
+        Applies a JSON merge patch to the existing config and pushes the
+        updated OCI artifact.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      parameters:
+        - in: body
+          name: config_patch
+          required: true
+          schema:
+            $ref: '#/definitions/UpdateConfigRequest'
+      responses:
+        '200':
+          description: Config updated
+          schema:
+            $ref: '#/definitions/Config'
+        '400':
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: Config not found
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+    delete:
+      tags:
+        - configs
+      operationId: deleteConfig
+      summary: Delete a config
+      description: Cannot delete a config that is currently assigned to a satellite.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Config deleted
+          schema:
+            type: object
+        '400':
+          description: Config is in use
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/configs/satellite:
+    post:
+      tags:
+        - configs
+      operationId: setSatelliteConfig
+      summary: Assign a config to a satellite
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/SatelliteConfigRequest'
+      responses:
+        '200':
+          description: Config assigned to satellite
+          schema:
+            type: object
+        '401':
+          description: Unauthorized
           schema:
             $ref: '#/definitions/ErrorResponse'
         '500':
