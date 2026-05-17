@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,10 @@ type Scheduler struct {
 	interval time.Duration
 	mu       sync.Mutex
 	wg       sync.WaitGroup
+	// jitterFn returns a random offset in [0, n) used to stagger the first
+	// execution across a fleet. Defaults to rand.Int63n. Tests override this
+	// to produce deterministic behaviour.
+	jitterFn func(n int64) int64
 }
 
 // NewSchedulerWithInterval creates a new scheduler with a parsed interval string
@@ -35,6 +40,7 @@ func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog
 		process:  process,
 		log:      log,
 		interval: duration,
+		jitterFn: rand.Int63n,
 	}
 
 	return scheduler, nil
@@ -57,7 +63,30 @@ func (s *Scheduler) run(ctx context.Context) {
 		Dur("interval", s.interval).
 		Msg("Starting scheduler")
 
-	// Run once immediately
+	// Spread the first execution across [0, interval) so that a fleet of
+	// satellites restarting together does not hammer Ground Control in a
+	// single simultaneous burst. Each satellite draws a different random
+	// offset, turning a 600-request spike into a smooth ramp.
+	jitter := time.Duration(s.jitterFn(int64(s.interval)))
+	s.log.Debug().
+		Str("Process", s.process.Name()).
+		Dur("jitter", jitter).
+		Msg("Scheduler: delaying first run to spread fleet restarts")
+	select {
+	case <-ctx.Done():
+		s.log.Info().
+			Str("Process", s.process.Name()).
+			Msg("Scheduler received cancellation signal. Exiting...")
+		return
+	case <-time.After(jitter):
+	}
+	// Drain any tick that fired during the jitter window so the first
+	// scheduled interval begins cleanly after the initial execution.
+	select {
+	case <-s.ticker.C:
+	default:
+	}
+
 	s.launchProcess(ctx)
 
 	for {

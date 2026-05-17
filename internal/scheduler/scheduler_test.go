@@ -65,6 +65,7 @@ func TestStop_WaitsForInflightProcess(t *testing.T) {
 
 	sched, err := NewSchedulerWithInterval("@every 1h", proc, nopLogger())
 	require.NoError(t, err)
+	sched.jitterFn = func(int64) int64 { return 0 } // zero jitter: fire immediately
 
 	ctx, cancel := context.WithCancel(context.Background())
 	sched.Start(ctx)
@@ -114,6 +115,7 @@ func TestStop_RespectsContextTimeout(t *testing.T) {
 
 	sched, err := NewSchedulerWithInterval("@every 1h", proc, nopLogger())
 	require.NoError(t, err)
+	sched.jitterFn = func(int64) int64 { return 0 } // zero jitter: fire immediately
 
 	ctx, cancel := context.WithCancel(context.Background())
 	sched.Start(ctx)
@@ -224,4 +226,124 @@ func TestMultipleSchedulers_GracefulShutdown(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for all schedulers to stop")
 	}
+}
+
+// TestScheduler_JitterBounds verifies that the startup jitter is drawn from
+// [0, interval) — never negative, never equal to or beyond the interval.
+func TestScheduler_JitterBounds(t *testing.T) {
+	var capturedMax int64
+	proc := &mockProcess{name: "probe"}
+
+	sched, err := NewSchedulerWithInterval("@every 10s", proc, nopLogger())
+	require.NoError(t, err)
+
+	sched.jitterFn = func(n int64) int64 {
+		capturedMax = n
+		return n / 2 // deterministic midpoint
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	sched.Start(ctx)
+	// Wait long enough for the jitter (5s midpoint) to elapse, then cancel.
+	// We don't actually wait 5s in the test — we just verify the jitterFn was
+	// called with the right bound and cancel immediately.
+	cancel()
+	_ = sched.Stop(context.Background())
+
+	require.Equal(t, int64(10*time.Second), capturedMax,
+		"jitter upper bound must equal the scheduler interval")
+}
+
+// TestScheduler_ContextCancelDuringJitter verifies that cancelling the context
+// while the scheduler is sleeping through its startup jitter causes a clean exit
+// without ever firing the process.
+func TestScheduler_ContextCancelDuringJitter(t *testing.T) {
+	proc := &mockProcess{name: "never-runs"}
+
+	sched, err := NewSchedulerWithInterval("@every 1h", proc, nopLogger())
+	require.NoError(t, err)
+	// Full-interval jitter: the scheduler would wait 1h before first execution.
+	sched.jitterFn = func(n int64) int64 { return n }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	sched.Start(ctx)
+
+	// Cancel immediately — scheduler must exit during jitter, not hang.
+	cancel()
+
+	stopDone := make(chan struct{})
+	go func() {
+		_ = sched.Stop(context.Background())
+		close(stopDone)
+	}()
+
+	select {
+	case <-stopDone:
+		// exited cleanly during jitter window
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("scheduler did not exit after context cancel during jitter")
+	}
+
+	require.Zero(t, proc.execCount.Load(), "process must not fire when context is cancelled during jitter")
+}
+
+// TestScheduler_JitterSpreadsFirstFire simulates the fleet-restart scenario:
+// N schedulers start at the same instant with different jitter offsets and their
+// first execution times must be spread across [0, interval), not all at T=0.
+func TestScheduler_JitterSpreadsFirstFire(t *testing.T) {
+	const numSatellites = 10
+	const interval = 100 * time.Millisecond
+
+	firstFireTimes := make([]time.Duration, numSatellites)
+	start := time.Now()
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for i := range numSatellites {
+		wg.Add(1)
+		idx := i
+		proc := &mockProcess{name: "satellite"}
+		proc.execFn = func(_ context.Context) error {
+			mu.Lock()
+			firstFireTimes[idx] = time.Since(start)
+			mu.Unlock()
+			return nil
+		}
+
+		sched, err := NewSchedulerWithInterval("@every 100ms", proc, nopLogger())
+		require.NoError(t, err)
+		// Each satellite gets a fixed, distinct jitter offset.
+		fixedJitter := time.Duration(idx) * (interval / numSatellites)
+		sched.jitterFn = func(int64) int64 { return int64(fixedJitter) }
+
+		ctx, cancel := context.WithTimeout(context.Background(), interval*3)
+		sched.Start(ctx)
+		go func() {
+			defer wg.Done()
+			<-ctx.Done()
+			_ = sched.Stop(context.Background())
+			cancel()
+		}()
+	}
+
+	wg.Wait()
+
+	// The spread between the earliest and latest first-fire must be at least
+	// half the interval. With 10 evenly-spaced offsets over 100ms (0,10,20,...90ms)
+	// the real spread should be ~90ms. Requiring ≥50ms gives plenty of headroom
+	// for scheduling jitter while still proving the fires are not clustered at T=0.
+	var earliest, latest time.Duration
+	for i, ft := range firstFireTimes {
+		if i == 0 || ft < earliest {
+			earliest = ft
+		}
+		if ft > latest {
+			latest = ft
+		}
+	}
+	spread := latest - earliest
+	require.GreaterOrEqual(t, spread, interval/2,
+		"first-fire times are not spread out: earliest=%v latest=%v spread=%v (want ≥%v)",
+		earliest, latest, spread, interval/2)
 }
