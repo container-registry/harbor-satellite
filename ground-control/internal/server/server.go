@@ -256,6 +256,22 @@ func parseIntEnv(key string, defaultValue int) int {
 	return defaultValue
 }
 
+// parseRequiredIntEnv returns the int value of an env var, or defaultValue if
+// the var is unset. If the var is set but cannot be parsed as an integer, the
+// process exits. Use for env values where silent fallback to a default would
+// mask operator misconfiguration (e.g. audit log rotation knobs).
+func parseRequiredIntEnv(key string, defaultValue int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultValue
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		log.Fatalf("%s must be an integer, got %q", key, v)
+	}
+	return n
+}
+
 func parseDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
@@ -321,9 +337,9 @@ func loadAuditConfig() auditlog.AuditConfig {
 		log.Fatalf("AUDIT_LOG_ENABLED=true but AUDIT_LOG_PATH is empty")
 	}
 
-	maxSizeMB := parseIntEnv("AUDIT_LOG_MAX_SIZE_MB", 100)
-	maxBackups := parseIntEnv("AUDIT_LOG_MAX_BACKUPS", 7)
-	maxAgeDays := parseIntEnv("AUDIT_LOG_MAX_AGE_DAYS", 30)
+	maxSizeMB := parseRequiredIntEnv("AUDIT_LOG_MAX_SIZE_MB", 100)
+	maxBackups := parseRequiredIntEnv("AUDIT_LOG_MAX_BACKUPS", 7)
+	maxAgeDays := parseRequiredIntEnv("AUDIT_LOG_MAX_AGE_DAYS", 30)
 
 	if maxSizeMB < 1 {
 		log.Fatalf("AUDIT_LOG_MAX_SIZE_MB must be >= 1, got %d", maxSizeMB)
