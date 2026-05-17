@@ -2,8 +2,9 @@ package scheduler
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -40,7 +41,7 @@ func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog
 		process:  process,
 		log:      log,
 		interval: duration,
-		jitterFn: rand.Int63n,
+		jitterFn: cryptoRandInt63n,
 	}
 
 	return scheduler, nil
@@ -72,13 +73,20 @@ func (s *Scheduler) run(ctx context.Context) {
 		Str("Process", s.process.Name()).
 		Dur("jitter", jitter).
 		Msg("Scheduler: delaying first run to spread fleet restarts")
+	jitterTimer := time.NewTimer(jitter)
 	select {
 	case <-ctx.Done():
+		if !jitterTimer.Stop() {
+			select {
+			case <-jitterTimer.C:
+			default:
+			}
+		}
 		s.log.Info().
 			Str("Process", s.process.Name()).
 			Msg("Scheduler received cancellation signal. Exiting...")
 		return
-	case <-time.After(jitter):
+	case <-jitterTimer.C:
 	}
 	// Drain any tick that fired during the jitter window so the first
 	// scheduled interval begins cleanly after the initial execution.
@@ -185,6 +193,19 @@ func (s *Scheduler) launchProcess(ctx context.Context) {
 			Str("Process", s.process.Name()).
 			Msg("Process already executing")
 	}
+}
+
+// cryptoRandInt63n returns a cryptographically secure random int64 in [0, n).
+// Used as the default jitterFn so that gosec G404 (weak RNG) is not triggered.
+func cryptoRandInt63n(n int64) int64 {
+	if n <= 0 {
+		return 0
+	}
+	val, err := cryptorand.Int(cryptorand.Reader, big.NewInt(n))
+	if err != nil {
+		return 0
+	}
+	return val.Int64()
 }
 
 func parseEveryExpr(expr string) (time.Duration, error) {
