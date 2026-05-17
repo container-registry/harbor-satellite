@@ -200,6 +200,80 @@ func getGroupStates(ctx context.Context, groups []database.SatelliteGroup, q *da
 	return states, nil
 }
 
+type satelliteStateDetails struct {
+	Satellite   database.Satellite
+	Config      database.Config
+	GroupStates []string
+	Projects    []string
+}
+
+func buildSatelliteStateDetails(ctx context.Context, q *database.Queries, satelliteID int32) (*satelliteStateDetails, error) {
+	sat, err := q.GetSatellite(ctx, satelliteID)
+	if err != nil {
+		log.Printf("failed to get satellite by ID: %v", err)
+		return nil, &AppError{
+			Message: "Error: Failed to update satellite state",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+
+	groupList, err := q.SatelliteGroupList(ctx, satelliteID)
+	if err != nil {
+		log.Printf("failed to list groups for satellite %d: %v", satelliteID, err)
+		return nil, &AppError{
+			Message: "Error: Failed to update satellite state",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+
+	groupStates, err := getGroupStates(ctx, groupList, q)
+	if err != nil {
+		return nil, err
+	}
+
+	var projects []string
+	for _, group := range groupList {
+		grp, err := q.GetGroupByID(ctx, group.GroupID)
+		if err != nil {
+			log.Printf("failed to get group by ID: %v, %v", group.GroupID, err)
+			return nil, &AppError{
+				Message: "Error: Failed to update satellite state",
+				Code:    http.StatusInternalServerError,
+			}
+		}
+		projects = append(projects, grp.Projects...)
+	}
+
+	configObject, err := fetchSatelliteConfig(ctx, q, satelliteID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &satelliteStateDetails{
+		Satellite:   sat,
+		Config:      configObject,
+		GroupStates: groupStates,
+		Projects:    projects,
+	}, nil
+}
+
+func reconcileSatelliteState(ctx context.Context, q *database.Queries, satelliteID int32) error {
+	details, err := buildSatelliteStateDetails(ctx, q, satelliteID)
+	if err != nil {
+		return err
+	}
+
+	if err := utils.CreateOrUpdateSatStateArtifact(ctx, details.Satellite.Name, details.GroupStates, details.Config.ConfigName); err != nil {
+		log.Printf("failed to update satellite state artifact for %s: %v", details.Satellite.Name, err)
+		return &AppError{
+			Message: "Error: Failed to update satellite state",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+
+	return nil
+}
+
 func DecodeRequestBody(r *http.Request, v any) error {
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
 		return &AppError{

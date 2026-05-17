@@ -221,38 +221,14 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Get remaining groups for this satellite
-		groupList, err := q.SatelliteGroupList(r.Context(), satellite.SatelliteID)
+		details, err := buildSatelliteStateDetails(r.Context(), q, satellite.SatelliteID)
 		if err != nil {
-			log.Println(err)
-			err := &AppError{
-				Message: "Error: Failed to update satellite state",
-				Code:    http.StatusInternalServerError,
-			}
 			HandleAppError(w, err)
 			return
 		}
 
-		// Update projects and state artifacts
-		var projects []string
-		var groupStates []string
-		for _, g := range groupList {
-			grp, err := q.GetGroupByID(r.Context(), g.GroupID)
-			if err != nil {
-				log.Println(err)
-				err := &AppError{
-					Message: "Error: Failed to update satellite state",
-					Code:    http.StatusInternalServerError,
-				}
-				HandleAppError(w, err)
-				return
-			}
-			projects = append(projects, grp.Projects...)
-			groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
-		}
-
 		// Update robot permissions
-		_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
+		_, err = utils.UpdateRobotProjects(r.Context(), details.Projects, robotAcc.RobotID)
 		if err != nil {
 			log.Println(err)
 			err := &AppError{
@@ -263,32 +239,7 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		sat, err := q.GetSatellite(r.Context(), satellite.SatelliteID)
-		if err != nil {
-			log.Println(err)
-			err := &AppError{
-				Message: "Error: Failed to update satellite state",
-				Code:    http.StatusInternalServerError,
-			}
-			HandleAppError(w, err)
-			return
-		}
-
-		configObject, err := fetchSatelliteConfig(r.Context(), q, sat.ID)
-		if err != nil {
-			log.Printf("Error: Failed to fetch Satellite config: %v", err)
-			HandleAppError(w, err)
-			return
-		}
-
-		// Update state artifact
-		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
-		if err != nil {
-			log.Println(err)
-			err := &AppError{
-				Message: "Error: Failed to update satellite state",
-				Code:    http.StatusInternalServerError,
-			}
+		if err := reconcileSatelliteState(r.Context(), q, satellite.SatelliteID); err != nil {
 			HandleAppError(w, err)
 			return
 		}

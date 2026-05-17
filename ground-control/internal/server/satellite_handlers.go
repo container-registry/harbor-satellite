@@ -152,7 +152,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	groupStates, err := addSatelliteToGroups(r.Context(), q, req.Groups, satellite.ID)
+	_, err = addSatelliteToGroups(r.Context(), q, req.Groups, satellite.ID)
 	if err != nil {
 		log.Println("Error adding satellite to groups:", err)
 		HandleAppError(w, err)
@@ -219,9 +219,7 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Create the satellite's state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates, req.ConfigName)
-	if err != nil {
+	if err := reconcileSatelliteState(r.Context(), q, satellite.ID); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
 		return
@@ -317,44 +315,13 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// groups attached to satellite
-	groups, err := q.SatelliteGroupList(r.Context(), satelliteID)
-	if err != nil {
-		log.Printf("failed to list groups for satellite: %v, %v", satelliteID, err)
-		log.Println(err)
-		err := &AppError{
-			Message: "Error: Satellite Groups List Failed",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	states, err := getGroupStates(r.Context(), groups, q)
-	if err != nil {
-		log.Println("Error retrieving group states:", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Get Group By ID Failed",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
 	satellite, err := q.GetSatellite(r.Context(), satelliteID)
 	if err != nil {
 		HandleAppError(w, &AppError{Message: "satellite not found", Code: http.StatusNotFound})
 		return
 	}
 
-	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satelliteID)
-	if err != nil {
-		log.Printf("Error: Failed to fetch Satellite config: %v", err)
-		HandleAppError(w, err)
-		return
-	}
-
-	// For sanity, create (update) the state artifact during the registration process as well.
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
-	if err != nil {
+	if err := reconcileSatelliteState(r.Context(), q, satelliteID); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
 		return
@@ -481,40 +448,12 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	groups, err := q.SatelliteGroupList(r.Context(), satellite.ID)
-	if err != nil {
-		log.Printf("SPIFFE ZTR: Failed to list groups for satellite %s: %v", satelliteName, err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Satellite Groups List Failed",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
-	states, err := getGroupStates(r.Context(), groups, q)
-	if err != nil {
-		log.Printf("SPIFFE ZTR: Error retrieving group states: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Get Group By ID Failed",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
 	// When Harbor is available, create state artifacts; otherwise just return credentials
 	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
 	var satelliteState string
 
 	if !skipHarborCheck {
-		configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satellite.ID)
-		if err != nil {
-			log.Printf("SPIFFE ZTR: Failed to fetch satellite config: %v", err)
-			HandleAppError(w, err)
-			return
-		}
-
-		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
-		if err != nil {
+		if err := reconcileSatelliteState(r.Context(), q, satellite.ID); err != nil {
 			log.Printf("SPIFFE ZTR: Failed to create state artifact: %v", err)
 			HandleAppError(w, err)
 			return
@@ -1137,38 +1076,8 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get updated group list after adding the new group
-	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
+	details, err := buildSatelliteStateDetails(r.Context(), q, sat.ID)
 	if err != nil {
-		log.Printf("Error: Failed to get updated satellite group list: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to get updated satellite group list",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	var projects []string
-	var groupStates []string
-
-	for _, group := range groupList {
-		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
-		if err != nil {
-			log.Printf("Error: Failed to get group by ID %d: %v", group.GroupID, err)
-			err := &AppError{
-				Message: "Error: Failed to get group details",
-				Code:    http.StatusInternalServerError,
-			}
-			HandleAppError(w, err)
-			return
-		}
-		projects = append(projects, grp.Projects...)
-		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
-	}
-
-	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, sat.ID)
-	if err != nil {
-		log.Printf("Error: Failed to fetch Satellite config: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -1186,7 +1095,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update robot account permissions
-	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
+	_, err = utils.UpdateRobotProjects(r.Context(), details.Projects, robotAcc.RobotID)
 	if err != nil {
 		log.Printf("Error: Failed to update robot account permissions: %v", err)
 		err := &AppError{
@@ -1197,9 +1106,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
-	if err != nil {
+	if err := reconcileSatelliteState(r.Context(), q, sat.ID); err != nil {
 		log.Printf("Error: Failed to update satellite state artifact: %v", err)
 		HandleAppError(w, err)
 		return
@@ -1300,39 +1207,16 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
+	details, err := buildSatelliteStateDetails(r.Context(), q, sat.ID)
 	if err != nil {
-		log.Printf("Error: Failed: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to refresh satellite group list",
-			Code:    http.StatusInternalServerError,
-		}
 		HandleAppError(w, err)
 		return
-	}
-
-	var projects []string
-	var groupStates []string
-
-	for _, group := range groupList {
-		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
-		if err != nil {
-			log.Printf("Error: Failed: %v", err)
-			err := &AppError{
-				Message: "Error: Failed to to refresh satellite group list",
-				Code:    http.StatusInternalServerError,
-			}
-			HandleAppError(w, err)
-			return
-		}
-		projects = append(projects, grp.Projects...)
-		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
 	// 1. We need the list of state artifacts for the groups that satellite belongs to
 	// 2. Update the satellite state artifact accordingly
 
-	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
+	_, err = utils.UpdateRobotProjects(r.Context(), details.Projects, robotAcc.RobotID)
 	if err != nil {
 		log.Printf("Error: Failed to Add permission to robot account: %v", err)
 		err := &AppError{
@@ -1343,16 +1227,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	configObject, err := fetchSatelliteConfig(r.Context(), q, sat.ID)
-	if err != nil {
-		log.Printf("Error: Failed to fetch Satellite config: %v", err)
-		HandleAppError(w, err)
-		return
-	}
-
-	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
-	if err != nil {
+	if err := reconcileSatelliteState(r.Context(), q, sat.ID); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
 		return
