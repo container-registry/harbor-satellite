@@ -1,6 +1,7 @@
 package tls
 
 import (
+	"crypto"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -31,6 +32,7 @@ type Config struct {
 	ServerName string
 	SkipVerify bool
 	MinVersion uint16
+	Signer     crypto.Signer
 }
 
 // DefaultConfig returns a secure default TLS configuration.
@@ -52,8 +54,8 @@ func LoadClientTLSConfig(cfg *Config) (*tls.Config, error) {
 	}
 
 	// Load client certificate if provided (for mTLS)
-	if cfg.CertFile != "" && cfg.KeyFile != "" {
-		cert, err := LoadCertificate(cfg.CertFile, cfg.KeyFile)
+	if cfg.CertFile != "" && (cfg.KeyFile != "" || cfg.Signer != nil) {
+		cert, err := LoadCertificate(cfg.CertFile, cfg.KeyFile, cfg.Signer)
 		if err != nil {
 			return nil, err
 		}
@@ -74,11 +76,11 @@ func LoadClientTLSConfig(cfg *Config) (*tls.Config, error) {
 
 // LoadServerTLSConfig loads TLS configuration for a server.
 func LoadServerTLSConfig(cfg *Config) (*tls.Config, error) {
-	if cfg.CertFile == "" || cfg.KeyFile == "" {
+	if cfg.CertFile == "" || (cfg.KeyFile == "" && cfg.Signer == nil) {
 		return nil, ErrCertNotFound
 	}
 
-	cert, err := LoadCertificate(cfg.CertFile, cfg.KeyFile)
+	cert, err := LoadCertificate(cfg.CertFile, cfg.KeyFile, cfg.Signer)
 	if err != nil {
 		return nil, err
 	}
@@ -101,11 +103,40 @@ func LoadServerTLSConfig(cfg *Config) (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-// LoadCertificate loads a certificate and key from files.
-func LoadCertificate(certFile, keyFile string) (*tls.Certificate, error) {
+// LoadCertificate loads a certificate and key from files , or uses the provided hardware signer.
+func LoadCertificate(certFile, keyFile string, signer crypto.Signer) (*tls.Certificate, error) {
 	if _, err := os.Stat(certFile); os.IsNotExist(err) {
 		return nil, ErrCertNotFound
 	}
+// --- NEW PARSEC HARDWARE PATH ---
+	if signer != nil {
+		certPEMBlock, err := os.ReadFile(filepath.Clean(certFile))
+		if err != nil {
+			return nil, err
+		}
+		
+		var cert tls.Certificate
+		for {
+			var block *pem.Block
+			block, certPEMBlock = pem.Decode(certPEMBlock)
+			if block == nil {
+				break
+			}
+			if block.Type == "CERTIFICATE" {
+				// We append the raw bytes of the cert directly
+				cert.Certificate = append(cert.Certificate, block.Bytes)
+			}
+		}
+		if len(cert.Certificate) == 0 {
+			return nil, ErrNoCertificates
+		}
+		
+		// Attach the PARSEC hardware signer as the private key
+		cert.PrivateKey = signer
+		return &cert, nil
+	}
+
+	// --- STANDARD SOFTWARE PATH ---
 	if _, err := os.Stat(keyFile); os.IsNotExist(err) {
 		return nil, ErrKeyNotFound
 	}
