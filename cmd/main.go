@@ -13,6 +13,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
+	"github.com/container-registry/harbor-satellite/internal/server"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -334,6 +335,23 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 			}
 		}
 	})
+
+	observabilityPort := os.Getenv("OBSERVABILITY_PORT")
+	if observabilityPort == "" {
+		observabilityPort = "9090"
+	}
+
+	// Start observability server.
+	observabilityServer := server.NewApp(
+		server.NewDefaultRouter(""),
+		ctx,
+		log,
+		":"+observabilityPort,
+		&server.DebugRegistrar{},
+		&server.MetricsRegistrar{},
+		&server.HealthRegistrar{},
+	)
+	observabilityServer.SetupServer(wg)
 
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile)
 	err = s.Run(ctx)

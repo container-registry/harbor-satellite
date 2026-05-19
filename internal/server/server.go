@@ -24,13 +24,13 @@ type App struct {
 	Logger     *zerolog.Logger
 }
 
-func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, registrars ...RouteRegistrar) *App {
+func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, port string, registrars ...RouteRegistrar) *App {
 	return &App{
 		router:     router,
 		registrars: registrars,
 		ctx:        ctx,
 		Logger:     logger,
-		server:     &http.Server{Addr: ":9090", Handler: router, ReadHeaderTimeout: 10 * time.Second},
+		server:     &http.Server{Addr: port, Handler: router, ReadHeaderTimeout: 10 * time.Second},
 	}
 }
 
@@ -43,6 +43,7 @@ func (a *App) SetupRoutes() {
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.router.ServeHTTP(w, r)
 }
+
 func (a *App) Start() error {
 	return a.server.ListenAndServe()
 }
@@ -52,8 +53,11 @@ func (a *App) Shutdown(ctx context.Context) error {
 }
 
 func (a *App) SetupServer(g *errgroup.Group) {
+	a.SetupRoutes()
+
 	g.Go(func() error {
-		a.Logger.Info().Msg("Starting server on :9090")
+		a.Logger.Info().Msgf("Starting server on %s", a.server.Addr)
+
 		if err := a.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
