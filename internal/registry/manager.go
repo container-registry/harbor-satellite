@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/rs/zerolog"
 	"zotregistry.dev/zot/pkg/api"
@@ -58,7 +59,12 @@ func (zm *ZotManager) HandleRegistrySetup(ctx context.Context) error {
 func (zm *ZotManager) WriteTempZotConfig() error {
 	zm.log.Debug().Msg("Creating temporary zot config file")
 
-	tmpFile, err := os.CreateTemp("", "zot-*.json")
+	dir := filepath.Dir(zm.tempConfPath)
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return fmt.Errorf("failed to create directory for temp config: %w", err)
+	}
+
+	tmpFile, err := os.CreateTemp(dir, "zot-*.json")
 	if err != nil {
 		return fmt.Errorf("failed to create temp zot config file: %w", err)
 	}
@@ -72,10 +78,12 @@ func (zm *ZotManager) WriteTempZotConfig() error {
 	}
 
 	if err := os.Rename(tmpFile.Name(), zm.tempConfPath); err != nil {
+		// Clean up the temp file on rename failure
+		_ = os.Remove(tmpFile.Name())
 		return fmt.Errorf("failed to rename to target config path: %w", err)
 	}
 
-	zm.log.Debug().Str("path", tmpFile.Name()).Msg("Temporary zot config file created successfully")
+	zm.log.Debug().Str("path", zm.tempConfPath).Msg("Temporary zot config file created successfully")
 	return nil
 }
 
