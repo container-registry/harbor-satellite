@@ -13,6 +13,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
+	"github.com/container-registry/harbor-satellite/internal/server"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -337,6 +338,19 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile)
 	err = s.Run(ctx)
+
+	router := server.NewDefaultRouter("")
+	gcURL := cm.ResolveGroundControlURL()
+	headless := gcURL == ""
+	healthApp := server.NewApp(router, ctx, log, server.NewHealthRegistrar(
+		"http://"+localRegistryEndpoint,
+		gcURL,
+		headless,
+		s.SyncDone(),
+	))
+	healthApp.SetupRoutes()
+	healthApp.SetupServer(wg)
+
 	if err != nil {
 		return fmt.Errorf("unable to start satellite: %w", err)
 	}
