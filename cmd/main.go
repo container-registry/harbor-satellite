@@ -57,6 +57,7 @@ type SatelliteOptions struct {
 	HarborRegistryURL      string
 	DirectDelivery         bool
 	ImageDir               string
+	HealthPort             int
 }
 
 func main() {
@@ -83,6 +84,7 @@ func main() {
 	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", "", "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
 	flag.BoolVar(&opts.DirectDelivery, "direct-delivery", false, "[Experimental] Write image tarballs directly to k3s/RKE2 agent images directory")
 	flag.StringVar(&opts.ImageDir, "image-dir", "", "Override image directory for direct delivery (auto-detected if empty)")
+	flag.IntVar(&opts.HealthPort, "health-port", 9090, "Port for health and readiness HTTP server")
 
 	flag.Parse()
 
@@ -339,10 +341,14 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile)
 	err = s.Run(ctx)
 
+	healthPort := opts.HealthPort
+	if healthPort == 0 {
+		healthPort = 9090
+	}
 	router := server.NewDefaultRouter("")
 	gcURL := cm.ResolveGroundControlURL()
 	headless := gcURL == ""
-	healthApp := server.NewApp(router, ctx, log, server.NewHealthRegistrar(
+	healthApp := server.NewApp(router, ctx, log, healthPort, server.NewHealthRegistrar(
 		"http://"+localRegistryEndpoint,
 		gcURL,
 		headless,
