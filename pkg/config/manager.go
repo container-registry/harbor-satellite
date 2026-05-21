@@ -41,10 +41,11 @@ type ConfigManager struct {
 	mu                      sync.RWMutex
 	encryptor               *secure.ConfigEncryptor
 	encryptEnabled          bool
+	cryptoProvider          crypto.Provider
 }
 
-func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config) (*ConfigManager, error) {
-	cryptoProvider := crypto.NewAESProvider()
+// Add cryptoProvider crypto.Provider to the arguments
+func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config, cryptoProvider crypto.Provider) (*ConfigManager, error) {
 	deviceIdentity := identity.NewLinuxDeviceIdentity()
 	encryptor := secure.NewConfigEncryptor(cryptoProvider, deviceIdentity)
 
@@ -57,6 +58,7 @@ func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL
 		JsonLog:                 jsonLog,
 		encryptor:               encryptor,
 		encryptEnabled:          config.AppConfig.EncryptConfig,
+		cryptoProvider:          cryptoProvider, 
 	}, nil
 }
 
@@ -147,7 +149,7 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 
 	oldConfig := cm.config
 
-	newConfig, err := readAndReturnConfig(cm.configPath)
+	newConfig, err := readAndReturnConfig(cm.configPath, cm.cryptoProvider)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read config from disk: %w", err)
 	}
@@ -165,7 +167,7 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 
 }
 
-func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure bool) (*ConfigManager, []string, error) {
+func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure bool, cryptoProvider crypto.Provider) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
 
@@ -173,7 +175,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url env var: %w", err)
 	}
 
-	cfg, err = readAndReturnConfig(configPath)
+	cfg, err = readAndReturnConfig(configPath, cryptoProvider)
 	if errors.Is(err, os.ErrNotExist) {
 		cfg = &Config{}
 	} else if err != nil {
@@ -190,7 +192,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 		return nil, warnings, fmt.Errorf("invalid config: %w", err)
 	}
 
-	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, jsonLogging, cfg)
+	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, jsonLogging, cfg, cryptoProvider)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to create config manager: %w", err)
 	}
@@ -199,7 +201,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 }
 
 // Reads the config at the given path and returns the parsed Config.
-func readAndReturnConfig(path string) (*Config, error) {
+func readAndReturnConfig(path string, cryptoProvider crypto.Provider) (*Config, error) {
 	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, err
@@ -211,7 +213,6 @@ func readAndReturnConfig(path string) (*Config, error) {
 	}
 
 	if secure.IsEncrypted(data) {
-		cryptoProvider := crypto.NewAESProvider()
 		deviceIdentity := identity.NewLinuxDeviceIdentity()
 		encryptor := secure.NewConfigEncryptor(cryptoProvider, deviceIdentity)
 
