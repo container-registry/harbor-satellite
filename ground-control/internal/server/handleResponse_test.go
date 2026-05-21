@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -69,11 +70,14 @@ func TestWriteJSONResponse(t *testing.T) {
 		}
 	})
 	t.Run("unmarshallable data fallback", func(t *testing.T) {
-    w := httptest.NewRecorder()
-    WriteJSONResponse(w, http.StatusOK, make(chan int))
-    if w.Code != http.StatusInternalServerError {
-        t.Errorf("expected 500, got %d", w.Code)
-    }
+		w := httptest.NewRecorder()
+		WriteJSONResponse(w, http.StatusOK, make(chan int))
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500, got %d", w.Code)
+		}
+		if !strings.Contains(w.Body.String(), "error") {
+			t.Errorf("expected error in body, got %s", w.Body.String())
+		}
 	})
 }
 
@@ -100,6 +104,9 @@ func TestHandleAppError(t *testing.T) {
 
 		if w.Code != http.StatusInternalServerError {
 			t.Errorf("expected 500, got %d", w.Code)
+		}
+		if !strings.Contains(w.Body.String(), "some plain error") {
+			t.Errorf("expected error message in body, got %s", w.Body.String())
 		}
 	})
 }
