@@ -7,6 +7,39 @@ on:
       - "assets/**"
 
 jobs:
+  unit-tests:
+    name: Unit Tests and Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+          cache: true
+
+      - name: Run unit tests for satellite (with coverage)
+        run: |
+          go test -v -count=1 -coverprofile=coverage-satellite.out -covermode=atomic ./...
+
+      - name: Run unit tests for ground-control (with coverage)
+        working-directory: ground-control
+        run: |
+          go test -v -count=1 -coverprofile=coverage-ground-control.out -covermode=atomic ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
+        with:
+          files: coverage-satellite.out,ground-control/coverage-ground-control.out
+          flags: unittests
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
   vulnerability-check:
     runs-on: container-registry
     steps:
