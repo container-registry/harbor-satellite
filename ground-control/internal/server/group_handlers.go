@@ -282,13 +282,18 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Update state artifact
-		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
+		stateDigest, err := utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
 		if err != nil {
 			log.Println(err)
 			err := &AppError{
 				Message: "Error: Failed to update satellite state",
 				Code:    http.StatusInternalServerError,
 			}
+			HandleAppError(w, err)
+			return
+		}
+		if err := updateSatelliteDesiredState(r.Context(), q, sat.ID, configObject.ID, stateDigest); err != nil {
+			log.Printf("Error: Failed to update satellite desired state: %v", err)
 			HandleAppError(w, err)
 			return
 		}

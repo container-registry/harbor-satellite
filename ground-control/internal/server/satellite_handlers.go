@@ -2,6 +2,7 @@ package server
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -50,6 +51,35 @@ type SatelliteStatusParams struct {
 	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
 	ImageCount          int           `json:"image_count"`
 	CachedImages        []CachedImage `json:"cached_images,omitempty"`
+}
+
+type SatelliteStatusResponse struct {
+	ID                 int32          `json:"id"`
+	SatelliteID        int32          `json:"satellite_id"`
+	Activity           string         `json:"activity"`
+	LatestStateDigest  string         `json:"latest_state_digest,omitempty"`
+	LatestConfigDigest string         `json:"latest_config_digest,omitempty"`
+	CPUPercent         string         `json:"cpu_percent,omitempty"`
+	MemoryUsedBytes    int64          `json:"memory_used_bytes,omitempty"`
+	StorageUsedBytes   int64          `json:"storage_used_bytes,omitempty"`
+	LastSyncDurationMs int64          `json:"last_sync_duration_ms,omitempty"`
+	ImageCount         int32          `json:"image_count,omitempty"`
+	ReportedAt         time.Time      `json:"reported_at"`
+	CreatedAt          time.Time      `json:"created_at"`
+	ArtifactIDs        []int32        `json:"artifact_ids,omitempty"`
+	Drift              SatelliteDrift `json:"drift"`
+}
+
+type SatelliteDrift struct {
+	DesiredStateKnown    bool       `json:"desired_state_known"`
+	InSync               bool       `json:"in_sync"`
+	ConfigInSync         bool       `json:"config_in_sync"`
+	StateInSync          bool       `json:"state_in_sync"`
+	ExpectedConfigDigest string     `json:"expected_config_digest,omitempty"`
+	ReportedConfigDigest string     `json:"reported_config_digest,omitempty"`
+	ExpectedStateDigest  string     `json:"expected_state_digest,omitempty"`
+	ReportedStateDigest  string     `json:"reported_state_digest,omitempty"`
+	LastConvergedAt      *time.Time `json:"last_converged_at,omitempty"`
 }
 
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
@@ -220,9 +250,14 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create the satellite's state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates, req.ConfigName)
+	stateDigest, err := utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates, req.ConfigName)
 	if err != nil {
 		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+	if err := updateSatelliteDesiredState(r.Context(), q, satellite.ID, config.ID, stateDigest); err != nil {
+		log.Println("Error updating satellite desired state:", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -353,9 +388,14 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// For sanity, create (update) the state artifact during the registration process as well.
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
+	stateDigest, err := utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
 	if err != nil {
 		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+	if err := updateSatelliteDesiredState(r.Context(), q, satellite.ID, configObject.ID, stateDigest); err != nil {
+		log.Println("Error updating satellite desired state:", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -513,9 +553,14 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
+		stateDigest, err := utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
 		if err != nil {
 			log.Printf("SPIFFE ZTR: Failed to create state artifact: %v", err)
+			HandleAppError(w, err)
+			return
+		}
+		if err := updateSatelliteDesiredState(r.Context(), q, satellite.ID, configObject.ID, stateDigest); err != nil {
+			log.Printf("SPIFFE ZTR: Failed to update satellite desired state: %v", err)
 			HandleAppError(w, err)
 			return
 		}
@@ -654,7 +699,80 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := updateSatelliteConvergence(r.Context(), s.dbQueries, sat.ID, req.LatestStateDigest, req.LatestConfigDigest, req.RequestCreatedTime); err != nil {
+		log.Printf("Failed to update convergence timestamp: %v", err)
+		HandleAppError(w, &AppError{Message: "failed to update convergence timestamp", Code: http.StatusInternalServerError})
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
+}
+
+func newSatelliteStatusResponse(status database.SatelliteStatus, desired database.SatelliteDesiredState, desiredKnown bool) SatelliteStatusResponse {
+	response := SatelliteStatusResponse{
+		ID:                 status.ID,
+		SatelliteID:        status.SatelliteID,
+		Activity:           status.Activity,
+		LatestStateDigest:  nullStringValue(status.LatestStateDigest),
+		LatestConfigDigest: nullStringValue(status.LatestConfigDigest),
+		CPUPercent:         nullStringValue(status.CpuPercent),
+		MemoryUsedBytes:    nullInt64Value(status.MemoryUsedBytes),
+		StorageUsedBytes:   nullInt64Value(status.StorageUsedBytes),
+		LastSyncDurationMs: nullInt64Value(status.LastSyncDurationMs),
+		ImageCount:         nullInt32Value(status.ImageCount),
+		ReportedAt:         status.ReportedAt,
+		CreatedAt:          status.CreatedAt,
+		ArtifactIDs:        status.ArtifactIds,
+	}
+	response.Drift = buildSatelliteDrift(status, desired, desiredKnown)
+	return response
+}
+
+func buildSatelliteDrift(status database.SatelliteStatus, desired database.SatelliteDesiredState, desiredKnown bool) SatelliteDrift {
+	drift := SatelliteDrift{
+		DesiredStateKnown:    desiredKnown,
+		ExpectedConfigDigest: nullStringValue(desired.ExpectedConfigDigest),
+		ReportedConfigDigest: nullStringValue(status.LatestConfigDigest),
+		ExpectedStateDigest:  nullStringValue(desired.ExpectedStateDigest),
+		ReportedStateDigest:  nullStringValue(status.LatestStateDigest),
+	}
+	if !desiredKnown {
+		return drift
+	}
+
+	drift.ConfigInSync = digestsMatch(desired.ExpectedConfigDigest, status.LatestConfigDigest)
+	drift.StateInSync = digestsMatch(desired.ExpectedStateDigest, status.LatestStateDigest)
+	drift.InSync = drift.ConfigInSync && drift.StateInSync
+	if desired.LastConvergedAt.Valid {
+		convergedAt := desired.LastConvergedAt.Time
+		drift.LastConvergedAt = &convergedAt
+	}
+	return drift
+}
+
+func digestsMatch(expected, reported sql.NullString) bool {
+	return expected.Valid && reported.Valid && expected.String == reported.String
+}
+
+func nullStringValue(value sql.NullString) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String
+}
+
+func nullInt64Value(value sql.NullInt64) int64 {
+	if !value.Valid {
+		return 0
+	}
+	return value.Int64
+}
+
+func nullInt32Value(value sql.NullInt32) int32 {
+	if !value.Valid {
+		return 0
+	}
+	return value.Int32
 }
 
 func (s *Server) getSatelliteStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -673,7 +791,16 @@ func (s *Server) getSatelliteStatusHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, status)
+	desired, err := s.dbQueries.GetSatelliteDesiredState(r.Context(), sat.ID)
+	desiredKnown := true
+	if errors.Is(err, sql.ErrNoRows) {
+		desiredKnown = false
+	} else if err != nil {
+		HandleAppError(w, &AppError{Message: "failed to get desired state", Code: http.StatusInternalServerError})
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, newSatelliteStatusResponse(status, desired, desiredKnown))
 }
 
 func (s *Server) getActiveSatellitesHandler(w http.ResponseWriter, r *http.Request) {
@@ -843,9 +970,21 @@ func ensureSatelliteConfig(r *http.Request, q *database.Queries, satellite datab
 			return fmt.Errorf("create default config: %w", err)
 		}
 
-		if pushErr := utils.CreateAndPushConfigStateArtifact(r.Context(), defaultConfigJSON, "default"); pushErr != nil {
+		configDigest, pushErr := utils.CreateAndPushConfigStateArtifact(r.Context(), defaultConfigJSON, "default")
+		if pushErr != nil {
 			log.Printf("SPIFFE ZTR: Warning - failed to create config-state artifact: %v", pushErr)
+		} else if err := upsertConfigDigest(r.Context(), q, defaultConfig.ID, configDigest); err != nil {
+			return fmt.Errorf("store default config digest: %w", err)
 		}
+	} else if _, err := q.GetConfigDigest(r.Context(), defaultConfig.ID); errors.Is(err, sql.ErrNoRows) {
+		configDigest, pushErr := utils.CreateAndPushConfigStateArtifact(r.Context(), defaultConfig.Config, defaultConfig.ConfigName)
+		if pushErr != nil {
+			log.Printf("SPIFFE ZTR: Warning - failed to create config-state artifact: %v", pushErr)
+		} else if err := upsertConfigDigest(r.Context(), q, defaultConfig.ID, configDigest); err != nil {
+			return fmt.Errorf("store default config digest: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("get default config digest: %w", err)
 	}
 
 	configLinkParams := database.SetSatelliteConfigParams{
@@ -1198,9 +1337,14 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
+	stateDigest, err := utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
 	if err != nil {
 		log.Printf("Error: Failed to update satellite state artifact: %v", err)
+		HandleAppError(w, err)
+		return
+	}
+	if err := updateSatelliteDesiredState(r.Context(), q, sat.ID, configObject.ID, stateDigest); err != nil {
+		log.Printf("Error: Failed to update satellite desired state: %v", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -1351,9 +1495,14 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	}
 
 	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
+	stateDigest, err := utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
 	if err != nil {
 		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+	if err := updateSatelliteDesiredState(r.Context(), q, sat.ID, configObject.ID, stateDigest); err != nil {
+		log.Printf("Error: Failed to update satellite desired state: %v", err)
 		HandleAppError(w, err)
 		return
 	}

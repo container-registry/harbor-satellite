@@ -82,6 +82,9 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 
 	// Mock UpdateSatelliteLastSeen
 	mock.ExpectExec("UPDATE satellites SET last_seen").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT satellite_id, expected_state_digest, expected_config_digest, last_converged_at, updated_at").
+		WithArgs(int32(1)).
+		WillReturnError(sql.ErrNoRows)
 
 	reqBody := SatelliteStatusParams{
 		Name:               "edge-01",
@@ -126,6 +129,9 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO satellite_status").WillReturnRows(statusRows)
 
 	mock.ExpectExec("UPDATE satellites SET last_seen").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT satellite_id, expected_state_digest, expected_config_digest, last_converged_at, updated_at").
+		WithArgs(int32(1)).
+		WillReturnError(sql.ErrNoRows)
 
 	reqBody := SatelliteStatusParams{
 		Name:               "edge-01",
