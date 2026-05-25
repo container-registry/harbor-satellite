@@ -18,8 +18,8 @@ ON CONFLICT (reference) DO NOTHING
 `
 
 type BatchInsertArtifactsParams struct {
-	Refs  []string
-	Sizes []int64
+	Refs  []string `json:"refs"`
+	Sizes []int64  `json:"sizes"`
 }
 
 func (q *Queries) BatchInsertArtifacts(ctx context.Context, arg BatchInsertArtifactsParams) error {

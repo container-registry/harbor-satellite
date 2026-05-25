@@ -6,4 +6,15 @@ sql:
     gen:
       go:
         out: "internal/database"
+        emit_json_tags: true
+        json_tags_case_style: "snake"
+        overrides:
+          - column: "sessions.token"
+            go_struct_tag: 'json:"-"'
+          - column: "users.password_hash"
+            go_struct_tag: 'json:"-"'
+          - column: "robot_accounts.robot_secret_hash"
+            go_struct_tag: 'json:"-"'
+          - column: "satellite_tokens.token"
+            go_struct_tag: 'json:"-"'
         # sql_package: "pgx/v5"

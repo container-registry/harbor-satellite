@@ -35,8 +35,8 @@ WHERE username = $1
 `
 
 type LockAccountParams struct {
-	Username    string
-	LockedUntil sql.NullTime
+	Username    string       `json:"username"`
+	LockedUntil sql.NullTime `json:"locked_until"`
 }
 
 func (q *Queries) LockAccount(ctx context.Context, arg LockAccountParams) error {

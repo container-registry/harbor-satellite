@@ -17,9 +17,9 @@ RETURNING id, config_name, registry_url, config, created_at, updated_at
 `
 
 type CreateConfigParams struct {
-	ConfigName  string
-	RegistryUrl string
-	Config      json.RawMessage
+	ConfigName  string          `json:"config_name"`
+	RegistryUrl string          `json:"registry_url"`
+	Config      json.RawMessage `json:"config"`
 }
 
 func (q *Queries) CreateConfig(ctx context.Context, arg CreateConfigParams) (Config, error) {
@@ -152,9 +152,9 @@ RETURNING id, config_name, registry_url, config, created_at, updated_at
 `
 
 type UpdateConfigParams struct {
-	ConfigName  string
-	RegistryUrl string
-	Config      json.RawMessage
+	ConfigName  string          `json:"config_name"`
+	RegistryUrl string          `json:"registry_url"`
+	Config      json.RawMessage `json:"config"`
 }
 
 func (q *Queries) UpdateConfig(ctx context.Context, arg UpdateConfigParams) (Config, error) {
