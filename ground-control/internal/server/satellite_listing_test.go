@@ -15,14 +15,17 @@ import (
 )
 
 func TestListSatelliteHandler(t *testing.T) {
-	t.Run("returns satellites", func(t *testing.T) {
+	t.Run("returns satellites with pagination", func(t *testing.T) {
 		server, mock := newMockServer(t)
 		now := time.Now().UTC().Truncate(time.Second)
 
-		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
+		countRows := sqlmock.NewRows([]string{"count"}).AddRow(int64(2))
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM satellites").WillReturnRows(countRows)
+
+		satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
 			AddRow(1, "edge-01", now, now, sql.NullTime{Time: now, Valid: true}, sql.NullString{String: "30s", Valid: true}).
 			AddRow(2, "edge-02", now, now, sql.NullTime{}, sql.NullString{})
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval FROM satellites WHERE").WillReturnRows(satRows)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
 		rr := httptest.NewRecorder()
@@ -31,33 +34,104 @@ func TestListSatelliteHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "edge-01")
 		require.Contains(t, rr.Body.String(), "edge-02")
+		require.Contains(t, rr.Body.String(), `"total":2`)
+		require.Contains(t, rr.Body.String(), `"page":1`)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("empty list", func(t *testing.T) {
+	t.Run("empty list returns pagination metadata", func(t *testing.T) {
 		server, mock := newMockServer(t)
 
-		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"})
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnRows(rows)
+		countRows := sqlmock.NewRows([]string{"count"}).AddRow(int64(0))
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM satellites").WillReturnRows(countRows)
+
+		satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"})
+		mock.ExpectQuery("SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval FROM satellites WHERE").WillReturnRows(satRows)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
 		rr := httptest.NewRecorder()
 		server.listSatelliteHandler(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
+		require.Contains(t, rr.Body.String(), `"total":0`)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("db error returns 500", func(t *testing.T) {
+	t.Run("db error on count returns 500", func(t *testing.T) {
 		server, mock := newMockServer(t)
 
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnError(fmt.Errorf("db error"))
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM satellites").WillReturnError(fmt.Errorf("db error"))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
 		rr := httptest.NewRecorder()
 		server.listSatelliteHandler(rr, req)
 
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("db error on list returns 500", func(t *testing.T) {
+		server, mock := newMockServer(t)
+
+		countRows := sqlmock.NewRows([]string{"count"}).AddRow(int64(1))
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM satellites").WillReturnRows(countRows)
+
+		mock.ExpectQuery("SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval FROM satellites WHERE").WillReturnError(fmt.Errorf("db error"))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
+		rr := httptest.NewRecorder()
+		server.listSatelliteHandler(rr, req)
+
+		require.Equal(t, http.StatusInternalServerError, rr.Code)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("pagination with page and page_size query params", func(t *testing.T) {
+		server, mock := newMockServer(t)
+		now := time.Now().UTC().Truncate(time.Second)
+
+		countRows := sqlmock.NewRows([]string{"count"}).AddRow(int64(5))
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM satellites").WillReturnRows(countRows)
+
+		satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
+			AddRow(3, "edge-03", now, now, sql.NullTime{}, sql.NullString{})
+		mock.ExpectQuery("SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval FROM satellites WHERE").
+			WithArgs(sql.NullString{}, sql.NullString{}, int32(2), int32(2)).
+			WillReturnRows(satRows)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?page=2&page_size=2", nil)
+		rr := httptest.NewRecorder()
+		server.listSatelliteHandler(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		require.Contains(t, rr.Body.String(), `"total":5`)
+		require.Contains(t, rr.Body.String(), `"page":2`)
+		require.Contains(t, rr.Body.String(), `"page_size":2`)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("search filter matches by name", func(t *testing.T) {
+		server, mock := newMockServer(t)
+		now := time.Now().UTC().Truncate(time.Second)
+
+		countRows := sqlmock.NewRows([]string{"count"}).AddRow(int64(1))
+		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM satellites").
+			WithArgs(sql.NullString{String: "edge", Valid: true}, sql.NullString{}).
+			WillReturnRows(countRows)
+
+		satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
+			AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+		mock.ExpectQuery("SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval FROM satellites WHERE").
+			WithArgs(sql.NullString{String: "edge", Valid: true}, sql.NullString{}, int32(20), int32(0)).
+			WillReturnRows(satRows)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?search=edge", nil)
+		rr := httptest.NewRecorder()
+		server.listSatelliteHandler(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		require.Contains(t, rr.Body.String(), "edge-01")
+		require.Contains(t, rr.Body.String(), `"total":1`)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
