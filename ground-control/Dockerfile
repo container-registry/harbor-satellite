@@ -1,6 +1,9 @@
 # Build stage
 FROM golang:1.24-alpine AS builder
 
+# Arguments
+ARG VERSION=dev
+
 WORKDIR /app
 
 # Install git for go mod download (if using private repos)
@@ -14,7 +17,9 @@ RUN go mod download
 COPY . .
 
 # Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -o /ground-control ./main.go
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags "-X github.com/container-registry/harbor-satellite/ground-control/pkg/version.Version=${VERSION:-dev}" \
+    -o /ground-control ./main.go
 
 # Runtime stage
 FROM alpine:3.20

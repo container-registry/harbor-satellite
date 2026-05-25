@@ -1,7 +1,9 @@
 package state
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -20,3 +22,16 @@ func getStateFetcherForInputWithTLS(input, username, password string, useInsecur
 	log.Info().Msg("Input is a valid URL")
 	return NewURLStateFetcherWithTLS(input, username, password, useInsecure, tlsCfg), nil
 }
+
+// parseErrorResponse attempts to decode a JSON error message from the response body.
+// It falls back to the HTTP status string if decoding fails.
+func parseErrorResponse(resp *http.Response) string {
+	var errResp struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil && errResp.Message != "" {
+		return errResp.Message
+	}
+	return resp.Status
+}
+

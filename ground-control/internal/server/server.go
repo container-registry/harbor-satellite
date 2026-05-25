@@ -19,6 +19,7 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/middleware"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
+	"github.com/container-registry/harbor-satellite/ground-control/pkg/version"
 )
 
 type Server struct {
@@ -42,6 +43,10 @@ type Server struct {
 
 	// Satellite status
 	staleThreshold time.Duration
+
+	// Version compatibility
+	gcVersion    string
+	maxMinorSkew int
 }
 
 // TLSConfig holds TLS settings for the server.
@@ -168,6 +173,10 @@ func NewServer() *ServerResult {
 
 		// Satellite status
 		staleThreshold: parseDurationEnv("STALE_THRESHOLD", time.Hour),
+
+		// Version compatibility
+		gcVersion:    version.Version,
+		maxMinorSkew: parseIntEnv("MAX_MINOR_SKEW", 2),
 	}
 
 	// Bootstrap system admin user if not exists

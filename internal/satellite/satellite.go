@@ -6,8 +6,10 @@ import (
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
+	"github.com/container-registry/harbor-satellite/internal/server"
 	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"golang.org/x/sync/errgroup"
 )
 
 type Satellite struct {
@@ -15,6 +17,7 @@ type Satellite struct {
 	criResults    []runtime.CRIConfigResult
 	schedulers    []*scheduler.Scheduler
 	stateFilePath string
+	app           *server.App
 }
 
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string) *Satellite {
@@ -26,7 +29,7 @@ func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult
 	}
 }
 
-func (s *Satellite) Run(ctx context.Context) error {
+func (s *Satellite) Run(ctx context.Context, wg *errgroup.Group) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
 
@@ -96,6 +99,12 @@ func (s *Satellite) Run(ctx context.Context) error {
 	}
 	s.schedulers = append(s.schedulers, statusScheduler)
 	statusScheduler.Start(ctx)
+
+	// Start health server
+	router := server.NewDefaultRouter("")
+	s.app = server.NewApp(router, ctx, log, &HealthRegistrar{})
+	s.app.SetupRoutes()
+	s.app.SetupServer(wg)
 
 	return ctx.Err()
 }

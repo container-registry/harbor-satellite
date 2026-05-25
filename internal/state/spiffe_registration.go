@@ -9,6 +9,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/version"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 )
@@ -100,7 +101,7 @@ func (s *SpiffeZtrProcess) Execute(ctx context.Context) error {
 
 func (s *SpiffeZtrProcess) registerWithSPIFFE(ctx context.Context, log *zerolog.Logger) (config.StateConfig, error) {
 	gcURL := s.cm.ResolveGroundControlURL()
-	ztrURL := fmt.Sprintf("%s/%s", gcURL, SPIFFEZeroTouchRegistrationRoute)
+	ztrURL := fmt.Sprintf("%s/%s?version=%s", gcURL, SPIFFEZeroTouchRegistrationRoute, version.Version)
 
 	httpClient, err := s.spiffeClient.CreateHTTPClient()
 	if err != nil {
@@ -124,7 +125,7 @@ func (s *SpiffeZtrProcess) registerWithSPIFFE(ctx context.Context, log *zerolog.
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return config.StateConfig{}, fmt.Errorf("registration failed: %s", resp.Status)
+		return config.StateConfig{}, fmt.Errorf("registration failed: %s", parseErrorResponse(resp))
 	}
 
 	var stateConfig config.StateConfig

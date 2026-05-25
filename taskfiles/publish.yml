@@ -90,9 +90,22 @@ tasks:
             TAGS="$TAGS -t {{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
           done
 
+          # Get primary semver tag (exclude exact "latest", strip leading "v")
+          VERSION=$(echo "{{.IMAGE_TAGS}}" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^latest$' | head -n 1)
+          if [ -z "$VERSION" ]; then
+            VERSION=$(echo "{{.IMAGE_TAGS}}" | cut -d',' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          fi
+          VERSION=$(echo "$VERSION" | sed 's/^v//')
+
+          # Fallback to "dev" if VERSION is not a strict semver (x.y.z[-pre][+build])
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            VERSION="dev"
+          fi
+
           docker buildx build \
             --platform {{.PLATFORMS}} \
             -f $DOCKERFILE \
+            --build-arg VERSION=$VERSION \
             $TAGS \
             --push \
             $CONTEXT
@@ -100,9 +113,22 @@ tasks:
           MANIFEST_NAME="localhost/{{.COMPONENT}}:build"
           podman manifest rm "$MANIFEST_NAME" 2>/dev/null || true
 
+          # Get primary semver tag (exclude exact "latest", strip leading "v")
+          VERSION=$(echo "{{.IMAGE_TAGS}}" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^latest$' | head -n 1)
+          if [ -z "$VERSION" ]; then
+            VERSION=$(echo "{{.IMAGE_TAGS}}" | cut -d',' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          fi
+          VERSION=$(echo "$VERSION" | sed 's/^v//')
+
+          # Fallback to "dev" if VERSION is not a strict semver (x.y.z[-pre][+build])
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            VERSION="dev"
+          fi
+
           podman build \
             --platform {{.PLATFORMS}} \
             -f $DOCKERFILE \
+            --build-arg VERSION=$VERSION \
             --manifest "$MANIFEST_NAME" \
             $CONTEXT
 

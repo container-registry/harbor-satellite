@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	satTLS "github.com/container-registry/harbor-satellite/internal/tls"
+	"github.com/container-registry/harbor-satellite/internal/version"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 )
@@ -152,7 +154,13 @@ func (z *ZtrProcess) stop() {
 }
 
 func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSConfig, useUnsecure bool, ctx context.Context) (config.StateConfig, error) {
-	ztrURL := fmt.Sprintf("%s/%s/%s", groundControlURL, path, token)
+	ztrURL := fmt.Sprintf(
+		"%s/%s/%s?version=%s", 
+		strings.TrimRight(groundControlURL, "/"), 
+		path, 
+		url.PathEscape(token), 
+		url.QueryEscape(version.Version),
+	)
 
 	client, err := createHTTPClient(tlsCfg, useUnsecure)
 	if err != nil {
@@ -174,7 +182,7 @@ func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSCo
 	}()
 
 	if response.StatusCode != http.StatusOK {
-		return config.StateConfig{}, fmt.Errorf("failed to register satellite: %s", response.Status)
+		return config.StateConfig{}, fmt.Errorf("failed to register satellite: %s", parseErrorResponse(response))
 	}
 
 	var authResponse config.StateConfig

@@ -14,6 +14,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/internal/version"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
@@ -89,6 +90,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 		Name:                satelliteName,
 		StateReportInterval: heartbeatExpr,
 		RequestCreatedTime:  time.Now().UTC(),
+		Version:             version.Version,
 	}
 
 	// Include pending CRI results until successfully sent
@@ -181,7 +183,7 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status report failed: %s", resp.Status)
+		return fmt.Errorf("status report failed: %s", parseErrorResponse(resp))
 	}
 
 	return nil

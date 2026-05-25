@@ -21,6 +21,7 @@ builds:
       - CGO_ENABLED=0
     ldflags:
       - -w -s -X github.com/container-registry/harbor-satellite/internal/version.GitCommit={{.FullCommit}}
+      - -X github.com/container-registry/harbor-satellite/ground-control/pkg/version.Version={{.Version}}
     goos:
       - linux
       - darwin

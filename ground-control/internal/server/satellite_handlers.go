@@ -49,6 +49,7 @@ type SatelliteStatusParams struct {
 	RequestCreatedTime  time.Time     `json:"request_created_time"`
 	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
 	ImageCount          int           `json:"image_count"`
+	Version             string        `json:"version"`
 	CachedImages        []CachedImage `json:"cached_images,omitempty"`
 }
 
@@ -270,6 +271,25 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	token := vars["token"]
 
 	q := s.dbQueries
+	satVersion := r.URL.Query().Get("version")
+
+	if satVersion == "" {
+		log.Printf("ZTR: Missing version in registration request for token %s", maskToken(token))
+		HandleAppError(w, &AppError{
+			Message: "Error: Satellite version required for registration",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	if err := s.validateSatelliteVersion(satVersion); err != nil {
+		log.Printf("ZTR: %v", err)
+		HandleAppError(w, &AppError{
+			Message: err.Error(),
+			Code:    http.StatusForbidden,
+		})
+		return
+	}
 
 	// Get full token info including expiry
 	tokenInfo, err := q.GetTokenByValue(r.Context(), token)
@@ -416,6 +436,27 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("SPIFFE ZTR: Processing registration for satellite %s", satelliteName)
+
+	satVersion := r.URL.Query().Get("version")
+	if satVersion == "" {
+		log.Printf("SPIFFE ZTR: Missing version in registration request for satellite %s", satelliteName)
+		HandleAppError(w, &AppError{
+			Message: "Error: Satellite version required for registration",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	if err := s.validateSatelliteVersion(satVersion); err != nil {
+		log.Printf("SPIFFE ZTR: %v", err)
+		HandleAppError(w, &AppError{
+			Message: err.Error(),
+			Code:    http.StatusForbidden,
+		})
+		return
+	}
+
+	log.Printf("SPIFFE ZTR: Processing registration for satellite version %s", satVersion)
 
 	q := s.dbQueries
 
@@ -564,6 +605,24 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
+		return
+	}
+
+	if req.Version == "" {
+		log.Printf("Sync: Missing version in heartbeat for satellite %s", req.Name)
+		HandleAppError(w, &AppError{
+			Message: "Error: Satellite version required for heartbeat",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	if err := s.validateSatelliteVersion(req.Version); err != nil {
+		log.Printf("Sync: %v", err)
+		HandleAppError(w, &AppError{
+			Message: err.Error(),
+			Code:    http.StatusForbidden,
+		})
 		return
 	}
 
