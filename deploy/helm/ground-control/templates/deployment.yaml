@@ -36,6 +36,34 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+          env:
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (include "ground-control.fullname" .) .Values.groundControl.existingSecret }}
+                  key: {{ if .Values.groundControl.existingSecret }}
+                    {{ required "groundControl.existingSecretKey is required when existingSecret is set" .Values.groundControl.existingSecretKey }}
+                  {{- else }}
+                    ADMIN_PASSWORD
+                  {{- end }}
+            - name: HARBOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (include "ground-control.fullname" .) .Values.harbor.existingSecret }}
+                  key: {{ if .Values.harbor.existingSecret }}
+                    {{ required "harbor.existingSecretKey is required when existingSecret is set" .Values.harbor.existingSecretKey }}
+                  {{- else }}
+                    HARBOR_PASSWORD
+                  {{- end }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (include "ground-control.fullname" .) .Values.database.existingSecret }}
+                  key: {{ if .Values.database.existingSecret }}
+                    {{ required "database.existingSecretKey is required when existingSecret is set" .Values.database.existingSecretKey }}
+                  {{- else }}
+                    DB_PASSWORD
+                  {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "ground-control.fullname" . }}
