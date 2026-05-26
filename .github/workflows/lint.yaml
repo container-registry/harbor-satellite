@@ -1,17 +1,20 @@
 name: Lint
+
 on:
   pull_request:
     paths-ignore:
       - "*.md"
       - "assets/**"
+
+permissions: read-all
+
 jobs:
   lint:
     runs-on: container-registry
     env:
       GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.cache/golangci-lint
     permissions:
-      contents: write
-      packages: write
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

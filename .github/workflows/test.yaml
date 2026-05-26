@@ -6,6 +6,8 @@ on:
       - "*.md"
       - "assets/**"
 
+permissions: read-all
+
 jobs:
   unit-tests:
     name: Unit Tests and Coverage
