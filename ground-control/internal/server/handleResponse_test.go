@@ -75,8 +75,15 @@ func TestWriteJSONResponse(t *testing.T) {
 		if w.Code != http.StatusInternalServerError {
 			t.Errorf("expected 500, got %d", w.Code)
 		}
-		if !strings.Contains(w.Body.String(), "error") {
-			t.Errorf("expected error in body, got %s", w.Body.String())
+		if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("expected application/json, got %s", ct)
+		}
+		var body map[string]string
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("failed to unmarshal fallback body: %v", err)
+		}
+		if body["error"] == "" {
+			t.Errorf("expected error field in body, got %v", body)
 		}
 	})
 }
@@ -105,7 +112,7 @@ func TestHandleAppError(t *testing.T) {
 		if w.Code != http.StatusInternalServerError {
 			t.Errorf("expected 500, got %d", w.Code)
 		}
-		if !strings.Contains(w.Body.String(), "some plain error") {
+		if !strings.Contains(w.Body.String(), "Internal Server Error") {
 			t.Errorf("expected error message in body, got %s", w.Body.String())
 		}
 	})
