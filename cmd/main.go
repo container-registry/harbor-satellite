@@ -57,6 +57,7 @@ type SatelliteOptions struct {
 	HarborRegistryURL      string
 	DirectDelivery         bool
 	ImageDir               string
+	Headless               bool
 }
 
 func main() {
@@ -83,6 +84,7 @@ func main() {
 	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", "", "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
 	flag.BoolVar(&opts.DirectDelivery, "direct-delivery", false, "[Experimental] Write image tarballs directly to k3s/RKE2 agent images directory")
 	flag.StringVar(&opts.ImageDir, "image-dir", "", "Override image directory for direct delivery (auto-detected if empty)")
+	flag.BoolVar(&opts.Headless, "headless", false, "Run without Ground Control; skips the Ground Control reachability check in the /ready probe")
 
 	flag.Parse()
 
@@ -139,6 +141,9 @@ func main() {
 	}
 	if opts.ImageDir == "" {
 		opts.ImageDir = os.Getenv("IMAGE_DIR")
+	}
+	if !opts.Headless && os.Getenv("HEADLESS") == "true" {
+		opts.Headless = true
 	}
 
 	// Resolve config directory path
@@ -338,8 +343,18 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	observabilityPort := os.Getenv("OBSERVABILITY_PORT")
 	if observabilityPort == "" {
-		observabilityPort = "9090"
+		observabilityPort = "9091"
 	}
+
+	registryScheme := "https"
+	if cm.UseUnsecure() {
+		registryScheme = "http"
+	}
+	healthRegistrar := server.NewHealthRegistrar(
+		fmt.Sprintf("%s://%s", registryScheme, localRegistryEndpoint),
+		cm.ResolveGroundControlURL(),
+		opts.Headless,
+	)
 
 	// Start observability server.
 	observabilityServer := server.NewApp(
@@ -349,11 +364,11 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		":"+observabilityPort,
 		&server.DebugRegistrar{},
 		&server.MetricsRegistrar{},
-		&server.HealthRegistrar{},
+		healthRegistrar,
 	)
 	observabilityServer.SetupServer(wg)
 
-	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile)
+	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, healthRegistrar.MarkStateSynced)
 	err = s.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("unable to start satellite: %w", err)
