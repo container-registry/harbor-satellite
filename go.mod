@@ -1,6 +1,6 @@
 module github.com/container-registry/harbor-satellite
 
-go 1.24.0
+go 1.26.2
 
 require (
 	github.com/google/go-containerregistry v0.20.3
