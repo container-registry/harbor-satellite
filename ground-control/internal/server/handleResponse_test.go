@@ -105,7 +105,7 @@ func TestHandleAppError(t *testing.T) {
 		if w.Code != http.StatusInternalServerError {
 			t.Errorf("expected 500, got %d", w.Code)
 		}
-		if !strings.Contains(w.Body.String(), "some plain error") {
+		if !strings.Contains(w.Body.String(), "Internal Server Error") {
 			t.Errorf("expected error message in body, got %s", w.Body.String())
 		}
 	})
