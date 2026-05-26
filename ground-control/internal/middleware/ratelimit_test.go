@@ -1,9 +1,9 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 )
@@ -112,8 +112,12 @@ func TestRateLimitMiddleware_BlockedResponseBody(t *testing.T) {
 	if w.Header().Get("Content-Type") != "application/json" {
 		t.Errorf("expected application/json, got %s", w.Header().Get("Content-Type"))
 	}
-	if !strings.Contains(w.Body.String(), "Too Many Requests") {
-		t.Errorf("expected Too Many Requests in body, got %s", w.Body.String())
+	var body map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode blocked response body: %v", err)
+	}
+	if body["error"] != "Too Many Requests" {
+		t.Errorf("expected error Too Many Requests, got %q", body["error"])
 	}
 }
 
@@ -132,5 +136,14 @@ func TestGetClientIP_InvalidRemoteAddr(t *testing.T) {
 	ip := getClientIP(req)
 	if ip != "invalid" {
 		t.Errorf("expected fallback to raw RemoteAddr, got %s", ip)
+	}
+}
+
+func TestGetClientIP_IPv6(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "[::1]:8080"
+	ip := getClientIP(req)
+	if ip != "::1" {
+		t.Errorf("expected ::1, got %s", ip)
 	}
 }
