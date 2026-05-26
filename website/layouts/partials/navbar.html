@@ -1,0 +1,15 @@
+<nav class="navbar">
+  <div class="navbar__container">
+    <a href="{{ "/" | relURL }}" class="navbar__logo">Harbor Satellite</a>
+    <div class="navbar__links">
+      <a href="{{ "docs/" | relURL }}" class="navbar__link">Docs</a>
+      <a href="{{ .Site.Params.githubRepo }}" class="navbar__link" target="_blank" rel="noopener">GitHub</a>
+      <a href="{{ "docs/quickstart/" | relURL }}" class="navbar__cta btn btn--primary">Get Started</a>
+    </div>
+    <button class="navbar__toggle" aria-label="Toggle navigation">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </div>
+</nav>

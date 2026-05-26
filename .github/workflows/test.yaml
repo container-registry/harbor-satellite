@@ -1,0 +1,169 @@
+name: Test Pipeline
+
+on:
+  pull_request:
+    paths-ignore:
+      - "*.md"
+      - "assets/**"
+
+jobs:
+  vulnerability-check:
+    runs-on: container-registry
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run Vulnerability Check
+        run: task vuln-report
+
+      - name: Generate vulnerability summary
+        run: |
+          echo "<h2> Vulnerability Check Results</h2>" >> $GITHUB_STEP_SUMMARY
+          cat vulnerability-check.report >> $GITHUB_STEP_SUMMARY
+          if ! grep -q "No vulnerabilities found." vulnerability-check.report; then
+              echo "vulnerabilities found!" >> $GITHUB_STEP_SUMMARY
+              exit 0
+          fi
+
+  test-release:
+    runs-on: container-registry
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          install-only: true
+          version: v2.9.0
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Test Release
+        run: task snapshot
+
+  build-satellite:
+    runs-on: container-registry
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Build the binary for the satellite
+        run: task _build:satellite
+
+  build-ground-control:
+    runs-on: container-registry
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Build the binary for ground control
+        run: task _build:ground-control
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Test E2E satellite
+        run: task e2e-test
+
+  e2e-byo-registry-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Test BYO Registry E2E
+        run: task e2e-byo
+
+  e2e-spiffe-join-token-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Test SPIFFE Join Token E2E
+        run: task e2e-spiffe

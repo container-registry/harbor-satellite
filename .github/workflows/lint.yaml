@@ -1,0 +1,40 @@
+name: Lint
+on:
+  pull_request:
+    paths-ignore:
+      - "*.md"
+      - "assets/**"
+jobs:
+  lint:
+    runs-on: container-registry
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.11"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.0.2
+
+      - name: Run golangci-lint
+        run: task lint-report
+
+      - name: Generate lint summary
+        run: |
+          echo "<h2> Lint results</h2>" >> $GITHUB_STEP_SUMMARY
+          cat golangci-lint.report >> $GITHUB_STEP_SUMMARY
+          if [ -s golangci-lint.report ]; then
+              echo "Linting issues found!" >> $GITHUB_STEP_SUMMARY
+              exit 1
+          fi
