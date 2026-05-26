@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 )
 
-func makeServer(t *testing.T, status int, body interface{}) *httptest.Server {
+func makeServer(t *testing.T, status int, body any) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -123,8 +122,7 @@ func TestCheckHealth_SkipEnvVar(t *testing.T) {
 }
 
 func TestDefaultConfig_UsesEnvVar(t *testing.T) {
-	os.Setenv("HARBOR_URL", "http://harbor.test")
-	defer os.Unsetenv("HARBOR_URL")
+	t.Setenv("HARBOR_URL", "http://harbor.test")
 	cfg := defaultConfig()
 	if cfg.HarborURL != "http://harbor.test" {
 		t.Errorf("expected HARBOR_URL from env, got: %s", cfg.HarborURL)
