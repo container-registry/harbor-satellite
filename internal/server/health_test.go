@@ -5,19 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-)
 
-func decodeReady(t *testing.T, body []byte) (string, map[string]string) {
-	t.Helper()
-	var resp struct {
-		Status string            `json:"status"`
-		Checks map[string]string `json:"checks"`
-	}
-	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("invalid JSON response %q: %v", body, err)
-	}
-	return resp.Status, resp.Checks
-}
+	"github.com/stretchr/testify/require"
+)
 
 func TestHealthHandlerAlwaysOK(t *testing.T) {
 	hr := NewHealthRegistrar("", "", false)
@@ -25,9 +15,8 @@ func TestHealthHandlerAlwaysOK(t *testing.T) {
 	rec := httptest.NewRecorder()
 	hr.healthHandler(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `{"status":"ok"}`, rec.Body.String())
 }
 
 func TestReadyHandler(t *testing.T) {
@@ -59,16 +48,16 @@ func TestReadyHandler(t *testing.T) {
 		synced      bool
 		wantCode    int
 		wantStatus  string
-		wantChecks  map[string]string
+		wantChecks  readyChecks
 	}{
 		{
-			name:        "all ok",
+			name:        "all checks pass",
 			registryURL: registry.URL,
 			gcURL:       gc.URL,
 			synced:      true,
 			wantCode:    http.StatusOK,
 			wantStatus:  "ready",
-			wantChecks:  map[string]string{"registry": "ok", "ground_control": "ok", "state_sync": "ok"},
+			wantChecks:  readyChecks{Registry: "ok", GroundControl: "ok", StateSync: "ok"},
 		},
 		{
 			name:        "state sync pending",
@@ -77,7 +66,7 @@ func TestReadyHandler(t *testing.T) {
 			synced:      false,
 			wantCode:    http.StatusServiceUnavailable,
 			wantStatus:  "not_ready",
-			wantChecks:  map[string]string{"registry": "ok", "ground_control": "ok", "state_sync": "pending"},
+			wantChecks:  readyChecks{Registry: "ok", GroundControl: "ok", StateSync: "pending"},
 		},
 		{
 			name:        "ground control unavailable",
@@ -86,7 +75,7 @@ func TestReadyHandler(t *testing.T) {
 			synced:      true,
 			wantCode:    http.StatusServiceUnavailable,
 			wantStatus:  "not_ready",
-			wantChecks:  map[string]string{"registry": "ok", "ground_control": "unavailable", "state_sync": "ok"},
+			wantChecks:  readyChecks{Registry: "ok", GroundControl: "unavailable", StateSync: "ok"},
 		},
 		{
 			name:        "registry unavailable",
@@ -95,7 +84,7 @@ func TestReadyHandler(t *testing.T) {
 			synced:      true,
 			wantCode:    http.StatusServiceUnavailable,
 			wantStatus:  "not_ready",
-			wantChecks:  map[string]string{"registry": "unavailable", "ground_control": "ok", "state_sync": "ok"},
+			wantChecks:  readyChecks{Registry: "unavailable", GroundControl: "ok", StateSync: "ok"},
 		},
 		{
 			name:        "headless skips ground control",
@@ -105,7 +94,7 @@ func TestReadyHandler(t *testing.T) {
 			synced:      true,
 			wantCode:    http.StatusOK,
 			wantStatus:  "ready",
-			wantChecks:  map[string]string{"registry": "ok", "ground_control": "skipped", "state_sync": "ok"},
+			wantChecks:  readyChecks{Registry: "ok", GroundControl: "skipped", StateSync: "ok"},
 		},
 	}
 
@@ -119,25 +108,18 @@ func TestReadyHandler(t *testing.T) {
 			rec := httptest.NewRecorder()
 			hr.readyHandler(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
 
-			if rec.Code != tt.wantCode {
-				t.Fatalf("status code: got %d, want %d", rec.Code, tt.wantCode)
-			}
+			require.Equal(t, tt.wantCode, rec.Code)
 
-			status, checks := decodeReady(t, rec.Body.Bytes())
-			if status != tt.wantStatus {
-				t.Errorf("status: got %q, want %q", status, tt.wantStatus)
-			}
-			for k, want := range tt.wantChecks {
-				if checks[k] != want {
-					t.Errorf("check %q: got %q, want %q", k, checks[k], want)
-				}
-			}
+			var resp readyResponse
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+			require.Equal(t, tt.wantStatus, resp.Status)
+			require.Equal(t, tt.wantChecks, resp.Checks)
 		})
 	}
 }
 
-func TestHeadlessDoesNotContactGroundControl(t *testing.T) {
-	var gcHit bool
+func TestReadyHandlerHeadlessDoesNotContactGroundControl(t *testing.T) {
+	gcHit := false
 	gc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gcHit = true
 		w.WriteHeader(http.StatusOK)
@@ -155,7 +137,5 @@ func TestHeadlessDoesNotContactGroundControl(t *testing.T) {
 	rec := httptest.NewRecorder()
 	hr.readyHandler(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
 
-	if gcHit {
-		t.Error("ground control should not be contacted in headless mode")
-	}
+	require.False(t, gcHit, "ground control should not be contacted in headless mode")
 }
