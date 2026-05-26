@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -110,6 +111,9 @@ func TestRateLimitMiddleware_BlockedResponseBody(t *testing.T) {
 
 	if w.Header().Get("Content-Type") != "application/json" {
 		t.Errorf("expected application/json, got %s", w.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(w.Body.String(), "Too Many Requests") {
+		t.Errorf("expected Too Many Requests in body, got %s", w.Body.String())
 	}
 }
 
