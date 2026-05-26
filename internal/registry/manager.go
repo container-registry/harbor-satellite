@@ -69,6 +69,16 @@ func (zm *ZotManager) WriteTempZotConfig() error {
 		return fmt.Errorf("failed to create temp zot config file: %w", err)
 	}
 
+	var success bool
+	defer func() {
+		if !success {
+			_ = tmpFile.Close()
+			if removeErr := os.Remove(tmpFile.Name()); removeErr != nil && !os.IsNotExist(removeErr) {
+				zm.log.Warn().Err(removeErr).Str("path", tmpFile.Name()).Msg("Failed to remove temporary zot config file after error")
+			}
+		}
+	}()
+
 	if _, err := tmpFile.Write(zm.zotConfig); err != nil {
 		return fmt.Errorf("failed to write to temp zot file present at %s: %w", tmpFile.Name(), err)
 	}
@@ -78,11 +88,10 @@ func (zm *ZotManager) WriteTempZotConfig() error {
 	}
 
 	if err := os.Rename(tmpFile.Name(), zm.tempConfPath); err != nil {
-		// Clean up the temp file on rename failure
-		_ = os.Remove(tmpFile.Name())
 		return fmt.Errorf("failed to rename to target config path: %w", err)
 	}
 
+	success = true
 	zm.log.Debug().Str("path", zm.tempConfPath).Msg("Temporary zot config file created successfully")
 	return nil
 }
