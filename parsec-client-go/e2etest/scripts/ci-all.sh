@@ -8,7 +8,7 @@
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 TESTDIR=$(realpath "${SCRIPTDIR}"/..)
 
-set -eouf pipefail 
+set -euo pipefail
 
 pushd "${TESTDIR}"
 docker build -t all-providers "${TESTDIR}"/provider_cfg/all

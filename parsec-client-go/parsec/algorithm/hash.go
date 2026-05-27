@@ -91,7 +91,7 @@ func (a HashAlgorithm) String() string {
 
 func (a HashAlgorithm) isAlgorithmVariant() {}
 func (a *HashAlgorithm) ToWireInterface() interface{} {
-	return psaalgorithm.Algorithm{
+	return &psaalgorithm.Algorithm{
 		Variant: &psaalgorithm.Algorithm_Hash_{
 			// We've defined HashAlg to be same as protoc interface so we can cast safely
 			Hash: psaalgorithm.Algorithm_Hash(a.HashAlg),
@@ -100,5 +100,9 @@ func (a *HashAlgorithm) ToWireInterface() interface{} {
 }
 
 func newHashFromWire(a psaalgorithm.Algorithm_Hash) (algorithmVariant, error) {
-	return nil, fmt.Errorf("not implemented")
+	if a == psaalgorithm.Algorithm_HASH_NONE {
+		return nil, fmt.Errorf("HASH_NONE is not a valid hash algorithm")
+	}
+	// HashAlgorithmType values are defined to match the protoc Algorithm_Hash values.
+	return &HashAlgorithm{HashAlg: HashAlgorithmType(a)}, nil
 }

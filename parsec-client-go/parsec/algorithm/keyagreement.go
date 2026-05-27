@@ -148,13 +148,17 @@ type KeyAgreementWithKeyDerivation struct {
 
 func (a *KeyAgreementWithKeyDerivation) isKeyAgreementVariant() {}
 func (a *KeyAgreementWithKeyDerivation) ToWireInterface() interface{} {
+	var kdfAlg *psaalgorithm.Algorithm_KeyDerivation
+	if a.DerivationAlg != nil && a.DerivationAlg.variant != nil {
+		kdfAlg = a.DerivationAlg.variant.toWireInterfaceSpecific()
+	}
 	return &psaalgorithm.Algorithm{
 		Variant: &psaalgorithm.Algorithm_KeyAgreement_{
 			KeyAgreement: &psaalgorithm.Algorithm_KeyAgreement{
 				Variant: &psaalgorithm.Algorithm_KeyAgreement_WithKeyDerivation_{
 					WithKeyDerivation: &psaalgorithm.Algorithm_KeyAgreement_WithKeyDerivation{
 						KaAlg:  psaalgorithm.Algorithm_KeyAgreement_Raw(a.KaAlg),
-						KdfAlg: a.DerivationAlg.variant.toWireInterfaceSpecific(),
+						KdfAlg: kdfAlg,
 					},
 				},
 			},

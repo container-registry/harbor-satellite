@@ -234,7 +234,6 @@ func (c BasicClient) PsaGenerateKey(name string, attributes *KeyAttributes) erro
 	if err != nil {
 		return err
 	}
-	fmt.Printf("keyattributes: %+v\n", ka)
 	return c.opclient.PsaGenerateKey(requests.ProviderID(c.implicitProvider), c.auth.toNativeAuthenticator(), name, ka)
 }
 

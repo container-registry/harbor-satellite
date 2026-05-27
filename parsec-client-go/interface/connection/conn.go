@@ -58,10 +58,14 @@ func (conn *unixConnection) Close() error {
 	return nil
 }
 
-// Opens the unix socket ready for read/write
+// Opens the unix socket ready for read/write. Calling Open() on an
+// already-open connection returns an error rather than leaking the previous
+// socket handle. Callers must Close() before reopening.
 func (conn *unixConnection) Open() error {
+	if conn.rwc != nil {
+		return fmt.Errorf("connection already open; call Close() before reopening")
+	}
 	rwc, err := net.Dial("unix", conn.path)
-
 	if err != nil {
 		return err
 	}

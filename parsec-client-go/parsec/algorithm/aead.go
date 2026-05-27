@@ -34,7 +34,8 @@ func (a *aeadFactory) AeadShortenedTag(algType AeadAlgorithmType, tagLength uint
 	return &Algorithm{
 		variant: &AeadAlgorithm{
 			variant: &AeadAlgorithmShortenedTag{
-				AeadAlg: algType,
+				AeadAlg:   algType,
+				TagLength: tagLength,
 			},
 		},
 	}

@@ -63,7 +63,7 @@ func algCipherAlgToWire(a *algorithm.Cipher) (psaalgorithm.Algorithm_Cipher, err
 	}
 	varalg := alg.GetCipher()
 	if varalg == psaalgorithm.Algorithm_CIPHER_NONE {
-		return psaalgorithm.Algorithm_CIPHER_NONE, fmt.Errorf("expected *psaalgorithm.Algorithm_AsymmetricEncryption, but got nil")
+		return psaalgorithm.Algorithm_CIPHER_NONE, fmt.Errorf("expected non-NONE psaalgorithm.Algorithm_Cipher, got CIPHER_NONE")
 	}
 	return varalg, nil
 }

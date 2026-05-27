@@ -16,7 +16,7 @@ linters-settings:
     lines: 100
     statements: 50
   gci:
-    local-prefixes: github.com/golangci/golangci-lint
+    local-prefixes: github.com/parallaxsecond/parsec-client-go
   goconst:
     min-len: 2
     min-occurrences: 2
@@ -36,7 +36,7 @@ linters-settings:
   gocyclo:
     min-complexity: 15
   goimports:
-    local-prefixes: github.com/golangci/golangci-lint
+    local-prefixes: github.com/parallaxsecond/parsec-client-go
   gomnd:
     settings:
       mnd:

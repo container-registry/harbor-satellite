@@ -75,9 +75,18 @@ func (a *Algorithm) GetHash() *HashAlgorithm {
 func NewAlgorithmFromWireInterface(op interface{}) (*Algorithm, error) {
 	var algvar algorithmVariant
 	var err error
-	wireAlg, ok := op.(*psaalgorithm.Algorithm)
-	if !ok {
+	// Accept both pointer and value forms — in-package encoders return both shapes.
+	var wireAlg *psaalgorithm.Algorithm
+	switch v := op.(type) {
+	case *psaalgorithm.Algorithm:
+		wireAlg = v
+	case psaalgorithm.Algorithm:
+		wireAlg = &v
+	default:
 		return nil, fmt.Errorf("expected psaalgorithm.Algorithm, got %v", reflect.TypeOf(op))
+	}
+	if wireAlg == nil {
+		return nil, fmt.Errorf("nil *psaalgorithm.Algorithm")
 	}
 	if a := wireAlg.GetAsymmetricSignature(); a != nil {
 		algvar, err = newAsymmetricSignatureFromWire(a)

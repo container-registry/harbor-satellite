@@ -240,7 +240,7 @@ func (c Client) PsaVerifyHash(provider requests.ProviderID, authenticator auth.A
 		Signature: signature,
 		Alg:       alg,
 	}
-	resp := &psaverifymessage.Result{}
+	resp := &psaverifyhash.Result{}
 
 	return c.operation(provider, authenticator, requests.OpPsaVerifyHash, req, resp)
 }
@@ -389,7 +389,7 @@ func (c Client) PsaMACVerify(provider requests.ProviderID, authenticator auth.Au
 	}
 	resp := &psamacverify.Result{}
 
-	return c.operation(provider, authenticator, requests.OpPsaMacCompute, req, resp)
+	return c.operation(provider, authenticator, requests.OpPsaMacVerify, req, resp)
 }
 
 func (c Client) PsaRawKeyAgreement(provider requests.ProviderID, authenticator auth.Authenticator, alg *psaalgorithm.Algorithm_KeyAgreement_Raw, privateKey string, peerKey []byte) ([]byte, error) {

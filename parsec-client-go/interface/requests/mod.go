@@ -39,5 +39,5 @@ const (
 )
 
 func (o OpCode) IsValid() bool {
-	return o <= OpDeleteClient
+	return o >= OpPing && o <= OpDeleteClient
 }

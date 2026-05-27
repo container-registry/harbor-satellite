@@ -5,6 +5,8 @@ package requests
 
 import (
 	"bytes"
+	"fmt"
+	"math"
 
 	"github.com/parallaxsecond/parsec-client-go/interface/auth"
 	"google.golang.org/protobuf/proto"
@@ -35,6 +37,10 @@ func NewRequest(op OpCode, bdy proto.Message, authenticator auth.Authenticator, 
 	if err != nil {
 		return nil, err
 	}
+	authBufLen := authtok.Buffer().Len()
+	if authBufLen > math.MaxUint16 {
+		return nil, fmt.Errorf("auth token length %d exceeds wire-protocol max %d", authBufLen, math.MaxUint16)
+	}
 	r := &Request{
 		Header: wireHeader{
 			versionMajor: versionMajorOne,
@@ -45,7 +51,7 @@ func NewRequest(op OpCode, bdy proto.Message, authenticator auth.Authenticator, 
 			contentType: contentTypeProtobuf,
 			authType:    authtok.AuthType(),
 			bodyLen:     uint32(len(bodyBuf)),
-			authLen:     uint16(authtok.Buffer().Len()),
+			authLen:     uint16(authBufLen),
 			opCode:      op,
 			Status:      StatusSuccess,
 		},

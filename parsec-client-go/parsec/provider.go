@@ -11,13 +11,14 @@ import (
 // ProviderID for providers
 type ProviderID uint8
 
-// Provider UUIDs
+// Provider IDs (uint8 wire-protocol values, not 128-bit UUIDs).
 const (
 	ProviderCore           ProviderID = 0
 	ProviderMBed           ProviderID = 1
 	ProviderPKCS11         ProviderID = 2
 	ProviderTPM            ProviderID = 3
 	ProviderTrustedService ProviderID = 4
+	ProviderCryptoAuthLib  ProviderID = 5
 )
 
 // HasCrypto returns true if the provider supports crypto
@@ -37,6 +38,8 @@ func (p ProviderID) String() string {
 		return "TPM"
 	case ProviderTrustedService:
 		return "TrustedService"
+	case ProviderCryptoAuthLib:
+		return "CryptoAuthLib"
 	default:
 		return "Unknown"
 	}
@@ -63,6 +66,7 @@ func newProviderInfoFromOp(inf *listproviders.ProviderInfo) *ProviderInfo {
 		Vendor:      inf.Vendor,
 		VersionMaj:  inf.VersionMaj,
 		VersionMin:  inf.VersionMin,
+		VersionRev:  inf.VersionRev,
 		ID:          newProviderIDFromOp(requests.ProviderID(inf.Id)),
 	}
 }

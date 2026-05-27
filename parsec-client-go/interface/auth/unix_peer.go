@@ -30,9 +30,6 @@ func (a unixPeerAuthenticator) NewRequestAuth() (RequestAuthToken, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err != nil {
-		return nil, err
-	}
 	err = binary.Write(r.buf, binary.LittleEndian, uint32(uid))
 	if err != nil {
 		return nil, err
