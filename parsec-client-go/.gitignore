@@ -1,3 +1,7 @@
 .vscode
 
 .devcontainer
+
+# intermediate protoc staging directories used by the Makefile
+tmp/
+tmpproto/
