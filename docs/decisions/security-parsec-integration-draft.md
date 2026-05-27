@@ -59,15 +59,22 @@ SVID delivery flow is unaffected. This maps directly onto ADR-0005's explicit ro
 
 ### What the bootstrapping flow proposal gets right
 
-The `PARSEC Integration & Zero-Trust Bootstrapping Flow.md` document correctly describes the
-6-step sequence:
+The `PARSEC Integration & Zero-Trust Bootstrapping Flow.md` document describes the 6-step
+sequence:
 
-1. Detect PARSEC daemon; fall back gracefully if absent
-2. Check for existing key pair; generate non-exportable key on first boot
-3. Generate CSR + attestation quote; deliver to Ground Control (direct or air-gap)
-4. Ground Control verifies hardware proof; issues SPIFFE SVID
-5. Satellite uses SVID for mTLS; fetches Robot Account credentials; PARSEC unseals config
-6. Heartbeat → credential rotation over mTLS tunnel
+1. Provider selection: `--parsec-enabled` chooses the hardware path; if the daemon is
+   unreachable the satellite halts (fail-hard, per ADR-0007). The "software path" is simply
+   not opting in — there is no in-process fallback from hardware to software.
+2. Check for existing key pair (`ListKeys` by name); generate a non-exportable key on first
+   boot (`PsaGenerateKey`). `PsaImportKey` is for raw-material import and is **not** used to
+   reference in-hardware keys.
+3. Build the CSR in application code; sign the CSR digest with `PsaSignHash`. PARSEC has no
+   CSR primitive of its own. Deliver the signed CSR (and an attestation quote, when SPIRE
+   `tpm_devid` is in place) to Ground Control directly or air-gapped.
+4. Ground Control verifies the hardware proof via SPIRE's `tpm_devid` plugin; issues a SPIFFE
+   SVID.
+5. Satellite uses SVID for mTLS; fetches Robot Account credentials; PARSEC unseals config.
+6. Heartbeat → credential rotation over mTLS tunnel.
 
 Steps 1–2 and 5–6 are clean. Steps 3–4 need clarification:
 
@@ -81,12 +88,14 @@ baselines). SPIRE already does this correctly.
 
 ### Software fallback vs. fail-hard
 
-The bootstrapping flow proposes a `FileKeyProvider` fallback when PARSEC is absent. ADR-0005
-establishes a "fail-hard, no fallback" rule when a secure mode is enabled. These are in tension.
+ADR-0007 (consistent with ADR-0005's posture) is unambiguous: when `--parsec-enabled` is set,
+the satellite **halts** if the daemon is unreachable — there is no in-process fallback to a
+software provider. The "software path" is the existing AES software provider, selected by
+**not** passing `--parsec-enabled`. The two modes are chosen by operator intent at startup;
+they do not cross-fall-back at runtime.
 
-**Resolution**: follow ADR-0005's philosophy. When `--parsec-enabled` is set, the satellite halts
-if the daemon is unreachable. The fallback for development/VM environments is simply not setting
-`--parsec-enabled` — the existing AES software path remains the default.
+Earlier drafts of the bootstrapping flow described a `FileKeyProvider` fallback when PARSEC
+was absent. That description is superseded by ADR-0007 and should not be implemented.
 
 ### The Go TLS incompatibility
 
@@ -120,7 +129,7 @@ Standard Go TLS calls `Sign()` transparently. No change to the TLS layer's calle
 
 ### Package structure
 
-```
+```text
 internal/parsec/
   config.go          # Config struct, DefaultConfig(), key name constants    [no tag]
   detect.go          # Detect(socketPath) bool, MustDetect() error           [parsec]
@@ -185,7 +194,7 @@ generation happens exactly once per device.
 
 ### New CLI flags
 
-```
+```text
 --parsec-enabled           bool    Enable hardware-backed identity (requires parsec build + daemon)
                                    Env: PARSEC_ENABLED=true
 --parsec-socket <path>     string  PARSEC daemon socket path

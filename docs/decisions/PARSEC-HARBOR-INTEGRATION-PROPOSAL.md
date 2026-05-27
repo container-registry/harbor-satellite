@@ -48,7 +48,7 @@ Harbor currently manages TLS/SSL certificates through:
 - **Microservice Architecture**: Security as a service model
 - **Client-Server Model**: Unix domain socket communication (IPC)
 
-**Supported Backends:**hj
+**Supported Backends:**
 - **TPM Provider**: Trusted Platform Module (TPM 2.0)
 - **PKCS#11 Provider**: Industry-standard interface for HSMs and smart cards
 - **Mbed Crypto Provider**: Software cryptographic library (PSA Crypto implementation)
@@ -213,7 +213,7 @@ parsecClient, err := parsec.CreateConfiguredClient("harbor-core")
 keyAttrs := parsec.KeyAttributes{
     KeyType: parsec.NewKeyType().RsaKeyPair(),
     KeyBits: 2048,
-    Algorithm: algorithm.AsymmetricSignature.RsapkcsV15Sign(algorithm.Hash.Sha256()),
+    Algorithm: algorithm.AsymmetricSignature.RsaPkcs1v15Sign(algorithm.Hash.Sha256()),
     Usage: parsec.UsageFlags{Sign: true},
 }
 err = parsecClient.PsaGenerateKey("harbor-tls-key", &keyAttrs)
@@ -239,12 +239,12 @@ tlsConfig, err := certManager.GetTLSConfig("harbor-tls-key", cert)
 // Generate signing key in PARSEC
 parsecClient.PsaGenerateKey("harbor-content-trust-key", &signingKeyAttrs)
 
-// Sign image digest
+// Sign image digest. P-256 is an elliptic curve, so this is ECDSA, not RSA.
 imageDigest := sha256.Sum256(imageManifest)
 signature, err := parsecClient.PsaSignHash(
     "harbor-content-trust-key",
     imageDigest[:],
-    &algorithm.AsymmetricSignature.RsaP256Sha256(),
+    &algorithm.AsymmetricSignature.EcdsaP256Sha256(),
 )
 
 // Signature verification
@@ -252,7 +252,7 @@ err = parsecClient.PsaVerifyHash(
     "harbor-content-trust-key",
     imageDigest[:],
     signature,
-    &algorithm.AsymmetricSignature.RsaP256Sha256(),
+    &algorithm.AsymmetricSignature.EcdsaP256Sha256(),
 )
 ```
 
@@ -287,19 +287,26 @@ encryptedDEK, err := parsecClient.PsaAeadEncrypt(
 
 **PARSEC-backed JWT Signing:**
 ```go
-// Sign JWT tokens with PARSEC
+// Sign JWT tokens with PARSEC.
+// Per RFC 7519 the signing input is base64url(header) + "." + base64url(claims),
+// not the claims alone, and jwt.MapClaims has no String() method.
+header := map[string]string{"alg": "ES256", "typ": "JWT"}
+headerJSON, _ := json.Marshal(header)
 tokenClaims := jwt.MapClaims{
     "sub": userID,
     "exp": expiration,
     "iat": issuedAt,
 }
-
-tokenHash := sha256.Sum256([]byte(tokenClaims.String()))
+claimsJSON, _ := json.Marshal(tokenClaims)
+signingInput := base64.RawURLEncoding.EncodeToString(headerJSON) + "." +
+    base64.RawURLEncoding.EncodeToString(claimsJSON)
+tokenHash := sha256.Sum256([]byte(signingInput))
 signature, err := parsecClient.PsaSignHash(
     "harbor-jwt-signing-key",
     tokenHash[:],
     &algorithm.AsymmetricSignature.EcdsaP256Sha256(),
 )
+jwt := signingInput + "." + base64.RawURLEncoding.EncodeToString(signature)
 ```
 
 ### 3.5 Attestation and Workload Identity
@@ -520,16 +527,24 @@ services:
   parsec:
     image: harbor-parsec:latest
     container_name: harbor-parsec
+    # Least-privilege defaults: only the TPM character device is exposed.
+    # Do NOT add `cap_add: SYS_ADMIN`, `security_opt: apparmor:unconfined`, or
+    # `privileged: true` here — those grant effectively root-equivalent host
+    # access and are not required for TPM2 access. Use them only as a temporary
+    # debug aid and never in production.
+    user: "parsec:parsec"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    devices:
+      - /dev/tpmrm0:/dev/tpmrm0:rw
     volumes:
-      - /dev/tpmrm0:/dev/tpmrm0
       - parsec-socket:/run/parsec
       - parsec-data:/var/lib/parsec
-    devices:
-      - /dev/tpmrm0
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
+    tmpfs:
+      - /tmp
 
   harbor-core:
     image: goharbor/harbor-core:v2.x-parsec
@@ -584,8 +599,19 @@ spec:
       mountPath: /run/parsec
     - name: tpm
       mountPath: /dev/tpmrm0
+    # Least-privilege: drop all caps, run non-root, read-only root FS.
+    # `privileged: true` would grant full host access and is not needed for TPM.
+    # If your kernel requires CAP_SYS_ADMIN for /dev/tpmrm0 (rare), add it
+    # explicitly under `add:` rather than enabling `privileged`.
     securityContext:
-      privileged: true
+      runAsNonRoot: true
+      runAsUser: 65532
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      seccompProfile:
+        type: RuntimeDefault
   
   volumes:
   - name: parsec-socket
@@ -637,17 +663,18 @@ spec:
 
 **Implementation:**
 ```go
+// Per ADR-0007, PARSEC mode is fail-hard: when the operator opts in to
+// hardware-backed identity, a PARSEC failure must NOT silently downgrade to a
+// software path — that defeats the security guarantee. File-based loading is
+// reachable only when PARSEC mode is not enabled.
 func GetTLSCertificate() (*tls.Certificate, error) {
     if isParsecEnabled() {
-        // Try PARSEC first
         cert, err := getParsecCertificate()
-        if err == nil {
-            return cert, nil
+        if err != nil {
+            return nil, fmt.Errorf("parsec certificate load failed (fail-hard, per ADR-0007): %w", err)
         }
-        log.Warn("PARSEC certificate loading failed, falling back to file-based")
+        return cert, nil
     }
-    
-    // Fallback to traditional file-based loading
     return tls.LoadX509KeyPair(certPath, keyPath)
 }
 ```
@@ -890,10 +917,10 @@ import (
     "crypto/tls"
     "crypto/x509"
     "crypto/x509/pkix"
-    "encoding/pem"
+    "io"
     "math/big"
     "time"
-    
+
     "github.com/parallaxsecond/parsec-client-go/parsec"
     "github.com/parallaxsecond/parsec-client-go/parsec/algorithm"
 )

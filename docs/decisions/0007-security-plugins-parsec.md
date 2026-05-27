@@ -23,8 +23,10 @@ encryption uses an AES key derived from that fingerprint. This means:
 
 ADR-0005 (SPIFFE/SPIRE Identity) establishes the identity and mTLS model but defers hardware
 attestation to Phase 2 (TPM node attestation via SPIRE `tpm_devid` plugin) and hardware key
-storage to Phase 3 (HSM identity store on satellite). This ADR defines how PARSEC fulfils
-those phases.
+storage to Phase 3 (HSM identity store on satellite). This ADR provides the hardware
+root-of-trust and the abstraction layer that a future SPIRE `tpm_devid` integration would
+consume; the SPIRE-side wiring itself is out of scope here and tracked separately as ADR-0005
+Phase 2 work.
 
 See: [harbor-satellite#327](https://github.com/container-registry/harbor-satellite/issues/327)
 
@@ -91,12 +93,13 @@ tag. All combinations are valid:
 | `go build ./...` | enabled | disabled |
 | `go build -tags nospiffe ./...` | disabled (stubs) | disabled |
 | `go build -tags parsec ./...` | enabled | enabled |
+| `go build -tags "parsec nospiffe" ./...` | disabled (stubs) | enabled |
 
 Default builds have zero PARSEC dependency — the `internal/parsec/` package compiles to stubs.
 
 ### New Package: `internal/parsec/`
 
-```
+```text
 internal/parsec/
   config.go          # Config struct, DefaultConfig(), named key constants   [no tag]
   detect.go          # Detect()/MustDetect() — ping daemon socket           [parsec]
@@ -205,12 +208,33 @@ PARSEC (hardware key) → SPIRE tpm_devid (node attestation) → SVID issuance
 
 ## Validation
 
+Target coverage (not all of these exist yet; see Phase-1 Limitations below):
+
 - Unit tests for `KeyProvider` using a mock PARSEC client (same pattern as `internal/crypto/mock.go`)
 - `parsec` build tag compiles cleanly alongside `nospiffe` and default builds
 - Default build (no `parsec` tag) continues to pass all existing tests unchanged
-- E2E test (`TestParsecIdentityE2E`) using a real PARSEC daemon in CI, modelled on
-  `TestSpiffeJoinTokenE2E` in `taskfiles/e2e.yml`
-- `internal/tls/` tests confirming `crypto.Signer` path produces valid TLS handshakes
+- E2E test (`test-parsec` task in `taskfiles/e2e.yml`) using a real PARSEC daemon in CI,
+  modelled on the SPIFFE join-token e2e flow. The assertion must verify a TLS handshake or a
+  `psa_sign_hash`+`psa_verify_hash` round-trip — not a log-grep against debug output.
+- `internal/tls/` tests confirming the `crypto.Signer` path produces valid TLS handshakes,
+  including a `signer.Public()`-vs-`cert.PublicKey` match check.
+
+## Phase-1 Limitations
+
+This ADR scopes a minimum-viable PARSEC integration. The following are intentionally out of
+scope for Phase 1 and tracked separately:
+
+- **Hardware-bound config sealing:** `parsec-client-go` does not yet expose the AEAD primitives
+  required for `satellite-config-seal-key`. Until it does, config encryption uses the existing
+  software AES-256-GCM provider with device-fingerprint binding. The on-disk format is
+  unchanged so a future Phase-1.5 upgrade can re-seal in place.
+- **SPIRE `tpm_devid` wiring:** the satellite-side hardware root is provided here; the
+  SPIRE-side attestation plugin configuration is ADR-0005 Phase 2 work.
+- **Air-gapped enrollment:** USB-mediated CSR delivery is described in the related
+  bootstrapping flow document but is not implemented.
+- **Threat-model formalisation:** a STRIDE-style attacker model (physical-access, root,
+  network) and trust-boundary diagram should be added as a follow-up before this ADR moves
+  from "proposed" to "accepted".
 
 ---
 
