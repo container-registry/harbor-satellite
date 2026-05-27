@@ -82,9 +82,14 @@ func ParseResponse(expectedOpCode OpCode, buf *bytes.Buffer, responseProtoBuf pr
 	}
 
 	hdrBuf := make([]byte, WireHeaderSize)
-	_, err := buf.Read(hdrBuf)
+	n, err := buf.Read(hdrBuf)
 	if err != nil {
 		return errors.Wrap(err, "failed to read header")
+	}
+	if uint16(n) != WireHeaderSize {
+		// A short read on a bytes.Buffer returns nil error; without this guard
+		// parseWireHeaderFromBuf indexes into truncated bytes and panics.
+		return errors.Errorf("header underflow error, expected %v bytes, got %v", WireHeaderSize, n)
 	}
 	wireHeader, err := parseWireHeaderFromBuf(bytes.NewBuffer(hdrBuf))
 	if err != nil {
@@ -96,7 +101,7 @@ func ParseResponse(expectedOpCode OpCode, buf *bytes.Buffer, responseProtoBuf pr
 	}
 
 	bodyBuf := make([]byte, wireHeader.bodyLen)
-	n, err := buf.Read(bodyBuf)
+	n, err = buf.Read(bodyBuf)
 	if err != nil {
 		return errors.Wrap(err, "failed to read body")
 	}

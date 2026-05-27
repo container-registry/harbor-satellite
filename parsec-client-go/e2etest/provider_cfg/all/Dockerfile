@@ -1,9 +1,12 @@
 # Copyright 2021 Contributors to the Parsec project.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM   parsec-ci-service-test-all
+# Explicit tag — never rely on whatever happens to be tagged `latest`.
+ARG BASE_TAG=latest
+FROM parsec-ci-service-test-all:${BASE_TAG}
 
-# Install Rust toolchain for root
+# Build-only stage runs as root for toolchain installs; drop back to a
+# non-root user at the end (Codacy DL3002).
 USER root
 
 WORKDIR /tmp
@@ -18,12 +21,17 @@ RUN curl -fsSL -o /tmp/go.tgz "https://golang.org/dl/go${GO_VERSION}.linux-amd64
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Pin parsec to a specific commit for reproducible builds.
+# Default is a tag for readability — pass `--build-arg PARSEC_COMMIT=<sha>` in
+# CI to harden against tag movement.
 ARG PARSEC_COMMIT=1.4.0
-RUN git clone https://github.com/parallaxsecond/parsec && cd parsec && git checkout "${PARSEC_COMMIT}"
-
-WORKDIR parsec
-# Initialising any submodules. Currently used for building the Trusted Service provider
-RUN git submodule update --init
-RUN RUST_LOG=info RUST_BACKTRACE=1 cargo build --features=all-providers,all-authenticators
+WORKDIR /tmp
+RUN git clone https://github.com/parallaxsecond/parsec \
+    && cd parsec \
+    && git checkout "${PARSEC_COMMIT}" \
+    && git submodule update --init \
+    && RUST_LOG=info RUST_BACKTRACE=1 cargo build --features=all-providers,all-authenticators
 
 WORKDIR /tmp
+
+# Drop privileges. The CI base image provides the `parsec` user.
+USER parsec

@@ -90,7 +90,7 @@ func (f *macFactory) CMACTruncated(macLength uint32) *Algorithm {
 		variant: &MacAlgorithm{
 			variant: &MacTruncated{
 				MacAlg: &MacFullLength{
-					variant: &MacFullLengthCbcMac{},
+					variant: &MacFullLengthCmac{},
 				},
 				MacLength: macLength,
 			},
@@ -173,7 +173,7 @@ func (a *MacFullLengthHmac) toWireInterfaceSpecific() *psaalgorithm.Algorithm_Ma
 	}
 }
 func (a *MacFullLengthHmac) ToWireInterface() interface{} {
-	return psaalgorithm.Algorithm{
+	return &psaalgorithm.Algorithm{
 		Variant: &psaalgorithm.Algorithm_Mac_{
 			Mac: &psaalgorithm.Algorithm_Mac{
 				Variant: &psaalgorithm.Algorithm_Mac_FullLength_{
@@ -195,7 +195,7 @@ func (a *MacFullLengthCbcMac) toWireInterfaceSpecific() *psaalgorithm.Algorithm_
 	}
 }
 func (a *MacFullLengthCbcMac) ToWireInterface() interface{} {
-	return psaalgorithm.Algorithm{
+	return &psaalgorithm.Algorithm{
 		Variant: &psaalgorithm.Algorithm_Mac_{
 			Mac: &psaalgorithm.Algorithm_Mac{
 				Variant: &psaalgorithm.Algorithm_Mac_FullLength_{
@@ -217,7 +217,7 @@ func (a *MacFullLengthCmac) toWireInterfaceSpecific() *psaalgorithm.Algorithm_Ma
 	}
 }
 func (a *MacFullLengthCmac) ToWireInterface() interface{} {
-	return psaalgorithm.Algorithm{
+	return &psaalgorithm.Algorithm{
 		Variant: &psaalgorithm.Algorithm_Mac_{
 			Mac: &psaalgorithm.Algorithm_Mac{
 				Variant: &psaalgorithm.Algorithm_Mac_FullLength_{

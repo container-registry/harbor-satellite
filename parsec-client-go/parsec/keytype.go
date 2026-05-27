@@ -243,7 +243,11 @@ func (k KeyTypeEccKeyPair) isKeyTypeVariant() {}
 
 func (k *KeyTypeEccKeyPair) toWireInterface() interface{} {
 	return &psakeyattributes.KeyType{
-		Variant: &psakeyattributes.KeyType_EccKeyPair_{},
+		Variant: &psakeyattributes.KeyType_EccKeyPair_{
+			EccKeyPair: &psakeyattributes.KeyType_EccKeyPair{
+				CurveFamily: psakeyattributes.KeyType_EccFamily(k.CurveFamily),
+			},
+		},
 	}
 }
 
@@ -255,7 +259,11 @@ func (k KeyTypeEccPublicKey) isKeyTypeVariant() {}
 
 func (k *KeyTypeEccPublicKey) toWireInterface() interface{} {
 	return &psakeyattributes.KeyType{
-		Variant: &psakeyattributes.KeyType_EccPublicKey_{},
+		Variant: &psakeyattributes.KeyType_EccPublicKey_{
+			EccPublicKey: &psakeyattributes.KeyType_EccPublicKey{
+				CurveFamily: psakeyattributes.KeyType_EccFamily(k.CurveFamily),
+			},
+		},
 	}
 }
 
@@ -267,7 +275,11 @@ func (k KeyTypeDhKeyPair) isKeyTypeVariant() {}
 
 func (k *KeyTypeDhKeyPair) toWireInterface() interface{} {
 	return &psakeyattributes.KeyType{
-		Variant: &psakeyattributes.KeyType_DhKeyPair_{},
+		Variant: &psakeyattributes.KeyType_DhKeyPair_{
+			DhKeyPair: &psakeyattributes.KeyType_DhKeyPair{
+				GroupFamily: psakeyattributes.KeyType_DhFamily(k.GroupFamily),
+			},
+		},
 	}
 }
 
@@ -277,6 +289,10 @@ func (k KeyTypeDhPublicKey) isKeyTypeVariant() {}
 
 func (k *KeyTypeDhPublicKey) toWireInterface() interface{} {
 	return &psakeyattributes.KeyType{
-		Variant: &psakeyattributes.KeyType_DhPublicKey_{},
+		Variant: &psakeyattributes.KeyType_DhPublicKey_{
+			DhPublicKey: &psakeyattributes.KeyType_DhPublicKey{
+				GroupFamily: psakeyattributes.KeyType_DhFamily(k.GroupFamily),
+			},
+		},
 	}
 }

@@ -13,7 +13,7 @@ var _ = Describe("Provider", func() {
 	It("Should give correct values", func() {
 		for i := 0; i < 255; i++ {
 			p := requests.ProviderID(i)
-			if p >= requests.ProviderCore && p <= requests.ProviderTrustedService {
+			if p >= requests.ProviderCore && p <= requests.ProviderCryptoAuthLib {
 				Expect(p.IsValid()).To(BeTrue())
 				Expect(p.String()).NotTo(Equal("Unknown"))
 			} else {
