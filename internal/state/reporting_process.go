@@ -158,7 +158,7 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 			return fmt.Errorf("create SPIFFE HTTP client: %w", err)
 		}
 	} else {
-		client, err = createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure())
+		client, err = CreateHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure(), 30*time.Second)
 		if err != nil {
 			return fmt.Errorf("create HTTP client: %w", err)
 		}

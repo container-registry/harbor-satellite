@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	"github.com/container-registry/harbor-satellite/internal/server"
+	"github.com/container-registry/harbor-satellite/internal/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -350,10 +353,47 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	if cm.UseUnsecure() {
 		registryScheme = "http"
 	}
+	healthClient, err := state.CreateHTTPClient(cm.GetTLSConfig(), cm.UseUnsecure(), 2*time.Second)
+	if err != nil {
+		return fmt.Errorf("build health check HTTP client: %w", err)
+	}
+
+	// In SPIFFE mode the satellite reaches Ground Control via SPIFFE mTLS, so the
+	// readiness GC check must use the same path. Build the client lazily per probe
+	// (Connect is idempotent and the X509Source is reused) so an unreachable SPIRE
+	var gcClient func(context.Context) (*http.Client, error)
+	if cm.IsSPIFFEEnabled() {
+		spiffeCfg := cm.GetSPIFFEConfig()
+		sc, scErr := spiffe.NewClient(spiffe.Config{
+			Enabled:          spiffeCfg.Enabled,
+			EndpointSocket:   spiffeCfg.EndpointSocket,
+			ExpectedServerID: spiffeCfg.ExpectedServerID,
+		})
+		if scErr != nil {
+			return fmt.Errorf("create SPIFFE client for health checks: %w", scErr)
+		}
+		defer func() { _ = sc.Close() }()
+		gcClient = func(ctx context.Context) (*http.Client, error) {
+			if err := sc.Connect(ctx); err != nil {
+				return nil, err
+			}
+			tlsCfg, err := sc.GetTLSConfig()
+			if err != nil {
+				return nil, err
+			}
+			return &http.Client{
+				Timeout:   2 * time.Second,
+				Transport: &http.Transport{TLSClientConfig: tlsCfg},
+			}, nil
+		}
+	}
+
 	healthRegistrar := server.NewHealthRegistrar(
 		fmt.Sprintf("%s://%s", registryScheme, localRegistryEndpoint),
 		cm.ResolveGroundControlURL(),
 		opts.Headless,
+		healthClient,
+		gcClient,
 	)
 
 	// Start observability server.

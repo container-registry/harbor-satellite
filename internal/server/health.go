@@ -15,17 +15,29 @@ type HealthRegistrar struct {
 	gcURL       string
 	headless    bool
 	client      *http.Client
+	gcClient    func(context.Context) (*http.Client, error)
 	stateSynced atomic.Bool
 }
 
-func NewHealthRegistrar(registryURL, gcURL string, headless bool) *HealthRegistrar {
+// NewHealthRegistrar builds the registrar. client is used for the registry check
+// (and the Ground Control check when gcClient is nil); pass nil for a bare
+// default client. gcClient, when non-nil, supplies the client for the Ground
+// Control check — used to honor SPIFFE mTLS, which differs from the static client.
+func NewHealthRegistrar(
+	registryURL, gcURL string,
+	headless bool,
+	client *http.Client,
+	gcClient func(context.Context) (*http.Client, error),
+) *HealthRegistrar {
+	if client == nil {
+		client = &http.Client{Timeout: 2 * time.Second}
+	}
 	return &HealthRegistrar{
 		registryURL: strings.TrimRight(registryURL, "/"),
 		gcURL:       strings.TrimRight(gcURL, "/"),
 		headless:    headless,
-		client: &http.Client{
-			Timeout: 2 * time.Second,
-		},
+		client:      client,
+		gcClient:    gcClient,
 	}
 }
 
@@ -138,12 +150,21 @@ func (hr *HealthRegistrar) checkGroundControl(ctx context.Context) error {
 		return fmt.Errorf("ground control URL is empty")
 	}
 
+	client := hr.client
+	if hr.gcClient != nil {
+		c, err := hr.gcClient(ctx)
+		if err != nil {
+			return fmt.Errorf("build ground control client: %w", err)
+		}
+		client = c
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, hr.gcURL+"/health", nil)
 	if err != nil {
 		return fmt.Errorf("create ground control health request: %w", err)
 	}
 
-	resp, err := hr.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("send ground control health request: %w", err)
 	}

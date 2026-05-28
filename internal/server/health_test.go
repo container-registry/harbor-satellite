@@ -1,10 +1,13 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -54,7 +57,7 @@ type readyTestCase struct {
 func runReadyCase(t *testing.T, tc readyTestCase) {
 	t.Helper()
 
-	hr := NewHealthRegistrar(tc.registryURL, tc.gcURL, tc.headless)
+	hr := NewHealthRegistrar(tc.registryURL, tc.gcURL, tc.headless, nil, nil)
 	if tc.synced {
 		hr.MarkStateSynced()
 	}
@@ -75,7 +78,7 @@ func runReadyCase(t *testing.T, tc readyTestCase) {
 }
 
 func TestHealthHandlerAlwaysOK(t *testing.T) {
-	hr := NewHealthRegistrar("", "", false)
+	hr := NewHealthRegistrar("", "", false, nil, nil)
 
 	rec := httptest.NewRecorder()
 	hr.healthHandler(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
@@ -89,16 +92,31 @@ func TestReadyHandler(t *testing.T) {
 	gc := newStubGroundControl(t)
 
 	tests := []readyTestCase{
-		{"all checks pass", registry.URL, gc.URL, false, true,
-			http.StatusOK, readyChecks{Registry: "ok", GroundControl: "ok", StateSync: "ok"}},
-		{"state sync pending", registry.URL, gc.URL, false, false,
-			http.StatusServiceUnavailable, readyChecks{Registry: "ok", GroundControl: "ok", StateSync: "pending"}},
-		{"ground control unavailable", registry.URL, unreachableURL, false, true,
-			http.StatusServiceUnavailable, readyChecks{Registry: "ok", GroundControl: "unavailable", StateSync: "ok"}},
-		{"registry unavailable", unreachableURL, gc.URL, false, true,
-			http.StatusServiceUnavailable, readyChecks{Registry: "unavailable", GroundControl: "ok", StateSync: "ok"}},
-		{"headless skips ground control", registry.URL, unreachableURL, true, true,
-			http.StatusOK, readyChecks{Registry: "ok", GroundControl: "skipped", StateSync: "ok"}},
+		{
+			"all checks pass", registry.URL, gc.URL, false, true,
+			http.StatusOK,
+			readyChecks{Registry: "ok", GroundControl: "ok", StateSync: "ok"},
+		},
+		{
+			"state sync pending", registry.URL, gc.URL, false, false,
+			http.StatusServiceUnavailable,
+			readyChecks{Registry: "ok", GroundControl: "ok", StateSync: "pending"},
+		},
+		{
+			"ground control unavailable", registry.URL, unreachableURL, false, true,
+			http.StatusServiceUnavailable,
+			readyChecks{Registry: "ok", GroundControl: "unavailable", StateSync: "ok"},
+		},
+		{
+			"registry unavailable", unreachableURL, gc.URL, false, true,
+			http.StatusServiceUnavailable,
+			readyChecks{Registry: "unavailable", GroundControl: "ok", StateSync: "ok"},
+		},
+		{
+			"headless skips ground control", registry.URL, unreachableURL, true, true,
+			http.StatusOK,
+			readyChecks{Registry: "ok", GroundControl: "skipped", StateSync: "ok"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -110,7 +128,7 @@ func TestReadyHandler(t *testing.T) {
 
 func TestReadyHandlerHeadlessDoesNotContactGroundControl(t *testing.T) {
 	gcHit := false
-	gc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	gc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		gcHit = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -118,7 +136,7 @@ func TestReadyHandlerHeadlessDoesNotContactGroundControl(t *testing.T) {
 
 	registry := newStubRegistry(t)
 
-	hr := NewHealthRegistrar(registry.URL, gc.URL, true)
+	hr := NewHealthRegistrar(registry.URL, gc.URL, true, nil, nil)
 	hr.MarkStateSynced()
 
 	rec := httptest.NewRecorder()
@@ -127,6 +145,83 @@ func TestReadyHandlerHeadlessDoesNotContactGroundControl(t *testing.T) {
 	require.False(t, gcHit, "ground control should not be contacted in headless mode")
 }
 
-I've opened #463 for #240, adding /health and /ready for the satellite so Kubernetes can gate workloads on the satellite being ready, keeping pods from pulling before images are proxied and avoiding ImagePullBackOff churn. Two things I'd like your input on: 
-1. TLS — the readiness checks hit local Zot and GC with a bare http.Client, unlike the rest of the code which uses createHTTPClient(cm.GetTLSConfig(), cm.UseUnsecure()), so it honors neither UseUnsecure nor a custom CA; if a registry or GC is served over HTTPS with a self-signed/custom-CA cert the check fails verification and /ready falsely reports "unavailable" — is the observability port meant to stay internal-only (bare client fine), or should these checks honor the satellite's TLS config?
-2. Headless — the issue mentions skipping the GC check in headless mode, but no headless concept exists today and I've only made /ready skip the GC check; should we add a real mode to run the satellite without GC, and is "headless" meant to describe the satellite running standalone or just GC being absent?
+// TestReadyHandlerRegistryTLS proves the injected client governs TLS trust: a
+// bare client rejects the self-signed registry cert, but a client that trusts
+// the test server's CA succeeds. Headless skips GC so only the registry matters.
+func TestReadyHandlerRegistryTLS(t *testing.T) {
+	registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2/" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer registry.Close()
+
+	t.Run("bare client rejects self-signed cert", func(t *testing.T) {
+		hr := NewHealthRegistrar(registry.URL, "", true, nil, nil)
+		hr.MarkStateSynced()
+
+		rec := httptest.NewRecorder()
+		hr.readyHandler(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		var resp readyResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		require.Equal(t, "unavailable", resp.Checks.Registry)
+	})
+
+	t.Run("client trusting the CA succeeds", func(t *testing.T) {
+		hr := NewHealthRegistrar(registry.URL, "", true, registry.Client(), nil)
+		hr.MarkStateSynced()
+
+		rec := httptest.NewRecorder()
+		hr.readyHandler(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		var resp readyResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		require.Equal(t, "ok", resp.Checks.Registry)
+	})
+}
+
+// TestReadyHandlerGCClientProvider proves the gcClient provider governs the GC
+// check (and only the GC check): the registry uses the static client while the
+// provider supplies the GC client, and a provider error surfaces as GC unavailable.
+func TestReadyHandlerGCClientProvider(t *testing.T) {
+	registry := newStubRegistry(t)
+	gc := newStubGroundControl(t)
+
+	t.Run("provider client is used for GC", func(t *testing.T) {
+		provider := func(context.Context) (*http.Client, error) {
+			return &http.Client{Timeout: 2 * time.Second}, nil
+		}
+		hr := NewHealthRegistrar(registry.URL, gc.URL, false, nil, provider)
+		hr.MarkStateSynced()
+
+		rec := httptest.NewRecorder()
+		hr.readyHandler(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		var resp readyResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		require.Equal(t, "ok", resp.Checks.GroundControl)
+	})
+
+	t.Run("provider error marks GC unavailable", func(t *testing.T) {
+		provider := func(context.Context) (*http.Client, error) {
+			return nil, errors.New("spire unavailable")
+		}
+		hr := NewHealthRegistrar(registry.URL, gc.URL, false, nil, provider)
+		hr.MarkStateSynced()
+
+		rec := httptest.NewRecorder()
+		hr.readyHandler(rec, httptest.NewRequest(http.MethodGet, "/ready", nil))
+
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		var resp readyResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		require.Equal(t, "ok", resp.Checks.Registry)
+		require.Equal(t, "unavailable", resp.Checks.GroundControl)
+	})
+}
