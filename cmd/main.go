@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
@@ -376,6 +377,14 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 			return fmt.Errorf("create SPIFFE client for health checks: %w", scErr)
 		}
 		defer func() { _ = sc.Close() }()
+		// The http.Client is built once and reused across probes so connections
+		// can keep-alive between calls. The *tls.Config returned by
+		// sc.GetTLSConfig is bound to the X509Source, so SVID rotation keeps
+		// working transparently with the cached Transport.
+		var (
+			cachedClientMu sync.Mutex
+			cachedClient   *http.Client
+		)
 		gcClient = func(ctx context.Context) (*http.Client, error) {
 			// workloadapi.NewX509Source (called by Connect) blocks until it
 			// receives the first SVID. If SPIRE is unreachable, only the
@@ -386,14 +395,22 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 			if err := sc.Connect(cctx); err != nil {
 				return nil, err
 			}
+
+			cachedClientMu.Lock()
+			defer cachedClientMu.Unlock()
+			if cachedClient != nil {
+				return cachedClient, nil
+			}
+
 			tlsCfg, err := sc.GetTLSConfig()
 			if err != nil {
 				return nil, err
 			}
-			return &http.Client{
+			cachedClient = &http.Client{
 				Timeout:   2 * time.Second,
 				Transport: &http.Transport{TLSClientConfig: tlsCfg},
-			}, nil
+			}
+			return cachedClient, nil
 		}
 	}
 
