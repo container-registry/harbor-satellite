@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
@@ -349,9 +353,8 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		observabilityPort = "9091"
 	}
 
-	registryScheme := "https"
-	if cm.UseUnsecure() {
-		registryScheme = "http"
+	registryURLProvider := func() (string, error) {
+		return resolveRegistryURLForHealth(cm)
 	}
 	healthClient, err := state.CreateHTTPClient(cm.GetTLSConfig(), cm.UseUnsecure(), 2*time.Second)
 	if err != nil {
@@ -395,7 +398,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	}
 
 	healthRegistrar := server.NewHealthRegistrar(
-		fmt.Sprintf("%s://%s", registryScheme, localRegistryEndpoint),
+		registryURLProvider,
 		cm.ResolveGroundControlURL(),
 		opts.Headless,
 		healthClient,
@@ -528,6 +531,104 @@ func resolveLocalRegistryEndpoint(cm *config.ConfigManager) (string, error) {
 		return "", fmt.Errorf("missing 'address' or 'port' in zot http config")
 	}
 	return addr + ":" + port, nil
+}
+
+// resolveRegistryURLForHealth returns the local registry URL the readiness probe
+// should use. It is called on every /ready request so hot-reloads of zot config
+// (address, port, or tls block) take effect without restarting the satellite.
+// Wildcard listen addresses (0.0.0.0, ::) are rewritten to localhost because a
+// probe should dial a routable address. TLS is inferred from zot's own http.tls
+// field for the embedded path; for BYO it follows the configured URL scheme,
+// falling back to UseUnsecure.
+func resolveRegistryURLForHealth(cm *config.ConfigManager) (string, error) {
+	if cm.GetOwnRegistry() {
+		return resolveBYORegistryURLForHealth(cm), nil
+	}
+	return resolveEmbeddedZotURLForHealth(cm.GetRawZotConfig())
+}
+
+func resolveBYORegistryURLForHealth(cm *config.ConfigManager) string {
+	raw := cm.GetLocalRegistryURL()
+	scheme := "https"
+	switch {
+	case strings.HasPrefix(raw, "http://"):
+		scheme = "http"
+	case strings.HasPrefix(raw, "https://"):
+		scheme = "https"
+	case cm.UseUnsecure():
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://%s", scheme, rewriteProbeHostPort(utils.FormatRegistryURL(raw)))
+}
+
+func resolveEmbeddedZotURLForHealth(rawZotConfig []byte) (string, error) {
+	var data map[string]any
+	if err := json.Unmarshal(rawZotConfig, &data); err != nil {
+		return "", fmt.Errorf("unmarshalling zot config: %w", err)
+	}
+	httpData, ok := data["http"].(map[string]any)
+	if !ok {
+		return "", errors.New("missing 'http' section in zot config")
+	}
+	addr := strings.TrimSpace(stringField(httpData["address"]))
+	port := stringField(httpData["port"])
+	if addr == "" || port == "" {
+		return "", errors.New("missing 'address' or 'port' in zot http config")
+	}
+	if addr == "0.0.0.0" || addr == "::" {
+		addr = "localhost"
+	}
+	return fmt.Sprintf("%s://%s:%s", detectZotScheme(httpData), addr, port), nil
+}
+
+// rewriteProbeHostPort returns its input with a wildcard host (0.0.0.0 or ::)
+// rewritten to "localhost". The input is expected to be "host" or "host:port".
+func rewriteProbeHostPort(hostport string) string {
+	hostport = strings.TrimSpace(hostport)
+	host, port, err := net.SplitHostPort(hostport)
+	if err != nil {
+		// No port — treat the whole thing as host.
+		if hostport == "0.0.0.0" || hostport == "::" {
+			return "localhost"
+		}
+		return hostport
+	}
+	if host == "0.0.0.0" || host == "::" {
+		host = "localhost"
+	}
+	return net.JoinHostPort(host, port)
+}
+
+// detectZotScheme returns "https" when zot's http config carries a tls block
+// (boolean true or a non-empty object), and "http" otherwise.
+func detectZotScheme(httpData map[string]any) string {
+	v, ok := httpData["tls"]
+	if !ok {
+		return "http"
+	}
+	switch t := v.(type) {
+	case bool:
+		if t {
+			return "https"
+		}
+	case map[string]any:
+		if len(t) > 0 {
+			return "https"
+		}
+	}
+	return "http"
+}
+
+// stringField returns v as a string, accepting JSON's "string" or "number"
+// (json.Unmarshal decodes numbers into float64 when targeting map[string]any).
+func stringField(v any) string {
+	switch s := v.(type) {
+	case string:
+		return s
+	case float64:
+		return strconv.FormatInt(int64(s), 10)
+	}
+	return ""
 }
 
 func handleRegistrySetup(ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager, pathConfig *config.PathConfig) error {

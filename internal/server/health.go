@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,8 +11,13 @@ import (
 	"time"
 )
 
+// RegistryURLFunc returns the current local registry URL each time the readiness
+// probe runs. A function (rather than a captured string) lets the probe pick up
+// hot-reloaded zot config without restarting the satellite.
+type RegistryURLFunc func() (string, error)
+
 type HealthRegistrar struct {
-	registryURL string
+	registryURL RegistryURLFunc
 	gcURL       string
 	headless    bool
 	client      *http.Client
@@ -19,12 +25,15 @@ type HealthRegistrar struct {
 	stateSynced atomic.Bool
 }
 
-// NewHealthRegistrar builds the registrar. client is used for the registry check
-// (and the Ground Control check when gcClient is nil); pass nil for a bare
-// default client. gcClient, when non-nil, supplies the client for the Ground
-// Control check — used to honor SPIFFE mTLS, which differs from the static client.
+// NewHealthRegistrar builds the registrar. registryURL is resolved per probe so
+// the check tracks hot-reloads of zot config. client is used for the registry
+// check (and the Ground Control check when gcClient is nil); pass nil for a
+// bare default client. gcClient, when non-nil, supplies the client for the
+// Ground Control check — used to honor SPIFFE mTLS, which differs from the
+// static client.
 func NewHealthRegistrar(
-	registryURL, gcURL string,
+	registryURL RegistryURLFunc,
+	gcURL string,
 	headless bool,
 	client *http.Client,
 	gcClient func(context.Context) (*http.Client, error),
@@ -33,7 +42,7 @@ func NewHealthRegistrar(
 		client = &http.Client{Timeout: 2 * time.Second}
 	}
 	return &HealthRegistrar{
-		registryURL: strings.TrimRight(registryURL, "/"),
+		registryURL: registryURL,
 		gcURL:       strings.TrimRight(gcURL, "/"),
 		headless:    headless,
 		client:      client,
@@ -120,12 +129,22 @@ func (hr *HealthRegistrar) readyHandler(w http.ResponseWriter, r *http.Request) 
 
 // checkRegistry pings the local registry's OCI Distribution base endpoint.
 // A reachable registry answers /v2/ with 200 (open) or 401 (auth required).
+// The URL is re-resolved on every probe so hot-reloads of zot config are
+// picked up without restarting the satellite.
 func (hr *HealthRegistrar) checkRegistry(ctx context.Context) error {
-	if hr.registryURL == "" {
-		return fmt.Errorf("registry URL is empty")
+	if hr.registryURL == nil {
+		return errors.New("registry URL provider is not configured")
 	}
+	url, err := hr.registryURL()
+	if err != nil {
+		return fmt.Errorf("resolve registry URL: %w", err)
+	}
+	if url == "" {
+		return errors.New("registry URL is empty")
+	}
+	url = strings.TrimRight(url, "/")
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, hr.registryURL+"/v2/", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url+"/v2/", nil)
 	if err != nil {
 		return fmt.Errorf("create registry health request: %w", err)
 	}
@@ -147,7 +166,7 @@ func (hr *HealthRegistrar) checkRegistry(ctx context.Context) error {
 // verifies GC's database. HTTP 200 means GC is reachable and healthy.
 func (hr *HealthRegistrar) checkGroundControl(ctx context.Context) error {
 	if hr.gcURL == "" {
-		return fmt.Errorf("ground control URL is empty")
+		return errors.New("ground control URL is empty")
 	}
 
 	client := hr.client
@@ -155,6 +174,9 @@ func (hr *HealthRegistrar) checkGroundControl(ctx context.Context) error {
 		c, err := hr.gcClient(ctx)
 		if err != nil {
 			return fmt.Errorf("build ground control client: %w", err)
+		}
+		if c == nil {
+			return errors.New("ground control client provider returned nil client without error")
 		}
 		client = c
 	}

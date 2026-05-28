@@ -14,6 +14,12 @@ import (
 
 const unreachableURL = "http://127.0.0.1:0"
 
+// staticURL wraps a literal URL string in the RegistryURLFunc shape required by
+// NewHealthRegistrar, so tests don't have to write the closure every time.
+func staticURL(s string) RegistryURLFunc {
+	return func() (string, error) { return s, nil }
+}
+
 // newStubRegistry returns a test server answering the OCI base endpoint with 401.
 func newStubRegistry(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -57,7 +63,7 @@ type readyTestCase struct {
 func runReadyCase(t *testing.T, tc readyTestCase) {
 	t.Helper()
 
-	hr := NewHealthRegistrar(tc.registryURL, tc.gcURL, tc.headless, nil, nil)
+	hr := NewHealthRegistrar(staticURL(tc.registryURL), tc.gcURL, tc.headless, nil, nil)
 	if tc.synced {
 		hr.MarkStateSynced()
 	}
@@ -78,7 +84,7 @@ func runReadyCase(t *testing.T, tc readyTestCase) {
 }
 
 func TestHealthHandlerAlwaysOK(t *testing.T) {
-	hr := NewHealthRegistrar("", "", false, nil, nil)
+	hr := NewHealthRegistrar(staticURL(""), "", false, nil, nil)
 
 	rec := httptest.NewRecorder()
 	hr.healthHandler(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
@@ -136,7 +142,7 @@ func TestReadyHandlerHeadlessDoesNotContactGroundControl(t *testing.T) {
 
 	registry := newStubRegistry(t)
 
-	hr := NewHealthRegistrar(registry.URL, gc.URL, true, nil, nil)
+	hr := NewHealthRegistrar(staticURL(registry.URL), gc.URL, true, nil, nil)
 	hr.MarkStateSynced()
 
 	rec := httptest.NewRecorder()
@@ -159,7 +165,7 @@ func TestReadyHandlerRegistryTLS(t *testing.T) {
 	defer registry.Close()
 
 	t.Run("bare client rejects self-signed cert", func(t *testing.T) {
-		hr := NewHealthRegistrar(registry.URL, "", true, nil, nil)
+		hr := NewHealthRegistrar(staticURL(registry.URL), "", true, nil, nil)
 		hr.MarkStateSynced()
 
 		rec := httptest.NewRecorder()
@@ -172,7 +178,7 @@ func TestReadyHandlerRegistryTLS(t *testing.T) {
 	})
 
 	t.Run("client trusting the CA succeeds", func(t *testing.T) {
-		hr := NewHealthRegistrar(registry.URL, "", true, registry.Client(), nil)
+		hr := NewHealthRegistrar(staticURL(registry.URL), "", true, registry.Client(), nil)
 		hr.MarkStateSynced()
 
 		rec := httptest.NewRecorder()
@@ -196,7 +202,7 @@ func TestReadyHandlerGCClientProvider(t *testing.T) {
 		provider := func(context.Context) (*http.Client, error) {
 			return &http.Client{Timeout: 2 * time.Second}, nil
 		}
-		hr := NewHealthRegistrar(registry.URL, gc.URL, false, nil, provider)
+		hr := NewHealthRegistrar(staticURL(registry.URL), gc.URL, false, nil, provider)
 		hr.MarkStateSynced()
 
 		rec := httptest.NewRecorder()
@@ -212,7 +218,7 @@ func TestReadyHandlerGCClientProvider(t *testing.T) {
 		provider := func(context.Context) (*http.Client, error) {
 			return nil, errors.New("spire unavailable")
 		}
-		hr := NewHealthRegistrar(registry.URL, gc.URL, false, nil, provider)
+		hr := NewHealthRegistrar(staticURL(registry.URL), gc.URL, false, nil, provider)
 		hr.MarkStateSynced()
 
 		rec := httptest.NewRecorder()
