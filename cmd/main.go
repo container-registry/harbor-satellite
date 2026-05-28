@@ -362,9 +362,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		return fmt.Errorf("build health check HTTP client: %w", err)
 	}
 
-	// In SPIFFE mode the satellite reaches Ground Control via SPIFFE mTLS, so the
-	// readiness GC check must use the same path. Build the client lazily per probe
-	// (Connect is idempotent and the X509Source is reused) so an unreachable SPIRE
+	// In SPIFFE mode the /ready GC check must mTLS through the SPIFFE source too.
 	var gcClient func(context.Context) (*http.Client, error)
 	if cm.IsSPIFFEEnabled() {
 		spiffeCfg := cm.GetSPIFFEConfig()
@@ -377,19 +375,15 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 			return fmt.Errorf("create SPIFFE client for health checks: %w", scErr)
 		}
 		defer func() { _ = sc.Close() }()
-		// The http.Client is built once and reused across probes so connections
-		// can keep-alive between calls. The *tls.Config returned by
-		// sc.GetTLSConfig is bound to the X509Source, so SVID rotation keeps
-		// working transparently with the cached Transport.
+		// Cache the Client so probes reuse keep-alive connections; the tls.Config
+		// is bound to the X509Source, so SVID rotation works with one Transport.
 		var (
 			cachedClientMu sync.Mutex
 			cachedClient   *http.Client
 		)
 		gcClient = func(ctx context.Context) (*http.Client, error) {
-			// workloadapi.NewX509Source (called by Connect) blocks until it
-			// receives the first SVID. If SPIRE is unreachable, only the
-			// context deadline ends that wait — the http.Client timeout
-			// applies only to the eventual outbound HTTPS call.
+			// Bound Connect — NewX509Source blocks for the first SVID and only
+			// the ctx deadline ends that wait if SPIRE is unreachable.
 			cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()
 			if err := sc.Connect(cctx); err != nil {
@@ -550,13 +544,9 @@ func resolveLocalRegistryEndpoint(cm *config.ConfigManager) (string, error) {
 	return addr + ":" + port, nil
 }
 
-// resolveRegistryURLForHealth returns the local registry URL the readiness probe
-// should use. It is called on every /ready request so hot-reloads of zot config
-// (address, port, or tls block) take effect without restarting the satellite.
-// Wildcard listen addresses (0.0.0.0, ::) are rewritten to localhost because a
-// probe should dial a routable address. TLS is inferred from zot's own http.tls
-// field for the embedded path; for BYO it follows the configured URL scheme,
-// falling back to UseUnsecure.
+// resolveRegistryURLForHealth returns the URL the /ready probe should dial.
+// Re-resolved per probe to pick up hot-reloads; wildcard hosts (0.0.0.0, ::) are
+// rewritten to localhost so the probe targets a routable address.
 func resolveRegistryURLForHealth(cm *config.ConfigManager) (string, error) {
 	if cm.GetOwnRegistry() {
 		return resolveBYORegistryURLForHealth(cm), nil

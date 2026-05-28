@@ -11,9 +11,8 @@ import (
 	"time"
 )
 
-// RegistryURLFunc returns the current local registry URL each time the readiness
-// probe runs. A function (rather than a captured string) lets the probe pick up
-// hot-reloaded zot config without restarting the satellite.
+// RegistryURLFunc returns the local registry URL, resolved per probe so
+// hot-reloads of zot config are picked up without a restart.
 type RegistryURLFunc func() (string, error)
 
 type HealthRegistrar struct {
@@ -25,12 +24,9 @@ type HealthRegistrar struct {
 	stateSynced atomic.Bool
 }
 
-// NewHealthRegistrar builds the registrar. registryURL is resolved per probe so
-// the check tracks hot-reloads of zot config. client is used for the registry
-// check (and the Ground Control check when gcClient is nil); pass nil for a
-// bare default client. gcClient, when non-nil, supplies the client for the
-// Ground Control check — used to honor SPIFFE mTLS, which differs from the
-// static client.
+// NewHealthRegistrar builds the registrar. client is the static client (registry
+// check, and Ground Control when gcClient is nil); pass nil for a bare default
+// gcClient, when set, supplies the Ground Control client — used for SPIFFE mTLS
 func NewHealthRegistrar(
 	registryURL RegistryURLFunc,
 	gcURL string,
@@ -50,8 +46,8 @@ func NewHealthRegistrar(
 	}
 }
 
-// MarkStateSynced records that the initial state sync has completed successfully.
-// Safe to call from the state replication goroutine while readyHandler reads it.
+// MarkStateSynced records a successful initial state sync. Safe to call
+// concurrently with readyHandler reads (backed by atomic.Bool).
 func (hr *HealthRegistrar) MarkStateSynced() {
 	hr.stateSynced.Store(true)
 }
@@ -72,8 +68,7 @@ func (hr *HealthRegistrar) RegisterRoutes(router Router) {
 	router.HandleFunc("/ready", hr.readyHandler)
 }
 
-// healthHandler is a liveness probe: it reports the process is running and must
-// not depend on any external dependency.
+// healthHandler is the liveness probe — always 200, no dependency checks.
 func (hr *HealthRegistrar) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -81,9 +76,8 @@ func (hr *HealthRegistrar) healthHandler(w http.ResponseWriter, r *http.Request)
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
-// readyHandler is a readiness probe: it reports whether the satellite can serve
-// its purpose. Registry must be reachable, Ground Control must be reachable
-// (unless headless), and the initial state sync must have completed.
+// readyHandler is the readiness probe — 200 only if registry is up, GC is up
+// (or headless), and the initial state sync has completed.
 func (hr *HealthRegistrar) readyHandler(w http.ResponseWriter, r *http.Request) {
 	var checks readyChecks
 	ready := true
@@ -127,10 +121,7 @@ func (hr *HealthRegistrar) readyHandler(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// checkRegistry pings the local registry's OCI Distribution base endpoint.
-// A reachable registry answers /v2/ with 200 (open) or 401 (auth required).
-// The URL is re-resolved on every probe so hot-reloads of zot config are
-// picked up without restarting the satellite.
+// checkRegistry pings the local registry's /v2/ endpoint; 200 or 401 means up.
 func (hr *HealthRegistrar) checkRegistry(ctx context.Context) error {
 	if hr.registryURL == nil {
 		return errors.New("registry URL provider is not configured")
@@ -162,8 +153,7 @@ func (hr *HealthRegistrar) checkRegistry(ctx context.Context) error {
 	return fmt.Errorf("registry returned status %d", resp.StatusCode)
 }
 
-// checkGroundControl pings Ground Control's /health endpoint, which also
-// verifies GC's database. HTTP 200 means GC is reachable and healthy.
+// checkGroundControl pings GC's /health (which also covers GC's DB); 200 = up.
 func (hr *HealthRegistrar) checkGroundControl(ctx context.Context) error {
 	if hr.gcURL == "" {
 		return errors.New("ground control URL is empty")
