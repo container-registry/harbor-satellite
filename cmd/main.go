@@ -374,7 +374,13 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 		defer func() { _ = sc.Close() }()
 		gcClient = func(ctx context.Context) (*http.Client, error) {
-			if err := sc.Connect(ctx); err != nil {
+			// workloadapi.NewX509Source (called by Connect) blocks until it
+			// receives the first SVID. If SPIRE is unreachable, only the
+			// context deadline ends that wait — the http.Client timeout
+			// applies only to the eventual outbound HTTPS call.
+			cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+			if err := sc.Connect(cctx); err != nil {
 				return nil, err
 			}
 			tlsCfg, err := sc.GetTLSConfig()
