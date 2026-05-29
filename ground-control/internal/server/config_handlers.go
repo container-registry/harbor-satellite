@@ -252,7 +252,7 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListConfigs(r.Context())
 	if err != nil {
-		fmt.Println("Could not list configs: ", err)
+		log.Println("Could not list configs: ", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -266,7 +266,7 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.dbQueries.GetConfigByName(r.Context(), configName)
 	if err != nil {
-		fmt.Println("Could not get config: ", err)
+		log.Println("Could not get config: ", err)
 		HandleAppError(w, &AppError{
 			Message: fmt.Sprintf("Config not found: %v", err),
 			Code:    http.StatusNotFound,
