@@ -225,8 +225,7 @@ func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out any,
 
 func FromJSON(data []byte, reg StateReader) (StateReader, error) {
 	if err := json.Unmarshal(data, &reg); err != nil {
-		fmt.Print("Error in unmarshalling")
-		return nil, err
+		return nil, fmt.Errorf("unmarshal state: %w", err)
 	}
 	if reg.GetRegistryURL() == "" {
 		return nil, fmt.Errorf("registry URL is required")
