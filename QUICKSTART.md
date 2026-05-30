@@ -70,7 +70,10 @@ graph TB
 
 ## Registry Data Directory
 
-The satellite stores registry data in a configurable location. By default, it uses a `zot` subdirectory inside the configuration directory (`~/.config/satellite/zot`).
+The satellite stores registry data in a configurable location. The default follows XDG conventions:
+
+- **Root / system service:** `/var/lib/satellite/registry`
+- **Non-root users:** `$XDG_DATA_HOME/satellite/registry` if `XDG_DATA_HOME` is set, otherwise `~/.local/share/satellite/registry`
 
 You can override the storage location using:
 

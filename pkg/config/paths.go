@@ -65,19 +65,15 @@ func DefaultConfigDir() (string, error) {
 	return filepath.Join(configDir, "satellite"), nil
 }
 
-// geteuid is a seam so tests can exercise the root branch without running as root.
+// Test seam for the root branch in DefaultRegistryDataDir.
 //
-//nolint:gochecknoglobals // function-typed test seam, not mutable state
+//nolint:gochecknoglobals // function-typed test seam
 var geteuid = os.Geteuid
 
-// rootRegistryDataDir is the default registry storage directory when running
-// as root or a system service.
 const rootRegistryDataDir = "/var/lib/satellite/registry"
 
-// DefaultRegistryDataDir returns the default registry storage directory:
-//   - /var/lib/satellite/registry when running as root (euid 0)
-//   - $XDG_DATA_HOME/satellite/registry when XDG_DATA_HOME is set
-//   - ~/.local/share/satellite/registry otherwise
+// DefaultRegistryDataDir returns /var/lib/satellite/registry for root,
+// $XDG_DATA_HOME/satellite/registry when set, else ~/.local/share/satellite/registry.
 func DefaultRegistryDataDir() (string, error) {
 	if geteuid() == 0 {
 		return rootRegistryDataDir, nil
@@ -95,10 +91,8 @@ func DefaultRegistryDataDir() (string, error) {
 	return filepath.Join(home, ".local", "share", "satellite", "registry"), nil
 }
 
-// ResolveRegistryDataDir returns the absolute, ensured-writable registry data
-// directory. If override is non-empty it wins; otherwise DefaultRegistryDataDir
-// is used. The chosen path is tilde-expanded, made absolute, and created if
-// missing.
+// ResolveRegistryDataDir picks override if non-empty, else DefaultRegistryDataDir,
+// then expands, absolutizes, and ensures the directory.
 func ResolveRegistryDataDir(override string) (string, error) {
 	dir := override
 	if dir == "" {
