@@ -65,21 +65,22 @@ func DefaultConfigDir() (string, error) {
 	return filepath.Join(configDir, "satellite"), nil
 }
 
-// Test seam for the root branch in DefaultRegistryDataDir.
-//
-//nolint:gochecknoglobals // function-typed test seam
-var geteuid = os.Geteuid
-
 const rootRegistryDataDir = "/var/lib/satellite/registry"
 
 // DefaultRegistryDataDir returns /var/lib/satellite/registry for root,
 // $XDG_DATA_HOME/satellite/registry when set, else ~/.local/share/satellite/registry.
 func DefaultRegistryDataDir() (string, error) {
-	if geteuid() == 0 {
+	return defaultRegistryDataDir(os.Geteuid)
+}
+
+func defaultRegistryDataDir(uidLookup func() int) (string, error) {
+	if uidLookup() == 0 {
 		return rootRegistryDataDir, nil
 	}
 
-	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+	// Per the XDG Base Directory Specification, relative XDG_DATA_HOME values
+	// are ignored.
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" && filepath.IsAbs(xdg) {
 		return filepath.Join(xdg, "satellite", "registry"), nil
 	}
 

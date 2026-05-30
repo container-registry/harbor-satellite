@@ -161,45 +161,46 @@ func TestResolvePathConfig(t *testing.T) {
 }
 
 func TestDefaultRegistryDataDir(t *testing.T) {
-	origGeteuid := geteuid
-	t.Cleanup(func() { geteuid = origGeteuid })
-
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
 
+	asRoot := func() int { return 0 }
+	asUser := func() int { return 1000 }
+
 	t.Run("root returns /var/lib path", func(t *testing.T) {
-		geteuid = func() int { return 0 }
 		t.Setenv("XDG_DATA_HOME", "/should/be/ignored")
 
-		got, err := DefaultRegistryDataDir()
+		got, err := defaultRegistryDataDir(asRoot)
 		require.NoError(t, err)
 		require.Equal(t, "/var/lib/satellite/registry", got)
 	})
 
 	t.Run("non-root with XDG_DATA_HOME set", func(t *testing.T) {
-		geteuid = func() int { return 1000 }
 		t.Setenv("XDG_DATA_HOME", "/tmp/xdg-data")
 
-		got, err := DefaultRegistryDataDir()
+		got, err := defaultRegistryDataDir(asUser)
 		require.NoError(t, err)
 		require.Equal(t, filepath.Join("/tmp/xdg-data", "satellite", "registry"), got)
 	})
 
 	t.Run("non-root without XDG_DATA_HOME falls back to ~/.local/share", func(t *testing.T) {
-		geteuid = func() int { return 1000 }
 		t.Setenv("XDG_DATA_HOME", "")
 
-		got, err := DefaultRegistryDataDir()
+		got, err := defaultRegistryDataDir(asUser)
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(home, ".local", "share", "satellite", "registry"), got)
+	})
+
+	t.Run("relative XDG_DATA_HOME is ignored per XDG spec", func(t *testing.T) {
+		t.Setenv("XDG_DATA_HOME", "relative/path")
+
+		got, err := defaultRegistryDataDir(asUser)
 		require.NoError(t, err)
 		require.Equal(t, filepath.Join(home, ".local", "share", "satellite", "registry"), got)
 	})
 }
 
 func TestResolveRegistryDataDir(t *testing.T) {
-	origGeteuid := geteuid
-	t.Cleanup(func() { geteuid = origGeteuid })
-	geteuid = func() int { return 1000 }
-
 	t.Run("override is used and created", func(t *testing.T) {
 		override := filepath.Join(t.TempDir(), "override-registry")
 
