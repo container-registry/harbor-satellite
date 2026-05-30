@@ -155,9 +155,88 @@ func TestResolvePathConfig(t *testing.T) {
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "config.json"), pathConfig.ConfigFile)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "prev_config.json"), pathConfig.PrevConfigFile)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "zot-hot.json"), pathConfig.ZotTempConfig)
-			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "zot"), pathConfig.ZotStorageDir)
+			require.Empty(t, pathConfig.ZotStorageDir, "ZotStorageDir is set by ResolveRegistryDataDir, not ResolvePathConfig")
 		})
 	}
+}
+
+func TestDefaultRegistryDataDir(t *testing.T) {
+	origGeteuid := geteuid
+	t.Cleanup(func() { geteuid = origGeteuid })
+
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	t.Run("root returns /var/lib path", func(t *testing.T) {
+		geteuid = func() int { return 0 }
+		t.Setenv("XDG_DATA_HOME", "/should/be/ignored")
+
+		got, err := DefaultRegistryDataDir()
+		require.NoError(t, err)
+		require.Equal(t, "/var/lib/satellite/registry", got)
+	})
+
+	t.Run("non-root with XDG_DATA_HOME set", func(t *testing.T) {
+		geteuid = func() int { return 1000 }
+		t.Setenv("XDG_DATA_HOME", "/tmp/xdg-data")
+
+		got, err := DefaultRegistryDataDir()
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join("/tmp/xdg-data", "satellite", "registry"), got)
+	})
+
+	t.Run("non-root without XDG_DATA_HOME falls back to ~/.local/share", func(t *testing.T) {
+		geteuid = func() int { return 1000 }
+		t.Setenv("XDG_DATA_HOME", "")
+
+		got, err := DefaultRegistryDataDir()
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(home, ".local", "share", "satellite", "registry"), got)
+	})
+}
+
+func TestResolveRegistryDataDir(t *testing.T) {
+	origGeteuid := geteuid
+	t.Cleanup(func() { geteuid = origGeteuid })
+	geteuid = func() int { return 1000 }
+
+	t.Run("override is used and created", func(t *testing.T) {
+		override := filepath.Join(t.TempDir(), "override-registry")
+
+		got, err := ResolveRegistryDataDir(override)
+		require.NoError(t, err)
+		require.Equal(t, override, got)
+		require.DirExists(t, override)
+	})
+
+	t.Run("empty override falls back to default and creates it", func(t *testing.T) {
+		xdg := t.TempDir()
+		t.Setenv("XDG_DATA_HOME", xdg)
+
+		got, err := ResolveRegistryDataDir("")
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(xdg, "satellite", "registry"), got)
+		require.DirExists(t, got)
+	})
+
+	t.Run("tilde override is expanded", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+
+		got, err := ResolveRegistryDataDir("~/data/zot")
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(home, "data", "zot"), got)
+		require.DirExists(t, got)
+	})
+
+	t.Run("non-writable override returns error", func(t *testing.T) {
+		base := t.TempDir()
+		require.NoError(t, os.Chmod(base, 0500))
+		t.Cleanup(func() { _ = os.Chmod(base, 0700) })
+
+		_, err := ResolveRegistryDataDir(filepath.Join(base, "child"))
+		require.Error(t, err)
+	})
 }
 
 func TestBuildZotConfigWithStoragePath(t *testing.T) {

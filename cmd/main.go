@@ -156,10 +156,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Override ZotStorageDir if --registry-data-dir flag or env var is set
-	if opts.RegistryDataDir != "" {
-		pathConfig.ZotStorageDir = opts.RegistryDataDir
+	zotStorageDir, err := config.ResolveRegistryDataDir(opts.RegistryDataDir)
+	if err != nil {
+		fmt.Printf("Error resolving registry data directory: %v\n", err)
+		os.Exit(1)
 	}
+	pathConfig.ZotStorageDir = zotStorageDir
 
 	// For --fallback-only mode, relax token/gc-url requirements
 	if !opts.FallbackOnly {

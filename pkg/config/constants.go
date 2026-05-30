@@ -24,6 +24,11 @@ const DefaultHeartbeatCronExpr string = "@every 00h00m30s"
 
 const BringOwnRegistry bool = false
 
+// DefaultZotConfigJSON is the fallback Zot configuration used when none is
+// supplied. The storage.rootDirectory value here is a placeholder; at runtime
+// BuildZotConfigWithStoragePath replaces it with the path returned by
+// ResolveRegistryDataDir (honoring --registry-data-dir, REGISTRY_DATA_DIR, or
+// the XDG-compliant default).
 const DefaultZotConfigJSON = `{
   "distSpecVersion": "1.1.0",
   "storage": {
