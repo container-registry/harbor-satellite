@@ -156,12 +156,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	zotStorageDir, err := config.ResolveRegistryDataDir(opts.RegistryDataDir)
-	if err != nil {
-		fmt.Printf("Error resolving registry data directory: %v\n", err)
-		os.Exit(1)
+	// Skip when the embedded Zot won't run: --byo-registry uses an external
+	// registry, --fallback-only just applies CRI configs and exits.
+	if !opts.BYORegistry && !opts.FallbackOnly {
+		zotStorageDir, err := config.ResolveRegistryDataDir(opts.RegistryDataDir)
+		if err != nil {
+			fmt.Printf("Error resolving registry data directory: %v\n", err)
+			os.Exit(1)
+		}
+		pathConfig.ZotStorageDir = zotStorageDir
 	}
-	pathConfig.ZotStorageDir = zotStorageDir
 
 	// For --fallback-only mode, relax token/gc-url requirements
 	if !opts.FallbackOnly {

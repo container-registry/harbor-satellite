@@ -230,6 +230,10 @@ func TestResolveRegistryDataDir(t *testing.T) {
 	})
 
 	t.Run("non-writable override returns error", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root bypasses chmod permissions")
+		}
+
 		base := t.TempDir()
 		require.NoError(t, os.Chmod(base, 0500))
 		t.Cleanup(func() { _ = os.Chmod(base, 0700) })
