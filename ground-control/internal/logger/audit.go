@@ -113,7 +113,7 @@ func (a *AuditLogger) Reconfigure(cfg AuditConfig) error {
 // what lumberjack itself does on first write.
 func ensureWritable(path string) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("create audit log directory %q: %w", dir, err)
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
@@ -136,7 +136,7 @@ func (a *AuditLogger) Log(eventType AuditEventType, actor, sourceIP string, deta
 	}
 	evt := a.log.Log().
 		Str("event_id", uuid.NewString()).
-		Time("timestamp", time.Now().UTC()).
+		Str("timestamp", time.Now().UTC().Format(time.RFC3339Nano)).
 		Str("event_type", string(eventType)).
 		Str("actor", actor).
 		Str("source_ip", sourceIP)

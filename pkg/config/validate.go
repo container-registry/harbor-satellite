@@ -89,8 +89,16 @@ func validateAndEnforceAuditConfig(config *Config) []string {
 		warnings = append(warnings, fmt.Sprintf("audit.file_path empty, defaulting to %s", DefaultAuditFilePath))
 		a.FilePath = DefaultAuditFilePath
 	}
-	// An omitted field (nil) defaults silently, matching Ground Control's
-	// env-var defaults. Only an explicitly invalid value warns.
+	return append(warnings, enforceAuditRotation(a)...)
+}
+
+// enforceAuditRotation fills in defaults for the audit log rotation fields. An
+// omitted field (nil) defaults silently, matching Ground Control's env-var
+// defaults. For MaxBackups/MaxAgeDays an explicit 0 is a deliberate "retain
+// everything" (lumberjack semantics) and is preserved; only genuine negatives
+// (and a non-positive MaxSizeMB) warn and default.
+func enforceAuditRotation(a *AuditConfig) []string {
+	var warnings []string
 	if a.MaxSizeMB == nil {
 		v := DefaultAuditMaxSizeMB
 		a.MaxSizeMB = &v
@@ -98,9 +106,6 @@ func validateAndEnforceAuditConfig(config *Config) []string {
 		warnings = append(warnings, fmt.Sprintf("audit.max_size_mb must be > 0, defaulting to %d", DefaultAuditMaxSizeMB))
 		*a.MaxSizeMB = DefaultAuditMaxSizeMB
 	}
-	// For MaxBackups/MaxAgeDays an explicit 0 is a deliberate "retain
-	// everything" (lumberjack semantics) and is preserved; only genuine
-	// negatives are corrected.
 	if a.MaxBackups == nil {
 		v := DefaultAuditMaxBackups
 		a.MaxBackups = &v

@@ -191,6 +191,45 @@ func main() {
 	}
 }
 
+// reconfigureAuditOnReload swaps the audit logger to match next when the audit
+// settings changed, and records the config.changed event. When audit is being
+// disabled, the event is emitted on the still-active logger before the swap so
+// the disable action itself stays audited; otherwise it is emitted after the
+// swap so it lands in the (possibly newly enabled or redirected) destination.
+// Returns the audit config now in effect.
+func reconfigureAuditOnReload(audit *logger.AuditLogger, current, next config.AuditConfig, changedKeys []string, log *zerolog.Logger) config.AuditConfig {
+	logChanged := func() {
+		audit.Log(logger.EventConfigChanged, "satellite", "", map[string]any{
+			"changed_keys": changedKeys,
+			"source":       "hot_reload",
+		})
+	}
+
+	changed := !next.Equal(current)
+	disabling := changed && current.Enabled && !next.Enabled
+	if disabling {
+		logChanged()
+	}
+	if changed {
+		if rcErr := audit.Reconfigure(logger.AuditConfig{
+			Enabled:    next.Enabled,
+			FilePath:   next.FilePath,
+			MaxSizeMB:  next.MaxSizeMBOrDefault(),
+			MaxBackups: next.MaxBackupsOrDefault(),
+			MaxAgeDays: next.MaxAgeDaysOrDefault(),
+		}); rcErr != nil {
+			log.Error().Err(rcErr).Msg("Failed to reconfigure audit logger after reload")
+		} else {
+			current = next
+			log.Info().Bool("enabled", audit.Enabled()).Msg("Audit logger reconfigured after hot reload")
+		}
+	}
+	if !disabling {
+		logChanged()
+	}
+	return current
+}
+
 func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout string) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
@@ -346,32 +385,15 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 						}
 					}
 					if len(changes) > 0 {
-						// Rebuild the audit logger in place if its settings
-						// changed, so enabling/disabling or redirecting audit
-						// takes effect without a restart (and the change itself
-						// is recorded by the new destination).
-						if newAuditCfg := cm.GetAuditConfig(); !newAuditCfg.Equal(currentAuditCfg) {
-							if rcErr := audit.Reconfigure(logger.AuditConfig{
-								Enabled:    newAuditCfg.Enabled,
-								FilePath:   newAuditCfg.FilePath,
-								MaxSizeMB:  newAuditCfg.MaxSizeMBOrDefault(),
-								MaxBackups: newAuditCfg.MaxBackupsOrDefault(),
-								MaxAgeDays: newAuditCfg.MaxAgeDaysOrDefault(),
-							}); rcErr != nil {
-								log.Error().Err(rcErr).Msg("Failed to reconfigure audit logger after reload")
-							} else {
-								currentAuditCfg = newAuditCfg
-								log.Info().Bool("enabled", audit.Enabled()).Msg("Audit logger reconfigured after hot reload")
-							}
-						}
 						changedKeys := make([]string, 0, len(changes))
 						for _, c := range changes {
 							changedKeys = append(changedKeys, string(c.Type))
 						}
-						audit.Log(logger.EventConfigChanged, "satellite", "", map[string]any{
-							"changed_keys": changedKeys,
-							"source":       "hot_reload",
-						})
+						// Swap the audit logger if its settings changed and record
+						// the config.changed event. When audit is being disabled the
+						// event is emitted before the swap so the disable action is
+						// still captured.
+						currentAuditCfg = reconfigureAuditOnReload(audit, currentAuditCfg, cm.GetAuditConfig(), changedKeys, log)
 						if err := hotReloadManager.ProcessConfigChanges(changes); err != nil {
 							log.Error().Err(err).Msg("Error processing configuration changes")
 						}
