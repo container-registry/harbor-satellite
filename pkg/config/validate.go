@@ -89,14 +89,31 @@ func validateAndEnforceAuditConfig(config *Config) []string {
 		warnings = append(warnings, fmt.Sprintf("audit.file_path empty, defaulting to %s", DefaultAuditFilePath))
 		a.FilePath = DefaultAuditFilePath
 	}
-	if a.MaxSizeMB <= 0 {
-		a.MaxSizeMB = DefaultAuditMaxSizeMB
+	// An omitted field (nil) defaults silently, matching Ground Control's
+	// env-var defaults. Only an explicitly invalid value warns.
+	if a.MaxSizeMB == nil {
+		v := DefaultAuditMaxSizeMB
+		a.MaxSizeMB = &v
+	} else if *a.MaxSizeMB <= 0 {
+		warnings = append(warnings, fmt.Sprintf("audit.max_size_mb must be > 0, defaulting to %d", DefaultAuditMaxSizeMB))
+		*a.MaxSizeMB = DefaultAuditMaxSizeMB
 	}
-	if a.MaxBackups <= 0 {
-		a.MaxBackups = DefaultAuditMaxBackups
+	// For MaxBackups/MaxAgeDays an explicit 0 is a deliberate "retain
+	// everything" (lumberjack semantics) and is preserved; only genuine
+	// negatives are corrected.
+	if a.MaxBackups == nil {
+		v := DefaultAuditMaxBackups
+		a.MaxBackups = &v
+	} else if *a.MaxBackups < 0 {
+		warnings = append(warnings, fmt.Sprintf("audit.max_backups must be >= 0, defaulting to %d", DefaultAuditMaxBackups))
+		*a.MaxBackups = DefaultAuditMaxBackups
 	}
-	if a.MaxAgeDays <= 0 {
-		a.MaxAgeDays = DefaultAuditMaxAgeDays
+	if a.MaxAgeDays == nil {
+		v := DefaultAuditMaxAgeDays
+		a.MaxAgeDays = &v
+	} else if *a.MaxAgeDays < 0 {
+		warnings = append(warnings, fmt.Sprintf("audit.max_age_days must be >= 0, defaulting to %d", DefaultAuditMaxAgeDays))
+		*a.MaxAgeDays = DefaultAuditMaxAgeDays
 	}
 	return warnings
 }

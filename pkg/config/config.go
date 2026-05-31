@@ -44,11 +44,52 @@ type RegistryFallbackConfig struct {
 // AuditConfig controls the security-event audit log destination and rotation policy.
 // When Enabled is false (default), audit events are discarded.
 type AuditConfig struct {
-	Enabled    bool   `json:"enabled,omitempty"`
-	FilePath   string `json:"file_path,omitempty"`
-	MaxSizeMB  int    `json:"max_size_mb,omitempty"`
-	MaxBackups int    `json:"max_backups,omitempty"`
-	MaxAgeDays int    `json:"max_age_days,omitempty"`
+	Enabled  bool   `json:"enabled,omitempty"`
+	FilePath string `json:"file_path,omitempty"`
+	// MaxSizeMB, MaxBackups and MaxAgeDays are pointers so an omitted field
+	// (nil) can be told apart from an explicit 0. An omitted field means "use
+	// the default", matching Ground Control (whose env vars default when
+	// unset). An explicit 0 on MaxBackups/MaxAgeDays is a deliberate "retain
+	// everything" per lumberjack semantics and is preserved.
+	MaxSizeMB  *int `json:"max_size_mb,omitempty"`
+	MaxBackups *int `json:"max_backups,omitempty"`
+	MaxAgeDays *int `json:"max_age_days,omitempty"`
+}
+
+// MaxSizeMBOrDefault returns the configured rotation size, or the default when unset.
+func (a AuditConfig) MaxSizeMBOrDefault() int {
+	if a.MaxSizeMB == nil {
+		return DefaultAuditMaxSizeMB
+	}
+	return *a.MaxSizeMB
+}
+
+// MaxBackupsOrDefault returns the configured backup count, or the default when unset.
+func (a AuditConfig) MaxBackupsOrDefault() int {
+	if a.MaxBackups == nil {
+		return DefaultAuditMaxBackups
+	}
+	return *a.MaxBackups
+}
+
+// MaxAgeDaysOrDefault returns the configured retention age, or the default when unset.
+func (a AuditConfig) MaxAgeDaysOrDefault() int {
+	if a.MaxAgeDays == nil {
+		return DefaultAuditMaxAgeDays
+	}
+	return *a.MaxAgeDays
+}
+
+// Equal reports whether two audit configs resolve to the same effective
+// settings. It compares effective values, not pointer identity, so a hot
+// reload that yields fresh pointers with unchanged values is not mistaken
+// for a change.
+func (a AuditConfig) Equal(b AuditConfig) bool {
+	return a.Enabled == b.Enabled &&
+		a.FilePath == b.FilePath &&
+		a.MaxSizeMBOrDefault() == b.MaxSizeMBOrDefault() &&
+		a.MaxBackupsOrDefault() == b.MaxBackupsOrDefault() &&
+		a.MaxAgeDaysOrDefault() == b.MaxAgeDaysOrDefault()
 }
 
 // DirectDeliveryConfig holds settings for writing image tarballs directly

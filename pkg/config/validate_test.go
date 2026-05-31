@@ -545,18 +545,23 @@ func TestValidateAndEnforceAuditConfig(t *testing.T) {
 		require.Equal(t, AuditConfig{}, cfg.AppConfig.Audit)
 	})
 
-	t.Run("enabled with empty path applies all defaults and warns", func(t *testing.T) {
+	t.Run("omitted rotation fields default silently to Ground Control parity", func(t *testing.T) {
 		cfg := &Config{
 			AppConfig: AppConfig{
 				Audit: AuditConfig{Enabled: true},
 			},
 		}
 		warnings := validateAndEnforceAuditConfig(cfg)
+		// Only the empty file_path warns. Unset size/backups/age default
+		// silently — an omitted field is "use the default", not "retain all",
+		// matching Ground Control's env-var defaults.
 		require.Len(t, warnings, 1)
 		require.Equal(t, DefaultAuditFilePath, cfg.AppConfig.Audit.FilePath)
-		require.Equal(t, DefaultAuditMaxSizeMB, cfg.AppConfig.Audit.MaxSizeMB)
-		require.Equal(t, DefaultAuditMaxBackups, cfg.AppConfig.Audit.MaxBackups)
-		require.Equal(t, DefaultAuditMaxAgeDays, cfg.AppConfig.Audit.MaxAgeDays)
+		require.NotNil(t, cfg.AppConfig.Audit.MaxBackups)
+		require.NotNil(t, cfg.AppConfig.Audit.MaxAgeDays)
+		require.Equal(t, DefaultAuditMaxSizeMB, *cfg.AppConfig.Audit.MaxSizeMB)
+		require.Equal(t, DefaultAuditMaxBackups, *cfg.AppConfig.Audit.MaxBackups)
+		require.Equal(t, DefaultAuditMaxAgeDays, *cfg.AppConfig.Audit.MaxAgeDays)
 	})
 
 	t.Run("user-provided values are preserved", func(t *testing.T) {
@@ -565,36 +570,93 @@ func TestValidateAndEnforceAuditConfig(t *testing.T) {
 				Audit: AuditConfig{
 					Enabled:    true,
 					FilePath:   "/var/log/audit.log",
-					MaxSizeMB:  50,
-					MaxBackups: 10,
-					MaxAgeDays: 90,
+					MaxSizeMB:  intPtr(50),
+					MaxBackups: intPtr(10),
+					MaxAgeDays: intPtr(90),
 				},
 			},
 		}
 		warnings := validateAndEnforceAuditConfig(cfg)
 		require.Empty(t, warnings)
 		require.Equal(t, "/var/log/audit.log", cfg.AppConfig.Audit.FilePath)
-		require.Equal(t, 50, cfg.AppConfig.Audit.MaxSizeMB)
-		require.Equal(t, 10, cfg.AppConfig.Audit.MaxBackups)
-		require.Equal(t, 90, cfg.AppConfig.Audit.MaxAgeDays)
+		require.Equal(t, 50, *cfg.AppConfig.Audit.MaxSizeMB)
+		require.Equal(t, 10, *cfg.AppConfig.Audit.MaxBackups)
+		require.Equal(t, 90, *cfg.AppConfig.Audit.MaxAgeDays)
 	})
 
-	t.Run("non-positive rotation values get defaulted silently", func(t *testing.T) {
+	t.Run("negative rotation values are corrected with warnings", func(t *testing.T) {
 		cfg := &Config{
 			AppConfig: AppConfig{
 				Audit: AuditConfig{
 					Enabled:    true,
 					FilePath:   "./a.log",
-					MaxSizeMB:  -1,
-					MaxBackups: -5,
-					MaxAgeDays: 0,
+					MaxSizeMB:  intPtr(-1),
+					MaxBackups: intPtr(-5),
+					MaxAgeDays: intPtr(-1),
+				},
+			},
+		}
+		warnings := validateAndEnforceAuditConfig(cfg)
+		require.Len(t, warnings, 3)
+		require.Equal(t, DefaultAuditMaxSizeMB, *cfg.AppConfig.Audit.MaxSizeMB)
+		require.Equal(t, DefaultAuditMaxBackups, *cfg.AppConfig.Audit.MaxBackups)
+		require.Equal(t, DefaultAuditMaxAgeDays, *cfg.AppConfig.Audit.MaxAgeDays)
+	})
+
+	t.Run("explicit zero backups and age are preserved as unlimited retention", func(t *testing.T) {
+		cfg := &Config{
+			AppConfig: AppConfig{
+				Audit: AuditConfig{
+					Enabled:    true,
+					FilePath:   "./a.log",
+					MaxSizeMB:  intPtr(10),
+					MaxBackups: intPtr(0),
+					MaxAgeDays: intPtr(0),
 				},
 			},
 		}
 		warnings := validateAndEnforceAuditConfig(cfg)
 		require.Empty(t, warnings)
-		require.Equal(t, DefaultAuditMaxSizeMB, cfg.AppConfig.Audit.MaxSizeMB)
-		require.Equal(t, DefaultAuditMaxBackups, cfg.AppConfig.Audit.MaxBackups)
-		require.Equal(t, DefaultAuditMaxAgeDays, cfg.AppConfig.Audit.MaxAgeDays)
+		require.Equal(t, 10, *cfg.AppConfig.Audit.MaxSizeMB)
+		require.Equal(t, 0, *cfg.AppConfig.Audit.MaxBackups)
+		require.Equal(t, 0, *cfg.AppConfig.Audit.MaxAgeDays)
 	})
 }
+
+func TestAuditConfig_Equal(t *testing.T) {
+	t.Run("two empty configs are equal", func(t *testing.T) {
+		require.True(t, AuditConfig{}.Equal(AuditConfig{}))
+	})
+
+	t.Run("omitted field equals an explicit default value", func(t *testing.T) {
+		// nil resolves to the default via MaxBackupsOrDefault, so a reload that
+		// only makes the default explicit must NOT count as a change.
+		omitted := AuditConfig{Enabled: true, FilePath: "/a.log"}
+		explicit := AuditConfig{
+			Enabled:    true,
+			FilePath:   "/a.log",
+			MaxSizeMB:  intPtr(DefaultAuditMaxSizeMB),
+			MaxBackups: intPtr(DefaultAuditMaxBackups),
+			MaxAgeDays: intPtr(DefaultAuditMaxAgeDays),
+		}
+		require.True(t, omitted.Equal(explicit))
+	})
+
+	t.Run("explicit zero (keep-all) differs from omitted default", func(t *testing.T) {
+		// This is the whole point of the pointer change: 0 means "retain
+		// everything" and must be distinguishable from "use the default".
+		keepAll := AuditConfig{Enabled: true, FilePath: "/a.log", MaxBackups: intPtr(0)}
+		defaulted := AuditConfig{Enabled: true, FilePath: "/a.log"}
+		require.False(t, keepAll.Equal(defaulted))
+	})
+
+	t.Run("a changed file path is detected", func(t *testing.T) {
+		require.False(t, AuditConfig{FilePath: "/a"}.Equal(AuditConfig{FilePath: "/b"}))
+	})
+
+	t.Run("a flipped enabled flag is detected", func(t *testing.T) {
+		require.False(t, AuditConfig{Enabled: true}.Equal(AuditConfig{Enabled: false}))
+	})
+}
+
+func intPtr(i int) *int { return &i }

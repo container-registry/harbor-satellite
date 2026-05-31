@@ -31,7 +31,7 @@ Each event is one line of JSON.
 | `timestamp`  | UTC, RFC 3339 with nanoseconds. |
 | `event_type` | Stable identifier from the catalogue below. |
 | `actor`      | Username, satellite name, GC URL, or SPIFFE ID. Empty when unknown (e.g., invalid token). |
-| `source_ip`  | Client IP (honors `X-Forwarded-For` first hop) on Ground Control; empty for outbound calls from the satellite. |
+| `source_ip`  | Client IP on Ground Control: the TCP `RemoteAddr` by default, or the first `X-Forwarded-For` hop only when `AUDIT_TRUST_FORWARDED_HEADERS=true`. Empty for outbound calls from the satellite. |
 | `details`    | Free-form, event-specific. Omitted when empty. |
 
 ## Event catalogue
@@ -74,6 +74,10 @@ Add an `audit` block to the `app_config` section of the satellite config JSON:
 | `max_size_mb`  | `100`          | Rotate when the file exceeds this size. |
 | `max_backups`  | `7`            | Keep this many rotated files. |
 | `max_age_days` | `30`           | Drop rotated files older than this. |
+
+Omitting a rotation field uses its default (same as Ground Control's env-var
+defaults). Setting `max_backups` or `max_age_days` to `0` is a deliberate
+"retain everything" — no rotated files are pruned by count or age.
 
 Rotation is provided by `gopkg.in/natefinch/lumberjack.v2`; old files are
 gzip-compressed.

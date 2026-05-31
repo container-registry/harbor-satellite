@@ -158,6 +158,11 @@ func NewServer() *ServerResult {
 		spireServerPort = parseIntEnv("SPIRE_SERVER_PORT", 8081)
 	}
 
+	auditLogger, auditErr := auditlog.NewAuditLogger(loadAuditConfig())
+	if auditErr != nil {
+		log.Fatalf("Failed to initialize audit logger: %v", auditErr)
+	}
+
 	newServer := &Server{
 		port:           port,
 		db:             db,
@@ -180,7 +185,7 @@ func NewServer() *ServerResult {
 		staleThreshold: parseDurationEnv("STALE_THRESHOLD", time.Hour),
 
 		// Audit logger
-		audit:                 auditlog.NewAuditLogger(loadAuditConfig()),
+		audit:                 auditLogger,
 		trustForwardedHeaders: os.Getenv("AUDIT_TRUST_FORWARDED_HEADERS") == "true",
 	}
 
@@ -364,4 +369,3 @@ func loadAuditConfig() auditlog.AuditConfig {
 		MaxAgeDays: maxAgeDays,
 	}
 }
-

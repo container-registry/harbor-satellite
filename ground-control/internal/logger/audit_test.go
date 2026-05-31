@@ -30,13 +30,14 @@ func readAuditLines(t *testing.T, path string) []map[string]any {
 
 func TestAuditLogger_WritesStructuredEvent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	a := NewAuditLogger(AuditConfig{
+	a, err := NewAuditLogger(AuditConfig{
 		Enabled:    true,
 		FilePath:   path,
 		MaxSizeMB:  10,
 		MaxBackups: 3,
 		MaxAgeDays: 7,
 	})
+	require.NoError(t, err)
 	require.True(t, a.Enabled())
 
 	a.Log(EventUserLoginFailure, "alice", "10.0.0.5", map[string]any{
@@ -52,7 +53,7 @@ func TestAuditLogger_WritesStructuredEvent(t *testing.T) {
 	require.Equal(t, "10.0.0.5", e["source_ip"])
 	require.NotEmpty(t, e["event_id"])
 	require.NotEmpty(t, e["timestamp"])
-	_, err := time.Parse(time.RFC3339Nano, e["timestamp"].(string))
+	_, err = time.Parse(time.RFC3339Nano, e["timestamp"].(string))
 	require.NoError(t, err)
 
 	details, ok := e["details"].(map[string]any)
@@ -62,7 +63,8 @@ func TestAuditLogger_WritesStructuredEvent(t *testing.T) {
 
 func TestAuditLogger_UniqueEventIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	a := NewAuditLogger(AuditConfig{Enabled: true, FilePath: path})
+	a, err := NewAuditLogger(AuditConfig{Enabled: true, FilePath: path})
+	require.NoError(t, err)
 
 	for range 5 {
 		a.Log(EventSatelliteRegistered, "sat-01", "10.0.0.1", nil)
@@ -82,19 +84,56 @@ func TestAuditLogger_UniqueEventIDs(t *testing.T) {
 
 func TestAuditLogger_DisabledIsNoOp(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	a := NewAuditLogger(AuditConfig{Enabled: false, FilePath: path})
+	a, err := NewAuditLogger(AuditConfig{Enabled: false, FilePath: path})
+	require.NoError(t, err)
 	require.False(t, a.Enabled())
 
 	a.Log(EventUserLoginFailure, "alice", "10.0.0.5", nil)
 
-	_, err := os.Stat(path)
+	_, err = os.Stat(path)
 	require.True(t, os.IsNotExist(err), "no file should be created when disabled")
 }
 
 func TestAuditLogger_EmptyPathIsNoOp(t *testing.T) {
-	a := NewAuditLogger(AuditConfig{Enabled: true, FilePath: ""})
+	a, err := NewAuditLogger(AuditConfig{Enabled: true, FilePath: ""})
+	require.NoError(t, err)
 	require.False(t, a.Enabled())
 	a.Log(EventUserLoginSuccess, "alice", "10.0.0.5", nil)
+}
+
+func TestAuditLogger_UnwritableDestinationErrors(t *testing.T) {
+	// Use a regular file in place of a parent directory so MkdirAll fails with
+	// ENOTDIR. Construction must surface an error rather than returning a logger
+	// that silently drops every event.
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o600))
+
+	a, err := NewAuditLogger(AuditConfig{
+		Enabled:  true,
+		FilePath: filepath.Join(blocker, "audit.log"),
+	})
+	require.Error(t, err)
+	require.Nil(t, a)
+}
+
+func TestAuditLogger_ReconfigureSwapsDestination(t *testing.T) {
+	// Start disabled, then enable via Reconfigure (the hot-reload path).
+	a, err := NewAuditLogger(AuditConfig{Enabled: false})
+	require.NoError(t, err)
+	require.False(t, a.Enabled())
+
+	path := filepath.Join(t.TempDir(), "audit.log")
+	require.NoError(t, a.Reconfigure(AuditConfig{Enabled: true, FilePath: path}))
+	require.True(t, a.Enabled())
+
+	a.Log(EventUserLoginSuccess, "alice", "10.0.0.5", nil)
+	require.Len(t, readAuditLines(t, path), 1)
+
+	// Disable again; further events must not be written.
+	require.NoError(t, a.Reconfigure(AuditConfig{Enabled: false}))
+	require.False(t, a.Enabled())
+	a.Log(EventUserLoginSuccess, "bob", "10.0.0.6", nil)
+	require.Len(t, readAuditLines(t, path), 1)
 }
 
 func TestAuditLogger_NilReceiverSafe(t *testing.T) {
@@ -114,7 +153,8 @@ func TestAuditFromContext_DefaultsToNoOp(t *testing.T) {
 
 func TestAuditFromContext_RoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	a := NewAuditLogger(AuditConfig{Enabled: true, FilePath: path})
+	a, err := NewAuditLogger(AuditConfig{Enabled: true, FilePath: path})
+	require.NoError(t, err)
 
 	ctx := WithAuditLogger(context.Background(), a)
 	got := AuditFromContext(ctx)

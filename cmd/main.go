@@ -286,13 +286,19 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	// Initialize audit logger from config and attach to context
 	auditCfg := cm.GetAuditConfig()
-	audit := logger.NewAuditLogger(logger.AuditConfig{
+	audit, auditErr := logger.NewAuditLogger(logger.AuditConfig{
 		Enabled:    auditCfg.Enabled,
 		FilePath:   auditCfg.FilePath,
-		MaxSizeMB:  auditCfg.MaxSizeMB,
-		MaxBackups: auditCfg.MaxBackups,
-		MaxAgeDays: auditCfg.MaxAgeDays,
+		MaxSizeMB:  auditCfg.MaxSizeMBOrDefault(),
+		MaxBackups: auditCfg.MaxBackupsOrDefault(),
+		MaxAgeDays: auditCfg.MaxAgeDaysOrDefault(),
 	})
+	if auditErr != nil {
+		return fmt.Errorf("failed to initialize audit logger: %w", auditErr)
+	}
+	// currentAuditCfg tracks the live audit settings so a hot reload can detect
+	// audit-specific changes and rebuild the logger in place.
+	currentAuditCfg := auditCfg
 	ctx = logger.WithAuditLogger(ctx, audit)
 	if audit.Enabled() {
 		log.Info().Str("file_path", auditCfg.FilePath).Msg("Audit logging enabled")
@@ -340,6 +346,24 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 						}
 					}
 					if len(changes) > 0 {
+						// Rebuild the audit logger in place if its settings
+						// changed, so enabling/disabling or redirecting audit
+						// takes effect without a restart (and the change itself
+						// is recorded by the new destination).
+						if newAuditCfg := cm.GetAuditConfig(); !newAuditCfg.Equal(currentAuditCfg) {
+							if rcErr := audit.Reconfigure(logger.AuditConfig{
+								Enabled:    newAuditCfg.Enabled,
+								FilePath:   newAuditCfg.FilePath,
+								MaxSizeMB:  newAuditCfg.MaxSizeMBOrDefault(),
+								MaxBackups: newAuditCfg.MaxBackupsOrDefault(),
+								MaxAgeDays: newAuditCfg.MaxAgeDaysOrDefault(),
+							}); rcErr != nil {
+								log.Error().Err(rcErr).Msg("Failed to reconfigure audit logger after reload")
+							} else {
+								currentAuditCfg = newAuditCfg
+								log.Info().Bool("enabled", audit.Enabled()).Msg("Audit logger reconfigured after hot reload")
+							}
+						}
 						changedKeys := make([]string, 0, len(changes))
 						for _, c := range changes {
 							changedKeys = append(changedKeys, string(c.Type))
