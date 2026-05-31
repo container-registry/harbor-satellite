@@ -3,6 +3,7 @@
 package identity
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -63,7 +64,7 @@ func TestLinuxDeviceIdentity_GetBootID(t *testing.T) {
 
 	t.Run("returns boot ID", func(t *testing.T) {
 		bootID, err := d.GetBootID()
-		if err == ErrComponentUnavailable {
+		if errors.Is(err, ErrComponentUnavailable) {
 			t.Skip("boot ID not available")
 		}
 		require.NoError(t, err)
@@ -89,7 +90,7 @@ func TestLinuxDeviceIdentity_GetMachineID(t *testing.T) {
 
 	t.Run("returns machine ID", func(t *testing.T) {
 		machineID, err := d.GetMachineID()
-		if err == ErrComponentUnavailable {
+		if errors.Is(err, ErrComponentUnavailable) {
 			t.Skip("machine ID not available")
 		}
 		require.NoError(t, err)
