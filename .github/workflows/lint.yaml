@@ -28,7 +28,7 @@ jobs:
           version: 3.x
 
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee
         with:
           version: latest
           install-only: true

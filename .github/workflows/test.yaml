@@ -55,7 +55,7 @@ jobs:
           cache: false
 
       - name: Run govulncheck (report)
-        uses: golang/govulncheck-action@v1
+        uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee
         continue-on-error: true
         with:
           repo-checkout: false
