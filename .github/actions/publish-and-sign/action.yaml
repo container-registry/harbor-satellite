@@ -6,28 +6,28 @@ inputs:
     description: 'Tags for the image, e.g. "latest, v1.0.0"'
     required: true
   GITHUB_TOKEN:
-    description: 'GitHub token'
+    description: "GitHub token"
     required: true
   REGISTRY_PASSWORD:
-    description: 'Registry password'
+    description: "Registry password"
     required: true
   REGISTRY_ADDRESS:
-    description: 'Registry address'
+    description: "Registry address"
     required: true
   REGISTRY_USERNAME:
-    description: 'Registry username'
+    description: "Registry username"
     required: true
   PROJECT_NAME:
-    description: 'Project Name'
+    description: "Project Name"
     required: true
 
 runs:
   using: "composite"
   steps:
     - name: Setup Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
-        go-version: "1.24.11"
+        go-version: "1.26.3"
 
     - name: Install Task
       uses: arduino/setup-task@v2
