@@ -41,7 +41,7 @@ runs:
         docker buildx use remote
 
     - name: Install Cosign
-      uses: sigstore/cosign-installer@v3.7.0
+      uses: sigstore/cosign-installer@v4.1.0
 
     - name: Check Env Variables
       shell: bash
