@@ -20,7 +20,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: "1.26.3"
-          cache: true
+          cache: false
 
       - name: Run unit tests for satellite (with coverage)
         run: |
@@ -156,6 +156,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: "1.26.3"
+          cache: false
 
       - name: Install Task
         uses: arduino/setup-task@v2
@@ -176,6 +177,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: "1.26.3"
+          cache: false
 
       - name: Install Task
         uses: arduino/setup-task@v2
@@ -196,6 +198,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: "1.26.3"
+          cache: false
 
       - name: Install Task
         uses: arduino/setup-task@v2
