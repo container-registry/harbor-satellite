@@ -49,7 +49,7 @@ Every event carries eight **always-present** fields. The remaining nine are
 | `actor_type`    | no  | Kind of principal: `user`, `robot`, `satellite`, `anonymous`, `system`. |
 | `source_ip`     | no  | Client IP on Ground Control: the TCP `RemoteAddr` by default, or the first `X-Forwarded-For` hop only when `AUDIT_TRUST_FORWARDED_HEADERS=true`. Absent for outbound calls from the satellite. |
 | `user_agent`    | no  | Client `User-Agent` on HTTP-originated events. |
-| `request_id`    | no  | Value of the `X-Request-ID` header, for correlating multiple events from one request. |
+| `request_id`    | no  | Correlation ID shared by every audit event from one Ground Control request. Reuses an inbound `X-Request-ID` header when present, otherwise Ground Control generates one. Absent on satellite-side and background events. |
 | `satellite_id`  | no  | The satellite a satellite-scoped event relates to. |
 | `resource`      | no  | The concrete target instance (e.g. the username created, the config name changed). |
 | `reason`        | no  | Low-cardinality failure code (see catalogue). Maps to OTel `error.type`. Free-form failure text stays in `details`, never here. |

@@ -9,11 +9,39 @@ import (
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
+	"github.com/google/uuid"
 )
 
 type contextKey string
 
 const userContextKey contextKey = "user"
+
+const requestIDContextKey contextKey = "request_id"
+
+// RequestIDMiddleware ensures every request carries a request ID used to
+// correlate the audit events it produces. An inbound X-Request-ID is reused
+// when present; otherwise a UUID is generated. The value is stored on the
+// request context and echoed on the response so clients can correlate too.
+func (s *Server) RequestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rid := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+		if rid == "" {
+			rid = uuid.NewString()
+		}
+		w.Header().Set("X-Request-ID", rid)
+		ctx := context.WithValue(r.Context(), requestIDContextKey, rid)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// requestIDFromContext returns the request ID attached by RequestIDMiddleware,
+// or "" if none is set.
+func requestIDFromContext(ctx context.Context) string {
+	if rid, ok := ctx.Value(requestIDContextKey).(string); ok {
+		return rid
+	}
+	return ""
+}
 
 // AuthUser represents the authenticated user in the request context
 type AuthUser struct {
@@ -144,7 +172,7 @@ func (s *Server) auditEvent(r *http.Request, e auditlog.AuditEvent) {
 	if ua := r.UserAgent(); ua != "" {
 		e.UserAgent = ua
 	}
-	if rid := r.Header.Get("X-Request-ID"); rid != "" {
+	if rid := requestIDFromContext(r.Context()); rid != "" {
 		e.RequestID = rid
 	}
 	s.audit.Log(e)
