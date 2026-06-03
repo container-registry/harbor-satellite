@@ -198,13 +198,14 @@ func main() {
 // swap so it lands in the (possibly newly enabled or redirected) destination.
 // Returns the audit config now in effect.
 func reconfigureAuditOnReload(audit *logger.AuditLogger, current, next config.AuditConfig, changedKeys []string, log *zerolog.Logger) config.AuditConfig {
-	logChanged := func() {
+	logChanged := func(outcome logger.Outcome, reason logger.Reason) {
 		audit.Log(logger.AuditEvent{
 			Operation:    logger.OpUpdate,
 			ResourceType: logger.ResConfig,
-			Outcome:      logger.OutcomeSuccess,
+			Outcome:      outcome,
 			Actor:        "satellite",
 			ActorType:    logger.ActorSystem,
+			Reason:       reason,
 			Details: map[string]any{
 				"changed_keys": changedKeys,
 				"source":       "hot_reload",
@@ -215,8 +216,13 @@ func reconfigureAuditOnReload(audit *logger.AuditLogger, current, next config.Au
 	changed := !next.Equal(current)
 	disabling := changed && current.Enabled && !next.Enabled
 	if disabling {
-		logChanged()
+		// The disable action itself succeeds; it is emitted before the swap on
+		// the still-active logger.
+		logChanged(logger.OutcomeSuccess, "")
 	}
+	// Default to success; downgrade to failure if the reconfigure attempt fails
+	// so the emitted event does not claim a change that did not take effect.
+	outcome, reason := logger.OutcomeSuccess, logger.Reason("")
 	if changed {
 		if rcErr := audit.Reconfigure(logger.AuditConfig{
 			Enabled:    next.Enabled,
@@ -226,13 +232,14 @@ func reconfigureAuditOnReload(audit *logger.AuditLogger, current, next config.Au
 			MaxAgeDays: next.MaxAgeDaysOrDefault(),
 		}); rcErr != nil {
 			log.Error().Err(rcErr).Msg("Failed to reconfigure audit logger after reload")
+			outcome, reason = logger.OutcomeFailure, logger.ReasonReconfigureFailed
 		} else {
 			current = next
 			log.Info().Bool("enabled", audit.Enabled()).Msg("Audit logger reconfigured after hot reload")
 		}
 	}
 	if !disabling {
-		logChanged()
+		logChanged(outcome, reason)
 	}
 	return current
 }

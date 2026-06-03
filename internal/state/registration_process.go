@@ -69,7 +69,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to register satellite")
 		audit.Log(logger.AuditEvent{
-			Operation:    logger.OpAuth,
+			Operation:    logger.OpRegister,
 			ResourceType: logger.ResSatellite,
 			Outcome:      logger.OutcomeFailure,
 			Actor:        gcURL,
@@ -86,7 +86,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	if stateConfig.RegistryCredentials.Username == "" || stateConfig.RegistryCredentials.Password == "" || stateConfig.RegistryCredentials.URL == "" || stateConfig.StateURL == "" {
 		log.Error().Msgf("Failed to register satellite: invalid state auth config received")
 		audit.Log(logger.AuditEvent{
-			Operation:    logger.OpAuth,
+			Operation:    logger.OpRegister,
 			ResourceType: logger.ResSatellite,
 			Outcome:      logger.OutcomeFailure,
 			Actor:        gcURL,

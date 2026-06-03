@@ -68,8 +68,9 @@ events emitted today.
 | `user.delete.success`        | Ground Control | — | `system_admin` deletes a user |
 | `user.password_change.success` | Ground Control | — | Self-service or admin-driven password change |
 | `satellite.register.success` | Both           | — | Successful `/register`, `/ztr/{token}`, or SPIFFE ZTR; satellite logs its own successful registration |
+| `satellite.register.failure` | Satellite      | `registration_failed`, `invalid_state_auth_config` | Satellite-side registration fails: network/HTTP error reaching Ground Control, or an invalid state-auth config is returned |
 | `satellite.deregister.success` | Ground Control | — | `DELETE /satellites/{name}` |
-| `satellite.auth.failure`     | Both           | `invalid_token`, `token_expired`, `missing_spiffe_identity`, `invalid_spiffe_id`, `registration_failed`, `invalid_state_auth_config` | Invalid/expired token, missing/invalid SPIFFE identity, or satellite-side registration failure |
+| `satellite.auth.failure`     | Ground Control | `invalid_token`, `token_expired`, `missing_spiffe_identity`, `invalid_spiffe_id` | Invalid/expired token, or missing/invalid SPIFFE identity. Kept distinct from `satellite.register.failure` so brute-force alerts on auth failures are not triggered by benign network errors |
 | `config.create.success`      | Ground Control | — | Config created via API |
 | `config.update.success`      | Both           | — | GC: config updated via API. Satellite: config hot-reloaded |
 | `config.delete.success`      | Ground Control | — | Config deleted via API |

@@ -107,6 +107,7 @@ const (
 	ReasonInvalidSpiffeID        Reason = "invalid_spiffe_id"
 	ReasonInvalidStateAuthConfig Reason = "invalid_state_auth_config"
 	ReasonRegistrationFailed     Reason = "registration_failed"
+	ReasonReconfigureFailed      Reason = "reconfigure_failed"
 	ReasonForbidden              Reason = "forbidden"
 	ReasonNotFound               Reason = "not_found"
 	ReasonRateLimited            Reason = "rate_limited"

@@ -259,12 +259,14 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	}
 	committed = true
 
+	// This endpoint is user-authenticated (AuthMiddleware): the actor is the
+	// admin performing the registration, and the satellite is the target.
 	s.auditEvent(r, auditlog.AuditEvent{
 		Operation:    auditlog.OpRegister,
 		ResourceType: auditlog.ResSatellite,
 		Outcome:      auditlog.OutcomeSuccess,
-		Actor:        satellite.Name,
-		ActorType:    auditlog.ActorSatellite,
+		Actor:        actorFromContext(r.Context()),
+		ActorType:    auditlog.ActorUser,
 		SatelliteID:  satellite.Name,
 		Details: map[string]any{
 			"config_name": req.ConfigName,
