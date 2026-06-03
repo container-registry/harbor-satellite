@@ -1,8 +1,6 @@
 module github.com/container-registry/harbor-satellite/ground-control
 
-go 1.24.1
-
-toolchain go1.24.3
+go 1.26.3
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2

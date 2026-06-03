@@ -9,9 +9,9 @@ import (
 	"os"
 
 	"github.com/rs/zerolog"
-	"zotregistry.dev/zot/pkg/api"
-	"zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/cli/server"
+	"zotregistry.dev/zot/v2/pkg/api"
+	"zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/cli/server"
 )
 
 type ZotManager struct {
