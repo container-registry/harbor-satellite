@@ -18,14 +18,35 @@ const userContextKey contextKey = "user"
 
 const requestIDContextKey contextKey = "request_id"
 
+const maxRequestIDLen = 128
+
+// validRequestID reports whether s is a safe correlation ID: 1..128 characters
+// of [A-Za-z0-9._-]. The inbound X-Request-ID is client-controlled and flows
+// into the audit log, so values that fail this check are discarded in favour of
+// a generated UUID — a caller cannot inject oversized or adversarial strings
+// into the audit trail.
+func validRequestID(s string) bool {
+	const allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+	if len(s) == 0 || len(s) > maxRequestIDLen {
+		return false
+	}
+	for _, c := range s {
+		if !strings.ContainsRune(allowed, c) {
+			return false
+		}
+	}
+	return true
+}
+
 // RequestIDMiddleware ensures every request carries a request ID used to
-// correlate the audit events it produces. An inbound X-Request-ID is reused
-// when present; otherwise a UUID is generated. The value is stored on the
+// correlate the audit events it produces. A well-formed inbound X-Request-ID is
+// reused; anything else (absent, oversized, or containing unexpected
+// characters) is replaced by a generated UUID. The value is stored on the
 // request context and echoed on the response so clients can correlate too.
 func (s *Server) RequestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rid := strings.TrimSpace(r.Header.Get("X-Request-ID"))
-		if rid == "" {
+		if !validRequestID(rid) {
 			rid = uuid.NewString()
 		}
 		w.Header().Set("X-Request-ID", rid)
