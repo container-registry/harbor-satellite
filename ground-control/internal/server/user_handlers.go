@@ -93,9 +93,14 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.auditEvent(r, auditlog.EventUserCreated, actorFromContext(r.Context()), map[string]any{
-		"target_user": user.Username,
-		"role":        user.Role,
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpCreate,
+		ResourceType: auditlog.ResUser,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actorFromContext(r.Context()),
+		ActorType:    auditlog.ActorUser,
+		Resource:     user.Username,
+		Details:      map[string]any{"role": user.Role},
 	})
 
 	WriteJSONResponse(w, http.StatusCreated, userResponse{
@@ -199,8 +204,13 @@ func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.auditEvent(r, auditlog.EventUserDeleted, currentUser.Username, map[string]any{
-		"target_user": username,
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpDelete,
+		ResourceType: auditlog.ResUser,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        currentUser.Username,
+		ActorType:    auditlog.ActorUser,
+		Resource:     username,
 	})
 
 	w.WriteHeader(http.StatusNoContent)
@@ -258,9 +268,14 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	s.auditEvent(r, auditlog.EventUserPasswordChanged, currentUser.Username, map[string]any{
-		"target_user": currentUser.Username,
-		"flow":        "self_service",
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpPasswordChange,
+		ResourceType: auditlog.ResUser,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        currentUser.Username,
+		ActorType:    auditlog.ActorUser,
+		Resource:     currentUser.Username,
+		Details:      map[string]any{"flow": "self_service"},
 	})
 
 	w.WriteHeader(http.StatusNoContent)
@@ -313,9 +328,14 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	s.auditEvent(r, auditlog.EventUserPasswordChanged, actorFromContext(r.Context()), map[string]any{
-		"target_user": username,
-		"flow":        "admin_reset",
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpPasswordChange,
+		ResourceType: auditlog.ResUser,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actorFromContext(r.Context()),
+		ActorType:    auditlog.ActorUser,
+		Resource:     username,
+		Details:      map[string]any{"flow": "admin_reset"},
 	})
 
 	w.WriteHeader(http.StatusNoContent)

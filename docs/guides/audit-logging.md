@@ -10,46 +10,72 @@ when enabled.
 
 ## Format
 
-Each event is one line of JSON.
+Each event is one line of JSON. The event model is a canonical,
+transport-neutral shape: the same fields map cleanly onto syslog (RFC 5424) and
+OpenTelemetry, so a record never has to be reshaped or have fields renamed when
+it is shipped to a SIEM.
 
 ```json
 {
   "event_id": "550e8400-e29b-41d4-a716-446655440000",
   "timestamp": "2026-05-01T10:00:00.123456Z",
-  "event_type": "user.login.failure",
+  "severity": "warning",
+  "component": "ground-control",
+  "event_type": "session.login.failure",
+  "operation": "login",
+  "resource_type": "session",
+  "outcome": "failure",
   "actor": "alice",
+  "actor_type": "user",
   "source_ip": "10.0.0.5",
-  "details": {
-    "reason": "bad_password"
-  }
+  "reason": "bad_password"
 }
 ```
 
-| Field        | Description |
-| ------------ | ----------- |
-| `event_id`   | RFC 4122 UUID, generated per event for correlation. |
-| `timestamp`  | UTC, RFC 3339 with nanoseconds. |
-| `event_type` | Stable identifier from the catalogue below. |
-| `actor`      | Username, satellite name, GC URL, or SPIFFE ID. Empty when unknown (e.g., invalid token). |
-| `source_ip`  | Client IP on Ground Control: the TCP `RemoteAddr` by default, or the first `X-Forwarded-For` hop only when `AUDIT_TRUST_FORWARDED_HEADERS=true`. Empty for outbound calls from the satellite. |
-| `details`    | Free-form, event-specific. Omitted when empty. |
+Every event carries eight **always-present** fields. The remaining nine are
+**optional** and omitted when empty.
+
+| Field           | Always? | Description |
+| --------------- | ------- | ----------- |
+| `event_id`      | yes | RFC 4122 UUID, generated per event for correlation. |
+| `timestamp`     | yes | UTC, RFC 3339 with nanoseconds. |
+| `severity`      | yes | One of `info` \| `warning` \| `error` \| `critical`. Derived from `outcome` (failures → `warning`, otherwise `info`) unless set explicitly. Maps to syslog PRI (`critical`=2, `error`=3, `warning`=4, `info`=6) and OTel `SeverityText`/`SeverityNumber`. |
+| `component`     | yes | Which side emitted the event: `satellite` or `ground-control`. Carried on the record so consumers don't infer origin from the file path. |
+| `event_type`    | yes | Derived as `{resource_type}.{operation}.{outcome}`, e.g. `user.delete.success`. Provided so existing string-match rules keep working; the three parts are also available as their own fields. |
+| `operation`     | yes | The verb: `login`, `create`, `delete`, `update`, `register`, `deregister`, `password_change`, `auth`, `revoke`, `unrevoke`. |
+| `resource_type` | yes | The noun acted on: `user`, `satellite`, `config`, `session`, `policy`, `robot`. |
+| `outcome`       | yes | `success` or `failure`. |
+| `actor`         | no  | Username, satellite name, GC URL, or SPIFFE ID. Omitted when unknown (e.g., invalid token). |
+| `actor_type`    | no  | Kind of principal: `user`, `robot`, `satellite`, `anonymous`, `system`. |
+| `source_ip`     | no  | Client IP on Ground Control: the TCP `RemoteAddr` by default, or the first `X-Forwarded-For` hop only when `AUDIT_TRUST_FORWARDED_HEADERS=true`. Absent for outbound calls from the satellite. |
+| `user_agent`    | no  | Client `User-Agent` on HTTP-originated events. |
+| `request_id`    | no  | Value of the `X-Request-ID` header, for correlating multiple events from one request. |
+| `satellite_id`  | no  | The satellite a satellite-scoped event relates to. |
+| `resource`      | no  | The concrete target instance (e.g. the username created, the config name changed). |
+| `reason`        | no  | Low-cardinality failure code (see catalogue). Maps to OTel `error.type`. Free-form failure text stays in `details`, never here. |
+| `details`       | no  | Free-form, event-specific map. Omitted when empty. |
 
 ## Event catalogue
 
-| `event_type`               | Source         | Emitted when |
-| -------------------------- | -------------- | ------------ |
-| `user.login.success`       | Ground Control | `/login` succeeds |
-| `user.login.failure`       | Ground Control | Missing creds, locked account, unknown user, bad password |
-| `user.created`             | Ground Control | `system_admin` creates an admin user |
-| `user.deleted`             | Ground Control | `system_admin` deletes a user |
-| `user.password_changed`    | Ground Control | Self-service or admin-driven password change |
-| `satellite.registered`     | Both           | Successful `/register`, `/ztr/{token}`, or SPIFFE ZTR; satellite logs successful local registration |
-| `satellite.deregistered`   | Ground Control | `DELETE /satellites/{name}` |
-| `satellite.auth.failure`   | Both           | Invalid/expired token; missing or invalid SPIFFE identity; satellite-side registration failures |
-| `satellite.revoked`        | Reserved       | Not yet emitted — see roadmap |
-| `satellite.unrevoked`      | Reserved       | Not yet emitted — see roadmap |
-| `policy.pull_blocked`      | Reserved       | Not yet emitted — depends on registry-level policy hooks |
-| `config.changed`           | Both           | GC: config create/update/delete via API. Satellite: hot-reloaded config keys. |
+`event_type` is `{resource_type}.{operation}.{outcome}`. The table groups the
+events emitted today.
+
+| `event_type`                 | Source         | `reason` values | Emitted when |
+| ---------------------------- | -------------- | --------------- | ------------ |
+| `session.login.success`      | Ground Control | — | `/login` succeeds |
+| `session.login.failure`      | Ground Control | `missing_credentials`, `account_locked`, `unknown_user`, `bad_password` | A login attempt is rejected |
+| `user.create.success`        | Ground Control | — | `system_admin` creates a user |
+| `user.delete.success`        | Ground Control | — | `system_admin` deletes a user |
+| `user.password_change.success` | Ground Control | — | Self-service or admin-driven password change |
+| `satellite.register.success` | Both           | — | Successful `/register`, `/ztr/{token}`, or SPIFFE ZTR; satellite logs its own successful registration |
+| `satellite.deregister.success` | Ground Control | — | `DELETE /satellites/{name}` |
+| `satellite.auth.failure`     | Both           | `invalid_token`, `token_expired`, `missing_spiffe_identity`, `invalid_spiffe_id`, `registration_failed`, `invalid_state_auth_config` | Invalid/expired token, missing/invalid SPIFFE identity, or satellite-side registration failure |
+| `config.create.success`      | Ground Control | — | Config created via API |
+| `config.update.success`      | Both           | — | GC: config updated via API. Satellite: config hot-reloaded |
+| `config.delete.success`      | Ground Control | — | Config deleted via API |
+| `satellite.revoke.success`   | Reserved       | — | Not yet emitted — see roadmap |
+| `satellite.unrevoke.success` | Reserved       | — | Not yet emitted — see roadmap |
+| `policy.pull_block.failure`  | Reserved       | — | Not yet emitted — depends on registry-level policy hooks |
 
 ## Configuration
 
@@ -117,13 +143,23 @@ causes GC to refuse to start rather than silently drop events.
 - **Forward to SIEM.** Point a log shipper (Filebeat, Vector, Fluent Bit) at
   the audit file. The JSON-per-line format requires no parsing rules.
 - **Two files in production.** Satellite and Ground Control each write their
-  own file. Aggregate them by `event_type`/`actor` in your SIEM.
-- **Stable event types.** New event types will be added; existing identifiers
-  are stable strings — safe to use in alerting rules.
+  own file. The `component` field tells them apart once aggregated; pivot on
+  `event_type`, `severity`, `actor`, or `reason` in your SIEM.
+- **Transport-ready.** The schema is designed so syslog and OpenTelemetry
+  exporters can be added without renaming fields — `severity` → PRI/severity
+  number, `component` → APP-NAME / `service.name`, and `operation` /
+  `resource_type` / `outcome` / `reason` become first-class attributes instead
+  of substrings parsed out of `event_type`.
+- **Stable event types.** New event types will be added; the
+  `{resource_type}.{operation}.{outcome}` identifiers are stable strings — safe
+  to use in alerting rules.
 
 ## Roadmap
 
-- `policy.pull_blocked` — once registry-level policy hooks land, emit when
-  the local Zot or fallback layer denies a pull.
-- `satellite.revoked` / `satellite.unrevoked` — pending the revocation
-  workflow added in Ground Control.
+- `policy.pull_block.failure` — once registry-level policy hooks land, emit
+  when the local Zot or fallback layer denies a pull.
+- `satellite.revoke.success` / `satellite.unrevoke.success` — pending the
+  revocation workflow added in Ground Control.
+- **syslog & OpenTelemetry transports** — the event model is already
+  syslog/OTel-compatible (see Format); the exporters that ship events over
+  those protocols are tracked as follow-up work.

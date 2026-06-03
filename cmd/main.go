@@ -199,9 +199,16 @@ func main() {
 // Returns the audit config now in effect.
 func reconfigureAuditOnReload(audit *logger.AuditLogger, current, next config.AuditConfig, changedKeys []string, log *zerolog.Logger) config.AuditConfig {
 	logChanged := func() {
-		audit.Log(logger.EventConfigChanged, "satellite", "", map[string]any{
-			"changed_keys": changedKeys,
-			"source":       "hot_reload",
+		audit.Log(logger.AuditEvent{
+			Operation:    logger.OpUpdate,
+			ResourceType: logger.ResConfig,
+			Outcome:      logger.OutcomeSuccess,
+			Actor:        "satellite",
+			ActorType:    logger.ActorSystem,
+			Details: map[string]any{
+				"changed_keys": changedKeys,
+				"source":       "hot_reload",
+			},
 		})
 	}
 
@@ -331,7 +338,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		MaxSizeMB:  auditCfg.MaxSizeMBOrDefault(),
 		MaxBackups: auditCfg.MaxBackupsOrDefault(),
 		MaxAgeDays: auditCfg.MaxAgeDaysOrDefault(),
-	})
+	}, logger.ComponentSatellite)
 	if auditErr != nil {
 		return fmt.Errorf("failed to initialize audit logger: %w", auditErr)
 	}

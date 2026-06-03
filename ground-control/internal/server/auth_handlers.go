@@ -33,7 +33,14 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Username == "" || req.Password == "" {
-		s.auditEvent(r, auditlog.EventUserLoginFailure, req.Username, map[string]any{"reason": "missing_credentials"})
+		s.auditEvent(r, auditlog.AuditEvent{
+			Operation:    auditlog.OpLogin,
+			ResourceType: auditlog.ResSession,
+			Outcome:      auditlog.OutcomeFailure,
+			Actor:        req.Username,
+			ActorType:    auditlog.ActorUser,
+			Reason:       auditlog.ReasonMissingCredentials,
+		})
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -46,7 +53,14 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err == nil && attempts.LockedUntil.Valid && attempts.LockedUntil.Time.After(time.Now()) {
-		s.auditEvent(r, auditlog.EventUserLoginFailure, req.Username, map[string]any{"reason": "account_locked"})
+		s.auditEvent(r, auditlog.AuditEvent{
+			Operation:    auditlog.OpLogin,
+			ResourceType: auditlog.ResSession,
+			Outcome:      auditlog.OutcomeFailure,
+			Actor:        req.Username,
+			ActorType:    auditlog.ActorUser,
+			Reason:       auditlog.ReasonAccountLocked,
+		})
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -55,7 +69,14 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := s.dbQueries.GetUserByUsername(r.Context(), req.Username)
 	if err != nil {
 		s.recordFailedAttempt(r, req.Username)
-		s.auditEvent(r, auditlog.EventUserLoginFailure, req.Username, map[string]any{"reason": "unknown_user"})
+		s.auditEvent(r, auditlog.AuditEvent{
+			Operation:    auditlog.OpLogin,
+			ResourceType: auditlog.ResSession,
+			Outcome:      auditlog.OutcomeFailure,
+			Actor:        req.Username,
+			ActorType:    auditlog.ActorUser,
+			Reason:       auditlog.ReasonUnknownUser,
+		})
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -64,7 +85,14 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	valid := auth.VerifyPassword(req.Password, user.PasswordHash)
 	if !valid {
 		s.recordFailedAttempt(r, req.Username)
-		s.auditEvent(r, auditlog.EventUserLoginFailure, req.Username, map[string]any{"reason": "bad_password"})
+		s.auditEvent(r, auditlog.AuditEvent{
+			Operation:    auditlog.OpLogin,
+			ResourceType: auditlog.ResSession,
+			Outcome:      auditlog.OutcomeFailure,
+			Actor:        req.Username,
+			ActorType:    auditlog.ActorUser,
+			Reason:       auditlog.ReasonBadPassword,
+		})
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -90,7 +118,13 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.auditEvent(r, auditlog.EventUserLoginSuccess, req.Username, nil)
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpLogin,
+		ResourceType: auditlog.ResSession,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        req.Username,
+		ActorType:    auditlog.ActorUser,
+	})
 
 	WriteJSONResponse(w, http.StatusOK, loginResponse{
 		Token:     token,

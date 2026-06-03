@@ -14,23 +14,144 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// AuditEventType identifies a security-relevant event recorded in the audit log.
-type AuditEventType string
+// The audit event model is a canonical, transport-neutral shape designed to map
+// cleanly onto syslog (RFC 5424) and OpenTelemetry without renaming fields
+// later. Each event carries eight always-present fields (event_id, timestamp,
+// severity, component, event_type, operation, resource_type, outcome) and up to
+// nine optional ones. event_type is derived as
+// "{resource_type}.{operation}.{outcome}" so consumers never have to parse a
+// composite string to recover the parts.
+
+// Component identifies which side emitted the event. It is carried on every
+// event so a transport does not have to infer origin from the log file path.
+type Component string
 
 const (
-	EventSatelliteAuthFailure  AuditEventType = "satellite.auth.failure"
-	EventSatelliteRegistered   AuditEventType = "satellite.registered"
-	EventSatelliteDeregistered AuditEventType = "satellite.deregistered"
-	EventSatelliteRevoked      AuditEventType = "satellite.revoked"
-	EventSatelliteUnrevoked    AuditEventType = "satellite.unrevoked"
-	EventUserLoginSuccess      AuditEventType = "user.login.success"
-	EventUserLoginFailure      AuditEventType = "user.login.failure"
-	EventUserCreated           AuditEventType = "user.created"
-	EventUserDeleted           AuditEventType = "user.deleted"
-	EventUserPasswordChanged   AuditEventType = "user.password_changed"
-	EventPolicyPullBlocked     AuditEventType = "policy.pull_blocked"
-	EventConfigChanged         AuditEventType = "config.changed"
+	ComponentSatellite     Component = "satellite"
+	ComponentGroundControl Component = "ground-control"
 )
+
+// Severity prioritises events for a SIEM without parsing event_type. The four
+// levels map directly onto syslog PRI (critical=2, error=3, warning=4, info=6)
+// and onto OTel SeverityText/SeverityNumber.
+type Severity string
+
+const (
+	SeverityInfo     Severity = "info"
+	SeverityWarning  Severity = "warning"
+	SeverityError    Severity = "error"
+	SeverityCritical Severity = "critical"
+)
+
+// Operation is the verb of an audited action.
+type Operation string
+
+const (
+	OpLogin          Operation = "login"
+	OpCreate         Operation = "create"
+	OpDelete         Operation = "delete"
+	OpUpdate         Operation = "update"
+	OpRegister       Operation = "register"
+	OpDeregister     Operation = "deregister"
+	OpPasswordChange Operation = "password_change"
+	OpAuth           Operation = "auth"
+	OpRevoke         Operation = "revoke"
+	OpUnrevoke       Operation = "unrevoke"
+)
+
+// ResourceType is the noun an operation acts on.
+type ResourceType string
+
+const (
+	ResUser      ResourceType = "user"
+	ResSatellite ResourceType = "satellite"
+	ResConfig    ResourceType = "config"
+	ResSession   ResourceType = "session"
+	ResPolicy    ResourceType = "policy"
+	ResRobot     ResourceType = "robot"
+)
+
+// Outcome records whether the action succeeded.
+type Outcome string
+
+const (
+	OutcomeSuccess Outcome = "success"
+	OutcomeFailure Outcome = "failure"
+)
+
+// ActorType distinguishes the kind of principal that triggered the event.
+type ActorType string
+
+const (
+	ActorUser      ActorType = "user"
+	ActorRobot     ActorType = "robot"
+	ActorSatellite ActorType = "satellite"
+	ActorAnonymous ActorType = "anonymous"
+	ActorSystem    ActorType = "system"
+)
+
+// Reason is a low-cardinality failure code suitable for alerting and
+// aggregation. It maps onto OTel error.type. Free-form failure text belongs in
+// Details, never here.
+type Reason string
+
+const (
+	ReasonInvalidCredentials     Reason = "invalid_credentials"
+	ReasonMissingCredentials     Reason = "missing_credentials"
+	ReasonAccountLocked          Reason = "account_locked"
+	ReasonUnknownUser            Reason = "unknown_user"
+	ReasonBadPassword            Reason = "bad_password"
+	ReasonInvalidToken           Reason = "invalid_token"
+	ReasonTokenExpired           Reason = "token_expired"
+	ReasonMissingSpiffeIdentity  Reason = "missing_spiffe_identity"
+	ReasonInvalidSpiffeID        Reason = "invalid_spiffe_id"
+	ReasonInvalidStateAuthConfig Reason = "invalid_state_auth_config"
+	ReasonRegistrationFailed     Reason = "registration_failed"
+	ReasonForbidden              Reason = "forbidden"
+	ReasonNotFound               Reason = "not_found"
+	ReasonRateLimited            Reason = "rate_limited"
+)
+
+// AuditEvent is a single security-relevant event. Callers populate the semantic
+// fields (Operation, ResourceType, Outcome are required); the logger fills
+// event_id, timestamp, and component, and derives event_type and a default
+// severity at emit time. Empty optional fields are omitted from the output.
+type AuditEvent struct {
+	// Required.
+	Operation    Operation
+	ResourceType ResourceType
+	Outcome      Outcome
+
+	// Optional. Severity is derived from the event when left empty.
+	Severity    Severity
+	Actor       string
+	ActorType   ActorType
+	SourceIP    string
+	UserAgent   string
+	RequestID   string
+	SatelliteID string
+	Resource    string
+	Reason      Reason
+	Details     map[string]any
+}
+
+// eventType derives the canonical "{resource_type}.{operation}.{outcome}" name.
+func (e AuditEvent) eventType() string {
+	return fmt.Sprintf("%s.%s.%s", e.ResourceType, e.Operation, e.Outcome)
+}
+
+// severity returns the caller-set severity, or a default derived from the
+// outcome: failures are warnings, everything else is informational. Callers can
+// override with SeverityError / SeverityCritical for genuinely severe events.
+func (e AuditEvent) severity() Severity {
+	if e.Severity != "" {
+		return e.Severity
+	}
+	if e.Outcome == OutcomeFailure {
+		return SeverityWarning
+	}
+	return SeverityInfo
+}
 
 // AuditConfig controls the audit logger destination and rotation policy.
 type AuditConfig struct {
@@ -45,19 +166,20 @@ type AuditConfig struct {
 // and its destination can be swapped at runtime via Reconfigure. When disabled
 // it is a no-op so callers never need to nil-check.
 type AuditLogger struct {
-	mu      sync.RWMutex
-	log     *zerolog.Logger
-	closer  io.Closer
-	enabled bool
+	mu        sync.RWMutex
+	log       *zerolog.Logger
+	closer    io.Closer
+	enabled   bool
+	component Component
 }
 
-// NewAuditLogger builds an AuditLogger from cfg. With Enabled=false or an empty
-// FilePath the logger is a no-op. When enabled, the destination is verified to
-// be writable up front and an error is returned if it is not, so the caller can
-// fail fast at startup instead of advertising audit logging while silently
-// dropping every event.
-func NewAuditLogger(cfg AuditConfig) (*AuditLogger, error) {
-	a := &AuditLogger{}
+// NewAuditLogger builds an AuditLogger from cfg for the given component. With
+// Enabled=false or an empty FilePath the logger is a no-op. When enabled, the
+// destination is verified to be writable up front and an error is returned if
+// it is not, so the caller can fail fast at startup instead of advertising
+// audit logging while silently dropping every event.
+func NewAuditLogger(cfg AuditConfig, component Component) (*AuditLogger, error) {
+	a := &AuditLogger{component: component}
 	if err := a.Reconfigure(cfg); err != nil {
 		return nil, err
 	}
@@ -123,9 +245,10 @@ func ensureWritable(path string) error {
 	return f.Close()
 }
 
-// Log emits a single audit event. event_id and timestamp are filled in
-// automatically. details may be nil.
-func (a *AuditLogger) Log(eventType AuditEventType, actor, sourceIP string, details map[string]any) {
+// Log emits a single audit event. event_id, timestamp, component, event_type
+// and a default severity are filled in automatically. Empty optional fields are
+// omitted. Safe to call on a nil or disabled logger.
+func (a *AuditLogger) Log(e AuditEvent) {
 	if a == nil {
 		return
 	}
@@ -137,11 +260,38 @@ func (a *AuditLogger) Log(eventType AuditEventType, actor, sourceIP string, deta
 	evt := a.log.Log().
 		Str("event_id", uuid.NewString()).
 		Str("timestamp", time.Now().UTC().Format(time.RFC3339Nano)).
-		Str("event_type", string(eventType)).
-		Str("actor", actor).
-		Str("source_ip", sourceIP)
-	if len(details) > 0 {
-		evt = evt.Interface("details", details)
+		Str("severity", string(e.severity())).
+		Str("component", string(a.component)).
+		Str("event_type", e.eventType()).
+		Str("operation", string(e.Operation)).
+		Str("resource_type", string(e.ResourceType)).
+		Str("outcome", string(e.Outcome))
+	if e.Actor != "" {
+		evt = evt.Str("actor", e.Actor)
+	}
+	if e.ActorType != "" {
+		evt = evt.Str("actor_type", string(e.ActorType))
+	}
+	if e.SourceIP != "" {
+		evt = evt.Str("source_ip", e.SourceIP)
+	}
+	if e.UserAgent != "" {
+		evt = evt.Str("user_agent", e.UserAgent)
+	}
+	if e.RequestID != "" {
+		evt = evt.Str("request_id", e.RequestID)
+	}
+	if e.SatelliteID != "" {
+		evt = evt.Str("satellite_id", e.SatelliteID)
+	}
+	if e.Resource != "" {
+		evt = evt.Str("resource", e.Resource)
+	}
+	if e.Reason != "" {
+		evt = evt.Str("reason", string(e.Reason))
+	}
+	if len(e.Details) > 0 {
+		evt = evt.Interface("details", e.Details)
 	}
 	evt.Send()
 }

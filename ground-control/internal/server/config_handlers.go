@@ -121,9 +121,13 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	s.auditEvent(r, auditlog.EventConfigChanged, actorFromContext(r.Context()), map[string]any{
-		"config_name": req.ConfigName,
-		"action":      "create",
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpCreate,
+		ResourceType: auditlog.ResConfig,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actorFromContext(r.Context()),
+		ActorType:    auditlog.ActorUser,
+		Resource:     req.ConfigName,
 	})
 
 	w.WriteHeader(http.StatusCreated)
@@ -252,9 +256,13 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	s.auditEvent(r, auditlog.EventConfigChanged, actorFromContext(r.Context()), map[string]any{
-		"config_name": configName,
-		"action":      "update",
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpUpdate,
+		ResourceType: auditlog.ResConfig,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actorFromContext(r.Context()),
+		ActorType:    auditlog.ActorUser,
+		Resource:     configName,
 	})
 
 	WriteJSONResponse(w, http.StatusOK, result)
@@ -425,9 +433,13 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.auditEvent(r, auditlog.EventConfigChanged, actorFromContext(r.Context()), map[string]any{
-		"config_name": configName,
-		"action":      "delete",
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpDelete,
+		ResourceType: auditlog.ResConfig,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actorFromContext(r.Context()),
+		ActorType:    auditlog.ActorUser,
+		Resource:     configName,
 	})
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})

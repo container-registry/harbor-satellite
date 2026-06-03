@@ -135,10 +135,19 @@ func (s *Server) clientIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-// auditEvent records a security-relevant event with source IP filled in from
-// the request. It is safe to call when the audit logger is disabled.
-func (s *Server) auditEvent(r *http.Request, eventType auditlog.AuditEventType, actor string, details map[string]any) {
-	s.audit.Log(eventType, actor, s.clientIP(r), details)
+// auditEvent records a security-relevant event, filling in the request-scoped
+// fields (source IP, user agent, request ID) from r before emitting. Callers
+// supply the semantic fields on e. It is safe to call when the audit logger is
+// disabled.
+func (s *Server) auditEvent(r *http.Request, e auditlog.AuditEvent) {
+	e.SourceIP = s.clientIP(r)
+	if ua := r.UserAgent(); ua != "" {
+		e.UserAgent = ua
+	}
+	if rid := r.Header.Get("X-Request-ID"); rid != "" {
+		e.RequestID = rid
+	}
+	s.audit.Log(e)
 }
 
 func extractBasicAuth(r *http.Request) (username, password string, ok bool) {

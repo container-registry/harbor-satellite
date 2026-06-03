@@ -158,7 +158,7 @@ func NewServer() *ServerResult {
 		spireServerPort = parseIntEnv("SPIRE_SERVER_PORT", 8081)
 	}
 
-	auditLogger, auditErr := auditlog.NewAuditLogger(loadAuditConfig())
+	auditLogger, auditErr := auditlog.NewAuditLogger(loadAuditConfig(), auditlog.ComponentGroundControl)
 	if auditErr != nil {
 		log.Fatalf("Failed to initialize audit logger: %v", auditErr)
 	}

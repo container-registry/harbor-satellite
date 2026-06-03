@@ -68,18 +68,31 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	)
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to register satellite")
-		audit.Log(logger.EventSatelliteAuthFailure, gcURL, "", map[string]any{
-			"reason": sanitizeAuditReason(err, z.cm.GetToken()),
-			"flow":   "ztr",
+		audit.Log(logger.AuditEvent{
+			Operation:    logger.OpAuth,
+			ResourceType: logger.ResSatellite,
+			Outcome:      logger.OutcomeFailure,
+			Actor:        gcURL,
+			ActorType:    logger.ActorSystem,
+			Reason:       logger.ReasonRegistrationFailed,
+			Details: map[string]any{
+				"error": sanitizeAuditReason(err, z.cm.GetToken()),
+				"flow":  "ztr",
+			},
 		})
 		return err
 	}
 
 	if stateConfig.RegistryCredentials.Username == "" || stateConfig.RegistryCredentials.Password == "" || stateConfig.RegistryCredentials.URL == "" || stateConfig.StateURL == "" {
 		log.Error().Msgf("Failed to register satellite: invalid state auth config received")
-		audit.Log(logger.EventSatelliteAuthFailure, gcURL, "", map[string]any{
-			"reason": "invalid_state_auth_config",
-			"flow":   "ztr",
+		audit.Log(logger.AuditEvent{
+			Operation:    logger.OpAuth,
+			ResourceType: logger.ResSatellite,
+			Outcome:      logger.OutcomeFailure,
+			Actor:        gcURL,
+			ActorType:    logger.ActorSystem,
+			Reason:       logger.ReasonInvalidStateAuthConfig,
+			Details:      map[string]any{"flow": "ztr"},
 		})
 		return fmt.Errorf("failed to register satellite: invalid state auth config received")
 	}
@@ -101,8 +114,13 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		return fmt.Errorf("failed to register satellite: could not update state auth config")
 	}
 
-	audit.Log(logger.EventSatelliteRegistered, gcURL, "", map[string]any{
-		"flow": "ztr",
+	audit.Log(logger.AuditEvent{
+		Operation:    logger.OpRegister,
+		ResourceType: logger.ResSatellite,
+		Outcome:      logger.OutcomeSuccess,
+		Actor:        gcURL,
+		ActorType:    logger.ActorSystem,
+		Details:      map[string]any{"flow": "ztr"},
 	})
 
 	// Close the z.Done channel on successful ZTR alone.
