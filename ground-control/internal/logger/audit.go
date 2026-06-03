@@ -266,29 +266,21 @@ func (a *AuditLogger) Log(e AuditEvent) {
 		Str("operation", string(e.Operation)).
 		Str("resource_type", string(e.ResourceType)).
 		Str("outcome", string(e.Outcome))
-	if e.Actor != "" {
-		evt = evt.Str("actor", e.Actor)
-	}
-	if e.ActorType != "" {
-		evt = evt.Str("actor_type", string(e.ActorType))
-	}
-	if e.SourceIP != "" {
-		evt = evt.Str("source_ip", e.SourceIP)
-	}
-	if e.UserAgent != "" {
-		evt = evt.Str("user_agent", e.UserAgent)
-	}
-	if e.RequestID != "" {
-		evt = evt.Str("request_id", e.RequestID)
-	}
-	if e.SatelliteID != "" {
-		evt = evt.Str("satellite_id", e.SatelliteID)
-	}
-	if e.Resource != "" {
-		evt = evt.Str("resource", e.Resource)
-	}
-	if e.Reason != "" {
-		evt = evt.Str("reason", string(e.Reason))
+	// Optional string fields are emitted only when set. Kept as a table so the
+	// emit path stays low-complexity as fields are added.
+	for _, f := range []struct{ key, val string }{
+		{"actor", e.Actor},
+		{"actor_type", string(e.ActorType)},
+		{"source_ip", e.SourceIP},
+		{"user_agent", e.UserAgent},
+		{"request_id", e.RequestID},
+		{"satellite_id", e.SatelliteID},
+		{"resource", e.Resource},
+		{"reason", string(e.Reason)},
+	} {
+		if f.val != "" {
+			evt = evt.Str(f.key, f.val)
+		}
 	}
 	if len(e.Details) > 0 {
 		evt = evt.Interface("details", e.Details)
