@@ -70,6 +70,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Satellite routes (robot creds or SPIFFE)
 	satellites := r.PathPrefix("/satellites").Subrouter()
 
+	// Apply SPIFFE context extraction middleware to extract identity from mTLS
+	// This is non-blocking - it just extracts SPIFFE ID if available
+	satellites.Use(spiffe.AuthMiddleware)
+
 	// Token-based ZTR (rate limited)
 	ztr := satellites.PathPrefix("/ztr").Subrouter()
 	ztr.Use(middleware.RateLimitMiddleware(s.rateLimiter))
@@ -81,8 +85,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 	spiffeZtr.Use(middleware.RateLimitMiddleware(s.rateLimiter))
 	spiffeZtr.HandleFunc("", s.spiffeZtrHandler).Methods("GET")
 
-	// Sync (dual auth: robot credentials or SPIFFE)
-	satellites.HandleFunc("/sync", s.syncHandler).Methods("POST")
+	// Sync (authenticated: robot credentials or SPIFFE)
+	syncRouter := satellites.PathPrefix("/sync").Subrouter()
+	syncRouter.Use(middleware.RateLimitMiddleware(s.rateLimiter))
+	syncRouter.Use(s.SatelliteAuthMiddleware)
+	syncRouter.HandleFunc("", s.syncHandler).Methods("POST")
 
 	return r
 }

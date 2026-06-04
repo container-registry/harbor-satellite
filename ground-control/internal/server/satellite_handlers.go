@@ -567,12 +567,21 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check SPIFFE identity first for dual auth
-	var satelliteName string
-	if name, ok := spiffe.GetSatelliteName(r.Context()); ok {
-		satelliteName = name
-	} else {
-		satelliteName = req.Name
+	// Get authenticated satellite name from middleware context
+	satelliteName, ok := GetSatelliteNameFromContext(r.Context())
+	if !ok {
+		// This should never happen if middleware is properly applied
+		log.Println("syncHandler: no authenticated satellite in context")
+		HandleAppError(w, &AppError{Message: "authentication required", Code: http.StatusUnauthorized})
+		return
+	}
+
+	// Validate that request body name matches authenticated identity (if provided)
+	// This prevents a satellite from submitting status on behalf of another satellite
+	if req.Name != "" && req.Name != satelliteName {
+		log.Printf("syncHandler: name mismatch - authenticated=%s, requested=%s", satelliteName, req.Name)
+		HandleAppError(w, &AppError{Message: "satellite name mismatch", Code: http.StatusForbidden})
+		return
 	}
 
 	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
