@@ -41,6 +41,31 @@ runs:
         docker buildx inspect remote || docker buildx create --name remote --driver remote tcp://buildkitd.github-runners.svc:1234
         docker buildx use remote
 
+    - name: Provide envsubst for Cosign installer
+      shell: bash
+      run: |
+        if command -v envsubst >/dev/null 2>&1; then
+          exit 0
+        fi
+
+        mkdir -p "$RUNNER_TEMP/bin"
+        cat > "$RUNNER_TEMP/bin/envsubst" <<'EOF'
+        #!/usr/bin/env python3
+        import os
+        import re
+        import sys
+
+        pattern = re.compile(r"\$(\w+)|\$\{([^}]+)\}")
+
+        def replace(match):
+            name = match.group(1) or match.group(2)
+            return os.environ.get(name, "")
+
+        sys.stdout.write(pattern.sub(replace, sys.stdin.read()))
+        EOF
+        chmod +x "$RUNNER_TEMP/bin/envsubst"
+        echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
     - name: Install Cosign
       uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
