@@ -5,7 +5,7 @@ separate from the operational `zerolog` stream. The audit log is intended for
 compliance (SOC2, ISO27001), incident investigation, and integration with
 SIEM/security-monitoring tooling.
 
-Both components — Satellite and Ground Control — produce their own audit log
+Both components - Satellite and Ground Control - produce their own audit log
 when enabled.
 
 ## Format
@@ -39,7 +39,7 @@ Every event carries eight **always-present** fields. The remaining nine are
 | --------------- | ------- | ----------- |
 | `event_id`      | yes | RFC 4122 UUID, generated per event for correlation. |
 | `timestamp`     | yes | UTC, RFC 3339 with nanoseconds. |
-| `severity`      | yes | One of `info` \| `warning` \| `error` \| `critical`. Derived from `outcome` (failures → `warning`, otherwise `info`) unless set explicitly. Maps to syslog PRI (`critical`=2, `error`=3, `warning`=4, `info`=6) and OTel `SeverityText`/`SeverityNumber`. |
+| `severity`      | yes | One of `info` \| `warning` \| `error` \| `critical`. Derived from `outcome` (failures -> `warning`, otherwise `info`) unless set explicitly. Maps to syslog PRI (`critical`=2, `error`=3, `warning`=4, `info`=6) and OTel `SeverityText`/`SeverityNumber`. |
 | `component`     | yes | Which side emitted the event: `satellite` or `ground-control`. Carried on the record so consumers don't infer origin from the file path. |
 | `event_type`    | yes | Derived as `{resource_type}.{operation}.{outcome}`, e.g. `user.delete.success`. Provided so existing string-match rules keep working; the three parts are also available as their own fields. |
 | `operation`     | yes | The verb: `login`, `create`, `delete`, `update`, `register`, `deregister`, `password_change`, `auth`, `revoke`, `unrevoke`. |
@@ -62,21 +62,37 @@ events emitted today.
 
 | `event_type`                 | Source         | `reason` values | Emitted when |
 | ---------------------------- | -------------- | --------------- | ------------ |
-| `session.login.success`      | Ground Control | — | `/login` succeeds |
+| `session.login.success`      | Ground Control | - | `/login` succeeds |
 | `session.login.failure`      | Ground Control | `missing_credentials`, `account_locked`, `unknown_user`, `bad_password` | A login attempt is rejected |
-| `user.create.success`        | Ground Control | — | `system_admin` creates a user |
-| `user.delete.success`        | Ground Control | — | `system_admin` deletes a user |
-| `user.password_change.success` | Ground Control | — | Self-service or admin-driven password change |
-| `satellite.register.success` | Both           | — | Successful `/register`, `/ztr/{token}`, or SPIFFE ZTR; satellite logs its own successful registration |
+| `user.create.success`        | Ground Control | - | `system_admin` creates a user |
+| `user.delete.success`        | Ground Control | - | `system_admin` deletes a user |
+| `user.password_change.success` | Ground Control | - | Self-service or admin-driven password change |
+| `satellite.register.success` | Both           | - | Successful `/register`, `/ztr/{token}`, or SPIFFE ZTR; satellite logs its own successful registration |
 | `satellite.register.failure` | Satellite      | `registration_failed`, `invalid_state_auth_config` | Satellite-side registration fails: network/HTTP error reaching Ground Control, or an invalid state-auth config is returned |
-| `satellite.deregister.success` | Ground Control | — | `DELETE /satellites/{name}` |
+| `satellite.deregister.success` | Ground Control | - | `DELETE /satellites/{name}` |
 | `satellite.auth.failure`     | Ground Control | `invalid_token`, `token_expired`, `missing_spiffe_identity`, `invalid_spiffe_id` | Invalid/expired token, or missing/invalid SPIFFE identity. Kept distinct from `satellite.register.failure` so brute-force alerts on auth failures are not triggered by benign network errors |
-| `config.create.success`      | Ground Control | — | Config created via API |
-| `config.update.success`      | Both           | — | GC: config updated via API. Satellite: config hot-reloaded |
-| `config.delete.success`      | Ground Control | — | Config deleted via API |
-| `satellite.revoke.success`   | Reserved       | — | Not yet emitted — see roadmap |
-| `satellite.unrevoke.success` | Reserved       | — | Not yet emitted — see roadmap |
-| `policy.pull_block.failure`  | Reserved       | — | Not yet emitted — depends on registry-level policy hooks |
+| `config.create.success`      | Ground Control | - | Config created via API |
+| `config.update.success`      | Both           | - | GC: config updated via API. Satellite: config hot-reloaded |
+| `config.delete.success`      | Ground Control | - | Config deleted via API |
+| `satellite.revoke.success`   | Reserved       | - | Not yet emitted - see roadmap |
+| `satellite.unrevoke.success` | Reserved       | - | Not yet emitted - see roadmap |
+| `policy.pull_block.failure`  | Reserved       | - | Not yet emitted - depends on registry-level policy hooks |
+
+### Config change payloads
+
+Ground Control `config.*` events carry config detail in `details`:
+
+- `config.create.success` -> `details.to`: the full new config.
+- `config.delete.success` -> `details.from`: the full deleted config.
+- `config.update.success` -> `details.changed`: a map of each changed field
+  path (e.g. `state_config.auth.password`) to its `{ from, to }` values, so a
+  change is auditable field-by-field. Unchanged fields are not listed, and a
+  rotated secret still appears as a changed path even though its value stays
+  redacted.
+
+Secret values (passwords, tokens, credentials, keys) are replaced with
+`[REDACTED]` before anything is written, so the audit log never contains config
+secrets.
 
 ## Configuration
 
@@ -104,7 +120,7 @@ Add an `audit` block to the `app_config` section of the satellite config JSON:
 
 Omitting a rotation field uses its default (same as Ground Control's env-var
 defaults). Setting `max_backups` or `max_age_days` to `0` is a deliberate
-"retain everything" — no rotated files are pruned by count or age.
+"retain everything" - no rotated files are pruned by count or age.
 
 Rotation is provided by `gopkg.in/natefinch/lumberjack.v2`; old files are
 gzip-compressed.
@@ -147,20 +163,20 @@ causes GC to refuse to start rather than silently drop events.
   own file. The `component` field tells them apart once aggregated; pivot on
   `event_type`, `severity`, `actor`, or `reason` in your SIEM.
 - **Transport-ready.** The schema is designed so syslog and OpenTelemetry
-  exporters can be added without renaming fields — `severity` → PRI/severity
-  number, `component` → APP-NAME / `service.name`, and `operation` /
+  exporters can be added without renaming fields - `severity` -> PRI/severity
+  number, `component` -> APP-NAME / `service.name`, and `operation` /
   `resource_type` / `outcome` / `reason` become first-class attributes instead
   of substrings parsed out of `event_type`.
 - **Stable event types.** New event types will be added; the
-  `{resource_type}.{operation}.{outcome}` identifiers are stable strings — safe
+  `{resource_type}.{operation}.{outcome}` identifiers are stable strings - safe
   to use in alerting rules.
 
 ## Roadmap
 
-- `policy.pull_block.failure` — once registry-level policy hooks land, emit
+- `policy.pull_block.failure` - once registry-level policy hooks land, emit
   when the local Zot or fallback layer denies a pull.
-- `satellite.revoke.success` / `satellite.unrevoke.success` — pending the
+- `satellite.revoke.success` / `satellite.unrevoke.success` - pending the
   revocation workflow added in Ground Control.
-- **syslog & OpenTelemetry transports** — the event model is already
+- **syslog & OpenTelemetry transports** - the event model is already
   syslog/OTel-compatible (see Format); the exporters that ship events over
   those protocols are tracked as follow-up work.
