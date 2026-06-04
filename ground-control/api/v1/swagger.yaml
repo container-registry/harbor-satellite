@@ -1,0 +1,401 @@
+swagger: '2.0'
+info:
+  title: Harbor Satellite Ground Control API
+  version: '1.0'
+  description: >-
+    Ground Control management API. Bearer authentication is the recommended
+    workflow for interactive clients. Basic authentication remains supported on
+    authenticated human endpoints for automation compatibility.
+basePath: /
+schemes:
+  - http
+consumes:
+  - application/json
+produces:
+  - application/json
+tags:
+  - name: system
+  - name: auth
+  - name: users
+securityDefinitions:
+  BearerAuth:
+    type: apiKey
+    name: Authorization
+    in: header
+    description: Use `Bearer <token>`.
+  BasicAuth:
+    type: basic
+definitions:
+  PingResponse:
+    type: string
+    example: pong
+  HealthResponse:
+    type: object
+    required:
+      - status
+    properties:
+      status:
+        type: string
+        enum:
+          - healthy
+          - unhealthy
+  LoginRequest:
+    type: object
+    required:
+      - username
+      - password
+    properties:
+      username:
+        type: string
+      password:
+        type: string
+        format: password
+  LoginResponse:
+    type: object
+    required:
+      - token
+      - expires_at
+    properties:
+      token:
+        type: string
+      expires_at:
+        type: string
+        format: date-time
+  CreateUserRequest:
+    type: object
+    required:
+      - username
+      - password
+    properties:
+      username:
+        type: string
+      password:
+        type: string
+        format: password
+  ChangeOwnPasswordRequest:
+    type: object
+    required:
+      - current_password
+      - new_password
+    properties:
+      current_password:
+        type: string
+        format: password
+      new_password:
+        type: string
+        format: password
+  ChangeUserPasswordRequest:
+    type: object
+    required:
+      - new_password
+    properties:
+      new_password:
+        type: string
+        format: password
+  User:
+    type: object
+    required:
+      - id
+      - username
+      - role
+      - created_at
+    properties:
+      id:
+        type: integer
+        format: int32
+      username:
+        type: string
+      role:
+        type: string
+      created_at:
+        type: string
+        format: date-time
+  Users:
+    type: array
+    items:
+      $ref: '#/definitions/User'
+  ErrorResponse:
+    type: object
+    required:
+      - error
+    properties:
+      error:
+        type: string
+paths:
+  /ping:
+    get:
+      tags:
+        - system
+      operationId: ping
+      summary: Ping Ground Control
+      responses:
+        '200':
+          description: Pong response
+          schema:
+            $ref: '#/definitions/PingResponse'
+  /health:
+    get:
+      tags:
+        - system
+      operationId: getHealth
+      summary: Get service health
+      responses:
+        '200':
+          description: Service is healthy
+          schema:
+            $ref: '#/definitions/HealthResponse'
+        '503':
+          description: Service is unhealthy
+          schema:
+            $ref: '#/definitions/HealthResponse'
+  /login:
+    post:
+      tags:
+        - auth
+      operationId: login
+      summary: Create a session token
+      parameters:
+        - in: body
+          name: credentials
+          required: true
+          schema:
+            $ref: '#/definitions/LoginRequest'
+      responses:
+        '200':
+          description: Session created
+          schema:
+            $ref: '#/definitions/LoginResponse'
+        '400':
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '401':
+          description: Invalid credentials
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/logout:
+    post:
+      tags:
+        - auth
+      operationId: logout
+      summary: Delete the current session
+      description: Requires a bearer token for session invalidation.
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Session deleted
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/users:
+    get:
+      tags:
+        - users
+      operationId: listUsers
+      summary: List users
+      description: Bearer auth is recommended. Basic auth remains supported.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: Users listed
+          schema:
+            $ref: '#/definitions/Users'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+    post:
+      tags:
+        - users
+      operationId: createUser
+      summary: Create a user
+      description: Requires a system admin user. Bearer auth is recommended.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      parameters:
+        - in: body
+          name: user
+          required: true
+          schema:
+            $ref: '#/definitions/CreateUserRequest'
+      responses:
+        '201':
+          description: User created
+          schema:
+            $ref: '#/definitions/User'
+        '400':
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '403':
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '409':
+          description: User already exists
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/users/password:
+    patch:
+      tags:
+        - users
+      operationId: changeOwnPassword
+      summary: Change the current user's password
+      description: Bearer auth is recommended. Basic auth remains supported.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      parameters:
+        - in: body
+          name: password
+          required: true
+          schema:
+            $ref: '#/definitions/ChangeOwnPasswordRequest'
+      responses:
+        '204':
+          description: Password changed and sessions invalidated
+        '400':
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '401':
+          description: Unauthorized or current password incorrect
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/users/{username}:
+    parameters:
+      - name: username
+        in: path
+        required: true
+        type: string
+    get:
+      tags:
+        - users
+      operationId: getUser
+      summary: Get a user by username
+      description: Bearer auth is recommended. Basic auth remains supported.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '200':
+          description: User found
+          schema:
+            $ref: '#/definitions/User'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: User not found
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+    delete:
+      tags:
+        - users
+      operationId: deleteUser
+      summary: Delete a user
+      description: Requires a system admin user. Bearer auth is recommended.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      responses:
+        '204':
+          description: User deleted
+        '400':
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '403':
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: User not found
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+  /api/users/{username}/password:
+    parameters:
+      - name: username
+        in: path
+        required: true
+        type: string
+    patch:
+      tags:
+        - users
+      operationId: changeUserPassword
+      summary: Change another user's password
+      description: Requires a system admin user. Bearer auth is recommended.
+      security:
+        - BearerAuth: []
+        - BasicAuth: []
+      parameters:
+        - in: body
+          name: password
+          required: true
+          schema:
+            $ref: '#/definitions/ChangeUserPasswordRequest'
+      responses:
+        '204':
+          description: Password changed and sessions invalidated
+        '400':
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '401':
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '403':
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: User not found
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/ErrorResponse'

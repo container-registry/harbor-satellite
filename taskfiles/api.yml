@@ -1,0 +1,54 @@
+version: "3"
+
+vars:
+  GC_DIR: "{{.ROOT_DIR}}/ground-control"
+  API_SPEC: "{{.GC_DIR}}/api/v1/swagger.yaml"
+  API_JSON: "{{.GC_DIR}}/api/v1/swagger.json"
+  API_GEN_DIR: "{{.GC_DIR}}/internal/api/generated"
+
+tasks:
+  swagger-validate:
+    desc: Validate the Ground Control swagger spec
+    dir: "{{.ROOT_DIR}}"
+    preconditions:
+      - sh: command -v swagger >/dev/null 2>&1
+        msg: "swagger CLI is required"
+    cmds:
+      - swagger validate "{{.API_SPEC}}"
+
+  swagger-json:
+    desc: Generate the Ground Control swagger.json artifact
+    dir: "{{.ROOT_DIR}}"
+    deps: [swagger-validate]
+    preconditions:
+      - sh: command -v swagger >/dev/null 2>&1
+        msg: "swagger CLI is required"
+    sources:
+      - "{{.API_SPEC}}"
+    generates:
+      - "{{.API_JSON}}"
+    cmds:
+      - swagger flatten --format json --output "{{.API_JSON}}" "{{.API_SPEC}}"
+
+  gen-apis:
+    desc: Generate Ground Control OpenAPI server code
+    dir: "{{.ROOT_DIR}}"
+    deps: [swagger-validate, swagger-json]
+    preconditions:
+      - sh: command -v swagger >/dev/null 2>&1
+        msg: "swagger CLI is required"
+    sources:
+      - "{{.API_SPEC}}"
+    generates:
+      - "{{.API_GEN_DIR}}/restapi/embedded_spec.go"
+      - "{{.API_GEN_DIR}}/restapi/operations/groundcontrol_api.go"
+    cmds:
+      - mkdir -p "{{.API_GEN_DIR}}"
+      - swagger generate server -f "{{.API_SPEC}}" -A groundcontrol --exclude-main --target "{{.API_GEN_DIR}}"
+
+  gen-apis-check:
+    desc: Verify generated Ground Control API files are up to date
+    dir: "{{.ROOT_DIR}}"
+    deps: [gen-apis]
+    cmds:
+      - git diff --exit-code -- "{{.GC_DIR}}/api/v1" "{{.API_GEN_DIR}}"

@@ -5,8 +5,6 @@ import (
 	"encoding/base64"
 	"net/http"
 	"strings"
-
-	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 )
 
 type contextKey string
@@ -23,46 +21,30 @@ type AuthUser struct {
 // AuthMiddleware validates session tokens or basic auth and adds user info to context
 func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var user AuthUser
-		var authenticated bool
+		var principal apiPrincipal
 
-		// Try Bearer token first
 		if token := extractBearerToken(r); token != "" {
-			session, err := s.dbQueries.GetSessionByToken(r.Context(), token)
+			resolvedPrincipal, err := s.authenticateBearer(r.Context(), token)
 			if err == nil {
-				user = AuthUser{
-					ID:       session.UserID,
-					Username: session.Username,
-					Role:     session.Role,
-				}
-				authenticated = true
+				principal = resolvedPrincipal
 			}
 		}
 
-		// Try Basic auth if Bearer didn't work
-		if !authenticated {
+		if principal.User.Username == "" {
 			if username, password, ok := extractBasicAuth(r); ok {
-				dbUser, err := s.dbQueries.GetUserByUsername(r.Context(), username)
+				resolvedPrincipal, err := s.authenticateBasic(r.Context(), username, password)
 				if err == nil {
-					valid := auth.VerifyPassword(password, dbUser.PasswordHash)
-					if valid {
-						user = AuthUser{
-							ID:       dbUser.ID,
-							Username: dbUser.Username,
-							Role:     dbUser.Role,
-						}
-						authenticated = true
-					}
+					principal = resolvedPrincipal
 				}
 			}
 		}
 
-		if !authenticated {
+		if principal.User.Username == "" {
 			WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userContextKey, user)
+		ctx := context.WithValue(r.Context(), userContextKey, principal.User)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
