@@ -105,6 +105,23 @@ func TestAuditLogger_DerivesDefaultSeverityAndOmitsEmptyFields(t *testing.T) {
 	}
 }
 
+func TestAuditLogger_EmptyRequiredFieldsGetSentinel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	a, err := NewAuditLogger(AuditConfig{Enabled: true, FilePath: path}, ComponentSatellite)
+	require.NoError(t, err)
+
+	// A caller that forgets the required fields must not produce an event_type
+	// with empty segments ("user..success" / "..") that would become a broken
+	// syslog MSGID or OTel event.name. The sentinel keeps it well-formed.
+	a.Log(AuditEvent{})
+
+	e := readAuditLines(t, path)[0]
+	require.Equal(t, "unknown", e["operation"])
+	require.Equal(t, "unknown", e["resource_type"])
+	require.Equal(t, "unknown", e["outcome"])
+	require.Equal(t, "unknown.unknown.unknown", e["event_type"])
+}
+
 func TestAuditLogger_SeverityOverride(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	a, err := NewAuditLogger(AuditConfig{Enabled: true, FilePath: path}, ComponentSatellite)

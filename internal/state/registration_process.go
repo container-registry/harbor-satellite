@@ -72,12 +72,12 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 			Operation:    logger.OpRegister,
 			ResourceType: logger.ResSatellite,
 			Outcome:      logger.OutcomeFailure,
-			Actor:        gcURL,
-			ActorType:    logger.ActorSystem,
+			ActorType:    logger.ActorSatellite,
 			Reason:       logger.ReasonRegistrationFailed,
 			Details: map[string]any{
-				"error": sanitizeAuditReason(err, z.cm.GetToken()),
-				"flow":  "ztr",
+				"error":              sanitizeAuditReason(err, z.cm.GetToken()),
+				"flow":               "ztr",
+				"ground_control_url": gcURL,
 			},
 		})
 		return err
@@ -89,10 +89,9 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 			Operation:    logger.OpRegister,
 			ResourceType: logger.ResSatellite,
 			Outcome:      logger.OutcomeFailure,
-			Actor:        gcURL,
-			ActorType:    logger.ActorSystem,
+			ActorType:    logger.ActorSatellite,
 			Reason:       logger.ReasonInvalidStateAuthConfig,
-			Details:      map[string]any{"flow": "ztr"},
+			Details:      map[string]any{"flow": "ztr", "ground_control_url": gcURL},
 		})
 		return fmt.Errorf("failed to register satellite: invalid state auth config received")
 	}
@@ -118,9 +117,8 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		Operation:    logger.OpRegister,
 		ResourceType: logger.ResSatellite,
 		Outcome:      logger.OutcomeSuccess,
-		Actor:        gcURL,
-		ActorType:    logger.ActorSystem,
-		Details:      map[string]any{"flow": "ztr"},
+		ActorType:    logger.ActorSatellite,
+		Details:      map[string]any{"flow": "ztr", "ground_control_url": gcURL},
 	})
 
 	// Close the z.Done channel on successful ZTR alone.

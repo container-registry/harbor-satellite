@@ -154,6 +154,29 @@ func (e AuditEvent) severity() Severity {
 	return SeverityInfo
 }
 
+// fieldUnknown is substituted for an empty required field so a caller that
+// forgets one still produces a well-formed event_type.
+const fieldUnknown = "unknown"
+
+// withRequiredDefaults replaces any empty required field with fieldUnknown so
+// event_type always has three non-empty segments (e.g. "user.unknown.success")
+// instead of one with an empty segment ("user..success"). A malformed segment
+// would otherwise become a broken syslog MSGID / OTel event.name once those
+// transports derive identifiers from event_type; the sentinel makes the coding
+// bug visible in the SIEM rather than silently corrupting the canonical shape.
+func (e AuditEvent) withRequiredDefaults() AuditEvent {
+	if e.Operation == "" {
+		e.Operation = Operation(fieldUnknown)
+	}
+	if e.ResourceType == "" {
+		e.ResourceType = ResourceType(fieldUnknown)
+	}
+	if e.Outcome == "" {
+		e.Outcome = Outcome(fieldUnknown)
+	}
+	return e
+}
+
 // AuditConfig controls the audit logger destination and rotation policy.
 type AuditConfig struct {
 	Enabled    bool
@@ -258,6 +281,7 @@ func (a *AuditLogger) Log(e AuditEvent) {
 	if !a.enabled {
 		return
 	}
+	e = e.withRequiredDefaults()
 	evt := a.log.Log().
 		Str("event_id", uuid.NewString()).
 		Str("timestamp", time.Now().UTC().Format(time.RFC3339Nano)).

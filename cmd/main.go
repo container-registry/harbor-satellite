@@ -231,7 +231,13 @@ func reconfigureAuditOnReload(audit *logger.AuditLogger, current, next config.Au
 			MaxBackups: next.MaxBackupsOrDefault(),
 			MaxAgeDays: next.MaxAgeDaysOrDefault(),
 		}); rcErr != nil {
-			log.Error().Err(rcErr).Msg("Failed to reconfigure audit logger after reload")
+			// The reconfigure failed, so the audit logger keeps its previous
+			// configuration. If audit was already enabled (a writable
+			// destination) the failure event below still lands there; if it was
+			// disabled there is no writable audit sink yet, so this operator log
+			// is the only durable record of the failed enable attempt.
+			log.Error().Err(rcErr).Bool("audit_enabled", audit.Enabled()).
+				Msg("Failed to reconfigure audit logger after reload; previous audit configuration retained")
 			outcome, reason = logger.OutcomeFailure, logger.ReasonReconfigureFailed
 		} else {
 			current = next
