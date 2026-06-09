@@ -1,0 +1,8 @@
+package: client
+generate:
+  client: true
+  models: true
+output: ../pkg/client/client.gen.go
+output-options:
+  skip-fmt: false
+  skip-prune: false
