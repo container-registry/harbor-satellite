@@ -70,6 +70,7 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	}
 
 	warnings = append(warnings, validateRegistryFallbackConfig(config)...)
+	warnings = append(warnings, validateSyncConfig(config)...)
 
 	return config, warnings, nil
 }
@@ -217,6 +218,16 @@ func validateRegistryFallbackConfig(config *Config) []string {
 		}
 	}
 
+	return warnings
+}
+
+// validateSyncConfig validates bandwidth throttle settings.
+func validateSyncConfig(config *Config) []string {
+	var warnings []string
+	if config.AppConfig.Sync.MaxBandwidthMbps < 0 {
+		warnings = append(warnings, "sync.max_bandwidth_mbps cannot be negative, disabling throttle")
+		config.AppConfig.Sync.MaxBandwidthMbps = 0
+	}
 	return warnings
 }
 
