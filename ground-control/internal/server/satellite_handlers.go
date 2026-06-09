@@ -1220,9 +1220,23 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 
 // If the satellite is removed from the group, the state artifact must be updated accordingly as well.
 func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	groupName := vars["group"]
-	satelliteName := vars["satellite"]
+	var req SatelliteGroupParams
+
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
+	if !utils.IsValidName(req.Satellite) {
+		HandleAppError(w, &AppError{
+			Message: fmt.Sprintf(invalidNameMessage, "satellite"),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	groupName := req.Group
+	satelliteName := req.Satellite
 
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {

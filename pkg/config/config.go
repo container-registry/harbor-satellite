@@ -50,6 +50,21 @@ type DirectDeliveryConfig struct {
 	ImageDir string `json:"image_dir,omitempty"` // auto-detected if empty
 }
 
+// SignaturePolicy controls whether and how the satellite verifies cosign
+// signatures before replicating an image to the local registry.
+//
+// When enabled, the satellite fetches the cosign signature OCI artifact
+// (stored at <repo>:sha256-<digest>.sig) and verifies at least one layer
+// signature against the provided ECDSA public keys.
+//
+// Action "block" (default) aborts replication on failure.
+// Action "warn" logs a warning but continues replication.
+type SignaturePolicy struct {
+	Enabled    bool     `json:"enabled,omitempty"`
+	PublicKeys []string `json:"public_keys,omitempty"`
+	Action     string   `json:"action,omitempty"`
+}
+
 type AppConfig struct {
 	GroundControlURL          URL                    `json:"ground_control_url,omitempty"`
 	LogLevel                  string                 `json:"log_level,omitempty"`
@@ -66,6 +81,7 @@ type AppConfig struct {
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty"`
 	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty"`
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
+	SignaturePolicy           SignaturePolicy         `json:"signature_policy,omitempty"`
 }
 
 type StateConfig struct {

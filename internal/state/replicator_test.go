@@ -2,10 +2,12 @@ package state
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/container-registry/harbor-satellite/internal/policy"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
@@ -15,6 +17,11 @@ import (
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/stretchr/testify/require"
 )
+
+// fakeVerifier is a test double for policy.Verifier.
+type fakeVerifier struct{ err error }
+
+func (f *fakeVerifier) Verify(_ context.Context, _ string, _ bool, _, _ string) error { return f.err }
 
 // newTestRegistry starts an in-memory OCI registry and returns the server
 // and its host:port address.
@@ -357,4 +364,51 @@ func TestDeleteReplicationEntity_CancelledContextStopsProcessing(t *testing.T) {
 	})
 
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestReplicate_SignatureBlock(t *testing.T) {
+	_, srcAddr := newTestRegistry(t)
+	_, dstAddr := newTestRegistry(t)
+	pushImage(t, srcAddr, "library", "alpine", "latest", 1)
+
+	verifier := &fakeVerifier{err: fmt.Errorf("image is not signed")}
+	r := NewBasicReplicatorWithVerifier("", "", srcAddr, dstAddr, "", "", true, VerificationConfig{Verifier: verifier})
+
+	err := r.Replicate(testContext(), []Entity{
+		{Name: "alpine", Repository: "library", Tag: "latest"},
+	})
+	require.ErrorContains(t, err, "signature check")
+}
+
+func TestReplicate_SignatureWarn(t *testing.T) {
+	_, srcAddr := newTestRegistry(t)
+	_, dstAddr := newTestRegistry(t)
+	pushImage(t, srcAddr, "library", "alpine", "latest", 1)
+
+	verifier := &fakeVerifier{err: &policy.WarnError{Ref: "alpine:latest"}}
+	r := NewBasicReplicatorWithVerifier("", "", srcAddr, dstAddr, "", "", true, VerificationConfig{Verifier: verifier})
+
+	err := r.Replicate(testContext(), []Entity{
+		{Name: "alpine", Repository: "library", Tag: "latest"},
+	})
+	require.NoError(t, err, "warn-mode failure must not block replication")
+
+	dstRef, err := name.ParseReference(dstAddr+"/library/alpine:latest", name.Insecure)
+	require.NoError(t, err)
+	_, err = remote.Head(dstRef)
+	require.NoError(t, err, "image should be present at destination despite signature warning")
+}
+
+func TestReplicate_SignaturePass(t *testing.T) {
+	_, srcAddr := newTestRegistry(t)
+	_, dstAddr := newTestRegistry(t)
+	pushImage(t, srcAddr, "library", "alpine", "latest", 1)
+
+	verifier := &fakeVerifier{err: nil}
+	r := NewBasicReplicatorWithVerifier("", "", srcAddr, dstAddr, "", "", true, VerificationConfig{Verifier: verifier})
+
+	err := r.Replicate(testContext(), []Entity{
+		{Name: "alpine", Repository: "library", Tag: "latest"},
+	})
+	require.NoError(t, err)
 }
