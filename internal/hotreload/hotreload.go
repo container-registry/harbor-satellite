@@ -10,8 +10,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
-	cfg "zotregistry.dev/zot/pkg/api/config"
-	"zotregistry.dev/zot/pkg/cli/server"
+	cfg "zotregistry.dev/zot/v2/pkg/api/config"
+	"zotregistry.dev/zot/v2/pkg/cli/server"
 )
 
 type HotReloadManager struct {

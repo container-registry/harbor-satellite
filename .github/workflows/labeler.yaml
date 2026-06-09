@@ -1,6 +1,6 @@
 name: "Pull Request Labeler"
 on:
-- pull_request_target
+  - pull_request_target
 
 jobs:
   labeler:
@@ -9,5 +9,5 @@ jobs:
       pull-requests: write
     runs-on: container-registry
     steps:
-    - name: Label PR
-      uses: actions/labeler@v5
+      - name: Label PR
+        uses: actions/labeler@f27b608878404679385c85cfa523b85ccb86e213 # v6.1.0

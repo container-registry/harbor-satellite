@@ -46,6 +46,10 @@ builds:
       goarch: mipsle
     - goos: darwin
       goarch: riscv64
+    - goos: linux
+      goarch: mips
+    - goos: linux
+      goarch: mipsle
   mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
