@@ -15,6 +15,8 @@ type RateLimiter struct {
 	requests     map[string][]time.Time
 	maxRequests  int
 	windowPeriod time.Duration
+	stopCh       chan struct{}
+	once         sync.Once
 }
 
 // NewRateLimiter creates a new rate limiter.
@@ -23,12 +25,19 @@ func NewRateLimiter(maxRequests int, windowPeriod time.Duration) *RateLimiter {
 		requests:     make(map[string][]time.Time),
 		maxRequests:  maxRequests,
 		windowPeriod: windowPeriod,
+		stopCh:       make(chan struct{}),
 	}
 
-	// Start cleanup goroutine
 	go rl.cleanup()
 
 	return rl
+}
+
+// Stop signals the cleanup goroutine to exit.
+func (rl *RateLimiter) Stop() {
+	rl.once.Do(func() {
+		close(rl.stopCh)
+	})
 }
 
 // Allow checks if a request from the given IP is allowed.
@@ -39,7 +48,6 @@ func (rl *RateLimiter) Allow(ip string) bool {
 	now := time.Now()
 	cutoff := now.Add(-rl.windowPeriod)
 
-	// Filter expired timestamps
 	var valid []time.Time
 	for _, t := range rl.requests[ip] {
 		if t.After(cutoff) {
@@ -47,13 +55,11 @@ func (rl *RateLimiter) Allow(ip string) bool {
 		}
 	}
 
-	// Check if rate limit exceeded
 	if len(valid) >= rl.maxRequests {
 		rl.requests[ip] = valid
 		return false
 	}
 
-	// Record this request
 	rl.requests[ip] = append(valid, now)
 	return true
 }
@@ -63,24 +69,29 @@ func (rl *RateLimiter) cleanup() {
 	ticker := time.NewTicker(rl.windowPeriod)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		rl.mu.Lock()
-		cutoff := time.Now().Add(-rl.windowPeriod)
+	for {
+		select {
+		case <-ticker.C:
+			rl.mu.Lock()
+			cutoff := time.Now().Add(-rl.windowPeriod)
 
-		for ip, timestamps := range rl.requests {
-			var valid []time.Time
-			for _, t := range timestamps {
-				if t.After(cutoff) {
-					valid = append(valid, t)
+			for ip, timestamps := range rl.requests {
+				var valid []time.Time
+				for _, t := range timestamps {
+					if t.After(cutoff) {
+						valid = append(valid, t)
+					}
+				}
+				if len(valid) == 0 {
+					delete(rl.requests, ip)
+				} else {
+					rl.requests[ip] = valid
 				}
 			}
-			if len(valid) == 0 {
-				delete(rl.requests, ip)
-			} else {
-				rl.requests[ip] = valid
-			}
+			rl.mu.Unlock()
+		case <-rl.stopCh:
+			return
 		}
-		rl.mu.Unlock()
 	}
 }
 
