@@ -63,6 +63,22 @@ tasks:
       - task: all-ground-control
       - echo "Done! All binaries in bin/"
 
+  operator:
+    desc: Build operator binary for current platform
+    dir: "{{.ROOT_DIR}}/operator"
+    cmds:
+      - echo "Building operator for {{.GOOS}}/{{.GOARCH}}..."
+      - mkdir -p {{.BIN_DIR}}
+      - go build -o {{.BIN_DIR}}/operator ./cmd/main.go
+      - echo "Built bin/operator"
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BIN_DIR}}/operator"
+    silent: true
+
   all-satellite:
     desc: Build satellite for all platforms
     cmds:
