@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
@@ -50,6 +51,17 @@ type SatelliteStatusParams struct {
 	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
 	ImageCount          int           `json:"image_count"`
 	CachedImages        []CachedImage `json:"cached_images,omitempty"`
+}
+
+type SatelliteListResponse struct {
+	Satellites []database.Satellite  `json:"satellites"`
+	Pagination SatelliteListPageInfo `json:"pagination"`
+}
+
+type SatelliteListPageInfo struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+	Total  int32 `json:"total"`
 }
 
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
@@ -545,18 +557,122 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
-	result, err := s.dbQueries.ListSatellites(r.Context())
-	if err != nil {
-		log.Printf("Error: Failed to List Satellites: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to List Satellites",
-			Code:    http.StatusInternalServerError,
+	if len(r.URL.Query()) > 0 {
+		params, appErr := parseSatelliteListQuery(r)
+		if appErr != nil {
+			HandleAppError(w, appErr)
+			return
 		}
-		HandleAppError(w, err)
+		satellites, total, err := s.dbQueries.ListSatellitesFiltered(r.Context(), params)
+		if err != nil {
+			log.Printf("Error: Failed to List Satellites: %v", err)
+			HandleAppError(w, &AppError{Message: "Error: Failed to List Satellites", Code: http.StatusInternalServerError})
+			return
+		}
+		WriteJSONResponse(w, http.StatusOK, SatelliteListResponse{
+			Satellites: satellites,
+			Pagination: SatelliteListPageInfo{Limit: params.Limit, Offset: params.Offset, Total: total},
+		})
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, result)
+	satellites, err := s.dbQueries.ListSatellites(r.Context())
+	if err != nil {
+		log.Printf("Error: Failed to List Satellites: %v", err)
+		HandleAppError(w, &AppError{Message: "Error: Failed to List Satellites", Code: http.StatusInternalServerError})
+		return
+	}
+	WriteJSONResponse(w, http.StatusOK, SatelliteListResponse{
+		Satellites: satellites,
+		Pagination: SatelliteListPageInfo{Total: int32(len(satellites))},
+	})
+}
+
+func parseSatelliteListQuery(r *http.Request) (database.ListSatellitesFilteredParams, *AppError) {
+	query := r.URL.Query()
+	for key := range query {
+		switch key {
+		case "limit", "offset", "sort", "order", "name_prefix":
+		default:
+			return database.ListSatellitesFilteredParams{}, &AppError{
+				Message: "unsupported query parameter: " + key,
+				Code:    http.StatusBadRequest,
+			}
+		}
+	}
+
+	limit, appErr := parseLimitParam(strings.TrimSpace(query.Get("limit")))
+	if appErr != nil {
+		return database.ListSatellitesFilteredParams{}, appErr
+	}
+
+	offset, appErr := parseOffsetParam(strings.TrimSpace(query.Get("offset")))
+	if appErr != nil {
+		return database.ListSatellitesFilteredParams{}, appErr
+	}
+
+	sort, appErr := parseSortParam(strings.TrimSpace(query.Get("sort")))
+	if appErr != nil {
+		return database.ListSatellitesFilteredParams{}, appErr
+	}
+
+	order, appErr := parseOrderParam(strings.TrimSpace(query.Get("order")))
+	if appErr != nil {
+		return database.ListSatellitesFilteredParams{}, appErr
+	}
+
+	return database.ListSatellitesFilteredParams{
+		Limit:      limit,
+		Offset:     offset,
+		Sort:       sort,
+		Order:      order,
+		NamePrefix: strings.TrimSpace(query.Get("name_prefix")),
+	}, nil
+}
+
+func parseLimitParam(raw string) (int32, *AppError) {
+	if raw == "" {
+		return 100, nil
+	}
+	parsed, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || parsed < 1 || parsed > 500 {
+		return 0, &AppError{Message: "limit must be between 1 and 500", Code: http.StatusBadRequest}
+	}
+	return int32(parsed), nil
+}
+
+func parseOffsetParam(raw string) (int32, *AppError) {
+	if raw == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || parsed < 0 {
+		return 0, &AppError{Message: "offset must be greater than or equal to 0", Code: http.StatusBadRequest}
+	}
+	return int32(parsed), nil
+}
+
+func parseSortParam(raw string) (string, *AppError) {
+	if raw == "" {
+		return "name", nil
+	}
+	switch raw {
+	case "id", "name", "created_at", "updated_at", "last_seen":
+		return raw, nil
+	default:
+		return "", &AppError{Message: "sort must be one of id, name, created_at, updated_at, last_seen", Code: http.StatusBadRequest}
+	}
+}
+
+func parseOrderParam(raw string) (string, *AppError) {
+	if raw == "" {
+		return "asc", nil
+	}
+	order := strings.ToLower(raw)
+	if order != "asc" && order != "desc" {
+		return "", &AppError{Message: "order must be asc or desc", Code: http.StatusBadRequest}
+	}
+	return order, nil
 }
 
 func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
