@@ -1,21 +1,39 @@
 {
   "state_config": {
-    # do not edit this field as it is read only
     "auth": {
-      "url": "https://demo.goharbor.io",
-      "username": "robt_demo-sat",
-      "password": "rEYNaqrdmErJKdzW45GNxeRjXETQfiEx"
+      "url": "https://harbor.example.com",
+      "username": "robot$satellite",
+      "password": "replace-with-robot-account-token"
     },
-    "state": "https://demo.goharbor.io/satellite/satellite-state/demo-sat/state:latest"
+    "state": "https://harbor.example.com/satellite/satellite-state/example-satellite/state:latest"
   },
   "app_config": {
     "ground_control_url": "http://127.0.0.1:8080",
     "log_level": "info",
     "use_unsecure": true,
     "state_replication_interval": "@every 00h00m10s",
+    "update_config_interval": "@every 00h00m10s",
     "register_satellite_interval": "@every 00h00m10s",
+    "heartbeat_interval": "@every 00h00m30s",
+    "metrics": {
+      "collect_cpu": true,
+      "collect_memory": true,
+      "collect_storage": true
+    },
     "local_registry": {
       "url": "http://127.0.0.1:8585"
+    },
+    "tls": {
+      "cert_file": "",
+      "key_file": "",
+      "ca_file": "",
+      "skip_verify": false
+    },
+    "encrypt_config": false,
+    "registry_fallback": {
+      "enabled": false,
+      "registries": ["docker.io"],
+      "runtimes": []
     }
   },
   "zot_config": {
