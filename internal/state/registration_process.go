@@ -16,8 +16,10 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const ZeroTouchRegistrationRoute = "satellites/ztr"
-const ZeroTouchRegistrationEventName = "zero-touch-registration-event"
+const (
+	ZeroTouchRegistrationRoute     = "satellites/ztr"
+	ZeroTouchRegistrationEventName = "zero-touch-registration-event"
+)
 
 type ZtrProcess struct {
 	// Name is the name of the process
@@ -154,7 +156,7 @@ func (z *ZtrProcess) stop() {
 func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSConfig, useUnsecure bool, ctx context.Context) (config.StateConfig, error) {
 	ztrURL := fmt.Sprintf("%s/%s/%s", groundControlURL, path, token)
 
-	client, err := createHTTPClient(tlsCfg, useUnsecure)
+	client, err := CreateHTTPClient(tlsCfg, useUnsecure, 30*time.Second)
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
@@ -185,11 +187,12 @@ func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSCo
 	return authResponse, nil
 }
 
-func createHTTPClient(tlsCfg config.TLSConfig, useUnsecure bool) (*http.Client, error) {
+// CreateHTTPClient builds an HTTP client honoring the satellite's TLS config.
+func CreateHTTPClient(tlsCfg config.TLSConfig, useUnsecure bool, timeout time.Duration) (*http.Client, error) {
 	transport := &http.Transport{
-		MaxIdleConns:        10,
-		IdleConnTimeout:     30 * time.Second,
-		DisableCompression:  true,
+		MaxIdleConns:       10,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,
 	}
 
 	if useUnsecure {
@@ -205,7 +208,6 @@ func createHTTPClient(tlsCfg config.TLSConfig, useUnsecure bool) (*http.Client, 
 			SkipVerify: tlsCfg.SkipVerify,
 			MinVersion: tls.VersionTLS12,
 		}
-
 		tlsConfig, err := satTLS.LoadClientTLSConfig(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("load TLS config: %w", err)
@@ -215,6 +217,6 @@ func createHTTPClient(tlsCfg config.TLSConfig, useUnsecure bool) (*http.Client, 
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   30 * time.Second,
+		Timeout:   timeout,
 	}, nil
 }

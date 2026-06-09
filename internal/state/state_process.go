@@ -21,6 +21,7 @@ type FetchAndReplicateStateProcess struct {
 	mu                  sync.Mutex
 	stateFilePath       string
 	directDeliverer     *DirectDeliverer
+	onSyncSuccess       func()
 }
 
 // Define result types for channels
@@ -37,11 +38,12 @@ type ConfigFetcherResult struct {
 	Cancelled    bool
 }
 
-func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath string, log *zerolog.Logger) *FetchAndReplicateStateProcess {
+func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath string, onSyncSuccess func(), log *zerolog.Logger) *FetchAndReplicateStateProcess {
 	p := &FetchAndReplicateStateProcess{
 		name:          config.ReplicateStateJobName,
 		cm:            cm,
 		stateFilePath: stateFilePath,
+		onSyncSuccess: onSyncSuccess,
 	}
 
 	if stateFilePath != "" {
@@ -143,7 +145,15 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		configFetcherResult <- result
 	}()
 
-	return f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), &log)
+	if err := f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), &log); err != nil {
+		return err
+	}
+
+	if f.onSyncSuccess != nil {
+		f.onSyncSuccess()
+	}
+
+	return nil
 }
 
 func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) bool {

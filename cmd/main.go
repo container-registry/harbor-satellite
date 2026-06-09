@@ -3,9 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
@@ -13,6 +19,9 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
+	"github.com/container-registry/harbor-satellite/internal/server"
+	"github.com/container-registry/harbor-satellite/internal/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/state"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/internal/watcher"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -56,6 +65,7 @@ type SatelliteOptions struct {
 	HarborRegistryURL      string
 	DirectDelivery         bool
 	ImageDir               string
+	Headless               bool
 }
 
 func main() {
@@ -82,6 +92,7 @@ func main() {
 	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", "", "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
 	flag.BoolVar(&opts.DirectDelivery, "direct-delivery", false, "[Experimental] Write image tarballs directly to k3s/RKE2 agent images directory")
 	flag.StringVar(&opts.ImageDir, "image-dir", "", "Override image directory for direct delivery (auto-detected if empty)")
+	flag.BoolVar(&opts.Headless, "headless", false, "Run without Ground Control; skips the Ground Control reachability check in the /ready probe")
 
 	flag.Parse()
 
@@ -138,6 +149,9 @@ func main() {
 	}
 	if opts.ImageDir == "" {
 		opts.ImageDir = os.Getenv("IMAGE_DIR")
+	}
+	if !opts.Headless && os.Getenv("HEADLESS") == "true" {
+		opts.Headless = true
 	}
 
 	// Resolve config directory path
@@ -335,7 +349,86 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	})
 
-	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile)
+	observabilityPort := os.Getenv("OBSERVABILITY_PORT")
+	if observabilityPort == "" {
+		observabilityPort = "9091"
+	}
+
+	registryURLProvider := func() (string, error) {
+		return resolveRegistryURLForHealth(cm)
+	}
+	healthClient, err := state.CreateHTTPClient(cm.GetTLSConfig(), cm.UseUnsecure(), 2*time.Second)
+	if err != nil {
+		return fmt.Errorf("build health check HTTP client: %w", err)
+	}
+
+	// In SPIFFE mode the /ready GC check must mTLS through the SPIFFE source too.
+	var gcClient func(context.Context) (*http.Client, error)
+	if cm.IsSPIFFEEnabled() {
+		spiffeCfg := cm.GetSPIFFEConfig()
+		sc, scErr := spiffe.NewClient(spiffe.Config{
+			Enabled:          spiffeCfg.Enabled,
+			EndpointSocket:   spiffeCfg.EndpointSocket,
+			ExpectedServerID: spiffeCfg.ExpectedServerID,
+		})
+		if scErr != nil {
+			return fmt.Errorf("create SPIFFE client for health checks: %w", scErr)
+		}
+		defer func() { _ = sc.Close() }()
+		// Cache the Client so probes reuse keep-alive connections; the tls.Config
+		// is bound to the X509Source, so SVID rotation works with one Transport.
+		var (
+			cachedClientMu sync.Mutex
+			cachedClient   *http.Client
+		)
+		gcClient = func(ctx context.Context) (*http.Client, error) {
+			// Bound Connect — NewX509Source blocks for the first SVID and only
+			// the ctx deadline ends that wait if SPIRE is unreachable.
+			cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+			if err := sc.Connect(cctx); err != nil {
+				return nil, err
+			}
+
+			cachedClientMu.Lock()
+			defer cachedClientMu.Unlock()
+			if cachedClient != nil {
+				return cachedClient, nil
+			}
+
+			tlsCfg, err := sc.GetTLSConfig()
+			if err != nil {
+				return nil, err
+			}
+			cachedClient = &http.Client{
+				Timeout:   2 * time.Second,
+				Transport: &http.Transport{TLSClientConfig: tlsCfg},
+			}
+			return cachedClient, nil
+		}
+	}
+
+	healthRegistrar := server.NewHealthRegistrar(
+		registryURLProvider,
+		cm.ResolveGroundControlURL(),
+		opts.Headless,
+		healthClient,
+		gcClient,
+	)
+
+	// Start observability server.
+	observabilityServer := server.NewApp(
+		server.NewDefaultRouter(""),
+		ctx,
+		log,
+		":"+observabilityPort,
+		&server.DebugRegistrar{},
+		&server.MetricsRegistrar{},
+		healthRegistrar,
+	)
+	observabilityServer.SetupServer(wg)
+
+	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, healthRegistrar.MarkStateSynced)
 	err = s.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("unable to start satellite: %w", err)
@@ -449,6 +542,100 @@ func resolveLocalRegistryEndpoint(cm *config.ConfigManager) (string, error) {
 		return "", fmt.Errorf("missing 'address' or 'port' in zot http config")
 	}
 	return addr + ":" + port, nil
+}
+
+// resolveRegistryURLForHealth returns the URL the /ready probe should dial.
+// Re-resolved per probe to pick up hot-reloads; wildcard hosts (0.0.0.0, ::) are
+// rewritten to localhost so the probe targets a routable address.
+func resolveRegistryURLForHealth(cm *config.ConfigManager) (string, error) {
+	if cm.GetOwnRegistry() {
+		return resolveBYORegistryURLForHealth(cm), nil
+	}
+	return resolveEmbeddedZotURLForHealth(cm.GetRawZotConfig())
+}
+
+func resolveBYORegistryURLForHealth(cm *config.ConfigManager) string {
+	raw := cm.GetLocalRegistryURL()
+	scheme := "https"
+	switch {
+	case strings.HasPrefix(raw, "http://"):
+		scheme = "http"
+	case strings.HasPrefix(raw, "https://"):
+		scheme = "https"
+	case cm.UseUnsecure():
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://%s", scheme, rewriteProbeHostPort(utils.FormatRegistryURL(raw)))
+}
+
+func resolveEmbeddedZotURLForHealth(rawZotConfig []byte) (string, error) {
+	var data map[string]any
+	if err := json.Unmarshal(rawZotConfig, &data); err != nil {
+		return "", fmt.Errorf("unmarshalling zot config: %w", err)
+	}
+	httpData, ok := data["http"].(map[string]any)
+	if !ok {
+		return "", errors.New("missing 'http' section in zot config")
+	}
+	addr := strings.TrimSpace(stringField(httpData["address"]))
+	port := stringField(httpData["port"])
+	if addr == "" || port == "" {
+		return "", errors.New("missing 'address' or 'port' in zot http config")
+	}
+	if addr == "0.0.0.0" || addr == "::" {
+		addr = "localhost"
+	}
+	return fmt.Sprintf("%s://%s:%s", detectZotScheme(httpData), addr, port), nil
+}
+
+// rewriteProbeHostPort returns its input with a wildcard host (0.0.0.0 or ::)
+// rewritten to "localhost". The input is expected to be "host" or "host:port".
+func rewriteProbeHostPort(hostport string) string {
+	hostport = strings.TrimSpace(hostport)
+	host, port, err := net.SplitHostPort(hostport)
+	if err != nil {
+		// No port — treat the whole thing as host.
+		if hostport == "0.0.0.0" || hostport == "::" {
+			return "localhost"
+		}
+		return hostport
+	}
+	if host == "0.0.0.0" || host == "::" {
+		host = "localhost"
+	}
+	return net.JoinHostPort(host, port)
+}
+
+// detectZotScheme returns "https" when zot's http config carries a tls block
+// (boolean true or a non-empty object), and "http" otherwise.
+func detectZotScheme(httpData map[string]any) string {
+	v, ok := httpData["tls"]
+	if !ok {
+		return "http"
+	}
+	switch t := v.(type) {
+	case bool:
+		if t {
+			return "https"
+		}
+	case map[string]any:
+		if len(t) > 0 {
+			return "https"
+		}
+	}
+	return "http"
+}
+
+// stringField returns v as a string, accepting JSON's "string" or "number"
+// (json.Unmarshal decodes numbers into float64 when targeting map[string]any).
+func stringField(v any) string {
+	switch s := v.(type) {
+	case string:
+		return s
+	case float64:
+		return strconv.FormatInt(int64(s), 10)
+	}
+	return ""
 }
 
 func handleRegistrySetup(ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager, pathConfig *config.PathConfig) error {
