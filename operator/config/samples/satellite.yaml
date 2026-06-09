@@ -1,0 +1,8 @@
+apiVersion: harbor.registry/v1alpha1
+kind: Satellite
+metadata:
+  name: edge-node-01
+spec:
+  group: production
+  configName: default-config
+  groundControlURL: http://ground-control:8080
