@@ -2,9 +2,12 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 )
@@ -42,16 +45,29 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 		// Try Basic auth if Bearer didn't work
 		if !authenticated {
 			if username, password, ok := extractBasicAuth(r); ok {
+				attempts, err := s.dbQueries.GetLoginAttempts(r.Context(), username)
+				if err != nil && !errors.Is(err, sql.ErrNoRows) {
+					WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+				if err == nil && attempts.LockedUntil.Valid && attempts.LockedUntil.Time.After(time.Now()) {
+					WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+
 				dbUser, err := s.dbQueries.GetUserByUsername(r.Context(), username)
 				if err == nil {
 					valid := auth.VerifyPassword(password, dbUser.PasswordHash)
 					if valid {
+						_ = s.dbQueries.ResetLoginAttempts(r.Context(), username)
 						user = AuthUser{
 							ID:       dbUser.ID,
 							Username: dbUser.Username,
 							Role:     dbUser.Role,
 						}
 						authenticated = true
+					} else {
+						s.recordFailedAttempt(r, username)
 					}
 				}
 			}
