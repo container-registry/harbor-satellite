@@ -24,13 +24,13 @@ type App struct {
 	Logger     *zerolog.Logger
 }
 
-func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, registrars ...RouteRegistrar) *App {
+func NewApp(router Router, ctx context.Context, logger *zerolog.Logger, port int, registrars ...RouteRegistrar) *App {
 	return &App{
 		router:     router,
 		registrars: registrars,
 		ctx:        ctx,
 		Logger:     logger,
-		server:     &http.Server{Addr: ":9090", Handler: router, ReadHeaderTimeout: 10 * time.Second},
+		server:     &http.Server{Addr: fmt.Sprintf(":%d", port), Handler: router, ReadHeaderTimeout: 10 * time.Second},
 	}
 }
 
@@ -53,7 +53,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 func (a *App) SetupServer(g *errgroup.Group) {
 	g.Go(func() error {
-		a.Logger.Info().Msg("Starting server on :9090")
+		a.Logger.Info().Str("addr", a.server.Addr).Msg("Starting health server")
 		if err := a.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}

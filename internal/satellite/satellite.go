@@ -2,6 +2,7 @@ package satellite
 
 import (
 	"context"
+	"sync/atomic"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/logger"
@@ -15,6 +16,7 @@ type Satellite struct {
 	criResults    []runtime.CRIConfigResult
 	schedulers    []*scheduler.Scheduler
 	stateFilePath string
+	syncDone      atomic.Bool
 }
 
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string) *Satellite {
@@ -66,6 +68,10 @@ func (s *Satellite) Run(ctx context.Context) error {
 		s.schedulers = append(s.schedulers, ztrScheduler)
 		ztrScheduler.Start(ctx)
 	}
+
+	fetchAndReplicateStateProcess.SetOnFirstSync(func() {
+		s.syncDone.Store(true)
+	})
 
 	// Create state replication scheduler
 	stateScheduler, err := scheduler.NewSchedulerWithInterval(
@@ -127,4 +133,8 @@ func (s *Satellite) Stop(ctx context.Context) {
 	} else {
 		log.Info().Msg("All schedulers stopped")
 	}
+}
+
+func (s *Satellite) SyncDone() *atomic.Bool {
+	return &s.syncDone
 }

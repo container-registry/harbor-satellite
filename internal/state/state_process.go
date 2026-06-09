@@ -21,6 +21,7 @@ type FetchAndReplicateStateProcess struct {
 	mu                  sync.Mutex
 	stateFilePath       string
 	directDeliverer     *DirectDeliverer
+	onFirstSync         func()
 }
 
 // Define result types for channels
@@ -60,6 +61,11 @@ func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath st
 	}
 
 	return p
+}
+
+// setter method
+func (f *FetchAndReplicateStateProcess) SetOnFirstSync(fn func()) {
+	f.onFirstSync = fn
 }
 
 type StateMap struct {
@@ -143,7 +149,13 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		configFetcherResult <- result
 	}()
 
-	return f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), &log)
+	// return f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), &log)
+	err = f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), &log)
+	if err == nil && f.onFirstSync != nil {
+		f.onFirstSync()
+		f.onFirstSync = nil
+	}
+	return err
 }
 
 func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) bool {
