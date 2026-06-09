@@ -52,6 +52,22 @@ type SatelliteStatusParams struct {
 	CachedImages        []CachedImage `json:"cached_images,omitempty"`
 }
 
+type SatelliteStatusResponse struct {
+	ID                 int32         `json:"id"`
+	SatelliteID        int32         `json:"satellite_id"`
+	Activity           string        `json:"activity"`
+	LatestStateDigest  string        `json:"latest_state_digest,omitempty"`
+	LatestConfigDigest string        `json:"latest_config_digest,omitempty"`
+	CPUPercent         string        `json:"cpu_percent,omitempty"`
+	MemoryUsedBytes    int64         `json:"memory_used_bytes,omitempty"`
+	StorageUsedBytes   int64         `json:"storage_used_bytes,omitempty"`
+	LastSyncDurationMs int64         `json:"last_sync_duration_ms,omitempty"`
+	ImageCount         int32         `json:"image_count,omitempty"`
+	CachedImages       []CachedImage `json:"cached_images,omitempty"`
+	ReportedAt         time.Time     `json:"reported_at"`
+	CreatedAt          time.Time     `json:"created_at"`
+}
+
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	if s.spiffeProvider != nil || s.spireClient != nil {
 		HandleAppError(w, &AppError{
@@ -673,7 +689,72 @@ func (s *Server) getSatelliteStatusHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, status)
+	resp := satelliteStatusResponse(status, nil)
+	if len(status.ArtifactIds) > 0 {
+		artifacts, err := s.dbQueries.GetLatestArtifacts(r.Context(), sat.ID)
+		if err != nil {
+			log.Printf("Failed to get cached images for status: %v", err)
+			HandleAppError(w, &AppError{Message: "failed to get cached images", Code: http.StatusInternalServerError})
+			return
+		}
+		resp.CachedImages = cachedImagesFromArtifacts(artifacts)
+	}
+
+	WriteJSONResponse(w, http.StatusOK, resp)
+}
+
+func satelliteStatusResponse(status database.SatelliteStatus, cachedImages []CachedImage) SatelliteStatusResponse {
+	return SatelliteStatusResponse{
+		ID:                 status.ID,
+		SatelliteID:        status.SatelliteID,
+		Activity:           status.Activity,
+		LatestStateDigest:  nullStringValue(status.LatestStateDigest),
+		LatestConfigDigest: nullStringValue(status.LatestConfigDigest),
+		CPUPercent:         nullStringValue(status.CpuPercent),
+		MemoryUsedBytes:    nullInt64Value(status.MemoryUsedBytes),
+		StorageUsedBytes:   nullInt64Value(status.StorageUsedBytes),
+		LastSyncDurationMs: nullInt64Value(status.LastSyncDurationMs),
+		ImageCount:         nullInt32Value(status.ImageCount),
+		CachedImages:       cachedImages,
+		ReportedAt:         status.ReportedAt,
+		CreatedAt:          status.CreatedAt,
+	}
+}
+
+func cachedImagesFromArtifacts(artifacts []database.Artifact) []CachedImage {
+	if len(artifacts) == 0 {
+		return nil
+	}
+
+	cachedImages := make([]CachedImage, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		cachedImages = append(cachedImages, CachedImage{
+			Reference: artifact.Reference,
+			SizeBytes: artifact.SizeBytes,
+		})
+	}
+	return cachedImages
+}
+
+func nullStringValue(value sql.NullString) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String
+}
+
+func nullInt64Value(value sql.NullInt64) int64 {
+	if !value.Valid {
+		return 0
+	}
+	return value.Int64
+}
+
+func nullInt32Value(value sql.NullInt32) int32 {
+	if !value.Valid {
+		return 0
+	}
+	return value.Int32
 }
 
 func (s *Server) getActiveSatellitesHandler(w http.ResponseWriter, r *http.Request) {
