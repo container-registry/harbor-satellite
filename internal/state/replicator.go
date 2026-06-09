@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -20,7 +21,9 @@ import (
 
 type Replicator interface {
 	// Replicate copies images from the source registry to the local registry.
-	Replicate(ctx context.Context, replicationEntities []Entity) error
+	// It processes every entity even if individual ones fail, returning a slice
+	// of entities that could not be replicated alongside a joined error.
+	Replicate(ctx context.Context, replicationEntities []Entity) ([]Entity, error)
 	// DeleteReplicationEntity deletes the image from the local registry.
 	DeleteReplicationEntity(ctx context.Context, replicationEntity []Entity) error
 }
@@ -74,9 +77,9 @@ func (e Entity) GetTag() string {
 }
 
 // Replicate replicates images from the source registry to the local registry.
-// Before pulling, it checks which blobs already exist at the destination and
-// only downloads missing layers from source, saving bandwidth on crash recovery.
-func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []Entity) error {
+// Every entity is attempted regardless of individual failures. Failed entities
+// are returned alongside a joined error so callers can track partial success.
+func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []Entity) ([]Entity, error) {
 	log := logger.FromContext(ctx)
 	pullAuth := authn.FromConfig(authn.AuthConfig{
 		Username: r.sourceUsername,
@@ -96,7 +99,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 	} else {
 		transport, err := r.buildTLSTransport()
 		if err != nil {
-			return fmt.Errorf("build TLS transport: %w", err)
+			return nil, fmt.Errorf("build TLS transport: %w", err)
 		}
 		if transport != nil {
 			pullOpts = append(pullOpts, remote.WithTransport(transport))
@@ -104,75 +107,105 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		}
 	}
 
+	var failed []Entity
+	var errs []error
+
 	for _, entity := range replicationEntities {
-		// Check context cancellation before processing each image
 		select {
 		case <-ctx.Done():
 			log.Warn().Err(ctx.Err()).Msg("Context cancelled, stopping replication")
-			return ctx.Err()
+			return failed, ctx.Err()
 		default:
 		}
 
-		srcRef := fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, entity.GetRepository(), entity.GetName(), entity.GetTag())
-		dstRef := fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag())
-
-		src, err := name.ParseReference(srcRef, nameOpts...)
-		if err != nil {
-			return fmt.Errorf("parse source ref %s: %w", srcRef, err)
-		}
-
-		dst, err := name.ParseReference(dstRef, nameOpts...)
-		if err != nil {
-			return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
-		}
-
-		// Lazy fetch: only the manifest is downloaded, no layer data yet
-		desc, err := remote.Get(src, pullOpts...)
-		if err != nil {
-			log.Error().Msgf("Failed to fetch image descriptor: %v", err)
-			return err
-		}
-
-		img, err := desc.Image()
-		if err != nil {
-			log.Error().Msgf("Failed to resolve image: %v", err)
-			return err
-		}
-
-		// Lazy OCI conversion, no data materialized
-		ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
-
-		// Check if image already exists at destination with same digest
-		srcDigest, err := ociImage.Digest()
-		if err != nil {
-			return fmt.Errorf("compute source digest: %w", err)
-		}
-
-		dstDesc, dstErr := remote.Head(dst, pushOpts...)
-		if dstErr == nil && dstDesc.Digest == srcDigest {
-			log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
+		if err := r.replicateOne(ctx, entity, nameOpts, pullOpts, pushOpts); err != nil {
+			log.Error().Err(err).Msgf("Failed to replicate %s, continuing with remaining images", entity.GetName())
+			failed = append(failed, entity)
+			errs = append(errs, fmt.Errorf("%s: %w", entity.GetName(), err))
 			continue
-		}
-
-		// Log which layers need pulling vs already present
-		srcLayers, err := ociImage.Layers()
-		if err != nil {
-			return fmt.Errorf("get source layers: %w", err)
-		}
-
-		missing := r.countMissingLayers(dst, srcLayers, pushOpts)
-		log.Info().Msgf("Replicating image %s: %d/%d layers to pull", entity.GetName(), missing, len(srcLayers))
-
-		// remote.Write streams layers one-by-one. For each layer it HEAD-checks
-		// the destination first; only missing blobs are pulled from source.
-		// Manifest is pushed last.
-		if err := remote.Write(dst, ociImage, pushOpts...); err != nil {
-			log.Error().Msgf("Failed to replicate image: %v", err)
-			return err
 		}
 		log.Info().Msgf("Image %s replicated successfully", entity.GetName())
 	}
+
+	return failed, errors.Join(errs...)
+}
+
+// replicateOne copies a single image from source to destination.
+// It skips images that are already up-to-date at the destination.
+func (r *BasicReplicator) replicateOne(
+	ctx context.Context,
+	entity Entity,
+	nameOpts []name.Option,
+	pullOpts []remote.Option,
+	pushOpts []remote.Option,
+) error {
+	log := logger.FromContext(ctx)
+
+	srcRef := fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, entity.GetRepository(), entity.GetName(), entity.GetTag())
+	dstRef := fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag())
+
+	src, err := name.ParseReference(srcRef, nameOpts...)
+	if err != nil {
+		return fmt.Errorf("parse source ref %s: %w", srcRef, err)
+	}
+
+	dst, err := name.ParseReference(dstRef, nameOpts...)
+	if err != nil {
+		return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
+	}
+
+	// Fetch manifest and resolve to OCI image (no layer data yet).
+	img, err := fetchOCIImage(src, pullOpts)
+	if err != nil {
+		return fmt.Errorf("fetch image %s: %w", entity.GetName(), err)
+	}
+	ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
+
+	srcDigest, err := ociImage.Digest()
+	if err != nil {
+		return fmt.Errorf("compute source digest: %w", err)
+	}
+
+	if r.isUpToDate(dst, srcDigest, pushOpts) {
+		log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
+		return nil
+	}
+
+	srcLayers, err := ociImage.Layers()
+	if err != nil {
+		return fmt.Errorf("get source layers: %w", err)
+	}
+
+	missing := r.countMissingLayers(dst, srcLayers, pushOpts)
+	log.Info().Msgf("Replicating image %s: %d/%d layers to pull", entity.GetName(), missing, len(srcLayers))
+
+	// remote.Write streams layers one-by-one, HEAD-checking each blob at the
+	// destination first so only missing blobs are pulled from source.
+	if err := remote.Write(dst, ociImage, pushOpts...); err != nil {
+		return fmt.Errorf("write image %s: %w", entity.GetName(), err)
+	}
 	return nil
+}
+
+// fetchOCIImage fetches the manifest from src and resolves it to a v1.Image.
+// Only the manifest is downloaded; layers remain lazy until explicitly read.
+func fetchOCIImage(src name.Reference, pullOpts []remote.Option) (v1.Image, error) {
+	desc, err := remote.Get(src, pullOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("fetch descriptor: %w", err)
+	}
+	img, err := desc.Image()
+	if err != nil {
+		return nil, fmt.Errorf("resolve image: %w", err)
+	}
+	return img, nil
+}
+
+// isUpToDate reports whether the destination already holds an image with the
+// same digest as srcDigest, meaning no transfer is needed.
+func (r *BasicReplicator) isUpToDate(dst name.Reference, srcDigest v1.Hash, pushOpts []remote.Option) bool {
+	dstDesc, err := remote.Head(dst, pushOpts...)
+	return err == nil && dstDesc.Digest == srcDigest
 }
 
 // countMissingLayers checks which source layers are absent from the destination
