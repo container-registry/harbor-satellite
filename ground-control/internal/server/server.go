@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -42,6 +43,9 @@ type Server struct {
 
 	// Satellite status
 	staleThreshold time.Duration
+
+	groupStatesCache   map[int64][]string
+	groupStatesCacheMu sync.RWMutex
 }
 
 // TLSConfig holds TLS settings for the server.
@@ -167,7 +171,8 @@ func NewServer() *ServerResult {
 		lockoutDuration: parseDurationEnv("LOCKOUT_DURATION", 5*time.Minute),
 
 		// Satellite status
-		staleThreshold: parseDurationEnv("STALE_THRESHOLD", time.Hour),
+		staleThreshold:      parseDurationEnv("STALE_THRESHOLD", time.Hour),
+		groupStatesCache: make(map[int64][]string),
 	}
 
 	// Bootstrap system admin user if not exists
