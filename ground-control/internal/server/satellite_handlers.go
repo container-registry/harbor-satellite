@@ -1009,7 +1009,12 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(sat.Name, "satellite"))
+	deleteURL, err := utils.ConstructHarborDeleteURL(sat.Name, "satellite")
+	if err != nil {
+		HandleAppError(w, err)
+		return
+	}
+	err = utils.DeleteArtifact(deleteURL)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)

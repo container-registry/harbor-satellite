@@ -272,10 +272,17 @@ func DeleteArtifact(deleteURL string) error {
 	return nil
 }
 
-func ConstructHarborDeleteURL(repo string, repoType string) string {
+func ConstructHarborDeleteURL(repo string, repoType string) (string, error) {
+	if repo == "" {
+		return "", fmt.Errorf("repo name cannot be empty")
+	}
+	validTypes := map[string]bool{"satellite": true, "group": true, "config": true}
+	if !validTypes[repoType] {
+		return "", fmt.Errorf("invalid repoType %q: must be one of satellite, group, config", repoType)
+	}
 	repositoryName := fmt.Sprintf("%s-state/%s/state", repoType, repo)
 	doubleEncodedRepoName := url.QueryEscape(url.QueryEscape(repositoryName))
-	return fmt.Sprintf("%s/api/v2.0/projects/satellite/repositories/%s", registry, doubleEncodedRepoName)
+	return fmt.Sprintf("%s/api/v2.0/projects/satellite/repositories/%s", os.Getenv("HARBOR_URL"), doubleEncodedRepoName), nil
 }
 
 func stripProtocol(url string) string {
