@@ -19,6 +19,7 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/middleware"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 )
 
 type Server struct {
@@ -42,6 +43,9 @@ type Server struct {
 
 	// Satellite status
 	staleThreshold time.Duration
+
+	EnsureSatelliteProjectExistsFn     func(context.Context) error
+	CreateAndPushConfigStateArtifactFn func(context.Context, []byte, string) error
 }
 
 // TLSConfig holds TLS settings for the server.
@@ -168,6 +172,9 @@ func NewServer() *ServerResult {
 
 		// Satellite status
 		staleThreshold: parseDurationEnv("STALE_THRESHOLD", time.Hour),
+
+		EnsureSatelliteProjectExistsFn:     ensureSatelliteProjectExists,
+		CreateAndPushConfigStateArtifactFn: utils.CreateAndPushConfigStateArtifact,
 	}
 
 	// Bootstrap system admin user if not exists
@@ -291,4 +298,3 @@ func buildServerTLSConfigWithWatcher(cfg *TLSConfig, cw *middleware.CertWatcher)
 
 	return tlsConfig, nil
 }
-

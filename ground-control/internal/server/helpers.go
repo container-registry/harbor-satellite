@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -327,4 +328,18 @@ func normalizeHeartbeatInterval(interval string) (string, error) {
 	seconds := int(duration.Seconds()) % 60
 
 	return fmt.Sprintf("@every %02dh%02dm%02ds", hours, minutes, seconds), nil
+}
+
+func jsonSemanticallyEqual(a, b []byte) bool {
+	var left any
+	if err := json.Unmarshal(a, &left); err != nil {
+		return false
+	}
+
+	var right any
+	if err := json.Unmarshal(b, &right); err != nil {
+		return false
+	}
+
+	return reflect.DeepEqual(left, right)
 }
