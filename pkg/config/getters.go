@@ -189,3 +189,9 @@ func (cm *ConfigManager) GetDirectDeliveryConfig() DirectDeliveryConfig {
 	defer cm.mu.RUnlock()
 	return cm.config.AppConfig.DirectDelivery
 }
+
+func (cm *ConfigManager) GetSignaturePolicyConfig() SignaturePolicy {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.SignaturePolicy
+}
