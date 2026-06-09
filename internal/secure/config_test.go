@@ -3,6 +3,7 @@ package secure
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/crypto"
@@ -167,7 +168,9 @@ func TestConfigEncryptor_EncryptToFile(t *testing.T) {
 
 	info, err := os.Stat(path)
 	require.NoError(t, err)
-	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
 }
 
 func TestConfigEncryptor_DecryptFromFile(t *testing.T) {
