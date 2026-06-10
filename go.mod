@@ -12,6 +12,7 @@ require (
 
 require (
 	github.com/joho/godotenv v1.5.1
+	github.com/parallaxsecond/parsec-client-go v0.0.0 // local replace; see replace directive
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/viper v1.21.0
 	github.com/spiffe/go-spiffe/v2 v2.6.0
@@ -517,3 +518,7 @@ require (
 	sigs.k8s.io/kustomize/kyaml v0.21.1 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+// parsec-client-go: use local checkout for development.
+// Replace with a versioned module path once upstreamed or published.
+replace github.com/parallaxsecond/parsec-client-go => ./parsec-client-go

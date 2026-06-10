@@ -62,13 +62,13 @@ func TestLoadCertificate(t *testing.T) {
 		certPEM, keyPEM := generateTestCert(t, time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 		certPath, keyPath := writeTempFiles(t, certPEM, keyPEM)
 
-		cert, err := LoadCertificate(certPath, keyPath)
+		cert, err := LoadCertificate(certPath, keyPath, nil)
 		require.NoError(t, err)
 		require.NotNil(t, cert)
 	})
 
 	t.Run("returns error for missing cert file", func(t *testing.T) {
-		_, err := LoadCertificate("/nonexistent/cert.pem", "/nonexistent/key.pem")
+		_, err := LoadCertificate("/nonexistent/cert.pem", "/nonexistent/key.pem", nil)
 		require.ErrorIs(t, err, ErrCertNotFound)
 	})
 
@@ -78,7 +78,7 @@ func TestLoadCertificate(t *testing.T) {
 		certPath := filepath.Join(dir, "cert.pem")
 		require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
 
-		_, err := LoadCertificate(certPath, "/nonexistent/key.pem")
+		_, err := LoadCertificate(certPath, "/nonexistent/key.pem", nil)
 		require.ErrorIs(t, err, ErrKeyNotFound)
 	})
 
@@ -90,7 +90,7 @@ func TestLoadCertificate(t *testing.T) {
 		require.NoError(t, os.WriteFile(certPath, []byte("invalid cert"), 0o600))
 		require.NoError(t, os.WriteFile(keyPath, []byte("invalid key"), 0o600))
 
-		_, err := LoadCertificate(certPath, keyPath)
+		_, err := LoadCertificate(certPath, keyPath, nil)
 		require.ErrorIs(t, err, ErrCertInvalid)
 	})
 }
