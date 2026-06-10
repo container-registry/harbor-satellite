@@ -3,7 +3,6 @@ package logger
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // The audit event model is a canonical, transport-neutral shape designed to map
@@ -117,23 +115,27 @@ const (
 // fields (Operation, ResourceType, Outcome are required); the logger fills
 // event_id, timestamp, and component, and derives event_type and a default
 // severity at emit time. Empty optional fields are omitted from the output.
+//
+// The json tags define the canonical wire shape: required fields are always
+// present, optional ones carry omitempty so they vanish when unset.
 type AuditEvent struct {
 	// Required.
-	Operation    Operation
-	ResourceType ResourceType
-	Outcome      Outcome
+	Operation    Operation    `json:"operation"`
+	ResourceType ResourceType `json:"resource_type"`
+	Outcome      Outcome      `json:"outcome"`
 
-	// Optional. Severity is derived from the event when left empty.
-	Severity    Severity
-	Actor       string
-	ActorType   ActorType
-	SourceIP    string
-	UserAgent   string
-	RequestID   string
-	SatelliteID string
-	Resource    string
-	Reason      Reason
-	Details     map[string]any
+	// Optional. Severity is derived from the event when left empty; the logger
+	// resolves it before emit so it is always present in the output.
+	Severity    Severity       `json:"severity"`
+	Actor       string         `json:"actor,omitempty"`
+	ActorType   ActorType      `json:"actor_type,omitempty"`
+	SourceIP    string         `json:"source_ip,omitempty"`
+	UserAgent   string         `json:"user_agent,omitempty"`
+	RequestID   string         `json:"request_id,omitempty"`
+	SatelliteID string         `json:"satellite_id,omitempty"`
+	Resource    string         `json:"resource,omitempty"`
+	Reason      Reason         `json:"reason,omitempty"`
+	Details     map[string]any `json:"details,omitempty"`
 }
 
 // eventType derives the canonical "{resource_type}.{operation}.{outcome}" name.
@@ -177,30 +179,58 @@ func (e AuditEvent) withRequiredDefaults() AuditEvent {
 	return e
 }
 
-// AuditConfig controls the audit logger destination and rotation policy.
-type AuditConfig struct {
-	Enabled    bool
-	FilePath   string
-	MaxSizeMB  int
-	MaxBackups int
-	MaxAgeDays int
+// Record is a fully-resolved audit event: the caller's AuditEvent plus the
+// fields the logger fills in at emit time (event_id, timestamp, component,
+// event_type, and a resolved severity). Log builds exactly one Record per event
+// and hands the same Record to every transport, so one action always produces
+// one logical event regardless of how many destinations are attached.
+//
+// json.Marshal(Record) is the single place the canonical wire JSON is produced;
+// every transport serialises through the same Record so the destinations can
+// never disagree about what an event looks like.
+type Record struct {
+	EventID   string    `json:"event_id"`
+	Timestamp time.Time `json:"timestamp"`
+	Component Component `json:"component"`
+	EventType string    `json:"event_type"`
+	AuditEvent
 }
 
-// AuditLogger writes structured security events. It is safe for concurrent use,
-// and its destination can be swapped at runtime via Reconfigure. When disabled
-// it is a no-op so callers never need to nil-check.
+// Transport is one audit destination behind the logger's seam. Log builds a
+// Record once and calls Emit on every attached transport, so adding a new
+// destination (syslog, OTel, ...) means implementing this interface and
+// registering it in Reconfigure -- Log itself never changes. Emit returns an
+// error instead of swallowing it so a failing destination leaves a breadcrumb
+// rather than silently dropping events; one transport failing does not stop the
+// others.
+type Transport interface {
+	Emit(r Record) error
+	Close() error
+}
+
+// AuditConfig controls the audit logger. Enabled is the master switch; Syslog
+// is the only destination today (local daemon, remote SIEM, or rotated file).
+// Additional transports (OpenTelemetry, ...) will be added as further fields and
+// wired in Reconfigure.
+type AuditConfig struct {
+	Enabled bool
+	Syslog  SyslogConfig
+}
+
+// AuditLogger writes structured security events to one or more transports. It is
+// safe for concurrent use, and its transports can be swapped at runtime via
+// Reconfigure. When disabled it is a no-op so callers never need to nil-check.
 type AuditLogger struct {
-	mu        sync.RWMutex
-	log       *zerolog.Logger
-	closer    io.Closer
-	enabled   bool
-	component Component
+	mu         sync.RWMutex
+	transports []Transport
+	enabled    bool
+	component  Component
 }
 
 // NewAuditLogger builds an AuditLogger from cfg for the given component. With
-// Enabled=false or an empty FilePath the logger is a no-op. When enabled, the
-// destination is verified to be writable up front and an error is returned if
-// it is not, so the caller can fail fast at startup instead of advertising
+// Enabled=false or the syslog transport disabled the logger is a no-op. When
+// enabled, each transport is verified usable up front and an error is returned
+// if it is not, so the caller can fail fast at startup instead of advertising
 // audit logging while silently dropping every event.
 func NewAuditLogger(cfg AuditConfig, component Component) (*AuditLogger, error) {
 	a := &AuditLogger{component: component}
@@ -210,50 +240,40 @@ func NewAuditLogger(cfg AuditConfig, component Component) (*AuditLogger, error) 
 	return a, nil
 }
 
-// Reconfigure atomically swaps the logger's destination to match cfg. It is
-// used both at construction and on hot reload. The previous destination, if
-// any, is closed after the swap. When the new destination is unwritable an
-// error is returned and the existing configuration is left untouched.
+// Reconfigure atomically swaps the logger's transports to match cfg. It is used
+// both at construction and on hot reload. The previous transports, if any, are
+// closed after the swap. When a new transport cannot be built the error is
+// returned and the existing configuration is left untouched.
+//
+// This is the one place destinations are wired: adding syslog (and later OTel)
+// means building the transport here and appending it to newTransports.
 func (a *AuditLogger) Reconfigure(cfg AuditConfig) error {
-	var (
-		newLog    zerolog.Logger
-		newCloser io.Closer
-		enabled   bool
-	)
+	var newTransports []Transport
 
-	if !cfg.Enabled || cfg.FilePath == "" {
-		newLog = zerolog.New(io.Discard)
-	} else {
-		if err := ensureWritable(cfg.FilePath); err != nil {
-			return fmt.Errorf("audit log destination not writable: %w", err)
+	if cfg.Enabled && cfg.Syslog.Enabled {
+		st, err := newSyslogTransport(cfg.Syslog)
+		if err != nil {
+			return err
 		}
-		rotator := &lumberjack.Logger{
-			Filename:   cfg.FilePath,
-			MaxSize:    cfg.MaxSizeMB,
-			MaxBackups: cfg.MaxBackups,
-			MaxAge:     cfg.MaxAgeDays,
-			Compress:   true,
-		}
-		newLog = zerolog.New(rotator)
-		newCloser = rotator
-		enabled = true
+		newTransports = append(newTransports, st)
 	}
 
+	enabled := len(newTransports) > 0
+
 	a.mu.Lock()
-	old := a.closer
-	a.log = &newLog
-	a.closer = newCloser
+	old := a.transports
+	a.transports = newTransports
 	a.enabled = enabled
 	a.mu.Unlock()
 
-	if old != nil {
-		_ = old.Close()
+	for _, t := range old {
+		_ = t.Close()
 	}
 	return nil
 }
 
 // ensureWritable verifies that path can be created and written to now.
-// lumberjack opens its file lazily on first write and zerolog discards write
+// lumberjack opens its file lazily on first write and silently tolerates write
 // errors, so without this probe an unwritable path would look enabled while
 // dropping every event. The parent directory is created if missing, mirroring
 // what lumberjack itself does on first write.
@@ -270,47 +290,51 @@ func ensureWritable(path string) error {
 }
 
 // Log emits a single audit event. event_id, timestamp, component, event_type
-// and a default severity are filled in automatically. Empty optional fields are
-// omitted. Safe to call on a nil or disabled logger.
+// and a default severity are filled in automatically, and the resulting Record
+// is fanned out to every transport. Empty optional fields are omitted. Safe to
+// call on a nil or disabled logger.
+//
+// The transport slice is snapshotted under the lock and the actual emit happens
+// after the lock is released, so a slow transport (e.g. syslog over the network)
+// never blocks a concurrent Reconfigure. Reconfigure always replaces the slice
+// rather than mutating it, so the snapshot stays valid.
 func (a *AuditLogger) Log(e AuditEvent) {
 	if a == nil {
 		return
 	}
 	a.mu.RLock()
-	defer a.mu.RUnlock()
-	if !a.enabled {
+	enabled := a.enabled
+	transports := a.transports
+	component := a.component
+	a.mu.RUnlock()
+	if !enabled {
 		return
 	}
+
 	e = e.withRequiredDefaults()
-	evt := a.log.Log().
-		Str("event_id", uuid.NewString()).
-		Str("timestamp", time.Now().UTC().Format(time.RFC3339Nano)).
-		Str("severity", string(e.severity())).
-		Str("component", string(a.component)).
-		Str("event_type", e.eventType()).
-		Str("operation", string(e.Operation)).
-		Str("resource_type", string(e.ResourceType)).
-		Str("outcome", string(e.Outcome))
-	// Optional string fields are emitted only when set. Kept as a table so the
-	// emit path stays low-complexity as fields are added.
-	for _, f := range []struct{ key, val string }{
-		{"actor", e.Actor},
-		{"actor_type", string(e.ActorType)},
-		{"source_ip", e.SourceIP},
-		{"user_agent", e.UserAgent},
-		{"request_id", e.RequestID},
-		{"satellite_id", e.SatelliteID},
-		{"resource", e.Resource},
-		{"reason", string(e.Reason)},
-	} {
-		if f.val != "" {
-			evt = evt.Str(f.key, f.val)
+	e.Severity = e.severity()
+	r := Record{
+		EventID:    uuid.NewString(),
+		Timestamp:  time.Now().UTC(),
+		Component:  component,
+		EventType:  e.eventType(),
+		AuditEvent: e,
+	}
+	for _, t := range transports {
+		if err := t.Emit(r); err != nil {
+			logTransportError(component, err)
 		}
 	}
-	if len(e.Details) > 0 {
-		evt = evt.Interface("details", e.Details)
-	}
-	evt.Send()
+}
+
+// logTransportError leaves a breadcrumb in the operational log when a transport
+// fails. No package-level operational logger is available here (and the linter
+// forbids globals), so a minimal stderr logger is built on the rare error path;
+// a failing destination must be visible rather than silently dropping events.
+func logTransportError(component Component, err error) {
+	l := zerolog.New(os.Stderr).With().Timestamp().Logger()
+	l.Error().Err(err).Str("component", string(component)).
+		Msg("audit transport emit failed")
 }
 
 // Enabled reports whether events will actually be written.
@@ -338,6 +362,5 @@ func AuditFromContext(ctx context.Context) *AuditLogger {
 	if a, ok := ctx.Value(auditLoggerKey).(*AuditLogger); ok && a != nil {
 		return a
 	}
-	l := zerolog.New(io.Discard)
-	return &AuditLogger{log: &l, enabled: false}
+	return &AuditLogger{enabled: false}
 }

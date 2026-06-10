@@ -328,44 +328,75 @@ func buildServerTLSConfigWithWatcher(cfg *TLSConfig, cw *middleware.CertWatcher)
 }
 
 // loadAuditConfig reads audit log settings from environment variables.
-// Disabled by default; set AUDIT_LOG_ENABLED=true to turn on. When enabled,
-// rotation values are validated and the process exits on invalid input rather
-// than silently propagating them to the logger config.
+// Disabled by default; set AUDIT_LOG_ENABLED=true to turn on. The syslog target
+// (daemon | network | file) selects the destination; only the relevant fields
+// are read. Invalid input exits the process rather than silently propagating to
+// the logger config.
 func loadAuditConfig() auditlog.AuditConfig {
-	enabled := os.Getenv("AUDIT_LOG_ENABLED") == "true"
-	if !enabled {
+	if os.Getenv("AUDIT_LOG_ENABLED") != "true" {
 		return auditlog.AuditConfig{}
 	}
 
-	// Distinguish unset (fall back to default) from set-but-empty
-	// (operator typo — fail loudly). getEnvOrDefault collapses both,
-	// which would make the validation below dead code.
-	path, isSet := os.LookupEnv("AUDIT_LOG_PATH")
+	target := getEnvOrDefault("AUDIT_SYSLOG_TARGET", "file")
+	syslog := auditlog.SyslogConfig{
+		Enabled:    true,
+		Target:     auditlog.SyslogTarget(target),
+		Tag:        getEnvOrDefault("AUDIT_SYSLOG_TAG", "harbor-audit"),
+		SocketPath: getEnvOrDefault("AUDIT_SYSLOG_SOCKET_PATH", "/dev/log"),
+		Network:    getEnvOrDefault("AUDIT_SYSLOG_NETWORK", "udp"),
+		Address:    os.Getenv("AUDIT_SYSLOG_ADDRESS"),
+	}
+
+	switch target {
+	case "file":
+		syslog.File = loadSyslogFileConfig()
+	case "network":
+		if syslog.Address == "" {
+			log.Fatalf("AUDIT_SYSLOG_TARGET=network but AUDIT_SYSLOG_ADDRESS is empty")
+		}
+	case "daemon":
+		// SocketPath already defaulted above.
+	default:
+		log.Fatalf("AUDIT_SYSLOG_TARGET must be one of daemon|network|file, got %q", target)
+	}
+
+	return auditlog.AuditConfig{Enabled: true, Syslog: syslog}
+}
+
+// loadSyslogFileConfig reads the file-target rotation settings, validating them
+// the same way the satellite config does (invalid values exit the process).
+func loadSyslogFileConfig() auditlog.SyslogFileConfig {
+	// Distinguish unset (fall back to default) from set-but-empty (operator typo
+	// — fail loudly).
+	path, isSet := os.LookupEnv("AUDIT_SYSLOG_FILE_PATH")
 	if !isSet {
 		path = "./audit.log"
 	} else if path == "" {
-		log.Fatalf("AUDIT_LOG_ENABLED=true but AUDIT_LOG_PATH is empty")
+		log.Fatalf("AUDIT_SYSLOG_TARGET=file but AUDIT_SYSLOG_FILE_PATH is empty")
 	}
 
-	maxSizeMB := parseRequiredIntEnv("AUDIT_LOG_MAX_SIZE_MB", 100)
-	maxBackups := parseRequiredIntEnv("AUDIT_LOG_MAX_BACKUPS", 7)
-	maxAgeDays := parseRequiredIntEnv("AUDIT_LOG_MAX_AGE_DAYS", 30)
+	maxSizeMB := parseRequiredIntEnv("AUDIT_SYSLOG_FILE_MAX_SIZE_MB", 100)
+	maxBackups := parseRequiredIntEnv("AUDIT_SYSLOG_FILE_MAX_BACKUPS", 7)
+	maxAgeDays := parseRequiredIntEnv("AUDIT_SYSLOG_FILE_MAX_AGE_DAYS", 30)
 
 	if maxSizeMB < 1 {
-		log.Fatalf("AUDIT_LOG_MAX_SIZE_MB must be >= 1, got %d", maxSizeMB)
+		log.Fatalf("AUDIT_SYSLOG_FILE_MAX_SIZE_MB must be >= 1, got %d", maxSizeMB)
 	}
 	if maxBackups < 0 {
-		log.Fatalf("AUDIT_LOG_MAX_BACKUPS must be >= 0, got %d", maxBackups)
+		log.Fatalf("AUDIT_SYSLOG_FILE_MAX_BACKUPS must be >= 0, got %d", maxBackups)
 	}
 	if maxAgeDays < 0 {
-		log.Fatalf("AUDIT_LOG_MAX_AGE_DAYS must be >= 0, got %d", maxAgeDays)
+		log.Fatalf("AUDIT_SYSLOG_FILE_MAX_AGE_DAYS must be >= 0, got %d", maxAgeDays)
 	}
 
-	return auditlog.AuditConfig{
-		Enabled:    true,
-		FilePath:   path,
+	// Compression defaults on; only an explicit "false" disables it.
+	compress := os.Getenv("AUDIT_SYSLOG_FILE_COMPRESS") != "false"
+
+	return auditlog.SyslogFileConfig{
+		Path:       path,
 		MaxSizeMB:  maxSizeMB,
 		MaxBackups: maxBackups,
 		MaxAgeDays: maxAgeDays,
+		Compress:   compress,
 	}
 }

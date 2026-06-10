@@ -41,43 +41,86 @@ type RegistryFallbackConfig struct {
 	Runtimes   []string `json:"runtimes,omitempty"`
 }
 
-// AuditConfig controls the security-event audit log destination and rotation policy.
-// When Enabled is false (default), audit events are discarded.
+// AuditConfig controls the security-event audit log. When Enabled is false
+// (default), audit events are discarded. The Syslog block selects the
+// destination; it is the only transport today.
 type AuditConfig struct {
-	Enabled  bool   `json:"enabled,omitempty"`
-	FilePath string `json:"file_path,omitempty"`
-	// MaxSizeMB, MaxBackups and MaxAgeDays are pointers so an omitted field
-	// (nil) can be told apart from an explicit 0. An omitted field means "use
-	// the default", matching Ground Control (whose env vars default when
-	// unset). An explicit 0 on MaxBackups/MaxAgeDays is a deliberate "retain
-	// everything" per lumberjack semantics and is preserved.
-	MaxSizeMB  *int `json:"max_size_mb,omitempty"`
-	MaxBackups *int `json:"max_backups,omitempty"`
-	MaxAgeDays *int `json:"max_age_days,omitempty"`
+	Enabled bool        `json:"enabled,omitempty"`
+	Syslog  SyslogAudit `json:"syslog,omitempty"`
+}
+
+// SyslogAudit configures the syslog transport. Target picks one of three sinks
+// (daemon, network, file); only the fields for the chosen target are used.
+type SyslogAudit struct {
+	Target     string          `json:"target,omitempty"`      // daemon | network | file
+	Tag        string          `json:"tag,omitempty"`         // RFC 5424 APP-NAME
+	SocketPath string          `json:"socket_path,omitempty"` // daemon target
+	Network    string          `json:"network,omitempty"`     // network target: udp | tcp
+	Address    string          `json:"address,omitempty"`     // network target: host:port
+	File       SyslogAuditFile `json:"file,omitempty"`        // file target
+}
+
+// SyslogAuditFile controls the rotated file used by the file target. These
+// settings only apply to target=file: for the daemon target the OS rotates, and
+// for the network target there is no file.
+type SyslogAuditFile struct {
+	Path string `json:"path,omitempty"`
+	// MaxSizeMB, MaxBackups, MaxAgeDays and Compress are pointers so an omitted
+	// field (nil) can be told apart from an explicit 0/false. An omitted field
+	// means "use the default". An explicit 0 on MaxBackups/MaxAgeDays is a
+	// deliberate "retain everything" per lumberjack semantics and is preserved.
+	MaxSizeMB  *int  `json:"max_size_mb,omitempty"`
+	MaxBackups *int  `json:"max_backups,omitempty"`
+	MaxAgeDays *int  `json:"max_age_days,omitempty"`
+	Compress   *bool `json:"compress,omitempty"`
+}
+
+// TargetOrDefault returns the configured target, or the default (file) when unset.
+func (s SyslogAudit) TargetOrDefault() string {
+	if s.Target == "" {
+		return DefaultAuditSyslogTarget
+	}
+	return s.Target
+}
+
+// TagOrDefault returns the configured APP-NAME, or the default when unset.
+func (s SyslogAudit) TagOrDefault() string {
+	if s.Tag == "" {
+		return DefaultAuditSyslogTag
+	}
+	return s.Tag
 }
 
 // MaxSizeMBOrDefault returns the configured rotation size, or the default when unset.
-func (a AuditConfig) MaxSizeMBOrDefault() int {
-	if a.MaxSizeMB == nil {
+func (f SyslogAuditFile) MaxSizeMBOrDefault() int {
+	if f.MaxSizeMB == nil {
 		return DefaultAuditMaxSizeMB
 	}
-	return *a.MaxSizeMB
+	return *f.MaxSizeMB
 }
 
 // MaxBackupsOrDefault returns the configured backup count, or the default when unset.
-func (a AuditConfig) MaxBackupsOrDefault() int {
-	if a.MaxBackups == nil {
+func (f SyslogAuditFile) MaxBackupsOrDefault() int {
+	if f.MaxBackups == nil {
 		return DefaultAuditMaxBackups
 	}
-	return *a.MaxBackups
+	return *f.MaxBackups
 }
 
 // MaxAgeDaysOrDefault returns the configured retention age, or the default when unset.
-func (a AuditConfig) MaxAgeDaysOrDefault() int {
-	if a.MaxAgeDays == nil {
+func (f SyslogAuditFile) MaxAgeDaysOrDefault() int {
+	if f.MaxAgeDays == nil {
 		return DefaultAuditMaxAgeDays
 	}
-	return *a.MaxAgeDays
+	return *f.MaxAgeDays
+}
+
+// CompressOrDefault returns the configured compression flag, or the default when unset.
+func (f SyslogAuditFile) CompressOrDefault() bool {
+	if f.Compress == nil {
+		return DefaultAuditCompress
+	}
+	return *f.Compress
 }
 
 // Equal reports whether two audit configs resolve to the same effective
@@ -86,10 +129,16 @@ func (a AuditConfig) MaxAgeDaysOrDefault() int {
 // for a change.
 func (a AuditConfig) Equal(b AuditConfig) bool {
 	return a.Enabled == b.Enabled &&
-		a.FilePath == b.FilePath &&
-		a.MaxSizeMBOrDefault() == b.MaxSizeMBOrDefault() &&
-		a.MaxBackupsOrDefault() == b.MaxBackupsOrDefault() &&
-		a.MaxAgeDaysOrDefault() == b.MaxAgeDaysOrDefault()
+		a.Syslog.TargetOrDefault() == b.Syslog.TargetOrDefault() &&
+		a.Syslog.TagOrDefault() == b.Syslog.TagOrDefault() &&
+		a.Syslog.SocketPath == b.Syslog.SocketPath &&
+		a.Syslog.Network == b.Syslog.Network &&
+		a.Syslog.Address == b.Syslog.Address &&
+		a.Syslog.File.Path == b.Syslog.File.Path &&
+		a.Syslog.File.MaxSizeMBOrDefault() == b.Syslog.File.MaxSizeMBOrDefault() &&
+		a.Syslog.File.MaxBackupsOrDefault() == b.Syslog.File.MaxBackupsOrDefault() &&
+		a.Syslog.File.MaxAgeDaysOrDefault() == b.Syslog.File.MaxAgeDaysOrDefault() &&
+		a.Syslog.File.CompressOrDefault() == b.Syslog.File.CompressOrDefault()
 }
 
 // DirectDeliveryConfig holds settings for writing image tarballs directly

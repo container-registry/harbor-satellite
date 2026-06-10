@@ -32,10 +32,20 @@
     },
     "audit": {
       "enabled": false,
-      "file_path": "./audit.log",
-      "max_size_mb": 100,
-      "max_backups": 7,
-      "max_age_days": 30
+      "syslog": {
+        "target": "file",
+        "tag": "harbor-audit",
+        "socket_path": "/dev/log",
+        "network": "udp",
+        "address": "",
+        "file": {
+          "path": "./audit.log",
+          "max_size_mb": 100,
+          "max_backups": 7,
+          "max_age_days": 30,
+          "compress": true
+        }
+      }
     }
   },
   "zot_config": {

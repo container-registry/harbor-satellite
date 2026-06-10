@@ -98,32 +98,52 @@ secrets.
 
 ### Satellite
 
-Add an `audit` block to the `app_config` section of the satellite config JSON:
+Add an `audit` block to the `app_config` section of the satellite config JSON.
+Events are emitted as RFC 5424 syslog messages; the `syslog.target` selects the
+destination.
 
 ```json
 "audit": {
   "enabled": true,
-  "file_path": "/var/log/harbor-satellite/audit.log",
-  "max_size_mb": 100,
-  "max_backups": 7,
-  "max_age_days": 30
+  "syslog": {
+    "target": "file",
+    "tag": "harbor-audit",
+    "socket_path": "/dev/log",
+    "network": "udp",
+    "address": "siem.example:514",
+    "file": {
+      "path": "/var/log/harbor-satellite/audit.log",
+      "max_size_mb": 100,
+      "max_backups": 7,
+      "max_age_days": 30,
+      "compress": true
+    }
+  }
 }
 ```
 
-| Field          | Default        | Notes |
-| -------------- | -------------- | ----- |
-| `enabled`      | `false`        | Master switch. When false, all calls are no-ops. |
-| `file_path`    | `./audit.log`  | Absolute path recommended in production. |
-| `max_size_mb`  | `100`          | Rotate when the file exceeds this size. |
-| `max_backups`  | `7`            | Keep this many rotated files. |
-| `max_age_days` | `30`           | Drop rotated files older than this. |
+| Field                  | Default        | Notes |
+| ---------------------- | -------------- | ----- |
+| `enabled`              | `false`        | Master switch. When false, all calls are no-ops. |
+| `syslog.target`        | `file`         | `daemon`, `network`, or `file`. |
+| `syslog.tag`           | `harbor-audit` | RFC 5424 APP-NAME. |
+| `syslog.socket_path`   | `/dev/log`     | `daemon` target: local syslog socket. |
+| `syslog.network`       | `udp`          | `network` target: `udp` or `tcp`. |
+| `syslog.address`       | -              | `network` target: `host:port` of the SIEM. |
+| `syslog.file.path`     | `./audit.log`  | `file` target: absolute path recommended in production. |
+| `syslog.file.max_size_mb`  | `100`      | Rotate when the file exceeds this size. |
+| `syslog.file.max_backups`  | `7`        | Keep this many rotated files. |
+| `syslog.file.max_age_days` | `30`       | Drop rotated files older than this. |
+| `syslog.file.compress`     | `true`     | gzip rotated files. |
+
+Only the block for the chosen `target` is used; the others are ignored.
+Rotation applies only to `target: file` - for `daemon` the OS rotates, and for
+`network` there is no local file.
 
 Omitting a rotation field uses its default (same as Ground Control's env-var
 defaults). Setting `max_backups` or `max_age_days` to `0` is a deliberate
-"retain everything" - no rotated files are pruned by count or age.
-
-Rotation is provided by `gopkg.in/natefinch/lumberjack.v2`; old files are
-gzip-compressed.
+"retain everything" - no rotated files are pruned by count or age. Rotation is
+provided by `gopkg.in/natefinch/lumberjack.v2`.
 
 ### Ground Control
 
@@ -131,14 +151,22 @@ Set environment variables in the GC `.env`:
 
 ```env
 AUDIT_LOG_ENABLED=true
-AUDIT_LOG_PATH=/var/log/ground-control/audit.log
-AUDIT_LOG_MAX_SIZE_MB=100
-AUDIT_LOG_MAX_BACKUPS=7
-AUDIT_LOG_MAX_AGE_DAYS=30
+AUDIT_SYSLOG_TARGET=file
+AUDIT_SYSLOG_TAG=harbor-audit
+AUDIT_SYSLOG_SOCKET_PATH=/dev/log
+AUDIT_SYSLOG_NETWORK=udp
+AUDIT_SYSLOG_ADDRESS=siem.example:514
+AUDIT_SYSLOG_FILE_PATH=/var/log/ground-control/audit.log
+AUDIT_SYSLOG_FILE_MAX_SIZE_MB=100
+AUDIT_SYSLOG_FILE_MAX_BACKUPS=7
+AUDIT_SYSLOG_FILE_MAX_AGE_DAYS=30
+AUDIT_SYSLOG_FILE_COMPRESS=true
 AUDIT_TRUST_FORWARDED_HEADERS=false
 ```
 
 `AUDIT_LOG_ENABLED=false` (default) disables the logger entirely.
+`AUDIT_SYSLOG_TARGET` selects the destination (`daemon` | `network` | `file`);
+only the variables for that target are read.
 
 `AUDIT_TRUST_FORWARDED_HEADERS=false` (default) is the secure setting: the
 audit `source_ip` is taken from the TCP `RemoteAddr` and cannot be forged by
@@ -146,9 +174,11 @@ clients. Set this to `true` only when GC sits behind a trusted reverse proxy
 that you control; then the first entry of `X-Forwarded-For` (falling back to
 `X-Real-IP`) is used.
 
-When `AUDIT_LOG_ENABLED=true`, the rotation values must be non-negative
-(`MAX_SIZE_MB >= 1`, `MAX_BACKUPS >= 0`, `MAX_AGE_DAYS >= 0`). Invalid input
-causes GC to refuse to start rather than silently drop events.
+For `target: file`, the rotation values must be non-negative
+(`AUDIT_SYSLOG_FILE_MAX_SIZE_MB >= 1`, `AUDIT_SYSLOG_FILE_MAX_BACKUPS >= 0`,
+`AUDIT_SYSLOG_FILE_MAX_AGE_DAYS >= 0`); for `target: network`,
+`AUDIT_SYSLOG_ADDRESS` must be set. Invalid input causes GC to refuse to start
+rather than silently drop events.
 
 ## Operational notes
 
@@ -157,16 +187,19 @@ causes GC to refuse to start rather than silently drop events.
 - **No PII in `details`.** The instrumentation never logs passwords, tokens,
   or hashes. Tokens that appear in error paths (invalid ZTR tokens) are masked
   via the existing `maskToken` helper.
-- **Forward to SIEM.** Point a log shipper (Filebeat, Vector, Fluent Bit) at
-  the audit file. The JSON-per-line format requires no parsing rules.
-- **Two files in production.** Satellite and Ground Control each write their
-  own file. The `component` field tells them apart once aggregated; pivot on
-  `event_type`, `severity`, `actor`, or `reason` in your SIEM.
-- **Transport-ready.** The schema is designed so syslog and OpenTelemetry
-  exporters can be added without renaming fields - `severity` -> PRI/severity
-  number, `component` -> APP-NAME / `service.name`, and `operation` /
-  `resource_type` / `outcome` / `reason` become first-class attributes instead
-  of substrings parsed out of `event_type`.
+- **Forward to SIEM.** Use `target: network` to send RFC 5424 messages straight
+  to a syslog/SIEM endpoint, `target: daemon` to hand off to the local syslog
+  daemon, or `target: file` plus a log shipper (Filebeat, Vector, Fluent Bit).
+  The message body is the canonical JSON, so the same fields are available
+  whichever target is used.
+- **Two destinations in production.** Satellite and Ground Control each emit
+  their own stream. The `component` field tells them apart once aggregated;
+  pivot on `event_type`, `severity`, `actor`, or `reason` in your SIEM.
+- **OTel-ready.** The schema is designed so an OpenTelemetry exporter can be
+  added without renaming fields - `severity` -> severity number, `component` ->
+  `service.name`, and `operation` / `resource_type` / `outcome` / `reason`
+  become first-class attributes instead of substrings parsed out of
+  `event_type`.
 - **Stable event types.** New event types will be added; the
   `{resource_type}.{operation}.{outcome}` identifiers are stable strings - safe
   to use in alerting rules.
@@ -177,6 +210,7 @@ causes GC to refuse to start rather than silently drop events.
   when the local Zot or fallback layer denies a pull.
 - `satellite.revoke.success` / `satellite.unrevoke.success` - pending the
   revocation workflow added in Ground Control.
-- **syslog & OpenTelemetry transports** - the event model is already
-  syslog/OTel-compatible (see Format); the exporters that ship events over
-  those protocols are tracked as follow-up work.
+- **OpenTelemetry / CloudEvents transports** - the syslog transport ships
+  today; OTel and CloudEvents exporters are tracked as follow-up work (the event
+  model is already compatible - see Format). They plug into the same transport
+  seam the syslog transport uses.

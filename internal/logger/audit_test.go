@@ -12,6 +12,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// fileSyslogConfig builds an audit config whose only destination is the syslog
+// file target at path. The raw-JSON file transport has been removed, so the file
+// now holds RFC 5424 lines carrying the canonical Record JSON.
+func fileSyslogConfig(path string) AuditConfig {
+	return AuditConfig{
+		Enabled: true,
+		Syslog: SyslogConfig{
+			Enabled: true,
+			Target:  SyslogTargetFile,
+			File:    SyslogFileConfig{Path: path},
+		},
+	}
+}
+
+// readAuditLines reads each syslog line and unmarshals the JSON body (everything
+// from the first '{'), so the event-shape assertions below are unaffected by the
+// syslog header.
 func readAuditLines(t *testing.T, path string) []map[string]any {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -21,8 +38,10 @@ func readAuditLines(t *testing.T, path string) []map[string]any {
 		if line == "" {
 			continue
 		}
+		brace := strings.IndexByte(line, '{')
+		require.GreaterOrEqual(t, brace, 0, "line should contain a JSON body: %q", line)
 		var entry map[string]any
-		require.NoError(t, json.Unmarshal([]byte(line), &entry))
+		require.NoError(t, json.Unmarshal([]byte(line[brace:]), &entry))
 		out = append(out, entry)
 	}
 	return out
@@ -30,13 +49,7 @@ func readAuditLines(t *testing.T, path string) []map[string]any {
 
 func TestAuditLogger_WritesStructuredEvent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	a, err := NewAuditLogger(AuditConfig{
-		Enabled:    true,
-		FilePath:   path,
-		MaxSizeMB:  10,
-		MaxBackups: 3,
-		MaxAgeDays: 7,
-	}, ComponentSatellite)
+	a, err := NewAuditLogger(fileSyslogConfig(path), ComponentSatellite)
 	require.NoError(t, err)
 	require.True(t, a.Enabled())
 
@@ -85,7 +98,7 @@ func TestAuditLogger_WritesStructuredEvent(t *testing.T) {
 
 func TestAuditLogger_DerivesDefaultSeverityAndOmitsEmptyFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	a, err := NewAuditLogger(AuditConfig{Enabled: true, FilePath: path}, ComponentSatellite)
+	a, err := NewAuditLogger(fileSyslogConfig(path), ComponentSatellite)
 	require.NoError(t, err)
 
 	a.Log(AuditEvent{
@@ -107,7 +120,7 @@ func TestAuditLogger_DerivesDefaultSeverityAndOmitsEmptyFields(t *testing.T) {
 
 func TestAuditLogger_EmptyRequiredFieldsGetSentinel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	a, err := NewAuditLogger(AuditConfig{Enabled: true, FilePath: path}, ComponentSatellite)
+	a, err := NewAuditLogger(fileSyslogConfig(path), ComponentSatellite)
 	require.NoError(t, err)
 
 	// A caller that forgets the required fields must not produce an event_type
@@ -124,7 +137,7 @@ func TestAuditLogger_EmptyRequiredFieldsGetSentinel(t *testing.T) {
 
 func TestAuditLogger_SeverityOverride(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	a, err := NewAuditLogger(AuditConfig{Enabled: true, FilePath: path}, ComponentSatellite)
+	a, err := NewAuditLogger(fileSyslogConfig(path), ComponentSatellite)
 	require.NoError(t, err)
 
 	a.Log(AuditEvent{
@@ -140,7 +153,7 @@ func TestAuditLogger_SeverityOverride(t *testing.T) {
 
 func TestAuditLogger_UniqueEventIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	a, err := NewAuditLogger(AuditConfig{Enabled: true, FilePath: path}, ComponentSatellite)
+	a, err := NewAuditLogger(fileSyslogConfig(path), ComponentSatellite)
 	require.NoError(t, err)
 
 	for range 5 {
@@ -161,7 +174,9 @@ func TestAuditLogger_UniqueEventIDs(t *testing.T) {
 
 func TestAuditLogger_DisabledIsNoOp(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	a, err := NewAuditLogger(AuditConfig{Enabled: false, FilePath: path}, ComponentSatellite)
+	cfg := fileSyslogConfig(path)
+	cfg.Enabled = false
+	a, err := NewAuditLogger(cfg, ComponentSatellite)
 	require.NoError(t, err)
 	require.False(t, a.Enabled())
 
@@ -171,8 +186,9 @@ func TestAuditLogger_DisabledIsNoOp(t *testing.T) {
 	require.True(t, os.IsNotExist(err), "no file should be created when disabled")
 }
 
-func TestAuditLogger_EmptyPathIsNoOp(t *testing.T) {
-	a, err := NewAuditLogger(AuditConfig{Enabled: true, FilePath: ""}, ComponentSatellite)
+func TestAuditLogger_SyslogDisabledIsNoOp(t *testing.T) {
+	// Master enabled but the syslog transport disabled: no destination, no-op.
+	a, err := NewAuditLogger(AuditConfig{Enabled: true, Syslog: SyslogConfig{Enabled: false}}, ComponentSatellite)
 	require.NoError(t, err)
 	require.False(t, a.Enabled())
 	a.Log(AuditEvent{Operation: OpLogin, ResourceType: ResSession, Outcome: OutcomeSuccess})
@@ -185,10 +201,7 @@ func TestAuditLogger_UnwritableDestinationErrors(t *testing.T) {
 	blocker := filepath.Join(t.TempDir(), "not-a-dir")
 	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o600))
 
-	a, err := NewAuditLogger(AuditConfig{
-		Enabled:  true,
-		FilePath: filepath.Join(blocker, "audit.log"),
-	}, ComponentSatellite)
+	a, err := NewAuditLogger(fileSyslogConfig(filepath.Join(blocker, "audit.log")), ComponentSatellite)
 	require.Error(t, err)
 	require.Nil(t, a)
 }
@@ -200,7 +213,7 @@ func TestAuditLogger_ReconfigureSwapsDestination(t *testing.T) {
 	require.False(t, a.Enabled())
 
 	path := filepath.Join(t.TempDir(), "audit.log")
-	require.NoError(t, a.Reconfigure(AuditConfig{Enabled: true, FilePath: path}))
+	require.NoError(t, a.Reconfigure(fileSyslogConfig(path)))
 	require.True(t, a.Enabled())
 
 	a.Log(AuditEvent{Operation: OpLogin, ResourceType: ResSession, Outcome: OutcomeSuccess})
@@ -230,7 +243,7 @@ func TestAuditFromContext_DefaultsToNoOp(t *testing.T) {
 
 func TestAuditFromContext_RoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
-	a, err := NewAuditLogger(AuditConfig{Enabled: true, FilePath: path}, ComponentSatellite)
+	a, err := NewAuditLogger(fileSyslogConfig(path), ComponentSatellite)
 	require.NoError(t, err)
 
 	ctx := WithAuditLogger(context.Background(), a)

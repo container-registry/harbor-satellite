@@ -545,113 +545,178 @@ func TestValidateAndEnforceAuditConfig(t *testing.T) {
 		require.Equal(t, AuditConfig{}, cfg.AppConfig.Audit)
 	})
 
-	t.Run("omitted rotation fields default silently to Ground Control parity", func(t *testing.T) {
+	t.Run("file target: omitted rotation fields default silently", func(t *testing.T) {
 		cfg := &Config{
 			AppConfig: AppConfig{
 				Audit: AuditConfig{Enabled: true},
 			},
 		}
 		warnings := validateAndEnforceAuditConfig(cfg)
-		// Only the empty file_path warns. Unset size/backups/age default
-		// silently — an omitted field is "use the default", not "retain all",
-		// matching Ground Control's env-var defaults.
+		// Target defaults to file, so only the empty file path warns. Unset
+		// size/backups/age default silently — an omitted field is "use the
+		// default", not "retain all", matching Ground Control's env-var defaults.
 		require.Len(t, warnings, 1)
-		require.Equal(t, DefaultAuditFilePath, cfg.AppConfig.Audit.FilePath)
-		require.NotNil(t, cfg.AppConfig.Audit.MaxBackups)
-		require.NotNil(t, cfg.AppConfig.Audit.MaxAgeDays)
-		require.Equal(t, DefaultAuditMaxSizeMB, *cfg.AppConfig.Audit.MaxSizeMB)
-		require.Equal(t, DefaultAuditMaxBackups, *cfg.AppConfig.Audit.MaxBackups)
-		require.Equal(t, DefaultAuditMaxAgeDays, *cfg.AppConfig.Audit.MaxAgeDays)
+		f := cfg.AppConfig.Audit.Syslog.File
+		require.Equal(t, "file", cfg.AppConfig.Audit.Syslog.Target)
+		require.Equal(t, DefaultAuditSyslogTag, cfg.AppConfig.Audit.Syslog.Tag)
+		require.Equal(t, DefaultAuditFilePath, f.Path)
+		require.Equal(t, DefaultAuditMaxSizeMB, *f.MaxSizeMB)
+		require.Equal(t, DefaultAuditMaxBackups, *f.MaxBackups)
+		require.Equal(t, DefaultAuditMaxAgeDays, *f.MaxAgeDays)
 	})
 
-	t.Run("user-provided values are preserved", func(t *testing.T) {
+	t.Run("file target: user-provided values are preserved", func(t *testing.T) {
 		cfg := &Config{
 			AppConfig: AppConfig{
 				Audit: AuditConfig{
-					Enabled:    true,
-					FilePath:   "/var/log/audit.log",
-					MaxSizeMB:  intPtr(50),
-					MaxBackups: intPtr(10),
-					MaxAgeDays: intPtr(90),
+					Enabled: true,
+					Syslog: SyslogAudit{
+						Target: "file",
+						File: SyslogAuditFile{
+							Path:       "/var/log/audit.log",
+							MaxSizeMB:  intPtr(50),
+							MaxBackups: intPtr(10),
+							MaxAgeDays: intPtr(90),
+						},
+					},
 				},
 			},
 		}
 		warnings := validateAndEnforceAuditConfig(cfg)
 		require.Empty(t, warnings)
-		require.Equal(t, "/var/log/audit.log", cfg.AppConfig.Audit.FilePath)
-		require.Equal(t, 50, *cfg.AppConfig.Audit.MaxSizeMB)
-		require.Equal(t, 10, *cfg.AppConfig.Audit.MaxBackups)
-		require.Equal(t, 90, *cfg.AppConfig.Audit.MaxAgeDays)
+		f := cfg.AppConfig.Audit.Syslog.File
+		require.Equal(t, "/var/log/audit.log", f.Path)
+		require.Equal(t, 50, *f.MaxSizeMB)
+		require.Equal(t, 10, *f.MaxBackups)
+		require.Equal(t, 90, *f.MaxAgeDays)
 	})
 
-	t.Run("negative rotation values are corrected with warnings", func(t *testing.T) {
+	t.Run("file target: negative rotation values are corrected with warnings", func(t *testing.T) {
 		cfg := &Config{
 			AppConfig: AppConfig{
 				Audit: AuditConfig{
-					Enabled:    true,
-					FilePath:   "./a.log",
-					MaxSizeMB:  intPtr(-1),
-					MaxBackups: intPtr(-5),
-					MaxAgeDays: intPtr(-1),
+					Enabled: true,
+					Syslog: SyslogAudit{
+						Target: "file",
+						File: SyslogAuditFile{
+							Path:       "./a.log",
+							MaxSizeMB:  intPtr(-1),
+							MaxBackups: intPtr(-5),
+							MaxAgeDays: intPtr(-1),
+						},
+					},
 				},
 			},
 		}
 		warnings := validateAndEnforceAuditConfig(cfg)
 		require.Len(t, warnings, 3)
-		require.Equal(t, DefaultAuditMaxSizeMB, *cfg.AppConfig.Audit.MaxSizeMB)
-		require.Equal(t, DefaultAuditMaxBackups, *cfg.AppConfig.Audit.MaxBackups)
-		require.Equal(t, DefaultAuditMaxAgeDays, *cfg.AppConfig.Audit.MaxAgeDays)
+		f := cfg.AppConfig.Audit.Syslog.File
+		require.Equal(t, DefaultAuditMaxSizeMB, *f.MaxSizeMB)
+		require.Equal(t, DefaultAuditMaxBackups, *f.MaxBackups)
+		require.Equal(t, DefaultAuditMaxAgeDays, *f.MaxAgeDays)
 	})
 
-	t.Run("explicit zero backups and age are preserved as unlimited retention", func(t *testing.T) {
+	t.Run("file target: explicit zero backups and age are preserved as unlimited retention", func(t *testing.T) {
 		cfg := &Config{
 			AppConfig: AppConfig{
 				Audit: AuditConfig{
-					Enabled:    true,
-					FilePath:   "./a.log",
-					MaxSizeMB:  intPtr(10),
-					MaxBackups: intPtr(0),
-					MaxAgeDays: intPtr(0),
+					Enabled: true,
+					Syslog: SyslogAudit{
+						Target: "file",
+						File: SyslogAuditFile{
+							Path:       "./a.log",
+							MaxSizeMB:  intPtr(10),
+							MaxBackups: intPtr(0),
+							MaxAgeDays: intPtr(0),
+						},
+					},
 				},
 			},
 		}
 		warnings := validateAndEnforceAuditConfig(cfg)
 		require.Empty(t, warnings)
-		require.Equal(t, 10, *cfg.AppConfig.Audit.MaxSizeMB)
-		require.Equal(t, 0, *cfg.AppConfig.Audit.MaxBackups)
-		require.Equal(t, 0, *cfg.AppConfig.Audit.MaxAgeDays)
+		f := cfg.AppConfig.Audit.Syslog.File
+		require.Equal(t, 10, *f.MaxSizeMB)
+		require.Equal(t, 0, *f.MaxBackups)
+		require.Equal(t, 0, *f.MaxAgeDays)
+	})
+
+	t.Run("daemon target: socket path defaults, no rotation applied", func(t *testing.T) {
+		cfg := &Config{
+			AppConfig: AppConfig{
+				Audit: AuditConfig{Enabled: true, Syslog: SyslogAudit{Target: "daemon"}},
+			},
+		}
+		warnings := validateAndEnforceAuditConfig(cfg)
+		require.Empty(t, warnings)
+		require.Equal(t, DefaultAuditSyslogSocket, cfg.AppConfig.Audit.Syslog.SocketPath)
+		require.Nil(t, cfg.AppConfig.Audit.Syslog.File.MaxSizeMB, "rotation not applied to daemon target")
+	})
+
+	t.Run("network target: missing address warns", func(t *testing.T) {
+		cfg := &Config{
+			AppConfig: AppConfig{
+				Audit: AuditConfig{Enabled: true, Syslog: SyslogAudit{Target: "network", Network: "tcp"}},
+			},
+		}
+		warnings := validateAndEnforceAuditConfig(cfg)
+		require.Len(t, warnings, 1, "missing address should warn")
+	})
+
+	t.Run("invalid target falls back to file with a warning", func(t *testing.T) {
+		cfg := &Config{
+			AppConfig: AppConfig{
+				Audit: AuditConfig{Enabled: true, Syslog: SyslogAudit{Target: "bogus"}},
+			},
+		}
+		warnings := validateAndEnforceAuditConfig(cfg)
+		require.NotEmpty(t, warnings)
+		require.Equal(t, "file", cfg.AppConfig.Audit.Syslog.Target)
 	})
 }
 
 func TestAuditConfig_Equal(t *testing.T) {
+	fileCfg := func() AuditConfig {
+		return AuditConfig{
+			Enabled: true,
+			Syslog:  SyslogAudit{Target: "file", File: SyslogAuditFile{Path: "/a.log"}},
+		}
+	}
+
 	t.Run("two empty configs are equal", func(t *testing.T) {
 		require.True(t, AuditConfig{}.Equal(AuditConfig{}))
 	})
 
 	t.Run("omitted field equals an explicit default value", func(t *testing.T) {
-		// nil resolves to the default via MaxBackupsOrDefault, so a reload that
+		// nil resolves to the default via the OrDefault helpers, so a reload that
 		// only makes the default explicit must NOT count as a change.
-		omitted := AuditConfig{Enabled: true, FilePath: "/a.log"}
-		explicit := AuditConfig{
-			Enabled:    true,
-			FilePath:   "/a.log",
-			MaxSizeMB:  intPtr(DefaultAuditMaxSizeMB),
-			MaxBackups: intPtr(DefaultAuditMaxBackups),
-			MaxAgeDays: intPtr(DefaultAuditMaxAgeDays),
-		}
+		omitted := fileCfg()
+		explicit := fileCfg()
+		explicit.Syslog.File.MaxSizeMB = intPtr(DefaultAuditMaxSizeMB)
+		explicit.Syslog.File.MaxBackups = intPtr(DefaultAuditMaxBackups)
+		explicit.Syslog.File.MaxAgeDays = intPtr(DefaultAuditMaxAgeDays)
+		explicit.Syslog.File.Compress = boolPtr(DefaultAuditCompress)
 		require.True(t, omitted.Equal(explicit))
 	})
 
 	t.Run("explicit zero (keep-all) differs from omitted default", func(t *testing.T) {
-		// This is the whole point of the pointer change: 0 means "retain
+		// This is the whole point of the pointer fields: 0 means "retain
 		// everything" and must be distinguishable from "use the default".
-		keepAll := AuditConfig{Enabled: true, FilePath: "/a.log", MaxBackups: intPtr(0)}
-		defaulted := AuditConfig{Enabled: true, FilePath: "/a.log"}
-		require.False(t, keepAll.Equal(defaulted))
+		keepAll := fileCfg()
+		keepAll.Syslog.File.MaxBackups = intPtr(0)
+		require.False(t, keepAll.Equal(fileCfg()))
 	})
 
 	t.Run("a changed file path is detected", func(t *testing.T) {
-		require.False(t, AuditConfig{FilePath: "/a"}.Equal(AuditConfig{FilePath: "/b"}))
+		other := fileCfg()
+		other.Syslog.File.Path = "/b.log"
+		require.False(t, fileCfg().Equal(other))
+	})
+
+	t.Run("a changed target is detected", func(t *testing.T) {
+		other := fileCfg()
+		other.Syslog.Target = "daemon"
+		require.False(t, fileCfg().Equal(other))
 	})
 
 	t.Run("a flipped enabled flag is detected", func(t *testing.T) {
@@ -659,4 +724,5 @@ func TestAuditConfig_Equal(t *testing.T) {
 	})
 }
 
-func intPtr(i int) *int { return &i }
+func intPtr(i int) *int    { return &i }
+func boolPtr(b bool) *bool { return &b }

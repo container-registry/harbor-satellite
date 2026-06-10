@@ -197,6 +197,31 @@ func main() {
 // the disable action itself stays audited; otherwise it is emitted after the
 // swap so it lands in the (possibly newly enabled or redirected) destination.
 // Returns the audit config now in effect.
+// auditLoggerConfig maps the on-disk audit config onto the logger's config,
+// resolving defaults and selecting the syslog target. The master Enabled flag
+// gates the (currently sole) syslog transport.
+func auditLoggerConfig(c config.AuditConfig) logger.AuditConfig {
+	s := c.Syslog
+	return logger.AuditConfig{
+		Enabled: c.Enabled,
+		Syslog: logger.SyslogConfig{
+			Enabled:    c.Enabled,
+			Target:     logger.SyslogTarget(s.TargetOrDefault()),
+			Tag:        s.TagOrDefault(),
+			SocketPath: s.SocketPath,
+			Network:    s.Network,
+			Address:    s.Address,
+			File: logger.SyslogFileConfig{
+				Path:       s.File.Path,
+				MaxSizeMB:  s.File.MaxSizeMBOrDefault(),
+				MaxBackups: s.File.MaxBackupsOrDefault(),
+				MaxAgeDays: s.File.MaxAgeDaysOrDefault(),
+				Compress:   s.File.CompressOrDefault(),
+			},
+		},
+	}
+}
+
 func reconfigureAuditOnReload(audit *logger.AuditLogger, current, next config.AuditConfig, changedKeys []string, log *zerolog.Logger) config.AuditConfig {
 	logChanged := func(outcome logger.Outcome, reason logger.Reason) {
 		audit.Log(logger.AuditEvent{
@@ -224,13 +249,7 @@ func reconfigureAuditOnReload(audit *logger.AuditLogger, current, next config.Au
 	// so the emitted event does not claim a change that did not take effect.
 	outcome, reason := logger.OutcomeSuccess, logger.Reason("")
 	if changed {
-		if rcErr := audit.Reconfigure(logger.AuditConfig{
-			Enabled:    next.Enabled,
-			FilePath:   next.FilePath,
-			MaxSizeMB:  next.MaxSizeMBOrDefault(),
-			MaxBackups: next.MaxBackupsOrDefault(),
-			MaxAgeDays: next.MaxAgeDaysOrDefault(),
-		}); rcErr != nil {
+		if rcErr := audit.Reconfigure(auditLoggerConfig(next)); rcErr != nil {
 			// The reconfigure failed, so the audit logger keeps its previous
 			// configuration. If audit was already enabled (a writable
 			// destination) the failure event below still lands there; if it was
@@ -345,13 +364,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	// Initialize audit logger from config and attach to context
 	auditCfg := cm.GetAuditConfig()
-	audit, auditErr := logger.NewAuditLogger(logger.AuditConfig{
-		Enabled:    auditCfg.Enabled,
-		FilePath:   auditCfg.FilePath,
-		MaxSizeMB:  auditCfg.MaxSizeMBOrDefault(),
-		MaxBackups: auditCfg.MaxBackupsOrDefault(),
-		MaxAgeDays: auditCfg.MaxAgeDaysOrDefault(),
-	}, logger.ComponentSatellite)
+	audit, auditErr := logger.NewAuditLogger(auditLoggerConfig(auditCfg), logger.ComponentSatellite)
 	if auditErr != nil {
 		return fmt.Errorf("failed to initialize audit logger: %w", auditErr)
 	}
@@ -360,7 +373,9 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	currentAuditCfg := auditCfg
 	ctx = logger.WithAuditLogger(ctx, audit)
 	if audit.Enabled() {
-		log.Info().Str("file_path", auditCfg.FilePath).Msg("Audit logging enabled")
+		log.Info().
+			Str("target", auditCfg.Syslog.TargetOrDefault()).
+			Msg("Audit logging enabled")
 	}
 
 	// Write the config to disk, in case any defaults were enforced at runtime

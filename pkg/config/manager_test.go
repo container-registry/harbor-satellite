@@ -14,7 +14,10 @@ func TestConfigManager_detectChangesAudit(t *testing.T) {
 	cm := &ConfigManager{}
 	base := func() *Config {
 		c := &Config{}
-		c.AppConfig.Audit = AuditConfig{Enabled: true, FilePath: "/a.log"}
+		c.AppConfig.Audit = AuditConfig{
+			Enabled: true,
+			Syslog:  SyslogAudit{Target: "file", File: SyslogAuditFile{Path: "/a.log"}},
+		}
 		return c
 	}
 
@@ -30,9 +33,17 @@ func TestConfigManager_detectChangesAudit(t *testing.T) {
 		require.Equal(t, AuditConfigChanged, changes[0].Type)
 	})
 
-	t.Run("changing file_path is detected as an audit change", func(t *testing.T) {
+	t.Run("changing the syslog file path is detected as an audit change", func(t *testing.T) {
 		next := base()
-		next.AppConfig.Audit.FilePath = "/b.log"
+		next.AppConfig.Audit.Syslog.File.Path = "/b.log"
+		changes := cm.detectChanges(base(), next)
+		require.Len(t, changes, 1)
+		require.Equal(t, AuditConfigChanged, changes[0].Type)
+	})
+
+	t.Run("changing the syslog target is detected as an audit change", func(t *testing.T) {
+		next := base()
+		next.AppConfig.Audit.Syslog.Target = "daemon"
 		changes := cm.detectChanges(base(), next)
 		require.Len(t, changes, 1)
 		require.Equal(t, AuditConfigChanged, changes[0].Type)

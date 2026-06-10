@@ -76,8 +76,9 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	return config, warnings, nil
 }
 
-// validateAndEnforceAuditConfig fills in defaults for audit log rotation when
-// audit logging is enabled.
+// validateAndEnforceAuditConfig fills in defaults for the audit syslog transport
+// when audit logging is enabled, applying only the defaults relevant to the
+// chosen target.
 func validateAndEnforceAuditConfig(config *Config) []string {
 	var warnings []string
 	a := &config.AppConfig.Audit
@@ -85,11 +86,42 @@ func validateAndEnforceAuditConfig(config *Config) []string {
 		return warnings
 	}
 
-	if a.FilePath == "" {
-		warnings = append(warnings, fmt.Sprintf("audit.file_path empty, defaulting to %s", DefaultAuditFilePath))
-		a.FilePath = DefaultAuditFilePath
+	s := &a.Syslog
+	if s.Target == "" {
+		s.Target = DefaultAuditSyslogTarget
 	}
-	return append(warnings, enforceAuditRotation(a)...)
+	if s.Tag == "" {
+		s.Tag = DefaultAuditSyslogTag
+	}
+
+	switch s.Target {
+	case "file":
+		if s.File.Path == "" {
+			warnings = append(warnings, fmt.Sprintf("audit.syslog.file.path empty, defaulting to %s", DefaultAuditFilePath))
+			s.File.Path = DefaultAuditFilePath
+		}
+		warnings = append(warnings, enforceAuditRotation(&s.File)...)
+	case "daemon":
+		if s.SocketPath == "" {
+			s.SocketPath = DefaultAuditSyslogSocket
+		}
+	case "network":
+		if s.Network == "" {
+			s.Network = "udp"
+			warnings = append(warnings, "audit.syslog.network empty, defaulting to udp")
+		}
+		if s.Address == "" {
+			warnings = append(warnings, "audit.syslog.target=network but audit.syslog.address is empty; the audit logger will fail to start")
+		}
+	default:
+		warnings = append(warnings, fmt.Sprintf("audit.syslog.target %q is invalid (expected daemon|network|file), defaulting to %s", s.Target, DefaultAuditSyslogTarget))
+		s.Target = DefaultAuditSyslogTarget
+		if s.File.Path == "" {
+			s.File.Path = DefaultAuditFilePath
+		}
+		warnings = append(warnings, enforceAuditRotation(&s.File)...)
+	}
+	return warnings
 }
 
 // enforceAuditRotation fills in defaults for the audit log rotation fields. An
@@ -97,28 +129,28 @@ func validateAndEnforceAuditConfig(config *Config) []string {
 // defaults. For MaxBackups/MaxAgeDays an explicit 0 is a deliberate "retain
 // everything" (lumberjack semantics) and is preserved; only genuine negatives
 // (and a non-positive MaxSizeMB) warn and default.
-func enforceAuditRotation(a *AuditConfig) []string {
+func enforceAuditRotation(f *SyslogAuditFile) []string {
 	var warnings []string
-	if a.MaxSizeMB == nil {
+	if f.MaxSizeMB == nil {
 		v := DefaultAuditMaxSizeMB
-		a.MaxSizeMB = &v
-	} else if *a.MaxSizeMB <= 0 {
-		warnings = append(warnings, fmt.Sprintf("audit.max_size_mb must be > 0, defaulting to %d", DefaultAuditMaxSizeMB))
-		*a.MaxSizeMB = DefaultAuditMaxSizeMB
+		f.MaxSizeMB = &v
+	} else if *f.MaxSizeMB <= 0 {
+		warnings = append(warnings, fmt.Sprintf("audit.syslog.file.max_size_mb must be > 0, defaulting to %d", DefaultAuditMaxSizeMB))
+		*f.MaxSizeMB = DefaultAuditMaxSizeMB
 	}
-	if a.MaxBackups == nil {
+	if f.MaxBackups == nil {
 		v := DefaultAuditMaxBackups
-		a.MaxBackups = &v
-	} else if *a.MaxBackups < 0 {
-		warnings = append(warnings, fmt.Sprintf("audit.max_backups must be >= 0, defaulting to %d", DefaultAuditMaxBackups))
-		*a.MaxBackups = DefaultAuditMaxBackups
+		f.MaxBackups = &v
+	} else if *f.MaxBackups < 0 {
+		warnings = append(warnings, fmt.Sprintf("audit.syslog.file.max_backups must be >= 0, defaulting to %d", DefaultAuditMaxBackups))
+		*f.MaxBackups = DefaultAuditMaxBackups
 	}
-	if a.MaxAgeDays == nil {
+	if f.MaxAgeDays == nil {
 		v := DefaultAuditMaxAgeDays
-		a.MaxAgeDays = &v
-	} else if *a.MaxAgeDays < 0 {
-		warnings = append(warnings, fmt.Sprintf("audit.max_age_days must be >= 0, defaulting to %d", DefaultAuditMaxAgeDays))
-		*a.MaxAgeDays = DefaultAuditMaxAgeDays
+		f.MaxAgeDays = &v
+	} else if *f.MaxAgeDays < 0 {
+		warnings = append(warnings, fmt.Sprintf("audit.syslog.file.max_age_days must be >= 0, defaulting to %d", DefaultAuditMaxAgeDays))
+		*f.MaxAgeDays = DefaultAuditMaxAgeDays
 	}
 	return warnings
 }
