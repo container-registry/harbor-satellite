@@ -575,8 +575,7 @@ func ProcessState(state *StateReader) (*StateReader, error) {
 	for _, artifact := range (*state).GetArtifacts() {
 		repo, image, err := utils.GetRepositoryAndImageNameFromArtifact(artifact.GetRepository())
 		if err != nil {
-			fmt.Printf("Error in getting repository and image name: %v", err)
-			return nil, err
+			return nil, fmt.Errorf("get repository and image name for %q: %w", artifact.GetRepository(), err)
 		}
 		artifact.SetRepository(repo)
 		artifact.SetName(image)
