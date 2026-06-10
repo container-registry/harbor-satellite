@@ -24,6 +24,7 @@ const DefaultHeartbeatCronExpr string = "@every 00h00m30s"
 
 const BringOwnRegistry bool = false
 
+// storage.rootDirectory is a placeholder; overridden at runtime by BuildZotConfigWithStoragePath.
 const DefaultZotConfigJSON = `{
   "distSpecVersion": "1.1.0",
   "storage": {
