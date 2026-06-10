@@ -126,19 +126,29 @@ func (f SyslogAuditFile) CompressOrDefault() bool {
 // Equal reports whether two audit configs resolve to the same effective
 // settings. It compares effective values, not pointer identity, so a hot
 // reload that yields fresh pointers with unchanged values is not mistaken
-// for a change.
+// for a change. The comparison is split across the nested types to keep each
+// method's cyclomatic complexity low.
 func (a AuditConfig) Equal(b AuditConfig) bool {
-	return a.Enabled == b.Enabled &&
-		a.Syslog.TargetOrDefault() == b.Syslog.TargetOrDefault() &&
-		a.Syslog.TagOrDefault() == b.Syslog.TagOrDefault() &&
-		a.Syslog.SocketPath == b.Syslog.SocketPath &&
-		a.Syslog.Network == b.Syslog.Network &&
-		a.Syslog.Address == b.Syslog.Address &&
-		a.Syslog.File.Path == b.Syslog.File.Path &&
-		a.Syslog.File.MaxSizeMBOrDefault() == b.Syslog.File.MaxSizeMBOrDefault() &&
-		a.Syslog.File.MaxBackupsOrDefault() == b.Syslog.File.MaxBackupsOrDefault() &&
-		a.Syslog.File.MaxAgeDaysOrDefault() == b.Syslog.File.MaxAgeDaysOrDefault() &&
-		a.Syslog.File.CompressOrDefault() == b.Syslog.File.CompressOrDefault()
+	return a.Enabled == b.Enabled && a.Syslog.equal(b.Syslog)
+}
+
+// equal compares two syslog blocks by effective value.
+func (s SyslogAudit) equal(o SyslogAudit) bool {
+	return s.TargetOrDefault() == o.TargetOrDefault() &&
+		s.TagOrDefault() == o.TagOrDefault() &&
+		s.SocketPath == o.SocketPath &&
+		s.Network == o.Network &&
+		s.Address == o.Address &&
+		s.File.equal(o.File)
+}
+
+// equal compares two syslog file blocks by effective value.
+func (f SyslogAuditFile) equal(o SyslogAuditFile) bool {
+	return f.Path == o.Path &&
+		f.MaxSizeMBOrDefault() == o.MaxSizeMBOrDefault() &&
+		f.MaxBackupsOrDefault() == o.MaxBackupsOrDefault() &&
+		f.MaxAgeDaysOrDefault() == o.MaxAgeDaysOrDefault() &&
+		f.CompressOrDefault() == o.CompressOrDefault()
 }
 
 // DirectDeliveryConfig holds settings for writing image tarballs directly

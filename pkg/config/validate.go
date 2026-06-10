@@ -80,13 +80,16 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 // when audit logging is enabled, applying only the defaults relevant to the
 // chosen target.
 func validateAndEnforceAuditConfig(config *Config) []string {
-	var warnings []string
 	a := &config.AppConfig.Audit
 	if !a.Enabled {
-		return warnings
+		return nil
 	}
+	return enforceSyslogConfig(&a.Syslog)
+}
 
-	s := &a.Syslog
+// enforceSyslogConfig defaults the common fields and dispatches to the
+// per-target enforcement so each function stays low in complexity.
+func enforceSyslogConfig(s *SyslogAudit) []string {
 	if s.Target == "" {
 		s.Target = DefaultAuditSyslogTarget
 	}
@@ -95,33 +98,53 @@ func validateAndEnforceAuditConfig(config *Config) []string {
 	}
 
 	switch s.Target {
-	case "file":
-		if s.File.Path == "" {
-			warnings = append(warnings, fmt.Sprintf("audit.syslog.file.path empty, defaulting to %s", DefaultAuditFilePath))
-			s.File.Path = DefaultAuditFilePath
-		}
-		warnings = append(warnings, enforceAuditRotation(&s.File)...)
 	case "daemon":
-		if s.SocketPath == "" {
-			s.SocketPath = DefaultAuditSyslogSocket
-		}
+		return enforceDaemonTarget(s)
 	case "network":
-		if s.Network == "" {
-			s.Network = "udp"
-			warnings = append(warnings, "audit.syslog.network empty, defaulting to udp")
-		}
-		if s.Address == "" {
-			warnings = append(warnings, "audit.syslog.target=network but audit.syslog.address is empty; the audit logger will fail to start")
-		}
+		return validateNetworkTarget(s)
+	case "file":
+		return enforceFileTarget(s)
 	default:
-		warnings = append(warnings, fmt.Sprintf("audit.syslog.target %q is invalid (expected daemon|network|file), defaulting to %s", s.Target, DefaultAuditSyslogTarget))
-		s.Target = DefaultAuditSyslogTarget
-		if s.File.Path == "" {
-			s.File.Path = DefaultAuditFilePath
-		}
-		warnings = append(warnings, enforceAuditRotation(&s.File)...)
+		return enforceInvalidTarget(s)
+	}
+}
+
+// enforceFileTarget defaults the file path and rotation settings.
+func enforceFileTarget(s *SyslogAudit) []string {
+	var warnings []string
+	if s.File.Path == "" {
+		warnings = append(warnings, fmt.Sprintf("audit.syslog.file.path empty, defaulting to %s", DefaultAuditFilePath))
+		s.File.Path = DefaultAuditFilePath
+	}
+	return append(warnings, enforceAuditRotation(&s.File)...)
+}
+
+// enforceDaemonTarget defaults the local syslog socket path.
+func enforceDaemonTarget(s *SyslogAudit) []string {
+	if s.SocketPath == "" {
+		s.SocketPath = DefaultAuditSyslogSocket
+	}
+	return nil
+}
+
+// validateNetworkTarget defaults the network and warns on a missing address.
+func validateNetworkTarget(s *SyslogAudit) []string {
+	var warnings []string
+	if s.Network == "" {
+		s.Network = "udp"
+		warnings = append(warnings, "audit.syslog.network empty, defaulting to udp")
+	}
+	if s.Address == "" {
+		warnings = append(warnings, "audit.syslog.target=network but audit.syslog.address is empty; the audit logger will fail to start")
 	}
 	return warnings
+}
+
+// enforceInvalidTarget falls back to the file target with a warning.
+func enforceInvalidTarget(s *SyslogAudit) []string {
+	warnings := []string{fmt.Sprintf("audit.syslog.target %q is invalid (expected daemon|network|file), defaulting to %s", s.Target, DefaultAuditSyslogTarget)}
+	s.Target = DefaultAuditSyslogTarget
+	return append(warnings, enforceFileTarget(s)...)
 }
 
 // enforceAuditRotation fills in defaults for the audit log rotation fields. An
