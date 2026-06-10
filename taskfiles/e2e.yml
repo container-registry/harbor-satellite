@@ -65,9 +65,29 @@ tasks:
   start-parsec-daemon:
     desc: Start PARSEC Hardware Simulator
     cmds:
-      - echo "Starting PARSEC Daemon..."
-      - docker run -d --name parsec-daemon -u root --network harbor-e2e --privileged -v parsec-socket:/run/parsec ghcr.io/parallaxsecond/parsec-quickstart:latest bash -c "rm -f /run/parsec/parsec.sock && chmod 777 /run/parsec && sed -i 's|\"./parsec.sock\"|\"/run/parsec/parsec.sock\"|g' config.toml && parsec"
-      - sleep 5
+      - |
+        echo "Starting PARSEC Daemon..."
+        docker run -d --name parsec-daemon \
+          -u root \
+          --network harbor-e2e \
+          --privileged \
+          -v parsec-socket:/run/parsec \
+          ghcr.io/parallaxsecond/parsec-quickstart:latest \
+          bash -c "rm -f /run/parsec/parsec.sock && chmod 777 /run/parsec && sed -i 's|\"./parsec.sock\"|\"/run/parsec/parsec.sock\"|g' config.toml && parsec"
+
+        echo "Waiting for PARSEC socket..."
+        for i in $(seq 1 30); do
+          if docker run --rm -v parsec-socket:/run/parsec alpine:3.22 test -S /run/parsec/parsec.sock; then
+            echo "PARSEC socket is ready"
+            exit 0
+          fi
+          echo "Waiting for PARSEC socket... ($i/30)"
+          sleep 1
+        done
+
+        echo "ERROR: PARSEC daemon did not create /run/parsec/parsec.sock"
+        docker logs parsec-daemon
+        exit 1
 
   register-and-run-parsec-satellite:
     desc: Register satellite and run with PARSEC enabled
@@ -90,6 +110,11 @@ tasks:
             "config_name": "test-config"
           }')
         TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$TOKEN" ]; then
+          echo "ERROR: Ground Control did not return a satellite token."
+          echo "$RESPONSE"
+          exit 1
+        fi
 
         echo "Building satellite with PARSEC tags..."
         docker build --build-arg GO_TAGS=parsec -t satellite:e2e -f Dockerfile .
@@ -109,33 +134,24 @@ tasks:
         sleep 5
 
   verify-parsec:
-    desc: Verify PARSEC hardware key generation
+    desc: Verify PARSEC hardware key generation and signing
     cmds:
       - |
-        # The earlier version of this check grepped the satellite logs for a
-        # `keyattributes: key_type:{rsa_key_pair` line emitted by a leftover
-        # `fmt.Printf` debug statement in parsec-client-go. That debug print
-        # is a bug (removed under PR #468 fixes) and the test should not
-        # depend on it. Instead, verify the key directly via parsec-tool:
-        # it lists the keys the daemon actually holds, which is the
-        # functional truth we care about.
-        echo "Verifying satellite-identity-key exists in PARSEC..."
-        if docker exec -e PARSEC_SERVICE_ENDPOINT="unix:///run/parsec/parsec.sock" parsec-daemon parsec-tool list-keys | grep -q "satellite-identity-key"; then
-          echo "SUCCESS: Key successfully verified in PARSEC secure memory!"
-          docker exec -e PARSEC_SERVICE_ENDPOINT="unix:///run/parsec/parsec.sock" parsec-daemon parsec-tool list-keys
-        else
-          echo "ERROR: satellite-identity-key not found in PARSEC."
-          docker logs satellite
-          exit 1
-        fi
-
         echo "Verifying satellite process is running (did not halt on startup)..."
         if ! docker ps --filter "name=^satellite$" --filter "status=running" --format '{{`{{.Names}}`}}' | grep -q satellite; then
           echo "ERROR: satellite container is not running."
           docker logs satellite
           exit 1
         fi
-        echo "SUCCESS: Satellite is running with PARSEC hardware identity."
+        echo "Verifying PARSEC identity key with sign/verify round-trip..."
+        docker run --rm \
+          --network harbor-e2e \
+          -v "$PWD:/workspace" \
+          -v parsec-socket:/run/parsec \
+          -w /workspace \
+          golang:1.26.3-alpine \
+          go run -tags parsec ./test/e2e/parsec/verify_parsec.go --socket /run/parsec/parsec.sock
+        echo "SUCCESS: Satellite is running with a PARSEC-backed hardware identity."
 
   cleanup-parsec:
     desc: Cleanup PARSEC E2E containers

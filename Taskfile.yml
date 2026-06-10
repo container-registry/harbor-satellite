@@ -67,6 +67,7 @@ tasks:
       - task: _e2e:test
       - task: _e2e:test-byo
       - task: _e2e:test-spiffe
+      - task: _e2e:test-parsec
 
   e2e-test:
     desc: Run main E2E test
@@ -82,6 +83,11 @@ tasks:
     desc: Run SPIFFE E2E test
     cmds:
       - task: _e2e:test-spiffe
+
+  e2e-parsec:
+    desc: Run PARSEC hardware identity E2E test
+    cmds:
+      - task: _e2e:test-parsec
 
   e2e-crash-recovery:
     desc: Run crash recovery E2E test
