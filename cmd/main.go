@@ -209,6 +209,84 @@ func main() {
 	}
 }
 
+// reconfigureAuditOnReload swaps the audit logger to match next when the audit
+// settings changed, and records the config.changed event. When audit is being
+// disabled, the event is emitted on the still-active logger before the swap so
+// the disable action itself stays audited; otherwise it is emitted after the
+// swap so it lands in the (possibly newly enabled or redirected) destination.
+// Returns the audit config now in effect.
+// auditLoggerConfig maps the on-disk audit config onto the logger's config,
+// resolving defaults and selecting the syslog target. The master Enabled flag
+// gates the (currently sole) syslog transport.
+func auditLoggerConfig(c config.AuditConfig) logger.AuditConfig {
+	s := c.Syslog
+	return logger.AuditConfig{
+		Enabled: c.Enabled,
+		Syslog: logger.SyslogConfig{
+			Enabled:    c.Enabled,
+			Target:     logger.SyslogTarget(s.TargetOrDefault()),
+			Tag:        s.TagOrDefault(),
+			SocketPath: s.SocketPath,
+			Network:    s.Network,
+			Address:    s.Address,
+			File: logger.SyslogFileConfig{
+				Path:       s.File.Path,
+				MaxSizeMB:  s.File.MaxSizeMBOrDefault(),
+				MaxBackups: s.File.MaxBackupsOrDefault(),
+				MaxAgeDays: s.File.MaxAgeDaysOrDefault(),
+				Compress:   s.File.CompressOrDefault(),
+			},
+		},
+	}
+}
+
+func reconfigureAuditOnReload(audit *logger.AuditLogger, current, next config.AuditConfig, changedKeys []string, log *zerolog.Logger) config.AuditConfig {
+	logChanged := func(outcome logger.Outcome, reason logger.Reason) {
+		audit.Log(logger.AuditEvent{
+			Operation:    logger.OpUpdate,
+			ResourceType: logger.ResConfig,
+			Outcome:      outcome,
+			Actor:        "satellite",
+			ActorType:    logger.ActorSystem,
+			Reason:       reason,
+			Details: map[string]any{
+				"changed_keys": changedKeys,
+				"source":       "hot_reload",
+			},
+		})
+	}
+
+	changed := !next.Equal(current)
+	disabling := changed && current.Enabled && !next.Enabled
+	if disabling {
+		// The disable action itself succeeds; it is emitted before the swap on
+		// the still-active logger.
+		logChanged(logger.OutcomeSuccess, "")
+	}
+	// Default to success; downgrade to failure if the reconfigure attempt fails
+	// so the emitted event does not claim a change that did not take effect.
+	outcome, reason := logger.OutcomeSuccess, logger.Reason("")
+	if changed {
+		if rcErr := audit.Reconfigure(auditLoggerConfig(next)); rcErr != nil {
+			// The reconfigure failed, so the audit logger keeps its previous
+			// configuration. If audit was already enabled (a writable
+			// destination) the failure event below still lands there; if it was
+			// disabled there is no writable audit sink yet, so this operator log
+			// is the only durable record of the failed enable attempt.
+			log.Error().Err(rcErr).Bool("audit_enabled", audit.Enabled()).
+				Msg("Failed to reconfigure audit logger after reload; previous audit configuration retained")
+			outcome, reason = logger.OutcomeFailure, logger.ReasonReconfigureFailed
+		} else {
+			current = next
+			log.Info().Bool("enabled", audit.Enabled()).Msg("Audit logger reconfigured after hot reload")
+		}
+	}
+	if !disabling {
+		logChanged(outcome, reason)
+	}
+	return current
+}
+
 func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout string) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
@@ -322,6 +400,22 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), opts.JSONLogging, warnings)
 
+	// Initialize audit logger from config and attach to context
+	auditCfg := cm.GetAuditConfig()
+	audit, auditErr := logger.NewAuditLogger(auditLoggerConfig(auditCfg), logger.ComponentSatellite)
+	if auditErr != nil {
+		return fmt.Errorf("failed to initialize audit logger: %w", auditErr)
+	}
+	// currentAuditCfg tracks the live audit settings so a hot reload can detect
+	// audit-specific changes and rebuild the logger in place.
+	currentAuditCfg := auditCfg
+	ctx = logger.WithAuditLogger(ctx, audit)
+	if audit.Enabled() {
+		log.Info().
+			Str("target", auditCfg.Syslog.TargetOrDefault()).
+			Msg("Audit logging enabled")
+	}
+
 	// Write the config to disk, in case any defaults were enforced at runtime
 	if err := cm.WriteConfig(); err != nil {
 		log.Error().Err(err).Msg("Error writing config to disk")
@@ -364,6 +458,15 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 						}
 					}
 					if len(changes) > 0 {
+						changedKeys := make([]string, 0, len(changes))
+						for _, c := range changes {
+							changedKeys = append(changedKeys, string(c.Type))
+						}
+						// Swap the audit logger if its settings changed and record
+						// the config.changed event. When audit is being disabled the
+						// event is emitted before the swap so the disable action is
+						// still captured.
+						currentAuditCfg = reconfigureAuditOnReload(audit, currentAuditCfg, cm.GetAuditConfig(), changedKeys, log)
 						if err := hotReloadManager.ProcessConfigChanges(changes); err != nil {
 							log.Error().Err(err).Msg("Error processing configuration changes")
 						}

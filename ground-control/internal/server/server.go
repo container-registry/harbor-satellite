@@ -17,6 +17,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/middleware"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
 )
@@ -42,6 +43,15 @@ type Server struct {
 
 	// Satellite status
 	staleThreshold time.Duration
+
+	// Audit logger for security events
+	audit *auditlog.AuditLogger
+
+	// trustForwardedHeaders controls whether clientIP() honors
+	// X-Forwarded-For / X-Real-IP. Disabled by default to prevent clients
+	// from spoofing the audit source_ip. Enable only when GC sits behind a
+	// trusted reverse proxy.
+	trustForwardedHeaders bool
 }
 
 // TLSConfig holds TLS settings for the server.
@@ -148,6 +158,11 @@ func NewServer() *ServerResult {
 		spireServerPort = parseIntEnv("SPIRE_SERVER_PORT", 8081)
 	}
 
+	auditLogger, auditErr := auditlog.NewAuditLogger(loadAuditConfig(), auditlog.ComponentGroundControl)
+	if auditErr != nil {
+		log.Fatalf("Failed to initialize audit logger: %v", auditErr)
+	}
+
 	newServer := &Server{
 		port:           port,
 		db:             db,
@@ -168,6 +183,10 @@ func NewServer() *ServerResult {
 
 		// Satellite status
 		staleThreshold: parseDurationEnv("STALE_THRESHOLD", time.Hour),
+
+		// Audit logger
+		audit:                 auditLogger,
+		trustForwardedHeaders: os.Getenv("AUDIT_TRUST_FORWARDED_HEADERS") == "true",
 	}
 
 	// Bootstrap system admin user if not exists
@@ -242,6 +261,22 @@ func parseIntEnv(key string, defaultValue int) int {
 	return defaultValue
 }
 
+// parseRequiredIntEnv returns the int value of an env var, or defaultValue if
+// the var is unset. If the var is set but cannot be parsed as an integer, the
+// process exits. Use for env values where silent fallback to a default would
+// mask operator misconfiguration (e.g. audit log rotation knobs).
+func parseRequiredIntEnv(key string, defaultValue int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultValue
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		log.Fatalf("%s must be an integer, got %q", key, v)
+	}
+	return n
+}
+
 func parseDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
@@ -292,3 +327,76 @@ func buildServerTLSConfigWithWatcher(cfg *TLSConfig, cw *middleware.CertWatcher)
 	return tlsConfig, nil
 }
 
+// loadAuditConfig reads audit log settings from environment variables.
+// Disabled by default; set AUDIT_LOG_ENABLED=true to turn on. The syslog target
+// (daemon | network | file) selects the destination; only the relevant fields
+// are read. Invalid input exits the process rather than silently propagating to
+// the logger config.
+func loadAuditConfig() auditlog.AuditConfig {
+	if os.Getenv("AUDIT_LOG_ENABLED") != "true" {
+		return auditlog.AuditConfig{}
+	}
+
+	target := getEnvOrDefault("AUDIT_SYSLOG_TARGET", "file")
+	syslog := auditlog.SyslogConfig{
+		Enabled:    true,
+		Target:     auditlog.SyslogTarget(target),
+		Tag:        getEnvOrDefault("AUDIT_SYSLOG_TAG", "harbor-audit"),
+		SocketPath: getEnvOrDefault("AUDIT_SYSLOG_SOCKET_PATH", "/dev/log"),
+		Network:    getEnvOrDefault("AUDIT_SYSLOG_NETWORK", "udp"),
+		Address:    os.Getenv("AUDIT_SYSLOG_ADDRESS"),
+	}
+
+	switch target {
+	case "file":
+		syslog.File = loadSyslogFileConfig()
+	case "network":
+		if syslog.Address == "" {
+			log.Fatalf("AUDIT_SYSLOG_TARGET=network but AUDIT_SYSLOG_ADDRESS is empty")
+		}
+	case "daemon":
+		// SocketPath already defaulted above.
+	default:
+		log.Fatalf("AUDIT_SYSLOG_TARGET must be one of daemon|network|file, got %q", target)
+	}
+
+	return auditlog.AuditConfig{Enabled: true, Syslog: syslog}
+}
+
+// loadSyslogFileConfig reads the file-target rotation settings, validating them
+// the same way the satellite config does (invalid values exit the process).
+func loadSyslogFileConfig() auditlog.SyslogFileConfig {
+	// Distinguish unset (fall back to default) from set-but-empty (operator typo
+	// — fail loudly).
+	path, isSet := os.LookupEnv("AUDIT_SYSLOG_FILE_PATH")
+	if !isSet {
+		path = "./audit.log"
+	} else if path == "" {
+		log.Fatalf("AUDIT_SYSLOG_TARGET=file but AUDIT_SYSLOG_FILE_PATH is empty")
+	}
+
+	maxSizeMB := parseRequiredIntEnv("AUDIT_SYSLOG_FILE_MAX_SIZE_MB", 100)
+	maxBackups := parseRequiredIntEnv("AUDIT_SYSLOG_FILE_MAX_BACKUPS", 7)
+	maxAgeDays := parseRequiredIntEnv("AUDIT_SYSLOG_FILE_MAX_AGE_DAYS", 30)
+
+	if maxSizeMB < 1 {
+		log.Fatalf("AUDIT_SYSLOG_FILE_MAX_SIZE_MB must be >= 1, got %d", maxSizeMB)
+	}
+	if maxBackups < 0 {
+		log.Fatalf("AUDIT_SYSLOG_FILE_MAX_BACKUPS must be >= 0, got %d", maxBackups)
+	}
+	if maxAgeDays < 0 {
+		log.Fatalf("AUDIT_SYSLOG_FILE_MAX_AGE_DAYS must be >= 0, got %d", maxAgeDays)
+	}
+
+	// Compression defaults on; only an explicit "false" disables it.
+	compress := os.Getenv("AUDIT_SYSLOG_FILE_COMPRESS") != "false"
+
+	return auditlog.SyslogFileConfig{
+		Path:       path,
+		MaxSizeMB:  maxSizeMB,
+		MaxBackups: maxBackups,
+		MaxAgeDays: maxAgeDays,
+		Compress:   compress,
+	}
+}

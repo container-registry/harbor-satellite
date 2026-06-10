@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -11,7 +12,16 @@ import (
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
 )
+
+// actorFromContext returns the authenticated user's username, or "unknown".
+func actorFromContext(ctx context.Context) string {
+	if u, ok := GetUserFromContext(ctx); ok {
+		return u.Username
+	}
+	return "unknown"
+}
 
 const (
 	roleAdmin       = "admin"
@@ -82,6 +92,16 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpCreate,
+		ResourceType: auditlog.ResUser,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actorFromContext(r.Context()),
+		ActorType:    auditlog.ActorUser,
+		Resource:     user.Username,
+		Details:      map[string]any{"role": user.Role},
+	})
 
 	WriteJSONResponse(w, http.StatusCreated, userResponse{
 		ID:        user.ID,
@@ -184,6 +204,15 @@ func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpDelete,
+		ResourceType: auditlog.ResUser,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        currentUser.Username,
+		ActorType:    auditlog.ActorUser,
+		Resource:     username,
+	})
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -239,6 +268,16 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpPasswordChange,
+		ResourceType: auditlog.ResUser,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        currentUser.Username,
+		ActorType:    auditlog.ActorUser,
+		Resource:     currentUser.Username,
+		Details:      map[string]any{"flow": "self_service"},
+	})
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -288,6 +327,16 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpPasswordChange,
+		ResourceType: auditlog.ResUser,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actorFromContext(r.Context()),
+		ActorType:    auditlog.ActorUser,
+		Resource:     username,
+		Details:      map[string]any{"flow": "admin_reset"},
+	})
 
 	w.WriteHeader(http.StatusNoContent)
 }

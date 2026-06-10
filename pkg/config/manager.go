@@ -18,9 +18,10 @@ import (
 type ConfigChangeType string
 
 const (
-	LogLevelChanged  ConfigChangeType = "log_level"
-	IntervalsChanged ConfigChangeType = "intervals"
-	ZotConfigChanged ConfigChangeType = "zot_config"
+	LogLevelChanged    ConfigChangeType = "log_level"
+	IntervalsChanged   ConfigChangeType = "intervals"
+	ZotConfigChanged   ConfigChangeType = "zot_config"
+	AuditConfigChanged ConfigChangeType = "audit"
 )
 
 type ConfigChange struct {
@@ -138,6 +139,14 @@ func (cm *ConfigManager) detectChanges(oldConfig *Config, newConfig *Config) []C
 			Type:     ZotConfigChanged,
 			OldValue: "zot_config_changed",
 			NewValue: "zot_config_changed",
+		})
+	}
+
+	if !oldConfig.AppConfig.Audit.Equal(newConfig.AppConfig.Audit) {
+		changes = append(changes, ConfigChange{
+			Type:     AuditConfigChanged,
+			OldValue: oldConfig.AppConfig.Audit,
+			NewValue: newConfig.AppConfig.Audit,
 		})
 	}
 
