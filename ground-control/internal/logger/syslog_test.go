@@ -75,7 +75,7 @@ func TestSyslog_FileTargetWritesRFC5424(t *testing.T) {
 func TestSyslog_NetworkTargetUDP(t *testing.T) {
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer pc.Close()
+	defer func() { _ = pc.Close() }()
 
 	a, err := NewAuditLogger(AuditConfig{
 		Enabled: true,
