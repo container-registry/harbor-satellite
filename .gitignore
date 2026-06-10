@@ -43,6 +43,11 @@ ground-control/.gc-dev
 bin/
 .task/
 
+# Top-level satellite binary (built by `go build cmd/main.go` or similar);
+# never check this in.
+/main
+/satellite
+
 # Hugo
 website/public/
 website/resources/
