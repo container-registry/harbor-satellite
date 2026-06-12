@@ -208,13 +208,13 @@ type Transport interface {
 	Close() error
 }
 
-// AuditConfig controls the audit logger. Enabled is the master switch; Syslog
-// is the only destination today (local daemon, remote SIEM, or rotated file).
-// Additional transports (OpenTelemetry, ...) will be added as further fields and
-// wired in Reconfigure.
+// AuditConfig controls the audit logger. Enabled is the master switch; the
+// destinations are Syslog (local daemon, remote SIEM, or rotated file) and
+// OTel (OTLP/HTTP log export), and both may be active at once.
 type AuditConfig struct {
 	Enabled bool
 	Syslog  SyslogConfig
+	OTel    OTelConfig
 }
 
 // AuditLogger writes structured security events to one or more transports. It is
@@ -258,6 +258,15 @@ func (a *AuditLogger) Reconfigure(cfg AuditConfig) error {
 		newTransports = append(newTransports, st)
 	}
 
+	if cfg.Enabled && cfg.OTel.Enabled {
+		ot, err := newOTelTransport(cfg.OTel)
+		if err != nil {
+			closeAll(newTransports)
+			return err
+		}
+		newTransports = append(newTransports, ot)
+	}
+
 	enabled := len(newTransports) > 0
 
 	a.mu.Lock()
@@ -266,10 +275,16 @@ func (a *AuditLogger) Reconfigure(cfg AuditConfig) error {
 	a.enabled = enabled
 	a.mu.Unlock()
 
-	for _, t := range old {
+	closeAll(old)
+	return nil
+}
+
+// closeAll closes every transport in ts, ignoring errors: a transport being
+// discarded has nowhere useful to report its close failure.
+func closeAll(ts []Transport) {
+	for _, t := range ts {
 		_ = t.Close()
 	}
-	return nil
 }
 
 // ensureWritable verifies that path can be created and written to now.

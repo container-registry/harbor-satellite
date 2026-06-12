@@ -42,11 +42,20 @@ type RegistryFallbackConfig struct {
 }
 
 // AuditConfig controls the security-event audit log. When Enabled is false
-// (default), audit events are discarded. The Syslog block selects the
-// destination; it is the only transport today.
+// (default), audit events are discarded. The Syslog block selects the syslog
+// destination; the Otel block additionally exports events over OTLP/HTTP.
 type AuditConfig struct {
 	Enabled bool        `json:"enabled,omitempty"`
 	Syslog  SyslogAudit `json:"syslog,omitempty"`
+	Otel    OtelAudit   `json:"otel,omitempty"`
+}
+
+// OtelAudit configures the OTLP/HTTP log export transport. Endpoint is the
+// collector base URL (e.g. "http://127.0.0.1:4318"); the standard /v1/logs
+// path is appended when the URL carries no path of its own.
+type OtelAudit struct {
+	Enabled  bool   `json:"enabled,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
 }
 
 // SyslogAudit configures the syslog transport. Target picks one of three sinks
@@ -129,7 +138,7 @@ func (f SyslogAuditFile) CompressOrDefault() bool {
 // for a change. The comparison is split across the nested types to keep each
 // method's cyclomatic complexity low.
 func (a AuditConfig) Equal(b AuditConfig) bool {
-	return a.Enabled == b.Enabled && a.Syslog.equal(b.Syslog)
+	return a.Enabled == b.Enabled && a.Syslog.equal(b.Syslog) && a.Otel == b.Otel
 }
 
 // equal compares two syslog blocks by effective value.

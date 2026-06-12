@@ -45,6 +45,10 @@
           "max_age_days": 30,
           "compress": true
         }
+      },
+      "otel": {
+        "enabled": false,
+        "endpoint": ""
       }
     }
   },

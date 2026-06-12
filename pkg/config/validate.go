@@ -84,7 +84,17 @@ func validateAndEnforceAuditConfig(config *Config) []string {
 	if !a.Enabled {
 		return nil
 	}
-	return enforceSyslogConfig(&a.Syslog)
+	warnings := enforceSyslogConfig(&a.Syslog)
+	return append(warnings, validateOtelConfig(&a.Otel)...)
+}
+
+// validateOtelConfig warns when the otel transport is enabled without an
+// endpoint, mirroring the network-target warning below.
+func validateOtelConfig(o *OtelAudit) []string {
+	if o.Enabled && o.Endpoint == "" {
+		return []string{"audit.otel.enabled but audit.otel.endpoint is empty; the audit logger will fail to start"}
+	}
+	return nil
 }
 
 // enforceSyslogConfig defaults the common fields and dispatches to the

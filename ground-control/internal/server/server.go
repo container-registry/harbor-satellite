@@ -360,7 +360,16 @@ func loadAuditConfig() auditlog.AuditConfig {
 		log.Fatalf("AUDIT_SYSLOG_TARGET must be one of daemon|network|file, got %q", target)
 	}
 
-	return auditlog.AuditConfig{Enabled: true, Syslog: syslog}
+	return auditlog.AuditConfig{Enabled: true, Syslog: syslog, OTel: loadOtelConfig()}
+}
+
+// loadOtelConfig reads the optional OTLP/HTTP export settings. The transport
+// is enabled by setting AUDIT_OTEL_ENDPOINT to the collector base URL (e.g.
+// http://127.0.0.1:4318); the standard /v1/logs path is appended when the URL
+// carries no path of its own.
+func loadOtelConfig() auditlog.OTelConfig {
+	endpoint := os.Getenv("AUDIT_OTEL_ENDPOINT")
+	return auditlog.OTelConfig{Enabled: endpoint != "", Endpoint: endpoint}
 }
 
 // loadSyslogFileConfig reads the file-target rotation settings, validating them
