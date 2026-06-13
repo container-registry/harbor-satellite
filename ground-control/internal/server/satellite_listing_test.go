@@ -2,9 +2,11 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"testing"
 	"time"
 
@@ -22,15 +24,21 @@ func TestListSatelliteHandler(t *testing.T) {
 		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
 			AddRow(1, "edge-01", now, now, sql.NullTime{Time: now, Valid: true}, sql.NullString{String: "30s", Valid: true}).
 			AddRow(2, "edge-02", now, now, sql.NullTime{}, sql.NullString{})
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnRows(rows)
+		mock.ExpectQuery(`(?s)SELECT .+FROM PUBLIC\.satellites`).WillReturnRows(rows)
+		mock.ExpectQuery("SELECT .+ FROM satellite_labels WHERE satellite_id = ANY").
+			WillReturnRows(sqlmock.NewRows([]string{"satellite_id", "key", "value"}))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
 		rr := httptest.NewRecorder()
 		server.listSatelliteHandler(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
-		require.Contains(t, rr.Body.String(), "edge-01")
-		require.Contains(t, rr.Body.String(), "edge-02")
+		var resp SatelliteListResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.Len(t, resp.Satellites, 2)
+		require.Equal(t, "edge-01", resp.Satellites[0].Name)
+		require.Equal(t, "edge-02", resp.Satellites[1].Name)
+		require.Equal(t, int32(2), resp.Pagination.Total)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -38,7 +46,7 @@ func TestListSatelliteHandler(t *testing.T) {
 		server, mock := newMockServer(t)
 
 		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"})
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnRows(rows)
+		mock.ExpectQuery(`(?s)SELECT .+FROM PUBLIC\.satellites`).WillReturnRows(rows)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
 		rr := httptest.NewRecorder()
@@ -51,13 +59,109 @@ func TestListSatelliteHandler(t *testing.T) {
 	t.Run("db error returns 500", func(t *testing.T) {
 		server, mock := newMockServer(t)
 
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnError(fmt.Errorf("db error"))
+		mock.ExpectQuery(`(?s)SELECT .+FROM PUBLIC\.satellites`).WillReturnError(fmt.Errorf("db error"))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
 		rr := httptest.NewRecorder()
 		server.listSatelliteHandler(rr, req)
 
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns filtered paginated satellites", func(t *testing.T) {
+		server, mock := newMockServer(t)
+		now := time.Now().UTC().Truncate(time.Second)
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*) FROM satellites WHERE lower(name) LIKE lower($1) || '%' ESCAPE '\'`)).
+			WithArgs(`edge\_\%`).
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+
+		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
+			AddRow(2, "edge-02", now, now, sql.NullTime{}, sql.NullString{})
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval
+FROM satellites WHERE lower(name) LIKE lower($1) || '%' ESCAPE '\'
+ORDER BY name ASC, id ASC
+LIMIT $2 OFFSET $3`)).
+			WithArgs(`edge\_\%`, int32(1), int32(1)).
+			WillReturnRows(rows)
+		mock.ExpectQuery("SELECT .+ FROM satellite_labels WHERE satellite_id = ANY").
+			WillReturnRows(sqlmock.NewRows([]string{"satellite_id", "key", "value"}))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?limit=1&offset=1&name_prefix=edge_%25&sort=name&order=asc", nil)
+		rr := httptest.NewRecorder()
+		server.listSatelliteHandler(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		var resp SatelliteListResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.Len(t, resp.Satellites, 1)
+		require.Equal(t, int32(1), resp.Pagination.Limit)
+		require.Equal(t, int32(1), resp.Pagination.Offset)
+		require.Equal(t, int32(2), resp.Pagination.Total)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns empty array for filtered paginated satellites with no matches", func(t *testing.T) {
+		server, mock := newMockServer(t)
+
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*) FROM satellites WHERE lower(name) LIKE lower($1) || '%' ESCAPE '\'`)).
+			WithArgs("unknown").
+			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+
+		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"})
+		mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval
+FROM satellites WHERE lower(name) LIKE lower($1) || '%' ESCAPE '\'
+ORDER BY name ASC, id ASC
+LIMIT $2 OFFSET $3`)).
+			WithArgs("unknown", int32(100), int32(0)).
+			WillReturnRows(rows)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?name_prefix=unknown", nil)
+		rr := httptest.NewRecorder()
+		server.listSatelliteHandler(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		var resp SatelliteListResponse
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+		require.Empty(t, resp.Satellites)
+		require.Equal(t, int32(0), resp.Pagination.Total)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("rejects unsupported query parameter", func(t *testing.T) {
+		server, mock := newMockServer(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?foo=bar", nil)
+		rr := httptest.NewRecorder()
+		server.listSatelliteHandler(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Contains(t, rr.Body.String(), "unsupported query parameter: foo")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("rejects invalid limit", func(t *testing.T) {
+		server, mock := newMockServer(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?limit=0", nil)
+		rr := httptest.NewRecorder()
+		server.listSatelliteHandler(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Contains(t, rr.Body.String(), "limit must be between 1 and 500")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("rejects invalid sort", func(t *testing.T) {
+		server, mock := newMockServer(t)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites?sort=token", nil)
+		rr := httptest.NewRecorder()
+		server.listSatelliteHandler(rr, req)
+
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+		require.Contains(t, rr.Body.String(), "sort must be one of")
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
