@@ -99,8 +99,10 @@ secrets.
 ### Satellite
 
 Add an `audit` block to the `app_config` section of the satellite config JSON.
-Events are emitted as RFC 5424 syslog messages; the `syslog.target` selects the
-destination.
+Two transports are available and may be enabled together: a syslog transport
+(RFC 5424, `syslog.target` selects the destination) and an OpenTelemetry
+transport (`otel`, OTLP/HTTP). When both are enabled every event is delivered
+to both.
 
 ```json
 "audit": {
@@ -118,6 +120,10 @@ destination.
       "max_age_days": 30,
       "compress": true
     }
+  },
+  "otel": {
+    "enabled": true,
+    "endpoint": "http://otel-collector:4318"
   }
 }
 ```
@@ -135,8 +141,10 @@ destination.
 | `syslog.file.max_backups`  | `7`        | Keep this many rotated files. |
 | `syslog.file.max_age_days` | `30`       | Drop rotated files older than this. |
 | `syslog.file.compress`     | `true`     | gzip rotated files. |
+| `otel.enabled`         | `false`        | Enable the OpenTelemetry (OTLP/HTTP) transport. |
+| `otel.endpoint`        | -              | Base URL of the OTLP/HTTP receiver (e.g. an OpenTelemetry Collector). `/v1/logs` is appended when the URL has no path. |
 
-Only the block for the chosen `target` is used; the others are ignored.
+Only the block for the chosen syslog `target` is used; the others are ignored.
 Rotation applies only to `target: file` - for `daemon` the OS rotates, and for
 `network` there is no local file.
 
@@ -161,8 +169,12 @@ AUDIT_SYSLOG_FILE_MAX_SIZE_MB=100
 AUDIT_SYSLOG_FILE_MAX_BACKUPS=7
 AUDIT_SYSLOG_FILE_MAX_AGE_DAYS=30
 AUDIT_SYSLOG_FILE_COMPRESS=true
+AUDIT_OTEL_ENDPOINT=http://otel-collector:4318
 AUDIT_TRUST_FORWARDED_HEADERS=false
 ```
+
+A non-empty `AUDIT_OTEL_ENDPOINT` enables the OpenTelemetry (OTLP/HTTP)
+transport in addition to syslog; leave it unset to disable OTel.
 
 `AUDIT_LOG_ENABLED=false` (default) disables the logger entirely.
 `AUDIT_SYSLOG_TARGET` selects the destination (`daemon` | `network` | `file`);
@@ -195,11 +207,13 @@ rather than silently drop events.
 - **Two destinations in production.** Satellite and Ground Control each emit
   their own stream. The `component` field tells them apart once aggregated;
   pivot on `event_type`, `severity`, `actor`, or `reason` in your SIEM.
-- **OTel-ready.** The schema is designed so an OpenTelemetry exporter can be
-  added without renaming fields - `severity` -> severity number, `component` ->
-  `service.name`, and `operation` / `resource_type` / `outcome` / `reason`
-  become first-class attributes instead of substrings parsed out of
-  `event_type`.
+- **OpenTelemetry.** The OTLP/HTTP transport maps the record onto OTel without
+  renaming fields - `severity` -> severity number, `component` ->
+  `service.name`, and `event_type` / `actor` / `outcome` / `reason` become
+  first-class attributes (`event.name`, `user.name`, `harbor.audit.outcome`,
+  `error.type`) instead of substrings a SIEM has to parse out. An
+  OTel-aware backend (e.g. an OpenTelemetry Collector exporting to OpenSearch)
+  indexes these as searchable fields with no per-format decoder.
 - **Stable event types.** New event types will be added; the
   `{resource_type}.{operation}.{outcome}` identifiers are stable strings - safe
   to use in alerting rules.
@@ -210,7 +224,7 @@ rather than silently drop events.
   when the local Zot or fallback layer denies a pull.
 - `satellite.revoke.success` / `satellite.unrevoke.success` - pending the
   revocation workflow added in Ground Control.
-- **OpenTelemetry / CloudEvents transports** - the syslog transport ships
-  today; OTel and CloudEvents exporters are tracked as follow-up work (the event
-  model is already compatible - see Format). They plug into the same transport
-  seam the syslog transport uses.
+- **CloudEvents transport** - the syslog and OpenTelemetry transports ship
+  today; a CloudEvents exporter is tracked as follow-up work (the event model is
+  already compatible - see Format). It plugs into the same transport seam the
+  syslog and OTel transports use.
