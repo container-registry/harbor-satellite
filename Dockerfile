@@ -6,6 +6,11 @@ WORKDIR /app
 # Install git for go mod download
 RUN apk add --no-cache git ca-certificates
 
+# Copy the in-tree parsec-client-go module so the root go.mod `replace`
+# directive resolves locally. Harmless when GO_TAGS does not include
+# `parsec`; required when it does.
+COPY parsec-client-go/ /app/parsec-client-go/
+
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
 RUN go mod download
@@ -13,8 +18,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -o /satellite ./cmd/main.go
+# Build the binary. Default: no extra tags (production-equivalent of main).
+# Pass --build-arg GO_TAGS=parsec to opt into the PARSEC code path.
+ARG GO_TAGS=""
+RUN CGO_ENABLED=0 GOOS=linux go build -tags "${GO_TAGS}" -o /satellite ./cmd/main.go
 
 # Runtime stage
 FROM alpine:3.20

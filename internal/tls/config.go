@@ -1,6 +1,10 @@
 package tls
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -31,6 +35,7 @@ type Config struct {
 	ServerName string
 	SkipVerify bool
 	MinVersion uint16
+	Signer     crypto.Signer
 }
 
 // DefaultConfig returns a secure default TLS configuration.
@@ -52,8 +57,8 @@ func LoadClientTLSConfig(cfg *Config) (*tls.Config, error) {
 	}
 
 	// Load client certificate if provided (for mTLS)
-	if cfg.CertFile != "" && cfg.KeyFile != "" {
-		cert, err := LoadCertificate(cfg.CertFile, cfg.KeyFile)
+	if cfg.CertFile != "" && (cfg.KeyFile != "" || cfg.Signer != nil) {
+		cert, err := LoadCertificate(cfg.CertFile, cfg.KeyFile, cfg.Signer)
 		if err != nil {
 			return nil, err
 		}
@@ -74,11 +79,11 @@ func LoadClientTLSConfig(cfg *Config) (*tls.Config, error) {
 
 // LoadServerTLSConfig loads TLS configuration for a server.
 func LoadServerTLSConfig(cfg *Config) (*tls.Config, error) {
-	if cfg.CertFile == "" || cfg.KeyFile == "" {
+	if cfg.CertFile == "" || (cfg.KeyFile == "" && cfg.Signer == nil) {
 		return nil, ErrCertNotFound
 	}
 
-	cert, err := LoadCertificate(cfg.CertFile, cfg.KeyFile)
+	cert, err := LoadCertificate(cfg.CertFile, cfg.KeyFile, cfg.Signer)
 	if err != nil {
 		return nil, err
 	}
@@ -101,11 +106,63 @@ func LoadServerTLSConfig(cfg *Config) (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-// LoadCertificate loads a certificate and key from files.
-func LoadCertificate(certFile, keyFile string) (*tls.Certificate, error) {
+// LoadCertificate loads a certificate and key from files, or uses the provided hardware signer.
+//
+// When `signer` is non-nil (PARSEC hardware path), the leaf certificate is
+// parsed (`x509.ParseCertificate`), its validity window is checked, and its
+// public key is matched against `signer.Public()` using the per-key-type
+// `Equal` method. Any mismatch refuses to start, since a signer that doesn't
+// match the cert produces handshakes that fail with cryptic mid-connection
+// errors. Do NOT use `cert.Leaf` here — it is not populated on the PARSEC
+// path; parse `cert.Certificate[0]` directly.
+func LoadCertificate(certFile, keyFile string, signer crypto.Signer) (*tls.Certificate, error) {
 	if _, err := os.Stat(certFile); os.IsNotExist(err) {
 		return nil, ErrCertNotFound
 	}
+
+	// --- HARDWARE-BACKED PATH (PARSEC / crypto.Signer) ---
+	if signer != nil {
+		certPEMBlock, err := os.ReadFile(filepath.Clean(certFile))
+		if err != nil {
+			return nil, err
+		}
+
+		var cert tls.Certificate
+		for {
+			var block *pem.Block
+			block, certPEMBlock = pem.Decode(certPEMBlock)
+			if block == nil {
+				break
+			}
+			if block.Type == "CERTIFICATE" {
+				cert.Certificate = append(cert.Certificate, block.Bytes)
+			}
+		}
+		if len(cert.Certificate) == 0 {
+			return nil, ErrNoCertificates
+		}
+
+		leaf, err := x509.ParseCertificate(cert.Certificate[0])
+		if err != nil {
+			return nil, fmt.Errorf("%w: parse leaf: %v", ErrCertInvalid, err)
+		}
+		now := time.Now()
+		if now.Before(leaf.NotBefore) {
+			return nil, ErrCertNotYetValid
+		}
+		if now.After(leaf.NotAfter) {
+			return nil, ErrCertExpired
+		}
+		if err := signerMatchesCert(signer, leaf.PublicKey); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrCertKeyMismatch, err)
+		}
+
+		cert.PrivateKey = signer
+		cert.Leaf = leaf
+		return &cert, nil
+	}
+
+	// --- SOFTWARE PATH (PEM-encoded private key on disk) ---
 	if _, err := os.Stat(keyFile); os.IsNotExist(err) {
 		return nil, ErrKeyNotFound
 	}
@@ -116,6 +173,41 @@ func LoadCertificate(certFile, keyFile string) (*tls.Certificate, error) {
 	}
 
 	return &cert, nil
+}
+
+// signerMatchesCert returns nil if the signer's public key matches certPub
+// (per-key-type Equal), otherwise an error describing the mismatch.
+func signerMatchesCert(signer crypto.Signer, certPub crypto.PublicKey) error {
+	signerPub := signer.Public()
+	switch sp := signerPub.(type) {
+	case *ecdsa.PublicKey:
+		cp, ok := certPub.(*ecdsa.PublicKey)
+		if !ok {
+			return fmt.Errorf("signer is ECDSA but cert public key is %T", certPub)
+		}
+		if !sp.Equal(cp) {
+			return errors.New("ECDSA signer public key does not match certificate public key")
+		}
+	case *rsa.PublicKey:
+		cp, ok := certPub.(*rsa.PublicKey)
+		if !ok {
+			return fmt.Errorf("signer is RSA but cert public key is %T", certPub)
+		}
+		if !sp.Equal(cp) {
+			return errors.New("RSA signer public key does not match certificate public key")
+		}
+	case ed25519.PublicKey:
+		cp, ok := certPub.(ed25519.PublicKey)
+		if !ok {
+			return fmt.Errorf("signer is Ed25519 but cert public key is %T", certPub)
+		}
+		if !sp.Equal(cp) {
+			return errors.New("Ed25519 signer public key does not match certificate public key")
+		}
+	default:
+		return fmt.Errorf("unsupported signer public key type %T", signerPub)
+	}
+	return nil
 }
 
 // LoadCAPool loads a CA certificate pool from a file.
