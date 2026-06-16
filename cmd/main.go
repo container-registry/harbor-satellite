@@ -206,7 +206,7 @@ func auditLoggerConfig(c config.AuditConfig) logger.AuditConfig {
 	return logger.AuditConfig{
 		Enabled: c.Enabled,
 		Syslog: logger.SyslogConfig{
-			Enabled:    s.EnabledOrDefault(),
+			Enabled:    c.Enabled && s.EnabledOrDefault(),
 			Target:     logger.SyslogTarget(s.TargetOrDefault()),
 			Tag:        s.TagOrDefault(),
 			SocketPath: s.SocketPath,
