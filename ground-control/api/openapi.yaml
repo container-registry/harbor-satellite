@@ -1,0 +1,545 @@
+openapi: "3.0.3"
+info:
+  title: Ground Control API
+  description: Ground Control manages Harbor Satellite fleet registration, state distribution, and observability.
+  version: "0.1.0"
+
+servers:
+  - url: "{scheme}://{host}"
+    variables:
+      scheme:
+        default: http
+        enum: [http, https]
+      host:
+        default: "localhost:8080"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    LoginToken:
+      type: object
+      required: [token, expires_at]
+      properties:
+        token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    RegisterSatelliteRequest:
+      type: object
+      required: [name, config_name]
+      properties:
+        name:
+          type: string
+        config_name:
+          type: string
+        groups:
+          type: array
+          items:
+            type: string
+
+    Satellite:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        config_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_seen:
+          type: string
+          format: date-time
+
+    SatelliteList:
+      type: object
+      properties:
+        satellites:
+          type: array
+          items:
+            $ref: "#/components/schemas/Satellite"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    SatelliteStatus:
+      type: object
+      properties:
+        activity:
+          type: string
+        latest_state_digest:
+          type: string
+        latest_config_digest:
+          type: string
+        cpu_percent:
+          type: string
+        memory_used_bytes:
+          type: integer
+          format: int64
+        storage_used_bytes:
+          type: integer
+          format: int64
+        last_sync_duration_ms:
+          type: integer
+          format: int64
+        image_count:
+          type: integer
+        reported_at:
+          type: string
+          format: date-time
+
+    CachedImage:
+      type: object
+      properties:
+        reference:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+
+    Group:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        registry:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Config:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    RegistrationToken:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+  /ping:
+    get:
+      operationId: ping
+      summary: Liveness check
+      security: []
+      responses:
+        "200":
+          description: OK
+
+  /health:
+    get:
+      operationId: health
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: OK
+
+  /login:
+    post:
+      operationId: login
+      summary: Obtain a session token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Session token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginToken"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/logout:
+    post:
+      operationId: logout
+      summary: Invalidate the current session
+      responses:
+        "200":
+          description: Logged out
+
+  /api/satellites:
+    get:
+      operationId: listSatellites
+      summary: List all satellites with optional pagination and filtering
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: offset
+          schema:
+            type: integer
+        - in: query
+          name: name_prefix
+          schema:
+            type: string
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - in: query
+          name: order
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        "200":
+          description: Satellite list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatelliteList"
+    post:
+      operationId: registerSatellite
+      summary: Register a new satellite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterSatelliteRequest"
+      responses:
+        "200":
+          description: Registration token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationToken"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/satellites/active:
+    get:
+      operationId: getActiveSatellites
+      summary: List satellites seen recently
+      responses:
+        "200":
+          description: Active satellites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Satellite"
+
+  /api/satellites/stale:
+    get:
+      operationId: getStaleSatellites
+      summary: List satellites not seen recently
+      responses:
+        "200":
+          description: Stale satellites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Satellite"
+
+  /api/satellites/{satellite}:
+    get:
+      operationId: getSatellite
+      summary: Get a satellite by name
+      parameters:
+        - in: path
+          name: satellite
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Satellite
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Satellite"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deleteSatellite
+      summary: Delete a satellite by name
+      parameters:
+        - in: path
+          name: satellite
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/satellites/{satellite}/status:
+    get:
+      operationId: getSatelliteStatus
+      summary: Get the latest status report for a satellite
+      parameters:
+        - in: path
+          name: satellite
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatelliteStatus"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/satellites/{satellite}/images:
+    get:
+      operationId: getSatelliteImages
+      summary: List images cached by a satellite
+      parameters:
+        - in: path
+          name: satellite
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cached images
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CachedImage"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/groups:
+    get:
+      operationId: listGroups
+      summary: List all groups
+      responses:
+        "200":
+          description: Group list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Group"
+
+  /api/groups/{group}:
+    get:
+      operationId: getGroup
+      summary: Get a group by name
+      parameters:
+        - in: path
+          name: group
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deleteGroup
+      summary: Delete a group
+      parameters:
+        - in: path
+          name: group
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/groups/{group}/satellites:
+    get:
+      operationId: getGroupSatellites
+      summary: List satellites belonging to a group
+      parameters:
+        - in: path
+          name: group
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Satellites in group
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Satellite"
+
+  /api/configs:
+    get:
+      operationId: listConfigs
+      summary: List all configs
+      responses:
+        "200":
+          description: Config list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Config"
+    post:
+      operationId: createConfig
+      summary: Create a new config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: Created config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Config"
+
+  /api/configs/{config}:
+    get:
+      operationId: getConfig
+      summary: Get a config by name
+      parameters:
+        - in: path
+          name: config
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Config"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deleteConfig
+      summary: Delete a config
+      parameters:
+        - in: path
+          name: config
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
