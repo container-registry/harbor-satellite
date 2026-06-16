@@ -228,10 +228,10 @@ type AuditLogger struct {
 }
 
 // NewAuditLogger builds an AuditLogger from cfg for the given component. With
-// Enabled=false or the syslog transport disabled the logger is a no-op. When
-// enabled, each transport is verified usable up front and an error is returned
-// if it is not, so the caller can fail fast at startup instead of advertising
-// audit logging while silently dropping every event.
+// Enabled=false the logger is a no-op. When enabled, at least one transport
+// (syslog or otel) must be configured and each is verified usable up front; an
+// error is returned otherwise, so the caller can fail fast at startup instead of
+// advertising audit logging while silently dropping every event.
 func NewAuditLogger(cfg AuditConfig, component Component) (*AuditLogger, error) {
 	a := &AuditLogger{component: component}
 	if err := a.Reconfigure(cfg); err != nil {
@@ -265,6 +265,14 @@ func (a *AuditLogger) Reconfigure(cfg AuditConfig) error {
 			return err
 		}
 		newTransports = append(newTransports, ot)
+	}
+
+	// Enabled with no usable transport is a configuration error: the logger would
+	// look enabled while dropping every event. Fail fast so the operator notices
+	// at startup, and so a hot reload that disables every transport is rejected
+	// (keeping the previous configuration) rather than silently auditing nothing.
+	if cfg.Enabled && len(newTransports) == 0 {
+		return fmt.Errorf("audit logging is enabled but no transport is configured: enable at least one of syslog or otel")
 	}
 
 	enabled := len(newTransports) > 0

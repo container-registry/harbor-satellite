@@ -84,8 +84,15 @@ func validateAndEnforceAuditConfig(config *Config) []string {
 	if !a.Enabled {
 		return nil
 	}
-	warnings := enforceSyslogConfig(&a.Syslog)
-	return append(warnings, validateOtelConfig(&a.Otel)...)
+	var warnings []string
+	if a.Syslog.EnabledOrDefault() {
+		warnings = append(warnings, enforceSyslogConfig(&a.Syslog)...)
+	}
+	warnings = append(warnings, validateOtelConfig(&a.Otel)...)
+	if !a.Syslog.EnabledOrDefault() && !a.Otel.Enabled {
+		warnings = append(warnings, "audit.enabled is true but no transport is enabled (audit.syslog.enabled=false and audit.otel.enabled=false); the audit logger will fail to start")
+	}
+	return warnings
 }
 
 // validateOtelConfig warns when the otel transport is enabled without an

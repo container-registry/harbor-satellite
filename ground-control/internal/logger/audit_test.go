@@ -186,12 +186,30 @@ func TestAuditLogger_DisabledIsNoOp(t *testing.T) {
 	require.True(t, os.IsNotExist(err), "no file should be created when disabled")
 }
 
-func TestAuditLogger_SyslogDisabledIsNoOp(t *testing.T) {
-	// Master enabled but the syslog transport disabled: no destination, no-op.
-	a, err := NewAuditLogger(AuditConfig{Enabled: true, Syslog: SyslogConfig{Enabled: false}}, ComponentSatellite)
+func TestAuditLogger_NoTransportEnabledIsError(t *testing.T) {
+	// Master enabled but no transport configured: fail fast instead of looking
+	// enabled while dropping every event.
+	_, err := NewAuditLogger(AuditConfig{Enabled: true, Syslog: SyslogConfig{Enabled: false}}, ComponentSatellite)
+	require.Error(t, err)
+}
+
+func TestAuditLogger_OTelOnly(t *testing.T) {
+	// syslog disabled, otel enabled: the logger runs on the otel transport alone.
+	srv, ch := newCaptureServer(t, 200)
+	a, err := NewAuditLogger(AuditConfig{
+		Enabled: true,
+		Syslog:  SyslogConfig{Enabled: false},
+		OTel:    OTelConfig{Enabled: true, Endpoint: srv.URL},
+	}, ComponentSatellite)
 	require.NoError(t, err)
-	require.False(t, a.Enabled())
+	require.True(t, a.Enabled())
 	a.Log(AuditEvent{Operation: OpLogin, ResourceType: ResSession, Outcome: OutcomeSuccess})
+	select {
+	case req := <-ch:
+		require.Equal(t, "/v1/logs", req.path)
+	case <-time.After(2 * time.Second):
+		t.Fatal("otel transport did not deliver the event")
+	}
 }
 
 func TestAuditLogger_UnwritableDestinationErrors(t *testing.T) {

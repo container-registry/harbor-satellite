@@ -102,7 +102,10 @@ Add an `audit` block to the `app_config` section of the satellite config JSON.
 Two transports are available and may be enabled together: a syslog transport
 (RFC 5424, `syslog.target` selects the destination) and an OpenTelemetry
 transport (`otel`, OTLP/HTTP). When both are enabled every event is delivered
-to both.
+to both. Each transport can also run on its own: set `syslog.enabled` to
+`false` to export only over OpenTelemetry, or leave `otel` disabled for
+syslog only. When `enabled` is true at least one transport must be on,
+otherwise the logger fails fast at startup.
 
 ```json
 "audit": {
@@ -131,6 +134,7 @@ to both.
 | Field                  | Default        | Notes |
 | ---------------------- | -------------- | ----- |
 | `enabled`              | `false`        | Master switch. When false, all calls are no-ops. |
+| `syslog.enabled`       | `true`         | Enable the syslog transport. Set to `false` to run only OpenTelemetry. |
 | `syslog.target`        | `file`         | `daemon`, `network`, or `file`. |
 | `syslog.tag`           | `harbor-audit` | RFC 5424 APP-NAME. |
 | `syslog.socket_path`   | `/dev/log`     | `daemon` target: local syslog socket. |
@@ -159,6 +163,7 @@ Set environment variables in the GC `.env`:
 
 ```env
 AUDIT_LOG_ENABLED=true
+AUDIT_SYSLOG_ENABLED=true
 AUDIT_SYSLOG_TARGET=file
 AUDIT_SYSLOG_TAG=harbor-audit
 AUDIT_SYSLOG_SOCKET_PATH=/dev/log
@@ -175,6 +180,10 @@ AUDIT_TRUST_FORWARDED_HEADERS=false
 
 A non-empty `AUDIT_OTEL_ENDPOINT` enables the OpenTelemetry (OTLP/HTTP)
 transport in addition to syslog; leave it unset to disable OTel.
+
+`AUDIT_SYSLOG_ENABLED=true` (default) keeps the syslog transport on. Set it to
+`false` to export only over OpenTelemetry (requires `AUDIT_OTEL_ENDPOINT`). When
+audit logging is enabled, turning off both transports fails fast at startup.
 
 `AUDIT_LOG_ENABLED=false` (default) disables the logger entirely.
 `AUDIT_SYSLOG_TARGET` selects the destination (`daemon` | `network` | `file`);

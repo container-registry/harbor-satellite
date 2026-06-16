@@ -199,14 +199,14 @@ func main() {
 // Returns the audit config now in effect.
 // auditLoggerConfig maps the on-disk audit config onto the logger's config,
 // resolving defaults and selecting the syslog target. The master Enabled flag
-// gates both transports; the otel transport additionally needs its own
-// enabled flag and endpoint.
+// gates the logger; each transport then has its own enable (syslog defaults on,
+// otel needs an explicit enabled flag and endpoint), so either can run alone.
 func auditLoggerConfig(c config.AuditConfig) logger.AuditConfig {
 	s := c.Syslog
 	return logger.AuditConfig{
 		Enabled: c.Enabled,
 		Syslog: logger.SyslogConfig{
-			Enabled:    c.Enabled,
+			Enabled:    s.EnabledOrDefault(),
 			Target:     logger.SyslogTarget(s.TargetOrDefault()),
 			Tag:        s.TagOrDefault(),
 			SocketPath: s.SocketPath,

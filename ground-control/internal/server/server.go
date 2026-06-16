@@ -337,6 +337,23 @@ func loadAuditConfig() auditlog.AuditConfig {
 		return auditlog.AuditConfig{}
 	}
 
+	syslog := loadSyslogConfig()
+	otel := loadOtelConfig()
+	if !syslog.Enabled && !otel.Enabled {
+		log.Fatalf("AUDIT_LOG_ENABLED=true but no transport is enabled: set AUDIT_SYSLOG_ENABLED=true and/or AUDIT_OTEL_ENDPOINT")
+	}
+	return auditlog.AuditConfig{Enabled: true, Syslog: syslog, OTel: otel}
+}
+
+// loadSyslogConfig reads the syslog transport settings. It is on by default
+// (AUDIT_SYSLOG_ENABLED=true); set AUDIT_SYSLOG_ENABLED=false to run, for
+// example, only the otel transport. The target selects the sink and only the
+// relevant fields are read.
+func loadSyslogConfig() auditlog.SyslogConfig {
+	if !parseBoolEnv("AUDIT_SYSLOG_ENABLED", true) {
+		return auditlog.SyslogConfig{Enabled: false}
+	}
+
 	target := getEnvOrDefault("AUDIT_SYSLOG_TARGET", "file")
 	syslog := auditlog.SyslogConfig{
 		Enabled:    true,
@@ -360,7 +377,21 @@ func loadAuditConfig() auditlog.AuditConfig {
 		log.Fatalf("AUDIT_SYSLOG_TARGET must be one of daemon|network|file, got %q", target)
 	}
 
-	return auditlog.AuditConfig{Enabled: true, Syslog: syslog, OTel: loadOtelConfig()}
+	return syslog
+}
+
+// parseBoolEnv reads a boolean env var, returning def when unset and exiting on
+// an unparseable value (so a typo fails loudly rather than silently flipping).
+func parseBoolEnv(key string, def bool) bool {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		log.Fatalf("%s must be a boolean (true/false), got %q", key, v)
+	}
+	return b
 }
 
 // loadOtelConfig reads the optional OTLP/HTTP export settings. The transport

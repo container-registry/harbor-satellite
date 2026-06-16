@@ -673,6 +673,32 @@ func TestValidateAndEnforceAuditConfig(t *testing.T) {
 		require.NotEmpty(t, warnings)
 		require.Equal(t, "file", cfg.AppConfig.Audit.Syslog.Target)
 	})
+
+	t.Run("otel only: disabled syslog is not enforced and does not warn", func(t *testing.T) {
+		cfg := &Config{
+			AppConfig: AppConfig{
+				Audit: AuditConfig{
+					Enabled: true,
+					Syslog:  SyslogAudit{Enabled: boolPtr(false)},
+					Otel:    OtelAudit{Enabled: true, Endpoint: "http://collector:4318"},
+				},
+			},
+		}
+		warnings := validateAndEnforceAuditConfig(cfg)
+		require.Empty(t, warnings)
+		// syslog is off, so its target is left untouched (not defaulted to file).
+		require.Empty(t, cfg.AppConfig.Audit.Syslog.Target)
+	})
+
+	t.Run("no transport enabled warns", func(t *testing.T) {
+		cfg := &Config{
+			AppConfig: AppConfig{
+				Audit: AuditConfig{Enabled: true, Syslog: SyslogAudit{Enabled: boolPtr(false)}},
+			},
+		}
+		warnings := validateAndEnforceAuditConfig(cfg)
+		require.NotEmpty(t, warnings)
+	})
 }
 
 func TestAuditConfig_Equal(t *testing.T) {
@@ -721,6 +747,18 @@ func TestAuditConfig_Equal(t *testing.T) {
 
 	t.Run("a flipped enabled flag is detected", func(t *testing.T) {
 		require.False(t, AuditConfig{Enabled: true}.Equal(AuditConfig{Enabled: false}))
+	})
+
+	t.Run("a disabled syslog transport is detected", func(t *testing.T) {
+		other := fileCfg()
+		other.Syslog.Enabled = boolPtr(false)
+		require.False(t, fileCfg().Equal(other))
+	})
+
+	t.Run("omitted syslog.enabled equals explicit true", func(t *testing.T) {
+		explicit := fileCfg()
+		explicit.Syslog.Enabled = boolPtr(true)
+		require.True(t, fileCfg().Equal(explicit))
 	})
 }
 

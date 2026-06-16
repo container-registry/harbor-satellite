@@ -61,6 +61,10 @@ type OtelAudit struct {
 // SyslogAudit configures the syslog transport. Target picks one of three sinks
 // (daemon, network, file); only the fields for the chosen target are used.
 type SyslogAudit struct {
+	// Enabled is a pointer so an omitted field (nil) keeps the syslog transport
+	// on by default (backward compatible: audit.enabled used to imply syslog).
+	// Set it to false to run, for example, the otel transport on its own.
+	Enabled    *bool           `json:"enabled,omitempty"`
 	Target     string          `json:"target,omitempty"`      // daemon | network | file
 	Tag        string          `json:"tag,omitempty"`         // RFC 5424 APP-NAME
 	SocketPath string          `json:"socket_path,omitempty"` // daemon target
@@ -82,6 +86,13 @@ type SyslogAuditFile struct {
 	MaxBackups *int  `json:"max_backups,omitempty"`
 	MaxAgeDays *int  `json:"max_age_days,omitempty"`
 	Compress   *bool `json:"compress,omitempty"`
+}
+
+// EnabledOrDefault reports whether the syslog transport should run. An omitted
+// field (nil) defaults to true so existing configs keep syslog on; only an
+// explicit false turns it off.
+func (s SyslogAudit) EnabledOrDefault() bool {
+	return s.Enabled == nil || *s.Enabled
 }
 
 // TargetOrDefault returns the configured target, or the default (file) when unset.
@@ -143,7 +154,8 @@ func (a AuditConfig) Equal(b AuditConfig) bool {
 
 // equal compares two syslog blocks by effective value.
 func (s SyslogAudit) equal(o SyslogAudit) bool {
-	return s.TargetOrDefault() == o.TargetOrDefault() &&
+	return s.EnabledOrDefault() == o.EnabledOrDefault() &&
+		s.TargetOrDefault() == o.TargetOrDefault() &&
 		s.TagOrDefault() == o.TagOrDefault() &&
 		s.SocketPath == o.SocketPath &&
 		s.Network == o.Network &&
