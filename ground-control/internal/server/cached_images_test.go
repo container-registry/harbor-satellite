@@ -12,6 +12,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
 	"github.com/gorilla/mux"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
@@ -29,8 +30,10 @@ func newMockServer(t *testing.T) (*Server, sqlmock.Sqlmock) {
 	})
 
 	return &Server{
-		db:        db,
-		dbQueries: database.New(db),
+		db:                                 db,
+		dbQueries:                          database.New(db),
+		EnsureSatelliteProjectExistsFn:     ensureSatelliteProjectExists,
+		CreateAndPushConfigStateArtifactFn: utils.CreateAndPushConfigStateArtifact,
 	}, mock
 }
 
