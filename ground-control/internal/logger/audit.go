@@ -246,45 +246,55 @@ func NewAuditLogger(cfg AuditConfig, component Component) (*AuditLogger, error) 
 // returned and the existing configuration is left untouched.
 //
 // This is the one place destinations are wired: adding syslog (and later OTel)
-// means building the transport here and appending it to newTransports.
+// means building the transport in buildTransports.
 func (a *AuditLogger) Reconfigure(cfg AuditConfig) error {
-	var newTransports []Transport
-
-	if cfg.Enabled && cfg.Syslog.Enabled {
-		st, err := newSyslogTransport(cfg.Syslog)
-		if err != nil {
-			return err
-		}
-		newTransports = append(newTransports, st)
+	newTransports, err := buildTransports(cfg)
+	if err != nil {
+		return err
 	}
-
-	if cfg.Enabled && cfg.OTel.Enabled {
-		ot, err := newOTelTransport(cfg.OTel)
-		if err != nil {
-			closeAll(newTransports)
-			return err
-		}
-		newTransports = append(newTransports, ot)
-	}
-
-	// Enabled with no usable transport is a configuration error: the logger would
-	// look enabled while dropping every event. Fail fast so the operator notices
-	// at startup, and so a hot reload that disables every transport is rejected
-	// (keeping the previous configuration) rather than silently auditing nothing.
-	if cfg.Enabled && len(newTransports) == 0 {
-		return fmt.Errorf("audit logging is enabled but no transport is configured: enable at least one of syslog or otel")
-	}
-
-	enabled := len(newTransports) > 0
 
 	a.mu.Lock()
 	old := a.transports
 	a.transports = newTransports
-	a.enabled = enabled
+	a.enabled = len(newTransports) > 0
 	a.mu.Unlock()
 
 	closeAll(old)
 	return nil
+}
+
+// buildTransports constructs the transports for cfg, verifying each is usable up
+// front. It returns nil when auditing is disabled. When auditing is enabled but
+// no transport is configured it returns an error so the caller fails fast at
+// startup (and a hot reload that disables every transport is rejected, keeping
+// the previous configuration) rather than silently dropping every event.
+func buildTransports(cfg AuditConfig) ([]Transport, error) {
+	if !cfg.Enabled {
+		return nil, nil
+	}
+
+	var newTransports []Transport
+	if cfg.Syslog.Enabled {
+		st, err := newSyslogTransport(cfg.Syslog)
+		if err != nil {
+			return nil, err
+		}
+		newTransports = append(newTransports, st)
+	}
+
+	if cfg.OTel.Enabled {
+		ot, err := newOTelTransport(cfg.OTel)
+		if err != nil {
+			closeAll(newTransports)
+			return nil, err
+		}
+		newTransports = append(newTransports, ot)
+	}
+
+	if len(newTransports) == 0 {
+		return nil, fmt.Errorf("audit logging is enabled but no transport is configured: enable at least one of syslog or otel")
+	}
+	return newTransports, nil
 }
 
 // closeAll closes every transport in ts, ignoring errors: a transport being
