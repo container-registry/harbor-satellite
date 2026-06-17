@@ -29,6 +29,7 @@ type Server struct {
 	spiffeProvider spiffe.Provider
 	embeddedSpire  *spiffe.EmbeddedSpireServer
 	spireClient    *spiffe.ServerClient
+	metrics        *Metrics
 
 	// External SPIRE server metadata (used when embeddedSpire is nil)
 	spireServerAddress string
@@ -156,6 +157,7 @@ func NewServer() *ServerResult {
 		spiffeProvider: spiffeProvider,
 		embeddedSpire:  embeddedSpire,
 		spireClient:    spireClient,
+		metrics:        newMetrics(),
 
 		spireServerAddress: spireServerAddress,
 		spireServerPort:    spireServerPort,
@@ -291,4 +293,3 @@ func buildServerTLSConfigWithWatcher(cfg *TLSConfig, cw *middleware.CertWatcher)
 
 	return tlsConfig, nil
 }
-
