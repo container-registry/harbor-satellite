@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -93,8 +94,19 @@ func NewServer() *ServerResult {
 
 	dbQueries := database.New(db)
 
+	trustedProxiesEnv := os.Getenv("TRUSTED_PROXIES")
+	var trustedProxies []string
+	if trustedProxiesEnv != "" {
+		for _, p := range strings.Split(trustedProxiesEnv, ",") {
+			cleanedIP := strings.TrimSpace(p)
+			if cleanedIP != "" {
+				trustedProxies = append(trustedProxies, cleanedIP)
+			}
+		}
+	}
+
 	// Initialize rate limiter: 10 requests per minute per IP for ZTR endpoint
-	rateLimiter := middleware.NewRateLimiter(10, time.Minute)
+	rateLimiter := middleware.NewRateLimiter(10, time.Minute, trustedProxies)
 
 	// Load SPIFFE configuration
 	spiffeCfg := spiffe.LoadConfig()
@@ -291,4 +303,3 @@ func buildServerTLSConfigWithWatcher(cfg *TLSConfig, cw *middleware.CertWatcher)
 
 	return tlsConfig, nil
 }
-
