@@ -28,6 +28,9 @@
       "enabled": false,
       "registries": ["docker.io"],
       "runtimes": []
+    },
+    "sync": {
+      "max_bandwidth_mbps": 0
     }
   },
   "zot_config": {
