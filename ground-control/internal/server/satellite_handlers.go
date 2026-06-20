@@ -1215,6 +1215,8 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
+	s.invalidateGroupStatesCache(int64(sat.ID))
+
 	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite successfully added to group"})
 }
 
@@ -1367,6 +1369,8 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 	committed = true
+
+	s.invalidateGroupStatesCache(int64(sat.ID))
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
