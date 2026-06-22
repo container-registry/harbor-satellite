@@ -11,106 +11,106 @@ import (
 )
 
 type Artifact struct {
-	ID        int32
-	Reference string
-	SizeBytes int64
-	CreatedAt time.Time
+	ID        int32     `json:"id"`
+	Reference string    `json:"reference"`
+	SizeBytes int64     `json:"size_bytes"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Config struct {
-	ID          int32
-	ConfigName  string
-	RegistryUrl string
-	Config      json.RawMessage
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          int32           `json:"id"`
+	ConfigName  string          `json:"config_name"`
+	RegistryUrl string          `json:"registry_url"`
+	Config      json.RawMessage `json:"config"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
 type Group struct {
-	ID          int32
-	GroupName   string
-	RegistryUrl string
-	Projects    []string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          int32     `json:"id"`
+	GroupName   string    `json:"group_name"`
+	RegistryUrl string    `json:"registry_url"`
+	Projects    []string  `json:"projects"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type LoginAttempt struct {
-	ID          int32
-	Username    string
-	FailedCount int32
-	LockedUntil sql.NullTime
-	LastAttempt time.Time
+	ID          int32        `json:"id"`
+	Username    string       `json:"username"`
+	FailedCount int32        `json:"failed_count"`
+	LockedUntil sql.NullTime `json:"locked_until"`
+	LastAttempt time.Time    `json:"last_attempt"`
 }
 
 type RobotAccount struct {
-	ID              int32
-	RobotName       string
-	RobotSecretHash string
-	RobotID         string
-	SatelliteID     int32
-	RobotExpiry     sql.NullTime
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              int32        `json:"id"`
+	RobotName       string       `json:"robot_name"`
+	RobotSecretHash string       `json:"-"`
+	RobotID         string       `json:"robot_id"`
+	SatelliteID     int32        `json:"satellite_id"`
+	RobotExpiry     sql.NullTime `json:"robot_expiry"`
+	CreatedAt       time.Time    `json:"created_at"`
+	UpdatedAt       time.Time    `json:"updated_at"`
 }
 
 type Satellite struct {
-	ID                int32
-	Name              string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	LastSeen          sql.NullTime
-	HeartbeatInterval sql.NullString
+	ID                int32          `json:"id"`
+	Name              string         `json:"name"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	LastSeen          sql.NullTime   `json:"last_seen"`
+	HeartbeatInterval sql.NullString `json:"heartbeat_interval"`
 }
 
 type SatelliteConfig struct {
-	SatelliteID int32
-	ConfigID    int32
+	SatelliteID int32 `json:"satellite_id"`
+	ConfigID    int32 `json:"config_id"`
 }
 
 type SatelliteGroup struct {
-	SatelliteID int32
-	GroupID     int32
+	SatelliteID int32 `json:"satellite_id"`
+	GroupID     int32 `json:"group_id"`
 }
 
 type SatelliteStatus struct {
-	ID                 int32
-	SatelliteID        int32
-	Activity           string
-	LatestStateDigest  sql.NullString
-	LatestConfigDigest sql.NullString
-	CpuPercent         sql.NullString
-	MemoryUsedBytes    sql.NullInt64
-	StorageUsedBytes   sql.NullInt64
-	LastSyncDurationMs sql.NullInt64
-	ImageCount         sql.NullInt32
-	ReportedAt         time.Time
-	CreatedAt          time.Time
-	ArtifactIds        []int32
+	ID                 int32          `json:"id"`
+	SatelliteID        int32          `json:"satellite_id"`
+	Activity           string         `json:"activity"`
+	LatestStateDigest  sql.NullString `json:"latest_state_digest"`
+	LatestConfigDigest sql.NullString `json:"latest_config_digest"`
+	CpuPercent         sql.NullString `json:"cpu_percent"`
+	MemoryUsedBytes    sql.NullInt64  `json:"memory_used_bytes"`
+	StorageUsedBytes   sql.NullInt64  `json:"storage_used_bytes"`
+	LastSyncDurationMs sql.NullInt64  `json:"last_sync_duration_ms"`
+	ImageCount         sql.NullInt32  `json:"image_count"`
+	ReportedAt         time.Time      `json:"reported_at"`
+	CreatedAt          time.Time      `json:"created_at"`
+	ArtifactIds        []int32        `json:"artifact_ids"`
 }
 
 type SatelliteToken struct {
-	ID          int32
-	SatelliteID int32
-	Token       string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	ExpiresAt   time.Time
+	ID          int32     `json:"id"`
+	SatelliteID int32     `json:"satellite_id"`
+	Token       string    `json:"token"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	ExpiresAt   time.Time `json:"expires_at"`
 }
 
 type Session struct {
-	ID        int32
-	UserID    int32
-	Token     string
-	ExpiresAt time.Time
-	CreatedAt time.Time
+	ID        int32     `json:"id"`
+	UserID    int32     `json:"user_id"`
+	Token     string    `json:"-"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type User struct {
-	ID           int32
-	Username     string
-	PasswordHash string
-	Role         string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID           int32     `json:"id"`
+	Username     string    `json:"username"`
+	PasswordHash string    `json:"-"`
+	Role         string    `json:"role"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }

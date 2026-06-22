@@ -382,7 +382,7 @@ func (s *Server) groupSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Return empty array if no satellites in group
 	if len(satellites) == 0 {
-		WriteJSONResponse(w, http.StatusOK, []database.Satellite{})
+		WriteJSONResponse(w, http.StatusOK, []database.GetSatellitesByGroupNameRow{})
 		return
 	}
 

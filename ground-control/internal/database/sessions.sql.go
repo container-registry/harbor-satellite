@@ -17,9 +17,9 @@ RETURNING id, user_id, token, expires_at, created_at
 `
 
 type CreateSessionParams struct {
-	UserID    int32
-	Token     string
-	ExpiresAt time.Time
+	UserID    int32     `json:"user_id"`
+	Token     string    `json:"-"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
@@ -73,13 +73,13 @@ WHERE s.token = $1 AND s.expires_at > NOW()
 `
 
 type GetSessionByTokenRow struct {
-	ID        int32
-	UserID    int32
-	Token     string
-	ExpiresAt time.Time
-	CreatedAt time.Time
-	Username  string
-	Role      string
+	ID        int32     `json:"id"`
+	UserID    int32     `json:"user_id"`
+	Token     string    `json:"-"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+	Username  string    `json:"username"`
+	Role      string    `json:"role"`
 }
 
 func (q *Queries) GetSessionByToken(ctx context.Context, token string) (GetSessionByTokenRow, error) {

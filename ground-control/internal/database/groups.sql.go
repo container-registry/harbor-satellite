@@ -34,9 +34,9 @@ RETURNING id, group_name, registry_url, projects, created_at, updated_at
 `
 
 type CreateGroupParams struct {
-	GroupName   string
-	RegistryUrl string
-	Projects    []string
+	GroupName   string   `json:"group_name"`
+	RegistryUrl string   `json:"registry_url"`
+	Projects    []string `json:"projects"`
 }
 
 func (q *Queries) CreateGroup(ctx context.Context, arg CreateGroupParams) (Group, error) {

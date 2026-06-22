@@ -17,9 +17,9 @@ RETURNING token
 `
 
 type AddTokenParams struct {
-	SatelliteID int32
-	Token       string
-	ExpiresAt   time.Time
+	SatelliteID int32     `json:"satellite_id"`
+	Token       string    `json:"token"`
+	ExpiresAt   time.Time `json:"expires_at"`
 }
 
 func (q *Queries) AddToken(ctx context.Context, arg AddTokenParams) (string, error) {
