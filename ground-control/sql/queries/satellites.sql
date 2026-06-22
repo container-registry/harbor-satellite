@@ -4,7 +4,9 @@ VALUES ($1, NOW(), NOW())
 RETURNING *;
 
 -- name: ListSatellites :many
-SELECT * FROM satellites;
+SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval
+FROM PUBLIC.satellites
+ORDER BY name ASC, id ASC;
 
 -- name: GetSatellitesByGroupName :many
 SELECT s.id, s.name, s.created_at, s.updated_at
