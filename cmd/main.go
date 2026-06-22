@@ -80,7 +80,7 @@ func main() {
 	flag.StringVar(&opts.RegistryUsername, "registry-username", "", "External registry username")
 	flag.StringVar(&opts.RegistryPassword, "registry-password", "", "External registry password")
 	flag.StringVar(&opts.ConfigDir, "config-dir", "", "Configuration directory path (default: ~/.config/satellite)")
-	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", "", "Registry data directory (overrides default storage path derived from config-dir)")
+	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", "", "Registry data directory (overrides the XDG/system default; see QUICKSTART.md)")
 	flag.StringVar(&shutdownTimeout, "shutdown-timeout", "", "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
 	flag.BoolVar(&opts.NoRegistryFallback, "no-registry-fallback", false, "Disable all CRI registry fallback configuration")
 	flag.BoolVar(&opts.FallbackOnly, "fallback-only", false, "Apply CRI registry fallback configs and exit without starting satellite")
@@ -174,9 +174,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Override ZotStorageDir if --registry-data-dir flag or env var is set
-	if opts.RegistryDataDir != "" {
-		pathConfig.ZotStorageDir = opts.RegistryDataDir
+	// Skip when the embedded Zot won't run: --byo-registry uses an external
+	// registry, --fallback-only just applies CRI configs and exits.
+	if !opts.BYORegistry && !opts.FallbackOnly {
+		zotStorageDir, err := config.ResolveRegistryDataDir(opts.RegistryDataDir)
+		if err != nil {
+			fmt.Printf("Error resolving registry data directory: %v\n", err)
+			os.Exit(1)
+		}
+		pathConfig.ZotStorageDir = zotStorageDir
 	}
 
 	// For --fallback-only mode, relax token/gc-url requirements
