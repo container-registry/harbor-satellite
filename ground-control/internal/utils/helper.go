@@ -22,25 +22,16 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 )
 
-var (
-	registry = os.Getenv("HARBOR_URL")
-	username = os.Getenv("HARBOR_USERNAME")
-	password = os.Getenv("HARBOR_PASSWORD")
-)
-
 // GetProjectNames parses artifacts & returns project names
 func GetProjectNames(artifacts *[]m.Artifact) []string {
-	uniqueProjects := make(map[string]struct{}) // Map to track unique project names
+	uniqueProjects := make(map[string]struct{})
 	var projects []string
 
 	for _, artifact := range *artifacts {
 		if artifact.Deleted {
 			continue
 		}
-		// Extract project name from repository
 		project := strings.Split(artifact.Repository, "/")[0]
-
-		// Check if the project is already added
 		if _, exists := uniqueProjects[project]; !exists {
 			uniqueProjects[project] = struct{}{}
 			projects = append(projects, project)
@@ -72,8 +63,6 @@ func UpdateRobotProjects(ctx context.Context, projects []string, id string) (*ro
 		return nil, fmt.Errorf("error getting robot account: %w", err)
 	}
 
-	// satellites should always have permission to satellite project by default
-	// to get state artifacts
 	projects = append(projects, "satellite")
 
 	robot.Permissions = harbor.GenRobotPerms(projects)
@@ -87,31 +76,26 @@ func UpdateRobotProjects(ctx context.Context, projects []string, id string) (*ro
 }
 
 func AssembleGroupState(groupName string) string {
-	state := fmt.Sprintf("%s/satellite/group-state/%s/state:latest", os.Getenv("HARBOR_URL"), groupName)
-	return state
+	return fmt.Sprintf("%s/satellite/group-state/%s/state:latest", os.Getenv("HARBOR_URL"), groupName)
 }
 
 // Create State Artifact for group
 func CreateStateArtifact(ctx context.Context, stateArtifact *m.StateArtifact) error {
-	// Set the registry URL from environment variable
 	stateArtifact.Registry = os.Getenv("HARBOR_URL")
 	if stateArtifact.Registry == "" {
 		return fmt.Errorf("HARBOR_URL environment variable is not set")
 	}
 
-	// Marshal the state artifact to JSON format
 	data, err := json.Marshal(stateArtifact)
 	if err != nil {
 		return fmt.Errorf("failed to marshal state artifact to JSON: %v", err)
 	}
 
-	// Create the image with the state artifact JSON
 	img, err := crane.Image(map[string][]byte{"artifacts.json": data})
 	if err != nil {
 		return fmt.Errorf("failed to create image: %v", err)
 	}
 
-	// Configure repository and credentials
 	repo := fmt.Sprintf("satellite/group-state/%s", stateArtifact.Group)
 	username := os.Getenv("HARBOR_USERNAME")
 	password := os.Getenv("HARBOR_PASSWORD")
@@ -129,18 +113,15 @@ func CreateStateArtifact(ctx context.Context, stateArtifact *m.StateArtifact) er
 		options = append(options, crane.Insecure)
 	}
 
-	// Construct the destination repository and strip protocol, if present
 	destinationRepo := getStateArtifactDestination(stateArtifact.Registry, repo)
 	if strings.Contains(destinationRepo, "://") {
 		destinationRepo = strings.SplitN(destinationRepo, "://", 2)[1]
 	}
 
-	// Push the image to the repository
 	if err := crane.Push(img, destinationRepo, options...); err != nil {
 		return fmt.Errorf("failed to push image: %v", err)
 	}
 
-	// Tag the image with timestamp and latest tags
 	tags := []string{fmt.Sprintf("%d", time.Now().Unix()), "latest"}
 	for _, tag := range tags {
 		if err := crane.Tag(destinationRepo, tag, options...); err != nil {
@@ -153,14 +134,6 @@ func CreateStateArtifact(ctx context.Context, stateArtifact *m.StateArtifact) er
 
 // Create and Push State Artifact for Config
 func CreateAndPushConfigStateArtifact(ctx context.Context, configData []byte, configName string) error {
-	// func CreateAndPushConfigStateArtifact(ctx context.Context, configObject *m.ConfigObject) error {
-	// Marshal the state artifact to JSON format
-	// configData, err := json.Marshal(configObject.Config)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to marshal state artifact to JSON: %v", err)
-	// }
-
-	// Create the image with the state artifact JSON
 	img, err := crane.Image(map[string][]byte{"artifacts.json": configData})
 	if err != nil {
 		return fmt.Errorf("failed to create image: %v", err)
@@ -171,19 +144,18 @@ func CreateAndPushConfigStateArtifact(ctx context.Context, configData []byte, co
 	}
 
 	auth := authn.FromConfig(authn.AuthConfig{
-		Username: username,
-		Password: password,
+		Username: os.Getenv("HARBOR_USERNAME"),
+		Password: os.Getenv("HARBOR_PASSWORD"),
 	})
 	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
 
 	if strings.HasPrefix(os.Getenv("HARBOR_URL"), "http://") {
 		options = append(options, crane.Insecure)
 	}
-	// Construct the destination repository and strip protocol, if present
+
 	destinationRepo := AssembleConfigState(configName)
 	destinationRepo = stripProtocol(destinationRepo)
 
-	// Push the image to the repository
 	if err := crane.Push(img, destinationRepo, options...); err != nil {
 		return fmt.Errorf("failed to push image: %v", err)
 	}
@@ -223,9 +195,12 @@ func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, s
 		return fmt.Errorf("failed to create image: %v", err)
 	}
 
-	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
+	auth := authn.FromConfig(authn.AuthConfig{
+		Username: os.Getenv("HARBOR_USERNAME"),
+		Password: os.Getenv("HARBOR_PASSWORD"),
+	})
 	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
-	if strings.HasPrefix(registry, "http://") {
+	if strings.HasPrefix(os.Getenv("HARBOR_URL"), "http://") {
 		options = append(options, crane.Insecure)
 	}
 
@@ -249,7 +224,7 @@ func DeleteArtifact(deleteURL string) error {
 		return fmt.Errorf("failed to create request: %v", err)
 	}
 
-	req.SetBasicAuth(username, password)
+	req.SetBasicAuth(os.Getenv("HARBOR_USERNAME"), os.Getenv("HARBOR_PASSWORD"))
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
@@ -275,7 +250,7 @@ func DeleteArtifact(deleteURL string) error {
 func ConstructHarborDeleteURL(repo string, repoType string) string {
 	repositoryName := fmt.Sprintf("%s-state/%s/state", repoType, repo)
 	doubleEncodedRepoName := url.QueryEscape(url.QueryEscape(repositoryName))
-	return fmt.Sprintf("%s/api/v2.0/projects/satellite/repositories/%s", registry, doubleEncodedRepoName)
+	return fmt.Sprintf("%s/api/v2.0/projects/satellite/repositories/%s", os.Getenv("HARBOR_URL"), doubleEncodedRepoName)
 }
 
 func stripProtocol(url string) string {
@@ -301,6 +276,7 @@ func tagImage(destination string, options []crane.Option) error {
 	}
 	return nil
 }
+
 func getStateArtifactDestination(registry, repository string) string {
 	return fmt.Sprintf("%s/%s/%s", registry, repository, "state")
 }
@@ -320,13 +296,13 @@ func IsValidName(name string) bool {
 }
 
 func envSanityCheck() error {
-	if registry == "" {
+	if os.Getenv("HARBOR_URL") == "" {
 		return fmt.Errorf("HARBOR_URL environment variable is not set")
 	}
-	if username == "" {
+	if os.Getenv("HARBOR_USERNAME") == "" {
 		return fmt.Errorf("HARBOR_USERNAME environment variable is not set")
 	}
-	if password == "" {
+	if os.Getenv("HARBOR_PASSWORD") == "" {
 		return fmt.Errorf("HARBOR_PASSWORD environment variable is not set")
 	}
 	return nil
