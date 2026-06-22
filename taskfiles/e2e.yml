@@ -1061,8 +1061,19 @@ tasks:
         echo "Waiting for replication to start..."
         for i in $(seq 1 30); do
           if docker logs satellite 2>&1 | grep -q "Replicating image golang"; then
-            echo "Replication started, waiting 3 seconds for partial completion..."
-            sleep 3
+            echo "Replication started, waiting for at least one blob to be written..."
+            for j in $(seq 1 30); do
+              if docker exec satellite sh -c 'find /satellite-state/zot -type f 2>/dev/null | grep -q "/blobs/sha256/"'; then
+                echo "Blob detected, proceeding with crash"
+                break
+              fi
+              if [ "$j" -eq 30 ]; then
+                echo "ERROR: No blobs detected after 30s (replication may not have started writing)"
+                docker logs satellite 2>&1 | tail -50
+                exit 1
+              fi
+              sleep 1
+            done
             
             echo "Capturing blob state before crash..."
             docker exec satellite find /satellite-state/zot -type f 2>/dev/null | grep '/blobs/sha256/' | sort > /tmp/blobs_before_crash.txt || true
@@ -1128,30 +1139,28 @@ tasks:
         echo "Blobs before crash: $BLOBS_BEFORE"
         echo "Blobs after completion: $BLOBS_AFTER"
         
-        if [ "$BLOBS_BEFORE" -eq 0 ]; then
-          echo "WARN: No blobs detected before crash, crash may have been too early"
-          echo "Test will rely on log verification only"
-        else
-          if [ "$BLOBS_AFTER" -le "$BLOBS_BEFORE" ]; then
-            echo "FAIL: Blob count did not increase (replication did not resume properly)"
+        if [ "$BLOBS_AFTER" -le "$BLOBS_BEFORE" ]; then
+          echo "FAIL: Blob count did not increase (replication did not resume properly)"
+          exit 1
+        fi
+        
+        echo "Verifying blobs from before crash still exist (not re-downloaded)..."
+        while IFS= read -r blob; do
+          if ! grep -Fxq "$blob" /tmp/blobs_after_complete.txt; then
+            echo "FAIL: Blob from before crash is missing after restart: $blob"
             exit 1
           fi
-          
-          echo "Verifying blobs from before crash still exist (not re-downloaded)..."
-          while IFS= read -r blob; do
-            if ! grep -Fxq "$blob" /tmp/blobs_after_complete.txt; then
-              echo "FAIL: Blob from before crash is missing after restart: $blob"
-              exit 1
-            fi
-          done < /tmp/blobs_before_crash.txt
-          echo "PASS: All pre-crash blobs still present (layer resume confirmed)"
-        fi
+        done < /tmp/blobs_before_crash.txt
+        echo "PASS: All pre-crash blobs still present (layer resume confirmed)"
         
         if docker logs satellite 2>&1 | tail -100 | grep -q "Old state has zero entities, replicating the complete state"; then
           echo "FAIL: Full re-replication occurred"
           exit 1
         fi
         echo "PASS: No full re-replication detected"
+        
+        echo "Cleaning up temporary files..."
+        rm -f /tmp/blobs_before_crash.txt /tmp/blobs_after_complete.txt 2>/dev/null || true
         
         echo "Crash mid-replication test passed"
 
