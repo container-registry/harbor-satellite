@@ -6,7 +6,7 @@ Harbor Satellite extends Harbor container registry to edge computing environment
 
 - A Harbor registry instance with the satellite adapter installed. See [harbor-next](https://github.com/container-registry/harbor-next/tree/satellite).
 - Credentials with permission to create robot accounts in the registry.
-- [Task](https://taskfile.dev/installation/) installed.
+- [Task](https://taskfile.dev/installation/) installed. See the [Task installation guide](https://taskfile.dev/installation/) for Linux, macOS, and Windows instructions.
 - (Optional) [Docker](https://docs.docker.com/get-docker/) and Docker Compose.
 
 ## Choose Your Authentication Method
@@ -19,7 +19,7 @@ Simple one-time token authentication. An admin registers a satellite via the Gro
 
 - No additional infrastructure required
 - Good for local development, CI/CD, and quick testing
-- Token is single-use with a configurable TTL
+- Token is single-use with a configurable TTL (default: 24h, configurable via `TOKEN_TTL` environment variable)
 
 [Get started with Token-based ZTR](deploy/no-spiffe/quickstart.md)
 
@@ -86,6 +86,9 @@ export REGISTRY_DATA_DIR="/custom/path"
 ```
 
 The flag takes precedence over the environment variable, which takes precedence over the default path.
+
+> **Note:** The directory will be created automatically if it does not exist.
+
 ## Need Help?
 
 - Explore the [Harbor Satellite documentation](https://docs.goharbor.io).
