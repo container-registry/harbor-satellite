@@ -61,9 +61,11 @@ LIMIT $2;
 -- name: GetLatestArtifacts :many
 SELECT a.id, a.reference, a.size_bytes, a.created_at
 FROM artifacts a
-WHERE a.id = ANY(
-    (SELECT artifact_ids FROM satellite_status
-     WHERE satellite_id = $1
-     ORDER BY created_at DESC LIMIT 1)
+WHERE a.id IN (
+    SELECT unnest(artifact_ids) FROM (
+        SELECT artifact_ids FROM satellite_status
+        WHERE satellite_id = $1
+        ORDER BY created_at DESC LIMIT 1
+    ) latest
 )
 ORDER BY a.reference;
