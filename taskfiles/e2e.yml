@@ -977,7 +977,7 @@ tasks:
     desc: Test crash recovery during mid-replication with layer-level resume
     cmds:
       - task: setup
-      - defer: { task: cleanup }
+      - defer: { task: cleanup-crash-recovery }
       - task: wait-harbor
       - task: wait-gc
       - task: init-harbor-golang-image
@@ -1042,6 +1042,7 @@ tasks:
 
         echo "Restarting satellite with same volume..."
         docker run -d --name satellite --network harbor-e2e \
+          -u root \
           -v sat-state-vol:/satellite-state \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
@@ -1064,7 +1065,7 @@ tasks:
             sleep 3
             
             echo "Capturing blob state before crash..."
-            docker exec satellite find /satellite-state/zot -type f 2>/dev/null | sort > /tmp/blobs_before_crash.txt || true
+            docker exec satellite find /satellite-state/zot -type f 2>/dev/null | grep '/blobs/sha256/' | sort > /tmp/blobs_before_crash.txt || true
             BLOBS_BEFORE=$(wc -l < /tmp/blobs_before_crash.txt)
             echo "Blobs present before crash: $BLOBS_BEFORE"
             
@@ -1120,7 +1121,7 @@ tasks:
         done
         
         echo "Capturing blob state after restart and completion..."
-        docker exec satellite find /satellite-state/zot -type f 2>/dev/null | sort > /tmp/blobs_after_complete.txt || true
+        docker exec satellite find /satellite-state/zot -type f 2>/dev/null | grep '/blobs/sha256/' | sort > /tmp/blobs_after_complete.txt || true
         BLOBS_AFTER=$(wc -l < /tmp/blobs_after_complete.txt)
         BLOBS_BEFORE=$(wc -l < /tmp/blobs_before_crash.txt)
         
