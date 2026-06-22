@@ -1081,8 +1081,13 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(sat.Name, "satellite"))
+	deleteURL, err := utils.ConstructHarborDeleteURL(sat.Name, "satellite")
 	if err != nil {
+		log.Printf("error: failed to construct delete URL: %v", err)
+		HandleAppError(w, &AppError{Message: "Error: Failed to Delete Satellite", Code: http.StatusInternalServerError})
+		return
+	}
+	if err = utils.DeleteArtifact(deleteURL); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
 		return
