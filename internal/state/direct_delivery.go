@@ -86,6 +86,8 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 			continue
 		}
 
+		log.Info().Str("file", filename).Msg("Direct delivery: tarball not in digest map, attempting write")
+
 		srcRef := fmt.Sprintf("%s/%s/%s:%s", d.srcRegistry, entity.Repository, entity.Name, entity.Tag)
 		ref, err := name.ParseReference(srcRef, nameOpts...)
 		if err != nil {
