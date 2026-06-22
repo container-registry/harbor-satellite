@@ -164,6 +164,18 @@ func TestGetSatelliteStatusHandler(t *testing.T) {
 		mock.ExpectQuery("SELECT .+ FROM satellite_status").
 			WithArgs(int32(1)).
 			WillReturnRows(statusRows)
+		desiredRows := sqlmock.NewRows([]string{
+			"satellite_id", "expected_state_digest", "expected_config_digest", "last_converged_at", "updated_at",
+		}).AddRow(
+			1,
+			sql.NullString{String: "sha256:abc", Valid: true},
+			sql.NullString{String: "sha256:def", Valid: true},
+			sql.NullTime{Time: now.Add(-time.Minute), Valid: true},
+			now,
+		)
+		mock.ExpectQuery("SELECT satellite_id, expected_state_digest, expected_config_digest, last_converged_at, updated_at").
+			WithArgs(int32(1)).
+			WillReturnRows(desiredRows)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/edge-01/status", nil)
 		req = mux.SetURLVars(req, map[string]string{"satellite": "edge-01"})
@@ -173,6 +185,10 @@ func TestGetSatelliteStatusHandler(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "syncing")
+		require.Contains(t, rr.Body.String(), `"desired_state_known":true`)
+		require.Contains(t, rr.Body.String(), `"state_in_sync":true`)
+		require.Contains(t, rr.Body.String(), `"config_in_sync":false`)
+		require.Contains(t, rr.Body.String(), `"last_converged_at"`)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
