@@ -315,7 +315,12 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 
 	committed = true
 
-	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(groupName, "group"))
+	deleteURL, err := utils.ConstructHarborDeleteURL(groupName, "group")
+	if err != nil {
+		HandleAppError(w, err)
+		return
+	}
+	err = utils.DeleteArtifact(deleteURL)
 	if err != nil {
 		log.Println(err)
 		err := &AppError{

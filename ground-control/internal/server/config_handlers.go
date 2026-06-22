@@ -496,7 +496,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-    // TODO: Store the groupStates in memory to survive hot reloads
+	// TODO: Store the groupStates in memory to survive hot reloads
 	var groupStates []string
 	for _, group := range groupList {
 		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
@@ -566,7 +566,12 @@ func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := utils.DeleteArtifact(utils.ConstructHarborDeleteURL(configName, "config")); err != nil {
+	deleteURL, err := utils.ConstructHarborDeleteURL(configName, "config")
+	if err != nil {
+		HandleAppError(w, err)
+		return
+	}
+	if err := utils.DeleteArtifact(deleteURL); err != nil {
 		log.Printf("Could not delete config state artifact: %v", err)
 		HandleAppError(w, &AppError{
 			Message: "Error: Could not delete config state artifact",
