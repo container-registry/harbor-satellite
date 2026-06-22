@@ -67,16 +67,18 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.passwordPolicy.Validate(req.Password); err != nil {
-		WriteJSONError(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
+		var pe *auth.PasswordPolicyError
+		if errors.As(err, &pe) {
+			WriteJSONError(w, pe.Error(), http.StatusBadRequest)
+			return
+		}
+
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+
 
 	user, err := s.dbQueries.CreateUser(r.Context(), database.CreateUserParams{
 		Username:     req.Username,
@@ -230,10 +232,18 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := s.passwordPolicy.Validate(req.NewPassword); err != nil {
-		WriteJSONError(w, err.Error(), http.StatusBadRequest)
+	hash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		var pe *auth.PasswordPolicyError
+		if errors.As(err, &pe) {
+			WriteJSONError(w, pe.Error(), http.StatusBadRequest)
+			return
+		}
+
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+
 
 	// Verify current password
 	user, err := s.dbQueries.GetUserByUsername(r.Context(), currentUser.Username)
@@ -248,11 +258,7 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	hash, err := auth.HashPassword(req.NewPassword)
-	if err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
+
 
 	if err := s.dbQueries.UpdateUserPassword(r.Context(), database.UpdateUserPasswordParams{
 		Username:     currentUser.Username,
@@ -292,10 +298,18 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := s.passwordPolicy.Validate(req.NewPassword); err != nil {
-		WriteJSONError(w, err.Error(), http.StatusBadRequest)
+	hash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		var pe *auth.PasswordPolicyError
+		if errors.As(err, &pe) {
+			WriteJSONError(w, pe.Error(), http.StatusBadRequest)
+			return
+		}
+
+		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+
 
 	// Check if user exists
 	user, err := s.dbQueries.GetUserByUsername(r.Context(), username)
@@ -308,11 +322,6 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	hash, err := auth.HashPassword(req.NewPassword)
-	if err != nil {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
 
 	if err := s.dbQueries.UpdateUserPassword(r.Context(), database.UpdateUserPasswordParams{
 		Username:     username,
