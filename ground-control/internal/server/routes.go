@@ -66,6 +66,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 	api.HandleFunc("/satellites/{satellite}/status", s.getSatelliteStatusHandler).Methods("GET")
 	api.HandleFunc("/satellites/{satellite}/images", s.getCachedImagesHandler).Methods("GET")
 
+	// Images
+	api.HandleFunc("/images/distribution", s.getImageDistribution).Methods("GET")
+
 	// SPIRE management (admin only)
 	api.HandleFunc("/spire/status", s.RequireRole(roleSystemAdmin, s.spireStatusHandler)).Methods("GET")
 	api.HandleFunc("/spire/agents", s.RequireRole(roleSystemAdmin, s.listSpireAgentsHandler)).Methods("GET")

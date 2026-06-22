@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -210,6 +213,40 @@ func DecodeRequestBody(r *http.Request, v any) error {
 	return nil
 }
 
+func setField(fv reflect.Value, raw string) error {
+	switch fv.Kind() {
+	case reflect.String:
+		fv.SetString(raw)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid int %q", raw)
+		}
+		fv.SetInt(n)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		n, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid uint %q", raw)
+		}
+		fv.SetUint(n)
+	case reflect.Float32, reflect.Float64:
+		n, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return fmt.Errorf("invalid float %q", raw)
+		}
+		fv.SetFloat(n)
+	case reflect.Bool:
+		b, err := strconv.ParseBool(raw)
+		if err != nil {
+			return fmt.Errorf("invalid bool %q", raw)
+		}
+		fv.SetBool(b)
+	default:
+		return fmt.Errorf("unsupported kind %s", fv.Kind())
+	}
+	return nil
+}
+
 // creates a unique random API token of the specified length in bytes.
 func GenerateRandomToken(charLength int) (string, error) {
 	// The number of bytes needed to generate a token with the required number of hex characters
@@ -288,6 +325,14 @@ func toNullInt64(n int64) sql.NullInt64 {
 
 func toNullInt32(n int32) sql.NullInt32 {
 	return sql.NullInt32{Int32: n, Valid: true}
+}
+
+func matchRegexFilter(values []string, pattern *regexp.Regexp) bool {
+	return slices.ContainsFunc(values, pattern.MatchString)
+}
+
+func matchStringFilter(val string, pattern string) bool {
+	return strings.Contains(val, pattern)
 }
 
 // normalizeHeartbeatInterval validates and normalizes the heartbeat interval to a canonical format.
