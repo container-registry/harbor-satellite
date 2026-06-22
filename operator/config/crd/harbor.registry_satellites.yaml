@@ -1,0 +1,85 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: satellites.harbor.registry
+spec:
+  group: harbor.registry
+  names:
+    kind: Satellite
+    listKind: SatelliteList
+    plural: satellites
+    singular: satellite
+    shortNames:
+      - sat
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                group:
+                  type: string
+                  description: Group name to assign this satellite to.
+                configName:
+                  type: string
+                  description: Name of the Ground Control config to assign.
+                groundControlURL:
+                  type: string
+                  description: Ground Control server URL.
+                token:
+                  type: string
+                  description: Optional pre-existing ZTR token.
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum:
+                    - Pending
+                    - Registered
+                    - Failed
+                    - Terminating
+                  description: Current lifecycle phase.
+                registered:
+                  type: boolean
+                  description: Whether the satellite is registered with Ground Control.
+                tokenRef:
+                  type: string
+                  description: ZTR token obtained from Ground Control.
+                message:
+                  type: string
+                  description: Human-readable status message.
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Registered
+          type: boolean
+          jsonPath: .status.registered
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
