@@ -616,19 +616,88 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
+// PaginatedSatellitesResponse wraps satellite list with pagination metadata.
+type PaginatedSatellitesResponse struct {
+	Satellites []database.Satellite `json:"satellites"`
+	Total      int64                `json:"total"`
+	Page       int32                `json:"page"`
+	PageSize   int32                `json:"page_size"`
+}
+
 func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
-	result, err := s.dbQueries.ListSatellites(r.Context())
+	page, pageSize := parsePaginationParams(r)
+	search := r.URL.Query().Get("search")
+	groupName := r.URL.Query().Get("group")
+
+	searchParam := toNullString(search)
+	groupParam := toNullString(groupName)
+
+	total, err := s.dbQueries.CountSatellitesFiltered(r.Context(), database.CountSatellitesFilteredParams{
+		Search:    searchParam,
+		GroupName: groupParam,
+	})
 	if err != nil {
-		log.Printf("Error: Failed to List Satellites: %v", err)
-		err := &AppError{
+		log.Printf("Error: Failed to Count Satellites: %v", err)
+		HandleAppError(w, &AppError{
 			Message: "Error: Failed to List Satellites",
 			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
+		})
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, result)
+	offset := (page - 1) * pageSize
+	satellites, err := s.dbQueries.ListSatellitesFiltered(r.Context(), database.ListSatellitesFilteredParams{
+		Search:    searchParam,
+		GroupName: groupParam,
+		PageSize:  pageSize,
+		Offset:    offset,
+	})
+	if err != nil {
+		log.Printf("Error: Failed to List Satellites: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Failed to List Satellites",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, PaginatedSatellitesResponse{
+		Satellites: satellites,
+		Total:      total,
+		Page:       page,
+		PageSize:   pageSize,
+	})
+}
+
+// parsePaginationParams extracts page and page_size from query parameters.
+func parsePaginationParams(r *http.Request) (int32, int32) {
+	page := parseIntParam(r, "page", 1)
+	pageSize := parseIntParam(r, "page_size", 20)
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	return page, pageSize
+}
+
+// parseIntParam parses an integer query parameter with a default value.
+func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {
+	val := r.URL.Query().Get(name)
+	if val == "" {
+		return defaultVal
+	}
+	parsed, err := strconv.Atoi(val)
+	if err != nil || parsed < 1 {
+		return defaultVal
+	}
+	return int32(parsed)
 }
 
 func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {

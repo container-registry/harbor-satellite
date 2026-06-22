@@ -7,6 +7,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"time"
 )
 
@@ -179,4 +180,81 @@ func (q *Queries) ListSatellites(ctx context.Context) ([]Satellite, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const listSatellitesFiltered = `-- name: ListSatellitesFiltered :many
+SELECT id, name, created_at, updated_at, last_seen, heartbeat_interval FROM satellites
+WHERE
+  ($1::text IS NULL OR LOWER(name) LIKE LOWER('%' || $1 || '%'))
+  AND ($2::text IS NULL OR id IN (
+    SELECT sg.satellite_id FROM satellite_groups sg
+    JOIN groups g ON g.id = sg.group_id
+    WHERE g.group_name = $2
+  ))
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4
+`
+
+// ListSatellitesFilteredParams contains pagination and filtering parameters.
+type ListSatellitesFilteredParams struct {
+	Search    sql.NullString
+	GroupName sql.NullString
+	PageSize  int32
+	Offset    int32
+}
+
+// ListSatellitesFiltered retrieves satellites with optional filters and pagination.
+func (q *Queries) ListSatellitesFiltered(ctx context.Context, arg ListSatellitesFilteredParams) ([]Satellite, error) {
+	rows, err := q.db.QueryContext(ctx, listSatellitesFiltered, arg.Search, arg.GroupName, arg.PageSize, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Satellite
+	for rows.Next() {
+		var i Satellite
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastSeen,
+			&i.HeartbeatInterval,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countSatellitesFiltered = `-- name: CountSatellitesFiltered :one
+SELECT COUNT(*) FROM satellites
+WHERE
+  ($1::text IS NULL OR LOWER(name) LIKE LOWER('%' || $1 || '%'))
+  AND ($2::text IS NULL OR id IN (
+    SELECT sg.satellite_id FROM satellite_groups sg
+    JOIN groups g ON g.id = sg.group_id
+    WHERE g.group_name = $2
+  ))
+`
+
+// CountSatellitesFilteredParams contains filtering parameters for counting.
+type CountSatellitesFilteredParams struct {
+	Search    sql.NullString
+	GroupName sql.NullString
+}
+
+// CountSatellitesFiltered returns the total count of satellites matching the filters.
+func (q *Queries) CountSatellitesFiltered(ctx context.Context, arg CountSatellitesFilteredParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countSatellitesFiltered, arg.Search, arg.GroupName)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
