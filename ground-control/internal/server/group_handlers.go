@@ -22,6 +22,29 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	projects := utils.GetProjectNames(&req.Artifacts)
+
+	// Validate that all projects exist in Harbor before opening a DB transaction
+	// to avoid holding DB connections open during external network calls.
+	for _, project := range projects {
+		exists, err := harbor.GetProject(r.Context(), project)
+		if err != nil {
+			log.Printf("Error checking project '%s' in Harbor: %v", project, err)
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Error: failed to verify project '%s' in Harbor registry", project),
+				Code:    http.StatusBadGateway,
+			})
+			return
+		}
+		if !exists {
+			HandleAppError(w, &AppError{
+				Message: fmt.Sprintf("Error: project '%s' not found in Harbor registry", project),
+				Code:    http.StatusBadRequest,
+			})
+			return
+		}
+	}
+
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		log.Println("Could not begin transaction:", err)
@@ -46,7 +69,6 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 
 	q := s.dbQueries.WithTx(tx)
 
-	projects := utils.GetProjectNames(&req.Artifacts)
 	params := database.CreateGroupParams{
 		GroupName:   req.Group,
 		RegistryUrl: os.Getenv("HARBOR_URL"),
