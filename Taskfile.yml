@@ -93,6 +93,11 @@ tasks:
     cmds:
       - task: _e2e:test-crash-recovery-byo
 
+  e2e-crash-mid-replication:
+    desc: Run crash mid-replication E2E test
+    cmds:
+      - task: _e2e:test-crash-mid-replication
+
   publish:
     desc: "Publish both components to registry"
     aliases: [p]
