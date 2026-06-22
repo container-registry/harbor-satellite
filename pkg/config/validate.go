@@ -71,7 +71,128 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 
 	warnings = append(warnings, validateRegistryFallbackConfig(config)...)
 
+	warnings = append(warnings, validateAndEnforceAuditConfig(config)...)
+
 	return config, warnings, nil
+}
+
+// validateAndEnforceAuditConfig fills in defaults for the audit syslog transport
+// when audit logging is enabled, applying only the defaults relevant to the
+// chosen target.
+func validateAndEnforceAuditConfig(config *Config) []string {
+	a := &config.AppConfig.Audit
+	if !a.Enabled {
+		return nil
+	}
+	var warnings []string
+	if a.Syslog.EnabledOrDefault() {
+		warnings = append(warnings, enforceSyslogConfig(&a.Syslog)...)
+	}
+	warnings = append(warnings, validateOtelConfig(&a.Otel)...)
+	if !a.Syslog.EnabledOrDefault() && !a.Otel.Enabled {
+		warnings = append(warnings, "audit.enabled is true but no transport is enabled (audit.syslog.enabled=false and audit.otel.enabled=false); the audit logger will fail to start")
+	}
+	return warnings
+}
+
+// validateOtelConfig warns when the otel transport is enabled without an
+// endpoint, mirroring the network-target warning below.
+func validateOtelConfig(o *OtelAudit) []string {
+	if o.Enabled && o.Endpoint == "" {
+		return []string{"audit.otel.enabled but audit.otel.endpoint is empty; the audit logger will fail to start"}
+	}
+	return nil
+}
+
+// enforceSyslogConfig defaults the common fields and dispatches to the
+// per-target enforcement so each function stays low in complexity.
+func enforceSyslogConfig(s *SyslogAudit) []string {
+	if s.Target == "" {
+		s.Target = DefaultAuditSyslogTarget
+	}
+	if s.Tag == "" {
+		s.Tag = DefaultAuditSyslogTag
+	}
+
+	switch s.Target {
+	case "daemon":
+		return enforceDaemonTarget(s)
+	case "network":
+		return validateNetworkTarget(s)
+	case "file":
+		return enforceFileTarget(s)
+	default:
+		return enforceInvalidTarget(s)
+	}
+}
+
+// enforceFileTarget defaults the file path and rotation settings.
+func enforceFileTarget(s *SyslogAudit) []string {
+	var warnings []string
+	if s.File.Path == "" {
+		warnings = append(warnings, fmt.Sprintf("audit.syslog.file.path empty, defaulting to %s", DefaultAuditFilePath))
+		s.File.Path = DefaultAuditFilePath
+	}
+	return append(warnings, enforceAuditRotation(&s.File)...)
+}
+
+// enforceDaemonTarget defaults the local syslog socket path.
+func enforceDaemonTarget(s *SyslogAudit) []string {
+	if s.SocketPath == "" {
+		s.SocketPath = DefaultAuditSyslogSocket
+	}
+	return nil
+}
+
+// validateNetworkTarget defaults the network and warns on a missing address.
+func validateNetworkTarget(s *SyslogAudit) []string {
+	var warnings []string
+	if s.Network == "" {
+		s.Network = "udp"
+		warnings = append(warnings, "audit.syslog.network empty, defaulting to udp")
+	}
+	if s.Address == "" {
+		warnings = append(warnings, "audit.syslog.target=network but audit.syslog.address is empty; the audit logger will fail to start")
+	}
+	return warnings
+}
+
+// enforceInvalidTarget falls back to the file target with a warning.
+func enforceInvalidTarget(s *SyslogAudit) []string {
+	warnings := []string{fmt.Sprintf("audit.syslog.target %q is invalid (expected daemon|network|file), defaulting to %s", s.Target, DefaultAuditSyslogTarget)}
+	s.Target = DefaultAuditSyslogTarget
+	return append(warnings, enforceFileTarget(s)...)
+}
+
+// enforceAuditRotation fills in defaults for the audit log rotation fields. An
+// omitted field (nil) defaults silently, matching Ground Control's env-var
+// defaults. For MaxBackups/MaxAgeDays an explicit 0 is a deliberate "retain
+// everything" (lumberjack semantics) and is preserved; only genuine negatives
+// (and a non-positive MaxSizeMB) warn and default.
+func enforceAuditRotation(f *SyslogAuditFile) []string {
+	var warnings []string
+	if f.MaxSizeMB == nil {
+		v := DefaultAuditMaxSizeMB
+		f.MaxSizeMB = &v
+	} else if *f.MaxSizeMB <= 0 {
+		warnings = append(warnings, fmt.Sprintf("audit.syslog.file.max_size_mb must be > 0, defaulting to %d", DefaultAuditMaxSizeMB))
+		*f.MaxSizeMB = DefaultAuditMaxSizeMB
+	}
+	if f.MaxBackups == nil {
+		v := DefaultAuditMaxBackups
+		f.MaxBackups = &v
+	} else if *f.MaxBackups < 0 {
+		warnings = append(warnings, fmt.Sprintf("audit.syslog.file.max_backups must be >= 0, defaulting to %d", DefaultAuditMaxBackups))
+		*f.MaxBackups = DefaultAuditMaxBackups
+	}
+	if f.MaxAgeDays == nil {
+		v := DefaultAuditMaxAgeDays
+		f.MaxAgeDays = &v
+	} else if *f.MaxAgeDays < 0 {
+		warnings = append(warnings, fmt.Sprintf("audit.syslog.file.max_age_days must be >= 0, defaulting to %d", DefaultAuditMaxAgeDays))
+		*f.MaxAgeDays = DefaultAuditMaxAgeDays
+	}
+	return warnings
 }
 
 // isValidCronExpression checks the validity of a cron expression.

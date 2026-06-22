@@ -7,8 +7,49 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/stretchr/testify/require"
 )
+
+func TestConfigManager_detectChangesAudit(t *testing.T) {
+	cm := &ConfigManager{}
+	base := func() *Config {
+		c := &Config{}
+		c.AppConfig.Audit = AuditConfig{
+			Enabled: true,
+			Syslog:  SyslogAudit{Target: "file", File: SyslogAuditFile{Path: "/a.log"}},
+		}
+		return c
+	}
+
+	t.Run("identical audit config yields no change", func(t *testing.T) {
+		require.Empty(t, cm.detectChanges(base(), base()))
+	})
+
+	t.Run("toggling enabled is detected as an audit change", func(t *testing.T) {
+		next := base()
+		next.AppConfig.Audit.Enabled = false
+		changes := cm.detectChanges(base(), next)
+		require.Len(t, changes, 1)
+		require.Equal(t, AuditConfigChanged, changes[0].Type)
+	})
+
+	t.Run("changing the syslog file path is detected as an audit change", func(t *testing.T) {
+		next := base()
+		next.AppConfig.Audit.Syslog.File.Path = "/b.log"
+		changes := cm.detectChanges(base(), next)
+		require.Len(t, changes, 1)
+		require.Equal(t, AuditConfigChanged, changes[0].Type)
+	})
+
+	t.Run("changing the syslog target is detected as an audit change", func(t *testing.T) {
+		next := base()
+		next.AppConfig.Audit.Syslog.Target = "daemon"
+		changes := cm.detectChanges(base(), next)
+		require.Len(t, changes, 1)
+		require.Equal(t, AuditConfigChanged, changes[0].Type)
+	})
+}
 
 func writeTempConfig(t *testing.T, data any) string {
 	tempDir := t.TempDir()
@@ -50,7 +91,7 @@ func TestInitConfigManager(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := InitConfigManager(token, ground_control_url, tt.path, "", false, false)
+			_, _, err := InitConfigManager(token, ground_control_url, tt.path, "", false, false, crypto.NewAESProvider())
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
@@ -68,7 +109,7 @@ func TestConfigManager_WriteConfig(t *testing.T) {
 		ZotConfigRaw: json.RawMessage(`{"storage": {}}`),
 	}
 	path := filepath.Join(t.TempDir(), "config.json")
-	cm, err := NewConfigManager(path, "", "", "", false, cfg)
+	cm, err := NewConfigManager(path, "", "", "", false, cfg, crypto.NewAESProvider())
 	require.NoError(t, err)
 
 	t.Run("SuccessfulWrite", func(t *testing.T) {

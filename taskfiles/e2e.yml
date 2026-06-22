@@ -49,6 +49,102 @@ tasks:
       - task: generate-join-token
       - task: verify-spiffe-attestation
       - echo "SPIFFE join token E2E test passed"
+  test-parsec:
+    desc: Run PARSEC hardware identity E2E test (Phase 1 & Application-Level Hardware Integration)
+    cmds:
+      - task: setup
+      - defer: { task: cleanup-parsec }
+      - task: wait-harbor
+      - task: wait-gc
+      - task: init-harbor
+      - task: init-gc
+      - task: start-parsec-daemon
+      - task: register-and-run-parsec-satellite
+      - task: verify-parsec
+      - echo "PARSEC hardware identity E2E test passed!"
+  start-parsec-daemon:
+    desc: Start PARSEC Hardware Simulator
+    cmds:
+      - echo "Starting PARSEC Daemon..."
+      - docker run -d --name parsec-daemon -u root --network harbor-e2e --privileged -v parsec-socket:/run/parsec ghcr.io/parallaxsecond/parsec-quickstart:latest bash -c "rm -f /run/parsec/parsec.sock && chmod 777 /run/parsec && sed -i 's|\"./parsec.sock\"|\"/run/parsec/parsec.sock\"|g' config.toml && parsec"
+      - sleep 5
+
+  register-and-run-parsec-satellite:
+    desc: Register satellite and run with PARSEC enabled
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sf -X POST {{.GC_URL}}/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Registering satellite..."
+        RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name": "test-parsec-satellite",
+            "groups": ["{{.DEST_NAMESPACE}}"],
+            "config_name": "test-config"
+          }')
+        TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+        echo "Building satellite with PARSEC tags..."
+        docker build --build-arg GO_TAGS=parsec -t satellite:e2e -f Dockerfile .
+
+        echo "Starting Satellite (As ROOT to read the socket)..."
+        docker run -d --name satellite \
+          -u root \
+          --network harbor-e2e \
+          -e TOKEN="$TOKEN" \
+          -e PARSEC_ENABLED=true \
+          -e PARSEC_SERVICE_ENDPOINT=unix:///run/parsec/parsec.sock \
+          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
+          -v parsec-socket:/run/parsec \
+          -p 8585:8585 \
+          satellite:e2e
+        sleep 5
+
+  verify-parsec:
+    desc: Verify PARSEC hardware key generation
+    cmds:
+      - |
+        # The earlier version of this check grepped the satellite logs for a
+        # `keyattributes: key_type:{rsa_key_pair` line emitted by a leftover
+        # `fmt.Printf` debug statement in parsec-client-go. That debug print
+        # is a bug (removed under PR #468 fixes) and the test should not
+        # depend on it. Instead, verify the key directly via parsec-tool:
+        # it lists the keys the daemon actually holds, which is the
+        # functional truth we care about.
+        echo "Verifying satellite-identity-key exists in PARSEC..."
+        if docker exec -e PARSEC_SERVICE_ENDPOINT="unix:///run/parsec/parsec.sock" parsec-daemon parsec-tool list-keys | grep -q "satellite-identity-key"; then
+          echo "SUCCESS: Key successfully verified in PARSEC secure memory!"
+          docker exec -e PARSEC_SERVICE_ENDPOINT="unix:///run/parsec/parsec.sock" parsec-daemon parsec-tool list-keys
+        else
+          echo "ERROR: satellite-identity-key not found in PARSEC."
+          docker logs satellite
+          exit 1
+        fi
+
+        echo "Verifying satellite process is running (did not halt on startup)..."
+        if ! docker ps --filter "name=^satellite$" --filter "status=running" --format '{{`{{.Names}}`}}' | grep -q satellite; then
+          echo "ERROR: satellite container is not running."
+          docker logs satellite
+          exit 1
+        fi
+        echo "SUCCESS: Satellite is running with PARSEC hardware identity."
+
+  cleanup-parsec:
+    desc: Cleanup PARSEC E2E containers
+    cmds:
+      - echo "Cleaning up PARSEC test..."
+      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f satellite parsec-daemon 2>/dev/null || true
+      - docker volume rm parsec-socket 2>/dev/null || true
+    silent: true
 
   setup:
     desc: Start Harbor and Ground Control stack
@@ -362,7 +458,6 @@ tasks:
                 "log_level": "info",
                 "use_unsecure": true,
                 "state_replication_interval": "@every 00h00m10s",
-                "update_config_interval": "@every 00h00m10s",
                 "register_satellite_interval": "@every 00h00m10s",
                 "bring_own_registry": false,
                 "local_registry": {"url": "http://127.0.0.1:8585"}
@@ -601,7 +696,6 @@ tasks:
                 "log_level": "info",
                 "use_unsecure": true,
                 "state_replication_interval": "@every 00h00m10s",
-                "update_config_interval": "@every 00h00m10s",
                 "register_satellite_interval": "@every 00h00m10s",
                 "bring_own_registry": true,
                 "local_registry": {"url": "http://byo-registry:5000"}

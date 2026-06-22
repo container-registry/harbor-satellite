@@ -1,0 +1,130 @@
+{
+  "op_code": 14,
+  "tests": [
+    {
+      "name": "normal_response",
+      "request_data": {},
+      "expected_request_binary": "EKfAXh4AAQAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAA",
+      "response_binary": "EKfAXh4AAQAAAAEAAAAAAAAAAAAAAA8AAAAAAA4AAAAAAAAACg0KB05vIEF1dGgYASAt",
+      "expected_response": [
+        {
+          "description": "No Auth",
+          "id": 0,
+          "version_maj": 0,
+          "version_min": 1,
+          "version_rev": 45
+        }
+      ],
+      "expect_success": true
+    },
+    {
+      "name": "failing response",
+      "request_data": {},
+      "expected_request_binary": "EKfAXh4AAQAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAA",
+      "response_binary": "EKfAXh4AAQAAAAEAAAAAAAAAAAAAAAAAAAAAAA4AAABuBAAA",
+      "expected_response": [],
+      "expect_success": false
+    },
+    {
+      "name": "auth_direct",
+      "request_data": {},
+      "expected_request_binary": "EKfAXh4AAQAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAA",
+      "response_binary": "EKfAXh4AAQAAAAEAAAAAAAAAAAAAABAAAAAAAA4AAAAAAAAACg4KBmRpcmVjdBABGAEoAQ==",
+      "expected_response": [
+        {
+          "description": "direct",
+          "id": 1,
+          "version_maj": 1,
+          "version_min": 1,
+          "version_rev": 0
+        }
+      ],
+      "expect_success": true
+    },
+    {
+      "name": "auth_direct,unix",
+      "request_data": {},
+      "expected_request_binary": "EKfAXh4AAQAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAA",
+      "response_binary": "EKfAXh4AAQAAAAEAAAAAAAAAAAAAAB4AAAAAAA4AAAAAAAAACg4KBmRpcmVjdBABGAEoAQoMCgR1bml4EAEYASgD",
+      "expected_response": [
+        {
+          "description": "direct",
+          "id": 1,
+          "version_maj": 1,
+          "version_min": 1,
+          "version_rev": 0
+        },
+        {
+          "description": "unix",
+          "id": 3,
+          "version_maj": 1,
+          "version_min": 1,
+          "version_rev": 0
+        }
+      ],
+      "expect_success": true
+    },
+    {
+      "name": "auth_unix,direct",
+      "request_data": {},
+      "expected_request_binary": "EKfAXh4AAQAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAA",
+      "response_binary": "EKfAXh4AAQAAAAEAAAAAAAAAAAAAAB4AAAAAAA4AAAAAAAAACgwKBHVuaXgQARgBKAMKDgoGZGlyZWN0EAEYASgB",
+      "expected_response": [
+        {
+          "description": "unix",
+          "id": 3,
+          "version_maj": 1,
+          "version_min": 1,
+          "version_rev": 0
+        },
+        {
+          "description": "direct",
+          "id": 1,
+          "version_maj": 1,
+          "version_min": 1,
+          "version_rev": 0
+        }
+      ],
+      "expect_success": true
+    },
+    {
+      "name": "auth_unix",
+      "request_data": {},
+      "expected_request_binary": "EKfAXh4AAQAAAAEAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAA",
+      "response_binary": "EKfAXh4AAQAAAAEAAAAAAAAAAAAAAA4AAAAAAA4AAAAAAAAACgwKBHVuaXgQARgBKAM=",
+      "expected_response": [
+        {
+          "description": "unix",
+          "id": 3,
+          "version_maj": 1,
+          "version_min": 1,
+          "version_rev": 0
+        }
+      ],
+      "expect_success": true
+    },
+    {
+      "name": "auth_jwt,direct",
+      "request_data": {},
+      "expected_request_binary": "EKfAXh4AAQAAAAAAAAAAAAAAAAAAAAAAAAAAAA4AAAAAAAAA",
+      "response_binary": "EKfAXh4AAQAAAAEAAAAAAAAAAAAAAB0AAAAAAA4AAAAAAAAACgsKA2p3dBABGAEoAgoOCgZkaXJlY3QQARgBKAE=",
+      "expected_response": [
+        {
+          "description": "jwt",
+          "id": 2,
+          "version_maj": 1,
+          "version_min": 1,
+          "version_rev": 0
+        },
+        {
+          "description": "direct",
+          "id": 1,
+          "version_maj": 1,
+          "version_min": 1,
+          "version_rev": 0
+        }
+      ],
+      "expect_success": true
+    }
+  ]
+}

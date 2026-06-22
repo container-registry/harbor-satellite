@@ -201,7 +201,6 @@ after the initial deployment.
     "log_level": "info",
     "use_unsecure": true,
     "state_replication_interval": "@every 00h00m10s",
-    "update_config_interval": "@every 00h00m10s",
     "register_satellite_interval": "@every 00h00m10s",
     "bring_own_registry": false,
     "local_registry": {

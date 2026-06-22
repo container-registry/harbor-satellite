@@ -7,29 +7,63 @@ on:
       - "assets/**"
 
 jobs:
-  vulnerability-check:
-    runs-on: container-registry
+  unit-tests:
+    name: Unit Tests and Coverage
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: "1.24.11"
+          go-version: "1.26.3"
+          cache: false
 
-      - name: Install Task
-        uses: arduino/setup-task@v2
+      - name: Run unit tests for satellite (with coverage)
+        run: |
+          go test -v -count=1 -coverprofile=coverage-satellite.out -covermode=atomic ./...
+
+      - name: Run unit tests for ground-control (with coverage)
+        working-directory: ground-control
+        run: |
+          go test -v -count=1 -coverprofile=coverage-ground-control.out -covermode=atomic ./...
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
-          version: 3.x
+          files: coverage-satellite.out,ground-control/coverage-ground-control.out
+          flags: unittests
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+  vulnerability-check:
+    runs-on: container-registry
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
 
-      - name: Run Vulnerability Check
-        run: task vuln-report
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.26.3"
+          cache: false
+
+      - name: Run govulncheck (report)
+        uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1.0.4
+        continue-on-error: true
+        with:
+          repo-checkout: false
+          go-version-input: "1.26.3"
+          go-package: ./...
+          output-format: text
+          output-file: vulnerability-check.report
+          cache: false
 
       - name: Generate vulnerability summary
         run: |
@@ -44,28 +78,29 @@ jobs:
     runs-on: container-registry
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: "1.24.11"
+          go-version: "1.26.3"
+          cache: false
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
 
       - name: Install GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
           install-only: true
-          version: v2.9.0
+          version: v2.16.0
 
       - name: Install Syft
-        uses: anchore/sbom-action/download-syft@v0
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
 
       - name: Test Release
         run: task snapshot
@@ -74,15 +109,16 @@ jobs:
     runs-on: container-registry
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: "1.24.11"
+          go-version: "1.26.3"
+          cache: false
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
 
@@ -93,15 +129,16 @@ jobs:
     runs-on: container-registry
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: "1.24.11"
+          go-version: "1.26.3"
+          cache: false
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
 
@@ -113,15 +150,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: "1.24.11"
+          go-version: "1.26.3"
+          cache: false
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
 
@@ -133,15 +171,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: "1.24.11"
+          go-version: "1.26.3"
+          cache: false
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
 
@@ -153,15 +192,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: "1.24.11"
+          go-version: "1.26.3"
+          cache: false
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
 

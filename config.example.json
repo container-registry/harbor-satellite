@@ -7,7 +7,6 @@
     "log_level": "info",
     "use_unsecure": true,
     "state_replication_interval": "@every 00h00m10s",
-    "update_config_interval": "@every 00h00m10s",
     "register_satellite_interval": "@every 00h00m10s",
     "heartbeat_interval": "@every 00h00m30s",
     "metrics": {
@@ -29,6 +28,27 @@
       "enabled": false,
       "registries": ["docker.io"],
       "runtimes": []
+    },
+    "audit": {
+      "enabled": false,
+      "syslog": {
+        "target": "file",
+        "tag": "harbor-audit",
+        "socket_path": "/dev/log",
+        "network": "udp",
+        "address": "",
+        "file": {
+          "path": "./audit.log",
+          "max_size_mb": 100,
+          "max_backups": 7,
+          "max_age_days": 30,
+          "compress": true
+        }
+      },
+      "otel": {
+        "enabled": false,
+        "endpoint": ""
+      }
     }
   },
   "zot_config": {

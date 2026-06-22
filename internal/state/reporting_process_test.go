@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
+	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
 )
@@ -134,7 +135,7 @@ func newReportingTestCM(t *testing.T, gcURL string) *config.ConfigManager {
 	cm, err := config.NewConfigManager(
 		filepath.Join(dir, "config.json"),
 		filepath.Join(dir, "prev.json"),
-		"token", gcURL, false, cfg,
+		"token", gcURL, false, cfg, crypto.NewAESProvider(),
 	)
 	require.NoError(t, err)
 	return cm

@@ -11,6 +11,10 @@ import (
 func (s *Server) RegisterRoutes() http.Handler {
 	r := mux.NewRouter()
 
+	// Attach a request ID to every request (all routes, including /login and
+	// /ztr) so the audit events from one request share a correlation ID.
+	r.Use(s.RequestIDMiddleware)
+
 	// Public routes
 	r.HandleFunc("/ping", s.Ping).Methods("GET")
 	r.HandleFunc("/health", s.healthHandler).Methods("GET")
