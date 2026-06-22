@@ -54,9 +54,12 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	}
 	log.Info().Msgf("Executing process")
 
+	gcURL := z.cm.ResolveGroundControlURL()
+	audit := logger.AuditFromContext(ctx)
+
 	// Register the satellite
 	stateConfig, err := registerSatellite(
-		z.cm.ResolveGroundControlURL(),
+		gcURL,
 		ZeroTouchRegistrationRoute,
 		z.cm.GetToken(),
 		z.cm.GetTLSConfig(),
@@ -65,11 +68,31 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	)
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to register satellite")
+		audit.Log(logger.AuditEvent{
+			Operation:    logger.OpRegister,
+			ResourceType: logger.ResSatellite,
+			Outcome:      logger.OutcomeFailure,
+			ActorType:    logger.ActorSatellite,
+			Reason:       logger.ReasonRegistrationFailed,
+			Details: map[string]any{
+				"error":              sanitizeAuditReason(err, z.cm.GetToken()),
+				"flow":               "ztr",
+				"ground_control_url": gcURL,
+			},
+		})
 		return err
 	}
 
 	if stateConfig.RegistryCredentials.Username == "" || stateConfig.RegistryCredentials.Password == "" || stateConfig.RegistryCredentials.URL == "" || stateConfig.StateURL == "" {
 		log.Error().Msgf("Failed to register satellite: invalid state auth config received")
+		audit.Log(logger.AuditEvent{
+			Operation:    logger.OpRegister,
+			ResourceType: logger.ResSatellite,
+			Outcome:      logger.OutcomeFailure,
+			ActorType:    logger.ActorSatellite,
+			Reason:       logger.ReasonInvalidStateAuthConfig,
+			Details:      map[string]any{"flow": "ztr", "ground_control_url": gcURL},
+		})
 		return fmt.Errorf("failed to register satellite: invalid state auth config received")
 	}
 
@@ -89,6 +112,14 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		log.Error().Msgf("Failed to register satellite: could not update state auth config")
 		return fmt.Errorf("failed to register satellite: could not update state auth config")
 	}
+
+	audit.Log(logger.AuditEvent{
+		Operation:    logger.OpRegister,
+		ResourceType: logger.ResSatellite,
+		Outcome:      logger.OutcomeSuccess,
+		ActorType:    logger.ActorSatellite,
+		Details:      map[string]any{"flow": "ztr", "ground_control_url": gcURL},
+	})
 
 	// Close the z.Done channel on successful ZTR alone.
 	close(z.Done)
@@ -149,6 +180,22 @@ func (z *ZtrProcess) stop() {
 	z.mu.Lock()
 	defer z.mu.Unlock()
 	z.isRunning = false
+}
+
+// sanitizeAuditReason returns an error string with the satellite token redacted
+// so it is safe to write to the audit log. The token appears as a URL path
+// segment in Go's default HTTP client error messages, so a naive err.Error()
+// emit would leak the secret. The unredacted error is still available via the
+// regular zerolog stream for debugging.
+func sanitizeAuditReason(err error, token string) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	if token != "" {
+		s = strings.ReplaceAll(s, token, "[REDACTED]")
+	}
+	return s
 }
 
 func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSConfig, useUnsecure bool, ctx context.Context) (config.StateConfig, error) {

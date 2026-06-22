@@ -178,6 +178,12 @@ func (cm *ConfigManager) GetRegistryFallbackConfig() RegistryFallbackConfig {
 	return cm.config.AppConfig.RegistryFallback
 }
 
+func (cm *ConfigManager) GetAuditConfig() AuditConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.config.AppConfig.Audit
+}
+
 func (cm *ConfigManager) GetHarborRegistryURL() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
