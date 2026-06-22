@@ -203,7 +203,7 @@ Use the token from Step 6 to start the satellite. See [.env.example](https://git
 2. Run the binary with the token:
 
    ```bash
-   ./bin --token "<your-token>" --ground-control-url "http://127.0.0.1:8080"
+   ./bin --token "<your-token>" --ground-control-url "http://127.0.0.1:8080" --harbor-registry-url "https://demo.goharbor.io"
    ```
 
 ### Option 3: Using Go
@@ -211,7 +211,7 @@ Use the token from Step 6 to start the satellite. See [.env.example](https://git
 1. Run the satellite directly:
 
    ```bash
-   go run cmd/main.go --token "<your token here>" --ground-control-url "<ground control url here>"
+   go run cmd/main.go --token "<your token here>" --ground-control-url "<ground control url here>" --harbor-registry-url "<harbor registry url here>"
    ```
 
    > Note: By default, JSON logging is enabled. To disable it, pass `--json-logging=false`.
