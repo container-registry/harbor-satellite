@@ -2,7 +2,6 @@ package state
 
 import (
 	"archive/tar"
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -193,13 +192,20 @@ func (f *URLStateFetcher) buildTLSTransport() (http.RoundTripper, error) {
 func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out any, log *zerolog.Logger) error {
 	log.Debug().Msgf("Extracting artifacts.json from the state artifact: %s", url)
 
-	tarContent := new(bytes.Buffer)
-	if err := crane.Export(img, tarContent); err != nil {
-		log.Error().Msgf("Error exporting the fs contents of the state artifact: %s", url)
-		return fmt.Errorf("failed to export the state artifact: %v", err)
-	}
+	pr, pw := io.Pipe()
 
-	tr := tar.NewReader(tarContent)
+	go func() {
+		if err := crane.Export(img, pw); err != nil {
+			log.Error().Err(err).Msg("failed exporting state artifact")
+			_ = pw.CloseWithError(err)
+			return
+		}
+		_ = pw.Close()
+	}()
+
+	defer pr.Close() // Ensure the pipe is closed to unblock the export goroutine if we return early
+
+	tr := tar.NewReader(pr)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -219,6 +225,7 @@ func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out any,
 			return json.Unmarshal(artifactsJSON, out)
 		}
 	}
+
 	log.Error().Msgf("artifacts.json not present for the state artifact: %s", url)
 	return fmt.Errorf("artifacts.json not found in the state artifact")
 }
