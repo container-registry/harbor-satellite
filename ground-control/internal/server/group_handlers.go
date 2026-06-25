@@ -144,6 +144,31 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	groupName := vars["group"]
 
+	q := s.dbQueries
+
+	group, err := q.GetGroupByName(r.Context(), groupName)
+	if err != nil {
+		log.Println(err)
+		err := &AppError{
+			Message: "Error: Group Not Found",
+			Code:    http.StatusNotFound,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
+	// Delete Harbor artifact before modifying database
+	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(groupName, "group"))
+	if err != nil {
+		log.Println(err)
+		err := &AppError{
+			Message: "Error: Failed to delete group state artifact",
+			Code:    http.StatusInternalServerError,
+		}
+		HandleAppError(w, err)
+		return
+	}
+
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		log.Printf("Error starting transaction: %v", err)
@@ -155,7 +180,7 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	q := s.dbQueries.WithTx(tx)
+	q = s.dbQueries.WithTx(tx)
 
 	committed := false
 	defer func() {
@@ -171,17 +196,6 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
-
-	group, err := q.GetGroupByName(r.Context(), groupName)
-	if err != nil {
-		log.Println(err)
-		err := &AppError{
-			Message: "Error: Group Not Found",
-			Code:    http.StatusNotFound,
-		}
-		HandleAppError(w, err)
-		return
-	}
 
 	// Remove the group from all associated satellites
 	satellites, err := q.GroupSatelliteList(r.Context(), group.ID)
@@ -314,17 +328,6 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	committed = true
-
-	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(groupName, "group"))
-	if err != nil {
-		log.Println(err)
-		err := &AppError{
-			Message: "Error: Failed to delete group state",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
