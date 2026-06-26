@@ -285,4 +285,4 @@ Interested in contributing? Read [CONTRIBUTING.md](CONTRIBUTING.md) to get start
 You can reach the Harbor community and developers via the following channels:
 
 - [#harbor-satellite on CNCF Slack](https://cloud-native.slack.com/archives/C06NE6EJBU1) (Request an invite to join the CNCF Slack via [slack.cncf.io](https://slack.cncf.io/))
-- Mailing lists: harbor-users@lists.cncf.io (users) / harbor-dev@lists.cncf.io (developers)
+- Mailing lists: [harbor-users@lists.cncf.io](https://lists.cncf.io/g/harbor-users) (users) / [harbor-dev@lists.cncf.io](https://lists.cncf.io/g/harbor-dev) (developers)
