@@ -93,7 +93,9 @@ go test ./... -v -count=1
 cd ground-control && go test ./... -v -count=1
 
 # Run E2E tests
-task e2e-test
+task e2e-test    # standard E2E
+task e2e-byo     # BYO registry E2E
+task e2e-spiffe  # SPIFFE mTLS E2E
 
 # Lint both modules
 task lint
@@ -154,25 +156,14 @@ The project uses a strict `golangci-lint` configuration with 50+ linters. Key ru
 
 Unit tests are colocated with source files (`*_test.go`). E2E tests live in `test/e2e/`.
 
-```bash
-# Unit tests — satellite module
-go test ./... -v -count=1
-
-# Unit tests — Ground Control module
-cd ground-control && go test ./... -v -count=1
-
-# E2E tests
-task e2e-test        # standard E2E
-task e2e-byo         # BYO registry E2E
-task e2e-spiffe      # SPIFFE mTLS E2E
-```
+See [step 4 in How to Contribute](#4-run-tests-and-lint) for the full test matrix and lint commands.
 
 ## Community and Communication
 
 - **CNCF Slack**: [#harbor-satellite](https://cloud-native.slack.com/archives/C06NE6EJBU1) — request an invite at [slack.cncf.io](https://slack.cncf.io/)
 - **Mailing lists**:
-  - Users: harbor-users@lists.cncf.io
-  - Developers: harbor-dev@lists.cncf.io
+  - Users: [harbor-users@lists.cncf.io](https://lists.cncf.io/g/harbor-users)
+  - Developers: [harbor-dev@lists.cncf.io](https://lists.cncf.io/g/harbor-dev)
 - **GitHub Issues**: For bug reports, feature requests, and questions
 
 ## License
