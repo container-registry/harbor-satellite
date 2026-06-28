@@ -11,6 +11,46 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestConfigManager_detectChangesAudit(t *testing.T) {
+	cm := &ConfigManager{}
+	base := func() *Config {
+		c := &Config{}
+		c.AppConfig.Audit = AuditConfig{
+			Enabled: true,
+			Syslog:  SyslogAudit{Target: "file", File: SyslogAuditFile{Path: "/a.log"}},
+		}
+		return c
+	}
+
+	t.Run("identical audit config yields no change", func(t *testing.T) {
+		require.Empty(t, cm.detectChanges(base(), base()))
+	})
+
+	t.Run("toggling enabled is detected as an audit change", func(t *testing.T) {
+		next := base()
+		next.AppConfig.Audit.Enabled = false
+		changes := cm.detectChanges(base(), next)
+		require.Len(t, changes, 1)
+		require.Equal(t, AuditConfigChanged, changes[0].Type)
+	})
+
+	t.Run("changing the syslog file path is detected as an audit change", func(t *testing.T) {
+		next := base()
+		next.AppConfig.Audit.Syslog.File.Path = "/b.log"
+		changes := cm.detectChanges(base(), next)
+		require.Len(t, changes, 1)
+		require.Equal(t, AuditConfigChanged, changes[0].Type)
+	})
+
+	t.Run("changing the syslog target is detected as an audit change", func(t *testing.T) {
+		next := base()
+		next.AppConfig.Audit.Syslog.Target = "daemon"
+		changes := cm.detectChanges(base(), next)
+		require.Len(t, changes, 1)
+		require.Equal(t, AuditConfigChanged, changes[0].Type)
+	})
+}
+
 func writeTempConfig(t *testing.T, data any) string {
 	tempDir := t.TempDir()
 	path := filepath.Join(tempDir, "config.json")
