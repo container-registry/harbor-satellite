@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/rs/zerolog"
 	"zotregistry.dev/zot/v2/pkg/api"
@@ -58,10 +59,28 @@ func (zm *ZotManager) HandleRegistrySetup(ctx context.Context) error {
 func (zm *ZotManager) WriteTempZotConfig() error {
 	zm.log.Debug().Msg("Creating temporary zot config file")
 
-	tmpFile, err := os.CreateTemp("", "zot-*.json")
+	dir := filepath.Dir(zm.tempConfPath)
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return fmt.Errorf("failed to create directory for temp config: %w", err)
+	}
+
+	tmpFile, err := os.CreateTemp(dir, "zot-*.json")
 	if err != nil {
 		return fmt.Errorf("failed to create temp zot config file: %w", err)
 	}
+
+	var success bool
+	var closed bool
+	defer func() {
+		if !success {
+			if !closed {
+				_ = tmpFile.Close()
+			}
+			if removeErr := os.Remove(tmpFile.Name()); removeErr != nil && !os.IsNotExist(removeErr) {
+				zm.log.Warn().Err(removeErr).Str("path", tmpFile.Name()).Msg("Failed to remove temporary zot config file after error")
+			}
+		}
+	}()
 
 	if _, err := tmpFile.Write(zm.zotConfig); err != nil {
 		return fmt.Errorf("failed to write to temp zot file present at %s: %w", tmpFile.Name(), err)
@@ -70,12 +89,14 @@ func (zm *ZotManager) WriteTempZotConfig() error {
 	if err := tmpFile.Close(); err != nil {
 		return fmt.Errorf("failed to close temp zot config file %s: %w", tmpFile.Name(), err)
 	}
+	closed = true
 
 	if err := os.Rename(tmpFile.Name(), zm.tempConfPath); err != nil {
 		return fmt.Errorf("failed to rename to target config path: %w", err)
 	}
 
-	zm.log.Debug().Str("path", tmpFile.Name()).Msg("Temporary zot config file created successfully")
+	success = true
+	zm.log.Debug().Str("path", zm.tempConfPath).Msg("Temporary zot config file created successfully")
 	return nil
 }
 
