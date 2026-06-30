@@ -2,10 +2,12 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/env"
@@ -15,6 +17,60 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 )
+
+// SatelliteGroupParams links or unlinks a satellite and a group.
+//
+// swagger:model SatelliteGroupParams
+type SatelliteGroupParams struct {
+	Satellite string `json:"satellite"`
+	Group     string `json:"group"`
+}
+
+// RegisterSatelliteParams registers a token-managed satellite.
+//
+// swagger:model RegisterSatelliteParams
+type RegisterSatelliteParams struct {
+	Name       string    `json:"name"`
+	Groups     *[]string `json:"groups,omitempty"`
+	ConfigName string    `json:"config_name"`
+}
+
+// RegisterSatelliteResponse contains a single-use ZTR token.
+//
+// swagger:model RegisterSatelliteResponse
+type RegisterSatelliteResponse struct {
+	Token string `json:"token"`
+}
+
+// CachedImage describes an image cached by a satellite.
+//
+// swagger:model CachedImage
+type CachedImage struct {
+	Reference string `json:"reference"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
+// SatelliteStatusParams reports the current satellite status and cache metrics.
+//
+// swagger:model SatelliteStatusParams
+type SatelliteStatusParams struct {
+	Name                string        `json:"name"`
+	Activity            string        `json:"activity"`
+	StateReportInterval string        `json:"state_report_interval"`
+	LatestStateDigest   string        `json:"latest_state_digest"`
+	LatestConfigDigest  string        `json:"latest_config_digest"`
+	MemoryUsedBytes     uint64        `json:"memory_used_bytes"`
+	StorageUsedBytes    uint64        `json:"storage_used_bytes"`
+	CPUPercent          float64       `json:"cpu_percent"`
+	RequestCreatedTime  time.Time     `json:"request_created_time"`
+	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
+	ImageCount          int           `json:"image_count"`
+	CachedImages        []CachedImage `json:"cached_images,omitempty"`
+}
+
+type SatelliteSyncResponse struct {
+	Actions []string `json:"string"`
+}
 
 func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 	if s.spiffeProvider != nil || s.spireClient != nil {
@@ -599,8 +655,11 @@ func (s *Server) ListSatellites(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
-	var req SatelliteStatusRequest
+func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
+	resp := SatelliteSyncResponse{
+		Actions: make([]string, 0),
+	}
+	var req SatelliteStatusParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -630,6 +689,32 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Invalid heartbeat interval %q: %v", req.StateReportInterval, err)
 		HandleAppError(w, &AppError{Message: "invalid heartbeat interval format", Code: http.StatusBadRequest})
 		return
+	}
+
+	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("Failed to find robot account for satellite : %s", satelliteName)
+		HandleAppError(w, &AppError{
+			Message: "Failed to find robot account",
+			Code:    http.StatusForbidden,
+		})
+		return
+	}
+
+	if robotAcc.RobotExpiry.Valid {
+		duration, err := time.ParseDuration(strings.TrimPrefix("@every ", normalizedInterval))
+		if err != nil {
+			log.Printf("Invalid heartbeat interval %q: %v", req.StateReportInterval, err)
+			HandleAppError(w, &AppError{Message: "invalid heartbeat interval format", Code: http.StatusBadRequest})
+			return
+		}
+
+		// Basically checks whether the robot expires before the 2nd state sync from now
+		// or not
+		future := time.Now().Add(duration * 2)
+		if future.Before(robotAcc.RobotExpiry.Time) {
+			resp.Actions = append(resp.Actions, "refresh_credentials")
+		}
 	}
 
 	var artifactIDs []int32
@@ -695,6 +780,14 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+
+	data, err := json.Marshal(&resp)
+	if err != nil {
+		log.Printf("Failed to marshal response: %v", err)
+		HandleAppError(w, &AppError{Message: "failed to marshal response", Code: http.StatusInternalServerError})
+		return
+	}
+	w.Write(data)
 }
 
 func (s *Server) GetSatelliteStatus(w http.ResponseWriter, r *http.Request, satelliteName string) {
