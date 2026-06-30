@@ -6,7 +6,9 @@ import (
 	"net/http"
 )
 
-// structured error type.
+// AppError is a structured JSON error response.
+//
+// swagger:model AppError
 type AppError struct {
 	Message string `json:"message"`
 	Code    int    `json:"code"`

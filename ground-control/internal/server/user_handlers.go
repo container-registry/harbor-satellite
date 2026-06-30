@@ -28,11 +28,17 @@ const (
 	roleSystemAdmin = "system_admin"
 )
 
+// CreateUserRequest creates a regular admin user.
+//
+// swagger:model CreateUserRequest
 type createUserRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
+// UserResponse describes a Ground Control user.
+//
+// swagger:model UserResponse
 type userResponse struct {
 	ID        int32  `json:"id"`
 	Username  string `json:"username"`
@@ -40,11 +46,17 @@ type userResponse struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// ChangePasswordRequest changes the authenticated user's password.
+//
+// swagger:model ChangePasswordRequest
 type changePasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
 }
 
+// ChangeUserPasswordRequest resets a user's password.
+//
+// swagger:model ChangeUserPasswordRequest
 type changeUserPasswordRequest struct {
 	NewPassword string `json:"new_password"`
 }

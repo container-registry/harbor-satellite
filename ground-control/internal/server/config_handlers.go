@@ -21,6 +21,9 @@ import (
 	"github.com/lib/pq"
 )
 
+// SatelliteConfigParams links a satellite to a named configuration.
+//
+// swagger:model SatelliteConfigParams
 type SatelliteConfigParams struct {
 	Satellite  string `json:"satellite,omitempty"`
 	ConfigName string `json:"config_name"`
@@ -496,7 +499,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-    // TODO: Store the groupStates in memory to survive hot reloads
+	// TODO: Store the groupStates in memory to survive hot reloads
 	var groupStates []string
 	for _, group := range groupList {
 		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
