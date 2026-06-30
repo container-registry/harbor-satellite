@@ -15,11 +15,17 @@ import (
 
 const maxFailedAttempts = 5
 
+// LoginRequest contains user credentials for session creation.
+//
+// swagger:model LoginRequest
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
+// LoginResponse contains a bearer token and its expiration timestamp.
+//
+// swagger:model LoginResponse
 type loginResponse struct {
 	Token     string `json:"token"`
 	ExpiresAt string `json:"expires_at"`
