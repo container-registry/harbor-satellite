@@ -86,7 +86,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 	spiffeZtr.HandleFunc("", s.spiffeZtrHandler).Methods("GET")
 
 	// Sync (dual auth: robot credentials or SPIFFE)
-	satellites.HandleFunc("/sync", s.syncHandler).Methods("POST")
+	syncRouter := satellites.PathPrefix("/sync").Subrouter()
+	syncRouter.Use(spiffe.AuthMiddleware)
+	syncRouter.Use(s.SatelliteAuthMiddleware)
+	syncRouter.Use(middleware.RateLimitMiddleware(s.rateLimiter))
+	syncRouter.HandleFunc("", s.syncHandler).Methods("POST")
 
 	return r
 }
