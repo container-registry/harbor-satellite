@@ -6,7 +6,9 @@ import (
 	"net/http"
 )
 
-// structured error type.
+// AppError is a structured JSON error response.
+//
+// swagger:model AppError
 type AppError struct {
 	Message string `json:"message"`
 	Code    int    `json:"code"`
@@ -18,12 +20,12 @@ func (e *AppError) Error() string {
 
 // write JSON error response with given status code and message.
 func WriteJSONError(w http.ResponseWriter, message string, statusCode int) {
-	respBytes, err := json.Marshal(map[string]string{"error": message})
+	respBytes, err := json.Marshal(AppError{Message: message, Code: statusCode})
 	if err != nil {
 		log.Printf("Failed to marshal JSON error response: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"error":"Internal server error"}`))
+		_, _ = w.Write([]byte(`{"message":"Internal server error","code":500}`))
 		return
 	}
 

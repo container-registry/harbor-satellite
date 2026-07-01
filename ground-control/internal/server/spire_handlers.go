@@ -12,16 +12,27 @@ import (
 )
 
 // RegisterSatelliteRequest represents a request to register a satellite with SPIFFE.
+//
+// swagger:model RegisterSatelliteRequest
 type RegisterSatelliteRequest struct {
-	SatelliteName     string   `json:"satellite_name"`
-	Region            string   `json:"region,omitempty"`
-	Selectors         []string `json:"selectors"`
-	AttestationMethod string   `json:"attestation_method"` // join_token, x509pop, sshpop
-	TTLSeconds        int      `json:"ttl_seconds,omitempty"`
-	ParentAgentID     string   `json:"parent_agent_id,omitempty"`
+	// required: true
+	SatelliteName string `json:"satellite_name"`
+	Region        string `json:"region,omitempty"`
+	// required: true
+	// min items: 1
+	Selectors []string `json:"selectors"`
+	// required: true
+	// enum: join_token,x509pop,sshpop
+	AttestationMethod string `json:"attestation_method"` // join_token, x509pop, sshpop
+	// minimum: 1
+	// maximum: 86400
+	TTLSeconds    int    `json:"ttl_seconds,omitempty"`
+	ParentAgentID string `json:"parent_agent_id,omitempty"`
 }
 
 // RegisterSatelliteWithSPIFFEResponse contains satellite registration details.
+//
+// swagger:model RegisterSatelliteWithSPIFFEResponse
 type RegisterSatelliteWithSPIFFEResponse struct {
 	Satellite          string     `json:"satellite"`
 	Region             string     `json:"region"`
@@ -35,19 +46,25 @@ type RegisterSatelliteWithSPIFFEResponse struct {
 }
 
 // AgentListResponse contains a list of attested agents.
+//
+// swagger:model AgentListResponse
 type AgentListResponse struct {
 	Agents []AgentInfoResponse `json:"agents"`
 }
 
 // AgentInfoResponse contains agent information for API response.
+//
+// swagger:model AgentInfoResponse
 type AgentInfoResponse struct {
-	SpiffeID        string    `json:"spiffe_id"`
-	AttestationType string    `json:"attestation_type"`
-	Selectors       []string  `json:"selectors,omitempty"`
-	ExpiresAt       time.Time `json:"expires_at,omitempty"`
+	SpiffeID        string     `json:"spiffe_id"`
+	AttestationType string     `json:"attestation_type"`
+	Selectors       []string   `json:"selectors,omitempty"`
+	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
 }
 
 // SPIREStatusResponse contains SPIRE integration status.
+//
+// swagger:model SPIREStatusResponse
 type SPIREStatusResponse struct {
 	Enabled     bool   `json:"enabled"`
 	TrustDomain string `json:"trust_domain,omitempty"`
@@ -363,11 +380,15 @@ func (s *Server) listSpireAgentsHandler(w http.ResponseWriter, r *http.Request) 
 
 	agentResponses := make([]AgentInfoResponse, 0, len(agents))
 	for _, agent := range agents {
+		var expiresAt *time.Time
+		if !agent.ExpiresAt.IsZero() {
+			expiresAt = &agent.ExpiresAt
+		}
 		agentResponses = append(agentResponses, AgentInfoResponse{
 			SpiffeID:        agent.SpiffeID,
 			AttestationType: agent.AttestationType,
 			Selectors:       agent.Selectors,
-			ExpiresAt:       agent.ExpiresAt,
+			ExpiresAt:       expiresAt,
 		})
 	}
 
