@@ -22,7 +22,7 @@ task _build:satellite
 task _build:ground-control
 
 # Run satellite directly
-go run cmd/main.go --token "<token>" --ground-control-url "<url>"
+go run ./cmd/harbor-satellite --token "<token>" --ground-control-url "<url>"
 
 # Run ground-control directly
 cd ground-control && go run main.go
@@ -56,10 +56,10 @@ Uses strict golangci-lint with 50+ linters (see golangci.yaml). Key rules: no gl
 docker compose up -d
 
 # Satellite with Go
-go run cmd/main.go --token "<token>" --ground-control-url "http://127.0.0.1:8080"
+go run ./cmd/harbor-satellite --token "<token>" --ground-control-url "http://127.0.0.1:8080"
 
 # Satellite with mirror config
-go run cmd/main.go --token "<token>" --ground-control-url "<url>" --mirrors=containerd:docker.io,quay.io
+go run ./cmd/harbor-satellite --token "<token>" --ground-control-url "<url>" --mirrors=containerd:docker.io,quay.io
 
 # Ground Control with Docker Compose
 cd ground-control && docker compose up
@@ -80,7 +80,7 @@ When making changes, be aware which module you're working in. Dependencies and i
 
 ### Satellite Component Structure
 
-- cmd/main.go: Entry point, handles CLI flags (token, ground-control-url, mirrors, json-logging)
+- cmd/harbor-satellite/main.go: Entry point, handles CLI flags (token, ground-control-url, mirrors, json-logging)
 - pkg/config/: Configuration management, validation, hot-reloading
 - internal/satellite/: Core orchestration logic
 - internal/state/: State management (replication, fetching, artifact handling, registration)
@@ -188,7 +188,7 @@ ADRs in docs/decisions/:
 1. Implement in appropriate internal/ package
 2. Update pkg/config/ if configuration changes needed
 3. Add validation in pkg/config/validate.go
-4. Update cmd/main.go if new CLI flags needed
+4. Update cmd/harbor-satellite/main.go if new CLI flags needed
 5. Update config.example.json
 
 ### Modifying state replication logic
