@@ -43,6 +43,11 @@ func GetSatelliteName(_ context.Context) (string, bool) {
 	return "", false
 }
 
+// ContextWithSatelliteName returns a new context with the satellite name.
+func ContextWithSatelliteName(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, SatelliteNameKey, name)
+}
+
 // GetRegion always returns false when SPIFFE is disabled.
 func GetRegion(_ context.Context) (string, bool) {
 	return "", false

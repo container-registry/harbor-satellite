@@ -170,6 +170,14 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
+	if s.spiffeClient == nil {
+		username := s.cm.GetSourceRegistryUsername()
+		password := s.cm.GetSourceRegistryPassword()
+		if username != "" && password != "" {
+			httpReq.SetBasicAuth(username, password)
+		}
+	}
+
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("send request: %w", err)

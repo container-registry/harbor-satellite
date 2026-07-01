@@ -9,6 +9,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
+	"github.com/container-registry/harbor-satellite/ground-control/pkg/crypto"
 	"github.com/google/uuid"
 )
 
@@ -221,4 +223,78 @@ func extractBasicAuth(r *http.Request) (username, password string, ok bool) {
 	}
 
 	return credentials[0], credentials[1], true
+}
+
+// SatelliteAuthMiddleware validates satellite requests using either SPIFFE mTLS or robot credentials.
+func (s *Server) SatelliteAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var satelliteName string
+		var authenticated bool
+
+		// 1. Try SPIFFE authentication first
+		if spiffeName, ok := spiffe.GetSatelliteName(r.Context()); ok {
+			// Validate if the satellite exists in database
+			sat, err := s.dbQueries.GetSatelliteByName(r.Context(), spiffeName)
+			if err == nil {
+				satelliteName = sat.Name
+				authenticated = true
+			} else {
+				s.auditEvent(r, auditlog.AuditEvent{
+					Operation:    auditlog.OpAuth,
+					ResourceType: auditlog.ResSatellite,
+					Outcome:      auditlog.OutcomeFailure,
+					Actor:        spiffeName,
+					ActorType:    auditlog.ActorSatellite,
+					Reason:       auditlog.ReasonInvalidCredentials,
+					Details:      map[string]any{"error": "spiffe satellite not found in database"},
+				})
+				WriteJSONError(w, "Unauthorized: Unknown SPIFFE satellite", http.StatusUnauthorized)
+				return
+			}
+		}
+
+		// 2. Try Robot credentials Basic Auth if SPIFFE didn't authenticate
+		if !authenticated {
+			if username, password, ok := extractBasicAuth(r); ok {
+				robot, err := s.dbQueries.GetRobotAccByRobotName(r.Context(), username)
+				if err == nil {
+					if crypto.VerifySecret(password, robot.RobotSecretHash) {
+						sat, err := s.dbQueries.GetSatellite(r.Context(), robot.SatelliteID)
+						if err == nil {
+							satelliteName = sat.Name
+							authenticated = true
+						}
+					}
+				}
+				if !authenticated {
+					s.auditEvent(r, auditlog.AuditEvent{
+						Operation:    auditlog.OpAuth,
+						ResourceType: auditlog.ResSatellite,
+						Outcome:      auditlog.OutcomeFailure,
+						Actor:        username,
+						ActorType:    auditlog.ActorSatellite,
+						Reason:       auditlog.ReasonInvalidCredentials,
+					})
+					WriteJSONError(w, "Unauthorized: Invalid robot credentials", http.StatusUnauthorized)
+					return
+				}
+			}
+		}
+
+		if !authenticated {
+			s.auditEvent(r, auditlog.AuditEvent{
+				Operation:    auditlog.OpAuth,
+				ResourceType: auditlog.ResSatellite,
+				Outcome:      auditlog.OutcomeFailure,
+				ActorType:    auditlog.ActorAnonymous,
+				Reason:       auditlog.ReasonMissingCredentials,
+			})
+			WriteJSONError(w, "Unauthorized: Authentication required", http.StatusUnauthorized)
+			return
+		}
+
+		// Set the authenticated satellite name on context
+		ctx := spiffe.ContextWithSatelliteName(r.Context(), satelliteName)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
