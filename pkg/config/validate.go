@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/container-registry/harbor-satellite/internal/registry"
+	"github.com/container-registry/harbor-satellite/internal/satellite/registry"
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )
