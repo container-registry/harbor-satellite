@@ -9,6 +9,9 @@ import (
 //
 // Pings the server.
 //
+// Produces:
+// - text/plain
+//
 // Responses:
 //   200: body:string Server is reachable and returns pong.
 
@@ -476,6 +479,7 @@ type loginParams struct {
 	// User credentials.
 	//
 	// in: body
+	// required: true
 	Body loginRequest
 }
 
@@ -484,6 +488,7 @@ type createUserParams struct {
 	// User creation request.
 	//
 	// in: body
+	// required: true
 	Body createUserRequest
 }
 
@@ -501,6 +506,7 @@ type changeOwnPasswordParams struct {
 	// Password change request.
 	//
 	// in: body
+	// required: true
 	Body changePasswordRequest
 }
 
@@ -509,6 +515,7 @@ type changeUserPasswordParams struct {
 	// Password reset request.
 	//
 	// in: body
+	// required: true
 	Body changeUserPasswordRequest
 }
 
@@ -517,6 +524,7 @@ type syncGroupParams struct {
 	// Group state artifact payload.
 	//
 	// in: body
+	// required: true
 	Body gcmodels.StateArtifact
 }
 
@@ -534,6 +542,7 @@ type satelliteGroupParams struct {
 	// Satellite and group membership payload.
 	//
 	// in: body
+	// required: true
 	Body SatelliteGroupParams
 }
 
@@ -542,6 +551,7 @@ type createConfigParams struct {
 	// Configuration creation payload.
 	//
 	// in: body
+	// required: true
 	Body APIConfigObject
 }
 
@@ -559,6 +569,7 @@ type updateConfigParams struct {
 	// Configuration merge patch payload.
 	//
 	// in: body
+	// required: true
 	Body APIConfigValue
 }
 
@@ -567,6 +578,7 @@ type setSatelliteConfigParams struct {
 	// Satellite configuration assignment payload.
 	//
 	// in: body
+	// required: true
 	Body SatelliteConfigParams
 }
 
@@ -575,6 +587,7 @@ type registerSatelliteParams struct {
 	// Satellite registration payload.
 	//
 	// in: body
+	// required: true
 	Body RegisterSatelliteParams
 }
 
@@ -600,6 +613,7 @@ type registerSatelliteWithSpiffeParams struct {
 	// SPIFFE satellite registration payload.
 	//
 	// in: body
+	// required: true
 	Body RegisterSatelliteRequest
 }
 
@@ -617,6 +631,7 @@ type syncSatelliteParams struct {
 	// Satellite status report payload.
 	//
 	// in: body
+	// required: true
 	Body SatelliteStatusParams
 }
 
@@ -643,9 +658,9 @@ type APIEmptyObject struct{}
 //
 // swagger:model APIRegistryCredentials
 type APIRegistryCredentials struct {
-	URL      string `json:"url,omitempty"`
-	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
+	URL      string          `json:"url,omitempty"`
+	Username string          `json:"username,omitempty"`
+	Password swaggerPassword `json:"password,omitempty"`
 }
 
 // APIStateConfig contains state artifact and registry auth data.
