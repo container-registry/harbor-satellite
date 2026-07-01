@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
-	satTLS "github.com/container-registry/harbor-satellite/internal/tls"
+	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 )
@@ -234,9 +234,9 @@ func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSCo
 
 func createHTTPClient(tlsCfg config.TLSConfig, useUnsecure bool) (*http.Client, error) {
 	transport := &http.Transport{
-		MaxIdleConns:        10,
-		IdleConnTimeout:     30 * time.Second,
-		DisableCompression:  true,
+		MaxIdleConns:       10,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,
 	}
 
 	if useUnsecure {
