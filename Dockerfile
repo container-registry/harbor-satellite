@@ -21,7 +21,7 @@ COPY . .
 # Build the binary. Default: no extra tags (production-equivalent of main).
 # Pass --build-arg GO_TAGS=parsec to opt into the PARSEC code path.
 ARG GO_TAGS=""
-RUN CGO_ENABLED=0 GOOS=linux go build -tags "${GO_TAGS}" -o /satellite ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -tags "${GO_TAGS}" -o /satellite ./cmd/harbor-satellite
 
 # Runtime stage
 FROM alpine:3.20
