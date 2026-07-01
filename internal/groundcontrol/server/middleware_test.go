@@ -83,11 +83,12 @@ func TestSatelliteAuthMiddleware_NoCredentials(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/satellites/sync", nil))
 
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
-	require.Contains(t, rec.Body.String(), "Authentication required")
+	require.Contains(t, rec.Body.String(), "Unauthorized")
 }
 
 func TestSatelliteAuthMiddleware_ValidBasicAuth(t *testing.T) {
 	server, mock := newMockServer(t)
+	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
 
 	hashed, err := crypto.HashSecret("robot-secret")
 	require.NoError(t, err)
@@ -128,6 +129,7 @@ func TestSatelliteAuthMiddleware_ValidBasicAuth(t *testing.T) {
 
 func TestSatelliteAuthMiddleware_ValidSPIFFE(t *testing.T) {
 	server, mock := newMockServer(t)
+	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
 
 	// Mock GetSatelliteByName
 	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
@@ -158,6 +160,7 @@ func TestSatelliteAuthMiddleware_ValidSPIFFE(t *testing.T) {
 
 func TestSatelliteAuthMiddleware_InvalidBasicAuth(t *testing.T) {
 	server, mock := newMockServer(t)
+	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
 
 	hashed, err := crypto.HashSecret("robot-secret")
 	require.NoError(t, err)
@@ -179,5 +182,33 @@ func TestSatelliteAuthMiddleware_InvalidBasicAuth(t *testing.T) {
 	h.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
-	require.Contains(t, rec.Body.String(), "Invalid robot credentials")
+	require.Contains(t, rec.Body.String(), "Invalid credentials")
+}
+
+func TestSatelliteAuthMiddleware_ExpiredBasicAuth(t *testing.T) {
+	server, mock := newMockServer(t)
+	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
+
+	hashed, err := crypto.HashSecret("robot-secret")
+	require.NoError(t, err)
+
+	// Mock GetRobotAccByRobotName with expired time (1 hour ago)
+	expiredTime := time.Now().Add(-1 * time.Hour)
+	robotRows := sqlmock.NewRows([]string{"id", "robot_name", "robot_secret_hash", "robot_id", "satellite_id", "robot_expiry", "created_at", "updated_at"}).
+		AddRow(1, "robot$satellite-edge-01", hashed, "100", 10, expiredTime, time.Now(), time.Now())
+	mock.ExpectQuery("SELECT id, robot_name, robot_secret_hash, robot_id, satellite_id, robot_expiry, created_at, updated_at FROM robot_accounts WHERE robot_name = \\$1").
+		WithArgs("robot$satellite-edge-01").
+		WillReturnRows(robotRows)
+
+	h := server.SatelliteAuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", nil)
+	req.SetBasicAuth("robot$satellite-edge-01", "robot-secret")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.Contains(t, rec.Body.String(), "Unauthorized")
 }

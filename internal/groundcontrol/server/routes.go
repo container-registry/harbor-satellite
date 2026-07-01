@@ -87,9 +87,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	// Sync (dual auth: robot credentials or SPIFFE)
 	syncRouter := satellites.PathPrefix("/sync").Subrouter()
+	syncRouter.Use(middleware.RateLimitMiddleware(s.rateLimiter))
 	syncRouter.Use(spiffe.AuthMiddleware)
 	syncRouter.Use(s.SatelliteAuthMiddleware)
-	syncRouter.Use(middleware.RateLimitMiddleware(s.rateLimiter))
 	syncRouter.HandleFunc("", s.syncHandler).Methods("POST")
 
 	return r

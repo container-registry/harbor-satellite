@@ -171,6 +171,9 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	if s.spiffeClient == nil {
+		if !s.cm.UseUnsecure() && !strings.HasPrefix(syncURL, "https://") {
+			return fmt.Errorf("insecure connection: sync URL %q must use HTTPS when use_unsecure is false", syncURL)
+		}
 		username := s.cm.GetSourceRegistryUsername()
 		password := s.cm.GetSourceRegistryPassword()
 		if username != "" && password != "" {
