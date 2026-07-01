@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
-	satTLS "github.com/container-registry/harbor-satellite/internal/tls"
+	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 )

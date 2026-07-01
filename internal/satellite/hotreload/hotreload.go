@@ -7,7 +7,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/container-registry/harbor-satellite/internal/scheduler"
+	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 	cfg "zotregistry.dev/zot/v2/pkg/api/config"
