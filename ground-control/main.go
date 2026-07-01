@@ -1,5 +1,3 @@
-//go:generate swagger generate spec -i meta.yml -o swagger.yml
-//go:generate swagger flatten --format yaml --with-flatten=remove-unused -o swagger-flatten.yml swagger.yml
 package main
 
 import (
