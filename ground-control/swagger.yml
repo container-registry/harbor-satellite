@@ -158,6 +158,7 @@ definitions:
     APIRegistryCredentials:
         properties:
             password:
+                format: password
                 type: string
                 x-go-name: Password
             url:
@@ -344,11 +345,16 @@ definitions:
     ChangePasswordRequest:
         properties:
             current_password:
+                format: password
                 type: string
                 x-go-name: CurrentPassword
             new_password:
+                format: password
                 type: string
                 x-go-name: NewPassword
+        required:
+            - current_password
+            - new_password
         title: ChangePasswordRequest changes the authenticated user's password.
         type: object
         x-go-name: changePasswordRequest
@@ -356,8 +362,11 @@ definitions:
     ChangeUserPasswordRequest:
         properties:
             new_password:
+                format: password
                 type: string
                 x-go-name: NewPassword
+        required:
+            - new_password
         title: ChangeUserPasswordRequest resets a user's password.
         type: object
         x-go-name: changeUserPasswordRequest
@@ -365,11 +374,15 @@ definitions:
     CreateUserRequest:
         properties:
             password:
+                format: password
                 type: string
                 x-go-name: Password
             username:
                 type: string
                 x-go-name: Username
+        required:
+            - username
+            - password
         title: CreateUserRequest creates a regular admin user.
         type: object
         x-go-name: createUserRequest
@@ -377,11 +390,15 @@ definitions:
     LoginRequest:
         properties:
             password:
+                format: password
                 type: string
                 x-go-name: Password
             username:
                 type: string
                 x-go-name: Username
+        required:
+            - username
+            - password
         title: LoginRequest contains user credentials for session creation.
         type: object
         x-go-name: loginRequest
@@ -389,6 +406,7 @@ definitions:
     LoginResponse:
         properties:
             expires_at:
+                format: date-time
                 type: string
                 x-go-name: ExpiresAt
             token:
@@ -477,6 +495,10 @@ definitions:
     RegisterSatelliteRequest:
         properties:
             attestation_method:
+                enum:
+                    - join_token
+                    - x509pop
+                    - sshpop
                 type: string
                 x-go-name: AttestationMethod
             parent_agent_id:
@@ -491,12 +513,19 @@ definitions:
             selectors:
                 items:
                     type: string
+                minItems: 1
                 type: array
                 x-go-name: Selectors
             ttl_seconds:
                 format: int64
+                maximum: 86400
+                minimum: 1
                 type: integer
                 x-go-name: TTLSeconds
+        required:
+            - satellite_name
+            - selectors
+            - attestation_method
         title: RegisterSatelliteRequest represents a request to register a satellite with SPIFFE.
         type: object
         x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
@@ -702,6 +731,7 @@ paths:
                 - description: Configuration creation payload.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/APIConfigObject'
             responses:
@@ -803,6 +833,7 @@ paths:
                 - description: Configuration merge patch payload.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/APIConfigValue'
             responses:
@@ -838,6 +869,7 @@ paths:
                 - description: Satellite configuration assignment payload.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/SatelliteConfigParams'
             responses:
@@ -993,6 +1025,7 @@ paths:
                 - description: Satellite and group membership payload.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/SatelliteGroupParams'
             responses:
@@ -1023,6 +1056,7 @@ paths:
                 - description: Satellite and group membership payload.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/SatelliteGroupParams'
             responses:
@@ -1054,6 +1088,7 @@ paths:
                 - description: Group state artifact payload.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/StateArtifact'
             responses:
@@ -1130,6 +1165,7 @@ paths:
                 - description: Satellite registration payload.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/RegisterSatelliteParams'
             responses:
@@ -1309,6 +1345,7 @@ paths:
                 - description: SPIFFE satellite registration payload.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/RegisterSatelliteRequest'
             responses:
@@ -1453,6 +1490,7 @@ paths:
                 - description: User creation request.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/CreateUserRequest'
             responses:
@@ -1567,6 +1605,7 @@ paths:
                 - description: Password reset request.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/ChangeUserPasswordRequest'
             responses:
@@ -1604,6 +1643,7 @@ paths:
                 - description: Password change request.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/ChangePasswordRequest'
             responses:
@@ -1648,6 +1688,7 @@ paths:
                 - description: User credentials.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/LoginRequest'
             responses:
@@ -1677,6 +1718,8 @@ paths:
     /ping:
         get:
             operationId: ping
+            produces:
+                - text/plain
             responses:
                 "200":
                     description: Server is reachable and returns pong.
@@ -1719,6 +1762,7 @@ paths:
                 - description: Satellite status report payload.
                   in: body
                   name: Body
+                  required: true
                   schema:
                     $ref: '#/definitions/SatelliteStatusParams'
             responses:
@@ -1891,10 +1935,10 @@ responses:
                 $ref: '#/definitions/UserResponse'
             type: array
 schemes:
-    - http
     - https
 securityDefinitions:
     bearerAuth:
+        description: 'Bearer token authentication. Use the format: Bearer <token>.'
         in: header
         name: Authorization
         type: apiKey

@@ -3,7 +3,6 @@ consumes:
 produces:
     - application/json
 schemes:
-    - http
     - https
 swagger: "2.0"
 info:
@@ -47,6 +46,7 @@ paths:
                 - description: Configuration creation payload.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/APIConfigObject'
             responses:
@@ -80,6 +80,7 @@ paths:
                 - description: Satellite configuration assignment payload.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/SatelliteConfigParams'
             responses:
@@ -179,6 +180,7 @@ paths:
                 - description: Configuration merge patch payload.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/APIConfigValue'
             responses:
@@ -237,6 +239,7 @@ paths:
                 - description: Satellite and group membership payload.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/SatelliteGroupParams'
             responses:
@@ -267,6 +270,7 @@ paths:
                 - description: Satellite and group membership payload.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/SatelliteGroupParams'
             responses:
@@ -298,6 +302,7 @@ paths:
                 - description: Group state artifact payload.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/StateArtifact'
             responses:
@@ -475,6 +480,7 @@ paths:
                 - description: Satellite registration payload.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/RegisterSatelliteParams'
             responses:
@@ -529,6 +535,7 @@ paths:
                 - description: SPIFFE satellite registration payload.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/RegisterSatelliteRequest'
             responses:
@@ -798,6 +805,7 @@ paths:
                 - description: User creation request.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/CreateUserRequest'
             responses:
@@ -837,6 +845,7 @@ paths:
                 - description: Password change request.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/ChangePasswordRequest'
             responses:
@@ -941,6 +950,7 @@ paths:
                 - description: Password reset request.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/ChangeUserPasswordRequest'
             responses:
@@ -993,6 +1003,7 @@ paths:
                 - description: User credentials.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/LoginRequest'
             responses:
@@ -1018,6 +1029,8 @@ paths:
                         $ref: '#/definitions/AppError'
     /ping:
         get:
+            produces:
+                - text/plain
             tags:
                 - health
             summary: Pings the server.
@@ -1064,6 +1077,7 @@ paths:
                 - description: Satellite status report payload.
                   name: Body
                   in: body
+                  required: true
                   schema:
                     $ref: '#/definitions/SatelliteStatusParams'
             responses:
@@ -1275,6 +1289,7 @@ definitions:
         properties:
             password:
                 type: string
+                format: password
                 x-go-name: Password
             url:
                 type: string
@@ -1458,30 +1473,42 @@ definitions:
     ChangePasswordRequest:
         type: object
         title: ChangePasswordRequest changes the authenticated user's password.
+        required:
+            - current_password
+            - new_password
         properties:
             current_password:
                 type: string
+                format: password
                 x-go-name: CurrentPassword
             new_password:
                 type: string
+                format: password
                 x-go-name: NewPassword
         x-go-name: changePasswordRequest
         x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
     ChangeUserPasswordRequest:
         type: object
         title: ChangeUserPasswordRequest resets a user's password.
+        required:
+            - new_password
         properties:
             new_password:
                 type: string
+                format: password
                 x-go-name: NewPassword
         x-go-name: changeUserPasswordRequest
         x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
     CreateUserRequest:
         type: object
         title: CreateUserRequest creates a regular admin user.
+        required:
+            - username
+            - password
         properties:
             password:
                 type: string
+                format: password
                 x-go-name: Password
             username:
                 type: string
@@ -1491,9 +1518,13 @@ definitions:
     LoginRequest:
         type: object
         title: LoginRequest contains user credentials for session creation.
+        required:
+            - username
+            - password
         properties:
             password:
                 type: string
+                format: password
                 x-go-name: Password
             username:
                 type: string
@@ -1506,6 +1537,7 @@ definitions:
         properties:
             expires_at:
                 type: string
+                format: date-time
                 x-go-name: ExpiresAt
             token:
                 type: string
@@ -1591,9 +1623,17 @@ definitions:
     RegisterSatelliteRequest:
         type: object
         title: RegisterSatelliteRequest represents a request to register a satellite with SPIFFE.
+        required:
+            - satellite_name
+            - selectors
+            - attestation_method
         properties:
             attestation_method:
                 type: string
+                enum:
+                    - join_token
+                    - x509pop
+                    - sshpop
                 x-go-name: AttestationMethod
             parent_agent_id:
                 type: string
@@ -1606,12 +1646,15 @@ definitions:
                 x-go-name: SatelliteName
             selectors:
                 type: array
+                minItems: 1
                 items:
                     type: string
                 x-go-name: Selectors
             ttl_seconds:
                 type: integer
                 format: int64
+                maximum: 86400
+                minimum: 1
                 x-go-name: TTLSeconds
         x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
     RegisterSatelliteResponse:
@@ -1781,6 +1824,7 @@ definitions:
         x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
 securityDefinitions:
     bearerAuth:
+        description: 'Bearer token authentication. Use the format: Bearer <token>.'
         type: apiKey
         name: Authorization
         in: header
