@@ -210,7 +210,7 @@ socket is absent.
 
 | File | Change |
 |---|---|
-| `cmd/main.go` | `ParsecEnabled`/`ParsecSocketPath` in `SatelliteOptions`; new flags; `MustDetect()` startup check |
+| `cmd/harbor-satellite/main.go` | `ParsecEnabled`/`ParsecSocketPath` in `SatelliteOptions`; new flags; `MustDetect()` startup check |
 | `go.mod` | `replace` directive for local `parsec-client-go`; `require` entry |
 | `pkg/config/manager.go` | *(pending)* `NewConfigManager` needs a path to accept a `crypto.Provider` so `ParsecKeyProvider` can be injected |
 | `internal/tls/config.go` | *(pending)* `LoadCertificate` needs a PARSEC path using `crypto.Signer` instead of `tls.LoadX509KeyPair` |
@@ -223,7 +223,7 @@ socket is absent.
 
 1. **Wire `KeyProvider` into `pkg/config/manager.go`**
    `NewConfigManager` currently hard-codes `crypto.NewAESProvider()`. It needs a constructor
-   variant that accepts a `crypto.Provider` so the caller (in `cmd/main.go`) can pass a
+   variant that accepts a `crypto.Provider` so the caller (in `cmd/harbor-satellite/main.go`) can pass a
    `ParsecKeyProvider` when `--parsec-enabled` is set.
 
 2. **`internal/tls/` compatibility**
