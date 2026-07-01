@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
@@ -248,7 +249,7 @@ func (s *Server) SatelliteAuthMiddleware(next http.Handler) http.Handler {
 					Reason:       auditlog.ReasonInvalidCredentials,
 					Details:      map[string]any{"error": "spiffe satellite not found in database"},
 				})
-				WriteJSONError(w, "Unauthorized: Unknown SPIFFE satellite", http.StatusUnauthorized)
+				WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
 		}
@@ -259,6 +260,19 @@ func (s *Server) SatelliteAuthMiddleware(next http.Handler) http.Handler {
 				robot, err := s.dbQueries.GetRobotAccByRobotName(r.Context(), username)
 				if err == nil {
 					if crypto.VerifySecret(password, robot.RobotSecretHash) {
+						if robot.RobotExpiry.Valid && robot.RobotExpiry.Time.Before(time.Now()) {
+							s.auditEvent(r, auditlog.AuditEvent{
+								Operation:    auditlog.OpAuth,
+								ResourceType: auditlog.ResSatellite,
+								Outcome:      auditlog.OutcomeFailure,
+								Actor:        username,
+								ActorType:    auditlog.ActorRobot,
+								Reason:       auditlog.ReasonTokenExpired,
+								Details:      map[string]any{"error": "robot account expired"},
+							})
+							WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
+							return
+						}
 						sat, err := s.dbQueries.GetSatellite(r.Context(), robot.SatelliteID)
 						if err == nil {
 							satelliteName = sat.Name
@@ -272,10 +286,10 @@ func (s *Server) SatelliteAuthMiddleware(next http.Handler) http.Handler {
 						ResourceType: auditlog.ResSatellite,
 						Outcome:      auditlog.OutcomeFailure,
 						Actor:        username,
-						ActorType:    auditlog.ActorSatellite,
+						ActorType:    auditlog.ActorRobot,
 						Reason:       auditlog.ReasonInvalidCredentials,
 					})
-					WriteJSONError(w, "Unauthorized: Invalid robot credentials", http.StatusUnauthorized)
+					WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
 					return
 				}
 			}
@@ -289,7 +303,7 @@ func (s *Server) SatelliteAuthMiddleware(next http.Handler) http.Handler {
 				ActorType:    auditlog.ActorAnonymous,
 				Reason:       auditlog.ReasonMissingCredentials,
 			})
-			WriteJSONError(w, "Unauthorized: Authentication required", http.StatusUnauthorized)
+			WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
