@@ -12,7 +12,7 @@ tasks:
     cmds:
       - echo "Building satellite for {{.GOOS}}/{{.GOARCH}}..."
       - mkdir -p {{.BIN_DIR}}
-      - go build -o {{.BIN_DIR}}/satellite ./cmd/main.go
+      - go build -o {{.BIN_DIR}}/satellite ./cmd/harbor-satellite
       - echo "Built bin/satellite"
     sources:
       - "**/*.go"
@@ -49,7 +49,7 @@ tasks:
       - echo "Building satellite and ground-control for {{.GOOS}}/{{.GOARCH}}..."
       - mkdir -p {{.BIN_DIR}}
       - echo "  Compiling satellite..."
-      - go build -o {{.BIN_DIR}}/satellite ./cmd/main.go
+      - go build -o {{.BIN_DIR}}/satellite ./cmd/harbor-satellite
       - echo "  Compiling ground-control..."
       - cd ground-control && go build -o {{.BIN_DIR}}/ground-control ./main.go
       - echo "Done! Binaries in bin/"
@@ -74,14 +74,14 @@ tasks:
             GOARCH: [amd64, arm64, ppc64le, s390x, riscv64]
         cmd: |
           echo "  {{.ITEM.GOOS}}/{{.ITEM.GOARCH}}..."
-          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/satellite/satellite-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./cmd/main.go
+          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/satellite/satellite-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./cmd/harbor-satellite
       - for:
           matrix:
             GOOS: [darwin]
             GOARCH: [amd64, arm64]
         cmd: |
           echo "  {{.ITEM.GOOS}}/{{.ITEM.GOARCH}}..."
-          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/satellite/satellite-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./cmd/main.go
+          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/satellite/satellite-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./cmd/harbor-satellite
     silent: true
 
   all-ground-control:
