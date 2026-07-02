@@ -75,14 +75,15 @@ tasks:
 
   swagger:generate:
     desc: Generate Ground Control OpenAPI specs
-    dir: "{{.ROOT_DIR}}/ground-control"
+    dir: "{{.ROOT_DIR}}"
     cmds:
       - task: swagger:install
       - "{{.BIN_DIR}}/swagger generate spec -i meta.yml -o swagger.yml"
       - "{{.BIN_DIR}}/swagger flatten --format yaml --with-flatten=remove-unused -o swagger-flatten.yml swagger.yml"
     sources:
       - meta.yml
-      - "**/*.go"
+      - "cmd/ground-control/**/*.go"
+      - "internal/groundcontrol/**/*.go"
     generates:
       - swagger.yml
       - swagger-flatten.yml

@@ -66,8 +66,10 @@ services:
 
   ground-control:
     build:
-      context: ../../../../../../ground-control
+      context: ../../../../../../
       dockerfile: Dockerfile
+      args:
+        COMPONENT: ground-control
     container_name: ground-control
     user: "0:0"
     environment:

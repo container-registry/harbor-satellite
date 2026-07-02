@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/google/go-containerregistry v0.21.6
-	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_golang v1.23.2 // indirect
 	golang.org/x/sync v0.20.0
 	// use go get zotregistry.dev/zot@main to get package
 	zotregistry.dev/zot/v2 v2.1.16
