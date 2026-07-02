@@ -2,7 +2,7 @@ version: "3"
 
 vars:
   GO_VERSION: "1.26.3"
-  GOLANGCILINT_VERSION: "v2.0.2"
+  GOLANGCILINT_VERSION: "v2.12.2"
   GORELEASER_VERSION: "v2.9.0"
   PLATFORMS_LINUX: "amd64 arm64 ppc64le s390x riscv64"
   PLATFORMS_DARWIN: "amd64 arm64"
