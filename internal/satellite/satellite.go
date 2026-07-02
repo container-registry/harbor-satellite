@@ -3,10 +3,10 @@ package satellite
 import (
 	"context"
 
-	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/logger"
-	"github.com/container-registry/harbor-satellite/internal/scheduler"
-	"github.com/container-registry/harbor-satellite/internal/state"
+	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
+	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
+	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 

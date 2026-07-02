@@ -1,12 +1,66 @@
 services:
+  postgres:
+    image: postgres:16
+    container_name: groundcontrol-db
+    environment:
+      POSTGRES_DB: groundcontrol
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "8100:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d groundcontrol"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ground-control:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        COMPONENT: ground-control
+    container_name: ground-control
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: groundcontrol
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      HARBOR_USERNAME: admin
+      HARBOR_PASSWORD: Harbor12345
+      HARBOR_URL: http://harbor-sat.kube.bupd.xyz
+      PORT: 8080
+      SKIP_HARBOR_HEALTH_CHECK: "true"
+      SPIFFE_ENABLED: "false"
+      SPIFFE_TRUST_DOMAIN: harbor-satellite.local
+      SPIFFE_PROVIDER: sidecar
+      SPIFFE_ENDPOINT_SOCKET: unix:///run/spire/sockets/agent.sock
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   satellite:
-    image: 8gears.container-registry.com/harbor-satellite/satellite:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        COMPONENT: harbor-satellite
     container_name: satellite
     environment:
-      - GROUND_CONTROL_URL=http://172.17.0.1:8888
+      - GROUND_CONTROL_URL=http://ground-control:8080
       - HARBOR_REGISTRY_URL=http://172.17.0.1:8080
       - TOKEN=c78dc95cae68e73664a067cb8bc0c6d2
     ports:
       - "8090:8080"  # Expose ports as needed
       - "8585:8585"  # Expose ports as needed
+    depends_on:
+      - ground-control
     restart: always
+
+volumes:
+  pgdata:

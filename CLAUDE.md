@@ -22,10 +22,10 @@ task _build:satellite
 task _build:ground-control
 
 # Run satellite directly
-go run cmd/main.go --token "<token>" --ground-control-url "<url>"
+go run ./cmd/harbor-satellite --token "<token>" --ground-control-url "<url>"
 
 # Run ground-control directly
-cd ground-control && go run main.go
+go run ./cmd/ground-control
 ```
 
 ### Testing
@@ -56,31 +56,29 @@ Uses strict golangci-lint with 50+ linters (see golangci.yaml). Key rules: no gl
 docker compose up -d
 
 # Satellite with Go
-go run cmd/main.go --token "<token>" --ground-control-url "http://127.0.0.1:8080"
+go run ./cmd/harbor-satellite --token "<token>" --ground-control-url "http://127.0.0.1:8080"
 
 # Satellite with mirror config
-go run cmd/main.go --token "<token>" --ground-control-url "<url>" --mirrors=containerd:docker.io,quay.io
+go run ./cmd/harbor-satellite --token "<token>" --ground-control-url "<url>" --mirrors=containerd:docker.io,quay.io
 
 # Ground Control with Docker Compose
-cd ground-control && docker compose up
+docker compose up postgres ground-control
 
 # Ground Control with Go (requires .env file)
-cd ground-control && go run main.go
+go run ./cmd/ground-control
 ```
 
 ## Architecture
 
-### Two-Module Structure
+### Module Structure
 
-This repository contains two separate Go modules:
-- Root module (go.mod): Satellite component
-- ground-control/go.mod: Ground Control component
+This repository contains one Go module at the repository root. Satellite and Ground Control are separate binaries built from the same module.
 
-When making changes, be aware which module you're working in. Dependencies and imports are separate.
+When making changes, keep binary entrypoints in `cmd/` and implementation packages under `internal/`.
 
 ### Satellite Component Structure
 
-- cmd/main.go: Entry point, handles CLI flags (token, ground-control-url, mirrors, json-logging)
+- cmd/harbor-satellite/main.go: Entry point, handles CLI flags (token, ground-control-url, mirrors, json-logging)
 - pkg/config/: Configuration management, validation, hot-reloading
 - internal/satellite/: Core orchestration logic
 - internal/state/: State management (replication, fetching, artifact handling, registration)
@@ -93,11 +91,11 @@ When making changes, be aware which module you're working in. Dependencies and i
 
 ### Ground Control Component Structure
 
-- ground-control/main.go: Entry point, checks Harbor health, starts server
-- ground-control/internal/server/: HTTP API handlers (satellites, groups, configs)
-- ground-control/internal/database/: Database models and operations (PostgreSQL)
-- ground-control/reg/harbor/: Harbor API client (projects, robots, replication)
-- ground-control/migrator/: Database migration handling
+- cmd/ground-control/main.go: Entry point, checks Harbor health, starts server
+- internal/groundcontrol/server/: HTTP API handlers (satellites, groups, configs)
+- internal/groundcontrol/database/: Database models and operations (PostgreSQL)
+- internal/groundcontrol/harbor/: Harbor API client (projects, robots, replication)
+- internal/groundcontrol/migrator/: Database migration handling
 
 ### Key Concepts
 
@@ -118,7 +116,7 @@ Satellite uses JSON configuration with three sections:
 - app_config: Ground Control URL, log level, replication intervals, local registry settings
 - zot_config: Embedded Zot registry configuration (storage, HTTP, logging)
 
-Ground Control uses environment variables (see ground-control/.env.example):
+Ground Control uses environment variables (see .env.ground-control.example):
 - Harbor credentials (HARBOR_USERNAME, HARBOR_PASSWORD, HARBOR_URL)
 - Database connection (DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD)
 - Server settings (PORT, APP_ENV)
@@ -146,7 +144,7 @@ Satellite configures CRIs as mirrors using --mirrors flag:
 
 ### Database Migrations
 
-Ground Control uses SQL migrations in ground-control/migrator/. Migrations run automatically on startup.
+Ground Control uses SQL migrations in internal/groundcontrol/migrator/. Migrations run automatically on startup.
 
 ### Hot Reload
 
@@ -178,17 +176,17 @@ ADRs in docs/decisions/:
 
 ### Adding a new API endpoint to Ground Control
 
-1. Add handler in ground-control/internal/server/*_handlers.go
-2. Register route in ground-control/internal/server/routes.go
-3. Add database operations in ground-control/internal/database/ if needed
-4. Update models in ground-control/internal/models/ if needed
+1. Add handler in internal/groundcontrol/server/*_handlers.go
+2. Register route in internal/groundcontrol/server/routes.go
+3. Add database operations in internal/groundcontrol/database/ if needed
+4. Update models in internal/groundcontrol/models/ if needed
 
 ### Adding a new satellite feature
 
 1. Implement in appropriate internal/ package
 2. Update pkg/config/ if configuration changes needed
 3. Add validation in pkg/config/validate.go
-4. Update cmd/main.go if new CLI flags needed
+4. Update cmd/harbor-satellite/main.go if new CLI flags needed
 5. Update config.example.json
 
 ### Modifying state replication logic
