@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/harborhealth"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/server"
-	"github.com/container-registry/harbor-satellite/ground-control/migrator"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harborhealth"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/migrator"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
 	_ "github.com/joho/godotenv/autoload"
 )
 

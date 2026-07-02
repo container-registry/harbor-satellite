@@ -1,8 +1,8 @@
 package server
 
 import (
-	dbmodels "github.com/container-registry/harbor-satellite/ground-control/internal/database"
-	gcmodels "github.com/container-registry/harbor-satellite/ground-control/internal/models"
+	dbmodels "github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	gcmodels "github.com/container-registry/harbor-satellite/internal/groundcontrol/models"
 )
 
 // swagger:route GET /ping health ping

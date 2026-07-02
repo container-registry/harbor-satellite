@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
 )
 
 // RegisterSatelliteRequest represents a request to register a satellite with SPIFFE.

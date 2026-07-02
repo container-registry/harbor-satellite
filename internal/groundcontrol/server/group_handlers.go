@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/models"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
-	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/models"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 	"github.com/gorilla/mux"
 )
 

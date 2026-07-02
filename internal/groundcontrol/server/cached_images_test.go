@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/gorilla/mux"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"

@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
-	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
+	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	"github.com/google/uuid"
 )
 

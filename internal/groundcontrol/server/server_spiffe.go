@@ -8,7 +8,7 @@ import (
 	"crypto/x509"
 	"fmt"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 )
 
 // buildSPIFFETLSConfig creates a TLS config using SPIFFE for mTLS authentication.

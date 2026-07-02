@@ -6,8 +6,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 )
 
 const systemAdminUsername = "admin"
