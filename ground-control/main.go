@@ -18,7 +18,6 @@ import (
 )
 
 func main() {
-
 	err := harborhealth.CheckHealth()
 	if err != nil {
 		log.Fatalf("health check failed: %v", err)

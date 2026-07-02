@@ -11,6 +11,7 @@ import (
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
 	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
 )
 
 const maxFailedAttempts = 5
@@ -23,6 +24,14 @@ type loginRequest struct {
 type loginResponse struct {
 	Token     string `json:"token"`
 	ExpiresAt string `json:"expires_at"`
+}
+
+type refreshCredentialRequest struct {
+	Name string `json:"name"`
+}
+
+type refreshCredentialResponse struct {
+	Secret string `json:"secret"`
 }
 
 func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -145,6 +154,59 @@ func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) refreshCredentialsHandler(w http.ResponseWriter, r *http.Request) {
+	var req refreshCredentialRequest
+	if err := DecodeRequestBody(r, &req); err != nil {
+		log.Println(err)
+		HandleAppError(w, err)
+		return
+	}
+
+	// Check SPIFFE identity first for dual auth
+	var satelliteName string
+	if name, ok := spiffe.GetSatelliteName(r.Context()); ok {
+		satelliteName = name
+	} else {
+		satelliteName = req.Name
+	}
+
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
+	if err != nil {
+		log.Printf("Unknown satellite: %s", satelliteName)
+		HandleAppError(w, &AppError{
+			Message: "unknown satellite entity",
+			Code:    http.StatusForbidden,
+		})
+		return
+	}
+
+	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("Failed to find robot account for satellite : %s", satelliteName)
+		HandleAppError(w, &AppError{
+			Message: "Failed to find robot account",
+			Code:    http.StatusForbidden,
+		})
+		return
+	}
+
+	// TODO: Add check for if expired or not
+
+	newSecret, err := refreshRobotSecret(r, s.dbQueries, robotAcc)
+	if err != nil {
+		log.Printf("Failed to refresh robot secret for satellite %s: %v", satelliteName, err)
+		HandleAppError(w, &AppError{
+			Message: "Error: failed to refresh robot secret",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, refreshCredentialResponse{
+		Secret: newSecret,
+	})
 }
 
 func (s *Server) recordFailedAttempt(r *http.Request, username string) {

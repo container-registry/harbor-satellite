@@ -28,8 +28,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 	api := r.PathPrefix("/api").Subrouter()
 	api.Use(s.AuthMiddleware)
 
-	// Logout
+	// Auth
 	api.HandleFunc("/logout", s.logoutHandler).Methods("POST")
+	api.HandleFunc("/refresh", s.refreshCredentialsHandler).Methods("POST")
 
 	// Users
 	api.HandleFunc("/users", s.listUsersHandler).Methods("GET")

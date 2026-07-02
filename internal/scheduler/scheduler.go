@@ -7,14 +7,17 @@ import (
 	"sync"
 	"time"
 
+	jobqueue "github.com/container-registry/harbor-satellite/internal/job-queue"
+	"github.com/container-registry/harbor-satellite/internal/process"
 	"github.com/rs/zerolog"
 )
 
 // Scheduler manages the execution of processes with configurable intervals
 type Scheduler struct {
+	jq       *jobqueue.JobQueue
 	name     string
 	ticker   *time.Ticker
-	process  Process
+	process  process.Process
 	log      *zerolog.Logger
 	interval time.Duration
 	mu       sync.Mutex
@@ -22,7 +25,7 @@ type Scheduler struct {
 }
 
 // NewSchedulerWithInterval creates a new scheduler with a parsed interval string
-func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog.Logger) (*Scheduler, error) {
+func NewSchedulerWithInterval(intervalExpr string, process process.Process, log *zerolog.Logger) (*Scheduler, error) {
 	duration, err := parseEveryExpr(intervalExpr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse interval: %w", err)
