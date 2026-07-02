@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	jobqueue "github.com/container-registry/harbor-satellite/internal/job-queue"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/spiffe"
@@ -26,14 +28,20 @@ type StatusReportingProcess struct {
 	cm           *config.ConfigManager
 	spiffeClient *spiffe.Client
 	pendingCRI   []runtime.CRIConfigResult
+	jq           *jobqueue.JobQueue
 	criReported  bool
 }
 
-func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess {
+type StatusReportResponse struct {
+	Actions []string `json:"actions"`
+}
+
+func NewStatusReportingProcess(cm *config.ConfigManager, jq *jobqueue.JobQueue) *StatusReportingProcess {
 	p := &StatusReportingProcess{
 		name: config.StatusReportJobName,
 		mu:   &sync.Mutex{},
 		cm:   cm,
+		jq:   jq,
 	}
 
 	if cm.IsSPIFFEEnabled() {
@@ -104,10 +112,20 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	insecure := s.cm.UseUnsecure()
 	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
 
+	log.Info().Msg("Sending Status Report")
 	groundControlURL := s.cm.ResolveGroundControlURL()
-	if err := s.sendStatusReport(ctx, groundControlURL, req); err != nil {
+	resp, err := s.sendStatusReport(ctx, groundControlURL, req)
+	if err != nil {
 		log.Error().Err(err).Msg("Failed to send status report")
 		return err
+	}
+
+	log.Info().Msgf("Received report: %v", *resp)
+
+	// Sending response actions to JobQueue
+	for _, v := range resp.Actions {
+		log.Info().Msgf("Sending action: %s", v)
+		s.jq.SendAction(v)
 	}
 
 	// Clear CRI results only after successful send
@@ -140,10 +158,10 @@ func formatCRIActivity(results []runtime.CRIConfigResult) string {
 	return "cri_fallback_configured: " + strings.Join(parts, ", ")
 }
 
-func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundControlURL string, req *StatusReportParams) error {
+func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundControlURL string, req *StatusReportParams) (*StatusReportResponse, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
-		return fmt.Errorf("marshal status report: %w", err)
+		return nil, fmt.Errorf("marshal status report: %w", err)
 	}
 
 	syncURL := fmt.Sprintf("%s/%s", groundControlURL, StatusReportRoute)
@@ -151,28 +169,28 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 	var client *http.Client
 	if s.spiffeClient != nil {
 		if err := s.spiffeClient.Connect(ctx); err != nil {
-			return fmt.Errorf("connect to SPIRE agent: %w", err)
+			return nil, fmt.Errorf("connect to SPIRE agent: %w", err)
 		}
 		client, err = s.spiffeClient.CreateHTTPClient()
 		if err != nil {
-			return fmt.Errorf("create SPIFFE HTTP client: %w", err)
+			return nil, fmt.Errorf("create SPIFFE HTTP client: %w", err)
 		}
 	} else {
 		client, err = createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure())
 		if err != nil {
-			return fmt.Errorf("create HTTP client: %w", err)
+			return nil, fmt.Errorf("create HTTP client: %w", err)
 		}
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, syncURL, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	if s.spiffeClient == nil {
 		if !s.cm.UseUnsecure() && !strings.HasPrefix(syncURL, "https://") {
-			return fmt.Errorf("insecure connection: sync URL %q must use HTTPS when use_unsecure is false", syncURL)
+			return nil, fmt.Errorf("insecure connection: sync URL %q must use HTTPS when use_unsecure is false", syncURL)
 		}
 		username := s.cm.GetSourceRegistryUsername()
 		password := s.cm.GetSourceRegistryPassword()
@@ -183,7 +201,7 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return fmt.Errorf("send request: %w", err)
+		return nil, fmt.Errorf("send request: %w", err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -192,10 +210,21 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status report failed: %s", resp.Status)
+		return nil, fmt.Errorf("status report failed: %s", resp.Status)
 	}
 
-	return nil
+	bodyData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading body: %w", err)
+	}
+
+	var respData StatusReportResponse
+	err = json.Unmarshal(bodyData, &respData)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing body: %w", err)
+	}
+
+	return &respData, nil
 }
 
 func (s *StatusReportingProcess) Name() string {
@@ -211,6 +240,7 @@ func (s *StatusReportingProcess) IsRunning() bool {
 }
 
 func (s *StatusReportingProcess) IsComplete() bool {
+	// TODO:
 	return false
 }
 
