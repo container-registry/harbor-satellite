@@ -14,10 +14,11 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harborhealth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/migrator"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
-	_ "github.com/joho/godotenv/autoload"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	_ = godotenv.Load(".env.ground-control", ".env")
 
 	err := harborhealth.CheckHealth()
 	if err != nil {

@@ -14,7 +14,6 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-GC_DIR="$PROJECT_ROOT/ground-control"
 
 # Default Harbor settings - update these for your environment
 HARBOR_URL="${HARBOR_URL:-http://localhost:8080}"
@@ -57,7 +56,7 @@ check_postgres() {
         DB_PORT=8100  # Mapped port from docker-compose
     else
         log_info "Starting PostgreSQL container..."
-        cd "$GC_DIR"
+        cd "$PROJECT_ROOT"
         docker compose up -d postgres
         sleep 5
         DB_PORT=8100
@@ -68,7 +67,7 @@ check_postgres() {
 setup_gc_env() {
     log_info "Setting up Ground Control environment..."
 
-    cat > "$GC_DIR/.env" << EOF
+    cat > "$PROJECT_ROOT/.env.ground-control" << EOF
 HARBOR_USERNAME=$HARBOR_USERNAME
 HARBOR_PASSWORD=$HARBOR_PASSWORD
 HARBOR_URL=$HARBOR_URL
@@ -82,15 +81,15 @@ DB_USERNAME=$DB_USER
 DB_PASSWORD=$DB_PASS
 EOF
 
-    log_info "Created $GC_DIR/.env"
+    log_info "Created $PROJECT_ROOT/.env.ground-control"
 }
 
 # Step 3: Start Ground Control
 start_ground_control() {
     log_info "Starting Ground Control on port $GC_PORT..."
 
-    cd "$GC_DIR"
-    go run main.go &
+    cd "$PROJECT_ROOT"
+    go run ./cmd/ground-control &
     GC_PID=$!
 
     # Wait for Ground Control to be ready

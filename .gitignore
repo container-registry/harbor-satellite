@@ -35,15 +35,14 @@ __debug_bin1949266242
 /value
 
 .env
+.env.ground-control
 config.json
-ground-control/.env
-ground-control/.gc-dev
 
 # Task build output
 bin/
 .task/
 
-# Top-level satellite binary (built by `go build cmd/main.go` or similar);
+# Top-level satellite binary (built by `go build ./cmd/harbor-satellite` or similar);
 # never check this in.
 /main
 /satellite

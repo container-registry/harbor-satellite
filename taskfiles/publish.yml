@@ -62,9 +62,9 @@ tasks:
       - |
         DOCKERFILE="Dockerfile"
         CONTEXT="."
-        if [ "{{.COMPONENT}}" = "ground-control" ]; then
-          DOCKERFILE="ground-control/Dockerfile"
-          CONTEXT="ground-control"
+        BUILD_COMPONENT="{{.COMPONENT}}"
+        if [ "$BUILD_COMPONENT" = "satellite" ]; then
+          BUILD_COMPONENT="harbor-satellite"
         fi
 
         # Detect container runtime (docker vs podman)
@@ -93,6 +93,7 @@ tasks:
           docker buildx build \
             --platform {{.PLATFORMS}} \
             -f $DOCKERFILE \
+            --build-arg COMPONENT=$BUILD_COMPONENT \
             $TAGS \
             --push \
             $CONTEXT
@@ -103,6 +104,7 @@ tasks:
           podman build \
             --platform {{.PLATFORMS}} \
             -f $DOCKERFILE \
+            --build-arg COMPONENT=$BUILD_COMPONENT \
             --manifest "$MANIFEST_NAME" \
             $CONTEXT
 
