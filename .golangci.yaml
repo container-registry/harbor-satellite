@@ -8,12 +8,15 @@ linters:
     - bodyclose
     - copyloopvar
     - cyclop
+    - decorder
+    - depguard
     - dupl
     - durationcheck
     - errcheck
     - errname
     - errorlint
     - exhaustive
+    - exhaustruct
     - forbidigo
     - funlen
     - gocheckcompilerdirectives
@@ -30,11 +33,15 @@ linters:
     - goprintffuncname
     - gosec
     - govet
+    - inamedparam
     - ineffassign
+    - interfacebloat
     - intrange
+    - ireturn
     - lll
     - loggercheck
     - makezero
+    - maintidx
     - mirror
     - misspell
     - mnd
@@ -43,6 +50,7 @@ linters:
     - nestif
     - nilerr
     - nilnil
+    - nlreturn
     - noctx
     - nolintlint
     - nonamedreturns
@@ -58,6 +66,8 @@ linters:
     - spancheck
     - sqlclosecheck
     - staticcheck
+    - tagalign
+    - tagliatelle
     - testableexamples
     - testifylint
     - testpackage
@@ -66,8 +76,10 @@ linters:
     - unparam
     - unused
     - usestdlibvars
+    - varnamelen
     - wastedassign
     - whitespace
+    - wrapcheck
   settings:
     cyclop:
       max-complexity: 30
