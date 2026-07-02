@@ -3,7 +3,7 @@ package server
 import (
 	"testing"
 
-	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
+	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	"github.com/stretchr/testify/require"
 )
 

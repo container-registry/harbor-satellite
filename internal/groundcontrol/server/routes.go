@@ -3,8 +3,8 @@ package server
 import (
 	"net/http"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/middleware"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/gorilla/mux"
 )
 

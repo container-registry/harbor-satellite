@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/stretchr/testify/require"
 )
 
@@ -209,4 +209,3 @@ func TestMain(m *testing.M) {
 
 // Unused variable to satisfy linter
 var _ = errors.New
-

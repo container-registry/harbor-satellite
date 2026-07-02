@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
-	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 )
 
 const maxFailedAttempts = 5

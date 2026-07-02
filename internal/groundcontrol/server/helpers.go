@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
-	"github.com/container-registry/harbor-satellite/ground-control/pkg/crypto"
-	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
+	"github.com/container-registry/harbor-satellite/internal/crypto"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 )
 
 func isConfigInUse(ctx context.Context, q *database.Queries, config database.Config) (bool, error) {

@@ -6,7 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 )
 
 // buildSPIFFETLSConfig returns an error when SPIFFE is not available.

@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
-	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/utils"
-	"github.com/container-registry/harbor-satellite/ground-control/reg/harbor"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
+	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/gorilla/mux"
 )

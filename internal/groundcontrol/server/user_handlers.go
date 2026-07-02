@@ -10,9 +10,9 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/lib/pq"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
-	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 )
 
 // actorFromContext returns the authenticated user's username, or "unknown".

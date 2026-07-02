@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/container-registry/harbor-satellite/ground-control/pkg/crypto"
+	"github.com/container-registry/harbor-satellite/internal/crypto"
 )
 
 // HashPassword creates an Argon2id hash of the password.

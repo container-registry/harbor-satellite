@@ -15,11 +15,11 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/lib/pq"
 
-	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/database"
-	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/middleware"
-	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 )
 
 type Server struct {

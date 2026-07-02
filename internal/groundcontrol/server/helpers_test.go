@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/ground-control/pkg/crypto"
+	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/stretchr/testify/require"
 )
 
