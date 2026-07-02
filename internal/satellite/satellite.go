@@ -3,7 +3,9 @@ package satellite
 import (
 	"context"
 
+	"github.com/container-registry/harbor-satellite/internal/actions"
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
+	jobqueue "github.com/container-registry/harbor-satellite/internal/job-queue"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/state"
@@ -15,14 +17,16 @@ type Satellite struct {
 	criResults    []runtime.CRIConfigResult
 	schedulers    []*scheduler.Scheduler
 	stateFilePath string
+	jobqueue      *jobqueue.JobQueue
 }
 
-func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string) *Satellite {
+func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string, jq *jobqueue.JobQueue) *Satellite {
 	return &Satellite{
 		cm:            cm,
 		criResults:    criResults,
 		schedulers:    make([]*scheduler.Scheduler, 0),
 		stateFilePath: stateFilePath,
+		jobqueue:      jq,
 	}
 }
 
@@ -81,7 +85,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	stateScheduler.Start(ctx)
 
 	// Create status report scheduler with pending CRI results
-	statusReportProcess := state.NewStatusReportingProcess(s.cm)
+	statusReportProcess := state.NewStatusReportingProcess(s.cm, s.jobqueue)
 	if len(s.criResults) > 0 {
 		statusReportProcess.SetPendingCRIResults(s.criResults)
 	}
@@ -96,6 +100,10 @@ func (s *Satellite) Run(ctx context.Context) error {
 	}
 	s.schedulers = append(s.schedulers, statusScheduler)
 	statusScheduler.Start(ctx)
+
+	// Initiating Job Queue
+	s.jobqueue.Start()
+	s.registerActions()
 
 	return ctx.Err()
 }
@@ -127,4 +135,10 @@ func (s *Satellite) Stop(ctx context.Context) {
 	} else {
 		log.Info().Msg("All schedulers stopped")
 	}
+}
+
+// Registers actions that the Job Queue understands
+// and executes
+func (s *Satellite) registerActions() {
+	s.jobqueue.Register(actions.NewRefreshCredentialsAction())
 }

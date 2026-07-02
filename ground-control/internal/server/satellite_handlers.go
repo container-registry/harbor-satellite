@@ -53,6 +53,10 @@ type SatelliteStatusParams struct {
 	CachedImages        []CachedImage `json:"cached_images,omitempty"`
 }
 
+type SatelliteSyncResponse struct {
+	Actions []string `json:"actions"`
+}
+
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	if s.spiffeProvider != nil || s.spireClient != nil {
 		HandleAppError(w, &AppError{
@@ -632,6 +636,9 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
+	resp := SatelliteSyncResponse{
+		Actions: make([]string, 0),
+	}
 	var req SatelliteStatusParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
@@ -663,6 +670,32 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, &AppError{Message: "invalid heartbeat interval format", Code: http.StatusBadRequest})
 		return
 	}
+
+	// robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	// if err != nil {
+	// 	log.Printf("Failed to find robot account for satellite : %s", satelliteName)
+	// 	HandleAppError(w, &AppError{
+	// 		Message: "Failed to find robot account",
+	// 		Code:    http.StatusForbidden,
+	// 	})
+	// 	return
+	// }
+	//
+	// if robotAcc.RobotExpiry.Valid {
+	// 	duration, err := time.ParseDuration(strings.TrimPrefix("@every ", normalizedInterval))
+	// 	if err != nil {
+	// 		log.Printf("Invalid heartbeat interval %q: %v", req.StateReportInterval, err)
+	// 		HandleAppError(w, &AppError{Message: "invalid heartbeat interval format", Code: http.StatusBadRequest})
+	// 		return
+	// 	}
+	//
+	// 	// Basically checks whether the robot expires before the 2nd state sync from now
+	// 	// or not
+	// 	future := time.Now().Add(duration * 2)
+	// 	if future.Before(robotAcc.RobotExpiry.Time) {
+	resp.Actions = append(resp.Actions, "refresh_credentials")
+	// 	}
+	// }
 
 	var artifactIDs []int32
 	if len(req.CachedImages) > 0 {
@@ -726,7 +759,7 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	WriteJSONResponse(w, http.StatusOK, resp)
 }
 
 func (s *Server) getSatelliteStatusHandler(w http.ResponseWriter, r *http.Request) {
