@@ -22,7 +22,7 @@ COPY . .
 # Pass --build-arg GO_TAGS=parsec to opt into the PARSEC code path.
 ARG GO_TAGS=""
 ARG COMPONENT=harbor-satellite
-RUN CGO_ENABLED=0 GOOS=linux go build -tags "${GO_TAGS}" -o /bin ./cmd/${COMPONENT}
+RUN CGO_ENABLED=0 GOOS=linux go build -tags "${GO_TAGS}" -o /app-bin ./cmd/${COMPONENT}
 
 # Runtime stage
 FROM alpine:3.20
@@ -33,7 +33,7 @@ WORKDIR /app
 
 # Copy binary and Ground Control migrations from builder. The migrations copy is
 # harmless for the satellite image and keeps one Dockerfile for both binaries.
-COPY --from=builder /bin /app/app
+COPY --from=builder /app-bin /app/app
 COPY --from=builder /app/internal/groundcontrol/sql/schema /migrations
 
 # Create data directory
