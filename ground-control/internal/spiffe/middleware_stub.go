@@ -38,9 +38,15 @@ func GetSPIFFEID(_ context.Context) (spiffeid.ID, bool) {
 	return spiffeid.ID{}, false
 }
 
-// GetSatelliteName always returns false when SPIFFE is disabled.
-func GetSatelliteName(_ context.Context) (string, bool) {
-	return "", false
+// GetSatelliteName retrieves the satellite name from the request context.
+func GetSatelliteName(ctx context.Context) (string, bool) {
+	name, ok := ctx.Value(SatelliteNameKey).(string)
+	return name, ok
+}
+
+// ContextWithSatelliteName returns a new context with the satellite name.
+func ContextWithSatelliteName(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, SatelliteNameKey, name)
 }
 
 // GetRegion always returns false when SPIFFE is disabled.

@@ -3,12 +3,16 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/ground-control/internal/auth"
 	auditlog "github.com/container-registry/harbor-satellite/ground-control/internal/logger"
+	"github.com/container-registry/harbor-satellite/ground-control/internal/spiffe"
+	"github.com/container-registry/harbor-satellite/ground-control/pkg/crypto"
 	"github.com/google/uuid"
 )
 
@@ -221,4 +225,88 @@ func extractBasicAuth(r *http.Request) (username, password string, ok bool) {
 	}
 
 	return credentials[0], credentials[1], true
+}
+
+var (
+	errRobotInvalidSecret = fmt.Errorf("invalid secret")
+	errRobotExpired       = fmt.Errorf("expired")
+)
+
+// validateSPIFFEAuth validates if the satellite exists in database by name.
+func (s *Server) validateSPIFFEAuth(ctx context.Context, spiffeName string) (string, error) {
+	sat, err := s.dbQueries.GetSatelliteByName(ctx, spiffeName)
+	if err != nil {
+		return "", err
+	}
+	return sat.Name, nil
+}
+
+// validateRobotAuth validates Basic Auth credentials against the robot account DB records.
+func (s *Server) validateRobotAuth(ctx context.Context, username, password string) (string, error) {
+	robot, err := s.dbQueries.GetRobotAccByRobotName(ctx, username)
+	if err != nil {
+		return "", err
+	}
+	if !crypto.VerifySecret(password, robot.RobotSecretHash) {
+		return "", errRobotInvalidSecret
+	}
+	if robot.RobotExpiry.Valid && robot.RobotExpiry.Time.Before(time.Now()) {
+		return "", errRobotExpired
+	}
+	sat, err := s.dbQueries.GetSatellite(ctx, robot.SatelliteID)
+	if err != nil {
+		return "", err
+	}
+	return sat.Name, nil
+}
+
+// failAuth records a failed auth audit event and writes an HTTP unauthorized error.
+func (s *Server) failAuth(w http.ResponseWriter, r *http.Request, actor string, actorType auditlog.ActorType, reason auditlog.Reason, errMsg string) {
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpAuth,
+		ResourceType: auditlog.ResSatellite,
+		Outcome:      auditlog.OutcomeFailure,
+		Actor:        actor,
+		ActorType:    actorType,
+		Reason:       reason,
+	})
+	WriteJSONError(w, errMsg, http.StatusUnauthorized)
+}
+
+// SatelliteAuthMiddleware validates satellite requests using either SPIFFE mTLS or robot credentials.
+func (s *Server) SatelliteAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 1. Try SPIFFE authentication first
+		if spiffeName, ok := spiffe.GetSatelliteName(r.Context()); ok {
+			satName, err := s.validateSPIFFEAuth(r.Context(), spiffeName)
+			if err != nil {
+				s.failAuth(w, r, spiffeName, auditlog.ActorSatellite, auditlog.ReasonInvalidCredentials, "Unauthorized")
+				return
+			}
+			ctx := spiffe.ContextWithSatelliteName(r.Context(), satName)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		// 2. Try Robot credentials Basic Auth if SPIFFE didn't authenticate
+		if username, password, ok := extractBasicAuth(r); ok {
+			satName, err := s.validateRobotAuth(r.Context(), username, password)
+			if err != nil {
+				reason := auditlog.ReasonInvalidCredentials
+				errMsg := "Invalid credentials"
+				if err == errRobotExpired {
+					reason = auditlog.ReasonTokenExpired
+					errMsg = "Unauthorized"
+				}
+				s.failAuth(w, r, username, auditlog.ActorRobot, reason, errMsg)
+				return
+			}
+			ctx := spiffe.ContextWithSatelliteName(r.Context(), satName)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		// 3. Reject if neither auth method was supplied
+		s.failAuth(w, r, "", auditlog.ActorAnonymous, auditlog.ReasonMissingCredentials, "Unauthorized")
+	})
 }
