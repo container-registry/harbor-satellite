@@ -1,0 +1,9 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/groundcontrol/sql/queries"
+    schema: "internal/groundcontrol/sql/schema"
+    gen:
+      go:
+        out: "internal/groundcontrol/database"
+        # sql_package: "pgx/v5"
