@@ -260,6 +260,19 @@ func (s *Server) validateRobotAuth(ctx context.Context, username, password strin
 	return sat.Name, nil
 }
 
+// failAuth records a failed auth audit event and writes an HTTP unauthorized error.
+func (s *Server) failAuth(w http.ResponseWriter, r *http.Request, actor string, actorType auditlog.ActorType, reason auditlog.Reason, errMsg string) {
+	s.auditEvent(r, auditlog.AuditEvent{
+		Operation:    auditlog.OpAuth,
+		ResourceType: auditlog.ResSatellite,
+		Outcome:      auditlog.OutcomeFailure,
+		Actor:        actor,
+		ActorType:    actorType,
+		Reason:       reason,
+	})
+	WriteJSONError(w, errMsg, http.StatusUnauthorized)
+}
+
 // SatelliteAuthMiddleware validates satellite requests using either SPIFFE mTLS or robot credentials.
 func (s *Server) SatelliteAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -267,16 +280,7 @@ func (s *Server) SatelliteAuthMiddleware(next http.Handler) http.Handler {
 		if spiffeName, ok := spiffe.GetSatelliteName(r.Context()); ok {
 			satName, err := s.validateSPIFFEAuth(r.Context(), spiffeName)
 			if err != nil {
-				s.auditEvent(r, auditlog.AuditEvent{
-					Operation:    auditlog.OpAuth,
-					ResourceType: auditlog.ResSatellite,
-					Outcome:      auditlog.OutcomeFailure,
-					Actor:        spiffeName,
-					ActorType:    auditlog.ActorSatellite,
-					Reason:       auditlog.ReasonInvalidCredentials,
-					Details:      map[string]any{"error": "spiffe satellite not found in database"},
-				})
-				WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
+				s.failAuth(w, r, spiffeName, auditlog.ActorSatellite, auditlog.ReasonInvalidCredentials, "Unauthorized")
 				return
 			}
 			ctx := spiffe.ContextWithSatelliteName(r.Context(), satName)
@@ -294,15 +298,7 @@ func (s *Server) SatelliteAuthMiddleware(next http.Handler) http.Handler {
 					reason = auditlog.ReasonTokenExpired
 					errMsg = "Unauthorized"
 				}
-				s.auditEvent(r, auditlog.AuditEvent{
-					Operation:    auditlog.OpAuth,
-					ResourceType: auditlog.ResSatellite,
-					Outcome:      auditlog.OutcomeFailure,
-					Actor:        username,
-					ActorType:    auditlog.ActorRobot,
-					Reason:       reason,
-				})
-				WriteJSONError(w, errMsg, http.StatusUnauthorized)
+				s.failAuth(w, r, username, auditlog.ActorRobot, reason, errMsg)
 				return
 			}
 			ctx := spiffe.ContextWithSatelliteName(r.Context(), satName)
@@ -311,13 +307,6 @@ func (s *Server) SatelliteAuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		// 3. Reject if neither auth method was supplied
-		s.auditEvent(r, auditlog.AuditEvent{
-			Operation:    auditlog.OpAuth,
-			ResourceType: auditlog.ResSatellite,
-			Outcome:      auditlog.OutcomeFailure,
-			ActorType:    auditlog.ActorAnonymous,
-			Reason:       auditlog.ReasonMissingCredentials,
-		})
-		WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
+		s.failAuth(w, r, "", auditlog.ActorAnonymous, auditlog.ReasonMissingCredentials, "Unauthorized")
 	})
 }
