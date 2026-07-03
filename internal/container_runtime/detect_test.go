@@ -30,15 +30,15 @@ func TestDetectWithCheckers(t *testing.T) {
 			wantTypes: []CRIType{CRIPodman},
 		},
 		{
-			name:    "detects multiple CRIs",
-			sockets: map[string]bool{"/var/run/docker.sock": true, "/run/containerd/containerd.sock": true},
+			name:      "detects multiple CRIs",
+			sockets:   map[string]bool{"/var/run/docker.sock": true, "/run/containerd/containerd.sock": true},
 			wantTypes: []CRIType{CRIDocker, CRIContainerd},
 		},
 		{
-			name:      "socket takes priority over binary",
-			sockets:   map[string]bool{"/var/run/docker.sock": true},
-			binaries:  map[string]bool{"docker": true},
-			wantTypes: []CRIType{CRIDocker},
+			name:        "socket takes priority over binary",
+			sockets:     map[string]bool{"/var/run/docker.sock": true},
+			binaries:    map[string]bool{"docker": true},
+			wantTypes:   []CRIType{CRIDocker},
 			wantReasons: []string{"found socket /var/run/docker.sock"},
 		},
 		{

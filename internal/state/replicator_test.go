@@ -7,42 +7,41 @@ import (
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/registry"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
-	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/stretchr/testify/require"
 )
 
-// newTestRegistry starts an in-memory OCI registry and returns the server
-// and its host:port address.
-func newTestRegistry(t *testing.T) (*httptest.Server, string) {
+// newTestRegistry starts an in-memory OCI registry and returns its host:port address.
+func newTestRegistry(t *testing.T) string {
 	t.Helper()
 	srv := httptest.NewServer(registry.New())
 	t.Cleanup(srv.Close)
-	return srv, strings.TrimPrefix(srv.URL, "http://")
+	return strings.TrimPrefix(srv.URL, "http://")
 }
 
 // pushImage pushes a random image with the given number of layers to the
 // registry at the specified reference. Returns the pushed image.
-func pushImage(t *testing.T, addr, repo, imgName, tag string, layerCount int64) v1.Image {
+func pushImage(t *testing.T, addr, imgName, tag string, layerCount int64) v1.Image {
 	t.Helper()
 	img, err := random.Image(1024, layerCount)
 	require.NoError(t, err)
 
-	ref, err := name.ParseReference(addr+"/"+repo+"/"+imgName+":"+tag, name.Insecure)
+	ref, err := name.ParseReference(addr+"/library/"+imgName+":"+tag, name.Insecure)
 	require.NoError(t, err)
 	require.NoError(t, remote.Write(ref, img))
 	return img
 }
 
 func TestReplicate_NewImage(t *testing.T) {
-	_, srcAddr := newTestRegistry(t)
-	_, dstAddr := newTestRegistry(t)
+	srcAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
-	pushImage(t, srcAddr, "library", "alpine", "latest", 2)
+	pushImage(t, srcAddr, "alpine", "latest", 2)
 
 	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
 	ctx := testContext()
@@ -60,11 +59,11 @@ func TestReplicate_NewImage(t *testing.T) {
 }
 
 func TestReplicate_SkipsExistingImage(t *testing.T) {
-	_, srcAddr := newTestRegistry(t)
-	_, dstAddr := newTestRegistry(t)
+	srcAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
 	// Push same image to both source and destination
-	img := pushImage(t, srcAddr, "library", "nginx", "1.25", 2)
+	img := pushImage(t, srcAddr, "nginx", "1.25", 2)
 
 	dstRef, err := name.ParseReference(dstAddr+"/library/nginx:1.25", name.Insecure)
 	require.NoError(t, err)
@@ -81,14 +80,14 @@ func TestReplicate_SkipsExistingImage(t *testing.T) {
 }
 
 func TestReplicate_UpdatesChangedImage(t *testing.T) {
-	_, srcAddr := newTestRegistry(t)
-	_, dstAddr := newTestRegistry(t)
+	srcAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
 	// Push one version to destination
-	pushImage(t, dstAddr, "library", "redis", "7", 1)
+	pushImage(t, dstAddr, "redis", "7", 1)
 
 	// Push a different version to source (different random image)
-	srcImg := pushImage(t, srcAddr, "library", "redis", "7", 2)
+	srcImg := pushImage(t, srcAddr, "redis", "7", 2)
 
 	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
 	ctx := testContext()
@@ -115,11 +114,11 @@ func TestReplicate_UpdatesChangedImage(t *testing.T) {
 }
 
 func TestReplicate_MultipleEntities(t *testing.T) {
-	_, srcAddr := newTestRegistry(t)
-	_, dstAddr := newTestRegistry(t)
+	srcAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
-	pushImage(t, srcAddr, "library", "alpine", "latest", 1)
-	pushImage(t, srcAddr, "library", "nginx", "1.25", 2)
+	pushImage(t, srcAddr, "alpine", "latest", 1)
+	pushImage(t, srcAddr, "nginx", "1.25", 2)
 
 	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
 	ctx := testContext()
@@ -143,8 +142,8 @@ func TestReplicate_MultipleEntities(t *testing.T) {
 }
 
 func TestReplicate_SourceNotFound(t *testing.T) {
-	_, srcAddr := newTestRegistry(t)
-	_, dstAddr := newTestRegistry(t)
+	srcAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
 	// Don't push anything to source
 	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
@@ -157,8 +156,8 @@ func TestReplicate_SourceNotFound(t *testing.T) {
 }
 
 func TestReplicate_EmptyEntities(t *testing.T) {
-	_, srcAddr := newTestRegistry(t)
-	_, dstAddr := newTestRegistry(t)
+	srcAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
 	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
 	ctx := testContext()
@@ -168,7 +167,7 @@ func TestReplicate_EmptyEntities(t *testing.T) {
 }
 
 func TestCountMissingLayers_AllMissing(t *testing.T) {
-	_, dstAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
 	// Create a random image (not pushed to destination)
 	img, err := random.Image(1024, 3)
@@ -186,7 +185,7 @@ func TestCountMissingLayers_AllMissing(t *testing.T) {
 }
 
 func TestCountMissingLayers_NoneMissing(t *testing.T) {
-	_, dstAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
 	img, err := random.Image(1024, 2)
 	require.NoError(t, err)
@@ -205,7 +204,7 @@ func TestCountMissingLayers_NoneMissing(t *testing.T) {
 }
 
 func TestCountMissingLayers_PartialOverlap(t *testing.T) {
-	_, dstAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
 	// Push one image to destination (has its own layers)
 	oldImg, err := random.Image(1024, 2)
@@ -229,9 +228,9 @@ func TestCountMissingLayers_PartialOverlap(t *testing.T) {
 }
 
 func TestDeleteReplicationEntity(t *testing.T) {
-	_, dstAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
-	pushImage(t, dstAddr, "library", "alpine", "latest", 1)
+	pushImage(t, dstAddr, "alpine", "latest", 1)
 
 	r := NewBasicReplicator("", "", "", dstAddr, "", "", true)
 	ctx := testContext()
@@ -246,8 +245,8 @@ func TestDeleteReplicationEntity(t *testing.T) {
 // already-present layers are skipped during resume. This tests the blob-level
 // deduplication that happens inside remote.Write via HEAD checks.
 func TestReplicate_LayerResume(t *testing.T) {
-	_, srcAddr := newTestRegistry(t)
-	_, dstAddr := newTestRegistry(t)
+	srcAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
 	// Step 1: Create base image with 3 layers
 	baseImg, err := random.Image(1024, 3)
@@ -319,12 +318,12 @@ func TestReplicate_LayerResume(t *testing.T) {
 }
 
 func TestReplicate_CancelledContextStopsProcessing(t *testing.T) {
-	_, srcAddr := newTestRegistry(t)
-	_, dstAddr := newTestRegistry(t)
+	srcAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
-	pushImage(t, srcAddr, "library", "img1", "v1", 1)
-	pushImage(t, srcAddr, "library", "img2", "v1", 1)
-	pushImage(t, srcAddr, "library", "img3", "v1", 1)
+	pushImage(t, srcAddr, "img1", "v1", 1)
+	pushImage(t, srcAddr, "img2", "v1", 1)
+	pushImage(t, srcAddr, "img3", "v1", 1)
 
 	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
 
@@ -341,10 +340,10 @@ func TestReplicate_CancelledContextStopsProcessing(t *testing.T) {
 }
 
 func TestDeleteReplicationEntity_CancelledContextStopsProcessing(t *testing.T) {
-	_, dstAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
 
-	pushImage(t, dstAddr, "library", "img1", "v1", 1)
-	pushImage(t, dstAddr, "library", "img2", "v1", 1)
+	pushImage(t, dstAddr, "img1", "v1", 1)
+	pushImage(t, dstAddr, "img2", "v1", 1)
 
 	r := NewBasicReplicator("", "", "", dstAddr, "", "", true)
 

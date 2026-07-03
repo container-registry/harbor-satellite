@@ -58,6 +58,7 @@ func collectCachedImages(ctx context.Context, registryHost string, insecure bool
 	if images == nil {
 		return []CachedImage{}, nil
 	}
+
 	return images, nil
 }
 
@@ -96,7 +97,7 @@ func computeManifestSize(raw []byte) (int64, error) {
 	switch probe.MediaType {
 	case "application/vnd.oci.image.index.v1+json",
 		"application/vnd.docker.distribution.manifest.list.v2+json":
-		return 0, fmt.Errorf("multi-arch manifest index not supported for size computation")
+		return 0, errors.New("multi-arch manifest index not supported for size computation")
 	}
 
 	var m v1.Manifest
@@ -109,6 +110,7 @@ func computeManifestSize(raw []byte) (int64, error) {
 	for _, layer := range m.Layers {
 		total += layer.Size
 	}
+
 	return total, nil
 }
 
@@ -116,6 +118,7 @@ func registryScheme(insecure bool) string {
 	if insecure {
 		return "http"
 	}
+
 	return "https"
 }
 
@@ -140,6 +143,7 @@ func fetchCatalog(ctx context.Context, client *http.Client, registryHost string,
 	if err := json.NewDecoder(resp.Body).Decode(&catalog); err != nil {
 		return nil, fmt.Errorf("decode catalog: %w", err)
 	}
+
 	return catalog.Repositories, nil
 }
 
@@ -164,5 +168,6 @@ func fetchTags(ctx context.Context, client *http.Client, registryHost, repo stri
 	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
 		return nil, fmt.Errorf("decode tags: %w", err)
 	}
+
 	return tags.Tags, nil
 }

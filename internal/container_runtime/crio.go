@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -40,7 +41,8 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) (string, err
 	v.SetConfigType("toml")
 
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
 			return bkPath, fmt.Errorf("failed to read registries.conf: %w", err)
 		}
 	}
@@ -86,7 +88,9 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) (string, err
 	}
 	if err := validateTOML(data); err != nil {
 		if bkPath != "" {
-			_ = restoreBackup(bkPath, registriesConfigPath)
+			if restoreErr := restoreBackup(bkPath, registriesConfigPath); restoreErr != nil {
+				return bkPath, fmt.Errorf("registries.conf validation failed and rollback failed: %w", restoreErr)
+			}
 		}
 		return bkPath, fmt.Errorf("registries.conf validation failed, rolled back: %w", err)
 	}
@@ -116,7 +120,7 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer func(){
+	defer func() {
 		_ = out.Close()
 	}()
 

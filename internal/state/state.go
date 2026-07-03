@@ -78,6 +78,10 @@ func (a *State) SetArtifacts(artifacts []ArtifactReader) {
 	// Set new artifacts
 	a.Artifacts = make([]Artifact, len(artifacts))
 	for i, artifact := range artifacts {
-		a.Artifacts[i] = *artifact.(*Artifact)
+		typedArtifact, ok := artifact.(*Artifact)
+		if !ok {
+			continue
+		}
+		a.Artifacts[i] = *typedArtifact
 	}
 }

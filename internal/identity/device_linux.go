@@ -63,6 +63,7 @@ func (d *LinuxDeviceIdentity) GetFingerprint() (string, error) {
 
 	combined := strings.Join(components, "|")
 	hash := sha256.Sum256([]byte(combined))
+
 	return hex.EncodeToString(hash[:]), nil
 }
 
@@ -83,6 +84,7 @@ func (d *LinuxDeviceIdentity) GetMACAddress() (string, error) {
 		if len(iface.HardwareAddr) == 0 {
 			continue
 		}
+
 		return iface.HardwareAddr.String(), nil
 	}
 
@@ -121,6 +123,7 @@ func (d *LinuxDeviceIdentity) GetBootID() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("read boot_id: %w", err)
 	}
+
 	return strings.TrimSpace(string(data)), nil
 }
 
@@ -163,5 +166,6 @@ func (d *LinuxDeviceIdentity) GetMachineID() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("read machine-id: %w", err)
 	}
+
 	return strings.TrimSpace(string(data)), nil
 }

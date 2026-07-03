@@ -53,7 +53,7 @@ func NewBasicReplicatorWithTLS(sourceUsername, sourcePassword, sourceRegistry, r
 	}
 }
 
-// Entity represents an image or artifact which needs to be handled by the replicator
+// Entity represents an image or artifact which needs to be handled by the replicator.
 type Entity struct {
 	Name       string `json:"name"`
 	Repository string `json:"repository"`
@@ -172,6 +172,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		}
 		log.Info().Msgf("Image %s replicated successfully", entity.GetName())
 	}
+
 	return nil
 }
 
@@ -209,6 +210,7 @@ func (r *BasicReplicator) countMissingLayers(dst name.Reference, srcLayers []v1.
 			missing++
 		}
 	}
+
 	return missing
 }
 

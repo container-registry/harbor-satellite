@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-// Process represents a process that can be scheduled
+// Process represents a process that can be scheduled.
 type Process interface {
 	// Name returns the name of the process
 	Name() string

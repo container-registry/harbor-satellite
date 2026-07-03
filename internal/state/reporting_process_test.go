@@ -138,6 +138,7 @@ func newReportingTestCM(t *testing.T, gcURL string) *config.ConfigManager {
 		"token", gcURL, false, cfg, crypto.NewAESProvider(),
 	)
 	require.NoError(t, err)
+
 	return cm
 }
 

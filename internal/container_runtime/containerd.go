@@ -33,7 +33,7 @@ func setContainerdConfig(upstreamRegistries []string, localMirror string) (strin
 // writeContainerdHostToml creates or updates hosts.toml for a registry
 func writeContainerdHostToml(registryURL, localMirror string) error {
 	dir := filepath.Join(containerdCertsDir, registryURL)
-	if err := os.MkdirAll(dir, 0750); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
@@ -80,7 +80,9 @@ func writeContainerdHostToml(registryURL, localMirror string) error {
 
 	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
 		if bkPath != "" {
-			_ = restoreBackup(bkPath, path)
+			if restoreErr := restoreBackup(bkPath, path); restoreErr != nil {
+				return fmt.Errorf("failed to encode hosts.toml and rollback failed: %w", restoreErr)
+			}
 		}
 		return fmt.Errorf("failed to encode hosts.toml, rolled back: %w", err)
 	}
@@ -117,7 +119,9 @@ func configureContainerd(certDir string) (string, error) {
 
 	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
 		if bkPath != "" {
-			_ = restoreBackup(bkPath, containerdConfigPath)
+			if restoreErr := restoreBackup(bkPath, containerdConfigPath); restoreErr != nil {
+				return bkPath, fmt.Errorf("failed to write containerd config and rollback failed: %w", restoreErr)
+			}
 		}
 		return bkPath, fmt.Errorf("failed to write containerd config, rolled back: %w", err)
 	}

@@ -15,7 +15,7 @@ type RouteRegistrar interface {
 	RegisterRoutes(router Router)
 }
 
-// App struct with middleware support
+// App struct with middleware support.
 type App struct {
 	router     Router
 	registrars []RouteRegistrar
@@ -43,6 +43,7 @@ func (a *App) SetupRoutes() {
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.router.ServeHTTP(w, r)
 }
+
 func (a *App) Start() error {
 	return a.server.ListenAndServe()
 }
@@ -57,6 +58,7 @@ func (a *App) SetupServer(g *errgroup.Group) {
 		if err := a.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
+
 		return nil
 	})
 	g.Go(func() error {
@@ -66,6 +68,7 @@ func (a *App) SetupServer(g *errgroup.Group) {
 		if err != nil {
 			return fmt.Errorf("error shutting down server: %w", err)
 		}
+
 		return nil
 	})
 }

@@ -64,6 +64,7 @@ func (t *JoinToken) Encode() (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return base64.RawURLEncoding.EncodeToString(data), nil
 }
 

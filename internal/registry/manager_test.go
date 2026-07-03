@@ -60,7 +60,7 @@ func TestRemoveTempZotConfig(t *testing.T) {
 			name: "File Exists",
 			setup: func(t *testing.T) string {
 				f := filepath.Join(t.TempDir(), "testfile.json")
-				require.NoError(t, os.WriteFile(f, []byte("test"), 0600))
+				require.NoError(t, os.WriteFile(f, []byte("test"), 0o600))
 				return f
 			},
 			expectedErr: false,
@@ -117,7 +117,7 @@ func TestVerifyRegistryConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpFile := filepath.Join(t.TempDir(), "zot-config.json")
-			require.NoError(t, os.WriteFile(tmpFile, tt.configData, 0600))
+			require.NoError(t, os.WriteFile(tmpFile, tt.configData, 0o600))
 
 			err := zm.VerifyRegistryConfig(tmpFile)
 

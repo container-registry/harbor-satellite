@@ -3,6 +3,7 @@
 package identity
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -36,7 +37,7 @@ func TestLinuxDeviceIdentity_GetMACAddress(t *testing.T) {
 
 	t.Run("returns MAC address", func(t *testing.T) {
 		mac, err := d.GetMACAddress()
-		if err == ErrComponentUnavailable {
+		if errors.Is(err, ErrComponentUnavailable) {
 			t.Skip("no network interface available")
 		}
 		require.NoError(t, err)
@@ -50,7 +51,7 @@ func TestLinuxDeviceIdentity_GetCPUID(t *testing.T) {
 
 	t.Run("returns CPU info", func(t *testing.T) {
 		cpuid, err := d.GetCPUID()
-		if err == ErrComponentUnavailable {
+		if errors.Is(err, ErrComponentUnavailable) {
 			t.Skip("CPU ID not available")
 		}
 		require.NoError(t, err)
@@ -73,7 +74,7 @@ func TestLinuxDeviceIdentity_GetDiskSerial(t *testing.T) {
 
 	t.Run("returns disk serial or unavailable", func(t *testing.T) {
 		serial, err := d.GetDiskSerial()
-		if err == ErrComponentUnavailable {
+		if errors.Is(err, ErrComponentUnavailable) {
 			t.Skip("disk serial not available")
 		}
 		require.NoError(t, err)

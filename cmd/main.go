@@ -589,9 +589,9 @@ func resolveLocalRegistryEndpoint(cm *config.ConfigManager) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("missing 'http' section in zot config")
 	}
-	addr, _ := httpData["address"].(string)
-	port, _ := httpData["port"].(string)
-	if addr == "" || port == "" {
+	addr, addrOK := httpData["address"].(string)
+	port, portOK := httpData["port"].(string)
+	if !addrOK || !portOK || addr == "" || port == "" {
 		return "", fmt.Errorf("missing 'address' or 'port' in zot http config")
 	}
 	return addr + ":" + port, nil

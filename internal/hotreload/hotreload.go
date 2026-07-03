@@ -145,19 +145,19 @@ func (hrm *HotReloadManager) handleZotConfigChange(change config.ConfigChange) e
 		return err
 	}
 
-	err := os.WriteFile(hrm.zotTempPath, hrm.cm.GetRawZotConfig(), 0600)
+	err := os.WriteFile(hrm.zotTempPath, hrm.cm.GetRawZotConfig(), 0o600)
 	if err != nil {
 		return fmt.Errorf("unable to change zot configuration: %w", err)
 	}
 
 	return nil
 }
+
 func (hrm *HotReloadManager) SetStateReplicationScheduler(stateReplicationScheduler *scheduler.Scheduler) {
 	hrm.stateReplicationScheduler = stateReplicationScheduler
 }
 
 func (hrm *HotReloadManager) ProcessConfigChanges(changes []config.ConfigChange) error {
-
 	hrm.log.Info().Int("change_count", len(changes)).Msg("Processing configuration changes")
 
 	var errors []error

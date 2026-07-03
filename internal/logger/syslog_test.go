@@ -21,6 +21,7 @@ func parseSyslogLine(t *testing.T, line string) (header string, body map[string]
 	require.GreaterOrEqual(t, brace, 0, "line should contain a JSON body: %q", line)
 	header = strings.TrimSpace(line[:brace])
 	require.NoError(t, json.Unmarshal([]byte(line[brace:]), &body))
+
 	return header, body
 }
 

@@ -227,5 +227,5 @@ func (d *DirectDeliverer) saveDigestMap(m map[string]string) error {
 	if err != nil {
 		return fmt.Errorf("marshal digest map: %w", err)
 	}
-	return os.WriteFile(d.digestMapPath(), data, 0o644)
+	return os.WriteFile(d.digestMapPath(), data, 0o600)
 }

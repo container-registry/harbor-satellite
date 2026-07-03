@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -31,10 +32,10 @@ type baseStateFetcher struct {
 
 type URLStateFetcher struct {
 	baseStateFetcher
-	url       string
-	insecure  bool
-	useHTTP   bool
-	tlsCfg    config.TLSConfig
+	url      string
+	insecure bool
+	useHTTP  bool
+	tlsCfg   config.TLSConfig
 }
 
 func NewURLStateFetcher(stateURL, userName, password string, insecure bool) StateFetcher {
@@ -44,13 +45,14 @@ func NewURLStateFetcher(stateURL, userName, password string, insecure bool) Stat
 func NewURLStateFetcherWithTLS(stateURL, userName, password string, insecure bool, tlsCfg config.TLSConfig) StateFetcher {
 	var url string
 	var useHTTP bool
-	if len(stateURL) > 7 && stateURL[:7] == "http://" {
-		url = stateURL[7:]
+	switch {
+	case strings.HasPrefix(stateURL, "http://"):
+		url = strings.TrimPrefix(stateURL, "http://")
 		useHTTP = true
-	} else if len(stateURL) > 8 && stateURL[:8] == "https://" {
-		url = stateURL[8:]
+	case strings.HasPrefix(stateURL, "https://"):
+		url = strings.TrimPrefix(stateURL, "https://")
 		useHTTP = false
-	} else {
+	default:
 		url = stateURL
 		useHTTP = insecure
 	}
@@ -196,7 +198,7 @@ func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out any,
 	tarContent := new(bytes.Buffer)
 	if err := crane.Export(img, tarContent); err != nil {
 		log.Error().Msgf("Error exporting the fs contents of the state artifact: %s", url)
-		return fmt.Errorf("failed to export the state artifact: %v", err)
+		return fmt.Errorf("failed to export the state artifact: %w", err)
 	}
 
 	tr := tar.NewReader(tarContent)
@@ -207,16 +209,19 @@ func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out any,
 		}
 		if err != nil {
 			log.Error().Msgf("Failed to read the tar archive of the state artifact: %s", url)
-			return fmt.Errorf("failed to read the tar archive: %v", err)
+			return fmt.Errorf("failed to read the tar archive: %w", err)
 		}
 
 		if hdr.Name == "artifacts.json" {
 			artifactsJSON, err := io.ReadAll(tr)
 			if err != nil {
 				log.Error().Msgf("Failed to read the artifacts.json of the state artifact: %s", url)
-				return fmt.Errorf("failed to read the artifacts.json file: %v", err)
+				return fmt.Errorf("failed to read the artifacts.json file: %w", err)
 			}
-			return json.Unmarshal(artifactsJSON, out)
+			if err := json.Unmarshal(artifactsJSON, out); err != nil {
+				return fmt.Errorf("unmarshal artifacts.json: %w", err)
+			}
+			return nil
 		}
 	}
 	log.Error().Msgf("artifacts.json not present for the state artifact: %s", url)
@@ -226,7 +231,7 @@ func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out any,
 func FromJSON(data []byte, reg StateReader) (StateReader, error) {
 	if err := json.Unmarshal(data, &reg); err != nil {
 		fmt.Print("Error in unmarshalling")
-		return nil, err
+		return nil, fmt.Errorf("unmarshal state: %w", err)
 	}
 	if reg.GetRegistryURL() == "" {
 		return nil, fmt.Errorf("registry URL is required")

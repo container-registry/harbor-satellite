@@ -2,7 +2,7 @@ package server
 
 import "net/http"
 
-// RouterGroup represents a group of routes with a common prefix and middleware
+// RouterGroup represents a group of routes with a common prefix and middleware.
 type RouterGroup struct {
 	prefix     string
 	middleware []Middleware
