@@ -24,5 +24,6 @@ func NewSimpleNotifier(ctx context.Context) Notifier {
 func (n *SimpleNotifier) Notify() error {
 	log := logger.FromContext(n.ctx)
 	log.Info().Msg("This is a simple notifier")
+
 	return nil
 }

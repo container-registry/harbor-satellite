@@ -69,6 +69,7 @@ func parseMirrorFlags(mirrors []string) ([]CRIConfig, error) {
 			Registries: strings.Split(parts[1], ","),
 		})
 	}
+
 	return configs, nil
 }
 

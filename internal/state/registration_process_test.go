@@ -20,7 +20,7 @@ func TestSanitizeAuditReason_RedactsToken(t *testing.T) {
 }
 
 func TestSanitizeAuditReason_NilError(t *testing.T) {
-	require.Equal(t, "", sanitizeAuditReason(nil, "any-token"))
+	require.Empty(t, sanitizeAuditReason(nil, "any-token"))
 }
 
 func TestSanitizeAuditReason_EmptyToken(t *testing.T) {

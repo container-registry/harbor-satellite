@@ -58,7 +58,7 @@ func TestMemoryTokenStore_RateLimit(t *testing.T) {
 	t.Run("allows attempts within limit", func(t *testing.T) {
 		store := NewMemoryTokenStore(3, time.Minute)
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			err := store.CheckRateLimit("192.168.1.1")
 			require.NoError(t, err)
 			store.RecordAttempt("192.168.1.1")
@@ -68,7 +68,7 @@ func TestMemoryTokenStore_RateLimit(t *testing.T) {
 	t.Run("blocks attempts over limit", func(t *testing.T) {
 		store := NewMemoryTokenStore(3, time.Minute)
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			store.RecordAttempt("192.168.1.1")
 		}
 
@@ -79,7 +79,7 @@ func TestMemoryTokenStore_RateLimit(t *testing.T) {
 	t.Run("rate limits are per IP", func(t *testing.T) {
 		store := NewMemoryTokenStore(3, time.Minute)
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			store.RecordAttempt("192.168.1.1")
 		}
 

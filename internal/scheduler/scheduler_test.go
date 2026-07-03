@@ -22,9 +22,9 @@ type mockProcess struct {
 	execFn    func(ctx context.Context) error
 }
 
-func (m *mockProcess) Name() string       { return m.name }
-func (m *mockProcess) IsRunning() bool     { return m.running.Load() }
-func (m *mockProcess) IsComplete() bool    { return m.complete.Load() }
+func (m *mockProcess) Name() string     { return m.name }
+func (m *mockProcess) IsRunning() bool  { return m.running.Load() }
+func (m *mockProcess) IsComplete() bool { return m.complete.Load() }
 
 func (m *mockProcess) Execute(ctx context.Context) error {
 	m.running.Store(true)

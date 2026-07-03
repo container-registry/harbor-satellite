@@ -21,5 +21,6 @@ func detectImageDir(stat statFunc) string {
 			return dir
 		}
 	}
+
 	return ""
 }

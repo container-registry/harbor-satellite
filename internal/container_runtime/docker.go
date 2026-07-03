@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -63,16 +64,20 @@ func setDockerdConfig(mirrors []string, localRegistry string) (string, error) {
 	}
 	if err := validateJSON(data); err != nil {
 		if backupPath != "" {
-			_ = restoreBackup(backupPath, dockerConfigPath)
+			if restoreErr := restoreBackup(backupPath, dockerConfigPath); restoreErr != nil {
+				return backupPath, fmt.Errorf("docker config validation failed and rollback failed: %w", restoreErr)
+			}
 		}
 		return backupPath, fmt.Errorf("docker config validation failed, rolled back: %w", err)
 	}
 
 	// restart docker safely
-	cmd := exec.Command("systemctl", "restart", "docker")
+	cmd := exec.CommandContext(context.Background(), "systemctl", "restart", "docker")
 	if err := cmd.Run(); err != nil {
 		if backupPath != "" {
-			_ = restoreBackup(backupPath, dockerConfigPath)
+			if restoreErr := restoreBackup(backupPath, dockerConfigPath); restoreErr != nil {
+				return backupPath, fmt.Errorf("failed to restart Docker and rollback failed: %w", restoreErr)
+			}
 		}
 		return backupPath, fmt.Errorf("failed to restart Docker, rolled back config: %w", err)
 	}
@@ -83,7 +88,7 @@ func setDockerdConfig(mirrors []string, localRegistry string) (string, error) {
 func ensureDockerConfigFileExists(path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		// create the file with {}
-		if err := os.WriteFile(path, []byte("{}"), 0600); err != nil {
+		if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
 			return err
 		}
 	}

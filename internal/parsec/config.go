@@ -51,5 +51,6 @@ func (c Config) Validate() error {
 	if !filepath.IsAbs(c.SocketPath) {
 		return fmt.Errorf("parsec: socket_path must be absolute, got %q", c.SocketPath)
 	}
+
 	return nil
 }

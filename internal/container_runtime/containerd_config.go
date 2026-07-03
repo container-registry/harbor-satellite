@@ -1,15 +1,15 @@
 package runtime
 
-// Host represents a registry host entry in a hosts.toml file
+// Host represents a registry host entry in a hosts.toml file.
 type Host struct {
 	Capabilities []string `toml:"capabilities"`
 }
 
-// ContainerdHosts represents the structure of a hosts.toml file
+// ContainerdHosts represents the structure of a hosts.toml file.
 type ContainerdHosts struct {
-	Server  string                 `toml:"server"`
-	Host    map[string]Host        `toml:"host"`
-	Unknown map[string]any `toml:",remain"` // do not touch parts we do not deal with
+	Server  string          `toml:"server"`
+	Host    map[string]Host `toml:"host"`
+	Unknown map[string]any  `toml:",remain"` // do not touch parts we do not deal with
 }
 
 type ContainerdConfig struct {

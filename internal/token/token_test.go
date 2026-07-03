@@ -165,8 +165,8 @@ func TestJoinToken_TimeToExpiry(t *testing.T) {
 	require.NoError(t, err)
 
 	ttl := token.TimeToExpiry()
-	require.True(t, ttl > 59*time.Minute)
-	require.True(t, ttl <= time.Hour)
+	require.Greater(t, ttl, 59*time.Minute)
+	require.LessOrEqual(t, ttl, time.Hour)
 }
 
 func TestJoinToken_EncodeDecode(t *testing.T) {

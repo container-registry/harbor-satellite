@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -27,7 +28,7 @@ type SpiffeZtrProcess struct {
 func NewSpiffeZtrProcess(cm *config.ConfigManager) (*SpiffeZtrProcess, error) {
 	spiffeCfg := cm.GetSPIFFEConfig()
 	if !spiffeCfg.Enabled {
-		return nil, fmt.Errorf("SPIFFE is not enabled in config")
+		return nil, errors.New("SPIFFE is not enabled in config")
 	}
 
 	client, err := spiffe.NewClient(spiffe.Config{
@@ -84,7 +85,7 @@ func (s *SpiffeZtrProcess) Execute(ctx context.Context) error {
 		stateConfig.RegistryCredentials.URL == "" ||
 		stateConfig.StateURL == "" {
 		log.Error().Msg("Invalid state auth config received")
-		return fmt.Errorf("invalid state auth config received")
+		return errors.New("invalid state auth config received")
 	}
 
 	s.cm.With(config.SetStateConfig(stateConfig))
@@ -95,6 +96,7 @@ func (s *SpiffeZtrProcess) Execute(ctx context.Context) error {
 
 	log.Info().Msg("SPIFFE-based ZTR completed successfully")
 	close(s.Done)
+
 	return nil
 }
 
@@ -152,18 +154,21 @@ func (s *SpiffeZtrProcess) CanExecute(log *zerolog.Logger) (bool, string) {
 func (s *SpiffeZtrProcess) Name() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.name
 }
 
 func (s *SpiffeZtrProcess) IsRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.isRunning
 }
 
 func (s *SpiffeZtrProcess) IsComplete() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.cm.IsZTRDone()
 }
 
@@ -171,6 +176,7 @@ func (s *SpiffeZtrProcess) start() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.isRunning = true
+
 	return true
 }
 
@@ -184,5 +190,6 @@ func (s *SpiffeZtrProcess) Close() error {
 	if s.spiffeClient != nil {
 		return s.spiffeClient.Close()
 	}
+
 	return nil
 }

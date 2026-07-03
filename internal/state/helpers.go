@@ -18,5 +18,6 @@ func getStateFetcherForInputWithTLS(input, username, password string, useInsecur
 		return nil, fmt.Errorf("invalid state url provided: %s", input)
 	}
 	log.Info().Msg("Input is a valid URL")
+
 	return NewURLStateFetcherWithTLS(input, username, password, useInsecure, tlsCfg), nil
 }

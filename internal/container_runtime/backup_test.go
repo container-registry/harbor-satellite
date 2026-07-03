@@ -31,7 +31,7 @@ func TestBackupFile(t *testing.T) {
 			path := filepath.Join(dir, "test.json")
 
 			if !tt.missing {
-				if err := os.WriteFile(path, []byte(tt.content), 0600); err != nil {
+				if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -45,6 +45,7 @@ func TestBackupFile(t *testing.T) {
 				if backupPath != "" {
 					t.Fatalf("expected empty backup path, got %q", backupPath)
 				}
+
 				return
 			}
 
@@ -111,10 +112,10 @@ func TestRestoreBackup(t *testing.T) {
 	originalContent := `{"original": true}`
 	backupContent := `{"backup": true}`
 
-	if err := os.WriteFile(original, []byte(originalContent), 0600); err != nil {
+	if err := os.WriteFile(original, []byte(originalContent), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(backup, []byte(backupContent), 0600); err != nil {
+	if err := os.WriteFile(backup, []byte(backupContent), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

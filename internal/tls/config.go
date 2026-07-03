@@ -16,15 +16,15 @@ import (
 )
 
 var (
-	ErrCertNotFound      = errors.New("certificate file not found")
-	ErrKeyNotFound       = errors.New("key file not found")
-	ErrCertInvalid       = errors.New("certificate invalid")
-	ErrCertExpired       = errors.New("certificate expired")
-	ErrCertNotYetValid   = errors.New("certificate not yet valid")
-	ErrCANotFound        = errors.New("CA certificate not found")
-	ErrCAInvalid         = errors.New("CA certificate invalid")
-	ErrCertKeyMismatch   = errors.New("certificate and key do not match")
-	ErrNoCertificates    = errors.New("no certificates in file")
+	ErrCertNotFound    = errors.New("certificate file not found")
+	ErrKeyNotFound     = errors.New("key file not found")
+	ErrCertInvalid     = errors.New("certificate invalid")
+	ErrCertExpired     = errors.New("certificate expired")
+	ErrCertNotYetValid = errors.New("certificate not yet valid")
+	ErrCANotFound      = errors.New("CA certificate not found")
+	ErrCAInvalid       = errors.New("CA certificate invalid")
+	ErrCertKeyMismatch = errors.New("certificate and key do not match")
+	ErrNoCertificates  = errors.New("no certificates in file")
 )
 
 // Config holds TLS configuration options.
@@ -144,7 +144,7 @@ func LoadCertificate(certFile, keyFile string, signer crypto.Signer) (*tls.Certi
 
 		leaf, err := x509.ParseCertificate(cert.Certificate[0])
 		if err != nil {
-			return nil, fmt.Errorf("%w: parse leaf: %v", ErrCertInvalid, err)
+			return nil, fmt.Errorf("%w: parse leaf: %w", ErrCertInvalid, err)
 		}
 		now := time.Now()
 		if now.Before(leaf.NotBefore) {
@@ -154,7 +154,7 @@ func LoadCertificate(certFile, keyFile string, signer crypto.Signer) (*tls.Certi
 			return nil, ErrCertExpired
 		}
 		if err := signerMatchesCert(signer, leaf.PublicKey); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrCertKeyMismatch, err)
+			return nil, fmt.Errorf("%w: %w", ErrCertKeyMismatch, err)
 		}
 
 		cert.PrivateKey = signer
@@ -169,7 +169,7 @@ func LoadCertificate(certFile, keyFile string, signer crypto.Signer) (*tls.Certi
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrCertInvalid, err)
+		return nil, fmt.Errorf("%w: %w", ErrCertInvalid, err)
 	}
 
 	return &cert, nil
@@ -280,7 +280,7 @@ func ParseCertificates(pemData []byte) ([]*x509.Certificate, error) {
 
 		cert, err := x509.ParseCertificate(block.Bytes)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrCertInvalid, err)
+			return nil, fmt.Errorf("%w: %w", ErrCertInvalid, err)
 		}
 
 		certs = append(certs, cert)
@@ -291,13 +291,13 @@ func ParseCertificates(pemData []byte) ([]*x509.Certificate, error) {
 
 // CertificateInfo returns information about a certificate.
 type CertificateInfo struct {
-	Subject    string
-	Issuer     string
-	NotBefore  time.Time
-	NotAfter   time.Time
-	IsExpired  bool
+	Subject      string
+	Issuer       string
+	NotBefore    time.Time
+	NotAfter     time.Time
+	IsExpired    bool
 	DaysToExpiry int
-	DNSNames   []string
+	DNSNames     []string
 }
 
 // GetCertificateInfo extracts information from a certificate file.

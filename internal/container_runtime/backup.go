@@ -17,6 +17,7 @@ func backupFile(path string) (string, error) {
 		if os.IsNotExist(err) {
 			return "", nil
 		}
+
 		return "", fmt.Errorf("stat %s: %w", path, err)
 	}
 
@@ -35,6 +36,7 @@ func validateJSON(data []byte) error {
 	if !json.Valid(data) {
 		return errors.New("invalid JSON content")
 	}
+
 	return nil
 }
 
@@ -44,6 +46,7 @@ func validateTOML(data []byte) error {
 	if err := toml.Unmarshal(data, &m); err != nil {
 		return fmt.Errorf("invalid TOML content: %w", err)
 	}
+
 	return nil
 }
 

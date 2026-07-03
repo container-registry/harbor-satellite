@@ -249,7 +249,7 @@ func TestGetCertificateInfo(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, info.Subject, "Test Org")
 		require.False(t, info.IsExpired)
-		require.True(t, info.DaysToExpiry >= 0)
+		require.GreaterOrEqual(t, info.DaysToExpiry, 0)
 		require.Contains(t, info.DNSNames, "test.example.com")
 	})
 }

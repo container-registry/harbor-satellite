@@ -16,8 +16,10 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const ZeroTouchRegistrationRoute = "satellites/ztr"
-const ZeroTouchRegistrationEventName = "zero-touch-registration-event"
+const (
+	ZeroTouchRegistrationRoute     = "satellites/ztr"
+	ZeroTouchRegistrationEventName = "zero-touch-registration-event"
+)
 
 type ZtrProcess struct {
 	// Name is the name of the process
@@ -234,9 +236,9 @@ func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSCo
 
 func createHTTPClient(tlsCfg config.TLSConfig, useUnsecure bool) (*http.Client, error) {
 	transport := &http.Transport{
-		MaxIdleConns:        10,
-		IdleConnTimeout:     30 * time.Second,
-		DisableCompression:  true,
+		MaxIdleConns:       10,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,
 	}
 
 	if useUnsecure {

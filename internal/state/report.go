@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -64,7 +65,7 @@ func getAvgCPUUsage(ctx context.Context, sampleInterval, totalDuration time.Dura
 
 	var total float64
 	var count int
-	for i := 0; i < samples; i++ {
+	for range samples {
 		if ctx.Err() != nil {
 			break
 		}
@@ -79,6 +80,7 @@ func getAvgCPUUsage(ctx context.Context, sampleInterval, totalDuration time.Dura
 	if count == 0 {
 		return 0
 	}
+
 	return total / float64(count)
 }
 
@@ -87,6 +89,7 @@ func getMemoryUsedBytes(ctx context.Context) uint64 {
 	if err != nil {
 		return 0
 	}
+
 	return v.Used
 }
 
@@ -95,11 +98,12 @@ func getStorageUsedBytes(ctx context.Context, path string) uint64 {
 	if err != nil {
 		return 0
 	}
+
 	return usage.Used
 }
 
 // extractSatelliteNameFromURL parses a state URL and returns the satellite name.
-// Supports: "hostname/satellite/satellite-state/<name>/state:latest"
+// Supports: "hostname/satellite/satellite-state/<name>/state:latest".
 func extractSatelliteNameFromURL(stateURL string) (string, error) {
 	parsed, err := url.Parse(stateURL)
 	if err != nil {
@@ -120,10 +124,11 @@ func extractSatelliteNameFromURL(stateURL string) (string, error) {
 func parseEveryExpr(expr string) (time.Duration, error) {
 	const prefix = "@every "
 	if expr == "" {
-		return 0, fmt.Errorf("empty expression provided")
+		return 0, errors.New("empty expression provided")
 	}
 	if !strings.HasPrefix(expr, prefix) {
 		return 0, fmt.Errorf("unsupported format: must start with %q", prefix)
 	}
+
 	return time.ParseDuration(strings.TrimPrefix(expr, prefix))
 }

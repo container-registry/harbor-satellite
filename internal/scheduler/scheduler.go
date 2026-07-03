@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -10,7 +11,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Scheduler manages the execution of processes with configurable intervals
+// Scheduler manages the execution of processes with configurable intervals.
 type Scheduler struct {
 	name     string
 	ticker   *time.Ticker
@@ -21,7 +22,7 @@ type Scheduler struct {
 	wg       sync.WaitGroup
 }
 
-// NewSchedulerWithInterval creates a new scheduler with a parsed interval string
+// NewSchedulerWithInterval creates a new scheduler with a parsed interval string.
 func NewSchedulerWithInterval(intervalExpr string, process Process, log *zerolog.Logger) (*Scheduler, error) {
 	duration, err := parseEveryExpr(intervalExpr)
 	if err != nil {
@@ -47,7 +48,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 	go s.run(ctx)
 }
 
-// run starts the scheduler and blocks until context is cancelled
+// run starts the scheduler and blocks until context is cancelled.
 func (s *Scheduler) run(ctx context.Context) {
 	defer s.wg.Done()
 	defer s.ticker.Stop()
@@ -66,6 +67,7 @@ func (s *Scheduler) run(ctx context.Context) {
 			s.log.Info().
 				Str("Process", s.process.Name()).
 				Msg("Scheduler received cancellation signal. Exiting...")
+
 			return
 
 		case <-s.ticker.C:
@@ -73,6 +75,7 @@ func (s *Scheduler) run(ctx context.Context) {
 				s.log.Info().
 					Str("Process", s.process.Name()).
 					Msg("Process marked as complete. Stopping scheduling.")
+
 				return
 			}
 			s.launchProcess(ctx)
@@ -80,7 +83,7 @@ func (s *Scheduler) run(ctx context.Context) {
 	}
 }
 
-// ResetInterval changes the ticker interval dynamically
+// ResetInterval changes the ticker interval dynamically.
 func (s *Scheduler) ResetInterval(newInterval time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -93,7 +96,7 @@ func (s *Scheduler) ResetInterval(newInterval time.Duration) {
 		Msg("Scheduler interval reset")
 }
 
-// ResetIntervalFromExpr changes the ticker interval using an expression string
+// ResetIntervalFromExpr changes the ticker interval using an expression string.
 func (s *Scheduler) ResetIntervalFromExpr(intervalExpr string) error {
 	duration, err := parseEveryExpr(intervalExpr)
 	if err != nil {
@@ -101,22 +104,24 @@ func (s *Scheduler) ResetIntervalFromExpr(intervalExpr string) error {
 	}
 
 	s.ResetInterval(duration)
+
 	return nil
 }
 
-// GetInterval returns the current interval
+// GetInterval returns the current interval.
 func (s *Scheduler) GetInterval() time.Duration {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.interval
 }
 
-// Name returns the name of the scheduler
+// Name returns the name of the scheduler.
 func (s *Scheduler) Name() string {
 	return s.name
 }
 
-// Stop signals the scheduler to stop and waits for all goroutines to complete
+// Stop signals the scheduler to stop and waits for all goroutines to complete.
 func (s *Scheduler) Stop(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {
@@ -161,10 +166,11 @@ func (s *Scheduler) launchProcess(ctx context.Context) {
 func parseEveryExpr(expr string) (time.Duration, error) {
 	const prefix = "@every "
 	if expr == "" {
-		return 0, fmt.Errorf("empty expression provided")
+		return 0, errors.New("empty expression provided")
 	}
 	if !strings.HasPrefix(expr, prefix) {
 		return 0, fmt.Errorf("unsupported format: must start with %q", prefix)
 	}
+
 	return time.ParseDuration(strings.TrimPrefix(expr, prefix))
 }

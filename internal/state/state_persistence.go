@@ -51,7 +51,7 @@ func SaveState(path string, stateMap []StateMap, configDigest string) error {
 		}
 		if err != nil {
 			if removeErr := os.Remove(tmpName); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-				err = fmt.Errorf("%w (cleanup failed: %v)", err, removeErr)
+				err = fmt.Errorf("%w (cleanup failed: %w)", err, removeErr)
 			}
 		}
 	}

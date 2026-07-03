@@ -5,6 +5,7 @@ package parsec
 import (
 	"crypto"
 	"testing"
+
 	harborcrypto "github.com/container-registry/harbor-satellite/internal/crypto"
 )
 

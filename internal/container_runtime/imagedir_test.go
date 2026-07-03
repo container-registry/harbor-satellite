@@ -1,7 +1,7 @@
 package runtime
 
 import (
-	"fmt"
+	"errors"
 	"os"
 	"testing"
 )
@@ -47,8 +47,9 @@ func TestDetectImageDir(t *testing.T) {
 			stat := func(path string) (os.FileInfo, error) {
 				isDir, ok := tt.dirs[path]
 				if !ok {
-					return nil, fmt.Errorf("not found")
+					return nil, errors.New("not found")
 				}
+
 				return fakeFileInfo{dir: isDir}, nil
 			}
 

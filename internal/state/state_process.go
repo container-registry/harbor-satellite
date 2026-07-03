@@ -527,7 +527,7 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, 
 
 	// Override source and state URLs if --harbor-registry-url is set
 	if override := f.cm.GetHarborRegistryURL(); override != "" {
-		if replaced, err := config.ReplaceURLHost(string(f.cm.GetSourceRegistryURL()), override); err == nil {
+		if replaced, err := config.ReplaceURLHost(f.cm.GetSourceRegistryURL(), override); err == nil {
 			sourceURL = utils.FormatRegistryURL(replaced)
 		}
 		if replaced, err := config.ReplaceURLHost(satelliteStateURL, override); err == nil {

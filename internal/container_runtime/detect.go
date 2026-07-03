@@ -55,6 +55,7 @@ func detectWithCheckers(statFn statFunc, lookPathFn lookPathFunc) []DetectedCRI 
 					Type:   check.criType,
 					Reason: "found socket " + check.socket,
 				})
+
 				continue
 			}
 		}

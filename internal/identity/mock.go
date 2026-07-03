@@ -33,6 +33,7 @@ func (m *MockDeviceIdentity) GetFingerprint() (string, error) {
 	if m.FingerprintErr != nil {
 		return "", m.FingerprintErr
 	}
+
 	return m.FingerprintValue, nil
 }
 
@@ -40,6 +41,7 @@ func (m *MockDeviceIdentity) GetMACAddress() (string, error) {
 	if m.MACAddressErr != nil {
 		return "", m.MACAddressErr
 	}
+
 	return m.MACAddressValue, nil
 }
 
@@ -47,6 +49,7 @@ func (m *MockDeviceIdentity) GetCPUID() (string, error) {
 	if m.CPUIDErr != nil {
 		return "", m.CPUIDErr
 	}
+
 	return m.CPUIDValue, nil
 }
 
@@ -54,6 +57,7 @@ func (m *MockDeviceIdentity) GetBootID() (string, error) {
 	if m.BootIDErr != nil {
 		return "", m.BootIDErr
 	}
+
 	return m.BootIDValue, nil
 }
 
@@ -61,6 +65,7 @@ func (m *MockDeviceIdentity) GetDiskSerial() (string, error) {
 	if m.DiskSerialErr != nil {
 		return "", m.DiskSerialErr
 	}
+
 	return m.DiskSerialValue, nil
 }
 
@@ -68,5 +73,6 @@ func (m *MockDeviceIdentity) GetMachineID() (string, error) {
 	if m.MachineIDErr != nil {
 		return "", m.MachineIDErr
 	}
+
 	return m.MachineIDValue, nil
 }

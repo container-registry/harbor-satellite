@@ -18,6 +18,7 @@ func newTestConfigManager(t *testing.T, cfg *config.Config) *config.ConfigManage
 	prevPath := filepath.Join(dir, "prev_config.json")
 	cm, err := config.NewConfigManager(configPath, prevPath, "token", "http://gc:8080", false, cfg, crypto.NewAESProvider())
 	require.NoError(t, err)
+
 	return cm
 }
 
@@ -128,6 +129,7 @@ func TestResolveLocalRegistryEndpoint_Zot(t *testing.T) {
 			if tt.expectError {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.errContains)
+
 				return
 			}
 			require.NoError(t, err)

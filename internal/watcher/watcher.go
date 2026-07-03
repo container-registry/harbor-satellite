@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Watcher goroutine for config changes using fsnotify
+// Watcher goroutine for config changes using fsnotify.
 func WatchChanges(ctx context.Context, log zerolog.Logger, path string, eventChan chan<- struct{}) error {
 	log.Info().Msg("Setting up watcher to watch for changes in config file")
 

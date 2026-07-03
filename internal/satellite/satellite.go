@@ -104,7 +104,7 @@ func (s *Satellite) GetSchedulers() []*scheduler.Scheduler {
 	return s.schedulers
 }
 
-// Stop gracefully stops all schedulers and logs the shutdown process
+// Stop gracefully stops all schedulers and logs the shutdown process.
 func (s *Satellite) Stop(ctx context.Context) {
 	log := logger.FromContext(ctx)
 	log.Info().Int("scheduler_count", len(s.schedulers)).

@@ -177,7 +177,8 @@ func (t *syslogTransport) Emit(r Record) error {
 	}
 	pri := t.facility*8 + severityCode(r.Severity)
 	// <PRI>VERSION TIMESTAMP HOSTNAME APP-NAME PROCID MSGID STRUCTURED-DATA MSG
-	line := fmt.Sprintf("<%d>1 %s %s %s %s %s %s %s\n",
+	line := fmt.Sprintf(
+		"<%d>1 %s %s %s %s %s %s %s\n",
 		pri,
 		r.Timestamp.Format(rfc5424Time),
 		t.hostname,

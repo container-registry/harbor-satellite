@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -36,7 +37,7 @@ func startZotRegistry(t *testing.T, storageDir string) string {
 	require.NoError(t, err)
 
 	go func() {
-		if err := ctlr.Run(); err != nil && err != http.ErrServerClosed {
+		if err := ctlr.Run(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			t.Logf("zot run error: %v", err)
 		}
 	}()

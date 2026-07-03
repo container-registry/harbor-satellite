@@ -45,6 +45,7 @@ func (s *MemoryTokenStore) MarkUsed(tokenID string) error {
 	}
 
 	s.usedTokens[tokenID] = time.Now()
+
 	return nil
 }
 
@@ -53,6 +54,7 @@ func (s *MemoryTokenStore) IsUsed(tokenID string) bool {
 	defer s.mu.RUnlock()
 
 	_, exists := s.usedTokens[tokenID]
+
 	return exists
 }
 
@@ -117,10 +119,10 @@ func (s *MemoryTokenStore) Cleanup() {
 
 // MockTokenStore is a mock implementation for testing.
 type MockTokenStore struct {
-	UsedTokens    map[string]bool
-	RateLimited   map[string]bool
-	MarkUsedErr   error
-	RateLimitErr  error
+	UsedTokens   map[string]bool
+	RateLimited  map[string]bool
+	MarkUsedErr  error
+	RateLimitErr error
 }
 
 // NewMockTokenStore creates a mock token store.

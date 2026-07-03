@@ -21,7 +21,7 @@ type Endpoint struct {
 	Path   string
 }
 
-// DefaultRouter
+// DefaultRouter.
 type DefaultRouter struct {
 	// mux is the default http.ServeMux
 	mux *http.ServeMux
@@ -33,10 +33,11 @@ type DefaultRouter struct {
 	Endpoints []Endpoint
 }
 
-// NewDefaultRouter creates a new DefaultRouter with the given prefix
+// NewDefaultRouter creates a new DefaultRouter with the given prefix.
 func NewDefaultRouter(prefix string) *DefaultRouter {
 	dr := &DefaultRouter{mux: http.NewServeMux()}
 	dr.rootGroup = &RouterGroup{prefix: prefix, router: dr}
+
 	return dr
 }
 
@@ -56,7 +57,7 @@ func (dr *DefaultRouter) Use(middleware ...Middleware) {
 	dr.middleware = append(dr.middleware, middleware...)
 }
 
-// Group creates a new RouterGroup under the rootGroup with the given prefix
+// Group creates a new RouterGroup under the rootGroup with the given prefix.
 func (dr *DefaultRouter) Group(prefix string) *RouterGroup {
 	return dr.rootGroup.Group(prefix)
 }
