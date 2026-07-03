@@ -2,17 +2,22 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
 
-const dockerConfigPath = "/etc/docker/daemon.json"
+const (
+	dockerConfigPath     = "/etc/docker/daemon.json"
+	dockerRestartTimeout = 30 * time.Second
+)
 
 func setDockerdConfig(mirrors []string, localRegistry string) (string, error) {
 	if len(mirrors) == 0 {
@@ -65,18 +70,20 @@ func setDockerdConfig(mirrors []string, localRegistry string) (string, error) {
 	if err := validateJSON(data); err != nil {
 		if backupPath != "" {
 			if restoreErr := restoreBackup(backupPath, dockerConfigPath); restoreErr != nil {
-				return backupPath, fmt.Errorf("docker config validation failed and rollback failed: %w", restoreErr)
+				return backupPath, fmt.Errorf("docker config validation failed and rollback failed: %w", errors.Join(err, restoreErr))
 			}
 		}
 		return backupPath, fmt.Errorf("docker config validation failed, rolled back: %w", err)
 	}
 
 	// restart docker safely
-	cmd := exec.CommandContext(context.Background(), "systemctl", "restart", "docker")
+	ctx, cancel := context.WithTimeout(context.Background(), dockerRestartTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "systemctl", "restart", "docker")
 	if err := cmd.Run(); err != nil {
 		if backupPath != "" {
 			if restoreErr := restoreBackup(backupPath, dockerConfigPath); restoreErr != nil {
-				return backupPath, fmt.Errorf("failed to restart Docker and rollback failed: %w", restoreErr)
+				return backupPath, fmt.Errorf("failed to restart Docker and rollback failed: %w", errors.Join(err, restoreErr))
 			}
 		}
 		return backupPath, fmt.Errorf("failed to restart Docker, rolled back config: %w", err)
