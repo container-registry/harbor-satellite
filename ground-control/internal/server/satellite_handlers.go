@@ -18,26 +18,41 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// SatelliteGroupParams links or unlinks a satellite and a group.
+//
+// swagger:model SatelliteGroupParams
 type SatelliteGroupParams struct {
 	Satellite string `json:"satellite"`
 	Group     string `json:"group"`
 }
 
+// RegisterSatelliteParams registers a token-managed satellite.
+//
+// swagger:model RegisterSatelliteParams
 type RegisterSatelliteParams struct {
 	Name       string    `json:"name"`
 	Groups     *[]string `json:"groups,omitempty"`
 	ConfigName string    `json:"config_name"`
 }
 
+// RegisterSatelliteResponse contains a single-use ZTR token.
+//
+// swagger:model RegisterSatelliteResponse
 type RegisterSatelliteResponse struct {
 	Token string `json:"token"`
 }
 
+// CachedImage describes an image cached by a satellite.
+//
+// swagger:model CachedImage
 type CachedImage struct {
 	Reference string `json:"reference"`
 	SizeBytes int64  `json:"size_bytes"`
 }
 
+// SatelliteStatusParams reports the current satellite status and cache metrics.
+//
+// swagger:model SatelliteStatusParams
 type SatelliteStatusParams struct {
 	Name                string        `json:"name"`
 	Activity            string        `json:"activity"`

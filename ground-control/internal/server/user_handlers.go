@@ -28,11 +28,19 @@ const (
 	roleSystemAdmin = "system_admin"
 )
 
+// CreateUserRequest creates a regular admin user.
+//
+// swagger:model CreateUserRequest
 type createUserRequest struct {
+	// required: true
 	Username string `json:"username"`
-	Password string `json:"password"`
+	// required: true
+	Password swaggerPassword `json:"password"`
 }
 
+// UserResponse describes a Ground Control user.
+//
+// swagger:model UserResponse
 type userResponse struct {
 	ID        int32  `json:"id"`
 	Username  string `json:"username"`
@@ -40,13 +48,22 @@ type userResponse struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// ChangePasswordRequest changes the authenticated user's password.
+//
+// swagger:model ChangePasswordRequest
 type changePasswordRequest struct {
-	CurrentPassword string `json:"current_password"`
-	NewPassword     string `json:"new_password"`
+	// required: true
+	CurrentPassword swaggerPassword `json:"current_password"`
+	// required: true
+	NewPassword swaggerPassword `json:"new_password"`
 }
 
+// ChangeUserPasswordRequest resets a user's password.
+//
+// swagger:model ChangeUserPasswordRequest
 type changeUserPasswordRequest struct {
-	NewPassword string `json:"new_password"`
+	// required: true
+	NewPassword swaggerPassword `json:"new_password"`
 }
 
 // createUserHandler creates a new admin user (system_admin only)
@@ -67,12 +84,12 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.passwordPolicy.Validate(req.Password); err != nil {
+	if err := s.passwordPolicy.Validate(string(req.Password)); err != nil {
 		WriteJSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	hash, err := auth.HashPassword(req.Password)
+	hash, err := auth.HashPassword(string(req.Password))
 	if err != nil {
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -230,7 +247,7 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := s.passwordPolicy.Validate(req.NewPassword); err != nil {
+	if err := s.passwordPolicy.Validate(string(req.NewPassword)); err != nil {
 		WriteJSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -242,13 +259,13 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	valid := auth.VerifyPassword(req.CurrentPassword, user.PasswordHash)
+	valid := auth.VerifyPassword(string(req.CurrentPassword), user.PasswordHash)
 	if !valid {
 		WriteJSONError(w, "Current password is incorrect", http.StatusUnauthorized)
 		return
 	}
 
-	hash, err := auth.HashPassword(req.NewPassword)
+	hash, err := auth.HashPassword(string(req.NewPassword))
 	if err != nil {
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -292,7 +309,7 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := s.passwordPolicy.Validate(req.NewPassword); err != nil {
+	if err := s.passwordPolicy.Validate(string(req.NewPassword)); err != nil {
 		WriteJSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -308,7 +325,7 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	hash, err := auth.HashPassword(req.NewPassword)
+	hash, err := auth.HashPassword(string(req.NewPassword))
 	if err != nil {
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return

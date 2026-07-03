@@ -4,6 +4,7 @@ vars:
   GO_VERSION: "1.26.3"
   GOLANGCILINT_VERSION: "v2.12.2"
   GORELEASER_VERSION: "v2.9.0"
+  GO_SWAGGER_VERSION: "v0.35.0"
   PLATFORMS_LINUX: "amd64 arm64 ppc64le s390x riscv64"
   PLATFORMS_DARWIN: "amd64 arm64"
   VULN_FILTER: "GO-2025-3409|GO-2024-2979"
@@ -60,6 +61,31 @@ tasks:
     desc: Run vulnerability check and export to file
     cmds:
       - task: _lint:vulnerability-check-report
+
+  swagger:install:
+    desc: Install pinned go-swagger binary
+    env:
+      GOBIN: "{{.BIN_DIR}}"
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go install github.com/go-swagger/go-swagger/cmd/swagger@{{.GO_SWAGGER_VERSION}}
+    status:
+      - test -x {{.BIN_DIR}}/swagger
+      - "{{.BIN_DIR}}/swagger version | grep -q '{{.GO_SWAGGER_VERSION}}'"
+
+  swagger:generate:
+    desc: Generate Ground Control OpenAPI specs
+    dir: "{{.ROOT_DIR}}/ground-control"
+    cmds:
+      - task: swagger:install
+      - "{{.BIN_DIR}}/swagger generate spec -i meta.yml -o swagger.yml"
+      - "{{.BIN_DIR}}/swagger flatten --format yaml --with-flatten=remove-unused -o swagger-flatten.yml swagger.yml"
+    sources:
+      - meta.yml
+      - "**/*.go"
+    generates:
+      - swagger.yml
+      - swagger-flatten.yml
 
   e2e:
     desc: Run all E2E tests
