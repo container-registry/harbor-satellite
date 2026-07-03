@@ -236,7 +236,7 @@ sudo k3s crictl rmi --prune
 If Satellite is launched directly, you can configure containerd mirror wiring with:
 
 ```bash
-go run cmd/main.go \
+go run ./cmd/harbor-satellite \
   --token "<token>" \
   --ground-control-url "https://<GROUND_CONTROL_HOST>:9080" \
   --mirrors=containerd:docker.io
