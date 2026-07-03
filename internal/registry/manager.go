@@ -125,7 +125,7 @@ func (zm *ZotManager) LaunchZotRegistry(ctx context.Context, zotConfigPath strin
 	go func() {
 		<-ctx.Done()
 		zm.log.Warn().Msg("Context cancelled, shutting down zot registry")
-		ctlr.Shutdown() //nolint:contextcheck // Shutdown does not accept this goroutine's context.
+		ctlr.Shutdown() //nolint:contextcheck // ctlr.Shutdown() does not accept context.
 	}()
 
 	if err := ctlr.Run(); !errors.Is(err, http.ErrServerClosed) {
