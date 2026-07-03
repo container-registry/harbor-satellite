@@ -126,20 +126,17 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	stateFetcherResults := make(chan StateFetcherResult, len(f.stateMap))
 	configFetcherResult := make(chan ConfigFetcherResult, 1)
 
-	// Mutex for concurrency safe access of the stateMap
-	mutex := &sync.Mutex{}
-
 	// Launch state fetcher goroutines
 	for i := range f.stateMap {
 		go func(index int) {
-			result := f.processGroupState(ctx, index, srcUsername, srcPassword, useUnsecure, replicator, mutex, &log)
+			result := f.processGroupState(ctx, index, srcUsername, srcPassword, useUnsecure, replicator, &log)
 			stateFetcherResults <- result
 		}(i)
 	}
 
 	// Launch config fetcher goroutine
 	go func() {
-		result := f.reconcileRemoteConfig(ctx, satelliteState.Config, srcUsername, srcPassword, useUnsecure, mutex, &log)
+		result := f.reconcileRemoteConfig(ctx, satelliteState.Config, srcUsername, srcPassword, useUnsecure, &log)
 		configFetcherResult <- result
 	}()
 
@@ -333,7 +330,6 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 	ctx context.Context,
 	configURL, srcUsername, srcPassword string,
 	useUnsecure bool,
-	mutex *sync.Mutex,
 	log *zerolog.Logger,
 ) ConfigFetcherResult {
 	configFetcherLog := log.With().
@@ -400,14 +396,14 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 			result.Error = fmt.Errorf("failed to write new config to disk: %w", err)
 			return result
 		}
-		mutex.Lock()
+		f.mu.Lock()
 		f.currentConfigDigest = configDigest
 		if f.stateFilePath != "" {
 			if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
 				configFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
 			}
 		}
-		mutex.Unlock()
+		f.mu.Unlock()
 	}
 
 	result.ConfigDigest = configDigest
@@ -420,7 +416,6 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	srcUsername, srcPassword string,
 	useUnsecure bool,
 	replicator Replicator,
-	mutex *sync.Mutex,
 	log *zerolog.Logger,
 ) StateFetcherResult {
 	stateFetcherLog := log.With().
@@ -483,7 +478,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		}
 	}
 
-	mutex.Lock()
+	f.mu.Lock()
 	f.stateMap[index].State = newState
 	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
 	if f.stateFilePath != "" {
@@ -491,7 +486,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
 		}
 	}
-	mutex.Unlock()
+	f.mu.Unlock()
 
 	return result
 }
@@ -558,6 +553,19 @@ func (f *FetchAndReplicateStateProcess) stop() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.isRunning = false
+}
+
+// PersistState writes the current in-memory state to disk.
+// This is safe to call concurrently and is used during graceful shutdown
+// to ensure no state is lost between the last sync and process exit.
+func (f *FetchAndReplicateStateProcess) PersistState() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.stateFilePath == "" {
+		return nil
+	}
+	return SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest)
 }
 
 func (f *FetchAndReplicateStateProcess) RemoveNullTagArtifacts(state StateReader) StateReader {

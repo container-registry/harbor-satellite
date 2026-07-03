@@ -534,6 +534,13 @@ func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Sat
 
 	select {
 	case <-shutdownDone:
+		// Persist state to disk before exit (reuses #228 SaveState logic)
+		log.Info().Msg("Persisting state to disk before exit")
+		if err := s.PersistState(); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist state during shutdown")
+		} else {
+			log.Info().Msg("State persisted successfully")
+		}
 		log.Info().Msg("Graceful shutdown completed successfully")
 	case <-shutdownCtx.Done():
 		log.Warn().Msg("Shutdown timeout exceeded, forcing exit")
