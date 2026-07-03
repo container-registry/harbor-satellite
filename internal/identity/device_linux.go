@@ -121,6 +121,9 @@ func (d *LinuxDeviceIdentity) GetCPUID() (string, error) {
 func (d *LinuxDeviceIdentity) GetBootID() (string, error) {
 	data, err := os.ReadFile(d.bootIDPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return "", ErrComponentUnavailable
+		}
 		return "", fmt.Errorf("read boot_id: %w", err)
 	}
 
@@ -164,6 +167,9 @@ func (d *LinuxDeviceIdentity) GetDiskSerial() (string, error) {
 func (d *LinuxDeviceIdentity) GetMachineID() (string, error) {
 	data, err := os.ReadFile(d.machineIDPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return "", ErrComponentUnavailable
+		}
 		return "", fmt.Errorf("read machine-id: %w", err)
 	}
 
