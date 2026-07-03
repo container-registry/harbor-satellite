@@ -265,7 +265,7 @@ func DeleteArtifact(deleteURL string) error {
 		}
 	}()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
 		return fmt.Errorf("failed to delete repository, received status: %d", resp.StatusCode)
 	}
 
