@@ -17,7 +17,7 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/rs/zerolog"
 
-	satTLS "github.com/container-registry/harbor-satellite/internal/tls"
+	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
 )
 
 type StateFetcher interface {

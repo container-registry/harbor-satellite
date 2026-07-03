@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/crypto"
-	"github.com/container-registry/harbor-satellite/internal/identity"
+	"github.com/container-registry/harbor-satellite/internal/satellite/identity"
 	"github.com/stretchr/testify/require"
 )
 

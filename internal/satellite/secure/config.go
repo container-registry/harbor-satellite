@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/container-registry/harbor-satellite/internal/crypto"
-	"github.com/container-registry/harbor-satellite/internal/identity"
+	"github.com/container-registry/harbor-satellite/internal/satellite/identity"
 )
 
 var (

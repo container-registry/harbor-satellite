@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"

@@ -11,8 +11,8 @@ import (
 	"sync"
 
 	"github.com/container-registry/harbor-satellite/internal/crypto"
-	"github.com/container-registry/harbor-satellite/internal/identity"
-	"github.com/container-registry/harbor-satellite/internal/secure"
+	"github.com/container-registry/harbor-satellite/internal/satellite/identity"
+	"github.com/container-registry/harbor-satellite/internal/satellite/secure"
 )
 
 type ConfigChangeType string
