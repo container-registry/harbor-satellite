@@ -560,6 +560,19 @@ func (f *FetchAndReplicateStateProcess) stop() {
 	f.isRunning = false
 }
 
+// PersistState writes the current in-memory state to disk.
+// This is safe to call concurrently and is used during graceful shutdown
+// to ensure no state is lost between the last sync and process exit.
+func (f *FetchAndReplicateStateProcess) PersistState() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.stateFilePath == "" {
+		return nil
+	}
+	return SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest)
+}
+
 func (f *FetchAndReplicateStateProcess) RemoveNullTagArtifacts(state StateReader) StateReader {
 	var artifactsWithoutNullTags []ArtifactReader
 	for _, artifact := range state.GetArtifacts() {

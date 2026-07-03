@@ -15,6 +15,7 @@ type Satellite struct {
 	criResults    []runtime.CRIConfigResult
 	schedulers    []*scheduler.Scheduler
 	stateFilePath string
+	stateProcess  *state.FetchAndReplicateStateProcess
 }
 
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string) *Satellite {
@@ -31,6 +32,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	log.Info().Msg("Starting Satellite")
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, log)
+	s.stateProcess = fetchAndReplicateStateProcess
 
 	// Create ZTR scheduler if not already done
 	if !s.cm.IsZTRDone() {
@@ -102,6 +104,15 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 func (s *Satellite) GetSchedulers() []*scheduler.Scheduler {
 	return s.schedulers
+}
+
+// PersistState writes the current in-memory state to disk.
+// Called during graceful shutdown to ensure no state is lost.
+func (s *Satellite) PersistState() error {
+	if s.stateProcess == nil {
+		return nil
+	}
+	return s.stateProcess.PersistState()
 }
 
 // Stop gracefully stops all schedulers and logs the shutdown process.
