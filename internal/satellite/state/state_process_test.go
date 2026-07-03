@@ -1,6 +1,7 @@
 package state
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -250,6 +251,32 @@ func TestFetchEntitiesFromState(t *testing.T) {
 		entities := FetchEntitiesFromState(state)
 		require.Empty(t, entities)
 	})
+}
+
+func TestPersistState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	process := &FetchAndReplicateStateProcess{
+		stateFilePath:       path,
+		currentConfigDigest: "sha256:config",
+		stateMap: []StateMap{
+			{
+				url: "http://registry.example.com/group1",
+				Entities: []Entity{
+					{Name: "alpine", Repository: "library", Tag: "latest", Digest: "sha256:abc123"},
+				},
+			},
+		},
+	}
+
+	require.NoError(t, process.PersistState())
+
+	loaded, err := LoadState(path)
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Equal(t, "sha256:config", loaded.ConfigDigest)
+	require.Len(t, loaded.Groups, 1)
+	require.Equal(t, "http://registry.example.com/group1", loaded.Groups[0].URL)
+	require.Equal(t, process.stateMap[0].Entities, loaded.Groups[0].Entities)
 }
 
 func TestRemoveNullTagArtifacts(t *testing.T) {
