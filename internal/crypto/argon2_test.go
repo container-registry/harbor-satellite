@@ -5,6 +5,16 @@ import (
 	"testing"
 )
 
+func TestTimingMitigationHash(t *testing.T) {
+	if !strings.HasPrefix(TimingMitigationHash, "$argon2id$") {
+		t.Fatalf("TimingMitigationHash should be a valid argon2id hash, got %q", TimingMitigationHash)
+	}
+	// Any password must run the full argon2 path and return false.
+	if VerifySecret("any-password", TimingMitigationHash) {
+		t.Fatal("TimingMitigationHash should not verify any real password")
+	}
+}
+
 func TestHashSecret(t *testing.T) {
 	tests := []struct {
 		name   string

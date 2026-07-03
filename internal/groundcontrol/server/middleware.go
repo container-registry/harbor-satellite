@@ -245,6 +245,7 @@ func (s *Server) validateSPIFFEAuth(ctx context.Context, spiffeName string) (str
 func (s *Server) validateRobotAuth(ctx context.Context, username, password string) (string, error) {
 	robot, err := s.dbQueries.GetRobotAccByRobotName(ctx, username)
 	if err != nil {
+		_ = crypto.VerifySecret(password, crypto.TimingMitigationHash)
 		return "", err
 	}
 	if !crypto.VerifySecret(password, robot.RobotSecretHash) {

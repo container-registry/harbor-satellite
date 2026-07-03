@@ -158,6 +158,27 @@ func TestSatelliteAuthMiddleware_ValidSPIFFE(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestSatelliteAuthMiddleware_UnknownRobotBasicAuth(t *testing.T) {
+	server, mock := newMockServer(t)
+	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
+
+	mock.ExpectQuery("SELECT id, robot_name, robot_secret_hash, robot_id, satellite_id, robot_expiry, created_at, updated_at FROM robot_accounts WHERE robot_name = \\$1").
+		WithArgs("robot$satellite-unknown").
+		WillReturnError(sql.ErrNoRows)
+
+	h := server.SatelliteAuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", nil)
+	req.SetBasicAuth("robot$satellite-unknown", "any-password")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.Contains(t, rec.Body.String(), "Invalid credentials")
+}
+
 func TestSatelliteAuthMiddleware_InvalidBasicAuth(t *testing.T) {
 	server, mock := newMockServer(t)
 	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
