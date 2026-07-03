@@ -88,7 +88,9 @@ func TestAuditLogger_WritesStructuredEvent(t *testing.T) {
 	require.Equal(t, "10.0.0.5", e["source_ip"])
 	require.Equal(t, "bad_password", e["reason"])
 
-	_, err = time.Parse(time.RFC3339Nano, e["timestamp"].(string))
+	timestamp, ok := e["timestamp"].(string)
+	require.True(t, ok)
+	_, err = time.Parse(time.RFC3339Nano, timestamp)
 	require.NoError(t, err)
 
 	details, ok := e["details"].(map[string]any)
@@ -165,7 +167,8 @@ func TestAuditLogger_UniqueEventIDs(t *testing.T) {
 
 	seen := make(map[string]struct{})
 	for _, e := range entries {
-		id := e["event_id"].(string)
+		id, ok := e["event_id"].(string)
+		require.True(t, ok)
 		_, dup := seen[id]
 		require.False(t, dup, "duplicate event_id %s", id)
 		seen[id] = struct{}{}

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -91,4 +92,11 @@ func TestVerifyRobotCredentials(t *testing.T) {
 	t.Run("malformed hash returns false", func(t *testing.T) {
 		require.False(t, crypto.VerifySecret(secret, "not-a-valid-hash"))
 	})
+}
+
+func mustMarshalJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	body, err := json.Marshal(v)
+	require.NoError(t, err)
+	return body
 }

@@ -1172,8 +1172,8 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 
 	// Check if satellite is already in the group
 	alreadyInGroup, err := s.dbQueries.CheckSatelliteInGroup(r.Context(), database.CheckSatelliteInGroupParams{
-		SatelliteID: int32(sat.ID),
-		GroupID:     int32(grp.ID),
+		SatelliteID: sat.ID,
+		GroupID:     grp.ID,
 	})
 	if err != nil {
 		log.Printf("Error: Failed to check satellite in group %v", err)
@@ -1221,8 +1221,8 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 
 	// Add satellite to group
 	params := database.AddSatelliteToGroupParams{
-		SatelliteID: int32(sat.ID),
-		GroupID:     int32(grp.ID),
+		SatelliteID: sat.ID,
+		GroupID:     grp.ID,
 	}
 
 	err = q.AddSatelliteToGroup(r.Context(), params)
@@ -1374,8 +1374,8 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	}
 
 	params := database.RemoveSatelliteFromGroupParams{
-		SatelliteID: int32(sat.ID),
-		GroupID:     int32(grp.ID),
+		SatelliteID: sat.ID,
+		GroupID:     grp.ID,
 	}
 
 	err = q.RemoveSatelliteFromGroup(r.Context(), params)

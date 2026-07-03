@@ -91,10 +91,12 @@ func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
 			ip := getClientIP(r)
 
 			if !rl.Allow(ip) {
-				log.Printf("Rate limit exceeded for IP: %s", ip)
+				log.Printf("Rate limit exceeded for IP: %q", ip) //nolint:gosec // RemoteAddr is logged for rate-limit diagnostics purpose.
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
-				_ = json.NewEncoder(w).Encode(map[string]string{"error": "Too Many Requests"})
+				if err := json.NewEncoder(w).Encode(map[string]string{"error": "Too Many Requests"}); err != nil {
+					log.Printf("Failed to write rate limit response: %v", err)
+				}
 				return
 			}
 

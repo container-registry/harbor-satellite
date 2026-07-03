@@ -10,7 +10,9 @@ const (
 )
 
 func (s *Server) Ping(w http.ResponseWriter, r *http.Request) {
-	_, _ = w.Write([]byte("pong"))
+	if _, err := w.Write([]byte("pong")); err != nil {
+		log.Printf("failed to write ping response: %v", err)
+	}
 }
 
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {

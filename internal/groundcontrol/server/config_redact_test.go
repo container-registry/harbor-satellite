@@ -20,18 +20,29 @@ func TestRedactConfigForAudit_RedactsSecretsKeepsRest(t *testing.T) {
 	var m map[string]any
 	require.NoError(t, json.Unmarshal(b, &m))
 
-	auth := m["state_config"].(map[string]any)["auth"].(map[string]any)
+	stateConfig, ok := m["state_config"].(map[string]any)
+	require.True(t, ok)
+	auth, ok := stateConfig["auth"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, auditRedacted, auth["password"], "password must be redacted")
 	require.Equal(t, "robot$sat", auth["username"], "non-secret username preserved")
 	require.Equal(t, "http://h", auth["url"], "non-secret url preserved")
 
-	tls := m["app_config"].(map[string]any)["tls"].(map[string]any)
-	require.Equal(t, "/etc/k.pem", tls["key_file"], "a file path is not a secret value, preserved")
-	require.Equal(t, auditRedacted, tls["secret_token"], "secret_token must be redacted")
+	appConfig, ok := m["app_config"].(map[string]any)
+	require.True(t, ok)
+	tlsConfig, ok := appConfig["tls"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "/etc/k.pem", tlsConfig["key_file"], "a file path is not a secret value, preserved")
+	require.Equal(t, auditRedacted, tlsConfig["secret_token"], "secret_token must be redacted")
 
-	list := m["list"].([]any)
-	require.Equal(t, auditRedacted, list[0].(map[string]any)["password"], "password nested in an array must be redacted")
-	require.Equal(t, "ok", list[1].(map[string]any)["keep"], "non-secret in array preserved")
+	list, ok := m["list"].([]any)
+	require.True(t, ok)
+	first, ok := list[0].(map[string]any)
+	require.True(t, ok)
+	second, ok := list[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, auditRedacted, first["password"], "password nested in an array must be redacted")
+	require.Equal(t, "ok", second["keep"], "non-secret in array preserved")
 
 	// Belt-and-suspenders: the secret value must not survive anywhere in output.
 	require.NotContains(t, string(b), "s3cret")
@@ -58,9 +69,9 @@ func asJSON(t *testing.T, v any) map[string]any {
 func TestDiffConfigForAudit_SecretRotationIsVisibleButRedacted(t *testing.T) {
 	// The exact case that exposed the gap: ONLY the password changed.
 	old := []byte(`{"state_config":{"auth":{"username":"u","password":"OLDSECRET","url":"http://h"}}}`)
-	new := []byte(`{"state_config":{"auth":{"username":"u","password":"NEWSECRET","url":"http://h"}}}`)
+	updated := []byte(`{"state_config":{"auth":{"username":"u","password":"NEWSECRET","url":"http://h"}}}`)
 
-	diff := diffConfigForAudit(old, new)
+	diff := diffConfigForAudit(old, updated)
 	m := asJSON(t, diff)
 
 	// The changed password is reported by path, so the rotation IS visible...
@@ -74,16 +85,18 @@ func TestDiffConfigForAudit_SecretRotationIsVisibleButRedacted(t *testing.T) {
 	require.NotContains(t, m, "state_config.auth.url")
 
 	// Neither raw secret leaks.
-	b, _ := json.Marshal(diff)
+	b, err := json.Marshal(diff)
+	require.NoError(t, err)
 	require.NotContains(t, string(b), "OLDSECRET")
 	require.NotContains(t, string(b), "NEWSECRET")
 }
 
 func TestDiffConfigForAudit_NonSecretShowsRealValues(t *testing.T) {
 	old := []byte(`{"app_config":{"log_level":"info"}}`)
-	new := []byte(`{"app_config":{"log_level":"debug"}}`)
-	m := asJSON(t, diffConfigForAudit(old, new))
-	entry := m["app_config.log_level"].(map[string]any)
+	updated := []byte(`{"app_config":{"log_level":"debug"}}`)
+	m := asJSON(t, diffConfigForAudit(old, updated))
+	entry, ok := m["app_config.log_level"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "info", entry["from"])
 	require.Equal(t, "debug", entry["to"])
 }
@@ -93,11 +106,15 @@ func TestDiffConfigForAudit_AddRemoveAndNoChange(t *testing.T) {
 
 	added := asJSON(t, diffConfigForAudit([]byte(`{"a":1}`), []byte(`{"a":1,"b":2}`)))
 	require.Contains(t, added, "b")
-	require.NotContains(t, added["b"].(map[string]any), "from", "added key has only 'to'")
+	addedEntry, ok := added["b"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, addedEntry, "from", "added key has only 'to'")
 
 	removed := asJSON(t, diffConfigForAudit([]byte(`{"a":1,"b":2}`), []byte(`{"a":1}`)))
 	require.Contains(t, removed, "b")
-	require.NotContains(t, removed["b"].(map[string]any), "to", "removed key has only 'from'")
+	removedEntry, ok := removed["b"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, removedEntry, "to", "removed key has only 'from'")
 
 	// A key going from null to absent (or absent to null) is not a real change.
 	require.Nil(t, diffConfigForAudit([]byte(`{"a":1,"z":null}`), []byte(`{"a":1}`)), "null -> absent is not a change")

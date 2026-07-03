@@ -29,8 +29,14 @@ func TestHashSecret(t *testing.T) {
 	}
 
 	t.Run("unique salts", func(t *testing.T) {
-		h1, _ := HashSecret("same")
-		h2, _ := HashSecret("same")
+		h1, err := HashSecret("same")
+		if err != nil {
+			t.Fatalf("HashSecret failed: %v", err)
+		}
+		h2, err := HashSecret("same")
+		if err != nil {
+			t.Fatalf("HashSecret failed: %v", err)
+		}
 		if h1 == h2 {
 			t.Error("same secret should produce different hashes due to random salt")
 		}

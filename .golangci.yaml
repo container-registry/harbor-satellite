@@ -65,10 +65,13 @@ linters:
         main:
           deny:
             - pkg: io/ioutil
-              desc: 'Deprecated: use io and os packages instead'
+              desc: "Deprecated: use io and os packages instead"
     errcheck:
       check-type-assertions: true
       check-blank: true
+      exclude-functions:
+        - github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor.DeleteRobotAccount
+        - github.com/container-registry/harbor-satellite/internal/groundcontrol/utils.UpdateRobotProjects
     exhaustive:
       check:
         - switch
@@ -127,6 +130,7 @@ linters:
         - G101
         - G104
         - G115
+        - G123
         - G204
     govet:
       disable:

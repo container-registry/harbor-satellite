@@ -123,12 +123,10 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 					require.True(t, ok)
 					require.Contains(t, msg, tt.expectedErrMsg)
 				}
-			} else {
-				if resp.StatusCode != http.StatusOK {
-					msg, _ := respBody["message"].(string)
-					if msg == "SPIRE server not configured" {
-						return
-					}
+			} else if resp.StatusCode != http.StatusOK {
+				msg, ok := respBody["message"].(string)
+				if ok && msg == "SPIRE server not configured" {
+					return
 				}
 			}
 		})

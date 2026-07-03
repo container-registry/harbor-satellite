@@ -70,7 +70,7 @@ func (c *ServerClient) CreateJoinToken(ctx context.Context, spiffeID string, ttl
 		return "", fmt.Errorf("create join token: %w", err)
 	}
 
-	return resp.Value, nil
+	return resp.GetValue(), nil
 }
 
 // CreateWorkloadEntry creates a registration entry for a workload.
@@ -111,15 +111,16 @@ func (c *ServerClient) CreateWorkloadEntry(ctx context.Context, parentID, spiffe
 		return "", fmt.Errorf("create workload entry: %w", err)
 	}
 
-	if len(resp.Results) == 0 || resp.Results[0].Entry == nil {
+	results := resp.GetResults()
+	if len(results) == 0 || results[0].GetEntry() == nil {
 		return "", fmt.Errorf("create workload entry: empty response")
 	}
-	if resp.Results[0].Status != nil && resp.Results[0].Status.Code != 0 {
+	if results[0].GetStatus() != nil && results[0].GetStatus().GetCode() != 0 {
 		return "", fmt.Errorf("create workload entry: status %d - %s",
-			resp.Results[0].Status.Code, resp.Results[0].Status.Message)
+			results[0].GetStatus().GetCode(), results[0].GetStatus().GetMessage())
 	}
 
-	return resp.Results[0].Entry.Id, nil
+	return results[0].GetEntry().GetId(), nil
 }
 
 // DeleteWorkloadEntry removes a workload registration entry by ID.
@@ -175,27 +176,28 @@ func (c *ServerClient) ListAgents(ctx context.Context, attestationType string) (
 			return nil, fmt.Errorf("list agents: %w", err)
 		}
 
-		for _, agent := range resp.Agents {
-			if agent.Id == nil {
+		for _, agent := range resp.GetAgents() {
+			if agent.GetId() == nil {
 				continue
 			}
+			agentID := agent.GetId()
 			info := AgentInfo{
-				SpiffeID:        fmt.Sprintf("spiffe://%s%s", agent.Id.TrustDomain, agent.Id.Path),
-				AttestationType: agent.AttestationType,
+				SpiffeID:        fmt.Sprintf("spiffe://%s%s", agentID.GetTrustDomain(), agentID.GetPath()),
+				AttestationType: agent.GetAttestationType(),
 			}
 
-			if agent.X509SvidExpiresAt > 0 {
-				info.ExpiresAt = time.Unix(agent.X509SvidExpiresAt, 0)
+			if agent.GetX509SvidExpiresAt() > 0 {
+				info.ExpiresAt = time.Unix(agent.GetX509SvidExpiresAt(), 0)
 			}
 
-			for _, sel := range agent.Selectors {
-				info.Selectors = append(info.Selectors, fmt.Sprintf("%s:%s", sel.Type, sel.Value))
+			for _, sel := range agent.GetSelectors() {
+				info.Selectors = append(info.Selectors, fmt.Sprintf("%s:%s", sel.GetType(), sel.GetValue()))
 			}
 
 			agents = append(agents, info)
 		}
 
-		pageToken = resp.NextPageToken
+		pageToken = resp.GetNextPageToken()
 		if pageToken == "" {
 			break
 		}

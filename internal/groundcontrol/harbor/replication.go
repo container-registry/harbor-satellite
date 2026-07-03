@@ -22,7 +22,7 @@ func ListReplication(ctx context.Context, opts ListParams) ([]*models.Replicatio
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error: listing replication policies: %v", err)
+		return nil, fmt.Errorf("error: listing replication policies: %w", err)
 	}
 	return response.Payload, nil
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 )
@@ -25,7 +26,9 @@ func WriteJSONError(w http.ResponseWriter, message string, statusCode int) {
 		log.Printf("Failed to marshal JSON error response: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"message":"Internal server error","code":500}`))
+		if _, err := w.Write([]byte(`{"message":"Internal server error","code":500}`)); err != nil {
+			log.Printf("Failed to write fallback JSON error response: %v", err)
+		}
 		return
 	}
 
@@ -54,7 +57,8 @@ func WriteJSONResponse(w http.ResponseWriter, statusCode int, data any) {
 
 // handle AppError and senda structured JSON response.
 func HandleAppError(w http.ResponseWriter, err error) {
-	if appErr, ok := err.(*AppError); ok {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
 		WriteJSONResponse(w, appErr.Code, appErr)
 	} else {
 		WriteJSONResponse(w, http.StatusInternalServerError, &AppError{

@@ -118,7 +118,7 @@ func TestCreateConfigHandler_InvalidBody(t *testing.T) {
 func TestCreateConfigHandler_EmptyName(t *testing.T) {
 	server, _ := newMockServer(t)
 
-	body, _ := json.Marshal(map[string]string{"config_name": ""})
+	body := mustMarshalJSON(t, map[string]string{"config_name": ""})
 	req := httptest.NewRequest(http.MethodPost, "/api/configs", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 

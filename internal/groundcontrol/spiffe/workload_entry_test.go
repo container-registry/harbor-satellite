@@ -37,12 +37,15 @@ func (m *mockEntryClient) BatchCreateEntry(_ context.Context, _ *entryv1.BatchCr
 
 func (m *mockEntryClient) BatchDeleteEntry(_ context.Context, req *entryv1.BatchDeleteEntryRequest, _ ...grpc.CallOption) (*entryv1.BatchDeleteEntryResponse, error) {
 	m.deleteCalled = true
-	m.deleteIDs = req.Ids
+	m.deleteIDs = req.GetIds()
 	return m.batchDeleteResp, m.batchDeleteErr
 }
 
 func newTestClient(entry *mockEntryClient) *ServerClient {
-	td, _ := spiffeid.TrustDomainFromString("example.com")
+	td, err := spiffeid.TrustDomainFromString("example.com")
+	if err != nil {
+		panic(err)
+	}
 	return &ServerClient{
 		entryClient: entry,
 		trustDomain: td,

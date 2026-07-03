@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"time"
 
@@ -28,11 +29,10 @@ var (
 
 func parseDBConfig() DBConfig {
 	dbURL := fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		"postgres://%s:%s@%s/%s?sslmode=disable",
 		username,
 		password,
-		HOST,
-		PORT,
+		net.JoinHostPort(HOST, PORT),
 		dbName,
 	)
 

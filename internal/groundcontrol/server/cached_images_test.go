@@ -92,7 +92,7 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 			{Reference: "localhost:8585/library/alpine:3.18@sha256:def", SizeBytes: 5000},
 		},
 	}
-	body, _ := json.Marshal(reqBody)
+	body := mustMarshalJSON(t, reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -131,7 +131,7 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 		Name:               "edge-01",
 		RequestCreatedTime: now,
 	}
-	body, _ := json.Marshal(reqBody)
+	body := mustMarshalJSON(t, reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -153,7 +153,7 @@ func TestSyncHandler_UnknownSatellite(t *testing.T) {
 		Name:               "unknown",
 		RequestCreatedTime: time.Now().UTC(),
 	}
-	body, _ := json.Marshal(reqBody)
+	body := mustMarshalJSON(t, reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -191,7 +191,12 @@ func TestGetCachedImagesHandler(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, rr.Code)
 
-		var artifacts []database.Artifact
+		var artifacts []struct {
+			ID        int32     `json:"ID"`
+			Reference string    `json:"Reference"`
+			SizeBytes int64     `json:"SizeBytes"`
+			CreatedAt time.Time `json:"CreatedAt"`
+		}
 		err := json.NewDecoder(rr.Body).Decode(&artifacts)
 		require.NoError(t, err)
 		require.Len(t, artifacts, 2)
@@ -275,7 +280,7 @@ func TestSyncHandler_InvalidHeartbeatInterval(t *testing.T) {
 		StateReportInterval: "bad-format",
 		RequestCreatedTime:  now,
 	}
-	body, _ := json.Marshal(reqBody)
+	body := mustMarshalJSON(t, reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -311,7 +316,7 @@ func TestSyncHandler_BatchInsertArtifactsFails(t *testing.T) {
 			{Reference: "localhost:8585/nginx:latest@sha256:abc", SizeBytes: 50000},
 		},
 	}
-	body, _ := json.Marshal(reqBody)
+	body := mustMarshalJSON(t, reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 

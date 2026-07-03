@@ -41,7 +41,6 @@ func CheckHealth() error {
 }
 
 func checkhealth(config *config) error {
-
 	parsed, err := url.ParseRequestURI(config.HarborURL)
 	if err != nil {
 		return fmt.Errorf("invalid URL format: %w", err)

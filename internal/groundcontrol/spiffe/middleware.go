@@ -49,7 +49,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			ctx = context.WithValue(ctx, RegionKey, region)
 		}
 
-		log.Printf("SPIFFE auth: authenticated satellite %s from region %s", name, region)
+		log.Printf("SPIFFE auth: authenticated satellite %q from region %q", name, region) //nolint:gosec // Logs for diagnostics purpose.
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -146,5 +146,7 @@ func (m *TokenAuthMiddleware) Wrap(next http.Handler) http.Handler {
 func writeJSONResponse(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	_ = json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("failed to write JSON response: %v", err)
+	}
 }

@@ -157,8 +157,12 @@ func diffConfigMaps(out map[string]any, prefix string, oldMap, newMap map[string
 // secret is reported as a changed path even though its value stays redacted.
 func diffConfigForAudit(oldRaw, newRaw []byte) map[string]any {
 	var oldV, newV any
-	_ = json.Unmarshal(oldRaw, &oldV)
-	_ = json.Unmarshal(newRaw, &newV)
+	if err := json.Unmarshal(oldRaw, &oldV); err != nil {
+		oldV = nil
+	}
+	if err := json.Unmarshal(newRaw, &newV); err != nil {
+		newV = nil
+	}
 	out := map[string]any{}
 	diffConfigValues(out, "", oldV, newV)
 	if len(out) == 0 {

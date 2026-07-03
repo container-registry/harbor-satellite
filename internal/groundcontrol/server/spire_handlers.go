@@ -84,14 +84,17 @@ func (s *Server) spireStatusHandler(w http.ResponseWriter, r *http.Request) {
 		status.TrustDomain = s.spiffeProvider.GetTrustDomain().String()
 		status.Provider = "sidecar"
 		status.Connected = true
-	} else if s.embeddedSpire != nil {
-		status.TrustDomain = s.spireTrustDomain
-		status.Provider = "embedded"
-		status.Connected = s.spireClient != nil
-	} else if s.spireClient != nil {
-		status.TrustDomain = s.spireTrustDomain
-		status.Provider = "external"
-		status.Connected = true
+	} else {
+		switch {
+		case s.embeddedSpire != nil:
+			status.TrustDomain = s.spireTrustDomain
+			status.Provider = "embedded"
+			status.Connected = s.spireClient != nil
+		case s.spireClient != nil:
+			status.TrustDomain = s.spireTrustDomain
+			status.Provider = "external"
+			status.Connected = true
+		}
 	}
 
 	WriteJSONResponse(w, http.StatusOK, status)
@@ -248,8 +251,7 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 	}
 
 	q := s.dbQueries
-	satellite, err := q.GetSatelliteByName(r.Context(), req.SatelliteName)
-	if err != nil {
+	if _, err := q.GetSatelliteByName(r.Context(), req.SatelliteName); err != nil {
 		// New satellite: wrap DB writes in a transaction with cleanup on failure
 		// Use a detached context for cleanup so cancellation doesn't leave orphaned resources
 		cleanupCtx := context.WithoutCancel(r.Context())
@@ -295,7 +297,7 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 			}
 		}()
 
-		satellite, err = txQueries.CreateSatellite(r.Context(), req.SatelliteName)
+		satellite, err := txQueries.CreateSatellite(r.Context(), req.SatelliteName)
 		if err != nil {
 			log.Printf("Register: Failed to create satellite record for %s: %v", req.SatelliteName, err)
 			HandleAppError(w, &AppError{

@@ -63,11 +63,11 @@ func CreateRobotAccForSatellite(ctx context.Context, projects []string, name str
 
 // Update robot account
 func UpdateRobotProjects(ctx context.Context, projects []string, id string) (*robot.UpdateRobotOK, error) {
-	ID, err := strconv.ParseInt(id, 10, 64)
+	robotID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("error invalid ID: %w", err)
 	}
-	robot, err := harbor.GetRobotAccount(ctx, ID)
+	robot, err := harbor.GetRobotAccount(ctx, robotID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting robot account: %w", err)
 	}
@@ -102,13 +102,13 @@ func CreateStateArtifact(ctx context.Context, stateArtifact *m.StateArtifact) er
 	// Marshal the state artifact to JSON format
 	data, err := json.Marshal(stateArtifact)
 	if err != nil {
-		return fmt.Errorf("failed to marshal state artifact to JSON: %v", err)
+		return fmt.Errorf("failed to marshal state artifact to JSON: %w", err)
 	}
 
 	// Create the image with the state artifact JSON
 	img, err := crane.Image(map[string][]byte{"artifacts.json": data})
 	if err != nil {
-		return fmt.Errorf("failed to create image: %v", err)
+		return fmt.Errorf("failed to create image: %w", err)
 	}
 
 	// Configure repository and credentials
@@ -137,14 +137,14 @@ func CreateStateArtifact(ctx context.Context, stateArtifact *m.StateArtifact) er
 
 	// Push the image to the repository
 	if err := crane.Push(img, destinationRepo, options...); err != nil {
-		return fmt.Errorf("failed to push image: %v", err)
+		return fmt.Errorf("failed to push image: %w", err)
 	}
 
 	// Tag the image with timestamp and latest tags
 	tags := []string{fmt.Sprintf("%d", time.Now().Unix()), "latest"}
 	for _, tag := range tags {
 		if err := crane.Tag(destinationRepo, tag, options...); err != nil {
-			return fmt.Errorf("failed to tag image with %s: %v", tag, err)
+			return fmt.Errorf("failed to tag image with %s: %w", tag, err)
 		}
 	}
 
@@ -163,7 +163,7 @@ func CreateAndPushConfigStateArtifact(ctx context.Context, configData []byte, co
 	// Create the image with the state artifact JSON
 	img, err := crane.Image(map[string][]byte{"artifacts.json": configData})
 	if err != nil {
-		return fmt.Errorf("failed to create image: %v", err)
+		return fmt.Errorf("failed to create image: %w", err)
 	}
 
 	if err := envSanityCheck(); err != nil {
@@ -185,7 +185,7 @@ func CreateAndPushConfigStateArtifact(ctx context.Context, configData []byte, co
 
 	// Push the image to the repository
 	if err := crane.Push(img, destinationRepo, options...); err != nil {
-		return fmt.Errorf("failed to push image: %v", err)
+		return fmt.Errorf("failed to push image: %w", err)
 	}
 
 	return tagImage(destinationRepo, options)
@@ -215,12 +215,12 @@ func CreateOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, s
 	satelliteState := &m.SatelliteStateArtifact{States: states, Config: AssembleConfigState(config)}
 	data, err := json.Marshal(satelliteState)
 	if err != nil {
-		return fmt.Errorf("failed to marshal satellite state artifact to JSON: %v", err)
+		return fmt.Errorf("failed to marshal satellite state artifact to JSON: %w", err)
 	}
 
 	img, err := crane.Image(map[string][]byte{"artifacts.json": data})
 	if err != nil {
-		return fmt.Errorf("failed to create image: %v", err)
+		return fmt.Errorf("failed to create image: %w", err)
 	}
 
 	auth := authn.FromConfig(authn.AuthConfig{Username: username, Password: password})
@@ -244,9 +244,9 @@ func DeleteArtifact(deleteURL string) error {
 		return err
 	}
 
-	req, err := http.NewRequest("DELETE", deleteURL, nil)
+	req, err := http.NewRequest(http.MethodDelete, deleteURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %v", err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.SetBasicAuth(username, password)
@@ -256,7 +256,7 @@ func DeleteArtifact(deleteURL string) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %v", err)
+		return fmt.Errorf("failed to send request: %w", err)
 	}
 
 	defer func() {
@@ -287,7 +287,7 @@ func stripProtocol(url string) string {
 
 func pushImage(img v1.Image, destination string, options []crane.Option) error {
 	if err := crane.Push(img, destination, options...); err != nil {
-		return fmt.Errorf("failed to push image: %v", err)
+		return fmt.Errorf("failed to push image: %w", err)
 	}
 	return nil
 }
@@ -296,11 +296,12 @@ func tagImage(destination string, options []crane.Option) error {
 	tags := []string{fmt.Sprintf("%d", time.Now().Unix()), "latest"}
 	for _, tag := range tags {
 		if err := crane.Tag(destination, tag, options...); err != nil {
-			return fmt.Errorf("failed to tag image with %s: %v", tag, err)
+			return fmt.Errorf("failed to tag image with %s: %w", tag, err)
 		}
 	}
 	return nil
 }
+
 func getStateArtifactDestination(registry, repository string) string {
 	return fmt.Sprintf("%s/%s/%s", registry, repository, "state")
 }
@@ -315,7 +316,10 @@ func IsValidName(name string) bool {
 	}
 
 	pattern := `^[a-z0-9][a-z0-9._-]*$`
-	matched, _ := regexp.MatchString(pattern, name)
+	matched, err := regexp.MatchString(pattern, name)
+	if err != nil {
+		return false
+	}
 	return matched
 }
 

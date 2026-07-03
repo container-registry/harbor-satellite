@@ -2,6 +2,7 @@ package harbor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 
@@ -14,12 +15,12 @@ func GetProject(ctx context.Context, name string) (bool, error) {
 	proj, err := client.Project.HeadProject(ctx, &project.HeadProjectParams{
 		ProjectName: name,
 	})
-
 	if err != nil {
-		if _, ok := err.(*project.HeadProjectNotFound); ok {
+		var notFound *project.HeadProjectNotFound
+		if errors.As(err, &notFound) {
 			return false, nil
 		}
-		return false, fmt.Errorf("error: project head request failed for project: %s, %v", name, err)
+		return false, fmt.Errorf("error: project head request failed for project %s: %w", name, err)
 	}
 	return proj.IsSuccess(), nil
 }
@@ -39,7 +40,7 @@ func CreateSatelliteProject(ctx context.Context) (bool, error) {
 		},
 	})
 	if err != nil {
-		return false, fmt.Errorf("error: project create request failed for project: %s, %v", "satellite", err)
+		return false, fmt.Errorf("error: project create request failed for project satellite: %w", err)
 	}
 	return proj.IsSuccess(), nil
 }

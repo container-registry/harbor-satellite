@@ -50,8 +50,8 @@ func setSatelliteConfig(ctx context.Context, q *database.Queries, satelliteName 
 	}
 
 	params := database.SetSatelliteConfigParams{
-		SatelliteID: int32(sat.ID),
-		ConfigID:    int32(configObject.ID),
+		SatelliteID: sat.ID,
+		ConfigID:    configObject.ID,
 	}
 
 	err = q.SetSatelliteConfig(ctx, params)
@@ -177,7 +177,6 @@ func assignPermissionsToRobot(ctx context.Context, q *database.Queries, groups *
 					Code:    http.StatusInternalServerError,
 				}
 			}
-
 		}
 	}
 	return nil

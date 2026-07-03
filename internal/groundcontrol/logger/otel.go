@@ -111,7 +111,9 @@ func (t *otelTransport) Emit(r Record) error {
 		return fmt.Errorf("export otlp logs: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, 4096)); err != nil {
+		return fmt.Errorf("drain otlp response body: %w", err)
+	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("otlp endpoint returned status %d", resp.StatusCode)
 	}

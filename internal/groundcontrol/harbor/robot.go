@@ -34,7 +34,7 @@ func IsRobotPresent(ctx context.Context, name string) (bool, error) {
 		},
 	)
 	if err != nil {
-		return false, fmt.Errorf("error: listing robot account: %v", err)
+		return false, fmt.Errorf("error: listing robot account: %w", err)
 	}
 
 	if len(response.Payload) > 0 {
@@ -56,7 +56,7 @@ func ListRobots(ctx context.Context, opts ListParams) (*robot.ListRobotOK, error
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error: listing robot account: %v", err)
+		return nil, fmt.Errorf("error: listing robot account: %w", err)
 	}
 	return response, nil
 }
@@ -70,7 +70,7 @@ func DeleteRobotAccount(ctx context.Context, robotID int64) (*robot.DeleteRobotO
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error: deleting robot account: %v", err)
+		return nil, fmt.Errorf("error: deleting robot account: %w", err)
 	}
 	return response, nil
 }
@@ -87,7 +87,7 @@ func RefreshRobotAccount(ctx context.Context, secret string, robotID int64) (*ro
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error: updating robot account: %v", err)
+		return nil, fmt.Errorf("error: updating robot account: %w", err)
 	}
 	return response, nil
 }
@@ -102,7 +102,7 @@ func UpdateRobotAccount(ctx context.Context, opts *models.Robot) (*robot.UpdateR
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error: updating robot account: %v", err)
+		return nil, fmt.Errorf("error: updating robot account: %w", err)
 	}
 	return response, nil
 }
@@ -116,7 +116,7 @@ func GetRobotAccount(ctx context.Context, id int64) (*models.Robot, error) {
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error: getting robot account: %v", err)
+		return nil, fmt.Errorf("error: getting robot account: %w", err)
 	}
 	return response.Payload, nil
 }
@@ -130,7 +130,7 @@ func CreateRobotAccount(ctx context.Context, opts *models.RobotCreate) (*robot.C
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error: create robot account in adapter: %v", err.Error())
+		return nil, fmt.Errorf("error: create robot account in adapter: %w", err)
 	}
 	return response, nil
 }

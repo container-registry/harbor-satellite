@@ -111,8 +111,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reset failed attempts on success (ignore errors)
-	_ = s.dbQueries.ResetLoginAttempts(r.Context(), req.Username)
+	_ = s.dbQueries.ResetLoginAttempts(r.Context(), req.Username) //nolint:errcheck // Reset failed attempts on success (ignore errors)
 
 	// Generate session token
 	token, err := auth.GenerateSessionToken()

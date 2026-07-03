@@ -29,7 +29,9 @@ func RequireSPIFFEAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotImplemented)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "SPIFFE not available in this build"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "SPIFFE not available in this build"}); err != nil {
+			http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		}
 	})
 }
 

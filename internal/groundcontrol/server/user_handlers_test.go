@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -48,7 +47,7 @@ func TestCreateUserHandler(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role", "created_at", "updated_at"}).
 				AddRow(1, "testuser", "hashed", "admin", now, now))
 
-		body, _ := json.Marshal(createUserRequest{Username: "testuser", Password: "SecurePass1"})
+		body := mustMarshalJSON(t, createUserRequest{Username: "testuser", Password: "SecurePass1"})
 		req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
@@ -62,7 +61,7 @@ func TestCreateUserHandler(t *testing.T) {
 	t.Run("empty username returns 400", func(t *testing.T) {
 		server, _ := newMockServerWithAuth(t)
 
-		body, _ := json.Marshal(createUserRequest{Username: "", Password: "SecurePass1"})
+		body := mustMarshalJSON(t, createUserRequest{Username: "", Password: "SecurePass1"})
 		req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
@@ -74,7 +73,7 @@ func TestCreateUserHandler(t *testing.T) {
 	t.Run("reserved admin returns 400", func(t *testing.T) {
 		server, _ := newMockServerWithAuth(t)
 
-		body, _ := json.Marshal(createUserRequest{Username: "admin", Password: "SecurePass1"})
+		body := mustMarshalJSON(t, createUserRequest{Username: "admin", Password: "SecurePass1"})
 		req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
@@ -90,7 +89,7 @@ func TestCreateUserHandler(t *testing.T) {
 			WithArgs("existing", sqlmock.AnyArg(), "admin").
 			WillReturnError(&pq.Error{Code: "23505"})
 
-		body, _ := json.Marshal(createUserRequest{Username: "existing", Password: "SecurePass1"})
+		body := mustMarshalJSON(t, createUserRequest{Username: "existing", Password: "SecurePass1"})
 		req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
@@ -289,7 +288,7 @@ func TestLoginHandler(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "token", "expires_at", "created_at"}).
 				AddRow(1, 1, "session-token", now.Add(time.Hour), now))
 
-		body, _ := json.Marshal(loginRequest{Username: "testuser", Password: "SecurePass1"})
+		body := mustMarshalJSON(t, loginRequest{Username: "testuser", Password: "SecurePass1"})
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
@@ -321,7 +320,7 @@ func TestLoginHandler(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id", "username", "failed_count", "locked_until", "last_attempt"}).
 				AddRow(1, "testuser", int32(1), sql.NullTime{}, now))
 
-		body, _ := json.Marshal(loginRequest{Username: "testuser", Password: "WrongPass1"})
+		body := mustMarshalJSON(t, loginRequest{Username: "testuser", Password: "WrongPass1"})
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
@@ -334,7 +333,7 @@ func TestLoginHandler(t *testing.T) {
 	t.Run("empty credentials returns 401", func(t *testing.T) {
 		server, _ := newMockServerWithAuth(t)
 
-		body, _ := json.Marshal(loginRequest{Username: "", Password: ""})
+		body := mustMarshalJSON(t, loginRequest{Username: "", Password: ""})
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()

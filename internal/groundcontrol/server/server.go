@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -88,11 +89,10 @@ func NewServer() *ServerResult {
 	}
 
 	connStr := fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		"postgres://%s:%s@%s/%s?sslmode=disable",
 		username,
 		password,
-		HOST,
-		PORT,
+		net.JoinHostPort(HOST, PORT),
 		dbName,
 	)
 
@@ -150,9 +150,9 @@ func NewServer() *ServerResult {
 		var clientErr error
 		spireClient, clientErr = spiffe.NewServerClient(socketPath, spireTrustDomain)
 		if clientErr != nil {
-			log.Printf("Warning: Failed to connect to external SPIRE server at %s: %v", socketPath, clientErr)
+			log.Printf("Warning: Failed to connect to external SPIRE server at %q: %v", socketPath, clientErr) //nolint:gosec // Logs for diagnostics purpose.
 		} else {
-			log.Printf("Connected to external SPIRE server at %s (trust domain: %s)", socketPath, spireTrustDomain)
+			log.Printf("Connected to external SPIRE server at %q (trust domain: %q)", socketPath, spireTrustDomain) //nolint:gosec // Logs for diagnostics purpose.
 		}
 		spireServerAddress = getEnvOrDefault("SPIRE_SERVER_ADDRESS", "spire-server")
 		spireServerPort = parseIntEnv("SPIRE_SERVER_PORT", 8081)
@@ -272,7 +272,7 @@ func parseRequiredIntEnv(key string, defaultValue int) int {
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil {
-		log.Fatalf("%s must be an integer, got %q", key, v)
+		log.Fatalf("%q must be an integer, got %q", key, v) //nolint:gosec // Logs for diagnostics purpose.
 	}
 	return n
 }
