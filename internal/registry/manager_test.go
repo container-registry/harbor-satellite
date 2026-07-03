@@ -44,6 +44,17 @@ func TestWriteTempZotConfig(t *testing.T) {
 			require.Equal(t, tt.config, data)
 		})
 	}
+
+	t.Run("Nested Parent Directory Creation", func(t *testing.T) {
+		tmpPath := filepath.Join(t.TempDir(), "nested", "dir", "zot-test.json")
+		zm := NewZotManager(log, validZotConfig, tmpPath)
+		err := zm.WriteTempZotConfig()
+		require.NoError(t, err)
+
+		data, readErr := os.ReadFile(tmpPath)
+		require.NoError(t, readErr)
+		require.Equal(t, validZotConfig, data)
+	})
 }
 
 func TestRemoveTempZotConfig(t *testing.T) {
