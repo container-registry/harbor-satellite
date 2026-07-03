@@ -68,7 +68,23 @@ Harbor Satellite will synchronize with the central Harbor registry, when Interne
 Harbor Satellite will also include a toolset enabling the monitoring and management of local decentralized registries.
 
 ## QuickStart
+
 Please refer to the latest setup instructions in `QUICKSTART.md` file for detailed steps on setting up Harbor Satellite locally.
+
+### Installation
+
+For detailed installation instructions, see [Installation Guide](docs/content/installation.md).
+
+### Architecture
+
+Learn more about Harbor Satellite's architecture and design decisions:
+- [Architecture Overview](docs/architecture/overview.md)
+- [Architecture Components](docs/architecture/components.md)
+- [Use Cases](docs/architecture/use-cases.md)
+
+### Contributing
+
+Contribution guidelines and development instructions can be found in `CONTRIBUTING.md`.
 
 ## BYO (Bring Your Own) Registry
 

@@ -1,7 +1,7 @@
 version: "3"
 
 vars:
-  E2E_DIR: "{{.ROOT_DIR}}/docker/e2e"
+  E2E_DIR: "{{.ROOT_DIR}}/test/e2e/docker"
   HARBOR_ADMIN_USER: admin
   HARBOR_ADMIN_PASSWORD: Harbor12345
   HARBOR_URL: http://localhost:8080
@@ -141,7 +141,7 @@ tasks:
     desc: Cleanup PARSEC E2E containers
     cmds:
       - echo "Cleaning up PARSEC test..."
-      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite parsec-daemon 2>/dev/null || true
       - docker volume rm parsec-socket 2>/dev/null || true
     silent: true
@@ -152,9 +152,9 @@ tasks:
       - echo "Building ground-control image..."
       - docker build -t gc:e2e -f ground-control/Dockerfile ground-control/
       - echo "Starting Harbor and GC stack..."
-      - docker compose -f docker/e2e/docker-compose.yml up -d
+      - docker compose -f test/e2e/docker/docker-compose.yml up -d
       - sleep 5
-      - docker compose -f docker/e2e/docker-compose.yml ps
+      - docker compose -f test/e2e/docker/docker-compose.yml ps
     silent: true
 
   setup-spiffe:
@@ -172,7 +172,7 @@ tasks:
     desc: Generate CA certificates for SPIRE
     cmds:
       - |
-        CERTS_DIR="docker/e2e/spiffe/certs"
+        CERTS_DIR="test/e2e/docker/spiffe/certs"
         mkdir -p "$CERTS_DIR"
         echo "Generating bootstrap CA certificate..."
         openssl genrsa -out "$CERTS_DIR/ca.key" 4096 2>/dev/null
@@ -187,7 +187,7 @@ tasks:
     cmds:
       - |
         echo "Starting PostgreSQL and SPIRE server..."
-        docker compose -f docker/e2e/docker-compose.spiffe.yml up -d postgres spire-server
+        docker compose -f test/e2e/docker/docker-compose.spiffe.yml up -d postgres spire-server
         echo "Waiting for SPIRE server to be healthy..."
         for i in $(seq 1 60); do
           if docker exec spire-server /opt/spire/bin/spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock > /dev/null 2>&1; then
@@ -217,7 +217,7 @@ tasks:
         echo "GC Agent Token: $GC_TOKEN"
 
         echo "Creating agent config with join token..."
-        cat > docker/e2e/spiffe/agent-gc-runtime.conf << EOF
+        cat > test/e2e/docker/spiffe/agent-gc-runtime.conf << EOF
         agent {
             data_dir = "/tmp/spire-agent"
             log_level = "INFO"
@@ -254,7 +254,7 @@ tasks:
         EOF
 
         echo "Starting SPIRE agent for Ground Control..."
-        docker compose -f docker/e2e/docker-compose.spiffe.yml up -d spire-agent-gc
+        docker compose -f test/e2e/docker/docker-compose.spiffe.yml up -d spire-agent-gc
         sleep 5
 
         echo "Waiting for agent to attest..."
@@ -283,7 +283,7 @@ tasks:
     cmds:
       - |
         echo "Starting Ground Control..."
-        docker compose -f docker/e2e/docker-compose.spiffe.yml up -d gc
+        docker compose -f test/e2e/docker/docker-compose.spiffe.yml up -d gc
         echo "Waiting for Ground Control to be healthy..."
         for i in $(seq 1 30); do
           if curl -sfk https://localhost:9080/health > /dev/null 2>&1; then
@@ -301,7 +301,7 @@ tasks:
     desc: Stop and remove E2E containers
     cmds:
       - echo "Stopping e2e containers..."
-      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite 2>/dev/null || true
       - echo "Cleanup complete"
     silent: true
@@ -310,10 +310,10 @@ tasks:
     desc: Stop and remove SPIFFE E2E containers
     cmds:
       - echo "Stopping spiffe containers..."
-      - docker compose -f docker/e2e/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f test/e2e/docker/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f spire-agent-satellite satellite-spiffe 2>/dev/null || true
-      - rm -f docker/e2e/spiffe/agent-gc-runtime.conf docker/e2e/spiffe/agent-satellite-runtime.conf 2>/dev/null || true
-      - rm -rf docker/e2e/spiffe/certs 2>/dev/null || true
+      - rm -f test/e2e/docker/spiffe/agent-gc-runtime.conf test/e2e/docker/spiffe/agent-satellite-runtime.conf 2>/dev/null || true
+      - rm -rf test/e2e/docker/spiffe/certs 2>/dev/null || true
       - echo "Cleanup complete"
     silent: true
 
@@ -601,7 +601,7 @@ tasks:
         JOIN_TOKEN=$(cat /tmp/spiffe_join_token)
 
         echo "Creating satellite agent config with join token..."
-        cat > docker/e2e/spiffe/agent-satellite-runtime.conf << EOF
+        cat > test/e2e/docker/spiffe/agent-satellite-runtime.conf << EOF
         agent {
             data_dir = "/tmp/spire-agent"
             log_level = "INFO"
@@ -641,8 +641,8 @@ tasks:
         docker run -d --name spire-agent-satellite \
           --network spiffe-e2e \
           --pid host \
-          -v $(pwd)/docker/e2e/spiffe/agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro \
-          -v $(pwd)/docker/e2e/spiffe/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro \
+          -v $(pwd)/test/e2e/docker/spiffe/agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro \
+          -v $(pwd)/test/e2e/docker/spiffe/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro \
           -v ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro \
           ghcr.io/spiffe/spire-agent:1.12.3 \
           -config /opt/spire/conf/agent/agent.conf
@@ -821,7 +821,7 @@ tasks:
     desc: Stop and remove BYO E2E containers
     cmds:
       - echo "Stopping BYO e2e containers..."
-      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite-byo byo-registry 2>/dev/null || true
       - echo "BYO cleanup complete"
     silent: true
@@ -960,7 +960,7 @@ tasks:
     desc: Stop and remove crash recovery E2E containers
     cmds:
       - echo "Stopping crash recovery containers..."
-      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite 2>/dev/null || true
       - docker volume rm -f sat-state-vol 2>/dev/null || true
       - rm -f /tmp/e2e_satellite_token 2>/dev/null || true
@@ -1098,7 +1098,7 @@ tasks:
     desc: Stop and remove BYO crash recovery E2E containers
     cmds:
       - echo "Stopping BYO crash recovery containers..."
-      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite-byo byo-registry 2>/dev/null || true
       - docker volume rm -f sat-byo-state-vol 2>/dev/null || true
       - rm -f /tmp/e2e_byo_satellite_token 2>/dev/null || true

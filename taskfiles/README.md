@@ -94,4 +94,4 @@ Install: `go install golang.org/x/vuln/cmd/govulncheck@latest`
 
 ### E2E tests failing
 Check Docker is running: `docker ps`
-Check logs: `docker compose -f docker/e2e/docker-compose.yml logs`
+Check logs: `docker compose -f test/e2e/docker/docker-compose.yml logs`
