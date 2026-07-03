@@ -20,15 +20,11 @@ Ground Control is the central service that manages satellite configurations.
    git clone https://github.com/container-registry/harbor-satellite.git
    cd harbor-satellite
    ```
-2. Navigate to the `ground-control` directory:
+2. Create a Ground Control environment file using the root example:
    ```bash
-   cd ground-control
+   cp .env.ground-control.example .env.ground-control
    ```
-3. Create a `.env` file using the provided example:
-   ```bash
-   cp .env.example .env
-   ```
-4. Edit the `.env` file with your configuration:
+3. Edit the `.env.ground-control` file with your configuration:
 
    ```env
    # Harbor Registry Credentials
@@ -56,12 +52,12 @@ Choose one of the following options to start Ground Control.
 
 ### Option 1: Using Docker Compose (Recommended for End Users)
 
-1. Update the `docker-compose.yml` file in the `ground-control` directory with the same credentials as in the `.env` file.
+1. Update the root `docker-compose.yml` file with the same credentials as in `.env.ground-control`.
 
 2. Start Ground Control:
 
    ```bash
-   docker compose up
+   docker compose up postgres ground-control
    ```
 
    > Tip: Use `-d` to run in detached mode. Verify the service is running with `docker ps`.
@@ -77,7 +73,7 @@ Choose one of the following options to start Ground Control.
 2. Run the binary:
 
    ```bash
-   ./gc-dev
+   ./bin/ground-control
    ```
 
 ## Step 3: Verify Ground Control Health

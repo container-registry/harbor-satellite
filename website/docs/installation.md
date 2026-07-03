@@ -24,10 +24,10 @@ curl -Lo ground-control.tar.gz \
 tar xzf ground-control.tar.gz
 ```
 
-Create a `.env` file (see `ground-control/.env.example` for all options):
+Create a `.env.ground-control` file (see `.env.ground-control.example` for all options):
 
 ```bash
-cat > .env << 'EOF'
+cat > .env.ground-control << 'EOF'
 HARBOR_USERNAME=admin
 HARBOR_PASSWORD=Harbor12345
 HARBOR_URL=https://harbor.example.com
@@ -48,11 +48,10 @@ Run (requires a running PostgreSQL instance):
 
 ### Ground Control Docker Compose
 
-The `ground-control/docker-compose.yml` runs Ground Control with PostgreSQL:
+The `docker-compose.yml` runs Ground Control with PostgreSQL:
 
 ```bash
-cd ground-control
-docker compose up -d
+docker compose up -d postgres ground-control
 ```
 
 Override defaults with environment variables:
@@ -60,7 +59,7 @@ Override defaults with environment variables:
 ```bash
 HARBOR_URL=https://my-harbor.example.com \
 HARBOR_PASSWORD=MyPassword \
-docker compose up -d
+docker compose up -d postgres ground-control
 ```
 
 Verify:

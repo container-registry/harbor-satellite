@@ -6,7 +6,56 @@ before:
     - go mod tidy
 
 builds:
-- main: ./cmd/harbor-satellite/main.go
+- id: satellite
+  main: ./cmd/harbor-satellite
+  binary: harbor-satellite
+  env:
+    - CGO_ENABLED=0
+  ldflags:
+    - -w -s -X github.com/container-registry/harbor-satellite/internal/version.GitCommit={{.FullCommit}}
+    - -X github.com/container-registry/harbor-satellite/internal/version.Version={{.Tag}}
+  goos:
+    - linux
+    - darwin
+  goarch:
+    - amd64
+    - arm64
+    - ppc64le
+    - s390x
+    - "386"
+    - loong64
+    - mips64
+    - mips64le
+    - mips
+    - mipsle
+    - riscv64
+  ignore:
+    - goos: darwin
+      goarch: ppc64le
+    - goos: darwin
+      goarch: s390x
+    - goos: darwin
+      goarch: "386"
+    - goos: darwin
+      goarch: loong64
+    - goos: darwin
+      goarch: mips64
+    - goos: darwin
+      goarch: mips64le
+    - goos: darwin
+      goarch: mips
+    - goos: darwin
+      goarch: mipsle
+    - goos: darwin
+      goarch: riscv64
+    - goos: linux
+      goarch: mips
+    - goos: linux
+      goarch: mipsle
+  mod_timestamp: "{{ .CommitTimestamp }}"
+- id: ground-control
+  main: ./cmd/ground-control
+  binary: ground-control
   env:
     - CGO_ENABLED=0
   ldflags:
