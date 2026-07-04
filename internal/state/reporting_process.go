@@ -12,7 +12,7 @@ import (
 	"time"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
-	jobqueue "github.com/container-registry/harbor-satellite/internal/job-queue"
+	eventscheduler "github.com/container-registry/harbor-satellite/internal/event-scheduler"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/utils"
@@ -22,26 +22,26 @@ import (
 const StatusReportRoute = "satellites/sync"
 
 type StatusReportingProcess struct {
-	name         string
-	isRunning    bool
-	mu           *sync.Mutex
-	cm           *config.ConfigManager
-	spiffeClient *spiffe.Client
-	pendingCRI   []runtime.CRIConfigResult
-	jq           *jobqueue.JobQueue
-	criReported  bool
+	name           string
+	isRunning      bool
+	mu             *sync.Mutex
+	cm             *config.ConfigManager
+	spiffeClient   *spiffe.Client
+	pendingCRI     []runtime.CRIConfigResult
+	eventScheduler *eventscheduler.EventScheduler
+	criReported    bool
 }
 
 type StatusReportResponse struct {
 	Actions []string `json:"actions"`
 }
 
-func NewStatusReportingProcess(cm *config.ConfigManager, jq *jobqueue.JobQueue) *StatusReportingProcess {
+func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *eventscheduler.EventScheduler) *StatusReportingProcess {
 	p := &StatusReportingProcess{
-		name: config.StatusReportJobName,
-		mu:   &sync.Mutex{},
-		cm:   cm,
-		jq:   jq,
+		name:           config.StatusReportJobName,
+		mu:             &sync.Mutex{},
+		cm:             cm,
+		eventScheduler: eventScheduler,
 	}
 
 	if cm.IsSPIFFEEnabled() {
@@ -122,11 +122,12 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 
 	log.Info().Msgf("Received report: %v", *resp)
 
-	// Sending response actions to JobQueue
-	for _, v := range resp.Actions {
-		log.Info().Msgf("Sending action: %s", v)
-		s.jq.SendAction(v)
-	}
+	// Sending response actions to eventscheduler
+	// TODO: Needs changing
+	// for _, v := range resp.Actions {
+	// 	log.Info().Msgf("Sending action: %s", v)
+	// 	s..SendAction(v)
+	// }
 
 	// Clear CRI results only after successful send
 	if hasPendingCRI {

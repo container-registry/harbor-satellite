@@ -10,8 +10,8 @@ import (
 
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/crypto"
+	eventscheduler "github.com/container-registry/harbor-satellite/internal/event-scheduler"
 	"github.com/container-registry/harbor-satellite/internal/hotreload"
-	jobqueue "github.com/container-registry/harbor-satellite/internal/job-queue"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/parsec"
 	"github.com/container-registry/harbor-satellite/internal/registry"
@@ -482,11 +482,10 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	})
 
-	// Initiating JobQueue
 	// TODO: Add Config for Buffer, currently 10
-	jq := jobqueue.NewJobQueue(10)
+	eventScheduler := eventscheduler.NewEventScheduler(10)
 
-	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, jq)
+	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, eventScheduler)
 	err = s.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("unable to start satellite: %w", err)

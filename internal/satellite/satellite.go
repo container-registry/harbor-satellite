@@ -5,7 +5,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/actions"
 	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
-	jobqueue "github.com/container-registry/harbor-satellite/internal/job-queue"
+	eventscheduler "github.com/container-registry/harbor-satellite/internal/event-scheduler"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/state"
@@ -13,20 +13,20 @@ import (
 )
 
 type Satellite struct {
-	cm            *config.ConfigManager
-	criResults    []runtime.CRIConfigResult
-	schedulers    []*scheduler.Scheduler
-	stateFilePath string
-	jobqueue      *jobqueue.JobQueue
+	cm             *config.ConfigManager
+	criResults     []runtime.CRIConfigResult
+	schedulers     []*scheduler.Scheduler
+	stateFilePath  string
+	eventscheduler *eventscheduler.EventScheduler
 }
 
-func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string, jq *jobqueue.JobQueue) *Satellite {
+func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string, jq *eventscheduler.EventScheduler) *Satellite {
 	return &Satellite{
-		cm:            cm,
-		criResults:    criResults,
-		schedulers:    make([]*scheduler.Scheduler, 0),
-		stateFilePath: stateFilePath,
-		jobqueue:      jq,
+		cm:             cm,
+		criResults:     criResults,
+		schedulers:     make([]*scheduler.Scheduler, 0),
+		stateFilePath:  stateFilePath,
+		eventscheduler: jq,
 	}
 }
 
@@ -85,7 +85,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	stateScheduler.Start(ctx)
 
 	// Create status report scheduler with pending CRI results
-	statusReportProcess := state.NewStatusReportingProcess(s.cm, s.jobqueue)
+	statusReportProcess := state.NewStatusReportingProcess(s.cm, s.eventscheduler)
 	if len(s.criResults) > 0 {
 		statusReportProcess.SetPendingCRIResults(s.criResults)
 	}
@@ -102,7 +102,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	statusScheduler.Start(ctx)
 
 	// Initiating Job Queue
-	s.jobqueue.Start()
+	s.eventscheduler.Start()
 	s.registerActions()
 
 	return ctx.Err()
@@ -140,5 +140,5 @@ func (s *Satellite) Stop(ctx context.Context) {
 // Registers actions that the Job Queue understands
 // and executes
 func (s *Satellite) registerActions() {
-	s.jobqueue.Register(actions.NewRefreshCredentialsAction())
+	s.eventscheduler.Register(actions.NewRefreshCredentialsAction())
 }

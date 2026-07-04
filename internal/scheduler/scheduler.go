@@ -7,21 +7,19 @@ import (
 	"sync"
 	"time"
 
-	jobqueue "github.com/container-registry/harbor-satellite/internal/job-queue"
 	"github.com/container-registry/harbor-satellite/internal/process"
 	"github.com/rs/zerolog"
 )
 
 // Scheduler manages the execution of processes with configurable intervals
 type Scheduler struct {
-	jq       *jobqueue.JobQueue
-	name     string
-	ticker   *time.Ticker
-	process  process.Process
-	log      *zerolog.Logger
-	interval time.Duration
-	mu       sync.Mutex
-	wg       sync.WaitGroup
+	tickerCancel context.CancelFunc
+	triggerChan  chan time.Time
+	name         string
+	process      process.Process
+	log          *zerolog.Logger
+	mu           sync.Mutex
+	wg           sync.WaitGroup
 }
 
 // NewSchedulerWithInterval creates a new scheduler with a parsed interval string
@@ -31,16 +29,33 @@ func NewSchedulerWithInterval(intervalExpr string, process process.Process, log 
 		return nil, fmt.Errorf("failed to parse interval: %w", err)
 	}
 
-	ticker := time.NewTicker(duration)
-	scheduler := &Scheduler{
-		name:     process.Name(),
-		ticker:   ticker,
-		process:  process,
-		log:      log,
-		interval: duration,
+	triggerChan := make(chan time.Time)
+	ctx, triggerCancel := context.WithCancel(context.Background())
+
+	sched := &Scheduler{
+		triggerChan:  triggerChan,
+		tickerCancel: triggerCancel,
+		name:         process.Name(),
+		process:      process,
+		log:          log,
 	}
 
-	return scheduler, nil
+	err = createTrigger(ctx, duration, triggerChan)
+	if err != nil {
+		return nil, err
+	}
+
+	return sched, nil
+}
+
+func NewScheduler(process process.Process, log *zerolog.Logger) (*Scheduler, error) {
+	return &Scheduler{
+		tickerCancel: func() {},
+		triggerChan:  make(chan time.Time),
+		name:         process.Name(),
+		process:      process,
+		log:          log,
+	}, nil
 }
 
 // Start launches Run in a goroutine with proper WaitGroup tracking.
@@ -53,11 +68,9 @@ func (s *Scheduler) Start(ctx context.Context) {
 // run starts the scheduler and blocks until context is cancelled
 func (s *Scheduler) run(ctx context.Context) {
 	defer s.wg.Done()
-	defer s.ticker.Stop()
 
 	s.log.Info().
 		Str("Process", s.process.Name()).
-		Dur("interval", s.interval).
 		Msg("Starting scheduler")
 
 	// Run once immediately
@@ -71,7 +84,7 @@ func (s *Scheduler) run(ctx context.Context) {
 				Msg("Scheduler received cancellation signal. Exiting...")
 			return
 
-		case <-s.ticker.C:
+		case <-s.triggerChan:
 			if s.process.IsComplete() {
 				s.log.Info().
 					Str("Process", s.process.Name()).
@@ -83,13 +96,43 @@ func (s *Scheduler) run(ctx context.Context) {
 	}
 }
 
+func createTrigger(ctx context.Context, duration time.Duration, trigger chan time.Time) error {
+	ticker := time.NewTicker(duration)
+
+	go func() {
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case t := <-ticker.C:
+				select {
+				case trigger <- t:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	return nil
+}
+
 // ResetInterval changes the ticker interval dynamically
 func (s *Scheduler) ResetInterval(newInterval time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.ticker.Reset(newInterval)
-	s.interval = newInterval
+	// Stopping existing ticker routine
+	s.tickerCancel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	createTrigger(ctx, newInterval, s.triggerChan)
+
+	s.tickerCancel = cancel
+
 	s.log.Info().
 		Str("Process", s.process.Name()).
 		Dur("newInterval", newInterval).
@@ -107,12 +150,12 @@ func (s *Scheduler) ResetIntervalFromExpr(intervalExpr string) error {
 	return nil
 }
 
-// GetInterval returns the current interval
-func (s *Scheduler) GetInterval() time.Duration {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.interval
-}
+// // GetInterval returns the current interval
+// func (s *Scheduler) GetInterval() time.Duration {
+// 	s.mu.Lock()
+// 	defer s.mu.Unlock()
+// 	return s.interval
+// }
 
 // Name returns the name of the scheduler
 func (s *Scheduler) Name() string {
@@ -121,6 +164,8 @@ func (s *Scheduler) Name() string {
 
 // Stop signals the scheduler to stop and waits for all goroutines to complete
 func (s *Scheduler) Stop(ctx context.Context) error {
+	s.tickerCancel()
+
 	done := make(chan struct{})
 	go func() {
 		s.wg.Wait()
