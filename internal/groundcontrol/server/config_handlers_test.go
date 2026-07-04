@@ -168,3 +168,47 @@ func TestDeleteConfigHandler_ConfigInUse(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestSetSatelliteConfig_InvalidBody(t *testing.T) {
+	server, _ := newMockServer(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/satellites/config", bytes.NewReader([]byte("not json")))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.setSatelliteConfig(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+func TestSetSatelliteConfig_InvalidSatelliteName(t *testing.T) {
+	server, _ := newMockServer(t)
+
+	body, _ := json.Marshal(map[string]string{
+		"satellite":   "UPPERCASE_SAT",
+		"config_name": "valid-config",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/satellites/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.setSatelliteConfig(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+func TestSetSatelliteConfig_EmptyConfigName(t *testing.T) {
+	server, _ := newMockServer(t)
+
+	body, _ := json.Marshal(map[string]string{
+		"satellite":   "valid-sat",
+		"config_name": "",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/satellites/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.setSatelliteConfig(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+}
