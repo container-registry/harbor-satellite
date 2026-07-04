@@ -1,4 +1,4 @@
-package jobqueue
+package eventscheduler
 
 import (
 	"context"
@@ -12,8 +12,9 @@ import (
 
 // TODO: Add job cancellation handling
 // TODO: Add goroutine limits
+// TODO: Event Queue
 
-type JobQueue struct {
+type EventScheduler struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	mu     sync.Mutex
@@ -23,11 +24,11 @@ type JobQueue struct {
 	actionMap  map[string]process.Process
 }
 
-func NewJobQueue(buffer int) *JobQueue {
+func NewEventScheduler(buffer int) *EventScheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 	log := logger.FromContext(ctx).With().Str("process", "job_queue").Logger()
 
-	return &JobQueue{
+	return &EventScheduler{
 		ctx:        ctx,
 		cancel:     cancel,
 		log:        &log,
@@ -36,14 +37,14 @@ func NewJobQueue(buffer int) *JobQueue {
 	}
 }
 
-func (s *JobQueue) Register(name string, p process.Process) {
+func (s *EventScheduler) Register(name string, p process.Process) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.actionMap[name] = p
 }
 
-func (s *JobQueue) Start() {
+func (s *EventScheduler) Start() {
 	go func() {
 		for {
 			select {
@@ -64,6 +65,6 @@ func (s *JobQueue) Start() {
 	}()
 }
 
-func (s *JobQueue) SendAction(action string) {
+func (s *EventScheduler) SendAction(action string) {
 	s.actionChan <- action
 }
