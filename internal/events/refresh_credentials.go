@@ -1,10 +1,11 @@
-package actions
+package events
 
 import (
 	"context"
 	"sync"
 
-	"github.com/container-registry/harbor-satellite/internal/process"
+	"github.com/container-registry/harbor-satellite/internal/scheduler"
+	"github.com/rs/zerolog"
 )
 
 // TODO: Complete Process
@@ -13,19 +14,26 @@ type RefreshCredentialProcess struct {
 	name       string
 	isRunning  bool
 	isComplete bool
-	errs       []error
 
 	mu sync.RWMutex
 }
 
-func NewRefreshCredentialsAction() (string, process.Process) {
-	return "refresh_credentials", &RefreshCredentialProcess{name: "Refresh Credentials"}
+func NewRefreshCredentialsEvent(log *zerolog.Logger) (*scheduler.Scheduler, error) {
+	sched, err := scheduler.NewScheduler(&RefreshCredentialProcess{
+		name:       "refresh_credentials",
+		isRunning:  false,
+		isComplete: false,
+	}, log)
+	if err != nil {
+		return nil, err
+	}
+
+	return sched, nil
 }
 
 func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 	s.start()
 	defer s.stop()
-	defer s.complete()
 
 	return nil
 }
@@ -60,8 +68,8 @@ func (s *RefreshCredentialProcess) stop() {
 	s.isRunning = false
 }
 
-func (s *RefreshCredentialProcess) complete() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.isComplete = true
-}
+// func (s *RefreshCredentialProcess) complete() {
+// 	s.mu.Lock()
+// 	defer s.mu.Unlock()
+// 	s.isComplete = true
+// }

@@ -54,7 +54,7 @@ type SatelliteStatusParams struct {
 }
 
 type SatelliteSyncResponse struct {
-	Actions []string `json:"actions"`
+	Events []string `json:"events"`
 }
 
 func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
@@ -637,7 +637,7 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 	resp := SatelliteSyncResponse{
-		Actions: make([]string, 0),
+		Events: make([]string, 0),
 	}
 	var req SatelliteStatusParams
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -693,7 +693,7 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 	// 	// or not
 	// 	future := time.Now().Add(duration * 2)
 	// 	if future.Before(robotAcc.RobotExpiry.Time) {
-	resp.Actions = append(resp.Actions, "refresh_credentials")
+	resp.Events = append(resp.Events, "refresh_credentials")
 	// 	}
 	// }
 

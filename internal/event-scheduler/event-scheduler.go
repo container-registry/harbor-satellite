@@ -2,11 +2,10 @@ package eventscheduler
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
-	"github.com/container-registry/harbor-satellite/internal/process"
+	"github.com/container-registry/harbor-satellite/internal/scheduler"
 	"github.com/rs/zerolog"
 )
 
@@ -15,56 +14,39 @@ import (
 // TODO: Event Queue
 
 type EventScheduler struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	mu     sync.Mutex
-	log    *zerolog.Logger
+	mu  sync.Mutex
+	log *zerolog.Logger
 
-	actionChan chan string
-	actionMap  map[string]process.Process
+	eventMap map[string]*scheduler.Scheduler
 }
 
-func NewEventScheduler(buffer int) *EventScheduler {
-	ctx, cancel := context.WithCancel(context.Background())
-	log := logger.FromContext(ctx).With().Str("process", "job_queue").Logger()
+func NewEventScheduler() *EventScheduler {
+	log := logger.FromContext(context.Background()).With().Str("process", "job_queue").Logger()
 
 	return &EventScheduler{
-		ctx:        ctx,
-		cancel:     cancel,
-		log:        &log,
-		actionChan: make(chan string, buffer),
-		actionMap:  make(map[string]process.Process),
+		log:      &log,
+		eventMap: make(map[string]*scheduler.Scheduler),
 	}
 }
 
-func (s *EventScheduler) Register(name string, p process.Process) {
+func (s *EventScheduler) Register(sched *scheduler.Scheduler) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.actionMap[name] = p
+	s.log.Info().Msgf("registered event: %s", sched.Name())
+	s.eventMap[sched.Name()] = sched
+
+	sched.Start(context.Background())
 }
 
-func (s *EventScheduler) Start() {
-	go func() {
-		for {
-			select {
-			case <-s.ctx.Done():
-				return
+func (s *EventScheduler) SendEvent(event string) {
+	s.log.Info().Msgf("executing event %s: ", event)
+	sched, ok := s.eventMap[event]
+	if !ok {
+		s.log.Warn().Msgf("event not found: %s", event)
+		return
+	}
 
-			case action := <-s.actionChan:
-				if v, ok := s.actionMap[action]; ok {
-					// TODO: Wrap for error retreival via chan? something for retreival
-					// go v.Execute(context.Background())
-
-					s.log.Info().Msg(fmt.Sprintf("Action Received: %s", v))
-				}
-
-				//TODO: Add Logging for failure
-			}
-		}
-	}()
-}
-
-func (s *EventScheduler) SendAction(action string) {
-	s.actionChan <- action
+	s.log.Info().Msgf("executing event: %s", event)
+	sched.Trigger()
 }

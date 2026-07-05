@@ -33,7 +33,7 @@ type StatusReportingProcess struct {
 }
 
 type StatusReportResponse struct {
-	Actions []string `json:"actions"`
+	Events []string `json:"events"`
 }
 
 func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *eventscheduler.EventScheduler) *StatusReportingProcess {
@@ -122,12 +122,11 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 
 	log.Info().Msgf("Received report: %v", *resp)
 
-	// Sending response actions to eventscheduler
-	// TODO: Needs changing
-	// for _, v := range resp.Actions {
-	// 	log.Info().Msgf("Sending action: %s", v)
-	// 	s..SendAction(v)
-	// }
+	// Sending response events to eventscheduler
+	for _, v := range resp.Events {
+		log.Info().Msgf("Sending event: %s", v)
+		s.eventScheduler.SendEvent(v)
+	}
 
 	// Clear CRI results only after successful send
 	if hasPendingCRI {

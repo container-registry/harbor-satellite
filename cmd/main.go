@@ -482,8 +482,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	})
 
-	// TODO: Add Config for Buffer, currently 10
-	eventScheduler := eventscheduler.NewEventScheduler(10)
+	eventScheduler := eventscheduler.NewEventScheduler()
 
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, eventScheduler)
 	err = s.Run(ctx)
