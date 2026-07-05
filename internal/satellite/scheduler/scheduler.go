@@ -30,6 +30,8 @@ func NewSchedulerWithInterval(intervalExpr string, process process.Process, log 
 		return nil, fmt.Errorf("failed to parse interval: %w", err)
 	}
 
+	log.Info().Msgf("time interval for scheduler for process: %s , is %s", process.Name(), duration.String())
+
 	triggerChan := make(chan time.Time)
 	ctx, triggerCancel := context.WithCancel(context.Background())
 
@@ -94,9 +96,17 @@ func (s *Scheduler) run(ctx context.Context) {
 
 				return
 			}
+
+			s.log.Info().
+				Str("Process", s.process.Name()).
+				Msg("Process to be executed, started scheduling.")
 			s.launchProcess(ctx)
 		}
 	}
+}
+
+func (s *Scheduler) Trigger() {
+	s.triggerChan <- time.Now()
 }
 
 func createTrigger(ctx context.Context, duration time.Duration, trigger chan time.Time) error {

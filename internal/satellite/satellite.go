@@ -2,9 +2,10 @@ package satellite
 
 import (
 	"context"
+	"errors"
 
-	"github.com/container-registry/harbor-satellite/internal/actions"
 	eventscheduler "github.com/container-registry/harbor-satellite/internal/event-scheduler"
+	"github.com/container-registry/harbor-satellite/internal/events"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
@@ -103,9 +104,9 @@ func (s *Satellite) Run(ctx context.Context) error {
 	s.schedulers = append(s.schedulers, statusScheduler)
 	statusScheduler.Start(ctx)
 
-	// Initiating Job Queue
-	s.eventscheduler.Start()
-	s.registerActions()
+	// Registering events
+	log.Info().Msg("registering events")
+	s.registerEvents(context.Background())
 
 	return ctx.Err()
 }
@@ -150,6 +151,18 @@ func (s *Satellite) Stop(ctx context.Context) {
 
 // Registers actions that the Job Queue understands
 // and executes
-func (s *Satellite) registerActions() {
-	s.eventscheduler.Register(actions.NewRefreshCredentialsAction())
+func (s *Satellite) registerEvents(ctx context.Context) error {
+	log := logger.FromContext(ctx)
+	var errs []error
+
+	// Create Event Schedulers
+	refreshSched, err := events.NewRefreshCredentialsEvent(log)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	// Register Schedulers
+	s.eventscheduler.Register(refreshSched)
+
+	return errors.Join(errs...)
 }
