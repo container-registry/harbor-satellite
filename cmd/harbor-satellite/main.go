@@ -66,9 +66,8 @@ type SatelliteOptions struct {
 }
 
 func main() {
-	if err := godotenv.Load(".env.harbor-satellite", ".env"); err != nil {
-		log.Fatalf("failed to load environment variables: %v", err)
-	}
+	_ = godotenv.Load(".env.harbor-satellite", ".env") //nolint:errcheck // .env files are optional
+
 	if err := env.LoadSatellite(); err != nil {
 		log.Fatalf("invalid environment: %v", err)
 	}
@@ -76,7 +75,6 @@ func main() {
 	envCfg := env.Satellite.ApplyDefaults()
 	opts := SatelliteOptions{
 		GroundControlURL:       envCfg.GroundControlURL,
-		Token:                  envCfg.Token,
 		UseUnsecure:            envCfg.UseUnsecure,
 		SPIFFEEnabled:          envCfg.SPIFFEEnabled,
 		SPIFFEEndpointSocket:   envCfg.SPIFFEEndpointSocket,
@@ -84,7 +82,6 @@ func main() {
 		BYORegistry:            envCfg.BYORegistry,
 		RegistryURL:            envCfg.RegistryURL,
 		RegistryUsername:       envCfg.RegistryUsername,
-		RegistryPassword:       envCfg.RegistryPassword,
 		ConfigDir:              envCfg.ConfigDir,
 		RegistryDataDir:        envCfg.RegistryDataDir,
 		NoRegistryFallback:     envCfg.NoRegistryFallback,
@@ -98,7 +95,7 @@ func main() {
 
 	flag.StringVar(&opts.GroundControlURL, "ground-control-url", opts.GroundControlURL, "URL to ground control")
 	flag.BoolVar(&opts.JSONLogging, "json-logging", true, "Enable JSON logging")
-	flag.StringVar(&opts.Token, "token", opts.Token, "Satellite token")
+	flag.StringVar(&opts.Token, "token", "", "Satellite token")
 	flag.BoolVar(&opts.UseUnsecure, "use-unsecure", opts.UseUnsecure, "Use insecure (HTTP) connections to registries")
 	flag.Var(&opts.Mirrors, "mirrors", "Override CRI registry config. Format: CRI:registry1,registry2")
 	flag.BoolVar(&opts.SPIFFEEnabled, "spiffe-enabled", opts.SPIFFEEnabled, "Enable SPIFFE/SPIRE authentication")
@@ -107,7 +104,7 @@ func main() {
 	flag.BoolVar(&opts.BYORegistry, "byo-registry", opts.BYORegistry, "Use external registry instead of embedded Zot")
 	flag.StringVar(&opts.RegistryURL, "registry-url", opts.RegistryURL, "External registry URL")
 	flag.StringVar(&opts.RegistryUsername, "registry-username", opts.RegistryUsername, "External registry username")
-	flag.StringVar(&opts.RegistryPassword, "registry-password", opts.RegistryPassword, "External registry password")
+	flag.StringVar(&opts.RegistryPassword, "registry-password", "", "External registry password")
 	flag.StringVar(&opts.ConfigDir, "config-dir", opts.ConfigDir, "Configuration directory path (default: ~/.config/satellite)")
 	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", opts.RegistryDataDir, "Registry data directory (overrides default storage path derived from config-dir)")
 	flag.StringVar(&shutdownTimeout, "shutdown-timeout", shutdownTimeout, "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
@@ -120,6 +117,13 @@ func main() {
 	flag.StringVar(&opts.ParsecSocketPath, "parsec-socket", opts.ParsecSocketPath, "PARSEC daemon socket path")
 
 	flag.Parse()
+	if opts.Token == "" {
+		opts.Token = envCfg.Token
+	}
+	if opts.RegistryPassword == "" {
+		opts.RegistryPassword = envCfg.RegistryPassword
+	}
+
 	// Surface PARSEC misconfiguration at startup rather than at the first hardware operation.
 	if err := (parsec.Config{Enabled: opts.ParsecEnabled, SocketPath: opts.ParsecSocketPath}).Validate(); err != nil {
 		fmt.Printf("Invalid PARSEC configuration: %v\n", err)

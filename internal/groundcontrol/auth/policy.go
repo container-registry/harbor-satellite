@@ -33,14 +33,24 @@ func LoadPolicyFromEnv() PasswordPolicy {
 }
 
 func LoadPolicyFromConfig(cfg env.PasswordPolicy) PasswordPolicy {
-	return PasswordPolicy{
-		MinLength:        cfg.MinLength,
-		MaxLength:        cfg.MaxLength,
-		RequireUppercase: cfg.RequireUppercase,
-		RequireLowercase: cfg.RequireLowercase,
-		RequireNumber:    cfg.RequireNumber,
-		RequireSpecial:   cfg.RequireSpecial,
+	policy := DefaultPolicy()
+
+	if cfg.MinLength > 0 {
+		policy.MinLength = cfg.MinLength
 	}
+	if cfg.MaxLength > 0 {
+		policy.MaxLength = cfg.MaxLength
+	}
+	if policy.MinLength > policy.MaxLength {
+		policy.MaxLength = policy.MinLength
+	}
+
+	policy.RequireUppercase = cfg.RequireUppercase
+	policy.RequireLowercase = cfg.RequireLowercase
+	policy.RequireNumber = cfg.RequireNumber
+	policy.RequireSpecial = cfg.RequireSpecial
+
+	return policy
 }
 
 func (p PasswordPolicy) Validate(password string) error {

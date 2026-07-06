@@ -19,9 +19,7 @@ import (
 )
 
 func main() {
-	if err := godotenv.Load(".env.ground-control", ".env"); err != nil {
-		log.Fatalf("failed to load environment variables: %v", err)
-	}
+	_ = godotenv.Load(".env.ground-control", ".env") //nolint:all // .env files are optional
 
 	if err := env.LoadGC(); err != nil {
 		log.Fatalf("failed to load environment: %v", err)

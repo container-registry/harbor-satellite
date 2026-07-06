@@ -7,6 +7,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func loadGCForTest(t *testing.T) {
+	t.Helper()
+
+	previous := env.GC
+	require.NoError(t, env.LoadGC())
+	t.Cleanup(func() {
+		env.GC = previous
+	})
+}
+
 func TestRobotDurationDays(t *testing.T) {
 	tests := []struct {
 		name string
@@ -47,7 +57,7 @@ func TestRobotDurationDays(t *testing.T) {
 			} else {
 				t.Setenv("ROBOT_DURATION_DAYS", "")
 			}
-			require.NoError(t, env.LoadGC())
+			loadGCForTest(t)
 			got := robotDurationDays()
 			require.Equal(t, tt.want, got)
 		})
@@ -56,7 +66,7 @@ func TestRobotDurationDays(t *testing.T) {
 
 func TestRobotAccountTemplate_Duration(t *testing.T) {
 	t.Setenv("ROBOT_DURATION_DAYS", "60")
-	require.NoError(t, env.LoadGC())
+	loadGCForTest(t)
 
 	tmpl := RobotAccountTemplate("test-sat", []string{"satellite"})
 
