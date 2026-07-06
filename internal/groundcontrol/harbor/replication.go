@@ -6,8 +6,6 @@ import (
 
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/replication"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
-
-	_ "github.com/joho/godotenv/autoload"
 )
 
 func ListReplication(ctx context.Context, opts ListParams) ([]*models.ReplicationPolicy, error) {
