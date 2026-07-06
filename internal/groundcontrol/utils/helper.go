@@ -313,16 +313,3 @@ func IsValidName(name string) bool {
 	}
 	return matched
 }
-
-func envSanityCheck() error {
-	if registry == "" {
-		return fmt.Errorf("HARBOR_URL environment variable is not set")
-	}
-	if username == "" {
-		return fmt.Errorf("HARBOR_USERNAME environment variable is not set")
-	}
-	if password == "" {
-		return fmt.Errorf("HARBOR_PASSWORD environment variable is not set")
-	}
-	return nil
-}
