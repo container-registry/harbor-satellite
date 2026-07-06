@@ -1,0 +1,1945 @@
+basePath: /
+consumes:
+    - application/json
+definitions:
+    APIActiveSatellite:
+        allOf:
+            - properties:
+                CreatedAt:
+                    format: date-time
+                    type: string
+                HeartbeatInterval:
+                    $ref: '#/definitions/NullString'
+                ID:
+                    format: int32
+                    type: integer
+                LastActivity:
+                    type: string
+                LastSeen:
+                    $ref: '#/definitions/NullTime'
+                LastStatusTime:
+                    format: date-time
+                    type: string
+                Name:
+                    type: string
+                UpdatedAt:
+                    format: date-time
+                    type: string
+              type: object
+        title: APIActiveSatellite describes an active satellite row.
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APIConfigObject:
+        properties:
+            config:
+                $ref: '#/definitions/APIConfigValue'
+            config_name:
+                type: string
+                x-go-name: ConfigName
+            registry:
+                type: string
+                x-go-name: Registry
+        title: APIConfigObject wraps a named satellite configuration request.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APIConfigValue:
+        properties:
+            app_config:
+                additionalProperties: {}
+                type: object
+                x-go-name: AppConfig
+            state_config:
+                additionalProperties: {}
+                type: object
+                x-go-name: StateConfig
+            zot_config:
+                additionalProperties: {}
+                type: object
+                x-go-name: ZotConfig
+        title: APIConfigValue contains a satellite configuration document.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APIDatabaseArtifact:
+        allOf:
+            - properties:
+                CreatedAt:
+                    format: date-time
+                    type: string
+                ID:
+                    format: int32
+                    type: integer
+                Reference:
+                    type: string
+                SizeBytes:
+                    format: int64
+                    type: integer
+              type: object
+        title: APIDatabaseArtifact describes a cached image artifact row.
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APIDatabaseConfig:
+        allOf:
+            - properties:
+                Config: {}
+                ConfigName:
+                    type: string
+                CreatedAt:
+                    format: date-time
+                    type: string
+                ID:
+                    format: int32
+                    type: integer
+                RegistryUrl:
+                    type: string
+                UpdatedAt:
+                    format: date-time
+                    type: string
+              type: object
+        title: APIDatabaseConfig describes a stored satellite configuration row.
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APIEmptyObject:
+        title: APIEmptyObject is an empty JSON object response.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APIGroup:
+        allOf:
+            - properties:
+                CreatedAt:
+                    format: date-time
+                    type: string
+                GroupName:
+                    type: string
+                ID:
+                    format: int32
+                    type: integer
+                Projects:
+                    items:
+                        type: string
+                    type: array
+                RegistryUrl:
+                    type: string
+                UpdatedAt:
+                    format: date-time
+                    type: string
+              type: object
+        title: APIGroup describes a satellite group row.
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APIGroupSatellite:
+        allOf:
+            - properties:
+                CreatedAt:
+                    format: date-time
+                    type: string
+                ID:
+                    format: int32
+                    type: integer
+                Name:
+                    type: string
+                UpdatedAt:
+                    format: date-time
+                    type: string
+              type: object
+        title: APIGroupSatellite describes a satellite attached to a group.
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APIHealthResponse:
+        properties:
+            status:
+                type: string
+                x-go-name: Status
+        title: APIHealthResponse contains server health status.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APIMessageResponse:
+        properties:
+            message:
+                type: string
+                x-go-name: Message
+        title: APIMessageResponse contains a human-readable command result.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APIRegistryCredentials:
+        properties:
+            password:
+                format: password
+                type: string
+                x-go-name: Password
+            url:
+                type: string
+                x-go-name: URL
+            username:
+                type: string
+                x-go-name: Username
+        title: APIRegistryCredentials contains registry credentials returned to a satellite.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APISatellite:
+        allOf:
+            - properties:
+                CreatedAt:
+                    format: date-time
+                    type: string
+                HeartbeatInterval:
+                    $ref: '#/definitions/NullString'
+                ID:
+                    format: int32
+                    type: integer
+                LastSeen:
+                    $ref: '#/definitions/NullTime'
+                Name:
+                    type: string
+                UpdatedAt:
+                    format: date-time
+                    type: string
+              type: object
+        title: APISatellite describes a satellite row.
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APISatelliteStatus:
+        allOf:
+            - properties:
+                Activity:
+                    type: string
+                ArtifactIds:
+                    items:
+                        format: int32
+                        type: integer
+                    type: array
+                CpuPercent:
+                    $ref: '#/definitions/NullString'
+                CreatedAt:
+                    format: date-time
+                    type: string
+                ID:
+                    format: int32
+                    type: integer
+                ImageCount:
+                    $ref: '#/definitions/NullInt32'
+                LastSyncDurationMs:
+                    $ref: '#/definitions/NullInt64'
+                LatestConfigDigest:
+                    $ref: '#/definitions/NullString'
+                LatestStateDigest:
+                    $ref: '#/definitions/NullString'
+                MemoryUsedBytes:
+                    $ref: '#/definitions/NullInt64'
+                ReportedAt:
+                    format: date-time
+                    type: string
+                SatelliteID:
+                    format: int32
+                    type: integer
+                StorageUsedBytes:
+                    $ref: '#/definitions/NullInt64'
+              type: object
+        title: APISatelliteStatus describes a stored satellite status report.
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APIStaleSatellite:
+        allOf:
+            - properties:
+                CreatedAt:
+                    format: date-time
+                    type: string
+                HeartbeatInterval:
+                    $ref: '#/definitions/NullString'
+                ID:
+                    format: int32
+                    type: integer
+                LastSeen:
+                    $ref: '#/definitions/NullTime'
+                Name:
+                    type: string
+                SecondsSinceSeen:
+                    format: int64
+                    type: integer
+                UpdatedAt:
+                    format: date-time
+                    type: string
+              type: object
+        title: APIStaleSatellite describes a stale satellite row.
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    APIStateConfig:
+        properties:
+            auth:
+                $ref: '#/definitions/APIRegistryCredentials'
+            state:
+                type: string
+                x-go-name: State
+        title: APIStateConfig contains state artifact and registry auth data.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    AgentInfoResponse:
+        properties:
+            attestation_type:
+                type: string
+                x-go-name: AttestationType
+            expires_at:
+                format: date-time
+                type: string
+                x-go-name: ExpiresAt
+            selectors:
+                items:
+                    type: string
+                type: array
+                x-go-name: Selectors
+            spiffe_id:
+                type: string
+                x-go-name: SpiffeID
+        title: AgentInfoResponse contains agent information for API response.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    AgentListResponse:
+        properties:
+            agents:
+                items:
+                    $ref: '#/definitions/AgentInfoResponse'
+                type: array
+                x-go-name: Agents
+        title: AgentListResponse contains a list of attested agents.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    AppError:
+        properties:
+            code:
+                format: int64
+                type: integer
+                x-go-name: Code
+            message:
+                type: string
+                x-go-name: Message
+        title: AppError is a structured JSON error response.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    Artifact:
+        properties:
+            deleted:
+                type: boolean
+                x-go-name: Deleted
+            digest:
+                type: string
+                x-go-name: Digest
+            labels:
+                x-go-name: Labels
+            repository:
+                type: string
+                x-go-name: Repository
+            tag:
+                items:
+                    type: string
+                type: array
+                x-go-name: Tag
+            type:
+                type: string
+                x-go-name: Type
+        title: Artifact describes an image artifact in a group state.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/models
+    CachedImage:
+        properties:
+            reference:
+                type: string
+                x-go-name: Reference
+            size_bytes:
+                format: int64
+                type: integer
+                x-go-name: SizeBytes
+        title: CachedImage describes an image cached by a satellite.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    ChangePasswordRequest:
+        properties:
+            current_password:
+                format: password
+                type: string
+                x-go-name: CurrentPassword
+            new_password:
+                format: password
+                type: string
+                x-go-name: NewPassword
+        required:
+            - current_password
+            - new_password
+        title: ChangePasswordRequest changes the authenticated user's password.
+        type: object
+        x-go-name: changePasswordRequest
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    ChangeUserPasswordRequest:
+        properties:
+            new_password:
+                format: password
+                type: string
+                x-go-name: NewPassword
+        required:
+            - new_password
+        title: ChangeUserPasswordRequest resets a user's password.
+        type: object
+        x-go-name: changeUserPasswordRequest
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    CreateUserRequest:
+        properties:
+            password:
+                format: password
+                type: string
+                x-go-name: Password
+            username:
+                type: string
+                x-go-name: Username
+        required:
+            - username
+            - password
+        title: CreateUserRequest creates a regular admin user.
+        type: object
+        x-go-name: createUserRequest
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    LoginRequest:
+        properties:
+            password:
+                format: password
+                type: string
+                x-go-name: Password
+            username:
+                type: string
+                x-go-name: Username
+        required:
+            - username
+            - password
+        title: LoginRequest contains user credentials for session creation.
+        type: object
+        x-go-name: loginRequest
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    LoginResponse:
+        properties:
+            expires_at:
+                format: date-time
+                type: string
+                x-go-name: ExpiresAt
+            token:
+                type: string
+                x-go-name: Token
+        title: LoginResponse contains a bearer token and its expiration timestamp.
+        type: object
+        x-go-name: loginResponse
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    NullInt32:
+        description: |-
+            NullInt32 implements the [Scanner] interface so
+            it can be used as a scan destination, similar to [NullString].
+        properties:
+            Int32:
+                format: int32
+                type: integer
+            Valid:
+                type: boolean
+        title: NullInt32 represents an int32 that may be null.
+        type: object
+        x-go-package: database/sql
+    NullInt64:
+        description: |-
+            NullInt64 implements the [Scanner] interface so
+            it can be used as a scan destination, similar to [NullString].
+        properties:
+            Int64:
+                format: int64
+                type: integer
+            Valid:
+                type: boolean
+        title: NullInt64 represents an int64 that may be null.
+        type: object
+        x-go-package: database/sql
+    NullString:
+        description: |-
+            var s NullString
+            err := db.QueryRow("SELECT name FROM foo WHERE id=?", id).Scan(&s)
+            ...
+            if s.Valid {
+            use s.String
+            } else {
+            NULL value
+            }
+        properties:
+            String:
+                type: string
+            Valid:
+                type: boolean
+        title: |-
+            NullString represents a string that may be null.
+            NullString implements the [Scanner] interface so
+            it can be used as a scan destination:
+        type: object
+        x-go-package: database/sql
+    NullTime:
+        description: |-
+            NullTime implements the [Scanner] interface so
+            it can be used as a scan destination, similar to [NullString].
+        properties:
+            Time:
+                format: date-time
+                type: string
+            Valid:
+                type: boolean
+        title: NullTime represents a [time.Time] that may be null.
+        type: object
+        x-go-package: database/sql
+    RegisterSatelliteParams:
+        properties:
+            config_name:
+                type: string
+                x-go-name: ConfigName
+            groups:
+                items:
+                    type: string
+                type: array
+                x-go-name: Groups
+            name:
+                type: string
+                x-go-name: Name
+        title: RegisterSatelliteParams registers a token-managed satellite.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    RegisterSatelliteRequest:
+        properties:
+            attestation_method:
+                enum:
+                    - join_token
+                    - x509pop
+                    - sshpop
+                type: string
+                x-go-name: AttestationMethod
+            parent_agent_id:
+                type: string
+                x-go-name: ParentAgentID
+            region:
+                type: string
+                x-go-name: Region
+            satellite_name:
+                type: string
+                x-go-name: SatelliteName
+            selectors:
+                items:
+                    type: string
+                minItems: 1
+                type: array
+                x-go-name: Selectors
+            ttl_seconds:
+                format: int64
+                maximum: 86400
+                minimum: 1
+                type: integer
+                x-go-name: TTLSeconds
+        required:
+            - satellite_name
+            - selectors
+            - attestation_method
+        title: RegisterSatelliteRequest represents a request to register a satellite with SPIFFE.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    RegisterSatelliteResponse:
+        properties:
+            token:
+                type: string
+                x-go-name: Token
+        title: RegisterSatelliteResponse contains a single-use ZTR token.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    RegisterSatelliteWithSPIFFEResponse:
+        properties:
+            expires_at:
+                format: date-time
+                type: string
+                x-go-name: ExpiresAt
+            join_token:
+                type: string
+                x-go-name: JoinToken
+            parent_agent_id:
+                type: string
+                x-go-name: ParentAgentID
+            region:
+                type: string
+                x-go-name: Region
+            satellite:
+                type: string
+                x-go-name: Satellite
+            spiffe_id:
+                type: string
+                x-go-name: SpiffeID
+            spire_server_address:
+                type: string
+                x-go-name: SpireServerAddress
+            spire_server_port:
+                format: int64
+                type: integer
+                x-go-name: SpireServerPort
+            trust_domain:
+                type: string
+                x-go-name: TrustDomain
+        title: RegisterSatelliteWithSPIFFEResponse contains satellite registration details.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    SPIREStatusResponse:
+        properties:
+            connected:
+                type: boolean
+                x-go-name: Connected
+            enabled:
+                type: boolean
+                x-go-name: Enabled
+            provider:
+                type: string
+                x-go-name: Provider
+            trust_domain:
+                type: string
+                x-go-name: TrustDomain
+        title: SPIREStatusResponse contains SPIRE integration status.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    SatelliteConfigParams:
+        properties:
+            config_name:
+                type: string
+                x-go-name: ConfigName
+            satellite:
+                type: string
+                x-go-name: Satellite
+        title: SatelliteConfigParams links a satellite to a named configuration.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    SatelliteGroupParams:
+        properties:
+            group:
+                type: string
+                x-go-name: Group
+            satellite:
+                type: string
+                x-go-name: Satellite
+        title: SatelliteGroupParams links or unlinks a satellite and a group.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    SatelliteStatusParams:
+        properties:
+            activity:
+                type: string
+                x-go-name: Activity
+            cached_images:
+                items:
+                    $ref: '#/definitions/CachedImage'
+                type: array
+                x-go-name: CachedImages
+            cpu_percent:
+                format: double
+                type: number
+                x-go-name: CPUPercent
+            image_count:
+                format: int64
+                type: integer
+                x-go-name: ImageCount
+            last_sync_duration_ms:
+                format: int64
+                type: integer
+                x-go-name: LastSyncDurationMs
+            latest_config_digest:
+                type: string
+                x-go-name: LatestConfigDigest
+            latest_state_digest:
+                type: string
+                x-go-name: LatestStateDigest
+            memory_used_bytes:
+                format: uint64
+                type: integer
+                x-go-name: MemoryUsedBytes
+            name:
+                type: string
+                x-go-name: Name
+            request_created_time:
+                format: date-time
+                type: string
+                x-go-name: RequestCreatedTime
+            state_report_interval:
+                type: string
+                x-go-name: StateReportInterval
+            storage_used_bytes:
+                format: uint64
+                type: integer
+                x-go-name: StorageUsedBytes
+        title: SatelliteStatusParams reports the current satellite status and cache metrics.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+    StateArtifact:
+        properties:
+            artifacts:
+                items:
+                    $ref: '#/definitions/Artifact'
+                type: array
+                x-go-name: Artifacts
+            group:
+                type: string
+                x-go-name: Group
+            registry:
+                type: string
+                x-go-name: Registry
+        title: StateArtifact describes a group state artifact synchronized from Harbor.
+        type: object
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/models
+    UserResponse:
+        properties:
+            created_at:
+                type: string
+                x-go-name: CreatedAt
+            id:
+                format: int32
+                type: integer
+                x-go-name: ID
+            role:
+                type: string
+                x-go-name: Role
+            username:
+                type: string
+                x-go-name: Username
+        title: UserResponse describes a Ground Control user.
+        type: object
+        x-go-name: userResponse
+        x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
+info:
+    description: |
+        Ground Control manages Harbor Satellite registration, configuration,
+        group membership, user administration, status reporting, and SPIRE/SPIFFE
+        bootstrap flows.
+    title: Ground Control API
+    version: 0.1.0
+paths:
+    /api/configs:
+        get:
+            operationId: listConfigs
+            responses:
+                "200":
+                    description: Configurations returned.
+                    schema:
+                        items:
+                            $ref: '#/definitions/APIDatabaseConfig'
+                        type: array
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Configurations could not be listed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Lists satellite configurations.
+            tags:
+                - configs
+        post:
+            operationId: createConfig
+            parameters:
+                - description: Configuration creation payload.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/APIConfigObject'
+            responses:
+                "201":
+                    description: Configuration created.
+                "400":
+                    description: Configuration payload or name is invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "409":
+                    description: Configuration already exists.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Configuration could not be created.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Creates a satellite configuration.
+            tags:
+                - configs
+    /api/configs/{config}:
+        delete:
+            operationId: deleteConfig
+            parameters:
+                - description: Configuration name.
+                  in: path
+                  name: config
+                  required: true
+                  type: string
+                  x-go-name: Config
+            responses:
+                "200":
+                    description: Configuration deleted.
+                    schema:
+                        $ref: '#/definitions/APIEmptyObject'
+                "400":
+                    description: Configuration is in use and cannot be deleted.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Configuration could not be deleted.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Deletes an unused satellite configuration.
+            tags:
+                - configs
+        get:
+            operationId: getConfig
+            parameters:
+                - description: Configuration name.
+                  in: path
+                  name: config
+                  required: true
+                  type: string
+                  x-go-name: Config
+            responses:
+                "200":
+                    description: Configuration returned.
+                    schema:
+                        $ref: '#/definitions/APIDatabaseConfig'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "404":
+                    description: Configuration was not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Configuration could not be loaded.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Gets a satellite configuration.
+            tags:
+                - configs
+        patch:
+            operationId: updateConfig
+            parameters:
+                - description: Configuration name.
+                  in: path
+                  name: config
+                  required: true
+                  type: string
+                  x-go-name: Config
+                - description: Configuration merge patch payload.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/APIConfigValue'
+            responses:
+                "200":
+                    description: Configuration updated.
+                    schema:
+                        $ref: '#/definitions/APIDatabaseConfig'
+                "400":
+                    description: Configuration name, body, or merge patch is invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "404":
+                    description: Configuration was not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Configuration could not be updated.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Applies a merge patch to a satellite configuration.
+            tags:
+                - configs
+    /api/configs/satellite:
+        post:
+            operationId: setSatelliteConfig
+            parameters:
+                - description: Satellite configuration assignment payload.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/SatelliteConfigParams'
+            responses:
+                "200":
+                    description: Satellite configuration assignment updated.
+                    schema:
+                        $ref: '#/definitions/APIEmptyObject'
+                "400":
+                    description: Assignment payload, satellite, or configuration is invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Satellite configuration assignment could not be updated.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Sets the configuration assigned to a satellite.
+            tags:
+                - configs
+    /api/groups:
+        get:
+            operationId: listGroups
+            responses:
+                "200":
+                    description: Groups returned.
+                    schema:
+                        items:
+                            $ref: '#/definitions/APIGroup'
+                        type: array
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Groups could not be listed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Lists groups.
+            tags:
+                - groups
+    /api/groups/{group}:
+        delete:
+            operationId: deleteGroup
+            parameters:
+                - description: Group name.
+                  in: path
+                  name: group
+                  required: true
+                  type: string
+                  x-go-name: Group
+            responses:
+                "200":
+                    description: Group deleted.
+                    schema:
+                        $ref: '#/definitions/APIEmptyObject'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "403":
+                    description: System administrator role is required.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "404":
+                    description: Group was not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Group could not be deleted.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Deletes a group.
+            tags:
+                - groups
+        get:
+            operationId: getGroup
+            parameters:
+                - description: Group name.
+                  in: path
+                  name: group
+                  required: true
+                  type: string
+                  x-go-name: Group
+            responses:
+                "200":
+                    description: Group returned.
+                    schema:
+                        $ref: '#/definitions/APIGroup'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "404":
+                    description: Group was not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Group could not be loaded.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Gets a group by name.
+            tags:
+                - groups
+    /api/groups/{group}/satellites:
+        get:
+            operationId: listGroupSatellites
+            parameters:
+                - description: Group name.
+                  in: path
+                  name: group
+                  required: true
+                  type: string
+                  x-go-name: Group
+            responses:
+                "200":
+                    description: Group satellites returned.
+                    schema:
+                        items:
+                            $ref: '#/definitions/APIGroupSatellite'
+                        type: array
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "404":
+                    description: Group was not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Group satellites could not be listed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Lists satellites attached to a group.
+            tags:
+                - groups
+    /api/groups/satellite:
+        delete:
+            operationId: removeSatelliteFromGroup
+            parameters:
+                - description: Satellite and group membership payload.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/SatelliteGroupParams'
+            responses:
+                "200":
+                    description: Satellite removed from the group.
+                    schema:
+                        $ref: '#/definitions/APIEmptyObject'
+                "400":
+                    description: Satellite or group is invalid or not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Satellite could not be removed from the group.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Removes a satellite from a group.
+            tags:
+                - groups
+        post:
+            operationId: addSatelliteToGroup
+            parameters:
+                - description: Satellite and group membership payload.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/SatelliteGroupParams'
+            responses:
+                "200":
+                    description: Satellite was added to the group or was already a member.
+                    schema:
+                        $ref: '#/definitions/APIMessageResponse'
+                "400":
+                    description: Satellite or group is invalid or not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Satellite could not be added to the group.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Adds a satellite to a group.
+            tags:
+                - groups
+    /api/groups/sync:
+        post:
+            operationId: syncGroup
+            parameters:
+                - description: Group state artifact payload.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/StateArtifact'
+            responses:
+                "200":
+                    description: Group synchronized.
+                    schema:
+                        $ref: '#/definitions/APIGroup'
+                "400":
+                    description: Group state artifact payload is invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Group could not be synchronized.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "502":
+                    description: Harbor project lookup or creation failed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Synchronizes a group state artifact.
+            tags:
+                - groups
+    /api/logout:
+        post:
+            operationId: logout
+            responses:
+                "204":
+                    description: Session deleted.
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Session could not be deleted.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Deletes the current user session.
+            tags:
+                - auth
+    /api/satellites:
+        get:
+            operationId: listSatellites
+            responses:
+                "200":
+                    description: Satellites returned.
+                    schema:
+                        items:
+                            $ref: '#/definitions/APISatellite'
+                        type: array
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Satellites could not be listed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Lists satellites.
+            tags:
+                - satellites
+        post:
+            operationId: registerSatellite
+            parameters:
+                - description: Satellite registration payload.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/RegisterSatelliteParams'
+            responses:
+                "200":
+                    description: Satellite registered with a zero-touch token.
+                    schema:
+                        $ref: '#/definitions/RegisterSatelliteResponse'
+                "400":
+                    description: Registration payload, name, config, or robot account is invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Satellite could not be registered.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Registers a token-managed satellite.
+            tags:
+                - satellites
+    /api/satellites/{satellite}:
+        delete:
+            operationId: deleteSatellite
+            parameters:
+                - description: Satellite name.
+                  in: path
+                  name: satellite
+                  required: true
+                  type: string
+                  x-go-name: Satellite
+            responses:
+                "200":
+                    description: Satellite deleted.
+                    schema:
+                        $ref: '#/definitions/APIEmptyObject'
+                "400":
+                    description: Satellite does not exist or cannot be deleted.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Satellite could not be deleted.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Deletes a satellite.
+            tags:
+                - satellites
+        get:
+            operationId: getSatellite
+            parameters:
+                - description: Satellite name.
+                  in: path
+                  name: satellite
+                  required: true
+                  type: string
+                  x-go-name: Satellite
+            responses:
+                "200":
+                    description: Satellite returned.
+                    schema:
+                        $ref: '#/definitions/APISatellite'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Satellite could not be loaded.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Gets a satellite by name.
+            tags:
+                - satellites
+    /api/satellites/{satellite}/images:
+        get:
+            operationId: getCachedImages
+            parameters:
+                - description: Satellite name.
+                  in: path
+                  name: satellite
+                  required: true
+                  type: string
+                  x-go-name: Satellite
+            responses:
+                "200":
+                    description: Cached images returned.
+                    schema:
+                        items:
+                            $ref: '#/definitions/APIDatabaseArtifact'
+                        type: array
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "404":
+                    description: Satellite was not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Cached images could not be loaded.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Lists the latest cached images reported by a satellite.
+            tags:
+                - satellites
+    /api/satellites/{satellite}/status:
+        get:
+            operationId: getSatelliteStatus
+            parameters:
+                - description: Satellite name.
+                  in: path
+                  name: satellite
+                  required: true
+                  type: string
+                  x-go-name: Satellite
+            responses:
+                "200":
+                    description: Latest satellite status returned.
+                    schema:
+                        $ref: '#/definitions/APISatelliteStatus'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "404":
+                    description: Satellite or status report was not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Satellite status could not be loaded.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Gets the latest satellite status report.
+            tags:
+                - satellites
+    /api/satellites/active:
+        get:
+            operationId: listActiveSatellites
+            responses:
+                "200":
+                    description: Active satellites returned.
+                    schema:
+                        items:
+                            $ref: '#/definitions/APIActiveSatellite'
+                        type: array
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Active satellites could not be listed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Lists active satellites.
+            tags:
+                - satellites
+    /api/satellites/register:
+        post:
+            operationId: registerSatelliteWithSpiffe
+            parameters:
+                - description: SPIFFE satellite registration payload.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/RegisterSatelliteRequest'
+            responses:
+                "200":
+                    description: SPIFFE workload identity registered.
+                    schema:
+                        $ref: '#/definitions/RegisterSatelliteWithSPIFFEResponse'
+                "400":
+                    description: Registration payload, selectors, or attestation method is invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "403":
+                    description: System administrator role is required.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "404":
+                    description: Required parent agent was not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: SPIFFE registration could not be completed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "503":
+                    description: SPIRE server is not configured.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Registers a satellite workload identity with SPIFFE.
+            tags:
+                - spire
+    /api/satellites/stale:
+        get:
+            operationId: listStaleSatellites
+            responses:
+                "200":
+                    description: Stale satellites returned.
+                    schema:
+                        items:
+                            $ref: '#/definitions/APIStaleSatellite'
+                        type: array
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Stale satellites could not be listed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Lists stale satellites.
+            tags:
+                - satellites
+    /api/spire/agents:
+        get:
+            operationId: listSpireAgents
+            parameters:
+                - description: Filters agents by attestation type.
+                  in: query
+                  name: attestation_type
+                  type: string
+                  x-go-name: AttestationType
+            responses:
+                "200":
+                    description: SPIRE agents returned.
+                    schema:
+                        $ref: '#/definitions/AgentListResponse'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "403":
+                    description: System administrator role is required.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: SPIRE agents could not be listed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "503":
+                    description: SPIRE server is not configured.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Lists attested SPIRE agents.
+            tags:
+                - spire
+    /api/spire/status:
+        get:
+            operationId: getSpireStatus
+            responses:
+                "200":
+                    description: SPIRE integration status returned.
+                    schema:
+                        $ref: '#/definitions/SPIREStatusResponse'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "403":
+                    description: System administrator role is required.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Gets SPIRE integration status.
+            tags:
+                - spire
+    /api/users:
+        get:
+            operationId: listUsers
+            responses:
+                "200":
+                    description: Users returned.
+                    schema:
+                        items:
+                            $ref: '#/definitions/UserResponse'
+                        type: array
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Users could not be listed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Lists non-system users.
+            tags:
+                - users
+        post:
+            operationId: createUser
+            parameters:
+                - description: User creation request.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/CreateUserRequest'
+            responses:
+                "201":
+                    description: User created.
+                    schema:
+                        $ref: '#/definitions/UserResponse'
+                "400":
+                    description: Request body, username, or password policy is invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "403":
+                    description: System administrator role is required.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "409":
+                    description: User already exists.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: User could not be created.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Creates an admin user.
+            tags:
+                - users
+    /api/users/{username}:
+        delete:
+            operationId: deleteUser
+            parameters:
+                - description: Username.
+                  in: path
+                  name: username
+                  required: true
+                  type: string
+                  x-go-name: Username
+            responses:
+                "204":
+                    description: User deleted.
+                "400":
+                    description: User cannot be deleted by this request.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "403":
+                    description: System administrator role is required.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "404":
+                    description: User was not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: User could not be deleted.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Deletes a user.
+            tags:
+                - users
+        get:
+            operationId: getUser
+            parameters:
+                - description: Username.
+                  in: path
+                  name: username
+                  required: true
+                  type: string
+                  x-go-name: Username
+            responses:
+                "200":
+                    description: User returned.
+                    schema:
+                        $ref: '#/definitions/UserResponse'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "404":
+                    description: User was not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: User could not be loaded.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Gets a user by username.
+            tags:
+                - users
+    /api/users/{username}/password:
+        patch:
+            operationId: changeUserPassword
+            parameters:
+                - description: Username.
+                  in: path
+                  name: username
+                  required: true
+                  type: string
+                  x-go-name: Username
+                - description: Password reset request.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/ChangeUserPasswordRequest'
+            responses:
+                "204":
+                    description: Password reset and user sessions invalidated.
+                "400":
+                    description: Request body or new password is invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "403":
+                    description: System administrator role is required.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "404":
+                    description: User was not found.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Password could not be reset.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Resets a user's password.
+            tags:
+                - users
+    /api/users/password:
+        patch:
+            operationId: changeOwnPassword
+            parameters:
+                - description: Password change request.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/ChangePasswordRequest'
+            responses:
+                "204":
+                    description: Password changed and sessions invalidated.
+                "400":
+                    description: Request body or new password is invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Authorization token is missing, invalid, or current password is incorrect.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Password could not be changed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            security:
+                - bearerAuth: []
+            summary: Changes the authenticated user's password.
+            tags:
+                - users
+    /health:
+        get:
+            operationId: health
+            responses:
+                "200":
+                    description: Database connection is healthy.
+                    schema:
+                        $ref: '#/definitions/APIHealthResponse'
+                "503":
+                    description: Database connection is unavailable.
+                    schema:
+                        $ref: '#/definitions/APIHealthResponse'
+            summary: Checks database connectivity.
+            tags:
+                - health
+    /login:
+        post:
+            operationId: login
+            parameters:
+                - description: User credentials.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/LoginRequest'
+            responses:
+                "200":
+                    description: Session token created.
+                    schema:
+                        $ref: '#/definitions/LoginResponse'
+                "400":
+                    description: Request body is malformed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Credentials are missing, invalid, or locked out.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "429":
+                    description: Too many login attempts.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Session could not be created.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            summary: Creates a user session.
+            tags:
+                - auth
+    /ping:
+        get:
+            operationId: ping
+            produces:
+                - text/plain
+            responses:
+                "200":
+                    description: Server is reachable and returns pong.
+                    schema:
+                        type: string
+            summary: Pings the server.
+            tags:
+                - health
+    /satellites/spiffe-ztr:
+        get:
+            operationId: spiffeZtr
+            responses:
+                "200":
+                    description: SPIFFE zero-touch registration completed and registry credentials returned.
+                    schema:
+                        $ref: '#/definitions/APIStateConfig'
+                "400":
+                    description: SPIFFE ID format or satellite identity is invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: SPIFFE authentication is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "429":
+                    description: Too many SPIFFE zero-touch registration attempts.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: SPIFFE zero-touch registration could not be completed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            summary: Performs SPIFFE-based zero-touch registration.
+            tags:
+                - satellites
+    /satellites/sync:
+        post:
+            operationId: syncSatellite
+            parameters:
+                - description: Satellite status report payload.
+                  in: body
+                  name: Body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/SatelliteStatusParams'
+            responses:
+                "200":
+                    description: Satellite status report accepted.
+                "400":
+                    description: Status payload or heartbeat interval is invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "403":
+                    description: Satellite identity is unknown or not authorized.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Satellite status report could not be saved.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            summary: Reports satellite status.
+            tags:
+                - satellites
+    /satellites/ztr/{token}:
+        get:
+            operationId: ztr
+            parameters:
+                - description: Single-use zero-touch registration token.
+                  in: path
+                  name: token
+                  required: true
+                  type: string
+                  x-go-name: Token
+            responses:
+                "200":
+                    description: Zero-touch registration completed and registry credentials returned.
+                    schema:
+                        $ref: '#/definitions/APIStateConfig'
+                "400":
+                    description: Registration token is invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "401":
+                    description: Registration token has expired.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "429":
+                    description: Too many zero-touch registration attempts.
+                    schema:
+                        $ref: '#/definitions/AppError'
+                "500":
+                    description: Zero-touch registration could not be completed.
+                    schema:
+                        $ref: '#/definitions/AppError'
+            summary: Performs token-based zero-touch registration.
+            tags:
+                - satellites
+produces:
+    - application/json
+responses:
+    activeSatellitesResponse:
+        description: Reusable response schema.
+        schema:
+            items:
+                $ref: '#/definitions/APIActiveSatellite'
+            type: array
+    cachedImagesResponse:
+        description: Reusable response schema.
+        schema:
+            items:
+                $ref: '#/definitions/APIDatabaseArtifact'
+            type: array
+    configResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/APIDatabaseConfig'
+    configsResponse:
+        description: Reusable response schema.
+        schema:
+            items:
+                $ref: '#/definitions/APIDatabaseConfig'
+            type: array
+    emptyObjectResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/APIEmptyObject'
+    errorResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/AppError'
+    groupResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/APIGroup'
+    groupSatellitesResponse:
+        description: Reusable response schema.
+        schema:
+            items:
+                $ref: '#/definitions/APIGroupSatellite'
+            type: array
+    groupsResponse:
+        description: Reusable response schema.
+        schema:
+            items:
+                $ref: '#/definitions/APIGroup'
+            type: array
+    healthResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/APIHealthResponse'
+    loginResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/LoginResponse'
+    messageResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/APIMessageResponse'
+    noContentResponse:
+        description: Reusable response schema.
+    plainTextResponse:
+        description: Reusable response schema.
+        schema:
+            type: string
+    registerSatelliteResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/RegisterSatelliteResponse'
+    registerSatelliteWithSpiffeResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/RegisterSatelliteWithSPIFFEResponse'
+    satelliteResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/APISatellite'
+    satelliteStatusResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/APISatelliteStatus'
+    satellitesResponse:
+        description: Reusable response schema.
+        schema:
+            items:
+                $ref: '#/definitions/APISatellite'
+            type: array
+    spireAgentsResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/AgentListResponse'
+    spireStatusResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/SPIREStatusResponse'
+    staleSatellitesResponse:
+        description: Reusable response schema.
+        schema:
+            items:
+                $ref: '#/definitions/APIStaleSatellite'
+            type: array
+    stateConfigResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/APIStateConfig'
+    userResponse:
+        description: Reusable response schema.
+        schema:
+            $ref: '#/definitions/UserResponse'
+    usersResponse:
+        description: Reusable response schema.
+        schema:
+            items:
+                $ref: '#/definitions/UserResponse'
+            type: array
+schemes:
+    - https
+securityDefinitions:
+    bearerAuth:
+        description: 'Bearer token authentication. Use the format: Bearer <token>.'
+        in: header
+        name: Authorization
+        type: apiKey
+swagger: "2.0"

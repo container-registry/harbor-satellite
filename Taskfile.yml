@@ -2,8 +2,9 @@ version: "3"
 
 vars:
   GO_VERSION: "1.26.3"
-  GOLANGCILINT_VERSION: "v2.0.2"
+  GOLANGCILINT_VERSION: "v2.12.2"
   GORELEASER_VERSION: "v2.9.0"
+  GO_SWAGGER_VERSION: "v0.35.0"
   PLATFORMS_LINUX: "amd64 arm64 ppc64le s390x riscv64"
   PLATFORMS_DARWIN: "amd64 arm64"
   VULN_FILTER: "GO-2025-3409|GO-2024-2979"
@@ -61,12 +62,38 @@ tasks:
     cmds:
       - task: _lint:vulnerability-check-report
 
+  swagger:install:
+    desc: Install pinned go-swagger binary
+    env:
+      GOBIN: "{{.BIN_DIR}}"
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go install github.com/go-swagger/go-swagger/cmd/swagger@{{.GO_SWAGGER_VERSION}}
+    status:
+      - test -x {{.BIN_DIR}}/swagger
+      - "{{.BIN_DIR}}/swagger version | grep -q '{{.GO_SWAGGER_VERSION}}'"
+
+  swagger:generate:
+    desc: Generate Ground Control OpenAPI specs
+    dir: "{{.ROOT_DIR}}/ground-control"
+    cmds:
+      - task: swagger:install
+      - "{{.BIN_DIR}}/swagger generate spec -i meta.yml -o swagger.yml"
+      - "{{.BIN_DIR}}/swagger flatten --format yaml --with-flatten=remove-unused -o swagger-flatten.yml swagger.yml"
+    sources:
+      - meta.yml
+      - "**/*.go"
+    generates:
+      - swagger.yml
+      - swagger-flatten.yml
+
   e2e:
     desc: Run all E2E tests
     cmds:
       - task: _e2e:test
       - task: _e2e:test-byo
       - task: _e2e:test-spiffe
+      - task: _e2e:test-parsec
 
   e2e-test:
     desc: Run main E2E test
@@ -82,6 +109,11 @@ tasks:
     desc: Run SPIFFE E2E test
     cmds:
       - task: _e2e:test-spiffe
+
+  e2e-parsec:
+    desc: Run PARSEC hardware identity E2E test
+    cmds:
+      - task: _e2e:test-parsec
 
   e2e-crash-recovery:
     desc: Run crash recovery E2E test

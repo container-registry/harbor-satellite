@@ -286,8 +286,8 @@ func TestValidateTLSConfig(t *testing.T) {
 		certFile := filepath.Join(tmpDir, "cert.pem")
 		keyFile := filepath.Join(tmpDir, "key.pem")
 
-		require.NoError(t, os.WriteFile(certFile, []byte("cert"), 0600))
-		require.NoError(t, os.WriteFile(keyFile, []byte("key"), 0600))
+		require.NoError(t, os.WriteFile(certFile, []byte("cert"), 0o600))
+		require.NoError(t, os.WriteFile(keyFile, []byte("key"), 0o600))
 
 		config := &Config{
 			AppConfig: AppConfig{
@@ -308,7 +308,7 @@ func TestValidateTLSConfig(t *testing.T) {
 	t.Run("error when only cert_file provided", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		certFile := filepath.Join(tmpDir, "cert.pem")
-		require.NoError(t, os.WriteFile(certFile, []byte("cert"), 0600))
+		require.NoError(t, os.WriteFile(certFile, []byte("cert"), 0o600))
 
 		config := &Config{
 			AppConfig: AppConfig{
@@ -328,7 +328,7 @@ func TestValidateTLSConfig(t *testing.T) {
 	t.Run("error when only key_file provided", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		keyFile := filepath.Join(tmpDir, "key.pem")
-		require.NoError(t, os.WriteFile(keyFile, []byte("key"), 0600))
+		require.NoError(t, os.WriteFile(keyFile, []byte("key"), 0o600))
 
 		config := &Config{
 			AppConfig: AppConfig{
@@ -348,7 +348,7 @@ func TestValidateTLSConfig(t *testing.T) {
 	t.Run("error when cert_file does not exist", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		keyFile := filepath.Join(tmpDir, "key.pem")
-		require.NoError(t, os.WriteFile(keyFile, []byte("key"), 0600))
+		require.NoError(t, os.WriteFile(keyFile, []byte("key"), 0o600))
 
 		config := &Config{
 			AppConfig: AppConfig{
@@ -369,7 +369,7 @@ func TestValidateTLSConfig(t *testing.T) {
 	t.Run("warning when skip_verify enabled with ca_file", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		caFile := filepath.Join(tmpDir, "ca.pem")
-		require.NoError(t, os.WriteFile(caFile, []byte("ca"), 0600))
+		require.NoError(t, os.WriteFile(caFile, []byte("ca"), 0o600))
 
 		config := &Config{
 			AppConfig: AppConfig{
@@ -710,7 +710,9 @@ func TestAuditConfig_Equal(t *testing.T) {
 	}
 
 	t.Run("two empty configs are equal", func(t *testing.T) {
-		require.True(t, AuditConfig{}.Equal(AuditConfig{}))
+		left := AuditConfig{}
+		right := AuditConfig{}
+		require.True(t, left.Equal(right))
 	})
 
 	t.Run("omitted field equals an explicit default value", func(t *testing.T) {

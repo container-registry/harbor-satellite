@@ -145,10 +145,10 @@ func (c *Client) CreateHTTPClient() (*http.Client, error) {
 
 	return &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig:     tlsConfig,
-			MaxIdleConns:        10,
-			IdleConnTimeout:     30 * time.Second,
-			DisableCompression:  true,
+			TLSClientConfig:    tlsConfig,
+			MaxIdleConns:       10,
+			IdleConnTimeout:    30 * time.Second,
+			DisableCompression: true,
 		},
 		Timeout: 30 * time.Second,
 	}, nil

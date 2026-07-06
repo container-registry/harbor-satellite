@@ -2,12 +2,13 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
 
-	"github.com/container-registry/harbor-satellite/internal/registry"
+	"github.com/container-registry/harbor-satellite/internal/satellite/registry"
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )
@@ -92,6 +93,7 @@ func validateAndEnforceAuditConfig(config *Config) []string {
 	if !a.Syslog.EnabledOrDefault() && !a.Otel.Enabled {
 		warnings = append(warnings, "audit.enabled is true but no transport is enabled (audit.syslog.enabled=false and audit.otel.enabled=false); the audit logger will fail to start")
 	}
+
 	return warnings
 }
 
@@ -101,6 +103,7 @@ func validateOtelConfig(o *OtelAudit) []string {
 	if o.Enabled && o.Endpoint == "" {
 		return []string{"audit.otel.enabled but audit.otel.endpoint is empty; the audit logger will fail to start"}
 	}
+
 	return nil
 }
 
@@ -133,6 +136,7 @@ func enforceFileTarget(s *SyslogAudit) []string {
 		warnings = append(warnings, fmt.Sprintf("audit.syslog.file.path empty, defaulting to %s", DefaultAuditFilePath))
 		s.File.Path = DefaultAuditFilePath
 	}
+
 	return append(warnings, enforceAuditRotation(&s.File)...)
 }
 
@@ -141,6 +145,7 @@ func enforceDaemonTarget(s *SyslogAudit) []string {
 	if s.SocketPath == "" {
 		s.SocketPath = DefaultAuditSyslogSocket
 	}
+
 	return nil
 }
 
@@ -154,6 +159,7 @@ func validateNetworkTarget(s *SyslogAudit) []string {
 	if s.Address == "" {
 		warnings = append(warnings, "audit.syslog.target=network but audit.syslog.address is empty; the audit logger will fail to start")
 	}
+
 	return warnings
 }
 
@@ -161,6 +167,7 @@ func validateNetworkTarget(s *SyslogAudit) []string {
 func enforceInvalidTarget(s *SyslogAudit) []string {
 	warnings := []string{fmt.Sprintf("audit.syslog.target %q is invalid (expected daemon|network|file), defaulting to %s", s.Target, DefaultAuditSyslogTarget)}
 	s.Target = DefaultAuditSyslogTarget
+
 	return append(warnings, enforceFileTarget(s)...)
 }
 
@@ -192,6 +199,7 @@ func enforceAuditRotation(f *SyslogAuditFile) []string {
 		warnings = append(warnings, fmt.Sprintf("audit.syslog.file.max_age_days must be >= 0, defaulting to %d", DefaultAuditMaxAgeDays))
 		*f.MaxAgeDays = DefaultAuditMaxAgeDays
 	}
+
 	return warnings
 }
 
@@ -200,6 +208,7 @@ func isValidCronExpression(cronExpression string) bool {
 	if _, err := cron.ParseStandard(cronExpression); err != nil {
 		return false
 	}
+
 	return true
 }
 
@@ -215,6 +224,7 @@ func validateAndEnforceLogLevel(config *Config) []string {
 		))
 		config.AppConfig.LogLevel = zerolog.LevelInfoValue
 	}
+
 	return warnings
 }
 
@@ -223,7 +233,7 @@ func validateBringOwnRegistry(config *Config) ([]string, error) {
 	var warnings []string
 
 	if config.AppConfig.LocalRegistryCredentials.URL == "" {
-		return nil, fmt.Errorf("custom registry URL is required when BringOwnRegistry is enabled")
+		return nil, errors.New("custom registry URL is required when BringOwnRegistry is enabled")
 	}
 
 	if _, err := url.ParseRequestURI(string(config.AppConfig.LocalRegistryCredentials.URL)); err != nil {
@@ -350,7 +360,7 @@ func validateTLSConfig(tls *TLSConfig) ([]string, error) {
 	}
 
 	if (tls.CertFile != "" && tls.KeyFile == "") || (tls.CertFile == "" && tls.KeyFile != "") {
-		return warnings, fmt.Errorf("both cert_file and key_file must be provided together")
+		return warnings, errors.New("both cert_file and key_file must be provided together")
 	}
 
 	if tls.CertFile != "" {

@@ -100,6 +100,7 @@ func (s SyslogAudit) TargetOrDefault() string {
 	if s.Target == "" {
 		return DefaultAuditSyslogTarget
 	}
+
 	return s.Target
 }
 
@@ -108,6 +109,7 @@ func (s SyslogAudit) TagOrDefault() string {
 	if s.Tag == "" {
 		return DefaultAuditSyslogTag
 	}
+
 	return s.Tag
 }
 
@@ -116,6 +118,7 @@ func (f SyslogAuditFile) MaxSizeMBOrDefault() int {
 	if f.MaxSizeMB == nil {
 		return DefaultAuditMaxSizeMB
 	}
+
 	return *f.MaxSizeMB
 }
 
@@ -124,6 +127,7 @@ func (f SyslogAuditFile) MaxBackupsOrDefault() int {
 	if f.MaxBackups == nil {
 		return DefaultAuditMaxBackups
 	}
+
 	return *f.MaxBackups
 }
 
@@ -132,6 +136,7 @@ func (f SyslogAuditFile) MaxAgeDaysOrDefault() int {
 	if f.MaxAgeDays == nil {
 		return DefaultAuditMaxAgeDays
 	}
+
 	return *f.MaxAgeDays
 }
 
@@ -140,6 +145,7 @@ func (f SyslogAuditFile) CompressOrDefault() bool {
 	if f.Compress == nil {
 		return DefaultAuditCompress
 	}
+
 	return *f.Compress
 }
 

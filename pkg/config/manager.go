@@ -11,8 +11,8 @@ import (
 	"sync"
 
 	"github.com/container-registry/harbor-satellite/internal/crypto"
-	"github.com/container-registry/harbor-satellite/internal/identity"
-	"github.com/container-registry/harbor-satellite/internal/secure"
+	"github.com/container-registry/harbor-satellite/internal/satellite/identity"
+	"github.com/container-registry/harbor-satellite/internal/satellite/secure"
 )
 
 type ConfigChangeType string
@@ -59,7 +59,7 @@ func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL
 		JsonLog:                 jsonLog,
 		encryptor:               encryptor,
 		encryptEnabled:          config.AppConfig.EncryptConfig,
-		cryptoProvider:          cryptoProvider, 
+		cryptoProvider:          cryptoProvider,
 	}, nil
 }
 
@@ -152,6 +152,7 @@ func (cm *ConfigManager) detectChanges(oldConfig *Config, newConfig *Config) []C
 
 	return changes
 }
+
 func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -173,7 +174,6 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 	cm.config = validatedConfig
 
 	return changes, warnings, nil
-
 }
 
 func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure bool, cryptoProvider crypto.Provider) (*ConfigManager, []string, error) {

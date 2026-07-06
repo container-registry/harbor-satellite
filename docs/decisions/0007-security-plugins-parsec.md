@@ -313,4 +313,4 @@ scope for Phase 1 and tracked separately:
 - `internal/parsec/detect.go` / `detect_stub.go` — daemon detection
 - `internal/parsec/signer.go` — `crypto.Signer` implementation
 - `internal/parsec/provider.go` / `provider_stub.go` — `crypto.Provider` implementation
-- `cmd/main.go` — flag wiring and startup check
+- `cmd/harbor-satellite/main.go` — flag wiring and startup check

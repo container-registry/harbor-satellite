@@ -33,6 +33,7 @@ func newCaptureServer(t *testing.T, status int) (*httptest.Server, chan captured
 		w.WriteHeader(status)
 	}))
 	t.Cleanup(srv.Close)
+
 	return srv, ch
 }
 
@@ -45,6 +46,7 @@ func mustNewOTelTransport(t *testing.T, endpoint string) *otelTransport {
 		t.Fatalf("newOTelTransport: %v", err)
 	}
 	t.Cleanup(func() { _ = tr.Close() })
+
 	return tr
 }
 
@@ -79,6 +81,7 @@ func attrMap(attrs []otlpKeyValue) map[string]string {
 	for _, a := range attrs {
 		m[a.Key] = a.Value.StringValue
 	}
+
 	return m
 }
 
@@ -100,6 +103,7 @@ func decodeSingleLogRecord(t *testing.T, body []byte, wantService string) otlpLo
 	if name := p.ResourceLogs[0].ScopeLogs[0].Scope.Name; name != otelScopeName {
 		t.Errorf("scope name = %q, want %q", name, otelScopeName)
 	}
+
 	return p.ResourceLogs[0].ScopeLogs[0].LogRecords[0]
 }
 

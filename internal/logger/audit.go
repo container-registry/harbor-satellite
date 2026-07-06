@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -153,6 +154,7 @@ func (e AuditEvent) severity() Severity {
 	if e.Outcome == OutcomeFailure {
 		return SeverityWarning
 	}
+
 	return SeverityInfo
 }
 
@@ -176,6 +178,7 @@ func (e AuditEvent) withRequiredDefaults() AuditEvent {
 	if e.Outcome == "" {
 		e.Outcome = Outcome(fieldUnknown)
 	}
+
 	return e
 }
 
@@ -237,6 +240,7 @@ func NewAuditLogger(cfg AuditConfig, component Component) (*AuditLogger, error) 
 	if err := a.Reconfigure(cfg); err != nil {
 		return nil, err
 	}
+
 	return a, nil
 }
 
@@ -260,6 +264,7 @@ func (a *AuditLogger) Reconfigure(cfg AuditConfig) error {
 	a.mu.Unlock()
 
 	closeAll(old)
+
 	return nil
 }
 
@@ -292,8 +297,9 @@ func buildTransports(cfg AuditConfig) ([]Transport, error) {
 	}
 
 	if len(newTransports) == 0 {
-		return nil, fmt.Errorf("audit logging is enabled but no transport is configured: enable at least one of syslog or otel")
+		return nil, errors.New("audit logging is enabled but no transport is configured: enable at least one of syslog or otel")
 	}
+
 	return newTransports, nil
 }
 
@@ -319,6 +325,7 @@ func ensureWritable(path string) error {
 	if err != nil {
 		return fmt.Errorf("open audit log file %q: %w", path, err)
 	}
+
 	return f.Close()
 }
 
@@ -377,6 +384,7 @@ func (a *AuditLogger) Enabled() bool {
 	}
 	a.mu.RLock()
 	defer a.mu.RUnlock()
+
 	return a.enabled
 }
 
@@ -393,5 +401,6 @@ func AuditFromContext(ctx context.Context) *AuditLogger {
 	if a, ok := ctx.Value(auditLoggerKey).(*AuditLogger); ok && a != nil {
 		return a
 	}
+
 	return &AuditLogger{enabled: false}
 }

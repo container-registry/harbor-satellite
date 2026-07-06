@@ -18,6 +18,7 @@ func InitLogger(ctx context.Context, logLevel string, isJson bool, warnings []st
 	log := NewLogger(logLevel, isJson)
 	utils.HandleWarnings(log, warnings)
 	ctx = context.WithValue(ctx, LoggerKey, log)
+
 	return ctx, log
 }
 
@@ -72,6 +73,7 @@ func NewLogger(logLevel string, isJson bool) *zerolog.Logger {
 					l = lStr
 				}
 			}
+
 			return fmt.Sprintf("| %s |", l)
 		}
 
@@ -88,12 +90,14 @@ func FromContext(ctx context.Context) *zerolog.Logger {
 		// Fallback to a default logger if none is found in the context.
 		defaultLogger := zerolog.New(os.Stderr).With().Timestamp().Logger()
 		defaultLogger.Error().Msg("Failed to extract logger from context")
+
 		return &defaultLogger
 	}
+
 	return logger
 }
 
-// Helper function to colorize text
+// Helper function to colorize text.
 func colorize(s string, color int) string {
 	return fmt.Sprintf("\x1b[%dm%s\x1b[0m", color, s)
 }

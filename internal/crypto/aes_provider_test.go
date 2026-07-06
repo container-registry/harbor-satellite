@@ -124,7 +124,7 @@ func TestAESProvider_EncryptDecryptEmptyRoundtrip(t *testing.T) {
 
 	decrypted, err := p.Decrypt(encrypted, key)
 	require.NoError(t, err)
-	require.Len(t, decrypted, 0)
+	require.Empty(t, decrypted)
 }
 
 func TestAESProvider_EncryptedNotReadableAsPlaintext(t *testing.T) {
