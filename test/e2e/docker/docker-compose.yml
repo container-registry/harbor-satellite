@@ -31,7 +31,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ../../test/e2e/testconfig/config/registry:/etc/registry:ro
+      - ../testconfig/config/registry:/etc/registry:ro
     networks:
       - harbor-e2e
 
@@ -41,10 +41,10 @@ services:
     depends_on:
       - registry
     volumes:
-      - ../../test/e2e/testconfig/config/registry:/etc/registry:ro
-      - ../../test/e2e/testconfig/config/registryctl/config.yml:/etc/registryctl/config.yml:ro
+      - ../testconfig/config/registry:/etc/registry:ro
+      - ../testconfig/config/registryctl/config.yml:/etc/registryctl/config.yml:ro
     env_file:
-      - ../../test/e2e/testconfig/config/jobservice/env
+      - ../testconfig/config/jobservice/env
     networks:
       - harbor-e2e
 
@@ -55,10 +55,10 @@ services:
       - registry
       - registryctl
     volumes:
-      - ../../test/e2e/testconfig/config/core/app.conf:/etc/core/app.conf:ro
-      - ../../test/e2e/testconfig/config/core/private_key.pem:/etc/core/private_key.pem:ro
+      - ../testconfig/config/core/app.conf:/etc/core/app.conf:ro
+      - ../testconfig/config/core/private_key.pem:/etc/core/private_key.pem:ro
     env_file:
-      - ../../test/e2e/testconfig/config/core/env
+      - ../testconfig/config/core/env
     ports:
       - "8080:8080"
     networks:
@@ -71,9 +71,9 @@ services:
       core:
         condition: service_started
     volumes:
-      - ../../test/e2e/testconfig/config/jobservice/config.yml:/etc/jobservice/config.yml:ro
+      - ../testconfig/config/jobservice/config.yml:/etc/jobservice/config.yml:ro
     env_file:
-      - ../../test/e2e/testconfig/config/jobservice/env
+      - ../testconfig/config/jobservice/env
     networks:
       - harbor-e2e
 
