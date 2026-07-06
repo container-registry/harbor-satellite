@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/stretchr/testify/require"
 )
@@ -19,6 +20,7 @@ func TestRefreshRobotSecret_SkipHarborMode(t *testing.T) {
 	// 3. Harbor API error handling
 
 	t.Setenv("SKIP_HARBOR_HEALTH_CHECK", "true")
+	require.NoError(t, env.LoadGC())
 
 	robot := database.RobotAccount{
 		ID:              1,
@@ -37,6 +39,9 @@ func TestRefreshRobotSecret_SkipHarborMode(t *testing.T) {
 }
 
 func TestRefreshRobotSecret_InvalidRobotID(t *testing.T) {
+	t.Setenv("SKIP_HARBOR_HEALTH_CHECK", "false")
+	require.NoError(t, env.LoadGC())
+
 	// Test that invalid robot IDs are caught before calling Harbor API
 	robot := database.RobotAccount{
 		ID:              1,
@@ -153,6 +158,7 @@ func TestEnsureSatelliteRobotAccount_ReturnValueContract(t *testing.T) {
 		// In SKIP_HARBOR_HEALTH_CHECK mode, no real Harbor robot is created,
 		// so harborRobotID should be 0.
 		t.Setenv("SKIP_HARBOR_HEALTH_CHECK", "true")
+		require.NoError(t, env.LoadGC())
 
 		// This test is limited without DB mocking, but documents the behavior
 		// In skip mode, the function should:

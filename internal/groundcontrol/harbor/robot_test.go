@@ -3,6 +3,7 @@ package harbor
 import (
 	"testing"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,6 +47,7 @@ func TestRobotDurationDays(t *testing.T) {
 			} else {
 				t.Setenv("ROBOT_DURATION_DAYS", "")
 			}
+			require.NoError(t, env.LoadGC())
 			got := robotDurationDays()
 			require.Equal(t, tt.want, got)
 		})
@@ -54,6 +56,7 @@ func TestRobotDurationDays(t *testing.T) {
 
 func TestRobotAccountTemplate_Duration(t *testing.T) {
 	t.Setenv("ROBOT_DURATION_DAYS", "60")
+	require.NoError(t, env.LoadGC())
 
 	tmpl := RobotAccountTemplate("test-sat", []string{"satellite"})
 

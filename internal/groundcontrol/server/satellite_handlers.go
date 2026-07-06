@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
 	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
@@ -418,7 +418,7 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 		RegistryCredentials: config.RegistryCredentials{
 			Username: robot.RobotName,
 			Password: freshSecret,
-			URL:      config.URL(os.Getenv("HARBOR_URL")),
+			URL:      config.URL(env.GC.Harbor.URL),
 		},
 	}
 
@@ -580,7 +580,8 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// When Harbor is available, create state artifacts; otherwise just return credentials
-	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
+	harborCfg := env.GC.Harbor
+	skipHarborCheck := harborCfg.SkipHealthCheck
 	var satelliteState string
 
 	if !skipHarborCheck {
@@ -604,7 +605,7 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("SPIFFE ZTR: Harbor not available, using placeholder state for satellite %s", satelliteName)
 	}
 
-	harborURL := os.Getenv("HARBOR_URL")
+	harborURL := harborCfg.URL
 	if harborURL == "" {
 		harborURL = "http://placeholder-registry:5000"
 	}
@@ -789,7 +790,7 @@ func ensureSatelliteRobotAccount(r *http.Request, q *database.Queries, satellite
 	var robotName, robotSecret string
 	var harborRobotID int64
 	var expiry sql.NullTime
-	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
+	skipHarborCheck := env.GC.Harbor.SkipHealthCheck
 
 	if !skipHarborCheck {
 		if err := ensureSatelliteProjectExists(r.Context()); err != nil {
@@ -838,7 +839,7 @@ func ensureSatelliteRobotAccount(r *http.Request, q *database.Queries, satellite
 // refreshRobotSecret refreshes the Harbor robot account secret and updates the hash in DB.
 // Returns the fresh plaintext secret for pass-through to the satellite.
 func refreshRobotSecret(r *http.Request, q *database.Queries, robot database.RobotAccount) (string, error) {
-	skipHarborCheck := os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true"
+	skipHarborCheck := env.GC.Harbor.SkipHealthCheck
 	if skipHarborCheck {
 		// WARNING: SKIP_HARBOR_HEALTH_CHECK is for testing/development only.
 		// In this mode, a hardcoded placeholder secret is used. DO NOT enable in production.
@@ -923,7 +924,7 @@ func ensureSatelliteConfig(r *http.Request, q *database.Queries, satellite datab
 }`)
 		defaultConfig, err = q.CreateConfig(r.Context(), database.CreateConfigParams{
 			ConfigName:  "default",
-			RegistryUrl: os.Getenv("HARBOR_URL"),
+			RegistryUrl: env.GC.Harbor.URL,
 			Config:      defaultConfigJSON,
 		})
 		if err != nil {

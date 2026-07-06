@@ -7,15 +7,13 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
-	_ "github.com/joho/godotenv/autoload"
 	_ "github.com/lib/pq"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
@@ -74,29 +72,10 @@ type ServerResult struct {
 	EmbeddedSpire  *spiffe.EmbeddedSpireServer
 }
 
-var (
-	dbName   = os.Getenv("DB_DATABASE")
-	password = os.Getenv("DB_PASSWORD")
-	username = os.Getenv("DB_USERNAME")
-	PORT     = os.Getenv("DB_PORT")
-	HOST     = os.Getenv("DB_HOST")
-)
-
 func NewServer() *ServerResult {
-	port, err := strconv.Atoi(os.Getenv("PORT"))
-	if err != nil {
-		log.Fatalf("PORT is not valid: %v", err)
-	}
+	cfg := env.GC
 
-	connStr := fmt.Sprintf(
-		"postgres://%s:%s@%s/%s?sslmode=disable",
-		username,
-		password,
-		net.JoinHostPort(HOST, PORT),
-		dbName,
-	)
-
-	db, err := sql.Open("postgres", connStr)
+	db, err := sql.Open("postgres", cfg.Database.URL())
 	if err != nil {
 		log.Fatalf("Error in sql: %v", err)
 	}
@@ -120,12 +99,12 @@ func NewServer() *ServerResult {
 
 	// Start embedded SPIRE server if enabled
 	var embeddedSpire *spiffe.EmbeddedSpireServer
-	if os.Getenv("EMBEDDED_SPIRE_ENABLED") == "true" {
+	if cfg.EmbeddedSPIRE.Enabled {
 		spireCfg := &spiffe.EmbeddedSpireConfig{
 			Enabled:     true,
-			DataDir:     getEnvOrDefault("SPIRE_DATA_DIR", "/tmp/spire-data"),
-			TrustDomain: getEnvOrDefault("SPIRE_TRUST_DOMAIN", "harbor-satellite.local"),
-			BindAddress: getEnvOrDefault("SPIRE_BIND_ADDRESS", "127.0.0.1"),
+			DataDir:     cfg.SPIRE.DataDir,
+			TrustDomain: cfg.SPIRE.TrustDomain,
+			BindAddress: cfg.SPIRE.BindAddress,
 			BindPort:    8081,
 		}
 		embeddedSpire = spiffe.NewEmbeddedSpireServer(spireCfg)
@@ -145,26 +124,30 @@ func NewServer() *ServerResult {
 		spireServerAddress = embeddedSpire.GetBindAddress()
 		spireServerPort = embeddedSpire.GetBindPort()
 		spireTrustDomain = embeddedSpire.GetTrustDomain()
-	} else if socketPath := os.Getenv("SPIRE_SERVER_SOCKET"); socketPath != "" {
-		spireTrustDomain = getEnvOrDefault("SPIRE_TRUST_DOMAIN", "harbor-satellite.local")
+	} else if socketPath := cfg.SPIRE.ServerSocket; socketPath != "" {
+		spireTrustDomain = cfg.SPIRE.TrustDomain
 		var clientErr error
 		spireClient, clientErr = spiffe.NewServerClient(socketPath, spireTrustDomain)
 		if clientErr != nil {
-			log.Printf("Warning: Failed to connect to external SPIRE server at %q: %v", socketPath, clientErr) //nolint:gosec // Logs for diagnostics purpose.
+			log.Printf("Warning: Failed to connect to external SPIRE server at %q: %v", socketPath, clientErr)
 		} else {
-			log.Printf("Connected to external SPIRE server at %q (trust domain: %q)", socketPath, spireTrustDomain) //nolint:gosec // Logs for diagnostics purpose.
+			log.Printf("Connected to external SPIRE server at %q (trust domain: %q)", socketPath, spireTrustDomain)
 		}
-		spireServerAddress = getEnvOrDefault("SPIRE_SERVER_ADDRESS", "spire-server")
-		spireServerPort = parseIntEnv("SPIRE_SERVER_PORT", 8081)
+		spireServerAddress = cfg.SPIRE.ServerAddress
+		spireServerPort = cfg.SPIRE.ServerPort
 	}
 
-	auditLogger, auditErr := auditlog.NewAuditLogger(loadAuditConfig(), auditlog.ComponentGroundControl)
+	auditCfg, auditErr := cfg.Audit.Config()
+	if auditErr != nil {
+		log.Fatalf("Failed to load audit config: %v", auditErr)
+	}
+	auditLogger, auditErr := auditlog.NewAuditLogger(auditCfg, auditlog.ComponentGroundControl)
 	if auditErr != nil {
 		log.Fatalf("Failed to initialize audit logger: %v", auditErr)
 	}
 
 	newServer := &Server{
-		port:           port,
+		port:           cfg.Server.Port,
 		db:             db,
 		dbQueries:      dbQueries,
 		rateLimiter:    rateLimiter,
@@ -177,16 +160,16 @@ func NewServer() *ServerResult {
 		spireTrustDomain:   spireTrustDomain,
 
 		// User auth settings
-		passwordPolicy:  auth.LoadPolicyFromEnv(),
-		sessionDuration: parseDurationEnv("SESSION_DURATION", 24*time.Hour),
-		lockoutDuration: parseDurationEnv("LOCKOUT_DURATION", 5*time.Minute),
+		passwordPolicy:  auth.LoadPolicyFromConfig(cfg.PasswordPolicy),
+		sessionDuration: cfg.Server.SessionDuration,
+		lockoutDuration: cfg.Server.LockoutDuration,
 
 		// Satellite status
-		staleThreshold: parseDurationEnv("STALE_THRESHOLD", time.Hour),
+		staleThreshold: cfg.Server.StaleThreshold,
 
 		// Audit logger
 		audit:                 auditLogger,
-		trustForwardedHeaders: os.Getenv("AUDIT_TRUST_FORWARDED_HEADERS") == "true",
+		trustForwardedHeaders: cfg.Audit.TrustForwardedHeaders,
 	}
 
 	// Bootstrap system admin user if not exists
@@ -194,7 +177,12 @@ func NewServer() *ServerResult {
 		log.Fatalf("Failed to bootstrap system admin: %v", err)
 	}
 
-	tlsCfg := loadTLSConfig()
+	tlsCfg := &TLSConfig{
+		CertFile: cfg.TLS.CertFile,
+		KeyFile:  cfg.TLS.KeyFile,
+		CAFile:   cfg.TLS.CAFile,
+		Enabled:  cfg.TLS.Enabled(),
+	}
 
 	httpServer := &http.Server{
 		Addr:              fmt.Sprintf(":%d", newServer.port),

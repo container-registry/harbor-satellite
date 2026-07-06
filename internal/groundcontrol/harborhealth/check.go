@@ -6,8 +6,9 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
+
+	"github.com/container-registry/harbor-satellite/internal/env"
 )
 
 type config struct {
@@ -18,7 +19,7 @@ type config struct {
 
 func defaultConfig() *config {
 	return &config{
-		HarborURL: os.Getenv("HARBOR_URL"),
+		HarborURL: env.GC.Harbor.URL,
 		Timeout:   5 * time.Second,
 		SkipComponents: map[string]struct{}{
 			"portal":      {},
@@ -30,8 +31,9 @@ func defaultConfig() *config {
 }
 
 func CheckHealth() error {
+	cfg := env.GC
 	// Allow skipping health check for development/testing
-	if os.Getenv("SKIP_HARBOR_HEALTH_CHECK") == "true" {
+	if cfg.Harbor.SkipHealthCheck {
 		log.Println("WARNING: Harbor health check skipped (SKIP_HARBOR_HEALTH_CHECK=true)")
 		return nil
 	}

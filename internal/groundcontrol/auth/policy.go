@@ -2,10 +2,10 @@ package auth
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/container-registry/harbor-satellite/internal/env"
 )
 
 type PasswordPolicy struct {
@@ -29,37 +29,18 @@ func DefaultPolicy() PasswordPolicy {
 }
 
 func LoadPolicyFromEnv() PasswordPolicy {
-	policy := DefaultPolicy()
+	return LoadPolicyFromConfig(env.GC.PasswordPolicy)
+}
 
-	if v := os.Getenv("PASSWORD_MIN_LENGTH"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			policy.MinLength = n
-		}
+func LoadPolicyFromConfig(cfg env.PasswordPolicy) PasswordPolicy {
+	return PasswordPolicy{
+		MinLength:        cfg.MinLength,
+		MaxLength:        cfg.MaxLength,
+		RequireUppercase: cfg.RequireUppercase,
+		RequireLowercase: cfg.RequireLowercase,
+		RequireNumber:    cfg.RequireNumber,
+		RequireSpecial:   cfg.RequireSpecial,
 	}
-
-	if v := os.Getenv("PASSWORD_MAX_LENGTH"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			policy.MaxLength = n
-		}
-	}
-
-	if v := os.Getenv("PASSWORD_REQUIRE_UPPERCASE"); v != "" {
-		policy.RequireUppercase = parseBool(v)
-	}
-
-	if v := os.Getenv("PASSWORD_REQUIRE_LOWERCASE"); v != "" {
-		policy.RequireLowercase = parseBool(v)
-	}
-
-	if v := os.Getenv("PASSWORD_REQUIRE_NUMBER"); v != "" {
-		policy.RequireNumber = parseBool(v)
-	}
-
-	if v := os.Getenv("PASSWORD_REQUIRE_SPECIAL"); v != "" {
-		policy.RequireSpecial = parseBool(v)
-	}
-
-	return policy
 }
 
 func (p PasswordPolicy) Validate(password string) error {
@@ -130,9 +111,4 @@ func containsSpecial(s string) bool {
 		}
 	}
 	return false
-}
-
-func parseBool(s string) bool {
-	s = strings.ToLower(strings.TrimSpace(s))
-	return s == "true" || s == "1" || s == "yes"
 }
