@@ -38,8 +38,9 @@ runs:
     - name: Set up Docker Buildx with remote BuildKit
       shell: bash
       run: |
-        docker buildx inspect remote || docker buildx create --name remote --driver remote tcp://buildkitd.github-runners.svc:1234
-        docker buildx use remote
+        docker buildx rm remote >/dev/null 2>&1 || true
+        docker buildx create --name remote --driver remote tcp://buildkitd.github-runners.svc:1234 --use
+        docker buildx inspect remote --bootstrap
 
     - name: Provide envsubst for Cosign installer
       shell: bash
@@ -84,4 +85,29 @@ runs:
         REG_PASS: ${{ inputs.REGISTRY_PASSWORD }}
         PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
         TAG: ${{ inputs.IMAGE_TAGS }}
-      run: task publish-and-sign
+      run: |
+        for attempt in 1 2 3; do
+          if task publish-and-sign; then
+            exit 0
+          else
+            status=$?
+          fi
+
+          if [ "$attempt" -eq 3 ]; then
+            exit "$status"
+          fi
+
+          echo "Publish attempt $attempt failed with status $status; resetting remote BuildKit builder before retry..."
+          docker buildx rm remote >/dev/null 2>&1 || true
+          if ! docker buildx create --name remote --driver remote tcp://buildkitd.github-runners.svc:1234 --use; then
+            echo "Remote BuildKit builder creation failed; retrying after backoff..."
+            sleep $((attempt * 20))
+            continue
+          fi
+          if ! docker buildx inspect remote --bootstrap; then
+            echo "Remote BuildKit builder bootstrap failed; retrying after backoff..."
+            sleep $((attempt * 20))
+            continue
+          fi
+          sleep $((attempt * 20))
+        done
