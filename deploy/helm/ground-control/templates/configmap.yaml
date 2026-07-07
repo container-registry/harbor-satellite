@@ -9,7 +9,7 @@ data:
   DB_HOST: {{ include "ground-control.databaseHost" . | quote }}
   DB_PORT: {{ .Values.database.port | quote }}
   DB_DATABASE: {{ .Values.database.name | quote }}
-  SPIFFE_ENABLED: {{ .Values.spiffe.enabled | quote }}
+  SPIFFE_SERVER_ENABLED: {{ .Values.spiffe.enabled | quote }}
   {{- if .Values.spiffe.enabled }}
   SPIFFE_TRUST_DOMAIN: {{ .Values.spiffe.trustDomain | quote }}
   SPIFFE_ENDPOINT_SOCKET: {{ .Values.spiffe.endpointSocket | quote }}

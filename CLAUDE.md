@@ -116,10 +116,11 @@ Satellite uses JSON configuration with three sections:
 - app_config: Ground Control URL, log level, replication intervals, local registry settings
 - zot_config: Embedded Zot registry configuration (storage, HTTP, logging)
 
-Ground Control uses environment variables (see .env.example):
-- Harbor credentials (HARBOR_USERNAME, HARBOR_PASSWORD, HARBOR_URL)
-- Database connection (DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD)
-- Server settings (PORT, APP_ENV)
+Ground Control uses environment variables from `.env` or the process environment (see `.env.example`):
+- Harbor access and health behavior: HARBOR_URL, HARBOR_USERNAME, HARBOR_PASSWORD, SKIP_HARBOR_HEALTH_CHECK, ROBOT_DURATION_DAYS.
+- Database connection: DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD.
+- Server and auth settings: PORT, ADMIN_PASSWORD, SESSION_DURATION, LOCKOUT_DURATION, STALE_THRESHOLD, PASSWORD_* policy variables.
+- TLS, SPIFFE/SPIRE, embedded SPIRE, and audit logging settings are documented in `.env.example`.
 
 ## Go Style Rules
 

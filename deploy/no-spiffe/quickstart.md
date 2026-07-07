@@ -34,7 +34,6 @@ Ground Control is the central service that manages satellite configurations.
 
    # Ground Control Settings
    PORT=8080
-   APP_ENV=local
 
    # Database Settings
    DB_HOST=127.0.0.1

@@ -59,7 +59,7 @@ type PasswordPolicy struct {
 }
 
 type SPIFFE struct {
-	Enabled        bool   `env:"ENABLED"         envDefault:"false"`
+	Enabled        bool   `env:"SERVER_ENABLED"  envDefault:"false"`
 	TrustDomain    string `env:"TRUST_DOMAIN"    envDefault:"harbor-satellite.local"`
 	Provider       string `env:"PROVIDER"        envDefault:"sidecar"`
 	EndpointSocket string `env:"ENDPOINT_SOCKET" envDefault:"unix:///run/spire/sockets/agent.sock"`

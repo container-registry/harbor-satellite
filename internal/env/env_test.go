@@ -16,7 +16,7 @@ func TestLoadParsesGroundControlEnvironment(t *testing.T) {
 	t.Setenv("HARBOR_PASSWORD", "robot-secret")
 	t.Setenv("PORT", "8080")
 	t.Setenv("SESSION_DURATION", "12h")
-	t.Setenv("SPIFFE_ENABLED", "true")
+	t.Setenv("SPIFFE_SERVER_ENABLED", "true")
 	t.Setenv("SPIFFE_PROVIDER", "static")
 	t.Setenv("SPIRE_SERVER_PORT", "9090")
 	t.Setenv("EMBEDDED_SPIRE_ENABLED", "true")
