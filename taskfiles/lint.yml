@@ -9,6 +9,14 @@ tasks:
       - echo "Lint passed!"
     silent: true
 
+  lint-fix:
+    desc: Run golangci-lint with auto-fix
+    cmds:
+      - echo "Running golangci-lint with auto-fix..."
+      - golangci-lint run --fix
+      - echo "Lint auto-fix completed!"
+    silent: true
+
   lint-report:
     desc: Run golangci-lint and export results to file
     cmds:

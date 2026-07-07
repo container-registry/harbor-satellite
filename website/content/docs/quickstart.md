@@ -337,7 +337,7 @@ services:
       - HARBOR_PASSWORD=${HARBOR_PASSWORD:-Harbor12345}
       - SKIP_HARBOR_HEALTH_CHECK=${SKIP_HARBOR_HEALTH_CHECK:-false}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Harbor12345}
-      - SPIFFE_ENABLED=true
+      - SPIFFE_SERVER_ENABLED=true
       - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
       - SPIFFE_TRUST_DOMAIN=harbor-satellite.local
       - SPIRE_SERVER_SOCKET=/tmp/spire-server/private/api.sock

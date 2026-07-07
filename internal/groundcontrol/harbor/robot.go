@@ -3,13 +3,10 @@ package harbor
 import (
 	"context"
 	"fmt"
-	"os"
-	"strconv"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/robot"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
-
-	_ "github.com/joho/godotenv/autoload"
 )
 
 type ListParams struct {
@@ -136,12 +133,7 @@ func CreateRobotAccount(ctx context.Context, opts *models.RobotCreate) (*robot.C
 }
 
 func robotDurationDays() int64 {
-	if v := os.Getenv("ROBOT_DURATION_DAYS"); v != "" {
-		if days, err := strconv.ParseInt(v, 10, 64); err == nil && days > 0 {
-			return days
-		}
-	}
-	return 30
+	return env.GC.Harbor.RobotDurationDaysValue()
 }
 
 func RobotAccountTemplate(name string, projects []string) *models.RobotCreate {

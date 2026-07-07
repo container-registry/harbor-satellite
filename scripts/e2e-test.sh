@@ -52,17 +52,15 @@ done
 
 # Step 3: Configure and start Ground Control
 log "Step 3: Starting Ground Control..."
-cat > "$PROJECT_ROOT/.env.ground-control" << EOF
-HARBOR_USERNAME=admin
-HARBOR_PASSWORD=Harbor12345
-HARBOR_URL=$HARBOR_URL
-PORT=$GC_PORT
-DB_HOST=127.0.0.1
-DB_PORT=8100
-DB_DATABASE=groundcontrol
-DB_USERNAME=postgres
-DB_PASSWORD=password
-EOF
+export HARBOR_USERNAME=admin
+export HARBOR_PASSWORD=Harbor12345
+export HARBOR_URL
+export PORT=$GC_PORT
+export DB_HOST=127.0.0.1
+export DB_PORT=8100
+export DB_DATABASE=groundcontrol
+export DB_USERNAME=postgres
+export DB_PASSWORD=password
 
 cd "$PROJECT_ROOT"
 go run ./cmd/ground-control > /tmp/gc.log 2>&1 &

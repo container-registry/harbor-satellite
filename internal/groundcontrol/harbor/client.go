@@ -1,12 +1,11 @@
 package harbor
 
 import (
-	"os"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/goharbor/go-client/pkg/harbor"
 	v2client "github.com/goharbor/go-client/pkg/sdk/v2.0/client"
-	_ "github.com/joho/godotenv/autoload"
 )
 
 var (
@@ -17,10 +16,11 @@ var (
 // Returns Harbor v2 client
 func GetClient() *v2client.HarborAPI {
 	clientOnce.Do(func() {
+		cfg := env.GC.Harbor
 		clientConfig := &harbor.ClientSetConfig{
-			URL:      os.Getenv("HARBOR_URL"),
-			Username: os.Getenv("HARBOR_USERNAME"),
-			Password: os.Getenv("HARBOR_PASSWORD"),
+			URL:      cfg.URL,
+			Username: cfg.Username,
+			Password: cfg.Password,
 		}
 		client = GetClientByConfig(clientConfig)
 	})

@@ -11,6 +11,7 @@ require (
 )
 
 require (
+	github.com/caarlos0/env/v11 v11.4.1
 	github.com/joho/godotenv v1.5.1
 	github.com/parallaxsecond/parsec-client-go v0.0.0 // local replace; see replace directive
 	github.com/rs/zerolog v1.35.1

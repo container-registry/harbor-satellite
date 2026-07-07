@@ -34,7 +34,7 @@ services:
       HARBOR_URL: http://harbor-sat.kube.bupd.xyz
       PORT: 8080
       SKIP_HARBOR_HEALTH_CHECK: "true"
-      SPIFFE_ENABLED: "false"
+      SPIFFE_SERVER_ENABLED: "false"
       SPIFFE_TRUST_DOMAIN: harbor-satellite.local
       SPIFFE_PROVIDER: sidecar
       SPIFFE_ENDPOINT_SOCKET: unix:///run/spire/sockets/agent.sock

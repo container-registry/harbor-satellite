@@ -27,10 +27,10 @@ curl -Lo ground-control.tar.gz \
 tar xzf ground-control.tar.gz
 ```
 
-Create a `.env.ground-control` file (see `.env.ground-control.example` for all options):
+Create a `.env` file (see `.env.example` for all options):
 
 ```bash
-cat > .env.ground-control << 'EOF'
+cat > .env << 'EOF'
 HARBOR_USERNAME=admin
 HARBOR_PASSWORD=Harbor12345
 HARBOR_URL=https://harbor.example.com

@@ -20,11 +20,11 @@ Ground Control is the central service that manages satellite configurations.
    git clone https://github.com/container-registry/harbor-satellite.git
    cd harbor-satellite
    ```
-2. Create a Ground Control environment file using the root example:
+2. Create an environment file using the root example:
    ```bash
-   cp .env.ground-control.example .env.ground-control
+   cp .env.example .env
    ```
-3. Edit the `.env.ground-control` file with your configuration:
+3. Edit the `.env` file with your configuration:
 
    ```env
    # Harbor Registry Credentials
@@ -34,7 +34,6 @@ Ground Control is the central service that manages satellite configurations.
 
    # Ground Control Settings
    PORT=8080
-   APP_ENV=local
 
    # Database Settings
    DB_HOST=127.0.0.1
@@ -52,7 +51,7 @@ Choose one of the following options to start Ground Control.
 
 ### Option 1: Using Docker Compose (Recommended for End Users)
 
-1. Update the root `docker-compose.yml` file with the same credentials as in `.env.ground-control`.
+1. Update the root `docker-compose.yml` file with the same credentials as in `.env`.
 
 2. Start Ground Control:
 

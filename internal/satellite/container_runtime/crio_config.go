@@ -8,7 +8,7 @@ type RegistriesConf struct {
 
 // Registry models registry field in /etc/containers/registries.conf
 type Registry struct {
-	Location string   `mapstructure:"location" toml:"location"`
+	Location string   `mapstructure:"location"         toml:"location"`
 	Mirrors  []Mirror `mapstructure:"mirror,omitempty" toml:"mirror,omitempty"`
 }
 
