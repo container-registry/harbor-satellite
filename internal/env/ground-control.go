@@ -42,7 +42,7 @@ func (h Harbor) RobotDurationDaysValue() int64 {
 }
 
 type Server struct {
-	Port            int           `env:"PORT"`
+	Port            int           `env:"PORT"             envDefault:"8080"`
 	AdminPassword   string        `env:"ADMIN_PASSWORD"`
 	SessionDuration time.Duration `env:"SESSION_DURATION" envDefault:"24h"`
 	LockoutDuration time.Duration `env:"LOCKOUT_DURATION" envDefault:"5m"`

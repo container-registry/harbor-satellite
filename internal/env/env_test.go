@@ -57,6 +57,9 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.PasswordPolicy.MinLength != 8 || !cfg.PasswordPolicy.RequireUppercase {
 		t.Fatalf("password policy defaults were not applied: %+v", cfg.PasswordPolicy)
 	}
+	if cfg.Server.Port != 8080 {
+		t.Fatalf("server port default = %d, want 8080", cfg.Server.Port)
+	}
 	if cfg.SPIFFE.TrustDomain != "harbor-satellite.local" {
 		t.Fatalf("SPIFFE trust domain default = %q", cfg.SPIFFE.TrustDomain)
 	}
