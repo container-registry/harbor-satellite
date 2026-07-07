@@ -106,7 +106,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	// Registering events
 	log.Info().Msg("registering events")
-	s.registerEvents(context.Background())
+	s.registerEvents(context.Background(), s.cm)
 
 	return ctx.Err()
 }
@@ -151,12 +151,12 @@ func (s *Satellite) Stop(ctx context.Context) {
 
 // Registers actions that the Job Queue understands
 // and executes
-func (s *Satellite) registerEvents(ctx context.Context) error {
+func (s *Satellite) registerEvents(ctx context.Context, cm *config.ConfigManager) error {
 	log := logger.FromContext(ctx)
 	var errs []error
 
 	// Create Event Schedulers
-	refreshSched, err := events.NewRefreshCredentialsEvent(log)
+	refreshSched, err := events.NewRefreshCredentialsEvent(cm, log)
 	if err != nil {
 		errs = append(errs, err)
 	}
