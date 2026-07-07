@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/models"
@@ -49,7 +49,7 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	projects := utils.GetProjectNames(&req.Artifacts)
 	params := database.CreateGroupParams{
 		GroupName:   req.Group,
-		RegistryUrl: os.Getenv("HARBOR_URL"),
+		RegistryUrl: env.GC.Harbor.URL,
 		Projects:    projects,
 	}
 	result, err := q.CreateGroup(r.Context(), params)

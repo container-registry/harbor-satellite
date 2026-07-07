@@ -6,9 +6,9 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"os"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
@@ -42,27 +42,13 @@ type Config struct {
 
 // LoadConfig loads SPIFFE configuration from environment variables.
 func LoadConfig() *Config {
-	enabled := os.Getenv("SPIFFE_ENABLED") == "true"
-	trustDomain := os.Getenv("SPIFFE_TRUST_DOMAIN")
-	if trustDomain == "" {
-		trustDomain = "harbor-satellite.local"
-	}
-
-	providerType := os.Getenv("SPIFFE_PROVIDER")
-	if providerType == "" {
-		providerType = "sidecar"
-	}
-
-	endpointSocket := os.Getenv("SPIFFE_ENDPOINT_SOCKET")
-	if endpointSocket == "" {
-		endpointSocket = "unix:///run/spire/sockets/agent.sock"
-	}
+	cfg := env.GC.SPIFFE
 
 	return &Config{
-		Enabled:        enabled,
-		TrustDomain:    trustDomain,
-		ProviderType:   providerType,
-		EndpointSocket: endpointSocket,
+		Enabled:        cfg.Enabled,
+		TrustDomain:    cfg.TrustDomain,
+		ProviderType:   cfg.Provider,
+		EndpointSocket: cfg.EndpointSocket,
 	}
 }
 
@@ -195,9 +181,10 @@ func NewProvider(cfg *Config) (Provider, error) {
 	case "sidecar":
 		return NewSidecarProvider(cfg)
 	case "static":
-		certFile := os.Getenv("SPIFFE_CERT_FILE")
-		keyFile := os.Getenv("SPIFFE_KEY_FILE")
-		bundleFile := os.Getenv("SPIFFE_BUNDLE_FILE")
+		envCfg := env.GC.SPIFFE
+		certFile := envCfg.CertFile
+		keyFile := envCfg.KeyFile
+		bundleFile := envCfg.BundleFile
 		if certFile == "" || keyFile == "" || bundleFile == "" {
 			return nil, fmt.Errorf("static provider requires SPIFFE_CERT_FILE, SPIFFE_KEY_FILE, and SPIFFE_BUNDLE_FILE")
 		}

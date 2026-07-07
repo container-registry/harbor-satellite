@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 )
@@ -24,7 +24,7 @@ func (s *Server) BootstrapSystemAdmin(ctx context.Context) error {
 		return nil
 	}
 
-	password := os.Getenv("ADMIN_PASSWORD")
+	password := env.GC.Server.AdminPassword
 	if password == "" {
 		return fmt.Errorf("ADMIN_PASSWORD environment variable is required for initial setup")
 	}

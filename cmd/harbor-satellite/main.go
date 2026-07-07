@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/crypto"
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
@@ -19,7 +21,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 
-	_ "github.com/joho/godotenv/autoload"
+	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 )
@@ -64,94 +66,64 @@ type SatelliteOptions struct {
 }
 
 func main() {
-	var opts SatelliteOptions
-	var shutdownTimeout string
+	_ = godotenv.Load(".env") //nolint:errcheck // .env file is optional
 
-	flag.StringVar(&opts.GroundControlURL, "ground-control-url", "", "URL to ground control")
+	if err := env.LoadSatellite(); err != nil {
+		log.Fatalf("invalid environment: %v", err)
+	}
+
+	envCfg := env.Satellite.ApplyDefaults()
+	opts := SatelliteOptions{
+		GroundControlURL:       envCfg.GroundControlURL,
+		UseUnsecure:            envCfg.UseUnsecure,
+		SPIFFEEnabled:          envCfg.SPIFFEEnabled,
+		SPIFFEEndpointSocket:   envCfg.SPIFFEEndpointSocket,
+		SPIFFEExpectedServerID: envCfg.SPIFFEExpectedServerID,
+		BYORegistry:            envCfg.BYORegistry,
+		RegistryURL:            envCfg.RegistryURL,
+		RegistryUsername:       envCfg.RegistryUsername,
+		ConfigDir:              envCfg.ConfigDir,
+		RegistryDataDir:        envCfg.RegistryDataDir,
+		NoRegistryFallback:     envCfg.NoRegistryFallback,
+		HarborRegistryURL:      envCfg.HarborRegistryURL,
+		DirectDelivery:         envCfg.DirectDelivery,
+		ImageDir:               envCfg.ImageDir,
+		ParsecEnabled:          envCfg.ParsecEnabled,
+		ParsecSocketPath:       envCfg.ParsecSocketPath,
+	}
+	shutdownTimeout := envCfg.ShutdownTimeout
+
+	flag.StringVar(&opts.GroundControlURL, "ground-control-url", opts.GroundControlURL, "URL to ground control")
 	flag.BoolVar(&opts.JSONLogging, "json-logging", true, "Enable JSON logging")
 	flag.StringVar(&opts.Token, "token", "", "Satellite token")
-	flag.BoolVar(&opts.UseUnsecure, "use-unsecure", false, "Use insecure (HTTP) connections to registries")
+	flag.BoolVar(&opts.UseUnsecure, "use-unsecure", opts.UseUnsecure, "Use insecure (HTTP) connections to registries")
 	flag.Var(&opts.Mirrors, "mirrors", "Override CRI registry config. Format: CRI:registry1,registry2")
-	flag.BoolVar(&opts.SPIFFEEnabled, "spiffe-enabled", false, "Enable SPIFFE/SPIRE authentication")
-	flag.StringVar(&opts.SPIFFEEndpointSocket, "spiffe-endpoint-socket", config.DefaultSPIFFEEndpointSocket, "SPIFFE Workload API endpoint socket")
-	flag.StringVar(&opts.SPIFFEExpectedServerID, "spiffe-expected-server-id", "", "Expected SPIFFE ID of Ground Control server")
-	flag.BoolVar(&opts.BYORegistry, "byo-registry", false, "Use external registry instead of embedded Zot")
-	flag.StringVar(&opts.RegistryURL, "registry-url", "", "External registry URL")
-	flag.StringVar(&opts.RegistryUsername, "registry-username", "", "External registry username")
+	flag.BoolVar(&opts.SPIFFEEnabled, "spiffe-enabled", opts.SPIFFEEnabled, "Enable SPIFFE/SPIRE authentication")
+	flag.StringVar(&opts.SPIFFEEndpointSocket, "spiffe-endpoint-socket", opts.SPIFFEEndpointSocket, "SPIFFE Workload API endpoint socket")
+	flag.StringVar(&opts.SPIFFEExpectedServerID, "spiffe-expected-server-id", opts.SPIFFEExpectedServerID, "Expected SPIFFE ID of Ground Control server")
+	flag.BoolVar(&opts.BYORegistry, "byo-registry", opts.BYORegistry, "Use external registry instead of embedded Zot")
+	flag.StringVar(&opts.RegistryURL, "registry-url", opts.RegistryURL, "External registry URL")
+	flag.StringVar(&opts.RegistryUsername, "registry-username", opts.RegistryUsername, "External registry username")
 	flag.StringVar(&opts.RegistryPassword, "registry-password", "", "External registry password")
-	flag.StringVar(&opts.ConfigDir, "config-dir", "", "Configuration directory path (default: ~/.config/satellite)")
-	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", "", "Registry data directory (overrides default storage path derived from config-dir)")
-	flag.StringVar(&shutdownTimeout, "shutdown-timeout", "", "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
-	flag.BoolVar(&opts.NoRegistryFallback, "no-registry-fallback", false, "Disable all CRI registry fallback configuration")
+	flag.StringVar(&opts.ConfigDir, "config-dir", opts.ConfigDir, "Configuration directory path (default: ~/.config/satellite)")
+	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", opts.RegistryDataDir, "Registry data directory (overrides default storage path derived from config-dir)")
+	flag.StringVar(&shutdownTimeout, "shutdown-timeout", shutdownTimeout, "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
+	flag.BoolVar(&opts.NoRegistryFallback, "no-registry-fallback", opts.NoRegistryFallback, "Disable all CRI registry fallback configuration")
 	flag.BoolVar(&opts.FallbackOnly, "fallback-only", false, "Apply CRI registry fallback configs and exit without starting satellite")
-	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", "", "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
-	flag.BoolVar(&opts.DirectDelivery, "direct-delivery", false, "[Experimental] Write image tarballs directly to k3s/RKE2 agent images directory")
-	flag.StringVar(&opts.ImageDir, "image-dir", "", "Override image directory for direct delivery (auto-detected if empty)")
-	flag.BoolVar(&opts.ParsecEnabled, "parsec-enabled", false, "Enable hardware-backed identity via PARSEC (requires parsec build tag and running PARSEC daemon)")
-	flag.StringVar(&opts.ParsecSocketPath, "parsec-socket", parsec.DefaultSocketPath, "PARSEC daemon socket path")
+	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", opts.HarborRegistryURL, "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
+	flag.BoolVar(&opts.DirectDelivery, "direct-delivery", opts.DirectDelivery, "[Experimental] Write image tarballs directly to k3s/RKE2 agent images directory")
+	flag.StringVar(&opts.ImageDir, "image-dir", opts.ImageDir, "Override image directory for direct delivery (auto-detected if empty)")
+	flag.BoolVar(&opts.ParsecEnabled, "parsec-enabled", opts.ParsecEnabled, "Enable hardware-backed identity via PARSEC (requires parsec build tag and running PARSEC daemon)")
+	flag.StringVar(&opts.ParsecSocketPath, "parsec-socket", opts.ParsecSocketPath, "PARSEC daemon socket path")
 
 	flag.Parse()
-
 	if opts.Token == "" {
-		opts.Token = os.Getenv("TOKEN")
-	}
-	if opts.GroundControlURL == "" {
-		opts.GroundControlURL = os.Getenv("GROUND_CONTROL_URL")
-	}
-	if os.Getenv("SPIFFE_ENABLED") == "true" {
-		opts.SPIFFEEnabled = true
-	}
-	if os.Getenv("SPIFFE_ENDPOINT_SOCKET") != "" {
-		opts.SPIFFEEndpointSocket = os.Getenv("SPIFFE_ENDPOINT_SOCKET")
-	}
-	if opts.SPIFFEExpectedServerID == "" && os.Getenv("SPIFFE_EXPECTED_SERVER_ID") != "" {
-		opts.SPIFFEExpectedServerID = os.Getenv("SPIFFE_EXPECTED_SERVER_ID")
-	}
-	if !opts.UseUnsecure {
-		opts.UseUnsecure = os.Getenv("USE_UNSECURE") == "true"
-	}
-	if !opts.BYORegistry {
-		opts.BYORegistry = os.Getenv("BYO_REGISTRY") == "true"
-	}
-	if opts.RegistryURL == "" {
-		opts.RegistryURL = os.Getenv("REGISTRY_URL")
-	}
-	if opts.RegistryUsername == "" {
-		opts.RegistryUsername = os.Getenv("REGISTRY_USERNAME")
+		opts.Token = envCfg.Token
 	}
 	if opts.RegistryPassword == "" {
-		opts.RegistryPassword = os.Getenv("REGISTRY_PASSWORD")
+		opts.RegistryPassword = envCfg.RegistryPassword
 	}
-	if opts.ConfigDir == "" {
-		opts.ConfigDir = os.Getenv("CONFIG_DIR")
-	}
-	if opts.RegistryDataDir == "" {
-		opts.RegistryDataDir = os.Getenv(config.RegistryDataDirEnvVar)
-	}
-	if shutdownTimeout == "" {
-		shutdownTimeout = os.Getenv("SHUTDOWN_TIMEOUT")
-		if shutdownTimeout == "" {
-			shutdownTimeout = "30s"
-		}
-	}
-	if !opts.NoRegistryFallback && os.Getenv("NO_REGISTRY_FALLBACK") == "true" {
-		opts.NoRegistryFallback = true
-	}
-	if opts.HarborRegistryURL == "" {
-		opts.HarborRegistryURL = os.Getenv("HARBOR_REGISTRY_URL")
-	}
-	if !opts.DirectDelivery && os.Getenv("DIRECT_DELIVERY") == "true" {
-		opts.DirectDelivery = true
-	}
-	if opts.ImageDir == "" {
-		opts.ImageDir = os.Getenv("IMAGE_DIR")
-	}
-	if !opts.ParsecEnabled && os.Getenv("PARSEC_ENABLED") == "true" {
-		opts.ParsecEnabled = true
-	}
-	if opts.ParsecSocketPath == parsec.DefaultSocketPath && os.Getenv("PARSEC_SOCKET") != "" {
-		opts.ParsecSocketPath = os.Getenv("PARSEC_SOCKET")
-	}
+
 	// Surface PARSEC misconfiguration at startup rather than at the first hardware operation.
 	if err := (parsec.Config{Enabled: opts.ParsecEnabled, SocketPath: opts.ParsecSocketPath}).Validate(); err != nil {
 		fmt.Printf("Invalid PARSEC configuration: %v\n", err)

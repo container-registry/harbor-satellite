@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"reflect"
 	"strings"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/models"
@@ -230,7 +230,7 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	params := database.CreateConfigParams{
 		ConfigName:  req.ConfigName,
-		RegistryUrl: os.Getenv("HARBOR_URL"),
+		RegistryUrl: env.GC.Harbor.URL,
 		Config:      configJson,
 	}
 
@@ -375,7 +375,7 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	params := database.UpdateConfigParams{
 		ConfigName:  configName,
-		RegistryUrl: os.Getenv("HARBOR_URL"),
+		RegistryUrl: env.GC.Harbor.URL,
 		Config:      patchedJson,
 	}
 

@@ -47,6 +47,11 @@ tasks:
     cmds:
       - task: _lint:lint
 
+  lint-fix:
+    desc: Run golangci-lint with auto-fix
+    cmds:
+      - task: _lint:lint-fix
+
   lint-report:
     desc: Run golangci-lint and export to file
     cmds:

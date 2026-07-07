@@ -3,12 +3,11 @@ package migrator
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
-	"net"
 	"os"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
 )
@@ -19,27 +18,13 @@ type DBConfig struct {
 	Port string
 }
 
-var (
-	dbName   = os.Getenv("DB_DATABASE")
-	password = os.Getenv("DB_PASSWORD")
-	username = os.Getenv("DB_USERNAME")
-	PORT     = os.Getenv("DB_PORT")
-	HOST     = os.Getenv("DB_HOST")
-)
-
 func parseDBConfig() DBConfig {
-	dbURL := fmt.Sprintf(
-		"postgres://%s:%s@%s/%s?sslmode=disable",
-		username,
-		password,
-		net.JoinHostPort(HOST, PORT),
-		dbName,
-	)
+	cfg := env.GC.Database
 
 	return DBConfig{
-		URL:  dbURL,
-		Host: HOST,
-		Port: PORT,
+		URL:  cfg.URL(),
+		Host: cfg.Host,
+		Port: cfg.Port,
 	}
 }
 
