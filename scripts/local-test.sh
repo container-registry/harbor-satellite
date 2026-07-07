@@ -63,11 +63,11 @@ check_postgres() {
     fi
 }
 
-# Step 2: Setup Ground Control .env
+# Step 2: Setup .env
 setup_gc_env() {
     log_info "Setting up Ground Control environment..."
 
-    cat > "$PROJECT_ROOT/.env.ground-control" << EOF
+    cat > "$PROJECT_ROOT/.env" << EOF
 HARBOR_USERNAME=$HARBOR_USERNAME
 HARBOR_PASSWORD=$HARBOR_PASSWORD
 HARBOR_URL=$HARBOR_URL
@@ -81,7 +81,7 @@ DB_USERNAME=$DB_USER
 DB_PASSWORD=$DB_PASS
 EOF
 
-    log_info "Created $PROJECT_ROOT/.env.ground-control"
+    log_info "Created $PROJECT_ROOT/.env"
 }
 
 # Step 3: Start Ground Control

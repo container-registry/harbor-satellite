@@ -52,7 +52,7 @@ done
 
 # Step 3: Configure and start Ground Control
 log "Step 3: Starting Ground Control..."
-cat > "$PROJECT_ROOT/.env.ground-control" << EOF
+cat > "$PROJECT_ROOT/.env" << EOF
 HARBOR_USERNAME=admin
 HARBOR_PASSWORD=Harbor12345
 HARBOR_URL=$HARBOR_URL

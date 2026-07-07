@@ -66,7 +66,7 @@ type SatelliteOptions struct {
 }
 
 func main() {
-	_ = godotenv.Load(".env.harbor-satellite", ".env") //nolint:errcheck // .env files are optional
+	_ = godotenv.Load(".env") //nolint:errcheck // .env file is optional
 
 	if err := env.LoadSatellite(); err != nil {
 		log.Fatalf("invalid environment: %v", err)
