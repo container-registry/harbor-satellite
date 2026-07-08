@@ -253,7 +253,7 @@ The setup scripts start the required SPIRE agents (including the edge-side agent
 **1. Start Ground Control:**
 
 ```bash
-cd deploy/quickstart/spiffe/join-token/external/gc
+cd examples/deploy/spiffe/join-token/external/gc
 HARBOR_URL=http://<CENTRAL_HARBOR_IP>:80 ./setup.sh
 ```
 
@@ -372,7 +372,7 @@ Method 2 is fully automated after group assignment.
 - A Linux Edge node running **K3s**.
 - Method 1 completed through group assignment (`library/nginx:alpine` synced to `edge-01`).
 - Root privileges on the K3s node.
-- Ability to edit `deploy/quickstart/spiffe/join-token/external/sat/docker-compose.yml`.
+- Ability to edit `examples/deploy/spiffe/join-token/external/sat/docker-compose.yml`.
 
 ---
 
@@ -381,7 +381,7 @@ Method 2 is fully automated after group assignment.
 Update the Satellite service so it can write to the host K3s image directory:
 
 ```yaml
-# deploy/quickstart/spiffe/join-token/external/sat/docker-compose.yml
+# examples/deploy/spiffe/join-token/external/sat/docker-compose.yml
 services:
   satellite:
     environment:
@@ -396,7 +396,7 @@ services:
 Restart Satellite after editing:
 
 ```bash
-cd deploy/quickstart/spiffe/join-token/external/sat
+cd examples/deploy/spiffe/join-token/external/sat
 docker compose up -d satellite --build
 
 # Optional: confirm Direct Delivery is active

@@ -174,7 +174,7 @@ go run ./cmd/harbor-satellite \
 ### Step 3: Start Ground Control and Satellite (Zero-Touch)
 
 ```bash
-cd deploy/quickstart/spiffe/join-token/external/gc
+cd examples/deploy/spiffe/join-token/external/gc
 HARBOR_URL=http://<CENTRAL_HARBOR_IP>:80 ./setup.sh
 ```
 
@@ -252,12 +252,12 @@ Use this when sites must run with no live registry path.
 
 - Method 1 completed through sync assignment
 - Root access on K3s node
-- Edit access to `deploy/quickstart/spiffe/join-token/external/sat/docker-compose.yml`
+- Edit access to `examples/deploy/spiffe/join-token/external/sat/docker-compose.yml`
 
 ### Step 1: Enable Direct Delivery in Satellite
 
 ```yaml
-# deploy/quickstart/spiffe/join-token/external/sat/docker-compose.yml
+# examples/deploy/spiffe/join-token/external/sat/docker-compose.yml
 services:
   satellite:
     environment:
@@ -270,7 +270,7 @@ services:
 Restart Satellite:
 
 ```bash
-cd deploy/quickstart/spiffe/join-token/external/sat
+cd examples/deploy/spiffe/join-token/external/sat
 docker compose up -d satellite --build
 
 # Optional: confirm Direct Delivery is active

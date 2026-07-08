@@ -41,7 +41,7 @@ sudo ./install.sh
 ## Step 2: Start Ground Control
 
 ```bash
-cd deploy/quickstart/spiffe/join-token/external/gc
+cd examples/deploy/spiffe/join-token/external/gc
 HARBOR_URL=http://<YOUR_HARBOR_IP>:80 ./setup.sh
 # Expected: Ground Control is running and connected to Harbor
 ```

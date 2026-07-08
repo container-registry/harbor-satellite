@@ -753,5 +753,5 @@ rm -rf certs
 ## Next Steps
 
 - Read the [Architecture](architecture.md) doc for the full flow details
-- Try [SSH PoP attestation](https://github.com/container-registry/harbor-satellite/tree/main/deploy/quickstart/spiffe/sshpop) for SSH certificate-based environments
-- Try [join token attestation](https://github.com/container-registry/harbor-satellite/tree/main/deploy/quickstart/spiffe/join-token) for simpler development setups
+- Try [SSH PoP attestation](https://github.com/container-registry/harbor-satellite/tree/main/examples/deploy/spiffe/sshpop) for SSH certificate-based environments
+- Try [join token attestation](https://github.com/container-registry/harbor-satellite/tree/main/examples/deploy/spiffe/join-token) for simpler development setups
