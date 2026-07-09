@@ -89,7 +89,7 @@ Simple one-time token authentication. An admin registers a satellite via the Gro
 - Good for local development, CI/CD, and quick testing
 - Token is single-use with a configurable TTL
 
-[Get started with Token-based ZTR](deploy/no-spiffe/quickstart.md)
+[Get started with Token-based ZTR](examples/deploy/no-spiffe/quickstart.md)
 
 #### SPIFFE/SPIRE (Recommended for Production)
 
@@ -117,7 +117,7 @@ graph TB
 - Multiple attestation methods: join token, X.509 certificate, TPM
 - No shared secrets between components
 
-[Get started with SPIFFE/SPIRE](deploy/quickstart/README.md)
+[Get started with SPIFFE/SPIRE](examples/deploy/README.md)
 
 ### Comparison
 
@@ -132,7 +132,7 @@ graph TB
 ### Further Reading
 
 - [Architecture overview](docs/architecture/README.md)
-- [SPIFFE quickstart guide](deploy/quickstart/spiffe/README.md)
+- [SPIFFE quickstart guide](examples/deploy/spiffe/README.md)
 - [ADR: Ground Control authentication](docs/decisions/0004-ground-control-authentication.md)
 - [ADR: SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md)
 

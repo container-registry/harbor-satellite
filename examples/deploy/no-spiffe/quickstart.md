@@ -2,7 +2,7 @@
 
 This guide walks through setting up Harbor Satellite using token-based Zero-Touch Registration. This approach is best suited for development, testing, and simple deployments.
 
-For production deployments with cryptographic identity and mTLS, see the [SPIFFE/SPIRE quickstart](../quickstart/README.md).
+For production deployments with cryptographic identity and mTLS, see the [SPIFFE/SPIRE quickstart](../README.md).
 
 ## Prerequisites
 
