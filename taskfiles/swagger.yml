@@ -1,7 +1,7 @@
 version: "3"
 
 vars:
-  SWAGGER_SPEC: "{{.ROOT_DIR}}/api/ground-control/swagger.yaml"
+  SWAGGER_SPEC: "{{.ROOT_DIR}}/spec/ground-control/swagger.yaml"
   SWAGGER_TARGET: ./internal/groundcontrol/swagger
   SWAGGER_MODEL_PACKAGE: models
   SWAGGER_CLIENT_PACKAGE: client
