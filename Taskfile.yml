@@ -23,6 +23,9 @@ includes:
   _e2e:
     taskfile: ./taskfiles/e2e.yml
     dir: "{{.ROOT_DIR}}"
+  _swagger:
+    taskfile: ./taskfiles/swagger.yml
+    dir: "{{.ROOT_DIR}}"
 
 tasks:
   default:
@@ -69,28 +72,50 @@ tasks:
 
   swagger:install:
     desc: Install pinned go-swagger binary
-    env:
-      GOBIN: "{{.BIN_DIR}}"
     cmds:
-      - mkdir -p {{.BIN_DIR}}
-      - go install github.com/go-swagger/go-swagger/cmd/swagger@{{.GO_SWAGGER_VERSION}}
-    status:
-      - test -x {{.BIN_DIR}}/swagger
-      - "{{.BIN_DIR}}/swagger version | grep -q '{{.GO_SWAGGER_VERSION}}'"
+      - task: _swagger:install
 
-  swagger:generate:
-    desc: Generate Ground Control OpenAPI specs
-    dir: "{{.ROOT_DIR}}/ground-control"
+  swagger:models:
+    desc: Generate models from swagger spec
+    aliases: [gc:gen-models]
     cmds:
-      - task: swagger:install
-      - "{{.BIN_DIR}}/swagger generate spec -i meta.yml -o swagger.yml"
-      - "{{.BIN_DIR}}/swagger flatten --format yaml --with-flatten=remove-unused -o swagger-flatten.yml swagger.yml"
-    sources:
-      - meta.yml
-      - "**/*.go"
-    generates:
-      - swagger.yml
-      - swagger-flatten.yml
+      - task: _swagger:models
+
+  swagger:server:
+    desc: Generate server from swagger spec
+    aliases: [gc:gen-server]
+    cmds:
+      - task: _swagger:server
+
+  swagger:client:
+    desc: Generate client from swagger spec
+    aliases: [gc:gen-client]
+    cmds:
+      - task: _swagger:client
+
+  swagger:clean:
+    desc: Clean generated swagger packages
+    aliases: [gc:clean]
+    cmds:
+      - task: _swagger:clean
+
+  swagger:clean-models:
+    desc: Clean generated swagger models package
+    aliases: [gc:clean-models]
+    cmds:
+      - task: _swagger:clean-models
+
+  swagger:clean-server:
+    desc: Clean generated swagger server package
+    aliases: [gc:clean-server]
+    cmds:
+      - task: _swagger:clean-server
+
+  swagger:clean-client:
+    desc: Clean generated swagger client package
+    aliases: [gc:clean-client]
+    cmds:
+      - task: _swagger:clean-client
 
   e2e:
     desc: Run all E2E tests
@@ -134,7 +159,7 @@ tasks:
     desc: "Publish both components to registry"
     aliases: [p]
     vars:
-      TAG: "{{.TAG | default \"dev\"}}"
+      TAG: '{{.TAG | default "dev"}}'
       PLATFORMS: "{{.PLATFORMS}}"
     cmds:
       - task: _publish:both
@@ -146,7 +171,7 @@ tasks:
   publish-and-sign:
     desc: Build, push, and sign both components
     vars:
-      TAG: "{{.TAG | default \"dev\"}}"
+      TAG: '{{.TAG | default "dev"}}'
     cmds:
       - task: _publish:image-and-sign
         vars:

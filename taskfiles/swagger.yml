@@ -1,0 +1,69 @@
+version: "3"
+
+vars:
+  SWAGGER_SPEC: "{{.ROOT_DIR}}/api/ground-control/swagger.yaml"
+  SWAGGER_TARGET: ./internal/groundcontrol/swagger
+  SWAGGER_MODEL_PACKAGE: models
+  SWAGGER_CLIENT_PACKAGE: client
+  SWAGGER_SERVER_PACKAGE: server
+  SWAGGER_MAIN_PACKAGE: ground-control-server
+
+tasks:
+  install:
+    desc: Install pinned go-swagger binary
+    env:
+      GOBIN: "{{.BIN_DIR}}"
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go install github.com/go-swagger/go-swagger/cmd/swagger@{{.GO_SWAGGER_VERSION}}
+    status:
+      - test -x {{.BIN_DIR}}/swagger
+      - "{{.BIN_DIR}}/swagger version | grep -q '{{.GO_SWAGGER_VERSION}}'"
+
+  models:
+    desc: Generate models from swagger spec
+    cmds:
+      - task: install
+      - "{{.BIN_DIR}}/swagger generate model -f {{.SWAGGER_SPEC}} -t {{.SWAGGER_TARGET}}"
+
+  server:
+    desc: Generate server from swagger spec
+    cmds:
+      - task: install
+      - >-
+        "{{.BIN_DIR}}"/swagger generate server
+        -f "{{.SWAGGER_SPEC}}"
+        --server-package "{{.SWAGGER_TARGET}}/{{.SWAGGER_SERVER_PACKAGE}}"
+        --model-package "{{.SWAGGER_TARGET}}/{{.SWAGGER_MODEL_PACKAGE}}"
+        --main-package "{{.SWAGGER_MAIN_PACKAGE}}"
+
+  client:
+    desc: Generate client from swagger spec
+    cmds:
+      - task: install
+      - "{{.BIN_DIR}}/swagger generate client -f {{.SWAGGER_SPEC}} -t {{.SWAGGER_TARGET}} --exclude-main"
+
+  clean:
+    desc: Clean all generated swagger packages
+    cmds:
+      - task: clean-models
+      - task: clean-server
+      - task: clean-client
+
+  clean-models:
+    desc: Clean generated swagger models package
+    cmds:
+      - rm -rf "{{.SWAGGER_TARGET}}/{{.SWAGGER_MODEL_PACKAGE}}"
+
+  clean-server:
+    desc: Clean generated swagger server package
+    cmds:
+      - >-
+        rm -rf
+        "{{.SWAGGER_TARGET}}/{{.SWAGGER_SERVER_PACKAGE}}"
+        "./cmd/{{.SWAGGER_MAIN_PACKAGE}}"
+
+  clean-client:
+    desc: Clean generated swagger client package
+    cmds:
+      - rm -rf "{{.SWAGGER_TARGET}}/{{.SWAGGER_CLIENT_PACKAGE}}"
