@@ -281,6 +281,7 @@ func (f *FetchAndReplicateStateProcess) collectResults(
 	receivedStateFetchers := 0
 	receivedConfigFetcher := false
 
+outer:
 	for {
 		select {
 		case <-ctx.Done():
@@ -315,7 +316,7 @@ func (f *FetchAndReplicateStateProcess) collectResults(
 		}
 
 		if receivedStateFetchers == expectedCount && receivedConfigFetcher {
-			break
+			break outer
 		}
 	}
 
