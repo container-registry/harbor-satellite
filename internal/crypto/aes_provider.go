@@ -16,11 +16,11 @@ import (
 )
 
 const (
-	// AES-256-GCM key size
+	// AES-256-GCM key size.
 	aesKeySize = 32
-	// GCM nonce size
+	// GCM nonce size.
 	nonceSize = 12
-	// Argon2 parameters (OWASP recommended)
+	// Argon2 parameters (OWASP recommended).
 	argon2Time    = 3
 	argon2Memory  = 64 * 1024
 	argon2Threads = 4
@@ -58,6 +58,7 @@ func (p *AESProvider) Encrypt(plaintext, key []byte) ([]byte, error) {
 	}
 
 	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+
 	return ciphertext, nil
 }
 
@@ -102,6 +103,7 @@ func (p *AESProvider) DeriveKey(input, salt []byte, keyLen int) ([]byte, error) 
 	}
 
 	key := argon2.IDKey(input, salt, argon2Time, argon2Memory, argon2Threads, uint32(keyLen))
+
 	return key, nil
 }
 
@@ -153,6 +155,7 @@ func (p *AESProvider) RandomBytes(n int) ([]byte, error) {
 	if _, err := rand.Read(b); err != nil {
 		return nil, fmt.Errorf("generate random bytes: %w", err)
 	}
+
 	return b, nil
 }
 
@@ -161,5 +164,6 @@ func (p *AESProvider) ensureKeySize(key []byte) []byte {
 		return key
 	}
 	hash := sha256.Sum256(key)
+
 	return hash[:]
 }

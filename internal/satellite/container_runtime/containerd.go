@@ -1,0 +1,152 @@
+package runtime
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/BurntSushi/toml"
+)
+
+const (
+	containerdCertsDir   = "/etc/containerd/certs.d"
+	containerdConfigPath = "/etc/containerd/config.toml"
+)
+
+// setContainerdConfig writes hosts.toml for multiple upstream registries and updates containerd registry plugin
+func setContainerdConfig(upstreamRegistries []string, localMirror string) (string, error) {
+	backupPath, err := configureContainerd(containerdCertsDir)
+	if err != nil {
+		return backupPath, fmt.Errorf("failed to configure registry plugin: %w", err)
+	}
+
+	for _, registryURL := range upstreamRegistries {
+		if err := writeContainerdHostToml(registryURL, localMirror); err != nil {
+			return backupPath, fmt.Errorf("failed to configure containerd for %s: %w", registryURL, err)
+		}
+	}
+
+	return backupPath, nil
+}
+
+// writeContainerdHostToml creates or updates hosts.toml for a registry
+func writeContainerdHostToml(registryURL, localMirror string) error {
+	dir := filepath.Join(containerdCertsDir, registryURL)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", dir, err)
+	}
+
+	if !strings.HasPrefix(registryURL, "http://") && !strings.HasPrefix(registryURL, "https://") {
+		registryURL = "https://" + registryURL
+	}
+
+	path := filepath.Join(dir, "hosts.toml")
+
+	// backup existing hosts.toml before overwrite
+	bkPath, err := backupFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to backup %s: %w", path, err)
+	}
+
+	var cfg ContainerdHosts
+
+	if _, err := os.Stat(path); err == nil {
+		if _, err := toml.DecodeFile(path, &cfg); err != nil {
+			return fmt.Errorf("failed to parse %s: %w", path, err)
+		}
+	}
+
+	if cfg.Host == nil {
+		cfg.Host = make(map[string]Host)
+	}
+	cfg.Server = registryURL
+
+	if !strings.HasPrefix(localMirror, "http://") && !strings.HasPrefix(localMirror, "https://") {
+		localMirror = "http://" + localMirror
+	}
+
+	cfg.Host[localMirror] = Host{
+		Capabilities: []string{"pull", "resolve"},
+	}
+
+	f, err := os.Create(filepath.Clean(path))
+	if err != nil {
+		return fmt.Errorf("failed to open %s for writing: %w", path, err)
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+
+	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
+		if bkPath != "" {
+			if restoreErr := restoreBackup(bkPath, path); restoreErr != nil {
+				return fmt.Errorf("failed to encode hosts.toml and rollback failed: %w", restoreErr)
+			}
+		}
+		return fmt.Errorf("failed to encode hosts.toml, rolled back: %w", err)
+	}
+
+	return nil
+}
+
+// configureContainerd updates only the registry config path in containerd main config
+func configureContainerd(certDir string) (string, error) {
+	bkPath, err := backupFile(containerdConfigPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to backup containerd config: %w", err)
+	}
+
+	cfg, err := loadToml(containerdConfigPath)
+	if err != nil {
+		return bkPath, err
+	}
+
+	// do not overwrite existing config
+	plugins := loadNestedMap(cfg, "plugins")
+	criImages := loadNestedMap(plugins, "io.containerd.cri.v1.images")
+	registryMap := loadNestedMap(criImages, "registry")
+
+	registryMap["config_path"] = certDir
+
+	f, err := os.Create(containerdConfigPath)
+	if err != nil {
+		return bkPath, fmt.Errorf("failed to open %s for writing: %w", containerdConfigPath, err)
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+
+	if err := toml.NewEncoder(f).Encode(cfg); err != nil {
+		if bkPath != "" {
+			if restoreErr := restoreBackup(bkPath, containerdConfigPath); restoreErr != nil {
+				return bkPath, fmt.Errorf("failed to write containerd config and rollback failed: %w", restoreErr)
+			}
+		}
+		return bkPath, fmt.Errorf("failed to write containerd config, rolled back: %w", err)
+	}
+
+	return bkPath, nil
+}
+
+// loadToml loads existing TOML into a flexible type
+func loadToml(path string) (map[string]any, error) {
+	cfg := make(map[string]any)
+	if _, err := os.Stat(path); err == nil {
+		if _, err := toml.DecodeFile(path, &cfg); err != nil {
+			return nil, fmt.Errorf("failed to parse %s: %w", path, err)
+		}
+	}
+	return cfg, nil
+}
+
+func loadNestedMap(parent map[string]any, key string) map[string]any {
+	if v, ok := parent[key]; ok {
+		if m, ok := v.(map[string]any); ok {
+			return m
+		}
+	}
+	newMap := make(map[string]any)
+	parent[key] = newMap
+	return newMap
+}

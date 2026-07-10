@@ -1,0 +1,67 @@
+{
+  "state_config": {
+    "auth": {}
+  },
+  "app_config": {
+    "ground_control_url": "http://gc:8080",
+    "log_level": "info",
+    "use_unsecure": true,
+    "state_replication_interval": "@every 00h00m10s",
+    "register_satellite_interval": "@every 00h00m10s",
+    "heartbeat_interval": "@every 00h00m30s",
+    "metrics": {
+      "collect_cpu": true,
+      "collect_memory": true,
+      "collect_storage": true
+    },
+    "local_registry": {
+      "url": "http://0.0.0.0:8585"
+    },
+    "tls": {
+      "cert_file": "",
+      "key_file": "",
+      "ca_file": "",
+      "skip_verify": false
+    },
+    "encrypt_config": false,
+    "registry_fallback": {
+      "enabled": false,
+      "registries": ["docker.io"],
+      "runtimes": []
+    },
+    "audit": {
+      "enabled": false,
+      "syslog": {
+        "target": "file",
+        "tag": "harbor-audit",
+        "socket_path": "/dev/log",
+        "network": "udp",
+        "address": "",
+        "file": {
+          "path": "./audit.log",
+          "max_size_mb": 100,
+          "max_backups": 7,
+          "max_age_days": 30,
+          "compress": true
+        }
+      },
+      "otel": {
+        "enabled": false,
+        "endpoint": ""
+      }
+    }
+  },
+  "zot_config": {
+    "distSpecVersion": "1.1.0",
+    "storage": {
+      "rootDirectory": "./zot"
+    },
+    "http": {
+      "address": "0.0.0.0",
+      "port": "8585"
+    },
+    "log": {
+      "level": "info"
+    }
+  }
+}

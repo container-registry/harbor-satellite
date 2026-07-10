@@ -41,6 +41,143 @@ type RegistryFallbackConfig struct {
 	Runtimes   []string `json:"runtimes,omitempty"`
 }
 
+// AuditConfig controls the security-event audit log. When Enabled is false
+// (default), audit events are discarded. The Syslog block selects the syslog
+// destination; the Otel block additionally exports events over OTLP/HTTP.
+type AuditConfig struct {
+	Enabled bool        `json:"enabled,omitempty"`
+	Syslog  SyslogAudit `json:"syslog,omitempty"`
+	Otel    OtelAudit   `json:"otel,omitempty"`
+}
+
+// OtelAudit configures the OTLP/HTTP log export transport. Endpoint is the
+// collector base URL (e.g. "http://127.0.0.1:4318"); the standard /v1/logs
+// path is appended when the URL carries no path of its own.
+type OtelAudit struct {
+	Enabled  bool   `json:"enabled,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
+}
+
+// SyslogAudit configures the syslog transport. Target picks one of three sinks
+// (daemon, network, file); only the fields for the chosen target are used.
+type SyslogAudit struct {
+	// Enabled is a pointer so an omitted field (nil) keeps the syslog transport
+	// on by default (backward compatible: audit.enabled used to imply syslog).
+	// Set it to false to run, for example, the otel transport on its own.
+	Enabled    *bool           `json:"enabled,omitempty"`
+	Target     string          `json:"target,omitempty"`      // daemon | network | file
+	Tag        string          `json:"tag,omitempty"`         // RFC 5424 APP-NAME
+	SocketPath string          `json:"socket_path,omitempty"` // daemon target
+	Network    string          `json:"network,omitempty"`     // network target: udp | tcp
+	Address    string          `json:"address,omitempty"`     // network target: host:port
+	File       SyslogAuditFile `json:"file,omitempty"`        // file target
+}
+
+// SyslogAuditFile controls the rotated file used by the file target. These
+// settings only apply to target=file: for the daemon target the OS rotates, and
+// for the network target there is no file.
+type SyslogAuditFile struct {
+	Path string `json:"path,omitempty"`
+	// MaxSizeMB, MaxBackups, MaxAgeDays and Compress are pointers so an omitted
+	// field (nil) can be told apart from an explicit 0/false. An omitted field
+	// means "use the default". An explicit 0 on MaxBackups/MaxAgeDays is a
+	// deliberate "retain everything" per lumberjack semantics and is preserved.
+	MaxSizeMB  *int  `json:"max_size_mb,omitempty"`
+	MaxBackups *int  `json:"max_backups,omitempty"`
+	MaxAgeDays *int  `json:"max_age_days,omitempty"`
+	Compress   *bool `json:"compress,omitempty"`
+}
+
+// EnabledOrDefault reports whether the syslog transport should run. An omitted
+// field (nil) defaults to true so existing configs keep syslog on; only an
+// explicit false turns it off.
+func (s SyslogAudit) EnabledOrDefault() bool {
+	return s.Enabled == nil || *s.Enabled
+}
+
+// TargetOrDefault returns the configured target, or the default (file) when unset.
+func (s SyslogAudit) TargetOrDefault() string {
+	if s.Target == "" {
+		return DefaultAuditSyslogTarget
+	}
+
+	return s.Target
+}
+
+// TagOrDefault returns the configured APP-NAME, or the default when unset.
+func (s SyslogAudit) TagOrDefault() string {
+	if s.Tag == "" {
+		return DefaultAuditSyslogTag
+	}
+
+	return s.Tag
+}
+
+// MaxSizeMBOrDefault returns the configured rotation size, or the default when unset.
+func (f SyslogAuditFile) MaxSizeMBOrDefault() int {
+	if f.MaxSizeMB == nil {
+		return DefaultAuditMaxSizeMB
+	}
+
+	return *f.MaxSizeMB
+}
+
+// MaxBackupsOrDefault returns the configured backup count, or the default when unset.
+func (f SyslogAuditFile) MaxBackupsOrDefault() int {
+	if f.MaxBackups == nil {
+		return DefaultAuditMaxBackups
+	}
+
+	return *f.MaxBackups
+}
+
+// MaxAgeDaysOrDefault returns the configured retention age, or the default when unset.
+func (f SyslogAuditFile) MaxAgeDaysOrDefault() int {
+	if f.MaxAgeDays == nil {
+		return DefaultAuditMaxAgeDays
+	}
+
+	return *f.MaxAgeDays
+}
+
+// CompressOrDefault returns the configured compression flag, or the default when unset.
+func (f SyslogAuditFile) CompressOrDefault() bool {
+	if f.Compress == nil {
+		return DefaultAuditCompress
+	}
+
+	return *f.Compress
+}
+
+// Equal reports whether two audit configs resolve to the same effective
+// settings. It compares effective values, not pointer identity, so a hot
+// reload that yields fresh pointers with unchanged values is not mistaken
+// for a change. The comparison is split across the nested types to keep each
+// method's cyclomatic complexity low.
+func (a AuditConfig) Equal(b AuditConfig) bool {
+	return a.Enabled == b.Enabled && a.Syslog.equal(b.Syslog) && a.Otel == b.Otel
+}
+
+// equal compares two syslog blocks by effective value.
+func (s SyslogAudit) equal(o SyslogAudit) bool {
+	return s.EnabledOrDefault() == o.EnabledOrDefault() &&
+		s.TargetOrDefault() == o.TargetOrDefault() &&
+		s.TagOrDefault() == o.TagOrDefault() &&
+		s.SocketPath == o.SocketPath &&
+		s.Network == o.Network &&
+		s.Address == o.Address &&
+		s.File.equal(o.File)
+}
+
+// equal compares two syslog file blocks by effective value.
+func (f SyslogAuditFile) equal(o SyslogAuditFile) bool {
+	return f.Path == o.Path &&
+		f.MaxSizeMBOrDefault() == o.MaxSizeMBOrDefault() &&
+		f.MaxBackupsOrDefault() == o.MaxBackupsOrDefault() &&
+		f.MaxAgeDaysOrDefault() == o.MaxAgeDaysOrDefault() &&
+		f.CompressOrDefault() == o.CompressOrDefault()
+}
+
 // DirectDeliveryConfig holds settings for writing image tarballs directly
 // to a Kubernetes node's image directory (e.g. k3s/RKE2 agent images dir).
 // This is an experimental feature that enables satellite to deliver images
@@ -66,6 +203,7 @@ type AppConfig struct {
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty"`
 	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty"`
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
+	Audit                     AuditConfig            `json:"audit,omitempty"`
 }
 
 type StateConfig struct {

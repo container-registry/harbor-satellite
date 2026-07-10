@@ -1,0 +1,85 @@
+{
+  "op_code": 8,
+  "tests": [
+    {
+      "name": "normal_response",
+      "request_data": {},
+      "expected_request_binary": "EKfAXh4AAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAA",
+      "response_binary": "EKfAXh4AAQAAAAEAAAAAAAAAAAAAAIYAAAAAAAgAAAAAAAAACkMKJDdiMzQ0ZGU2LTY5YzMtNGMxYy05MWNlLTVjYjQ5OTgyMDViOBILbWJlZCBjcnlwdG8aBnZlbmRvciABKA0wFzgBCj8KJDlhYzUyYmU4LTRiOWMtNGQyMC05YTZmLWEyZDU2ZjQ0NzQ2NBIDdHBtGgp0cG0gdmVuZG9yIAIoKzADOAM=",
+      "expected_response": [
+        {
+          "description": "mbed crypto",
+          "id": 1,
+          "uuid": "7b344de6-69c3-4c1c-91ce-5cb4998205b8",
+          "vendor": "vendor",
+          "version_maj": 1,
+          "version_min": 13,
+          "version_rev": 23
+        },
+        {
+          "description": "tpm",
+          "id": 3,
+          "uuid": "9ac52be8-4b9c-4d20-9a6f-a2d56f447464",
+          "vendor": "tpm vendor",
+          "version_maj": 2,
+          "version_min": 43,
+          "version_rev": 3
+        }
+      ],
+      "expect_success": true
+    },
+    {
+      "name": "fail response",
+      "request_data": {},
+      "expected_request_binary": "EKfAXh4AAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAA",
+      "response_binary": "EKfAXh4AAQAAAAEAAAAAAAAAAAAAAAAAAAAAAAgAAAALAAAA",
+      "expected_response": [],
+      "expect_success": false
+    },
+    {
+      "name": "provider_mbed",
+      "request_data": {},
+      "expected_request_binary": "EKfAXh4AAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAA",
+      "response_binary": "EKfAXh4AAQAAAAEAAAAAAAAAAAAAAEUAAAAAAAgAAAAAAAAACkMKJDdiMzQ0ZGU2LTY5YzMtNGMxYy05MWNlLTVjYjQ5OTgyMDViOBILbWJlZCBjcnlwdG8aBnZlbmRvciABKA0wFzgB",
+      "expected_response": [
+        {
+          "description": "mbed crypto",
+          "id": 1,
+          "uuid": "7b344de6-69c3-4c1c-91ce-5cb4998205b8",
+          "vendor": "vendor",
+          "version_maj": 1,
+          "version_min": 13,
+          "version_rev": 23
+        }
+      ],
+      "expect_success": true
+    },
+    {
+      "name": "provider_tpm,mbed",
+      "request_data": {},
+      "expected_request_binary": "EKfAXh4AAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAA",
+      "response_binary": "EKfAXh4AAQAAAAEAAAAAAAAAAAAAAIIAAAAAAAgAAAAAAAAACjsKJDdiMzQ0ZGU2LTY5YzMtNGMxYy05MWNlLTVjYjQ5OTgyMDViOBIDdHBtGgZ2ZW5kb3IgASgNMBc4AwpDCiQ3YjM0NGRlNi02OWMzLTRjMWMtOTFjZS01Y2I0OTk4MjA1YjgSC21iZWQgY3J5cHRvGgZ2ZW5kb3IgASgNMBc4AQ==",
+      "expected_response": [
+        {
+          "description": "tpm",
+          "id": 3,
+          "uuid": "7b344de6-69c3-4c1c-91ce-5cb4998205b8",
+          "vendor": "vendor",
+          "version_maj": 1,
+          "version_min": 13,
+          "version_rev": 23
+        },
+        {
+          "description": "mbed crypto",
+          "id": 1,
+          "uuid": "7b344de6-69c3-4c1c-91ce-5cb4998205b8",
+          "vendor": "vendor",
+          "version_maj": 1,
+          "version_min": 13,
+          "version_rev": 23
+        }
+      ],
+      "expect_success": true
+    }
+  ]
+}

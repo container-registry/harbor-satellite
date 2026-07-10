@@ -37,7 +37,7 @@ log "Harbor is running"
 
 # Step 2: Start PostgreSQL
 log "Step 2: Starting PostgreSQL..."
-cd "$PROJECT_ROOT/ground-control"
+cd "$PROJECT_ROOT"
 docker start groundcontrol-db 2>/dev/null || docker compose up -d postgres 2>/dev/null || true
 sleep 3
 
@@ -52,20 +52,18 @@ done
 
 # Step 3: Configure and start Ground Control
 log "Step 3: Starting Ground Control..."
-cat > "$PROJECT_ROOT/ground-control/.env" << EOF
-HARBOR_USERNAME=admin
-HARBOR_PASSWORD=Harbor12345
-HARBOR_URL=$HARBOR_URL
-PORT=$GC_PORT
-DB_HOST=127.0.0.1
-DB_PORT=8100
-DB_DATABASE=groundcontrol
-DB_USERNAME=postgres
-DB_PASSWORD=password
-EOF
+export HARBOR_USERNAME=admin
+export HARBOR_PASSWORD=Harbor12345
+export HARBOR_URL
+export PORT=$GC_PORT
+export DB_HOST=127.0.0.1
+export DB_PORT=8100
+export DB_DATABASE=groundcontrol
+export DB_USERNAME=postgres
+export DB_PASSWORD=password
 
-cd "$PROJECT_ROOT/ground-control"
-go run main.go > /tmp/gc.log 2>&1 &
+cd "$PROJECT_ROOT"
+go run ./cmd/ground-control > /tmp/gc.log 2>&1 &
 GC_PID=$!
 
 log "Waiting for Ground Control (PID: $GC_PID)..."
@@ -168,7 +166,7 @@ cat > config.json << EOF
 }
 EOF
 
-go run cmd/main.go --token "$TOKEN" --ground-control-url "http://127.0.0.1:$GC_PORT" --harbor-registry-url "http://127.0.0.1:8080" --json-logging=false > /tmp/sat.log 2>&1 &
+go run ./cmd/harbor-satellite --token "$TOKEN" --ground-control-url "http://127.0.0.1:$GC_PORT" --harbor-registry-url "http://127.0.0.1:8080" --json-logging=false > /tmp/sat.log 2>&1 &
 SAT_PID=$!
 
 log "Satellite started (PID: $SAT_PID)"

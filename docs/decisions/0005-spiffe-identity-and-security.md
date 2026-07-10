@@ -445,8 +445,8 @@ sequenceDiagram
 - `internal/identity/device_stub.go` - nospiffe stub (errors)
 - `internal/secure/config.go` - Config encryption wrapper
 - `pkg/config/manager.go` - EncryptConfig flag, write logic
-- `ground-control/internal/spiffe/` - All GC SPIFFE files
-- `ground-control/internal/server/routes.go` - Route structure
-- `ground-control/internal/server/spire_handlers.go` - Join token handlers
+- `internal/groundcontrol/spiffe/` - All GC SPIFFE files
+- `internal/groundcontrol/server/routes.go` - Route structure
+- `internal/groundcontrol/server/spire_handlers.go` - Join token handlers
 - `taskfiles/e2e.yml` - SPIFFE E2E test
 - `deploy/quickstart/spiffe/` - SPIFFE quickstart configs

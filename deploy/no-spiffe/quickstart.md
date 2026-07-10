@@ -20,15 +20,11 @@ Ground Control is the central service that manages satellite configurations.
    git clone https://github.com/container-registry/harbor-satellite.git
    cd harbor-satellite
    ```
-2. Navigate to the `ground-control` directory:
-   ```bash
-   cd ground-control
-   ```
-3. Create a `.env` file using the provided example:
+2. Create an environment file using the root example:
    ```bash
    cp .env.example .env
    ```
-4. Edit the `.env` file with your configuration:
+3. Edit the `.env` file with your configuration:
 
    ```env
    # Harbor Registry Credentials
@@ -38,7 +34,6 @@ Ground Control is the central service that manages satellite configurations.
 
    # Ground Control Settings
    PORT=8080
-   APP_ENV=local
 
    # Database Settings
    DB_HOST=127.0.0.1
@@ -56,12 +51,12 @@ Choose one of the following options to start Ground Control.
 
 ### Option 1: Using Docker Compose (Recommended for End Users)
 
-1. Update the `docker-compose.yml` file in the `ground-control` directory with the same credentials as in the `.env` file.
+1. Update the root `docker-compose.yml` file with the same credentials as in `.env`.
 
 2. Start Ground Control:
 
    ```bash
-   docker compose up
+   docker compose up postgres ground-control
    ```
 
    > Tip: Use `-d` to run in detached mode. Verify the service is running with `docker ps`.
@@ -77,7 +72,7 @@ Choose one of the following options to start Ground Control.
 2. Run the binary:
 
    ```bash
-   ./gc-dev
+   ./bin/ground-control
    ```
 
 ## Step 3: Verify Ground Control Health
@@ -211,7 +206,7 @@ Use the token from Step 6 to start the satellite. See [.env.example](https://git
 1. Run the satellite directly:
 
    ```bash
-   go run cmd/main.go --token "<your token here>" --ground-control-url "<ground control url here>"
+   go run ./cmd/harbor-satellite --token "<your token here>" --ground-control-url "<ground control url here>"
    ```
 
    > Note: By default, JSON logging is enabled. To disable it, pass `--json-logging=false`.

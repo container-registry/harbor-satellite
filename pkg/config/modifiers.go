@@ -136,6 +136,7 @@ func ReplaceURLHost(raw, override string) (string, error) {
 	}
 	parsed.Scheme = overrideParsed.Scheme
 	parsed.Host = overrideParsed.Host
+
 	return parsed.String(), nil
 }
 
