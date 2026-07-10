@@ -8,13 +8,26 @@ import (
 	"os"
 
 	flags "github.com/jessevdk/go-flags"
+	"github.com/joho/godotenv"
 
+	"github.com/container-registry/harbor-satellite/internal/env"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harborhealth"
 	swaggerserversrv "github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/server"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/server/operations"
 	"github.com/go-openapi/loads"
 )
 
 func main() {
+	_ = godotenv.Load(".env") //nolint:errcheck // .env file is optional
+	if err := env.LoadGC(); err != nil {
+		log.Fatalf("failed to load environment: %v", err)
+	}
+
+	err := harborhealth.CheckHealth()
+	if err != nil {
+		log.Fatalf("health check failed: %v", err)
+	}
+
 	swaggerSpec, err := loads.Embedded(swaggerserversrv.SwaggerJSON, swaggerserversrv.FlatSwaggerJSON)
 	if err != nil {
 		log.Fatalln(err)
