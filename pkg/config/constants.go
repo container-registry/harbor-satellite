@@ -1,10 +1,12 @@
 package config
 
 // Job names that the user is expected to provide in the config.json file
-const ReplicateStateJobName string = "replicate_state"
-const ZTRConfigJobName string = "register_satellite"
-const StatusReportJobName string = "status_report"
-const SPIFFEZTRConfigJobName string = "spiffe_register_satellite"
+const (
+	ReplicateStateJobName  string = "replicate_state"
+	ZTRConfigJobName       string = "register_satellite"
+	StatusReportJobName    string = "status_report"
+	SPIFFEZTRConfigJobName string = "spiffe_register_satellite"
+)
 
 // Default SPIFFE endpoint socket
 const DefaultSPIFFEEndpointSocket string = "unix:///run/spire/sockets/agent.sock"
@@ -18,9 +20,11 @@ const RegistryDataDirEnvVar string = "REGISTRY_DATA_DIR"
 
 // Below are the default values of the job schedules that would be used if the user does not provide any schedule or
 // if there is any error while parsing the cron expression
-const DefaultZTRCronExpr string = "@every 00h00m05s"
-const DefaultFetchAndReplicateCronExpr string = "@every 00h00m30s"
-const DefaultHeartbeatCronExpr string = "@every 00h00m30s"
+const (
+	DefaultZTRCronExpr               string = "@every 00h00m05s"
+	DefaultFetchAndReplicateCronExpr string = "@every 00h00m30s"
+	DefaultHeartbeatCronExpr         string = "@every 00h00m30s"
+)
 
 const BringOwnRegistry bool = false
 
@@ -38,6 +42,20 @@ const DefaultZotConfigJSON = `{
   }
 }`
 
-const DefaultRemoteRegistryURL = "http://127.0.0.1:8585"
-const DefaultGroundControlURL = "http://127.0.0.1:8080"
+const (
+	DefaultRemoteRegistryURL = "http://127.0.0.1:8585"
+	DefaultGroundControlURL  = "http://127.0.0.1:8080"
+)
 
+// Default audit settings, applied when audit is enabled but the user does not
+// specify a value.
+const (
+	DefaultAuditFilePath     string = "./audit.log"
+	DefaultAuditMaxSizeMB    int    = 100
+	DefaultAuditMaxBackups   int    = 7
+	DefaultAuditMaxAgeDays   int    = 30
+	DefaultAuditCompress     bool   = true
+	DefaultAuditSyslogTarget string = "file"
+	DefaultAuditSyslogTag    string = "harbor-audit"
+	DefaultAuditSyslogSocket string = "/dev/log"
+)

@@ -38,7 +38,7 @@ func ValidateRegistryAddress(registryAdr, registryPort string) (string, error) {
 
 // / HandleOwnRegistry handles the own registry address and port and sets the Zot URL
 func HandleOwnRegistry(cm *config.ConfigManager) error {
-	remoteRegistryURL := string(cm.GetLocalRegistryURL())
+	remoteRegistryURL := cm.GetLocalRegistryURL()
 	_, err := url.Parse(remoteRegistryURL)
 	if err != nil {
 		return fmt.Errorf("error parsing URL: %w", err)
@@ -119,7 +119,7 @@ func PrintData(content string) {
 func WriteFile(path string, data []byte) error {
 	file, err := os.Create(filepath.Clean(path))
 	if err != nil {
-		return fmt.Errorf("error creating file :%s", err)
+		return fmt.Errorf("error creating file: %w", err)
 	}
 	defer func() {
 		if err := file.Close(); err != nil {
@@ -129,7 +129,7 @@ func WriteFile(path string, data []byte) error {
 
 	_, err = file.Write(data)
 	if err != nil {
-		return fmt.Errorf("error while write to the file :%s", err)
+		return fmt.Errorf("error writing file: %w", err)
 	}
 	return nil
 }
@@ -141,6 +141,6 @@ func HandleNewConfigWarnings(log *zerolog.Logger, warnings []string) {
 
 func HandleWarnings(log *zerolog.Logger, warnings []string) {
 	for i := range warnings {
-		log.Warn().Msg(string(warnings[i]))
+		log.Warn().Msg(warnings[i])
 	}
 }

@@ -3,10 +3,10 @@ package satellite
 import (
 	"context"
 
-	runtime "github.com/container-registry/harbor-satellite/internal/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/logger"
-	"github.com/container-registry/harbor-satellite/internal/scheduler"
-	"github.com/container-registry/harbor-satellite/internal/state"
+	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
+	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
+	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
@@ -15,6 +15,7 @@ type Satellite struct {
 	criResults    []runtime.CRIConfigResult
 	schedulers    []*scheduler.Scheduler
 	stateFilePath string
+	stateProcess  *state.FetchAndReplicateStateProcess
 }
 
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string) *Satellite {
@@ -31,6 +32,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	log.Info().Msg("Starting Satellite")
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, log)
+	s.stateProcess = fetchAndReplicateStateProcess
 
 	// Create ZTR scheduler if not already done
 	if !s.cm.IsZTRDone() {
@@ -104,7 +106,16 @@ func (s *Satellite) GetSchedulers() []*scheduler.Scheduler {
 	return s.schedulers
 }
 
-// Stop gracefully stops all schedulers and logs the shutdown process
+// PersistState writes the current in-memory state to disk.
+// Called during graceful shutdown to ensure no state is lost.
+func (s *Satellite) PersistState() error {
+	if s.stateProcess == nil {
+		return nil
+	}
+	return s.stateProcess.PersistState()
+}
+
+// Stop gracefully stops all schedulers and logs the shutdown process.
 func (s *Satellite) Stop(ctx context.Context) {
 	log := logger.FromContext(ctx)
 	log.Info().Int("scheduler_count", len(s.schedulers)).

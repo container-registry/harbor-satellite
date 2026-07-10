@@ -71,8 +71,10 @@ services:
 
   ground-control:
     build:
-      context: ../../../../../../ground-control
+      context: ../../../../../../
       dockerfile: Dockerfile
+      args:
+        COMPONENT: ground-control
     container_name: ground-control
     environment:
       - DB_HOST=postgres
@@ -87,7 +89,7 @@ services:
       - HARBOR_PASSWORD=${HARBOR_PASSWORD:-Harbor12345}
       - SKIP_HARBOR_HEALTH_CHECK=${SKIP_HARBOR_HEALTH_CHECK:-false}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Harbor12345}
-      - SPIFFE_ENABLED=true
+      - SPIFFE_SERVER_ENABLED=true
       - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
       - SPIFFE_TRUST_DOMAIN=harbor-satellite.local
       - SPIRE_SERVER_SOCKET=/tmp/spire-server/private/api.sock

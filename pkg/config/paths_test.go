@@ -76,7 +76,7 @@ func TestEnsureDir(t *testing.T) {
 			name: "Existing directory",
 			setup: func(t *testing.T) string {
 				dir := filepath.Join(t.TempDir(), "existing")
-				require.NoError(t, os.MkdirAll(dir, 0755))
+				require.NoError(t, os.MkdirAll(dir, 0o755))
 				return dir
 			},
 			expectErr: false,
@@ -85,7 +85,7 @@ func TestEnsureDir(t *testing.T) {
 			name: "Path is existing file",
 			setup: func(t *testing.T) string {
 				f := filepath.Join(t.TempDir(), "file")
-				require.NoError(t, os.WriteFile(f, []byte("data"), 0600))
+				require.NoError(t, os.WriteFile(f, []byte("data"), 0o600))
 				return f
 			},
 			expectErr: true,
