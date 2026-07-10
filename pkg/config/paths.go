@@ -38,13 +38,13 @@ func expandPath(path string) (string, error) {
 
 // ensureDir creates the directory if it doesn't exist and verifies it's writable.
 func ensureDir(path string) error {
-	if err := os.MkdirAll(path, 0755); err != nil {
+	if err := os.MkdirAll(path, 0o755); err != nil {
 		return fmt.Errorf("create directory %s: %w", path, err)
 	}
 
 	// Verify writability
 	testFile := filepath.Join(path, ".write-test")
-	if err := os.WriteFile(testFile, []byte{}, 0600); err != nil {
+	if err := os.WriteFile(testFile, []byte{}, 0o600); err != nil {
 		return fmt.Errorf("directory %s not writable: %w", path, err)
 	}
 	if err := os.Remove(testFile); err != nil {

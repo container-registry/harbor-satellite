@@ -27,7 +27,7 @@ curl -Lo ground-control.tar.gz \
 tar xzf ground-control.tar.gz
 ```
 
-Create a `.env` file (see `ground-control/.env.example` for all options):
+Create a `.env` file (see `.env.example` for all options):
 
 ```bash
 cat > .env << 'EOF'
@@ -51,11 +51,10 @@ Run (requires a running PostgreSQL instance):
 
 ### Ground Control Docker Compose
 
-The [`ground-control/docker-compose.yml`](https://github.com/container-registry/harbor-satellite/blob/main/ground-control/docker-compose.yml) in the repository runs Ground Control with PostgreSQL:
+The [`docker-compose.yml`](https://github.com/container-registry/harbor-satellite/blob/main/docker-compose.yml) in the repository runs Ground Control with PostgreSQL:
 
 ```bash
-cd ground-control
-docker compose up -d
+docker compose up -d postgres ground-control
 ```
 
 Override defaults with environment variables:
@@ -63,7 +62,7 @@ Override defaults with environment variables:
 ```bash
 HARBOR_URL=https://my-harbor.example.com \
 HARBOR_PASSWORD=MyPassword \
-docker compose up -d
+docker compose up -d postgres ground-control
 ```
 
 Verify:
@@ -140,7 +139,7 @@ See the [releases page](https://github.com/container-registry/harbor-satellite/r
 ```bash
 git clone https://github.com/container-registry/harbor-satellite.git
 cd harbor-satellite
-go build -o harbor-satellite cmd/main.go
+go build -o harbor-satellite ./cmd/harbor-satellite
 ```
 
 Run with token-based auth:

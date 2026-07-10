@@ -1,7 +1,7 @@
 version: "3"
 
 vars:
-  E2E_DIR: "{{.ROOT_DIR}}/docker/e2e"
+  E2E_DIR: "{{.ROOT_DIR}}/test/e2e/docker"
   HARBOR_ADMIN_USER: admin
   HARBOR_ADMIN_PASSWORD: Harbor12345
   HARBOR_URL: http://localhost:8080
@@ -49,23 +49,135 @@ tasks:
       - task: generate-join-token
       - task: verify-spiffe-attestation
       - echo "SPIFFE join token E2E test passed"
+  test-parsec:
+    desc: Run PARSEC hardware identity E2E test (Phase 1 & Application-Level Hardware Integration)
+    cmds:
+      - task: setup
+      - defer: { task: cleanup-parsec }
+      - task: wait-harbor
+      - task: wait-gc
+      - task: init-harbor
+      - task: init-gc
+      - task: start-parsec-daemon
+      - task: register-and-run-parsec-satellite
+      - task: verify-parsec
+      - echo "PARSEC hardware identity E2E test passed!"
+  start-parsec-daemon:
+    desc: Start PARSEC Hardware Simulator
+    cmds:
+      - |
+        echo "Starting PARSEC Daemon..."
+        docker run -d --name parsec-daemon \
+          -u root \
+          --network harbor-e2e \
+          --privileged \
+          -v parsec-socket:/run/parsec \
+          ghcr.io/parallaxsecond/parsec-quickstart:latest \
+          bash -c "rm -f /run/parsec/parsec.sock && chmod 777 /run/parsec && sed -i 's|\"./parsec.sock\"|\"/run/parsec/parsec.sock\"|g' config.toml && parsec"
+
+        echo "Waiting for PARSEC socket..."
+        for i in $(seq 1 30); do
+          if docker run --rm -v parsec-socket:/run/parsec alpine:3.22 test -S /run/parsec/parsec.sock; then
+            echo "PARSEC socket is ready"
+            exit 0
+          fi
+          echo "Waiting for PARSEC socket... ($i/30)"
+          sleep 1
+        done
+
+        echo "ERROR: PARSEC daemon did not create /run/parsec/parsec.sock"
+        docker logs parsec-daemon
+        exit 1
+
+  register-and-run-parsec-satellite:
+    desc: Register satellite and run with PARSEC enabled
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sf -X POST {{.GC_URL}}/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Registering satellite..."
+        RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name": "test-parsec-satellite",
+            "groups": ["{{.DEST_NAMESPACE}}"],
+            "config_name": "test-config"
+          }')
+        TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$TOKEN" ]; then
+          echo "ERROR: Ground Control did not return a satellite token."
+          echo "$RESPONSE"
+          exit 1
+        fi
+
+        echo "Building satellite with PARSEC tags..."
+        docker build --build-arg GO_TAGS=parsec -t satellite:e2e -f Dockerfile .
+
+        echo "Starting Satellite (As ROOT to read the socket)..."
+        docker run -d --name satellite \
+          -u root \
+          --network harbor-e2e \
+          -e TOKEN="$TOKEN" \
+          -e PARSEC_ENABLED=true \
+          -e PARSEC_SERVICE_ENDPOINT=unix:///run/parsec/parsec.sock \
+          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
+          -v parsec-socket:/run/parsec \
+          -p 8585:8585 \
+          satellite:e2e
+        sleep 5
+
+  verify-parsec:
+    desc: Verify PARSEC hardware key generation and signing
+    cmds:
+      - |
+        echo "Verifying satellite process is running (did not halt on startup)..."
+        if ! docker ps --filter "name=^satellite$" --filter "status=running" --format '{{`{{.Names}}`}}' | grep -q satellite; then
+          echo "ERROR: satellite container is not running."
+          docker logs satellite
+          exit 1
+        fi
+        echo "Verifying PARSEC identity key with sign/verify round-trip..."
+        docker run --rm \
+          --network harbor-e2e \
+          -v "$PWD:/workspace" \
+          -v parsec-socket:/run/parsec \
+          -w /workspace \
+          golang:1.26.3-alpine \
+          go run -tags parsec ./test/e2e/parsec/verify_parsec.go --socket /run/parsec/parsec.sock
+        echo "SUCCESS: Satellite is running with a PARSEC-backed hardware identity."
+
+  cleanup-parsec:
+    desc: Cleanup PARSEC E2E containers
+    cmds:
+      - echo "Cleaning up PARSEC test..."
+      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker rm -f satellite parsec-daemon 2>/dev/null || true
+      - docker volume rm parsec-socket 2>/dev/null || true
+    silent: true
 
   setup:
     desc: Start Harbor and Ground Control stack
     cmds:
       - echo "Building ground-control image..."
-      - docker build -t gc:e2e -f ground-control/Dockerfile ground-control/
+      - docker build --build-arg COMPONENT=ground-control -t gc:e2e -f Dockerfile .
       - echo "Starting Harbor and GC stack..."
-      - docker compose -f docker/e2e/docker-compose.yml up -d
+      - docker compose -f test/e2e/docker/docker-compose.yml up -d
       - sleep 5
-      - docker compose -f docker/e2e/docker-compose.yml ps
+      - docker compose -f test/e2e/docker/docker-compose.yml ps
     silent: true
 
   setup-spiffe:
     desc: Start SPIFFE test stack with external SPIRE
     cmds:
       - echo "Building ground-control image..."
-      - docker build -t gc:e2e -f ground-control/Dockerfile ground-control/
+      - docker build --build-arg COMPONENT=ground-control -t gc:e2e -f Dockerfile .
       - task: generate-spiffe-certs
       - task: start-spire-server
       - task: setup-gc-agent
@@ -76,7 +188,7 @@ tasks:
     desc: Generate CA certificates for SPIRE
     cmds:
       - |
-        CERTS_DIR="docker/e2e/spiffe/certs"
+        CERTS_DIR="test/e2e/docker/spiffe/certs"
         mkdir -p "$CERTS_DIR"
         echo "Generating bootstrap CA certificate..."
         openssl genrsa -out "$CERTS_DIR/ca.key" 4096 2>/dev/null
@@ -91,7 +203,7 @@ tasks:
     cmds:
       - |
         echo "Starting PostgreSQL and SPIRE server..."
-        docker compose -f docker/e2e/docker-compose.spiffe.yml up -d postgres spire-server
+        docker compose -f test/e2e/docker/docker-compose.spiffe.yml up -d postgres spire-server
         echo "Waiting for SPIRE server to be healthy..."
         for i in $(seq 1 60); do
           if docker exec spire-server /opt/spire/bin/spire-server healthcheck -socketPath /tmp/spire-server/private/api.sock > /dev/null 2>&1; then
@@ -121,7 +233,7 @@ tasks:
         echo "GC Agent Token: $GC_TOKEN"
 
         echo "Creating agent config with join token..."
-        cat > docker/e2e/spiffe/agent-gc-runtime.conf << EOF
+        cat > test/e2e/docker/spiffe/agent-gc-runtime.conf << EOF
         agent {
             data_dir = "/tmp/spire-agent"
             log_level = "INFO"
@@ -158,7 +270,7 @@ tasks:
         EOF
 
         echo "Starting SPIRE agent for Ground Control..."
-        docker compose -f docker/e2e/docker-compose.spiffe.yml up -d spire-agent-gc
+        docker compose -f test/e2e/docker/docker-compose.spiffe.yml up -d spire-agent-gc
         sleep 5
 
         echo "Waiting for agent to attest..."
@@ -187,7 +299,7 @@ tasks:
     cmds:
       - |
         echo "Starting Ground Control..."
-        docker compose -f docker/e2e/docker-compose.spiffe.yml up -d gc
+        docker compose -f test/e2e/docker/docker-compose.spiffe.yml up -d gc
         echo "Waiting for Ground Control to be healthy..."
         for i in $(seq 1 30); do
           if curl -sfk https://localhost:9080/health > /dev/null 2>&1; then
@@ -205,7 +317,7 @@ tasks:
     desc: Stop and remove E2E containers
     cmds:
       - echo "Stopping e2e containers..."
-      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite 2>/dev/null || true
       - echo "Cleanup complete"
     silent: true
@@ -214,10 +326,10 @@ tasks:
     desc: Stop and remove SPIFFE E2E containers
     cmds:
       - echo "Stopping spiffe containers..."
-      - docker compose -f docker/e2e/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f test/e2e/docker/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f spire-agent-satellite satellite-spiffe 2>/dev/null || true
-      - rm -f docker/e2e/spiffe/agent-gc-runtime.conf docker/e2e/spiffe/agent-satellite-runtime.conf 2>/dev/null || true
-      - rm -rf docker/e2e/spiffe/certs 2>/dev/null || true
+      - rm -f test/e2e/docker/spiffe/agent-gc-runtime.conf test/e2e/docker/spiffe/agent-satellite-runtime.conf 2>/dev/null || true
+      - rm -rf test/e2e/docker/spiffe/certs 2>/dev/null || true
       - echo "Cleanup complete"
     silent: true
 
@@ -362,7 +474,6 @@ tasks:
                 "log_level": "info",
                 "use_unsecure": true,
                 "state_replication_interval": "@every 00h00m10s",
-                "update_config_interval": "@every 00h00m10s",
                 "register_satellite_interval": "@every 00h00m10s",
                 "bring_own_registry": false,
                 "local_registry": {"url": "http://127.0.0.1:8585"}
@@ -506,7 +617,7 @@ tasks:
         JOIN_TOKEN=$(cat /tmp/spiffe_join_token)
 
         echo "Creating satellite agent config with join token..."
-        cat > docker/e2e/spiffe/agent-satellite-runtime.conf << EOF
+        cat > test/e2e/docker/spiffe/agent-satellite-runtime.conf << EOF
         agent {
             data_dir = "/tmp/spire-agent"
             log_level = "INFO"
@@ -546,8 +657,8 @@ tasks:
         docker run -d --name spire-agent-satellite \
           --network spiffe-e2e \
           --pid host \
-          -v $(pwd)/docker/e2e/spiffe/agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro \
-          -v $(pwd)/docker/e2e/spiffe/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro \
+          -v $(pwd)/test/e2e/docker/spiffe/agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro \
+          -v $(pwd)/test/e2e/docker/spiffe/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro \
           -v ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro \
           ghcr.io/spiffe/spire-agent:1.12.3 \
           -config /opt/spire/conf/agent/agent.conf
@@ -601,7 +712,6 @@ tasks:
                 "log_level": "info",
                 "use_unsecure": true,
                 "state_replication_interval": "@every 00h00m10s",
-                "update_config_interval": "@every 00h00m10s",
                 "register_satellite_interval": "@every 00h00m10s",
                 "bring_own_registry": true,
                 "local_registry": {"url": "http://byo-registry:5000"}
@@ -727,7 +837,7 @@ tasks:
     desc: Stop and remove BYO E2E containers
     cmds:
       - echo "Stopping BYO e2e containers..."
-      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite-byo byo-registry 2>/dev/null || true
       - echo "BYO cleanup complete"
     silent: true
@@ -866,7 +976,7 @@ tasks:
     desc: Stop and remove crash recovery E2E containers
     cmds:
       - echo "Stopping crash recovery containers..."
-      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite 2>/dev/null || true
       - docker volume rm -f sat-state-vol 2>/dev/null || true
       - rm -f /tmp/e2e_satellite_token 2>/dev/null || true
@@ -1004,7 +1114,7 @@ tasks:
     desc: Stop and remove BYO crash recovery E2E containers
     cmds:
       - echo "Stopping BYO crash recovery containers..."
-      - docker compose -f docker/e2e/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite-byo byo-registry 2>/dev/null || true
       - docker volume rm -f sat-byo-state-vol 2>/dev/null || true
       - rm -f /tmp/e2e_byo_satellite_token 2>/dev/null || true

@@ -1,12 +1,12 @@
 [build]
-  bin = "main"
+  bin = "bin/satellite"
   dir = "."
-  cmd = "go build -o main ."
+  cmd = "go build -o bin/satellite ./cmd/harbor-satellite"
   exclude_dir = ["assets", "tmp", "vendor", "testdata"]
   exclude_regex = ["_test.go"]
   exclude_unchanged = false
   follow_symlink = false
-  run_after_build = "chmod +x main"
+  run_after_build = "chmod +x bin/satellite"
   include_ext = ["go"]
 
 [log]
