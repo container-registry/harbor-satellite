@@ -41,7 +41,7 @@ type service struct {
 var (
 	serviceOnce sync.Once
 	serviceInst *service
-	serviceErr  error
+	errService  error
 )
 
 func getService() (*service, error) {
@@ -56,7 +56,7 @@ func getService() (*service, error) {
 
 		db, err := sql.Open("postgres", connStr)
 		if err != nil {
-			serviceErr = err
+			errService = err
 			return
 		}
 
@@ -69,7 +69,7 @@ func getService() (*service, error) {
 		}
 	})
 
-	return serviceInst, serviceErr
+	return serviceInst, errService
 }
 
 func parseDurationEnv(key string, fallback time.Duration) time.Duration {
@@ -101,12 +101,12 @@ func requirePrincipal(principal any) (principalUser, *swaggermodels.AppError) {
 	return user, nil
 }
 
-func requireRole(principal any, role string) (principalUser, *swaggermodels.AppError) {
+func requireSystemAdmin(principal any) (principalUser, *swaggermodels.AppError) {
 	user, errPayload := requirePrincipal(principal)
 	if errPayload != nil {
 		return principalUser{}, errPayload
 	}
-	if user.Role != role {
+	if user.Role != roleSystemAdmin {
 		return principalUser{}, appError("Forbidden", http.StatusForbidden)
 	}
 	return user, nil

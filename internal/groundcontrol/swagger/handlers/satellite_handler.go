@@ -606,13 +606,13 @@ func addSatelliteToGroups(ctx context.Context, q *database.Queries, groups []str
 		})
 		if len(replications) < 1 {
 			if err != nil {
-				return nil, fmt.Errorf("Error: Group Name: %s, does not exist in replication, Please give a Valid Group Name", groupName)
+				return nil, fmt.Errorf("group name %s does not exist in replication; please give a valid group name", groupName)
 			}
 		}
 
 		group, err := q.GetGroupByName(ctx, groupName)
 		if err != nil {
-			return nil, fmt.Errorf("Error: Invalid Group Name: %v", groupName)
+			return nil, fmt.Errorf("invalid group name: %s", groupName)
 		}
 		if err := q.AddSatelliteToGroup(ctx, database.AddSatelliteToGroupParams{
 			SatelliteID: satelliteID,
@@ -645,13 +645,13 @@ func assignPermissionsToRobot(ctx context.Context, q *database.Queries, groups [
 	for _, groupName := range groups {
 		projects, err := q.GetProjectsOfGroup(ctx, groupName)
 		if err != nil {
-			return fmt.Errorf("Error: failed to fetch projects for group")
+			return fmt.Errorf("failed to fetch projects for group")
 		}
 		if len(projects) == 0 {
-			return fmt.Errorf("Error: no projects found for group")
+			return fmt.Errorf("no projects found for group")
 		}
 		if _, err := utils.UpdateRobotProjects(ctx, projects[0], strconv.FormatInt(robotID, 10)); err != nil {
-			return fmt.Errorf("Error: failed to update robot account permissions")
+			return fmt.Errorf("failed to update robot account permissions")
 		}
 	}
 	return nil

@@ -33,7 +33,9 @@ func nullInt32(v sql.NullInt32) *swaggermodels.NullInt32 {
 func databaseConfig(row database.Config) *swaggermodels.APIDatabaseConfig {
 	var decoded any
 	if len(row.Config) > 0 {
-		_ = json.Unmarshal(row.Config, &decoded)
+		if err := json.Unmarshal(row.Config, &decoded); err != nil {
+			decoded = nil
+		}
 	}
 	return &swaggermodels.APIDatabaseConfig{
 		ID:          row.ID,

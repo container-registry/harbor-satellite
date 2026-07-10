@@ -18,7 +18,7 @@ func CreateUser(params users.CreateUserParams, principal any) middleware.Respond
 	if err != nil {
 		return users.NewCreateUserInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
 	}
-	if _, errPayload := requireRole(principal, roleSystemAdmin); errPayload != nil {
+	if _, errPayload := requireSystemAdmin(principal); errPayload != nil {
 		if errPayload.Code == http.StatusUnauthorized {
 			return users.NewCreateUserUnauthorized().WithPayload(errPayload)
 		}
@@ -111,7 +111,7 @@ func DeleteUser(params users.DeleteUserParams, principal any) middleware.Respond
 	if err != nil {
 		return users.NewDeleteUserInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
 	}
-	currentUser, errPayload := requireRole(principal, roleSystemAdmin)
+	currentUser, errPayload := requireSystemAdmin(principal)
 	if errPayload != nil {
 		if errPayload.Code == http.StatusUnauthorized {
 			return users.NewDeleteUserUnauthorized().WithPayload(errPayload)
@@ -192,7 +192,7 @@ func ChangeUserPassword(params users.ChangeUserPasswordParams, principal any) mi
 	if err != nil {
 		return users.NewChangeUserPasswordInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
 	}
-	if _, errPayload := requireRole(principal, roleSystemAdmin); errPayload != nil {
+	if _, errPayload := requireSystemAdmin(principal); errPayload != nil {
 		if errPayload.Code == http.StatusUnauthorized {
 			return users.NewChangeUserPasswordUnauthorized().WithPayload(errPayload)
 		}

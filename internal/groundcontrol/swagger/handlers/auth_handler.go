@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 	"time"
 
@@ -50,7 +51,7 @@ func Login(params auth.LoginParams) middleware.Responder {
 		return auth.NewLoginUnauthorized().WithPayload(appError("Invalid credentials", http.StatusUnauthorized))
 	}
 
-	_ = svc.queries.ResetLoginAttempts(params.HTTPRequest.Context(), username)
+	_ = svc.queries.ResetLoginAttempts(params.HTTPRequest.Context(), username) //nolint:errcheck // Reset failed attempts on success (ignore errors)
 
 	token, err := gcauth.GenerateSessionToken()
 	if err != nil {
@@ -111,9 +112,11 @@ func (s *service) recordFailedAttempt(ctx context.Context, username string) {
 	}
 
 	if attempts.FailedCount >= maxFailedAttempts {
-		_ = s.queries.LockAccount(ctx, database.LockAccountParams{
+		if err := s.queries.LockAccount(ctx, database.LockAccountParams{
 			Username:    username,
 			LockedUntil: sql.NullTime{Time: time.Now().Add(s.lockoutDuration), Valid: true},
-		})
+		}); err != nil {
+			log.Printf("failed to lock account %q: %v", username, err)
+		}
 	}
 }

@@ -106,7 +106,7 @@ func DeleteGroup(params groups.DeleteGroupParams, principal any) middleware.Resp
 	if err != nil {
 		return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
 	}
-	if _, errPayload := requireRole(principal, roleSystemAdmin); errPayload != nil {
+	if _, errPayload := requireSystemAdmin(principal); errPayload != nil {
 		if errPayload.Code == http.StatusUnauthorized {
 			return groups.NewDeleteGroupUnauthorized().WithPayload(errPayload)
 		}
