@@ -22,20 +22,20 @@ This appends a `Signed-off-by` line to your commit message. Make sure the name a
 
 ### Prerequisites
 
-- [Go](https://go.dev/dl/) `1.22+`
+- [Go](https://go.dev/dl/) `1.26.3`
 - [Task](https://taskfile.dev/installation/) — used for all build, lint, and test automation
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose — required for local development and E2E tests
 
 ### Repository Structure
 
-This repository contains two separate Go modules:
+This repository uses a single Go module at the root, with two binaries:
 
 | Path | Purpose |
 |---|---|
-| `/` (root module) | Satellite edge daemon - CLI, config, registry, state replication |
-| `ground-control/` | Ground Control cloud service - satellite management, Harbor integration, PostgreSQL |
+| `cmd/harbor-satellite/` | Satellite edge daemon - CLI, config, registry, state replication |
+| `cmd/ground-control/` | Ground Control cloud service - satellite management, Harbor integration, PostgreSQL |
 
-When running Go commands, be aware of which module you are working in. Run commands from the appropriate directory (`/` for satellite, `ground-control/` for Ground Control).
+Run all Go commands from the repository root.
 
 ### Building
 
@@ -48,13 +48,13 @@ task _build:satellite
 task _build:ground-control
 
 # Run the satellite directly
-go run cmd/main.go --token "<token>" --ground-control-url "http://127.0.0.1:8080"
+go run cmd/harbor-satellite/main.go --token "<token>" --ground-control-url "http://127.0.0.1:8080"
 
 # Run Ground Control directly (requires a configured .env file)
-cd ground-control && go run main.go
+go run cmd/ground-control/main.go
 ```
 
-For Ground Control local setup, copy `ground-control/.env.example` to `ground-control/.env` and fill in the required values. See [ground-control/README.md](ground-control/README.md) for details.
+For Ground Control local setup, copy `.env.example` to `.env` and fill in the required values. See [ground-control/README.md](ground-control/README.md) for details.
 
 For satellite quickstart instructions, refer to [QUICKSTART.md](QUICKSTART.md).
 
@@ -86,18 +86,15 @@ Follow the code style and standards described below. Keep changes focused — av
 Before pushing, verify your changes pass all checks:
 
 ```bash
-# Run unit tests for the satellite module
+# Run all unit tests from the repository root
 go test ./... -v -count=1
-
-# Run unit tests for Ground Control
-cd ground-control && go test ./... -v -count=1
 
 # Run E2E tests
 task e2e-test    # standard E2E
 task e2e-byo     # BYO registry E2E
 task e2e-spiffe  # SPIFFE mTLS E2E
 
-# Lint both modules
+# Lint
 task lint
 ```
 
@@ -145,7 +142,7 @@ Note on AI-assisted contributions: using AI tools to assist your work is fine, b
 
 The project uses a strict `golangci-lint` configuration with 50+ linters. Key rules to follow:
 
-- Prefer `any` over `interface{}` (Go 1.22+)
+- Prefer `any` over `interface{}` (Go 1.18+)
 - Avoid package-level global variables (`gochecknoglobals`)
 - Avoid `init()` functions (`gochecknoinits`)
 - Use `t.TempDir()` in tests instead of `os.TempDir()`
