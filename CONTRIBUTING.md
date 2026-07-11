@@ -54,7 +54,7 @@ go run cmd/harbor-satellite/main.go --token "<token>" --ground-control-url "http
 go run cmd/ground-control/main.go
 ```
 
-For Ground Control local setup, copy `.env.example` to `.env` and fill in the required values. See [ground-control/README.md](ground-control/README.md) for details.
+For Ground Control local setup, copy `.env.example` to `.env` and fill in the required values.
 
 For satellite quickstart instructions, refer to [QUICKSTART.md](QUICKSTART.md).
 
