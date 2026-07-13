@@ -3,34 +3,61 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"log"
-	"os"
+	"time"
 
 	flags "github.com/jessevdk/go-flags"
 	"github.com/joho/godotenv"
 
 	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harborhealth"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/migrator"
+	swaggerhandlers "github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/handlers"
 	swaggerserversrv "github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/server"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/server/operations"
 	"github.com/go-openapi/loads"
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	_ = godotenv.Load(".env") //nolint:errcheck // .env file is optional
 	if err := env.LoadGC(); err != nil {
-		log.Fatalf("failed to load environment: %v", err)
+		return fmt.Errorf("load environment: %w", err)
 	}
 
-	err := harborhealth.CheckHealth()
-	if err != nil {
-		log.Fatalf("health check failed: %v", err)
+	if err := harborhealth.CheckHealth(); err != nil {
+		return fmt.Errorf("check Harbor health: %w", err)
+	}
+
+	migrator.DoMigrations()
+	if err := swaggerhandlers.Initialize(context.Background()); err != nil {
+		return err
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := swaggerserversrv.ShutdownApplication(ctx); err != nil {
+			log.Printf("Ground Control resource shutdown error: %v", err)
+		}
+	}()
+	if err := swaggerhandlers.StartBackgroundJobs(); err != nil {
+		return err
+	}
+	if err := swaggerserversrv.PrepareRuntime(); err != nil {
+		return fmt.Errorf("prepare server runtime: %w", err)
 	}
 
 	swaggerSpec, err := loads.Embedded(swaggerserversrv.SwaggerJSON, swaggerserversrv.FlatSwaggerJSON)
 	if err != nil {
-		log.Fatalln(err)
+		return fmt.Errorf("load embedded Swagger specification: %w", err)
 	}
 
 	api := operations.NewGroundControlAPI(swaggerSpec)
@@ -43,26 +70,23 @@ func main() {
 	for _, optsGroup := range api.CommandLineOptionsGroups {
 		_, err := parser.AddGroup(optsGroup.ShortDescription, optsGroup.LongDescription, optsGroup.Options)
 		if err != nil {
-			log.Fatalln(err)
+			return fmt.Errorf("add command-line option group: %w", err)
 		}
 	}
 
 	if _, err := parser.Parse(); err != nil {
-		code := 1
 		fe := new(flags.Error)
-		if errors.As(err, &fe) {
-			if fe.Type == flags.ErrHelp {
-				code = 0
-			}
+		if errors.As(err, &fe) && fe.Type == flags.ErrHelp {
+			return nil
 		}
-		os.Exit(code)
+		return fmt.Errorf("parse command-line options: %w", err)
 	}
 
 	server.ConfigureAPI() // configure handlers, routes and middleware
 
 	if err := server.Serve(); err != nil {
 		_ = server.Shutdown()
-
-		log.Fatalln(err)
+		return fmt.Errorf("serve Ground Control API: %w", err)
 	}
+	return nil
 }

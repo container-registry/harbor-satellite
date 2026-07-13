@@ -35,7 +35,7 @@ tasks:
         -f "{{.SWAGGER_SPEC}}"
         --server-package "{{.SWAGGER_TARGET}}/{{.SWAGGER_SERVER_PACKAGE}}"
         --model-package "{{.SWAGGER_TARGET}}/{{.SWAGGER_MODEL_PACKAGE}}"
-        --main-package "{{.SWAGGER_MAIN_PACKAGE}}"
+        --exclude-main
 
   client:
     desc: Generate client from swagger spec
