@@ -121,8 +121,7 @@ nfpms:
     package_name: harbor-satellite
     homepage: https://github.com/container-registry/harbor-satellite
     maintainer: Harbor Community
-    description: |-
-      Harbor Satellite is a lightweight, secure, and easy-to-use container registry that can be deployed in a few minutes on remote edge locations.
+    description: "Harbor Satellite "
     formats:
       - rpm
       - deb
@@ -133,8 +132,7 @@ nfpms:
     package_name: ground-control
     homepage: https://github.com/container-registry/harbor-satellite
     maintainer: Harbor Community
-    description: |-
-      Harbor Satellite is a lightweight, secure, and easy-to-use container registry that can be deployed in a few minutes on remote edge locations.
+    description: "Ground Control"
     formats:
       - rpm
       - deb
