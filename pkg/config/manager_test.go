@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -91,7 +90,7 @@ func TestInitConfigManager(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := InitConfigManager(token, ground_control_url, tt.path, "", false, false, crypto.NewAESProvider())
+			_, _, err := InitConfigManager(token, ground_control_url, tt.path, "", false, false)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
@@ -109,7 +108,7 @@ func TestConfigManager_WriteConfig(t *testing.T) {
 		ZotConfigRaw: json.RawMessage(`{"storage": {}}`),
 	}
 	path := filepath.Join(t.TempDir(), "config.json")
-	cm, err := NewConfigManager(path, "", "", "", false, cfg, crypto.NewAESProvider())
+	cm, err := NewConfigManager(path, "", "", "", false, cfg)
 	require.NoError(t, err)
 
 	t.Run("SuccessfulWrite", func(t *testing.T) {

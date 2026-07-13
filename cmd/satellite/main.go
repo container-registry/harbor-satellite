@@ -9,13 +9,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
-	"github.com/container-registry/harbor-satellite/internal/satellite/parsec"
 	"github.com/container-registry/harbor-satellite/internal/satellite/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
 	"github.com/container-registry/harbor-satellite/internal/utils"
@@ -60,9 +58,6 @@ type SatelliteOptions struct {
 	HarborRegistryURL      string
 	DirectDelivery         bool
 	ImageDir               string
-	// PARSEC hardware-backed identity (optional; requires parsec build tag and running daemon)
-	ParsecEnabled    bool
-	ParsecSocketPath string
 }
 
 func main() {
@@ -88,8 +83,6 @@ func main() {
 		HarborRegistryURL:      envCfg.HarborRegistryURL,
 		DirectDelivery:         envCfg.DirectDelivery,
 		ImageDir:               envCfg.ImageDir,
-		ParsecEnabled:          envCfg.ParsecEnabled,
-		ParsecSocketPath:       envCfg.ParsecSocketPath,
 	}
 	shutdownTimeout := envCfg.ShutdownTimeout
 
@@ -113,8 +106,6 @@ func main() {
 	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", opts.HarborRegistryURL, "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
 	flag.BoolVar(&opts.DirectDelivery, "direct-delivery", opts.DirectDelivery, "[Experimental] Write image tarballs directly to k3s/RKE2 agent images directory")
 	flag.StringVar(&opts.ImageDir, "image-dir", opts.ImageDir, "Override image directory for direct delivery (auto-detected if empty)")
-	flag.BoolVar(&opts.ParsecEnabled, "parsec-enabled", opts.ParsecEnabled, "Enable hardware-backed identity via PARSEC (requires parsec build tag and running PARSEC daemon)")
-	flag.StringVar(&opts.ParsecSocketPath, "parsec-socket", opts.ParsecSocketPath, "PARSEC daemon socket path")
 
 	flag.Parse()
 	if opts.Token == "" {
@@ -122,12 +113,6 @@ func main() {
 	}
 	if opts.RegistryPassword == "" {
 		opts.RegistryPassword = envCfg.RegistryPassword
-	}
-
-	// Surface PARSEC misconfiguration at startup rather than at the first hardware operation.
-	if err := (parsec.Config{Enabled: opts.ParsecEnabled, SocketPath: opts.ParsecSocketPath}).Validate(); err != nil {
-		fmt.Printf("Invalid PARSEC configuration: %v\n", err)
-		os.Exit(1)
 	}
 
 	// Resolve config directory path
@@ -269,25 +254,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	// Select the crypto provider. Per ADR-0007, PARSEC mode is fail-hard:
-	// if the operator opted in via --parsec-enabled and the daemon is not
-	// reachable, the satellite halts rather than silently downgrading to the
-	// software AES provider.
-	var cryptoProvider crypto.Provider
-	var err error
-	if opts.ParsecEnabled {
-		if err := parsec.MustDetect(opts.ParsecSocketPath); err != nil {
-			return fmt.Errorf("parsec startup check failed: %w", err)
-		}
-		cryptoProvider, err = parsec.NewKeyProvider(opts.ParsecSocketPath)
-		if err != nil {
-			return fmt.Errorf("failed to init parsec provider: %w", err)
-		}
-	} else {
-		cryptoProvider = crypto.NewAESProvider()
-	}
-
-	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure, cryptoProvider)
+	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v\n", err)
 		return err
@@ -355,8 +322,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	}
 
 	// Configure direct delivery if enabled (after fallback-only exit). This
-	// feature shipped in c2dbea8 (#356) and was removed in error during the
-	// PARSEC integration work; restored here.
+	// feature shipped in c2dbea8 (#356).
 	if opts.DirectDelivery {
 		imageDir := opts.ImageDir
 		if imageDir == "" {
