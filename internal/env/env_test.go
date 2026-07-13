@@ -87,8 +87,6 @@ func TestLoadSatelliteParsesEnvironment(t *testing.T) {
 	t.Setenv("HARBOR_REGISTRY_URL", "https://harbor.example")
 	t.Setenv("DIRECT_DELIVERY", "true")
 	t.Setenv("IMAGE_DIR", "/var/lib/rancher/k3s/agent/images")
-	t.Setenv("PARSEC_ENABLED", "true")
-	t.Setenv("PARSEC_SOCKET", "/tmp/parsec.sock")
 
 	if err := LoadSatellite(); err != nil {
 		t.Fatalf("LoadSatellite() error = %v", err)
@@ -103,8 +101,5 @@ func TestLoadSatelliteParsesEnvironment(t *testing.T) {
 	}
 	if cfg.RegistryDataDir != "/tmp/registry" || cfg.ShutdownTimeout != "45s" {
 		t.Fatalf("satellite path/timing env was not parsed: %+v", cfg)
-	}
-	if !cfg.ParsecEnabled || cfg.ParsecSocketPath != "/tmp/parsec.sock" {
-		t.Fatalf("parsec env was not parsed: %+v", cfg)
 	}
 }
