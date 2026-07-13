@@ -176,7 +176,7 @@ func (o *SyncGroupInternalServerError) WriteResponse(rw http.ResponseWriter, pro
 // SyncGroupBadGatewayCode is the HTTP code returned for type SyncGroupBadGateway
 const SyncGroupBadGatewayCode int = 502
 
-// SyncGroupBadGateway Harbor project lookup or creation failed.
+// SyncGroupBadGateway Harbor project lookup, creation, or group state artifact push failed.
 //
 // swagger:response syncGroupBadGateway
 type SyncGroupBadGateway struct {

@@ -15,10 +15,10 @@ import (
 type SPIREStatusResponse struct {
 
 	// connected
-	Connected bool `json:"connected,omitempty"`
+	Connected bool `json:"connected"`
 
 	// enabled
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled bool `json:"enabled"`
 
 	// provider
 	Provider string `json:"provider,omitempty"`

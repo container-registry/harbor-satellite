@@ -4,13 +4,11 @@ package models
 
 import (
 	"context"
-	stderrors "errors"
-	"strconv"
 
 	"github.com/go-openapi/errors"
 	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag/jsonutils"
-	"github.com/go-openapi/swag/typeutils"
+	"github.com/go-openapi/validate"
 )
 
 // AgentListResponse AgentListResponse contains a list of attested agents.
@@ -19,7 +17,8 @@ import (
 type AgentListResponse struct {
 
 	// agents
-	Agents []*AgentInfoResponse `json:"agents"`
+	// Required: true
+	Agents []AgentInfoResponse `json:"agents"`
 }
 
 // Validate validates this agent list response
@@ -37,75 +36,16 @@ func (m *AgentListResponse) Validate(formats strfmt.Registry) error {
 }
 
 func (m *AgentListResponse) validateAgents(formats strfmt.Registry) error {
-	if typeutils.IsZero(m.Agents) { // not required
-		return nil
-	}
 
-	for i := 0; i < len(m.Agents); i++ {
-		if typeutils.IsZero(m.Agents[i]) { // not required
-			continue
-		}
-
-		if m.Agents[i] != nil {
-			if err := m.Agents[i].Validate(formats); err != nil {
-				ve := new(errors.Validation)
-				if stderrors.As(err, &ve) {
-					return ve.ValidateName("agents" + "." + strconv.Itoa(i))
-				}
-				ce := new(errors.CompositeError)
-				if stderrors.As(err, &ce) {
-					return ce.ValidateName("agents" + "." + strconv.Itoa(i))
-				}
-
-				return err
-			}
-		}
-
+	if err := validate.Required("agents", "body", m.Agents); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-// ContextValidate validate this agent list response based on the context it is used
+// ContextValidate validates this agent list response based on context it is used
 func (m *AgentListResponse) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
-	var res []error
-
-	if err := m.contextValidateAgents(ctx, formats); err != nil {
-		res = append(res, err)
-	}
-
-	if len(res) > 0 {
-		return errors.CompositeValidationError(res...)
-	}
-	return nil
-}
-
-func (m *AgentListResponse) contextValidateAgents(ctx context.Context, formats strfmt.Registry) error {
-
-	for i := 0; i < len(m.Agents); i++ {
-
-		if m.Agents[i] != nil {
-
-			if typeutils.IsZero(m.Agents[i]) { // not required
-				return nil
-			}
-
-			if err := m.Agents[i].ContextValidate(ctx, formats); err != nil {
-				ve := new(errors.Validation)
-				if stderrors.As(err, &ve) {
-					return ve.ValidateName("agents" + "." + strconv.Itoa(i))
-				}
-				ce := new(errors.CompositeError)
-				if stderrors.As(err, &ce) {
-					return ce.ValidateName("agents" + "." + strconv.Itoa(i))
-				}
-
-				return err
-			}
-		}
-
-	}
-
 	return nil
 }
 

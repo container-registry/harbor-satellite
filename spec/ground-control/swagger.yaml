@@ -15,7 +15,7 @@ schemes:
 basePath: /
 securityDefinitions:
   bearerAuth:
-    description: "Bearer token authentication. Use the format: Bearer <token>."
+    description: "Session token authentication. Swagger UI accepts the raw token; HTTP clients may also use Bearer <token>."
     type: apiKey
     name: Authorization
     in: header
@@ -329,7 +329,7 @@ paths:
           schema:
             $ref: "#/definitions/AppError"
         "502":
-          description: Harbor project lookup or creation failed.
+          description: Harbor project lookup, creation, or group state artifact push failed.
           schema:
             $ref: "#/definitions/AppError"
       security:
@@ -1401,6 +1401,7 @@ definitions:
   AgentInfoResponse:
     type: object
     title: AgentInfoResponse contains agent information for API response.
+    x-nullable: false
     properties:
       attestation_type:
         type: string
@@ -1421,11 +1422,19 @@ definitions:
   AgentListResponse:
     type: object
     title: AgentListResponse contains a list of attested agents.
+    required:
+      - agents
     properties:
       agents:
         type: array
         items:
           $ref: "#/definitions/AgentInfoResponse"
+          x-go-type:
+            type: AgentInfoResponse
+            hints:
+              kind: object
+              nullable: false
+              noValidation: true
         x-go-name: Agents
     x-go-package: github.com/container-registry/harbor-satellite/ground-control/internal/server
   AppError:
@@ -1711,9 +1720,11 @@ definitions:
     properties:
       connected:
         type: boolean
+        x-omitempty: false
         x-go-name: Connected
       enabled:
         type: boolean
+        x-omitempty: false
         x-go-name: Enabled
       provider:
         type: string

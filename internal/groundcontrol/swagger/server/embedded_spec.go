@@ -514,7 +514,7 @@ func init() {
             }
           },
           "502": {
-            "description": "Harbor project lookup or creation failed.",
+            "description": "Harbor project lookup, creation, or group state artifact push failed.",
             "schema": {
               "$ref": "#/definitions/AppError"
             }
@@ -2189,15 +2189,27 @@ func init() {
           "x-go-name": "SpiffeID"
         }
       },
-      "x-go-package": "github.com/container-registry/harbor-satellite/ground-control/internal/server"
+      "x-go-package": "github.com/container-registry/harbor-satellite/ground-control/internal/server",
+      "x-nullable": false
     },
     "AgentListResponse": {
       "type": "object",
       "title": "AgentListResponse contains a list of attested agents.",
+      "required": [
+        "agents"
+      ],
       "properties": {
         "agents": {
           "type": "array",
           "items": {
+            "x-go-type": {
+              "hints": {
+                "kind": "object",
+                "noValidation": true,
+                "nullable": false
+              },
+              "type": "AgentInfoResponse"
+            },
             "$ref": "#/definitions/AgentInfoResponse"
           },
           "x-go-name": "Agents"
@@ -2558,11 +2570,13 @@ func init() {
       "properties": {
         "connected": {
           "type": "boolean",
-          "x-go-name": "Connected"
+          "x-go-name": "Connected",
+          "x-omitempty": false
         },
         "enabled": {
           "type": "boolean",
-          "x-go-name": "Enabled"
+          "x-go-name": "Enabled",
+          "x-omitempty": false
         },
         "provider": {
           "type": "string",
@@ -2719,7 +2733,7 @@ func init() {
   },
   "securityDefinitions": {
     "bearerAuth": {
-      "description": "Bearer token authentication. Use the format: Bearer \u003ctoken\u003e.",
+      "description": "Session token authentication. Swagger UI accepts the raw token; HTTP clients may also use Bearer \u003ctoken\u003e.",
       "type": "apiKey",
       "name": "Authorization",
       "in": "header"
@@ -3226,7 +3240,7 @@ func init() {
             }
           },
           "502": {
-            "description": "Harbor project lookup or creation failed.",
+            "description": "Harbor project lookup, creation, or group state artifact push failed.",
             "schema": {
               "$ref": "#/definitions/AppError"
             }
@@ -4901,15 +4915,27 @@ func init() {
           "x-go-name": "SpiffeID"
         }
       },
-      "x-go-package": "github.com/container-registry/harbor-satellite/ground-control/internal/server"
+      "x-go-package": "github.com/container-registry/harbor-satellite/ground-control/internal/server",
+      "x-nullable": false
     },
     "AgentListResponse": {
       "type": "object",
       "title": "AgentListResponse contains a list of attested agents.",
+      "required": [
+        "agents"
+      ],
       "properties": {
         "agents": {
           "type": "array",
           "items": {
+            "x-go-type": {
+              "hints": {
+                "kind": "object",
+                "noValidation": true,
+                "nullable": false
+              },
+              "type": "AgentInfoResponse"
+            },
             "$ref": "#/definitions/AgentInfoResponse"
           },
           "x-go-name": "Agents"
@@ -5270,11 +5296,13 @@ func init() {
       "properties": {
         "connected": {
           "type": "boolean",
-          "x-go-name": "Connected"
+          "x-go-name": "Connected",
+          "x-omitempty": false
         },
         "enabled": {
           "type": "boolean",
-          "x-go-name": "Enabled"
+          "x-go-name": "Enabled",
+          "x-omitempty": false
         },
         "provider": {
           "type": "string",
@@ -5431,7 +5459,7 @@ func init() {
   },
   "securityDefinitions": {
     "bearerAuth": {
-      "description": "Bearer token authentication. Use the format: Bearer \u003ctoken\u003e.",
+      "description": "Session token authentication. Swagger UI accepts the raw token; HTTP clients may also use Bearer \u003ctoken\u003e.",
       "type": "apiKey",
       "name": "Authorization",
       "in": "header"
