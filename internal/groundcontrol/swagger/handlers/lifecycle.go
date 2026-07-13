@@ -109,7 +109,6 @@ func StartBackgroundJobs() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	svc.cleanupCancel = cancel
 	svc.cleanupWG.Go(func() {
-		defer svc.cleanupWG.Done()
 		svc.startCleanupJob(ctx, statusRetentionDays, statusCleanupPeriod)
 	})
 	return nil

@@ -34,3 +34,21 @@ func TestBootstrapSystemAdminDoesNotResetExistingAdmin(t *testing.T) {
 
 	require.NoError(t, serviceInst.bootstrapSystemAdmin(context.Background()))
 }
+
+func TestBackgroundCleanupStopsCleanly(t *testing.T) {
+	newMockHandlerService(t)
+
+	require.NoError(t, StartBackgroundJobs())
+	StopBackgroundJobs()
+
+	done := make(chan struct{})
+	go func() {
+		serviceInst.cleanupWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup worker did not stop")
+	}
+}

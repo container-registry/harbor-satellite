@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	flags "github.com/jessevdk/go-flags"
@@ -22,38 +23,13 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run() error {
+func run(args []string) error {
 	_ = godotenv.Load(".env") //nolint:errcheck // .env file is optional
-	if err := env.LoadGC(); err != nil {
-		return fmt.Errorf("load environment: %w", err)
-	}
-
-	if err := harborhealth.CheckHealth(); err != nil {
-		return fmt.Errorf("check Harbor health: %w", err)
-	}
-
-	migrator.DoMigrations()
-	if err := swaggerhandlers.Initialize(context.Background()); err != nil {
-		return err
-	}
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := swaggerserversrv.ShutdownApplication(ctx); err != nil {
-			log.Printf("Ground Control resource shutdown error: %v", err)
-		}
-	}()
-	if err := swaggerhandlers.StartBackgroundJobs(); err != nil {
-		return err
-	}
-	if err := swaggerserversrv.PrepareRuntime(); err != nil {
-		return fmt.Errorf("prepare server runtime: %w", err)
-	}
 
 	swaggerSpec, err := loads.Embedded(swaggerserversrv.SwaggerJSON, swaggerserversrv.FlatSwaggerJSON)
 	if err != nil {
@@ -74,12 +50,40 @@ func run() error {
 		}
 	}
 
-	if _, err := parser.Parse(); err != nil {
+	if _, err := parser.ParseArgs(args); err != nil {
 		fe := new(flags.Error)
 		if errors.As(err, &fe) && fe.Type == flags.ErrHelp {
 			return nil
 		}
 		return fmt.Errorf("parse command-line options: %w", err)
+	}
+
+	// Parse CLI options before touching external services. Besides keeping
+	// --help side-effect free, this makes the resolved TLS paths available to
+	// the certificate hot-reload setup below.
+	if err := env.LoadGC(); err != nil {
+		return fmt.Errorf("load environment: %w", err)
+	}
+	if err := harborhealth.CheckHealth(); err != nil {
+		return fmt.Errorf("check Harbor health: %w", err)
+	}
+
+	migrator.DoMigrations()
+	if err := swaggerhandlers.Initialize(context.Background()); err != nil {
+		return err
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := swaggerserversrv.ShutdownApplication(ctx); err != nil {
+			log.Printf("Ground Control resource shutdown error: %v", err)
+		}
+	}()
+	if err := swaggerhandlers.StartBackgroundJobs(); err != nil {
+		return err
+	}
+	if err := swaggerserversrv.PrepareRuntime(string(server.TLSCertificate), string(server.TLSCertificateKey)); err != nil {
+		return fmt.Errorf("prepare server runtime: %w", err)
 	}
 
 	server.ConfigureAPI() // configure handlers, routes and middleware

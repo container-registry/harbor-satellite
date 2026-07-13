@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -129,6 +130,37 @@ func TestLogin(t *testing.T) {
 		require.True(t, ok)
 		require.NotEmpty(t, response.Payload.Token)
 		require.True(t, time.Time(response.Payload.ExpiresAt).After(now))
+	})
+
+	t.Run("does not create a session when attempt reset fails", func(t *testing.T) {
+		mock := newMockHandlerService(t)
+		now := time.Now().UTC().Truncate(time.Second)
+		hash, err := gcauth.HashPassword("SecurePass1")
+		require.NoError(t, err)
+		mock.ExpectQuery("SELECT id, username, failed_count, locked_until, last_attempt FROM login_attempts").
+			WithArgs("alice").
+			WillReturnError(sql.ErrNoRows)
+		mock.ExpectQuery("SELECT id, username, password_hash, role, created_at, updated_at FROM users").
+			WithArgs("alice").
+			WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role", "created_at", "updated_at"}).
+				AddRow(2, "alice", hash, roleAdmin, now, now))
+		mock.ExpectExec("UPDATE login_attempts").
+			WithArgs("alice").
+			WillReturnError(errors.New("database unavailable"))
+		username := "alice"
+		password := strfmt.Password("SecurePass1")
+
+		responder := Login(swaggerauth.LoginParams{
+			HTTPRequest: handlerRequest(http.MethodPost, "/login"),
+			Body: &swaggermodels.LoginRequest{
+				Username: &username,
+				Password: &password,
+			},
+		})
+
+		response, ok := responder.(*swaggerauth.LoginInternalServerError)
+		require.True(t, ok)
+		require.Contains(t, response.Payload.Message, "reset login attempt state")
 	})
 
 	t.Run("records a failed password", func(t *testing.T) {

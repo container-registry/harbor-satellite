@@ -23,6 +23,8 @@ import (
 	"github.com/lib/pq"
 )
 
+const maxConfigPatchBytes = 10 << 20
+
 func CreateConfig(params configs.CreateConfigParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
@@ -337,8 +339,16 @@ func CaptureConfigPatchBody(next http.Handler) http.Handler {
 			return
 		}
 
-		body, err := io.ReadAll(r.Body)
+		body, err := io.ReadAll(io.LimitReader(r.Body, maxConfigPatchBytes+1))
 		_ = r.Body.Close()
+		if len(body) > maxConfigPatchBytes {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			if encodeErr := json.NewEncoder(w).Encode(appError("Configuration merge patch exceeds the 10 MiB limit", http.StatusRequestEntityTooLarge)); encodeErr != nil {
+				log.Printf("failed to write oversized configuration patch response: %v", encodeErr)
+			}
+			return
+		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		capture := capturedConfigPatch{body: body, err: err}
 		ctx := context.WithValue(r.Context(), configPatchContextKey{}, capture)

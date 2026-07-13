@@ -1,9 +1,13 @@
 package logger
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"reflect"
 	"strings"
+	"unicode"
 )
 
 // RedactedValue is substituted for sensitive configuration values in audit
@@ -18,8 +22,8 @@ func RedactConfig(raw []byte) any {
 		return nil
 	}
 
-	var decoded any
-	if err := json.Unmarshal(raw, &decoded); err != nil {
+	decoded, err := decodeConfigJSON(raw)
+	if err != nil {
 		return "[unparseable config]"
 	}
 	return redactConfigValue(decoded)
@@ -27,11 +31,12 @@ func RedactConfig(raw []byte) any {
 
 // DiffConfig returns a flattened, redacted map of configuration changes.
 func DiffConfig(oldRaw, newRaw []byte) map[string]any {
-	var oldValue, newValue any
-	if err := json.Unmarshal(oldRaw, &oldValue); err != nil {
+	oldValue, err := decodeConfigJSON(oldRaw)
+	if err != nil {
 		oldValue = nil
 	}
-	if err := json.Unmarshal(newRaw, &newValue); err != nil {
+	newValue, err := decodeConfigJSON(newRaw)
+	if err != nil {
 		newValue = nil
 	}
 
@@ -44,15 +49,38 @@ func DiffConfig(oldRaw, newRaw []byte) map[string]any {
 }
 
 func isSensitiveConfigKey(key string) bool {
-	key = strings.ToLower(key)
+	key = strings.Map(func(character rune) rune {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) {
+			return unicode.ToLower(character)
+		}
+		return -1
+	}, key)
 	for _, fragment := range []string{
-		"password", "passwd", "secret", "token", "credential", "apikey", "api_key", "access_key", "private_key",
+		"password", "passwd", "secret", "token", "credential", "apikey", "accesskey", "privatekey",
 	} {
 		if strings.Contains(key, fragment) {
 			return true
 		}
 	}
 	return false
+}
+
+func decodeConfigJSON(raw []byte) (any, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+
+	var decoded any
+	if err := decoder.Decode(&decoded); err != nil {
+		return nil, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return nil, errors.New("configuration contains multiple JSON values")
+		}
+		return nil, err
+	}
+	return decoded, nil
 }
 
 func redactConfigValue(value any) any {

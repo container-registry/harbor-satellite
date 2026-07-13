@@ -58,7 +58,9 @@ func Login(params auth.LoginParams) middleware.Responder {
 		return auth.NewLoginUnauthorized().WithPayload(appError("Invalid credentials", http.StatusUnauthorized))
 	}
 
-	_ = svc.queries.ResetLoginAttempts(params.HTTPRequest.Context(), username) //nolint:errcheck // Reset failed attempts on success (ignore errors)
+	if err := svc.queries.ResetLoginAttempts(params.HTTPRequest.Context(), username); err != nil {
+		return auth.NewLoginInternalServerError().WithPayload(internalError("Failed to reset login attempt state", err))
+	}
 
 	token, err := gcauth.GenerateSessionToken()
 	if err != nil {

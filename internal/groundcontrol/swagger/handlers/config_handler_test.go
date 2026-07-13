@@ -206,6 +206,30 @@ func TestCaptureConfigPatchBodyRestoresBody(t *testing.T) {
 	handler.ServeHTTP(httptest.NewRecorder(), request)
 }
 
+func TestCaptureConfigPatchBodyRejectsOversizedPatch(t *testing.T) {
+	t.Parallel()
+
+	request := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/configs/example",
+		strings.NewReader(strings.Repeat("x", maxConfigPatchBytes+1)),
+	)
+	called := false
+	handler := CaptureConfigPatchBody(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		called = true
+	}))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code)
+	require.False(t, called)
+	var payload swaggermodels.AppError
+	require.NoError(t, json.NewDecoder(recorder.Body).Decode(&payload))
+	require.Equal(t, int64(http.StatusRequestEntityTooLarge), payload.Code)
+	require.Contains(t, payload.Message, "10 MiB")
+}
+
 func TestCaptureConfigPatchBodySkipsMissingBody(t *testing.T) {
 	t.Parallel()
 

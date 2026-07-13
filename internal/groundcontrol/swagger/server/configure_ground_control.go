@@ -43,7 +43,7 @@ var runtimeResources struct {
 // PrepareRuntime initializes TLS resources that must report startup failures
 // before listeners begin accepting requests. Static certificates get hot
 // reload support; SPIFFE deployments get their Workload API-backed mTLS config.
-func PrepareRuntime() error {
+func PrepareRuntime(configuredCertFile, configuredKeyFile string) error {
 	runtimeResources.Lock()
 	defer runtimeResources.Unlock()
 	if runtimeResources.prepared {
@@ -68,8 +68,8 @@ func PrepareRuntime() error {
 		return nil
 	}
 
-	certFile := firstNonEmpty(os.Getenv("TLS_CERTIFICATE"), env.GC.TLS.CertFile)
-	keyFile := firstNonEmpty(os.Getenv("TLS_PRIVATE_KEY"), env.GC.TLS.KeyFile)
+	certFile := firstNonEmpty(configuredCertFile, os.Getenv("TLS_CERTIFICATE"), env.GC.TLS.CertFile)
+	keyFile := firstNonEmpty(configuredKeyFile, os.Getenv("TLS_PRIVATE_KEY"), env.GC.TLS.KeyFile)
 	if certFile != "" && keyFile != "" {
 		watcher, err := gcmiddleware.NewCertWatcher(certFile, keyFile)
 		if err != nil {
