@@ -16,6 +16,7 @@ type CertWatcher struct {
 	mu          sync.RWMutex
 	lastModTime time.Time
 	stopCh      chan struct{}
+	stopOnce    sync.Once
 }
 
 // NewCertWatcher creates a new certificate watcher.
@@ -72,7 +73,12 @@ func (cw *CertWatcher) Start(checkInterval time.Duration) {
 
 // Stop stops the certificate watcher.
 func (cw *CertWatcher) Stop() {
-	close(cw.stopCh)
+	if cw == nil {
+		return
+	}
+	cw.stopOnce.Do(func() {
+		close(cw.stopCh)
+	})
 }
 
 // loadCertificate loads the certificate from files.

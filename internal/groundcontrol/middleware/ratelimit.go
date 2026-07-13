@@ -15,6 +15,9 @@ type RateLimiter struct {
 	requests     map[string][]time.Time
 	maxRequests  int
 	windowPeriod time.Duration
+	stopCh       chan struct{}
+	doneCh       chan struct{}
+	stopOnce     sync.Once
 }
 
 // NewRateLimiter creates a new rate limiter.
@@ -23,6 +26,8 @@ func NewRateLimiter(maxRequests int, windowPeriod time.Duration) *RateLimiter {
 		requests:     make(map[string][]time.Time),
 		maxRequests:  maxRequests,
 		windowPeriod: windowPeriod,
+		stopCh:       make(chan struct{}),
+		doneCh:       make(chan struct{}),
 	}
 
 	// Start cleanup goroutine
@@ -62,26 +67,43 @@ func (rl *RateLimiter) Allow(ip string) bool {
 func (rl *RateLimiter) cleanup() {
 	ticker := time.NewTicker(rl.windowPeriod)
 	defer ticker.Stop()
+	defer close(rl.doneCh)
 
-	for range ticker.C {
-		rl.mu.Lock()
-		cutoff := time.Now().Add(-rl.windowPeriod)
+	for {
+		select {
+		case <-ticker.C:
+			rl.mu.Lock()
+			cutoff := time.Now().Add(-rl.windowPeriod)
 
-		for ip, timestamps := range rl.requests {
-			var valid []time.Time
-			for _, t := range timestamps {
-				if t.After(cutoff) {
-					valid = append(valid, t)
+			for ip, timestamps := range rl.requests {
+				var valid []time.Time
+				for _, t := range timestamps {
+					if t.After(cutoff) {
+						valid = append(valid, t)
+					}
+				}
+				if len(valid) == 0 {
+					delete(rl.requests, ip)
+				} else {
+					rl.requests[ip] = valid
 				}
 			}
-			if len(valid) == 0 {
-				delete(rl.requests, ip)
-			} else {
-				rl.requests[ip] = valid
-			}
+			rl.mu.Unlock()
+		case <-rl.stopCh:
+			return
 		}
-		rl.mu.Unlock()
 	}
+}
+
+// Close stops the cleanup goroutine. Calls are idempotent.
+func (rl *RateLimiter) Close() {
+	if rl == nil {
+		return
+	}
+	rl.stopOnce.Do(func() {
+		close(rl.stopCh)
+		<-rl.doneCh
+	})
 }
 
 // RateLimitMiddleware returns an HTTP middleware that rate limits requests.

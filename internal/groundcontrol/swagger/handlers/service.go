@@ -18,6 +18,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
+	gcmiddleware "github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
 	swaggermodels "github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/models"
 )
 
@@ -40,8 +41,15 @@ type service struct {
 	sessionDuration time.Duration
 	lockoutDuration time.Duration
 	audit           *auditlog.AuditLogger
+	rateLimiter     *gcmiddleware.RateLimiter
 
 	trustForwardedHeaders bool
+
+	lifecycleMu   sync.Mutex
+	cleanupCancel context.CancelFunc
+	cleanupWG     sync.WaitGroup
+	shutdownOnce  sync.Once
+	shutdownErr   error
 }
 
 var (
@@ -78,6 +86,7 @@ func getService() (*service, error) {
 			sessionDuration: env.GC.Server.SessionDuration,
 			lockoutDuration: env.GC.Server.LockoutDuration,
 			audit:           auditLogger,
+			rateLimiter:     gcmiddleware.NewRateLimiter(10, time.Minute),
 
 			trustForwardedHeaders: env.GC.Audit.TrustForwardedHeaders,
 		}
