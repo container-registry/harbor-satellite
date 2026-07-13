@@ -102,12 +102,35 @@ builds:
   mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
-  - format: tar.gz
+  - id: satellite
+    ids: [satellite]
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
+  - id: ground-control
+    ids: [ground-control]
+    name_template: "ground-control_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
 nfpms:
-  -
+  - id: satellite
+    ids: [satellite]
+    package_name: harbor-satellite
+    homepage: https://github.com/container-registry/harbor-satellite
+    maintainer: Harbor Community
+    description: |-
+      Harbor Satellite is a lightweight, secure, and easy-to-use container registry that can be deployed in a few minutes on remote edge locations.
+    formats:
+      - rpm
+      - deb
+      - apk
+      - archlinux
+  - id: ground-control
+    ids: [ground-control]
+    package_name: ground-control
     homepage: https://github.com/container-registry/harbor-satellite
     maintainer: Harbor Community
     description: |-
