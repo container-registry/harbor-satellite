@@ -243,8 +243,6 @@ linters:
     paths:
       - ground-control$
       - ground-control/
-      - parsec-client-go$
-      - parsec-client-go/
       - third_party$
       - builtin$
       - examples$
@@ -260,8 +258,6 @@ formatters:
     paths:
       - ground-control$
       - ground-control/
-      - parsec-client-go$
-      - parsec-client-go/
       - third_party$
       - builtin$
       - examples$
