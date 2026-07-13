@@ -3,16 +3,17 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
-	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/google/uuid"
 )
 
@@ -295,7 +296,7 @@ func (s *Server) SatelliteAuthMiddleware(next http.Handler) http.Handler {
 			if err != nil {
 				reason := auditlog.ReasonInvalidCredentials
 				errMsg := "Invalid credentials"
-				if err == errRobotExpired {
+				if errors.Is(err, errRobotExpired) {
 					reason = auditlog.ReasonTokenExpired
 					errMsg = "Unauthorized"
 				}
