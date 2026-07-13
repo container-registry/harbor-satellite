@@ -68,15 +68,14 @@ func DeleteSatellite(params satellites.DeleteSatelliteParams, principal any) mid
 		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(internalError("Failed to commit satellite deletion transaction", err))
 	}
 	committed = true
-	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+	auditEvent := auditlog.AuditEvent{
 		Operation:    auditlog.OpDeregister,
 		ResourceType: auditlog.ResSatellite,
-		Outcome:      auditlog.OutcomeSuccess,
 		Actor:        actor.Username,
 		ActorType:    auditlog.ActorUser,
 		SatelliteID:  sat.Name,
 		Resource:     sat.Name,
-	})
+	}
 
 	var cleanupErrors []error
 	if _, err := harbor.DeleteRobotAccount(ctx, robotID); err != nil {
@@ -87,8 +86,21 @@ func DeleteSatellite(params satellites.DeleteSatelliteParams, principal any) mid
 		cleanupErrors = append(cleanupErrors, fmt.Errorf("delete satellite artifact: %w", err))
 	}
 	if cleanupErr := errors.Join(cleanupErrors...); cleanupErr != nil {
+		auditEvent.Outcome = auditlog.OutcomeFailure
+		auditEvent.Details = map[string]any{
+			"database_deleted": true,
+			"harbor_cleanup":   "incomplete",
+			"cleanup_error":    cleanupErr.Error(),
+		}
+		svc.auditEvent(params.HTTPRequest, auditEvent)
 		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(internalError("Satellite was deleted, but Harbor cleanup was incomplete", cleanupErr))
 	}
+	auditEvent.Outcome = auditlog.OutcomeSuccess
+	auditEvent.Details = map[string]any{
+		"database_deleted": true,
+		"harbor_cleanup":   "completed",
+	}
+	svc.auditEvent(params.HTTPRequest, auditEvent)
 	return satellites.NewDeleteSatelliteOK().WithPayload(map[string]string{})
 }
 
