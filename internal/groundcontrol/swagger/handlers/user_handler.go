@@ -7,6 +7,7 @@ import (
 
 	gcauth "github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	swaggermodels "github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/models"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/server/operations/users"
 	"github.com/go-openapi/runtime/middleware"
@@ -16,9 +17,10 @@ import (
 func CreateUser(params users.CreateUserParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return users.NewCreateUserInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewCreateUserInternalServerError().WithPayload(internalError("Failed to initialize user service", err))
 	}
-	if _, errPayload := requireSystemAdmin(principal); errPayload != nil {
+	actor, errPayload := requireSystemAdmin(principal)
+	if errPayload != nil {
 		if errPayload.Code == http.StatusUnauthorized {
 			return users.NewCreateUserUnauthorized().WithPayload(errPayload)
 		}
@@ -42,7 +44,7 @@ func CreateUser(params users.CreateUserParams, principal any) middleware.Respond
 
 	hash, err := gcauth.HashPassword(password)
 	if err != nil {
-		return users.NewCreateUserInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewCreateUserInternalServerError().WithPayload(internalError("Failed to hash user password", err))
 	}
 
 	user, err := svc.queries.CreateUser(params.HTTPRequest.Context(), database.CreateUserParams{
@@ -55,8 +57,17 @@ func CreateUser(params users.CreateUserParams, principal any) middleware.Respond
 		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
 			return users.NewCreateUserConflict().WithPayload(appError("User already exists", http.StatusConflict))
 		}
-		return users.NewCreateUserInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewCreateUserInternalServerError().WithPayload(internalError("Failed to create user", err))
 	}
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpCreate,
+		ResourceType: auditlog.ResUser,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actor.Username,
+		ActorType:    auditlog.ActorUser,
+		Resource:     user.Username,
+		Details:      map[string]any{"role": user.Role},
+	})
 
 	return users.NewCreateUserCreated().WithPayload(userResponse(user.ID, user.Username, user.Role, user.CreatedAt.Format("2006-01-02T15:04:05Z07:00")))
 }
@@ -64,7 +75,7 @@ func CreateUser(params users.CreateUserParams, principal any) middleware.Respond
 func ListUsers(params users.ListUsersParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return users.NewListUsersInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewListUsersInternalServerError().WithPayload(internalError("Failed to initialize user service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return users.NewListUsersUnauthorized().WithPayload(errPayload)
@@ -72,7 +83,7 @@ func ListUsers(params users.ListUsersParams, principal any) middleware.Responder
 
 	dbUsers, err := svc.queries.ListUsers(params.HTTPRequest.Context())
 	if err != nil {
-		return users.NewListUsersInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewListUsersInternalServerError().WithPayload(internalError("Failed to list users", err))
 	}
 
 	response := make([]*swaggermodels.UserResponse, 0, len(dbUsers))
@@ -86,7 +97,7 @@ func ListUsers(params users.ListUsersParams, principal any) middleware.Responder
 func GetUser(params users.GetUserParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return users.NewGetUserInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewGetUserInternalServerError().WithPayload(internalError("Failed to initialize user service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return users.NewGetUserUnauthorized().WithPayload(errPayload)
@@ -97,7 +108,7 @@ func GetUser(params users.GetUserParams, principal any) middleware.Responder {
 		if errors.Is(err, sql.ErrNoRows) {
 			return users.NewGetUserNotFound().WithPayload(appError("User not found", http.StatusNotFound))
 		}
-		return users.NewGetUserInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewGetUserInternalServerError().WithPayload(internalError("Failed to load user", err))
 	}
 	if user.Role == roleSystemAdmin {
 		return users.NewGetUserNotFound().WithPayload(appError("User not found", http.StatusNotFound))
@@ -109,7 +120,7 @@ func GetUser(params users.GetUserParams, principal any) middleware.Responder {
 func DeleteUser(params users.DeleteUserParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return users.NewDeleteUserInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewDeleteUserInternalServerError().WithPayload(internalError("Failed to initialize user service", err))
 	}
 	currentUser, errPayload := requireSystemAdmin(principal)
 	if errPayload != nil {
@@ -131,15 +142,23 @@ func DeleteUser(params users.DeleteUserParams, principal any) middleware.Respond
 		if errors.Is(err, sql.ErrNoRows) {
 			return users.NewDeleteUserNotFound().WithPayload(appError("User not found", http.StatusNotFound))
 		}
-		return users.NewDeleteUserInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewDeleteUserInternalServerError().WithPayload(internalError("Failed to load user for deletion", err))
 	}
 
 	if err := svc.queries.DeleteUserSessions(params.HTTPRequest.Context(), user.ID); err != nil {
-		return users.NewDeleteUserInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewDeleteUserInternalServerError().WithPayload(internalError("Failed to delete user sessions", err))
 	}
 	if err := svc.queries.DeleteUser(params.HTTPRequest.Context(), params.Username); err != nil {
-		return users.NewDeleteUserInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewDeleteUserInternalServerError().WithPayload(internalError("Failed to delete user", err))
 	}
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpDelete,
+		ResourceType: auditlog.ResUser,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        currentUser.Username,
+		ActorType:    auditlog.ActorUser,
+		Resource:     params.Username,
+	})
 
 	return users.NewDeleteUserNoContent()
 }
@@ -147,7 +166,7 @@ func DeleteUser(params users.DeleteUserParams, principal any) middleware.Respond
 func ChangeOwnPassword(params users.ChangeOwnPasswordParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return users.NewChangeOwnPasswordInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewChangeOwnPasswordInternalServerError().WithPayload(internalError("Failed to initialize user service", err))
 	}
 	currentUser, errPayload := requirePrincipal(principal)
 	if errPayload != nil {
@@ -164,7 +183,7 @@ func ChangeOwnPassword(params users.ChangeOwnPasswordParams, principal any) midd
 
 	user, err := svc.queries.GetUserByUsername(params.HTTPRequest.Context(), currentUser.Username)
 	if err != nil {
-		return users.NewChangeOwnPasswordInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewChangeOwnPasswordInternalServerError().WithPayload(internalError("Failed to load current user", err))
 	}
 	if !gcauth.VerifyPassword(string(*params.Body.CurrentPassword), user.PasswordHash) {
 		return users.NewChangeOwnPasswordUnauthorized().WithPayload(appError("Current password is incorrect", http.StatusUnauthorized))
@@ -172,17 +191,26 @@ func ChangeOwnPassword(params users.ChangeOwnPasswordParams, principal any) midd
 
 	hash, err := gcauth.HashPassword(newPassword)
 	if err != nil {
-		return users.NewChangeOwnPasswordInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewChangeOwnPasswordInternalServerError().WithPayload(internalError("Failed to hash new password", err))
 	}
 	if err := svc.queries.UpdateUserPassword(params.HTTPRequest.Context(), database.UpdateUserPasswordParams{
 		Username:     currentUser.Username,
 		PasswordHash: hash,
 	}); err != nil {
-		return users.NewChangeOwnPasswordInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewChangeOwnPasswordInternalServerError().WithPayload(internalError("Failed to update password", err))
 	}
 	if err := svc.queries.DeleteUserSessions(params.HTTPRequest.Context(), user.ID); err != nil {
-		return users.NewChangeOwnPasswordInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewChangeOwnPasswordInternalServerError().WithPayload(internalError("Password changed, but existing sessions could not be invalidated", err))
 	}
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpPasswordChange,
+		ResourceType: auditlog.ResUser,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        currentUser.Username,
+		ActorType:    auditlog.ActorUser,
+		Resource:     currentUser.Username,
+		Details:      map[string]any{"flow": "self_service"},
+	})
 
 	return users.NewChangeOwnPasswordNoContent()
 }
@@ -190,9 +218,10 @@ func ChangeOwnPassword(params users.ChangeOwnPasswordParams, principal any) midd
 func ChangeUserPassword(params users.ChangeUserPasswordParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return users.NewChangeUserPasswordInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewChangeUserPasswordInternalServerError().WithPayload(internalError("Failed to initialize user service", err))
 	}
-	if _, errPayload := requireSystemAdmin(principal); errPayload != nil {
+	actor, errPayload := requireSystemAdmin(principal)
+	if errPayload != nil {
 		if errPayload.Code == http.StatusUnauthorized {
 			return users.NewChangeUserPasswordUnauthorized().WithPayload(errPayload)
 		}
@@ -212,22 +241,31 @@ func ChangeUserPassword(params users.ChangeUserPasswordParams, principal any) mi
 		if errors.Is(err, sql.ErrNoRows) {
 			return users.NewChangeUserPasswordNotFound().WithPayload(appError("User not found", http.StatusNotFound))
 		}
-		return users.NewChangeUserPasswordInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewChangeUserPasswordInternalServerError().WithPayload(internalError("Failed to load user for password reset", err))
 	}
 
 	hash, err := gcauth.HashPassword(newPassword)
 	if err != nil {
-		return users.NewChangeUserPasswordInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewChangeUserPasswordInternalServerError().WithPayload(internalError("Failed to hash new password", err))
 	}
 	if err := svc.queries.UpdateUserPassword(params.HTTPRequest.Context(), database.UpdateUserPasswordParams{
 		Username:     params.Username,
 		PasswordHash: hash,
 	}); err != nil {
-		return users.NewChangeUserPasswordInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewChangeUserPasswordInternalServerError().WithPayload(internalError("Failed to reset user password", err))
 	}
 	if err := svc.queries.DeleteUserSessions(params.HTTPRequest.Context(), user.ID); err != nil {
-		return users.NewChangeUserPasswordInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return users.NewChangeUserPasswordInternalServerError().WithPayload(internalError("Password reset, but existing sessions could not be invalidated", err))
 	}
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpPasswordChange,
+		ResourceType: auditlog.ResUser,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actor.Username,
+		ActorType:    auditlog.ActorUser,
+		Resource:     params.Username,
+		Details:      map[string]any{"flow": "admin_reset"},
+	})
 
 	return users.NewChangeUserPasswordNoContent()
 }

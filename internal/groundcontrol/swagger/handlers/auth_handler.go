@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	gcauth "github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
@@ -19,7 +20,7 @@ import (
 func Login(params auth.LoginParams) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return auth.NewLoginInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return auth.NewLoginInternalServerError().WithPayload(internalError("Failed to initialize authentication service", err))
 	}
 	if params.Body == nil || params.Body.Username == nil || params.Body.Password == nil {
 		return auth.NewLoginBadRequest().WithPayload(appError("Invalid request body", http.StatusBadRequest))
@@ -33,7 +34,7 @@ func Login(params auth.LoginParams) middleware.Responder {
 
 	attempts, err := svc.queries.GetLoginAttempts(params.HTTPRequest.Context(), username)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return auth.NewLoginInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return auth.NewLoginInternalServerError().WithPayload(internalError("Failed to load login attempt state", err))
 	}
 
 	if err == nil && attempts.LockedUntil.Valid && attempts.LockedUntil.Time.After(time.Now()) {
@@ -55,7 +56,7 @@ func Login(params auth.LoginParams) middleware.Responder {
 
 	token, err := gcauth.GenerateSessionToken()
 	if err != nil {
-		return auth.NewLoginInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return auth.NewLoginInternalServerError().WithPayload(internalError("Failed to generate session token", err))
 	}
 
 	expiresAt := time.Now().Add(svc.sessionDuration)
@@ -64,7 +65,7 @@ func Login(params auth.LoginParams) middleware.Responder {
 		Token:     token,
 		ExpiresAt: expiresAt,
 	}); err != nil {
-		return auth.NewLoginInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return auth.NewLoginInternalServerError().WithPayload(internalError("Failed to store user session", err))
 	}
 
 	return auth.NewLoginOK().WithPayload(&swaggermodels.LoginResponse{
@@ -76,7 +77,7 @@ func Login(params auth.LoginParams) middleware.Responder {
 func Logout(params auth.LogoutParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return auth.NewLogoutInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return auth.NewLogoutInternalServerError().WithPayload(internalError("Failed to initialize authentication service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return auth.NewLogoutUnauthorized().WithPayload(errPayload)
@@ -84,25 +85,29 @@ func Logout(params auth.LogoutParams, principal any) middleware.Responder {
 
 	token := ""
 	if params.HTTPRequest != nil {
-		token = bearerToken(params.HTTPRequest.Header.Get("Authorization"))
+		token = sessionToken(params.HTTPRequest.Header.Get("Authorization"))
 	}
 	if token == "" {
 		return auth.NewLogoutUnauthorized().WithPayload(appError("Unauthorized", http.StatusUnauthorized))
 	}
 
 	if err := svc.queries.DeleteSession(params.HTTPRequest.Context(), token); err != nil {
-		return auth.NewLogoutInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return auth.NewLogoutInternalServerError().WithPayload(internalError("Failed to delete user session", err))
 	}
 
 	return auth.NewLogoutNoContent()
 }
 
-func bearerToken(header string) string {
-	const prefix = "Bearer "
-	if len(header) <= len(prefix) || header[:len(prefix)] != prefix {
+func sessionToken(header string) string {
+	parts := strings.Fields(header)
+	switch {
+	case len(parts) == 1 && !strings.EqualFold(parts[0], "Bearer"):
+		return parts[0]
+	case len(parts) == 2 && strings.EqualFold(parts[0], "Bearer"):
+		return parts[1]
+	default:
 		return ""
 	}
-	return header[len(prefix):]
 }
 
 func (s *service) recordFailedAttempt(ctx context.Context, username string) {

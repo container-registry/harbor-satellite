@@ -20,8 +20,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/server/operations/users"
 )
 
-//go:generate swagger generate server --target ../../../../../feat-srv --name GroundControl --spec ../../../../api/ground-control/swagger.yaml --model-package ./internal/groundcontrol/swagger/models --server-package ./internal/groundcontrol/swagger/server --principal any
-
 func configureFlags(api *operations.GroundControlAPI) {
 	// api.CommandLineOptionsGroups = []cmdutils.CommandLineOptionsGroup{ ... }
 	_ = api
@@ -74,6 +72,8 @@ func configureAPI(api *operations.GroundControlAPI) http.Handler {
 	api.SatellitesSyncSatelliteHandler = satellites.SyncSatelliteHandlerFunc(swaggerhandlers.SyncSatellite)
 	api.ConfigsUpdateConfigHandler = configs.UpdateConfigHandlerFunc(swaggerhandlers.UpdateConfig)
 	api.SatellitesZtrHandler = satellites.ZtrHandlerFunc(swaggerhandlers.Ztr)
+
+	api.AddMiddlewareFor(http.MethodPatch, "/api/configs/{config}", swaggerhandlers.CaptureConfigPatchBody)
 
 	api.PreServerShutdown = func() {}
 	api.ServerShutdown = func() {}

@@ -28,7 +28,7 @@ import (
 func DeleteSatellite(params satellites.DeleteSatelliteParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return satellites.NewDeleteSatelliteUnauthorized().WithPayload(errPayload)
@@ -37,7 +37,7 @@ func DeleteSatellite(params satellites.DeleteSatelliteParams, principal any) mid
 	ctx := params.HTTPRequest.Context()
 	tx, err := svc.db.BeginTx(ctx, nil)
 	if err != nil {
-		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(appError("Error: Failed to start database transaction", http.StatusInternalServerError))
+		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(internalError("Failed to start satellite deletion transaction", err))
 	}
 	q := svc.queries.WithTx(tx)
 	committed := false
@@ -50,30 +50,34 @@ func DeleteSatellite(params satellites.DeleteSatelliteParams, principal any) mid
 
 	robotAcc, err := q.GetRobotAccBySatelliteID(ctx, sat.ID)
 	if err != nil {
-		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(appError("Error: Failed to Delete Satellite", http.StatusInternalServerError))
+		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(internalError("Failed to load satellite robot account", err))
 	}
 
 	robotID, err := strconv.ParseInt(robotAcc.RobotID, 10, 64)
 	if err != nil {
-		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(appError("Error: Failed to Delete Satellite", http.StatusInternalServerError))
+		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(internalError("Satellite robot account has an invalid Harbor robot ID", err))
 	}
 
 	if err := q.DeleteSatelliteByName(ctx, params.Satellite); err != nil {
-		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(appError("Error: Failed to Delete Satellite", http.StatusInternalServerError))
-	}
-
-	if _, err := harbor.DeleteRobotAccount(ctx, robotID); err != nil {
-		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(appError("Error: Failed to Delete Satellite", http.StatusInternalServerError))
-	}
-
-	if err := utils.DeleteArtifact(utils.ConstructHarborDeleteURL(sat.Name, "satellite")); err != nil {
-		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(internalError("Failed to delete satellite record", err))
 	}
 
 	if err := tx.Commit(); err != nil {
-		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(appError("Error: Could not commit transaction", http.StatusInternalServerError))
+		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(internalError("Failed to commit satellite deletion transaction", err))
 	}
 	committed = true
+
+	var cleanupErrors []error
+	if _, err := harbor.DeleteRobotAccount(ctx, robotID); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("delete Harbor robot account: %w", err))
+	}
+
+	if err := utils.DeleteArtifact(utils.ConstructHarborDeleteURL(sat.Name, "satellite")); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("delete satellite artifact: %w", err))
+	}
+	if cleanupErr := errors.Join(cleanupErrors...); cleanupErr != nil {
+		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(internalError("Satellite was deleted, but Harbor cleanup was incomplete", cleanupErr))
+	}
 
 	return satellites.NewDeleteSatelliteOK().WithPayload(map[string]string{})
 }
@@ -81,7 +85,7 @@ func DeleteSatellite(params satellites.DeleteSatelliteParams, principal any) mid
 func GetCachedImages(params satellites.GetCachedImagesParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return satellites.NewGetCachedImagesInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewGetCachedImagesInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return satellites.NewGetCachedImagesUnauthorized().WithPayload(errPayload)
@@ -92,12 +96,12 @@ func GetCachedImages(params satellites.GetCachedImagesParams, principal any) mid
 		if errors.Is(err, sql.ErrNoRows) {
 			return satellites.NewGetCachedImagesNotFound().WithPayload(appError("Satellite not found", http.StatusNotFound))
 		}
-		return satellites.NewGetCachedImagesInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewGetCachedImagesInternalServerError().WithPayload(internalError("Failed to load satellite before listing cached images", err))
 	}
 
 	rows, err := svc.queries.GetLatestArtifacts(params.HTTPRequest.Context(), satellite.ID)
 	if err != nil {
-		return satellites.NewGetCachedImagesInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewGetCachedImagesInternalServerError().WithPayload(internalError("Failed to load latest cached images", err))
 	}
 
 	response := make([]*swaggermodels.APIDatabaseArtifact, 0, len(rows))
@@ -111,7 +115,7 @@ func GetCachedImages(params satellites.GetCachedImagesParams, principal any) mid
 func GetSatellite(params satellites.GetSatelliteParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return satellites.NewGetSatelliteInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewGetSatelliteInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return satellites.NewGetSatelliteUnauthorized().WithPayload(errPayload)
@@ -119,7 +123,7 @@ func GetSatellite(params satellites.GetSatelliteParams, principal any) middlewar
 
 	satellite, err := svc.queries.GetSatelliteByName(params.HTTPRequest.Context(), params.Satellite)
 	if err != nil {
-		return satellites.NewGetSatelliteInternalServerError().WithPayload(appError("Satellite could not be loaded", http.StatusInternalServerError))
+		return satellites.NewGetSatelliteInternalServerError().WithPayload(internalError("Failed to load satellite", err))
 	}
 
 	return satellites.NewGetSatelliteOK().WithPayload(apiSatellite(satellite))
@@ -128,7 +132,7 @@ func GetSatellite(params satellites.GetSatelliteParams, principal any) middlewar
 func GetSatelliteStatus(params satellites.GetSatelliteStatusParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return satellites.NewGetSatelliteStatusInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewGetSatelliteStatusInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return satellites.NewGetSatelliteStatusUnauthorized().WithPayload(errPayload)
@@ -139,7 +143,7 @@ func GetSatelliteStatus(params satellites.GetSatelliteStatusParams, principal an
 		if errors.Is(err, sql.ErrNoRows) {
 			return satellites.NewGetSatelliteStatusNotFound().WithPayload(appError("satellite not found", http.StatusNotFound))
 		}
-		return satellites.NewGetSatelliteStatusInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewGetSatelliteStatusInternalServerError().WithPayload(internalError("Failed to load satellite before retrieving status", err))
 	}
 
 	status, err := svc.queries.GetLatestSatelliteStatus(params.HTTPRequest.Context(), satellite.ID)
@@ -147,7 +151,7 @@ func GetSatelliteStatus(params satellites.GetSatelliteStatusParams, principal an
 		if errors.Is(err, sql.ErrNoRows) {
 			return satellites.NewGetSatelliteStatusNotFound().WithPayload(appError("no status available", http.StatusNotFound))
 		}
-		return satellites.NewGetSatelliteStatusInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewGetSatelliteStatusInternalServerError().WithPayload(internalError("Failed to load latest satellite status", err))
 	}
 
 	return satellites.NewGetSatelliteStatusOK().WithPayload(apiSatelliteStatus(status))
@@ -156,7 +160,7 @@ func GetSatelliteStatus(params satellites.GetSatelliteStatusParams, principal an
 func ListActiveSatellites(params satellites.ListActiveSatellitesParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return satellites.NewListActiveSatellitesInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewListActiveSatellitesInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return satellites.NewListActiveSatellitesUnauthorized().WithPayload(errPayload)
@@ -164,7 +168,7 @@ func ListActiveSatellites(params satellites.ListActiveSatellitesParams, principa
 
 	rows, err := svc.queries.GetActiveSatellites(params.HTTPRequest.Context())
 	if err != nil {
-		return satellites.NewListActiveSatellitesInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewListActiveSatellitesInternalServerError().WithPayload(internalError("Failed to list active satellites", err))
 	}
 
 	response := make([]*swaggermodels.APIActiveSatellite, 0, len(rows))
@@ -178,7 +182,7 @@ func ListActiveSatellites(params satellites.ListActiveSatellitesParams, principa
 func ListSatellites(params satellites.ListSatellitesParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return satellites.NewListSatellitesInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewListSatellitesInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return satellites.NewListSatellitesUnauthorized().WithPayload(errPayload)
@@ -186,7 +190,7 @@ func ListSatellites(params satellites.ListSatellitesParams, principal any) middl
 
 	rows, err := svc.queries.ListSatellites(params.HTTPRequest.Context())
 	if err != nil {
-		return satellites.NewListSatellitesInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewListSatellitesInternalServerError().WithPayload(internalError("Failed to list satellites", err))
 	}
 
 	response := make([]*swaggermodels.APISatellite, 0, len(rows))
@@ -200,7 +204,7 @@ func ListSatellites(params satellites.ListSatellitesParams, principal any) middl
 func ListStaleSatellites(params satellites.ListStaleSatellitesParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return satellites.NewListStaleSatellitesInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewListStaleSatellitesInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return satellites.NewListStaleSatellitesUnauthorized().WithPayload(errPayload)
@@ -208,7 +212,7 @@ func ListStaleSatellites(params satellites.ListStaleSatellitesParams, principal 
 
 	rows, err := svc.queries.GetStaleSatellites(params.HTTPRequest.Context())
 	if err != nil {
-		return satellites.NewListStaleSatellitesInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewListStaleSatellitesInternalServerError().WithPayload(internalError("Failed to list stale satellites", err))
 	}
 
 	response := make([]*swaggermodels.APIStaleSatellite, 0, len(rows))
@@ -222,10 +226,16 @@ func ListStaleSatellites(params satellites.ListStaleSatellitesParams, principal 
 func RegisterSatellite(params satellites.RegisterSatelliteParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return satellites.NewRegisterSatelliteUnauthorized().WithPayload(errPayload)
+	}
+	if spiffeRegistrationEnabled() {
+		return satellites.NewRegisterSatelliteBadRequest().WithPayload(appError(
+			"satellite registration via this endpoint is disabled when SPIFFE is enabled. Use POST /api/satellites/register instead",
+			http.StatusBadRequest,
+		))
 	}
 	if params.Body == nil {
 		return satellites.NewRegisterSatelliteBadRequest().WithPayload(appError("Invalid request body", http.StatusBadRequest))
@@ -249,7 +259,7 @@ func RegisterSatellite(params satellites.RegisterSatelliteParams, principal any)
 
 	tx, err := svc.db.BeginTx(ctx, nil)
 	if err != nil {
-		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(internalError("Failed to start satellite registration transaction", err))
 	}
 	q := svc.queries.WithTx(tx)
 	committed := false
@@ -274,7 +284,7 @@ func RegisterSatellite(params satellites.RegisterSatelliteParams, principal any)
 	}
 
 	if err := ensureSatelliteProjectExists(ctx); err != nil {
-		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(internalError("Failed to ensure the Harbor satellite project exists", err))
 	}
 
 	rbt, err := utils.CreateRobotAccForSatellite(ctx, []string{"satellite"}, satellite.Name)
@@ -288,11 +298,11 @@ func RegisterSatellite(params satellites.RegisterSatelliteParams, principal any)
 		expiry = sql.NullTime{Time: time.Unix(rbt.ExpiresAt, 0), Valid: true}
 	}
 	if err := storeRobotAccount(ctx, q, rbt.Name, rbt.Secret, strconv.FormatInt(rbt.ID, 10), satellite.ID, expiry); err != nil {
-		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(appError("Error: failed to store robot account", http.StatusInternalServerError))
+		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(internalError("Failed to store satellite robot account", err))
 	}
 
 	if err := assignPermissionsToRobot(ctx, q, req.Groups, rbt.ID); err != nil {
-		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(appError(err.Error(), http.StatusInternalServerError))
+		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(internalError("Failed to assign group permissions to satellite robot account", err))
 	}
 
 	configObject, err := q.GetConfigByName(ctx, req.ConfigName)
@@ -303,16 +313,16 @@ func RegisterSatellite(params satellites.RegisterSatelliteParams, principal any)
 		SatelliteID: satellite.ID,
 		ConfigID:    configObject.ID,
 	}); err != nil {
-		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(internalError("Failed to assign configuration to satellite", err))
 	}
 
 	if err := utils.CreateOrUpdateSatStateArtifact(ctx, req.Name, groupStates, req.ConfigName); err != nil {
-		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(internalError("Failed to create or push satellite state artifact", err))
 	}
 
 	token, err := generateRandomToken(32)
 	if err != nil {
-		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(internalError("Failed to generate satellite registration token", err))
 	}
 	tokenValue, err := q.AddToken(ctx, database.AddTokenParams{
 		SatelliteID: satellite.ID,
@@ -320,11 +330,11 @@ func RegisterSatellite(params satellites.RegisterSatelliteParams, principal any)
 		ExpiresAt:   time.Now().Add(24 * time.Hour),
 	})
 	if err != nil {
-		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(internalError("Failed to store satellite registration token", err))
 	}
 
 	if err := tx.Commit(); err != nil {
-		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(appError("Error: Could not commit transaction", http.StatusInternalServerError))
+		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(internalError("Failed to commit satellite registration transaction", err))
 	}
 	committed = true
 
@@ -334,7 +344,7 @@ func RegisterSatellite(params satellites.RegisterSatelliteParams, principal any)
 func SpiffeZtr(params satellites.SpiffeZtrParams) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return satellites.NewSpiffeZtrInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewSpiffeZtrInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
 
 	ctx := params.HTTPRequest.Context()
@@ -355,40 +365,34 @@ func SpiffeZtr(params satellites.SpiffeZtrParams) middleware.Responder {
 	if err != nil {
 		satellite, err = autoRegisterSatellite(ctx, svc, satelliteName)
 		if err != nil {
-			return satellites.NewSpiffeZtrInternalServerError().WithPayload(appError("Error: failed to auto-register satellite", http.StatusInternalServerError))
+			return satellites.NewSpiffeZtrInternalServerError().WithPayload(internalError("Failed to auto-register SPIFFE satellite", err))
 		}
 	}
 
 	var freshSecret string
 	robot, err := svc.queries.GetRobotAccBySatelliteID(ctx, satellite.ID)
-	if err != nil {
-		var harborRobotID int64
-		robot, harborRobotID, freshSecret, err = ensureSatelliteRobotAccount(ctx, svc.queries, satellite)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		robot, freshSecret, err = createSatelliteRobotAndConfig(ctx, svc, satellite)
 		if err != nil {
-			return satellites.NewSpiffeZtrInternalServerError().WithPayload(appError("Error: failed to create robot account", http.StatusInternalServerError))
+			return satellites.NewSpiffeZtrInternalServerError().WithPayload(internalError("Failed to create SPIFFE satellite robot account", err))
 		}
-		if err := ensureSatelliteConfig(ctx, svc.queries, satellite); err != nil {
-			if harborRobotID != 0 {
-				if _, delErr := harbor.DeleteRobotAccount(ctx, harborRobotID); delErr != nil {
-					log.Printf("Warning: Failed to cleanup robot account %d after config failure: %v", harborRobotID, delErr)
-				}
-			}
-			return satellites.NewSpiffeZtrInternalServerError().WithPayload(appError("Error: failed to ensure satellite config", http.StatusInternalServerError))
-		}
-	} else {
+	case err != nil:
+		return satellites.NewSpiffeZtrInternalServerError().WithPayload(internalError("Failed to load SPIFFE satellite robot account", err))
+	default:
 		freshSecret, err = refreshRobotSecret(ctx, svc.queries, robot)
 		if err != nil {
-			return satellites.NewSpiffeZtrInternalServerError().WithPayload(appError("Error: failed to refresh robot secret", http.StatusInternalServerError))
+			return satellites.NewSpiffeZtrInternalServerError().WithPayload(internalError("Failed to refresh SPIFFE satellite robot secret", err))
 		}
 	}
 
 	groups, err := svc.queries.SatelliteGroupList(ctx, satellite.ID)
 	if err != nil {
-		return satellites.NewSpiffeZtrInternalServerError().WithPayload(appError("Error: Satellite Groups List Failed", http.StatusInternalServerError))
+		return satellites.NewSpiffeZtrInternalServerError().WithPayload(internalError("Failed to list SPIFFE satellite groups", err))
 	}
 	states, err := getGroupStates(ctx, groups, svc.queries)
 	if err != nil {
-		return satellites.NewSpiffeZtrInternalServerError().WithPayload(appError("Error: Get Group By ID Failed", http.StatusInternalServerError))
+		return satellites.NewSpiffeZtrInternalServerError().WithPayload(internalError("Failed to load SPIFFE satellite group states", err))
 	}
 
 	harborCfg := env.GC.Harbor
@@ -399,7 +403,7 @@ func SpiffeZtr(params satellites.SpiffeZtrParams) middleware.Responder {
 			return satellites.NewSpiffeZtrInternalServerError().WithPayload(errPayload)
 		}
 		if err := utils.CreateOrUpdateSatStateArtifact(ctx, satellite.Name, states, configObject.ConfigName); err != nil {
-			return satellites.NewSpiffeZtrInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+			return satellites.NewSpiffeZtrInternalServerError().WithPayload(internalError("Failed to create or push SPIFFE satellite state artifact", err))
 		}
 		satelliteState = utils.AssembleSatelliteState(satellite.Name)
 	} else {
@@ -417,7 +421,7 @@ func SpiffeZtr(params satellites.SpiffeZtrParams) middleware.Responder {
 func SyncSatellite(params satellites.SyncSatelliteParams) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return satellites.NewSyncSatelliteInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewSyncSatelliteInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
 	if params.Body == nil {
 		return satellites.NewSyncSatelliteBadRequest().WithPayload(appError("Invalid request body", http.StatusBadRequest))
@@ -455,12 +459,12 @@ func SyncSatellite(params satellites.SyncSatelliteParams) middleware.Responder {
 				Refs:  refs,
 				Sizes: sizes,
 			}); err != nil {
-				return satellites.NewSyncSatelliteInternalServerError().WithPayload(appError("failed to save artifacts", http.StatusInternalServerError))
+				return satellites.NewSyncSatelliteInternalServerError().WithPayload(internalError("Failed to save cached image artifacts", err))
 			}
 
 			artifacts, err := svc.queries.GetArtifactIDsByReferences(params.HTTPRequest.Context(), refs)
 			if err != nil {
-				return satellites.NewSyncSatelliteInternalServerError().WithPayload(appError("failed to resolve artifact IDs", http.StatusInternalServerError))
+				return satellites.NewSyncSatelliteInternalServerError().WithPayload(internalError("Failed to resolve cached image artifact IDs", err))
 			}
 
 			artifactIDs = make([]int32, len(artifacts))
@@ -488,14 +492,14 @@ func SyncSatellite(params satellites.SyncSatelliteParams) middleware.Responder {
 		ReportedAt:         reportedAt,
 		ArtifactIds:        artifactIDs,
 	}); err != nil {
-		return satellites.NewSyncSatelliteInternalServerError().WithPayload(appError("failed to save status", http.StatusInternalServerError))
+		return satellites.NewSyncSatelliteInternalServerError().WithPayload(internalError("Failed to save satellite status report", err))
 	}
 
 	if err := svc.queries.UpdateSatelliteLastSeen(params.HTTPRequest.Context(), database.UpdateSatelliteLastSeenParams{
 		ID:                sat.ID,
 		HeartbeatInterval: toNullString(normalizedInterval),
 	}); err != nil {
-		return satellites.NewSyncSatelliteInternalServerError().WithPayload(appError("failed to update last_seen", http.StatusInternalServerError))
+		return satellites.NewSyncSatelliteInternalServerError().WithPayload(internalError("Satellite status was saved, but last-seen time could not be updated", err))
 	}
 
 	return satellites.NewSyncSatelliteOK()
@@ -504,7 +508,7 @@ func SyncSatellite(params satellites.SyncSatelliteParams) middleware.Responder {
 func Ztr(params satellites.ZtrParams) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return satellites.NewZtrInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewZtrInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
 
 	ctx := params.HTTPRequest.Context()
@@ -518,20 +522,20 @@ func Ztr(params satellites.ZtrParams) middleware.Responder {
 
 	robot, err := svc.queries.GetRobotAccBySatelliteID(ctx, tokenInfo.SatelliteID)
 	if err != nil {
-		return satellites.NewZtrInternalServerError().WithPayload(appError("Error: Robot Account Not Found for Satellite", http.StatusInternalServerError))
+		return satellites.NewZtrInternalServerError().WithPayload(internalError("Failed to load satellite robot account", err))
 	}
 	freshSecret, err := refreshRobotSecret(ctx, svc.queries, robot)
 	if err != nil {
-		return satellites.NewZtrInternalServerError().WithPayload(appError("Error: failed to refresh robot secret", http.StatusInternalServerError))
+		return satellites.NewZtrInternalServerError().WithPayload(internalError("Failed to refresh satellite robot secret", err))
 	}
 
 	groups, err := svc.queries.SatelliteGroupList(ctx, tokenInfo.SatelliteID)
 	if err != nil {
-		return satellites.NewZtrInternalServerError().WithPayload(appError("Error: Satellite Groups List Failed", http.StatusInternalServerError))
+		return satellites.NewZtrInternalServerError().WithPayload(internalError("Failed to list satellite groups", err))
 	}
 	states, err := getGroupStates(ctx, groups, svc.queries)
 	if err != nil {
-		return satellites.NewZtrInternalServerError().WithPayload(appError("Error: Get Group By ID Failed", http.StatusInternalServerError))
+		return satellites.NewZtrInternalServerError().WithPayload(internalError("Failed to load satellite group states", err))
 	}
 
 	satellite, err := svc.queries.GetSatellite(ctx, tokenInfo.SatelliteID)
@@ -544,11 +548,11 @@ func Ztr(params satellites.ZtrParams) middleware.Responder {
 		return satellites.NewZtrInternalServerError().WithPayload(errPayload)
 	}
 	if err := utils.CreateOrUpdateSatStateArtifact(ctx, satellite.Name, states, configObject.ConfigName); err != nil {
-		return satellites.NewZtrInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return satellites.NewZtrInternalServerError().WithPayload(internalError("Failed to create or push satellite state artifact", err))
 	}
 
 	if err := svc.queries.DeleteToken(ctx, params.Token); err != nil {
-		return satellites.NewZtrInternalServerError().WithPayload(appError("Error: Error deleting token", http.StatusInternalServerError))
+		return satellites.NewZtrInternalServerError().WithPayload(internalError("Registration succeeded, but the single-use token could not be deleted", err))
 	}
 
 	return satellites.NewZtrOK().WithPayload(apiStateConfig(utils.AssembleSatelliteState(satellite.Name), robot.RobotName, freshSecret, env.GC.Harbor.URL))
@@ -604,10 +608,11 @@ func addSatelliteToGroups(ctx context.Context, q *database.Queries, groups []str
 		replications, err := harbor.ListReplication(ctx, harbor.ListParams{
 			Q: fmt.Sprintf("name=%s", groupName),
 		})
+		if err != nil {
+			return nil, fmt.Errorf("list replication policies for group %s: %w", groupName, err)
+		}
 		if len(replications) < 1 {
-			if err != nil {
-				return nil, fmt.Errorf("group name %s does not exist in replication; please give a valid group name", groupName)
-			}
+			return nil, fmt.Errorf("group name %s does not exist in replication; please give a valid group name", groupName)
 		}
 
 		group, err := q.GetGroupByName(ctx, groupName)
@@ -813,6 +818,42 @@ func ensureSatelliteConfig(ctx context.Context, q *database.Queries, satellite d
 	}
 
 	return nil
+}
+
+func createSatelliteRobotAndConfig(ctx context.Context, svc *service, satellite database.Satellite) (database.RobotAccount, string, error) {
+	tx, err := svc.db.BeginTx(ctx, nil)
+	if err != nil {
+		return database.RobotAccount{}, "", fmt.Errorf("begin robot and config transaction: %w", err)
+	}
+
+	q := svc.queries.WithTx(tx)
+	committed := false
+	var harborRobotID int64
+	defer func() {
+		if !committed && harborRobotID != 0 {
+			if _, deleteErr := harbor.DeleteRobotAccount(ctx, harborRobotID); deleteErr != nil {
+				log.Printf("Warning: Failed to cleanup robot account %d: %v", harborRobotID, deleteErr)
+			}
+		}
+		rollbackUnlessCommitted(tx, &committed)
+	}()
+
+	robot, harborRobotID, secret, err := ensureSatelliteRobotAccount(ctx, q, satellite)
+	if err != nil {
+		return database.RobotAccount{}, "", err
+	}
+	if err := ensureSatelliteConfig(ctx, q, satellite); err != nil {
+		return database.RobotAccount{}, "", fmt.Errorf("ensure satellite config: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return database.RobotAccount{}, "", fmt.Errorf("commit robot and config transaction: %w", err)
+	}
+	committed = true
+	return robot, secret, nil
+}
+
+func spiffeRegistrationEnabled() bool {
+	return env.GC.SPIFFE.Enabled || env.GC.EmbeddedSPIRE.Enabled || env.GC.SPIRE.ServerSocket != ""
 }
 
 func autoRegisterSatellite(ctx context.Context, svc *service, name string) (database.Satellite, error) {

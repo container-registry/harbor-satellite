@@ -3,18 +3,22 @@ package env
 import (
 	"fmt"
 	"net"
+	"net/url"
 
 	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 )
 
 func (d Database) URL() string {
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s/%s?sslmode=disable",
-		d.Username,
-		d.Password,
-		net.JoinHostPort(d.Host, d.Port),
-		d.Database,
-	)
+	u := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(d.Username, d.Password),
+		Host:   net.JoinHostPort(d.Host, d.Port),
+		Path:   "/" + d.Database,
+	}
+	query := u.Query()
+	query.Set("sslmode", "disable")
+	u.RawQuery = query.Encode()
+	return u.String()
 }
 
 func (h Harbor) Validate() error {

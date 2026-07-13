@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log"
 	"net/http"
 
 	"github.com/container-registry/harbor-satellite/internal/env"
@@ -20,7 +19,7 @@ import (
 func AddSatelliteToGroup(params groups.AddSatelliteToGroupParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(internalError("Failed to initialize group service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return groups.NewAddSatelliteToGroupUnauthorized().WithPayload(errPayload)
@@ -50,7 +49,7 @@ func AddSatelliteToGroup(params groups.AddSatelliteToGroupParams, principal any)
 		GroupID:     grp.ID,
 	})
 	if err != nil {
-		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(appError("Error: Failed to check satellite in group", http.StatusInternalServerError))
+		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(internalError("Failed to check satellite group membership", err))
 	}
 	if alreadyInGroup {
 		return groups.NewAddSatelliteToGroupOK().WithPayload(&swaggermodels.APIMessageResponse{Message: "Satellite is already in the group"})
@@ -58,7 +57,7 @@ func AddSatelliteToGroup(params groups.AddSatelliteToGroupParams, principal any)
 
 	tx, err := svc.db.BeginTx(ctx, nil)
 	if err != nil {
-		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(appError("Error: Failed to start database transaction", http.StatusInternalServerError))
+		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(internalError("Failed to start group membership transaction", err))
 	}
 	q := svc.queries.WithTx(tx)
 	committed := false
@@ -68,12 +67,12 @@ func AddSatelliteToGroup(params groups.AddSatelliteToGroupParams, principal any)
 		SatelliteID: sat.ID,
 		GroupID:     grp.ID,
 	}); err != nil {
-		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(appError("Error: Failed to add satellite to group", http.StatusInternalServerError))
+		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(internalError("Failed to add satellite to group", err))
 	}
 
 	projects, groupStates, err := satelliteProjectsAndStates(ctx, q, sat.ID)
 	if err != nil {
-		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(appError("Error: Failed to get updated satellite group list", http.StatusInternalServerError))
+		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(internalError("Failed to load updated satellite group membership", err))
 	}
 
 	configObject, errPayload := fetchSatelliteConfig(ctx, q, sat.ID)
@@ -83,18 +82,17 @@ func AddSatelliteToGroup(params groups.AddSatelliteToGroupParams, principal any)
 
 	robotAcc, err := q.GetRobotAccBySatelliteID(ctx, sat.ID)
 	if err != nil {
-		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(appError("Error: Failed to get robot account for satellite", http.StatusInternalServerError))
+		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(internalError("Failed to load satellite robot account", err))
 	}
 	if _, err := utils.UpdateRobotProjects(ctx, projects, robotAcc.RobotID); err != nil {
-		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(appError("Error: Failed to update robot account permissions", http.StatusInternalServerError))
+		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(internalError("Failed to update satellite robot permissions", err))
 	}
 	if err := utils.CreateOrUpdateSatStateArtifact(ctx, sat.Name, groupStates, configObject.ConfigName); err != nil {
-		log.Printf("Error: Failed to update satellite state artifact: %v", err)
-		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(internalError("Failed to update satellite state artifact", err))
 	}
 
 	if err := tx.Commit(); err != nil {
-		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(appError("Error: Could not commit transaction", http.StatusInternalServerError))
+		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(internalError("Failed to commit group membership transaction", err))
 	}
 	committed = true
 
@@ -104,7 +102,7 @@ func AddSatelliteToGroup(params groups.AddSatelliteToGroupParams, principal any)
 func DeleteGroup(params groups.DeleteGroupParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to initialize group service", err))
 	}
 	if _, errPayload := requireSystemAdmin(principal); errPayload != nil {
 		if errPayload.Code == http.StatusUnauthorized {
@@ -116,7 +114,7 @@ func DeleteGroup(params groups.DeleteGroupParams, principal any) middleware.Resp
 	ctx := params.HTTPRequest.Context()
 	tx, err := svc.db.BeginTx(ctx, nil)
 	if err != nil {
-		return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Error: Failed to start database transaction", http.StatusInternalServerError))
+		return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to start group deletion transaction", err))
 	}
 	q := svc.queries.WithTx(tx)
 	committed := false
@@ -127,12 +125,12 @@ func DeleteGroup(params groups.DeleteGroupParams, principal any) middleware.Resp
 		if errors.Is(err, sql.ErrNoRows) {
 			return groups.NewDeleteGroupNotFound().WithPayload(appError("Error: Group Not Found", http.StatusNotFound))
 		}
-		return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to load group for deletion", err))
 	}
 
 	satellites, err := q.GroupSatelliteList(ctx, group.ID)
 	if err != nil {
-		return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Error: Failed to list satellites for group", http.StatusInternalServerError))
+		return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to list satellites attached to group", err))
 	}
 
 	for _, satellite := range satellites {
@@ -140,26 +138,26 @@ func DeleteGroup(params groups.DeleteGroupParams, principal any) middleware.Resp
 			SatelliteID: satellite.SatelliteID,
 			GroupID:     group.ID,
 		}); err != nil {
-			return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Error: Failed to remove group from satellite", http.StatusInternalServerError))
+			return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to detach satellite from group", err))
 		}
 
 		robotAcc, err := q.GetRobotAccBySatelliteID(ctx, satellite.SatelliteID)
 		if err != nil {
-			return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Error: Failed to update satellite permissions", http.StatusInternalServerError))
+			return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to load satellite robot account", err))
 		}
 
 		projects, groupStates, err := satelliteProjectsAndStates(ctx, q, satellite.SatelliteID)
 		if err != nil {
-			return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Error: Failed to update satellite state", http.StatusInternalServerError))
+			return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to load remaining satellite groups", err))
 		}
 
 		if _, err := utils.UpdateRobotProjects(ctx, projects, robotAcc.RobotID); err != nil {
-			return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Error: Failed to update satellite permissions", http.StatusInternalServerError))
+			return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to update satellite robot permissions", err))
 		}
 
 		sat, err := q.GetSatellite(ctx, satellite.SatelliteID)
 		if err != nil {
-			return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Error: Failed to update satellite state", http.StatusInternalServerError))
+			return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to load satellite while deleting group", err))
 		}
 
 		configObject, errPayload := fetchSatelliteConfig(ctx, q, sat.ID)
@@ -168,21 +166,21 @@ func DeleteGroup(params groups.DeleteGroupParams, principal any) middleware.Resp
 		}
 
 		if err := utils.CreateOrUpdateSatStateArtifact(ctx, sat.Name, groupStates, configObject.ConfigName); err != nil {
-			return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Error: Failed to update satellite state", http.StatusInternalServerError))
+			return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to update satellite state artifact", err))
 		}
 	}
 
 	if err := q.DeleteGroup(ctx, group.ID); err != nil {
-		return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Error: Failed to delete group", http.StatusInternalServerError))
+		return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to delete group", err))
 	}
 
 	if err := tx.Commit(); err != nil {
-		return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Error: Could not commit transaction", http.StatusInternalServerError))
+		return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to commit group deletion transaction", err))
 	}
 	committed = true
 
 	if err := utils.DeleteArtifact(utils.ConstructHarborDeleteURL(params.Group, "group")); err != nil {
-		return groups.NewDeleteGroupInternalServerError().WithPayload(appError("Error: Failed to delete group state", http.StatusInternalServerError))
+		return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Group was deleted, but its Harbor state artifact could not be removed", err))
 	}
 
 	return groups.NewDeleteGroupOK().WithPayload(map[string]string{})
@@ -191,7 +189,7 @@ func DeleteGroup(params groups.DeleteGroupParams, principal any) middleware.Resp
 func GetGroup(params groups.GetGroupParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return groups.NewGetGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewGetGroupInternalServerError().WithPayload(internalError("Failed to initialize group service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return groups.NewGetGroupUnauthorized().WithPayload(errPayload)
@@ -202,7 +200,7 @@ func GetGroup(params groups.GetGroupParams, principal any) middleware.Responder 
 		if errors.Is(err, sql.ErrNoRows) {
 			return groups.NewGetGroupNotFound().WithPayload(appError("Group not found", http.StatusNotFound))
 		}
-		return groups.NewGetGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewGetGroupInternalServerError().WithPayload(internalError("Failed to load group", err))
 	}
 
 	return groups.NewGetGroupOK().WithPayload(apiGroup(group))
@@ -211,7 +209,7 @@ func GetGroup(params groups.GetGroupParams, principal any) middleware.Responder 
 func ListGroupSatellites(params groups.ListGroupSatellitesParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return groups.NewListGroupSatellitesInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewListGroupSatellitesInternalServerError().WithPayload(internalError("Failed to initialize group service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return groups.NewListGroupSatellitesUnauthorized().WithPayload(errPayload)
@@ -220,12 +218,12 @@ func ListGroupSatellites(params groups.ListGroupSatellitesParams, principal any)
 		if errors.Is(err, sql.ErrNoRows) {
 			return groups.NewListGroupSatellitesNotFound().WithPayload(appError("Group not found", http.StatusNotFound))
 		}
-		return groups.NewListGroupSatellitesInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewListGroupSatellitesInternalServerError().WithPayload(internalError("Failed to load group before listing satellites", err))
 	}
 
 	rows, err := svc.queries.GetSatellitesByGroupName(params.HTTPRequest.Context(), params.Group)
 	if err != nil {
-		return groups.NewListGroupSatellitesInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewListGroupSatellitesInternalServerError().WithPayload(internalError("Failed to list satellites attached to group", err))
 	}
 
 	response := make([]*swaggermodels.APIGroupSatellite, 0, len(rows))
@@ -239,7 +237,7 @@ func ListGroupSatellites(params groups.ListGroupSatellitesParams, principal any)
 func ListGroups(params groups.ListGroupsParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return groups.NewListGroupsInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewListGroupsInternalServerError().WithPayload(internalError("Failed to initialize group service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return groups.NewListGroupsUnauthorized().WithPayload(errPayload)
@@ -247,7 +245,7 @@ func ListGroups(params groups.ListGroupsParams, principal any) middleware.Respon
 
 	rows, err := svc.queries.ListGroups(params.HTTPRequest.Context())
 	if err != nil {
-		return groups.NewListGroupsInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewListGroupsInternalServerError().WithPayload(internalError("Failed to list groups", err))
 	}
 
 	response := make([]*swaggermodels.APIGroup, 0, len(rows))
@@ -261,7 +259,7 @@ func ListGroups(params groups.ListGroupsParams, principal any) middleware.Respon
 func RemoveSatelliteFromGroup(params groups.RemoveSatelliteFromGroupParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(internalError("Failed to initialize group service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return groups.NewRemoveSatelliteFromGroupUnauthorized().WithPayload(errPayload)
@@ -273,7 +271,7 @@ func RemoveSatelliteFromGroup(params groups.RemoveSatelliteFromGroupParams, prin
 	ctx := params.HTTPRequest.Context()
 	tx, err := svc.db.BeginTx(ctx, nil)
 	if err != nil {
-		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(appError("Error: Failed to start database transaction", http.StatusInternalServerError))
+		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(internalError("Failed to start group membership transaction", err))
 	}
 	q := svc.queries.WithTx(tx)
 	committed := false
@@ -292,21 +290,21 @@ func RemoveSatelliteFromGroup(params groups.RemoveSatelliteFromGroupParams, prin
 		SatelliteID: sat.ID,
 		GroupID:     grp.ID,
 	}); err != nil {
-		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(appError("Error: Failed to Remove Satellite from Group", http.StatusInternalServerError))
+		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(internalError("Failed to remove satellite from group", err))
 	}
 
 	robotAcc, err := q.GetRobotAccBySatelliteID(ctx, sat.ID)
 	if err != nil {
-		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(appError("Error: Failed to Add permission to robot account", http.StatusInternalServerError))
+		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(internalError("Failed to load satellite robot account", err))
 	}
 
 	projects, groupStates, err := satelliteProjectsAndStates(ctx, q, sat.ID)
 	if err != nil {
-		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(appError("Error: Failed to refresh satellite group list", http.StatusInternalServerError))
+		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(internalError("Failed to load remaining satellite groups", err))
 	}
 
 	if _, err := utils.UpdateRobotProjects(ctx, projects, robotAcc.RobotID); err != nil {
-		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(appError("Error: Failed to update robot account permissions", http.StatusInternalServerError))
+		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(internalError("Failed to update satellite robot permissions", err))
 	}
 
 	configObject, errPayload := fetchSatelliteConfig(ctx, q, sat.ID)
@@ -315,12 +313,11 @@ func RemoveSatelliteFromGroup(params groups.RemoveSatelliteFromGroupParams, prin
 	}
 
 	if err := utils.CreateOrUpdateSatStateArtifact(ctx, sat.Name, groupStates, configObject.ConfigName); err != nil {
-		log.Printf("Error: Failed to update satellite state artifact: %v", err)
-		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(internalError("Failed to update satellite state artifact", err))
 	}
 
 	if err := tx.Commit(); err != nil {
-		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(appError("Error: Could not commit transaction", http.StatusInternalServerError))
+		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(internalError("Failed to commit group membership transaction", err))
 	}
 	committed = true
 
@@ -330,7 +327,7 @@ func RemoveSatelliteFromGroup(params groups.RemoveSatelliteFromGroupParams, prin
 func SyncGroup(params groups.SyncGroupParams, principal any) middleware.Responder {
 	svc, err := getService()
 	if err != nil {
-		return groups.NewSyncGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewSyncGroupInternalServerError().WithPayload(internalError("Failed to initialize group service", err))
 	}
 	if _, errPayload := requirePrincipal(principal); errPayload != nil {
 		return groups.NewSyncGroupUnauthorized().WithPayload(errPayload)
@@ -338,12 +335,15 @@ func SyncGroup(params groups.SyncGroupParams, principal any) middleware.Responde
 	if params.Body == nil {
 		return groups.NewSyncGroupBadRequest().WithPayload(appError("Invalid request body", http.StatusBadRequest))
 	}
+	if !utils.IsValidName(params.Body.Group) {
+		return groups.NewSyncGroupBadRequest().WithPayload(appError("Invalid group name: must be 1-255 chars, start with letter/number, and contain only lowercase letters, numbers, and ._-", http.StatusBadRequest))
+	}
 
 	req := stateArtifactFromAPI(params.Body)
 	ctx := params.HTTPRequest.Context()
 	tx, err := svc.db.BeginTx(ctx, nil)
 	if err != nil {
-		return groups.NewSyncGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewSyncGroupInternalServerError().WithPayload(internalError("Failed to start group synchronization transaction", err))
 	}
 	q := svc.queries.WithTx(tx)
 	committed := false
@@ -356,40 +356,44 @@ func SyncGroup(params groups.SyncGroupParams, principal any) middleware.Responde
 		Projects:    projects,
 	})
 	if err != nil {
-		return groups.NewSyncGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewSyncGroupInternalServerError().WithPayload(internalError("Failed to create or update group record", err))
 	}
 
 	satellites, err := q.GroupSatelliteList(ctx, result.ID)
 	if err != nil {
-		return groups.NewSyncGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewSyncGroupInternalServerError().WithPayload(internalError("Failed to list satellites attached to synchronized group", err))
 	}
 
 	for _, satellite := range satellites {
 		robotAcc, err := q.GetRobotAccBySatelliteID(ctx, satellite.SatelliteID)
 		if err != nil {
-			return groups.NewSyncGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+			return groups.NewSyncGroupInternalServerError().WithPayload(internalError("Failed to load satellite robot account while synchronizing group", err))
 		}
-		if _, err := utils.UpdateRobotProjects(ctx, projects, robotAcc.RobotID); err != nil {
-			return groups.NewSyncGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		satelliteProjects, _, err := satelliteProjectsAndStates(ctx, q, satellite.SatelliteID)
+		if err != nil {
+			return groups.NewSyncGroupInternalServerError().WithPayload(internalError("Failed to load satellite projects while synchronizing group", err))
+		}
+		if _, err := utils.UpdateRobotProjects(ctx, satelliteProjects, robotAcc.RobotID); err != nil {
+			return groups.NewSyncGroupInternalServerError().WithPayload(internalError("Failed to update satellite robot permissions while synchronizing group", err))
 		}
 	}
 
 	satExist, err := harbor.GetProject(ctx, "satellite")
 	if err != nil {
-		return groups.NewSyncGroupBadGateway().WithPayload(appError("Error: Checking satellite project", http.StatusBadGateway))
+		return groups.NewSyncGroupBadGateway().WithPayload(upstreamError("Failed to check the Harbor satellite project", err))
 	}
 	if !satExist {
 		if _, err := harbor.CreateSatelliteProject(ctx); err != nil {
-			return groups.NewSyncGroupBadGateway().WithPayload(appError("Error: creating satellite project", http.StatusBadGateway))
+			return groups.NewSyncGroupBadGateway().WithPayload(upstreamError("Failed to create the Harbor satellite project", err))
 		}
 	}
 
 	if err := utils.CreateStateArtifact(ctx, &req); err != nil {
-		return groups.NewSyncGroupInternalServerError().WithPayload(appError("Internal server error", http.StatusInternalServerError))
+		return groups.NewSyncGroupBadGateway().WithPayload(upstreamError("Failed to create or push group state artifact in Harbor", err))
 	}
 
 	if err := tx.Commit(); err != nil {
-		return groups.NewSyncGroupInternalServerError().WithPayload(appError("Error: Could not commit transaction", http.StatusInternalServerError))
+		return groups.NewSyncGroupInternalServerError().WithPayload(internalError("Failed to commit group synchronization transaction", err))
 	}
 	committed = true
 
@@ -419,12 +423,12 @@ func satelliteProjectsAndStates(ctx context.Context, q *database.Queries, satell
 func fetchSatelliteConfig(ctx context.Context, q *database.Queries, satelliteID int32) (database.Config, *swaggermodels.AppError) {
 	satelliteConfig, err := q.SatelliteConfig(ctx, satelliteID)
 	if err != nil {
-		return database.Config{}, appError("Error: Failed to fetch satellite config", http.StatusInternalServerError)
+		return database.Config{}, internalError("Failed to load satellite configuration assignment", err)
 	}
 
 	configObject, err := q.GetConfigByID(ctx, satelliteConfig.ConfigID)
 	if err != nil {
-		return database.Config{}, appError("Error: Failed to fetch satellite config", http.StatusInternalServerError)
+		return database.Config{}, internalError("Failed to load assigned satellite configuration", err)
 	}
 	return configObject, nil
 }
