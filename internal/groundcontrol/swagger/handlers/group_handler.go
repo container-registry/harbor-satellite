@@ -9,6 +9,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
+	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	gcmodels "github.com/container-registry/harbor-satellite/internal/groundcontrol/models"
 	swaggermodels "github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/models"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/server/operations/groups"
@@ -21,7 +22,8 @@ func AddSatelliteToGroup(params groups.AddSatelliteToGroupParams, principal any)
 	if err != nil {
 		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(internalError("Failed to initialize group service", err))
 	}
-	if _, errPayload := requirePrincipal(principal); errPayload != nil {
+	actor, errPayload := requirePrincipal(principal)
+	if errPayload != nil {
 		return groups.NewAddSatelliteToGroupUnauthorized().WithPayload(errPayload)
 	}
 	if params.Body == nil {
@@ -95,6 +97,16 @@ func AddSatelliteToGroup(params groups.AddSatelliteToGroupParams, principal any)
 		return groups.NewAddSatelliteToGroupInternalServerError().WithPayload(internalError("Failed to commit group membership transaction", err))
 	}
 	committed = true
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpUpdate,
+		ResourceType: auditlog.ResGroup,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actor.Username,
+		ActorType:    auditlog.ActorUser,
+		SatelliteID:  sat.Name,
+		Resource:     grp.GroupName,
+		Details:      map[string]any{"membership": "added"},
+	})
 
 	return groups.NewAddSatelliteToGroupOK().WithPayload(&swaggermodels.APIMessageResponse{Message: "Satellite successfully added to group"})
 }
@@ -104,7 +116,8 @@ func DeleteGroup(params groups.DeleteGroupParams, principal any) middleware.Resp
 	if err != nil {
 		return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Failed to initialize group service", err))
 	}
-	if _, errPayload := requireSystemAdmin(principal); errPayload != nil {
+	actor, errPayload := requireSystemAdmin(principal)
+	if errPayload != nil {
 		if errPayload.Code == http.StatusUnauthorized {
 			return groups.NewDeleteGroupUnauthorized().WithPayload(errPayload)
 		}
@@ -182,6 +195,15 @@ func DeleteGroup(params groups.DeleteGroupParams, principal any) middleware.Resp
 	if err := utils.DeleteArtifact(utils.ConstructHarborDeleteURL(params.Group, "group")); err != nil {
 		return groups.NewDeleteGroupInternalServerError().WithPayload(internalError("Group was deleted, but its Harbor state artifact could not be removed", err))
 	}
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpDelete,
+		ResourceType: auditlog.ResGroup,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actor.Username,
+		ActorType:    auditlog.ActorUser,
+		Resource:     group.GroupName,
+		Details:      map[string]any{"detached_satellites": len(satellites)},
+	})
 
 	return groups.NewDeleteGroupOK().WithPayload(map[string]string{})
 }
@@ -261,7 +283,8 @@ func RemoveSatelliteFromGroup(params groups.RemoveSatelliteFromGroupParams, prin
 	if err != nil {
 		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(internalError("Failed to initialize group service", err))
 	}
-	if _, errPayload := requirePrincipal(principal); errPayload != nil {
+	actor, errPayload := requirePrincipal(principal)
+	if errPayload != nil {
 		return groups.NewRemoveSatelliteFromGroupUnauthorized().WithPayload(errPayload)
 	}
 	if params.Body == nil {
@@ -320,6 +343,16 @@ func RemoveSatelliteFromGroup(params groups.RemoveSatelliteFromGroupParams, prin
 		return groups.NewRemoveSatelliteFromGroupInternalServerError().WithPayload(internalError("Failed to commit group membership transaction", err))
 	}
 	committed = true
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpUpdate,
+		ResourceType: auditlog.ResGroup,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actor.Username,
+		ActorType:    auditlog.ActorUser,
+		SatelliteID:  sat.Name,
+		Resource:     grp.GroupName,
+		Details:      map[string]any{"membership": "removed"},
+	})
 
 	return groups.NewRemoveSatelliteFromGroupOK().WithPayload(map[string]string{})
 }
@@ -329,7 +362,8 @@ func SyncGroup(params groups.SyncGroupParams, principal any) middleware.Responde
 	if err != nil {
 		return groups.NewSyncGroupInternalServerError().WithPayload(internalError("Failed to initialize group service", err))
 	}
-	if _, errPayload := requirePrincipal(principal); errPayload != nil {
+	actor, errPayload := requirePrincipal(principal)
+	if errPayload != nil {
 		return groups.NewSyncGroupUnauthorized().WithPayload(errPayload)
 	}
 	if params.Body == nil {
@@ -396,6 +430,19 @@ func SyncGroup(params groups.SyncGroupParams, principal any) middleware.Responde
 		return groups.NewSyncGroupInternalServerError().WithPayload(internalError("Failed to commit group synchronization transaction", err))
 	}
 	committed = true
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpUpdate,
+		ResourceType: auditlog.ResGroup,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actor.Username,
+		ActorType:    auditlog.ActorUser,
+		Resource:     result.GroupName,
+		Details: map[string]any{
+			"artifact_count": len(req.Artifacts),
+			"projects":       projects,
+			"flow":           "sync",
+		},
+	})
 
 	return groups.NewSyncGroupOK().WithPayload(apiGroup(result))
 }

@@ -11,6 +11,7 @@ import (
 
 	gcauth "github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	swaggermodels "github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/models"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/server/operations/auth"
 	"github.com/go-openapi/runtime/middleware"
@@ -23,12 +24,14 @@ func Login(params auth.LoginParams) middleware.Responder {
 		return auth.NewLoginInternalServerError().WithPayload(internalError("Failed to initialize authentication service", err))
 	}
 	if params.Body == nil || params.Body.Username == nil || params.Body.Password == nil {
+		svc.auditEvent(params.HTTPRequest, loginAuditEvent("", auditlog.OutcomeFailure, auditlog.ReasonMissingCredentials))
 		return auth.NewLoginBadRequest().WithPayload(appError("Invalid request body", http.StatusBadRequest))
 	}
 
 	username := *params.Body.Username
 	password := string(*params.Body.Password)
 	if username == "" || password == "" {
+		svc.auditEvent(params.HTTPRequest, loginAuditEvent(username, auditlog.OutcomeFailure, auditlog.ReasonMissingCredentials))
 		return auth.NewLoginUnauthorized().WithPayload(appError("Invalid credentials", http.StatusUnauthorized))
 	}
 
@@ -38,17 +41,20 @@ func Login(params auth.LoginParams) middleware.Responder {
 	}
 
 	if err == nil && attempts.LockedUntil.Valid && attempts.LockedUntil.Time.After(time.Now()) {
+		svc.auditEvent(params.HTTPRequest, loginAuditEvent(username, auditlog.OutcomeFailure, auditlog.ReasonAccountLocked))
 		return auth.NewLoginUnauthorized().WithPayload(appError("Invalid credentials", http.StatusUnauthorized))
 	}
 
 	user, err := svc.queries.GetUserByUsername(params.HTTPRequest.Context(), username)
 	if err != nil {
 		svc.recordFailedAttempt(params.HTTPRequest.Context(), username)
+		svc.auditEvent(params.HTTPRequest, loginAuditEvent(username, auditlog.OutcomeFailure, auditlog.ReasonUnknownUser))
 		return auth.NewLoginUnauthorized().WithPayload(appError("Invalid credentials", http.StatusUnauthorized))
 	}
 
 	if !gcauth.VerifyPassword(password, user.PasswordHash) {
 		svc.recordFailedAttempt(params.HTTPRequest.Context(), username)
+		svc.auditEvent(params.HTTPRequest, loginAuditEvent(username, auditlog.OutcomeFailure, auditlog.ReasonBadPassword))
 		return auth.NewLoginUnauthorized().WithPayload(appError("Invalid credentials", http.StatusUnauthorized))
 	}
 
@@ -67,6 +73,7 @@ func Login(params auth.LoginParams) middleware.Responder {
 	}); err != nil {
 		return auth.NewLoginInternalServerError().WithPayload(internalError("Failed to store user session", err))
 	}
+	svc.auditEvent(params.HTTPRequest, loginAuditEvent(username, auditlog.OutcomeSuccess, ""))
 
 	return auth.NewLoginOK().WithPayload(&swaggermodels.LoginResponse{
 		Token:     token,
@@ -79,7 +86,8 @@ func Logout(params auth.LogoutParams, principal any) middleware.Responder {
 	if err != nil {
 		return auth.NewLogoutInternalServerError().WithPayload(internalError("Failed to initialize authentication service", err))
 	}
-	if _, errPayload := requirePrincipal(principal); errPayload != nil {
+	actor, errPayload := requirePrincipal(principal)
+	if errPayload != nil {
 		return auth.NewLogoutUnauthorized().WithPayload(errPayload)
 	}
 
@@ -94,8 +102,27 @@ func Logout(params auth.LogoutParams, principal any) middleware.Responder {
 	if err := svc.queries.DeleteSession(params.HTTPRequest.Context(), token); err != nil {
 		return auth.NewLogoutInternalServerError().WithPayload(internalError("Failed to delete user session", err))
 	}
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpDelete,
+		ResourceType: auditlog.ResSession,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actor.Username,
+		ActorType:    auditlog.ActorUser,
+		Resource:     actor.Username,
+	})
 
 	return auth.NewLogoutNoContent()
+}
+
+func loginAuditEvent(username string, outcome auditlog.Outcome, reason auditlog.Reason) auditlog.AuditEvent {
+	return auditlog.AuditEvent{
+		Operation:    auditlog.OpLogin,
+		ResourceType: auditlog.ResSession,
+		Outcome:      outcome,
+		Actor:        username,
+		ActorType:    auditlog.ActorUser,
+		Reason:       reason,
+	}
 }
 
 func sessionToken(header string) string {

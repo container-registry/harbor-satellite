@@ -247,6 +247,20 @@ func TestAuditLogger_ReconfigureSwapsDestination(t *testing.T) {
 	require.Len(t, readAuditLines(t, path), 1)
 }
 
+func TestAuditLogger_CloseIsIdempotent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	a, err := NewAuditLogger(fileSyslogConfig(path), ComponentGroundControl)
+	require.NoError(t, err)
+	a.Log(AuditEvent{Operation: OpLogin, ResourceType: ResSession, Outcome: OutcomeSuccess})
+
+	require.NoError(t, a.Close())
+	require.NoError(t, a.Close())
+	require.False(t, a.Enabled())
+
+	a.Log(AuditEvent{Operation: OpLogin, ResourceType: ResSession, Outcome: OutcomeFailure})
+	require.Len(t, readAuditLines(t, path), 1)
+}
+
 func TestAuditLogger_NilReceiverSafe(t *testing.T) {
 	var a *AuditLogger
 	require.NotPanics(t, func() {

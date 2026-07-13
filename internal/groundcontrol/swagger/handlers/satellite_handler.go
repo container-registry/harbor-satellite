@@ -17,6 +17,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
+	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	swaggermodels "github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/models"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/server/operations/satellites"
@@ -30,7 +31,8 @@ func DeleteSatellite(params satellites.DeleteSatelliteParams, principal any) mid
 	if err != nil {
 		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
-	if _, errPayload := requirePrincipal(principal); errPayload != nil {
+	actor, errPayload := requirePrincipal(principal)
+	if errPayload != nil {
 		return satellites.NewDeleteSatelliteUnauthorized().WithPayload(errPayload)
 	}
 
@@ -78,6 +80,15 @@ func DeleteSatellite(params satellites.DeleteSatelliteParams, principal any) mid
 	if cleanupErr := errors.Join(cleanupErrors...); cleanupErr != nil {
 		return satellites.NewDeleteSatelliteInternalServerError().WithPayload(internalError("Satellite was deleted, but Harbor cleanup was incomplete", cleanupErr))
 	}
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpDeregister,
+		ResourceType: auditlog.ResSatellite,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actor.Username,
+		ActorType:    auditlog.ActorUser,
+		SatelliteID:  sat.Name,
+		Resource:     sat.Name,
+	})
 
 	return satellites.NewDeleteSatelliteOK().WithPayload(map[string]string{})
 }
@@ -228,7 +239,8 @@ func RegisterSatellite(params satellites.RegisterSatelliteParams, principal any)
 	if err != nil {
 		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(internalError("Failed to initialize satellite service", err))
 	}
-	if _, errPayload := requirePrincipal(principal); errPayload != nil {
+	actor, errPayload := requirePrincipal(principal)
+	if errPayload != nil {
 		return satellites.NewRegisterSatelliteUnauthorized().WithPayload(errPayload)
 	}
 	if spiffeRegistrationEnabled() {
@@ -337,6 +349,20 @@ func RegisterSatellite(params satellites.RegisterSatelliteParams, principal any)
 		return satellites.NewRegisterSatelliteInternalServerError().WithPayload(internalError("Failed to commit satellite registration transaction", err))
 	}
 	committed = true
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpRegister,
+		ResourceType: auditlog.ResSatellite,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actor.Username,
+		ActorType:    auditlog.ActorUser,
+		SatelliteID:  satellite.Name,
+		Resource:     satellite.Name,
+		Details: map[string]any{
+			"config_name": req.ConfigName,
+			"groups":      req.Groups,
+			"flow":        "token",
+		},
+	})
 
 	return satellites.NewRegisterSatelliteOK().WithPayload(&swaggermodels.RegisterSatelliteResponse{Token: tokenValue})
 }
@@ -352,11 +378,28 @@ func SpiffeZtr(params satellites.SpiffeZtrParams) middleware.Responder {
 	if !ok {
 		spiffeID, ok := spiffe.GetSPIFFEID(ctx)
 		if !ok {
+			svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+				Operation:    auditlog.OpAuth,
+				ResourceType: auditlog.ResSatellite,
+				Outcome:      auditlog.OutcomeFailure,
+				ActorType:    auditlog.ActorAnonymous,
+				Reason:       auditlog.ReasonMissingSpiffeIdentity,
+				Details:      map[string]any{"flow": "spiffe_ztr"},
+			})
 			return satellites.NewSpiffeZtrUnauthorized().WithPayload(appError("Error: SPIFFE authentication required", http.StatusUnauthorized))
 		}
 		var err error
 		satelliteName, err = spiffe.ExtractSatelliteNameFromSPIFFEID(spiffeID)
 		if err != nil {
+			svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+				Operation:    auditlog.OpAuth,
+				ResourceType: auditlog.ResSatellite,
+				Outcome:      auditlog.OutcomeFailure,
+				Actor:        spiffeID.String(),
+				ActorType:    auditlog.ActorAnonymous,
+				Reason:       auditlog.ReasonInvalidSpiffeID,
+				Details:      map[string]any{"flow": "spiffe_ztr"},
+			})
 			return satellites.NewSpiffeZtrBadRequest().WithPayload(appError("Error: Invalid SPIFFE ID format for satellite", http.StatusBadRequest))
 		}
 	}
@@ -414,6 +457,16 @@ func SpiffeZtr(params satellites.SpiffeZtrParams) middleware.Responder {
 	if harborURL == "" {
 		harborURL = "http://placeholder-registry:5000"
 	}
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpRegister,
+		ResourceType: auditlog.ResSatellite,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        satellite.Name,
+		ActorType:    auditlog.ActorSatellite,
+		SatelliteID:  satellite.Name,
+		Resource:     satellite.Name,
+		Details:      map[string]any{"flow": "spiffe_ztr"},
+	})
 
 	return satellites.NewSpiffeZtrOK().WithPayload(apiStateConfig(satelliteState, robot.RobotName, freshSecret, harborURL))
 }
@@ -514,9 +567,28 @@ func Ztr(params satellites.ZtrParams) middleware.Responder {
 	ctx := params.HTTPRequest.Context()
 	tokenInfo, err := svc.queries.GetTokenByValue(ctx, params.Token)
 	if err != nil {
+		svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+			Operation:    auditlog.OpAuth,
+			ResourceType: auditlog.ResSatellite,
+			Outcome:      auditlog.OutcomeFailure,
+			ActorType:    auditlog.ActorAnonymous,
+			Reason:       auditlog.ReasonInvalidToken,
+			Details:      map[string]any{"masked_token": maskToken(params.Token)},
+		})
 		return satellites.NewZtrBadRequest().WithPayload(appError("Error: Invalid Token", http.StatusBadRequest))
 	}
 	if time.Now().After(tokenInfo.ExpiresAt) {
+		svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+			Operation:    auditlog.OpAuth,
+			ResourceType: auditlog.ResSatellite,
+			Outcome:      auditlog.OutcomeFailure,
+			ActorType:    auditlog.ActorAnonymous,
+			Reason:       auditlog.ReasonTokenExpired,
+			Details: map[string]any{
+				"masked_token": maskToken(params.Token),
+				"expired_at":   tokenInfo.ExpiresAt.Format(time.RFC3339),
+			},
+		})
 		return satellites.NewZtrUnauthorized().WithPayload(appError("Error: Token Expired", http.StatusUnauthorized))
 	}
 
@@ -554,6 +626,16 @@ func Ztr(params satellites.ZtrParams) middleware.Responder {
 	if err := svc.queries.DeleteToken(ctx, params.Token); err != nil {
 		return satellites.NewZtrInternalServerError().WithPayload(internalError("Registration succeeded, but the single-use token could not be deleted", err))
 	}
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpRegister,
+		ResourceType: auditlog.ResSatellite,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        satellite.Name,
+		ActorType:    auditlog.ActorSatellite,
+		SatelliteID:  satellite.Name,
+		Resource:     satellite.Name,
+		Details:      map[string]any{"flow": "ztr"},
+	})
 
 	return satellites.NewZtrOK().WithPayload(apiStateConfig(utils.AssembleSatelliteState(satellite.Name), robot.RobotName, freshSecret, env.GC.Harbor.URL))
 }
@@ -681,6 +763,13 @@ func generateRandomToken(charLength int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(token), nil
+}
+
+func maskToken(token string) string {
+	if len(token) < 8 {
+		return "***"
+	}
+	return fmt.Sprintf("%s...%s", token[:4], token[len(token)-4:])
 }
 
 func refreshRobotSecret(ctx context.Context, q *database.Queries, robot database.RobotAccount) (string, error) {

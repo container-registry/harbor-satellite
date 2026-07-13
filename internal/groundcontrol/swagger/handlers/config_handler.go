@@ -182,7 +182,8 @@ func SetSatelliteConfig(params configs.SetSatelliteConfigParams, principal any) 
 	if err != nil {
 		return configs.NewSetSatelliteConfigInternalServerError().WithPayload(internalError("Failed to initialize configuration service", err))
 	}
-	if _, errPayload := requirePrincipal(principal); errPayload != nil {
+	actor, errPayload := requirePrincipal(principal)
+	if errPayload != nil {
 		return configs.NewSetSatelliteConfigUnauthorized().WithPayload(errPayload)
 	}
 	if params.Body == nil {
@@ -225,6 +226,16 @@ func SetSatelliteConfig(params configs.SetSatelliteConfigParams, principal any) 
 		return configs.NewSetSatelliteConfigInternalServerError().WithPayload(internalError("Failed to commit satellite configuration transaction", err))
 	}
 	committed = true
+	svc.auditEvent(params.HTTPRequest, auditlog.AuditEvent{
+		Operation:    auditlog.OpUpdate,
+		ResourceType: auditlog.ResConfig,
+		Outcome:      auditlog.OutcomeSuccess,
+		Actor:        actor.Username,
+		ActorType:    auditlog.ActorUser,
+		SatelliteID:  sat.Name,
+		Resource:     params.Body.ConfigName,
+		Details:      map[string]any{"assignment": "satellite"},
+	})
 
 	return configs.NewSetSatelliteConfigOK().WithPayload(map[string]string{})
 }

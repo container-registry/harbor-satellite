@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -64,6 +65,7 @@ const (
 	ResUser      ResourceType = "user"
 	ResSatellite ResourceType = "satellite"
 	ResConfig    ResourceType = "config"
+	ResGroup     ResourceType = "group"
 	ResSession   ResourceType = "session"
 	ResPolicy    ResourceType = "policy"
 	ResRobot     ResourceType = "robot"
@@ -261,6 +263,29 @@ func (a *AuditLogger) Reconfigure(cfg AuditConfig) error {
 
 	closeAll(old)
 	return nil
+}
+
+// Close disables the logger and closes every configured transport. It is safe
+// to call more than once and on a nil logger. Shutdown paths use Close instead
+// of Reconfigure so transport flush/close failures can be reported.
+func (a *AuditLogger) Close() error {
+	if a == nil {
+		return nil
+	}
+
+	a.mu.Lock()
+	transports := a.transports
+	a.transports = nil
+	a.enabled = false
+	a.mu.Unlock()
+
+	var closeErrors []error
+	for _, transport := range transports {
+		if err := transport.Close(); err != nil {
+			closeErrors = append(closeErrors, err)
+		}
+	}
+	return errors.Join(closeErrors...)
 }
 
 // buildTransports constructs the transports for cfg, verifying each is usable up

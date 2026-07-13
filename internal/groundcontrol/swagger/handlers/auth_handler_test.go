@@ -1,13 +1,18 @@
 package handlers
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	gcauth "github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
+	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	swaggermodels "github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/models"
 	swaggerauth "github.com/container-registry/harbor-satellite/internal/groundcontrol/swagger/server/operations/auth"
 	"github.com/go-openapi/strfmt"
@@ -128,6 +133,7 @@ func TestLogin(t *testing.T) {
 
 	t.Run("records a failed password", func(t *testing.T) {
 		mock := newMockHandlerService(t)
+		auditPath := attachHandlerAuditLogger(t)
 		now := time.Now().UTC().Truncate(time.Second)
 		hash, err := gcauth.HashPassword("SecurePass1")
 		require.NoError(t, err)
@@ -145,8 +151,10 @@ func TestLogin(t *testing.T) {
 		username := "alice"
 		password := strfmt.Password("WrongPass1")
 
+		request := handlerRequest(http.MethodPost, "/login")
+		request.Header.Set("X-Request-ID", "login-test-request")
 		responder := Login(swaggerauth.LoginParams{
-			HTTPRequest: handlerRequest(http.MethodPost, "/login"),
+			HTTPRequest: request,
 			Body: &swaggermodels.LoginRequest{
 				Username: &username,
 				Password: &password,
@@ -155,6 +163,12 @@ func TestLogin(t *testing.T) {
 
 		_, ok := responder.(*swaggerauth.LoginUnauthorized)
 		require.True(t, ok)
+
+		event := readHandlerAuditEvent(t, auditPath)
+		require.Equal(t, "session.login.failure", event["event_type"])
+		require.Equal(t, "bad_password", event["reason"])
+		require.Equal(t, "alice", event["actor"])
+		require.Equal(t, "login-test-request", event["request_id"])
 	})
 }
 
@@ -169,4 +183,32 @@ func TestAuthenticateBearerAcceptsRawToken(t *testing.T) {
 	principal, err := AuthenticateBearer("session-token")
 	require.NoError(t, err)
 	require.Equal(t, principalUser{ID: 2, Username: "alice", Role: roleAdmin}, principal)
+}
+
+func attachHandlerAuditLogger(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "audit.log")
+	logger, err := auditlog.NewAuditLogger(auditlog.AuditConfig{
+		Enabled: true,
+		Syslog: auditlog.SyslogConfig{
+			Enabled: true,
+			Target:  auditlog.SyslogTargetFile,
+			File:    auditlog.SyslogFileConfig{Path: path},
+		},
+	}, auditlog.ComponentGroundControl)
+	require.NoError(t, err)
+	serviceInst.audit = logger
+	t.Cleanup(func() { require.NoError(t, logger.Close()) })
+	return path
+}
+
+func readHandlerAuditEvent(t *testing.T, path string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	brace := bytes.IndexByte(data, '{')
+	require.GreaterOrEqual(t, brace, 0)
+	var event map[string]any
+	require.NoError(t, json.Unmarshal(data[brace:], &event))
+	return event
 }
