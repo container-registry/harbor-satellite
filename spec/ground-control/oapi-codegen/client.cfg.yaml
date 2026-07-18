@@ -3,3 +3,7 @@ package: groundcontrol
 generate:
   models: true
   client: true
+output-options:
+  # Operation response wrappers otherwise collide with schemas such as
+  # HealthResponse and LoginResponse.
+  response-type-suffix: HTTPResponse

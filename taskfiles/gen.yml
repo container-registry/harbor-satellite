@@ -7,7 +7,7 @@ vars:
   GC_SERVER_OUTPUT_DIR: "{{.ROOT_DIR}}/internal/groundcontrol/server"
   GC_SERVER_OUTPUT: "{{.GC_SERVER_OUTPUT_DIR}}/server.gen.go"
   GC_CLIENT_CONFIG: "{{.OAPI_CODEGEN_CONFIG_DIR}}/client.cfg.yaml"
-  GC_CLIENT_OUTPUT_DIR: "{{.ROOT_DIR}}/pkg/ground-control"
+  GC_CLIENT_OUTPUT_DIR: "{{.ROOT_DIR}}/pkg/groundcontrol"
   GC_CLIENT_OUTPUT: "{{.GC_CLIENT_OUTPUT_DIR}}/client.gen.go"
 
 tasks:
