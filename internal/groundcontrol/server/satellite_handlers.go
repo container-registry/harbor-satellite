@@ -1253,7 +1253,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var groupStates []string
 
 	for _, group := range groupList {
-		grp, err := s.dbQueries.GetGroupByID(r.Context(), group.GroupID)
+		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
 		if err != nil {
 			log.Printf("Error: Failed to get group by ID %d: %v", group.GroupID, err)
 			err := &AppError{
@@ -1267,7 +1267,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
-	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, sat.ID)
+	configObject, err := fetchSatelliteConfig(r.Context(), q, sat.ID)
 	if err != nil {
 		log.Printf("Error: Failed to fetch Satellite config: %v", err)
 		HandleAppError(w, err)
@@ -1275,7 +1275,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get robot account permissions
-	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), sat.ID)
 	if err != nil {
 		log.Printf("Error: Failed to get robot account for satellite: %v", err)
 		err := &AppError{
