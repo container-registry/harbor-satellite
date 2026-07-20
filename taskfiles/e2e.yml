@@ -149,7 +149,7 @@ tasks:
           -v "$PWD:/workspace" \
           -v parsec-socket:/run/parsec \
           -w /workspace \
-          golang:1.26.3-alpine \
+          golang:1.26.5-alpine \
           go run -tags parsec ./test/e2e/parsec/verify_parsec.go --socket /run/parsec/parsec.sock
         echo "SUCCESS: Satellite is running with a PARSEC-backed hardware identity."
 
