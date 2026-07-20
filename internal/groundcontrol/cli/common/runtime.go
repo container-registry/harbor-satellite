@@ -9,28 +9,10 @@ import (
 	"strings"
 
 	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
-	"github.com/spf13/viper"
 )
-
-const (
-	URLKey      = "url"
-	TokenKey    = "token"
-	TimeoutKey  = "timeout"
-	InsecureKey = "insecure"
-)
-
-// Runtime owns the configuration used by all CLI commands.
-type Runtime struct {
-	config *viper.Viper
-	client *groundcontrol.ClientWithResponses
-}
-
-func NewRuntime(config *viper.Viper) *Runtime {
-	return &Runtime{config: config}
-}
 
 func (r *Runtime) Initialize() error {
-	serverURL, err := url.ParseRequestURI(r.config.GetString(URLKey))
+	serverURL, err := url.ParseRequestURI(r.config.GetString(urlKey))
 	if err != nil {
 		return fmt.Errorf("invalid --server: %w", err)
 	}
@@ -40,15 +22,15 @@ func (r *Runtime) Initialize() error {
 	if serverURL.Host == "" {
 		return fmt.Errorf("invalid --server: host is required")
 	}
-	if r.config.GetDuration(TimeoutKey) <= 0 {
+	if r.config.GetDuration(timeoutKey) <= 0 {
 		return fmt.Errorf("invalid --timeout: must be greater than zero")
 	}
-	if r.config.GetBool(InsecureKey) && serverURL.Scheme != "https" {
+	if r.config.GetBool(insecureKey) && serverURL.Scheme != "https" {
 		return fmt.Errorf("--insecure can only be used with an HTTPS server")
 	}
 
-	httpClient := &http.Client{Timeout: r.config.GetDuration(TimeoutKey)}
-	if r.config.GetBool(InsecureKey) {
+	httpClient := &http.Client{Timeout: r.config.GetDuration(timeoutKey)}
+	if r.config.GetBool(insecureKey) {
 		httpClient.Transport = &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			TLSClientConfig: &tls.Config{
@@ -59,7 +41,7 @@ func (r *Runtime) Initialize() error {
 	}
 
 	options := []groundcontrol.ClientOption{groundcontrol.WithHTTPClient(httpClient)}
-	if token := strings.TrimSpace(r.config.GetString(TokenKey)); token != "" {
+	if token := strings.TrimSpace(r.config.GetString(tokenKey)); token != "" {
 		options = append(options, groundcontrol.WithRequestEditorFn(
 			func(_ context.Context, request *http.Request) error {
 				request.Header.Set("Authorization", "Bearer "+token)
@@ -68,7 +50,7 @@ func (r *Runtime) Initialize() error {
 		))
 	}
 
-	r.client, err = groundcontrol.NewClientWithResponses(r.config.GetString(URLKey), options...)
+	r.client, err = groundcontrol.NewClientWithResponses(r.config.GetString(urlKey), options...)
 	if err != nil {
 		return fmt.Errorf("create Ground Control client: %w", err)
 	}
@@ -80,8 +62,8 @@ func (r *Runtime) Client() *groundcontrol.ClientWithResponses {
 }
 
 func (r *Runtime) ValidateAuth() error {
-	if strings.TrimSpace(r.config.GetString(TokenKey)) == "" {
-		return fmt.Errorf("authentication token is required: use --token or GROUND_CONTROL_TOKEN")
+	if strings.TrimSpace(r.config.GetString(tokenKey)) == "" {
+		return fmt.Errorf("authentication token is required: run auth login, use --token, or set GROUND_CONTROL_TOKEN")
 	}
 	return nil
 }

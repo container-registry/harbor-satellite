@@ -20,7 +20,8 @@ func NewCreateCommand(runtime *common.Runtime) *cobra.Command {
 			if err := common.ValidateRequired("file", file); err != nil {
 				return err
 			}
-			_, err := common.DecodeManifestFile[groundcontrol.ConfigCreateRequest](cmd, file)
+			var err error
+			request, err = common.DecodeManifestFile[groundcontrol.ConfigCreateRequest](cmd, file)
 			return err
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {

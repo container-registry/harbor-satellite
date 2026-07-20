@@ -1,10 +1,6 @@
 package cli
 
 import (
-	"fmt"
-	"strings"
-	"time"
-
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/common"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/auth"
@@ -14,66 +10,26 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/spire"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/user"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
-const defaultServerURL = "https://localhost:8080/"
-
-type flags struct {
-	configFile string
-	serverURL  string
-	token      string
-	timeout    time.Duration
-	insecure   bool
-}
-
 func RootCmd() *cobra.Command {
-	rootFlags := flags{}
-	configuration := viper.New()
-	configuration.SetEnvPrefix("GROUND_CONTROL")
-	configuration.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
-	configuration.AutomaticEnv()
-	configuration.SetDefault(common.URLKey, defaultServerURL)
-	configuration.SetDefault(common.TimeoutKey, 30*time.Second)
-	configuration.SetDefault(common.InsecureKey, false)
-
-	runtime := common.NewRuntime(configuration)
 	rootCmd := &cobra.Command{
 		Use:   "groundcontrol",
 		Short: "Manage a Harbor Ground Control service",
 		Long: `groundcontrol is a command-line client for Harbor Ground Control.
 
 Configuration precedence is command-line flags, environment variables,
-configuration file, then defaults. General environment variables use the
-GROUND_CONTROL_ prefix, for example GROUND_CONTROL_URL and
-GROUND_CONTROL_TOKEN. Passwords are accepted only through the environment;
-see the help for each password-using command.`,
+configuration file, saved login credentials, then defaults. General
+environment variables use the GROUND_CONTROL_ prefix, for example
+GROUND_CONTROL_URL and GROUND_CONTROL_TOKEN. Passwords are accepted only
+through the environment; see the help for each password-using command.`,
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
-		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
-			if rootFlags.configFile != "" {
-				configuration.SetConfigFile(rootFlags.configFile)
-				if err := configuration.ReadInConfig(); err != nil {
-					return fmt.Errorf("read config file %q: %w", rootFlags.configFile, err)
-				}
-			}
-			return runtime.Initialize()
-		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}
-
-	rootCmd.PersistentFlags().StringVar(&rootFlags.configFile, "config", "", "configuration file")
-	rootCmd.PersistentFlags().StringVar(&rootFlags.serverURL, "server", defaultServerURL, "Ground Control server URL")
-	rootCmd.PersistentFlags().StringVar(&rootFlags.token, "token", "", "Ground Control bearer token")
-	rootCmd.PersistentFlags().DurationVar(&rootFlags.timeout, "timeout", 30*time.Second, "HTTP request timeout")
-	rootCmd.PersistentFlags().BoolVar(&rootFlags.insecure, "insecure", false, "skip HTTPS certificate verification")
-
-	mustBindFlag(configuration.BindPFlag(common.URLKey, rootCmd.PersistentFlags().Lookup("server")))
-	mustBindFlag(configuration.BindPFlag(common.TokenKey, rootCmd.PersistentFlags().Lookup("token")))
-	mustBindFlag(configuration.BindPFlag(common.TimeoutKey, rootCmd.PersistentFlags().Lookup("timeout")))
-	mustBindFlag(configuration.BindPFlag(common.InsecureKey, rootCmd.PersistentFlags().Lookup("insecure")))
+	runtime := common.Load(rootCmd)
 
 	authCmd := commandGroup("auth", "Manage Ground Control sessions",
 		auth.NewLoginCommand(runtime),
@@ -154,10 +110,4 @@ func commandGroup(use string, short string, commands ...*cobra.Command) *cobra.C
 	}
 	cmd.AddCommand(commands...)
 	return cmd
-}
-
-func mustBindFlag(err error) {
-	if err != nil {
-		panic(err)
-	}
 }

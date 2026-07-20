@@ -4,16 +4,37 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli"
 	"github.com/stretchr/testify/require"
 )
+
+var credentialsFile string
+
+func TestMain(testingMain *testing.M) {
+	testConfigDir, err := os.MkdirTemp("", "groundcontrol-cli-test-")
+	if err != nil {
+		panic(err)
+	}
+	credentialsFile = filepath.Join(testConfigDir, "credentials.json")
+	if err := os.Setenv("GROUND_CONTROL_CREDENTIALS_FILE", credentialsFile); err != nil {
+		panic(err)
+	}
+
+	exitCode := testingMain.Run()
+	_ = os.Unsetenv("GROUND_CONTROL_CREDENTIALS_FILE")
+	_ = os.RemoveAll(testConfigDir)
+	os.Exit(exitCode)
+}
 
 func TestGetUsersUsesBearerToken(t *testing.T) {
 	t.Parallel()
@@ -36,23 +57,46 @@ func TestGetUsersUsesBearerToken(t *testing.T) {
 	require.Contains(t, output, `"username": "alice"`)
 }
 
-func TestAuthLoginReadsPasswordFromEnvironment(t *testing.T) {
+func TestAuthLoginStoresTokenAndHonorsPrecedence(t *testing.T) {
 	t.Setenv("GROUND_CONTROL_PASSWORD", "secret")
+	var authHeaders []string
+	var logoutHeader string
+	var authHeadersMutex sync.Mutex
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		require.Equal(t, http.MethodPost, request.Method)
-		require.Equal(t, "/login", request.URL.Path)
-		var body struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
-		}
-		require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
-		require.Equal(t, "admin", body.Username)
-		require.Equal(t, "secret", body.Password)
+		switch request.URL.Path {
+		case "/login":
+			require.Equal(t, http.MethodPost, request.Method)
+			var body struct {
+				Username string `json:"username"`
+				Password string `json:"password"`
+			}
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			require.Equal(t, "admin", body.Username)
+			require.Equal(t, "secret", body.Password)
 
-		writer.Header().Set("Content-Type", "application/json")
-		_, err := writer.Write([]byte(`{"expires_at":"2026-07-21T00:00:00Z","token":"new-token"}`))
-		require.NoError(t, err)
+			writer.Header().Set("Content-Type", "application/json")
+			_, err := fmt.Fprintf(
+				writer,
+				`{"expires_at":%q,"token":"stored-token"}`,
+				time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			)
+			require.NoError(t, err)
+		case "/api/users":
+			authHeadersMutex.Lock()
+			authHeaders = append(authHeaders, request.Header.Get("Authorization"))
+			authHeadersMutex.Unlock()
+			writer.Header().Set("Content-Type", "application/json")
+			_, err := writer.Write([]byte("[]"))
+			require.NoError(t, err)
+		case "/api/logout":
+			authHeadersMutex.Lock()
+			logoutHeader = request.Header.Get("Authorization")
+			authHeadersMutex.Unlock()
+			writer.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(writer, request)
+		}
 	}))
 	defer server.Close()
 
@@ -62,7 +106,39 @@ func TestAuthLoginReadsPasswordFromEnvironment(t *testing.T) {
 		"--username", "admin",
 	)
 	require.NoError(t, err)
-	require.Contains(t, output, `"token": "new-token"`)
+	require.Empty(t, output)
+	require.FileExists(t, credentialsFile)
+
+	_, err = execute(t, "--server", server.URL, "get", "users")
+	require.NoError(t, err)
+
+	configFile := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configFile, []byte("token: config-token\n"), 0o600))
+	_, err = execute(t, "--server", server.URL, "--config", configFile, "get", "users")
+	require.NoError(t, err)
+	_, err = execute(t,
+		"--server", server.URL,
+		"--config", configFile,
+		"--token", "flag-token",
+		"get", "users",
+	)
+	require.NoError(t, err)
+
+	authHeadersMutex.Lock()
+	require.Equal(t, []string{
+		"Bearer stored-token",
+		"Bearer config-token",
+		"Bearer flag-token",
+	}, authHeaders)
+	authHeadersMutex.Unlock()
+
+	_, err = execute(t, "--server", server.URL, "auth", "logout")
+	require.NoError(t, err)
+	authHeadersMutex.Lock()
+	require.Equal(t, "Bearer stored-token", logoutHeader)
+	authHeadersMutex.Unlock()
+	_, err = execute(t, "--server", server.URL, "get", "users")
+	require.ErrorContains(t, err, "authentication token is required")
 }
 
 func TestEnvironmentOverridesConfigFile(t *testing.T) {
@@ -154,7 +230,9 @@ func TestExecuteContextCancellationReachesRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	command := cli.RootCmd()
 	command.SetArgs([]string{"--server", server.URL, "ping"})
-	command.SetOut(&bytes.Buffer{})
+	output := &bytes.Buffer{}
+	command.SetOut(output)
+	command.SetErr(output)
 
 	done := make(chan error, 1)
 	go func() {
