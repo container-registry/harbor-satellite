@@ -78,12 +78,8 @@ func DecodeManifestFile[T any](command *cobra.Command, path string) (T, error) {
 }
 
 func PrintResponse(command *cobra.Command, response HTTPResponse) error {
-	if response.StatusCode() < http.StatusOK || response.StatusCode() >= http.StatusMultipleChoices {
-		body := strings.TrimSpace(string(response.GetBody()))
-		if body == "" {
-			return fmt.Errorf("ground control returned %s", response.Status())
-		}
-		return fmt.Errorf("ground control returned %s: %s", response.Status(), body)
+	if err := ResponseError(response); err != nil {
+		return err
 	}
 
 	body := bytes.TrimSpace(response.GetBody())
@@ -100,4 +96,15 @@ func PrintResponse(command *cobra.Command, response HTTPResponse) error {
 	}
 	_, err := fmt.Fprintln(command.OutOrStdout())
 	return err
+}
+
+func ResponseError(response HTTPResponse) error {
+	if response.StatusCode() < http.StatusOK || response.StatusCode() >= http.StatusMultipleChoices {
+		body := strings.TrimSpace(string(response.GetBody()))
+		if body == "" {
+			return fmt.Errorf("ground control returned %s", response.Status())
+		}
+		return fmt.Errorf("ground control returned %s: %s", response.Status(), body)
+	}
+	return nil
 }
