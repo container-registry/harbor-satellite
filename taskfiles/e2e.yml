@@ -450,6 +450,74 @@ tasks:
 
         echo "Harbor initialized"
 
+  init-harbor-golang-image:
+    desc: Initialize Harbor with golang image (multi-layer, already cached from satellite build)
+    cmds:
+      - |
+        echo "Creating project..."
+        curl -sf -X POST {{.HARBOR_API}}/projects \
+          -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
+          -H "Content-Type: application/json" \
+          -d '{"project_name": "{{.PROJECT_NAME}}"}'
+
+        echo "Pulling golang:1.26.3-alpine (multi-layer image for crash test)..."
+        docker pull golang:1.26.3-alpine || { echo "Failed to pull golang:1.26.3-alpine"; exit 1; }
+
+        echo "Pushing image to Harbor..."
+        docker tag golang:1.26.3-alpine localhost:8080/{{.PROJECT_NAME}}/golang:1.26.3-alpine
+
+        if docker login localhost:8080 -u admin -p Harbor12345 2>/dev/null; then
+          docker push localhost:8080/{{.PROJECT_NAME}}/golang:1.26.3-alpine 2>/dev/null || \
+          docker push localhost:8080/{{.PROJECT_NAME}}/golang:1.26.3-alpine --tls-verify=false
+        else
+          docker login localhost:8080 -u admin -p Harbor12345 --tls-verify=false
+          docker push localhost:8080/{{.PROJECT_NAME}}/golang:1.26.3-alpine --tls-verify=false
+        fi
+
+        echo "Creating registry..."
+        curl -sf -X POST {{.HARBOR_API}}/registries \
+          -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
+          -H "Content-Type: application/json" \
+          -d '{
+            "credential": {"access_key": "", "access_secret": "", "type": "basic"},
+            "description": "",
+            "insecure": true,
+            "name": "{{.REGISTRY_NAME}}",
+            "type": "harbor-satellite",
+            "url": "http://gc:8080/groups/sync"
+          }'
+
+        echo "Creating replication policy..."
+        curl -sf -X POST {{.HARBOR_API}}/replication/policies \
+          -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name": "satellite-group",
+            "dest_registry": {
+              "id": 1,
+              "name": "{{.REGISTRY_NAME}}",
+              "status": "healthy",
+              "type": "harbor-satellite",
+              "url": "http://gc:8080/groups/sync"
+            },
+            "dest_namespace": "{{.DEST_NAMESPACE}}",
+            "dest_namespace_replace_count": 1,
+            "trigger": {"type": "manual", "trigger_settings": {"cron": ""}},
+            "filters": [{"type": "name", "value": "{{.PROJECT_NAME}}/**"}],
+            "enabled": true,
+            "deletion": false,
+            "override": true,
+            "speed": -1
+          }'
+
+        echo "Executing replication..."
+        curl -sf -X POST {{.HARBOR_API}}/replication/executions \
+          -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
+          -H "Content-Type: application/json" \
+          -d '{"policy_id": 1}'
+
+        echo "Harbor initialized with golang image"
+
   init-gc:
     desc: Initialize Ground Control with config and group
     vars:
@@ -498,6 +566,55 @@ tasks:
           }'
 
         echo "Ground Control initialized"
+
+  init-gc-golang:
+    desc: Initialize Ground Control with golang artifact
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sf -X POST {{.GC_URL}}/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Creating config..."
+        curl -sf -X POST {{.GC_URL}}/api/configs \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "config_name": "test-config",
+            "registry": "{{.HARBOR_INTERNAL_URL}}",
+            "config": {
+              "app_config": {
+                "ground_control_url": "http://gc:8080",
+                "log_level": "info",
+                "use_unsecure": true,
+                "state_replication_interval": "@every 00h00m10s",
+                "register_satellite_interval": "@every 00h00m10s",
+                "bring_own_registry": false,
+                "local_registry": {"url": "http://127.0.0.1:8585"}
+              },
+              "zot_config": {
+                "distSpecVersion": "1.1.0",
+                "storage": {"rootDirectory": "./zot"},
+                "http": {"address": "0.0.0.0", "port": "8585"},
+                "log": {"level": "info"}
+              }
+            }
+          }'
+
+        echo "Creating group..."
+        curl -sf -X POST {{.GC_URL}}/api/groups/sync \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "group": "{{.DEST_NAMESPACE}}",
+            "registry": "{{.HARBOR_INTERNAL_URL}}",
+            "artifacts": [{"repository": "{{.PROJECT_NAME}}/golang", "tag": ["1.26.3-alpine"]}]
+          }'
+
+        echo "Ground Control initialized with golang artifact"
 
   register-satellite:
     desc: Register satellite and start it
@@ -872,6 +989,20 @@ tasks:
       - task: verify-crash-recovery-byo
       - echo "Crash recovery BYO E2E test passed"
 
+  test-crash-mid-replication:
+    desc: Test crash recovery during mid-replication with layer-level resume
+    cmds:
+      - task: setup
+      - defer: { task: cleanup-crash-recovery }
+      - task: wait-harbor
+      - task: wait-gc
+      - task: init-harbor-golang-image
+      - task: init-gc-golang
+      - task: register-and-run-satellite-with-volume
+      - task: crash-mid-replication-and-restart
+      - task: verify-mid-replication-resume
+      - echo "Crash mid-replication E2E test passed"
+
   register-and-run-satellite-with-volume:
     desc: Register satellite and start it with a named volume for state persistence
     vars:
@@ -906,6 +1037,7 @@ tasks:
 
         echo "Starting satellite with named volume..."
         docker run -d --name satellite --network harbor-e2e \
+          -u root \
           -v sat-state-vol:/satellite-state \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
@@ -926,6 +1058,7 @@ tasks:
 
         echo "Restarting satellite with same volume..."
         docker run -d --name satellite --network harbor-e2e \
+          -u root \
           -v sat-state-vol:/satellite-state \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
@@ -936,6 +1069,116 @@ tasks:
 
         echo "Waiting for satellite to start..."
         sleep 15
+
+  crash-mid-replication-and-restart:
+    desc: Kill satellite during replication and restart to test layer-level resume
+    cmds:
+      - |
+        echo "Waiting for replication to start..."
+        for i in $(seq 1 30); do
+          if docker logs satellite 2>&1 | grep -q "Replicating image golang"; then
+            echo "Replication started, waiting for at least one blob to be written..."
+            for j in $(seq 1 30); do
+              if docker exec satellite sh -c 'find /satellite-state/zot -type f 2>/dev/null | grep -q "/blobs/sha256/"'; then
+                echo "Blob detected, proceeding with crash"
+                break
+              fi
+              if [ "$j" -eq 30 ]; then
+                echo "ERROR: No blobs detected after 30s (replication may not have started writing)"
+                docker logs satellite 2>&1 | tail -50
+                exit 1
+              fi
+              sleep 1
+            done
+            
+            echo "Capturing blob state before crash..."
+            docker exec satellite find /satellite-state/zot -type f 2>/dev/null | grep '/blobs/sha256/' | sort > /tmp/blobs_before_crash.txt || true
+            BLOBS_BEFORE=$(wc -l < /tmp/blobs_before_crash.txt)
+            echo "Blobs present before crash: $BLOBS_BEFORE"
+            
+            echo "Killing satellite mid-replication (SIGKILL)..."
+            docker kill satellite
+            docker rm satellite
+            echo "Satellite killed"
+            break
+          fi
+          if [ "$i" -eq 30 ]; then
+            echo "ERROR: Replication did not start"
+            docker logs satellite 2>&1 | tail -50
+            exit 1
+          fi
+          sleep 1
+        done
+        
+        TOKEN=$(cat /tmp/e2e_satellite_token)
+        
+        echo "Restarting satellite with same volume..."
+        docker run -d --name satellite --network harbor-e2e \
+          -u root \
+          -v sat-state-vol:/satellite-state \
+          -e TOKEN="$TOKEN" \
+          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
+          -e CONFIG_DIR=/satellite-state \
+          -p 8585:8585 \
+          satellite:e2e
+        
+        echo "Waiting for satellite to start..."
+        sleep 15
+
+  verify-mid-replication-resume:
+    desc: Verify layer-level resume behavior after mid-replication crash
+    cmds:
+      - |
+        echo "Waiting for replication to complete after restart..."
+        for i in $(seq 1 20); do
+          if docker run --rm --network harbor-e2e alpine:latest sh -c "
+            apk add --no-cache crane > /dev/null 2>&1 &&
+            crane manifest satellite:8585/{{.PROJECT_NAME}}/golang:1.26.3-alpine --insecure > /dev/null 2>&1
+          "; then
+            echo "Image fully replicated after restart"
+            break
+          fi
+          if [ "$i" -eq 20 ]; then
+            echo "FAIL: Image not accessible after restart"
+            docker logs satellite 2>&1 | tail -50
+            exit 1
+          fi
+          sleep 3
+        done
+        
+        echo "Capturing blob state after restart and completion..."
+        docker exec satellite find /satellite-state/zot -type f 2>/dev/null | grep '/blobs/sha256/' | sort > /tmp/blobs_after_complete.txt || true
+        BLOBS_AFTER=$(wc -l < /tmp/blobs_after_complete.txt)
+        BLOBS_BEFORE=$(wc -l < /tmp/blobs_before_crash.txt)
+        
+        echo "Blobs before crash: $BLOBS_BEFORE"
+        echo "Blobs after completion: $BLOBS_AFTER"
+        
+        if [ "$BLOBS_AFTER" -le "$BLOBS_BEFORE" ]; then
+          echo "FAIL: Blob count did not increase (replication did not resume properly)"
+          exit 1
+        fi
+        
+        echo "Verifying blobs from before crash still exist (not re-downloaded)..."
+        while IFS= read -r blob; do
+          if ! grep -Fxq "$blob" /tmp/blobs_after_complete.txt; then
+            echo "FAIL: Blob from before crash is missing after restart: $blob"
+            exit 1
+          fi
+        done < /tmp/blobs_before_crash.txt
+        echo "PASS: All pre-crash blobs still present (layer resume confirmed)"
+        
+        if docker logs satellite 2>&1 | tail -100 | grep -q "Old state has zero entities, replicating the complete state"; then
+          echo "FAIL: Full re-replication occurred"
+          exit 1
+        fi
+        echo "PASS: No full re-replication detected"
+        
+        echo "Cleaning up temporary files..."
+        rm -f /tmp/blobs_before_crash.txt /tmp/blobs_after_complete.txt 2>/dev/null || true
+        
+        echo "Crash mid-replication test passed"
 
   verify-crash-recovery:
     desc: Verify satellite recovered from crash without full re-replication
