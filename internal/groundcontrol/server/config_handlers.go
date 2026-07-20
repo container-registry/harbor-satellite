@@ -461,6 +461,22 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !utils.IsValidName(req.Satellite) {
+		HandleAppError(w, &AppError{
+			Message: fmt.Sprintf(invalidNameMessage, "satellite"),
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	if !utils.IsValidName(req.ConfigName) {
+		HandleAppError(w, &AppError{
+			Message: "invalid or empty config_name",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		log.Println("Could not begin transaction:", err)
