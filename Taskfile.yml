@@ -36,13 +36,13 @@ tasks:
       - task --list
 
   build:
-    desc: Build both components for current platform
+    desc: Build the satellite, Ground Control server, and Ground Control CLI
     aliases: [b]
     cmds:
       - task: _build:dev
 
   build-all:
-    desc: Build both components for all platforms
+    desc: Build all executables for all platforms
     cmds:
       - task: _build:all
 

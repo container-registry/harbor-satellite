@@ -15,10 +15,13 @@ Ground Control is part of the Harbor Satellite project and does not need to be m
 ```text
 harbor-satellite/
 ├── cmd/
-│   ├── harbor-satellite/
+│   ├── satellite/
 │   │   └── main.go
-│   └── ground-control/
-│       └── main.go
+│   └── groundcontrol/
+│       ├── cli/
+│       │   └── root.go
+│       └── server/
+│           └── main.go
 ├── internal/
 │   ├── satellite/
 │   ├── groundcontrol/
@@ -49,9 +52,9 @@ harbor-satellite/
 
 ### Phase 1: Move Satellite Command
 
-- [ ] Move the satellite entrypoint from `cmd/main.go` to `cmd/harbor-satellite/main.go`.
-- [ ] Update build, Docker, CI, and release references from `./cmd` to `./cmd/harbor-satellite`.
-- [ ] Build `./cmd/harbor-satellite`.
+- [ ] Move the satellite entrypoint from `cmd/main.go` to `cmd/satellite/main.go`.
+- [ ] Update build, Docker, CI, and release references from `./cmd` to `./cmd/satellite`.
+- [ ] Build `./cmd/satellite`.
 
 ### Phase 2: Refactor Satellite Internal Packages
 
@@ -70,10 +73,10 @@ harbor-satellite/
 
 ### Phase 4: Move Ground Control Command
 
-- [ ] Move `ground-control/main.go` to `cmd/ground-control/main.go`.
+- [ ] Move `ground-control/main.go` to `cmd/groundcontrol/server/main.go`.
 - [ ] Update the Ground Control command imports to root-module packages.
-- [ ] Update build, Docker, CI, Helm, and release references from `ground-control` to `./cmd/ground-control`.
-- [ ] Build `./cmd/ground-control`.
+- [ ] Update build, Docker, CI, Helm, and release references from `ground-control` to `./cmd/groundcontrol/server`.
+- [ ] Build `./cmd/groundcontrol/server`.
 
 ### Phase 5: Supporting Files and Packages
 
@@ -91,11 +94,12 @@ harbor-satellite/
 
 ### Phase 7: Validation
 
-- [ ] Build both binaries from the root module:
+- [ ] Build all three executables from the root module:
 
 ```sh
-go build ./cmd/harbor-satellite
-go build ./cmd/ground-control
+go build ./cmd/satellite
+go build ./cmd/groundcontrol/server
+go build ./cmd/groundcontrol/cli
 ```
 
 - [ ] Run root module tests:

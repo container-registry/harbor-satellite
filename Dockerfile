@@ -21,7 +21,7 @@ COPY . .
 # Build the binary. Default: no extra tags (production-equivalent of main).
 # Pass --build-arg GO_TAGS=parsec to opt into the PARSEC code path.
 ARG GO_TAGS=""
-ARG COMPONENT=harbor-satellite
+ARG COMPONENT=satellite
 RUN CGO_ENABLED=0 GOOS=linux go build -tags "${GO_TAGS}" -o /app-bin ./cmd/${COMPONENT}
 
 # Runtime stage
