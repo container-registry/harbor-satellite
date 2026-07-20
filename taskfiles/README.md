@@ -4,7 +4,7 @@ This project uses [Task](https://taskfile.dev) as the build tool.
 
 ## Prerequisites
 
-- Go 1.24.11+
+- Go 1.26.5+
 - Task 3.x (`go install github.com/go-task/task/v3/cmd/task@latest`)
 - Docker with buildx (for image publishing)
 - golangci-lint v2.0.2 (for linting)
