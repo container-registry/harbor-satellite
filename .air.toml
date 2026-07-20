@@ -1,7 +1,7 @@
 [build]
   bin = "bin/satellite"
   dir = "."
-  cmd = "go build -o bin/satellite ./cmd/harbor-satellite"
+  cmd = "go build -o bin/satellite ./cmd/satellite"
   exclude_dir = ["assets", "tmp", "vendor", "testdata"]
   exclude_regex = ["_test.go"]
   exclude_unchanged = false
