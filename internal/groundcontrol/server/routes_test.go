@@ -47,3 +47,24 @@ func TestGeneratedRoutes(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, response.Code)
 	})
 }
+
+func TestRouteSecurityMiddlewareCleansPathBeforeAuthorization(t *testing.T) {
+	server := &Server{}
+	nextCalled := false
+	handler := server.routeSecurityMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/satellites/../api/configs", nil)
+	handler.ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusUnauthorized, response.Code)
+	require.False(t, nextCalled)
+}
+
+func TestRequiresSystemAdminPasswordRoutes(t *testing.T) {
+	require.False(t, requiresSystemAdmin(http.MethodPatch, "/api/users/password"))
+	require.True(t, requiresSystemAdmin(http.MethodPatch, "/api/users/alice/password"))
+}

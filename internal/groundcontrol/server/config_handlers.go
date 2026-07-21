@@ -15,7 +15,6 @@ import (
 	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/models"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
-	"github.com/container-registry/harbor-satellite/pkg/config"
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/lib/pq"
 )
@@ -281,7 +280,7 @@ func (s *Server) CreateConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) UpdateConfig(w http.ResponseWriter, r *http.Request, configName string) {
-	var req config.Config
+	var req ConfigMergePatch
 
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println("Error decoding request body: ", err)

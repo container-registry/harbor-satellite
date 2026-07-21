@@ -2000,7 +2000,7 @@ components:
       properties:
         code:
           type: integer
-          format: int64
+          format: http-status-code
           x-go-name: Code
         message:
           type: string
