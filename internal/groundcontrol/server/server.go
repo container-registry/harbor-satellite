@@ -53,8 +53,8 @@ type Server struct {
 	trustForwardedHeaders bool
 }
 
-// TLSConfig holds TLS settings for the server.
-type TLSConfig struct {
+// ServerTLSConfig holds TLS settings for the Ground Control HTTP server.
+type ServerTLSConfig struct {
 	CertFile string
 	KeyFile  string
 	CAFile   string
@@ -65,7 +65,7 @@ type TLSConfig struct {
 type ServerResult struct {
 	Server         *http.Server
 	AppServer      *Server
-	TLSConfig      *TLSConfig
+	TLSConfig      *ServerTLSConfig
 	CertWatcher    *middleware.CertWatcher
 	SPIFFEProvider spiffe.Provider
 	SPIFFEConfig   *spiffe.Config
@@ -177,7 +177,7 @@ func NewServer() *ServerResult {
 		log.Fatalf("Failed to bootstrap system admin: %v", err)
 	}
 
-	tlsCfg := &TLSConfig{
+	tlsCfg := &ServerTLSConfig{
 		CertFile: cfg.TLS.CertFile,
 		KeyFile:  cfg.TLS.KeyFile,
 		CAFile:   cfg.TLS.CAFile,
@@ -235,7 +235,7 @@ func NewServer() *ServerResult {
 
 // buildServerTLSConfigWithWatcher creates a TLS config that uses the certificate watcher
 // for dynamic certificate reloading.
-func buildServerTLSConfigWithWatcher(cfg *TLSConfig, cw *middleware.CertWatcher) (*tls.Config, error) {
+func buildServerTLSConfigWithWatcher(cfg *ServerTLSConfig, cw *middleware.CertWatcher) (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		MinVersion:     tls.VersionTLS12,
 		GetCertificate: cw.GetCertificate,

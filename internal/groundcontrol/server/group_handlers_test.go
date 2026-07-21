@@ -26,7 +26,7 @@ func TestListGroupHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/groups", nil)
 		rr := httptest.NewRecorder()
-		server.listGroupHandler(rr, req)
+		server.ListGroups(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "edge-group")
@@ -42,7 +42,7 @@ func TestListGroupHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/groups", nil)
 		rr := httptest.NewRecorder()
-		server.listGroupHandler(rr, req)
+		server.ListGroups(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -55,7 +55,7 @@ func TestListGroupHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/groups", nil)
 		rr := httptest.NewRecorder()
-		server.listGroupHandler(rr, req)
+		server.ListGroups(rr, req)
 
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -77,7 +77,7 @@ func TestGetGroupHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"group": "edge-group"})
 
 		rr := httptest.NewRecorder()
-		server.getGroupHandler(rr, req)
+		server.GetGroup(rr, req, mux.Vars(req)["group"])
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "edge-group")
@@ -95,7 +95,7 @@ func TestGetGroupHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"group": "nonexistent"})
 
 		rr := httptest.NewRecorder()
-		server.getGroupHandler(rr, req)
+		server.GetGroup(rr, req, mux.Vars(req)["group"])
 
 		require.Equal(t, http.StatusNotFound, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -122,7 +122,7 @@ func TestGroupSatelliteHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"group": "edge-group"})
 
 		rr := httptest.NewRecorder()
-		server.groupSatelliteHandler(rr, req)
+		server.ListGroupSatellites(rr, req, mux.Vars(req)["group"])
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "sat-01")
@@ -141,7 +141,7 @@ func TestGroupSatelliteHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"group": "nonexistent"})
 
 		rr := httptest.NewRecorder()
-		server.groupSatelliteHandler(rr, req)
+		server.ListGroupSatellites(rr, req, mux.Vars(req)["group"])
 
 		require.Equal(t, http.StatusNotFound, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -162,7 +162,7 @@ func TestGroupSatelliteHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"group": "empty-group"})
 
 		rr := httptest.NewRecorder()
-		server.groupSatelliteHandler(rr, req)
+		server.ListGroupSatellites(rr, req, mux.Vars(req)["group"])
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Equal(t, "[]", rr.Body.String()[:2])

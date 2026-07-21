@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/gorilla/mux"
 	"github.com/lib/pq"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
@@ -66,8 +65,8 @@ type changeUserPasswordRequest struct {
 	NewPassword swaggerPassword `json:"new_password"`
 }
 
-// createUserHandler creates a new admin user (system_admin only)
-func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
+// CreateUser creates a new admin user (system_admin only)
+func (s *Server) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var req createUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
@@ -128,8 +127,8 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// listUsersHandler lists all users except system_admin
-func (s *Server) listUsersHandler(w http.ResponseWriter, r *http.Request) {
+// ListUsers lists all users except system_admin
+func (s *Server) ListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := s.dbQueries.ListUsers(r.Context())
 	if err != nil {
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
@@ -149,11 +148,8 @@ func (s *Server) listUsersHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, response)
 }
 
-// getUserHandler gets a specific user by username
-func (s *Server) getUserHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	username := vars["username"]
-
+// GetUser gets a specific user by username
+func (s *Server) GetUser(w http.ResponseWriter, r *http.Request, username string) {
 	user, err := s.dbQueries.GetUserByUsername(r.Context(), username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -178,11 +174,8 @@ func (s *Server) getUserHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// deleteUserHandler deletes a user (system_admin only, cannot delete self)
-func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	username := vars["username"]
-
+// DeleteUser deletes a user (system_admin only, cannot delete self)
+func (s *Server) DeleteUser(w http.ResponseWriter, r *http.Request, username string) {
 	currentUser, ok := GetUserFromContext(r.Context())
 	if !ok {
 		WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
@@ -233,8 +226,8 @@ func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// changeOwnPasswordHandler allows any authenticated user to change their password
-func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request) {
+// ChangeOwnPassword allows any authenticated user to change their password
+func (s *Server) ChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 	currentUser, ok := GetUserFromContext(r.Context())
 	if !ok {
 		WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
@@ -298,11 +291,8 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// changeUserPasswordHandler allows system_admin to change any user's password
-func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	username := vars["username"]
-
+// ChangeUserPassword allows system_admin to change any user's password
+func (s *Server) ChangeUserPassword(w http.ResponseWriter, r *http.Request, username string) {
 	var req changeUserPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)

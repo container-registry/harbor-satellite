@@ -107,7 +107,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
-			server.registerSatelliteWithSPIFFEHandler(w, req)
+			server.RegisterSatelliteWithSpiffe(w, req)
 
 			resp := w.Result()
 			defer resp.Body.Close()
@@ -139,7 +139,7 @@ func TestListSpireAgentsHandler_NoSpireClient(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/spire/agents", nil)
 	w := httptest.NewRecorder()
 
-	server.listSpireAgentsHandler(w, req)
+	server.ListSpireAgents(w, req, ListSpireAgentsParams{})
 
 	resp := w.Result()
 	defer resp.Body.Close()
@@ -168,7 +168,7 @@ func TestRegisterSatelliteRequest_DefaultValues(t *testing.T) {
 	httpReq.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	server.registerSatelliteWithSPIFFEHandler(w, httpReq)
+	server.RegisterSatelliteWithSpiffe(w, httpReq)
 
 	resp := w.Result()
 	defer resp.Body.Close()
@@ -241,17 +241,19 @@ func TestRegisterSatelliteWithSPIFFEResponse_JSON(t *testing.T) {
 }
 
 func TestAgentListResponse_JSON(t *testing.T) {
+	x509Selectors := []string{"x509pop:subject:cn:edge-01"}
+	sshSelectors := []string{"sshpop:cert-authority:fingerprint:abc123"}
 	resp := AgentListResponse{
 		Agents: []AgentInfoResponse{
 			{
 				SpiffeID:        "spiffe://example.com/agent/edge-01",
 				AttestationType: "x509pop",
-				Selectors:       []string{"x509pop:subject:cn:edge-01"},
+				Selectors:       &x509Selectors,
 			},
 			{
 				SpiffeID:        "spiffe://example.com/agent/edge-02",
 				AttestationType: "sshpop",
-				Selectors:       []string{"sshpop:cert-authority:fingerprint:abc123"},
+				Selectors:       &sshSelectors,
 			},
 		},
 	}

@@ -45,64 +45,43 @@ type RegisterSatelliteWithSPIFFEResponse struct {
 	TrustDomain        string     `json:"trust_domain"`
 }
 
-// AgentListResponse contains a list of attested agents.
-//
-// swagger:model AgentListResponse
-type AgentListResponse struct {
-	Agents []AgentInfoResponse `json:"agents"`
-}
-
-// AgentInfoResponse contains agent information for API response.
-//
-// swagger:model AgentInfoResponse
-type AgentInfoResponse struct {
-	SpiffeID        string     `json:"spiffe_id"`
-	AttestationType string     `json:"attestation_type"`
-	Selectors       []string   `json:"selectors,omitempty"`
-	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
-}
-
-// SPIREStatusResponse contains SPIRE integration status.
-//
-// swagger:model SPIREStatusResponse
-type SPIREStatusResponse struct {
-	Enabled     bool   `json:"enabled"`
-	TrustDomain string `json:"trust_domain,omitempty"`
-	Provider    string `json:"provider,omitempty"`
-	Connected   bool   `json:"connected"`
-}
-
-// spireStatusHandler returns the status of SPIRE integration.
+// GetSpireStatus returns the status of SPIRE integration.
 // GET /spire/status
-func (s *Server) spireStatusHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) GetSpireStatus(w http.ResponseWriter, _ *http.Request) {
+	enabled := s.spiffeProvider != nil || s.spireClient != nil
+	connected := false
 	status := SPIREStatusResponse{
-		Enabled:   s.spiffeProvider != nil || s.spireClient != nil,
-		Connected: false,
+		Enabled:   &enabled,
+		Connected: &connected,
 	}
 
 	if s.spiffeProvider != nil {
-		status.TrustDomain = s.spiffeProvider.GetTrustDomain().String()
-		status.Provider = "sidecar"
-		status.Connected = true
+		trustDomain := s.spiffeProvider.GetTrustDomain().String()
+		provider := "sidecar"
+		connected = true
+		status.TrustDomain = &trustDomain
+		status.Provider = &provider
 	} else {
 		switch {
 		case s.embeddedSpire != nil:
-			status.TrustDomain = s.spireTrustDomain
-			status.Provider = "embedded"
-			status.Connected = s.spireClient != nil
+			provider := "embedded"
+			connected = s.spireClient != nil
+			status.TrustDomain = &s.spireTrustDomain
+			status.Provider = &provider
 		case s.spireClient != nil:
-			status.TrustDomain = s.spireTrustDomain
-			status.Provider = "external"
-			status.Connected = true
+			provider := "external"
+			connected = true
+			status.TrustDomain = &s.spireTrustDomain
+			status.Provider = &provider
 		}
 	}
 
 	WriteJSONResponse(w, http.StatusOK, status)
 }
 
-// registerSatelliteWithSPIFFEHandler handles unified satellite registration for all attestation methods.
+// RegisterSatelliteWithSpiffe handles unified satellite registration for all attestation methods.
 // POST /api/satellites/register
-func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) RegisterSatelliteWithSpiffe(w http.ResponseWriter, r *http.Request) {
 	var req RegisterSatelliteRequest
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, &AppError{
@@ -357,9 +336,9 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 	WriteJSONResponse(w, http.StatusOK, resp)
 }
 
-// listSpireAgentsHandler lists attested SPIRE agents.
+// ListSpireAgents lists attested SPIRE agents.
 // GET /api/spire/agents?attestation_type=x509pop
-func (s *Server) listSpireAgentsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ListSpireAgents(w http.ResponseWriter, r *http.Request, params ListSpireAgentsParams) {
 	if s.spireClient == nil {
 		HandleAppError(w, &AppError{
 			Message: "SPIRE server not configured",
@@ -368,7 +347,10 @@ func (s *Server) listSpireAgentsHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	attestationType := r.URL.Query().Get("attestation_type")
+	attestationType := ""
+	if params.AttestationType != nil {
+		attestationType = *params.AttestationType
+	}
 
 	agents, err := s.spireClient.ListAgents(r.Context(), attestationType)
 	if err != nil {
@@ -386,10 +368,11 @@ func (s *Server) listSpireAgentsHandler(w http.ResponseWriter, r *http.Request) 
 		if !agent.ExpiresAt.IsZero() {
 			expiresAt = &agent.ExpiresAt
 		}
+		selectors := agent.Selectors
 		agentResponses = append(agentResponses, AgentInfoResponse{
 			SpiffeID:        agent.SpiffeID,
 			AttestationType: agent.AttestationType,
-			Selectors:       agent.Selectors,
+			Selectors:       &selectors,
 			ExpiresAt:       expiresAt,
 		})
 	}

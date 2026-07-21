@@ -39,7 +39,7 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 
-	// Mock GetSatelliteByName
+	// Mock GetSatellite
 	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
 		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
 	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
@@ -97,7 +97,7 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
-	server.syncHandler(rr, req)
+	server.SyncSatellite(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -136,7 +136,7 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
-	server.syncHandler(rr, req)
+	server.SyncSatellite(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -158,7 +158,7 @@ func TestSyncHandler_UnknownSatellite(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
-	server.syncHandler(rr, req)
+	server.SyncSatellite(rr, req)
 
 	require.Equal(t, http.StatusForbidden, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -187,7 +187,7 @@ func TestGetCachedImagesHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"satellite": "edge-01"})
 
 		rr := httptest.NewRecorder()
-		server.getCachedImagesHandler(rr, req)
+		server.GetCachedImages(rr, req, mux.Vars(req)["satellite"])
 
 		require.Equal(t, http.StatusOK, rr.Code)
 
@@ -219,7 +219,7 @@ func TestGetCachedImagesHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"satellite": "nonexistent"})
 
 		rr := httptest.NewRecorder()
-		server.getCachedImagesHandler(rr, req)
+		server.GetCachedImages(rr, req, mux.Vars(req)["satellite"])
 
 		require.Equal(t, http.StatusNotFound, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -245,7 +245,7 @@ func TestGetCachedImagesHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"satellite": "edge-01"})
 
 		rr := httptest.NewRecorder()
-		server.getCachedImagesHandler(rr, req)
+		server.GetCachedImages(rr, req, mux.Vars(req)["satellite"])
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -259,7 +259,7 @@ func TestSyncHandler_InvalidBody(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
-	server.syncHandler(rr, req)
+	server.SyncSatellite(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
@@ -285,7 +285,7 @@ func TestSyncHandler_InvalidHeartbeatInterval(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
-	server.syncHandler(rr, req)
+	server.SyncSatellite(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -321,7 +321,7 @@ func TestSyncHandler_BatchInsertArtifactsFails(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
-	server.syncHandler(rr, req)
+	server.SyncSatellite(rr, req)
 
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -346,7 +346,7 @@ func TestGetCachedImagesHandler_DBFailure(t *testing.T) {
 	req = mux.SetURLVars(req, map[string]string{"satellite": "edge-01"})
 
 	rr := httptest.NewRecorder()
-	server.getCachedImagesHandler(rr, req)
+	server.GetCachedImages(rr, req, mux.Vars(req)["satellite"])
 
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
