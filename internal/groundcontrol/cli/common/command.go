@@ -71,7 +71,7 @@ func DecodeManifestJSONFile(command *cobra.Command, path string) ([]byte, error)
 	if err != nil {
 		return nil, err
 	}
-	var value map[string]interface{}
+	var value map[string]any
 	if err := yaml.UnmarshalStrict(contents, &value); err != nil {
 		return nil, fmt.Errorf("decode request file %q: %w", path, err)
 	}

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 )
@@ -66,11 +65,6 @@ func (r *Runtime) Client() *groundcontrol.ClientWithResponses {
 func (r *Runtime) ValidateAuth() error {
 	if strings.TrimSpace(r.config.GetString(tokenKey)) == "" {
 		return fmt.Errorf("authentication token is required: run auth login, use --token, or set GROUND_CONTROL_TOKEN")
-	}
-
-	exp := r.config.GetTime(timeoutKey)
-	if !exp.IsZero() && time.Now().After(exp) {
-		return fmt.Errorf("authentication token has expired: run auth login, use --token, or set GROUND_CONTROL_TOKEN")
 	}
 	return nil
 }
