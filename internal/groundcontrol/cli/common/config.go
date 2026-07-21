@@ -48,7 +48,7 @@ type Runtime struct {
 func Load(command *cobra.Command) *Runtime {
 	rootFlags := flags{}
 	configuration := viper.New()
-	// configuration.SetEnvPrefix("GROUND_CONTROL")
+	configuration.SetEnvPrefix("GROUND_CONTROL")
 	configuration.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	configuration.AutomaticEnv()
 	configuration.SetDefault(urlKey, defaultServerURL)
