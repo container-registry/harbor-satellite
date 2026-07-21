@@ -212,11 +212,9 @@ func (c *credentialsConfig) save() error {
 		return fmt.Errorf("create login credentials directory: %w", err)
 	}
 	c.configuration.Set(credentialsKey, c.store.Sessions)
+	c.configuration.SetConfigPermissions(0o600)
 	if err := c.configuration.WriteConfigAs(c.path); err != nil {
 		return fmt.Errorf("write login credentials %q: %w", c.path, err)
-	}
-	if err := os.Chmod(c.path, 0o600); err != nil {
-		return fmt.Errorf("secure login credentials %q: %w", c.path, err)
 	}
 	return nil
 }
