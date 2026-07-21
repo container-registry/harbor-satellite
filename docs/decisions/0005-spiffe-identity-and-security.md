@@ -29,7 +29,7 @@ Satellites deployed at edge locations need cryptographic identity without pre-sh
 
 ## Decision Outcome
 
-Chosen option: "SPIFFE/SPIRE with X.509 SVIDs" as an additional authentication path alongside token-based ZTR. Token and SPIFFE paths are mutually exclusive at runtime. Existing token-based ZTR is preserved unchanged for deployments that do not use SPIFFE.
+Chosen option: "SPIFFE/SPIRE with X.509 SVIDs" as an additional authentication path alongside token-based ZTR. Token and SPIFFE paths are mutually exclusive at runtime. Token-based ZTR remains supported for deployments that do not use SPIFFE.
 
 ### Consequences
 
@@ -82,7 +82,7 @@ Admin creates trust between SPIRE server and agent via join token, TPM, or cloud
 
 | Path | Method | Use Case |
 |------|--------|----------|
-| Satellite ZTR (token) | One-time token in URL | Bootstrap when SPIFFE disabled |
+| Satellite ZTR (token) | `POST /satellites/ztr` with a one-time token in the JSON request body | Bootstrap when SPIFFE disabled |
 | Satellite ZTR (SPIFFE) | mTLS with X.509 SVID | Bootstrap when SPIFFE enabled |
 | Satellite sync | Robot credentials | Ongoing state replication after ZTR |
 
@@ -175,7 +175,7 @@ sequenceDiagram
     participant Harbor
 
     Admin->>Satellite: Start with --token and --ground-control-url
-    Satellite->>GC: GET /satellites/ztr/{token}
+    Satellite->>GC: POST /satellites/ztr {"token":"<token>"}
     GC->>GC: Validate token
     GC->>Harbor: Create robot account
     Harbor-->>GC: Robot credentials
