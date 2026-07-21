@@ -41,7 +41,10 @@ management, and brute-force protection without requiring external identity provi
 ### API Routes
 
 Public:
-* `POST /login`, `GET /satellites/ztr/{token}`, `POST /satellites/sync`
+* `POST /login`, `POST /satellites/ztr`, `POST /satellites/sync`
+
+Token-based ZTR sends the single-use token in the JSON request body as
+`{"token":"<32-character token>"}`; the token is not part of the URL.
 
 Protected (all authenticated users):
 * `POST /logout`, `GET /users`, `PATCH /users/password`

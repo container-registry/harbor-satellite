@@ -161,7 +161,7 @@ flowchart TD
     C --> D[Admin receives one-time ZTR token]
     D --> E[Admin can assign groups/configs]
     E --> F[Admin provides token to satellite]
-    F --> G["Satellite calls GET /satellites/ztr/{token}"]
+    F --> G["Satellite calls POST /satellites/ztr with token in JSON body"]
     G --> H[GC returns robot credentials + state URL]
     H --> I[Token consumed and deleted]
     I --> J["status = online"]
