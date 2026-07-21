@@ -1561,13 +1561,13 @@ components:
       additionalProperties: false
       properties:
         app_config:
-          type: object
-          additionalProperties: {}
+          allOf:
+            - $ref: "#/components/schemas/AppConfig"
           x-go-name: AppConfig
           nullable: true
         state_config:
-          type: object
-          additionalProperties: {}
+          allOf:
+            - $ref: "#/components/schemas/StateConfigValue"
           x-go-name: StateConfig
           nullable: true
         zot_config:
@@ -2016,6 +2016,9 @@ components:
           type: string
           x-go-name: Digest
         labels:
+          type: object
+          additionalProperties:
+            type: string
           x-go-name: Labels
         repository:
           type: string
