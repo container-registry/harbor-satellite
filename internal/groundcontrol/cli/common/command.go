@@ -75,6 +75,9 @@ func DecodeManifestJSONFile(command *cobra.Command, path string) ([]byte, error)
 	if err := yaml.UnmarshalStrict(contents, &value); err != nil {
 		return nil, fmt.Errorf("decode request file %q: %w", path, err)
 	}
+	if value == nil {
+		return nil, fmt.Errorf("decode request file %q: manifest must be an object", path)
+	}
 	encoded, err := yaml.YAMLToJSON(contents)
 	if err != nil {
 		return nil, fmt.Errorf("convert request file %q to JSON: %w", path, err)
