@@ -66,7 +66,7 @@ type credentialsConfig struct {
 // Load initializes Viper, defines and binds the root flags, and installs the
 // configuration loader that runs after Cobra has parsed command-line flags.
 func Load(command *cobra.Command) *Runtime {
-	_ = godotenv.Load()
+	_ = godotenv.Load() //nolint:errcheck // .env file is optional
 
 	rootFlags := flags{}
 	configuration := viper.New()
