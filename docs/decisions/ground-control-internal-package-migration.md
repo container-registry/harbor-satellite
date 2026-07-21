@@ -52,45 +52,45 @@ harbor-satellite/
 
 ### Phase 1: Move Satellite Command
 
-- [ ] Move the satellite entrypoint from `cmd/main.go` to `cmd/satellite/main.go`.
-- [ ] Update build, Docker, CI, and release references from `./cmd` to `./cmd/satellite`.
-- [ ] Build `./cmd/satellite`.
+- [x] Move the satellite entrypoint from `cmd/main.go` to `cmd/satellite/main.go`.
+- [x] Update build, Docker, CI, and release references from `./cmd` to `./cmd/satellite`.
+- [x] Build `./cmd/satellite`.
 
 ### Phase 2: Refactor Satellite Internal Packages
 
-- [ ] Move satellite-specific packages from `internal/*` into `internal/satellite/*`.
-- [ ] Keep cross-cutting packages used by both binaries at the root of `internal`.
-- [ ] Update satellite imports to use `github.com/container-registry/harbor-satellite/internal/satellite/...`.
-- [ ] Run satellite package tests from the root module.
+- [x] Move satellite-specific packages from `internal/*` into `internal/satellite/*`.
+- [x] Keep cross-cutting packages used by both binaries at the root of `internal`.
+- [x] Update satellite imports to use `github.com/container-registry/harbor-satellite/internal/satellite/...`.
+- [x] Run satellite package tests from the root module.
 
 ### Phase 3: Move Ground Control Runtime Packages
 
-- [ ] Move `ground-control/internal/*` into the root `internal` tree.
-- [ ] Place Ground Control orchestration code under `internal/groundcontrol`.
-- [ ] Update Ground Control imports from `github.com/container-registry/harbor-satellite/ground-control/internal/...` to root-module `internal/...` imports.
-- [ ] Resolve package name conflicts in the root `internal` tree.
-- [ ] Run Ground Control package tests from the module that owns the moved packages.
+- [x] Move `ground-control/internal/*` into the root `internal` tree.
+- [x] Place Ground Control orchestration code under `internal/groundcontrol`.
+- [x] Update Ground Control imports from `github.com/container-registry/harbor-satellite/ground-control/internal/...` to root-module `internal/...` imports.
+- [x] Resolve package name conflicts in the root `internal` tree.
+- [x] Run Ground Control package tests from the module that owns the moved packages.
 
 ### Phase 4: Move Ground Control Command
 
-- [ ] Move `ground-control/main.go` to `cmd/groundcontrol/server/main.go`.
-- [ ] Update the Ground Control command imports to root-module packages.
-- [ ] Update build, Docker, CI, Helm, and release references from `ground-control` to `./cmd/groundcontrol/server`.
-- [ ] Build `./cmd/groundcontrol/server`.
+- [x] Move `ground-control/main.go` to `cmd/groundcontrol/server/main.go`.
+- [x] Update the Ground Control command imports to root-module packages.
+- [x] Update build, Docker, CI, Helm, and release references from `ground-control` to `./cmd/groundcontrol/server`.
+- [x] Build `./cmd/groundcontrol/server`.
 
 ### Phase 5: Supporting Files and Packages
 
-- [ ] Move repository-private code from `ground-control/pkg/*` into `internal`.
-- [ ] Relocate SQL, migration, seed, and registry assets to their new root-module locations.
-- [ ] Update embedded paths and runtime paths for moved assets.
-- [ ] Update scripts and docs that reference `ground-control/`.
+- [x] Move repository-private code from `ground-control/pkg/*` into `internal`.
+- [x] Relocate SQL, migration, seed, and registry assets to their new root-module locations.
+- [x] Update embedded paths and runtime paths for moved assets.
+- [x] Update scripts and docs that reference `ground-control/`.
 
 ### Phase 6: Module Cleanup
 
-- [ ] Remove `ground-control/go.mod`.
-- [ ] Remove any dependency on `github.com/container-registry/harbor-satellite/ground-control`.
-- [ ] Run `go mod tidy` from the repository root.
-- [ ] Search for remaining `github.com/container-registry/harbor-satellite/ground-control` imports and remove them.
+- [x] Remove `ground-control/go.mod`.
+- [x] Remove any dependency on `github.com/container-registry/harbor-satellite/ground-control`.
+- [x] Run `go mod tidy` from the repository root.
+- [x] Search for remaining `github.com/container-registry/harbor-satellite/ground-control` imports and remove them.
 
 ### Phase 7: Validation
 
@@ -108,4 +108,4 @@ go build ./cmd/groundcontrol/cli
 go test ./...
 ```
 
-- [ ] Run linting and deployment checks if configured.
+- [x] Run linting and deployment checks if configured.
