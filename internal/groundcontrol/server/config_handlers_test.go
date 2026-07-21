@@ -176,7 +176,7 @@ func TestConfigMergePatchPreservesExplicitNull(t *testing.T) {
 	}{
 		{name: "omitted", input: `{}`},
 		{name: "explicit null", input: `{"app_config":null}`},
-		{name: "object", input: `{"app_config":{"key":"value"}}`},
+		{name: "object", input: `{"app_config":{"log_level":"debug"}}`},
 	}
 
 	for _, tt := range tests {

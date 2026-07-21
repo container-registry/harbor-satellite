@@ -15,32 +15,8 @@ import (
 
 const maxFailedAttempts = 5
 
-// swagger:strfmt password
-type swaggerPassword string
-
-// swagger:strfmt date-time
-type swaggerDateTime string
-
-// LoginRequest contains user credentials for session creation.
-//
-// swagger:model LoginRequest
-type loginRequest struct {
-	// required: true
-	Username string `json:"username"`
-	// required: true
-	Password swaggerPassword `json:"password"`
-}
-
-// LoginResponse contains a bearer token and its expiration timestamp.
-//
-// swagger:model LoginResponse
-type loginResponse struct {
-	Token     string          `json:"token"`
-	ExpiresAt swaggerDateTime `json:"expires_at"`
-}
-
 func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
-	var req loginRequest
+	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -96,7 +72,7 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify password
-	valid := auth.VerifyPassword(string(req.Password), user.PasswordHash)
+	valid := auth.VerifyPassword(req.Password, user.PasswordHash)
 	if !valid {
 		s.recordFailedAttempt(r, req.Username)
 		s.auditEvent(r, auditlog.AuditEvent{
@@ -139,9 +115,9 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 		ActorType:    auditlog.ActorUser,
 	})
 
-	WriteJSONResponse(w, http.StatusOK, loginResponse{
+	WriteJSONResponse(w, http.StatusOK, LoginResponse{
 		Token:     token,
-		ExpiresAt: swaggerDateTime(expiresAt.Format(time.RFC3339)),
+		ExpiresAt: expiresAt,
 	})
 }
 

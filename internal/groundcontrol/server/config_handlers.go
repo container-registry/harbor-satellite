@@ -13,19 +13,10 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
-	"github.com/container-registry/harbor-satellite/internal/groundcontrol/models"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/lib/pq"
 )
-
-// SatelliteConfigParams links a satellite to a named configuration.
-//
-// swagger:model SatelliteConfigParams
-type SatelliteConfigParams struct {
-	Satellite  string `json:"satellite,omitempty"`
-	ConfigName string `json:"config_name"`
-}
 
 // auditRedacted is the placeholder substituted for sensitive config values
 // before a config is recorded in the audit log.
@@ -170,7 +161,7 @@ func diffConfigForAudit(oldRaw, newRaw []byte) map[string]any {
 }
 
 func (s *Server) CreateConfig(w http.ResponseWriter, r *http.Request) {
-	var req models.ConfigObject
+	var req ConfigCreateRequest
 
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println("Error decoding request body: ", err)
@@ -444,7 +435,7 @@ func (s *Server) GetConfig(w http.ResponseWriter, r *http.Request, configName st
 }
 
 func (s *Server) SetSatelliteConfig(w http.ResponseWriter, r *http.Request) {
-	var req SatelliteConfigParams
+	var req SatelliteConfigRequest
 	var err error
 
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -511,7 +502,7 @@ func (s *Server) SetSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, req.ConfigName)
+	err = createOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, req.ConfigName)
 	if err != nil {
 		log.Printf("Could not update satellite state artifact: %v", err)
 		HandleAppError(w, err)

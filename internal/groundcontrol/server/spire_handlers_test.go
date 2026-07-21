@@ -13,13 +13,13 @@ import (
 func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 	tests := []struct {
 		name           string
-		request        RegisterSatelliteRequest
+		request        SPIFFESatelliteRegistrationRequest
 		expectError    bool
 		expectedErrMsg string
 	}{
 		{
 			name: "valid join_token request",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-01",
 				Region:            "us-west",
 				Selectors:         []string{"docker:label:foo"},
@@ -29,7 +29,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "valid x509pop request",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-02",
 				Selectors:         []string{"docker:label:bar"},
 				AttestationMethod: "x509pop",
@@ -38,7 +38,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "valid sshpop request with parent_agent_id",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-03",
 				Selectors:         []string{"docker:label:baz"},
 				AttestationMethod: "sshpop",
@@ -48,7 +48,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "missing satellite_name",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "join_token",
 			},
@@ -57,7 +57,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "missing selectors",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-01",
 				AttestationMethod: "join_token",
 			},
@@ -66,7 +66,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "invalid selector format",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-01",
 				Selectors:         []string{"invalid-selector"},
 				AttestationMethod: "join_token",
@@ -76,7 +76,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "invalid attestation_method",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-01",
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "invalid",
@@ -86,7 +86,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "sshpop missing parent_agent_id",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-01",
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "sshpop",
@@ -166,7 +166,7 @@ func TestGetSpireStatusEnabledButDisconnected(t *testing.T) {
 func TestRegisterSatelliteRequest_DefaultValues(t *testing.T) {
 	server := &Server{}
 
-	req := RegisterSatelliteRequest{
+	req := SPIFFESatelliteRegistrationRequest{
 		SatelliteName:     "edge-01",
 		Selectors:         []string{"docker:label:foo"},
 		AttestationMethod: "join_token",
@@ -201,8 +201,8 @@ func TestRegisterSatelliteRequest_TTLLimits(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ttlSeconds := tt.ttlSeconds
-			req := RegisterSatelliteRequest{
+			ttlSeconds := int64(tt.ttlSeconds)
+			req := SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-01",
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "join_token",
@@ -224,12 +224,12 @@ func TestRegisterSatelliteRequest_TTLLimits(t *testing.T) {
 }
 
 func TestRegisterSatelliteWithSPIFFEResponse_JSON(t *testing.T) {
-	resp := RegisterSatelliteWithSPIFFEResponse{
+	resp := SPIFFESatelliteRegistrationResponse{
 		Satellite:          "edge-01",
 		Region:             "us-west",
 		SpiffeID:           "spiffe://example.com/satellite/region/us-west/edge-01",
 		ParentAgentID:      "spiffe://example.com/agent/edge-01",
-		JoinToken:          "test-token",
+		JoinToken:          optionalString("test-token"),
 		SpireServerAddress: "spire-server",
 		SpireServerPort:    8081,
 		TrustDomain:        "example.com",
@@ -238,7 +238,7 @@ func TestRegisterSatelliteWithSPIFFEResponse_JSON(t *testing.T) {
 	data, err := json.Marshal(resp)
 	require.NoError(t, err)
 
-	var decoded RegisterSatelliteWithSPIFFEResponse
+	var decoded SPIFFESatelliteRegistrationResponse
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 
@@ -260,12 +260,12 @@ func TestAgentListResponse_JSON(t *testing.T) {
 			{
 				SpiffeID:        "spiffe://example.com/agent/edge-01",
 				AttestationType: "x509pop",
-				Selectors:       &x509Selectors,
+				Selectors:       x509Selectors,
 			},
 			{
 				SpiffeID:        "spiffe://example.com/agent/edge-02",
 				AttestationType: "sshpop",
-				Selectors:       &sshSelectors,
+				Selectors:       sshSelectors,
 			},
 		},
 	}
@@ -280,8 +280,6 @@ func TestAgentListResponse_JSON(t *testing.T) {
 	require.Len(t, decoded.Agents, 2)
 	require.Equal(t, "x509pop", decoded.Agents[0].AttestationType)
 	require.Equal(t, "sshpop", decoded.Agents[1].AttestationType)
-	require.NotNil(t, decoded.Agents[0].Selectors)
-	require.Equal(t, x509Selectors, *decoded.Agents[0].Selectors)
-	require.NotNil(t, decoded.Agents[1].Selectors)
-	require.Equal(t, sshSelectors, *decoded.Agents[1].Selectors)
+	require.Equal(t, x509Selectors, decoded.Agents[0].Selectors)
+	require.Equal(t, sshSelectors, decoded.Agents[1].Selectors)
 }
