@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 )
@@ -40,7 +41,8 @@ func (r *Runtime) Initialize() error {
 		}
 	}
 
-	options := []groundcontrol.ClientOption{groundcontrol.WithHTTPClient(httpClient)}
+	doer := &storedTokenDoer{client: httpClient, runtime: r}
+	options := []groundcontrol.ClientOption{groundcontrol.WithHTTPClient(doer)}
 	if token := strings.TrimSpace(r.config.GetString(tokenKey)); token != "" {
 		options = append(options, groundcontrol.WithRequestEditorFn(
 			func(_ context.Context, request *http.Request) error {
@@ -65,5 +67,31 @@ func (r *Runtime) ValidateAuth() error {
 	if strings.TrimSpace(r.config.GetString(tokenKey)) == "" {
 		return fmt.Errorf("authentication token is required: run auth login, use --token, or set GROUND_CONTROL_TOKEN")
 	}
+
+	exp := r.config.GetTime(timeoutKey)
+	if !exp.IsZero() && time.Now().After(exp) {
+		return fmt.Errorf("authentication token has expired: run auth login, use --token, or set GROUND_CONTROL_TOKEN")
+	}
 	return nil
+}
+
+type storedTokenDoer struct {
+	client  *http.Client
+	runtime *Runtime
+}
+
+func (d *storedTokenDoer) Do(request *http.Request) (*http.Response, error) {
+	// The generated client constructs this request from the server URL validated in Initialize.
+	response, err := d.client.Do(request) //nolint:gosec // Request destination has already been validated.
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != http.StatusUnauthorized || !d.runtime.UsingStoredToken() {
+		return response, nil
+	}
+	if err := d.runtime.RemoveStoredToken(); err != nil {
+		_ = response.Body.Close()
+		return nil, fmt.Errorf("remove invalid stored token: %w", err)
+	}
+	return response, nil
 }

@@ -16,7 +16,7 @@ func NewLogoutCommand(runtime *common.Runtime) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if response.StatusCode() >= 200 && response.StatusCode() < 300 {
+			if response.StatusCode() >= 200 && response.StatusCode() < 300 && runtime.UsingStoredToken() {
 				if err := runtime.RemoveStoredToken(); err != nil {
 					return err
 				}

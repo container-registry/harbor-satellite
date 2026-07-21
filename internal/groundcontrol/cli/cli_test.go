@@ -60,7 +60,7 @@ func TestGetUsersUsesBearerToken(t *testing.T) {
 func TestAuthLoginStoresTokenAndHonorsPrecedence(t *testing.T) {
 	t.Setenv("GROUND_CONTROL_PASSWORD", "secret")
 	var authHeaders []string
-	var logoutHeader string
+	var logoutHeaders []string
 	var authHeadersMutex sync.Mutex
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -91,7 +91,7 @@ func TestAuthLoginStoresTokenAndHonorsPrecedence(t *testing.T) {
 			require.NoError(t, err)
 		case "/api/logout":
 			authHeadersMutex.Lock()
-			logoutHeader = request.Header.Get("Authorization")
+			logoutHeaders = append(logoutHeaders, request.Header.Get("Authorization"))
 			authHeadersMutex.Unlock()
 			writer.WriteHeader(http.StatusOK)
 		default:
@@ -111,6 +111,10 @@ func TestAuthLoginStoresTokenAndHonorsPrecedence(t *testing.T) {
 
 	_, err = execute(t, "--server", server.URL, "get", "users")
 	require.NoError(t, err)
+	_, err = execute(t, "--server", server.URL, "--token", "one-off-token", "auth", "logout")
+	require.NoError(t, err)
+	_, err = execute(t, "--server", server.URL, "get", "users")
+	require.NoError(t, err)
 
 	configFile := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(configFile, []byte("token: config-token\n"), 0o600))
@@ -127,6 +131,7 @@ func TestAuthLoginStoresTokenAndHonorsPrecedence(t *testing.T) {
 	authHeadersMutex.Lock()
 	require.Equal(t, []string{
 		"Bearer stored-token",
+		"Bearer stored-token",
 		"Bearer config-token",
 		"Bearer flag-token",
 	}, authHeaders)
@@ -135,7 +140,7 @@ func TestAuthLoginStoresTokenAndHonorsPrecedence(t *testing.T) {
 	_, err = execute(t, "--server", server.URL, "auth", "logout")
 	require.NoError(t, err)
 	authHeadersMutex.Lock()
-	require.Equal(t, "Bearer stored-token", logoutHeader)
+	require.Equal(t, []string{"Bearer one-off-token", "Bearer stored-token"}, logoutHeaders)
 	authHeadersMutex.Unlock()
 	_, err = execute(t, "--server", server.URL, "get", "users")
 	require.ErrorContains(t, err, "authentication token is required")
@@ -186,6 +191,170 @@ func TestCreateConfigAcceptsYAMLManifest(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, "201 Created\n", output)
+}
+
+func TestCreateUserUsesPasswordEnvironment(t *testing.T) {
+	t.Setenv("GROUND_CONTROL_USER_PASSWORD", " user password ")
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		require.Equal(t, http.MethodPost, request.Method)
+		require.Equal(t, "/api/users", request.URL.Path)
+		require.Equal(t, "Bearer session-token", request.Header.Get("Authorization"))
+		var body struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+		require.Equal(t, "alice", body.Username)
+		require.Equal(t, " user password ", body.Password)
+		writer.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	output, err := execute(t,
+		"--server", server.URL,
+		"--token", "session-token",
+		"create", "user",
+		"--username", "alice",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "201 Created\n", output)
+}
+
+func TestUpdateConfigPreservesNull(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		require.Equal(t, http.MethodPatch, request.Method)
+		require.Equal(t, "/api/configs/edge", request.URL.Path)
+		require.Equal(t, "Bearer session-token", request.Header.Get("Authorization"))
+		var body map[string]json.RawMessage
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+		require.JSONEq(t, "null", string(body["app_config"]))
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	manifest := filepath.Join(t.TempDir(), "patch.yaml")
+	require.NoError(t, os.WriteFile(manifest, []byte("app_config: null\n"), 0o600))
+	output, err := execute(t,
+		"--server", server.URL,
+		"--token", "session-token",
+		"update", "config",
+		"--name", "edge",
+		"--file", manifest,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "200 OK\n", output)
+}
+
+func TestUpdateUserPasswordPreservesWhitespace(t *testing.T) {
+	t.Setenv("GROUND_CONTROL_NEW_PASSWORD", " new password ")
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		require.Equal(t, http.MethodPatch, request.Method)
+		require.Equal(t, "/api/users/alice/password", request.URL.Path)
+		var body struct {
+			NewPassword string `json:"new_password"`
+		}
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+		require.Equal(t, " new password ", body.NewPassword)
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, err := execute(t,
+		"--server", server.URL,
+		"--token", "session-token",
+		"update", "user-password",
+		"--username", "alice",
+	)
+	require.NoError(t, err)
+}
+
+func TestUpdateOwnPasswordRemovesStoredToken(t *testing.T) {
+	require.NoError(t, os.RemoveAll(credentialsFile))
+	t.Setenv("GROUND_CONTROL_PASSWORD", "login-password")
+	t.Setenv("GROUND_CONTROL_CURRENT_PASSWORD", "current-password")
+	t.Setenv("GROUND_CONTROL_NEW_PASSWORD", "new-password")
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/login":
+			writer.Header().Set("Content-Type", "application/json")
+			_, err := fmt.Fprintf(
+				writer,
+				`{"expires_at":%q,"token":"stored-token"}`,
+				time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			)
+			require.NoError(t, err)
+		case "/api/users/password":
+			require.Equal(t, "Bearer stored-token", request.Header.Get("Authorization"))
+			writer.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	_, err := execute(t, "--server", server.URL, "auth", "login", "--username", "admin")
+	require.NoError(t, err)
+	_, err = execute(t, "--server", server.URL, "update", "own-password")
+	require.NoError(t, err)
+	_, err = execute(t, "--server", server.URL, "get", "users")
+	require.ErrorContains(t, err, "authentication token is required")
+}
+
+func TestUnauthorizedStoredTokenIsRemoved(t *testing.T) {
+	require.NoError(t, os.RemoveAll(credentialsFile))
+	t.Setenv("GROUND_CONTROL_PASSWORD", "login-password")
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/login":
+			writer.Header().Set("Content-Type", "application/json")
+			_, err := fmt.Fprintf(
+				writer,
+				`{"expires_at":%q,"token":"stored-token"}`,
+				time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			)
+			require.NoError(t, err)
+		case "/api/users":
+			require.Equal(t, "Bearer stored-token", request.Header.Get("Authorization"))
+			writer.WriteHeader(http.StatusUnauthorized)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	_, err := execute(t, "--server", server.URL, "auth", "login", "--username", "admin")
+	require.NoError(t, err)
+	_, err = execute(t, "--server", server.URL, "get", "users")
+	require.ErrorContains(t, err, "401 Unauthorized")
+	_, err = execute(t, "--server", server.URL, "get", "users")
+	require.ErrorContains(t, err, "authentication token is required")
+}
+
+func TestSpireAgentFilterIsTrimmed(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		require.Equal(t, "/api/spire/agents", request.URL.Path)
+		require.Equal(t, "x509pop", request.URL.Query().Get("attestation_type"))
+		writer.Header().Set("Content-Type", "application/json")
+		_, err := writer.Write([]byte(`{"agents":[]}`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	_, err := execute(t,
+		"--server", server.URL,
+		"--token", "session-token",
+		"get", "spire-agents",
+		"--attestation-type", " x509pop ",
+	)
+	require.NoError(t, err)
 }
 
 func TestPreRunValidation(t *testing.T) {
