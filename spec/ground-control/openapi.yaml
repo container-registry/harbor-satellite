@@ -1,0 +1,2366 @@
+openapi: 3.0.0
+info:
+  description: |
+    Ground Control manages Harbor Satellite registration, configuration,
+    group membership, user administration, status reporting, and SPIRE/SPIFFE
+    bootstrap flows. JSON schemas describe the public transport contract and
+    are intentionally independent of the Ground Control database schema.
+  title: Ground Control
+  version: 0.1.0
+paths:
+  /api/configs:
+    get:
+      tags:
+        - configs
+      summary: Lists satellite configurations.
+      operationId: listConfigs
+      responses:
+        "200":
+          description: Configurations returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConfigResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Configurations could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    post:
+      tags:
+        - configs
+      summary: Creates a satellite configuration.
+      operationId: createConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigCreateRequest"
+        description: Configuration creation payload.
+        required: true
+      responses:
+        "201":
+          description: Configuration created.
+        "400":
+          description: Configuration payload or name is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "409":
+          description: Configuration already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Configuration could not be created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/configs/satellite:
+    post:
+      tags:
+        - configs
+      summary: Sets the configuration assigned to a satellite.
+      operationId: setSatelliteConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SatelliteConfigRequest"
+        description: Satellite configuration assignment payload.
+        required: true
+      responses:
+        "200":
+          description: Satellite configuration assignment updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptyResponse"
+        "400":
+          description: Assignment payload, satellite, or configuration is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite configuration assignment could not be updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/configs/{config}":
+    get:
+      tags:
+        - configs
+      summary: Gets a satellite configuration.
+      operationId: getConfig
+      parameters:
+        - x-go-name: Config
+          description: Configuration name.
+          name: config
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Configuration returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Configuration was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Configuration could not be loaded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    delete:
+      tags:
+        - configs
+      summary: Deletes an unused satellite configuration.
+      operationId: deleteConfig
+      parameters:
+        - x-go-name: Config
+          description: Configuration name.
+          name: config
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Configuration deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptyResponse"
+        "400":
+          description: Configuration is in use and cannot be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Configuration could not be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    patch:
+      tags:
+        - configs
+      summary: Applies a merge patch to a satellite configuration.
+      operationId: updateConfig
+      parameters:
+        - x-go-name: Config
+          description: Configuration name.
+          name: config
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigMergePatch"
+        description: Configuration merge patch payload.
+        required: true
+      responses:
+        "200":
+          description: Configuration updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResponse"
+        "400":
+          description: Configuration name, body, or merge patch is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Configuration was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Configuration could not be updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/groups:
+    get:
+      tags:
+        - groups
+      summary: Lists groups.
+      operationId: listGroups
+      responses:
+        "200":
+          description: Groups returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroupResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Groups could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/groups/satellite:
+    post:
+      tags:
+        - groups
+      summary: Adds a satellite to a group.
+      operationId: addSatelliteToGroup
+      requestBody:
+        $ref: "#/components/requestBodies/SatelliteGroupRequest"
+      responses:
+        "200":
+          description: Satellite was added to the group or was already a member.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: Satellite or group is invalid or not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite could not be added to the group.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    delete:
+      tags:
+        - groups
+      summary: Removes a satellite from a group.
+      operationId: removeSatelliteFromGroup
+      requestBody:
+        $ref: "#/components/requestBodies/SatelliteGroupRequest"
+      responses:
+        "200":
+          description: Satellite removed from the group.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptyResponse"
+        "400":
+          description: Satellite or group is invalid or not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite could not be removed from the group.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/groups/sync:
+    post:
+      tags:
+        - groups
+      summary: Synchronizes a group state artifact.
+      operationId: syncGroup
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupSyncRequest"
+        description: Group state artifact payload.
+        required: true
+      responses:
+        "200":
+          description: Group synchronized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupResponse"
+        "400":
+          description: Group state artifact payload is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Group could not be synchronized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "502":
+          description: Harbor project lookup, creation, or group state artifact push failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/groups/{group}":
+    get:
+      tags:
+        - groups
+      summary: Gets a group by name.
+      operationId: getGroup
+      parameters:
+        - x-go-name: Group
+          description: Group name.
+          name: group
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Group returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Group was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Group could not be loaded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    delete:
+      tags:
+        - groups
+      summary: Deletes a group.
+      operationId: deleteGroup
+      parameters:
+        - x-go-name: Group
+          description: Group name.
+          name: group
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Group deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptyResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Group was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Group could not be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/groups/{group}/satellites":
+    get:
+      tags:
+        - groups
+      summary: Lists satellites attached to a group.
+      operationId: listGroupSatellites
+      parameters:
+        - x-go-name: Group
+          description: Group name.
+          name: group
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Group satellites returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroupSatelliteResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Group was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Group satellites could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/logout:
+    post:
+      tags:
+        - auth
+      summary: Deletes the current user session.
+      operationId: logout
+      responses:
+        "204":
+          description: Session deleted.
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Session could not be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/satellites:
+    get:
+      tags:
+        - satellites
+      summary: Lists satellites.
+      operationId: listSatellites
+      responses:
+        "200":
+          description: Satellites returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SatelliteResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellites could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    post:
+      tags:
+        - satellites
+      summary: Registers a token-managed satellite.
+      operationId: registerSatellite
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenSatelliteRegistrationRequest"
+        description: Satellite registration payload.
+        required: true
+      responses:
+        "200":
+          description: Satellite registered with a zero-touch token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenSatelliteRegistrationResponse"
+        "400":
+          description: Registration payload, name, config, or robot account is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite could not be registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/satellites/active:
+    get:
+      tags:
+        - satellites
+      summary: Lists active satellites.
+      operationId: listActiveSatellites
+      responses:
+        "200":
+          description: Active satellites returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActiveSatelliteResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Active satellites could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/satellites/register:
+    post:
+      tags:
+        - spire
+      summary: Registers a satellite workload identity with SPIFFE.
+      operationId: registerSatelliteWithSpiffe
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SPIFFESatelliteRegistrationRequest"
+        description: SPIFFE satellite registration payload.
+        required: true
+      responses:
+        "200":
+          description: SPIFFE workload identity registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SPIFFESatelliteRegistrationResponse"
+        "400":
+          description: Registration payload, selectors, or attestation method is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Required parent agent was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: SPIFFE registration could not be completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "503":
+          description: SPIRE server is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/satellites/stale:
+    get:
+      tags:
+        - satellites
+      summary: Lists stale satellites.
+      operationId: listStaleSatellites
+      responses:
+        "200":
+          description: Stale satellites returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StaleSatelliteResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Stale satellites could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/satellites/{satellite}":
+    get:
+      tags:
+        - satellites
+      summary: Gets a satellite by name.
+      operationId: getSatellite
+      parameters:
+        - x-go-name: Satellite
+          description: Satellite name.
+          name: satellite
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Satellite returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatelliteResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite could not be loaded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    delete:
+      tags:
+        - satellites
+      summary: Deletes a satellite.
+      operationId: deleteSatellite
+      parameters:
+        - x-go-name: Satellite
+          description: Satellite name.
+          name: satellite
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Satellite deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptyResponse"
+        "400":
+          description: Satellite does not exist or cannot be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite could not be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/satellites/{satellite}/images":
+    get:
+      tags:
+        - satellites
+      summary: Lists the latest cached images reported by a satellite.
+      operationId: getCachedImages
+      parameters:
+        - x-go-name: Satellite
+          description: Satellite name.
+          name: satellite
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cached images returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CachedArtifactResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Satellite was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Cached images could not be loaded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/satellites/{satellite}/status":
+    get:
+      tags:
+        - satellites
+      summary: Gets the latest satellite status report.
+      operationId: getSatelliteStatus
+      parameters:
+        - x-go-name: Satellite
+          description: Satellite name.
+          name: satellite
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest satellite status returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatelliteStatusResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Satellite or status report was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite status could not be loaded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/spire/agents:
+    get:
+      tags:
+        - spire
+      summary: Lists attested SPIRE agents.
+      operationId: listSpireAgents
+      parameters:
+        - x-go-name: AttestationType
+          description: Filters agents by attestation type.
+          name: attestation_type
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SPIRE agents returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentListResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: SPIRE agents could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "503":
+          description: SPIRE server is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/spire/status:
+    get:
+      tags:
+        - spire
+      summary: Gets SPIRE integration status.
+      operationId: getSpireStatus
+      responses:
+        "200":
+          description: SPIRE integration status returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SPIREStatusResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/users:
+    get:
+      tags:
+        - users
+      summary: Lists non-system users.
+      operationId: listUsers
+      responses:
+        "200":
+          description: Users returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Users could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    post:
+      tags:
+        - users
+      summary: Creates an admin user.
+      operationId: createUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+        description: User creation request.
+        required: true
+      responses:
+        "201":
+          description: User created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          description: Request body, username, or password policy is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "409":
+          description: User already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: User could not be created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/users/password:
+    patch:
+      tags:
+        - users
+      summary: Changes the authenticated user's password.
+      operationId: changeOwnPassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+        description: Password change request.
+        required: true
+      responses:
+        "204":
+          description: Password changed and sessions invalidated.
+        "400":
+          description: Request body or new password is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing, invalid, or current password is
+            incorrect.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Password could not be changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/users/{username}":
+    get:
+      tags:
+        - users
+      summary: Gets a user by username.
+      operationId: getUser
+      parameters:
+        - x-go-name: Username
+          description: Username.
+          name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: User was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: User could not be loaded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    delete:
+      tags:
+        - users
+      summary: Deletes a user.
+      operationId: deleteUser
+      parameters:
+        - x-go-name: Username
+          description: Username.
+          name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: User deleted.
+        "400":
+          description: User cannot be deleted by this request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: User was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: User could not be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/users/{username}/password":
+    patch:
+      tags:
+        - users
+      summary: Resets a user's password.
+      operationId: changeUserPassword
+      parameters:
+        - x-go-name: Username
+          description: Username.
+          name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeUserPasswordRequest"
+        description: Password reset request.
+        required: true
+      responses:
+        "204":
+          description: Password reset and user sessions invalidated.
+        "400":
+          description: Request body or new password is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: User was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Password could not be reset.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /health:
+    get:
+      tags:
+        - health
+      summary: Checks database connectivity.
+      operationId: health
+      responses:
+        "200":
+          description: Database connection is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Database connection is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /login:
+    post:
+      tags:
+        - auth
+      summary: Creates a user session.
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+        description: User credentials.
+        required: true
+      responses:
+        "200":
+          description: Session token created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Request body is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Credentials are missing, invalid, or locked out.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "429":
+          description: Too many login attempts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Session could not be created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+  /ping:
+    get:
+      tags:
+        - health
+      summary: Pings the server.
+      operationId: ping
+      responses:
+        "200":
+          description: Server is reachable and returns pong.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /satellites/spiffe-ztr:
+    get:
+      tags:
+        - satellites
+      summary: Performs SPIFFE-based zero-touch registration.
+      operationId: spiffeZtr
+      responses:
+        "200":
+          description: SPIFFE zero-touch registration completed and registry credentials
+            returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateConfigResponse"
+        "400":
+          description: SPIFFE ID format or satellite identity is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: SPIFFE authentication is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "429":
+          description: Too many SPIFFE zero-touch registration attempts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: SPIFFE zero-touch registration could not be completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+  /satellites/sync:
+    post:
+      tags:
+        - satellites
+      summary: Reports satellite status.
+      operationId: syncSatellite
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SatelliteStatusRequest"
+        description: Satellite status report payload.
+        required: true
+      responses:
+        "200":
+          description: Satellite status report accepted.
+        "400":
+          description: Status payload or heartbeat interval is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: Satellite identity is unknown or not authorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite status report could not be saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+  /satellites/ztr:
+    post:
+      tags:
+        - satellites
+      summary: Performs token-based zero-touch registration.
+      operationId: ztr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ZTRRequest"
+        description: Single-use zero-touch registration request.
+        required: true
+      responses:
+        "200":
+          description: Zero-touch registration completed and registry credentials returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateConfigResponse"
+        "400":
+          description: Registration token is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Registration token has expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "422":
+          description: Registration token payload is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "429":
+          description: Too many zero-touch registration attempts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Zero-touch registration could not be completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+servers:
+  - url: /
+components:
+  requestBodies:
+    SatelliteGroupRequest:
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SatelliteGroupRequest"
+      description: Satellite and group membership payload.
+      required: true
+  securitySchemes:
+    tokenAuth:
+      description: Session token authentication. Swagger UI accepts the raw token;
+        HTTP clients may also use Bearer <token>.
+      type: apiKey
+      name: Authorization
+      in: header
+  schemas:
+    ActiveSatelliteResponse:
+      type: object
+      title: ActiveSatelliteResponse describes a satellite with a recent heartbeat.
+      properties:
+        ID:
+          type: integer
+          format: int32
+        Name:
+          type: string
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+        LastSeen:
+          $ref: "#/components/schemas/NullableTimeValue"
+        HeartbeatInterval:
+          $ref: "#/components/schemas/NullableStringValue"
+        LastActivity:
+          type: string
+        LastStatusTime:
+          type: string
+          format: date-time
+    AppConfig:
+      type: object
+      title: AppConfig contains Harbor Satellite application settings.
+      properties:
+        ground_control_url:
+          type: string
+          x-go-name: GroundControlURL
+        log_level:
+          type: string
+          x-go-name: LogLevel
+        use_unsecure:
+          type: boolean
+          x-go-name: UseUnsecure
+        state_replication_interval:
+          type: string
+          x-go-name: StateReplicationInterval
+        register_satellite_interval:
+          type: string
+          x-go-name: RegisterSatelliteInterval
+        heartbeat_interval:
+          type: string
+          x-go-name: HeartbeatInterval
+        metrics:
+          $ref: "#/components/schemas/MetricsConfig"
+        bring_own_registry:
+          type: boolean
+          x-go-name: BringOwnRegistry
+        local_registry:
+          $ref: "#/components/schemas/RegistryCredentials"
+        tls:
+          $ref: "#/components/schemas/TLSConfig"
+        spiffe:
+          $ref: "#/components/schemas/SPIFFEClientConfig"
+        encrypt_config:
+          type: boolean
+          x-go-name: EncryptConfig
+        registry_fallback:
+          $ref: "#/components/schemas/RegistryFallbackConfig"
+        harbor_registry_url:
+          type: string
+          x-go-name: HarborRegistryURL
+        direct_delivery:
+          $ref: "#/components/schemas/DirectDeliveryConfig"
+        audit:
+          $ref: "#/components/schemas/AuditConfig"
+    AuditConfig:
+      type: object
+      title: AuditConfig controls satellite security-event audit logging.
+      properties:
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+        syslog:
+          $ref: "#/components/schemas/SyslogAuditConfig"
+        otel:
+          $ref: "#/components/schemas/OTelAuditConfig"
+    CachedArtifactResponse:
+      type: object
+      title: CachedArtifactResponse describes an image cached by a satellite.
+      properties:
+        ID:
+          type: integer
+          format: int32
+        Reference:
+          type: string
+        SizeBytes:
+          type: integer
+          format: int64
+        CreatedAt:
+          type: string
+          format: date-time
+    ConfigCreateRequest:
+      type: object
+      title: ConfigCreateRequest wraps a named satellite configuration.
+      required:
+        - config_name
+      properties:
+        config_name:
+          type: string
+          x-go-name: ConfigName
+        registry:
+          type: string
+          description: Optional source-registry metadata retained for compatibility.
+          x-go-name: Registry
+        config:
+          $ref: "#/components/schemas/ConfigValue"
+    ConfigMergePatch:
+      type: object
+      title: ConfigMergePatch contains the sections accepted by the configuration
+        merge-patch endpoint.
+      additionalProperties: false
+      properties:
+        app_config:
+          allOf:
+            - $ref: "#/components/schemas/AppConfig"
+          x-go-name: AppConfig
+          nullable: true
+        state_config:
+          allOf:
+            - $ref: "#/components/schemas/StateConfigValue"
+          x-go-name: StateConfig
+          nullable: true
+        zot_config:
+          type: object
+          additionalProperties: {}
+          x-go-name: ZotConfig
+          nullable: true
+    ConfigResponse:
+      type: object
+      title: ConfigResponse describes a stored satellite configuration.
+      properties:
+        ID:
+          type: integer
+          format: int32
+        ConfigName:
+          type: string
+        RegistryUrl:
+          type: string
+          x-go-name: RegistryURL
+        Config:
+          $ref: "#/components/schemas/ConfigValue"
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+    ConfigValue:
+      type: object
+      title: ConfigValue contains a Harbor Satellite configuration document.
+      properties:
+        state_config:
+          $ref: "#/components/schemas/StateConfigValue"
+        app_config:
+          $ref: "#/components/schemas/AppConfig"
+        zot_config:
+          type: object
+          additionalProperties: {}
+          x-go-name: ZotConfig
+    DirectDeliveryConfig:
+      type: object
+      title: DirectDeliveryConfig controls direct image delivery to a node.
+      properties:
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+        image_dir:
+          type: string
+          x-go-name: ImageDir
+    EmptyResponse:
+      type: object
+      title: EmptyResponse is an empty JSON object.
+      additionalProperties: false
+    GroupResponse:
+      type: object
+      title: GroupResponse describes a synchronized satellite group.
+      properties:
+        ID:
+          type: integer
+          format: int32
+        GroupName:
+          type: string
+        RegistryUrl:
+          type: string
+          x-go-name: RegistryURL
+        Projects:
+          type: array
+          items:
+            type: string
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+    GroupSatelliteResponse:
+      type: object
+      title: GroupSatelliteResponse describes a satellite attached to a group.
+      properties:
+        ID:
+          type: integer
+          format: int32
+        Name:
+          type: string
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+    HealthResponse:
+      type: object
+      title: HealthResponse contains the database health state.
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - unhealthy
+          x-go-name: Status
+    MessageResponse:
+      type: object
+      title: MessageResponse contains a human-readable operation result.
+      properties:
+        message:
+          type: string
+          x-go-name: Message
+    MetricsConfig:
+      type: object
+      title: MetricsConfig selects the host metrics reported by a satellite.
+      properties:
+        collect_cpu:
+          type: boolean
+          x-go-name: CollectCPU
+        collect_memory:
+          type: boolean
+          x-go-name: CollectMemory
+        collect_storage:
+          type: boolean
+          x-go-name: CollectStorage
+    NullableInt32Value:
+      type: object
+      title: NullableInt32Value represents an optional int32 value and its validity
+        state.
+      properties:
+        Int32:
+          type: integer
+          format: int32
+        Valid:
+          type: boolean
+    NullableInt64Value:
+      type: object
+      title: NullableInt64Value represents an optional int64 value and its validity
+        state.
+      properties:
+        Int64:
+          type: integer
+          format: int64
+        Valid:
+          type: boolean
+    NullableStringValue:
+      type: object
+      title: NullableStringValue represents an optional string value and its validity
+        state.
+      properties:
+        String:
+          type: string
+        Valid:
+          type: boolean
+    NullableTimeValue:
+      type: object
+      title: NullableTimeValue represents an optional timestamp and its validity
+        state.
+      properties:
+        Time:
+          type: string
+          format: date-time
+        Valid:
+          type: boolean
+    OTelAuditConfig:
+      type: object
+      title: OTelAuditConfig configures OTLP/HTTP audit-log export.
+      properties:
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+        endpoint:
+          type: string
+          x-go-name: Endpoint
+    RegistryCredentials:
+      type: object
+      title: RegistryCredentials contains registry access details.
+      properties:
+        url:
+          type: string
+          x-go-name: URL
+        username:
+          type: string
+          x-go-name: Username
+        password:
+          type: string
+          format: password
+          x-go-name: Password
+    RegistryFallbackConfig:
+      type: object
+      title: RegistryFallbackConfig configures fallback registries and runtimes.
+      properties:
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+        registries:
+          type: array
+          items:
+            type: string
+          x-go-name: Registries
+        runtimes:
+          type: array
+          items:
+            type: string
+          x-go-name: Runtimes
+    SatelliteResponse:
+      type: object
+      title: SatelliteResponse describes a registered satellite.
+      properties:
+        ID:
+          type: integer
+          format: int32
+        Name:
+          type: string
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+        LastSeen:
+          $ref: "#/components/schemas/NullableTimeValue"
+        HeartbeatInterval:
+          $ref: "#/components/schemas/NullableStringValue"
+    SatelliteStatusResponse:
+      type: object
+      title: SatelliteStatusResponse describes the latest status reported by a
+        satellite.
+      properties:
+        ID:
+          type: integer
+          format: int32
+        SatelliteID:
+          type: integer
+          format: int32
+        Activity:
+          type: string
+        LatestStateDigest:
+          $ref: "#/components/schemas/NullableStringValue"
+        LatestConfigDigest:
+          $ref: "#/components/schemas/NullableStringValue"
+        CpuPercent:
+          $ref: "#/components/schemas/NullableStringValue"
+        MemoryUsedBytes:
+          $ref: "#/components/schemas/NullableInt64Value"
+        StorageUsedBytes:
+          $ref: "#/components/schemas/NullableInt64Value"
+        LastSyncDurationMs:
+          $ref: "#/components/schemas/NullableInt64Value"
+        ImageCount:
+          $ref: "#/components/schemas/NullableInt32Value"
+        ReportedAt:
+          type: string
+          format: date-time
+        CreatedAt:
+          type: string
+          format: date-time
+        ArtifactIds:
+          type: array
+          items:
+            type: integer
+            format: int32
+    SPIFFEClientConfig:
+      type: object
+      title: SPIFFEClientConfig contains satellite Workload API settings.
+      properties:
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+        endpoint_socket:
+          type: string
+          x-go-name: EndpointSocket
+        expected_server_id:
+          type: string
+          x-go-name: ExpectedServerID
+    StaleSatelliteResponse:
+      type: object
+      title: StaleSatelliteResponse describes a satellite with an overdue heartbeat.
+      properties:
+        ID:
+          type: integer
+          format: int32
+        Name:
+          type: string
+        CreatedAt:
+          type: string
+          format: date-time
+        UpdatedAt:
+          type: string
+          format: date-time
+        LastSeen:
+          $ref: "#/components/schemas/NullableTimeValue"
+        HeartbeatInterval:
+          $ref: "#/components/schemas/NullableStringValue"
+        SecondsSinceSeen:
+          type: integer
+          format: int64
+    StateConfigResponse:
+      type: object
+      title: StateConfigResponse contains state artifact and registry access details
+        returned during ZTR.
+      required:
+        - auth
+        - state
+      properties:
+        auth:
+          $ref: "#/components/schemas/RegistryCredentials"
+        state:
+          type: string
+          x-go-name: State
+    StateConfigValue:
+      type: object
+      title: StateConfigValue contains state artifact and registry settings in a
+        satellite configuration.
+      properties:
+        auth:
+          $ref: "#/components/schemas/RegistryCredentials"
+        state:
+          type: string
+          x-go-name: State
+    SyslogAuditConfig:
+      type: object
+      title: SyslogAuditConfig configures the syslog audit transport.
+      properties:
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+          nullable: true
+        target:
+          type: string
+          enum:
+            - daemon
+            - network
+            - file
+          x-go-name: Target
+        tag:
+          type: string
+          x-go-name: Tag
+        socket_path:
+          type: string
+          x-go-name: SocketPath
+        network:
+          type: string
+          enum:
+            - udp
+            - tcp
+          x-go-name: Network
+        address:
+          type: string
+          x-go-name: Address
+        file:
+          $ref: "#/components/schemas/SyslogAuditFileConfig"
+    SyslogAuditFileConfig:
+      type: object
+      title: SyslogAuditFileConfig configures audit-file rotation.
+      properties:
+        path:
+          type: string
+          x-go-name: Path
+        max_size_mb:
+          type: integer
+          format: int64
+          x-go-name: MaxSizeMB
+          nullable: true
+        max_backups:
+          type: integer
+          format: int64
+          x-go-name: MaxBackups
+          nullable: true
+        max_age_days:
+          type: integer
+          format: int64
+          x-go-name: MaxAgeDays
+          nullable: true
+        compress:
+          type: boolean
+          x-go-name: Compress
+          nullable: true
+    TLSConfig:
+      type: object
+      title: TLSConfig contains satellite TLS settings.
+      properties:
+        cert_file:
+          type: string
+          x-go-name: CertFile
+        key_file:
+          type: string
+          x-go-name: KeyFile
+        ca_file:
+          type: string
+          x-go-name: CAFile
+        skip_verify:
+          type: boolean
+          x-go-name: SkipVerify
+    AgentInfoResponse:
+      type: object
+      title: AgentInfoResponse contains agent information for API response.
+      required:
+        - spiffe_id
+        - attestation_type
+      properties:
+        attestation_type:
+          type: string
+          x-go-name: AttestationType
+        expires_at:
+          type: string
+          format: date-time
+          x-go-name: ExpiresAt
+        selectors:
+          type: array
+          items:
+            type: string
+          x-go-name: Selectors
+        spiffe_id:
+          type: string
+          x-go-name: SpiffeID
+      nullable: false
+    AgentListResponse:
+      type: object
+      title: AgentListResponse contains a list of attested agents.
+      required:
+        - agents
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentInfoResponse"
+          x-go-name: Agents
+    AppError:
+      type: object
+      title: AppError is a structured JSON error response.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          format: int64
+          x-go-name: Code
+        message:
+          type: string
+          x-go-name: Message
+    GroupArtifact:
+      type: object
+      title: GroupArtifact describes an image artifact in a synchronized group state.
+      properties:
+        deleted:
+          type: boolean
+          x-go-name: Deleted
+        digest:
+          type: string
+          x-go-name: Digest
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          x-go-name: Labels
+        repository:
+          type: string
+          x-go-name: Repository
+        tag:
+          type: array
+          items:
+            type: string
+          x-go-name: Tag
+        type:
+          type: string
+          x-go-name: Type
+    CachedImageReport:
+      type: object
+      title: CachedImageReport describes an image included in a satellite status
+        report.
+      properties:
+        reference:
+          type: string
+          x-go-name: Reference
+        size_bytes:
+          type: integer
+          format: int64
+          x-go-name: SizeBytes
+    ChangePasswordRequest:
+      type: object
+      title: ChangePasswordRequest changes the authenticated user's password.
+      required:
+        - current_password
+        - new_password
+      properties:
+        current_password:
+          type: string
+          format: password
+          x-go-name: CurrentPassword
+        new_password:
+          type: string
+          format: password
+          x-go-name: NewPassword
+    ChangeUserPasswordRequest:
+      type: object
+      title: ChangeUserPasswordRequest resets a user's password.
+      required:
+        - new_password
+      properties:
+        new_password:
+          type: string
+          format: password
+          x-go-name: NewPassword
+    CreateUserRequest:
+      type: object
+      title: CreateUserRequest creates a regular admin user.
+      required:
+        - username
+        - password
+      properties:
+        password:
+          type: string
+          format: password
+          x-go-name: Password
+        username:
+          type: string
+          x-go-name: Username
+    LoginRequest:
+      type: object
+      title: LoginRequest contains user credentials for session creation.
+      required:
+        - username
+        - password
+      properties:
+        password:
+          type: string
+          format: password
+          x-go-name: Password
+        username:
+          type: string
+          x-go-name: Username
+    LoginResponse:
+      type: object
+      title: LoginResponse contains a bearer token and its expiration timestamp.
+      required:
+        - token
+        - expires_at
+      properties:
+        expires_at:
+          type: string
+          format: date-time
+          x-go-name: ExpiresAt
+        token:
+          type: string
+          x-go-name: Token
+    TokenSatelliteRegistrationRequest:
+      type: object
+      title: TokenSatelliteRegistrationRequest registers a token-managed satellite.
+      required:
+        - name
+        - config_name
+      properties:
+        config_name:
+          type: string
+          x-go-name: ConfigName
+        groups:
+          type: array
+          items:
+            type: string
+          x-go-name: Groups
+        name:
+          type: string
+          x-go-name: Name
+    SPIFFESatelliteRegistrationRequest:
+      type: object
+      title: SPIFFESatelliteRegistrationRequest registers a satellite workload
+        identity with SPIFFE.
+      required:
+        - satellite_name
+        - selectors
+        - attestation_method
+      properties:
+        attestation_method:
+          type: string
+          enum:
+            - join_token
+            - x509pop
+            - sshpop
+          x-go-name: AttestationMethod
+        parent_agent_id:
+          type: string
+          x-go-name: ParentAgentID
+        region:
+          type: string
+          x-go-name: Region
+        satellite_name:
+          type: string
+          x-go-name: SatelliteName
+        selectors:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          x-go-name: Selectors
+        ttl_seconds:
+          type: integer
+          format: int64
+          maximum: 86400
+          minimum: 1
+          x-go-name: TTLSeconds
+    TokenSatelliteRegistrationResponse:
+      type: object
+      title: TokenSatelliteRegistrationResponse contains a single-use ZTR token.
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          x-go-name: Token
+    SPIFFESatelliteRegistrationResponse:
+      type: object
+      title: SPIFFESatelliteRegistrationResponse contains satellite workload
+        registration details.
+      required:
+        - satellite
+        - region
+        - spiffe_id
+        - parent_agent_id
+        - spire_server_address
+        - spire_server_port
+        - trust_domain
+      properties:
+        expires_at:
+          type: string
+          format: date-time
+          x-go-name: ExpiresAt
+        join_token:
+          type: string
+          x-go-name: JoinToken
+        parent_agent_id:
+          type: string
+          x-go-name: ParentAgentID
+        region:
+          type: string
+          x-go-name: Region
+        satellite:
+          type: string
+          x-go-name: Satellite
+        spiffe_id:
+          type: string
+          x-go-name: SpiffeID
+        spire_server_address:
+          type: string
+          x-go-name: SpireServerAddress
+        spire_server_port:
+          type: integer
+          format: int64
+          x-go-name: SpireServerPort
+        trust_domain:
+          type: string
+          x-go-name: TrustDomain
+    SPIREStatusResponse:
+      type: object
+      title: SPIREStatusResponse contains SPIRE integration status.
+      properties:
+        connected:
+          type: boolean
+          x-omitempty: false
+          x-go-name: Connected
+        enabled:
+          type: boolean
+          x-omitempty: false
+          x-go-name: Enabled
+        provider:
+          type: string
+          x-go-name: Provider
+        trust_domain:
+          type: string
+          x-go-name: TrustDomain
+    SatelliteConfigRequest:
+      type: object
+      title: SatelliteConfigRequest assigns a named configuration to a satellite.
+      required:
+        - satellite
+        - config_name
+      properties:
+        config_name:
+          type: string
+          x-go-name: ConfigName
+        satellite:
+          type: string
+          x-go-name: Satellite
+    SatelliteGroupRequest:
+      type: object
+      title: SatelliteGroupRequest links or unlinks a satellite and a group.
+      required:
+        - satellite
+        - group
+      properties:
+        group:
+          type: string
+          x-go-name: Group
+        satellite:
+          type: string
+          x-go-name: Satellite
+    SatelliteStatusRequest:
+      type: object
+      title: SatelliteStatusRequest reports the current satellite status and cache
+        metrics.
+      properties:
+        activity:
+          type: string
+          x-go-name: Activity
+        cached_images:
+          type: array
+          items:
+            $ref: "#/components/schemas/CachedImageReport"
+          x-go-name: CachedImages
+        cpu_percent:
+          type: number
+          format: double
+          x-go-name: CPUPercent
+        image_count:
+          type: integer
+          format: int32
+          x-go-name: ImageCount
+        last_sync_duration_ms:
+          type: integer
+          format: int64
+          x-go-name: LastSyncDurationMs
+        latest_config_digest:
+          type: string
+          x-go-name: LatestConfigDigest
+        latest_state_digest:
+          type: string
+          x-go-name: LatestStateDigest
+        memory_used_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          x-go-name: MemoryUsedBytes
+        name:
+          type: string
+          x-go-name: Name
+        request_created_time:
+          type: string
+          format: date-time
+          x-go-name: RequestCreatedTime
+        state_report_interval:
+          type: string
+          x-go-name: StateReportInterval
+        storage_used_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          x-go-name: StorageUsedBytes
+    GroupSyncRequest:
+      type: object
+      title: GroupSyncRequest contains a group state artifact synchronized from
+        Harbor.
+      required:
+        - group
+      properties:
+        artifacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupArtifact"
+          x-go-name: Artifacts
+        group:
+          type: string
+          x-go-name: Group
+        registry:
+          type: string
+          x-go-name: Registry
+    UserResponse:
+      type: object
+      title: UserResponse describes a Ground Control user.
+      required:
+        - id
+        - username
+        - role
+        - created_at
+      properties:
+        created_at:
+          type: string
+          format: date-time
+          x-go-name: CreatedAt
+        id:
+          type: integer
+          format: int32
+          x-go-name: ID
+        role:
+          type: string
+          x-go-name: Role
+        username:
+          type: string
+          x-go-name: Username
+    ZTRRequest:
+      type: object
+      title: ZTRRequest contains a single-use zero-touch registration token.
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          minLength: 32
+          maxLength: 32
+          pattern: ^[a-f0-9]{32}$
+          x-go-name: Token
