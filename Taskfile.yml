@@ -23,6 +23,9 @@ includes:
   _e2e:
     taskfile: ./taskfiles/e2e.yml
     dir: "{{.ROOT_DIR}}"
+  _gen:
+    taskfile: ./taskfiles/gen.yml
+    dir: "{{.ROOT_DIR}}"
 
 tasks:
   default:
@@ -91,6 +94,24 @@ tasks:
     generates:
       - swagger.yml
       - swagger-flatten.yml
+
+  generate:ground-control:
+    desc: Generate Ground Control OpenAPI server and client code
+    aliases: [gen:gc]
+    cmds:
+      - task: _gen:ground-control
+
+  generate:ground-control-server:
+    desc: Generate Ground Control OpenAPI server code
+    aliases: [gen:gc-server]
+    cmds:
+      - task: _gen:ground-control-server
+
+  generate:ground-control-client:
+    desc: Generate Ground Control OpenAPI client code
+    aliases: [gen:gc-client]
+    cmds:
+      - task: _gen:ground-control-client
 
   e2e:
     desc: Run all E2E tests
