@@ -5,6 +5,8 @@ vars:
   GOLANGCILINT_VERSION: "v2.12.2"
   GORELEASER_VERSION: "v2.9.0"
   GO_SWAGGER_VERSION: "v0.35.0"
+  OAPI_CODEGEN_VERSION: "de2d8b2b0afb287198554eb305bb0d2687d26a85"
+  OAPI_CODEGEN_RELEASE_VERSION: "v2.8.0"
   PLATFORMS_LINUX: "amd64 arm64 ppc64le s390x riscv64"
   PLATFORMS_DARWIN: "amd64 arm64"
   VULN_FILTER: "GO-2025-3409|GO-2024-2979"
@@ -155,7 +157,7 @@ tasks:
     desc: "Publish both components to registry"
     aliases: [p]
     vars:
-      TAG: "{{.TAG | default \"dev\"}}"
+      TAG: '{{.TAG | default "dev"}}'
       PLATFORMS: "{{.PLATFORMS}}"
     cmds:
       - task: _publish:both
@@ -167,7 +169,7 @@ tasks:
   publish-and-sign:
     desc: Build, push, and sign both components
     vars:
-      TAG: "{{.TAG | default \"dev\"}}"
+      TAG: '{{.TAG | default "dev"}}'
     cmds:
       - task: _publish:image-and-sign
         vars:

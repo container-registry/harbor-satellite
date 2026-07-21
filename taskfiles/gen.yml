@@ -18,9 +18,10 @@ tasks:
       GOBIN: "{{.BIN_DIR}}"
     cmds:
       - mkdir -p {{.BIN_DIR}}
-      - go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+      - go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@{{.OAPI_CODEGEN_VERSION}}
     status:
       - test -x {{.BIN_DIR}}/oapi-codegen
+      - "{{.BIN_DIR}}/oapi-codegen -version | grep -q '{{.OAPI_CODEGEN_RELEASE_VERSION}}'"
 
   ground-control:
     desc: Generate Ground Control OpenAPI server and client code
