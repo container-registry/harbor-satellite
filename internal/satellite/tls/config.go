@@ -52,7 +52,7 @@ func LoadClientTLSConfig(cfg *Config) (*tls.Config, error) {
 	}
 
 	// Load client certificate if provided (for mTLS)
-	if cfg.CertFile != "" && cfg.KeyFile != "" {
+	if cfg.CertFile != "" || cfg.KeyFile != "" {
 		cert, err := LoadCertificate(cfg.CertFile, cfg.KeyFile)
 		if err != nil {
 			return nil, err
