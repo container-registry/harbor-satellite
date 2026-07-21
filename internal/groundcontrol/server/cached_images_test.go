@@ -83,11 +83,11 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 	// Mock UpdateSatelliteLastSeen
 	mock.ExpectExec("UPDATE satellites SET last_seen").WillReturnResult(sqlmock.NewResult(0, 1))
 
-	reqBody := SatelliteStatusParams{
+	reqBody := SatelliteStatusRequest{
 		Name:               "edge-01",
 		ImageCount:         2,
 		RequestCreatedTime: now,
-		CachedImages: []CachedImage{
+		CachedImages: []CachedImageReport{
 			{Reference: "localhost:8585/library/nginx:latest@sha256:abc", SizeBytes: 50000},
 			{Reference: "localhost:8585/library/alpine:3.18@sha256:def", SizeBytes: 5000},
 		},
@@ -127,7 +127,7 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 
 	mock.ExpectExec("UPDATE satellites SET last_seen").WillReturnResult(sqlmock.NewResult(0, 1))
 
-	reqBody := SatelliteStatusParams{
+	reqBody := SatelliteStatusRequest{
 		Name:               "edge-01",
 		RequestCreatedTime: now,
 	}
@@ -149,7 +149,7 @@ func TestSyncHandler_UnknownSatellite(t *testing.T) {
 		WithArgs("unknown").
 		WillReturnError(sql.ErrNoRows)
 
-	reqBody := SatelliteStatusParams{
+	reqBody := SatelliteStatusRequest{
 		Name:               "unknown",
 		RequestCreatedTime: time.Now().UTC(),
 	}
@@ -275,7 +275,7 @@ func TestSyncHandler_InvalidHeartbeatInterval(t *testing.T) {
 		WithArgs("edge-01").
 		WillReturnRows(satRows)
 
-	reqBody := SatelliteStatusParams{
+	reqBody := SatelliteStatusRequest{
 		Name:                "edge-01",
 		StateReportInterval: "bad-format",
 		RequestCreatedTime:  now,
@@ -309,10 +309,10 @@ func TestSyncHandler_BatchInsertArtifactsFails(t *testing.T) {
 		).
 		WillReturnError(fmt.Errorf("db connection lost"))
 
-	reqBody := SatelliteStatusParams{
+	reqBody := SatelliteStatusRequest{
 		Name:               "edge-01",
 		RequestCreatedTime: now,
-		CachedImages: []CachedImage{
+		CachedImages: []CachedImageReport{
 			{Reference: "localhost:8585/nginx:latest@sha256:abc", SizeBytes: 50000},
 		},
 	}
@@ -354,10 +354,10 @@ func TestGetCachedImagesHandler_DBFailure(t *testing.T) {
 
 func TestCachedImageJSON(t *testing.T) {
 	t.Run("serialization roundtrip", func(t *testing.T) {
-		original := SatelliteStatusParams{
+		original := SatelliteStatusRequest{
 			Name:       "edge-01",
 			ImageCount: 2,
-			CachedImages: []CachedImage{
+			CachedImages: []CachedImageReport{
 				{Reference: "localhost:8585/nginx:latest@sha256:abc", SizeBytes: 50000},
 				{Reference: "localhost:8585/alpine:3.18@sha256:def", SizeBytes: 5000},
 			},
@@ -366,7 +366,7 @@ func TestCachedImageJSON(t *testing.T) {
 		data, err := json.Marshal(original)
 		require.NoError(t, err)
 
-		var decoded SatelliteStatusParams
+		var decoded SatelliteStatusRequest
 		err = json.Unmarshal(data, &decoded)
 		require.NoError(t, err)
 
@@ -380,7 +380,7 @@ func TestCachedImageJSON(t *testing.T) {
 	})
 
 	t.Run("omits cached_images when empty", func(t *testing.T) {
-		original := SatelliteStatusParams{
+		original := SatelliteStatusRequest{
 			Name:       "edge-01",
 			ImageCount: 0,
 		}

@@ -8,12 +8,11 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
-	"github.com/container-registry/harbor-satellite/internal/groundcontrol/models"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 )
 
 func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
-	var req models.StateArtifact
+	var req GroupSyncRequest
 
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println("Error decoding request body:", err)
@@ -45,7 +44,7 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 
 	q := s.dbQueries.WithTx(tx)
 
-	projects := utils.GetProjectNames(&req.Artifacts)
+	projects := getProjectNames(req.Artifacts)
 	params := database.CreateGroupParams{
 		GroupName:   req.Group,
 		RegistryUrl: env.GC.Harbor.URL,
@@ -105,7 +104,7 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err = utils.CreateStateArtifact(r.Context(), &req)
+	err = createStateArtifact(r.Context(), req)
 	if err != nil {
 		log.Println("Error creating state artifact:", err)
 		HandleAppError(w, err)
@@ -275,7 +274,7 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 		}
 
 		// Update state artifact
-		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
+		err = createOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
 		if err != nil {
 			log.Println(err)
 			err := &AppError{

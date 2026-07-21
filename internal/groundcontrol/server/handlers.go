@@ -19,9 +19,9 @@ func (s *Server) Health(w http.ResponseWriter, _ *http.Request) {
 	err := s.db.Ping()
 	if err != nil {
 		log.Printf("error pinging db: %v", err)
-		WriteJSONResponse(w, http.StatusServiceUnavailable, map[string]string{"status": "unhealthy"})
+		WriteJSONResponse(w, http.StatusServiceUnavailable, HealthResponse{Status: Unhealthy})
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, map[string]string{"status": "healthy"})
+	WriteJSONResponse(w, http.StatusOK, HealthResponse{Status: Healthy})
 }

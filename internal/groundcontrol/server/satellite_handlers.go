@@ -14,58 +14,7 @@ import (
 	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
-	"github.com/container-registry/harbor-satellite/pkg/config"
 )
-
-// SatelliteGroupParams links or unlinks a satellite and a group.
-//
-// swagger:model SatelliteGroupParams
-type SatelliteGroupParams struct {
-	Satellite string `json:"satellite"`
-	Group     string `json:"group"`
-}
-
-// RegisterSatelliteParams registers a token-managed satellite.
-//
-// swagger:model RegisterSatelliteParams
-type RegisterSatelliteParams struct {
-	Name       string    `json:"name"`
-	Groups     *[]string `json:"groups,omitempty"`
-	ConfigName string    `json:"config_name"`
-}
-
-// RegisterSatelliteResponse contains a single-use ZTR token.
-//
-// swagger:model RegisterSatelliteResponse
-type RegisterSatelliteResponse struct {
-	Token string `json:"token"`
-}
-
-// CachedImage describes an image cached by a satellite.
-//
-// swagger:model CachedImage
-type CachedImage struct {
-	Reference string `json:"reference"`
-	SizeBytes int64  `json:"size_bytes"`
-}
-
-// SatelliteStatusParams reports the current satellite status and cache metrics.
-//
-// swagger:model SatelliteStatusParams
-type SatelliteStatusParams struct {
-	Name                string        `json:"name"`
-	Activity            string        `json:"activity"`
-	StateReportInterval string        `json:"state_report_interval"`
-	LatestStateDigest   string        `json:"latest_state_digest"`
-	LatestConfigDigest  string        `json:"latest_config_digest"`
-	MemoryUsedBytes     uint64        `json:"memory_used_bytes"`
-	StorageUsedBytes    uint64        `json:"storage_used_bytes"`
-	CPUPercent          float64       `json:"cpu_percent"`
-	RequestCreatedTime  time.Time     `json:"request_created_time"`
-	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
-	ImageCount          int           `json:"image_count"`
-	CachedImages        []CachedImage `json:"cached_images,omitempty"`
-}
 
 func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 	if s.spiffeProvider != nil || s.spireClient != nil {
@@ -76,7 +25,7 @@ func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req RegisterSatelliteParams
+	var req TokenSatelliteRegistrationRequest
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -235,7 +184,7 @@ func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create the satellite's state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates, req.ConfigName)
+	err = createOrUpdateSatStateArtifact(r.Context(), req.Name, groupStates, req.ConfigName)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -289,7 +238,7 @@ func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 
-	resp := RegisterSatelliteResponse{
+	resp := TokenSatelliteRegistrationResponse{
 		Token: tk,
 	}
 
@@ -407,7 +356,7 @@ func (s *Server) Ztr(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// For sanity, create (update) the state artifact during the registration process as well.
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
+	err = createOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -416,12 +365,12 @@ func (s *Server) Ztr(w http.ResponseWriter, r *http.Request) {
 
 	satelliteState := utils.AssembleSatelliteState(satellite.Name)
 
-	result := config.StateConfig{
-		StateURL: satelliteState,
-		RegistryCredentials: config.RegistryCredentials{
+	result := StateConfigResponse{
+		State: satelliteState,
+		Auth: RegistryCredentials{
 			Username: robot.RobotName,
 			Password: freshSecret,
-			URL:      config.URL(env.GC.Harbor.URL),
+			URL:      env.GC.Harbor.URL,
 		},
 	}
 
@@ -595,7 +544,7 @@ func (s *Server) SpiffeZtr(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		err = utils.CreateOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
+		err = createOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
 		if err != nil {
 			log.Printf("SPIFFE ZTR: Failed to create state artifact: %v", err)
 			HandleAppError(w, err)
@@ -613,12 +562,12 @@ func (s *Server) SpiffeZtr(w http.ResponseWriter, r *http.Request) {
 		harborURL = "http://placeholder-registry:5000"
 	}
 
-	result := config.StateConfig{
-		StateURL: satelliteState,
-		RegistryCredentials: config.RegistryCredentials{
+	result := StateConfigResponse{
+		State: satelliteState,
+		Auth: RegistryCredentials{
 			Username: robot.RobotName,
 			Password: freshSecret,
-			URL:      config.URL(harborURL),
+			URL:      harborURL,
 		},
 	}
 
@@ -651,7 +600,7 @@ func (s *Server) ListSatellites(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
-	var req SatelliteStatusParams
+	var req SatelliteStatusRequest
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
@@ -722,10 +671,10 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 		LatestStateDigest:  toNullString(req.LatestStateDigest),
 		LatestConfigDigest: toNullString(req.LatestConfigDigest),
 		CpuPercent:         toNullString(fmt.Sprintf("%.2f", req.CPUPercent)),
-		MemoryUsedBytes:    toNullInt64(int64(req.MemoryUsedBytes)),
-		StorageUsedBytes:   toNullInt64(int64(req.StorageUsedBytes)),
+		MemoryUsedBytes:    toNullInt64(req.MemoryUsedBytes),
+		StorageUsedBytes:   toNullInt64(req.StorageUsedBytes),
 		LastSyncDurationMs: toNullInt64(req.LastSyncDurationMs),
-		ImageCount:         toNullInt32(int32(req.ImageCount)),
+		ImageCount:         toNullInt32(req.ImageCount),
 		ReportedAt:         req.RequestCreatedTime,
 		ArtifactIds:        artifactIDs,
 	})
@@ -1125,7 +1074,7 @@ func (s *Server) DeleteSatellite(w http.ResponseWriter, r *http.Request, satelli
 }
 
 func (s *Server) AddSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
-	var req SatelliteGroupParams
+	var req SatelliteGroupRequest
 
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, err)
@@ -1293,7 +1242,7 @@ func (s *Server) AddSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
+	err = createOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
 	if err != nil {
 		log.Printf("Error: Failed to update satellite state artifact: %v", err)
 		HandleAppError(w, err)
@@ -1450,7 +1399,7 @@ func (s *Server) RemoveSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	}
 
 	// Update the state artifact to also track the new group state artifact
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
+	err = createOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, configObject.ConfigName)
 	if err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
