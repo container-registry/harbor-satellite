@@ -29,6 +29,7 @@ type Server struct {
 	spiffeProvider spiffe.Provider
 	embeddedSpire  *spiffe.EmbeddedSpireServer
 	spireClient    *spiffe.ServerClient
+	spireEnabled   bool
 
 	// External SPIRE server metadata (used when embeddedSpire is nil)
 	spireServerAddress string
@@ -154,6 +155,7 @@ func NewServer() *ServerResult {
 		spiffeProvider: spiffeProvider,
 		embeddedSpire:  embeddedSpire,
 		spireClient:    spireClient,
+		spireEnabled:   spiffeCfg.Enabled || cfg.EmbeddedSPIRE.Enabled || cfg.SPIRE.ServerSocket != "",
 
 		spireServerAddress: spireServerAddress,
 		spireServerPort:    spireServerPort,

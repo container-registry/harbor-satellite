@@ -1,5 +1,12 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/HEAD/configuration-schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/v2.8.0/configuration-schema.json
 package: server
 generate:
   models: true
   gorilla-server: true
+output-options:
+  nullable-type: true
+  type-mapping:
+    integer:
+      formats:
+        http-status-code:
+          type: int

@@ -24,6 +24,7 @@ require (
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/goharbor/go-client v0.213.1
+	github.com/oapi-codegen/nullable v1.1.0
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/pressly/goose/v3 v3.24.3
 	github.com/spiffe/spire-api-sdk v1.15.1

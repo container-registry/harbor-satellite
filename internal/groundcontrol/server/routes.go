@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
@@ -28,8 +29,9 @@ func (s *Server) RegisterRoutes() http.Handler {
 func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handler := next
+		cleanPath := path.Clean(r.URL.Path)
 
-		switch r.URL.Path {
+		switch cleanPath {
 		case "/login", "/satellites/ztr":
 			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
 		case "/satellites/spiffe-ztr":
@@ -41,8 +43,8 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 			handler = s.SatelliteAuthMiddleware(handler)
 		}
 
-		if strings.HasPrefix(r.URL.Path, "/api/") {
-			if requiresSystemAdmin(r.Method, r.URL.Path) {
+		if strings.HasPrefix(cleanPath, "/api/") {
+			if requiresSystemAdmin(r.Method, cleanPath) {
 				handler = s.RequireRole(roleSystemAdmin, handler.ServeHTTP)
 			}
 			handler = s.AuthMiddleware(handler)
@@ -58,7 +60,7 @@ func requiresSystemAdmin(method, requestPath string) bool {
 		return true
 	case method == http.MethodDelete && strings.HasPrefix(requestPath, "/api/users/"):
 		return true
-	case method == http.MethodPatch && strings.HasPrefix(requestPath, "/api/users/") && strings.HasSuffix(requestPath, "/password"):
+	case method == http.MethodPatch && strings.HasPrefix(requestPath, "/api/users/") && strings.HasSuffix(requestPath, "/password") && requestPath != "/api/users/password":
 		return true
 	case method == http.MethodDelete && strings.HasPrefix(requestPath, "/api/groups/") && requestPath != "/api/groups/satellite":
 		return true

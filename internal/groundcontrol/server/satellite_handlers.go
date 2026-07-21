@@ -15,7 +15,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
-	"github.com/gorilla/mux"
 )
 
 // SatelliteGroupParams links or unlinks a satellite and a group.
@@ -1316,9 +1315,13 @@ func (s *Server) AddSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 
 // If the satellite is removed from the group, the state artifact must be updated accordingly as well.
 func (s *Server) RemoveSatelliteFromGroup(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	groupName := vars["group"]
-	satelliteName := vars["satellite"]
+	var req SatelliteGroupRequest
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+	groupName := req.Group
+	satelliteName := req.Satellite
 
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {

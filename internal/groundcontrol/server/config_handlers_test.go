@@ -168,3 +168,25 @@ func TestDeleteConfigHandler_ConfigInUse(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestConfigMergePatchPreservesExplicitNull(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "omitted", input: `{}`},
+		{name: "explicit null", input: `{"app_config":null}`},
+		{name: "object", input: `{"app_config":{"key":"value"}}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var patch ConfigMergePatch
+			require.NoError(t, json.Unmarshal([]byte(tt.input), &patch))
+
+			encoded, err := json.Marshal(patch)
+			require.NoError(t, err)
+			require.JSONEq(t, tt.input, string(encoded))
+		})
+	}
+}

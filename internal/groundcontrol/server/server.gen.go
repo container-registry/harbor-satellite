@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/oapi-codegen/nullable"
 	"github.com/oapi-codegen/runtime"
 )
 
@@ -138,7 +139,7 @@ type AppConfig struct {
 
 // AppError defines model for AppError.
 type AppError struct {
-	Code    int64  `json:"code"`
+	Code    int    `json:"code"`
 	Message string `json:"message"`
 }
 
@@ -185,9 +186,9 @@ type ConfigCreateRequest struct {
 
 // ConfigMergePatch defines model for ConfigMergePatch.
 type ConfigMergePatch struct {
-	AppConfig   *map[string]interface{} `json:"app_config,omitempty"`
-	StateConfig *map[string]interface{} `json:"state_config,omitempty"`
-	ZotConfig   *map[string]interface{} `json:"zot_config,omitempty"`
+	AppConfig   nullable.Nullable[map[string]any] `json:"app_config,omitempty"`
+	StateConfig nullable.Nullable[map[string]any] `json:"state_config,omitempty"`
+	ZotConfig   nullable.Nullable[map[string]any] `json:"zot_config,omitempty"`
 }
 
 // ConfigResponse defines model for ConfigResponse.
@@ -202,9 +203,9 @@ type ConfigResponse struct {
 
 // ConfigValue defines model for ConfigValue.
 type ConfigValue struct {
-	AppConfig   *AppConfig              `json:"app_config,omitempty"`
-	StateConfig *StateConfigValue       `json:"state_config,omitempty"`
-	ZotConfig   *map[string]interface{} `json:"zot_config,omitempty"`
+	AppConfig   *AppConfig        `json:"app_config,omitempty"`
+	StateConfig *StateConfigValue `json:"state_config,omitempty"`
+	ZotConfig   *map[string]any   `json:"zot_config,omitempty"`
 }
 
 // CreateUserRequest defines model for CreateUserRequest.
@@ -220,16 +221,16 @@ type DirectDeliveryConfig struct {
 }
 
 // EmptyResponse defines model for EmptyResponse.
-type EmptyResponse = map[string]interface{}
+type EmptyResponse = map[string]any
 
 // GroupArtifact defines model for GroupArtifact.
 type GroupArtifact struct {
-	Deleted    *bool       `json:"deleted,omitempty"`
-	Digest     *string     `json:"digest,omitempty"`
-	Labels     interface{} `json:"labels,omitempty"`
-	Repository *string     `json:"repository,omitempty"`
-	Tag        *[]string   `json:"tag,omitempty"`
-	Type       *string     `json:"type,omitempty"`
+	Deleted    *bool     `json:"deleted,omitempty"`
+	Digest     *string   `json:"digest,omitempty"`
+	Labels     any       `json:"labels,omitempty"`
+	Repository *string   `json:"repository,omitempty"`
+	Tag        *[]string `json:"tag,omitempty"`
+	Type       *string   `json:"type,omitempty"`
 }
 
 // GroupResponse defines model for GroupResponse.
@@ -455,7 +456,7 @@ type StateConfigValue struct {
 // SyslogAuditConfig defines model for SyslogAuditConfig.
 type SyslogAuditConfig struct {
 	Address    *string                   `json:"address,omitempty"`
-	Enabled    *bool                     `json:"enabled,omitempty"`
+	Enabled    nullable.Nullable[bool]   `json:"enabled,omitempty"`
 	File       *SyslogAuditFileConfig    `json:"file,omitempty"`
 	Network    *SyslogAuditConfigNetwork `json:"network,omitempty"`
 	SocketPath *string                   `json:"socket_path,omitempty"`
@@ -471,11 +472,11 @@ type SyslogAuditConfigTarget string
 
 // SyslogAuditFileConfig defines model for SyslogAuditFileConfig.
 type SyslogAuditFileConfig struct {
-	Compress   *bool   `json:"compress,omitempty"`
-	MaxAgeDays *int64  `json:"max_age_days,omitempty"`
-	MaxBackups *int64  `json:"max_backups,omitempty"`
-	MaxSizeMB  *int64  `json:"max_size_mb,omitempty"`
-	Path       *string `json:"path,omitempty"`
+	Compress   nullable.Nullable[bool]  `json:"compress,omitempty"`
+	MaxAgeDays nullable.Nullable[int64] `json:"max_age_days,omitempty"`
+	MaxBackups nullable.Nullable[int64] `json:"max_backups,omitempty"`
+	MaxSizeMB  nullable.Nullable[int64] `json:"max_size_mb,omitempty"`
+	Path       *string                  `json:"path,omitempty"`
 }
 
 // TLSConfig defines model for TLSConfig.

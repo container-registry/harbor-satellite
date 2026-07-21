@@ -152,6 +152,17 @@ func TestListSpireAgentsHandler_NoSpireClient(t *testing.T) {
 	require.Contains(t, respBody["message"], "SPIRE server not configured")
 }
 
+func TestGetSpireStatusEnabledButDisconnected(t *testing.T) {
+	server := &Server{spireEnabled: true}
+	req := httptest.NewRequest(http.MethodGet, "/api/spire/status", nil)
+	w := httptest.NewRecorder()
+
+	server.GetSpireStatus(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.JSONEq(t, `{"enabled":true,"connected":false}`, w.Body.String())
+}
+
 func TestRegisterSatelliteRequest_DefaultValues(t *testing.T) {
 	server := &Server{}
 
@@ -180,33 +191,34 @@ func TestRegisterSatelliteRequest_DefaultValues(t *testing.T) {
 
 func TestRegisterSatelliteRequest_TTLLimits(t *testing.T) {
 	tests := []struct {
-		name        string
-		ttlSeconds  int
-		expectedTTL int
+		name       string
+		ttlSeconds int
 	}{
-		{"default TTL when 0", 0, 600},
-		{"default TTL when negative", -100, 600},
-		{"max TTL capped", 100000, 86400},
-		{"valid TTL preserved", 3600, 3600},
+		{"zero TTL rejected", 0},
+		{"negative TTL rejected", -100},
+		{"TTL above maximum rejected", 100000},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ttlSeconds := tt.ttlSeconds
 			req := RegisterSatelliteRequest{
 				SatelliteName:     "edge-01",
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "join_token",
-				TTLSeconds:        tt.ttlSeconds,
+				TTLSeconds:        &ttlSeconds,
 			}
 
-			if req.TTLSeconds <= 0 {
-				req.TTLSeconds = 600
-			}
-			if req.TTLSeconds > 86400 {
-				req.TTLSeconds = 86400
-			}
+			body, err := json.Marshal(req)
+			require.NoError(t, err)
+			httpReq := httptest.NewRequest(http.MethodPost, "/api/satellites/register", bytes.NewReader(body))
+			w := httptest.NewRecorder()
 
-			require.Equal(t, tt.expectedTTL, req.TTLSeconds)
+			server := &Server{}
+			server.RegisterSatelliteWithSpiffe(w, httpReq)
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.Contains(t, w.Body.String(), "ttl_seconds must be between 1 and 86400")
 		})
 	}
 }
@@ -268,4 +280,8 @@ func TestAgentListResponse_JSON(t *testing.T) {
 	require.Len(t, decoded.Agents, 2)
 	require.Equal(t, "x509pop", decoded.Agents[0].AttestationType)
 	require.Equal(t, "sshpop", decoded.Agents[1].AttestationType)
+	require.NotNil(t, decoded.Agents[0].Selectors)
+	require.Equal(t, x509Selectors, *decoded.Agents[0].Selectors)
+	require.NotNil(t, decoded.Agents[1].Selectors)
+	require.Equal(t, sshSelectors, *decoded.Agents[1].Selectors)
 }

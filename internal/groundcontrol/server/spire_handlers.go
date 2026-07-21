@@ -26,7 +26,7 @@ type RegisterSatelliteRequest struct {
 	AttestationMethod string `json:"attestation_method"` // join_token, x509pop, sshpop
 	// minimum: 1
 	// maximum: 86400
-	TTLSeconds    int    `json:"ttl_seconds,omitempty"`
+	TTLSeconds    *int   `json:"ttl_seconds,omitempty"`
 	ParentAgentID string `json:"parent_agent_id,omitempty"`
 }
 
@@ -48,7 +48,7 @@ type RegisterSatelliteWithSPIFFEResponse struct {
 // GetSpireStatus returns the status of SPIRE integration.
 // GET /spire/status
 func (s *Server) GetSpireStatus(w http.ResponseWriter, _ *http.Request) {
-	enabled := s.spiffeProvider != nil || s.spireClient != nil
+	enabled := s.spireEnabled
 	connected := false
 	status := SPIREStatusResponse{
 		Enabled:   &enabled,
@@ -138,11 +138,16 @@ func (s *Server) RegisterSatelliteWithSpiffe(w http.ResponseWriter, r *http.Requ
 		req.Region = "default"
 	}
 
-	if req.TTLSeconds <= 0 {
-		req.TTLSeconds = 600
-	}
-	if req.TTLSeconds > 86400 {
-		req.TTLSeconds = 86400
+	ttlSeconds := 600
+	if req.TTLSeconds != nil {
+		if *req.TTLSeconds < 1 || *req.TTLSeconds > 86400 {
+			HandleAppError(w, &AppError{
+				Message: "ttl_seconds must be between 1 and 86400",
+				Code:    http.StatusBadRequest,
+			})
+			return
+		}
+		ttlSeconds = *req.TTLSeconds
 	}
 
 	if s.spireClient == nil {
@@ -162,7 +167,7 @@ func (s *Server) RegisterSatelliteWithSpiffe(w http.ResponseWriter, r *http.Requ
 	case "join_token":
 		agentSpiffeID = fmt.Sprintf("spiffe://%s/agent/%s", trustDomain, req.SatelliteName)
 
-		ttl := time.Duration(req.TTLSeconds) * time.Second
+		ttl := time.Duration(ttlSeconds) * time.Second
 		token, err := s.spireClient.CreateJoinToken(r.Context(), agentSpiffeID, ttl)
 		if err != nil {
 			log.Printf("Failed to create join token: %v", err)
@@ -368,11 +373,14 @@ func (s *Server) ListSpireAgents(w http.ResponseWriter, r *http.Request, params 
 		if !agent.ExpiresAt.IsZero() {
 			expiresAt = &agent.ExpiresAt
 		}
-		selectors := agent.Selectors
+		var selectors *[]string
+		if len(agent.Selectors) > 0 {
+			selectors = &agent.Selectors
+		}
 		agentResponses = append(agentResponses, AgentInfoResponse{
 			SpiffeID:        agent.SpiffeID,
 			AttestationType: agent.AttestationType,
-			Selectors:       &selectors,
+			Selectors:       selectors,
 			ExpiresAt:       expiresAt,
 		})
 	}
