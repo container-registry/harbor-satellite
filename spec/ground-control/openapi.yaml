@@ -1621,6 +1621,36 @@ components:
       type: object
       title: EmptyResponse is an empty JSON object.
       additionalProperties: false
+    Account:
+      type: object
+      title: Account contains registry account credentials.
+      required:
+        - name
+        - secret
+        - registry
+      properties:
+        name:
+          type: string
+          x-go-name: Name
+        secret:
+          type: string
+          format: password
+          x-go-name: Secret
+        registry:
+          type: string
+          x-go-name: Registry
+    SatelliteStateArtifact:
+      type: object
+      title: SatelliteStateArtifact describes a satellite state artifact.
+      properties:
+        states:
+          type: array
+          items:
+            type: string
+          x-go-name: States
+        config:
+          type: string
+          x-go-name: Config
     GroupResponse:
       type: object
       title: GroupResponse describes a synchronized satellite group.
@@ -1971,6 +2001,7 @@ components:
           type: string
           format: date-time
           x-go-name: ExpiresAt
+          x-go-type-skip-optional-pointer: false
         selectors:
           type: array
           items:
@@ -2016,9 +2047,6 @@ components:
           type: string
           x-go-name: Digest
         labels:
-          type: object
-          additionalProperties:
-            type: string
           x-go-name: Labels
         repository:
           type: string
@@ -2165,6 +2193,7 @@ components:
           maximum: 86400
           minimum: 1
           x-go-name: TTLSeconds
+          x-go-type-skip-optional-pointer: false
     TokenSatelliteRegistrationResponse:
       type: object
       title: TokenSatelliteRegistrationResponse contains a single-use ZTR token.
@@ -2191,9 +2220,11 @@ components:
           type: string
           format: date-time
           x-go-name: ExpiresAt
+          x-go-type-skip-optional-pointer: false
         join_token:
           type: string
           x-go-name: JoinToken
+          x-go-type-skip-optional-pointer: false
         parent_agent_id:
           type: string
           x-go-name: ParentAgentID
@@ -2219,6 +2250,9 @@ components:
     SPIREStatusResponse:
       type: object
       title: SPIREStatusResponse contains SPIRE integration status.
+      required:
+        - connected
+        - enabled
       properties:
         connected:
           type: boolean
