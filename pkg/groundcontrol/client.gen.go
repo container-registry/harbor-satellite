@@ -189,8 +189,8 @@ type ConfigCreateRequest struct {
 
 // ConfigMergePatch defines model for ConfigMergePatch.
 type ConfigMergePatch struct {
-	AppConfig   *map[string]interface{} `json:"app_config,omitempty"`
-	StateConfig *map[string]interface{} `json:"state_config,omitempty"`
+	AppConfig   *AppConfig              `json:"app_config,omitempty"`
+	StateConfig *StateConfigValue       `json:"state_config,omitempty"`
 	ZotConfig   *map[string]interface{} `json:"zot_config,omitempty"`
 }
 
@@ -228,12 +228,12 @@ type EmptyResponse = map[string]interface{}
 
 // GroupArtifact defines model for GroupArtifact.
 type GroupArtifact struct {
-	Deleted    *bool       `json:"deleted,omitempty"`
-	Digest     *string     `json:"digest,omitempty"`
-	Labels     interface{} `json:"labels,omitempty"`
-	Repository *string     `json:"repository,omitempty"`
-	Tag        *[]string   `json:"tag,omitempty"`
-	Type       *string     `json:"type,omitempty"`
+	Deleted    *bool              `json:"deleted,omitempty"`
+	Digest     *string            `json:"digest,omitempty"`
+	Labels     *map[string]string `json:"labels,omitempty"`
+	Repository *string            `json:"repository,omitempty"`
+	Tag        *[]string          `json:"tag,omitempty"`
+	Type       *string            `json:"type,omitempty"`
 }
 
 // GroupResponse defines model for GroupResponse.
