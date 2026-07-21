@@ -108,6 +108,9 @@ func TestAuthLoginStoresTokenAndHonorsPrecedence(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, output)
 	require.FileExists(t, credentialsFile)
+	t.Cleanup(func() {
+		_, _ = execute(t, "--server", server.URL, "auth", "logout")
+	})
 
 	_, err = execute(t, "--server", server.URL, "get", "users")
 	require.NoError(t, err)
