@@ -39,7 +39,7 @@ type loginResponse struct {
 	ExpiresAt swaggerDateTime `json:"expires_at"`
 }
 
-func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
@@ -145,7 +145,7 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) Logout(w http.ResponseWriter, r *http.Request) {
 	token := extractToken(r)
 	if token == "" {
 		WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)

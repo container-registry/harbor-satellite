@@ -10,10 +10,9 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/models"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
-	"github.com/gorilla/mux"
 )
 
-func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 	var req models.StateArtifact
 
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -126,10 +125,7 @@ func (s *Server) groupsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	group := vars["group"]
-
+func (s *Server) GetGroup(w http.ResponseWriter, r *http.Request, group string) {
 	result, err := s.dbQueries.GetGroupByName(r.Context(), group)
 	if err != nil {
 		log.Printf("Could not get group: %v", err)
@@ -140,10 +136,7 @@ func (s *Server) getGroupHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	groupName := vars["group"]
-
+func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName string) {
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		log.Printf("Error starting transaction: %v", err)
@@ -329,7 +322,7 @@ func (s *Server) deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
-func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ListGroups(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListGroups(r.Context())
 	if err != nil {
 		log.Printf("Could not list groups: %v", err)
@@ -340,11 +333,8 @@ func (s *Server) listGroupHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-// groupSatelliteHandler lists all satellites attached to a specific group
-func (s *Server) groupSatelliteHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	groupName := vars["group"]
-
+// ListGroupSatellites lists all satellites attached to a specific group
+func (s *Server) ListGroupSatellites(w http.ResponseWriter, r *http.Request, groupName string) {
 	q := s.dbQueries
 
 	// Get the group by name

@@ -68,7 +68,7 @@ type SatelliteStatusParams struct {
 	CachedImages        []CachedImage `json:"cached_images,omitempty"`
 }
 
-func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 	if s.spiffeProvider != nil || s.spireClient != nil {
 		HandleAppError(w, &AppError{
 			Message: "satellite registration via this endpoint is disabled when SPIFFE is enabled. Use POST /api/satellites/register instead",
@@ -297,9 +297,13 @@ func (s *Server) registerSatelliteHandler(w http.ResponseWriter, r *http.Request
 	WriteJSONResponse(w, http.StatusOK, resp)
 }
 
-func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	token := vars["token"]
+func (s *Server) Ztr(w http.ResponseWriter, r *http.Request) {
+	var request ZTRRequest
+	if err := DecodeRequestBody(r, &request); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+	token := request.Token
 
 	q := s.dbQueries
 
@@ -447,10 +451,10 @@ func (s *Server) ztrHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-// spiffeZtrHandler handles Zero-Touch Registration using SPIFFE mTLS authentication.
+// SpiffeZtr handles Zero-Touch Registration using SPIFFE mTLS authentication.
 // The satellite's identity is extracted from the TLS client certificate (SVID).
 // This eliminates the need for single-use tokens.
-func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) SpiffeZtr(w http.ResponseWriter, r *http.Request) {
 	// Extract SPIFFE ID from the TLS connection
 	satelliteName, ok := spiffe.GetSatelliteName(r.Context())
 	if !ok {
@@ -632,7 +636,7 @@ func (s *Server) spiffeZtrHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ListSatellites(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListSatellites(r.Context())
 	if err != nil {
 		log.Printf("Error: Failed to List Satellites: %v", err)
@@ -647,7 +651,7 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteStatusParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
@@ -745,10 +749,7 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *Server) getSatelliteStatusHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	satelliteName := vars["satellite"]
-
+func (s *Server) GetSatelliteStatus(w http.ResponseWriter, r *http.Request, satelliteName string) {
 	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
 	if err != nil {
 		HandleAppError(w, &AppError{Message: "satellite not found", Code: http.StatusNotFound})
@@ -764,7 +765,7 @@ func (s *Server) getSatelliteStatusHandler(w http.ResponseWriter, r *http.Reques
 	WriteJSONResponse(w, http.StatusOK, status)
 }
 
-func (s *Server) getActiveSatellitesHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ListActiveSatellites(w http.ResponseWriter, r *http.Request) {
 	satellites, err := s.dbQueries.GetActiveSatellites(r.Context())
 	if err != nil {
 		log.Printf("Failed to get active satellites: %v", err)
@@ -774,7 +775,7 @@ func (s *Server) getActiveSatellitesHandler(w http.ResponseWriter, r *http.Reque
 	WriteJSONResponse(w, http.StatusOK, satellites)
 }
 
-func (s *Server) getStaleSatellitesHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ListStaleSatellites(w http.ResponseWriter, r *http.Request) {
 	satellites, err := s.dbQueries.GetStaleSatellites(r.Context())
 	if err != nil {
 		log.Printf("Failed to get stale satellites: %v", err)
@@ -996,10 +997,7 @@ func (s *Server) autoRegisterSatellite(r *http.Request, name string) (database.S
 	return satellite, nil
 }
 
-func (s *Server) GetSatelliteByName(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	satellite := vars["satellite"]
-
+func (s *Server) GetSatellite(w http.ResponseWriter, r *http.Request, satellite string) {
 	result, err := s.dbQueries.GetSatelliteByName(r.Context(), satellite)
 	if err != nil {
 		log.Printf("error: failed to get satellite: %v", err)
@@ -1015,10 +1013,7 @@ func (s *Server) GetSatelliteByName(w http.ResponseWriter, r *http.Request) {
 }
 
 // The state artifact corresponding to the satellite must be deleted.
-func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	satellite := vars["satellite"]
-
+func (s *Server) DeleteSatellite(w http.ResponseWriter, r *http.Request, satellite string) {
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		log.Printf("Error starting transaction: %v", err)
@@ -1130,7 +1125,7 @@ func (s *Server) DeleteSatelliteByName(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
-func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
+func (s *Server) AddSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteGroupParams
 
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -1320,7 +1315,7 @@ func (s *Server) addSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 // If the satellite is removed from the group, the state artifact must be updated accordingly as well.
-func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request) {
+func (s *Server) RemoveSatelliteFromGroup(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	groupName := vars["group"]
 	satelliteName := vars["satellite"]
@@ -1472,10 +1467,7 @@ func (s *Server) removeSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
 
-func (s *Server) getCachedImagesHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	satelliteName := vars["satellite"]
-
+func (s *Server) GetCachedImages(w http.ResponseWriter, r *http.Request, satelliteName string) {
 	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
 	if err != nil {
 		HandleAppError(w, &AppError{Message: "satellite not found", Code: http.StatusNotFound})

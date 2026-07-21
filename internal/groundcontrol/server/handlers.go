@@ -15,7 +15,7 @@ func (s *Server) Ping(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) Health(w http.ResponseWriter, _ *http.Request) {
 	err := s.db.Ping()
 	if err != nil {
 		log.Printf("error pinging db: %v", err)
