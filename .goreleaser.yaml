@@ -162,7 +162,7 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
-  - id: groundc-control-cli
+  - id: groundcontrol-cli
     ids: [groundcontrol-cli]
     name_template: "groundcontrol_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]

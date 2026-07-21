@@ -38,8 +38,8 @@ func RequiredAuth(runtime *Runtime) func(*cobra.Command, []string) error {
 }
 
 func RequiredEnv(name string) (string, error) {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
+	value := os.Getenv(name)
+	if strings.TrimSpace(value) == "" {
 		return "", fmt.Errorf("%s environment variable is required", name)
 	}
 	return value, nil
@@ -55,13 +55,41 @@ func MarkRequired(command *cobra.Command, names ...string) {
 
 func DecodeManifestFile[T any](command *cobra.Command, path string) (T, error) {
 	var value T
+	contents, err := readManifestFile(command, path)
+	if err != nil {
+		return value, err
+	}
+	if err := yaml.UnmarshalStrict(contents, &value); err != nil {
+		return value, fmt.Errorf("decode request file %q: %w", path, err)
+	}
+	return value, nil
+}
+
+// DecodeManifestJSONFile validates a JSON or YAML manifest and returns JSON bytes.
+func DecodeManifestJSONFile(command *cobra.Command, path string) ([]byte, error) {
+	contents, err := readManifestFile(command, path)
+	if err != nil {
+		return nil, err
+	}
+	var value map[string]interface{}
+	if err := yaml.UnmarshalStrict(contents, &value); err != nil {
+		return nil, fmt.Errorf("decode request file %q: %w", path, err)
+	}
+	encoded, err := yaml.YAMLToJSON(contents)
+	if err != nil {
+		return nil, fmt.Errorf("convert request file %q to JSON: %w", path, err)
+	}
+	return encoded, nil
+}
+
+func readManifestFile(command *cobra.Command, path string) ([]byte, error) {
 	var reader io.Reader
 	if path == "-" {
 		reader = command.InOrStdin()
 	} else {
 		file, err := os.Open(path)
 		if err != nil {
-			return value, fmt.Errorf("open request file %q: %w", path, err)
+			return nil, fmt.Errorf("open request file %q: %w", path, err)
 		}
 		defer func() { _ = file.Close() }()
 		reader = file
@@ -69,12 +97,9 @@ func DecodeManifestFile[T any](command *cobra.Command, path string) (T, error) {
 
 	contents, err := io.ReadAll(reader)
 	if err != nil {
-		return value, fmt.Errorf("read request file %q: %w", path, err)
+		return nil, fmt.Errorf("read request file %q: %w", path, err)
 	}
-	if err := yaml.UnmarshalStrict(contents, &value); err != nil {
-		return value, fmt.Errorf("decode request file %q: %w", path, err)
-	}
-	return value, nil
+	return contents, nil
 }
 
 func PrintResponse(command *cobra.Command, response HTTPResponse) error {

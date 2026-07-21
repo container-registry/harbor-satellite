@@ -59,6 +59,76 @@ func TestStoredTokenIsScopedToServer(t *testing.T) {
 	require.Equal(t, "server-two-token", serverTwo.config.GetString(tokenKey))
 }
 
+func TestInvalidStoredSessionsAreRemoved(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name    string
+		session storedSession
+	}{
+		{
+			name: "empty token",
+			session: storedSession{
+				Server:    "https://localhost:8080",
+				ExpiresAt: now.Add(time.Hour).UTC().Format(time.RFC3339Nano),
+			},
+		},
+		{
+			name: "wrong server",
+			session: storedSession{
+				Server:    "https://other.example",
+				Token:     "session-token",
+				ExpiresAt: now.Add(time.Hour).UTC().Format(time.RFC3339Nano),
+			},
+		},
+		{
+			name: "missing expiration",
+			session: storedSession{
+				Server: "https://localhost:8080",
+				Token:  "session-token",
+			},
+		},
+		{
+			name: "malformed expiration",
+			session: storedSession{
+				Server:    "https://localhost:8080",
+				Token:     "session-token",
+				ExpiresAt: "not-a-time",
+			},
+		},
+		{
+			name: "expired",
+			session: storedSession{
+				Server:    "https://localhost:8080",
+				Token:     "session-token",
+				ExpiresAt: now.Add(-time.Minute).UTC().Format(time.RFC3339Nano),
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "credentials.json")
+			serverURL := "https://localhost:8080/"
+			credentials := &credentialsConfig{
+				path:          path,
+				configuration: viper.New(),
+				store: credentialStore{Sessions: map[string]storedSession{
+					sessionID(serverURL): test.session,
+				}},
+			}
+			require.NoError(t, credentials.save())
+
+			runtime := testRuntime(path, serverURL)
+			require.NoError(t, runtime.loadStoredToken())
+			require.Empty(t, runtime.config.GetString(tokenKey))
+
+			stored, err := runtime.loadCredentials()
+			require.NoError(t, err)
+			require.Empty(t, stored.store.Sessions)
+		})
+	}
+}
+
 func testRuntime(credentialsPath string, serverURL string) *Runtime {
 	configuration := viper.New()
 	configuration.Set(credentialsFileKey, credentialsPath)

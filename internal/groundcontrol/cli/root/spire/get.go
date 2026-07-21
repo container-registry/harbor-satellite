@@ -17,8 +17,8 @@ func NewAgentsCommand(runtime *common.Runtime) *cobra.Command {
 		PreRunE: common.RequiredAuth(runtime),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			params := &groundcontrol.ListSpireAgentsParams{}
-			if strings.TrimSpace(attestationType) != "" {
-				params.AttestationType = &attestationType
+			if normalized := strings.TrimSpace(attestationType); normalized != "" {
+				params.AttestationType = &normalized
 			}
 			response, err := runtime.Client().ListSpireAgentsWithResponse(cmd.Context(), params)
 			if err != nil {

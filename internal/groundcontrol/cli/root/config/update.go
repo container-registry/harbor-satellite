@@ -1,15 +1,16 @@
 package config
 
 import (
+	"bytes"
+
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/common"
-	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 	"github.com/spf13/cobra"
 )
 
 func NewUpdateCommand(runtime *common.Runtime) *cobra.Command {
 	var name string
 	var file string
-	var request groundcontrol.ConfigMergePatch
+	var request []byte
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Apply a merge-patch manifest to a satellite configuration",
@@ -22,11 +23,16 @@ func NewUpdateCommand(runtime *common.Runtime) *cobra.Command {
 				return err
 			}
 			var err error
-			request, err = common.DecodeManifestFile[groundcontrol.ConfigMergePatch](cmd, file)
+			request, err = common.DecodeManifestJSONFile(cmd, file)
 			return err
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			response, err := runtime.Client().UpdateConfigWithResponse(cmd.Context(), name, request)
+			response, err := runtime.Client().UpdateConfigWithBodyWithResponse(
+				cmd.Context(),
+				name,
+				"application/json",
+				bytes.NewReader(request),
+			)
 			if err != nil {
 				return err
 			}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -27,6 +28,7 @@ const (
 
 	credentialsDirName = "groundcontrol"
 	credentialsFile    = "credentials.json"
+	credentialsKey     = "sessions"
 )
 
 type flags struct {
@@ -39,13 +41,33 @@ type flags struct {
 
 // Runtime owns the configuration and generated client used by CLI commands.
 type Runtime struct {
-	config *viper.Viper
-	client *groundcontrol.ClientWithResponses
+	config           *viper.Viper
+	client           *groundcontrol.ClientWithResponses
+	usingStoredToken bool
+}
+
+type credentialStore struct {
+	Sessions map[string]storedSession `json:"sessions" mapstructure:"sessions"`
+}
+
+type storedSession struct {
+	Server    string `json:"server"             mapstructure:"server"`
+	Username  string `json:"username,omitempty" mapstructure:"username"`
+	Token     string `json:"token"              mapstructure:"token"`
+	ExpiresAt string `json:"expires_at"         mapstructure:"expires_at"`
+}
+
+type credentialsConfig struct {
+	path          string
+	configuration *viper.Viper
+	store         credentialStore
 }
 
 // Load initializes Viper, defines and binds the root flags, and installs the
 // configuration loader that runs after Cobra has parsed command-line flags.
 func Load(command *cobra.Command) *Runtime {
+	_ = godotenv.Load()
+
 	rootFlags := flags{}
 	configuration := viper.New()
 	configuration.SetEnvPrefix("GROUND_CONTROL")
@@ -84,78 +106,94 @@ func Load(command *cobra.Command) *Runtime {
 }
 
 func (r *Runtime) loadStoredToken() error {
+	r.usingStoredToken = false
 	if strings.TrimSpace(r.config.GetString(tokenKey)) != "" {
 		return nil
 	}
 
-	credentials, _, err := r.loadCredentials()
+	credentials, err := r.loadCredentials()
 	if err != nil {
 		return err
 	}
-	sessionKey := sessionConfigKey(r.config.GetString(urlKey))
-	token := strings.TrimSpace(credentials.GetString(sessionKey + ".token"))
-	if token == "" {
+	server := normalizeServerURL(r.config.GetString(urlKey))
+	sessionID := sessionID(server)
+	session, exists := credentials.store.Sessions[sessionID]
+	if !exists {
 		return nil
 	}
 
-	if expiration := credentials.GetString(sessionKey + ".expires_at"); expiration != "" {
-		expiresAt, err := time.Parse(time.RFC3339Nano, expiration)
-		if err != nil {
-			return fmt.Errorf("decode stored token expiration: %w", err)
-		}
-		if !time.Now().Before(expiresAt) {
-			return nil
-		}
+	token, valid := session.valid(server, time.Now())
+	if !valid {
+		delete(credentials.store.Sessions, sessionID)
+		return credentials.save()
 	}
 
 	// A stored session is a fallback below flags, environment variables, and
 	// configuration-file values in Viper's precedence order.
 	r.config.SetDefault(tokenKey, token)
+	r.usingStoredToken = true
 	return nil
 }
 
+// UsingStoredToken reports whether the active client token came from the saved session.
+func (r *Runtime) UsingStoredToken() bool {
+	return r.usingStoredToken
+}
+
 func (r *Runtime) StoreToken(username string, token string, expiresAt time.Time) error {
-	if strings.TrimSpace(token) == "" {
+	token = strings.TrimSpace(token)
+	if token == "" {
 		return fmt.Errorf("login response did not contain a token")
 	}
 
-	credentials, path, err := r.loadCredentials()
+	credentials, err := r.loadCredentials()
 	if err != nil {
 		return err
 	}
 	server := normalizeServerURL(r.config.GetString(urlKey))
-	sessionKey := sessionConfigKey(server)
-	credentials.Set(sessionKey+".server", server)
-	credentials.Set(sessionKey+".username", username)
-	credentials.Set(sessionKey+".token", token)
-	credentials.Set(sessionKey+".expires_at", expiresAt.UTC().Format(time.RFC3339Nano))
-	return writeCredentials(credentials, path)
+	credentials.store.Sessions[sessionID(server)] = storedSession{
+		Server:    server,
+		Username:  username,
+		Token:     token,
+		ExpiresAt: expiresAt.UTC().Format(time.RFC3339Nano),
+	}
+	return credentials.save()
 }
 
 func (r *Runtime) RemoveStoredToken() error {
-	credentials, path, err := r.loadCredentials()
+	credentials, err := r.loadCredentials()
 	if err != nil {
 		return err
 	}
-	sessions := credentials.GetStringMap("sessions")
-	delete(sessions, sessionID(r.config.GetString(urlKey)))
-	credentials.Set("sessions", sessions)
-	return writeCredentials(credentials, path)
+	delete(credentials.store.Sessions, sessionID(r.config.GetString(urlKey)))
+	if err := credentials.save(); err != nil {
+		return err
+	}
+	r.usingStoredToken = false
+	return nil
 }
 
-func (r *Runtime) loadCredentials() (*viper.Viper, string, error) {
+func (r *Runtime) loadCredentials() (*credentialsConfig, error) {
 	path, err := r.credentialsPath()
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
-	credentials := viper.New()
-	credentials.SetConfigFile(path)
-	credentials.SetConfigType("json")
-	if err := credentials.ReadInConfig(); err != nil && !isConfigNotFound(err) {
-		return nil, "", fmt.Errorf("read login credentials %q: %w", path, err)
+	configuration := viper.New()
+	configuration.SetConfigFile(path)
+	configuration.SetConfigType("json")
+	if err := configuration.ReadInConfig(); err != nil && !isConfigNotFound(err) {
+		return nil, fmt.Errorf("read login credentials %q: %w", path, err)
 	}
-	return credentials, path, nil
+
+	store := credentialStore{Sessions: make(map[string]storedSession)}
+	if err := configuration.Unmarshal(&store); err != nil {
+		return nil, fmt.Errorf("decode login credentials %q: %w", path, err)
+	}
+	if store.Sessions == nil {
+		store.Sessions = make(map[string]storedSession)
+	}
+	return &credentialsConfig{path: path, configuration: configuration, store: store}, nil
 }
 
 func (r *Runtime) credentialsPath() (string, error) {
@@ -169,33 +207,35 @@ func (r *Runtime) credentialsPath() (string, error) {
 	return filepath.Join(configDir, credentialsDirName, credentialsFile), nil
 }
 
-func writeCredentials(credentials *viper.Viper, path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+func (c *credentialsConfig) save() error {
+	if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil {
 		return fmt.Errorf("create login credentials directory: %w", err)
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("open login credentials %q: %w", path, err)
+	c.configuration.Set(credentialsKey, c.store.Sessions)
+	if err := c.configuration.WriteConfigAs(c.path); err != nil {
+		return fmt.Errorf("write login credentials %q: %w", c.path, err)
 	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("close login credentials %q: %w", path, err)
-	}
-	if err := credentials.WriteConfigAs(path); err != nil {
-		return fmt.Errorf("write login credentials %q: %w", path, err)
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return fmt.Errorf("secure login credentials %q: %w", path, err)
+	if err := os.Chmod(c.path, 0o600); err != nil {
+		return fmt.Errorf("secure login credentials %q: %w", c.path, err)
 	}
 	return nil
+}
+
+func (s storedSession) valid(server string, now time.Time) (string, bool) {
+	token := strings.TrimSpace(s.Token)
+	if token == "" || normalizeServerURL(s.Server) != server || s.ExpiresAt == "" {
+		return "", false
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, s.ExpiresAt)
+	if err != nil || !now.Before(expiresAt) {
+		return "", false
+	}
+	return token, true
 }
 
 func isConfigNotFound(err error) bool {
 	var notFound viper.ConfigFileNotFoundError
 	return errors.As(err, &notFound) || errors.Is(err, os.ErrNotExist)
-}
-
-func sessionConfigKey(serverURL string) string {
-	return "sessions." + sessionID(serverURL)
 }
 
 func sessionID(serverURL string) string {
