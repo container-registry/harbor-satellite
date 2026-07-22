@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/oapi-codegen/nullable"
 	"github.com/oapi-codegen/runtime"
 )
 
@@ -95,23 +96,30 @@ func (e SyslogAuditConfigTarget) Valid() bool {
 	}
 }
 
+// Account defines model for Account.
+type Account struct {
+	Name     string `json:"name"`
+	Registry string `json:"registry"`
+	Secret   string `json:"secret"`
+}
+
 // ActiveSatelliteResponse defines model for ActiveSatelliteResponse.
 type ActiveSatelliteResponse struct {
-	CreatedAt         *time.Time           `json:"CreatedAt,omitempty"`
-	HeartbeatInterval *NullableStringValue `json:"HeartbeatInterval,omitempty"`
-	ID                *int32               `json:"ID,omitempty"`
-	LastActivity      *string              `json:"LastActivity,omitempty"`
-	LastSeen          *NullableTimeValue   `json:"LastSeen,omitempty"`
-	LastStatusTime    *time.Time           `json:"LastStatusTime,omitempty"`
-	Name              *string              `json:"Name,omitempty"`
-	UpdatedAt         *time.Time           `json:"UpdatedAt,omitempty"`
+	CreatedAt         time.Time           `json:"CreatedAt,omitempty,omitzero"`
+	HeartbeatInterval NullableStringValue `json:"HeartbeatInterval,omitempty,omitzero"`
+	ID                int32               `json:"ID,omitempty,omitzero"`
+	LastActivity      string              `json:"LastActivity,omitempty,omitzero"`
+	LastSeen          NullableTimeValue   `json:"LastSeen,omitempty,omitzero"`
+	LastStatusTime    time.Time           `json:"LastStatusTime,omitempty,omitzero"`
+	Name              string              `json:"Name,omitempty,omitzero"`
+	UpdatedAt         time.Time           `json:"UpdatedAt,omitempty,omitzero"`
 }
 
 // AgentInfoResponse defines model for AgentInfoResponse.
 type AgentInfoResponse struct {
 	AttestationType string     `json:"attestation_type"`
 	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
-	Selectors       *[]string  `json:"selectors,omitempty"`
+	Selectors       []string   `json:"selectors,omitempty,omitzero"`
 	SpiffeID        string     `json:"spiffe_id"`
 }
 
@@ -122,49 +130,49 @@ type AgentListResponse struct {
 
 // AppConfig defines model for AppConfig.
 type AppConfig struct {
-	Audit                     *AuditConfig            `json:"audit,omitempty"`
-	BringOwnRegistry          *bool                   `json:"bring_own_registry,omitempty"`
-	DirectDelivery            *DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
-	EncryptConfig             *bool                   `json:"encrypt_config,omitempty"`
-	GroundControlURL          *string                 `json:"ground_control_url,omitempty"`
-	HarborRegistryURL         *string                 `json:"harbor_registry_url,omitempty"`
-	HeartbeatInterval         *string                 `json:"heartbeat_interval,omitempty"`
-	LocalRegistry             *RegistryCredentials    `json:"local_registry,omitempty"`
-	LogLevel                  *string                 `json:"log_level,omitempty"`
-	Metrics                   *MetricsConfig          `json:"metrics,omitempty"`
-	RegisterSatelliteInterval *string                 `json:"register_satellite_interval,omitempty"`
-	RegistryFallback          *RegistryFallbackConfig `json:"registry_fallback,omitempty"`
-	Spiffe                    *SPIFFEClientConfig     `json:"spiffe,omitempty"`
-	StateReplicationInterval  *string                 `json:"state_replication_interval,omitempty"`
-	Tls                       *TLSConfig              `json:"tls,omitempty"`
-	UseUnsecure               *bool                   `json:"use_unsecure,omitempty"`
+	Audit                     AuditConfig            `json:"audit,omitempty,omitzero"`
+	BringOwnRegistry          bool                   `json:"bring_own_registry,omitempty,omitzero"`
+	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty,omitzero"`
+	EncryptConfig             bool                   `json:"encrypt_config,omitempty,omitzero"`
+	GroundControlURL          string                 `json:"ground_control_url,omitempty,omitzero"`
+	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty,omitzero"`
+	HeartbeatInterval         string                 `json:"heartbeat_interval,omitempty,omitzero"`
+	LocalRegistry             RegistryCredentials    `json:"local_registry,omitempty,omitzero"`
+	LogLevel                  string                 `json:"log_level,omitempty,omitzero"`
+	Metrics                   MetricsConfig          `json:"metrics,omitempty,omitzero"`
+	RegisterSatelliteInterval string                 `json:"register_satellite_interval,omitempty,omitzero"`
+	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty,omitzero"`
+	Spiffe                    SPIFFEClientConfig     `json:"spiffe,omitempty,omitzero"`
+	StateReplicationInterval  string                 `json:"state_replication_interval,omitempty,omitzero"`
+	Tls                       TLSConfig              `json:"tls,omitempty,omitzero"`
+	UseUnsecure               bool                   `json:"use_unsecure,omitempty,omitzero"`
 }
 
 // AppError defines model for AppError.
 type AppError struct {
-	Code    int64  `json:"code"`
+	Code    int    `json:"code"`
 	Message string `json:"message"`
 }
 
 // AuditConfig defines model for AuditConfig.
 type AuditConfig struct {
-	Enabled *bool              `json:"enabled,omitempty"`
-	Otel    *OTelAuditConfig   `json:"otel,omitempty"`
-	Syslog  *SyslogAuditConfig `json:"syslog,omitempty"`
+	Enabled bool              `json:"enabled,omitempty,omitzero"`
+	Otel    OTelAuditConfig   `json:"otel,omitempty,omitzero"`
+	Syslog  SyslogAuditConfig `json:"syslog,omitempty,omitzero"`
 }
 
 // CachedArtifactResponse defines model for CachedArtifactResponse.
 type CachedArtifactResponse struct {
-	CreatedAt *time.Time `json:"CreatedAt,omitempty"`
-	ID        *int32     `json:"ID,omitempty"`
-	Reference *string    `json:"Reference,omitempty"`
-	SizeBytes *int64     `json:"SizeBytes,omitempty"`
+	CreatedAt time.Time `json:"CreatedAt,omitempty,omitzero"`
+	ID        int32     `json:"ID,omitempty,omitzero"`
+	Reference string    `json:"Reference,omitempty,omitzero"`
+	SizeBytes int64     `json:"SizeBytes,omitempty,omitzero"`
 }
 
 // CachedImageReport defines model for CachedImageReport.
 type CachedImageReport struct {
-	Reference *string `json:"reference,omitempty"`
-	SizeBytes *int64  `json:"size_bytes,omitempty"`
+	Reference string `json:"reference,omitempty,omitzero"`
+	SizeBytes int64  `json:"size_bytes,omitempty,omitzero"`
 }
 
 // ChangePasswordRequest defines model for ChangePasswordRequest.
@@ -180,35 +188,35 @@ type ChangeUserPasswordRequest struct {
 
 // ConfigCreateRequest defines model for ConfigCreateRequest.
 type ConfigCreateRequest struct {
-	Config     *ConfigValue `json:"config,omitempty"`
-	ConfigName string       `json:"config_name"`
+	Config     ConfigValue `json:"config,omitempty,omitzero"`
+	ConfigName string      `json:"config_name"`
 
 	// Registry Optional source-registry metadata retained for compatibility.
-	Registry *string `json:"registry,omitempty"`
+	Registry string `json:"registry,omitempty,omitzero"`
 }
 
 // ConfigMergePatch defines model for ConfigMergePatch.
 type ConfigMergePatch struct {
-	AppConfig   *AppConfig              `json:"app_config,omitempty"`
-	StateConfig *StateConfigValue       `json:"state_config,omitempty"`
-	ZotConfig   *map[string]interface{} `json:"zot_config,omitempty"`
+	AppConfig   nullable.Nullable[AppConfig]              `json:"app_config,omitempty,omitzero"`
+	StateConfig nullable.Nullable[StateConfigValue]       `json:"state_config,omitempty,omitzero"`
+	ZotConfig   nullable.Nullable[map[string]interface{}] `json:"zot_config,omitempty,omitzero"`
 }
 
 // ConfigResponse defines model for ConfigResponse.
 type ConfigResponse struct {
-	Config      *ConfigValue `json:"Config,omitempty"`
-	ConfigName  *string      `json:"ConfigName,omitempty"`
-	CreatedAt   *time.Time   `json:"CreatedAt,omitempty"`
-	ID          *int32       `json:"ID,omitempty"`
-	RegistryURL *string      `json:"RegistryUrl,omitempty"`
-	UpdatedAt   *time.Time   `json:"UpdatedAt,omitempty"`
+	Config      ConfigValue `json:"Config,omitempty,omitzero"`
+	ConfigName  string      `json:"ConfigName,omitempty,omitzero"`
+	CreatedAt   time.Time   `json:"CreatedAt,omitempty,omitzero"`
+	ID          int32       `json:"ID,omitempty,omitzero"`
+	RegistryURL string      `json:"RegistryUrl,omitempty,omitzero"`
+	UpdatedAt   time.Time   `json:"UpdatedAt,omitempty,omitzero"`
 }
 
 // ConfigValue defines model for ConfigValue.
 type ConfigValue struct {
-	AppConfig   *AppConfig              `json:"app_config,omitempty"`
-	StateConfig *StateConfigValue       `json:"state_config,omitempty"`
-	ZotConfig   *map[string]interface{} `json:"zot_config,omitempty"`
+	AppConfig   AppConfig              `json:"app_config,omitempty,omitzero"`
+	StateConfig StateConfigValue       `json:"state_config,omitempty,omitzero"`
+	ZotConfig   map[string]interface{} `json:"zot_config,omitempty,omitzero"`
 }
 
 // CreateUserRequest defines model for CreateUserRequest.
@@ -219,8 +227,8 @@ type CreateUserRequest struct {
 
 // DirectDeliveryConfig defines model for DirectDeliveryConfig.
 type DirectDeliveryConfig struct {
-	Enabled  *bool   `json:"enabled,omitempty"`
-	ImageDir *string `json:"image_dir,omitempty"`
+	Enabled  bool   `json:"enabled,omitempty,omitzero"`
+	ImageDir string `json:"image_dir,omitempty,omitzero"`
 }
 
 // EmptyResponse defines model for EmptyResponse.
@@ -228,42 +236,42 @@ type EmptyResponse = map[string]interface{}
 
 // GroupArtifact defines model for GroupArtifact.
 type GroupArtifact struct {
-	Deleted    *bool              `json:"deleted,omitempty"`
-	Digest     *string            `json:"digest,omitempty"`
-	Labels     *map[string]string `json:"labels,omitempty"`
-	Repository *string            `json:"repository,omitempty"`
-	Tag        *[]string          `json:"tag,omitempty"`
-	Type       *string            `json:"type,omitempty"`
+	Deleted    bool        `json:"deleted,omitempty,omitzero"`
+	Digest     string      `json:"digest,omitempty,omitzero"`
+	Labels     interface{} `json:"labels,omitempty,omitzero"`
+	Repository string      `json:"repository,omitempty,omitzero"`
+	Tag        []string    `json:"tag,omitempty,omitzero"`
+	Type       string      `json:"type,omitempty,omitzero"`
 }
 
 // GroupResponse defines model for GroupResponse.
 type GroupResponse struct {
-	CreatedAt   *time.Time `json:"CreatedAt,omitempty"`
-	GroupName   *string    `json:"GroupName,omitempty"`
-	ID          *int32     `json:"ID,omitempty"`
-	Projects    *[]string  `json:"Projects,omitempty"`
-	RegistryURL *string    `json:"RegistryUrl,omitempty"`
-	UpdatedAt   *time.Time `json:"UpdatedAt,omitempty"`
+	CreatedAt   time.Time `json:"CreatedAt,omitempty,omitzero"`
+	GroupName   string    `json:"GroupName,omitempty,omitzero"`
+	ID          int32     `json:"ID,omitempty,omitzero"`
+	Projects    []string  `json:"Projects,omitempty,omitzero"`
+	RegistryURL string    `json:"RegistryUrl,omitempty,omitzero"`
+	UpdatedAt   time.Time `json:"UpdatedAt,omitempty,omitzero"`
 }
 
 // GroupSatelliteResponse defines model for GroupSatelliteResponse.
 type GroupSatelliteResponse struct {
-	CreatedAt *time.Time `json:"CreatedAt,omitempty"`
-	ID        *int32     `json:"ID,omitempty"`
-	Name      *string    `json:"Name,omitempty"`
-	UpdatedAt *time.Time `json:"UpdatedAt,omitempty"`
+	CreatedAt time.Time `json:"CreatedAt,omitempty,omitzero"`
+	ID        int32     `json:"ID,omitempty,omitzero"`
+	Name      string    `json:"Name,omitempty,omitzero"`
+	UpdatedAt time.Time `json:"UpdatedAt,omitempty,omitzero"`
 }
 
 // GroupSyncRequest defines model for GroupSyncRequest.
 type GroupSyncRequest struct {
-	Artifacts *[]GroupArtifact `json:"artifacts,omitempty"`
-	Group     string           `json:"group"`
-	Registry  *string          `json:"registry,omitempty"`
+	Artifacts []GroupArtifact `json:"artifacts,omitempty,omitzero"`
+	Group     string          `json:"group"`
+	Registry  string          `json:"registry,omitempty,omitzero"`
 }
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
-	Status *HealthResponseStatus `json:"status,omitempty"`
+	Status HealthResponseStatus `json:"status,omitempty,omitzero"`
 }
 
 // HealthResponseStatus defines model for HealthResponse.Status.
@@ -283,72 +291,72 @@ type LoginResponse struct {
 
 // MessageResponse defines model for MessageResponse.
 type MessageResponse struct {
-	Message *string `json:"message,omitempty"`
+	Message string `json:"message,omitempty,omitzero"`
 }
 
 // MetricsConfig defines model for MetricsConfig.
 type MetricsConfig struct {
-	CollectCPU     *bool `json:"collect_cpu,omitempty"`
-	CollectMemory  *bool `json:"collect_memory,omitempty"`
-	CollectStorage *bool `json:"collect_storage,omitempty"`
+	CollectCPU     bool `json:"collect_cpu,omitempty,omitzero"`
+	CollectMemory  bool `json:"collect_memory,omitempty,omitzero"`
+	CollectStorage bool `json:"collect_storage,omitempty,omitzero"`
 }
 
 // NullableInt32Value defines model for NullableInt32Value.
 type NullableInt32Value struct {
-	Int32 *int32 `json:"Int32,omitempty"`
-	Valid *bool  `json:"Valid,omitempty"`
+	Int32 int32 `json:"Int32,omitempty,omitzero"`
+	Valid bool  `json:"Valid,omitempty,omitzero"`
 }
 
 // NullableInt64Value defines model for NullableInt64Value.
 type NullableInt64Value struct {
-	Int64 *int64 `json:"Int64,omitempty"`
-	Valid *bool  `json:"Valid,omitempty"`
+	Int64 int64 `json:"Int64,omitempty,omitzero"`
+	Valid bool  `json:"Valid,omitempty,omitzero"`
 }
 
 // NullableStringValue defines model for NullableStringValue.
 type NullableStringValue struct {
-	String *string `json:"String,omitempty"`
-	Valid  *bool   `json:"Valid,omitempty"`
+	String string `json:"String,omitempty,omitzero"`
+	Valid  bool   `json:"Valid,omitempty,omitzero"`
 }
 
 // NullableTimeValue defines model for NullableTimeValue.
 type NullableTimeValue struct {
-	Time  *time.Time `json:"Time,omitempty"`
-	Valid *bool      `json:"Valid,omitempty"`
+	Time  time.Time `json:"Time,omitempty,omitzero"`
+	Valid bool      `json:"Valid,omitempty,omitzero"`
 }
 
 // OTelAuditConfig defines model for OTelAuditConfig.
 type OTelAuditConfig struct {
-	Enabled  *bool   `json:"enabled,omitempty"`
-	Endpoint *string `json:"endpoint,omitempty"`
+	Enabled  bool   `json:"enabled,omitempty,omitzero"`
+	Endpoint string `json:"endpoint,omitempty,omitzero"`
 }
 
 // RegistryCredentials defines model for RegistryCredentials.
 type RegistryCredentials struct {
-	Password *string `json:"password,omitempty"`
-	URL      *string `json:"url,omitempty"`
-	Username *string `json:"username,omitempty"`
+	Password string `json:"password,omitempty,omitzero"`
+	URL      string `json:"url,omitempty,omitzero"`
+	Username string `json:"username,omitempty,omitzero"`
 }
 
 // RegistryFallbackConfig defines model for RegistryFallbackConfig.
 type RegistryFallbackConfig struct {
-	Enabled    *bool     `json:"enabled,omitempty"`
-	Registries *[]string `json:"registries,omitempty"`
-	Runtimes   *[]string `json:"runtimes,omitempty"`
+	Enabled    bool     `json:"enabled,omitempty,omitzero"`
+	Registries []string `json:"registries,omitempty,omitzero"`
+	Runtimes   []string `json:"runtimes,omitempty,omitzero"`
 }
 
 // SPIFFEClientConfig defines model for SPIFFEClientConfig.
 type SPIFFEClientConfig struct {
-	Enabled          *bool   `json:"enabled,omitempty"`
-	EndpointSocket   *string `json:"endpoint_socket,omitempty"`
-	ExpectedServerID *string `json:"expected_server_id,omitempty"`
+	Enabled          bool   `json:"enabled,omitempty,omitzero"`
+	EndpointSocket   string `json:"endpoint_socket,omitempty,omitzero"`
+	ExpectedServerID string `json:"expected_server_id,omitempty,omitzero"`
 }
 
 // SPIFFESatelliteRegistrationRequest defines model for SPIFFESatelliteRegistrationRequest.
 type SPIFFESatelliteRegistrationRequest struct {
 	AttestationMethod SPIFFESatelliteRegistrationRequestAttestationMethod `json:"attestation_method"`
-	ParentAgentID     *string                                             `json:"parent_agent_id,omitempty"`
-	Region            *string                                             `json:"region,omitempty"`
+	ParentAgentID     string                                              `json:"parent_agent_id,omitempty,omitzero"`
+	Region            string                                              `json:"region,omitempty,omitzero"`
 	SatelliteName     string                                              `json:"satellite_name"`
 	Selectors         []string                                            `json:"selectors"`
 	TTLSeconds        *int64                                              `json:"ttl_seconds,omitempty"`
@@ -372,10 +380,10 @@ type SPIFFESatelliteRegistrationResponse struct {
 
 // SPIREStatusResponse defines model for SPIREStatusResponse.
 type SPIREStatusResponse struct {
-	Connected   *bool   `json:"connected"`
-	Enabled     *bool   `json:"enabled"`
-	Provider    *string `json:"provider,omitempty"`
-	TrustDomain *string `json:"trust_domain,omitempty"`
+	Connected   bool   `json:"connected"`
+	Enabled     bool   `json:"enabled"`
+	Provider    string `json:"provider,omitempty,omitzero"`
+	TrustDomain string `json:"trust_domain,omitempty,omitzero"`
 }
 
 // SatelliteConfigRequest defines model for SatelliteConfigRequest.
@@ -392,56 +400,62 @@ type SatelliteGroupRequest struct {
 
 // SatelliteResponse defines model for SatelliteResponse.
 type SatelliteResponse struct {
-	CreatedAt         *time.Time           `json:"CreatedAt,omitempty"`
-	HeartbeatInterval *NullableStringValue `json:"HeartbeatInterval,omitempty"`
-	ID                *int32               `json:"ID,omitempty"`
-	LastSeen          *NullableTimeValue   `json:"LastSeen,omitempty"`
-	Name              *string              `json:"Name,omitempty"`
-	UpdatedAt         *time.Time           `json:"UpdatedAt,omitempty"`
+	CreatedAt         time.Time           `json:"CreatedAt,omitempty,omitzero"`
+	HeartbeatInterval NullableStringValue `json:"HeartbeatInterval,omitempty,omitzero"`
+	ID                int32               `json:"ID,omitempty,omitzero"`
+	LastSeen          NullableTimeValue   `json:"LastSeen,omitempty,omitzero"`
+	Name              string              `json:"Name,omitempty,omitzero"`
+	UpdatedAt         time.Time           `json:"UpdatedAt,omitempty,omitzero"`
+}
+
+// SatelliteStateArtifact defines model for SatelliteStateArtifact.
+type SatelliteStateArtifact struct {
+	Config string   `json:"config,omitempty,omitzero"`
+	States []string `json:"states,omitempty,omitzero"`
 }
 
 // SatelliteStatusRequest defines model for SatelliteStatusRequest.
 type SatelliteStatusRequest struct {
-	Activity            *string              `json:"activity,omitempty"`
-	CachedImages        *[]CachedImageReport `json:"cached_images,omitempty"`
-	CPUPercent          *float64             `json:"cpu_percent,omitempty"`
-	ImageCount          *int32               `json:"image_count,omitempty"`
-	LastSyncDurationMs  *int64               `json:"last_sync_duration_ms,omitempty"`
-	LatestConfigDigest  *string              `json:"latest_config_digest,omitempty"`
-	LatestStateDigest   *string              `json:"latest_state_digest,omitempty"`
-	MemoryUsedBytes     *int64               `json:"memory_used_bytes,omitempty"`
-	Name                *string              `json:"name,omitempty"`
-	RequestCreatedTime  *time.Time           `json:"request_created_time,omitempty"`
-	StateReportInterval *string              `json:"state_report_interval,omitempty"`
-	StorageUsedBytes    *int64               `json:"storage_used_bytes,omitempty"`
+	Activity            string              `json:"activity,omitempty,omitzero"`
+	CachedImages        []CachedImageReport `json:"cached_images,omitempty,omitzero"`
+	CPUPercent          float64             `json:"cpu_percent,omitempty,omitzero"`
+	ImageCount          int32               `json:"image_count,omitempty,omitzero"`
+	LastSyncDurationMs  int64               `json:"last_sync_duration_ms,omitempty,omitzero"`
+	LatestConfigDigest  string              `json:"latest_config_digest,omitempty,omitzero"`
+	LatestStateDigest   string              `json:"latest_state_digest,omitempty,omitzero"`
+	MemoryUsedBytes     int64               `json:"memory_used_bytes,omitempty,omitzero"`
+	Name                string              `json:"name,omitempty,omitzero"`
+	RequestCreatedTime  time.Time           `json:"request_created_time,omitempty,omitzero"`
+	StateReportInterval string              `json:"state_report_interval,omitempty,omitzero"`
+	StorageUsedBytes    int64               `json:"storage_used_bytes,omitempty,omitzero"`
 }
 
 // SatelliteStatusResponse defines model for SatelliteStatusResponse.
 type SatelliteStatusResponse struct {
-	Activity           *string              `json:"Activity,omitempty"`
-	ArtifactIds        *[]int32             `json:"ArtifactIds,omitempty"`
-	CpuPercent         *NullableStringValue `json:"CpuPercent,omitempty"`
-	CreatedAt          *time.Time           `json:"CreatedAt,omitempty"`
-	ID                 *int32               `json:"ID,omitempty"`
-	ImageCount         *NullableInt32Value  `json:"ImageCount,omitempty"`
-	LastSyncDurationMs *NullableInt64Value  `json:"LastSyncDurationMs,omitempty"`
-	LatestConfigDigest *NullableStringValue `json:"LatestConfigDigest,omitempty"`
-	LatestStateDigest  *NullableStringValue `json:"LatestStateDigest,omitempty"`
-	MemoryUsedBytes    *NullableInt64Value  `json:"MemoryUsedBytes,omitempty"`
-	ReportedAt         *time.Time           `json:"ReportedAt,omitempty"`
-	SatelliteID        *int32               `json:"SatelliteID,omitempty"`
-	StorageUsedBytes   *NullableInt64Value  `json:"StorageUsedBytes,omitempty"`
+	Activity           string              `json:"Activity,omitempty,omitzero"`
+	ArtifactIds        []int32             `json:"ArtifactIds,omitempty,omitzero"`
+	CpuPercent         NullableStringValue `json:"CpuPercent,omitempty,omitzero"`
+	CreatedAt          time.Time           `json:"CreatedAt,omitempty,omitzero"`
+	ID                 int32               `json:"ID,omitempty,omitzero"`
+	ImageCount         NullableInt32Value  `json:"ImageCount,omitempty,omitzero"`
+	LastSyncDurationMs NullableInt64Value  `json:"LastSyncDurationMs,omitempty,omitzero"`
+	LatestConfigDigest NullableStringValue `json:"LatestConfigDigest,omitempty,omitzero"`
+	LatestStateDigest  NullableStringValue `json:"LatestStateDigest,omitempty,omitzero"`
+	MemoryUsedBytes    NullableInt64Value  `json:"MemoryUsedBytes,omitempty,omitzero"`
+	ReportedAt         time.Time           `json:"ReportedAt,omitempty,omitzero"`
+	SatelliteID        int32               `json:"SatelliteID,omitempty,omitzero"`
+	StorageUsedBytes   NullableInt64Value  `json:"StorageUsedBytes,omitempty,omitzero"`
 }
 
 // StaleSatelliteResponse defines model for StaleSatelliteResponse.
 type StaleSatelliteResponse struct {
-	CreatedAt         *time.Time           `json:"CreatedAt,omitempty"`
-	HeartbeatInterval *NullableStringValue `json:"HeartbeatInterval,omitempty"`
-	ID                *int32               `json:"ID,omitempty"`
-	LastSeen          *NullableTimeValue   `json:"LastSeen,omitempty"`
-	Name              *string              `json:"Name,omitempty"`
-	SecondsSinceSeen  *int64               `json:"SecondsSinceSeen,omitempty"`
-	UpdatedAt         *time.Time           `json:"UpdatedAt,omitempty"`
+	CreatedAt         time.Time           `json:"CreatedAt,omitempty,omitzero"`
+	HeartbeatInterval NullableStringValue `json:"HeartbeatInterval,omitempty,omitzero"`
+	ID                int32               `json:"ID,omitempty,omitzero"`
+	LastSeen          NullableTimeValue   `json:"LastSeen,omitempty,omitzero"`
+	Name              string              `json:"Name,omitempty,omitzero"`
+	SecondsSinceSeen  int64               `json:"SecondsSinceSeen,omitempty,omitzero"`
+	UpdatedAt         time.Time           `json:"UpdatedAt,omitempty,omitzero"`
 }
 
 // StateConfigResponse defines model for StateConfigResponse.
@@ -452,19 +466,19 @@ type StateConfigResponse struct {
 
 // StateConfigValue defines model for StateConfigValue.
 type StateConfigValue struct {
-	Auth  *RegistryCredentials `json:"auth,omitempty"`
-	State *string              `json:"state,omitempty"`
+	Auth  RegistryCredentials `json:"auth,omitempty,omitzero"`
+	State string              `json:"state,omitempty,omitzero"`
 }
 
 // SyslogAuditConfig defines model for SyslogAuditConfig.
 type SyslogAuditConfig struct {
-	Address    *string                   `json:"address,omitempty"`
-	Enabled    *bool                     `json:"enabled,omitempty"`
-	File       *SyslogAuditFileConfig    `json:"file,omitempty"`
-	Network    *SyslogAuditConfigNetwork `json:"network,omitempty"`
-	SocketPath *string                   `json:"socket_path,omitempty"`
-	Tag        *string                   `json:"tag,omitempty"`
-	Target     *SyslogAuditConfigTarget  `json:"target,omitempty"`
+	Address    string                   `json:"address,omitempty,omitzero"`
+	Enabled    nullable.Nullable[bool]  `json:"enabled,omitempty,omitzero"`
+	File       SyslogAuditFileConfig    `json:"file,omitempty,omitzero"`
+	Network    SyslogAuditConfigNetwork `json:"network,omitempty,omitzero"`
+	SocketPath string                   `json:"socket_path,omitempty,omitzero"`
+	Tag        string                   `json:"tag,omitempty,omitzero"`
+	Target     SyslogAuditConfigTarget  `json:"target,omitempty,omitzero"`
 }
 
 // SyslogAuditConfigNetwork defines model for SyslogAuditConfig.Network.
@@ -475,26 +489,26 @@ type SyslogAuditConfigTarget string
 
 // SyslogAuditFileConfig defines model for SyslogAuditFileConfig.
 type SyslogAuditFileConfig struct {
-	Compress   *bool   `json:"compress,omitempty"`
-	MaxAgeDays *int64  `json:"max_age_days,omitempty"`
-	MaxBackups *int64  `json:"max_backups,omitempty"`
-	MaxSizeMB  *int64  `json:"max_size_mb,omitempty"`
-	Path       *string `json:"path,omitempty"`
+	Compress   nullable.Nullable[bool]  `json:"compress,omitempty,omitzero"`
+	MaxAgeDays nullable.Nullable[int64] `json:"max_age_days,omitempty,omitzero"`
+	MaxBackups nullable.Nullable[int64] `json:"max_backups,omitempty,omitzero"`
+	MaxSizeMB  nullable.Nullable[int64] `json:"max_size_mb,omitempty,omitzero"`
+	Path       string                   `json:"path,omitempty,omitzero"`
 }
 
 // TLSConfig defines model for TLSConfig.
 type TLSConfig struct {
-	CAFile     *string `json:"ca_file,omitempty"`
-	CertFile   *string `json:"cert_file,omitempty"`
-	KeyFile    *string `json:"key_file,omitempty"`
-	SkipVerify *bool   `json:"skip_verify,omitempty"`
+	CAFile     string `json:"ca_file,omitempty,omitzero"`
+	CertFile   string `json:"cert_file,omitempty,omitzero"`
+	KeyFile    string `json:"key_file,omitempty,omitzero"`
+	SkipVerify bool   `json:"skip_verify,omitempty,omitzero"`
 }
 
 // TokenSatelliteRegistrationRequest defines model for TokenSatelliteRegistrationRequest.
 type TokenSatelliteRegistrationRequest struct {
-	ConfigName string    `json:"config_name"`
-	Groups     *[]string `json:"groups,omitempty"`
-	Name       string    `json:"name"`
+	ConfigName string   `json:"config_name"`
+	Groups     []string `json:"groups,omitempty,omitzero"`
+	Name       string   `json:"name"`
 }
 
 // TokenSatelliteRegistrationResponse defines model for TokenSatelliteRegistrationResponse.
@@ -518,7 +532,7 @@ type ZTRRequest struct {
 // ListSpireAgentsParams defines parameters for ListSpireAgents.
 type ListSpireAgentsParams struct {
 	// AttestationType Filters agents by attestation type.
-	AttestationType *string `form:"attestation_type,omitempty" json:"attestation_type,omitempty"`
+	AttestationType string `form:"attestation_type,omitempty" json:"attestation_type,omitempty,omitzero"`
 }
 
 // CreateConfigJSONRequestBody defines body for CreateConfig for application/json ContentType.
@@ -2593,16 +2607,12 @@ func NewListSpireAgentsRequest(server string, params *ListSpireAgentsParams) (*h
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
 
-		if params.AttestationType != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "attestation_type", *params.AttestationType, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "attestation_type", params.AttestationType, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
 			}
-
 		}
 
 		if encoded := queryValues.Encode(); encoded != "" {

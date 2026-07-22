@@ -26,7 +26,7 @@ func NewRegisterCommand(runtime *common.Runtime) *cobra.Command {
 				ConfigName: configName,
 			}
 			if len(groups) > 0 {
-				request.Groups = &groups
+				request.Groups = groups
 			}
 			response, err := runtime.Client().RegisterSatelliteWithResponse(cmd.Context(), request)
 			if err != nil {
