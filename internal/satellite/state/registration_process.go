@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -185,10 +186,8 @@ func (z *ZtrProcess) stop() {
 }
 
 // sanitizeAuditReason returns an error string with the satellite token redacted
-// so it is safe to write to the audit log. The token appears as a URL path
-// segment in Go's default HTTP client error messages, so a naive err.Error()
-// emit would leak the secret. The unredacted error is still available via the
-// regular zerolog stream for debugging.
+// so it is safe to write to the audit log. The unredacted error is still
+// available via the regular zerolog stream for debugging.
 func sanitizeAuditReason(err error, token string) string {
 	if err == nil {
 		return ""
@@ -201,17 +200,22 @@ func sanitizeAuditReason(err error, token string) string {
 }
 
 func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSConfig, useUnsecure bool, ctx context.Context) (config.StateConfig, error) {
-	ztrURL := fmt.Sprintf("%s/%s/%s", groundControlURL, path, token)
+	ztrURL := fmt.Sprintf("%s/%s", groundControlURL, path)
+	body, err := json.Marshal(map[string]string{"token": token})
+	if err != nil {
+		return config.StateConfig{}, fmt.Errorf("failed to encode request: %w", err)
+	}
 
 	client, err := createHTTPClient(tlsCfg, useUnsecure)
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ztrURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ztrURL, bytes.NewReader(body))
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 	response, err := client.Do(req)
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("failed to send request: %w", err)

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/gorilla/mux"
 	"github.com/lib/pq"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
@@ -28,47 +27,9 @@ const (
 	roleSystemAdmin = "system_admin"
 )
 
-// CreateUserRequest creates a regular admin user.
-//
-// swagger:model CreateUserRequest
-type createUserRequest struct {
-	// required: true
-	Username string `json:"username"`
-	// required: true
-	Password swaggerPassword `json:"password"`
-}
-
-// UserResponse describes a Ground Control user.
-//
-// swagger:model UserResponse
-type userResponse struct {
-	ID        int32  `json:"id"`
-	Username  string `json:"username"`
-	Role      string `json:"role"`
-	CreatedAt string `json:"created_at"`
-}
-
-// ChangePasswordRequest changes the authenticated user's password.
-//
-// swagger:model ChangePasswordRequest
-type changePasswordRequest struct {
-	// required: true
-	CurrentPassword swaggerPassword `json:"current_password"`
-	// required: true
-	NewPassword swaggerPassword `json:"new_password"`
-}
-
-// ChangeUserPasswordRequest resets a user's password.
-//
-// swagger:model ChangeUserPasswordRequest
-type changeUserPasswordRequest struct {
-	// required: true
-	NewPassword swaggerPassword `json:"new_password"`
-}
-
-// createUserHandler creates a new admin user (system_admin only)
-func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
-	var req createUserRequest
+// CreateUser creates a new admin user (system_admin only)
+func (s *Server) CreateUser(w http.ResponseWriter, r *http.Request) {
+	var req CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -84,12 +45,12 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.passwordPolicy.Validate(string(req.Password)); err != nil {
+	if err := s.passwordPolicy.Validate(req.Password); err != nil {
 		WriteJSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	hash, err := auth.HashPassword(string(req.Password))
+	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -120,40 +81,37 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		Details:      map[string]any{"role": user.Role},
 	})
 
-	WriteJSONResponse(w, http.StatusCreated, userResponse{
+	WriteJSONResponse(w, http.StatusCreated, UserResponse{
 		ID:        user.ID,
 		Username:  user.Username,
 		Role:      user.Role,
-		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		CreatedAt: user.CreatedAt,
 	})
 }
 
-// listUsersHandler lists all users except system_admin
-func (s *Server) listUsersHandler(w http.ResponseWriter, r *http.Request) {
+// ListUsers lists all users except system_admin
+func (s *Server) ListUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := s.dbQueries.ListUsers(r.Context())
 	if err != nil {
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	response := make([]userResponse, 0, len(users))
+	response := make([]UserResponse, 0, len(users))
 	for _, u := range users {
-		response = append(response, userResponse{
+		response = append(response, UserResponse{
 			ID:        u.ID,
 			Username:  u.Username,
 			Role:      u.Role,
-			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			CreatedAt: u.CreatedAt,
 		})
 	}
 
 	WriteJSONResponse(w, http.StatusOK, response)
 }
 
-// getUserHandler gets a specific user by username
-func (s *Server) getUserHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	username := vars["username"]
-
+// GetUser gets a specific user by username
+func (s *Server) GetUser(w http.ResponseWriter, r *http.Request, username string) {
 	user, err := s.dbQueries.GetUserByUsername(r.Context(), username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -170,19 +128,16 @@ func (s *Server) getUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, userResponse{
+	WriteJSONResponse(w, http.StatusOK, UserResponse{
 		ID:        user.ID,
 		Username:  user.Username,
 		Role:      user.Role,
-		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		CreatedAt: user.CreatedAt,
 	})
 }
 
-// deleteUserHandler deletes a user (system_admin only, cannot delete self)
-func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	username := vars["username"]
-
+// DeleteUser deletes a user (system_admin only, cannot delete self)
+func (s *Server) DeleteUser(w http.ResponseWriter, r *http.Request, username string) {
 	currentUser, ok := GetUserFromContext(r.Context())
 	if !ok {
 		WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
@@ -233,21 +188,21 @@ func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// changeOwnPasswordHandler allows any authenticated user to change their password
-func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request) {
+// ChangeOwnPassword allows any authenticated user to change their password
+func (s *Server) ChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 	currentUser, ok := GetUserFromContext(r.Context())
 	if !ok {
 		WriteJSONError(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	var req changePasswordRequest
+	var req ChangePasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if err := s.passwordPolicy.Validate(string(req.NewPassword)); err != nil {
+	if err := s.passwordPolicy.Validate(req.NewPassword); err != nil {
 		WriteJSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -259,13 +214,13 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	valid := auth.VerifyPassword(string(req.CurrentPassword), user.PasswordHash)
+	valid := auth.VerifyPassword(req.CurrentPassword, user.PasswordHash)
 	if !valid {
 		WriteJSONError(w, "Current password is incorrect", http.StatusUnauthorized)
 		return
 	}
 
-	hash, err := auth.HashPassword(string(req.NewPassword))
+	hash, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -298,18 +253,15 @@ func (s *Server) changeOwnPasswordHandler(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// changeUserPasswordHandler allows system_admin to change any user's password
-func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	username := vars["username"]
-
-	var req changeUserPasswordRequest
+// ChangeUserPassword allows system_admin to change any user's password
+func (s *Server) ChangeUserPassword(w http.ResponseWriter, r *http.Request, username string) {
+	var req ChangeUserPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if err := s.passwordPolicy.Validate(string(req.NewPassword)); err != nil {
+	if err := s.passwordPolicy.Validate(req.NewPassword); err != nil {
 		WriteJSONError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -325,7 +277,7 @@ func (s *Server) changeUserPasswordHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	hash, err := auth.HashPassword(string(req.NewPassword))
+	hash, err := auth.HashPassword(req.NewPassword)
 	if err != nil {
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 		return

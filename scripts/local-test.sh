@@ -85,7 +85,7 @@ start_ground_control() {
     log_info "Starting Ground Control on port $GC_PORT..."
 
     cd "$PROJECT_ROOT"
-    go run ./cmd/ground-control &
+    go run ./cmd/groundcontrol/server &
     GC_PID=$!
 
     # Wait for Ground Control to be ready
@@ -231,7 +231,7 @@ run_satellite() {
 }
 EOF
 
-    go run ./cmd/harbor-satellite --token "$token" --ground-control-url "http://127.0.0.1:$GC_PORT" --harbor-registry-url "http://127.0.0.1:8080" --json-logging=false &
+    go run ./cmd/satellite --token "$token" --ground-control-url "http://127.0.0.1:$GC_PORT" --harbor-registry-url "http://127.0.0.1:8080" --json-logging=false &
     SAT_PID=$!
 
     log_info "Satellite started with PID $SAT_PID"

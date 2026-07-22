@@ -21,7 +21,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        COMPONENT: harbor-satellite
+        COMPONENT: satellite
     container_name: satellite
     depends_on:
       registry:

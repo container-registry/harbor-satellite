@@ -69,7 +69,7 @@ services:
       context: ../../../../../../
       dockerfile: Dockerfile
       args:
-        COMPONENT: ground-control
+        COMPONENT: groundcontrol/server
     container_name: ground-control
     user: "0:0"
     environment:

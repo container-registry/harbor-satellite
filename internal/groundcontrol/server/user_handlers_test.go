@@ -47,11 +47,11 @@ func TestCreateUserHandler(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "role", "created_at", "updated_at"}).
 				AddRow(1, "testuser", "hashed", "admin", now, now))
 
-		body := mustMarshalJSON(t, createUserRequest{Username: "testuser", Password: "SecurePass1"})
+		body := mustMarshalJSON(t, CreateUserRequest{Username: "testuser", Password: "SecurePass1"})
 		req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
-		server.createUserHandler(rr, req)
+		server.CreateUser(rr, req)
 
 		require.Equal(t, http.StatusCreated, rr.Code)
 		require.Contains(t, rr.Body.String(), "testuser")
@@ -61,11 +61,11 @@ func TestCreateUserHandler(t *testing.T) {
 	t.Run("empty username returns 400", func(t *testing.T) {
 		server, _ := newMockServerWithAuth(t)
 
-		body := mustMarshalJSON(t, createUserRequest{Username: "", Password: "SecurePass1"})
+		body := mustMarshalJSON(t, CreateUserRequest{Username: "", Password: "SecurePass1"})
 		req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
-		server.createUserHandler(rr, req)
+		server.CreateUser(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
@@ -73,11 +73,11 @@ func TestCreateUserHandler(t *testing.T) {
 	t.Run("reserved admin returns 400", func(t *testing.T) {
 		server, _ := newMockServerWithAuth(t)
 
-		body := mustMarshalJSON(t, createUserRequest{Username: "admin", Password: "SecurePass1"})
+		body := mustMarshalJSON(t, CreateUserRequest{Username: "admin", Password: "SecurePass1"})
 		req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
-		server.createUserHandler(rr, req)
+		server.CreateUser(rr, req)
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
@@ -89,11 +89,11 @@ func TestCreateUserHandler(t *testing.T) {
 			WithArgs("existing", sqlmock.AnyArg(), "admin").
 			WillReturnError(&pq.Error{Code: "23505"})
 
-		body := mustMarshalJSON(t, createUserRequest{Username: "existing", Password: "SecurePass1"})
+		body := mustMarshalJSON(t, CreateUserRequest{Username: "existing", Password: "SecurePass1"})
 		req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
-		server.createUserHandler(rr, req)
+		server.CreateUser(rr, req)
 
 		require.Equal(t, http.StatusConflict, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -112,7 +112,7 @@ func TestListUsersHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
 		rr := httptest.NewRecorder()
-		server.listUsersHandler(rr, req)
+		server.ListUsers(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "alice")
@@ -128,7 +128,7 @@ func TestListUsersHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
 		rr := httptest.NewRecorder()
-		server.listUsersHandler(rr, req)
+		server.ListUsers(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -150,7 +150,7 @@ func TestGetUserHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"username": "alice"})
 
 		rr := httptest.NewRecorder()
-		server.getUserHandler(rr, req)
+		server.GetUser(rr, req, mux.Vars(req)["username"])
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "alice")
@@ -168,7 +168,7 @@ func TestGetUserHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"username": "nonexistent"})
 
 		rr := httptest.NewRecorder()
-		server.getUserHandler(rr, req)
+		server.GetUser(rr, req, mux.Vars(req)["username"])
 
 		require.Equal(t, http.StatusNotFound, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -188,7 +188,7 @@ func TestGetUserHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"username": "admin"})
 
 		rr := httptest.NewRecorder()
-		server.getUserHandler(rr, req)
+		server.GetUser(rr, req, mux.Vars(req)["username"])
 
 		require.Equal(t, http.StatusNotFound, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -223,7 +223,7 @@ func TestDeleteUserHandler(t *testing.T) {
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		rr := httptest.NewRecorder()
-		server.deleteUserHandler(rr, deleteReq("alice"))
+		server.DeleteUser(rr, deleteReq("alice"), "alice")
 
 		require.Equal(t, http.StatusNoContent, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -233,7 +233,7 @@ func TestDeleteUserHandler(t *testing.T) {
 		server, _ := newMockServerWithAuth(t)
 
 		rr := httptest.NewRecorder()
-		server.deleteUserHandler(rr, deleteReq("superadmin"))
+		server.DeleteUser(rr, deleteReq("superadmin"), "superadmin")
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
@@ -242,7 +242,7 @@ func TestDeleteUserHandler(t *testing.T) {
 		server, _ := newMockServerWithAuth(t)
 
 		rr := httptest.NewRecorder()
-		server.deleteUserHandler(rr, deleteReq("admin"))
+		server.DeleteUser(rr, deleteReq("admin"), "admin")
 
 		require.Equal(t, http.StatusBadRequest, rr.Code)
 	})
@@ -255,7 +255,7 @@ func TestDeleteUserHandler(t *testing.T) {
 			WillReturnError(sql.ErrNoRows)
 
 		rr := httptest.NewRecorder()
-		server.deleteUserHandler(rr, deleteReq("nonexistent"))
+		server.DeleteUser(rr, deleteReq("nonexistent"), "nonexistent")
 
 		require.Equal(t, http.StatusNotFound, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -288,11 +288,11 @@ func TestLoginHandler(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "token", "expires_at", "created_at"}).
 				AddRow(1, 1, "session-token", now.Add(time.Hour), now))
 
-		body := mustMarshalJSON(t, loginRequest{Username: "testuser", Password: "SecurePass1"})
+		body := mustMarshalJSON(t, LoginRequest{Username: "testuser", Password: "SecurePass1"})
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
-		server.loginHandler(rr, req)
+		server.Login(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "token")
@@ -320,11 +320,11 @@ func TestLoginHandler(t *testing.T) {
 			WillReturnRows(sqlmock.NewRows([]string{"id", "username", "failed_count", "locked_until", "last_attempt"}).
 				AddRow(1, "testuser", int32(1), sql.NullTime{}, now))
 
-		body := mustMarshalJSON(t, loginRequest{Username: "testuser", Password: "WrongPass1"})
+		body := mustMarshalJSON(t, LoginRequest{Username: "testuser", Password: "WrongPass1"})
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
-		server.loginHandler(rr, req)
+		server.Login(rr, req)
 
 		require.Equal(t, http.StatusUnauthorized, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -333,11 +333,11 @@ func TestLoginHandler(t *testing.T) {
 	t.Run("empty credentials returns 401", func(t *testing.T) {
 		server, _ := newMockServerWithAuth(t)
 
-		body := mustMarshalJSON(t, loginRequest{Username: "", Password: ""})
+		body := mustMarshalJSON(t, LoginRequest{Username: "", Password: ""})
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 
 		rr := httptest.NewRecorder()
-		server.loginHandler(rr, req)
+		server.Login(rr, req)
 
 		require.Equal(t, http.StatusUnauthorized, rr.Code)
 	})
@@ -355,7 +355,7 @@ func TestLogoutHandler(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer valid-token")
 
 		rr := httptest.NewRecorder()
-		server.logoutHandler(rr, req)
+		server.Logout(rr, req)
 
 		require.Equal(t, http.StatusNoContent, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -367,7 +367,7 @@ func TestLogoutHandler(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
 
 		rr := httptest.NewRecorder()
-		server.logoutHandler(rr, req)
+		server.Logout(rr, req)
 
 		require.Equal(t, http.StatusUnauthorized, rr.Code)
 	})

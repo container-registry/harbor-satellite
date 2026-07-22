@@ -27,7 +27,7 @@ func TestListConfigsHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/configs", nil)
 		rr := httptest.NewRecorder()
-		server.listConfigsHandler(rr, req)
+		server.ListConfigs(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "test-config")
@@ -43,7 +43,7 @@ func TestListConfigsHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/configs", nil)
 		rr := httptest.NewRecorder()
-		server.listConfigsHandler(rr, req)
+		server.ListConfigs(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -56,7 +56,7 @@ func TestListConfigsHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/configs", nil)
 		rr := httptest.NewRecorder()
-		server.listConfigsHandler(rr, req)
+		server.ListConfigs(rr, req)
 
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -78,7 +78,7 @@ func TestGetConfigHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"config": "test-config"})
 
 		rr := httptest.NewRecorder()
-		server.getConfigHandler(rr, req)
+		server.GetConfig(rr, req, mux.Vars(req)["config"])
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "test-config")
@@ -96,7 +96,7 @@ func TestGetConfigHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"config": "nonexistent"})
 
 		rr := httptest.NewRecorder()
-		server.getConfigHandler(rr, req)
+		server.GetConfig(rr, req, mux.Vars(req)["config"])
 
 		require.Equal(t, http.StatusNotFound, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -110,7 +110,7 @@ func TestCreateConfigHandler_InvalidBody(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
-	server.createConfigHandler(rr, req)
+	server.CreateConfig(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
@@ -123,7 +123,7 @@ func TestCreateConfigHandler_EmptyName(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
-	server.createConfigHandler(rr, req)
+	server.CreateConfig(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
@@ -139,7 +139,7 @@ func TestDeleteConfigHandler_NotFound(t *testing.T) {
 	req = mux.SetURLVars(req, map[string]string{"config": "nonexistent"})
 
 	rr := httptest.NewRecorder()
-	server.deleteConfigHandler(rr, req)
+	server.DeleteConfig(rr, req, mux.Vars(req)["config"])
 
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -163,8 +163,30 @@ func TestDeleteConfigHandler_ConfigInUse(t *testing.T) {
 	req = mux.SetURLVars(req, map[string]string{"config": "used-config"})
 
 	rr := httptest.NewRecorder()
-	server.deleteConfigHandler(rr, req)
+	server.DeleteConfig(rr, req, mux.Vars(req)["config"])
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestConfigMergePatchPreservesExplicitNull(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "omitted", input: `{}`},
+		{name: "explicit null", input: `{"app_config":null}`},
+		{name: "object", input: `{"app_config":{"log_level":"debug"}}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var patch ConfigMergePatch
+			require.NoError(t, json.Unmarshal([]byte(tt.input), &patch))
+
+			encoded, err := json.Marshal(patch)
+			require.NoError(t, err)
+			require.JSONEq(t, tt.input, string(encoded))
+		})
+	}
 }
