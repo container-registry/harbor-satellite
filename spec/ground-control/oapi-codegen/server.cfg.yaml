@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/v2.8.0/configuration-schema.json
+package: server
+generate:
+  models: true
+  gorilla-server: true
+output-options:
+  nullable-type: true
+  prefer-skip-optional-pointer: true
+  prefer-skip-optional-pointer-with-omitzero: true
+  skip-prune: true
+  type-mapping:
+    integer:
+      formats:
+        http-status-code:
+          type: int

@@ -1,7 +1,0 @@
-[submodule "interface/parsec-operations"]
-	path = interface/parsec-operations
-	url = https://github.com/parallaxsecond/parsec-operations
-[submodule "mock-test/parsec-mock"]
-	path = mock-test/parsec-mock
-	url = https://github.com/parallaxsecond/parsec-mock
-

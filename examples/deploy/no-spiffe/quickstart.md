@@ -206,7 +206,7 @@ Use the token from Step 6 to start the satellite. See [.env.example](https://git
 1. Run the satellite directly:
 
    ```bash
-   go run ./cmd/harbor-satellite --token "<your token here>" --ground-control-url "<ground control url here>"
+   go run ./cmd/satellite --token "<your token here>" --ground-control-url "<ground control url here>"
    ```
 
    > Note: By default, JSON logging is enabled. To disable it, pass `--json-logging=false`.

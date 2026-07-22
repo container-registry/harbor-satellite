@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/HEAD/configuration-schema.json
+package: groundcontrol
+generate:
+  models: true
+  client: true
+output-options:
+  # Operation response wrappers otherwise collide with schemas such as
+  # HealthResponse and LoginResponse.
+  response-type-suffix: HTTPResponse
+  nullable-type: true
+  prefer-skip-optional-pointer: true
+  prefer-skip-optional-pointer-with-omitzero: true
+  skip-prune: true
+  type-mapping:
+    integer:
+      formats:
+        http-status-code:
+          type: int

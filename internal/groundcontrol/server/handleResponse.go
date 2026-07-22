@@ -7,14 +7,6 @@ import (
 	"net/http"
 )
 
-// AppError is a structured JSON error response.
-//
-// swagger:model AppError
-type AppError struct {
-	Message string `json:"message"`
-	Code    int    `json:"code"`
-}
-
 func (e *AppError) Error() string {
 	return e.Message
 }

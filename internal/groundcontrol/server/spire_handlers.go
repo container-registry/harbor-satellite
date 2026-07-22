@@ -5,105 +5,57 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
 )
 
-// RegisterSatelliteRequest represents a request to register a satellite with SPIFFE.
-//
-// swagger:model RegisterSatelliteRequest
-type RegisterSatelliteRequest struct {
-	// required: true
-	SatelliteName string `json:"satellite_name"`
-	Region        string `json:"region,omitempty"`
-	// required: true
-	// min items: 1
-	Selectors []string `json:"selectors"`
-	// required: true
-	// enum: join_token,x509pop,sshpop
-	AttestationMethod string `json:"attestation_method"` // join_token, x509pop, sshpop
-	// minimum: 1
-	// maximum: 86400
-	TTLSeconds    int    `json:"ttl_seconds,omitempty"`
-	ParentAgentID string `json:"parent_agent_id,omitempty"`
-}
-
-// RegisterSatelliteWithSPIFFEResponse contains satellite registration details.
-//
-// swagger:model RegisterSatelliteWithSPIFFEResponse
-type RegisterSatelliteWithSPIFFEResponse struct {
-	Satellite          string     `json:"satellite"`
-	Region             string     `json:"region"`
-	SpiffeID           string     `json:"spiffe_id"`
-	ParentAgentID      string     `json:"parent_agent_id,omitempty"`
-	JoinToken          string     `json:"join_token,omitempty"`
-	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
-	SpireServerAddress string     `json:"spire_server_address"`
-	SpireServerPort    int        `json:"spire_server_port"`
-	TrustDomain        string     `json:"trust_domain"`
-}
-
-// AgentListResponse contains a list of attested agents.
-//
-// swagger:model AgentListResponse
-type AgentListResponse struct {
-	Agents []AgentInfoResponse `json:"agents"`
-}
-
-// AgentInfoResponse contains agent information for API response.
-//
-// swagger:model AgentInfoResponse
-type AgentInfoResponse struct {
-	SpiffeID        string     `json:"spiffe_id"`
-	AttestationType string     `json:"attestation_type"`
-	Selectors       []string   `json:"selectors,omitempty"`
-	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
-}
-
-// SPIREStatusResponse contains SPIRE integration status.
-//
-// swagger:model SPIREStatusResponse
-type SPIREStatusResponse struct {
-	Enabled     bool   `json:"enabled"`
-	TrustDomain string `json:"trust_domain,omitempty"`
-	Provider    string `json:"provider,omitempty"`
-	Connected   bool   `json:"connected"`
-}
-
-// spireStatusHandler returns the status of SPIRE integration.
+// GetSpireStatus returns the status of SPIRE integration.
 // GET /spire/status
-func (s *Server) spireStatusHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) GetSpireStatus(w http.ResponseWriter, _ *http.Request) {
+	enabled := s.spireEnabled
 	status := SPIREStatusResponse{
-		Enabled:   s.spiffeProvider != nil || s.spireClient != nil,
+		Enabled:   enabled,
 		Connected: false,
 	}
 
 	if s.spiffeProvider != nil {
-		status.TrustDomain = s.spiffeProvider.GetTrustDomain().String()
-		status.Provider = "sidecar"
+		trustDomain := s.spiffeProvider.GetTrustDomain().String()
+		provider := "sidecar"
 		status.Connected = true
+		status.TrustDomain = trustDomain
+		status.Provider = provider
 	} else {
 		switch {
 		case s.embeddedSpire != nil:
-			status.TrustDomain = s.spireTrustDomain
-			status.Provider = "embedded"
+			provider := "embedded"
 			status.Connected = s.spireClient != nil
-		case s.spireClient != nil:
 			status.TrustDomain = s.spireTrustDomain
-			status.Provider = "external"
+			status.Provider = provider
+		case s.spireClient != nil:
+			provider := "external"
 			status.Connected = true
+			status.TrustDomain = s.spireTrustDomain
+			status.Provider = provider
 		}
 	}
 
 	WriteJSONResponse(w, http.StatusOK, status)
 }
 
-// registerSatelliteWithSPIFFEHandler handles unified satellite registration for all attestation methods.
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+// RegisterSatelliteWithSpiffe handles unified satellite registration for all attestation methods.
 // POST /api/satellites/register
-func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *http.Request) {
-	var req RegisterSatelliteRequest
+func (s *Server) RegisterSatelliteWithSpiffe(w http.ResponseWriter, r *http.Request) {
+	var req SPIFFESatelliteRegistrationRequest
 	if err := DecodeRequestBody(r, &req); err != nil {
 		HandleAppError(w, &AppError{
 			Message: "Invalid request body",
@@ -138,8 +90,7 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 		}
 	}
 
-	validMethods := map[string]bool{"join_token": true, "x509pop": true, "sshpop": true}
-	if !validMethods[req.AttestationMethod] {
+	if !req.AttestationMethod.Valid() {
 		HandleAppError(w, &AppError{
 			Message: "attestation_method must be one of: join_token, x509pop, sshpop",
 			Code:    http.StatusBadRequest,
@@ -147,7 +98,7 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
-	if req.AttestationMethod == "sshpop" && req.ParentAgentID == "" {
+	if req.AttestationMethod == Sshpop && req.ParentAgentID == "" {
 		HandleAppError(w, &AppError{
 			Message: "parent_agent_id is required for sshpop attestation",
 			Code:    http.StatusBadRequest,
@@ -159,11 +110,16 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 		req.Region = "default"
 	}
 
-	if req.TTLSeconds <= 0 {
-		req.TTLSeconds = 600
-	}
-	if req.TTLSeconds > 86400 {
-		req.TTLSeconds = 86400
+	ttlSeconds := int64(600)
+	if req.TTLSeconds != nil {
+		if *req.TTLSeconds < 1 || *req.TTLSeconds > 86400 {
+			HandleAppError(w, &AppError{
+				Message: "ttl_seconds must be between 1 and 86400",
+				Code:    http.StatusBadRequest,
+			})
+			return
+		}
+		ttlSeconds = *req.TTLSeconds
 	}
 
 	if s.spireClient == nil {
@@ -180,10 +136,10 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 	var expiresAt *time.Time
 
 	switch req.AttestationMethod {
-	case "join_token":
+	case JoinToken:
 		agentSpiffeID = fmt.Sprintf("spiffe://%s/agent/%s", trustDomain, req.SatelliteName)
 
-		ttl := time.Duration(req.TTLSeconds) * time.Second
+		ttl := time.Duration(ttlSeconds) * time.Second
 		token, err := s.spireClient.CreateJoinToken(r.Context(), agentSpiffeID, ttl)
 		if err != nil {
 			log.Printf("Failed to create join token: %v", err)
@@ -197,7 +153,7 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 		exp := time.Now().Add(ttl)
 		expiresAt = &exp
 
-	case "x509pop":
+	case X509pop:
 		if req.ParentAgentID != "" {
 			agentSpiffeID = req.ParentAgentID
 		} else {
@@ -213,11 +169,9 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 
 			expectedSelector := fmt.Sprintf("x509pop:subject:cn:%s", req.SatelliteName)
 			for _, agent := range agents {
-				for _, sel := range agent.Selectors {
-					if sel == expectedSelector {
-						agentSpiffeID = agent.SpiffeID
-						break
-					}
+				if slices.Contains(agent.Selectors, expectedSelector) {
+					agentSpiffeID = agent.SpiffeID
+					break
 				}
 				if agentSpiffeID != "" {
 					break
@@ -233,7 +187,7 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 			}
 		}
 
-	case "sshpop":
+	case Sshpop:
 		agentSpiffeID = req.ParentAgentID
 	}
 
@@ -342,24 +296,24 @@ func (s *Server) registerSatelliteWithSPIFFEHandler(w http.ResponseWriter, r *ht
 	log.Printf("Register: Registered satellite %s (method: %s, region: %s, agent: %s)",
 		req.SatelliteName, req.AttestationMethod, req.Region, agentSpiffeID)
 
-	resp := RegisterSatelliteWithSPIFFEResponse{
+	resp := SPIFFESatelliteRegistrationResponse{
 		Satellite:          req.SatelliteName,
 		Region:             req.Region,
 		SpiffeID:           workloadSpiffeID,
 		ParentAgentID:      agentSpiffeID,
-		JoinToken:          joinToken,
+		JoinToken:          optionalString(joinToken),
 		ExpiresAt:          expiresAt,
 		SpireServerAddress: s.spireServerAddress,
-		SpireServerPort:    s.spireServerPort,
+		SpireServerPort:    int64(s.spireServerPort),
 		TrustDomain:        trustDomain,
 	}
 
 	WriteJSONResponse(w, http.StatusOK, resp)
 }
 
-// listSpireAgentsHandler lists attested SPIRE agents.
+// ListSpireAgents lists attested SPIRE agents.
 // GET /api/spire/agents?attestation_type=x509pop
-func (s *Server) listSpireAgentsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ListSpireAgents(w http.ResponseWriter, r *http.Request, params ListSpireAgentsParams) {
 	if s.spireClient == nil {
 		HandleAppError(w, &AppError{
 			Message: "SPIRE server not configured",
@@ -368,7 +322,10 @@ func (s *Server) listSpireAgentsHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	attestationType := r.URL.Query().Get("attestation_type")
+	attestationType := ""
+	if params.AttestationType != "" {
+		attestationType = params.AttestationType
+	}
 
 	agents, err := s.spireClient.ListAgents(r.Context(), attestationType)
 	if err != nil {
