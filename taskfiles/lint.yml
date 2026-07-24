@@ -1,52 +1,106 @@
 version: "3"
 
+vars:
+  GOLANGCI_LINT_IMAGE: "golangci/golangci-lint@sha256:5cceeef04e53efe1470638d4b4b4f5ceefd574955ab3941b2d9a68a8c9ad5240"
+  GOVULNCHECK_IMAGE: "golang@sha256:3aff6657219a4d9c14e27fb1d8976c49c29fddb70ba835014f477e1c70636647"
+  GOVULNCHECK_PACKAGE: "golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}}"
+
 tasks:
   lint:
-    desc: Run golangci-lint
+    desc: Run golangci-lint inside a pinned Docker container
     cmds:
       - echo "Running golangci-lint..."
-      - golangci-lint run
+      - |
+        docker run --rm \
+          --user "$(id -u):$(id -g)" \
+          --mount "type=bind,src={{.ROOT_DIR}},dst=/workspace,readonly" \
+          -w /workspace \
+          -e HOME=/tmp \
+          -e GOCACHE=/tmp/go-build \
+          -e GOPATH=/tmp/go \
+          -e GOLANGCI_LINT_CACHE=/tmp/golangci-lint \
+          {{.GOLANGCI_LINT_IMAGE}} \
+          golangci-lint run
       - echo "Lint passed!"
     silent: true
 
   lint-fix:
-    desc: Run golangci-lint with auto-fix
+    desc: Run golangci-lint with auto-fix inside a pinned Docker container
     cmds:
       - echo "Running golangci-lint with auto-fix..."
-      - golangci-lint run --fix
+      - |
+        docker run --rm \
+          --user "$(id -u):$(id -g)" \
+          --mount "type=bind,src={{.ROOT_DIR}},dst=/workspace" \
+          -w /workspace \
+          -e HOME=/tmp \
+          -e GOCACHE=/tmp/go-build \
+          -e GOPATH=/tmp/go \
+          -e GOLANGCI_LINT_CACHE=/tmp/golangci-lint \
+          {{.GOLANGCI_LINT_IMAGE}} \
+          golangci-lint run --fix
       - echo "Lint auto-fix completed!"
     silent: true
 
   lint-report:
-    desc: Run golangci-lint and export results to file
+    desc: Run golangci-lint inside a pinned Docker container and export results to file
     cmds:
       - echo "Running golangci-lint and exporting report..."
-      - golangci-lint run -v --output.tab.path=golangci-lint.report --issues-exit-code 0
+      - |
+        docker run --rm \
+          --user "$(id -u):$(id -g)" \
+          --mount "type=bind,src={{.ROOT_DIR}},dst=/workspace" \
+          -w /workspace \
+          -e HOME=/tmp \
+          -e GOCACHE=/tmp/go-build \
+          -e GOPATH=/tmp/go \
+          -e GOLANGCI_LINT_CACHE=/tmp/golangci-lint \
+          {{.GOLANGCI_LINT_IMAGE}} \
+          golangci-lint run -v --output.tab.path=golangci-lint.report --issues-exit-code 0
       - echo "Report saved to golangci-lint.report"
     silent: true
 
   vulnerability-check:
-    desc: Run govulncheck (filters known unfixable zot vulnerabilities)
+    desc: Run govulncheck inside a pinned Docker container (filters known unfixable zot vulnerabilities)
     cmds:
       - echo "Running vulnerability check..."
       - |
-        govulncheck -format json ./... 2>&1 | tee /tmp/vuln.json || true
-        if grep -q '"id":"GO-' /tmp/vuln.json; then
-          VULNS=$(grep -o '"id":"GO-[^"]*"' /tmp/vuln.json | grep -v '{{.VULN_FILTER}}' || true)
-          if [ -n "$VULNS" ]; then
-            echo "Found unexpected vulnerabilities:"
-            echo "$VULNS"
-            govulncheck -show verbose ./...
-            exit 1
+        docker run --rm \
+          --user "$(id -u):$(id -g)" \
+          --mount "type=bind,src={{.ROOT_DIR}},dst=/workspace,readonly" \
+          -w /workspace \
+          -e HOME=/tmp \
+          -e GOCACHE=/tmp/go-build \
+          -e GOPATH=/tmp/go \
+          {{.GOVULNCHECK_IMAGE}} \
+          sh -c '
+          go run {{.GOVULNCHECK_PACKAGE}} -format json ./... 2>&1 | tee /tmp/vuln.json || true
+          if grep -q '"'"'"id":"GO-'"'"' /tmp/vuln.json; then
+            VULNS=$(grep -o '"'"'"id":"GO-[^"]*"'"'"' /tmp/vuln.json | grep -v '"'"'{{.VULN_FILTER}}'"'"' || true)
+            if [ -n "$VULNS" ]; then
+              echo "Found unexpected vulnerabilities:"
+              echo "$VULNS"
+              go run {{.GOVULNCHECK_PACKAGE}} -show verbose ./...
+              exit 1
+            fi
           fi
-        fi
-        echo "No unexpected vulnerabilities found"
+          echo "No unexpected vulnerabilities found"
+          '
     silent: true
 
   vulnerability-check-report:
-    desc: Run govulncheck and export results to file
+    desc: Run govulncheck inside a pinned Docker container and export results to file
     cmds:
       - echo "Running vulnerability check and exporting report..."
-      - govulncheck ./... > vulnerability-check.report 2>&1 || true
+      - |
+        docker run --rm \
+          --user "$(id -u):$(id -g)" \
+          --mount "type=bind,src={{.ROOT_DIR}},dst=/workspace" \
+          -w /workspace \
+          -e HOME=/tmp \
+          -e GOCACHE=/tmp/go-build \
+          -e GOPATH=/tmp/go \
+          {{.GOVULNCHECK_IMAGE}} \
+          sh -c 'go run {{.GOVULNCHECK_PACKAGE}} ./... > vulnerability-check.report 2>&1 || true'
       - echo "Report saved to vulnerability-check.report"
     silent: true
