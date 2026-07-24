@@ -1,13 +1,13 @@
 version: "3"
 
 vars:
-  GOLANGCI_LINT_IMAGE: "golangci/golangci-lint:{{.GOLANGCILINT_VERSION}}"
-  GOVULNCHECK_IMAGE: "golang:{{.GO_VERSION}}"
+  GOLANGCI_LINT_IMAGE: "golangci/golangci-lint@sha256:5cceeef04e53efe1470638d4b4b4f5ceefd574955ab3941b2d9a68a8c9ad5240"
+  GOVULNCHECK_IMAGE: "golang@sha256:3aff6657219a4d9c14e27fb1d8976c49c29fddb70ba835014f477e1c70636647"
   GOVULNCHECK_PACKAGE: "golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}}"
 
 tasks:
   lint:
-    desc: Run golangci-lint
+    desc: Run golangci-lint inside a pinned Docker container
     cmds:
       - echo "Running golangci-lint..."
       - |
@@ -25,7 +25,7 @@ tasks:
     silent: true
 
   lint-fix:
-    desc: Run golangci-lint with auto-fix
+    desc: Run golangci-lint with auto-fix inside a pinned Docker container
     cmds:
       - echo "Running golangci-lint with auto-fix..."
       - |
@@ -43,7 +43,7 @@ tasks:
     silent: true
 
   lint-report:
-    desc: Run golangci-lint and export results to file
+    desc: Run golangci-lint inside a pinned Docker container and export results to file
     cmds:
       - echo "Running golangci-lint and exporting report..."
       - |
@@ -61,7 +61,7 @@ tasks:
     silent: true
 
   vulnerability-check:
-    desc: Run govulncheck (filters known unfixable zot vulnerabilities)
+    desc: Run govulncheck inside a pinned Docker container (filters known unfixable zot vulnerabilities)
     cmds:
       - echo "Running vulnerability check..."
       - |
@@ -89,7 +89,7 @@ tasks:
     silent: true
 
   vulnerability-check-report:
-    desc: Run govulncheck and export results to file
+    desc: Run govulncheck inside a pinned Docker container and export results to file
     cmds:
       - echo "Running vulnerability check and exporting report..."
       - |
