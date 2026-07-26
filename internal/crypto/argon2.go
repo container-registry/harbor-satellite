@@ -16,6 +16,11 @@ const (
 	ArgonParallelism = 1
 	ArgonSaltSize    = 16 // bytes
 	ArgonKeySize     = 32 // bytes
+
+	// TimingMitigationHash is a valid argon2id hash using the default parameters above.
+	// Burn it via VerifySecret on credential lookup failure so response time does not
+	// reveal whether a username exists.
+	TimingMitigationHash = "$argon2id$v=19$m=19456,t=2,p=1$sTRCxaCWJQNOIu7hh9KX4w$GrsMm3WlnXrlX+zxlaEzQFx2Z0oFggcZgVjYe95jl5A"
 )
 
 // HashSecret computes an argon2id hash of the secret using a random salt.

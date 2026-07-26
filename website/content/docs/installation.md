@@ -77,10 +77,10 @@ curl http://localhost:8080/health
 The Helm chart is experimental and not fully tested. Use it at your own risk in production environments.
 {{< /callout >}}
 
-Install with the [Helm chart](https://github.com/container-registry/harbor-satellite/tree/main/deploy/helm/ground-control):
+Install with the [Helm chart](https://github.com/container-registry/harbor-satellite/tree/main/examples/deploy/helm/ground-control):
 
 ```bash
-helm install ground-control deploy/helm/ground-control \
+helm install ground-control examples/deploy/helm/ground-control \
   --set harbor.url=https://harbor.example.com \
   --set harbor.username=admin \
   --set harbor.password=Harbor12345 \
@@ -90,7 +90,7 @@ helm install ground-control deploy/helm/ground-control \
 This deploys Ground Control and an internal PostgreSQL StatefulSet. To use an external database:
 
 ```bash
-helm install ground-control deploy/helm/ground-control \
+helm install ground-control examples/deploy/helm/ground-control \
   --set harbor.url=https://harbor.example.com \
   --set harbor.username=admin \
   --set harbor.password=Harbor12345 \
@@ -103,14 +103,14 @@ helm install ground-control deploy/helm/ground-control \
 To enable SPIFFE:
 
 ```bash
-helm install ground-control deploy/helm/ground-control \
+helm install ground-control examples/deploy/helm/ground-control \
   --set spiffe.enabled=true \
   --set spiffe.trustDomain=harbor-satellite.local \
   --set harbor.url=https://harbor.example.com \
   --set harbor.password=Harbor12345
 ```
 
-See `deploy/helm/ground-control/values.yaml` for all configurable values.
+See `examples/deploy/helm/ground-control/values.yaml` for all configurable values.
 
 ## Installing Satellite
 
@@ -215,7 +215,7 @@ Best for development and testing. No SPIFFE infrastructure needed.
 3. Copy the token from the response
 4. Pass it to the satellite binary with `--token`
 
-For a full token-based walkthrough, see [deploy/no-spiffe/quickstart.md](https://github.com/container-registry/harbor-satellite/blob/main/deploy/no-spiffe/quickstart.md).
+For a full token-based walkthrough, see [examples/deploy/no-spiffe/quickstart.md](https://github.com/container-registry/harbor-satellite/blob/main/examples/deploy/no-spiffe/quickstart.md).
 
 ### SPIFFE/SPIRE (Production)
 

@@ -1,9 +1,60 @@
 package crypto
 
 import (
+	"encoding/base64"
+	"fmt"
 	"strings"
 	"testing"
 )
+
+func TestTimingMitigationHash(t *testing.T) {
+	if !strings.HasPrefix(TimingMitigationHash, "$argon2id$") {
+		t.Fatalf("TimingMitigationHash should be a valid argon2id hash, got %q", TimingMitigationHash)
+	}
+
+	parts := strings.Split(TimingMitigationHash, "$")
+	if len(parts) != 6 {
+		t.Fatalf("TimingMitigationHash has %d parts, want 6", len(parts))
+	}
+
+	var version int
+	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil {
+		t.Fatalf("Failed to parse version: %v", err)
+	}
+	if version != 19 {
+		t.Fatalf("Expected version 19, got %d", version)
+	}
+
+	var memory, time uint32
+	var parallelism uint8
+	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &time, &parallelism); err != nil {
+		t.Fatalf("Failed to parse params: %v", err)
+	}
+	if memory != ArgonMemory || time != ArgonTime || parallelism != ArgonParallelism {
+		t.Fatalf("Param mismatch: m=%d t=%d p=%d", memory, time, parallelism)
+	}
+
+	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
+	if err != nil {
+		t.Fatalf("Failed to decode salt base64: %v", err)
+	}
+	if len(salt) != ArgonSaltSize {
+		t.Fatalf("Invalid salt size: %d, expected %d", len(salt), ArgonSaltSize)
+	}
+
+	hash, err := base64.RawStdEncoding.DecodeString(parts[5])
+	if err != nil {
+		t.Fatalf("Failed to decode hash base64: %v", err)
+	}
+	if len(hash) != ArgonKeySize {
+		t.Fatalf("Invalid hash size: %d, expected %d", len(hash), ArgonKeySize)
+	}
+
+	// Any password must run the full argon2 path and return false.
+	if VerifySecret("any-password", TimingMitigationHash) {
+		t.Fatal("TimingMitigationHash should not verify any real password")
+	}
+}
 
 func TestHashSecret(t *testing.T) {
 	tests := []struct {

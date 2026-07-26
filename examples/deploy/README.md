@@ -18,7 +18,7 @@ See [spiffe/](spiffe/) for all options.
 
 Token-based authentication without SPIFFE/SPIRE.
 
-See [no-spiffe quickstart](../no-spiffe/quickstart.md).
+See [no-spiffe quickstart](no-spiffe/quickstart.md).
 
 ## Common Files
 
