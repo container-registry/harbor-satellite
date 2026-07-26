@@ -93,6 +93,11 @@ func GetSatelliteName(ctx context.Context) (string, bool) {
 	return name, ok
 }
 
+// ContextWithSatelliteName returns a new context with the satellite name.
+func ContextWithSatelliteName(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, SatelliteNameKey, name)
+}
+
 // GetRegion retrieves the region from the request context.
 func GetRegion(ctx context.Context) (string, bool) {
 	region, ok := ctx.Value(RegionKey).(string)

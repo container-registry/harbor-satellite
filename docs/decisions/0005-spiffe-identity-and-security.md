@@ -449,4 +449,4 @@ sequenceDiagram
 - `internal/groundcontrol/server/routes.go` - Route structure
 - `internal/groundcontrol/server/spire_handlers.go` - Join token handlers
 - `taskfiles/e2e.yml` - SPIFFE E2E test
-- `deploy/quickstart/spiffe/` - SPIFFE quickstart configs
+- `examples/deploy/spiffe/` - SPIFFE quickstart configs

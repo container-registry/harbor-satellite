@@ -1772,6 +1772,10 @@ paths:
                     description: Status payload or heartbeat interval is invalid.
                     schema:
                         $ref: '#/definitions/AppError'
+                "401":
+                    description: Satellite authentication is missing or invalid.
+                    schema:
+                        $ref: '#/definitions/AppError'
                 "403":
                     description: Satellite identity is unknown or not authorized.
                     schema:
