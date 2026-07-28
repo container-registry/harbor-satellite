@@ -91,7 +91,7 @@ func TestInitConfigManager(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := InitConfigManager(token, ground_control_url, tt.path, "", false, false, crypto.NewAESProvider())
+			_, _, err := InitConfigManager(token, ground_control_url, tt.path, "", false, false, crypto.NewAESProvider(), false)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
@@ -99,6 +99,13 @@ func TestInitConfigManager(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestInitConfigManagerHeadless(t *testing.T) {
+	token := "dummy-token"
+	// Invalid or empty GC URL should be allowed when headless is true
+	_, _, err := InitConfigManager(token, "", "/non/existent/path.json", "", false, false, crypto.NewAESProvider(), true)
+	require.NoError(t, err)
 }
 
 func TestConfigManager_WriteConfig(t *testing.T) {

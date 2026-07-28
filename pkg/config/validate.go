@@ -35,8 +35,10 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		config.AppConfig.GroundControlURL = URL(defaultGroundControlURL)
 	}
 
-	if _, err := url.ParseRequestURI(string(config.AppConfig.GroundControlURL)); err != nil {
-		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url: %w", err)
+	if !config.AppConfig.Headless {
+		if _, err := url.ParseRequestURI(string(config.AppConfig.GroundControlURL)); err != nil {
+			return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url: %w", err)
+		}
 	}
 
 	warnings = append(warnings, validateAndEnforceLogLevel(config)...)

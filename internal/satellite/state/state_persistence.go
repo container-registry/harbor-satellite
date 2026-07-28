@@ -91,3 +91,32 @@ func LoadState(path string) (*PersistedState, error) {
 
 	return &persisted, nil
 }
+
+// ValidateStateFile reads and validates the state file for headless mode.
+func ValidateStateFile(path string) error {
+	persisted, err := LoadState(path)
+	if err != nil {
+		return fmt.Errorf("invalid or corrupted state file: %w", err)
+	}
+	if persisted == nil {
+		return fmt.Errorf("state file not found at %s", path)
+	}
+	for i, g := range persisted.Groups {
+		if g.URL == "" {
+			return fmt.Errorf("group %d has empty URL", i)
+		}
+		for j, e := range g.Entities {
+			if e.Name == "" {
+				return fmt.Errorf("entity %d in group %s has empty name", j, g.URL)
+			}
+			if e.Tag == "" {
+				return fmt.Errorf("entity %d in group %s has empty tag", j, g.URL)
+			}
+			if e.Digest == "" {
+				return fmt.Errorf("entity %d in group %s has empty digest", j, g.URL)
+			}
+		}
+	}
+	return nil
+}
+

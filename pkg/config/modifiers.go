@@ -163,3 +163,4 @@ func ApplyHarborRegistryOverride(sc StateConfig, override string) (StateConfig, 
 
 	return sc, nil
 }
+

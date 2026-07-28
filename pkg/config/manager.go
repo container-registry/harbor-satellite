@@ -176,13 +176,16 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 	return changes, warnings, nil
 }
 
-func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure bool, cryptoProvider crypto.Provider) (*ConfigManager, []string, error) {
+func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure bool, cryptoProvider crypto.Provider, headless bool) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
 
-	if _, err := url.ParseRequestURI(groundControlURL); err != nil {
-		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url env var: %w", err)
+	if !headless {
+		if _, err := url.ParseRequestURI(groundControlURL); err != nil {
+			return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url env var: %w", err)
+		}
 	}
+
 
 	cfg, err = readAndReturnConfig(configPath, cryptoProvider)
 	if errors.Is(err, os.ErrNotExist) {
@@ -190,6 +193,8 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 	} else if err != nil {
 		return nil, nil, fmt.Errorf("failed to read config: %w", err)
 	}
+
+	cfg.AppConfig.Headless = headless
 
 	// Override use_unsecure from CLI/env if set
 	if useUnsecure {

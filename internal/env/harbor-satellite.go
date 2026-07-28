@@ -25,6 +25,7 @@ type HarborSatellite struct {
 	ImageDir               string `env:"IMAGE_DIR"`
 	ParsecEnabled          bool   `env:"PARSEC_ENABLED"            envDefault:"false"`
 	ParsecSocketPath       string `env:"PARSEC_SOCKET"             envDefault:"/run/parsec/parsec.sock"`
+	Headless               bool   `env:"HEADLESS"                  envDefault:"false"`
 }
 
 func (h HarborSatellite) ApplyDefaults() HarborSatellite {

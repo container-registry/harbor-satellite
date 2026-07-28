@@ -204,6 +204,7 @@ type AppConfig struct {
 	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty"`
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
 	Audit                     AuditConfig            `json:"audit,omitempty"`
+	Headless                  bool                   `json:"headless,omitempty"`
 }
 
 type StateConfig struct {

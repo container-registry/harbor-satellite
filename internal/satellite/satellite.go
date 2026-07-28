@@ -31,6 +31,11 @@ func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
 
+	if s.cm.IsHeadless() {
+		log.Info().Msg("Satellite is running in HEADLESS mode (Ground Control communication is disabled)")
+		return nil
+	}
+
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, log)
 	s.stateProcess = fetchAndReplicateStateProcess
 

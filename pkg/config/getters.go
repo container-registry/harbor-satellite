@@ -225,3 +225,11 @@ func (cm *ConfigManager) GetDirectDeliveryConfig() DirectDeliveryConfig {
 
 	return cm.config.AppConfig.DirectDelivery
 }
+
+func (cm *ConfigManager) IsHeadless() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.AppConfig.Headless
+}
+

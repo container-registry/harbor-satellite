@@ -18,6 +18,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/parsec"
 	"github.com/container-registry/harbor-satellite/internal/satellite/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
+	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 
@@ -63,6 +64,7 @@ type SatelliteOptions struct {
 	// PARSEC hardware-backed identity (optional; requires parsec build tag and running daemon)
 	ParsecEnabled    bool
 	ParsecSocketPath string
+	Headless         bool
 }
 
 func main() {
@@ -90,6 +92,7 @@ func main() {
 		ImageDir:               envCfg.ImageDir,
 		ParsecEnabled:          envCfg.ParsecEnabled,
 		ParsecSocketPath:       envCfg.ParsecSocketPath,
+		Headless:               envCfg.Headless,
 	}
 	shutdownTimeout := envCfg.ShutdownTimeout
 
@@ -115,6 +118,7 @@ func main() {
 	flag.StringVar(&opts.ImageDir, "image-dir", opts.ImageDir, "Override image directory for direct delivery (auto-detected if empty)")
 	flag.BoolVar(&opts.ParsecEnabled, "parsec-enabled", opts.ParsecEnabled, "Enable hardware-backed identity via PARSEC (requires parsec build tag and running PARSEC daemon)")
 	flag.StringVar(&opts.ParsecSocketPath, "parsec-socket", opts.ParsecSocketPath, "PARSEC daemon socket path")
+	flag.BoolVar(&opts.Headless, "headless", opts.Headless, "Run satellite in headless mode (without ground control)")
 
 	flag.Parse()
 	if opts.Token == "" {
@@ -151,8 +155,8 @@ func main() {
 		pathConfig.ZotStorageDir = opts.RegistryDataDir
 	}
 
-	// For --fallback-only mode, relax token/gc-url requirements
-	if !opts.FallbackOnly {
+	// For --fallback-only and --headless modes, relax token/gc-url/harbor-registry-url requirements
+	if !opts.FallbackOnly && !opts.Headless {
 		if !opts.SPIFFEEnabled && (opts.Token == "" || opts.GroundControlURL == "") {
 			fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars (or enable SPIFFE with --spiffe-enabled).")
 			os.Exit(1)
@@ -287,10 +291,17 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		cryptoProvider = crypto.NewAESProvider()
 	}
 
-	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure, cryptoProvider)
+	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure, cryptoProvider, opts.Headless)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v\n", err)
 		return err
+	}
+
+	if opts.Headless {
+		if err := state.ValidateStateFile(pathConfig.StateFile); err != nil {
+			fmt.Printf("Error validating local state file on startup: %v\n", err)
+			return err
+		}
 	}
 
 	// Apply SPIFFE config from CLI flags

@@ -101,3 +101,72 @@ func TestSaveEmptyState(t *testing.T) {
 		t.Errorf("state file should exist: %v", err)
 	}
 }
+
+func TestValidateStateFile_ErrorCases(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+
+	// 1. Missing file
+	err := ValidateStateFile(path)
+	if err == nil {
+		t.Fatal("expected error for missing state file")
+	}
+
+	// 2. Corrupted JSON
+	if err := os.WriteFile(path, []byte("invalid-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err = ValidateStateFile(path)
+	if err == nil {
+		t.Fatal("expected error for invalid json state file")
+	}
+
+	// 3. Invalid entity (missing digest)
+	stateMapInvalid := []StateMap{
+		{
+			url: "http://registry.example.com/group1",
+			Entities: []Entity{
+				{Name: "alpine", Repository: "library", Tag: "latest", Digest: ""},
+			},
+		},
+	}
+	if err := SaveState(path, stateMapInvalid, "sha256:config123"); err != nil {
+		t.Fatal(err)
+	}
+	err = ValidateStateFile(path)
+	if err == nil {
+		t.Fatal("expected error for entity with missing digest")
+	}
+}
+
+func TestValidateStateFile_ValidCases(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+
+	// 1. Valid empty state file
+	if err := SaveState(path, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	err := ValidateStateFile(path)
+	if err != nil {
+		t.Fatalf("expected no error for empty state, got %v", err)
+	}
+
+	// 2. Valid state file with groups and entities
+	stateMap := []StateMap{
+		{
+			url: "http://registry.example.com/group1",
+			Entities: []Entity{
+				{Name: "alpine", Repository: "library", Tag: "latest", Digest: "sha256:abc123"},
+			},
+		},
+	}
+	if err := SaveState(path, stateMap, "sha256:config123"); err != nil {
+		t.Fatal(err)
+	}
+	err = ValidateStateFile(path)
+	if err != nil {
+		t.Fatalf("expected no error for valid state, got %v", err)
+	}
+}
+
