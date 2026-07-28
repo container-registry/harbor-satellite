@@ -18,6 +18,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/parsec"
 	"github.com/container-registry/harbor-satellite/internal/satellite/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
+	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 
@@ -66,6 +67,118 @@ type SatelliteOptions struct {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "bootstrap" {
+		bootstrapCmd := flag.NewFlagSet("bootstrap", flag.ExitOnError)
+		var artifactPath string
+		var configDir string
+		var useUnsecure bool
+		var jsonLogging bool
+		var byoRegistry bool
+		var registryURL string
+		var registryUsername string
+		var registryPassword string
+
+		bootstrapCmd.StringVar(&artifactPath, "artifact", "", "Path to OCI layout directory or tar archive file")
+		bootstrapCmd.StringVar(&configDir, "config-dir", "", "Configuration directory path (default: ~/.config/satellite)")
+		bootstrapCmd.BoolVar(&useUnsecure, "use-unsecure", false, "Use insecure (HTTP) connections to registries")
+		bootstrapCmd.BoolVar(&jsonLogging, "json-logging", true, "Enable JSON logging")
+		bootstrapCmd.BoolVar(&byoRegistry, "byo-registry", false, "Use external registry instead of embedded Zot")
+		bootstrapCmd.StringVar(&registryURL, "registry-url", "", "External registry URL")
+		bootstrapCmd.StringVar(&registryUsername, "registry-username", "", "External registry username")
+		bootstrapCmd.StringVar(&registryPassword, "registry-password", "", "External registry password")
+
+		_ = bootstrapCmd.Parse(os.Args[2:])
+
+		if artifactPath == "" {
+			fmt.Println("Missing required argument: --artifact")
+			os.Exit(1)
+		}
+
+		// Resolve config directory path
+		if configDir == "" {
+			var err error
+			configDir, err = config.DefaultConfigDir()
+			if err != nil {
+				fmt.Printf("Error resolving default config directory: %v\n", err)
+				os.Exit(1)
+			}
+		}
+
+		pathConfig, err := config.ResolvePathConfig(configDir)
+		if err != nil {
+			fmt.Printf("Error resolving config paths: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Set up dummy crypto provider
+		cryptoProvider := crypto.NewAESProvider()
+
+		// Read configuration, allow missing file because we are bootstrapping
+		cm, _, err := config.InitConfigManager("", "http://localhost:8080", pathConfig.ConfigFile, pathConfig.PrevConfigFile, jsonLogging, useUnsecure, cryptoProvider)
+		if err != nil {
+			fmt.Printf("Error initiating config manager: %v\n", err)
+			os.Exit(1)
+		}
+
+		if byoRegistry {
+			cm.With(
+				config.SetBringOwnRegistry(true),
+				config.SetLocalRegistryURL(registryURL),
+				config.SetLocalRegistryUsername(registryUsername),
+				config.SetLocalRegistryPassword(registryPassword),
+			)
+		} else {
+			// Update Zot config with storage path
+			zotConfigJSON, err := config.BuildZotConfigWithStoragePath(pathConfig.ZotStorageDir)
+			if err != nil {
+				fmt.Printf("Error building Zot config: %v\n", err)
+				os.Exit(1)
+			}
+			cm.With(config.SetZotConfigRaw(json.RawMessage(zotConfigJSON)))
+		}
+
+		// Start background context
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), jsonLogging, nil)
+
+		// Start Zot if using embedded registry
+		if !cm.GetOwnRegistry() {
+			log.Info().Msg("Launching embedded Zot registry for bootstrap")
+			zm := registry.NewZotManager(log.With().Str("component", "zot manager").Logger(), cm.GetRawZotConfig(), pathConfig.ZotTempConfig)
+			if err := zm.HandleRegistrySetup(ctx); err != nil {
+				log.Fatal().Err(err).Msg("Failed to start embedded registry")
+			}
+		}
+
+		// Resolve local registry endpoint for pushing
+		localRegistryEndpoint, err := resolveLocalRegistryEndpoint(cm)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to resolve local registry endpoint")
+		}
+
+		regCreds := cm.GetRemoteRegistryCredentials()
+
+		bootstrapOpts := state.BootstrapOptions{
+			ArtifactPath:     artifactPath,
+			ConfigDir:        configDir,
+			StateFilePath:    pathConfig.StateFile,
+			RegistryURL:      localRegistryEndpoint,
+			RegistryUsername: regCreds.Username,
+			RegistryPassword: regCreds.Password,
+			UseUnsecure:      useUnsecure || cm.UseUnsecure(),
+		}
+
+		err = state.BootstrapSatellite(ctx, bootstrapOpts)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Bootstrap failed")
+		}
+
+		log.Info().Msg("Bootstrap completed successfully. Shutting down registry.")
+		return
+	}
+
 	_ = godotenv.Load(".env") //nolint:errcheck // .env file is optional
 
 	if err := env.LoadSatellite(); err != nil {
