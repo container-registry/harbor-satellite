@@ -16,8 +16,16 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"github.com/google/go-containerregistry/pkg/v1/types"
 )
+
+// maxConsecutiveBatchFailures bounds how many registry-wide errors (auth,
+// rate-limiting, connectivity) in a row we tolerate before giving up on the
+// rest of the batch. Once the registry is down or throttling us, every
+// remaining entity would fail the same way, so there's no point burning
+// through the whole list one doomed attempt at a time.
+const maxConsecutiveBatchFailures = 3
 
 type Replicator interface {
 	// Replicate copies images from the source registry to the local registry.
@@ -109,8 +117,9 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 
 	var failed []Entity
 	var errs []error
+	consecutiveBatchFailures := 0
 
-	for _, entity := range replicationEntities {
+	for i, entity := range replicationEntities {
 		select {
 		case <-ctx.Done():
 			log.Warn().Err(ctx.Err()).Msg("Context cancelled, stopping replication")
@@ -122,12 +131,47 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 			log.Error().Err(err).Msgf("Failed to replicate %s, continuing with remaining images", entity.GetName())
 			failed = append(failed, entity)
 			errs = append(errs, fmt.Errorf("%s: %w", entity.GetName(), err))
+
+			if isBatchLevelError(err) {
+				consecutiveBatchFailures++
+				if consecutiveBatchFailures >= maxConsecutiveBatchFailures {
+					remaining := replicationEntities[i+1:]
+					log.Error().Msgf("Aborting replication after %d consecutive registry-level failures, skipping %d remaining images", consecutiveBatchFailures, len(remaining))
+					for _, e := range remaining {
+						failed = append(failed, e)
+						errs = append(errs, fmt.Errorf("%s: skipped after repeated registry-level failures", e.GetName()))
+					}
+					break
+				}
+			} else {
+				consecutiveBatchFailures = 0
+			}
 			continue
 		}
+		consecutiveBatchFailures = 0
 		log.Info().Msgf("Image %s replicated successfully", entity.GetName())
 	}
 
 	return failed, errors.Join(errs...)
+}
+
+// isBatchLevelError reports whether err looks like a registry-wide failure
+// (unauthorized, forbidden, rate-limited, or a server error) rather than an
+// issue specific to a single image. These are the cases where retrying the
+// next image is very likely to fail the same way.
+func isBatchLevelError(err error) bool {
+	var terr *transport.Error
+	if !errors.As(err, &terr) {
+		return false
+	}
+	switch terr.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests,
+		http.StatusInternalServerError, http.StatusBadGateway,
+		http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
 }
 
 // replicateOne copies a single image from source to destination.

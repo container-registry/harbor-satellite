@@ -2,17 +2,18 @@ package state
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/registry"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/types"
-	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -212,6 +213,43 @@ func TestReplicate_ContinuesAfterOneFailure(t *testing.T) {
 	require.NoError(t, parseErr)
 	_, headErr := remote.Head(img2Ref)
 	require.Error(t, headErr, "failed image must not exist at destination")
+}
+
+// TestReplicate_AbortsAfterConsecutiveBatchFailures verifies that once the
+// source registry starts failing every request with a registry-wide error
+// (here, 503s), replication gives up on the batch instead of retrying the
+// same failure for every remaining image.
+func TestReplicate_AbortsAfterConsecutiveBatchFailures(t *testing.T) {
+	var requestCount int
+	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(src.Close)
+	srcAddr := strings.TrimPrefix(src.URL, "http://")
+
+	_, dstAddr := newTestRegistry(t)
+
+	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
+	ctx := testContext()
+
+	entities := []Entity{
+		{Name: "img1", Repository: "library", Tag: "v1"},
+		{Name: "img2", Repository: "library", Tag: "v1"},
+		{Name: "img3", Repository: "library", Tag: "v1"},
+		{Name: "img4", Repository: "library", Tag: "v1"},
+		{Name: "img5", Repository: "library", Tag: "v1"},
+	}
+
+	failed, err := r.Replicate(ctx, entities)
+
+	require.Error(t, err)
+	require.Len(t, failed, len(entities), "every entity should be marked failed once the batch is aborted")
+
+	// Only the first maxConsecutiveBatchFailures entities should have actually
+	// hit the source; the rest are skipped without another request.
+	require.LessOrEqual(t, requestCount, maxConsecutiveBatchFailures,
+		"should stop calling the source once the consecutive-failure threshold is hit")
 }
 
 func TestCountMissingLayers_AllMissing(t *testing.T) {
