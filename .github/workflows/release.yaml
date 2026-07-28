@@ -70,7 +70,7 @@ jobs:
         if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          go-version: "1.26.2"
+          go-version: "1.26.5"
 
       - name: Install Task
         if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
