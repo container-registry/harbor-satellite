@@ -35,12 +35,12 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 		case "/login", "/satellites/ztr":
 			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
 		case "/satellites/spiffe-ztr":
-			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
 			handler = spiffe.RequireSPIFFEAuth(handler)
-		case "/satellites/sync":
 			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
+		case "/satellites/sync":
 			handler = spiffe.AuthMiddleware(handler)
 			handler = s.SatelliteAuthMiddleware(handler)
+			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
 		}
 
 		if strings.HasPrefix(cleanPath, "/api/") {
