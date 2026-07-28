@@ -88,12 +88,10 @@ func (s *Scheduler) run(ctx context.Context) {
 		return
 	case <-jitterTimer.C:
 	}
-	// Drain any tick that fired during the jitter window so the first
-	// scheduled interval begins cleanly after the initial execution.
-	select {
-	case <-s.ticker.C:
-	default:
-	}
+	// Re-anchor the ticker's phase to now, after the jitter delay, so the
+	// fleet stays spread out on every subsequent tick instead of
+	// re-synchronizing on the next interval boundary.
+	s.ticker.Reset(s.interval)
 
 	s.launchProcess(ctx)
 
