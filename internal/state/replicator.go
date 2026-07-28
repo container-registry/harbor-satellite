@@ -18,6 +18,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/remote/transport"
 	"github.com/google/go-containerregistry/pkg/v1/types"
+	"github.com/rs/zerolog"
 )
 
 // maxConsecutiveBatchFailures bounds how many registry-wide errors (auth,
@@ -129,22 +130,12 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 
 		if err := r.replicateOne(ctx, entity, nameOpts, pullOpts, pushOpts); err != nil {
 			log.Error().Err(err).Msgf("Failed to replicate %s, continuing with remaining images", entity.GetName())
-			failed = append(failed, entity)
-			errs = append(errs, fmt.Errorf("%s: %w", entity.GetName(), err))
-
-			if isBatchLevelError(err) {
-				consecutiveBatchFailures++
-				if consecutiveBatchFailures >= maxConsecutiveBatchFailures {
-					remaining := replicationEntities[i+1:]
-					log.Error().Msgf("Aborting replication after %d consecutive registry-level failures, skipping %d remaining images", consecutiveBatchFailures, len(remaining))
-					for _, e := range remaining {
-						failed = append(failed, e)
-						errs = append(errs, fmt.Errorf("%s: skipped after repeated registry-level failures", e.GetName()))
-					}
-					break
-				}
-			} else {
-				consecutiveBatchFailures = 0
+			var aborted bool
+			failed, errs, consecutiveBatchFailures, aborted = recordReplicationFailure(
+				log, replicationEntities, i, entity, err, failed, errs, consecutiveBatchFailures,
+			)
+			if aborted {
+				break
 			}
 			continue
 		}
@@ -153,6 +144,42 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 	}
 
 	return failed, errors.Join(errs...)
+}
+
+// recordReplicationFailure appends entity's failure to failed/errs and
+// updates the consecutive-batch-failure count. Once that count hits
+// maxConsecutiveBatchFailures, it also marks every entity after index i as
+// failed and reports that Replicate should stop, since a registry-wide
+// error means the rest of the batch is doomed to the same outcome.
+func recordReplicationFailure(
+	log *zerolog.Logger,
+	entities []Entity,
+	i int,
+	entity Entity,
+	err error,
+	failed []Entity,
+	errs []error,
+	consecutiveBatchFailures int,
+) ([]Entity, []error, int, bool) {
+	failed = append(failed, entity)
+	errs = append(errs, fmt.Errorf("%s: %w", entity.GetName(), err))
+
+	if !isBatchLevelError(err) {
+		return failed, errs, 0, false
+	}
+
+	consecutiveBatchFailures++
+	if consecutiveBatchFailures < maxConsecutiveBatchFailures {
+		return failed, errs, consecutiveBatchFailures, false
+	}
+
+	remaining := entities[i+1:]
+	log.Error().Msgf("Aborting replication after %d consecutive registry-level failures, skipping %d remaining images", consecutiveBatchFailures, len(remaining))
+	for _, e := range remaining {
+		failed = append(failed, e)
+		errs = append(errs, fmt.Errorf("%s: skipped after repeated registry-level failures", e.GetName()))
+	}
+	return failed, errs, consecutiveBatchFailures, true
 }
 
 // isBatchLevelError reports whether err looks like a registry-wide failure
