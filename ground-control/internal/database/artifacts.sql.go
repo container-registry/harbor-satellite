@@ -41,6 +41,40 @@ func (q *Queries) DeleteOrphanedArtifacts(ctx context.Context, retentionDays int
 	return err
 }
 
+const getArtifactsByIDs = `-- name: GetArtifactsByIDs :many
+SELECT id, reference, size_bytes, created_at FROM artifacts
+WHERE id = ANY($1::INT4[])
+ORDER BY reference
+`
+
+func (q *Queries) GetArtifactsByIDs(ctx context.Context, ids []int32) ([]Artifact, error) {
+	rows, err := q.db.QueryContext(ctx, getArtifactsByIDs, pq.Array(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Artifact
+	for rows.Next() {
+		var i Artifact
+		if err := rows.Scan(
+			&i.ID,
+			&i.Reference,
+			&i.SizeBytes,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getArtifactIDsByReferences = `-- name: GetArtifactIDsByReferences :many
 SELECT id, reference, size_bytes, created_at FROM artifacts
 WHERE reference = ANY($1::TEXT[])

@@ -170,7 +170,7 @@ func TestGetSatelliteStatusHandler(t *testing.T) {
 			AddRow(2, "localhost:8585/library/alpine:3.18@sha256:def", int64(5000), now).
 			AddRow(1, "localhost:8585/library/nginx:latest@sha256:abc", int64(50000), now)
 		mock.ExpectQuery("SELECT .+ FROM artifacts").
-			WithArgs(int32(1)).
+			WithArgs(pq.Array([]int32{1, 2, 3})).
 			WillReturnRows(artifactRows)
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/edge-01/status", nil)
@@ -214,6 +214,86 @@ func TestGetSatelliteStatusHandler(t *testing.T) {
 		server.getSatelliteStatusHandler(rr, req)
 
 		require.Equal(t, http.StatusNotFound, rr.Code)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("zero image count and empty artifact ids omit cached images", func(t *testing.T) {
+		server, mock := newMockServer(t)
+		now := time.Now().UTC().Truncate(time.Second)
+
+		satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
+			AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+		mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
+			WithArgs("edge-01").
+			WillReturnRows(satRows)
+
+		statusRows := sqlmock.NewRows([]string{
+			"id", "satellite_id", "activity", "latest_state_digest", "latest_config_digest",
+			"cpu_percent", "memory_used_bytes", "storage_used_bytes", "last_sync_duration_ms",
+			"image_count", "reported_at", "created_at", "artifact_ids",
+		}).AddRow(
+			1, 1, "syncing", sql.NullString{}, sql.NullString{},
+			sql.NullString{}, sql.NullInt64{},
+			sql.NullInt64{}, sql.NullInt64{},
+			sql.NullInt32{Int32: 0, Valid: true}, now, now, pq.Array([]int32{}),
+		)
+		mock.ExpectQuery("SELECT .+ FROM satellite_status").
+			WithArgs(int32(1)).
+			WillReturnRows(statusRows)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites/edge-01/status", nil)
+		req = mux.SetURLVars(req, map[string]string{"satellite": "edge-01"})
+
+		rr := httptest.NewRecorder()
+		server.getSatelliteStatusHandler(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		require.NotContains(t, rr.Body.String(), "cached_images")
+		require.NotContains(t, rr.Body.String(), "image_count")
+
+		var response SatelliteStatusResponse
+		require.NoError(t, json.NewDecoder(rr.Body).Decode(&response))
+		require.Equal(t, int32(0), response.ImageCount)
+		require.Empty(t, response.CachedImages)
+		// No artifacts query should run since artifact_ids is empty.
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("artifacts lookup error returns 500", func(t *testing.T) {
+		server, mock := newMockServer(t)
+		now := time.Now().UTC().Truncate(time.Second)
+
+		satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
+			AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+		mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
+			WithArgs("edge-01").
+			WillReturnRows(satRows)
+
+		statusRows := sqlmock.NewRows([]string{
+			"id", "satellite_id", "activity", "latest_state_digest", "latest_config_digest",
+			"cpu_percent", "memory_used_bytes", "storage_used_bytes", "last_sync_duration_ms",
+			"image_count", "reported_at", "created_at", "artifact_ids",
+		}).AddRow(
+			1, 1, "syncing", sql.NullString{}, sql.NullString{},
+			sql.NullString{}, sql.NullInt64{},
+			sql.NullInt64{}, sql.NullInt64{},
+			sql.NullInt32{Int32: 3, Valid: true}, now, now, pq.Array([]int32{1, 2, 3}),
+		)
+		mock.ExpectQuery("SELECT .+ FROM satellite_status").
+			WithArgs(int32(1)).
+			WillReturnRows(statusRows)
+
+		mock.ExpectQuery("SELECT .+ FROM artifacts").
+			WithArgs(pq.Array([]int32{1, 2, 3})).
+			WillReturnError(fmt.Errorf("db error"))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/satellites/edge-01/status", nil)
+		req = mux.SetURLVars(req, map[string]string{"satellite": "edge-01"})
+
+		rr := httptest.NewRecorder()
+		server.getSatelliteStatusHandler(rr, req)
+
+		require.Equal(t, http.StatusInternalServerError, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 

@@ -689,9 +689,9 @@ func (s *Server) getSatelliteStatusHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	resp := satelliteStatusResponse(status, nil)
+	resp := satelliteStatusResponse(status)
 	if len(status.ArtifactIds) > 0 {
-		artifacts, err := s.dbQueries.GetLatestArtifacts(r.Context(), sat.ID)
+		artifacts, err := s.dbQueries.GetArtifactsByIDs(r.Context(), status.ArtifactIds)
 		if err != nil {
 			log.Printf("Failed to get cached images for status: %v", err)
 			HandleAppError(w, &AppError{Message: "failed to get cached images", Code: http.StatusInternalServerError})
@@ -703,7 +703,7 @@ func (s *Server) getSatelliteStatusHandler(w http.ResponseWriter, r *http.Reques
 	WriteJSONResponse(w, http.StatusOK, resp)
 }
 
-func satelliteStatusResponse(status database.SatelliteStatus, cachedImages []CachedImage) SatelliteStatusResponse {
+func satelliteStatusResponse(status database.SatelliteStatus) SatelliteStatusResponse {
 	return SatelliteStatusResponse{
 		ID:                 status.ID,
 		SatelliteID:        status.SatelliteID,
@@ -715,7 +715,6 @@ func satelliteStatusResponse(status database.SatelliteStatus, cachedImages []Cac
 		StorageUsedBytes:   nullInt64Value(status.StorageUsedBytes),
 		LastSyncDurationMs: nullInt64Value(status.LastSyncDurationMs),
 		ImageCount:         nullInt32Value(status.ImageCount),
-		CachedImages:       cachedImages,
 		ReportedAt:         status.ReportedAt,
 		CreatedAt:          status.CreatedAt,
 	}

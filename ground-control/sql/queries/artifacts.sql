@@ -7,6 +7,11 @@ ON CONFLICT (reference) DO NOTHING;
 SELECT id, reference, size_bytes, created_at FROM artifacts
 WHERE reference = ANY(@refs::TEXT[]);
 
+-- name: GetArtifactsByIDs :many
+SELECT id, reference, size_bytes, created_at FROM artifacts
+WHERE id = ANY(@ids::INT4[])
+ORDER BY reference;
+
 -- name: DeleteOrphanedArtifacts :exec
 DELETE FROM artifacts
 WHERE id NOT IN (
