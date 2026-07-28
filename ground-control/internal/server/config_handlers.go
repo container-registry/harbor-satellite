@@ -16,7 +16,6 @@ import (
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/gorilla/mux"
 	"github.com/lib/pq"
-	"github.com/rs/zerolog"
 )
 
 type SatelliteConfigParams struct {
@@ -253,7 +252,7 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListConfigs(r.Context())
 	if err != nil {
-		zerolog.Ctx(r.Context()).Error().Err(err).Msg("could not list configs")
+		log.Println("could not list configs: ", err)
 		HandleAppError(w, err)
 		return
 	}
@@ -267,7 +266,7 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.dbQueries.GetConfigByName(r.Context(), configName)
 	if err != nil {
-		zerolog.Ctx(r.Context()).Error().Err(err).Str("config", configName).Msg("could not get config")
+		log.Printf("could not get config %q: %v", configName, err)
 		HandleAppError(w, &AppError{
 			Message: fmt.Sprintf("Config not found: %v", err),
 			Code:    http.StatusNotFound,
