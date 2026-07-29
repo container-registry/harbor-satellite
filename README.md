@@ -271,7 +271,7 @@ task build
 **3. Run the Edge Satellite locally:**
 Once the stack is healthy, you can run the Satellite binary locally and point it to your Docker-based Ground Control instance:
 ```bash
-USE_UNSECURE=true ./bin/satellite --token "dummy-token" --ground-control-url "http://127.0.0.1:8080" --harbor-registry-url "http://127.0.0.1:8180"
+USE_UNSECURE=true ./bin/satellite --token "dummy-token" --ground-control-url "http://127.0.0.1:9080" --harbor-registry-url "http://127.0.0.1:8080"
 ```
 
 **4. Teardown and Cleanup:**
