@@ -120,6 +120,25 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 			},
 		},
 		{
+			name: "zero and negative schedule values",
+			config: &Config{
+				AppConfig: AppConfig{
+					GroundControlURL:          URL("https://example.com"),
+					StateReplicationInterval:  "@every 0s",
+					RegisterSatelliteInterval: "@every -1m",
+				},
+				ZotConfigRaw: []byte(DefaultZotConfigJSON),
+			},
+			expectError:    false,
+			expectWarnings: true,
+			expectedConfig: &Config{
+				AppConfig: AppConfig{
+					StateReplicationInterval:  DefaultFetchAndReplicateCronExpr,
+					RegisterSatelliteInterval: DefaultZTRCronExpr,
+				},
+			},
+		},
+		{
 			name: "bring own registry missing URL",
 			config: &Config{
 				AppConfig: AppConfig{

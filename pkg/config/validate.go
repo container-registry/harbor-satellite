@@ -203,14 +203,13 @@ func enforceAuditRotation(f *SyslogAuditFile) []string {
 	return warnings
 }
 
-// isValidScheduleExpression checks the validity of a schedule expression.
 func isValidScheduleExpression(expr string) bool {
 	const prefix = "@every "
 	if !strings.HasPrefix(expr, prefix) {
 		return false
 	}
-	_, err := time.ParseDuration(strings.TrimPrefix(expr, prefix))
-	return err == nil
+	duration, err := time.ParseDuration(strings.TrimPrefix(expr, prefix))
+	return err == nil && duration > 0
 }
 
 // validateAndEnforceLogLevel validates log level and defaults to info if invalid.
