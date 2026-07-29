@@ -12,6 +12,10 @@ This guide walks you through deploying Harbor Satellite end-to-end with SPIFFE/S
 
 Everything runs locally with Docker Compose. No need to clone the repository.
 
+> [!TIP]
+> **Looking to contribute to Harbor Satellite?** 
+> If you are a developer wanting to quickly spin up a local testing environment, we recommend our "Golden Path" using the `Taskfile`. You can spin up the entire development stack (including the required `harbor-next` instance) simply by running `task _e2e:setup` and tearing it down with `task _e2e:cleanup`. See the [README](https://github.com/container-registry/harbor-satellite/blob/main/README.md#local-development-the-golden-path) for the full developer guide.
+
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) (v2+)

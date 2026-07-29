@@ -252,6 +252,34 @@ In each of these use cases, we need to ensure that IoT edge devices needing to r
 
 The project is currently in active development. If you are interested in participating or using the product, [reach out](https://container-registry.com/contact/).
 
+### Local Development (The Golden Path)
+
+For contributors, the easiest way to spin up a complete local testing environment is by using our automated [Task](https://taskfile.dev/) scripts. This will automatically deploy the required [harbor-next](https://github.com/container-registry/harbor-next/tree/satellite) registry, PostgreSQL database, and Ground Control server in a local Docker network.
+
+**1. Set up the local Docker stack:**
+```bash
+task _e2e:setup
+```
+*(Note: This may take a few minutes the first time as it pulls and builds the required Docker images, including the pre-configured harbor-next core.)*
+
+**2. Compile the binaries:**
+```bash
+task build
+```
+*This builds both the Satellite and Ground Control binaries into the `bin/` directory for your current platform.*
+
+**3. Run the Edge Satellite locally:**
+Once the stack is healthy, you can run the Satellite binary locally and point it to your Docker-based Ground Control instance:
+```bash
+USE_UNSECURE=true ./bin/satellite --token "dummy-token" --ground-control-url "http://127.0.0.1:8080" --harbor-registry-url "http://127.0.0.1:8180"
+```
+
+**4. Teardown and Cleanup:**
+When you are done testing, you can cleanly stop and remove all containers and volumes:
+```bash
+task _e2e:cleanup
+```
+
 ## Website
 
 The project website lives in `website/` and is built with [Hugo](https://gohugo.io).
