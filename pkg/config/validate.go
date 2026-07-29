@@ -7,9 +7,9 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/registry"
-	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )
 
@@ -203,13 +203,14 @@ func enforceAuditRotation(f *SyslogAuditFile) []string {
 	return warnings
 }
 
-// isValidCronExpression checks the validity of a cron expression.
-func isValidCronExpression(cronExpression string) bool {
-	if _, err := cron.ParseStandard(cronExpression); err != nil {
+// isValidScheduleExpression checks the validity of a schedule expression.
+func isValidScheduleExpression(expr string) bool {
+	const prefix = "@every "
+	if !strings.HasPrefix(expr, prefix) {
 		return false
 	}
-
-	return true
+	_, err := time.ParseDuration(strings.TrimPrefix(expr, prefix))
+	return err == nil
 }
 
 // validateAndEnforceLogLevel validates log level and defaults to info if invalid.
@@ -256,17 +257,17 @@ func validateBringOwnRegistry(config *Config) ([]string, error) {
 func validateAndEnforceCronSchedules(config *Config) []string {
 	var warnings []string
 
-	if !isValidCronExpression(config.AppConfig.StateReplicationInterval) {
+	if !isValidScheduleExpression(config.AppConfig.StateReplicationInterval) {
 		config.AppConfig.StateReplicationInterval = DefaultFetchAndReplicateCronExpr
 		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for state_replication_interval, using default schedule %s", DefaultFetchAndReplicateCronExpr))
 	}
 
-	if !isValidCronExpression(config.AppConfig.RegisterSatelliteInterval) {
+	if !isValidScheduleExpression(config.AppConfig.RegisterSatelliteInterval) {
 		config.AppConfig.RegisterSatelliteInterval = DefaultZTRCronExpr
 		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for register_satellite_interval, using default schedule %s", DefaultZTRCronExpr))
 	}
 
-	if !isValidCronExpression(config.AppConfig.HeartbeatInterval) {
+	if !isValidScheduleExpression(config.AppConfig.HeartbeatInterval) {
 		config.AppConfig.HeartbeatInterval = DefaultHeartbeatCronExpr
 		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for heartbeat_interval, using default schedule %s", DefaultHeartbeatCronExpr))
 	}
