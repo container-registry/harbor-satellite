@@ -240,7 +240,7 @@ func (f *FetchAndReplicateStateProcess) Name() string {
 
 // The state fetch process is prepetual, the only criteria for completion is
 // if the statellite is shut down.
-func (f *FetchAndReplicateStateProcess) IsComplete() bool {
+func (f *FetchAndReplicateStateProcess) ShouldStop() bool {
 	return false
 }
 

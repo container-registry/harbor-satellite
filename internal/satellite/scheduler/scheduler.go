@@ -8,8 +8,26 @@ import (
 	"sync"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 )
+
+// RunResult records the outcome of a single execution of a scheduled process.
+type RunResult struct {
+	StartedAt  time.Time
+	FinishedAt time.Time
+	Err        error
+}
+
+// Duration returns how long the run took.
+func (r RunResult) Duration() time.Duration {
+	return r.FinishedAt.Sub(r.StartedAt)
+}
+
+// Success reports whether the run completed without error.
+func (r RunResult) Success() bool {
+	return r.Err == nil
+}
 
 // Scheduler manages the execution of processes with configurable intervals.
 type Scheduler struct {
@@ -20,6 +38,7 @@ type Scheduler struct {
 	interval time.Duration
 	mu       sync.Mutex
 	wg       sync.WaitGroup
+	history   []RunResult
 }
 
 // NewSchedulerWithInterval creates a new scheduler with a parsed interval string.
@@ -71,7 +90,7 @@ func (s *Scheduler) run(ctx context.Context) {
 			return
 
 		case <-s.ticker.C:
-			if s.process.IsComplete() {
+			if s.process.ShouldStop() {
 				s.log.Info().
 					Str("Process", s.process.Name()).
 					Msg("Process marked as complete. Stopping scheduling.")
@@ -149,18 +168,62 @@ func (s *Scheduler) launchProcess(ctx context.Context) {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-			if err := s.process.Execute(ctx); err != nil {
-				s.log.Warn().
-					Str("Process", s.process.Name()).
-					Err(err).
-					Msg("Error occurred while executing process.")
+
+			result := RunResult{StartedAt: time.Now()}
+			result.Err = s.process.Execute(ctx)
+			result.FinishedAt = time.Now()
+			s.recordRun(result)
+
+			logEvent := s.log.Info()
+			if result.Err != nil {
+            	logEvent = s.log.Warn()
 			}
+			logEvent.
+            	Str("Process", s.process.Name()).
+             	Dur("duration", result.Duration()).
+              	Bool("success", result.Success()).
+               	AnErr("error", result.Err).
+                Msg("Process run completed")
 		}()
 	} else {
 		s.log.Debug().
 			Str("Process", s.process.Name()).
 			Msg("Process already executing")
 	}
+}
+
+// recordRun appends a run result, discarding the oldest entry once
+// maxRunHistory is exceeded.
+func (s *Scheduler) recordRun(result RunResult) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.history = append(s.history, result)
+	if len(s.history) > config.MaxRunHistory {
+		s.history = s.history[len(s.history)-config.MaxRunHistory:]
+	}
+}
+
+// History returns a copy of the retained run results, oldest first.
+func (s *Scheduler) History() []RunResult {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := make([]RunResult, len(s.history))
+	copy(out, s.history)
+	return out
+}
+
+// LastRun returns the most recent run result and true, or a zero value
+// and false if the process has not executed yet.
+func (s *Scheduler) LastRun() (RunResult, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.history) == 0 {
+		return RunResult{}, false
+	}
+	return s.history[len(s.history)-1], true
 }
 
 func parseEveryExpr(expr string) (time.Duration, error) {

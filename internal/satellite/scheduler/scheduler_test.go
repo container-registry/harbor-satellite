@@ -2,11 +2,13 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +26,7 @@ type mockProcess struct {
 
 func (m *mockProcess) Name() string     { return m.name }
 func (m *mockProcess) IsRunning() bool  { return m.running.Load() }
-func (m *mockProcess) IsComplete() bool { return m.complete.Load() }
+func (m *mockProcess) ShouldStop() bool { return m.complete.Load() }
 
 func (m *mockProcess) Execute(ctx context.Context) error {
 	m.running.Store(true)
@@ -174,6 +176,81 @@ func TestContextCancellation_StopsScheduler(t *testing.T) {
 	// After stop, no more executions should occur
 	time.Sleep(150 * time.Millisecond)
 	require.Equal(t, countAtStop, proc.execCount.Load(), "no executions after stop")
+}
+
+func TestHistory_RecordsSuccessAndFailure(t *testing.T) {
+	callNum := atomic.Int32{}
+	testErr := errors.New("boom")
+
+	proc := &mockProcess{
+		name: "flaky-task",
+		execFn: func(_ context.Context) error {
+			if callNum.Add(1) == 2 {
+				return testErr
+			}
+			return nil
+		},
+	}
+
+	sched, err := NewSchedulerWithInterval("@every 30ms", proc, nopLogger())
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	sched.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return len(sched.History()) >= 3
+	}, 2*time.Second, 10*time.Millisecond)
+
+	cancel()
+	require.NoError(t, sched.Stop(context.Background()))
+
+	history := sched.History()
+	require.GreaterOrEqual(t, len(history), 3)
+
+	for _, run := range history {
+		require.False(t, run.StartedAt.IsZero())
+		require.False(t, run.FinishedAt.IsZero())
+		require.False(t, run.FinishedAt.Before(run.StartedAt))
+	}
+
+	// The second recorded run should be the failure.
+	require.Error(t, history[1].Err)
+	require.False(t, history[1].Success())
+	require.True(t, history[0].Success())
+
+	last, ok := sched.LastRun()
+	require.True(t, ok)
+	require.Equal(t, history[len(history)-1], last)
+}
+
+func TestLastRun_NoRunsYet(t *testing.T) {
+	proc := &mockProcess{name: "never-started"}
+
+	sched, err := NewSchedulerWithInterval("@every 1h", proc, nopLogger())
+	require.NoError(t, err)
+
+	_, ok := sched.LastRun()
+	require.False(t, ok, "LastRun should report false before any execution")
+}
+
+func TestHistory_BoundedByMaxRunHistory(t *testing.T) {
+	proc := &mockProcess{name: "fast-task"}
+
+	sched, err := NewSchedulerWithInterval("@every 5ms", proc, nopLogger())
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	sched.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return proc.execCount.Load() > int32(config.MaxRunHistory)+5
+	}, 3*time.Second, 10*time.Millisecond)
+
+	cancel()
+	require.NoError(t, sched.Stop(context.Background()))
+
+	require.LessOrEqual(t, len(sched.History()), config.MaxRunHistory)
 }
 
 func TestMultipleSchedulers_GracefulShutdown(t *testing.T) {

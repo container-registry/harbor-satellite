@@ -16,5 +16,5 @@ type Process interface {
 	IsRunning() bool
 
 	// ShouldStop returns true if the process scheduling should be stopped
-	IsComplete() bool
+	ShouldStop() bool
 }

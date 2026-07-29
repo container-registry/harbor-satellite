@@ -210,7 +210,7 @@ func (s *StatusReportingProcess) IsRunning() bool {
 	return s.isRunning
 }
 
-func (s *StatusReportingProcess) IsComplete() bool {
+func (s *StatusReportingProcess) ShouldStop() bool {
 	return false
 }
 

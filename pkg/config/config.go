@@ -225,3 +225,7 @@ var validLogLevels = map[string]bool{
 	zerolog.LevelFatalValue: true,
 	zerolog.LevelPanicValue: true,
 }
+
+// maxRunHistory bounds the number of retained run results per scheduler
+// to avoid unbounded memory growth for long-lived processes.
+const MaxRunHistory int = 10

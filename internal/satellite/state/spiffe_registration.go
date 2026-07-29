@@ -165,7 +165,7 @@ func (s *SpiffeZtrProcess) IsRunning() bool {
 	return s.isRunning
 }
 
-func (s *SpiffeZtrProcess) IsComplete() bool {
+func (s *SpiffeZtrProcess) ShouldStop() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
