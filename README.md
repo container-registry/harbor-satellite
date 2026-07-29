@@ -260,13 +260,13 @@ For contributors, the easiest way to spin up a complete local testing environmen
 ```bash
 task _e2e:setup
 ```
-*(Note: This may take a few minutes the first time as it pulls and builds the required Docker images, including the pre-configured harbor-next core.)*
+> Note: This may take a few minutes the first time as it pulls and builds the required Docker images, including the pre-configured harbor-next core.
 
 **2. Compile the binaries:**
 ```bash
 task build
 ```
-*This builds both the Satellite and Ground Control binaries into the `bin/` directory for your current platform.*
+_This builds both the Satellite and Ground Control binaries into the `bin/` directory for your current platform._
 
 **3. Run the Edge Satellite locally:**
 Once the stack is healthy, you can run the Satellite binary locally and point it to your Docker-based Ground Control instance:
