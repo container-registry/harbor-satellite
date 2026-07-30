@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/process"
+	"github.com/container-registry/harbor-satellite/internal/satellite/process"
 	"github.com/rs/zerolog"
 )
 

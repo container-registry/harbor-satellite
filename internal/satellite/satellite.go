@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
-	eventscheduler "github.com/container-registry/harbor-satellite/internal/event-scheduler"
-	"github.com/container-registry/harbor-satellite/internal/events"
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
+	eventscheduler "github.com/container-registry/harbor-satellite/internal/satellite/event-scheduler"
+	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/pkg/config"
