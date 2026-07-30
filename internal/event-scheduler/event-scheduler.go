@@ -4,14 +4,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/rs/zerolog"
 )
-
-// TODO: Add job cancellation handling
-// TODO: Add goroutine limits
-// TODO: Event Queue
 
 type EventScheduler struct {
 	mu  sync.Mutex
@@ -20,11 +15,10 @@ type EventScheduler struct {
 	eventMap map[string]*scheduler.Scheduler
 }
 
-func NewEventScheduler() *EventScheduler {
-	log := logger.FromContext(context.Background()).With().Str("process", "job_queue").Logger()
+func NewEventScheduler(log *zerolog.Logger) *EventScheduler {
 
 	return &EventScheduler{
-		log:      &log,
+		log:      log,
 		eventMap: make(map[string]*scheduler.Scheduler),
 	}
 }

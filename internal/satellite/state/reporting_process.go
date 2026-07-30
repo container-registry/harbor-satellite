@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -121,6 +120,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 
 	log.Info().Msgf("Received report: %v", *resp)
+	log.Info().Msgf("Secret Currently: %s", s.cm.GetStateConfig().RegistryCredentials.Password)
 
 	// Sending response events to eventscheduler
 	for _, v := range resp.Events {
@@ -213,18 +213,13 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 		return nil, fmt.Errorf("status report failed: %s", resp.Status)
 	}
 
-	bodyData, err := io.ReadAll(resp.Body)
+	var data StatusReportResponse
+	err = json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
 		return nil, fmt.Errorf("error reading body: %w", err)
 	}
 
-	var respData StatusReportResponse
-	err = json.Unmarshal(bodyData, &respData)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing body: %w", err)
-	}
-
-	return &respData, nil
+	return &data, nil
 }
 
 func (s *StatusReportingProcess) Name() string {
@@ -240,7 +235,6 @@ func (s *StatusReportingProcess) IsRunning() bool {
 }
 
 func (s *StatusReportingProcess) IsComplete() bool {
-	// TODO:
 	return false
 }
 

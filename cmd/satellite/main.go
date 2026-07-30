@@ -420,7 +420,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	})
 
-	eventScheduler := eventscheduler.NewEventScheduler()
+	eventScheduler := eventscheduler.NewEventScheduler(log)
 
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, eventScheduler)
 	err = s.Run(ctx)
