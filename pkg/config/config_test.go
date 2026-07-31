@@ -27,127 +27,127 @@ func TestP2PConfigParsing(t *testing.T) {
 	})
 }
 
-func TestValidateP2PConfig(t *testing.T) {
-	tests := []struct {
-		name          string
-		config        func() *Config
-		expectErr     bool
-		expectWarning bool
-	}{
-		{
-			name: "disabled returns nil",
-			config: func() *Config {
-				return &Config{}
-			},
-			expectErr:     false,
-			expectWarning: false,
+var validateP2PConfigTests = []struct {
+	name          string
+	config        func() *Config
+	expectErr     bool
+	expectWarning bool
+}{
+	{
+		name: "disabled returns nil",
+		config: func() *Config {
+			return &Config{}
 		},
-		{
-			name: "enabled with no peers returns error",
-			config: func() *Config {
-				c := &Config{}
-				c.AppConfig.P2P.Enabled = true
-				c.AppConfig.P2P.AcquisitionTimeout = 10 * time.Second
-				c.AppConfig.P2P.MaxConcurrentTransfers = 5
-				return c
-			},
-			expectErr:     true,
-			expectWarning: false,
+		expectErr:     false,
+		expectWarning: false,
+	},
+	{
+		name: "enabled with no peers returns error",
+		config: func() *Config {
+			c := &Config{}
+			c.AppConfig.P2P.Enabled = true
+			c.AppConfig.P2P.AcquisitionTimeout = 10 * time.Second
+			c.AppConfig.P2P.MaxConcurrentTransfers = 5
+			return c
 		},
-		{
-			name: "enabled with invalid peer url returns error",
-			config: func() *Config {
-				c := &Config{}
-				c.AppConfig.P2P.Enabled = true
-				c.AppConfig.P2P.Peers = []string{"not-a-url"}
-				c.AppConfig.P2P.AcquisitionTimeout = 10 * time.Second
-				c.AppConfig.P2P.MaxConcurrentTransfers = 5
-				return c
-			},
-			expectErr:     true,
-			expectWarning: false,
+		expectErr:     true,
+		expectWarning: false,
+	},
+	{
+		name: "enabled with invalid peer url returns error",
+		config: func() *Config {
+			c := &Config{}
+			c.AppConfig.P2P.Enabled = true
+			c.AppConfig.P2P.Peers = []string{"not-a-url"}
+			c.AppConfig.P2P.AcquisitionTimeout = 10 * time.Second
+			c.AppConfig.P2P.MaxConcurrentTransfers = 5
+			return c
 		},
-		{
-			name: "enabled with zero timeout returns specific error",
-			config: func() *Config {
-				c := &Config{}
-				c.AppConfig.P2P.Enabled = true
-				c.AppConfig.P2P.Peers = []string{"https://peer1"}
-				c.AppConfig.P2P.AcquisitionTimeout = 0
-				c.AppConfig.P2P.MaxConcurrentTransfers = 5
-				return c
-			},
-			expectErr:     true,
-			expectWarning: false,
+		expectErr:     true,
+		expectWarning: false,
+	},
+	{
+		name: "enabled with zero timeout returns specific error",
+		config: func() *Config {
+			c := &Config{}
+			c.AppConfig.P2P.Enabled = true
+			c.AppConfig.P2P.Peers = []string{"https://peer1"}
+			c.AppConfig.P2P.AcquisitionTimeout = 0
+			c.AppConfig.P2P.MaxConcurrentTransfers = 5
+			return c
 		},
-		{
-			name: "enabled with short timeout returns error",
-			config: func() *Config {
-				c := &Config{}
-				c.AppConfig.P2P.Enabled = true
-				c.AppConfig.P2P.Peers = []string{"https://peer1"}
-				c.AppConfig.P2P.AcquisitionTimeout = 1 * time.Second
-				c.AppConfig.P2P.MaxConcurrentTransfers = 5
-				return c
-			},
-			expectErr:     true,
-			expectWarning: false,
+		expectErr:     true,
+		expectWarning: false,
+	},
+	{
+		name: "enabled with short timeout returns error",
+		config: func() *Config {
+			c := &Config{}
+			c.AppConfig.P2P.Enabled = true
+			c.AppConfig.P2P.Peers = []string{"https://peer1"}
+			c.AppConfig.P2P.AcquisitionTimeout = 1 * time.Second
+			c.AppConfig.P2P.MaxConcurrentTransfers = 5
+			return c
 		},
-		{
-			name: "enabled with long timeout returns error",
-			config: func() *Config {
-				c := &Config{}
-				c.AppConfig.P2P.Enabled = true
-				c.AppConfig.P2P.Peers = []string{"https://peer1"}
-				c.AppConfig.P2P.AcquisitionTimeout = 10 * time.Minute
-				c.AppConfig.P2P.MaxConcurrentTransfers = 5
-				return c
-			},
-			expectErr:     true,
-			expectWarning: false,
+		expectErr:     true,
+		expectWarning: false,
+	},
+	{
+		name: "enabled with long timeout returns error",
+		config: func() *Config {
+			c := &Config{}
+			c.AppConfig.P2P.Enabled = true
+			c.AppConfig.P2P.Peers = []string{"https://peer1"}
+			c.AppConfig.P2P.AcquisitionTimeout = 10 * time.Minute
+			c.AppConfig.P2P.MaxConcurrentTransfers = 5
+			return c
 		},
-		{
-			name: "enabled with zero concurrent transfers returns warning and defaults",
-			config: func() *Config {
-				c := &Config{}
-				c.AppConfig.P2P.Enabled = true
-				c.AppConfig.P2P.Peers = []string{"https://peer1"}
-				c.AppConfig.P2P.AcquisitionTimeout = 10 * time.Second
-				c.AppConfig.P2P.MaxConcurrentTransfers = 0
-				return c
-			},
-			expectErr:     false,
-			expectWarning: true,
+		expectErr:     true,
+		expectWarning: false,
+	},
+	{
+		name: "enabled with zero concurrent transfers returns warning and defaults",
+		config: func() *Config {
+			c := &Config{}
+			c.AppConfig.P2P.Enabled = true
+			c.AppConfig.P2P.Peers = []string{"https://peer1"}
+			c.AppConfig.P2P.AcquisitionTimeout = 10 * time.Second
+			c.AppConfig.P2P.MaxConcurrentTransfers = 0
+			return c
 		},
-		{
-			name: "enabled with too many concurrent transfers returns error",
-			config: func() *Config {
-				c := &Config{}
-				c.AppConfig.P2P.Enabled = true
-				c.AppConfig.P2P.Peers = []string{"https://peer1"}
-				c.AppConfig.P2P.AcquisitionTimeout = 10 * time.Second
-				c.AppConfig.P2P.MaxConcurrentTransfers = 50
-				return c
-			},
-			expectErr:     true,
-			expectWarning: false,
+		expectErr:     false,
+		expectWarning: true,
+	},
+	{
+		name: "enabled with too many concurrent transfers returns error",
+		config: func() *Config {
+			c := &Config{}
+			c.AppConfig.P2P.Enabled = true
+			c.AppConfig.P2P.Peers = []string{"https://peer1"}
+			c.AppConfig.P2P.AcquisitionTimeout = 10 * time.Second
+			c.AppConfig.P2P.MaxConcurrentTransfers = 50
+			return c
 		},
-		{
-			name: "enabled with valid configuration succeeds",
-			config: func() *Config {
-				c := &Config{}
-				c.AppConfig.P2P.Enabled = true
-				c.AppConfig.P2P.Peers = []string{"https://peer1"}
-				c.AppConfig.P2P.AcquisitionTimeout = 30 * time.Second
-				c.AppConfig.P2P.MaxConcurrentTransfers = 10
-				return c
-			},
-			expectErr:     false,
-			expectWarning: false,
+		expectErr:     true,
+		expectWarning: false,
+	},
+	{
+		name: "enabled with valid configuration succeeds",
+		config: func() *Config {
+			c := &Config{}
+			c.AppConfig.P2P.Enabled = true
+			c.AppConfig.P2P.Peers = []string{"https://peer1"}
+			c.AppConfig.P2P.AcquisitionTimeout = 30 * time.Second
+			c.AppConfig.P2P.MaxConcurrentTransfers = 10
+			return c
 		},
-	}
+		expectErr:     false,
+		expectWarning: false,
+	},
+}
 
-	for _, tt := range tests {
+func TestValidateP2PConfig(t *testing.T) {
+	for _, tt := range validateP2PConfigTests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := tt.config()
 			warnings, err := validateP2PConfig(cfg)
