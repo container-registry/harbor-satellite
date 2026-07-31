@@ -10,11 +10,12 @@ import (
 
 var (
 	client     *v2client.HarborAPI
+	clientErr  error
 	clientOnce sync.Once
 )
 
 // Returns Harbor v2 client
-func GetClient() *v2client.HarborAPI {
+func GetClient() (*v2client.HarborAPI, error) {
 	clientOnce.Do(func() {
 		cfg := env.GC.Harbor
 		clientConfig := &harbor.ClientSetConfig{
@@ -22,16 +23,16 @@ func GetClient() *v2client.HarborAPI {
 			Username: cfg.Username,
 			Password: cfg.Password,
 		}
-		client = GetClientByConfig(clientConfig)
+		client, clientErr = GetClientByConfig(clientConfig)
 	})
 
-	return client
+	return client, clientErr
 }
 
-func GetClientByConfig(clientConfig *harbor.ClientSetConfig) *v2client.HarborAPI {
+func GetClientByConfig(clientConfig *harbor.ClientSetConfig) (*v2client.HarborAPI, error) {
 	cs, err := harbor.NewClientSet(clientConfig)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return cs.V2()
+	return cs.V2(), nil
 }
