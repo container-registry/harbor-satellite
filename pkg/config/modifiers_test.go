@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/stretchr/testify/require"
@@ -94,14 +95,16 @@ func TestConfigManagerModifiers(t *testing.T) {
 		{
 			name: "SetP2PConfig",
 			mutator: SetP2PConfig(P2PConfig{
-				Enabled:        true,
-				Peers:          []string{"https://peer1", "https://peer2"},
-				TimeoutSeconds: 15,
+				Enabled:                true,
+				Peers:                  []string{"https://peer1", "https://peer2"},
+				AcquisitionTimeout:     15 * time.Second,
+				MaxConcurrentTransfers: 10,
 			}),
 			check: func(t *testing.T, c *Config) {
 				require.True(t, c.AppConfig.P2P.Enabled)
 				require.Equal(t, []string{"https://peer1", "https://peer2"}, c.AppConfig.P2P.Peers)
-				require.Equal(t, 15, c.AppConfig.P2P.TimeoutSeconds)
+				require.Equal(t, 15*time.Second, c.AppConfig.P2P.AcquisitionTimeout)
+				require.Equal(t, 10, c.AppConfig.P2P.MaxConcurrentTransfers)
 			},
 		},
 	}
@@ -154,9 +157,10 @@ func TestGetP2PConfig(t *testing.T) {
 	cfg := &Config{
 		AppConfig: AppConfig{
 			P2P: P2PConfig{
-				Enabled:        true,
-				Peers:          []string{"https://peer1"},
-				TimeoutSeconds: 10,
+				Enabled:                true,
+				Peers:                  []string{"https://peer1"},
+				AcquisitionTimeout:     10 * time.Second,
+				MaxConcurrentTransfers: 5,
 			},
 		},
 		ZotConfigRaw: json.RawMessage(`{}`),
@@ -168,7 +172,8 @@ func TestGetP2PConfig(t *testing.T) {
 	got := cm.GetP2PConfig()
 	require.True(t, got.Enabled)
 	require.Equal(t, []string{"https://peer1"}, got.Peers)
-	require.Equal(t, 10, got.TimeoutSeconds)
+	require.Equal(t, 10*time.Second, got.AcquisitionTimeout)
+	require.Equal(t, 5, got.MaxConcurrentTransfers)
 }
 
 func TestGetP2PConfigEmpty(t *testing.T) {
@@ -183,5 +188,6 @@ func TestGetP2PConfigEmpty(t *testing.T) {
 	got := cm.GetP2PConfig()
 	require.False(t, got.Enabled)
 	require.Nil(t, got.Peers)
-	require.Equal(t, 0, got.TimeoutSeconds)
+	require.Equal(t, time.Duration(0), got.AcquisitionTimeout)
+	require.Equal(t, 0, got.MaxConcurrentTransfers)
 }

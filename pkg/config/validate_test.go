@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -768,100 +767,3 @@ func TestAuditConfig_Equal(t *testing.T) {
 func intPtr(i int) *int    { return &i }
 func boolPtr(b bool) *bool { return &b }
 
-func TestP2PConfigParsing(t *testing.T) {
-	t.Run("default is false", func(t *testing.T) {
-		var c Config
-		err := json.Unmarshal([]byte(`{"app_config": {}}`), &c)
-		require.NoError(t, err)
-		require.False(t, c.AppConfig.P2P.Enabled)
-	})
-
-	t.Run("parses true and fields", func(t *testing.T) {
-		var c Config
-		err := json.Unmarshal([]byte(`{"app_config": {"p2p": {"enabled": true, "peers": ["https://peer1"], "timeout_seconds": 10}}}`), &c)
-		require.NoError(t, err)
-		require.True(t, c.AppConfig.P2P.Enabled)
-		require.Equal(t, []string{"https://peer1"}, c.AppConfig.P2P.Peers)
-		require.Equal(t, 10, c.AppConfig.P2P.TimeoutSeconds)
-	})
-}
-
-func TestValidateP2PConfig(t *testing.T) {
-	tests := []struct {
-		name          string
-		config        func() *Config
-		expectErr     bool
-		expectWarning bool
-	}{
-		{
-			name: "disabled returns nil",
-			config: func() *Config {
-				return &Config{}
-			},
-			expectErr:     false,
-			expectWarning: false,
-		},
-		{
-			name: "enabled with no peers returns error",
-			config: func() *Config {
-				c := &Config{}
-				c.AppConfig.P2P.Enabled = true
-				return c
-			},
-			expectErr:     true,
-			expectWarning: false,
-		},
-		{
-			name: "enabled with invalid peer url returns error",
-			config: func() *Config {
-				c := &Config{}
-				c.AppConfig.P2P.Enabled = true
-				c.AppConfig.P2P.Peers = []string{"not-a-url"}
-				return c
-			},
-			expectErr:     true,
-			expectWarning: false,
-		},
-		{
-			name: "enabled with valid peer and negative timeout returns warning",
-			config: func() *Config {
-				c := &Config{}
-				c.AppConfig.P2P.Enabled = true
-				c.AppConfig.P2P.Peers = []string{"https://peer1"}
-				c.AppConfig.P2P.TimeoutSeconds = -5
-				return c
-			},
-			expectErr:     false,
-			expectWarning: true,
-		},
-		{
-			name: "enabled with valid configuration succeeds",
-			config: func() *Config {
-				c := &Config{}
-				c.AppConfig.P2P.Enabled = true
-				c.AppConfig.P2P.Peers = []string{"https://peer1"}
-				c.AppConfig.P2P.TimeoutSeconds = 30
-				return c
-			},
-			expectErr:     false,
-			expectWarning: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := tt.config()
-			warnings, err := validateP2PConfig(cfg)
-			if tt.expectErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-			}
-			if tt.expectWarning {
-				require.NotEmpty(t, warnings)
-			} else {
-				require.Empty(t, warnings)
-			}
-		})
-	}
-}

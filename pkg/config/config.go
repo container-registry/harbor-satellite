@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -189,9 +190,35 @@ type DirectDeliveryConfig struct {
 
 // P2PConfig holds settings for Air-Gapped Peer-to-Peer proxying.
 type P2PConfig struct {
-	Enabled        bool     `json:"enabled,omitempty"`
-	Peers          []string `json:"peers,omitempty"`
-	TimeoutSeconds int      `json:"timeout_seconds,omitempty"`
+	Enabled                bool          `json:"enabled,omitempty"`
+	Peers                  []string      `json:"peers,omitempty"`
+	AcquisitionTimeout     time.Duration `json:"acquisition_timeout,omitempty"`
+	MaxConcurrentTransfers int           `json:"max_concurrent_transfers,omitempty"`
+}
+
+// UnmarshalJSON implements custom unmarshaling to handle time.Duration strings.
+func (p *P2PConfig) UnmarshalJSON(data []byte) error {
+	type Alias P2PConfig
+	aux := &struct {
+		AcquisitionTimeout string `json:"acquisition_timeout,omitempty"`
+		*Alias
+	}{
+		Alias: (*Alias)(p),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	if aux.AcquisitionTimeout != "" {
+		d, err := time.ParseDuration(aux.AcquisitionTimeout)
+		if err != nil {
+			return err
+		}
+		p.AcquisitionTimeout = d
+	}
+
+	return nil
 }
 
 type AppConfig struct {

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/registry"
 	"github.com/robfig/cron/v3"
@@ -412,9 +413,21 @@ func validateP2PConfig(config *Config) ([]string, error) {
 		}
 	}
 
-	if p2p.TimeoutSeconds < 0 {
-		warnings = append(warnings, "p2p.timeout_seconds cannot be negative, defaulting to 0")
-		config.AppConfig.P2P.TimeoutSeconds = 0
+	if p2p.AcquisitionTimeout == 0 {
+		return nil, errors.New("acquisition_timeout is required when p2p is enabled")
+	}
+
+	if p2p.AcquisitionTimeout < 5*time.Second || p2p.AcquisitionTimeout > 5*time.Minute {
+		return nil, errors.New("acquisition_timeout must be between 5s and 5m")
+	}
+
+	if p2p.MaxConcurrentTransfers == 0 {
+		p2p.MaxConcurrentTransfers = 5
+		warnings = append(warnings, "max_concurrent_transfers not set, defaulting to 5")
+	}
+
+	if p2p.MaxConcurrentTransfers < 1 || p2p.MaxConcurrentTransfers > 20 {
+		return nil, errors.New("max_concurrent_transfers must be between 1 and 20")
 	}
 
 	return warnings, nil

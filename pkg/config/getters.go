@@ -1,6 +1,9 @@
 package config
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Threadsafe getter functions to fetch config data.
 
@@ -231,4 +234,34 @@ func (cm *ConfigManager) GetP2PConfig() P2PConfig {
 	defer cm.mu.RUnlock()
 
 	return cm.config.AppConfig.P2P
+}
+
+func (cm *ConfigManager) IsP2PEnabled() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.AppConfig.P2P.Enabled
+}
+
+func (cm *ConfigManager) GetP2PPeers() []string {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	peers := make([]string, len(cm.config.AppConfig.P2P.Peers))
+	copy(peers, cm.config.AppConfig.P2P.Peers)
+	return peers
+}
+
+func (cm *ConfigManager) GetP2PAcquisitionTimeout() time.Duration {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.AppConfig.P2P.AcquisitionTimeout
+}
+
+func (cm *ConfigManager) GetP2PMaxConcurrentTransfers() int {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.AppConfig.P2P.MaxConcurrentTransfers
 }
