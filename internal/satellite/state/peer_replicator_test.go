@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/assert"
@@ -47,9 +48,9 @@ func TestNewPeerAwareReplicator(t *testing.T) {
 	t.Run("successfully creates replicator", func(t *testing.T) {
 		mockFallback := &mockReplicator{}
 		p2pCfg := config.P2PConfig{
-			Enabled:        true,
-			Peers:          []string{"http://10.0.0.1"},
-			TimeoutSeconds: 30,
+			Enabled:            true,
+			Peers:              []string{"http://10.0.0.1"},
+			AcquisitionTimeout: 30 * time.Second,
 		}
 
 		r := NewPeerAwareReplicator(
