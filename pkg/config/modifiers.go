@@ -163,3 +163,9 @@ func ApplyHarborRegistryOverride(sc StateConfig, override string) (StateConfig, 
 
 	return sc, nil
 }
+
+func SetP2PConfig(p2p P2PConfig) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.P2P = p2p
+	}
+}

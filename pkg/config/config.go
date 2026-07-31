@@ -187,6 +187,13 @@ type DirectDeliveryConfig struct {
 	ImageDir string `json:"image_dir,omitempty"` // auto-detected if empty
 }
 
+// P2PConfig holds settings for Air-Gapped Peer-to-Peer proxying.
+type P2PConfig struct {
+	Enabled        bool     `json:"enabled,omitempty"`
+	Peers          []string `json:"peers,omitempty"`
+	TimeoutSeconds int      `json:"timeout_seconds,omitempty"`
+}
+
 type AppConfig struct {
 	GroundControlURL          URL                    `json:"ground_control_url,omitempty"`
 	LogLevel                  string                 `json:"log_level,omitempty"`
@@ -204,6 +211,7 @@ type AppConfig struct {
 	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty"`
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
 	Audit                     AuditConfig            `json:"audit,omitempty"`
+	P2P                       P2PConfig              `json:"p2p,omitempty"`
 }
 
 type StateConfig struct {

@@ -225,3 +225,10 @@ func (cm *ConfigManager) GetDirectDeliveryConfig() DirectDeliveryConfig {
 
 	return cm.config.AppConfig.DirectDelivery
 }
+
+func (cm *ConfigManager) GetP2PConfig() P2PConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.AppConfig.P2P
+}

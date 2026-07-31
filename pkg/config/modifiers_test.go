@@ -91,6 +91,19 @@ func TestConfigManagerModifiers(t *testing.T) {
 				require.Equal(t, []string{"containerd"}, c.AppConfig.RegistryFallback.Runtimes)
 			},
 		},
+		{
+			name: "SetP2PConfig",
+			mutator: SetP2PConfig(P2PConfig{
+				Enabled:        true,
+				Peers:          []string{"https://peer1", "https://peer2"},
+				TimeoutSeconds: 15,
+			}),
+			check: func(t *testing.T, c *Config) {
+				require.True(t, c.AppConfig.P2P.Enabled)
+				require.Equal(t, []string{"https://peer1", "https://peer2"}, c.AppConfig.P2P.Peers)
+				require.Equal(t, 15, c.AppConfig.P2P.TimeoutSeconds)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -135,4 +148,40 @@ func TestGetRegistryFallbackConfigEmpty(t *testing.T) {
 	require.False(t, got.Enabled)
 	require.Nil(t, got.Registries)
 	require.Nil(t, got.Runtimes)
+}
+
+func TestGetP2PConfig(t *testing.T) {
+	cfg := &Config{
+		AppConfig: AppConfig{
+			P2P: P2PConfig{
+				Enabled:        true,
+				Peers:          []string{"https://peer1"},
+				TimeoutSeconds: 10,
+			},
+		},
+		ZotConfigRaw: json.RawMessage(`{}`),
+	}
+
+	cm, err := NewConfigManager("", "", "", "", true, cfg, crypto.NewAESProvider())
+	require.NoError(t, err)
+
+	got := cm.GetP2PConfig()
+	require.True(t, got.Enabled)
+	require.Equal(t, []string{"https://peer1"}, got.Peers)
+	require.Equal(t, 10, got.TimeoutSeconds)
+}
+
+func TestGetP2PConfigEmpty(t *testing.T) {
+	cfg := &Config{
+		AppConfig:    AppConfig{},
+		ZotConfigRaw: json.RawMessage(`{}`),
+	}
+
+	cm, err := NewConfigManager("", "", "", "", true, cfg, crypto.NewAESProvider())
+	require.NoError(t, err)
+
+	got := cm.GetP2PConfig()
+	require.False(t, got.Enabled)
+	require.Nil(t, got.Peers)
+	require.Equal(t, 0, got.TimeoutSeconds)
 }

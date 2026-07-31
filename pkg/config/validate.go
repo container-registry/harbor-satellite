@@ -72,6 +72,12 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 
 	warnings = append(warnings, validateRegistryFallbackConfig(config)...)
 
+	p2pWarnings, p2pErr := validateP2PConfig(config)
+	warnings = append(warnings, p2pWarnings...)
+	if p2pErr != nil {
+		return nil, warnings, p2pErr
+	}
+
 	warnings = append(warnings, validateAndEnforceAuditConfig(config)...)
 
 	return config, warnings, nil
@@ -383,6 +389,32 @@ func validateTLSConfig(tls *TLSConfig) ([]string, error) {
 
 	if tls.SkipVerify {
 		warnings = append(warnings, "TLS skip_verify is enabled, certificate verification will be skipped")
+	}
+
+	return warnings, nil
+}
+
+// validateP2PConfig validates P2P configuration when enabled.
+func validateP2PConfig(config *Config) ([]string, error) {
+	var warnings []string
+	p2p := &config.AppConfig.P2P
+	if !p2p.Enabled {
+		return warnings, nil
+	}
+
+	if len(p2p.Peers) == 0 {
+		return nil, errors.New("p2p is enabled but no peers are configured")
+	}
+
+	for _, peer := range p2p.Peers {
+		if _, err := url.ParseRequestURI(peer); err != nil {
+			return nil, fmt.Errorf("invalid peer URL %q: %w", peer, err)
+		}
+	}
+
+	if p2p.TimeoutSeconds < 0 {
+		warnings = append(warnings, "p2p.timeout_seconds cannot be negative, defaulting to 0")
+		config.AppConfig.P2P.TimeoutSeconds = 0
 	}
 
 	return warnings, nil
