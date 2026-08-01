@@ -2,7 +2,10 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -651,9 +654,39 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteStatusParams
-	if err := DecodeRequestBody(r, &req); err != nil {
+	r.Body = http.MaxBytesReader(nil, r.Body, 5*1024*1024)
+	
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			HandleAppError(w, &AppError{
+				Message: "sync payload exceeds 5MB limit",
+				Code:    http.StatusRequestEntityTooLarge,
+			})
+			return
+		}
 		log.Println(err)
-		HandleAppError(w, err)
+		HandleAppError(w, &AppError{
+			Message: "Invalid request body",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	if _, err := io.Copy(io.Discard, r.Body); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			HandleAppError(w, &AppError{
+				Message: "sync payload exceeds 5MB limit",
+				Code:    http.StatusRequestEntityTooLarge,
+			})
+			return
+		}
+		log.Println(err)
+		HandleAppError(w, &AppError{
+			Message: "Invalid request body",
+			Code:    http.StatusBadRequest,
+		})
 		return
 	}
 

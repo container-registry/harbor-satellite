@@ -34,41 +34,34 @@ func newMockServer(t *testing.T) (*Server, sqlmock.Sqlmock) {
 	}, mock
 }
 
-func TestSyncHandler_WithCachedImages(t *testing.T) {
-	server, mock := newMockServer(t)
-
-	now := time.Now().UTC().Truncate(time.Second)
-
-	// Mock GetSatelliteByName
+func mockSyncFlow(mock sqlmock.Sqlmock, name string, now time.Time, refs []string, sizes []int64) {
 	satRows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
-		AddRow(1, "edge-01", now, now, sql.NullTime{}, sql.NullString{})
+		AddRow(1, name, now, now, sql.NullTime{}, sql.NullString{})
 	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
-		WithArgs("edge-01").
+		WithArgs(name).
 		WillReturnRows(satRows)
 
-	// Mock BatchInsertArtifacts
-	mock.ExpectExec("INSERT INTO artifacts").
-		WithArgs(
-			pq.Array([]string{
-				"localhost:8585/library/nginx:latest@sha256:abc",
-				"localhost:8585/library/alpine:3.18@sha256:def",
-			}),
-			pq.Array([]int64{50000, 5000}),
-		).
-		WillReturnResult(sqlmock.NewResult(0, 2))
+	if len(refs) > 0 {
+		mock.ExpectExec("INSERT INTO artifacts").
+			WithArgs(pq.Array(refs), pq.Array(sizes)).
+			WillReturnResult(sqlmock.NewResult(0, int64(len(refs))))
 
-	// Mock GetArtifactIDsByReferences
-	artifactRows := sqlmock.NewRows([]string{"id", "reference", "size_bytes", "created_at"}).
-		AddRow(int32(10), "localhost:8585/library/nginx:latest@sha256:abc", int64(50000), now).
-		AddRow(int32(11), "localhost:8585/library/alpine:3.18@sha256:def", int64(5000), now)
-	mock.ExpectQuery("SELECT .+ FROM artifacts").
-		WithArgs(pq.Array([]string{
-			"localhost:8585/library/nginx:latest@sha256:abc",
-			"localhost:8585/library/alpine:3.18@sha256:def",
-		})).
-		WillReturnRows(artifactRows)
+		artifactRows := sqlmock.NewRows([]string{"id", "reference", "size_bytes", "created_at"})
+		for i, ref := range refs {
+			artifactRows.AddRow(int32(10+i), ref, sizes[i], now)
+		}
+		mock.ExpectQuery("SELECT .+ FROM artifacts").
+			WithArgs(pq.Array(refs)).
+			WillReturnRows(artifactRows)
+	}
 
-	// Mock InsertSatelliteStatus (with artifact_ids)
+	var artifactIDs []int32
+	if len(refs) > 0 {
+		for i := range refs {
+			artifactIDs = append(artifactIDs, int32(10+i))
+		}
+	}
+
 	statusRows := sqlmock.NewRows([]string{
 		"id", "satellite_id", "activity", "latest_state_digest", "latest_config_digest",
 		"cpu_percent", "memory_used_bytes", "storage_used_bytes", "last_sync_duration_ms",
@@ -76,20 +69,30 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 	}).AddRow(
 		1, 1, "", sql.NullString{}, sql.NullString{},
 		sql.NullString{}, sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{},
-		sql.NullInt32{Int32: 2, Valid: true}, now, now, pq.Array([]int32{10, 11}),
+		sql.NullInt32{Int32: int32(len(refs)), Valid: true}, now, now, pq.Array(artifactIDs),
 	)
 	mock.ExpectQuery("INSERT INTO satellite_status").WillReturnRows(statusRows)
 
-	// Mock UpdateSatelliteLastSeen
 	mock.ExpectExec("UPDATE satellites SET last_seen").WillReturnResult(sqlmock.NewResult(0, 1))
+}
+
+func TestSyncHandler_WithCachedImages(t *testing.T) {
+	server, mock := newMockServer(t)
+
+	now := time.Now().UTC().Truncate(time.Second)
+
+	refs := []string{"localhost:8585/library/nginx:latest@sha256:abc", "localhost:8585/library/alpine:3.18@sha256:def"}
+	sizes := []int64{50000, 5000}
+
+	mockSyncFlow(mock, "edge-01", now, refs, sizes)
 
 	reqBody := SatelliteStatusParams{
 		Name:               "edge-01",
 		ImageCount:         2,
 		RequestCreatedTime: now,
 		CachedImages: []CachedImage{
-			{Reference: "localhost:8585/library/nginx:latest@sha256:abc", SizeBytes: 50000},
-			{Reference: "localhost:8585/library/alpine:3.18@sha256:def", SizeBytes: 5000},
+			{Reference: refs[0], SizeBytes: sizes[0]},
+			{Reference: refs[1], SizeBytes: sizes[1]},
 		},
 	}
 	body := mustMarshalJSON(t, reqBody)
@@ -417,6 +420,42 @@ func TestSyncHandler_OversizedCachedImages(t *testing.T) {
 
 	require.Equal(t, http.StatusRequestEntityTooLarge, rr.Code)
 	
+	require.Equal(t, http.StatusRequestEntityTooLarge, rr.Code)
+	
 	// Expect that NO DB queries were executed because it was rejected early
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSyncHandler_ExactlyMaxCachedImages(t *testing.T) {
+	server, mock := newMockServer(t)
+
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// Create a payload with exactly maxCachedImages (1000) items
+	exactMax := make([]CachedImage, 1000)
+	refs := make([]string, 1000)
+	sizes := make([]int64, 1000)
+	for i := 0; i < 1000; i++ {
+		exactMax[i] = CachedImage{Reference: fmt.Sprintf("image-%d", i), SizeBytes: 100}
+		refs[i] = exactMax[i].Reference
+		sizes[i] = exactMax[i].SizeBytes
+	}
+
+	mockSyncFlow(mock, "edge-boundary", now, refs, sizes)
+
+	reqBody := SatelliteStatusParams{
+		Name:               "edge-boundary",
+		RequestCreatedTime: now,
+		CachedImages:       exactMax,
+	}
+
+	body := mustMarshalJSON(t, reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.syncHandler(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
