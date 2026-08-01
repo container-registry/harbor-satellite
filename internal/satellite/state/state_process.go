@@ -144,16 +144,21 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 }
 
 func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) bool {
+	// Create map for O(1) lookup of incoming states
+	statesMap := make(map[string]struct{}, len(states))
+	for _, s := range states {
+		statesMap[s] = struct{}{}
+	}
+
+	// Create map for O(1) lookup of existing states
+	existingMap := make(map[string]struct{}, len(f.stateMap))
+	for _, sm := range f.stateMap {
+		existingMap[sm.url] = struct{}{}
+	}
+
 	var newStates []string
 	for _, state := range states {
-		found := false
-		for _, stateMap := range f.stateMap {
-			if stateMap.url == state {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if _, found := existingMap[state]; !found {
 			newStates = append(newStates, state)
 		}
 	}
@@ -162,7 +167,7 @@ func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) bool {
 	var updatedStateMap []StateMap
 	removed := 0
 	for _, stateMap := range f.stateMap {
-		if contains(states, stateMap.url) {
+		if _, needed := statesMap[stateMap.url]; needed {
 			updatedStateMap = append(updatedStateMap, stateMap)
 		} else {
 			removed++
@@ -623,15 +628,7 @@ func FetchEntitiesFromState(state StateReader) []Entity {
 	return entities
 }
 
-// contains takes in a slice and checks if the item is in the slice if preset it returns true else false
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}
+
 
 func applyHarborOverrideToSatelliteState(state *SatelliteState, override string) (*SatelliteState, error) {
 	for i, s := range state.States {
