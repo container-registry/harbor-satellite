@@ -659,7 +659,10 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			// net/http already wrote the 413 response and will close the connection
+			HandleAppError(w, &AppError{
+				Message: "sync payload exceeds 5MB limit",
+				Code:    http.StatusRequestEntityTooLarge,
+			})
 			return
 		}
 		log.Println(err)
@@ -673,7 +676,10 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 	if _, err := io.Copy(io.Discard, r.Body); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			// net/http already wrote the 413 response and will close the connection
+			HandleAppError(w, &AppError{
+				Message: "sync payload exceeds 5MB limit",
+				Code:    http.StatusRequestEntityTooLarge,
+			})
 			return
 		}
 		log.Println(err)
