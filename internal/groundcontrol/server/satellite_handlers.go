@@ -654,15 +654,12 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteStatusParams
-	r.Body = http.MaxBytesReader(nil, r.Body, 5*1024*1024)
+	r.Body = http.MaxBytesReader(w, r.Body, 5*1024*1024)
 	
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			HandleAppError(w, &AppError{
-				Message: "sync payload exceeds 5MB limit",
-				Code:    http.StatusRequestEntityTooLarge,
-			})
+			// net/http already wrote the 413 response and will close the connection
 			return
 		}
 		log.Println(err)
@@ -676,10 +673,7 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 	if _, err := io.Copy(io.Discard, r.Body); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			HandleAppError(w, &AppError{
-				Message: "sync payload exceeds 5MB limit",
-				Code:    http.StatusRequestEntityTooLarge,
-			})
+			// net/http already wrote the 413 response and will close the connection
 			return
 		}
 		log.Println(err)
