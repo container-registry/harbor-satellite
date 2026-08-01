@@ -399,9 +399,10 @@ func TestSyncHandler_OversizedCachedImages(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 
-	// Create a payload with > 1000 items
-	oversized := make([]CachedImage, 1001)
-	for i := 0; i < 1001; i++ {
+	// Create a payload with > maxCachedImages items
+	oversizeCount := maxCachedImages + 1
+	oversized := make([]CachedImage, oversizeCount)
+	for i := 0; i < oversizeCount; i++ {
 		oversized[i] = CachedImage{Reference: fmt.Sprintf("image-%d", i), SizeBytes: 100}
 	}
 
@@ -431,11 +432,11 @@ func TestSyncHandler_ExactlyMaxCachedImages(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 
-	// Create a payload with exactly maxCachedImages (1000) items
-	exactMax := make([]CachedImage, 1000)
-	refs := make([]string, 1000)
-	sizes := make([]int64, 1000)
-	for i := 0; i < 1000; i++ {
+	// Create a payload with exactly maxCachedImages items
+	exactMax := make([]CachedImage, maxCachedImages)
+	refs := make([]string, maxCachedImages)
+	sizes := make([]int64, maxCachedImages)
+	for i := 0; i < maxCachedImages; i++ {
 		exactMax[i] = CachedImage{Reference: fmt.Sprintf("image-%d", i), SizeBytes: 100}
 		refs[i] = exactMax[i].Reference
 		sizes[i] = exactMax[i].SizeBytes
