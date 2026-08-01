@@ -604,8 +604,8 @@ func (f *FetchAndReplicateStateProcess) FetchAndProcessState(ctx context.Context
 }
 
 func (f *FetchAndReplicateStateProcess) LogChanges(deleteEntity, replicateEntity []Entity, log *zerolog.Logger) {
-	log.Warn().Msgf("Total artifacts to delete: %d", len(deleteEntity))
-	log.Warn().Msgf("Total artifacts to replicate: %d", len(replicateEntity))
+	log.Info().Msgf("Total artifacts to delete: %d", len(deleteEntity))
+	log.Info().Msgf("Total artifacts to replicate: %d", len(replicateEntity))
 }
 
 func FetchEntitiesFromState(state StateReader) []Entity {
