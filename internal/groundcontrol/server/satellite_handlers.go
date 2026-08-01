@@ -18,6 +18,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
+const maxCachedImages = 1000
+
 // SatelliteGroupParams links or unlinks a satellite and a group.
 //
 // swagger:model SatelliteGroupParams
@@ -655,6 +657,15 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(req.CachedImages) > maxCachedImages {
+		log.Printf("Oversized heartbeat: %d cached images exceeds maximum of %d", len(req.CachedImages), maxCachedImages)
+		HandleAppError(w, &AppError{
+			Message: fmt.Sprintf("cached images array exceeds maximum allowed size of %d", maxCachedImages),
+			Code:    http.StatusRequestEntityTooLarge,
+		})
+		return
+	}
+
 	// Check SPIFFE identity first for dual auth
 	var satelliteName string
 	if name, ok := spiffe.GetSatelliteName(r.Context()); ok {
@@ -680,14 +691,7 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.CachedImages) > 1000 {
-		log.Printf("Satellite %s sent %d cached images, exceeding maximum of 1000", satelliteName, len(req.CachedImages))
-		HandleAppError(w, &AppError{
-			Message: "cached images array exceeds maximum allowed size of 1000",
-			Code:    http.StatusRequestEntityTooLarge,
-		})
-		return
-	}
+
 
 	var artifactIDs []int32
 	if len(req.CachedImages) > 0 {

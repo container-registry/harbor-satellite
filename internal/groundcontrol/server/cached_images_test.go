@@ -390,3 +390,33 @@ func TestCachedImageJSON(t *testing.T) {
 		require.NotContains(t, string(data), "cached_images")
 	})
 }
+
+func TestSyncHandler_OversizedCachedImages(t *testing.T) {
+	server, mock := newMockServer(t)
+
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// Create a payload with > 1000 items
+	oversized := make([]CachedImage, 1001)
+	for i := 0; i < 1001; i++ {
+		oversized[i] = CachedImage{Reference: fmt.Sprintf("image-%d", i), SizeBytes: 100}
+	}
+
+	reqBody := SatelliteStatusParams{
+		Name:               "edge-oversized",
+		RequestCreatedTime: now,
+		CachedImages:       oversized,
+	}
+
+	body := mustMarshalJSON(t, reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.syncHandler(rr, req)
+
+	require.Equal(t, http.StatusRequestEntityTooLarge, rr.Code)
+	
+	// Expect that NO DB queries were executed because it was rejected early
+	require.NoError(t, mock.ExpectationsWereMet())
+}
