@@ -680,6 +680,15 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(req.CachedImages) > 1000 {
+		log.Printf("Satellite %s sent %d cached images, exceeding maximum of 1000", satelliteName, len(req.CachedImages))
+		HandleAppError(w, &AppError{
+			Message: "cached images array exceeds maximum allowed size of 1000",
+			Code:    http.StatusRequestEntityTooLarge,
+		})
+		return
+	}
+
 	var artifactIDs []int32
 	if len(req.CachedImages) > 0 {
 		refs := make([]string, len(req.CachedImages))
