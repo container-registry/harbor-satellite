@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -18,7 +19,7 @@ import (
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
-const StatusReportRoute = "satellites/sync"
+const StatusReportRoute = "/sat/sync"
 
 type StatusReportingProcess struct {
 	name           string
@@ -113,6 +114,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 
 	log.Info().Msg("Sending Status Report")
 	groundControlURL := s.cm.ResolveGroundControlURL()
+	log.Info().Msgf("GC URL: %s", groundControlURL)
 	resp, err := s.sendStatusReport(ctx, groundControlURL, req)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to send status report")
@@ -199,6 +201,23 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 		}
 	}
 
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		// Re-attach the body, since Go clears it by default on redirect
+		if via[0].GetBody != nil {
+			body, err := via[0].GetBody()
+			if err != nil {
+				return err
+			}
+			req.Body = body
+		}
+		req.Method = via[0].Method
+		req.ContentLength = via[0].ContentLength
+		return nil
+	}
+
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
@@ -208,6 +227,11 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 			logger.FromContext(ctx).Warn().Err(err).Msg("error closing response body")
 		}
 	}()
+
+	logger.FromContext(ctx).Info().
+		Str("finalMethod", resp.Request.Method).
+		Str("finalURL", resp.Request.URL.String()).
+		Msg("status report response details")
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("status report failed: %s", resp.Status)

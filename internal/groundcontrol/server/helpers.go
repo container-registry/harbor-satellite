@@ -20,6 +20,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/gorilla/mux"
 )
 
 func isConfigInUse(ctx context.Context, q *database.Queries, config database.Config) (bool, error) {
@@ -404,4 +405,29 @@ func normalizeHeartbeatInterval(interval string) (string, error) {
 	seconds := int(duration.Seconds()) % 60
 
 	return fmt.Sprintf("@every %02dh%02dm%02ds", hours, minutes, seconds), nil
+}
+
+func PrintRoutes(r *mux.Router) {
+	fmt.Println("Registered routes:")
+	err := r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
+		pathTemplate, err := route.GetPathTemplate()
+		if err != nil {
+			pathTemplate = "<no path>"
+		}
+		methods, _ := route.GetMethods()
+		methodStr := "ANY"
+		if len(methods) > 0 {
+			methodStr = fmt.Sprintf("%v", methods)
+		}
+		name := route.GetName()
+		if name != "" {
+			fmt.Printf("  %-20s %-30s (name: %s)\n", methodStr, pathTemplate, name)
+		} else {
+			fmt.Printf("  %-20s %-30s\n", methodStr, pathTemplate)
+		}
+		return nil
+	})
+	if err != nil {
+		fmt.Println("error walking routes:", err)
+	}
 }

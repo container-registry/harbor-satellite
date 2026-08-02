@@ -79,6 +79,7 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 			logger.FromContext(ctx).Warn().Err(err).Msg("error closing response body")
 		}
 	}()
+
 	// log.Printf("Status: %s", resp.Status)
 	// log.Printf("Body: %s", r)
 	//
@@ -93,6 +94,10 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 		return fmt.Errorf("read response body: %w", err)
 	}
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("refresh endpoint returned %s: %s", resp.Status, string(body))
+	}
+
 	s.log.Info().
 		Str("status", resp.Status).
 		Str("body", string(body)).
@@ -103,8 +108,10 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 		return fmt.Errorf("failed to decode body: %w", err)
 	}
 
-	setter := config.SetStateAuth(s.cm.GetSourceRegistryUsername(), respBody.Secret, config.URL(s.cm.GetSourceRegistryURL()))
-	setter(s.cm.GetConfig())
+	if respBody.Secret != "" {
+		setter := config.SetStateAuth(s.cm.GetSourceRegistryUsername(), respBody.Secret, config.URL(s.cm.GetSourceRegistryURL()))
+		setter(s.cm.GetConfig())
+	}
 
 	s.log.Info().Msgf("Secret After Update: %s", s.cm.GetStateConfig().RegistryCredentials.Password)
 
@@ -113,7 +120,7 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 
 func (s *RefreshCredentialProcess) sendRequest(ctx context.Context) (*http.Response, error) {
 	gcURL := s.cm.ResolveGroundControlURL()
-	reqURL := fmt.Sprintf("%s/api/refresh", gcURL)
+	reqURL := fmt.Sprintf("%s/sat/refresh", gcURL)
 
 	var client *http.Client
 	if s.spiffeClient != nil {

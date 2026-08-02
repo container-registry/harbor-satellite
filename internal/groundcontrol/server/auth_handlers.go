@@ -40,10 +40,6 @@ type loginResponse struct {
 	ExpiresAt swaggerDateTime `json:"expires_at"`
 }
 
-type refreshCredentialRequest struct {
-	Name string `json:"name"`
-}
-
 type refreshCredentialResponse struct {
 	Secret string `json:"secret"`
 }
@@ -170,19 +166,16 @@ func (s *Server) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) RefreshSatellite(w http.ResponseWriter, r *http.Request) {
-	var req refreshCredentialRequest
-	if err := DecodeRequestBody(r, &req); err != nil {
-		log.Println(err)
-		HandleAppError(w, err)
-		return
-	}
-
 	// Check SPIFFE identity first for dual auth
 	var satelliteName string
 	if name, ok := spiffe.GetSatelliteName(r.Context()); ok {
 		satelliteName = name
 	} else {
-		satelliteName = req.Name
+		HandleAppError(w, &AppError{
+			Message: "unknown satellite entity",
+			Code:    http.StatusForbidden,
+		})
+		return
 	}
 
 	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
@@ -204,8 +197,6 @@ func (s *Server) RefreshSatellite(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
-	// TODO: Add check for if expired or not
 
 	newSecret, err := refreshRobotSecret(r, s.dbQueries, robotAcc)
 	if err != nil {
