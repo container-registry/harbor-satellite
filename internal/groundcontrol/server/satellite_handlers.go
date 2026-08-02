@@ -723,7 +723,7 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		StorageUsedBytes:   toNullInt64(int64(req.StorageUsedBytes)),
 		LastSyncDurationMs: toNullInt64(req.LastSyncDurationMs),
 		ImageCount:         toNullInt32(int32(req.ImageCount)),
-		ReportedAt:         req.RequestCreatedTime,
+		ReportedAt:         time.Now().UTC(),
 		ArtifactIds:        artifactIDs,
 	})
 	if err != nil {
