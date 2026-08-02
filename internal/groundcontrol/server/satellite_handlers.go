@@ -648,6 +648,7 @@ func (s *Server) listSatelliteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
+	reportedAt := time.Now().UTC()
 	var req SatelliteStatusParams
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
@@ -723,7 +724,7 @@ func (s *Server) syncHandler(w http.ResponseWriter, r *http.Request) {
 		StorageUsedBytes:   toNullInt64(int64(req.StorageUsedBytes)),
 		LastSyncDurationMs: toNullInt64(req.LastSyncDurationMs),
 		ImageCount:         toNullInt32(int32(req.ImageCount)),
-		ReportedAt:         time.Now().UTC(),
+		ReportedAt:         reportedAt,
 		ArtifactIds:        artifactIDs,
 	})
 	if err != nil {
