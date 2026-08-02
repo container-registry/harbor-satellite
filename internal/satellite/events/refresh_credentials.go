@@ -109,8 +109,10 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 	}
 
 	if respBody.Secret != "" {
-		setter := config.SetStateAuth(s.cm.GetSourceRegistryUsername(), respBody.Secret, config.URL(s.cm.GetSourceRegistryURL()))
-		setter(s.cm.GetConfig())
+		s.cm.With(config.SetStateAuth(s.cm.GetSourceRegistryUsername(), respBody.Secret, config.URL(s.cm.GetSourceRegistryURL())))
+		if err := s.cm.WriteConfig(); err != nil {
+			return fmt.Errorf("persist refreshed credentials: %w", err)
+		}
 	}
 
 	s.log.Info().Msgf("Secret After Update: %s", s.cm.GetStateConfig().RegistryCredentials.Password)

@@ -156,8 +156,6 @@ func requiresSystemAdmin(method, requestPath string) bool {
 	satEndpoints.HandleFunc("/sync", s.syncHandler).Methods("POST")
 	satEndpoints.HandleFunc("/refresh", s.refreshCredentialsHandler).Methods("POST")
 
-	PrintRoutes(r)
-
 	return r
 >>>>>>> 55b5a79 (feat: initial implementation)
 }

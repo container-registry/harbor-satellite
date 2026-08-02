@@ -205,6 +205,9 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 		if len(via) >= 10 {
 			return errors.New("stopped after 10 redirects")
 		}
+		if req.URL.Scheme != via[0].URL.Scheme {
+			return fmt.Errorf("refusing cross-scheme redirect from %s to %s", via[0].URL.Scheme, req.URL.Scheme)
+		}
 		// Re-attach the body, since Go clears it by default on redirect
 		if via[0].GetBody != nil {
 			body, err := via[0].GetBody()
