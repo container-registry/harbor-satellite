@@ -9,7 +9,7 @@ import (
 const (
 	AppDir                  = "/app"
 	AppBinary               = "app"
-	SourceFile              = "cmd/harbor-satellite/main.go"
+	SourceFile              = "cmd/satellite/main.go"
 	Relative_path           = "./testdata/config.json"
 	Absolute_path           = "test/e2e/testdata/config.json"
 	Satellite_ping_endpoint = "/api/v1/satellite/ping"

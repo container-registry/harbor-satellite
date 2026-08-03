@@ -132,6 +132,7 @@ graph TB
 ### Further Reading
 
 - [Architecture overview](docs/architecture/README.md)
+- [Ground Control guide](docs/guides/ground-control.md)
 - [SPIFFE quickstart guide](examples/deploy/spiffe/README.md)
 - [ADR: Ground Control authentication](docs/decisions/0004-ground-control-authentication.md)
 - [ADR: SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md)
@@ -280,6 +281,9 @@ Output goes to `website/public/`.
 
 ## Community, Discussion, Contribution, and Support
 
+Interested in contributing? Read [CONTRIBUTING.md](CONTRIBUTING.md) to get started with setting up a local development environment, the pull request workflow, and code style requirements.
+
 You can reach the Harbor community and developers via the following channels:
 
 - [#harbor-satellite on CNCF Slack](https://cloud-native.slack.com/archives/C06NE6EJBU1) (Request an invite to join the CNCF Slack via [slack.cncf.io](https://slack.cncf.io/))
+- Mailing lists: [harbor-users@lists.cncf.io](https://lists.cncf.io/g/harbor-users) (users) / [harbor-dev@lists.cncf.io](https://lists.cncf.io/g/harbor-dev) (developers)

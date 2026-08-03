@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,7 +13,7 @@ func TestConfigManagerModifiers(t *testing.T) {
 		StateConfig:  StateConfig{},
 		ZotConfigRaw: json.RawMessage(`{"storage": {}}`),
 	}
-	cm, err := NewConfigManager("", "", "", "", true, cfg, crypto.NewAESProvider())
+	cm, err := NewConfigManager("", "", "", "", true, cfg)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -113,7 +112,7 @@ func TestGetRegistryFallbackConfig(t *testing.T) {
 		ZotConfigRaw: json.RawMessage(`{}`),
 	}
 
-	cm, err := NewConfigManager("", "", "", "", true, cfg, crypto.NewAESProvider())
+	cm, err := NewConfigManager("", "", "", "", true, cfg)
 	require.NoError(t, err)
 
 	got := cm.GetRegistryFallbackConfig()
@@ -128,7 +127,7 @@ func TestGetRegistryFallbackConfigEmpty(t *testing.T) {
 		ZotConfigRaw: json.RawMessage(`{}`),
 	}
 
-	cm, err := NewConfigManager("", "", "", "", true, cfg, crypto.NewAESProvider())
+	cm, err := NewConfigManager("", "", "", "", true, cfg)
 	require.NoError(t, err)
 
 	got := cm.GetRegistryFallbackConfig()

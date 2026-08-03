@@ -8,10 +8,8 @@ jobs:
   lint:
     runs-on: container-registry
     env:
-      # Point golangci-lint at a workspace-local cache directory. The
-      # default location (/home/runner/.cache) is not writable on the
-      # `container-registry` self-hosted runner, which caused the job to
-      # fail with `permission denied`. The workspace is always writable.
+      # Keep the cache inside the workspace so it is writable.
+      # /home/runner/.cache is not writable on the container-registry runner.
       GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.cache/golangci-lint
     permissions:
       contents: write
@@ -26,19 +24,21 @@ jobs:
           go-version: "1.26.5"
           cache: false
 
-      - name: Install Task
-        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
-        with:
-          version: 3.x
-
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9.2.1
         with:
-          version: v2.12
+          version: v2.12.2
           install-only: true
 
       - name: Run golangci-lint
-        run: task lint-report
+        # Call golangci-lint directly because the container-registry runner has no
+        # working Docker daemon (DOCKER_HOST points at an unreachable DinD
+        # sidecar), so task lint-report (which uses docker run) would fail.
+        # The golangci-lint binary is provided by the install step above.
+        run: |
+          golangci-lint run -v \
+            --output.tab.path=golangci-lint.report \
+            --issues-exit-code 0
 
       - name: Generate lint summary
         run: |

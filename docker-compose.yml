@@ -21,7 +21,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        COMPONENT: ground-control
+        COMPONENT: groundcontrol/server
     container_name: ground-control
     environment:
       DB_HOST: postgres
@@ -49,7 +49,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        COMPONENT: harbor-satellite
+        COMPONENT: satellite
     container_name: satellite
     environment:
       - GROUND_CONTROL_URL=http://ground-control:8080

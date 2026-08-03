@@ -1,16 +1,21 @@
 package state
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSanitizeAuditReason_RedactsToken(t *testing.T) {
 	token := "supersecret-abcdef0123456789"
-	err := errors.New("Get \"http://gc:8080/satellites/ztr/" + token + "\": dial tcp: connection refused")
+	err := errors.New("registration request failed for token " + token + ": connection refused")
 
 	got := sanitizeAuditReason(err, token)
 
@@ -26,6 +31,27 @@ func TestSanitizeAuditReason_NilError(t *testing.T) {
 func TestSanitizeAuditReason_EmptyToken(t *testing.T) {
 	err := errors.New("registration failed")
 	require.Equal(t, "registration failed", sanitizeAuditReason(err, ""))
+}
+
+func TestRegisterSatellitePostsTokenInJSONBody(t *testing.T) {
+	token := "supersecret-abcdef0123456789"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/satellites/ztr", r.URL.Path)
+		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		var body map[string]string
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		require.Equal(t, token, body["token"])
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{}`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	_, err := registerSatellite(server.URL, ZeroTouchRegistrationRoute, token, config.TLSConfig{}, false, context.Background())
+	require.NoError(t, err)
 }
 
 func TestSanitizeAuditReason_TokenAppearsMultipleTimes(t *testing.T) {

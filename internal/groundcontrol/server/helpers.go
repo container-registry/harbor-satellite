@@ -14,9 +14,12 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/crypto"
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
+	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/crane"
 )
 
 func isConfigInUse(ctx context.Context, q *database.Queries, config database.Config) (bool, error) {
@@ -28,6 +31,85 @@ func isConfigInUse(ctx context.Context, q *database.Queries, config database.Con
 
 	// If any entries exist, config is in use
 	return len(satellites) > 0, nil
+}
+
+func createOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, states []string, configName string) error {
+	if len(states) == 0 {
+		return nil
+	}
+	if satelliteName == "" {
+		return fmt.Errorf("the satellite name must be at least one character long")
+	}
+
+	artifact := SatelliteStateArtifact{
+		States: states,
+		Config: utils.AssembleConfigState(configName),
+	}
+	data, err := json.Marshal(artifact)
+	if err != nil {
+		return fmt.Errorf("failed to marshal satellite state artifact to JSON: %w", err)
+	}
+
+	return pushStateArtifact(ctx, data, utils.AssembleSatelliteState(satelliteName))
+}
+
+func createStateArtifact(ctx context.Context, artifact GroupSyncRequest) error {
+	artifact.Registry = env.GC.Harbor.URL
+
+	data, err := json.Marshal(artifact)
+	if err != nil {
+		return fmt.Errorf("failed to marshal state artifact to JSON: %w", err)
+	}
+
+	destination := fmt.Sprintf("%s/satellite/group-state/%s/state", artifact.Registry, artifact.Group)
+	return pushStateArtifact(ctx, data, destination)
+}
+
+func pushStateArtifact(ctx context.Context, data []byte, destination string) error {
+	cfg := env.GC.Harbor
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+
+	img, err := crane.Image(map[string][]byte{"artifacts.json": data})
+	if err != nil {
+		return fmt.Errorf("failed to create image: %w", err)
+	}
+
+	auth := authn.FromConfig(authn.AuthConfig{Username: cfg.Username, Password: cfg.Password})
+	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
+	if strings.HasPrefix(cfg.URL, "http://") {
+		options = append(options, crane.Insecure)
+	}
+
+	destination = strings.TrimPrefix(strings.TrimPrefix(destination, "https://"), "http://")
+	if err := crane.Push(img, destination, options...); err != nil {
+		return fmt.Errorf("failed to push image: %w", err)
+	}
+
+	for _, tag := range []string{fmt.Sprintf("%d", time.Now().Unix()), "latest"} {
+		if err := crane.Tag(destination, tag, options...); err != nil {
+			return fmt.Errorf("failed to tag image with %s: %w", tag, err)
+		}
+	}
+
+	return nil
+}
+
+func getProjectNames(artifacts []GroupArtifact) []string {
+	uniqueProjects := make(map[string]struct{})
+	projects := make([]string, 0)
+	for _, artifact := range artifacts {
+		if artifact.Deleted {
+			continue
+		}
+		project, _, _ := strings.Cut(artifact.Repository, "/")
+		if _, exists := uniqueProjects[project]; !exists {
+			uniqueProjects[project] = struct{}{}
+			projects = append(projects, project)
+		}
+	}
+	return projects
 }
 
 func setSatelliteConfig(ctx context.Context, q *database.Queries, satelliteName string, configName string) (*database.Satellite, error) {
@@ -65,39 +147,37 @@ func setSatelliteConfig(ctx context.Context, q *database.Queries, satelliteName 
 	return &sat, nil
 }
 
-func addSatelliteToGroups(ctx context.Context, q *database.Queries, groups *[]string, satelliteID int32) ([]string, error) {
+func addSatelliteToGroups(ctx context.Context, q *database.Queries, groups []string, satelliteID int32) ([]string, error) {
 	var groupStates []string
-	if groups != nil {
-		for _, groupName := range *groups {
-			// check if groups are declared in replication
-			replications, err := harbor.ListReplication(ctx, harbor.ListParams{
-				Q: fmt.Sprintf("name=%s", groupName),
-			})
-			if len(replications) < 1 {
-				if err != nil {
-					log.Println(err)
-					return nil, &AppError{
-						Message: fmt.Sprintf("Error: Group Name: %s, does not exist in replication, Please give a Valid Group Name", groupName),
-						Code:    http.StatusBadRequest,
-					}
-				}
-			}
-			group, err := q.GetGroupByName(ctx, groupName)
+	for _, groupName := range groups {
+		// check if groups are declared in replication
+		replications, err := harbor.ListReplication(ctx, harbor.ListParams{
+			Q: fmt.Sprintf("name=%s", groupName),
+		})
+		if len(replications) < 1 {
 			if err != nil {
+				log.Println(err)
 				return nil, &AppError{
-					Message: fmt.Sprintf("Error: Invalid Group Name: %v", groupName),
+					Message: fmt.Sprintf("Error: Group Name: %s, does not exist in replication, Please give a Valid Group Name", groupName),
 					Code:    http.StatusBadRequest,
 				}
 			}
-			if err := q.AddSatelliteToGroup(ctx, database.AddSatelliteToGroupParams{
-				SatelliteID: satelliteID,
-				GroupID:     group.ID,
-			}); err != nil {
-				return nil, err
-			}
-
-			groupStates = append(groupStates, utils.AssembleGroupState(groupName))
 		}
+		group, err := q.GetGroupByName(ctx, groupName)
+		if err != nil {
+			return nil, &AppError{
+				Message: fmt.Sprintf("Error: Invalid Group Name: %v", groupName),
+				Code:    http.StatusBadRequest,
+			}
+		}
+		if err := q.AddSatelliteToGroup(ctx, database.AddSatelliteToGroupParams{
+			SatelliteID: satelliteID,
+			GroupID:     group.ID,
+		}); err != nil {
+			return nil, err
+		}
+
+		groupStates = append(groupStates, utils.AssembleGroupState(groupName))
 	}
 	return groupStates, nil
 }
@@ -148,34 +228,32 @@ func storeRobotAccountInDB(ctx context.Context, q *database.Queries, robotName, 
 	return nil
 }
 
-func assignPermissionsToRobot(ctx context.Context, q *database.Queries, groups *[]string, robotID int64) error {
-	if groups != nil {
-		for _, groupName := range *groups {
-			projects, err := q.GetProjectsOfGroup(ctx, groupName)
-			if err != nil {
-				log.Printf("Error fetching projects of group %s: %v", groupName, err)
-				return &AppError{
-					Message: "Error: failed to fetch projects for group",
-					Code:    http.StatusInternalServerError,
-				}
+func assignPermissionsToRobot(ctx context.Context, q *database.Queries, groups []string, robotID int64) error {
+	for _, groupName := range groups {
+		projects, err := q.GetProjectsOfGroup(ctx, groupName)
+		if err != nil {
+			log.Printf("Error fetching projects of group %s: %v", groupName, err)
+			return &AppError{
+				Message: "Error: failed to fetch projects for group",
+				Code:    http.StatusInternalServerError,
 			}
-			if len(projects) == 0 {
-				log.Printf("No projects found for group %s", groupName)
-				return &AppError{
-					Message: "Error: no projects found for group",
-					Code:    http.StatusInternalServerError,
-				}
+		}
+		if len(projects) == 0 {
+			log.Printf("No projects found for group %s", groupName)
+			return &AppError{
+				Message: "Error: no projects found for group",
+				Code:    http.StatusInternalServerError,
 			}
+		}
 
-			project := projects[0]
-			// give permission to the robot account for all the projects present in this group
-			_, err = utils.UpdateRobotProjects(ctx, project, strconv.FormatInt(robotID, 10))
-			if err != nil {
-				log.Printf("Error updating robot account permissions: %v", err)
-				return &AppError{
-					Message: "Error: failed to update robot account permissions",
-					Code:    http.StatusInternalServerError,
-				}
+		project := projects[0]
+		// give permission to the robot account for all the projects present in this group
+		_, err = utils.UpdateRobotProjects(ctx, project, strconv.FormatInt(robotID, 10))
+		if err != nil {
+			log.Printf("Error updating robot account permissions: %v", err)
+			return &AppError{
+				Message: "Error: failed to update robot account permissions",
+				Code:    http.StatusInternalServerError,
 			}
 		}
 	}
