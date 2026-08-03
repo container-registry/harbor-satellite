@@ -296,14 +296,13 @@ func TestRemoveNullTagArtifacts(t *testing.T) {
 }
 
 func TestUpdateStateMap(t *testing.T) {
-	process := &FetchAndReplicateStateProcess{
-		stateMap: []StateMap{
-			{url: "url1"},
-			{url: "url2"},
-		},
-	}
-
 	t.Run("add new state and remove old", func(t *testing.T) {
+		process := &FetchAndReplicateStateProcess{
+			stateMap: []StateMap{
+				{url: "url1"},
+				{url: "url2"},
+			},
+		}
 		newStates := []string{"url2", "url3"}
 		changed := process.updateStateMap(newStates)
 		require.True(t, changed)
@@ -313,6 +312,12 @@ func TestUpdateStateMap(t *testing.T) {
 	})
 
 	t.Run("no change", func(t *testing.T) {
+		process := &FetchAndReplicateStateProcess{
+			stateMap: []StateMap{
+				{url: "url2"},
+				{url: "url3"},
+			},
+		}
 		newStates := []string{"url2", "url3"}
 		changed := process.updateStateMap(newStates)
 		require.False(t, changed)
