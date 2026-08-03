@@ -1,217 +1,365 @@
 ---
 status: proposed
-date: 2026-07-27
+date: 2026-08-03
 deciders: [Harbor Satellite Development Team]
 informed: [Harbor Satellite Developers]
 ---
-# Evolve Satellite into a policy-enforcing OCI registry proxy
+# Build a policy-enforcing transparent OCI registry proxy with ORAS
 
 ## Context
 
-Satellite currently observes an edge node, reads desired state from Ground Control,
-and replicates selected images into Zot. Crane performs the copy and Zot serves the
-local registry.
+Satellite currently uses Crane to replicate selected images into Zot. The revised
+goal is a policy-enforcing OCI proxy, not a full registry and not a mandatory
+pull-through cache.
 
-The target is a small, self-managed registry and pull-through proxy. It must:
+The proxy must inspect every OCI request before it reaches an upstream. Request data
+such as identity, method, repository, reference, digest, and upstream may be enough
+for a decision. When it is not, Satellite must resolve and verify descriptors,
+manifests, indexes, configurations, subjects, referrers, or signatures and evaluate
+policy again. Only an allowed request is forwarded or served from retained content.
 
-* work with Harbor, Docker Hub, Quay, JFrog, ECR, GCR, ACR, GHCR, and other
-  OCI-compatible registries;
-* support images and arbitrary OCI artifacts such as Helm charts, SBOMs, signatures,
-  Wasm modules, and models;
-* enforce policy before pull, push, delete, mount, tag, and discovery operations;
-* run on constrained edge and embedded hardware;
-* serve verified local content while offline; and
-* leave a clean path to peer-to-peer artifact transfer.
-
-This overview is supported by:
-
-* [0009-satellite-owned-registry-and-oras.md](0009-satellite-owned-registry-and-oras.md)
-* [0009-oci-layout-storage-and-optional-dedupe.md](0009-oci-layout-storage-and-optional-dedupe.md)
+The same design must support container images and arbitrary OCI artifacts, including
+Helm charts, SBOMs, signatures, attestations, Wasm modules, models, and unknown valid
+media types. It must also keep local replication and caching optional for constrained
+edge deployments.
 
 ADR-0009 supersedes the target-state choices in [ADR-0001](0001-skopeo-vs-crane.md)
 and [ADR-0002](0002-zot-vs-docker-registries.md). Those records remain historical.
 
+## Decision Drivers
+
+* Policy must run before upstream contact and again when verified content evidence is
+  required.
+* Allowed requests must preserve OCI Distribution status, headers, ranges,
+  conditions, cancellation, and streaming behavior.
+* The content model must be OCI descriptor graphs rather than only container images.
+* Local and remote content should use one resolve, fetch, copy, and metadata model.
+* Proxy-only deployments should require neither a registry process nor persistent
+  artifact storage.
+* Optional local content should remain interoperable with OCI tooling and avoid an
+  unnecessary deduplication database.
+
 ## Decision
 
-Satellite will become one Go process that owns:
+Satellite will implement a catch-all `net/http` proxy handler that parses each
+request into a typed OCI operation. It will perform a request pre-check, acquire
+verified metadata through `oras-go` when necessary, perform a content-aware policy
+check, and then either deny, forward, or serve retained content.
 
-* a focused OCI Distribution Specification registry interface;
-* authentication, authorization, and CEL policy enforcement;
-* upstream resolution and pull-through caching;
-* local OCI storage and garbage collection;
-* replication through `oras-go`; and
-* a small embedded bbolt cache for deduplication metadata.
+`oras-go` will replace Crane for registry resolution, OCI graph transfer, metadata
+access, and replication. Optional local replica or cache content will use
+`oras.land/oras-go/v2/content/oci`. Zot and bbolt are not part of the target
+architecture.
 
-Zot and Crane will be removed from the target architecture. No external database,
-object store, or cache service is required.
+ORAS is not the HTTP proxy. Satellite owns request parsing, authentication, policy,
+upstream and credential selection, forwarding, body replay, response handling, and
+audit. ORAS supplies the content and descriptor abstraction used on both sides of
+that boundary.
 
-Policy remains configuration, not database state. JSON or YAML is validated and
-loaded into Go structures at startup. CEL expressions are compiled once before the
-server accepts requests. Invalid policy prevents startup.
+## Scope
+
+This decision covers:
+
+* transparent proxying of OCI Distribution pull, push, upload, delete, mount, tag,
+  listing, and referrer operations as they are implemented;
+* typed route parsing and fail-closed policy enforcement;
+* local or remote metadata resolution for content-aware decisions;
+* arbitrary OCI artifact transfer through ORAS;
+* desired-state replication; and
+* optional local replica and cache modes backed by an ORAS OCI image layout.
+
+The first delivery remains pull-oriented and adds mutation operations incrementally.
+Search, scanning, administration, and other general registry features are included
+only when Satellite policy or proxy operation requires them. Vendor-specific routes
+require an explicit typed action and policy-controlled pass-through rule.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    Client[Runtime or OCI client]
-    Router[Satellite OCI router]
-    Auth[Authentication and authorization]
-    Policy[CEL policy]
-    Resolver[Upstream resolver]
-    ORAS[oras-go transfer]
-    Store[OCI storage]
-    Bolt[bbolt dedupe cache]
-    GC[Ground Control]
-    Peer[Future Satellite peer]
+The request path is split into three visible stages: gate the request, gather only the
+evidence needed by policy, and execute the allowed action.
 
-    Client --> Router --> Auth --> Policy
-    Policy -->|local hit| Store
-    Policy -->|allowed miss| Resolver --> ORAS --> Store
-    Store <--> Bolt
-    Store --> Client
-    GC -->|desired state and policy| Policy
-    ORAS -. future source .-> Peer
+```mermaid
+flowchart TB
+    Client[OCI client]
+
+    subgraph Gate[1. Request gate]
+        Parse[Catch-all handler<br/>Parse typed OCI operation]
+        Pre[Authenticate and run<br/>request pre-check]
+        Parse --> Pre
+    end
+
+    subgraph Evidence[2. Policy evidence]
+        Need{Need content metadata?}
+        Resolve[ORAS resolve and fetch<br/>Bind tag to digest]
+        MetadataSource{Source to execute}
+        LocalMeta[(Local OCI store)]
+        RemoteMeta[Remote OCI repository]
+        Verify[Verify digest and size<br/>Build bounded policy input]
+        Admit[Content-aware policy check]
+
+        Need -->|yes| Resolve
+        Resolve --> MetadataSource
+        MetadataSource -->|local| LocalMeta
+        MetadataSource -->|upstream| RemoteMeta
+        LocalMeta --> Admit 
+        RemoteMeta --> Admit 
+    end
+
+    subgraph Execute[3. Allowed execution]
+        Source{Selected source}
+        LocalRead[Serve verified<br/>local content]
+        Forward[Forward original request<br/>with scoped credentials]
+        Upstream[Upstream registry]
+
+        Source -->|replica or cache hit| LocalRead
+        Source -->|upstream| Forward --> Upstream
+    end
+
+    Deny[Deny and audit]
+
+    Client --> Parse
+    Pre -->|deny| Deny
+    Pre -->|allow| Need
+    Need -->|no| Source
+    Admit -->|deny| Deny
+    Admit -->|allow| Source
 ```
 
-| Component | Responsibility |
+The interaction for a request that needs content evidence is:
+
+```mermaid
+sequenceDiagram
+    participant C as OCI client
+    participant S as Satellite proxy
+    participant P as CEL policy
+    participant O as ORAS content layer
+    participant R as Local or remote source
+
+    C->>S: OCI request
+    S->>S: Parse and validate operation
+    S->>P: Request metadata pre-check
+    alt Pre-check denied
+        P-->>S: Deny
+        S-->>C: Policy error
+    else More evidence required
+        P-->>S: Allow metadata lookup
+        S->>O: Resolve reference
+        O->>R: Resolve and fetch bounded metadata
+        R-->>O: Descriptor graph metadata
+        O-->>S: Digest-verified evidence
+        S->>P: Content-aware policy input
+        alt Content denied
+            P-->>S: Deny
+            S-->>C: Policy error
+        else Content allowed
+            P-->>S: Allow resolved digest
+            S->>R: Serve locally or forward upstream
+            R-->>S: OCI response
+            S-->>C: OCI response
+        end
+    end
+```
+
+Metadata must come from the source that will answer the operation. A local result may
+stand in for a remote result only for an exact digest or under an explicit freshness
+rule. When policy evaluates a mutable tag, Satellite binds execution to the resolved
+digest so that it cannot authorize one graph and return another.
+
+### Operating Modes
+
+| Mode | Behavior |
 |---|---|
-| OCI router | Parse registry requests and return specification-compliant responses |
-| Authentication | Identify local callers and select upstream credentials |
-| Policy engine | Decide whether an operation and its content are allowed |
-| Upstream resolver | Map a local namespace to an upstream registry and repository |
-| ORAS transfer | Copy complete OCI descriptor graphs without assuming image media types |
-| Storage | Verify, commit, resolve, and stream OCI content |
-| bbolt cache | Map digests to verified paths and lightweight dedupe metadata |
-| Reconciler and GC | Recover interrupted work and remove unreachable content |
+| `proxy` | Evaluate policy and forward; do not persist passing content |
+| `replica` | Serve explicitly replicated content locally and proxy other allowed requests |
+| `cache` | Retain selected verified upstream content under admission and retention policy |
 
-## Request Flow
+`proxy` is the default. Offline access is available only for content retained by
+`replica` or `cache` mode. Retained content is derived state and does not make
+Satellite the authoritative upstream registry.
 
-Every operation uses the same high-level pipeline:
+### ORAS OCI Storage Layout
 
-1. Validate the repository, reference, digest, method, and request limits.
-2. Authenticate the caller.
-3. Apply operation policy before contacting an upstream.
-4. Resolve the request locally.
-5. On an allowed miss, select the upstream and credentials.
-6. Download into quarantine while hashing.
-7. Verify digest, size, descriptor graph, and content policy.
-8. Atomically commit the content and update repository metadata.
-9. Update the bbolt dedupe cache.
-10. Serve the verified manifest or blob.
+Replica and cache modes initially use one Satellite-owned OCI image layout:
 
-Policy is evaluated twice when needed:
+```text
+<storage-root>/
+|-- oci-layout
+|-- index.json
+|-- blobs/
+|   |-- sha256/<digest>
+|   `-- <algorithm>/<digest>
+`-- ingest/
+    `-- <temporary verified writes>
+```
 
-* **Pre-fetch policy** uses identity, action, repository, tag, upstream, and request
-  metadata.
-* **Admission policy** uses the verified manifest graph, artifact type, subject,
-  signatures, platforms, and sizes.
+Satellite records fully qualified source references so equal repository and tag names
+from different registries do not collide. Authorization still uses upstream and
+repository provenance; the presence of a digest in the global blob directory does
+not grant access to it.
 
-Denied or incomplete content is never published.
+This layout is effective for the initial read-mostly workload because:
 
-## Storage Modes
+* one content-addressable blob path naturally deduplicates equal content without
+  bbolt, hardlinks, or per-repository copies;
+* ORAS streams content to `ingest/`, verifies digest and size, and renames successful
+  blobs into the content-addressable path;
+* manifests, layers, configurations, signatures, SBOMs, and other artifacts share
+  the same blob model; and
+* the layout remains inspectable and transferable with OCI-aware tools.
 
-Operators choose one mode:
+The store is limited to one Satellite process and writer. ORAS maintains tag and
+predecessor information in memory and rewrites `index.json` as references change, so
+startup cost, index growth, atomic recovery, and garbage collection must be tested on
+target hardware. Satellite will add a small recovery wrapper or upstream durability
+improvements if crash tests show they are required. A different sharding or metadata
+design requires new measurements and a separate decision.
 
-| Mode | Behavior | Main use |
-|---|---|---|
-| `portable` | Independent complete OCI layouts | Portable fallback |
-| `hardlink` | Complete layouts sharing blob inodes | Default local mode |
-| `shared` | One blob pool resolved by the storage layer | No-hardlink dedupe |
+## Catch-all Proxy Handler
 
-The bbolt cache accelerates digest lookup and dedupe decisions. It is not the source
-of artifact bytes or policy. It can be rebuilt from repository metadata and verified
-storage after loss or corruption.
+The handler is inspired by olareg's compact `Server.ServeHTTP` dispatcher: one entry
+point recognizes an OCI route and delegates a validated operation. The referenced
+`internal/httplog/httplog.go` is separately useful for middleware composition, status
+capture, timing, and authorization redaction; it is not the route parser.
 
-## Authentication
+Satellite adopts the pattern, not olareg internals. Its boundary will inspect the
+escaped URL before normalization, reject ambiguous or encoded traversal paths, map
+each route to a typed policy action, and deny unknown routes unless pass-through is
+explicitly configured. The forwarder preserves OCI headers and streaming semantics,
+removes hop-by-hop headers, and never sends credentials to another authority without
+an explicit rule.
 
-An access token issued for Satellite is not automatically valid for an upstream
-registry. Satellite supports:
+An embedded registry is not selected because the primary operation is controlled
+forwarding, not serving authoritative local state:
 
-* anonymous upstream access;
-* credentials supplied through environment variables or mounted secrets;
-* registry-specific providers for cloud registries; and
-* challenge relay or token pass-through only when explicitly configured.
+* **olareg** is the closest lightweight behavior reference, but its server and store
+  do not expose the required two-stage policy, multi-upstream, and transparent
+  forwarding boundaries as stable extension points.
+* **go-containerregistry `pkg/registry`** is useful for tests and small image
+  registries, but does not provide the proxy and arbitrary-artifact policy model.
+* **Zot** provides a complete registry and mature storage features, but adds another
+  server lifecycle and a storage abstraction alongside ORAS.
+* **CNCF Distribution** is mature and remains a protocol reference, but its registry
+  and storage-driver model is broader than this focused proxy.
 
-Credentials are never stored in OCI layouts or bbolt. Authorization headers are not
-forwarded to another host without explicit configuration.
+These projects remain useful for differential behavior and OCI conformance testing.
 
-Users, roles, and policy bindings remain startup configuration for the first release.
-If mutable relational metadata is later required, it will receive a separate decision;
-bbolt will not be stretched into an application database.
+## Why ORAS?
 
-## Failure Rules
+OCI content is a graph of descriptors. The root may be an image, index, Helm chart,
+SBOM, signature, Wasm module, model, or a future artifact type. ORAS fits this model
+without converting content into image-specific objects.
 
-* Committed blobs are immutable and verified by digest.
-* Tags never point to uncommitted manifests.
-* Publication is atomic for readers.
-* Interrupted transfers remain uncommitted.
-* A missing or corrupt bbolt file is rebuilt from storage.
-* Corrupt blob content is quarantined and never served.
-* Existing local content remains available during upstream or Ground Control outages,
-  subject to offline policy.
+Its main benefits are:
 
-## Resource Model
+* common `Target`, `ReadOnlyTarget`, `GraphTarget`, OCI layout, and remote repository
+  abstractions;
+* remote-to-remote, remote-to-local, local-to-remote, and local-to-local graph copy;
+* preservation of original manifest bytes, digests, media types, annotations,
+  subjects, and artifact types;
+* bounded concurrent, streaming transfer; and
+* one library for policy metadata, replication, import, export, and future peer
+  transfer.
 
-The default deployment uses:
+The storage packages have clear roles: `content/oci` is the durable replica or cache,
+`content/memory` is limited to bounded tests or short-lived staging, and
+`content/file` is for artifact file and working-directory workflows rather than a
+restartable registry store.
 
-* one Go process;
-* bounded workers and request sizes;
-* streaming blob I/O;
-* immutable files and infrequent metadata writes;
-* one embedded bbolt file for dedupe lookup; and
-* no external state service.
+### Metadata and Policy Verification
 
-The design targets one writer process and a local filesystem. Multi-process writers
-and shared object storage are separate future decisions.
+ORAS can resolve and fetch descriptors and traverse their successors. Remote
+repository APIs can also discover referrers and predecessors where supported. This
+gives policy access to digest, size, media type, artifact type, annotations, platform,
+configuration, layers, child manifests, subject, signatures, SBOMs, and attestations.
 
-## Measured Direction
+Satellite converts that evidence into bounded typed CEL input. It verifies fetched
+bytes against the descriptor digest and size, caps graph depth, node count, metadata
+bytes and referrer count, and cryptographically verifies signatures rather than
+trusting annotations alone. Unknown media types remain intact and can be allowed or
+denied using their structural metadata.
 
-The prototype measurements provide scale, not conformance proof:
+ORAS copy hooks are not the admission boundary by themselves because graph children
+may be transferred before their parent is committed. Satellite resolves the evidence
+needed by policy before a publishing copy, or copies into quarantine until the final
+decision succeeds.
 
-* hardlinked OCI layouts stored 80 MiB of logical references in 20.32 MiB, a 74.7%
-  reduction from independent copies;
-* hardlink layouts and the global-CAS prototype had lookup time within 1.3%;
-* the focused router skeleton used a 5.79 MiB binary and 5.46 MiB idle RSS;
-* Distribution used a 23.05 MiB binary and 17.50 MiB idle RSS; and
-* Zot used a 64.02 MiB binary and 49.66 MiB idle RSS.
+### Why ORAS Over Crane
 
-These figures must be rechecked on target ARM64, eMMC, and SD-card hardware.
+Crane and `go-containerregistry` are strong container-image tools, but their main
+abstractions are images and image indexes. ORAS works directly with arbitrary OCI
+descriptor graphs and provides the same interfaces for local and remote content.
+That makes it a better fit for replication and policy inspection without media-type
+conversion.
 
-## Delivery
+ORAS replaces registry resolve, graph copy, tagging, and artifact access. Existing
+code that applies image layers into a merged filesystem or emits Docker-save archives
+requires a separate migration; `go-containerregistry` may remain in those legacy
+paths until they are redesigned.
 
-1. Implement pull-only `GET` and `HEAD`, policy checks, one upstream, OCI storage,
-   bbolt dedupe caching, and all three storage modes.
-2. Add referrers, tag listing, leases, cache eviction, reconciliation, and arbitrary
-   artifact tests.
-3. Add resumable push, delete, mount, and policy-controlled replication; remove Zot
-   and remaining Crane paths.
-4. Add cloud credential providers and peer sources.
+### Why ORAS Over Zot Storage
+
+Zot storage is capable and more registry-oriented, with filesystem and object-store
+drivers, hardlink deduplication, Bolt-backed lookup, garbage collection, and scrub.
+Using it alone would still introduce a second storage API and publication model next
+to the ORAS APIs used for remote metadata and transfer. Running Zot would additionally
+introduce a full registry lifecycle that proxy-only mode does not need.
+
+Using ORAS `content/oci` keeps optional local content in the same descriptor model as
+remote access and replication. Its global content-addressable namespace already
+deduplicates blobs, so the initial design does not need Zot storage, hardlink modes,
+or a bbolt digest cache. Zot remains a reference for durability and maintenance
+behavior rather than an embedded dependency.
 
 ## Consequences
 
-* Good: Satellite controls policy at every registry boundary.
-* Good: Arbitrary OCI media types pass through without image-specific conversion.
-* Good: One process owns HTTP, transfer, storage, and recovery.
-* Good: Operators can choose portability or stronger deduplication.
-* Neutral: bbolt is a local acceleration cache and must be maintained and rebuilt.
-* Neutral: Peer transfer reuses OCI descriptors; discovery and trust remain separate.
+* Good: Satellite remains a focused policy proxy; storage is optional.
+* Good: ORAS provides one arbitrary-artifact model for metadata, replication, local
+  content, and future peer transfer.
+* Good: Proxy-only mode needs neither Zot, bbolt, nor persistent artifact storage.
+* Good: The global OCI blob namespace deduplicates content without a separate lookup
+  database.
+* Good: Policy can evaluate verified descriptor graphs, subjects, referrers,
+  signatures, platforms, and sizes.
+* Neutral: Satellite owns HTTP forwarding and conformance behavior; focused protocol
+  and differential tests address this risk.
+* Neutral: ORAS index recovery and scaling require target testing; a recovery wrapper,
+  upstream fixes, or later sharding can address observed limits.
+* Neutral: Crane removal is incremental for filesystem export and Docker archive
+  workflows outside OCI graph transfer.
+* Bad: Satellite must manage the lifecycle of the ORAS store, including index recovery and garbage collection, if it is used for local content.
 
 ## Validation
 
-* Pass the claimed OCI Distribution conformance categories.
-* Test Docker, Podman, containerd/nerdctl, Helm, and ORAS clients.
-* Round-trip images, indexes, signatures, SBOMs, Helm charts, Wasm, and unknown valid
-  media types.
-* Inject digest mismatches, interrupted transfers, crashes, and concurrent misses.
-* Delete and rebuild bbolt, then confirm content remains correct and accessible.
-* Validate all storage modes on representative target filesystems and hardware.
+* Pass every claimed OCI Distribution conformance category.
+* Compare request and response behavior with olareg, Zot, and Distribution.
+* Test Docker, Podman, containerd/nerdctl, Helm, ORAS, and representative vendor
+  clients through the proxy.
+* Verify that a pre-check denial causes no upstream registry or token request.
+* Verify that a metadata-policy denial is neither forwarded nor locally published.
+* Bind tag-based decisions to the resolved immutable digest and test concurrent tag
+  mutation.
+* Round-trip images, indexes, signatures, SBOMs, Helm charts, Wasm, models, and
+  unknown valid media types without conversion.
+* Fuzz paths, queries, headers, ranges, redirects, uploads, manifests, cancellation,
+  and inspected-body replay.
+* Test digest mismatch, graph limits, partial transfers, concurrent misses, disk-full
+  behavior, restart recovery, index corruption, and garbage collection.
+* Measure footprint and storage behavior on representative edge hardware.
 
 ## References
 
 * [OCI Distribution Specification](https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md)
-* [OCI Image Specification](https://github.com/opencontainers/image-spec)
 * [OCI Image Layout](https://github.com/opencontainers/image-spec/blob/v1.1.1/image-layout.md)
-* [ORAS Go](https://github.com/oras-project/oras-go)
+* [ORAS Go v2.6.2](https://github.com/oras-project/oras-go/tree/v2.6.2)
+* [ORAS copy implementation](https://github.com/oras-project/oras-go/blob/v2.6.2/copy.go)
+* [ORAS OCI store](https://pkg.go.dev/oras.land/oras-go/v2@v2.6.2/content/oci)
+* [ORAS OCI storage implementation](https://github.com/oras-project/oras-go/blob/v2.6.2/content/oci/storage.go)
+* [ORAS memory store](https://pkg.go.dev/oras.land/oras-go/v2@v2.6.2/content/memory)
+* [ORAS file store](https://pkg.go.dev/oras.land/oras-go/v2@v2.6.2/content/file)
+* [olareg server dispatch](https://github.com/olareg/olareg/blob/main/olareg.go)
+* [olareg HTTP logging middleware](https://github.com/olareg/olareg/blob/main/internal/httplog/httplog.go)
+* [go-containerregistry `pkg/registry`](https://github.com/google/go-containerregistry/tree/main/pkg/registry)
+* [Zot storage](https://zotregistry.dev/v2.1.18/articles/storage/)
+* [Zot storage package](https://pkg.go.dev/zotregistry.dev/zot/v2@v2.1.18/pkg/storage)
+* [CNCF Distribution](https://github.com/distribution/distribution)
 * [CEL Go](https://github.com/google/cel-go)
-* [bbolt](https://github.com/etcd-io/bbolt)
-* [Harbor Satellite](https://satellite.container-registry.com/)

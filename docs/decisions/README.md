@@ -13,6 +13,4 @@ General information about architectural decision records is available at <https:
 - [ADR-0003](0003-remote-config-injection.md) - Remote Config Injection
 - [ADR-0004](0004-ground-control-authentication.md) - Ground Control Authentication
 - [PDR-0005](0005-spiffe-identity-and-security.md) - SPIFFE Identity and Security
-- [ADR-0009: Architecture](0009-transparent-oci-registry-proxy.md) - Policy-Enforcing OCI Registry Proxy
-- [ADR-0009: Implementation](0009-satellite-owned-registry-and-oras.md) - Satellite-Owned Registry and ORAS
-- [ADR-0009: Storage](0009-oci-layout-storage-and-optional-dedupe.md) - OCI Storage and bbolt Deduplication
+- [ADR-0009](0009-transparent-oci-registry-proxy.md) - Policy-Enforcing Transparent OCI Registry Proxy with ORAS
