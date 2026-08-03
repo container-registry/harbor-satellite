@@ -606,7 +606,7 @@ func (s *Server) ListSatellites(w http.ResponseWriter, r *http.Request) {
 func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteStatusRequest
 	r.Body = http.MaxBytesReader(w, r.Body, 5*1024*1024)
-	
+
 	if err := DecodeRequestBody(r, &req); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
@@ -674,8 +674,6 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, &AppError{Message: "invalid heartbeat interval format", Code: http.StatusBadRequest})
 		return
 	}
-
-
 
 	var artifactIDs []int32
 	if len(req.CachedImages) > 0 {
