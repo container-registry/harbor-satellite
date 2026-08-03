@@ -101,8 +101,9 @@ flowchart TB
         Resolve --> MetadataSource
         MetadataSource -->|local| LocalMeta
         MetadataSource -->|upstream| RemoteMeta
-        LocalMeta --> Admit 
-        RemoteMeta --> Admit 
+        LocalMeta --> Verify
+        RemoteMeta --> Verify
+        Verify --> Admit
     end
 
     subgraph Execute[3. Allowed execution]
