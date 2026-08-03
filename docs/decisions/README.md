@@ -15,5 +15,6 @@ General information about architectural decision records is available at <https:
 - [PDR-0005](0005-spiffe-identity-and-security.md) - SPIFFE Identity and Security
 - [ADR-0006](0006-satellite-lifecycle-states.md) - Satellite Lifecycle States
 - [ADR-0007](0007-security-plugins-parsec.md) - PARSEC Hardware-Backed Identity for Edge Satellites
+- [ADR-0008](0008-parsec-harbor-integration-proposal.md) - PARSEC Harbor Integration Proposal
 - [ADR-0008](0008-parsec-integration-and-zero-trust-bootstrapping-flow.md) - PARSEC Integration & Zero-Trust Bootstrapping Flow
 - [ADR-0009](0009-transparent-oci-registry-proxy.md) - Policy-Enforcing Transparent OCI Registry Proxy with ORAS
