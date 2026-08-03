@@ -3,6 +3,7 @@ version: "3"
 vars:
   GO_VERSION: "1.26.5"
   GOLANGCILINT_VERSION: "v2.12.2"
+  GOVULNCHECK_VERSION: "v1.1.4"
   GORELEASER_VERSION: "v2.9.0"
   GO_SWAGGER_VERSION: "v0.35.0"
   OAPI_CODEGEN_VERSION: "de2d8b2b0afb287198554eb305bb0d2687d26a85"
@@ -36,13 +37,13 @@ tasks:
       - task --list
 
   build:
-    desc: Build both components for current platform
+    desc: Build the satellite, Ground Control server, and Ground Control CLI
     aliases: [b]
     cmds:
       - task: _build:dev
 
   build-all:
-    desc: Build both components for all platforms
+    desc: Build all executables for all platforms
     cmds:
       - task: _build:all
 

@@ -43,7 +43,7 @@ config.json
 bin/
 .task/
 
-# Top-level satellite binary (built by `go build ./cmd/harbor-satellite` or similar);
+# Top-level satellite binary (built by `go build ./cmd/satellite` or similar);
 # never check this in.
 /main
 /satellite

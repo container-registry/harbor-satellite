@@ -63,7 +63,7 @@ export DB_USERNAME=postgres
 export DB_PASSWORD=password
 
 cd "$PROJECT_ROOT"
-go run ./cmd/ground-control > /tmp/gc.log 2>&1 &
+go run ./cmd/groundcontrol/server > /tmp/gc.log 2>&1 &
 GC_PID=$!
 
 log "Waiting for Ground Control (PID: $GC_PID)..."
@@ -166,7 +166,7 @@ cat > config.json << EOF
 }
 EOF
 
-go run ./cmd/harbor-satellite --token "$TOKEN" --ground-control-url "http://127.0.0.1:$GC_PORT" --harbor-registry-url "http://127.0.0.1:8080" --json-logging=false > /tmp/sat.log 2>&1 &
+go run ./cmd/satellite --token "$TOKEN" --ground-control-url "http://127.0.0.1:$GC_PORT" --harbor-registry-url "http://127.0.0.1:8080" --json-logging=false > /tmp/sat.log 2>&1 &
 SAT_PID=$!
 
 log "Satellite started (PID: $SAT_PID)"

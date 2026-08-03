@@ -137,8 +137,11 @@ jobs:
         with:
           version: 3.x
 
-      - name: Build the binary for ground control
+      - name: Build the Ground Control server
         run: task _build:ground-control
+
+      - name: Build the Ground Control CLI
+        run: task _build:groundcontrol-cli
 
   e2e-tests:
     runs-on: ubuntu-latest

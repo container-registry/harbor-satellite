@@ -18,7 +18,7 @@ This project uses [Task](https://taskfile.dev) as the build tool.
 # List all available tasks
 task --list
 
-# Build both components
+# Build the satellite, Ground Control server, and Ground Control CLI
 task build
 
 # Run linter
@@ -32,8 +32,8 @@ task e2e
 
 | Command | Description |
 |---------|-------------|
-| `task build` | Build both components for current platform |
-| `task build-all` | Build both components for all platforms |
+| `task build` | Build all three executables for the current platform |
+| `task build-all` | Build all three executables for all supported platforms |
 
 ## Lint Tasks
 
