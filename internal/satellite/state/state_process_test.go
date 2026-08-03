@@ -294,3 +294,28 @@ func TestRemoveNullTagArtifacts(t *testing.T) {
 		require.Len(t, result.GetArtifacts(), 1)
 	})
 }
+
+func TestUpdateStateMap(t *testing.T) {
+	process := &FetchAndReplicateStateProcess{
+		stateMap: []StateMap{
+			{url: "url1"},
+			{url: "url2"},
+		},
+	}
+
+	t.Run("add new state and remove old", func(t *testing.T) {
+		newStates := []string{"url2", "url3"}
+		changed := process.updateStateMap(newStates)
+		require.True(t, changed)
+		require.Len(t, process.stateMap, 2)
+		require.Equal(t, "url2", process.stateMap[0].url)
+		require.Equal(t, "url3", process.stateMap[1].url)
+	})
+
+	t.Run("no change", func(t *testing.T) {
+		newStates := []string{"url2", "url3"}
+		changed := process.updateStateMap(newStates)
+		require.False(t, changed)
+		require.Len(t, process.stateMap, 2)
+	})
+}
