@@ -628,8 +628,6 @@ func FetchEntitiesFromState(state StateReader) []Entity {
 	return entities
 }
 
-
-
 func applyHarborOverrideToSatelliteState(state *SatelliteState, override string) (*SatelliteState, error) {
 	for i, s := range state.States {
 		replaced, err := config.ReplaceURLHost(s, override)
