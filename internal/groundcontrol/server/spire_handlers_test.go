@@ -13,13 +13,13 @@ import (
 func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 	tests := []struct {
 		name           string
-		request        RegisterSatelliteRequest
+		request        SPIFFESatelliteRegistrationRequest
 		expectError    bool
 		expectedErrMsg string
 	}{
 		{
 			name: "valid join_token request",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-01",
 				Region:            "us-west",
 				Selectors:         []string{"docker:label:foo"},
@@ -29,7 +29,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "valid x509pop request",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-02",
 				Selectors:         []string{"docker:label:bar"},
 				AttestationMethod: "x509pop",
@@ -38,7 +38,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "valid sshpop request with parent_agent_id",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-03",
 				Selectors:         []string{"docker:label:baz"},
 				AttestationMethod: "sshpop",
@@ -48,7 +48,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "missing satellite_name",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "join_token",
 			},
@@ -57,7 +57,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "missing selectors",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-01",
 				AttestationMethod: "join_token",
 			},
@@ -66,7 +66,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "invalid selector format",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-01",
 				Selectors:         []string{"invalid-selector"},
 				AttestationMethod: "join_token",
@@ -76,7 +76,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "invalid attestation_method",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-01",
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "invalid",
@@ -86,7 +86,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 		},
 		{
 			name: "sshpop missing parent_agent_id",
-			request: RegisterSatelliteRequest{
+			request: SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-01",
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "sshpop",
@@ -107,7 +107,7 @@ func TestRegisterSatelliteRequest_Validation(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
-			server.registerSatelliteWithSPIFFEHandler(w, req)
+			server.RegisterSatelliteWithSpiffe(w, req)
 
 			resp := w.Result()
 			defer resp.Body.Close()
@@ -139,7 +139,7 @@ func TestListSpireAgentsHandler_NoSpireClient(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/spire/agents", nil)
 	w := httptest.NewRecorder()
 
-	server.listSpireAgentsHandler(w, req)
+	server.ListSpireAgents(w, req, ListSpireAgentsParams{})
 
 	resp := w.Result()
 	defer resp.Body.Close()
@@ -152,10 +152,21 @@ func TestListSpireAgentsHandler_NoSpireClient(t *testing.T) {
 	require.Contains(t, respBody["message"], "SPIRE server not configured")
 }
 
+func TestGetSpireStatusEnabledButDisconnected(t *testing.T) {
+	server := &Server{spireEnabled: true}
+	req := httptest.NewRequest(http.MethodGet, "/api/spire/status", nil)
+	w := httptest.NewRecorder()
+
+	server.GetSpireStatus(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.JSONEq(t, `{"enabled":true,"connected":false}`, w.Body.String())
+}
+
 func TestRegisterSatelliteRequest_DefaultValues(t *testing.T) {
 	server := &Server{}
 
-	req := RegisterSatelliteRequest{
+	req := SPIFFESatelliteRegistrationRequest{
 		SatelliteName:     "edge-01",
 		Selectors:         []string{"docker:label:foo"},
 		AttestationMethod: "join_token",
@@ -168,7 +179,7 @@ func TestRegisterSatelliteRequest_DefaultValues(t *testing.T) {
 	httpReq.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	server.registerSatelliteWithSPIFFEHandler(w, httpReq)
+	server.RegisterSatelliteWithSpiffe(w, httpReq)
 
 	resp := w.Result()
 	defer resp.Body.Close()
@@ -180,44 +191,45 @@ func TestRegisterSatelliteRequest_DefaultValues(t *testing.T) {
 
 func TestRegisterSatelliteRequest_TTLLimits(t *testing.T) {
 	tests := []struct {
-		name        string
-		ttlSeconds  int
-		expectedTTL int
+		name       string
+		ttlSeconds int
 	}{
-		{"default TTL when 0", 0, 600},
-		{"default TTL when negative", -100, 600},
-		{"max TTL capped", 100000, 86400},
-		{"valid TTL preserved", 3600, 3600},
+		{"zero TTL rejected", 0},
+		{"negative TTL rejected", -100},
+		{"TTL above maximum rejected", 100000},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := RegisterSatelliteRequest{
+			ttlSeconds := int64(tt.ttlSeconds)
+			req := SPIFFESatelliteRegistrationRequest{
 				SatelliteName:     "edge-01",
 				Selectors:         []string{"docker:label:foo"},
 				AttestationMethod: "join_token",
-				TTLSeconds:        tt.ttlSeconds,
+				TTLSeconds:        &ttlSeconds,
 			}
 
-			if req.TTLSeconds <= 0 {
-				req.TTLSeconds = 600
-			}
-			if req.TTLSeconds > 86400 {
-				req.TTLSeconds = 86400
-			}
+			body, err := json.Marshal(req)
+			require.NoError(t, err)
+			httpReq := httptest.NewRequest(http.MethodPost, "/api/satellites/register", bytes.NewReader(body))
+			w := httptest.NewRecorder()
 
-			require.Equal(t, tt.expectedTTL, req.TTLSeconds)
+			server := &Server{}
+			server.RegisterSatelliteWithSpiffe(w, httpReq)
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.Contains(t, w.Body.String(), "ttl_seconds must be between 1 and 86400")
 		})
 	}
 }
 
 func TestRegisterSatelliteWithSPIFFEResponse_JSON(t *testing.T) {
-	resp := RegisterSatelliteWithSPIFFEResponse{
+	resp := SPIFFESatelliteRegistrationResponse{
 		Satellite:          "edge-01",
 		Region:             "us-west",
 		SpiffeID:           "spiffe://example.com/satellite/region/us-west/edge-01",
 		ParentAgentID:      "spiffe://example.com/agent/edge-01",
-		JoinToken:          "test-token",
+		JoinToken:          optionalString("test-token"),
 		SpireServerAddress: "spire-server",
 		SpireServerPort:    8081,
 		TrustDomain:        "example.com",
@@ -226,7 +238,7 @@ func TestRegisterSatelliteWithSPIFFEResponse_JSON(t *testing.T) {
 	data, err := json.Marshal(resp)
 	require.NoError(t, err)
 
-	var decoded RegisterSatelliteWithSPIFFEResponse
+	var decoded SPIFFESatelliteRegistrationResponse
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 
@@ -241,17 +253,19 @@ func TestRegisterSatelliteWithSPIFFEResponse_JSON(t *testing.T) {
 }
 
 func TestAgentListResponse_JSON(t *testing.T) {
+	x509Selectors := []string{"x509pop:subject:cn:edge-01"}
+	sshSelectors := []string{"sshpop:cert-authority:fingerprint:abc123"}
 	resp := AgentListResponse{
 		Agents: []AgentInfoResponse{
 			{
 				SpiffeID:        "spiffe://example.com/agent/edge-01",
 				AttestationType: "x509pop",
-				Selectors:       []string{"x509pop:subject:cn:edge-01"},
+				Selectors:       x509Selectors,
 			},
 			{
 				SpiffeID:        "spiffe://example.com/agent/edge-02",
 				AttestationType: "sshpop",
-				Selectors:       []string{"sshpop:cert-authority:fingerprint:abc123"},
+				Selectors:       sshSelectors,
 			},
 		},
 	}
@@ -266,4 +280,6 @@ func TestAgentListResponse_JSON(t *testing.T) {
 	require.Len(t, decoded.Agents, 2)
 	require.Equal(t, "x509pop", decoded.Agents[0].AttestationType)
 	require.Equal(t, "sshpop", decoded.Agents[1].AttestationType)
+	require.Equal(t, x509Selectors, decoded.Agents[0].Selectors)
+	require.Equal(t, sshSelectors, decoded.Agents[1].Selectors)
 }

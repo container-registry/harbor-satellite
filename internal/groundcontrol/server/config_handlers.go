@@ -13,21 +13,10 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
-	"github.com/container-registry/harbor-satellite/internal/groundcontrol/models"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
-	"github.com/container-registry/harbor-satellite/pkg/config"
 	jsonpatch "github.com/evanphx/json-patch"
-	"github.com/gorilla/mux"
 	"github.com/lib/pq"
 )
-
-// SatelliteConfigParams links a satellite to a named configuration.
-//
-// swagger:model SatelliteConfigParams
-type SatelliteConfigParams struct {
-	Satellite  string `json:"satellite,omitempty"`
-	ConfigName string `json:"config_name"`
-}
 
 // auditRedacted is the placeholder substituted for sensitive config values
 // before a config is recorded in the audit log.
@@ -171,8 +160,8 @@ func diffConfigForAudit(oldRaw, newRaw []byte) map[string]any {
 	return out
 }
 
-func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
-	var req models.ConfigObject
+func (s *Server) CreateConfig(w http.ResponseWriter, r *http.Request) {
+	var req ConfigCreateRequest
 
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println("Error decoding request body: ", err)
@@ -281,11 +270,8 @@ func (s *Server) createConfigHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
-	var req config.Config
-
-	vars := mux.Vars(r)
-	configName := vars["config"]
+func (s *Server) UpdateConfig(w http.ResponseWriter, r *http.Request, configName string) {
+	var req ConfigMergePatch
 
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println("Error decoding request body: ", err)
@@ -423,7 +409,7 @@ func (s *Server) updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ListConfigs(w http.ResponseWriter, r *http.Request) {
 	result, err := s.dbQueries.ListConfigs(r.Context())
 	if err != nil {
 		fmt.Println("Could not list configs: ", err)
@@ -434,10 +420,7 @@ func (s *Server) listConfigsHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	configName := vars["config"]
-
+func (s *Server) GetConfig(w http.ResponseWriter, r *http.Request, configName string) {
 	result, err := s.dbQueries.GetConfigByName(r.Context(), configName)
 	if err != nil {
 		fmt.Println("Could not get config: ", err)
@@ -451,8 +434,8 @@ func (s *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
-	var req SatelliteConfigParams
+func (s *Server) SetSatelliteConfig(w http.ResponseWriter, r *http.Request) {
+	var req SatelliteConfigRequest
 	var err error
 
 	if err := DecodeRequestBody(r, &req); err != nil {
@@ -519,7 +502,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
-	err = utils.CreateOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, req.ConfigName)
+	err = createOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, req.ConfigName)
 	if err != nil {
 		log.Printf("Could not update satellite state artifact: %v", err)
 		HandleAppError(w, err)
@@ -540,10 +523,7 @@ func (s *Server) setSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 // Deletes the config, given that the config is not currently used by any satellite.
-func (s *Server) deleteConfigHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	configName := vars["config"]
-
+func (s *Server) DeleteConfig(w http.ResponseWriter, r *http.Request, configName string) {
 	q := s.dbQueries
 
 	configObject, err := q.GetConfigByName(r.Context(), configName)

@@ -26,7 +26,7 @@ func TestListSatelliteHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
 		rr := httptest.NewRecorder()
-		server.listSatelliteHandler(rr, req)
+		server.ListSatellites(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "edge-01")
@@ -42,7 +42,7 @@ func TestListSatelliteHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
 		rr := httptest.NewRecorder()
-		server.listSatelliteHandler(rr, req)
+		server.ListSatellites(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -55,7 +55,7 @@ func TestListSatelliteHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
 		rr := httptest.NewRecorder()
-		server.listSatelliteHandler(rr, req)
+		server.ListSatellites(rr, req)
 
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -73,7 +73,7 @@ func TestGetActiveSatellitesHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/active", nil)
 		rr := httptest.NewRecorder()
-		server.getActiveSatellitesHandler(rr, req)
+		server.ListActiveSatellites(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "edge-01")
@@ -88,7 +88,7 @@ func TestGetActiveSatellitesHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/active", nil)
 		rr := httptest.NewRecorder()
-		server.getActiveSatellitesHandler(rr, req)
+		server.ListActiveSatellites(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -101,7 +101,7 @@ func TestGetActiveSatellitesHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/active", nil)
 		rr := httptest.NewRecorder()
-		server.getActiveSatellitesHandler(rr, req)
+		server.ListActiveSatellites(rr, req)
 
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -119,7 +119,7 @@ func TestGetStaleSatellitesHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/stale", nil)
 		rr := httptest.NewRecorder()
-		server.getStaleSatellitesHandler(rr, req)
+		server.ListStaleSatellites(rr, req)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "stale-01")
@@ -133,7 +133,7 @@ func TestGetStaleSatellitesHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/stale", nil)
 		rr := httptest.NewRecorder()
-		server.getStaleSatellitesHandler(rr, req)
+		server.ListStaleSatellites(rr, req)
 
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -169,7 +169,7 @@ func TestGetSatelliteStatusHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"satellite": "edge-01"})
 
 		rr := httptest.NewRecorder()
-		server.getSatelliteStatusHandler(rr, req)
+		server.GetSatelliteStatus(rr, req, mux.Vars(req)["satellite"])
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "syncing")
@@ -187,7 +187,7 @@ func TestGetSatelliteStatusHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"satellite": "unknown"})
 
 		rr := httptest.NewRecorder()
-		server.getSatelliteStatusHandler(rr, req)
+		server.GetSatelliteStatus(rr, req, mux.Vars(req)["satellite"])
 
 		require.Equal(t, http.StatusNotFound, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -211,7 +211,7 @@ func TestGetSatelliteStatusHandler(t *testing.T) {
 		req = mux.SetURLVars(req, map[string]string{"satellite": "edge-01"})
 
 		rr := httptest.NewRecorder()
-		server.getSatelliteStatusHandler(rr, req)
+		server.GetSatelliteStatus(rr, req, mux.Vars(req)["satellite"])
 
 		require.Equal(t, http.StatusNotFound, rr.Code)
 		require.NoError(t, mock.ExpectationsWereMet())

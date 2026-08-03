@@ -139,7 +139,7 @@ See the [releases page](https://github.com/container-registry/harbor-satellite/r
 ```bash
 git clone https://github.com/container-registry/harbor-satellite.git
 cd harbor-satellite
-go build -o harbor-satellite ./cmd/harbor-satellite
+go build -o harbor-satellite ./cmd/satellite
 ```
 
 Run with token-based auth:

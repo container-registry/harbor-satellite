@@ -1,7 +1,7 @@
 [build]
   bin = "bin/ground-control"
   dir = "."
-  cmd = "go build -o bin/ground-control ./cmd/ground-control"
+  cmd = "go build -o bin/ground-control ./cmd/groundcontrol/server"
   exclude_dir = ["assets", "tmp", "vendor", "testdata"]
   exclude_regex = ["_test.go"]
   exclude_unchanged = false

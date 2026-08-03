@@ -63,8 +63,8 @@ tasks:
         DOCKERFILE="Dockerfile"
         CONTEXT="."
         BUILD_COMPONENT="{{.COMPONENT}}"
-        if [ "$BUILD_COMPONENT" = "satellite" ]; then
-          BUILD_COMPONENT="harbor-satellite"
+        if [ "$BUILD_COMPONENT" = "ground-control" ]; then
+          BUILD_COMPONENT="groundcontrol/server"
         fi
 
         # Detect container runtime (docker vs podman)

@@ -34,11 +34,14 @@ Ground Control is the central management component that orchestrates the Harbor 
 
 ### API Endpoints
 
-- `GET /api/v1/satellites` - List satellites
-- `POST /api/v1/satellites` - Register satellite
-- `GET /api/v1/satellites/{name}` - Get satellite details
-- `PUT /api/v1/satellites/{name}` - Update satellite configuration
-- `DELETE /api/v1/satellites/{name}` - Remove satellite
+- `GET /api/satellites` - List satellites
+- `POST /api/satellites` - Register satellite
+- `GET /api/satellites/active` - List active satellites
+- `GET /api/satellites/stale` - List stale satellites
+- `GET /api/satellites/{satellite}` - Get satellite details
+- `DELETE /api/satellites/{satellite}` - Remove satellite
+- `GET /api/satellites/{satellite}/status` - Get satellite status
+- `GET /api/satellites/{satellite}/images` - List cached satellite images
 
 ## Satellite
 
