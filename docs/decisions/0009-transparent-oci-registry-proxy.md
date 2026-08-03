@@ -217,9 +217,7 @@ design requires new measurements and a separate decision.
 ## Catch-all Proxy Handler
 
 The handler is inspired by olareg's compact `Server.ServeHTTP` dispatcher: one entry
-point recognizes an OCI route and delegates a validated operation. The referenced
-`internal/httplog/httplog.go` is separately useful for middleware composition, status
-capture, timing, and authorization redaction; it is not the route parser.
+point recognizes an OCI route and delegates a validated operation.
 
 Satellite adopts the pattern, not olareg internals. Its boundary will inspect the
 escaped URL before normalization, reject ambiguous or encoded traversal paths, map
@@ -356,8 +354,7 @@ behavior rather than an embedded dependency.
 * [ORAS OCI storage implementation](https://github.com/oras-project/oras-go/blob/v2.6.2/content/oci/storage.go)
 * [ORAS memory store](https://pkg.go.dev/oras.land/oras-go/v2@v2.6.2/content/memory)
 * [ORAS file store](https://pkg.go.dev/oras.land/oras-go/v2@v2.6.2/content/file)
-* [olareg server dispatch](https://github.com/olareg/olareg/blob/main/olareg.go)
-* [olareg HTTP logging middleware](https://github.com/olareg/olareg/blob/main/internal/httplog/httplog.go)
+* [olareg server dispatch](https://github.com/olareg/olareg/blob/main/olareg.go#L151)
 * [go-containerregistry `pkg/registry`](https://github.com/google/go-containerregistry/tree/main/pkg/registry)
 * [Zot storage](https://zotregistry.dev/v2.1.18/articles/storage/)
 * [Zot storage package](https://pkg.go.dev/zotregistry.dev/zot/v2@v2.1.18/pkg/storage)
