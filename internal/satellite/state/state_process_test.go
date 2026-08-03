@@ -207,23 +207,6 @@ func TestGetChanges(t *testing.T) {
 	})
 }
 
-func TestContains(t *testing.T) {
-	t.Run("item in slice returns true", func(t *testing.T) {
-		slice := []string{"a", "b", "c"}
-		require.True(t, contains(slice, "b"))
-	})
-
-	t.Run("item not in slice returns false", func(t *testing.T) {
-		slice := []string{"a", "b", "c"}
-		require.False(t, contains(slice, "d"))
-	})
-
-	t.Run("empty slice returns false", func(t *testing.T) {
-		var slice []string
-		require.False(t, contains(slice, "a"))
-	})
-}
-
 func TestFetchEntitiesFromState(t *testing.T) {
 	t.Run("multiple artifacts with multiple tags", func(t *testing.T) {
 		state := &State{
