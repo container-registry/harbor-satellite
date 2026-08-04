@@ -261,17 +261,49 @@ func TestWithStartupJitterDelaysFirstRun(t *testing.T) {
 
 	s, err := NewSchedulerWithInterval("@every 1h", proc, &log)
 	require.NoError(t, err)
-	s.WithStartupJitter(time.Hour)
+	// A tight bound keeps this deterministic: the run must not have happened
+	// at the instant Start returns, and must happen once the bound elapses.
+	s.WithStartupJitter(100 * time.Millisecond)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	s.Start(ctx)
 
-	// With an hour of jitter the odds of firing within 200ms are negligible.
-	time.Sleep(200 * time.Millisecond)
 	require.Equal(t, int32(0), proc.execCount.Load(),
-		"first run should be delayed while jitter is pending")
+		"the first run must not be synchronous with Start when jitter is set")
+
+	require.Eventually(t, func() bool {
+		return proc.execCount.Load() == 1
+	}, 5*time.Second, 10*time.Millisecond,
+		"the first run should happen once the jitter bound has elapsed")
+}
+
+func TestStartupJitterResetsTicker(t *testing.T) {
+	log := zerolog.Nop()
+	proc := &mockProcess{name: "jitter-ticker"}
+
+	// Interval shorter than the jitter bound guarantees a tick is buffered
+	// while the jitter wait is in progress.
+	s, err := NewSchedulerWithInterval("@every 100ms", proc, &log)
+	require.NoError(t, err)
+	s.WithStartupJitter(300 * time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return proc.execCount.Load() >= 1
+	}, 5*time.Second, 5*time.Millisecond, "first run should eventually happen")
+
+	// Immediately after the first run, a buffered tick must not fire a second
+	// execution. Sample well inside one interval.
+	first := proc.execCount.Load()
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, first, proc.execCount.Load(),
+		"a tick buffered during the jitter wait must not trigger an immediate second run")
 }
 
 func TestStartupJitterRespectsCancellation(t *testing.T) {

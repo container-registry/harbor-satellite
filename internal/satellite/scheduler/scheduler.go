@@ -121,6 +121,11 @@ func (s *Scheduler) run(ctx context.Context) {
 		return
 	}
 
+	// The ticker has been running since construction, so a tick may have been
+	// buffered while the jitter delay elapsed. Reset it so the interval between
+	// the first and second runs is a full interval rather than whatever remains.
+	s.resetTickerAfterJitter()
+
 	s.launchProcess(ctx)
 
 	for {
@@ -143,6 +148,20 @@ func (s *Scheduler) run(ctx context.Context) {
 			s.launchProcess(ctx)
 		}
 	}
+}
+
+// resetTickerAfterJitter restarts the ticker so that the delay between the
+// first and second executions is a full interval. Without it, a tick buffered
+// during the jitter wait fires immediately after the first run.
+func (s *Scheduler) resetTickerAfterJitter() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.startupJitter <= 0 {
+		return
+	}
+
+	s.ticker.Reset(s.interval)
 }
 
 // ResetInterval changes the ticker interval dynamically.

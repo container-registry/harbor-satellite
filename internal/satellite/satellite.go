@@ -67,7 +67,9 @@ func (s *Satellite) Run(ctx context.Context) error {
 		}
 		// Spread the first registration across one interval. Without this every
 		// satellite in a fleet that boots together registers at the same instant.
-		ztrScheduler.WithStartupJitter(ztrScheduler.GetInterval())
+		if !s.cm.IsStartupJitterDisabled() {
+			ztrScheduler.WithStartupJitter(ztrScheduler.GetInterval())
+		}
 		s.schedulers = append(s.schedulers, ztrScheduler)
 		ztrScheduler.Start(ctx)
 	}
@@ -83,7 +85,9 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 	// Spread the first state fetch across one interval, for the same reason.
-	stateScheduler.WithStartupJitter(stateScheduler.GetInterval())
+	if !s.cm.IsStartupJitterDisabled() {
+		stateScheduler.WithStartupJitter(stateScheduler.GetInterval())
+	}
 	s.schedulers = append(s.schedulers, stateScheduler)
 	stateScheduler.Start(ctx)
 
@@ -102,7 +106,9 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 	// Spread the first status report across one interval, for the same reason.
-	statusScheduler.WithStartupJitter(statusScheduler.GetInterval())
+	if !s.cm.IsStartupJitterDisabled() {
+		statusScheduler.WithStartupJitter(statusScheduler.GetInterval())
+	}
 	s.schedulers = append(s.schedulers, statusScheduler)
 	statusScheduler.Start(ctx)
 

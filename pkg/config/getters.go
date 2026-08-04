@@ -123,6 +123,13 @@ func (cm *ConfigManager) GetHeartbeatInterval() string {
 	return cm.config.AppConfig.HeartbeatInterval
 }
 
+func (cm *ConfigManager) IsStartupJitterDisabled() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.AppConfig.DisableStartupJitter
+}
+
 func (cm *ConfigManager) GetMetricsConfig() MetricsConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
