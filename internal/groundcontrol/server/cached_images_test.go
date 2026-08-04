@@ -476,3 +476,19 @@ func TestSyncHandler_OversizedJSONPayload(t *testing.T) {
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestSyncHandler_TrailingJSON(t *testing.T) {
+	server, mock := newMockServer(t)
+
+	// Create a payload with trailing JSON data
+	payload := `{"name":"edge-trailing"} {"trailing": "data"}`
+	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader([]byte(payload)))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.SyncSatellite(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}

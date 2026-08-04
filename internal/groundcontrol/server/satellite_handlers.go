@@ -608,9 +608,13 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteStatusRequest
 	r.Body = http.MaxBytesReader(w, r.Body, 5*1024*1024)
 
-	err := json.NewDecoder(r.Body).Decode(&req)
+	dec := json.NewDecoder(r.Body)
+	err := dec.Decode(&req)
 	if err == nil {
-		_, err = io.Copy(io.Discard, r.Body)
+		var dummy struct{}
+		if dec.Decode(&dummy) != io.EOF {
+			err = errors.New("request body must contain a single JSON object")
+		}
 	}
 
 	if err != nil {
