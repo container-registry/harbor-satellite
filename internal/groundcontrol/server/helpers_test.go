@@ -1,13 +1,48 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/crypto"
+	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCreateOrUpdateSatStateArtifact(t *testing.T) {
+	previous := env.GC.Harbor
+	t.Cleanup(func() { env.GC.Harbor = previous })
+	env.GC.Harbor = env.Harbor{}
+
+	t.Run("rejects an empty satellite name", func(t *testing.T) {
+		err := createOrUpdateSatStateArtifact(context.Background(), "", []string{"state"}, "cfg")
+		require.ErrorContains(t, err, "satellite name")
+	})
+
+	// Before the fix, an empty group list returned nil before ever reaching
+	// pushStateArtifact, so a satellite with no groups left never got a
+	// cleared state published. Reaching the Harbor validation error here
+	// (raised inside pushStateArtifact) is what proves that early return is
+	// gone for both a nil and an explicitly empty states slice.
+	t.Run("reaches harbor validation instead of returning early for empty states", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			states []string
+		}{
+			{name: "nil states", states: nil},
+			{name: "empty states", states: []string{}},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				err := createOrUpdateSatStateArtifact(context.Background(), "sat-1", tt.states, "cfg")
+				require.ErrorContains(t, err, "HARBOR_URL")
+			})
+		}
+	})
+}
 
 func TestHashRobotCredentials(t *testing.T) {
 	tests := []struct {
