@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/crypto"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
@@ -16,7 +15,7 @@ func newTestConfigManager(t *testing.T, cfg *config.Config) *config.ConfigManage
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.json")
 	prevPath := filepath.Join(dir, "prev_config.json")
-	cm, err := config.NewConfigManager(configPath, prevPath, "token", "http://gc:8080", false, cfg, crypto.NewAESProvider())
+	cm, err := config.NewConfigManager(configPath, prevPath, "token", "http://gc:8080", false, cfg)
 	require.NoError(t, err)
 
 	return cm

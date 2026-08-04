@@ -6,11 +6,6 @@ WORKDIR /app
 # Install git for go mod download
 RUN apk add --no-cache git ca-certificates
 
-# Copy the in-tree parsec-client-go module so the root go.mod `replace`
-# directive resolves locally. Harmless when GO_TAGS does not include
-# `parsec`; required when it does.
-COPY parsec-client-go/ /app/parsec-client-go/
-
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
 RUN go mod download

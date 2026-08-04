@@ -1,7 +1,6 @@
 package env
 
 import (
-	"github.com/container-registry/harbor-satellite/internal/satellite/parsec"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
@@ -23,8 +22,6 @@ type HarborSatellite struct {
 	HarborRegistryURL      string `env:"HARBOR_REGISTRY_URL"`
 	DirectDelivery         bool   `env:"DIRECT_DELIVERY"           envDefault:"false"`
 	ImageDir               string `env:"IMAGE_DIR"`
-	ParsecEnabled          bool   `env:"PARSEC_ENABLED"            envDefault:"false"`
-	ParsecSocketPath       string `env:"PARSEC_SOCKET"             envDefault:"/run/parsec/parsec.sock"`
 }
 
 func (h HarborSatellite) ApplyDefaults() HarborSatellite {
@@ -33,9 +30,6 @@ func (h HarborSatellite) ApplyDefaults() HarborSatellite {
 	}
 	if h.ShutdownTimeout == "" {
 		h.ShutdownTimeout = "30s"
-	}
-	if h.ParsecSocketPath == "" {
-		h.ParsecSocketPath = parsec.DefaultSocketPath
 	}
 	return h
 }
