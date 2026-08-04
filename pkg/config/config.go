@@ -188,22 +188,27 @@ type DirectDeliveryConfig struct {
 }
 
 type AppConfig struct {
-	GroundControlURL          URL                    `json:"ground_control_url,omitempty"`
-	LogLevel                  string                 `json:"log_level,omitempty"`
-	UseUnsecure               bool                   `json:"use_unsecure,omitempty"`
-	StateReplicationInterval  string                 `json:"state_replication_interval,omitempty"`
-	RegisterSatelliteInterval string                 `json:"register_satellite_interval,omitempty"`
-	HeartbeatInterval         string                 `json:"heartbeat_interval,omitempty"`
-	Metrics                   MetricsConfig          `json:"metrics,omitempty"`
-	BringOwnRegistry          bool                   `json:"bring_own_registry,omitempty"`
-	LocalRegistryCredentials  RegistryCredentials    `json:"local_registry,omitempty"`
-	TLS                       TLSConfig              `json:"tls,omitempty"`
-	SPIFFE                    SPIFFEConfig           `json:"spiffe,omitempty"`
-	EncryptConfig             bool                   `json:"encrypt_config,omitempty"`
-	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty"`
-	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty"`
-	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
-	Audit                     AuditConfig            `json:"audit,omitempty"`
+	GroundControlURL          URL    `json:"ground_control_url,omitempty"`
+	LogLevel                  string `json:"log_level,omitempty"`
+	UseUnsecure               bool   `json:"use_unsecure,omitempty"`
+	StateReplicationInterval  string `json:"state_replication_interval,omitempty"`
+	RegisterSatelliteInterval string `json:"register_satellite_interval,omitempty"`
+	HeartbeatInterval         string `json:"heartbeat_interval,omitempty"`
+	// DisableStartupJitter turns off the random delay applied before each
+	// scheduler's first run. Jitter prevents a fleet that boots together from
+	// calling Ground Control in unison; a standalone satellite may prefer an
+	// immediate first sync instead.
+	DisableStartupJitter     bool                   `json:"disable_startup_jitter,omitempty"`
+	Metrics                  MetricsConfig          `json:"metrics,omitempty"`
+	BringOwnRegistry         bool                   `json:"bring_own_registry,omitempty"`
+	LocalRegistryCredentials RegistryCredentials    `json:"local_registry,omitempty"`
+	TLS                      TLSConfig              `json:"tls,omitempty"`
+	SPIFFE                   SPIFFEConfig           `json:"spiffe,omitempty"`
+	EncryptConfig            bool                   `json:"encrypt_config,omitempty"`
+	RegistryFallback         RegistryFallbackConfig `json:"registry_fallback,omitempty"`
+	HarborRegistryURL        string                 `json:"harbor_registry_url,omitempty"`
+	DirectDelivery           DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
+	Audit                    AuditConfig            `json:"audit,omitempty"`
 }
 
 type StateConfig struct {

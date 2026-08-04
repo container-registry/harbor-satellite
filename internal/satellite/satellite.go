@@ -65,6 +65,11 @@ func (s *Satellite) Run(ctx context.Context) error {
 			log.Error().Err(err).Msg("Failed to create ZTR scheduler")
 			return err
 		}
+		// Spread the first registration across one interval. Without this every
+		// satellite in a fleet that boots together registers at the same instant.
+		if !s.cm.IsStartupJitterDisabled() {
+			ztrScheduler.WithStartupJitter(ztrScheduler.GetInterval())
+		}
 		s.schedulers = append(s.schedulers, ztrScheduler)
 		ztrScheduler.Start(ctx)
 	}
@@ -78,6 +83,10 @@ func (s *Satellite) Run(ctx context.Context) error {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create state replication scheduler")
 		return err
+	}
+	// Spread the first state fetch across one interval, for the same reason.
+	if !s.cm.IsStartupJitterDisabled() {
+		stateScheduler.WithStartupJitter(stateScheduler.GetInterval())
 	}
 	s.schedulers = append(s.schedulers, stateScheduler)
 	stateScheduler.Start(ctx)
@@ -95,6 +104,10 @@ func (s *Satellite) Run(ctx context.Context) error {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create status report scheduler")
 		return err
+	}
+	// Spread the first status report across one interval, for the same reason.
+	if !s.cm.IsStartupJitterDisabled() {
+		statusScheduler.WithStartupJitter(statusScheduler.GetInterval())
 	}
 	s.schedulers = append(s.schedulers, statusScheduler)
 	statusScheduler.Start(ctx)

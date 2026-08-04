@@ -225,3 +225,115 @@ func TestMultipleSchedulers_GracefulShutdown(t *testing.T) {
 		t.Fatal("timed out waiting for all schedulers to stop")
 	}
 }
+
+func TestStartupJitterDefaultsToZero(t *testing.T) {
+	log := zerolog.Nop()
+	proc := &mockProcess{name: "jitter-default"}
+
+	s, err := NewSchedulerWithInterval("@every 10s", proc, &log)
+	require.NoError(t, err)
+
+	require.Zero(t, s.startupJitter,
+		"startup jitter must default to zero so existing behaviour is unchanged")
+}
+
+func TestWithStartupJitterZeroRunsImmediately(t *testing.T) {
+	log := zerolog.Nop()
+	proc := &mockProcess{name: "jitter-disabled"}
+
+	s, err := NewSchedulerWithInterval("@every 1h", proc, &log)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return proc.execCount.Load() == 1
+	}, 2*time.Second, 10*time.Millisecond,
+		"without jitter the first run should happen immediately")
+}
+
+func TestWithStartupJitterDelaysFirstRun(t *testing.T) {
+	log := zerolog.Nop()
+	proc := &mockProcess{name: "jitter-delays"}
+
+	s, err := NewSchedulerWithInterval("@every 1h", proc, &log)
+	require.NoError(t, err)
+	// A tight bound keeps this deterministic: the run must not have happened
+	// at the instant Start returns, and must happen once the bound elapses.
+	s.WithStartupJitter(100 * time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s.Start(ctx)
+
+	require.Equal(t, int32(0), proc.execCount.Load(),
+		"the first run must not be synchronous with Start when jitter is set")
+
+	require.Eventually(t, func() bool {
+		return proc.execCount.Load() == 1
+	}, 5*time.Second, 10*time.Millisecond,
+		"the first run should happen once the jitter bound has elapsed")
+}
+
+func TestStartupJitterResetsTicker(t *testing.T) {
+	log := zerolog.Nop()
+	proc := &mockProcess{name: "jitter-ticker"}
+
+	// Interval shorter than the jitter bound guarantees a tick is buffered
+	// while the jitter wait is in progress.
+	s, err := NewSchedulerWithInterval("@every 100ms", proc, &log)
+	require.NoError(t, err)
+	s.WithStartupJitter(300 * time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return proc.execCount.Load() >= 1
+	}, 5*time.Second, 5*time.Millisecond, "first run should eventually happen")
+
+	// Immediately after the first run, a buffered tick must not fire a second
+	// execution. Sample well inside one interval.
+	first := proc.execCount.Load()
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, first, proc.execCount.Load(),
+		"a tick buffered during the jitter wait must not trigger an immediate second run")
+}
+
+func TestStartupJitterRespectsCancellation(t *testing.T) {
+	log := zerolog.Nop()
+	proc := &mockProcess{name: "jitter-cancel"}
+
+	s, err := NewSchedulerWithInterval("@every 1h", proc, &log)
+	require.NoError(t, err)
+	s.WithStartupJitter(time.Hour)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	s.Start(ctx)
+	cancel()
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer stopCancel()
+
+	require.NoError(t, s.Stop(stopCtx),
+		"scheduler should exit promptly when cancelled during the jitter wait")
+	require.Equal(t, int32(0), proc.execCount.Load(),
+		"process should not run if cancelled before the jitter elapsed")
+}
+
+func TestNegativeStartupJitterIsClamped(t *testing.T) {
+	log := zerolog.Nop()
+	proc := &mockProcess{name: "jitter-negative"}
+
+	s, err := NewSchedulerWithInterval("@every 10s", proc, &log)
+	require.NoError(t, err)
+	s.WithStartupJitter(-5 * time.Second)
+
+	require.Zero(t, s.startupJitter, "a negative bound must clamp to zero, not panic")
+}
