@@ -207,23 +207,6 @@ func TestGetChanges(t *testing.T) {
 	})
 }
 
-func TestContains(t *testing.T) {
-	t.Run("item in slice returns true", func(t *testing.T) {
-		slice := []string{"a", "b", "c"}
-		require.True(t, contains(slice, "b"))
-	})
-
-	t.Run("item not in slice returns false", func(t *testing.T) {
-		slice := []string{"a", "b", "c"}
-		require.False(t, contains(slice, "d"))
-	})
-
-	t.Run("empty slice returns false", func(t *testing.T) {
-		var slice []string
-		require.False(t, contains(slice, "a"))
-	})
-}
-
 func TestFetchEntitiesFromState(t *testing.T) {
 	t.Run("multiple artifacts with multiple tags", func(t *testing.T) {
 		state := &State{
@@ -309,5 +292,35 @@ func TestRemoveNullTagArtifacts(t *testing.T) {
 		result := process.RemoveNullTagArtifacts(state)
 
 		require.Len(t, result.GetArtifacts(), 1)
+	})
+}
+
+func TestUpdateStateMap(t *testing.T) {
+	t.Run("add new state and remove old", func(t *testing.T) {
+		process := &FetchAndReplicateStateProcess{
+			stateMap: []StateMap{
+				{url: "url1"},
+				{url: "url2"},
+			},
+		}
+		newStates := []string{"url2", "url3"}
+		changed := process.updateStateMap(newStates)
+		require.True(t, changed)
+		require.Len(t, process.stateMap, 2)
+		require.Equal(t, "url2", process.stateMap[0].url)
+		require.Equal(t, "url3", process.stateMap[1].url)
+	})
+
+	t.Run("no change", func(t *testing.T) {
+		process := &FetchAndReplicateStateProcess{
+			stateMap: []StateMap{
+				{url: "url2"},
+				{url: "url3"},
+			},
+		}
+		newStates := []string{"url2", "url3"}
+		changed := process.updateStateMap(newStates)
+		require.False(t, changed)
+		require.Len(t, process.stateMap, 2)
 	})
 }
