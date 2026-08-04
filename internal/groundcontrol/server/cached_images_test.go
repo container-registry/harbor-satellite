@@ -420,9 +420,9 @@ func TestSyncHandler_OversizedCachedImages(t *testing.T) {
 	server.SyncSatellite(rr, req)
 
 	require.Equal(t, http.StatusRequestEntityTooLarge, rr.Code)
-	
+
 	require.Equal(t, http.StatusRequestEntityTooLarge, rr.Code)
-	
+
 	// Expect that NO DB queries were executed because it was rejected early
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -458,5 +458,21 @@ func TestSyncHandler_ExactlyMaxCachedImages(t *testing.T) {
 	server.SyncSatellite(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSyncHandler_OversizedJSONPayload(t *testing.T) {
+	server, mock := newMockServer(t)
+
+	// Create a payload larger than 5MB limit
+	payload := `{"name":"edge-oversized", "activity":"` + string(bytes.Repeat([]byte("a"), 5*1024*1024)) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader([]byte(payload)))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.SyncSatellite(rr, req)
+
+	require.Equal(t, http.StatusRequestEntityTooLarge, rr.Code)
+
 	require.NoError(t, mock.ExpectationsWereMet())
 }

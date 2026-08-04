@@ -2,6 +2,7 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -607,7 +608,7 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteStatusRequest
 	r.Body = http.MaxBytesReader(w, r.Body, 5*1024*1024)
 
-	err := DecodeRequestBody(r, &req)
+	err := json.NewDecoder(r.Body).Decode(&req)
 	if err == nil {
 		_, err = io.Copy(io.Discard, r.Body)
 	}
