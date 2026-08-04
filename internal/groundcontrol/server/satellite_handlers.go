@@ -2,7 +2,10 @@ package server
 
 import (
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -15,6 +18,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 )
+
+const maxCachedImages = 1000
 
 func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 	if s.spiffeProvider != nil || s.spireClient != nil {
@@ -601,9 +606,40 @@ func (s *Server) ListSatellites(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 	var req SatelliteStatusRequest
-	if err := DecodeRequestBody(r, &req); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, 5*1024*1024)
+
+	dec := json.NewDecoder(r.Body)
+	err := dec.Decode(&req)
+	if err == nil {
+		var dummy struct{}
+		if dec.Decode(&dummy) != io.EOF {
+			err = errors.New("request body must contain a single JSON object")
+		}
+	}
+
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			HandleAppError(w, &AppError{
+				Message: "sync payload exceeds 5MB limit",
+				Code:    http.StatusRequestEntityTooLarge,
+			})
+			return
+		}
 		log.Println(err)
-		HandleAppError(w, err)
+		HandleAppError(w, &AppError{
+			Message: "Invalid request body",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
+
+	if len(req.CachedImages) > maxCachedImages {
+		log.Printf("Oversized heartbeat: %d cached images exceeds maximum of %d", len(req.CachedImages), maxCachedImages)
+		HandleAppError(w, &AppError{
+			Message: fmt.Sprintf("cached images array exceeds maximum allowed size of %d", maxCachedImages),
+			Code:    http.StatusRequestEntityTooLarge,
+		})
 		return
 	}
 
