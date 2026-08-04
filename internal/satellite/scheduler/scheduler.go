@@ -2,9 +2,10 @@ package scheduler
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -75,8 +76,20 @@ func (s *Scheduler) waitStartupJitter(ctx context.Context) bool {
 		return true
 	}
 
-	//nolint:gosec // load spreading, not a security boundary; math/rand is sufficient
-	delay := time.Duration(rand.Int63n(int64(bound)))
+	// crypto/rand rather than math/rand: this runs once per scheduler at startup,
+	// so the cost is irrelevant, and it keeps static analysis clean without a
+	// suppression comment. Falls back to no delay if the reader fails, which is
+	// the previous behaviour.
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(bound)))
+	if err != nil {
+		s.log.Warn().
+			Str("Process", s.process.Name()).
+			Err(err).
+			Msg("Could not compute startup jitter, running immediately")
+
+		return true
+	}
+	delay := time.Duration(n.Int64())
 
 	s.log.Debug().
 		Str("Process", s.process.Name()).
