@@ -225,3 +225,83 @@ func TestMultipleSchedulers_GracefulShutdown(t *testing.T) {
 		t.Fatal("timed out waiting for all schedulers to stop")
 	}
 }
+
+func TestStartupJitterDefaultsToZero(t *testing.T) {
+	log := zerolog.Nop()
+	proc := &mockProcess{name: "jitter-default"}
+
+	s, err := NewSchedulerWithInterval("@every 10s", proc, &log)
+	require.NoError(t, err)
+
+	require.Zero(t, s.startupJitter,
+		"startup jitter must default to zero so existing behaviour is unchanged")
+}
+
+func TestWithStartupJitterZeroRunsImmediately(t *testing.T) {
+	log := zerolog.Nop()
+	proc := &mockProcess{name: "jitter-disabled"}
+
+	s, err := NewSchedulerWithInterval("@every 1h", proc, &log)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s.Start(ctx)
+
+	require.Eventually(t, func() bool {
+		return proc.execCount.Load() == 1
+	}, 2*time.Second, 10*time.Millisecond,
+		"without jitter the first run should happen immediately")
+}
+
+func TestWithStartupJitterDelaysFirstRun(t *testing.T) {
+	log := zerolog.Nop()
+	proc := &mockProcess{name: "jitter-delays"}
+
+	s, err := NewSchedulerWithInterval("@every 1h", proc, &log)
+	require.NoError(t, err)
+	s.WithStartupJitter(time.Hour)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s.Start(ctx)
+
+	// With an hour of jitter the odds of firing within 200ms are negligible.
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, int32(0), proc.execCount.Load(),
+		"first run should be delayed while jitter is pending")
+}
+
+func TestStartupJitterRespectsCancellation(t *testing.T) {
+	log := zerolog.Nop()
+	proc := &mockProcess{name: "jitter-cancel"}
+
+	s, err := NewSchedulerWithInterval("@every 1h", proc, &log)
+	require.NoError(t, err)
+	s.WithStartupJitter(time.Hour)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	s.Start(ctx)
+	cancel()
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer stopCancel()
+
+	require.NoError(t, s.Stop(stopCtx),
+		"scheduler should exit promptly when cancelled during the jitter wait")
+	require.Equal(t, int32(0), proc.execCount.Load(),
+		"process should not run if cancelled before the jitter elapsed")
+}
+
+func TestNegativeStartupJitterIsClamped(t *testing.T) {
+	log := zerolog.Nop()
+	proc := &mockProcess{name: "jitter-negative"}
+
+	s, err := NewSchedulerWithInterval("@every 10s", proc, &log)
+	require.NoError(t, err)
+	s.WithStartupJitter(-5 * time.Second)
+
+	require.Zero(t, s.startupJitter, "a negative bound must clamp to zero, not panic")
+}
