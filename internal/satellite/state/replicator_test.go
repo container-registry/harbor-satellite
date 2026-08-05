@@ -58,6 +58,23 @@ func TestReplicate_NewImage(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestReplicate_VerifyDigestFailure(t *testing.T) {
+	srcAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
+
+	pushImage(t, srcAddr, "alpine", "latest", 2)
+
+	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
+	ctx := testContext()
+
+	err := r.Replicate(ctx, []Entity{
+		{Name: "alpine", Repository: "library", Tag: "latest", Digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "verify manifest digest")
+	require.Contains(t, err.Error(), "digest mismatch")
+}
+
 func TestReplicate_SkipsExistingImage(t *testing.T) {
 	srcAddr := newTestRegistry(t)
 	dstAddr := newTestRegistry(t)
