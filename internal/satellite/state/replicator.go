@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/oci"
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -131,6 +132,17 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		if err != nil {
 			log.Error().Msgf("Failed to fetch image descriptor: %v", err)
 			return err
+		}
+
+		// Verify manifest integrity if an expected digest is provided.
+		// We verify the manifest here (instead of intercepting the blob stream)
+		// because verifying the manifest provides a trusted root for the artifact's
+		// layer dependency graph without modifying the underlying streaming behavior.
+		if entity.Digest != "" {
+			if err := oci.VerifyDigest(desc.Manifest, entity.Digest); err != nil {
+				log.Error().Msgf("Manifest verification failed for %s: %v", entity.GetName(), err)
+				return fmt.Errorf("verify manifest digest: %w", err)
+			}
 		}
 
 		img, err := desc.Image()
