@@ -58,6 +58,29 @@ func TestReplicate_NewImage(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestReplicate_VerifyDigestSuccess(t *testing.T) {
+	srcAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
+
+	img := pushImage(t, srcAddr, "alpine", "happy", 2)
+	expectedDigest, err := img.Digest()
+	require.NoError(t, err)
+
+	r := NewBasicReplicator("", "", srcAddr, dstAddr, "", "", true)
+	ctx := testContext()
+
+	err = r.Replicate(ctx, []Entity{
+		{Name: "alpine", Repository: "library", Tag: "happy", Digest: expectedDigest.String()},
+	})
+	require.NoError(t, err)
+
+	// Verify image exists at destination
+	dstRef, err := name.ParseReference(dstAddr+"/library/alpine:happy", name.Insecure)
+	require.NoError(t, err)
+	_, err = remote.Head(dstRef)
+	require.NoError(t, err)
+}
+
 func TestReplicate_VerifyDigestFailure(t *testing.T) {
 	srcAddr := newTestRegistry(t)
 	dstAddr := newTestRegistry(t)

@@ -422,7 +422,7 @@ require (
 	github.com/olekukonko/tablewriter v1.1.4 // indirect
 	github.com/open-policy-agent/opa v1.17.0 // indirect
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20250220192232-583e014d1541 // indirect
-	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opencontainers/runtime-spec v1.3.0 // indirect
 	github.com/openvex/go-vex v0.2.7 // indirect
