@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -178,6 +179,41 @@ func TestDeliver_PullsPinnedDigestAfterTagMoved(t *testing.T) {
 	require.NotEqual(t, substitutedConfig, writtenConfig, "moved tag must not be delivered")
 
 	require.Equal(t, digestOf(t, desired), d.loadDigestMap()[tarballFilename(entity)])
+}
+
+// TestDeliver_SkipsUnchangedTagOnlyEntity covers entities whose desired state
+// carries no digest. Their digest is only known once the tag is resolved, so
+// without a check against the resolved digest the tarball is rewritten on every
+// sync cycle even when the content has not changed.
+func TestDeliver_SkipsUnchangedTagOnlyEntity(t *testing.T) {
+	srcAddr := newTestRegistry(t)
+	dir := t.TempDir()
+
+	pushImage(t, srcAddr, "alpine", "latest", 2)
+
+	d := NewDirectDeliverer(dir, "", "", srcAddr, true)
+
+	// No Digest: the tag has to be resolved to learn the content identity.
+	entity := Entity{Name: "alpine", Repository: "library", Tag: "latest"}
+	path := filepath.Join(dir, tarballFilename(entity))
+
+	require.NoError(t, d.Deliver(testContext(), []Entity{entity}))
+	require.FileExists(t, path, "tarball must be written on the first delivery")
+
+	// Backdate the tarball so a rewrite is unambiguous: writeAtomically renames a
+	// fresh temp file into place, so any re-delivery resets the mtime to now.
+	// Comparing against a backdated stamp avoids depending on filesystem
+	// timestamp granularity.
+	backdated := time.Now().Add(-time.Hour).Truncate(time.Second)
+	require.NoError(t, os.Chtimes(path, backdated, backdated))
+
+	// Second cycle, content unchanged: the tarball must not be rewritten.
+	require.NoError(t, d.Deliver(testContext(), []Entity{entity}))
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	require.True(t, info.ModTime().Equal(backdated),
+		"unchanged tag-only entity must not be re-delivered (mtime %s, want %s)", info.ModTime(), backdated)
 }
 
 func TestDeliver_SkipsWhenPinnedDigestAbsent(t *testing.T) {

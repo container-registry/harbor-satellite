@@ -176,7 +176,12 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 			log.Error().Msgf("Failed to replicate image: %v", err)
 			return err
 		}
-		log.Info().Str("digest", src.DigestStr()).Msgf("Image %s replicated successfully", entity.GetName())
+		// The two digests differ by design: the destination holds the image after
+		// OCI media type conversion. Name them so neither is mistaken for the other.
+		log.Info().
+			Str("source_digest", src.DigestStr()).
+			Str("destination_digest", srcDigest.String()).
+			Msgf("Image %s replicated successfully", entity.GetName())
 	}
 
 	return nil

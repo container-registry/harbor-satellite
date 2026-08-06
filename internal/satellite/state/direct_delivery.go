@@ -80,8 +80,9 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 
 		filename := tarballFilename(entity)
 
-		// Skip if digest matches what we already wrote.
-		if prev, ok := currentDigests[filename]; ok && prev == entity.Digest {
+		// Skip without any network call when the desired state pins a digest
+		// and it matches what we already wrote.
+		if prev, ok := currentDigests[filename]; ok && entity.Digest != "" && prev == entity.Digest {
 			log.Debug().Str("file", filename).Msg("Direct delivery: tarball up-to-date, skipping")
 			continue
 		}
@@ -99,6 +100,16 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 		pullRef, err := pinnedSourceRef(d.srcRegistry, entity, nameOpts, opts)
 		if err != nil {
 			log.Warn().Err(err).Str("ref", tagRef.String()).Msg("Direct delivery: failed to pin source digest, skipping")
+			continue
+		}
+
+		// Entities whose desired state carries no digest only learn their digest
+		// once pinnedSourceRef resolves the tag, which is too late for the check
+		// above. Compare here so unchanged content is not re-fetched and the
+		// tarball not rewritten on every sync cycle.
+		if prev, ok := currentDigests[filename]; ok && prev == pullRef.DigestStr() {
+			log.Debug().Str("file", filename).Str("digest", pullRef.DigestStr()).
+				Msg("Direct delivery: tarball up-to-date, skipping")
 			continue
 		}
 
@@ -127,8 +138,9 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 			continue
 		}
 
-		// Record the digest actually delivered, so the skip check above stays
-		// correct when the desired state carried no digest.
+		// Record the digest actually delivered. This is what the resolved-digest
+		// check above compares against on the next cycle, which is how tag-only
+		// entities get a working skip check.
 		updates[filename] = pullRef.DigestStr()
 		log.Info().Str("file", filename).Str("ref", tagRef.String()).Str("digest", pullRef.DigestStr()).Msg("Direct delivery: tarball written")
 	}
