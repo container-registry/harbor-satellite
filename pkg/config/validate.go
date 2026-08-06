@@ -7,9 +7,9 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/registry"
-	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )
 
@@ -203,12 +203,16 @@ func enforceAuditRotation(f *SyslogAuditFile) []string {
 	return warnings
 }
 
-// isValidCronExpression checks the validity of a cron expression.
-func isValidCronExpression(cronExpression string) bool {
-	if _, err := cron.ParseStandard(cronExpression); err != nil {
+// isValidCronExpression checks if the schedule expression is a valid `@every <duration>` format.
+func isValidCronExpression(expr string) bool {
+	const prefix = "@every "
+	if !strings.HasPrefix(expr, prefix) {
 		return false
 	}
-
+	d, err := time.ParseDuration(strings.TrimPrefix(expr, prefix))
+	if err != nil || d <= 0 {
+		return false
+	}
 	return true
 }
 

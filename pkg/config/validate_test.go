@@ -28,13 +28,21 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 				AppConfig: AppConfig{
 					GroundControlURL:          URL("https://example.com"),
 					LogLevel:                  "info",
-					StateReplicationInterval:  "0 * * * *",
-					RegisterSatelliteInterval: "*/5 * * * *",
+					StateReplicationInterval:  "@every 1h",
+					RegisterSatelliteInterval: "@every 5m",
 				},
 				ZotConfigRaw: []byte(`{"distSpecVersion":"1.1.0"}`),
 			},
 			expectError:    false,
 			expectWarnings: true,
+			expectedConfig: &Config{
+				AppConfig: AppConfig{
+					GroundControlURL:          URL("https://example.com"),
+					LogLevel:                  "info",
+					StateReplicationInterval:  "@every 1h",
+					RegisterSatelliteInterval: "@every 5m",
+				},
+			},
 		},
 		{
 			name:           "nil config",
@@ -105,8 +113,8 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 			config: &Config{
 				AppConfig: AppConfig{
 					GroundControlURL:          URL("https://example.com"),
-					StateReplicationInterval:  "bad cron",
-					RegisterSatelliteInterval: "also bad",
+					StateReplicationInterval:  "0 * * * *",
+					RegisterSatelliteInterval: "@every 0s",
 				},
 				ZotConfigRaw: []byte(DefaultZotConfigJSON),
 			},

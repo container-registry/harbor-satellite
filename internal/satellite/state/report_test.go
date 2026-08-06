@@ -100,6 +100,16 @@ func TestParseEveryExpr(t *testing.T) {
 			expr:    "30s",
 			wantErr: true,
 		},
+		{
+			name:    "zero duration",
+			expr:    "@every 0s",
+			wantErr: true,
+		},
+		{
+			name:    "negative duration",
+			expr:    "@every -1m",
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
