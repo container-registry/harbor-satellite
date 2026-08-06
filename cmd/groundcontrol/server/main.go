@@ -23,14 +23,19 @@ func main() {
 
 	if err := env.LoadGC(); err != nil {
 		log.Fatalf("failed to load environment: %v", err)
+		os.Exit(1)
 	}
 
-	err := harborhealth.CheckHealth()
-	if err != nil {
+	if err := harborhealth.CheckHealth(); err != nil {
 		log.Fatalf("health check failed: %v", err)
+		os.Exit(1)
 	}
 
-	migrator.DoMigrations()
+	if err := migrator.DoMigrations(); err != nil {
+		log.Fatalf("failed to run migrations: %v", err)
+		os.Exit(1)
+	}
+
 	serverResult := server.NewServer()
 	httpServer := serverResult.Server
 	tlsCfg := serverResult.TLSConfig
