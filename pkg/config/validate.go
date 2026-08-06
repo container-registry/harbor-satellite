@@ -345,7 +345,7 @@ func validateRegistryFallbackConfig(config *Config) ([]string, error) {
 	}
 
 	for _, r := range config.AppConfig.RegistryFallback.Registries {
-		if err := validateRegistryName(r); err != nil {
+		if err := ValidateRegistryName(r); err != nil {
 			return warnings, fmt.Errorf("invalid registry_fallback entry: %w", err)
 		}
 	}
@@ -361,7 +361,7 @@ func validateRegistryFallbackConfig(config *Config) ([]string, error) {
 	return warnings, nil
 }
 
-// validateRegistryName reports an error unless name is a bare registry host with
+// ValidateRegistryName reports an error unless name is a bare registry host with
 // an optional port, such as "docker.io", "localhost:5000" or "[::1]:5000".
 //
 // The name is used verbatim as a directory name under /etc/containerd/certs.d
@@ -374,7 +374,7 @@ func validateRegistryFallbackConfig(config *Config) ([]string, error) {
 // A scheme prefix such as "https://" is rejected rather than stripped: it never
 // produced a usable certs.d directory, so failing loudly beats silently writing
 // a config containerd will not read.
-func validateRegistryName(name string) error {
+func ValidateRegistryName(name string) error {
 	if strings.TrimSpace(name) == "" {
 		return errors.New("registry entry is empty")
 	}
@@ -417,6 +417,17 @@ func splitRegistryPort(name string) (host, port string, hasPort bool) {
 }
 
 func validateRegistryPort(name, port string) error {
+	// strconv.Atoi accepts a leading '+' or '-' (e.g. "+443"), which is not a
+	// valid port. Require every character to be a digit before parsing.
+	if port == "" {
+		return fmt.Errorf("registry entry %q has an invalid port %q", name, port)
+	}
+	for _, c := range port {
+		if c < '0' || c > '9' {
+			return fmt.Errorf("registry entry %q has an invalid port %q", name, port)
+		}
+	}
+
 	n, err := strconv.Atoi(port)
 	if err != nil || n < 1 || n > 65535 {
 		return fmt.Errorf("registry entry %q has an invalid port %q", name, port)

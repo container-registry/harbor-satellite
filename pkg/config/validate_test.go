@@ -790,7 +790,7 @@ func TestValidateRegistryName(t *testing.T) {
 
 	for _, tt := range accepted {
 		t.Run("accepts "+tt.name, func(t *testing.T) {
-			require.NoError(t, validateRegistryName(tt.entry))
+			require.NoError(t, ValidateRegistryName(tt.entry))
 		})
 	}
 
@@ -824,6 +824,8 @@ func TestValidateRegistryName(t *testing.T) {
 		{"zero port", "docker.io:0"},
 		{"non numeric port", "docker.io:port"},
 		{"empty port", "docker.io:"},
+		{"port with leading plus", "docker.io:+443"},
+		{"port with leading minus", "docker.io:-443"},
 		{"null byte", "docker.io\x00"},
 		{"newline", "docker.io\nevil"},
 		{"unterminated ipv6", "[::1"},
@@ -833,7 +835,7 @@ func TestValidateRegistryName(t *testing.T) {
 
 	for _, tt := range rejected {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
-			require.Error(t, validateRegistryName(tt.entry), "entry %q must be rejected", tt.entry)
+			require.Error(t, ValidateRegistryName(tt.entry), "entry %q must be rejected", tt.entry)
 		})
 	}
 }

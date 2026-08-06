@@ -8,29 +8,30 @@ import (
 
 // TestRegistryCertsDir_Accepts covers registry names that must keep working.
 func TestRegistryCertsDir_Accepts(t *testing.T) {
-	base := "/etc/containerd/certs.d"
+	defaultBase := "/etc/containerd/certs.d"
 
 	tests := []struct {
 		name     string
+		base     string
 		registry string
 		want     string
 	}{
-		{"plain host", "docker.io", "/etc/containerd/certs.d/docker.io"},
-		{"subdomain", "registry-1.docker.io", "/etc/containerd/certs.d/registry-1.docker.io"},
-		{"host with port", "localhost:5000", "/etc/containerd/certs.d/localhost:5000"},
-		{"ipv4 with port", "192.168.1.10:5000", "/etc/containerd/certs.d/192.168.1.10:5000"},
-		{"ipv6 literal", "[::1]:5000", "/etc/containerd/certs.d/[::1]:5000"},
-		{"unclean base is normalised", "docker.io", "/etc/containerd/certs.d/docker.io"},
+		{"plain host", defaultBase, "docker.io", "/etc/containerd/certs.d/docker.io"},
+		{"subdomain", defaultBase, "registry-1.docker.io", "/etc/containerd/certs.d/registry-1.docker.io"},
+		{"host with port", defaultBase, "localhost:5000", "/etc/containerd/certs.d/localhost:5000"},
+		{"ipv4 with port", defaultBase, "192.168.1.10:5000", "/etc/containerd/certs.d/192.168.1.10:5000"},
+		{"ipv6 literal", defaultBase, "[::1]:5000", "/etc/containerd/certs.d/[::1]:5000"},
+		{"unclean base is normalised", "/etc/containerd/certs.d/../certs.d", "docker.io", "/etc/containerd/certs.d/docker.io"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := registryCertsDir(base, tt.registry)
+			got, err := registryCertsDir(tt.base, tt.registry)
 			if err != nil {
-				t.Fatalf("registryCertsDir(%q, %q) returned error: %v", base, tt.registry, err)
+				t.Fatalf("registryCertsDir(%q, %q) returned error: %v", tt.base, tt.registry, err)
 			}
 			if got != tt.want {
-				t.Errorf("registryCertsDir(%q, %q) = %q, want %q", base, tt.registry, got, tt.want)
+				t.Errorf("registryCertsDir(%q, %q) = %q, want %q", tt.base, tt.registry, got, tt.want)
 			}
 		})
 	}
@@ -61,6 +62,16 @@ func TestRegistryCertsDir_RejectsTraversal(t *testing.T) {
 		{"whitespace only", "   "},
 		{"leading whitespace", " docker.io"},
 		{"trailing whitespace", "docker.io "},
+
+		// These contain no path separator or ".." segment, so they resolve to a
+		// directory inside base and previously passed here even though
+		// config.ValidateRegistryName already rejected them. Now enforced by
+		// this function too, since --mirrors reaches it without going through
+		// that validation.
+		{"double colon", "foo::bar"},
+		{"unterminated ipv6", "[::1"},
+		{"non numeric port", "localhost:abc"},
+		{"port with leading plus", "docker.io:+443"},
 	}
 
 	for _, tt := range tests {

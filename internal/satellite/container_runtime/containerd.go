@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
 const (
@@ -37,15 +38,12 @@ func setContainerdConfig(upstreamRegistries []string, localMirror string) (strin
 // function feeds os.MkdirAll and os.Create in a code path documented as running
 // as root. A name such as "../../../../etc/cron.d" would otherwise create
 // directories and write a hosts.toml anywhere on the host. Config validation
-// rejects these names first (see validateRegistryName in pkg/config); this is
-// the second line of defence for callers that bypass it, such as the --mirrors
-// flag.
+// (config.ValidateRegistryName) rejects these names first, but the --mirrors
+// flag reaches this function without going through that validation, so the
+// same hostname[:port] rule is enforced again here before the path is built.
 func registryCertsDir(baseDir, registryURL string) (string, error) {
-	if strings.TrimSpace(registryURL) == "" || registryURL != strings.TrimSpace(registryURL) {
-		return "", fmt.Errorf("invalid registry name %q: must be a bare host[:port]", registryURL)
-	}
-	if strings.ContainsAny(registryURL, `/\`) {
-		return "", fmt.Errorf("invalid registry name %q: must not contain a path separator", registryURL)
+	if err := config.ValidateRegistryName(registryURL); err != nil {
+		return "", fmt.Errorf("invalid registry name: %w", err)
 	}
 
 	cleanBase := filepath.Clean(baseDir)
