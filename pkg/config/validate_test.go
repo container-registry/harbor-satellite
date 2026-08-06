@@ -35,6 +35,14 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 			},
 			expectError:    false,
 			expectWarnings: true,
+			expectedConfig: &Config{
+				AppConfig: AppConfig{
+					GroundControlURL:          URL("https://example.com"),
+					LogLevel:                  "info",
+					StateReplicationInterval:  "@every 1h",
+					RegisterSatelliteInterval: "@every 5m",
+				},
+			},
 		},
 		{
 			name:           "nil config",
