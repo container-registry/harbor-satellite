@@ -86,28 +86,51 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 			continue
 		}
 
-		srcRef := fmt.Sprintf("%s/%s/%s:%s", d.srcRegistry, entity.Repository, entity.Name, entity.Tag)
-		ref, err := name.ParseReference(srcRef, nameOpts...)
+		opts := []remote.Option{remote.WithAuth(auth), remote.WithContext(ctx)}
+
+		// The tag reference only names the image inside the tarball; the pull
+		// itself is pinned to a digest so a moved tag cannot substitute content.
+		tagRef, err := sourceTagRef(d.srcRegistry, entity, nameOpts)
 		if err != nil {
-			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to parse reference, skipping")
+			log.Warn().Err(err).Msg("Direct delivery: failed to parse reference, skipping")
 			continue
 		}
 
-		opts := []remote.Option{remote.WithAuth(auth), remote.WithContext(ctx)}
-		img, err := remote.Image(ref, opts...)
+		pullRef, err := pinnedSourceRef(d.srcRegistry, entity, nameOpts, opts)
 		if err != nil {
-			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to pull image, skipping")
+			log.Warn().Err(err).Str("ref", tagRef.String()).Msg("Direct delivery: failed to pin source digest, skipping")
+			continue
+		}
+
+		// remote.Get returns the manifest served at pullRef itself. Checking its
+		// digest before resolving covers multi-arch indexes too, whose per-
+		// platform image digest legitimately differs from the index digest.
+		desc, err := remote.Get(pullRef, opts...)
+		if err != nil {
+			log.Warn().Err(err).Str("ref", pullRef.String()).Msg("Direct delivery: failed to fetch image descriptor, skipping")
+			continue
+		}
+		if err := verifyFetchedDigest(pullRef, desc.Digest.String()); err != nil {
+			log.Error().Err(err).Msg("Direct delivery: refusing to write image with unexpected content")
+			continue
+		}
+
+		img, err := desc.Image()
+		if err != nil {
+			log.Warn().Err(err).Str("ref", pullRef.String()).Msg("Direct delivery: failed to resolve image, skipping")
 			continue
 		}
 
 		dstPath := filepath.Join(d.imageDir, filename)
-		if err := d.writeAtomically(dstPath, ref, img); err != nil {
+		if err := d.writeAtomically(dstPath, tagRef, img); err != nil {
 			log.Warn().Err(err).Str("file", filename).Msg("Direct delivery: failed to write tarball, skipping")
 			continue
 		}
 
-		updates[filename] = entity.Digest
-		log.Info().Str("file", filename).Str("ref", srcRef).Msg("Direct delivery: tarball written")
+		// Record the digest actually delivered, so the skip check above stays
+		// correct when the desired state carried no digest.
+		updates[filename] = pullRef.DigestStr()
+		log.Info().Str("file", filename).Str("ref", tagRef.String()).Str("digest", pullRef.DigestStr()).Msg("Direct delivery: tarball written")
 	}
 
 	if len(updates) == 0 {

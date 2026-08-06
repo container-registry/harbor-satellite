@@ -113,14 +113,15 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		default:
 		}
 
-		srcRef := fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, entity.GetRepository(), entity.GetName(), entity.GetTag())
-		dstRef := fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag())
-
-		src, err := name.ParseReference(srcRef, nameOpts...)
+		// Pull by digest, never by tag: the tag only names the copy written to
+		// the local registry.
+		src, err := pinnedSourceRef(r.sourceRegistry, entity, nameOpts, pullOpts)
 		if err != nil {
-			return fmt.Errorf("parse source ref %s: %w", srcRef, err)
+			log.Error().Err(err).Msgf("Failed to pin source reference for %s", entity.GetName())
+			return err
 		}
 
+		dstRef := fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag())
 		dst, err := name.ParseReference(dstRef, nameOpts...)
 		if err != nil {
 			return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
@@ -130,6 +131,11 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		desc, err := remote.Get(src, pullOpts...)
 		if err != nil {
 			log.Error().Msgf("Failed to fetch image descriptor: %v", err)
+			return err
+		}
+
+		if err := verifyFetchedDigest(src, desc.Digest.String()); err != nil {
+			log.Error().Err(err).Msg("Refusing to replicate image with unexpected content")
 			return err
 		}
 
@@ -170,7 +176,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 			log.Error().Msgf("Failed to replicate image: %v", err)
 			return err
 		}
-		log.Info().Msgf("Image %s replicated successfully", entity.GetName())
+		log.Info().Str("digest", src.DigestStr()).Msgf("Image %s replicated successfully", entity.GetName())
 	}
 
 	return nil
