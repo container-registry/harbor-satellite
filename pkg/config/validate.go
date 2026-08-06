@@ -437,7 +437,11 @@ func validateRegistryPort(name, port string) error {
 
 func validateRegistryHost(name, host string) error {
 	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
-		if ip := net.ParseIP(host[1 : len(host)-1]); ip == nil {
+		// Brackets are IPv6-only syntax. Accepting "[127.0.0.1]" would produce
+		// an invalid "https://[127.0.0.1]:5000" server URL downstream, so an
+		// address that parses as IPv4 is rejected here.
+		ip := net.ParseIP(host[1 : len(host)-1])
+		if ip == nil || ip.To4() != nil {
 			return fmt.Errorf("registry entry %q is not a valid IPv6 literal", name)
 		}
 		return nil

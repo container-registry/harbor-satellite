@@ -830,6 +830,10 @@ func TestValidateRegistryName(t *testing.T) {
 		{"newline", "docker.io\nevil"},
 		{"unterminated ipv6", "[::1"},
 		{"malformed ipv6", "[not-an-ip]"},
+		// Brackets are IPv6-only syntax; a bracketed IPv4 address would become
+		// an invalid "https://[127.0.0.1]:5000" server URL downstream.
+		{"bracketed ipv4", "[127.0.0.1]"},
+		{"bracketed ipv4 with port", "[127.0.0.1]:5000"},
 		{"label too long", strings.Repeat("a", 64) + ".io"},
 	}
 

@@ -70,6 +70,7 @@ func TestRegistryCertsDir_RejectsTraversal(t *testing.T) {
 		// that validation.
 		{"double colon", "foo::bar"},
 		{"unterminated ipv6", "[::1"},
+		{"bracketed ipv4", "[127.0.0.1]:5000"},
 		{"non numeric port", "localhost:abc"},
 		{"port with leading plus", "docker.io:+443"},
 	}
