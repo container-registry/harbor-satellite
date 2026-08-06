@@ -30,9 +30,44 @@ func setContainerdConfig(upstreamRegistries []string, localMirror string) (strin
 	return backupPath, nil
 }
 
+// registryCertsDir returns the certs.d directory for a registry, refusing any
+// name that does not land strictly inside baseDir.
+//
+// Registry names arrive from the configuration Ground Control delivers, and this
+// function feeds os.MkdirAll and os.Create in a code path documented as running
+// as root. A name such as "../../../../etc/cron.d" would otherwise create
+// directories and write a hosts.toml anywhere on the host. Config validation
+// rejects these names first (see validateRegistryName in pkg/config); this is
+// the second line of defence for callers that bypass it, such as the --mirrors
+// flag.
+func registryCertsDir(baseDir, registryURL string) (string, error) {
+	if strings.TrimSpace(registryURL) == "" || registryURL != strings.TrimSpace(registryURL) {
+		return "", fmt.Errorf("invalid registry name %q: must be a bare host[:port]", registryURL)
+	}
+	if strings.ContainsAny(registryURL, `/\`) {
+		return "", fmt.Errorf("invalid registry name %q: must not contain a path separator", registryURL)
+	}
+
+	cleanBase := filepath.Clean(baseDir)
+	dir := filepath.Join(cleanBase, registryURL)
+
+	// filepath.Join cleans its result, so ".." segments are already resolved
+	// here. Requiring a strict prefix also rejects "." and "..", which resolve
+	// to cleanBase itself and to its parent.
+	if dir == cleanBase || !strings.HasPrefix(dir, cleanBase+string(os.PathSeparator)) {
+		return "", fmt.Errorf("invalid registry name %q: resolves outside %s", registryURL, cleanBase)
+	}
+
+	return dir, nil
+}
+
 // writeContainerdHostToml creates or updates hosts.toml for a registry
 func writeContainerdHostToml(registryURL, localMirror string) error {
-	dir := filepath.Join(containerdCertsDir, registryURL)
+	dir, err := registryCertsDir(containerdCertsDir, registryURL)
+	if err != nil {
+		return err
+	}
+
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}

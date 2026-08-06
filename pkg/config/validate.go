@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/registry"
@@ -70,7 +72,11 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		return nil, warnings, tlsErr
 	}
 
-	warnings = append(warnings, validateRegistryFallbackConfig(config)...)
+	fbWarnings, fbErr := validateRegistryFallbackConfig(config)
+	warnings = append(warnings, fbWarnings...)
+	if fbErr != nil {
+		return nil, warnings, fbErr
+	}
 
 	warnings = append(warnings, validateAndEnforceAuditConfig(config)...)
 
@@ -315,7 +321,11 @@ func validateAndEnforceZotConfig(config *Config, bringOwnRegistry bool) ([]strin
 }
 
 // validateRegistryFallbackConfig validates registry fallback settings when enabled.
-func validateRegistryFallbackConfig(config *Config) []string {
+// An invalid registry name is a hard error: the name is used as a path element
+// under /etc/containerd/certs.d by a code path that runs as root, so accepting a
+// malformed one and carrying on would let remotely supplied configuration steer
+// privileged filesystem writes.
+func validateRegistryFallbackConfig(config *Config) ([]string, error) {
 	validRuntimes := map[string]bool{
 		"docker":     true,
 		"containerd": true,
@@ -326,7 +336,7 @@ func validateRegistryFallbackConfig(config *Config) []string {
 	var warnings []string
 	fb := config.AppConfig.RegistryFallback
 	if !fb.Enabled {
-		return warnings
+		return warnings, nil
 	}
 
 	if len(fb.Registries) == 0 {
@@ -335,8 +345,8 @@ func validateRegistryFallbackConfig(config *Config) []string {
 	}
 
 	for _, r := range config.AppConfig.RegistryFallback.Registries {
-		if strings.TrimSpace(r) == "" {
-			warnings = append(warnings, "registry_fallback contains an empty registry entry")
+		if err := validateRegistryName(r); err != nil {
+			return warnings, fmt.Errorf("invalid registry_fallback entry: %w", err)
 		}
 	}
 
@@ -348,7 +358,108 @@ func validateRegistryFallbackConfig(config *Config) []string {
 		}
 	}
 
-	return warnings
+	return warnings, nil
+}
+
+// validateRegistryName reports an error unless name is a bare registry host with
+// an optional port, such as "docker.io", "localhost:5000" or "[::1]:5000".
+//
+// The name is used verbatim as a directory name under /etc/containerd/certs.d
+// (see writeContainerdHostToml), so anything containing a path separator or a
+// ".." segment would escape that directory and redirect root-owned MkdirAll and
+// file writes elsewhere on the host. A registry host is the only meaningful
+// value here and no valid host contains a separator, so rejecting them costs
+// nothing and closes the traversal.
+//
+// A scheme prefix such as "https://" is rejected rather than stripped: it never
+// produced a usable certs.d directory, so failing loudly beats silently writing
+// a config containerd will not read.
+func validateRegistryName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("registry entry is empty")
+	}
+	if name != strings.TrimSpace(name) {
+		return fmt.Errorf("registry entry %q has leading or trailing whitespace", name)
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return fmt.Errorf("registry entry %q must be a bare host[:port] with no scheme or path separator", name)
+	}
+
+	host, port, hasPort := splitRegistryPort(name)
+	if hasPort {
+		if err := validateRegistryPort(name, port); err != nil {
+			return err
+		}
+	}
+
+	return validateRegistryHost(name, host)
+}
+
+// splitRegistryPort separates an optional ":port" suffix, accounting for
+// bracketed IPv6 literals whose address part contains colons of its own.
+func splitRegistryPort(name string) (host, port string, hasPort bool) {
+	if strings.HasPrefix(name, "[") {
+		end := strings.LastIndex(name, "]")
+		if end < 0 {
+			return name, "", false
+		}
+		if rest := name[end+1:]; strings.HasPrefix(rest, ":") {
+			return name[:end+1], rest[1:], true
+		}
+		return name, "", false
+	}
+
+	i := strings.LastIndex(name, ":")
+	if i < 0 {
+		return name, "", false
+	}
+	return name[:i], name[i+1:], true
+}
+
+func validateRegistryPort(name, port string) error {
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
+		return fmt.Errorf("registry entry %q has an invalid port %q", name, port)
+	}
+	return nil
+}
+
+func validateRegistryHost(name, host string) error {
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		if ip := net.ParseIP(host[1 : len(host)-1]); ip == nil {
+			return fmt.Errorf("registry entry %q is not a valid IPv6 literal", name)
+		}
+		return nil
+	}
+
+	if len(host) > 253 {
+		return fmt.Errorf("registry entry %q exceeds the maximum host length of 253 characters", name)
+	}
+
+	// Splitting on "." also rejects "." and "..", which produce empty labels.
+	for _, label := range strings.Split(host, ".") {
+		if err := validateHostLabel(name, label); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateHostLabel(name, label string) error {
+	if label == "" || len(label) > 63 {
+		return fmt.Errorf("registry entry %q has an invalid host label %q", name, label)
+	}
+	if strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+		return fmt.Errorf("registry entry %q has a host label %q with a leading or trailing hyphen", name, label)
+	}
+	for _, c := range label {
+		isAlphanumeric := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+		if !isAlphanumeric && c != '-' {
+			return fmt.Errorf("registry entry %q has a host label %q with an invalid character %q", name, label, c)
+		}
+	}
+	return nil
 }
 
 // validateTLSConfig validates TLS configuration.

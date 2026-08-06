@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -443,21 +444,26 @@ func TestValidateRegistryFallbackConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("enabled with empty registry entry warns", func(t *testing.T) {
+	t.Run("enabled with empty registry entry is a hard error", func(t *testing.T) {
 		cfg := baseConfig()
 		cfg.AppConfig.RegistryFallback = RegistryFallbackConfig{
 			Enabled:    true,
 			Registries: []string{"docker.io", "  "},
 		}
-		_, warnings, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
-		require.NoError(t, err)
-		found := false
-		for _, w := range warnings {
-			if w == "registry_fallback contains an empty registry entry" {
-				found = true
-			}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid registry_fallback entry")
+	})
+
+	t.Run("enabled with traversing registry entry is a hard error", func(t *testing.T) {
+		cfg := baseConfig()
+		cfg.AppConfig.RegistryFallback = RegistryFallbackConfig{
+			Enabled:    true,
+			Registries: []string{"../../../../etc/cron.d"},
 		}
-		require.True(t, found, "expected empty registry warning")
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid registry_fallback entry")
 	})
 
 	t.Run("enabled with unknown runtime warns", func(t *testing.T) {
@@ -762,6 +768,74 @@ func TestAuditConfig_Equal(t *testing.T) {
 		explicit.Syslog.Enabled = boolPtr(true)
 		require.True(t, fileCfg().Equal(explicit))
 	})
+}
+
+func TestValidateRegistryName(t *testing.T) {
+	accepted := []struct {
+		name  string
+		entry string
+	}{
+		{"plain host", "docker.io"},
+		{"subdomain", "registry-1.docker.io"},
+		{"single label", "localhost"},
+		{"host with port", "localhost:5000"},
+		{"fqdn with port", "harbor.example.com:443"},
+		{"ipv4 literal", "192.168.1.10"},
+		{"ipv4 literal with port", "192.168.1.10:5000"},
+		{"ipv6 literal", "[::1]"},
+		{"ipv6 literal with port", "[2001:db8::1]:5000"},
+		{"hyphen inside label", "my-registry.internal"},
+		{"digits only label", "123.45.67.89:5000"},
+	}
+
+	for _, tt := range accepted {
+		t.Run("accepts "+tt.name, func(t *testing.T) {
+			require.NoError(t, validateRegistryName(tt.entry))
+		})
+	}
+
+	rejected := []struct {
+		name  string
+		entry string
+	}{
+		// The traversal this validation exists to stop. Each of these would
+		// otherwise become a directory path under /etc/containerd/certs.d.
+		{"parent traversal", "../../../../etc/cron.d"},
+		{"single parent segment", ".."},
+		{"current directory", "."},
+		{"absolute path", "/etc/cron.d"},
+		{"embedded traversal", "docker.io/../../etc"},
+		{"trailing slash", "docker.io/"},
+		{"backslash separator", `docker.io\..\..\etc`},
+
+		{"empty", ""},
+		{"whitespace only", "   "},
+		{"leading whitespace", " docker.io"},
+		{"trailing whitespace", "docker.io "},
+		{"https scheme", "https://docker.io"},
+		{"http scheme", "http://docker.io"},
+		{"empty label", "docker..io"},
+		{"trailing dot", "docker.io."},
+		{"leading dot", ".docker.io"},
+		{"leading hyphen", "-docker.io"},
+		{"trailing hyphen", "docker-.io"},
+		{"underscore", "docker_registry.io"},
+		{"port out of range", "docker.io:70000"},
+		{"zero port", "docker.io:0"},
+		{"non numeric port", "docker.io:port"},
+		{"empty port", "docker.io:"},
+		{"null byte", "docker.io\x00"},
+		{"newline", "docker.io\nevil"},
+		{"unterminated ipv6", "[::1"},
+		{"malformed ipv6", "[not-an-ip]"},
+		{"label too long", strings.Repeat("a", 64) + ".io"},
+	}
+
+	for _, tt := range rejected {
+		t.Run("rejects "+tt.name, func(t *testing.T) {
+			require.Error(t, validateRegistryName(tt.entry), "entry %q must be rejected", tt.entry)
+		})
+	}
 }
 
 func intPtr(i int) *int    { return &i }
