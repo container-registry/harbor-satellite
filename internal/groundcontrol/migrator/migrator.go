@@ -49,7 +49,7 @@ func waitForPostgresReady(db *sql.DB, timeout time.Duration) {
 		select {
 		case <-time.After(retryInterval):
 		case <-timeoutCtx.Done():
-			log.Fatalf("timed out waiting for PostgreSQL readiness")
+			log.Println("timed out waiting for PostgreSQL readiness")
 			return
 		}
 	}
