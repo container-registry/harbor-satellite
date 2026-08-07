@@ -34,7 +34,7 @@ func waitForPostgresReady(db *sql.DB, timeout time.Duration) error {
 		select {
 		case <-time.After(retryInterval):
 		case <-timeoutCtx.Done():
-			log.Printf("timed out waiting for PostgreSQL readiness: %v", timeoutCtx.Err())
+			log.Println("timed out waiting for PostgreSQL readiness")
 			return timeoutCtx.Err()
 		}
 	}
@@ -42,17 +42,26 @@ func waitForPostgresReady(db *sql.DB, timeout time.Duration) error {
 
 func runMigrations(db *sql.DB) error {
 	migrationsPath := "/migrations"
-	if _, err := os.Stat(migrationsPath); errors.Is(err, os.ErrNotExist) {
-		migrationsPath = "internal/groundcontrol/sql/schema"
+	_, err := os.Stat(migrationsPath)
+	if err != nil {
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			migrationsPath = "internal/groundcontrol/sql/schema"
+		default:
+			log.Println("failed to access migrations path")
+			return err
+		}
 	}
 
 	provider, err := goose.NewProvider(goose.DialectPostgres, db, os.DirFS(migrationsPath))
 	if err != nil {
-		log.Fatalf("failed to create goose provider: %v", err)
+		log.Println("failed to create goose provider")
+		return err
 	}
 
 	if _, err := provider.Up(context.Background()); err != nil {
-		log.Fatalf("failed to run migrations: %v", err)
+		log.Println("failed to run migrations")
+		return err
 	}
 
 	log.Println("Migrations completed successfully.")
@@ -64,7 +73,7 @@ func DoMigrations() error {
 
 	db, err := sql.Open("postgres", cfg.URL())
 	if err != nil {
-		log.Fatalf("failed to open DB: %v", err)
+		log.Println("failed to open DB connection")
 		return err
 	}
 	defer func() {
@@ -75,13 +84,13 @@ func DoMigrations() error {
 
 	err = waitForPostgresReady(db, 60*time.Second)
 	if err != nil {
-		log.Fatalf("PostgreSQL is not ready: %v", err)
+		log.Println("PostgreSQL is not ready for queries")
 		return err
 	}
 
 	err = runMigrations(db)
 	if err != nil {
-		log.Fatalf("failed to run migrations: %v", err)
+		log.Println("failed to run migrations")
 		return err
 	}
 
