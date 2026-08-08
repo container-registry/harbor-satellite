@@ -362,14 +362,7 @@ tasks:
                 "use_unsecure": true,
                 "state_replication_interval": "@every 00h00m10s",
                 "register_satellite_interval": "@every 00h00m10s",
-                "bring_own_registry": false,
-                "local_registry": {"url": "http://127.0.0.1:8585"}
-              },
-              "zot_config": {
-                "distSpecVersion": "1.1.0",
-                "storage": {"rootDirectory": "./zot"},
-                "http": {"address": "0.0.0.0", "port": "8585"},
-                "log": {"level": "info"}
+                "bring_own_registry": false
               }
             }
           }'
@@ -422,35 +415,30 @@ tasks:
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
+          -e REGISTRY_DATA_DIR=/data/oci \
           -e JSON_LOGGING=true \
-          -p 8585:8585 \
           satellite:e2e
 
-        echo "Waiting for satellite Zot registry to start..."
+        echo "Waiting for satellite OCI store to initialize..."
         sleep 5
         echo "--- Early satellite logs ---"
         docker logs satellite 2>&1 | head -30
         echo "---"
 
   verify:
-    desc: Verify image replication to local Zot
+    desc: Verify image replication to the local OCI layout
     cmds:
       - |
         echo "Waiting for replication..."
         for i in $(seq 1 12); do
           echo "Checking replication status... ($i/12)"
-          if docker run --rm --network harbor-e2e alpine:latest sh -c "
-            apk add --no-cache crane > /dev/null 2>&1 &&
-            crane manifest satellite:8585/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
-          "; then
-            echo "Image available, pulling..."
-            docker run --rm --network harbor-e2e alpine:latest sh -c "
-              apk add --no-cache crane &&
-              crane pull satellite:8585/{{.PROJECT_NAME}}/alpine:latest alpine.tar --insecure &&
-              tar -xf alpine.tar &&
-              cat manifest.json
-            "
-            echo "E2E test passed: Image replicated successfully"
+          if docker exec satellite sh -c '
+            test -f /data/oci/oci-layout &&
+            test -f /data/oci/index.json &&
+            grep -q "alpine:latest" /data/oci/index.json &&
+            test -n "$(find /data/oci/blobs/sha256 -type f -print -quit)"
+          '; then
+            echo "E2E test passed: OCI content replicated successfully"
             exit 0
           fi
           sleep 10
@@ -602,8 +590,7 @@ tasks:
                 "register_satellite_interval": "@every 00h00m10s",
                 "bring_own_registry": true,
                 "local_registry": {"url": "http://byo-registry:5000"}
-              },
-              "zot_config": {}
+              }
             }
           }')
         HTTP_CODE=$(echo "$RESP" | tail -1)
@@ -730,7 +717,7 @@ tasks:
     silent: true
 
   test-crash-recovery:
-    desc: Test crash recovery with embedded Zot registry
+    desc: Test crash recovery with the local OCI store
     cmds:
       - task: setup
       - defer: { task: cleanup-crash-recovery }
@@ -798,7 +785,6 @@ tasks:
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/satellite-state \
-          -p 8585:8585 \
           satellite:e2e
 
   crash-and-restart-satellite:
@@ -818,7 +804,6 @@ tasks:
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/satellite-state \
-          -p 8585:8585 \
           satellite:e2e
 
         echo "Waiting for satellite to start..."
@@ -843,19 +828,19 @@ tasks:
           echo "WARN: Could not confirm zero artifacts to replicate (may still be syncing)"
         fi
 
-        echo "Verifying image is still accessible..."
+        echo "Verifying OCI content is still present..."
         for i in $(seq 1 6); do
-          if docker run --rm --network harbor-e2e alpine:latest sh -c "
-            apk add --no-cache crane > /dev/null 2>&1 &&
-            crane manifest satellite:8585/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
-          "; then
-            echo "PASS: Image still accessible after crash recovery"
+          if docker exec satellite sh -c '
+            test -f /satellite-state/oci/index.json &&
+            grep -q "alpine:latest" /satellite-state/oci/index.json
+          '; then
+            echo "PASS: OCI content is still present after crash recovery"
             exit 0
           fi
           echo "Waiting for image availability... ($i/6)"
           sleep 5
         done
-        echo "FAIL: Image not accessible after crash recovery"
+        echo "FAIL: OCI content missing after crash recovery"
         docker logs satellite 2>&1 | tail -50
         exit 1
 
