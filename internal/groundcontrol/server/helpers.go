@@ -33,19 +33,36 @@ func isConfigInUse(ctx context.Context, q *database.Queries, config database.Con
 	return len(satellites) > 0, nil
 }
 
-func createOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, states []string, configName string) error {
-	if satelliteName == "" {
-		return fmt.Errorf("the satellite name must be at least one character long")
-	}
+// satelliteStateArtifact is the published form of SatelliteStateArtifact. The
+// generated model tags states as omitempty, so an empty list is left out of the
+// JSON entirely and a satellite cannot tell a cleared state from an unchanged
+// one. The published artifact needs to carry an explicit "states": [].
+type satelliteStateArtifact struct {
+	Config string   `json:"config,omitempty"`
+	States []string `json:"states"`
+}
+
+// buildSatelliteStateArtifact assembles the artifact published for a satellite.
+// A satellite with no group states still needs one, otherwise it either never
+// receives an artifact or keeps consuming a previously published group list, so
+// a nil slice is normalized to an empty one rather than marshaling to null.
+func buildSatelliteStateArtifact(states []string, configName string) satelliteStateArtifact {
 	if states == nil {
 		states = []string{}
 	}
 
-	artifact := SatelliteStateArtifact{
+	return satelliteStateArtifact{
 		States: states,
 		Config: utils.AssembleConfigState(configName),
 	}
-	data, err := json.Marshal(artifact)
+}
+
+func createOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, states []string, configName string) error {
+	if satelliteName == "" {
+		return fmt.Errorf("the satellite name must be at least one character long")
+	}
+
+	data, err := json.Marshal(buildSatelliteStateArtifact(states, configName))
 	if err != nil {
 		return fmt.Errorf("failed to marshal satellite state artifact to JSON: %w", err)
 	}

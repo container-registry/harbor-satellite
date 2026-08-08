@@ -11,6 +11,45 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestBuildSatelliteStateArtifact(t *testing.T) {
+	previous := env.GC.Harbor
+	t.Cleanup(func() { env.GC.Harbor = previous })
+	env.GC.Harbor = env.Harbor{URL: "http://harbor"}
+
+	tests := []struct {
+		name   string
+		states []string
+		want   string
+	}{
+		{
+			name:   "nil states are normalized to an empty list",
+			states: nil,
+			want:   `{"states":[],"config":"http://harbor/satellite/config-state/cfg/state:latest"}`,
+		},
+		{
+			name:   "empty states are serialized explicitly",
+			states: []string{},
+			want:   `{"states":[],"config":"http://harbor/satellite/config-state/cfg/state:latest"}`,
+		},
+		{
+			name:   "populated states are left as they are",
+			states: []string{"http://harbor/satellite/group-state/grp/state:latest"},
+			want:   `{"states":["http://harbor/satellite/group-state/grp/state:latest"],"config":"http://harbor/satellite/config-state/cfg/state:latest"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			artifact := buildSatelliteStateArtifact(tt.states, "cfg")
+			require.NotNil(t, artifact.States, "states must never be nil, otherwise it marshals to null")
+
+			data, err := json.Marshal(artifact)
+			require.NoError(t, err)
+			require.JSONEq(t, tt.want, string(data))
+		})
+	}
+}
+
 func TestCreateOrUpdateSatStateArtifact(t *testing.T) {
 	previous := env.GC.Harbor
 	t.Cleanup(func() { env.GC.Harbor = previous })
@@ -25,7 +64,8 @@ func TestCreateOrUpdateSatStateArtifact(t *testing.T) {
 	// pushStateArtifact, so a satellite with no groups left never got a
 	// cleared state published. Reaching the Harbor validation error here
 	// (raised inside pushStateArtifact) is what proves that early return is
-	// gone for both a nil and an explicitly empty states slice.
+	// gone for both a nil and an explicitly empty states slice. The contents
+	// of the published artifact are covered by TestBuildSatelliteStateArtifact.
 	t.Run("reaches harbor validation instead of returning early for empty states", func(t *testing.T) {
 		tests := []struct {
 			name   string
