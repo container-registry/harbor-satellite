@@ -98,23 +98,23 @@ tasks:
       - swagger.yml
       - swagger-flatten.yml
 
-  generate:ground-control:
+  generate:groundcontrol:
     desc: Generate Ground Control OpenAPI server and client code
     aliases: [gen:gc]
     cmds:
-      - task: _gen:ground-control
+      - task: _gen:groundcontrol
 
-  generate:ground-control-server:
+  generate:groundcontrol-server:
     desc: Generate Ground Control OpenAPI server code
     aliases: [gen:gc-server]
     cmds:
-      - task: _gen:ground-control-server
+      - task: _gen:groundcontrol-server
 
-  generate:ground-control-client:
+  generate:groundcontrol-client:
     desc: Generate Ground Control OpenAPI client code
     aliases: [gen:gc-client]
     cmds:
-      - task: _gen:ground-control-client
+      - task: _gen:groundcontrol-client
 
   e2e:
     desc: Run all E2E tests

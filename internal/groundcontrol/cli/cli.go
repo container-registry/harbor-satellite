@@ -14,9 +14,9 @@ import (
 
 func RootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "groundcontrol",
+		Use:   "groundctl",
 		Short: "Manage a Harbor Ground Control service",
-		Long: `groundcontrol is a command-line client for Harbor Ground Control.
+		Long: `groundctl is a command-line client for Harbor Ground Control.
 
 Configuration precedence is command-line flags, environment variables,
 configuration file, saved login credentials, then defaults. General

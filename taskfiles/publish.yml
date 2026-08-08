@@ -64,7 +64,7 @@ tasks:
         CONTEXT="."
         BUILD_COMPONENT="{{.COMPONENT}}"
         if [ "$BUILD_COMPONENT" = "ground-control" ]; then
-          BUILD_COMPONENT="groundcontrol/server"
+          BUILD_COMPONENT="groundcontrold"
         fi
 
         # Detect container runtime (docker vs podman)

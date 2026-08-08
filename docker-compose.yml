@@ -21,7 +21,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        COMPONENT: groundcontrol/server
+        COMPONENT: groundcontrold
     container_name: ground-control
     environment:
       DB_HOST: postgres

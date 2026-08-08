@@ -54,7 +54,7 @@ builds:
         goarch: mipsle
     mod_timestamp: "{{ .CommitTimestamp }}"
   - id: ground-control
-    main: ./cmd/groundcontrol/server
+    main: ./cmd/groundcontrold
     binary: ground-control
     env:
       - CGO_ENABLED=0
@@ -101,7 +101,7 @@ builds:
         goarch: mipsle
     mod_timestamp: "{{ .CommitTimestamp }}"
   - id: groundcontrol-cli
-    main: ./cmd/groundcontrol/cli
+    main: ./cmd/groundctl
     binary: groundcontrol
     env:
       - CGO_ENABLED=0
