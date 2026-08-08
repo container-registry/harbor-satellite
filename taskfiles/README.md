@@ -44,6 +44,16 @@ task e2e
 | `task vuln` | Run govulncheck (filters known issues) |
 | `task vuln-report` | Run govulncheck and export to file |
 
+## Code Generation Tasks
+
+Ground Control API code is generated from `spec/ground-control/openapi.yaml` with oapi-codegen. This is the only supported generation workflow.
+
+| Command | Description |
+|---------|-------------|
+| `task generate:ground-control` | Generate Ground Control OpenAPI server and client code |
+| `task generate:ground-control-server` | Generate server code into `internal/groundcontrol/server/server.gen.go` |
+| `task generate:ground-control-client` | Generate client code into `pkg/groundcontrol/client.gen.go` |
+
 ## Publish Tasks
 
 | Command | Description |
