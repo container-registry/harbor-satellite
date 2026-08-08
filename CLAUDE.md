@@ -19,8 +19,8 @@ task build
 
 # Build individual components
 task _build:satellite
-task _build:ground-control
-task _build:groundcontrol-cli
+task _build:groundcontrold
+task _build:groundctl
 
 # Run satellite directly
 go run ./cmd/satellite --token "<token>" --ground-control-url "<url>"

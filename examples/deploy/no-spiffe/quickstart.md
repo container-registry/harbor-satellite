@@ -66,13 +66,13 @@ Choose one of the following options to start Ground Control.
 1. Build the Ground Control binary:
 
    ```bash
-   task _build:ground-control
+   task _build:groundcontrold
    ```
 
 2. Run the binary:
 
    ```bash
-   ./bin/ground-control
+   ./bin/groundcontrold
    ```
 
 ## Step 3: Verify Ground Control Health

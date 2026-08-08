@@ -120,7 +120,7 @@ jobs:
       - name: Build the binary for the satellite
         run: task _build:satellite
 
-  build-ground-control:
+  build-groundcontrol:
     runs-on: container-registry
     steps:
       - name: Checkout repository
@@ -138,10 +138,10 @@ jobs:
           version: 3.x
 
       - name: Build the Ground Control server
-        run: task _build:ground-control
+        run: task _build:groundcontrold
 
       - name: Build the Ground Control CLI
-        run: task _build:groundcontrol-cli
+        run: task _build:groundctl
 
   e2e-tests:
     runs-on: ubuntu-latest

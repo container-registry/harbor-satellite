@@ -63,7 +63,7 @@ export DB_USERNAME=postgres
 export DB_PASSWORD=password
 
 cd "$PROJECT_ROOT"
-go run ./cmd/groundcontrol/server > /tmp/gc.log 2>&1 &
+go run ./cmd/groundcontrold > /tmp/gc.log 2>&1 &
 GC_PID=$!
 
 log "Waiting for Ground Control (PID: $GC_PID)..."

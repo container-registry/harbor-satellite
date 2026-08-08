@@ -45,7 +45,7 @@ task build
 
 # Build individual components
 task _build:satellite
-task _build:ground-control
+task _build:groundcontrold
 
 # Run the satellite directly
 go run cmd/harbor-satellite/main.go --token "<token>" --ground-control-url "http://127.0.0.1:8080"

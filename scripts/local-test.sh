@@ -85,7 +85,7 @@ start_ground_control() {
     log_info "Starting Ground Control on port $GC_PORT..."
 
     cd "$PROJECT_ROOT"
-    go run ./cmd/groundcontrol/server &
+    go run ./cmd/groundcontrold &
     GC_PID=$!
 
     # Wait for Ground Control to be ready

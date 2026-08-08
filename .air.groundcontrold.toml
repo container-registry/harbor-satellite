@@ -1,12 +1,12 @@
 [build]
-  bin = "bin/ground-control"
+  bin = "bin/groundcontrold"
   dir = "."
-  cmd = "go build -o bin/ground-control ./cmd/groundcontrol/server"
+  cmd = "go build -o bin/groundcontrold ./cmd/groundcontrold"
   exclude_dir = ["assets", "tmp", "vendor", "testdata"]
   exclude_regex = ["_test.go"]
   exclude_unchanged = false
   follow_symlink = false
-  run_after_build = "chmod +x bin/ground-control"
+  run_after_build = "chmod +x bin/groundcontrold"
   include_ext = ["go"]
 
 [log]
