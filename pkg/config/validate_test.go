@@ -19,8 +19,6 @@ type validateTestCase struct {
 }
 
 func TestValidateAndEnforceDefaults(t *testing.T) {
-	expectedZotConfigJSON := DefaultZotConfigJSON
-
 	tests := []validateTestCase{
 		{
 			name: "valid config",
@@ -31,7 +29,6 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 					StateReplicationInterval:  "0 * * * *",
 					RegisterSatelliteInterval: "*/5 * * * *",
 				},
-				ZotConfigRaw: []byte(`{"distSpecVersion":"1.1.0"}`),
 			},
 			expectError:    false,
 			expectWarnings: true,
@@ -55,7 +52,6 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 					StateReplicationInterval:  DefaultFetchAndReplicateCronExpr,
 					RegisterSatelliteInterval: DefaultZTRCronExpr,
 				},
-				ZotConfigRaw: []byte(expectedZotConfigJSON),
 			},
 		},
 		{
@@ -64,24 +60,9 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 				AppConfig: AppConfig{
 					GroundControlURL: URL("ht@tp://bad-url"),
 				},
-				ZotConfigRaw: []byte(DefaultZotConfigJSON),
 			},
 			expectError:    false,
 			expectWarnings: true,
-		},
-		{
-			name: "empty zot config - fallback to default",
-			config: &Config{
-				AppConfig: AppConfig{
-					GroundControlURL: URL("https://example.com"),
-				},
-				ZotConfigRaw: []byte(""),
-			},
-			expectError:    false,
-			expectWarnings: true,
-			expectedConfig: &Config{
-				ZotConfigRaw: []byte(expectedZotConfigJSON),
-			},
 		},
 		{
 			name: "invalid log level",
@@ -90,7 +71,6 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 					GroundControlURL: URL("https://example.com"),
 					LogLevel:         "badlevel",
 				},
-				ZotConfigRaw: []byte(DefaultZotConfigJSON),
 			},
 			expectError:    false,
 			expectWarnings: true,
@@ -108,7 +88,6 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 					StateReplicationInterval:  "bad cron",
 					RegisterSatelliteInterval: "also bad",
 				},
-				ZotConfigRaw: []byte(DefaultZotConfigJSON),
 			},
 			expectError:    false,
 			expectWarnings: true,
@@ -181,30 +160,12 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 			expectWarnings: true,
 		},
 		{
-			name: "bring own registry with redundant zot config warns",
-			config: &Config{
-				AppConfig: AppConfig{
-					GroundControlURL: URL("https://example.com"),
-					BringOwnRegistry: true,
-					LocalRegistryCredentials: RegistryCredentials{
-						URL:      URL("https://myregistry.example.com"),
-						Username: "user",
-						Password: "pass",
-					},
-				},
-				ZotConfigRaw: []byte(`{"distSpecVersion":"1.1.0"}`),
-			},
-			expectError:    false,
-			expectWarnings: true,
-		},
-		{
 			name: "invalid heartbeat interval defaults",
 			config: &Config{
 				AppConfig: AppConfig{
 					GroundControlURL:  URL("https://example.com"),
 					HeartbeatInterval: "invalid cron",
 				},
-				ZotConfigRaw: []byte(DefaultZotConfigJSON),
 			},
 			expectError:    false,
 			expectWarnings: true,
@@ -223,7 +184,6 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 					RegisterSatelliteInterval: "",
 					HeartbeatInterval:         "",
 				},
-				ZotConfigRaw: []byte(DefaultZotConfigJSON),
 			},
 			expectError:    false,
 			expectWarnings: true,
@@ -272,9 +232,6 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 				if exp.HeartbeatInterval != "" {
 					require.Equal(t, exp.HeartbeatInterval, got.HeartbeatInterval)
 				}
-				if len(tt.expectedConfig.ZotConfigRaw) > 0 {
-					require.JSONEq(t, string(tt.expectedConfig.ZotConfigRaw), string(config.ZotConfigRaw))
-				}
 			}
 		})
 	}
@@ -297,7 +254,6 @@ func TestValidateTLSConfig(t *testing.T) {
 					KeyFile:  keyFile,
 				},
 			},
-			ZotConfigRaw: []byte(DefaultZotConfigJSON),
 		}
 
 		_, warnings, err := ValidateAndEnforceDefaults(config, DefaultGroundControlURL)
@@ -317,7 +273,6 @@ func TestValidateTLSConfig(t *testing.T) {
 					CertFile: certFile,
 				},
 			},
-			ZotConfigRaw: []byte(DefaultZotConfigJSON),
 		}
 
 		_, _, err := ValidateAndEnforceDefaults(config, DefaultGroundControlURL)
@@ -337,7 +292,6 @@ func TestValidateTLSConfig(t *testing.T) {
 					KeyFile: keyFile,
 				},
 			},
-			ZotConfigRaw: []byte(DefaultZotConfigJSON),
 		}
 
 		_, _, err := ValidateAndEnforceDefaults(config, DefaultGroundControlURL)
@@ -358,7 +312,6 @@ func TestValidateTLSConfig(t *testing.T) {
 					KeyFile:  keyFile,
 				},
 			},
-			ZotConfigRaw: []byte(DefaultZotConfigJSON),
 		}
 
 		_, _, err := ValidateAndEnforceDefaults(config, DefaultGroundControlURL)
@@ -379,7 +332,6 @@ func TestValidateTLSConfig(t *testing.T) {
 					SkipVerify: true,
 				},
 			},
-			ZotConfigRaw: []byte(DefaultZotConfigJSON),
 		}
 
 		_, warnings, err := ValidateAndEnforceDefaults(config, DefaultGroundControlURL)
@@ -401,7 +353,6 @@ func TestValidateRegistryFallbackConfig(t *testing.T) {
 			AppConfig: AppConfig{
 				GroundControlURL: URL("https://example.com"),
 			},
-			ZotConfigRaw: []byte(DefaultZotConfigJSON),
 		}
 	}
 
@@ -499,7 +450,6 @@ func TestUseUnsecureEnvVar(t *testing.T) {
 			AppConfig: AppConfig{
 				GroundControlURL: URL("https://example.com"),
 			},
-			ZotConfigRaw: []byte(DefaultZotConfigJSON),
 		}
 	}
 

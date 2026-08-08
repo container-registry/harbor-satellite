@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
 )
@@ -85,12 +84,6 @@ func SetLocalRegistryPassword(password string) func(*Config) {
 func SetLocalRegistryCredentials(creds RegistryCredentials) func(*Config) {
 	return func(cfg *Config) {
 		cfg.AppConfig.LocalRegistryCredentials = creds
-	}
-}
-
-func SetZotConfigRaw(raw json.RawMessage) func(*Config) {
-	return func(cfg *Config) {
-		cfg.ZotConfigRaw = raw
 	}
 }
 
