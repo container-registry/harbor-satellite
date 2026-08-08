@@ -52,7 +52,7 @@ tasks:
   setup:
     desc: Start Harbor and Ground Control stack
     cmds:
-      - echo "Building ground-control image..."
+      - echo "Building groundcontrold image..."
       - docker build --build-arg COMPONENT=groundcontrold -t gc:e2e -f Dockerfile .
       - echo "Starting Harbor and GC stack..."
       - docker compose -f test/e2e/docker/docker-compose.yml up -d
@@ -63,7 +63,7 @@ tasks:
   setup-spiffe:
     desc: Start SPIFFE test stack with external SPIRE
     cmds:
-      - echo "Building ground-control image..."
+      - echo "Building groundcontrold image..."
       - docker build --build-arg COMPONENT=groundcontrold -t gc:e2e -f Dockerfile .
       - task: generate-spiffe-certs
       - task: start-spire-server
