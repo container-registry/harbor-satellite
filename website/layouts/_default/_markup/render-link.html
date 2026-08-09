@@ -1,18 +1,19 @@
 {{- $u := urls.Parse .Destination -}}
 {{- $href := $u.String -}}
 {{- if not $u.IsAbs -}}
-  {{- /* Try to get the page based on the path */ -}}
-  {{- $path := strings.TrimSuffix ".md" $u.Path -}}
-  {{- with .Page.GetPage $path -}}
-    {{- $href = .RelPermalink -}}
-    {{- if $u.Fragment -}}
-      {{- $href = printf "%s#%s" $href $u.Fragment -}}
-    {{- end -}}
-  {{- else -}}
-    {{- /* If GetPage fails, do a simple text replacement as fallback */ -}}
-    {{- if strings.HasSuffix $u.Path ".md" -}}
-      {{- $href = replace $href ".md" "/" -}}
-    {{- end -}}
-  {{- end -}}
+{{- /* Try to get the page based on the path */ -}}
+{{- $path := strings.TrimSuffix ".md" $u.Path -}}
+{{- with .Page.GetPage $path -}}
+{{- $href = .RelPermalink -}}
+{{- if $u.Fragment -}}
+{{- $href = printf "%s#%s" $href $u.Fragment -}}
 {{- end -}}
-<a href="{{ $href | safeURL }}"{{ with .Title }} title="{{ . }}"{{ end }}{{ if $u.IsAbs }} target="_blank" rel="noopener noreferrer"{{ end }}>{{ .Text | safeHTML }}</a>
+{{- else -}}
+{{- /* If GetPage fails, do a simple text replacement as fallback */ -}}
+{{- if strings.HasSuffix $u.Path ".md" -}}
+{{- $href = replace $href ".md" "/" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+<a href="{{ $href | safeURL }}" {{ with .Title }} title="{{ . }}" {{ end }}{{ if $u.IsAbs }} target="_blank"
+  rel="noopener noreferrer" {{ end }}>{{ .Text | safeHTML }}</a>
