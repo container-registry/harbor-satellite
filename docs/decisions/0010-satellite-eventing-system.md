@@ -137,7 +137,7 @@ through today — no new control flow is introduced, only observation points.
               ▼
 ┌─────────────────────────────────────────┐
 │ Execute(ctx) (err error): start()         │
-│ state_process.go:79-81                    │──emit──▶ ((sync.started))
+│ state_process.go:79-81                    │
 │ deferred emit of sync.completed/failed    │
 │ covers every return below, not just       │
 │ collectResults (see note)                 │
@@ -146,13 +146,19 @@ through today — no new control flow is introduced, only observation points.
               ▼
       ┌────────────────┐   ctx cancelled (:87-91)
       │  ctx.Done()?    │─────────────────────────▶ return ctx.Err()
-      └───────┬─────────┘
-              │ not yet
-              ▼
+      └───────┬─────────┘                            (deferred sync.failed —
+              │ not yet                                no sync.started ever
+              ▼                                        fired for this cycle)
       ┌────────────────┐   missing creds (:95-99)
       │  CanExecute?    │─────────────────────────▶ return nil, no event
-      └───────┬─────────┘
-              │ ok
+      └───────┬─────────┘                            (neither started nor
+              │ ok                                    failed: not-yet-ready,
+              ▼                                        not a failure)
+┌─────────────────────────────────────────┐
+│ eligibility confirmed                     │──emit──▶ ((sync.started))
+│ state_process.go:100                      │
+└─────────────┬───────────────────────────────┘
+              │
               ▼
 ┌─────────────────────────────────────────┐
 │ fetchSatelliteRootState /                 │
@@ -194,9 +200,13 @@ through today — no new control flow is introduced, only observation points.
        ▼                ▼
 ((sync.completed))  ((sync.failed))
 
-  the deferred emit fires exactly once per Execute() call, on every
-  return path except the "missing creds" one (which is not a failure,
-  just not-yet-ready, and intentionally emits nothing)
+  the deferred completion emit fires exactly once per Execute() call, on
+  every return path except the "missing creds" one (which is not a
+  failure, just not-yet-ready, and intentionally emits nothing).
+  sync.started fires only once eligibility is confirmed, so a
+  ctx-cancelled cycle emits sync.failed with no preceding sync.started —
+  that pairing is not guaranteed, and consumers correlating by cycle_id
+  should not assume every sync.failed has a matching sync.started.
 ```
 
 Delivery is decoupled from the sync cycle by a bounded queue: the process emits
@@ -246,7 +256,7 @@ minting a new one, so receivers can deduplicate by `id` if they need to.
 
 | Event type | Trigger | Source | Payload highlights |
 |---|---|---|---|
-| `io.harborsatellite.state.sync.started` | `Execute()` begins, `CanExecute` passed | `state_process.go:79-99` | `satellite_id`, `cycle_id`, `schema_version` |
+| `io.harborsatellite.state.sync.started` | `CanExecute` passes (not at `Execute()` entry — see Architecture) | `state_process.go:100` | `satellite_id`, `cycle_id`, `schema_version` |
 | `io.harborsatellite.state.received` | Root or group state artifact fetched | `state_process.go:102`, `:448` | `cycle_id`, `group`, `digest`, `artifact_count`, `schema_version` |
 | `io.harborsatellite.artifact.synchronized` | Entity replicated | `replicator.go:152-173` | `cycle_id`, `group`, `repository`, `tag`, `digest`, `bytes`, `duration_ms`, `schema_version` |
 | `io.harborsatellite.artifact.deleted` | Entity removed | `state_process.go:459` | `cycle_id`, `group`, `repository`, `tag`, `digest`, `schema_version` |
@@ -282,6 +292,25 @@ already enqueued are delivered via whichever `Transport` is active when the
 dispatcher goroutine dequeues them, so a reload mid-cycle can route a small
 tail of in-flight events to the old transport. That's acceptable given
 delivery is already best-effort (see above).
+
+**Context lifetime.** `Emitter` owns a long-lived context created at satellite
+startup and cancelled at shutdown — it does not reuse `Execute()`'s per-cycle
+context. Enqueuing an event only copies its data into the queue; the dispatcher
+goroutine derives a fresh, bounded per-attempt timeout context from the
+`Emitter`'s own context for each call to `Transport.Emit`. This means a
+context cancellation or early return from one `Execute()` call cannot cancel
+delivery of events already sitting in the queue — only satellite shutdown
+(cancelling the `Emitter`'s own context) does.
+
+**Reconfigure vs. in-flight delivery.** Swapping the active `Transport`
+pointer under a lock (as above) is not enough on its own: a dispatcher
+goroutine can be mid-`Emit` (an in-flight webhook POST) on the old `Transport`
+at the moment `Reconfigure` runs. `Emitter` tracks in-flight `Emit` calls per
+`Transport` (a reference count, incremented before `Emit` and decremented
+after); `Reconfigure` swaps the pointer immediately so new dequeues use the
+new `Transport`, but defers calling `Close` on the old one until its
+in-flight count reaches zero. This keeps the swap non-blocking for the caller
+while guaranteeing `Close` never runs out from under an active send.
 
 ```go
 // internal/eventing/event.go (proposed)
@@ -325,6 +354,14 @@ func (e *Emitter) Reconfigure(cfg EventingConfig) error // mirrors AuditLogger.R
 * **Secret rotation**: `signing_secret_env` names one env var; rotating the
   secret today means reloading with the new value (a hard cutover). Accepting
   two active secrets during a rotation window is Future Work, not Phase 1.
+* **Fail-fast validation**: when `eventing.enabled && webhook.enabled`, the
+  env var named by `signing_secret_env` must resolve to a non-empty value of
+  at least 32 bytes (matching HMAC-SHA256 key-length guidance) at both
+  construction and every `Reconfigure`. A missing, empty, or short secret is a
+  startup/reload error, not a silent no-op — the same fail-fast rule the audit
+  logger already applies to its own transports ("audit logging is enabled but
+  no transport is configured", `audit.go:300`), so a misconfigured webhook
+  can't advertise itself as active while actually dropping every signature.
 
 ### Config shape
 
@@ -376,6 +413,15 @@ getter/modifier pattern as `GetAuditConfig()` (`pkg/config/getters.go:208`) and
 * Hot-reload: toggling `eventing.enabled` or changing the webhook URL takes effect
   without restart, mirroring `AuditConfig.Reconfigure` (`audit.go:254-269`); events
   enqueued immediately before a reload may still deliver via the old transport.
+* A `Reconfigure` call concurrent with an in-flight `Emit` must not close the
+  old `Transport` until that `Emit` returns — a race test that reconfigures
+  while a slow `Emit` is in progress must show no use-after-close.
+* Cancelling one `Execute()` call's context must not cancel delivery of
+  events that call already enqueued — a test cancels the caller's context
+  immediately after enqueueing and asserts the event still delivers.
+* Startup and `Reconfigure` both reject `eventing.enabled && webhook.enabled`
+  with a missing, empty, or under-length `signing_secret_env` value; add
+  tests for all three cases.
 
 ## Future Work
 
