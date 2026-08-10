@@ -46,13 +46,13 @@ task e2e
 
 ## Code Generation Tasks
 
-Ground Control API code is generated from `spec/ground-control/openapi.yaml` with oapi-codegen. This is the only supported generation workflow.
+Ground Control API code is generated from `spec/groundcontrol/openapi.yaml` with oapi-codegen. This is the only supported generation workflow.
 
 | Command | Description |
 |---------|-------------|
-| `task generate:ground-control` | Generate Ground Control OpenAPI server and client code |
-| `task generate:ground-control-server` | Generate server code into `internal/groundcontrol/server/server.gen.go` |
-| `task generate:ground-control-client` | Generate client code into `pkg/groundcontrol/client.gen.go` |
+| `task generate:groundcontrol` | Generate Ground Control OpenAPI server and client code |
+| `task generate:groundcontrol-server` | Generate server code into `internal/groundcontrol/server/server.gen.go` |
+| `task generate:groundcontrol-client` | Generate client code into `pkg/groundcontrol/client.gen.go` |
 
 ## Publish Tasks
 
