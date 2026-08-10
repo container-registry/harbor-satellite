@@ -295,22 +295,41 @@ delivery is already best-effort (see above).
 
 **Context lifetime.** `Emitter` owns a long-lived context created at satellite
 startup and cancelled at shutdown — it does not reuse `Execute()`'s per-cycle
-context. Enqueuing an event only copies its data into the queue; the dispatcher
-goroutine derives a fresh, bounded per-attempt timeout context from the
-`Emitter`'s own context for each call to `Transport.Emit`. This means a
-context cancellation or early return from one `Execute()` call cannot cancel
-delivery of events already sitting in the queue — only satellite shutdown
-(cancelling the `Emitter`'s own context) does.
+context. Enqueuing an event takes an immutable snapshot of the complete event,
+including `Data` and all nested maps and slices — not a shallow copy of the
+`Event` struct, since `Data` is a mutable `map[string]any` and a shallow copy
+would still let the caller mutate nested values after enqueue, changing the
+payload the dispatcher later sends or racing with it reading that payload
+concurrently. The dispatcher goroutine derives a fresh, bounded per-attempt
+timeout context from the `Emitter`'s own context for each call to
+`Transport.Emit`. This means a context cancellation or early return from one
+`Execute()` call cannot cancel delivery of events already sitting in the
+queue — only satellite shutdown (cancelling the `Emitter`'s own context) does.
 
 **Reconfigure vs. in-flight delivery.** Swapping the active `Transport`
 pointer under a lock (as above) is not enough on its own: a dispatcher
 goroutine can be mid-`Emit` (an in-flight webhook POST) on the old `Transport`
 at the moment `Reconfigure` runs. `Emitter` tracks in-flight `Emit` calls per
-`Transport` (a reference count, incremented before `Emit` and decremented
-after); `Reconfigure` swaps the pointer immediately so new dequeues use the
-new `Transport`, but defers calling `Close` on the old one until its
-in-flight count reaches zero. This keeps the swap non-blocking for the caller
-while guaranteeing `Close` never runs out from under an active send.
+`Transport` via a reference count, but the count alone is not race-free: if
+the dispatcher's pointer-read and increment aren't serialized against
+`Reconfigure`'s swap, a dispatcher can read the old pointer, be preempted,
+have `Reconfigure` observe a zero count and `Close` the old `Transport`, then
+resume and `Emit` on an already-closed transport — the exact use-after-close
+the design is meant to prevent. So the pointer read and the refcount
+increment on the dispatcher side, and the swap, zero-count check, and
+deferred `Close` on the `Reconfigure` side, all happen under the same mutex.
+Holding that mutex only guards the pointer/count bookkeeping, not the `Emit`
+call itself, so it stays non-blocking for the caller while guaranteeing
+`Close` never runs concurrently with an active send.
+
+**Shutdown ordering.** Reconfigure covers reload; process shutdown is a
+separate, one-way sequence: (1) stop accepting new events into the queue —
+further `Emit` calls from `Execute()` are dropped and logged rather than
+blocking; (2) cancel the `Emitter`'s own context; (3) wait for the dispatcher
+goroutine(s) and every in-flight `Transport.Emit` call to return; (4) only
+then call `Close` on every retained `Transport`. `Transport.Emit` is
+contractually required to return promptly once its context is cancelled —
+without that, a stuck transport could block shutdown indefinitely at step 3.
 
 ```go
 // internal/eventing/event.go (proposed)
@@ -327,6 +346,10 @@ type Event struct {
 // Content-Type: application/cloudevents+json.
 
 type Transport interface {
+    // Emit must return promptly once ctx is cancelled — shutdown waits on
+    // in-flight Emit calls before closing any Transport (see Shutdown
+    // ordering above), so a transport that ignores cancellation can stall
+    // satellite shutdown indefinitely.
     Emit(ctx context.Context, e Event) error
     Close() error
 }
@@ -414,11 +437,23 @@ getter/modifier pattern as `GetAuditConfig()` (`pkg/config/getters.go:208`) and
   without restart, mirroring `AuditConfig.Reconfigure` (`audit.go:254-269`); events
   enqueued immediately before a reload may still deliver via the old transport.
 * A `Reconfigure` call concurrent with an in-flight `Emit` must not close the
-  old `Transport` until that `Emit` returns — a race test that reconfigures
-  while a slow `Emit` is in progress must show no use-after-close.
+  old `Transport` until that `Emit` returns, and the pointer-read/increment on
+  the dispatcher side must be serialized against `Reconfigure`'s swap under
+  the same mutex — a race test that repeatedly reconfigures while dispatchers
+  are mid-`Emit` (`go test -race`, high iteration count) must show no
+  use-after-close.
+* Mutating an event's `Data` map (including nested maps/slices) after calling
+  `Emit` must not change what the dispatcher delivers — a test enqueues an
+  event, mutates the caller's original `Data` map, and asserts the delivered
+  payload reflects the pre-mutation state.
 * Cancelling one `Execute()` call's context must not cancel delivery of
   events that call already enqueued — a test cancels the caller's context
   immediately after enqueueing and asserts the event still delivers.
+* Shutdown follows the stated ordering (stop intake, cancel context, wait for
+  dispatcher and in-flight sends, then close transports): a test shuts down
+  mid-flight and asserts no `Transport.Emit` call is still running when the
+  last `Close` returns, and that a `Transport` whose `Emit` ignores context
+  cancellation cannot block shutdown past a bounded timeout.
 * Startup and `Reconfigure` both reject `eventing.enabled && webhook.enabled`
   with a missing, empty, or under-length `signing_secret_env` value; add
   tests for all three cases.
