@@ -50,7 +50,7 @@ func TestReplicate_NewImage(t *testing.T) {
 
 	pushImage(t, srcAddr, "alpine", "latest", 2)
 
-	r := NewRegistryStore(RegistryOptions{Reference: srcAddr, PlainHTTP: true}, RegistryOptions{Reference: dstAddr, PlainHTTP: true})
+	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
 	ctx := testContext()
 
 	err := r.Replicate(ctx, []Artifact{
@@ -65,6 +65,35 @@ func TestReplicate_NewImage(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestReplicate_UsesIndependentEndpointRepositories(t *testing.T) {
+	srcAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
+	img, err := random.Image(1024, 2)
+	require.NoError(t, err)
+
+	srcRef, err := name.ParseReference(srcAddr+"/source/team/images/httpd:2.4-trixie", name.Insecure)
+	require.NoError(t, err)
+	require.NoError(t, remote.Write(srcRef, img))
+
+	r := NewRegistryStore(
+		RegistryOptions{Endpoint: srcAddr, Repository: "source/team/images", PlainHTTP: true},
+		RegistryOptions{Endpoint: dstAddr, Repository: "destination/account", PlainHTTP: true},
+	)
+	require.NoError(t, r.Replicate(testContext(), []Artifact{
+		{Name: "httpd", Repository: "must-not-leak", Tag: "2.4-trixie"},
+	}))
+
+	dstRef, err := name.ParseReference(dstAddr+"/destination/account/httpd:2.4-trixie", name.Insecure)
+	require.NoError(t, err)
+	_, err = remote.Head(dstRef)
+	require.NoError(t, err)
+
+	leakedRef, err := name.ParseReference(dstAddr+"/destination/account/must-not-leak/httpd:2.4-trixie", name.Insecure)
+	require.NoError(t, err)
+	_, err = remote.Head(leakedRef)
+	require.Error(t, err)
+}
+
 func TestReplicate_SkipsExistingImage(t *testing.T) {
 	srcAddr := newTestRegistry(t)
 	dstAddr := newTestRegistry(t)
@@ -76,7 +105,7 @@ func TestReplicate_SkipsExistingImage(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, remote.Write(dstRef, img))
 
-	r := NewRegistryStore(RegistryOptions{Reference: srcAddr, PlainHTTP: true}, RegistryOptions{Reference: dstAddr, PlainHTTP: true})
+	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
 	ctx := testContext()
 
 	// Should succeed without error and skip the image
@@ -96,7 +125,7 @@ func TestReplicate_UpdatesChangedImage(t *testing.T) {
 	// Push a different version to source (different random image)
 	srcImg := pushImage(t, srcAddr, "redis", "7", 2)
 
-	r := NewRegistryStore(RegistryOptions{Reference: srcAddr, PlainHTTP: true}, RegistryOptions{Reference: dstAddr, PlainHTTP: true})
+	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
 	ctx := testContext()
 
 	err := r.Replicate(ctx, []Artifact{
@@ -127,7 +156,7 @@ func TestReplicate_MultipleEntities(t *testing.T) {
 	pushImage(t, srcAddr, "alpine", "latest", 1)
 	pushImage(t, srcAddr, "nginx", "1.25", 2)
 
-	r := NewRegistryStore(RegistryOptions{Reference: srcAddr, PlainHTTP: true}, RegistryOptions{Reference: dstAddr, PlainHTTP: true})
+	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
 	ctx := testContext()
 
 	err := r.Replicate(ctx, []Artifact{
@@ -153,7 +182,7 @@ func TestReplicate_SourceNotFound(t *testing.T) {
 	dstAddr := newTestRegistry(t)
 
 	// Don't push anything to source
-	r := NewRegistryStore(RegistryOptions{Reference: srcAddr, PlainHTTP: true}, RegistryOptions{Reference: dstAddr, PlainHTTP: true})
+	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
 	ctx := testContext()
 
 	err := r.Replicate(ctx, []Artifact{
@@ -166,7 +195,7 @@ func TestReplicate_EmptyEntities(t *testing.T) {
 	srcAddr := newTestRegistry(t)
 	dstAddr := newTestRegistry(t)
 
-	r := NewRegistryStore(RegistryOptions{Reference: srcAddr, PlainHTTP: true}, RegistryOptions{Reference: dstAddr, PlainHTTP: true})
+	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
 	ctx := testContext()
 
 	err := r.Replicate(ctx, []Artifact{})
@@ -239,7 +268,7 @@ func TestDelete(t *testing.T) {
 
 	pushImage(t, dstAddr, "alpine", "latest", 1)
 
-	r := NewRegistryStore(RegistryOptions{Reference: "", PlainHTTP: true}, RegistryOptions{Reference: dstAddr, PlainHTTP: true})
+	r := NewRegistryStore(RegistryOptions{Endpoint: "", PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
 	ctx := testContext()
 
 	err := r.Delete(ctx, []Artifact{
@@ -296,7 +325,7 @@ func TestReplicate_LayerResume(t *testing.T) {
 	// Step 5: Replicate the extended image from source to dest
 	// The destination already has 3 of the 5 layers (from base image)
 	// remote.Write should detect these via blob HEAD checks and only pull the 2 new layers
-	r := NewRegistryStore(RegistryOptions{Reference: srcAddr, PlainHTTP: true}, RegistryOptions{Reference: dstAddr, PlainHTTP: true})
+	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
 	ctx := testContext()
 
 	err = r.Replicate(ctx, []Artifact{
@@ -332,7 +361,7 @@ func TestReplicate_CancelledContextStopsProcessing(t *testing.T) {
 	pushImage(t, srcAddr, "img2", "v1", 1)
 	pushImage(t, srcAddr, "img3", "v1", 1)
 
-	r := NewRegistryStore(RegistryOptions{Reference: srcAddr, PlainHTTP: true}, RegistryOptions{Reference: dstAddr, PlainHTTP: true})
+	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
 
 	ctx, cancel := context.WithCancel(testContext())
 	cancel() // cancel immediately
@@ -352,7 +381,7 @@ func TestDelete_CancelledContextStopsProcessing(t *testing.T) {
 	pushImage(t, dstAddr, "img1", "v1", 1)
 	pushImage(t, dstAddr, "img2", "v1", 1)
 
-	r := NewRegistryStore(RegistryOptions{Reference: "", PlainHTTP: true}, RegistryOptions{Reference: dstAddr, PlainHTTP: true})
+	r := NewRegistryStore(RegistryOptions{Endpoint: "", PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
 
 	ctx, cancel := context.WithCancel(testContext())
 	cancel()

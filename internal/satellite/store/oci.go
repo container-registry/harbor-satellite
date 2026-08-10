@@ -28,6 +28,8 @@ type OCIStore struct {
 	mu     sync.Mutex
 }
 
+// NewOCIStore opens or creates an OCI image-layout store at root and configures
+// the remote registry used as its replication source.
 func NewOCIStore(root string, source RegistryOptions) (*OCIStore, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, errors.New("OCI store root is required")
@@ -53,6 +55,9 @@ func (s *OCIStore) Replicate(ctx context.Context, artifacts []Artifact) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if err := artifact.validate(); err != nil {
+			return err
+		}
 
 		source, err := newRepository(s.source, artifact)
 		if err != nil {
@@ -60,7 +65,8 @@ func (s *OCIStore) Replicate(ctx context.Context, artifacts []Artifact) error {
 		}
 		destinationRef := s.reference(artifact)
 
-		desc, err := source.Resolve(ctx, artifact.Tag)
+		sourceIdentifier := artifact.sourceIdentifier()
+		desc, err := source.Resolve(ctx, sourceIdentifier)
 		if err != nil {
 			return fmt.Errorf("resolve source artifact %s: %w", destinationRef, err)
 		}
@@ -73,7 +79,7 @@ func (s *OCIStore) Replicate(ctx context.Context, artifacts []Artifact) error {
 			return fmt.Errorf("resolve OCI store reference %s: %w", destinationRef, err)
 		}
 
-		if _, err := oras.Copy(ctx, source, artifact.Tag, s.target, destinationRef, oras.DefaultCopyOptions); err != nil {
+		if _, err := oras.Copy(ctx, source, sourceIdentifier, s.target, destinationRef, oras.DefaultCopyOptions); err != nil {
 			return fmt.Errorf("copy artifact %s to OCI store: %w", destinationRef, err)
 		}
 		log.Info().Str("reference", destinationRef).Str("digest", desc.Digest.String()).Msg("Artifact replicated to OCI store")
@@ -91,6 +97,9 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	changed := false
 	for _, artifact := range artifacts {
 		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := artifact.validate(); err != nil {
 			return err
 		}
 
@@ -119,21 +128,17 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 // reference retains source provenance and prevents equal repository/tag names
 // from different registries from colliding in the shared OCI layout.
 func (s *OCIStore) reference(artifact Artifact) string {
-	return strings.Join([]string{
-		strings.TrimSuffix(normalizeRegistry(s.source.Reference), "/"),
-		artifact.Reference(),
-	}, "/")
+	return s.source.reference(artifact, artifact.destinationIdentifier())
 }
 
+// newRepository creates an authenticated ORAS repository for one source
+// artifact, applying the endpoint repository override when configured.
 func newRepository(options RegistryOptions, artifact Artifact) (*remote.Repository, error) {
-	registry := normalizeRegistry(options.Reference)
-	repository, err := remote.NewRepository(
-		strings.Join([]string{
-			strings.TrimSuffix(registry, "/"),
-			artifact.Repository,
-			artifact.Name,
-		}, "/"),
-	)
+	registry := normalizeRegistry(options.Endpoint)
+	repository, err := remote.NewRepository(strings.Join([]string{
+		strings.TrimSuffix(registry, "/"),
+		options.repositoryPath(artifact),
+	}, "/"))
 	if err != nil {
 		return nil, fmt.Errorf("create remote repository for %s: %w", artifact.Reference(), err)
 	}
@@ -159,6 +164,8 @@ func newRepository(options RegistryOptions, artifact Artifact) (*remote.Reposito
 	return repository, nil
 }
 
+// normalizeRegistry removes an optional scheme and trailing slash so registry
+// references can be consumed consistently by ORAS and go-containerregistry.
 func normalizeRegistry(reference string) string {
 	reference = strings.TrimSpace(reference)
 	reference = strings.TrimPrefix(reference, "https://")
@@ -166,6 +173,7 @@ func normalizeRegistry(reference string) string {
 	return strings.TrimSuffix(reference, "/")
 }
 
+// registryHost extracts the host used to scope registry credentials.
 func registryHost(reference string) (string, error) {
 	parsed, err := url.Parse("//" + reference)
 	if err != nil {
@@ -177,6 +185,8 @@ func registryHost(reference string) (string, error) {
 	return parsed.Host, nil
 }
 
+// registryHTTPClient returns the default retrying ORAS client unless custom TLS
+// settings require a cloned transport.
 func registryHTTPClient(cfg config.TLSConfig) (*http.Client, error) {
 	if cfg.CertFile == "" && cfg.KeyFile == "" && cfg.CAFile == "" && !cfg.SkipVerify {
 		return retry.DefaultClient, nil

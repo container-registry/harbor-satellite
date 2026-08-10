@@ -545,7 +545,7 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 	}
 
 	source := store.RegistryOptions{
-		Reference: sourceURL,
+		Endpoint:  sourceURL,
 		Username:  sourceUsername,
 		Password:  sourcePassword,
 		PlainHTTP: useUnsecure,
@@ -555,7 +555,7 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 	if f.cm.GetOwnRegistry() {
 		destination = utils.FormatRegistryURL(f.cm.GetLocalRegistryURL())
 		replicator = store.NewRegistryStore(source, store.RegistryOptions{
-			Reference: destination,
+			Endpoint:  destination,
 			Username:  remoteUsername,
 			Password:  remotePassword,
 			PlainHTTP: useUnsecure,

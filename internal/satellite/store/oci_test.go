@@ -20,7 +20,7 @@ import (
 )
 
 func TestNewOCIStoreRequiresRoot(t *testing.T) {
-	storage, err := NewOCIStore("", RegistryOptions{Reference: "registry.example.com"})
+	storage, err := NewOCIStore("", RegistryOptions{Endpoint: "registry.example.com"})
 	require.Error(t, err)
 	require.Nil(t, storage)
 }
@@ -31,7 +31,7 @@ func TestOCIStoreReplicatePersistsImageLayout(t *testing.T) {
 	root := t.TempDir()
 	artifact := Artifact{Name: "alpine", Repository: "library", Tag: "latest"}
 
-	storage, err := NewOCIStore(root, RegistryOptions{Reference: source, PlainHTTP: true})
+	storage, err := NewOCIStore(root, RegistryOptions{Endpoint: source, PlainHTTP: true})
 	require.NoError(t, err)
 	require.NoError(t, storage.Replicate(testContext(), []Artifact{artifact}))
 
@@ -75,9 +75,9 @@ func TestOCIStoreReplicatesArbitraryArtifact(t *testing.T) {
 	require.NoError(t, repository.Push(ctx, configDesc, bytes.NewReader(config)))
 	require.NoError(t, repository.PushReference(ctx, manifestDesc, bytes.NewReader(manifestBytes), "v1"))
 
-	storage, err := NewOCIStore(t.TempDir(), RegistryOptions{Reference: source, PlainHTTP: true})
+	storage, err := NewOCIStore(t.TempDir(), RegistryOptions{Endpoint: source, Repository: "project", PlainHTTP: true})
 	require.NoError(t, err)
-	require.NoError(t, storage.Replicate(ctx, []Artifact{{Name: "document", Repository: "project", Tag: "v1"}}))
+	require.NoError(t, storage.Replicate(ctx, []Artifact{{Name: "document", Tag: "v1"}}))
 
 	stored, err := storage.target.Resolve(ctx, source+"/project/document:v1")
 	require.NoError(t, err)
@@ -95,7 +95,7 @@ func TestOCIStoreDeleteRetainsSharedContent(t *testing.T) {
 	require.NoError(t, gcremote.Write(secondRef, image))
 
 	ctx := testContext()
-	storage, err := NewOCIStore(t.TempDir(), RegistryOptions{Reference: source, PlainHTTP: true})
+	storage, err := NewOCIStore(t.TempDir(), RegistryOptions{Endpoint: source, PlainHTTP: true})
 	require.NoError(t, err)
 	first := Artifact{Name: "first", Repository: "library", Tag: "v1"}
 	second := Artifact{Name: "second", Repository: "library", Tag: "v1"}
@@ -110,7 +110,7 @@ func TestOCIStoreDeleteRetainsSharedContent(t *testing.T) {
 }
 
 func TestOCIStoreDeleteMissingReferenceIsIdempotent(t *testing.T) {
-	storage, err := NewOCIStore(t.TempDir(), RegistryOptions{Reference: "registry.example.com"})
+	storage, err := NewOCIStore(t.TempDir(), RegistryOptions{Endpoint: "registry.example.com"})
 	require.NoError(t, err)
 	require.NoError(t, storage.Delete(testContext(), []Artifact{{Name: "missing", Repository: "library", Tag: "latest"}}))
 }

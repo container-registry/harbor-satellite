@@ -8,7 +8,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
-	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -20,26 +19,16 @@ import (
 
 // RegistryStore copies OCI images between remote registries using Crane.
 type RegistryStore struct {
-	useUnsecure       bool
-	sourceUsername    string
-	sourcePassword    string
-	sourceRegistryURL string
-	targetRegistryURL string
-	targetUsername    string
-	targetPassword    string
-	tlsCfg            config.TLSConfig
+	source      RegistryOptions
+	destination RegistryOptions
 }
 
+// NewRegistryStore creates a store that copies OCI images from one remote
+// registry endpoint to another.
 func NewRegistryStore(source, destination RegistryOptions) Store {
 	return &RegistryStore{
-		sourceUsername:    source.Username,
-		sourcePassword:    source.Password,
-		useUnsecure:       source.PlainHTTP,
-		targetRegistryURL: destination.Reference,
-		sourceRegistryURL: source.Reference,
-		targetUsername:    destination.Username,
-		targetPassword:    destination.Password,
-		tlsCfg:            source.TLS,
+		source:      source,
+		destination: destination,
 	}
 }
 
@@ -49,19 +38,19 @@ func NewRegistryStore(source, destination RegistryOptions) Store {
 func (r *RegistryStore) Replicate(ctx context.Context, replicationEntities []Artifact) error {
 	log := logger.FromContext(ctx)
 	pullAuth := authn.FromConfig(authn.AuthConfig{
-		Username: r.sourceUsername,
-		Password: r.sourcePassword,
+		Username: r.source.Username,
+		Password: r.source.Password,
 	})
 	pushAuth := authn.FromConfig(authn.AuthConfig{
-		Username: r.targetUsername,
-		Password: r.targetPassword,
+		Username: r.destination.Username,
+		Password: r.destination.Password,
 	})
 
 	var nameOpts []name.Option
 	pullOpts := []remote.Option{remote.WithAuth(pullAuth), remote.WithContext(ctx)}
 	pushOpts := []remote.Option{remote.WithAuth(pushAuth), remote.WithContext(ctx)}
 
-	if r.useUnsecure {
+	if r.source.PlainHTTP {
 		nameOpts = append(nameOpts, name.Insecure)
 	} else {
 		transport, err := r.buildTLSTransport()
@@ -83,8 +72,12 @@ func (r *RegistryStore) Replicate(ctx context.Context, replicationEntities []Art
 		default:
 		}
 
-		srcRef := fmt.Sprintf("%s/%s", r.sourceRegistryURL, entity.Reference())
-		dstRef := fmt.Sprintf("%s/%s", r.targetRegistryURL, entity.Reference())
+		if err := entity.validate(); err != nil {
+			return err
+		}
+
+		srcRef := r.source.reference(entity, entity.sourceIdentifier())
+		dstRef := r.destination.reference(entity, entity.destinationIdentifier())
 
 		src, err := name.ParseReference(srcRef, nameOpts...)
 		if err != nil {
@@ -184,15 +177,17 @@ func (r *RegistryStore) countMissingLayers(dst name.Reference, srcLayers []v1.La
 	return missing
 }
 
+// Delete removes artifact manifests from the destination registry. Registry
+// support for delete-by-reference is required by the configured endpoint.
 func (r *RegistryStore) Delete(ctx context.Context, replicationEntity []Artifact) error {
 	log := logger.FromContext(ctx)
 	auth := authn.FromConfig(authn.AuthConfig{
-		Username: r.targetUsername,
-		Password: r.targetPassword,
+		Username: r.destination.Username,
+		Password: r.destination.Password,
 	})
 
 	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
-	if r.useUnsecure {
+	if r.source.PlainHTTP {
 		options = append(options, crane.Insecure)
 	}
 
@@ -205,9 +200,13 @@ func (r *RegistryStore) Delete(ctx context.Context, replicationEntity []Artifact
 		default:
 		}
 
-		log.Info().Msgf("Deleting image %s from repository %s at registry %s with tag %s", entity.Name, entity.Repository, r.targetRegistryURL, entity.Tag)
+		if err := entity.validate(); err != nil {
+			return err
+		}
 
-		err := crane.Delete(fmt.Sprintf("%s/%s", r.targetRegistryURL, entity.Reference()), options...)
+		log.Info().Msgf("Deleting image %s from repository %s at registry %s with tag %s", entity.Name, r.destination.repositoryPath(entity), r.destination.Endpoint, entity.Tag)
+
+		err := crane.Delete(r.destination.reference(entity, entity.destinationIdentifier()), options...)
 		if err != nil {
 			log.Error().Msgf("Failed to delete image: %v", err)
 			return err
@@ -218,16 +217,18 @@ func (r *RegistryStore) Delete(ctx context.Context, replicationEntity []Artifact
 	return nil
 }
 
+// buildTLSTransport builds the source registry transport when custom TLS
+// material is configured. A nil transport selects the library default.
 func (r *RegistryStore) buildTLSTransport() (http.RoundTripper, error) {
-	if r.tlsCfg.CertFile == "" && r.tlsCfg.CAFile == "" {
+	if r.source.TLS.CertFile == "" && r.source.TLS.CAFile == "" {
 		return nil, nil
 	}
 
 	cfg := &satTLS.Config{
-		CertFile:   r.tlsCfg.CertFile,
-		KeyFile:    r.tlsCfg.KeyFile,
-		CAFile:     r.tlsCfg.CAFile,
-		SkipVerify: r.tlsCfg.SkipVerify,
+		CertFile:   r.source.TLS.CertFile,
+		KeyFile:    r.source.TLS.KeyFile,
+		CAFile:     r.source.TLS.CAFile,
+		SkipVerify: r.source.TLS.SkipVerify,
 		MinVersion: tls.VersionTLS12,
 	}
 
