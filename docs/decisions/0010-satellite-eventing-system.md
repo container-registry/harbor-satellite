@@ -325,11 +325,19 @@ call itself, so it stays non-blocking for the caller while guaranteeing
 **Shutdown ordering.** Reconfigure covers reload; process shutdown is a
 separate, one-way sequence: (1) stop accepting new events into the queue —
 further `Emit` calls from `Execute()` are dropped and logged rather than
-blocking; (2) cancel the `Emitter`'s own context; (3) wait for the dispatcher
-goroutine(s) and every in-flight `Transport.Emit` call to return; (4) only
-then call `Close` on every retained `Transport`. `Transport.Emit` is
-contractually required to return promptly once its context is cancelled —
-without that, a stuck transport could block shutdown indefinitely at step 3.
+blocking; (2) cancel the `Emitter`'s own context; (3) wait, up to a bounded
+grace period (e.g. 10s), for the dispatcher goroutine(s) and every in-flight
+`Transport.Emit` call to return; (4) call `Close` on every retained
+`Transport` — including one whose `Emit` is still running because the grace
+period elapsed. `Transport.Emit` is contractually required to return promptly
+once its context is cancelled, and a conformant implementation makes step 4
+always land in the "no in-flight `Emit`" case, so the grace period is not hit
+in practice. It exists as a bounded escape hatch for a misbehaving transport:
+the accepted trade-off is a narrow use-after-close window scoped to process
+termination only — unlike the `Reconfigure` race above, which is fully
+serialized and must never hit this case during normal operation — because the
+process is exiting regardless and nothing further depends on that `Emit`
+completing cleanly.
 
 ```go
 // internal/eventing/event.go (proposed)
@@ -346,10 +354,11 @@ type Event struct {
 // Content-Type: application/cloudevents+json.
 
 type Transport interface {
-    // Emit must return promptly once ctx is cancelled — shutdown waits on
-    // in-flight Emit calls before closing any Transport (see Shutdown
-    // ordering above), so a transport that ignores cancellation can stall
-    // satellite shutdown indefinitely.
+    // Emit must return promptly once ctx is cancelled. Shutdown waits for
+    // in-flight Emit calls up to a bounded grace period before closing any
+    // Transport (see Shutdown ordering above); an Emit that ignores
+    // cancellation forces that grace period every time and risks a
+    // use-after-close on the rare shutdown that hits it.
     Emit(ctx context.Context, e Event) error
     Close() error
 }
@@ -450,10 +459,15 @@ getter/modifier pattern as `GetAuditConfig()` (`pkg/config/getters.go:208`) and
   events that call already enqueued — a test cancels the caller's context
   immediately after enqueueing and asserts the event still delivers.
 * Shutdown follows the stated ordering (stop intake, cancel context, wait for
-  dispatcher and in-flight sends, then close transports): a test shuts down
-  mid-flight and asserts no `Transport.Emit` call is still running when the
-  last `Close` returns, and that a `Transport` whose `Emit` ignores context
-  cancellation cannot block shutdown past a bounded timeout.
+  dispatcher and in-flight sends, then close transports): a test shuts down a
+  conformant `Transport` (one that honors context cancellation) mid-flight
+  and asserts no `Emit` call is still running when the last `Close` returns,
+  and completion is well within the grace period. A second test shuts down a
+  deliberately non-conformant `Transport` (one whose `Emit` ignores context
+  cancellation) and asserts shutdown still completes at the grace-period
+  bound rather than hanging indefinitely — it does not assert the absence of
+  use-after-close in that specific case, since that's the documented,
+  accepted trade-off for a misbehaving transport during process termination.
 * Startup and `Reconfigure` both reject `eventing.enabled && webhook.enabled`
   with a missing, empty, or under-length `signing_secret_env` value; add
   tests for all three cases.
