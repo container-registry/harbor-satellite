@@ -83,7 +83,11 @@ func (s *Satellite) Run(ctx context.Context) error {
 	stateScheduler.Start(ctx)
 
 	// Create status report scheduler with pending CRI results
-	statusReportProcess := state.NewStatusReportingProcess(s.cm)
+	statusReportProcess, err := state.NewStatusReportingProcess(s.cm)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create status report process")
+		return err
+	}
 	if len(s.criResults) > 0 {
 		statusReportProcess.SetPendingCRIResults(s.criResults)
 	}
