@@ -3,6 +3,14 @@
 {{- if not $u.IsAbs -}}
 {{- /* Try to get the page based on the path */ -}}
 {{- $path := strings.TrimSuffix ".md" $u.Path -}}
+{{- if strings.HasSuffix $path "_index" -}}
+  {{- $path = strings.TrimSuffix "_index" $path -}}
+  {{- if eq $path "" -}}
+    {{- $path = "." -}}
+  {{- else -}}
+    {{- $path = strings.TrimSuffix "/" $path -}}
+  {{- end -}}
+{{- end -}}
 {{- with .Page.GetPage $path -}}
 {{- $href = .RelPermalink -}}
 {{- if $u.Fragment -}}

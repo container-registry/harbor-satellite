@@ -1199,6 +1199,16 @@
 /* ============================================================
    RESPONSIVE - Outside layers for specificity
    ============================================================ */
+@media (max-width: 1100px) {
+  .docs-layout {
+    grid-template-columns: var(--sidebar-width) 1fr;
+  }
+
+  .docs-toc {
+    display: none;
+  }
+}
+
 @media (max-width: 1024px) {
   .hero__container {
     grid-template-columns: 1fr;
@@ -1214,15 +1224,7 @@
     justify-content: center;
   }
 
-@media (max-width: 1100px) {
-  .docs-layout {
-    grid-template-columns: var(--sidebar-width) 1fr;
-  }
 
-  .docs-toc {
-    display: none;
-  }
-}
 
   .hero__visual {
     order: -1;
