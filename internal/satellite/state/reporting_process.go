@@ -29,7 +29,7 @@ type StatusReportingProcess struct {
 	criReported  bool
 }
 
-func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess {
+func NewStatusReportingProcess(cm *config.ConfigManager) (*StatusReportingProcess, error) {
 	p := &StatusReportingProcess{
 		name: config.StatusReportJobName,
 		mu:   &sync.Mutex{},
@@ -43,12 +43,13 @@ func NewStatusReportingProcess(cm *config.ConfigManager) *StatusReportingProcess
 			EndpointSocket:   spiffeCfg.EndpointSocket,
 			ExpectedServerID: spiffeCfg.ExpectedServerID,
 		})
-		if err == nil {
-			p.spiffeClient = client
+		if err != nil {
+			return nil, fmt.Errorf("create SPIFFE client: %w", err)
 		}
+		p.spiffeClient = client
 	}
 
-	return p
+	return p, nil
 }
 
 // SetPendingCRIResults stores CRI config results to be sent in the first heartbeat.

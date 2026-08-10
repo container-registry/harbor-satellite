@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -256,3 +257,83 @@ func TestExecute_CRIReporting(t *testing.T) {
 		p.mu.Unlock()
 	})
 }
+
+func TestNewStatusReportingProcess(t *testing.T) {
+	t.Run("SPIFFE disabled succeeds", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg := &config.Config{
+			AppConfig: config.AppConfig{
+				SPIFFE: config.SPIFFEConfig{
+					Enabled: false,
+				},
+			},
+		}
+		cm, err := config.NewConfigManager(
+			filepath.Join(dir, "config.json"),
+			filepath.Join(dir, "prev.json"),
+			"token", "http://gc", false, cfg,
+		)
+		require.NoError(t, err)
+
+		proc, err := NewStatusReportingProcess(cm)
+		require.NoError(t, err)
+		require.NotNil(t, proc)
+		require.Nil(t, proc.spiffeClient)
+	})
+
+	t.Run("SPIFFE enabled with expected server ID", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg := &config.Config{
+			AppConfig: config.AppConfig{
+				SPIFFE: config.SPIFFEConfig{
+					Enabled:          true,
+					ExpectedServerID: "spiffe://example.org/gc/main",
+				},
+			},
+		}
+		cm, err := config.NewConfigManager(
+			filepath.Join(dir, "config.json"),
+			filepath.Join(dir, "prev.json"),
+			"token", "http://gc", false, cfg,
+		)
+		require.NoError(t, err)
+
+		proc, err := NewStatusReportingProcess(cm)
+		if err != nil {
+			require.Contains(t, err.Error(), "SPIFFE not available")
+			require.Nil(t, proc)
+		} else {
+			require.NotNil(t, proc)
+			require.NotNil(t, proc.spiffeClient)
+		}
+	})
+
+	t.Run("SPIFFE enabled without expected server ID fails", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg := &config.Config{
+			AppConfig: config.AppConfig{
+				SPIFFE: config.SPIFFEConfig{
+					Enabled:          true,
+					ExpectedServerID: "",
+				},
+			},
+		}
+		cm, err := config.NewConfigManager(
+			filepath.Join(dir, "config.json"),
+			filepath.Join(dir, "prev.json"),
+			"token", "http://gc", false, cfg,
+		)
+		require.NoError(t, err)
+
+		proc, err := NewStatusReportingProcess(cm)
+		require.Error(t, err)
+		require.Nil(t, proc)
+		if err != nil {
+			errStr := err.Error()
+			isExpectedServerIDErr := strings.Contains(errStr, "expected server ID must be configured")
+			isSpiffeNotAvailableErr := strings.Contains(errStr, "SPIFFE not available")
+			require.True(t, isExpectedServerIDErr || isSpiffeNotAvailableErr, "unexpected error: %s", errStr)
+		}
+	})
+}
+

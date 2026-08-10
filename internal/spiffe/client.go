@@ -48,13 +48,13 @@ func NewClient(cfg Config) (*Client, error) {
 		return nil, fmt.Errorf("SPIFFE is not enabled")
 	}
 
-	var serverID spiffeid.ID
-	if cfg.ExpectedServerID != "" {
-		var err error
-		serverID, err = spiffeid.FromString(cfg.ExpectedServerID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid expected server ID %q: %w", cfg.ExpectedServerID, err)
-		}
+	if cfg.ExpectedServerID == "" {
+		return nil, fmt.Errorf("expected server ID must be configured when SPIFFE is enabled")
+	}
+
+	serverID, err := spiffeid.FromString(cfg.ExpectedServerID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid expected server ID %q: %w", cfg.ExpectedServerID, err)
 	}
 
 	return &Client{
@@ -126,12 +126,7 @@ func (c *Client) GetTLSConfig() (*tls.Config, error) {
 		return nil, fmt.Errorf("client not connected")
 	}
 
-	var authorizer tlsconfig.Authorizer
-	if !c.expectedServerID.IsZero() {
-		authorizer = tlsconfig.AuthorizeID(c.expectedServerID)
-	} else {
-		authorizer = tlsconfig.AuthorizeAny()
-	}
+	authorizer := tlsconfig.AuthorizeID(c.expectedServerID)
 
 	return tlsconfig.MTLSClientConfig(c.x509Source, c.x509Source, authorizer), nil
 }
