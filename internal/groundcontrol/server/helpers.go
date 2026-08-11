@@ -405,3 +405,45 @@ func normalizeHeartbeatInterval(interval string) (string, error) {
 
 	return fmt.Sprintf("@every %02dh%02dm%02ds", hours, minutes, seconds), nil
 }
+
+// getGroupStatesFromCache retrieves cached group states for a satellite.
+// Returns nil if not cached.
+func (s *Server) getGroupStatesFromCache(satelliteID int32) []string {
+	s.groupStatesCacheMu.RLock()
+	defer s.groupStatesCacheMu.RUnlock()
+	return s.groupStatesCache[satelliteID]
+}
+
+// setGroupStatesCache stores group states for a satellite in cache.
+func (s *Server) setGroupStatesCache(satelliteID int32, groupStates []string) {
+	s.groupStatesCacheMu.Lock()
+	defer s.groupStatesCacheMu.Unlock()
+	s.groupStatesCache[satelliteID] = groupStates
+}
+
+// invalidateGroupStatesCache removes cached group states for a satellite.
+func (s *Server) invalidateGroupStatesCache(satelliteID int32) {
+	s.groupStatesCacheMu.Lock()
+	defer s.groupStatesCacheMu.Unlock()
+	delete(s.groupStatesCache, satelliteID)
+}
+
+// fetchGroupStatesForSatellite retrieves group states from database and caches them.
+func (s *Server) fetchGroupStatesForSatellite(ctx context.Context, satelliteID int32) ([]string, error) {
+	groupList, err := s.dbQueries.SatelliteGroupList(ctx, satelliteID)
+	if err != nil {
+		return nil, err
+	}
+
+	var groupStates []string
+	for _, group := range groupList {
+		grp, err := s.dbQueries.GetGroupByID(ctx, group.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
+	}
+
+	s.setGroupStatesCache(satelliteID, groupStates)
+	return groupStates, nil
+}

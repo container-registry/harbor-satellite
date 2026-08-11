@@ -284,6 +284,9 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 			HandleAppError(w, err)
 			return
 		}
+
+		// Update cache with new group states
+		s.setGroupStatesCache(satellite.SatelliteID, groupStates)
 	}
 
 	if err := q.DeleteGroup(r.Context(), group.ID); err != nil {
