@@ -55,24 +55,20 @@ func TestGroupStatesCache(t *testing.T) {
 		// Ensure the entry is absent regardless of prior subtests' state.
 		s.invalidateGroupStatesCache(satelliteID)
 
-		// Entry absent: set-if-absent writes the value.
-		s.setGroupStatesCacheIfAbsent(satelliteID, testStates)
-		result := s.getGroupStatesFromCache(satelliteID)
-		if result == nil {
+		// Entry absent: set-if-absent writes and returns the stored value.
+		got := s.setGroupStatesCacheIfAbsent(satelliteID, testStates)
+		if got == nil {
 			t.Fatal("expected non-nil result after set-if-absent on empty cache")
 		}
 
-		// Entry present: set-if-absent must not overwrite it, as a cache fill
-		// that raced with a group-state mutation must not clobber the mutation's
-		// newer entry.
-		s.setGroupStatesCacheIfAbsent(satelliteID, []string{"stale"})
-		result = s.getGroupStatesFromCache(satelliteID)
-		if len(result) != len(testStates) {
-			t.Fatalf("expected existing %d states preserved, got %d", len(testStates), len(result))
+		// Entry present: return the existing entry without overwriting it.
+		got = s.setGroupStatesCacheIfAbsent(satelliteID, []string{"stale"})
+		if len(got) != len(testStates) {
+			t.Fatalf("expected existing %d states returned, got %d", len(testStates), len(got))
 		}
 		for i, state := range testStates {
-			if result[i] != state {
-				t.Errorf("state at index %d: expected %s, got %s", i, state, result[i])
+			if got[i] != state {
+				t.Errorf("state at index %d: expected %s, got %s", i, state, got[i])
 			}
 		}
 	})

@@ -424,18 +424,18 @@ func (s *Server) setGroupStatesCache(satelliteID int32, groupStates []string) {
 	s.groupStatesCache[satelliteID] = groupStates
 }
 
-// setGroupStatesCacheIfAbsent stores group states only when the satellite has
-// no cached entry yet.
-func (s *Server) setGroupStatesCacheIfAbsent(satelliteID int32, groupStates []string) {
+// setGroupStatesCacheIfAbsent stores states only when absent, returning the value now in the cache.
+func (s *Server) setGroupStatesCacheIfAbsent(satelliteID int32, groupStates []string) []string {
 	s.groupStatesCacheMu.Lock()
 	defer s.groupStatesCacheMu.Unlock()
-	if _, ok := s.groupStatesCache[satelliteID]; ok {
-		return
+	if existing, ok := s.groupStatesCache[satelliteID]; ok {
+		return existing
 	}
 	if groupStates == nil {
 		groupStates = []string{}
 	}
 	s.groupStatesCache[satelliteID] = groupStates
+	return groupStates
 }
 
 // invalidateGroupStatesCache removes cached group states for a satellite.
@@ -445,7 +445,7 @@ func (s *Server) invalidateGroupStatesCache(satelliteID int32) {
 	delete(s.groupStatesCache, satelliteID)
 }
 
-// fetchGroupStatesForSatellite retrieves group states from database and caches them.
+// fetchGroupStatesForSatellite retrieves a satellite's group states from the database and caches them.
 func (s *Server) fetchGroupStatesForSatellite(ctx context.Context, satelliteID int32) ([]string, error) {
 	groupList, err := s.dbQueries.SatelliteGroupList(ctx, satelliteID)
 	if err != nil {
@@ -457,6 +457,5 @@ func (s *Server) fetchGroupStatesForSatellite(ctx context.Context, satelliteID i
 		return nil, err
 	}
 
-	s.setGroupStatesCacheIfAbsent(satelliteID, groupStates)
-	return groupStates, nil
+	return s.setGroupStatesCacheIfAbsent(satelliteID, groupStates), nil
 }

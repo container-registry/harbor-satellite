@@ -187,8 +187,6 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 		return
 	}
 
-	statesBySatellite := make(map[int32][]string)
-
 	for _, satellite := range satellites {
 		if err := q.RemoveSatelliteFromGroup(r.Context(), database.RemoveSatelliteFromGroupParams{
 			SatelliteID: satellite.SatelliteID,
@@ -287,7 +285,6 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 			return
 		}
 
-		statesBySatellite[satellite.SatelliteID] = groupStates
 	}
 
 	if err := q.DeleteGroup(r.Context(), group.ID); err != nil {
@@ -311,8 +308,9 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 
 	committed = true
 
-	for satelliteID, groupStates := range statesBySatellite {
-		s.setGroupStatesCache(satelliteID, groupStates)
+	// Invalidate cached group states so the next read refetches from the database.
+	for _, satellite := range satellites {
+		s.invalidateGroupStatesCache(satellite.SatelliteID)
 	}
 
 	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(groupName, "group"))
