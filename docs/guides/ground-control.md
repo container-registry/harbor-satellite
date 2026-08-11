@@ -68,7 +68,7 @@ Key groups include:
 - `internal/groundcontrol/harbor` - Harbor API client helpers
 - `internal/groundcontrol/spiffe` - SPIFFE/SPIRE provider and server client integration
 - `internal/groundcontrol/auth` - password policy and hashing helpers
-- `internal/crypto` - shared crypto helpers used by Ground Control
+- `internal/shared/crypto` - shared crypto helpers used by Ground Control
 
 ## Related Docs
 

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/internal/shared/utils"
 	"github.com/rs/zerolog"
 )
 

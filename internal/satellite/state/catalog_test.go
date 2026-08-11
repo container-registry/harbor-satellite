@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/crypto"
-	"github.com/container-registry/harbor-satellite/internal/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"

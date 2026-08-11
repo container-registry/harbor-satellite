@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
 )

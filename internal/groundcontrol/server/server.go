@@ -13,10 +13,10 @@ import (
 
 	_ "github.com/lib/pq"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
-	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
+	auditlog "github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 )

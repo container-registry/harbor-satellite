@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/stretchr/testify/require"
 )
