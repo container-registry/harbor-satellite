@@ -13,12 +13,8 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 )
-
-type CachedImage struct {
-	Reference string `json:"reference"`
-	SizeBytes int64  `json:"size_bytes"`
-}
 
 type catalogResponse struct {
 	Repositories []string `json:"repositories"`
@@ -28,7 +24,7 @@ type tagsResponse struct {
 	Tags []string `json:"tags"`
 }
 
-func collectCachedImages(ctx context.Context, registryHost string, insecure bool) ([]CachedImage, error) {
+func collectCachedImages(ctx context.Context, registryHost string, insecure bool) ([]groundcontrol.CachedImageReport, error) {
 	log := logger.FromContext(ctx)
 	client := &http.Client{Timeout: 30 * time.Second}
 
@@ -37,7 +33,7 @@ func collectCachedImages(ctx context.Context, registryHost string, insecure bool
 		return nil, fmt.Errorf("fetch catalog: %w", err)
 	}
 
-	var images []CachedImage
+	var images []groundcontrol.CachedImageReport
 	for _, repo := range repos {
 		tags, err := fetchTags(ctx, client, registryHost, repo, insecure)
 		if err != nil {
@@ -56,13 +52,13 @@ func collectCachedImages(ctx context.Context, registryHost string, insecure bool
 	}
 
 	if images == nil {
-		return []CachedImage{}, nil
+		return []groundcontrol.CachedImageReport{}, nil
 	}
 
 	return images, nil
 }
 
-func collectImageInfo(ref string, ctxOpt crane.Option, insecure bool) (CachedImage, error) {
+func collectImageInfo(ref string, ctxOpt crane.Option, insecure bool) (groundcontrol.CachedImageReport, error) {
 	opts := []crane.Option{ctxOpt}
 	if insecure {
 		opts = append(opts, crane.Insecure)
@@ -70,17 +66,17 @@ func collectImageInfo(ref string, ctxOpt crane.Option, insecure bool) (CachedIma
 
 	raw, err := crane.Manifest(ref, opts...)
 	if err != nil {
-		return CachedImage{}, fmt.Errorf("get manifest for %s: %w", ref, err)
+		return groundcontrol.CachedImageReport{}, fmt.Errorf("get manifest for %s: %w", ref, err)
 	}
 
 	size, err := computeManifestSize(raw)
 	if err != nil {
-		return CachedImage{}, fmt.Errorf("compute size for %s: %w", ref, err)
+		return groundcontrol.CachedImageReport{}, fmt.Errorf("compute size for %s: %w", ref, err)
 	}
 
 	digest := fmt.Sprintf("sha256:%x", sha256.Sum256(raw))
 
-	return CachedImage{
+	return groundcontrol.CachedImageReport{
 		Reference: ref + "@" + digest,
 		SizeBytes: size,
 	}, nil

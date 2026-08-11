@@ -2,19 +2,16 @@ package state
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"sync"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 	"github.com/rs/zerolog"
 )
-
-const SPIFFEZeroTouchRegistrationRoute = "satellites/spiffe-ztr"
 
 type SpiffeZtrProcess struct {
 	name         string
@@ -102,39 +99,41 @@ func (s *SpiffeZtrProcess) Execute(ctx context.Context) error {
 
 func (s *SpiffeZtrProcess) registerWithSPIFFE(ctx context.Context, log *zerolog.Logger) (config.StateConfig, error) {
 	gcURL := s.cm.ResolveGroundControlURL()
-	ztrURL := fmt.Sprintf("%s/%s", gcURL, SPIFFEZeroTouchRegistrationRoute)
 
 	httpClient, err := s.spiffeClient.CreateHTTPClient()
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("create SPIFFE HTTP client: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ztrURL, nil)
+	log.Debug().Str("url", gcURL).Msg("Sending SPIFFE-authenticated ZTR request")
+
+	client, err := groundcontrol.NewClientWithResponses(
+		gcURL,
+		groundcontrol.WithHTTPClient(httpClient),
+	)
 	if err != nil {
-		return config.StateConfig{}, fmt.Errorf("create request: %w", err)
+		return config.StateConfig{}, fmt.Errorf("create Ground Control client: %w", err)
 	}
 
-	log.Debug().Str("url", ztrURL).Msg("Sending SPIFFE-authenticated ZTR request")
-	resp, err := httpClient.Do(req)
+	response, err := client.SpiffeZtrWithResponse(ctx)
 	if err != nil {
-		return config.StateConfig{}, fmt.Errorf("send request: %w", err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			log.Warn().Err(err).Msg("error closing response body")
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return config.StateConfig{}, fmt.Errorf("registration failed: %s", resp.Status)
+		return config.StateConfig{}, fmt.Errorf("send SPIFFE registration request: %w", err)
 	}
 
-	var stateConfig config.StateConfig
-	if err := json.NewDecoder(resp.Body).Decode(&stateConfig); err != nil {
-		return config.StateConfig{}, fmt.Errorf("decode response: %w", err)
+	switch {
+	case response.JSON200 != nil:
+		return stateConfigFromResponse(*response.JSON200), nil
+	case response.JSON400 != nil:
+		return config.StateConfig{}, responseError("SPIFFE registration failed", response.Status(), response.JSON400)
+	case response.JSON401 != nil:
+		return config.StateConfig{}, responseError("SPIFFE registration failed", response.Status(), response.JSON401)
+	case response.JSON429 != nil:
+		return config.StateConfig{}, responseError("SPIFFE registration failed", response.Status(), response.JSON429)
+	case response.JSON500 != nil:
+		return config.StateConfig{}, responseError("SPIFFE registration failed", response.Status(), response.JSON500)
+	default:
+		return config.StateConfig{}, unknownResponseError("SPIFFE registration failed", response.Status(), response.Body)
 	}
-
-	return stateConfig, nil
 }
 
 func (s *SpiffeZtrProcess) CanExecute(log *zerolog.Logger) (bool, string) {
