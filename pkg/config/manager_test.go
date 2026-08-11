@@ -90,7 +90,7 @@ func TestInitConfigManager(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := InitConfigManager(token, ground_control_url, tt.path, "", false, false)
+			_, _, err := InitConfigManager(token, ground_control_url, tt.path, "", false, false, false)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {

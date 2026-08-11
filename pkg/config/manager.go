@@ -174,7 +174,7 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 	return changes, warnings, nil
 }
 
-func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure bool) (*ConfigManager, []string, error) {
+func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure, gcSkipTLSVerify bool) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
 
@@ -192,6 +192,12 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 	// Override use_unsecure from CLI/env if set
 	if useUnsecure {
 		cfg.AppConfig.UseUnsecure = true
+	}
+
+	// Ground Control certificate verification is a separate opt-in and is never
+	// implied by use_unsecure.
+	if gcSkipTLSVerify {
+		cfg.AppConfig.GroundControlSkipTLSVerify = true
 	}
 
 	cfg, warnings, err := ValidateAndEnforceDefaults(cfg, groundControlURL)

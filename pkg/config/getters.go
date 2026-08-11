@@ -39,6 +39,17 @@ func (cm *ConfigManager) UseUnsecure() bool {
 	return cm.config.AppConfig.UseUnsecure
 }
 
+// GroundControlSkipTLSVerify reports whether verification of Ground Control's
+// TLS certificate is disabled. Deliberately independent of UseUnsecure: that
+// flag only concerns plain-HTTP registry connections and must not weaken
+// Ground Control authentication.
+func (cm *ConfigManager) GroundControlSkipTLSVerify() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.AppConfig.GroundControlSkipTLSVerify
+}
+
 func (cm *ConfigManager) GetSourceRegistryPassword() string {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()

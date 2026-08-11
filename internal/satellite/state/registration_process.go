@@ -66,7 +66,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		ZeroTouchRegistrationRoute,
 		z.cm.GetToken(),
 		z.cm.GetTLSConfig(),
-		z.cm.UseUnsecure(),
+		z.cm.GroundControlSkipTLSVerify(),
 		ctx,
 	)
 	if err != nil {
@@ -199,14 +199,14 @@ func sanitizeAuditReason(err error, token string) string {
 	return s
 }
 
-func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSConfig, useUnsecure bool, ctx context.Context) (config.StateConfig, error) {
+func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSConfig, skipTLSVerify bool, ctx context.Context) (config.StateConfig, error) {
 	ztrURL := fmt.Sprintf("%s/%s", groundControlURL, path)
 	body, err := json.Marshal(map[string]string{"token": token})
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("failed to encode request: %w", err)
 	}
 
-	client, err := createHTTPClient(tlsCfg, useUnsecure)
+	client, err := createHTTPClient(ctx, tlsCfg, skipTLSVerify)
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
@@ -238,18 +238,30 @@ func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSCo
 	return authResponse, nil
 }
 
-func createHTTPClient(tlsCfg config.TLSConfig, useUnsecure bool) (*http.Client, error) {
+// createHTTPClient builds the client used to talk to Ground Control.
+//
+// skipTLSVerify must come from the dedicated ground_control_skip_tls_verify
+// setting, never from use_unsecure. use_unsecure only permits plain-HTTP
+// connections to registries; deriving certificate verification from it would
+// silently expose the registration token and the Harbor robot credentials in
+// Ground Control's response to anyone able to intercept the connection.
+func createHTTPClient(ctx context.Context, tlsCfg config.TLSConfig, skipTLSVerify bool) (*http.Client, error) {
 	transport := &http.Transport{
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,
 		DisableCompression: true,
 	}
 
-	if useUnsecure {
+	if skipTLSVerify {
+		logger.FromContext(ctx).Warn().
+			Msg("SECURITY: Ground Control TLS certificate verification is DISABLED " +
+				"(ground_control_skip_tls_verify). The registration token and Harbor " +
+				"credentials can be intercepted by anyone on the network path. Do not use this in production.")
+
 		transport.TLSClientConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
 		}
-		transport.TLSClientConfig.InsecureSkipVerify = useUnsecure
+		transport.TLSClientConfig.InsecureSkipVerify = skipTLSVerify
 	} else if tlsCfg.CertFile != "" || tlsCfg.CAFile != "" {
 		cfg := &satTLS.Config{
 			CertFile:   tlsCfg.CertFile,
