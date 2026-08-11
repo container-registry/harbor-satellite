@@ -1,4 +1,4 @@
-package harborhealth
+package harbor
 
 import (
 	"encoding/json"
@@ -11,14 +11,42 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 )
 
-type config struct {
+type Component struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
+func (c *Component) IsHealthy() bool {
+	return c.Status == "healthy"
+}
+
+type HealthResponse struct {
+	Components []Component `json:"components"`
+	Status     string      `json:"status"`
+}
+
+func (h *HealthResponse) GetUnhealthyComponents(skip map[string]struct{}) []string {
+	var unhealthy []string
+	for _, c := range h.Components {
+		if _, ignore := skip[c.Name]; ignore {
+			continue
+		}
+		if !c.IsHealthy() {
+			unhealthy = append(unhealthy, c.Name, c.Error)
+		}
+	}
+	return unhealthy
+}
+
+type healthConfig struct {
 	HarborURL      string
 	Timeout        time.Duration
 	SkipComponents map[string]struct{}
 }
 
-func defaultConfig() *config {
-	return &config{
+func defaultHealthConfig() *healthConfig {
+	return &healthConfig{
 		HarborURL: env.GC.Harbor.URL,
 		Timeout:   5 * time.Second,
 		SkipComponents: map[string]struct{}{
@@ -38,11 +66,11 @@ func CheckHealth() error {
 		return nil
 	}
 
-	config := defaultConfig()
+	config := defaultHealthConfig()
 	return checkhealth(config)
 }
 
-func checkhealth(config *config) error {
+func checkhealth(config *healthConfig) error {
 	parsed, err := url.ParseRequestURI(config.HarborURL)
 	if err != nil {
 		return fmt.Errorf("invalid URL format: %w", err)

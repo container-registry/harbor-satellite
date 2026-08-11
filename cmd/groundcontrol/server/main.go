@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
-	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harborhealth"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/migrator"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
 	"github.com/joho/godotenv"
@@ -25,7 +25,7 @@ func main() {
 		log.Fatalf("failed to load environment: %v", err)
 	}
 
-	err := harborhealth.CheckHealth()
+	err := harbor.CheckHealth()
 	if err != nil {
 		log.Fatalf("health check failed: %v", err)
 	}
