@@ -420,14 +420,14 @@ type SatelliteStatusRequest struct {
 	CachedImages        []CachedImageReport `json:"cached_images,omitempty,omitzero"`
 	CPUPercent          float64             `json:"cpu_percent,omitempty,omitzero"`
 	ImageCount          int32               `json:"image_count,omitempty,omitzero"`
-	LastSyncDurationMs  int64               `json:"last_sync_duration_ms,omitempty,omitzero"`
+	LastSyncDurationMs  uint64              `json:"last_sync_duration_ms,omitempty,omitzero"`
 	LatestConfigDigest  string              `json:"latest_config_digest,omitempty,omitzero"`
 	LatestStateDigest   string              `json:"latest_state_digest,omitempty,omitzero"`
-	MemoryUsedBytes     int64               `json:"memory_used_bytes,omitempty,omitzero"`
+	MemoryUsedBytes     uint64              `json:"memory_used_bytes,omitempty,omitzero"`
 	Name                string              `json:"name,omitempty,omitzero"`
 	RequestCreatedTime  time.Time           `json:"request_created_time,omitempty,omitzero"`
 	StateReportInterval string              `json:"state_report_interval,omitempty,omitzero"`
-	StorageUsedBytes    int64               `json:"storage_used_bytes,omitempty,omitzero"`
+	StorageUsedBytes    uint64              `json:"storage_used_bytes,omitempty,omitzero"`
 }
 
 // SatelliteStatusResponse defines model for SatelliteStatusResponse.

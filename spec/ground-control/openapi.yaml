@@ -2319,6 +2319,7 @@ components:
           type: integer
           format: int64
           x-go-name: LastSyncDurationMs
+          x-go-type: uint64
         latest_config_digest:
           type: string
           x-go-name: LatestConfigDigest
@@ -2330,6 +2331,7 @@ components:
           format: int64
           minimum: 0
           x-go-name: MemoryUsedBytes
+          x-go-type: uint64
         name:
           type: string
           x-go-name: Name
@@ -2345,6 +2347,7 @@ components:
           format: int64
           minimum: 0
           x-go-name: StorageUsedBytes
+          x-go-type: uint64
     GroupSyncRequest:
       type: object
       title: GroupSyncRequest contains a group state artifact synchronized from

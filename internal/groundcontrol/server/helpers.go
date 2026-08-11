@@ -363,6 +363,10 @@ func toNullInt64(n int64) sql.NullInt64 {
 	return sql.NullInt64{Int64: n, Valid: true}
 }
 
+func toNullUInt64(n uint64) sql.NullInt64 {
+	return sql.NullInt64{Int64: int64(n), Valid: true}
+}
+
 func toNullInt32(n int32) sql.NullInt32 {
 	return sql.NullInt32{Int32: n, Valid: true}
 }
