@@ -326,6 +326,27 @@ func TestGetChanges(t *testing.T) {
 		require.Empty(t, toDelete)
 		require.Empty(t, toReplicate)
 	})
+
+	t.Run("same name and tag in different repositories are tracked independently", func(t *testing.T) {
+		oldEntities := []Entity{
+			{Name: "nginx", Repository: "team-a/nginx", Tag: "latest", Digest: "sha256:aaa"},
+			{Name: "nginx", Repository: "team-b/nginx", Tag: "latest", Digest: "sha256:bbb"},
+		}
+
+		newState := &State{
+			Registry: "registry.example.com",
+			Artifacts: []Artifact{
+				{Name: "nginx", Repository: "team-a/nginx", Tags: []string{"latest"}, Digest: "sha256:aaa", Deleted: true},
+				{Name: "nginx", Repository: "team-b/nginx", Tags: []string{"latest"}, Digest: "sha256:bbb"},
+			},
+		}
+
+		toDelete, toReplicate, _ := process.GetChanges(newState, &logger, oldEntities)
+
+		require.Len(t, toDelete, 1)
+		require.Equal(t, "team-a/nginx", toDelete[0].Repository)
+		require.Empty(t, toReplicate)
+	})
 }
 
 func TestContains(t *testing.T) {

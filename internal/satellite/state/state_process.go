@@ -185,7 +185,7 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 	var entityToReplicate []Entity
 
 	if oldEntites == nil {
-		log.Warn().Msg("Old state has zero entities, replicating the complete state")
+		log.Warn().Msg("Old state has zero entities, replicating all non-deleted artifacts")
 		var nonDeletedEntities []Entity
 		for _, entity := range newEntites {
 			if !entity.Deleted {
@@ -197,13 +197,13 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 
 	oldEntityMap := make(map[string]Entity)
 	for _, oldEntity := range oldEntites {
-		key := oldEntity.Name + "|" + oldEntity.Tag
+		key := oldEntity.Repository + "|" + oldEntity.Name + "|" + oldEntity.Tag
 		oldEntityMap[key] = oldEntity
 		log.Debug().Str("entity", key).Str("digest", oldEntity.Digest).Msg("Added old entity to lookup map")
 	}
 
 	for _, newEntity := range newEntites {
-		key := newEntity.Name + "|" + newEntity.Tag
+		key := newEntity.Repository + "|" + newEntity.Name + "|" + newEntity.Tag
 		oldEntity, exists := oldEntityMap[key]
 
 		if newEntity.Deleted {
@@ -234,7 +234,7 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 
 	for _, oldEntity := range oldEntityMap {
 		if !oldEntity.Deleted {
-			key := oldEntity.Name + "|" + oldEntity.Tag
+			key := oldEntity.Repository + "|" + oldEntity.Name + "|" + oldEntity.Tag
 			log.Debug().Str("entity", key).Msg("Old entity no longer present, scheduling for deletion")
 			entityToDelete = append(entityToDelete, oldEntity)
 		}

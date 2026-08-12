@@ -74,6 +74,10 @@ func (e Entity) GetTag() string {
 	return e.Tag
 }
 
+func (e Entity) Key() string {
+	return e.Repository + "|" + e.Name + "|" + e.Tag
+}
+
 // Replicate replicates images from the source registry to the local registry.
 // Before pulling, it checks which blobs already exist at the destination and
 // only downloads missing layers from source, saving bandwidth on crash recovery.
