@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/env"
-	"github.com/goharbor/go-client/pkg/harbor"
+	v2client "github.com/goharbor/go-client/pkg/sdk/v2.0/client"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/health"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 )
@@ -28,11 +29,22 @@ func CheckHealth() error {
 		return nil
 	}
 
-	client, err := harbor.NewClientSet(&harbor.ClientSetConfig{URL: env.GC.Harbor.URL})
+	client, err := newHealthClient(env.GC.Harbor.URL)
 	if err != nil {
 		return fmt.Errorf("create Harbor client: %w", err)
 	}
-	return checkHealth(client.V2().Health)
+	return checkHealth(client.Health)
+}
+
+func newHealthClient(rawURL string) (*v2client.HarborAPI, error) {
+	harborURL, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+
+	harborURL.Path = v2client.DefaultBasePath
+
+	return v2client.New(v2client.Config{URL: harborURL}), nil
 }
 
 func checkHealth(client health.API) error {
