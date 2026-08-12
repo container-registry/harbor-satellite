@@ -58,6 +58,7 @@ type SatelliteOptions struct {
 	HarborRegistryURL      string
 	DirectDelivery         bool
 	ImageDir               string
+	ShutdownTimeout        string
 }
 
 func main() {
@@ -83,8 +84,8 @@ func main() {
 		HarborRegistryURL:      envCfg.HarborRegistryURL,
 		DirectDelivery:         envCfg.DirectDelivery,
 		ImageDir:               envCfg.ImageDir,
+		ShutdownTimeout:        envCfg.ShutdownTimeout,
 	}
-	shutdownTimeout := envCfg.ShutdownTimeout
 
 	flag.StringVar(&opts.GroundControlURL, "ground-control-url", opts.GroundControlURL, "URL to ground control")
 	flag.BoolVar(&opts.JSONLogging, "json-logging", true, "Enable JSON logging")
@@ -100,7 +101,7 @@ func main() {
 	flag.StringVar(&opts.RegistryPassword, "registry-password", "", "External registry password")
 	flag.StringVar(&opts.ConfigDir, "config-dir", opts.ConfigDir, "Configuration directory path (default: ~/.config/satellite)")
 	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", opts.RegistryDataDir, "Registry data directory (overrides default storage path derived from config-dir)")
-	flag.StringVar(&shutdownTimeout, "shutdown-timeout", shutdownTimeout, "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
+	flag.StringVar(&opts.ShutdownTimeout, "shutdown-timeout", opts.ShutdownTimeout, "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
 	flag.BoolVar(&opts.NoRegistryFallback, "no-registry-fallback", opts.NoRegistryFallback, "Disable all CRI registry fallback configuration")
 	flag.BoolVar(&opts.FallbackOnly, "fallback-only", false, "Apply CRI registry fallback configs and exit without starting satellite")
 	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", opts.HarborRegistryURL, "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
@@ -159,7 +160,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = run(opts, pathConfig, shutdownTimeout)
+	err = run(opts, pathConfig)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
@@ -249,17 +250,7 @@ func reconfigureAuditOnReload(audit *logger.AuditLogger, current, next config.Au
 	return current
 }
 
-func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout string) error {
-	ctx, cancel := utils.SetupContext(context.Background())
-	defer cancel()
-	wg, ctx := errgroup.WithContext(ctx)
-
-	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
-	if err != nil {
-		fmt.Printf("Error initiating the config manager: %v\n", err)
-		return err
-	}
-
+func applyCLIFlagsAndOverrides(opts SatelliteOptions, cm *config.ConfigManager, pathConfig *config.PathConfig) error {
 	// Apply SPIFFE config from CLI flags
 	if opts.SPIFFEEnabled {
 		cm.With(config.SetSPIFFEConfig(config.SPIFFEConfig{
@@ -285,6 +276,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		// Apply override to existing state config (from prior ZTR)
 		if cm.IsZTRDone() {
 			sc := cm.GetStateConfig()
+			var err error
 			sc, err = config.ApplyHarborRegistryOverride(sc, opts.HarborRegistryURL)
 			if err != nil {
 				return fmt.Errorf("apply harbor registry URL override: %w", err)
@@ -299,14 +291,52 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		return fmt.Errorf("build Zot config: %w", err)
 	}
 	cm.With(config.SetZotConfigRaw(json.RawMessage(zotConfigJSON)))
+	return nil
+}
 
-	// Resolve local registry endpoint for CRI mirror config
+func setupDirectDelivery(opts SatelliteOptions, cm *config.ConfigManager) error {
+	if !opts.DirectDelivery {
+		return nil
+	}
+	imageDir := opts.ImageDir
+	if imageDir == "" {
+		imageDir = runtime.DetectImageDir()
+	}
+	if imageDir == "" {
+		return fmt.Errorf("--direct-delivery enabled but no k3s/RKE2 image directory found; use --image-dir to specify one")
+	}
+	if err := os.MkdirAll(imageDir, 0o755); err != nil {
+		return fmt.Errorf("create image directory %s: %w", imageDir, err)
+	}
+	cm.With(config.SetDirectDelivery(config.DirectDeliveryConfig{
+		Enabled:  true,
+		ImageDir: imageDir,
+	}))
+	fmt.Printf("EXPERIMENTAL: direct delivery enabled, images will be written to %s\n", imageDir)
+	return nil
+}
+
+func setupAuditLogger(ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager) (context.Context, *logger.AuditLogger, config.AuditConfig, error) {
+	auditCfg := cm.GetAuditConfig()
+	audit, auditErr := logger.NewAuditLogger(auditLoggerConfig(auditCfg), logger.ComponentSatellite)
+	if auditErr != nil {
+		return nil, nil, config.AuditConfig{}, fmt.Errorf("failed to initialize audit logger: %w", auditErr)
+	}
+	ctx = logger.WithAuditLogger(ctx, audit)
+	if audit.Enabled() {
+		log.Info().
+			Str("target", auditCfg.Syslog.TargetOrDefault()).
+			Msg("Audit logging enabled")
+	}
+	return ctx, audit, auditCfg, nil
+}
+
+func initCRIAndApply(opts SatelliteOptions, cm *config.ConfigManager) ([]runtime.CRIConfigResult, error) {
 	localRegistryEndpoint, err := resolveLocalRegistryEndpoint(cm)
 	if err != nil {
-		return fmt.Errorf("resolving local registry endpoint: %w", err)
+		return nil, fmt.Errorf("resolving local registry endpoint: %w", err)
 	}
 
-	// Resolve and apply CRI configs
 	criResults := resolveCRIAndApply(cm, opts.Mirrors, opts.NoRegistryFallback, localRegistryEndpoint)
 	for _, r := range criResults {
 		if r.Success {
@@ -315,66 +345,25 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 			fmt.Printf("warning: %s config error: %s\n", r.CRI, r.Error)
 		}
 	}
+	return criResults, nil
+}
 
-	if opts.FallbackOnly {
-		fmt.Println("--fallback-only: CRI configs applied, exiting.")
-		return nil
+func startSatellite(ctx context.Context, cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFile string, hotReloadManager *hotreload.HotReloadManager) (*satellite.Satellite, error) {
+	s := satellite.NewSatellite(cm, criResults, stateFile)
+	err := s.Run(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to start satellite: %w", err)
 	}
 
-	// Configure direct delivery if enabled (after fallback-only exit). This
-	// feature shipped in c2dbea8 (#356).
-	if opts.DirectDelivery {
-		imageDir := opts.ImageDir
-		if imageDir == "" {
-			imageDir = runtime.DetectImageDir()
+	for _, s := range s.GetSchedulers() {
+		if s.Name() == config.ReplicateStateJobName {
+			hotReloadManager.SetStateReplicationScheduler(s)
 		}
-		if imageDir == "" {
-			return fmt.Errorf("--direct-delivery enabled but no k3s/RKE2 image directory found; use --image-dir to specify one")
-		}
-		if err := os.MkdirAll(imageDir, 0o755); err != nil {
-			return fmt.Errorf("create image directory %s: %w", imageDir, err)
-		}
-		cm.With(config.SetDirectDelivery(config.DirectDeliveryConfig{
-			Enabled:  true,
-			ImageDir: imageDir,
-		}))
-		fmt.Printf("EXPERIMENTAL: direct delivery enabled, images will be written to %s\n", imageDir)
 	}
+	return s, nil
+}
 
-	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), opts.JSONLogging, warnings)
-
-	// Initialize audit logger from config and attach to context
-	auditCfg := cm.GetAuditConfig()
-	audit, auditErr := logger.NewAuditLogger(auditLoggerConfig(auditCfg), logger.ComponentSatellite)
-	if auditErr != nil {
-		return fmt.Errorf("failed to initialize audit logger: %w", auditErr)
-	}
-	// currentAuditCfg tracks the live audit settings so a hot reload can detect
-	// audit-specific changes and rebuild the logger in place.
-	currentAuditCfg := auditCfg
-	ctx = logger.WithAuditLogger(ctx, audit)
-	if audit.Enabled() {
-		log.Info().
-			Str("target", auditCfg.Syslog.TargetOrDefault()).
-			Msg("Audit logging enabled")
-	}
-
-	// Write the config to disk, in case any defaults were enforced at runtime
-	if err := cm.WriteConfig(); err != nil {
-		log.Error().Err(err).Msg("Error writing config to disk")
-		return err
-	}
-
-	hotReloadManager := hotreload.NewHotReloadManager(
-		ctx,
-		cm,
-		log,
-		pathConfig.ZotTempConfig,
-		nil, // Will be set after scheduler creation
-	)
-
-	eventChan := make(chan struct{})
-
+func startBackgroundTasks(ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager, pathConfig *config.PathConfig, eventChan chan struct{}, audit *logger.AuditLogger, currentAuditCfg config.AuditConfig, hotReloadManager *hotreload.HotReloadManager, wg *errgroup.Group) {
 	// Handle registry setup
 	wg.Go(func() error { return handleRegistrySetup(ctx, log, cm, pathConfig) })
 
@@ -405,10 +394,6 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 						for _, c := range changes {
 							changedKeys = append(changedKeys, string(c.Type))
 						}
-						// Swap the audit logger if its settings changed and record
-						// the config.changed event. When audit is being disabled the
-						// event is emitted before the swap so the disable action is
-						// still captured.
 						currentAuditCfg = reconfigureAuditOnReload(audit, currentAuditCfg, cm.GetAuditConfig(), changedKeys, log)
 						if err := hotReloadManager.ProcessConfigChanges(changes); err != nil {
 							log.Error().Err(err).Msg("Error processing configuration changes")
@@ -418,20 +403,59 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 			}
 		}
 	})
+}
 
-	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile)
-	err = s.Run(ctx)
+func run(opts SatelliteOptions, pathConfig *config.PathConfig) error {
+	ctx, cancel := utils.SetupContext(context.Background())
+	defer cancel()
+	wg, ctx := errgroup.WithContext(ctx)
+
+	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
 	if err != nil {
-		return fmt.Errorf("unable to start satellite: %w", err)
+		fmt.Printf("Error initiating the config manager: %v\n", err)
+		return err
 	}
 
-	for _, s := range s.GetSchedulers() {
-		if s.Name() == config.ReplicateStateJobName {
-			hotReloadManager.SetStateReplicationScheduler(s)
-		}
+	if err := applyCLIFlagsAndOverrides(opts, cm, pathConfig); err != nil {
+		return err
 	}
 
-	return gracefulShutdown(ctx, log, s, wg, shutdownTimeout)
+	criResults, err := initCRIAndApply(opts, cm)
+	if err != nil {
+		return err
+	}
+
+	if opts.FallbackOnly {
+		fmt.Println("--fallback-only: CRI configs applied, exiting.")
+		return nil
+	}
+
+	if err := setupDirectDelivery(opts, cm); err != nil {
+		return err
+	}
+
+	ctx, log := logger.InitLogger(ctx, cm.GetLogLevel(), opts.JSONLogging, warnings)
+
+	ctx, audit, currentAuditCfg, err := setupAuditLogger(ctx, log, cm)
+	if err != nil {
+		return err
+	}
+
+	if err := cm.WriteConfig(); err != nil {
+		log.Error().Err(err).Msg("Error writing config to disk")
+		return err
+	}
+
+	hotReloadManager := hotreload.NewHotReloadManager(ctx, cm, log, pathConfig.ZotTempConfig, nil)
+	eventChan := make(chan struct{})
+	startBackgroundTasks(ctx, log, cm, pathConfig, eventChan, audit, currentAuditCfg, hotReloadManager, wg)
+
+	s, err := startSatellite(ctx, cm, criResults, pathConfig.StateFile, hotReloadManager)
+	if err != nil {
+		return err
+	}
+
+	return gracefulShutdown(ctx, log, s, wg, opts.ShutdownTimeout)
 }
 
 func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Satellite, wg *errgroup.Group, shutdownTimeout string) error {
