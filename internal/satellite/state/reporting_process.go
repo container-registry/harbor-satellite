@@ -152,7 +152,7 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 	// transport's TLS config is never applied to an http:// URL, so an mTLS or
 	// SPIFFE client still sends plaintext to one. use_unsecure only permits
 	// plain-HTTP registry connections and must not downgrade this channel.
-	if !strings.HasPrefix(syncURL, "https://") {
+	if !strings.HasPrefix(strings.ToLower(syncURL), "https://") {
 		return fmt.Errorf("insecure connection: sync URL %q must use HTTPS", syncURL)
 	}
 
