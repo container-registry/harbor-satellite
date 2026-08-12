@@ -68,6 +68,20 @@ func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL
 	}, nil
 }
 
+// setGCSkipTLSVerifyOverride records the local --gc-skip-tls-verify /
+// GC_SKIP_TLS_VERIFY opt-in under the manager's lock.
+//
+// This deliberately does not go through With(): those mutators operate on
+// *Config, which is persisted to disk and replaced wholesale by the config
+// Ground Control delivers. The override has to live outside that so it neither
+// outlives the invocation that asked for it nor gets dropped by a reload.
+func (cm *ConfigManager) setGCSkipTLSVerifyOverride(skip bool) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	cm.gcSkipTLSVerifyOverride = skip
+}
+
 func (cm *ConfigManager) With(mutators ...func(*Config)) *ConfigManager {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -174,11 +188,11 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 		return nil, warnings, fmt.Errorf("failed to validate reloaded config: %w", err)
 	}
 
-	// Reapply the local CLI/env override: the reloaded config comes from Ground
-	// Control and knows nothing about flags passed on this host.
-	if cm.gcSkipTLSVerifyOverride {
-		validatedConfig.AppConfig.GroundControlSkipTLSVerify = true
-	}
+	// The local --gc-skip-tls-verify override is intentionally not written into
+	// validatedConfig: this config is persisted to disk, and storing it there
+	// would make the opt-in outlive the run that asked for it.
+	// GroundControlSkipTLSVerify() ORs the in-memory override in, so it already
+	// survives this reload without being persisted.
 
 	changes := cm.detectChanges(oldConfig, validatedConfig)
 
@@ -207,11 +221,13 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 		cfg.AppConfig.UseUnsecure = true
 	}
 
-	// Ground Control certificate verification is a separate opt-in and is never
-	// implied by use_unsecure.
-	if gcSkipTLSVerify {
-		cfg.AppConfig.GroundControlSkipTLSVerify = true
-	}
+	// Note: gcSkipTLSVerify is deliberately NOT written into cfg here. The
+	// config is persisted to disk at startup and rewritten on every reload, so
+	// storing it would make a single run with --gc-skip-tls-verify disable
+	// certificate verification permanently: dropping the flag on a later run
+	// would not restore it, and an operator would believe the channel was
+	// secured when it was not. It is held in memory on the ConfigManager
+	// instead, making it a genuine per-invocation opt-in.
 
 	cfg, warnings, err := ValidateAndEnforceDefaults(cfg, groundControlURL)
 	if err != nil {
@@ -222,7 +238,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to create config manager: %w", err)
 	}
-	cm.gcSkipTLSVerifyOverride = gcSkipTLSVerify
+	cm.setGCSkipTLSVerifyOverride(gcSkipTLSVerify)
 
 	return cm, warnings, nil
 }
