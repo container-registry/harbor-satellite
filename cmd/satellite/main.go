@@ -58,6 +58,7 @@ type SatelliteOptions struct {
 	HarborRegistryURL      string
 	DirectDelivery         bool
 	ImageDir               string
+	Headless               bool
 }
 
 func main() {
@@ -83,6 +84,7 @@ func main() {
 		HarborRegistryURL:      envCfg.HarborRegistryURL,
 		DirectDelivery:         envCfg.DirectDelivery,
 		ImageDir:               envCfg.ImageDir,
+		Headless:               envCfg.Headless,
 	}
 	shutdownTimeout := envCfg.ShutdownTimeout
 
@@ -106,6 +108,7 @@ func main() {
 	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", opts.HarborRegistryURL, "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
 	flag.BoolVar(&opts.DirectDelivery, "direct-delivery", opts.DirectDelivery, "[Experimental] Write image tarballs directly to k3s/RKE2 agent images directory")
 	flag.StringVar(&opts.ImageDir, "image-dir", opts.ImageDir, "Override image directory for direct delivery (auto-detected if empty)")
+	flag.BoolVar(&opts.Headless, "headless", opts.Headless, "Run satellite in headless mode without Ground Control")
 
 	flag.Parse()
 	if opts.Token == "" {
@@ -136,8 +139,8 @@ func main() {
 		pathConfig.ZotStorageDir = opts.RegistryDataDir
 	}
 
-	// For --fallback-only mode, relax token/gc-url requirements
-	if !opts.FallbackOnly {
+	// For --fallback-only and --headless modes, relax token/gc-url requirements
+	if !opts.FallbackOnly && !opts.Headless {
 		if !opts.SPIFFEEnabled && (opts.Token == "" || opts.GroundControlURL == "") {
 			fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars (or enable SPIFFE with --spiffe-enabled).")
 			os.Exit(1)
@@ -157,6 +160,10 @@ func main() {
 	if opts.BYORegistry && opts.RegistryURL == "" {
 		fmt.Println("Missing required argument: --registry-url is required when --byo-registry is enabled.")
 		os.Exit(1)
+	}
+
+	if opts.Headless {
+		fmt.Println("Satellite is running in headless mode")
 	}
 
 	err = run(opts, pathConfig, shutdownTimeout)
@@ -254,7 +261,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
+	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure, opts.Headless)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v\n", err)
 		return err

@@ -22,6 +22,7 @@ type HarborSatellite struct {
 	HarborRegistryURL      string `env:"HARBOR_REGISTRY_URL"`
 	DirectDelivery         bool   `env:"DIRECT_DELIVERY"           envDefault:"false"`
 	ImageDir               string `env:"IMAGE_DIR"`
+	Headless               bool   `env:"HEADLESS"                  envDefault:"false"`
 }
 
 func (h HarborSatellite) ApplyDefaults() HarborSatellite {
