@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,35 @@ import (
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
 )
+
+// handlerRecord captures what a test server's handler saw, for the test
+// goroutine to assert on once the request is done.
+//
+// Handlers must not assert directly: testify's require calls t.FailNow, which
+// the testing package only permits from the goroutine running the test, so a
+// failed assertion on a handler goroutine leaves the test in an undefined
+// state. The mutex also keeps these fields from being written and read across
+// goroutines unsynchronised.
+type handlerRecord struct {
+	mu       sync.Mutex
+	called   bool
+	writeErr error
+}
+
+func (r *handlerRecord) observe(writeErr error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.called = true
+	r.writeErr = writeErr
+}
+
+func (r *handlerRecord) result() (called bool, writeErr error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.called, r.writeErr
+}
 
 // tlsClientConfig digs the effective TLS settings out of the client's transport.
 func tlsClientConfig(t *testing.T, client *http.Client) *tls.Config {
@@ -158,12 +188,11 @@ func TestGroundControlSkipTLSVerify_NotDerivedFromUseUnsecure(t *testing.T) {
 // this handshake succeeded and the registration token was handed to the
 // attacker. It must now fail.
 func TestRegisterSatellite_UseUnsecureStillVerifiesCert(t *testing.T) {
-	var tokenReceived bool
+	var rec handlerRecord
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		tokenReceived = true
 		w.WriteHeader(http.StatusOK)
 		_, werr := w.Write([]byte(`{}`))
-		require.NoError(t, werr)
+		rec.observe(werr)
 	}))
 	defer srv.Close()
 
@@ -183,7 +212,10 @@ func TestRegisterSatellite_UseUnsecureStillVerifiesCert(t *testing.T) {
 	)
 
 	require.Error(t, err, "handshake against an untrusted certificate must fail even with use_unsecure")
-	require.False(t, tokenReceived, "registration token must not reach an unverified server")
+
+	called, writeErr := rec.result()
+	require.NoError(t, writeErr)
+	require.False(t, called, "registration token must not reach an unverified server")
 }
 
 // TestSendStatusReport_RequiresHTTPSEvenWithUseUnsecure is the regression test
@@ -192,10 +224,10 @@ func TestRegisterSatellite_UseUnsecureStillVerifiesCert(t *testing.T) {
 // the wire in the clear. use_unsecure used to permit exactly that; it must no
 // longer have any effect on this channel.
 func TestSendStatusReport_RequiresHTTPSEvenWithUseUnsecure(t *testing.T) {
-	var reached bool
+	var rec handlerRecord
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		reached = true
 		w.WriteHeader(http.StatusOK)
+		rec.observe(nil)
 	}))
 	defer srv.Close()
 	require.True(t, strings.HasPrefix(srv.URL, "http://"), "test server must be plain HTTP")
@@ -211,7 +243,10 @@ func TestSendStatusReport_RequiresHTTPSEvenWithUseUnsecure(t *testing.T) {
 
 	require.Error(t, err, "a plain-HTTP sync URL must be refused even with use_unsecure")
 	require.Contains(t, err.Error(), "must use HTTPS")
-	require.False(t, reached, "credentials must not be sent over plain HTTP")
+
+	called, writeErr := rec.result()
+	require.NoError(t, writeErr)
+	require.False(t, called, "credentials must not be sent over plain HTTP")
 }
 
 // TestReloadConfig_PreservesGCSkipTLSVerifyOverride covers the reconciliation
@@ -246,18 +281,20 @@ func TestReloadConfig_PreservesGCSkipTLSVerifyOverride(t *testing.T) {
 // TestRegisterSatellite_SkipVerifyReachesServer confirms the dedicated opt-in
 // still allows the self-signed server through, so the escape hatch works.
 func TestRegisterSatellite_SkipVerifyReachesServer(t *testing.T) {
-	var tokenReceived bool
+	var rec handlerRecord
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		tokenReceived = true
 		w.WriteHeader(http.StatusOK)
 		_, werr := w.Write([]byte(`{}`))
-		require.NoError(t, werr)
+		rec.observe(werr)
 	}))
 	defer srv.Close()
 
 	_, err := registerSatellite(srv.URL, "register", "secret-token", config.TLSConfig{}, true, testContext())
 	require.NoError(t, err)
-	require.True(t, tokenReceived)
+
+	called, writeErr := rec.result()
+	require.NoError(t, writeErr)
+	require.True(t, called)
 }
 
 // TestTraceMatrix_OnlyGCFlagDisablesVerification enumerates the four
@@ -338,9 +375,10 @@ func TestSendStatusReport_SPIFFEAlsoRequiresHTTPS(t *testing.T) {
 // whenever TLSClientConfig is non-nil unless ForceAttemptHTTP2 is set. Before
 // this PR the default path left TLSClientConfig nil and so spoke HTTP/2.
 func TestCreateHTTPClient_NegotiatesHTTP2(t *testing.T) {
+	var rec handlerRecord
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, werr := w.Write([]byte(r.Proto))
-		require.NoError(t, werr)
+		rec.observe(werr)
 	}))
 	srv.EnableHTTP2 = true
 	srv.StartTLS()
@@ -353,6 +391,9 @@ func TestCreateHTTPClient_NegotiatesHTTP2(t *testing.T) {
 	resp, err := client.Get(srv.URL)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	_, writeErr := rec.result()
+	require.NoError(t, writeErr)
 
 	require.Equal(t, "HTTP/2.0", resp.Proto,
 		"Ground Control connections must not silently drop to HTTP/1.1")
