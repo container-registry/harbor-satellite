@@ -306,6 +306,7 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 	}
 
 	committed = true
+	s.clearGroupStateCache()
 
 	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(groupName, "group"))
 	if err != nil {

@@ -1056,6 +1056,7 @@ func (s *Server) DeleteSatellite(w http.ResponseWriter, r *http.Request, satelli
 		return
 	}
 	committed = true
+	s.invalidateCachedGroupStates(sat.ID)
 
 	actor := "unknown"
 	if u, ok := GetUserFromContext(r.Context()); ok {
@@ -1258,6 +1259,7 @@ func (s *Server) AddSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	committed = true
+	s.invalidateCachedGroupStates(sat.ID)
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite successfully added to group"})
 }
@@ -1415,6 +1417,7 @@ func (s *Server) RemoveSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 	committed = true
+	s.invalidateCachedGroupStates(sat.ID)
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }
