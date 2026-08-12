@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/env"
+	v2client "github.com/goharbor/go-client/pkg/sdk/v2.0/client"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/health"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 )
@@ -27,10 +29,18 @@ func CheckHealth() error {
 		return nil
 	}
 
-	client := GetClient()
+	harborURL, err := url.Parse(env.GC.Harbor.URL)
+	if err != nil {
+		return fmt.Errorf("parse Harbor URL: %w", err)
+	}
 
+	client := v2client.New(v2client.Config{URL: harborURL})
+	return checkHealth(client.Health)
+}
+
+func checkHealth(client health.API) error {
 	params := health.NewGetHealthParamsWithTimeout(defaultHealthCheckTimeout)
-	response, err := client.Health.GetHealth(context.Background(), params)
+	response, err := client.GetHealth(context.Background(), params)
 	if err != nil {
 		return fmt.Errorf("failed to get Harbor health: %w", err)
 	}
@@ -56,7 +66,11 @@ func getUnhealthyComponents(components []*models.ComponentHealthStatus, ignored 
 			continue
 		}
 		if component.Status != "healthy" {
-			unhealthy = append(unhealthy, component.Name, component.Error)
+			entry := component.Name
+			if component.Error != "" {
+				entry += ": " + component.Error
+			}
+			unhealthy = append(unhealthy, entry)
 		}
 	}
 
