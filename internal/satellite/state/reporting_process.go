@@ -145,6 +145,10 @@ func (s *StatusReportingProcess) sendStatusReport(
 	var httpClient *http.Client
 	var err error
 	clientOptions := make([]groundcontrol.ClientOption, 0, 2)
+	if !s.cm.UseUnsecure() && !strings.HasPrefix(groundControlURL, "https://") {
+		return fmt.Errorf("insecure connection: Ground Control URL %q must use HTTPS when use_unsecure is false", groundControlURL)
+	}
+
 	if s.spiffeClient != nil {
 		if err := s.spiffeClient.Connect(ctx); err != nil {
 			return fmt.Errorf("connect to SPIRE agent: %w", err)
@@ -154,10 +158,6 @@ func (s *StatusReportingProcess) sendStatusReport(
 			return fmt.Errorf("create SPIFFE HTTP client: %w", err)
 		}
 	} else {
-		if !s.cm.UseUnsecure() && !strings.HasPrefix(groundControlURL, "https://") {
-			return fmt.Errorf("insecure connection: Ground Control URL %q must use HTTPS when use_unsecure is false", groundControlURL)
-		}
-
 		httpClient, err = createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure())
 		if err != nil {
 			return fmt.Errorf("create HTTP client: %w", err)

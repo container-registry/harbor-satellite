@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
+	"github.com/container-registry/harbor-satellite/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 	"github.com/stretchr/testify/require"
@@ -285,6 +286,25 @@ func TestSendStatusReportUsesBasicAuthEditor(t *testing.T) {
 	err := process.sendStatusReport(testContext(), server.URL, &groundcontrol.SatelliteStatusRequest{Name: "test-sat"})
 
 	require.NoError(t, err)
+}
+
+func TestSendStatusReportRejectsInsecureURLBeforeSPIFFESetup(t *testing.T) {
+	cm := newReportingTestCM(t, "http://ground-control.test")
+	cm.With(config.SetUseUnsecure(false))
+	process := &StatusReportingProcess{
+		name:         "test",
+		mu:           &sync.Mutex{},
+		cm:           cm,
+		spiffeClient: &spiffe.Client{},
+	}
+
+	err := process.sendStatusReport(
+		testContext(),
+		"http://ground-control.test",
+		&groundcontrol.SatelliteStatusRequest{Name: "test-sat"},
+	)
+
+	require.ErrorContains(t, err, "must use HTTPS when use_unsecure is false")
 }
 
 func TestSendStatusReportReturnsTypedError(t *testing.T) {

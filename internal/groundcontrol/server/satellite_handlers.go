@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -604,6 +605,15 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)
+		return
+	}
+	if req.MemoryUsedBytes > math.MaxInt64 ||
+		req.StorageUsedBytes > math.MaxInt64 ||
+		req.LastSyncDurationMs > math.MaxInt64 {
+		HandleAppError(w, &AppError{
+			Message: "status metrics exceed the maximum supported value",
+			Code:    http.StatusBadRequest,
+		})
 		return
 	}
 

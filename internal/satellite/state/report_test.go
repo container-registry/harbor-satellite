@@ -29,7 +29,7 @@ func TestCollectStatusReportParams_UnreachableRegistry(t *testing.T) {
 
 	// Should gracefully handle the error - no cached images, image count stays 0
 	require.Nil(t, req.CachedImages)
-	require.Equal(t, 0, req.ImageCount)
+	require.Equal(t, int32(0), req.ImageCount)
 }
 
 func TestExtractSatelliteNameFromURL(t *testing.T) {
