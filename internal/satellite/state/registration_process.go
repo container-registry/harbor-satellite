@@ -257,6 +257,11 @@ func createHTTPClient(_ context.Context, tlsCfg config.TLSConfig, skipTLSVerify 
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,
 		DisableCompression: true,
+		// This transport always carries a TLS config, and net/http skips
+		// automatic HTTP/2 negotiation whenever TLSClientConfig is non-nil
+		// unless this is set. Without it, Ground Control connections would
+		// silently drop to HTTP/1.1.
+		ForceAttemptHTTP2: true,
 	}
 
 	tlsConfig := &tls.Config{

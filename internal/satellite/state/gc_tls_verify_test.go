@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
 )
@@ -306,4 +307,53 @@ func TestTraceMatrix_OnlyGCFlagDisablesVerification(t *testing.T) {
 				"use_unsecure=%v gc_skip=%v tls.skip_verify=%v", tc.useUnsecure, tc.gcSkip, tc.tlsSkipVerify)
 		})
 	}
+}
+
+// TestSendStatusReport_SPIFFEAlsoRequiresHTTPS covers the SPIFFE path. The
+// HTTPS check used to sit inside the non-SPIFFE branch, so a SPIFFE-enabled
+// satellite pointed at an http:// Ground Control sent status reports in
+// plaintext: a transport's TLS config is never applied to an http:// URL, so
+// holding an SVID does not make the connection encrypted.
+//
+// A non-nil spiffeClient here would fail on Connect if it were reached; getting
+// the HTTPS error instead proves the check runs before the client split.
+func TestSendStatusReport_SPIFFEAlsoRequiresHTTPS(t *testing.T) {
+	cm, err := config.NewConfigManager("", "", "", "https://example.com", false, &config.Config{
+		AppConfig: config.AppConfig{},
+	})
+	require.NoError(t, err)
+
+	s := NewStatusReportingProcess(cm)
+	s.spiffeClient = &spiffe.Client{}
+
+	err = s.sendStatusReport(testContext(), "http://ground-control.example.com", &StatusReportParams{})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must use HTTPS",
+		"the SPIFFE path must reject a plain-HTTP sync URL, not attempt to send")
+}
+
+// TestCreateHTTPClient_NegotiatesHTTP2 guards the protocol regression: this
+// transport always carries a TLS config, and net/http disables automatic HTTP/2
+// whenever TLSClientConfig is non-nil unless ForceAttemptHTTP2 is set. Before
+// this PR the default path left TLSClientConfig nil and so spoke HTTP/2.
+func TestCreateHTTPClient_NegotiatesHTTP2(t *testing.T) {
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, werr := w.Write([]byte(r.Proto))
+		require.NoError(t, werr)
+	}))
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+	defer srv.Close()
+
+	// skipTLSVerify lets the client accept the test server's self-signed cert.
+	client, err := createHTTPClient(testContext(), config.TLSConfig{}, true)
+	require.NoError(t, err)
+
+	resp, err := client.Get(srv.URL)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
+	require.Equal(t, "HTTP/2.0", resp.Proto,
+		"Ground Control connections must not silently drop to HTTP/1.1")
 }
