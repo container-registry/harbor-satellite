@@ -186,7 +186,13 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 
 	if oldEntites == nil {
 		log.Warn().Msg("Old state has zero entities, replicating the complete state")
-		return entityToDelete, newEntites, newState
+		var nonDeletedEntities []Entity
+		for _, entity := range newEntites {
+			if !entity.Deleted {
+				nonDeletedEntities = append(nonDeletedEntities, entity)
+			}
+		}
+		return entityToDelete, nonDeletedEntities, newState
 	}
 
 	oldEntityMap := make(map[string]Entity)
@@ -200,8 +206,17 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 		key := newEntity.Name + "|" + newEntity.Tag
 		oldEntity, exists := oldEntityMap[key]
 
+		if newEntity.Deleted {
+			if exists && !oldEntity.Deleted {
+				log.Debug().Str("entity", key).Msg("Deleted artifact, scheduling old entity for deletion")
+				entityToDelete = append(entityToDelete, oldEntity)
+			}
+			delete(oldEntityMap, key)
+			continue
+		}
+
 		switch {
-		case !exists:
+		case !exists || oldEntity.Deleted:
 			log.Debug().Str("entity", key).Msg("New entity not found in old state, scheduling for replication")
 			entityToReplicate = append(entityToReplicate, newEntity)
 		case newEntity.Digest != oldEntity.Digest:
@@ -218,9 +233,11 @@ func (f *FetchAndReplicateStateProcess) GetChanges(newState StateReader, log *ze
 	}
 
 	for _, oldEntity := range oldEntityMap {
-		key := oldEntity.Name + "|" + oldEntity.Tag
-		log.Debug().Str("entity", key).Msg("Old entity no longer present, scheduling for deletion")
-		entityToDelete = append(entityToDelete, oldEntity)
+		if !oldEntity.Deleted {
+			key := oldEntity.Name + "|" + oldEntity.Tag
+			log.Debug().Str("entity", key).Msg("Old entity no longer present, scheduling for deletion")
+			entityToDelete = append(entityToDelete, oldEntity)
+		}
 	}
 
 	return entityToDelete, entityToReplicate, newState
@@ -617,6 +634,7 @@ func FetchEntitiesFromState(state StateReader) []Entity {
 				Repository: artifact.GetRepository(),
 				Tag:        tag,
 				Digest:     artifact.GetDigest(),
+				Deleted:    artifact.IsDeleted(),
 			})
 		}
 	}

@@ -59,6 +59,7 @@ type Entity struct {
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
 	Digest     string `json:"digest"`
+	Deleted    bool   `json:"deleted,omitempty"`
 }
 
 func (e Entity) GetName() string {

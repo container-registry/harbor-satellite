@@ -205,6 +205,127 @@ func TestGetChanges(t *testing.T) {
 		require.Len(t, toReplicate, 1)
 		require.Equal(t, "sha256:new", toReplicate[0].Digest)
 	})
+
+	t.Run("deleted artifact schedules old entity for deletion", func(t *testing.T) {
+		oldEntities := []Entity{
+			{Name: "image1", Repository: "repo1", Tag: "v1", Digest: "sha256:abc"},
+		}
+
+		newState := &State{
+			Registry: "registry.example.com",
+			Artifacts: []Artifact{
+				{Name: "image1", Repository: "repo1", Tags: []string{"v1"}, Digest: "sha256:abc", Deleted: true},
+			},
+		}
+
+		toDelete, toReplicate, _ := process.GetChanges(newState, &logger, oldEntities)
+
+		require.Len(t, toDelete, 1)
+		require.Equal(t, "image1", toDelete[0].Name)
+		require.Empty(t, toReplicate)
+	})
+
+	t.Run("deleted artifact with no old entity skips", func(t *testing.T) {
+		newState := &State{
+			Registry: "registry.example.com",
+			Artifacts: []Artifact{
+				{Name: "image1", Repository: "repo1", Tags: []string{"v1"}, Digest: "sha256:abc", Deleted: true},
+			},
+		}
+
+		toDelete, toReplicate, _ := process.GetChanges(newState, &logger, nil)
+
+		require.Empty(t, toDelete)
+		require.Empty(t, toReplicate)
+	})
+
+	t.Run("deleted artifact with changed digest deletes old and does not replicate new", func(t *testing.T) {
+		oldEntities := []Entity{
+			{Name: "image1", Repository: "repo1", Tag: "v1", Digest: "sha256:old"},
+		}
+
+		newState := &State{
+			Registry: "registry.example.com",
+			Artifacts: []Artifact{
+				{Name: "image1", Repository: "repo1", Tags: []string{"v1"}, Digest: "sha256:new", Deleted: true},
+			},
+		}
+
+		toDelete, toReplicate, _ := process.GetChanges(newState, &logger, oldEntities)
+
+		require.Len(t, toDelete, 1)
+		require.Equal(t, "sha256:old", toDelete[0].Digest)
+		require.Empty(t, toReplicate)
+	})
+
+	t.Run("deleted artifacts with no old entities do not replicate", func(t *testing.T) {
+		newState := &State{
+			Registry: "registry.example.com",
+			Artifacts: []Artifact{
+				{Name: "image1", Repository: "repo1", Tags: []string{"v1"}, Digest: "sha256:abc", Deleted: true},
+				{Name: "image2", Repository: "repo2", Tags: []string{"v2"}, Digest: "sha256:def"},
+			},
+		}
+
+		toDelete, toReplicate, _ := process.GetChanges(newState, &logger, nil)
+
+		require.Empty(t, toDelete)
+		require.Len(t, toReplicate, 1)
+		require.Equal(t, "image2", toReplicate[0].Name)
+	})
+
+	t.Run("deleted artifact already deleted in old entity does not schedule for deletion again", func(t *testing.T) {
+		oldEntities := []Entity{
+			{Name: "image1", Repository: "repo1", Tag: "v1", Digest: "sha256:abc", Deleted: true},
+		}
+
+		newState := &State{
+			Registry: "registry.example.com",
+			Artifacts: []Artifact{
+				{Name: "image1", Repository: "repo1", Tags: []string{"v1"}, Digest: "sha256:abc", Deleted: true},
+			},
+		}
+
+		toDelete, toReplicate, _ := process.GetChanges(newState, &logger, oldEntities)
+
+		require.Empty(t, toDelete)
+		require.Empty(t, toReplicate)
+	})
+
+	t.Run("deleted artifact in old entity that is re-added in new state is scheduled for replication", func(t *testing.T) {
+		oldEntities := []Entity{
+			{Name: "image1", Repository: "repo1", Tag: "v1", Digest: "sha256:abc", Deleted: true},
+		}
+
+		newState := &State{
+			Registry: "registry.example.com",
+			Artifacts: []Artifact{
+				{Name: "image1", Repository: "repo1", Tags: []string{"v1"}, Digest: "sha256:abc", Deleted: false},
+			},
+		}
+
+		toDelete, toReplicate, _ := process.GetChanges(newState, &logger, oldEntities)
+
+		require.Empty(t, toDelete)
+		require.Len(t, toReplicate, 1)
+		require.Equal(t, "image1", toReplicate[0].Name)
+	})
+
+	t.Run("deleted artifact in old entity removed completely from new state does not schedule for deletion", func(t *testing.T) {
+		oldEntities := []Entity{
+			{Name: "image1", Repository: "repo1", Tag: "v1", Digest: "sha256:abc", Deleted: true},
+		}
+
+		newState := &State{
+			Registry: "registry.example.com",
+			Artifacts: []Artifact{},
+		}
+
+		toDelete, toReplicate, _ := process.GetChanges(newState, &logger, oldEntities)
+
+		require.Empty(t, toDelete)
+		require.Empty(t, toReplicate)
+	})
 }
 
 func TestContains(t *testing.T) {
@@ -250,6 +371,22 @@ func TestFetchEntitiesFromState(t *testing.T) {
 
 		entities := FetchEntitiesFromState(state)
 		require.Empty(t, entities)
+	})
+
+	t.Run("propagates deleted flag from artifacts", func(t *testing.T) {
+		state := &State{
+			Registry: "registry.example.com",
+			Artifacts: []Artifact{
+				{Name: "image1", Repository: "repo1", Tags: []string{"v1"}, Digest: "sha256:abc", Deleted: true},
+				{Name: "image2", Repository: "repo2", Tags: []string{"v2"}, Digest: "sha256:def", Deleted: false},
+			},
+		}
+
+		entities := FetchEntitiesFromState(state)
+
+		require.Len(t, entities, 2)
+		require.True(t, entities[0].Deleted)
+		require.False(t, entities[1].Deleted)
 	})
 }
 
