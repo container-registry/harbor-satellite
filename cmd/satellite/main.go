@@ -263,6 +263,11 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		return err
 	}
 
+	// Warn once at startup rather than on every registration and heartbeat.
+	if cm.GroundControlSkipTLSVerify() {
+		warnings = append(warnings, config.GroundControlSkipTLSVerifyWarning)
+	}
+
 	// Apply SPIFFE config from CLI flags
 	if opts.SPIFFEEnabled {
 		cm.With(config.SetSPIFFEConfig(config.SPIFFEConfig{

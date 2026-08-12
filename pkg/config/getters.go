@@ -43,11 +43,14 @@ func (cm *ConfigManager) UseUnsecure() bool {
 // TLS certificate is disabled. Deliberately independent of UseUnsecure: that
 // flag only concerns plain-HTTP registry connections and must not weaken
 // Ground Control authentication.
+//
+// The local CLI/env override is ORed in so it holds even if a config reload
+// path replaces cm.config without reapplying it.
 func (cm *ConfigManager) GroundControlSkipTLSVerify() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
-	return cm.config.AppConfig.GroundControlSkipTLSVerify
+	return cm.gcSkipTLSVerifyOverride || cm.config.AppConfig.GroundControlSkipTLSVerify
 }
 
 func (cm *ConfigManager) GetSourceRegistryPassword() string {

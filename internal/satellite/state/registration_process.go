@@ -240,43 +240,53 @@ func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSCo
 
 // createHTTPClient builds the client used to talk to Ground Control.
 //
-// skipTLSVerify must come from the dedicated ground_control_skip_tls_verify
-// setting, never from use_unsecure. use_unsecure only permits plain-HTTP
-// connections to registries; deriving certificate verification from it would
-// silently expose the registration token and the Harbor robot credentials in
-// Ground Control's response to anyone able to intercept the connection.
-func createHTTPClient(ctx context.Context, tlsCfg config.TLSConfig, skipTLSVerify bool) (*http.Client, error) {
+// skipTLSVerify is the single switch that can disable server certificate
+// verification, and it must come from the dedicated
+// ground_control_skip_tls_verify setting. Neither use_unsecure (which only
+// permits plain-HTTP registry connections) nor tls.skip_verify (which applies to
+// registry connections) may weaken this channel: the registration request
+// carries the enrolment token and the response carries the Harbor robot
+// credentials, so any bypass here hands both to whoever can intercept the
+// connection.
+//
+// Client certificate and CA loading is independent of skipTLSVerify. Skipping
+// server verification must not stop the satellite presenting its own
+// certificate, or a Ground Control requiring client auth would reject it.
+func createHTTPClient(_ context.Context, tlsCfg config.TLSConfig, skipTLSVerify bool) (*http.Client, error) {
 	transport := &http.Transport{
 		MaxIdleConns:       10,
 		IdleConnTimeout:    30 * time.Second,
 		DisableCompression: true,
 	}
 
-	if skipTLSVerify {
-		logger.FromContext(ctx).Warn().
-			Msg("SECURITY: Ground Control TLS certificate verification is DISABLED " +
-				"(ground_control_skip_tls_verify). The registration token and Harbor " +
-				"credentials can be intercepted by anyone on the network path. Do not use this in production.")
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+	tlsConfig.InsecureSkipVerify = skipTLSVerify
 
-		transport.TLSClientConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		}
-		transport.TLSClientConfig.InsecureSkipVerify = skipTLSVerify
-	} else if tlsCfg.CertFile != "" || tlsCfg.CAFile != "" {
+	if tlsCfg.CertFile != "" || tlsCfg.CAFile != "" {
 		cfg := &satTLS.Config{
-			CertFile:   tlsCfg.CertFile,
-			KeyFile:    tlsCfg.KeyFile,
-			CAFile:     tlsCfg.CAFile,
-			SkipVerify: tlsCfg.SkipVerify,
+			CertFile: tlsCfg.CertFile,
+			KeyFile:  tlsCfg.KeyFile,
+			CAFile:   tlsCfg.CAFile,
+			// Deliberately not tlsCfg.SkipVerify: that setting governs registry
+			// connections and must never disable Ground Control verification.
+			SkipVerify: false,
 			MinVersion: tls.VersionTLS12,
 		}
 
-		tlsConfig, err := satTLS.LoadClientTLSConfig(cfg)
+		loaded, err := satTLS.LoadClientTLSConfig(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("load TLS config: %w", err)
 		}
-		transport.TLSClientConfig = tlsConfig
+
+		// Carry over the loaded material, but keep verification governed solely
+		// by skipTLSVerify.
+		loaded.InsecureSkipVerify = skipTLSVerify
+		tlsConfig = loaded
 	}
+
+	transport.TLSClientConfig = tlsConfig
 
 	return &http.Client{
 		Transport: transport,

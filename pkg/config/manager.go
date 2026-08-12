@@ -42,6 +42,13 @@ type ConfigManager struct {
 	mu                      sync.RWMutex
 	encryptor               *secure.ConfigEncryptor
 	encryptEnabled          bool
+	// gcSkipTLSVerifyOverride records that --gc-skip-tls-verify (or
+	// GC_SKIP_TLS_VERIFY) was set locally. Ground Control ships config that
+	// replaces cm.config wholesale on every reload, so without this the local
+	// opt-in would be silently reverted mid-run and registration would start
+	// failing against the certificate the operator explicitly chose to trust.
+	// A local override may only ever turn verification off, never back on.
+	gcSkipTLSVerifyOverride bool
 }
 
 func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config) (*ConfigManager, error) {
@@ -167,6 +174,12 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 		return nil, warnings, fmt.Errorf("failed to validate reloaded config: %w", err)
 	}
 
+	// Reapply the local CLI/env override: the reloaded config comes from Ground
+	// Control and knows nothing about flags passed on this host.
+	if cm.gcSkipTLSVerifyOverride {
+		validatedConfig.AppConfig.GroundControlSkipTLSVerify = true
+	}
+
 	changes := cm.detectChanges(oldConfig, validatedConfig)
 
 	cm.config = validatedConfig
@@ -209,6 +222,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to create config manager: %w", err)
 	}
+	cm.gcSkipTLSVerifyOverride = gcSkipTLSVerify
 
 	return cm, warnings, nil
 }
