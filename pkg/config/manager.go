@@ -45,7 +45,7 @@ type ConfigManager struct {
 }
 
 func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config) (*ConfigManager, error) {
-	cryptoProvider := crypto.NewAESProvider()
+	cryptoProvider := crypto.NewDefaultProvider()
 	deviceIdentity := identity.NewLinuxDeviceIdentity()
 	encryptor := secure.NewConfigEncryptor(cryptoProvider, deviceIdentity)
 
@@ -83,6 +83,13 @@ func (cm *ConfigManager) writeConfigUnlocked(config *Config, path string) error 
 	var err error
 
 	if cm.encryptEnabled {
+		// Refuse rather than fall back to plaintext. A build without a
+		// cryptographic provider must not write a file that carries the
+		// encrypted-config header while holding readable credentials.
+		if !crypto.EncryptionAvailable {
+			return fmt.Errorf("encrypt config: %w: encrypt_config is enabled but this binary was built without encryption support", crypto.ErrCryptoUnavailable)
+		}
+
 		data, err = cm.encryptor.EncryptConfig(config)
 		if err != nil {
 			return fmt.Errorf("encrypt config: %w", err)
@@ -220,7 +227,7 @@ func readAndReturnConfig(path string) (*Config, error) {
 	}
 
 	if secure.IsEncrypted(data) {
-		cryptoProvider := crypto.NewAESProvider()
+		cryptoProvider := crypto.NewDefaultProvider()
 		deviceIdentity := identity.NewLinuxDeviceIdentity()
 		encryptor := secure.NewConfigEncryptor(cryptoProvider, deviceIdentity)
 

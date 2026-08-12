@@ -11,6 +11,12 @@ var (
 	ErrInvalidKeyLength  = errors.New("invalid key length")
 	ErrInvalidInput      = errors.New("invalid input")
 	ErrSignatureMismatch = errors.New("signature verification failed")
+
+	// ErrCryptoUnavailable is returned by every operation of the provider
+	// compiled into the nospiffe build, which has no cryptographic
+	// implementation. Callers must treat it as a hard failure: it means the
+	// operation was not performed, not that it succeeded trivially.
+	ErrCryptoUnavailable = errors.New("cryptographic provider not available in this build (built with the nospiffe tag)")
 )
 
 // Provider abstracts cryptographic operations for the satellite.

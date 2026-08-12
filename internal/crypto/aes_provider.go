@@ -26,6 +26,11 @@ const (
 	argon2Threads = 4
 )
 
+// EncryptionAvailable reports whether this build can actually encrypt. It is
+// true here; the nospiffe build sets it to false and its provider refuses
+// every operation.
+const EncryptionAvailable = true
+
 // AESProvider implements Provider using AES-GCM for encryption
 // and Argon2id for key derivation.
 type AESProvider struct{}
@@ -33,6 +38,13 @@ type AESProvider struct{}
 // NewAESProvider creates a new AESProvider instance.
 func NewAESProvider() *AESProvider {
 	return &AESProvider{}
+}
+
+// NewDefaultProvider returns the Provider for this build, the real AES-GCM
+// implementation. The nospiffe build returns a provider that fails every
+// operation instead, so callers get an error rather than unprotected data.
+func NewDefaultProvider() *AESProvider {
+	return NewAESProvider()
 }
 
 func (p *AESProvider) Encrypt(plaintext, key []byte) ([]byte, error) {
