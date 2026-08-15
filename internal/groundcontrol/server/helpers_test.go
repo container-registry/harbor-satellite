@@ -55,6 +55,22 @@ func TestHashRobotCredentials(t *testing.T) {
 	})
 }
 
+func TestServerGroupStateCache_ReconcilePreservesLastKnownState(t *testing.T) {
+	cache := newSatelliteGroupStateCache()
+	cache.set("edge-sat-1", []string{"group:a", "group:b"})
+
+	require.Equal(t, []string{"group:a", "group:b"}, cache.reconcile("edge-sat-1", nil))
+	require.Equal(t, []string{"group:a", "group:b"}, cache.get("edge-sat-1"))
+
+	updated := []string{"group:b"}
+	require.Equal(t, updated, cache.reconcile("edge-sat-1", updated))
+	require.Equal(t, updated, cache.get("edge-sat-1"))
+
+	removed := []string{"group:c"}
+	require.Equal(t, removed, cache.reconcile("edge-sat-1", removed))
+	require.Equal(t, removed, cache.get("edge-sat-1"))
+}
+
 func TestVerifyRobotCredentials(t *testing.T) {
 	secret := "correct-secret"
 	storedHash, err := crypto.HashSecret(secret)

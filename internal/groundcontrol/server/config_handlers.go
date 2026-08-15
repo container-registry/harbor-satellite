@@ -486,7 +486,6 @@ func (s *Server) SetSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Store the groupStates in memory to survive hot reloads
 	var groupStates []string
 	for _, group := range groupList {
 		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
@@ -501,6 +500,8 @@ func (s *Server) SetSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
+
+	groupStates = s.groupStateCache.reconcile(sat.Name, groupStates)
 
 	err = createOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, req.ConfigName)
 	if err != nil {

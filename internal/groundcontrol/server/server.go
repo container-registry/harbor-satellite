@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -21,6 +22,67 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 )
 
+type satelliteGroupStateCache struct {
+	mu     sync.RWMutex
+	states map[string][]string
+}
+
+func newSatelliteGroupStateCache() *satelliteGroupStateCache {
+	return &satelliteGroupStateCache{states: make(map[string][]string)}
+}
+
+func (c *satelliteGroupStateCache) set(satelliteName string, states []string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.states[satelliteName] = append([]string(nil), states...)
+}
+
+func (c *satelliteGroupStateCache) get(satelliteName string) []string {
+	if c == nil {
+		return nil
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	states, ok := c.states[satelliteName]
+	if !ok {
+		return nil
+	}
+	return append([]string(nil), states...)
+}
+
+func (c *satelliteGroupStateCache) reconcile(satelliteName string, current []string) []string {
+	cachedStates := c.get(satelliteName)
+
+	if len(current) == 0 {
+		if len(cachedStates) > 0 {
+			return cachedStates
+		}
+		return nil
+	}
+
+	// The current reload result is the source of truth. We only retain the previous
+	// cache when the reload result is empty or incomplete, and we always remove stale
+	// entries that are no longer present in the latest state.
+	merged := make([]string, 0, len(current))
+	seen := make(map[string]struct{}, len(current))
+	for _, state := range current {
+		if state == "" {
+			continue
+		}
+		if _, ok := seen[state]; ok {
+			continue
+		}
+		seen[state] = struct{}{}
+		merged = append(merged, state)
+	}
+
+	c.set(satelliteName, merged)
+	return merged
+}
+
 type Server struct {
 	port           int
 	db             *sql.DB
@@ -30,6 +92,7 @@ type Server struct {
 	embeddedSpire  *spiffe.EmbeddedSpireServer
 	spireClient    *spiffe.ServerClient
 	spireEnabled   bool
+	groupStateCache *satelliteGroupStateCache
 
 	// External SPIRE server metadata (used when embeddedSpire is nil)
 	spireServerAddress string
@@ -148,14 +211,15 @@ func NewServer() *ServerResult {
 	}
 
 	newServer := &Server{
-		port:           cfg.Server.Port,
-		db:             db,
-		dbQueries:      dbQueries,
-		rateLimiter:    rateLimiter,
-		spiffeProvider: spiffeProvider,
-		embeddedSpire:  embeddedSpire,
-		spireClient:    spireClient,
-		spireEnabled:   spiffeCfg.Enabled || cfg.EmbeddedSPIRE.Enabled || cfg.SPIRE.ServerSocket != "",
+		port:            cfg.Server.Port,
+		db:              db,
+		dbQueries:       dbQueries,
+		rateLimiter:     rateLimiter,
+		spiffeProvider:  spiffeProvider,
+		embeddedSpire:   embeddedSpire,
+		spireClient:     spireClient,
+		spireEnabled:    spiffeCfg.Enabled || cfg.EmbeddedSPIRE.Enabled || cfg.SPIRE.ServerSocket != "",
+		groupStateCache: newSatelliteGroupStateCache(),
 
 		spireServerAddress: spireServerAddress,
 		spireServerPort:    spireServerPort,
