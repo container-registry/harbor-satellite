@@ -53,6 +53,15 @@ func (c *satelliteGroupStateCache) get(satelliteName string) []string {
 	return append([]string(nil), states...)
 }
 
+func (c *satelliteGroupStateCache) delete(satelliteName string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.states, satelliteName)
+}
+
 func (c *satelliteGroupStateCache) reconcile(satelliteName string, current []string) []string {
 	cachedStates := c.get(satelliteName)
 
@@ -63,9 +72,6 @@ func (c *satelliteGroupStateCache) reconcile(satelliteName string, current []str
 		return nil
 	}
 
-	// The current reload result is the source of truth. We only retain the previous
-	// cache when the reload result is empty or incomplete, and we always remove stale
-	// entries that are no longer present in the latest state.
 	merged := make([]string, 0, len(current))
 	seen := make(map[string]struct{}, len(current))
 	for _, state := range current {

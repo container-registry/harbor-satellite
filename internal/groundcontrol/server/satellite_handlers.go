@@ -1055,6 +1055,7 @@ func (s *Server) DeleteSatellite(w http.ResponseWriter, r *http.Request, satelli
 		})
 		return
 	}
+	s.groupStateCache.delete(satellite)
 	committed = true
 
 	actor := "unknown"
