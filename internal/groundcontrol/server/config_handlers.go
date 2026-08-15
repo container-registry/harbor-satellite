@@ -518,6 +518,8 @@ func (s *Server) SetSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	s.groupStateCache.set(sat.Name, groupStates)
 	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})

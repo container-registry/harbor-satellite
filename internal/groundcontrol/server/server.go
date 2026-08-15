@@ -79,7 +79,13 @@ func (c *satelliteGroupStateCache) reconcile(satelliteName string, current []str
 		merged = append(merged, state)
 	}
 
-	c.set(satelliteName, merged)
+	if len(merged) == 0 {
+		if len(cachedStates) > 0 {
+			return cachedStates
+		}
+		return nil
+	}
+
 	return merged
 }
 

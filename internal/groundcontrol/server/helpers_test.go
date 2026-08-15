@@ -64,11 +64,15 @@ func TestServerGroupStateCache_ReconcilePreservesLastKnownState(t *testing.T) {
 
 	updated := []string{"group:b"}
 	require.Equal(t, updated, cache.reconcile("edge-sat-1", updated))
-	require.Equal(t, updated, cache.get("edge-sat-1"))
+	require.Equal(t, []string{"group:a", "group:b"}, cache.get("edge-sat-1"))
+
+	filteredEmpty := []string{"", ""}
+	require.Equal(t, []string{"group:a", "group:b"}, cache.reconcile("edge-sat-1", filteredEmpty))
+	require.Equal(t, []string{"group:a", "group:b"}, cache.get("edge-sat-1"))
 
 	removed := []string{"group:c"}
 	require.Equal(t, removed, cache.reconcile("edge-sat-1", removed))
-	require.Equal(t, removed, cache.get("edge-sat-1"))
+	require.Equal(t, []string{"group:a", "group:b"}, cache.get("edge-sat-1"))
 }
 
 func TestVerifyRobotCredentials(t *testing.T) {
