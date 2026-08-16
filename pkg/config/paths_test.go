@@ -155,7 +155,6 @@ func TestResolvePathConfig(t *testing.T) {
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "config.json"), pathConfig.ConfigFile)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "prev_config.json"), pathConfig.PrevConfigFile)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "zot-hot.json"), pathConfig.ZotTempConfig)
-			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "zot"), pathConfig.ZotStorageDir)
 		})
 	}
 }
@@ -173,4 +172,107 @@ func TestBuildZotConfigWithStoragePath(t *testing.T) {
 	storage, ok := parsed["storage"].(map[string]any)
 	require.True(t, ok, "storage section should exist")
 	require.Equal(t, storagePath, storage["rootDirectory"])
+}
+
+func TestResolveRegistryDataDir(t *testing.T) {
+	nonRootUser := func() int { return 1000 }
+
+	tests := []struct {
+		name      string
+		setup     func(t *testing.T) (string, string)
+		expectErr bool
+	}{
+		{
+			name: "Override default when registryDataDir is provided",
+			setup: func(t *testing.T) (string, string) {
+				dir := filepath.Join(t.TempDir(), "custom-registry")
+				return dir, dir
+			},
+			expectErr: false,
+		},
+		{
+			name: "Empty registryDataDir should use default",
+			setup: func(t *testing.T) (string, string) {
+				xdgDir := t.TempDir()
+				t.Setenv("XDG_DATA_HOME", xdgDir)
+				expected := filepath.Join(xdgDir, "satellite", "registry")
+				return "", expected
+			},
+			expectErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input, expected := tt.setup(t)
+			result, err := resolveRegistryDataDir(input, nonRootUser)
+			if tt.expectErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, expected, result)
+			require.DirExists(t, result)
+		})
+	}
+}
+
+func TestDefaultRegistryDataDir(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	rootUser := func() int { return 0 }
+	nonRootUser := func() int { return 1 }
+
+	tests := []struct {
+		name             string
+		expectErr        bool
+		runUser          func() int
+		expected         string
+		xdgDataHomeValue string
+	}{
+		{
+			name:             "Root user",
+			runUser:          rootUser,
+			expectErr:        false,
+			xdgDataHomeValue: "",
+			expected:         filepath.Join("/var", "lib", "satellite", "registry"),
+		},
+		{
+			name:             "Non-root user with XDG_DATA_HOME is set and abs",
+			runUser:          nonRootUser,
+			expectErr:        false,
+			xdgDataHomeValue: filepath.Join("/tmp", "xdg", "path"),
+			expected:         filepath.Join("/tmp", "xdg", "path", "satellite", "registry"),
+		},
+		{
+			name:             "Non-root user with XDG_DATA_HOME is set but not abs",
+			runUser:          nonRootUser,
+			expectErr:        false,
+			xdgDataHomeValue: filepath.Join("xdg", "path"),
+			expected:         filepath.Join(home, ".local", "share", "satellite", "registry"),
+		},
+		{
+			name:             "Non-root user with XDG_DATA_HOME is not set",
+			runUser:          nonRootUser,
+			expectErr:        false,
+			xdgDataHomeValue: "",
+			expected:         filepath.Join(home, ".local", "share", "satellite", "registry"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("XDG_DATA_HOME", tt.xdgDataHomeValue)
+
+			result, err := defaultRegistryDataDir(tt.runUser)
+			if tt.expectErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
 }

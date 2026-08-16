@@ -88,7 +88,6 @@ func ResolvePathConfig(configDir string) (*PathConfig, error) {
 		ConfigFile:     filepath.Join(expanded, "config.json"),
 		PrevConfigFile: filepath.Join(expanded, "prev_config.json"),
 		ZotTempConfig:  filepath.Join(expanded, "zot-hot.json"),
-		ZotStorageDir:  filepath.Join(expanded, "zot"),
 		StateFile:      filepath.Join(expanded, "state.json"),
 	}, nil
 }
@@ -114,4 +113,58 @@ func BuildZotConfigWithStoragePath(storageDir string) (string, error) {
 	}
 
 	return string(updatedJSON), nil
+}
+
+func ResolveRegistryDataDir(registryDataDir string) (string, error) {
+	return resolveRegistryDataDir(registryDataDir, os.Geteuid)
+}
+
+func resolveRegistryDataDir(registryDataDir string, getUidFunc func() int) (string, error) {
+	dataDir := registryDataDir
+
+	if registryDataDir == "" {
+		var err error
+		dataDir, err = defaultRegistryDataDir(getUidFunc)
+		if err != nil {
+			return "", fmt.Errorf("default registry data dir path: %w", err)
+		}
+	}
+
+	expanded, err := expandPath(dataDir)
+	if err != nil {
+		return "", fmt.Errorf("expand registry data dir path %s: %w", dataDir, err)
+	}
+
+	expanded, err = filepath.Abs(expanded)
+	if err != nil {
+		return "", fmt.Errorf("resolve absolute registry data dir path: %w", err)
+	}
+
+	if err := ensureDir(expanded); err != nil {
+		return "", err
+	}
+
+	return expanded, nil
+}
+
+func DefaultRegistryDataDir() (string, error) {
+	return defaultRegistryDataDir(os.Geteuid)
+}
+
+func defaultRegistryDataDir(getUidFunc func() int) (string, error) {
+	uid := getUidFunc()
+	if uid == 0 {
+		return filepath.Join("/var", "lib", "satellite", "registry"), nil
+	}
+
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" && filepath.IsAbs(xdg) {
+		return filepath.Join(xdg, "satellite", "registry"), nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("get home directory: %w", err)
+	}
+
+	return filepath.Join(home, ".local", "share", "satellite", "registry"), nil
 }

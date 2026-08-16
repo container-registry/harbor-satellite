@@ -99,7 +99,7 @@ func main() {
 	flag.StringVar(&opts.RegistryUsername, "registry-username", opts.RegistryUsername, "External registry username")
 	flag.StringVar(&opts.RegistryPassword, "registry-password", "", "External registry password")
 	flag.StringVar(&opts.ConfigDir, "config-dir", opts.ConfigDir, "Configuration directory path (default: ~/.config/satellite)")
-	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", opts.RegistryDataDir, "Registry data directory (overrides default storage path derived from config-dir)")
+	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", opts.RegistryDataDir, "Registry data directory. Defaults to /var/lib/satellite/registry for root, or `$XDG_DATA_HOME/satellite/registry` (`~/.local/share/satellite/registry`) for standard users.")
 	flag.StringVar(&shutdownTimeout, "shutdown-timeout", shutdownTimeout, "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
 	flag.BoolVar(&opts.NoRegistryFallback, "no-registry-fallback", opts.NoRegistryFallback, "Disable all CRI registry fallback configuration")
 	flag.BoolVar(&opts.FallbackOnly, "fallback-only", false, "Apply CRI registry fallback configs and exit without starting satellite")
@@ -131,11 +131,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Override ZotStorageDir if --registry-data-dir flag or env var is set
-	if opts.RegistryDataDir != "" {
-		pathConfig.ZotStorageDir = opts.RegistryDataDir
-	}
-
 	// For --fallback-only mode, relax token/gc-url requirements
 	if !opts.FallbackOnly {
 		if !opts.SPIFFEEnabled && (opts.Token == "" || opts.GroundControlURL == "") {
@@ -157,6 +152,16 @@ func main() {
 	if opts.BYORegistry && opts.RegistryURL == "" {
 		fmt.Println("Missing required argument: --registry-url is required when --byo-registry is enabled.")
 		os.Exit(1)
+	}
+
+	if !opts.FallbackOnly && !opts.BYORegistry {
+		zotStorageDir, err := config.ResolveRegistryDataDir(opts.RegistryDataDir)
+		if err != nil {
+			fmt.Printf("Error resolving registry data directory: %v\n", err)
+			os.Exit(1)
+		}
+
+		pathConfig.ZotStorageDir = zotStorageDir
 	}
 
 	err = run(opts, pathConfig, shutdownTimeout)
