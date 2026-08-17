@@ -22,6 +22,39 @@ func newTestConfigManager(t *testing.T, cfg *config.Config) *config.ConfigManage
 	return cm
 }
 
+// validateAndTrimOptionsTestCase represents a single test case for the validateAndTrimOptions function
+type validateAndTrimOptionsTestCase struct {
+	name                 string
+	groundControlURL     string
+	token                string
+	harborRegistryURL    string
+	registryURL          string
+	registryUsername     string
+	registryPassword     string
+	configDir            string
+	registryDataDir      string
+	imageDir             string
+	spiffeEndpoint       string
+	spiffeExpectedID     string
+	shutdownTimeout      string
+	spiffeEnabled        bool
+	byoRegistry          bool
+	shouldPassValidation bool
+	envToken             string // simulate envCfg.Token for fallback
+	expectedGroundControlURL string
+	expectedToken        string
+	expectedHarborRegistryURL string
+	expectedRegistryURL string
+	expectedRegistryUsername string
+	expectedRegistryPassword string
+	expectedConfigDir string
+	expectedRegistryDataDir string
+	expectedImageDir string
+	expectedSPIFFEEndpoint string
+	expectedSPIFFEExpectedID string
+	expectedShutdownTimeout string
+}
+
 func TestResolveLocalRegistryEndpoint_BYO(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -193,37 +226,7 @@ func TestResolveCRIAndApply(t *testing.T) {
 
 // TestValidateAndTrimOptions tests the validation and trimming of satellite options
 func TestValidateAndTrimOptions(t *testing.T) {
-	tests := []struct {
-		name                 string
-		groundControlURL     string
-		token                string
-		harborRegistryURL    string
-		registryURL          string
-		registryUsername     string
-		registryPassword     string
-		configDir            string
-		registryDataDir      string
-		imageDir             string
-		spiffeEndpoint       string
-		spiffeExpectedID     string
-		shutdownTimeout      string
-		spiffeEnabled        bool
-		byoRegistry          bool
-		shouldPassValidation bool
-		envToken             string // simulate envCfg.Token for fallback
-		expectedGroundControlURL string
-		expectedToken        string
-		expectedHarborRegistryURL string
-		expectedRegistryURL string
-		expectedRegistryUsername string
-		expectedRegistryPassword string
-		expectedConfigDir string
-		expectedRegistryDataDir string
-		expectedImageDir string
-		expectedSPIFFEEndpoint string
-		expectedSPIFFEExpectedID string
-		expectedShutdownTimeout string
-	}{
+	tests := []validateAndTrimOptionsTestCase{
 		{
 			name:                 "valid values with surrounding whitespace",
 			groundControlURL:     "  http://gc:8080  ",

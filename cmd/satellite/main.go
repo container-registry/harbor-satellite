@@ -108,13 +108,6 @@ func main() {
 	flag.StringVar(&opts.ImageDir, "image-dir", opts.ImageDir, "Override image directory for direct delivery (auto-detected if empty)")
 
 	flag.Parse()
-	// Treat whitespace-only values as empty for env fallback
-	if strings.TrimSpace(opts.Token) == "" {
-		opts.Token = envCfg.Token
-	}
-	if strings.TrimSpace(opts.RegistryPassword) == "" {
-		opts.RegistryPassword = envCfg.RegistryPassword
-	}
 
 	// Validate and trim options
 	if err := validateAndTrimOptions(&opts, &shutdownTimeout); err != nil {
