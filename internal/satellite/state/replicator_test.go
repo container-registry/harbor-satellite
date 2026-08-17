@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -164,6 +165,41 @@ func TestReplicate_EmptyEntities(t *testing.T) {
 
 	err := r.Replicate(ctx, []Entity{})
 	require.NoError(t, err)
+}
+
+func TestRetryWithBackoff_RetriesTransientFailures(t *testing.T) {
+	ctx := testContext()
+	attempts := 0
+
+	err := retryWithBackoff(ctx, "test operation", func() error {
+		attempts++
+		if attempts < 3 {
+			return errors.New("connection reset by peer")
+		}
+		return nil
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 3, attempts)
+}
+
+func TestIsRetryableReplicationError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "timeout", err: errors.New("i/o timeout"), want: true},
+		{name: "connection reset", err: errors.New("connection reset by peer"), want: true},
+		{name: "unexpected eof", err: errors.New("unexpected EOF"), want: true},
+		{name: "not retryable", err: errors.New("manifest unknown"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isRetryableReplicationError(tt.err))
+		})
+	}
 }
 
 func TestCountMissingLayers_AllMissing(t *testing.T) {

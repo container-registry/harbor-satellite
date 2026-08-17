@@ -3,8 +3,11 @@ package state
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
@@ -105,7 +108,6 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 	}
 
 	for _, entity := range replicationEntities {
-		// Check context cancellation before processing each image
 		select {
 		case <-ctx.Done():
 			log.Warn().Err(ctx.Err()).Msg("Context cancelled, stopping replication")
@@ -126,35 +128,47 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 			return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
 		}
 
-		// Lazy fetch: only the manifest is downloaded, no layer data yet
-		desc, err := remote.Get(src, pullOpts...)
-		if err != nil {
-			log.Error().Msgf("Failed to fetch image descriptor: %v", err)
+		var desc *remote.Descriptor
+		if err := retryWithBackoff(ctx, fmt.Sprintf("fetch descriptor for %s", srcRef), func() error {
+			var getErr error
+			desc, getErr = remote.Get(src, pullOpts...)
+			return getErr
+		}); err != nil {
+			log.Error().Err(err).Msgf("Failed to fetch image descriptor for %s", srcRef)
 			return err
 		}
 
 		img, err := desc.Image()
 		if err != nil {
-			log.Error().Msgf("Failed to resolve image: %v", err)
+			log.Error().Err(err).Msgf("Failed to resolve image for %s", srcRef)
 			return err
 		}
 
-		// Lazy OCI conversion, no data materialized
 		ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
 
-		// Check if image already exists at destination with same digest
 		srcDigest, err := ociImage.Digest()
 		if err != nil {
 			return fmt.Errorf("compute source digest: %w", err)
 		}
 
-		dstDesc, dstErr := remote.Head(dst, pushOpts...)
-		if dstErr == nil && dstDesc.Digest == srcDigest {
+		var dstDesc *remote.Descriptor
+		dstErr := retryWithBackoff(ctx, fmt.Sprintf("head destination image %s", dstRef), func() error {
+			var headErr error
+			dstDesc, headErr = remote.Head(dst, pushOpts...)
+			if headErr != nil && !isNotFoundError(headErr) {
+				return headErr
+			}
+			return nil
+		})
+		if dstErr != nil {
+			log.Error().Err(dstErr).Msgf("Failed to inspect destination image %s", dstRef)
+			return dstErr
+		}
+		if dstDesc != nil && dstDesc.Digest == srcDigest {
 			log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
 			continue
 		}
 
-		// Log which layers need pulling vs already present
 		srcLayers, err := ociImage.Layers()
 		if err != nil {
 			return fmt.Errorf("get source layers: %w", err)
@@ -163,17 +177,112 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		missing := r.countMissingLayers(dst, srcLayers, pushOpts)
 		log.Info().Msgf("Replicating image %s: %d/%d layers to pull", entity.GetName(), missing, len(srcLayers))
 
-		// remote.Write streams layers one-by-one. For each layer it HEAD-checks
-		// the destination first; only missing blobs are pulled from source.
-		// Manifest is pushed last.
-		if err := remote.Write(dst, ociImage, pushOpts...); err != nil {
-			log.Error().Msgf("Failed to replicate image: %v", err)
+		if err := retryWithBackoff(ctx, fmt.Sprintf("write image %s", dstRef), func() error {
+			return remote.Write(dst, ociImage, pushOpts...)
+		}); err != nil {
+			log.Error().Err(err).Msgf("Failed to replicate image %s", dstRef)
 			return err
 		}
 		log.Info().Msgf("Image %s replicated successfully", entity.GetName())
 	}
 
 	return nil
+}
+
+func retryWithBackoff(ctx context.Context, operation string, fn func() error) error {
+	const maxAttempts = 5
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if err := fn(); err != nil {
+			lastErr = err
+			if !isRetryableReplicationError(err) || attempt == maxAttempts {
+				return err
+			}
+
+			delay := time.Duration(attempt) * 250 * time.Millisecond
+			if delay > 3*time.Second {
+				delay = 3 * time.Second
+			}
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+			continue
+		}
+		return nil
+	}
+
+	if lastErr != nil {
+		return lastErr
+	}
+	return nil
+}
+
+func isRetryableReplicationError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	if isNotFoundError(err) {
+		return false
+	}
+
+	retryablePatterns := []string{
+		"timeout",
+		"connection reset",
+		"connection refused",
+		"broken pipe",
+		"unexpected eof",
+		"eof",
+		"tls handshake timeout",
+		"i/o timeout",
+		"temporarily unavailable",
+		"network is unreachable",
+		"no route to host",
+		"connection aborted",
+		"connection closed",
+		"dial tcp",
+		"proxyconnect tcp",
+		"connection reset by peer",
+		"server misbehaving",
+		"resource temporarily unavailable",
+		"too many open files",
+	}
+
+	for _, pattern := range retryablePatterns {
+		if strings.Contains(msg, pattern) {
+			return true
+		}
+	}
+
+	var netErr interface{ Timeout() bool }
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	return false
+}
+
+func isNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "manifest unknown") ||
+		strings.Contains(msg, "name invalid") ||
+		strings.Contains(msg, "no such host")
 }
 
 // countMissingLayers checks which source layers are absent from the destination
