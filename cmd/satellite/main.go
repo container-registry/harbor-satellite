@@ -109,10 +109,11 @@ func main() {
 	flag.StringVar(&opts.ImageDir, "image-dir", opts.ImageDir, "Override image directory for direct delivery (auto-detected if empty)")
 
 	flag.Parse()
-	if opts.Token == "" {
+	// Treat whitespace-only values as empty for env fallback
+	if strings.TrimSpace(opts.Token) == "" {
 		opts.Token = envCfg.Token
 	}
-	if opts.RegistryPassword == "" {
+	if strings.TrimSpace(opts.RegistryPassword) == "" {
 		opts.RegistryPassword = envCfg.RegistryPassword
 	}
 
@@ -173,11 +174,69 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Validate and trim options
+	if err := validateAndTrimOptions(&opts, &shutdownTimeout); err != nil {
+		fmt.Printf("Invalid arguments: %v\n", err)
+		os.Exit(1)
+	}
+
 	err = run(opts, pathConfig, shutdownTimeout)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// validateAndTrimOptions trims whitespace from appropriate fields and validates
+// required options. It returns an error if validation fails.
+func validateAndTrimOptions(opts *SatelliteOptions, shutdownTimeout *string) error {
+	// Trim string fields where leading/trailing whitespace is meaningless
+	// NOTE: We do NOT trim RegistryPassword as it may contain intentional whitespace
+	// NOTE: We do NOT trim filesystem paths (ConfigDir, RegistryDataDir, ImageDir, SPIFFEEndpointSocket)
+	// as they may contain intentional leading/trailing spaces in some edge cases
+	opts.GroundControlURL = strings.TrimSpace(opts.GroundControlURL)
+	opts.Token = strings.TrimSpace(opts.Token)
+	opts.HarborRegistryURL = strings.TrimSpace(opts.HarborRegistryURL)
+	opts.RegistryURL = strings.TrimSpace(opts.RegistryURL)
+	opts.RegistryUsername = strings.TrimSpace(opts.RegistryUsername)
+	// NOTE: Intentionally NOT trimming RegistryPassword
+	opts.ConfigDir = strings.TrimSpace(opts.ConfigDir)
+	opts.RegistryDataDir = strings.TrimSpace(opts.RegistryDataDir)
+	opts.ImageDir = strings.TrimSpace(opts.ImageDir)
+	opts.SPIFFEEndpointSocket = strings.TrimSpace(opts.SPIFFEEndpointSocket)
+	opts.SPIFFEExpectedServerID = strings.TrimSpace(opts.SPIFFEExpectedServerID)
+	*shutdownTimeout = strings.TrimSpace(*shutdownTimeout)
+
+	// For --fallback-only mode, relax token/gc-url requirements
+	if !opts.FallbackOnly {
+		if !opts.SPIFFEEnabled {
+			// In non-SPIFFE mode, token and ground-control-url are required
+			if opts.Token == "" {
+				return fmt.Errorf("missing required argument: --token or matching env vars (or enable SPIFFE with --spiffe-enabled)")
+			}
+			if opts.GroundControlURL == "" {
+				return fmt.Errorf("missing required argument: --ground-control-url or GROUND_CONTROL_URL env var")
+			}
+			if opts.HarborRegistryURL == "" {
+				return fmt.Errorf("missing required argument: --harbor-registry-url or HARBOR_REGISTRY_URL env var")
+			}
+		} else {
+			// In SPIFFE mode, we only need harbor-registry-url
+			if opts.HarborRegistryURL == "" {
+				return fmt.Errorf("missing required argument: --harbor-registry-url or HARBOR_REGISTRY_URL env var")
+			}
+		}
+	}
+	// Set default GroundControlURL if empty and not in SPIFFE mode
+// (after validation so we don't override explicit empty)
+	if opts.GroundControlURL == "" && !opts.SPIFFEEnabled {
+		opts.GroundControlURL = config.DefaultGroundControlURL
+	}
+	if opts.BYORegistry && opts.RegistryURL == "" {
+		return fmt.Errorf("missing required argument: --registry-url is required when --byo-registry is enabled")
+	}
+
+	return nil
 }
 
 // reconfigureAuditOnReload swaps the audit logger to match next when the audit

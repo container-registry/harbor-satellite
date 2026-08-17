@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -192,6 +191,275 @@ func TestResolveCRIAndApply(t *testing.T) {
 	})
 }
 
+// TestValidateAndTrimOptions tests the validation and trimming of satellite options
+func TestValidateAndTrimOptions(t *testing.T) {
+	tests := []struct {
+		name                 string
+		groundControlURL     string
+		token                string
+		harborRegistryURL    string
+		registryURL          string
+		registryUsername     string
+		registryPassword     string
+		configDir            string
+		registryDataDir      string
+		imageDir             string
+		spiffeEndpoint       string
+		spiffeExpectedID     string
+		shutdownTimeout      string
+		spiffeEnabled        bool
+		byoRegistry          bool
+		shouldPassValidation bool
+		expectedGroundControlURL string
+		expectedToken        string
+		expectedHarborRegistryURL string
+		expectedRegistryURL string
+		expectedRegistryUsername string
+		expectedRegistryPassword string
+		expectedConfigDir string
+		expectedRegistryDataDir string
+		expectedImageDir string
+		expectedSPIFFEEndpoint string
+		expectedSPIFFEExpectedID string
+		expectedShutdownTimeout string
+	}{
+		{
+			name:                 "valid values with surrounding whitespace",
+			groundControlURL:     "  http://gc:8080  ",
+			token:                "  valid-token  ",
+			harborRegistryURL:    "  http://hr:8080  ",
+			registryURL:          "  http://reg:5000  ",
+			registryUsername:     "  user  ",
+			registryPassword:     "  pass with spaces  ",
+			configDir:            "  /custom/config  ",
+			registryDataDir:      "  /custom/data  ",
+			imageDir:             "  /custom/images  ",
+			spiffeEndpoint:       "  /tmp/socket.sock  ",
+			spiffeExpectedID:     "  expected-id  ",
+			shutdownTimeout:      "  45s  ",
+			spiffeEnabled:        false,
+			byoRegistry:          true,
+			shouldPassValidation: true,
+			expectedGroundControlURL: "http://gc:8080",
+			expectedToken:        "valid-token",
+			expectedHarborRegistryURL: "http://hr:8080",
+			expectedRegistryURL: "http://reg:5000",
+			expectedRegistryUsername: "user",
+			expectedRegistryPassword: "  pass with spaces  ", // Password should NOT be trimmed
+			expectedConfigDir: "/custom/config",
+			expectedRegistryDataDir: "/custom/data",
+			expectedImageDir: "/custom/images",
+			expectedSPIFFEEndpoint: "/tmp/socket.sock",
+			expectedSPIFFEExpectedID: "expected-id",
+			expectedShutdownTimeout: "45s",
+		},
+		{
+			name:                 "whitespace-only required fields should fail",
+			groundControlURL:     "   ",
+			token:                "   ",
+			harborRegistryURL:    "   ",
+			registryURL:          "",
+			registryUsername:     "",
+			registryPassword:     "",
+			configDir:            "",
+			registryDataDir:      "",
+			imageDir:             "",
+			spiffeEndpoint:       "",
+			spiffeExpectedID:     "",
+			shutdownTimeout:      "",
+			spiffeEnabled:        false,
+			byoRegistry:          false,
+			shouldPassValidation: false,
+			expectedGroundControlURL: "",
+			expectedToken:        "",
+			expectedHarborRegistryURL: "",
+			expectedRegistryURL: "",
+			expectedRegistryUsername: "",
+			expectedRegistryPassword: "",
+			expectedConfigDir: "",
+			expectedRegistryDataDir: "",
+			expectedImageDir: "",
+			expectedSPIFFEEndpoint: "",
+			expectedSPIFFEExpectedID: "",
+			expectedShutdownTimeout: "",
+		},
+		{
+			name:                 "whitespace-only token with valid env token should fall back",
+			groundControlURL:     "http://gc:8080",
+			token:                "   ", // whitespace-only CLI token
+			harborRegistryURL:    "http://hr:8080",
+			registryURL:          "",
+			registryUsername:     "",
+			registryPassword:     "",
+			configDir:            "",
+			registryDataDir:      "",
+			imageDir:             "",
+			spiffeEndpoint:       "",
+			spiffeExpectedID:     "",
+			shutdownTimeout:      "",
+			spiffeEnabled:        false,
+			byoRegistry:          false,
+			shouldPassValidation: true, // Should fall back to env token
+			expectedGroundControlURL: "http://gc:8080",
+			expectedToken:        "env-token", // This will be set in test setup
+			expectedHarborRegistryURL: "http://hr:8080",
+			expectedRegistryURL: "",
+			expectedRegistryUsername: "",
+			expectedRegistryPassword: "",
+			expectedConfigDir: "",
+			expectedRegistryDataDir: "",
+			expectedImageDir: "",
+			expectedSPIFFEEndpoint: "",
+			expectedSPIFFEExpectedID: "",
+			expectedShutdownTimeout: "",
+		},
+		{
+			name:                 "whitelist SPIFFE mode skips token/gc-url validation",
+			groundControlURL:     "   ",
+			token:                "   ",
+			harborRegistryURL:    "http://hr:8080",
+			registryURL:          "",
+			registryUsername:     "",
+			registryPassword:     "",
+			configDir:            "",
+			registryDataDir:      "",
+			imageDir:             "",
+			spiffeEndpoint:       "",
+			spiffeExpectedID:     "",
+			shutdownTimeout:      "",
+			spiffeEnabled:        true,
+			byoRegistry:          false,
+			shouldPassValidation: true, // SPIFFE mode doesn't require token/gc-url
+			expectedGroundControlURL: "",
+			expectedToken:        "",
+			expectedHarborRegistryURL: "http://hr:8080",
+			expectedRegistryURL: "",
+			expectedRegistryUsername: "",
+			expectedRegistryPassword: "",
+			expectedConfigDir: "",
+			expectedRegistryDataDir: "",
+			expectedImageDir: "",
+			expectedSPIFFEEndpoint: "",
+			expectedSPIFFEExpectedID: "",
+			expectedShutdownTimeout: "",
+		},
+		{
+			name:                 "BYO registry with whitespace-only registry URL should fail",
+			groundControlURL:     "http://gc:8080",
+			token:                "valid-token",
+			harborRegistryURL:    "http://hr:8080",
+			registryURL:          "   ",
+			registryUsername:     "user",
+			registryPassword:     "pass",
+			configDir:            "",
+			registryDataDir:      "",
+			imageDir:             "",
+			spiffeEndpoint:       "",
+			spiffeExpectedID:     "",
+			shutdownTimeout:      "",
+			spiffeEnabled:        false,
+			byoRegistry:          true,
+			shouldPassValidation: false,
+			expectedGroundControlURL: "http://gc:8080",
+			expectedToken:        "valid-token",
+			expectedHarborRegistryURL: "http://hr:8080",
+			expectedRegistryURL: "",
+			expectedRegistryUsername: "user",
+			expectedRegistryPassword: "pass",
+			expectedConfigDir: "",
+			expectedRegistryDataDir: "",
+			expectedImageDir: "",
+			expectedSPIFFEEndpoint: "",
+			expectedSPIFFEExpectedID: "",
+			expectedShutdownTimeout: "",
+		},
+		{
+			name:                 "empty shutdown timeout should be trimmed",
+			groundControlURL:     "http://gc:8080",
+			token:                "valid-token",
+			harborRegistryURL:    "http://hr:8080",
+			registryURL:          "",
+			registryUsername:     "",
+			registryPassword:     "",
+			configDir:            "",
+			registryDataDir:      "",
+			imageDir:             "",
+			spiffeEndpoint:       "",
+			spiffeExpectedID:     "",
+			shutdownTimeout:      "   ",
+			spiffeEnabled:        false,
+			byoRegistry:          false,
+			shouldPassValidation: true, // shutdownTimeout is not required for validation
+			expectedGroundControlURL: "http://gc:8080",
+			expectedToken:        "valid-token",
+			expectedHarborRegistryURL: "http://hr:8080",
+			expectedRegistryURL: "",
+			expectedRegistryUsername: "",
+			expectedRegistryPassword: "",
+			expectedConfigDir: "",
+			expectedRegistryDataDir: "",
+			expectedImageDir: "",
+			expectedSPIFFEEndpoint: "",
+			expectedSPIFFEExpectedID: "",
+			expectedShutdownTimeout: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create opts with test values
+			opts := SatelliteOptions{
+				GroundControlURL:    tt.groundControlURL,
+				Token:               tt.token,
+				HarborRegistryURL:   tt.harborRegistryURL,
+				RegistryURL:         tt.registryURL,
+				RegistryUsername:    tt.registryUsername,
+				RegistryPassword:    tt.registryPassword,
+				ConfigDir:           tt.configDir,
+				RegistryDataDir:     tt.registryDataDir,
+				ImageDir:            tt.imageDir,
+				SPIFFEEndpointSocket: tt.spiffeEndpoint,
+				SPIFFEExpectedServerID: tt.spiffeExpectedID,
+				SPIFFEEnabled:        tt.spiffeEnabled,
+				BYORegistry:          tt.byoRegistry,
+			}
+
+			shutdownTimeout := tt.shutdownTimeout
+
+			// For the environment fallback test, we need to simulate env values
+			if tt.name == "whitespace-only token with valid env token should fall back" {
+				// Simulate what happens in main() after flag parsing but before validation
+				if strings.TrimSpace(opts.Token) == "" {
+					opts.Token = "env-token" // This simulates envCfg.Token
+				}
+			}
+
+			// Call the validation function
+			err := validateAndTrimOptions(&opts, &shutdownTimeout)
+
+			// Check if validation passes/fails as expected
+			if tt.shouldPassValidation {
+				require.NoError(t, err, "Validation should have passed but got error: %v", err)
+				// Check that values were trimmed correctly
+				require.Equal(t, tt.expectedGroundControlURL, opts.GroundControlURL, "GroundControlURL mismatch")
+				require.Equal(t, tt.expectedToken, opts.Token, "Token mismatch")
+				require.Equal(t, tt.expectedHarborRegistryURL, opts.HarborRegistryURL, "HarborRegistryURL mismatch")
+				require.Equal(t, tt.expectedRegistryURL, opts.RegistryURL, "RegistryURL mismatch")
+				require.Equal(t, tt.expectedRegistryUsername, opts.RegistryUsername, "RegistryUsername mismatch")
+				require.Equal(t, tt.expectedRegistryPassword, opts.RegistryPassword, "RegistryPassword mismatch (should preserve whitespace)")
+				require.Equal(t, tt.expectedConfigDir, opts.ConfigDir, "ConfigDir mismatch")
+				require.Equal(t, tt.expectedRegistryDataDir, opts.RegistryDataDir, "RegistryDataDir mismatch")
+				require.Equal(t, tt.expectedImageDir, opts.ImageDir, "ImageDir mismatch")
+				require.Equal(t, tt.expectedSPIFFEEndpoint, opts.SPIFFEEndpointSocket, "SPIFFEEndpointSocket mismatch")
+				require.Equal(t, tt.expectedSPIFFEExpectedID, opts.SPIFFEExpectedServerID, "SPIFFEExpectedServerID mismatch")
+				require.Equal(t, tt.expectedShutdownTimeout, shutdownTimeout, "shutdownTimeout mismatch")
+			} else {
+				require.Error(t, err, "Validation should have failed but passed")
+			}
+		})
+	}
+}
+
 func TestMirrorFlags(t *testing.T) {
 	t.Run("Set accumulates values", func(t *testing.T) {
 		var m mirrorFlags
@@ -211,157 +479,4 @@ func TestMirrorFlags(t *testing.T) {
 		var m mirrorFlags
 		require.Equal(t, "[]", m.String())
 	})
-}
-
-// TestValidateRequiredFlags tests that whitespace-only values are treated as empty
-func TestValidateRequiredFlags(t *testing.T) {
-	tests := []struct {
-		name                string
-		groundControlURL    string
-		token               string
-		harborRegistryURL   string
-		registryURL         string
-		registryUsername    string
-		registryPassword    string
-		configDir           string
-		registryDataDir     string
-		imageDir            string
-		spiffeEndpoint      string
-		spiffeExpectedID    string
-		shouldPassValidation bool // true if validation should pass, false if it should fail
-	}{
-		{
-			name:                 "valid values",
-			groundControlURL:     "http://gc:8080",
-			token:                "valid-token",
-			harborRegistryURL:    "http://hr:8080",
-			shouldPassValidation: true,
-		},
-		{
-			name:                 "whitespace-only token",
-			groundControlURL:     "http://gc:8080",
-			token:                "   ",
-			harborRegistryURL:    "http://hr:8080",
-			shouldPassValidation: false,
-		},
-		{
-			name:                 "whitespace-only ground control URL",
-			groundControlURL:     "   ",
-			token:                "valid-token",
-			harborRegistryURL:    "http://hr:8080",
-			shouldPassValidation: false,
-		},
-		{
-			name:                 "whitespace-only harbor registry URL",
-			groundControlURL:     "http://gc:8080",
-			token:                "valid-token",
-			harborRegistryURL:    "   ",
-			shouldPassValidation: false,
-		},
-		{
-			name:                 "whitespace-only registry URL with BYO",
-			groundControlURL:     "http://gc:8080",
-			token:                "valid-token",
-			harborRegistryURL:    "http://hr:8080",
-			registryURL:          "   ",
-			registryUsername:     "user",
-			registryPassword:     "pass",
-			shouldPassValidation: false,
-		},
-		{
-			name:                 "whitespace-only config dir (should pass as it gets default value)",
-			groundControlURL:     "http://gc:8080",
-			token:                "valid-token",
-			harborRegistryURL:    "http://hr:8080",
-			configDir:            "   ",
-			shouldPassValidation: true, // ConfigDir gets default value if empty/whitespace
-		},
-		{
-			name:                 "whitespace-only SPIFFE endpoint",
-			groundControlURL:     "http://gc:8080",
-			token:                "valid-token",
-			harborRegistryURL:    "http://hr:8080",
-			spiffeEndpoint:       "   ",
-			shouldPassValidation: true, // SPIFFE endpoint is not required
-		},
-		{
-			name:                 "values with surrounding whitespace (should pass after trim)",
-			groundControlURL:     "  http://gc:8080  ",
-			token:                "  valid-token  ",
-			harborRegistryURL:    "  http://hr:8080  ",
-			shouldPassValidation: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a temporary directory for config files
-			dir := t.TempDir()
-			configPath := filepath.Join(dir, "config.json")
-			prevPath := filepath.Join(dir, "prev_config.json")
-			_ = configPath
-			_ = prevPath
-
-			// Create opts with test values
-			opts := SatelliteOptions{
-				GroundControlURL:    tt.groundControlURL,
-				Token:               tt.token,
-				HarborRegistryURL:   tt.harborRegistryURL,
-				RegistryURL:         tt.registryURL,
-				RegistryUsername:    tt.registryUsername,
-				RegistryPassword:    tt.registryPassword,
-				ConfigDir:           tt.configDir,
-				RegistryDataDir:     tt.registryDataDir,
-				ImageDir:            tt.imageDir,
-				SPIFFEEndpointSocket: tt.spiffeEndpoint,
-				SPIFFEExpectedServerID: tt.spiffeExpectedID,
-				BYORegistry:         tt.registryURL != "", // Assume BYO if registry URL provided
-			}
-
-			// Simulate flag parsing and env var fallback (simplified)
-			if opts.Token == "" {
-				opts.Token = "" // envCfg.Token would be empty in test
-			}
-			if opts.RegistryPassword == "" {
-				opts.RegistryPassword = "" // envCfg.RegistryPassword would be empty in test
-			}
-
-			// Apply trimming (same as in main)
-			opts.GroundControlURL = strings.TrimSpace(opts.GroundControlURL)
-			opts.Token = strings.TrimSpace(opts.Token)
-			opts.HarborRegistryURL = strings.TrimSpace(opts.HarborRegistryURL)
-			opts.RegistryURL = strings.TrimSpace(opts.RegistryURL)
-			opts.RegistryUsername = strings.TrimSpace(opts.RegistryUsername)
-			opts.RegistryPassword = strings.TrimSpace(opts.RegistryPassword)
-			opts.ConfigDir = strings.TrimSpace(opts.ConfigDir)
-			opts.RegistryDataDir = strings.TrimSpace(opts.RegistryDataDir)
-			opts.ImageDir = strings.TrimSpace(opts.ImageDir)
-			opts.SPIFFEEndpointSocket = strings.TrimSpace(opts.SPIFFEEndpointSocket)
-			opts.SPIFFEExpectedServerID = strings.TrimSpace(opts.SPIFFEExpectedServerID)
-
-			// Run validation (same logic as in main)
-			var validationError error
-			if !opts.FallbackOnly {
-				if !opts.SPIFFEEnabled && (opts.Token == "" || opts.GroundControlURL == "") {
-					validationError = fmt.Errorf("missing required arguments: --token and --ground-control-url")
-				}
-				if opts.GroundControlURL == "" {
-					validationError = fmt.Errorf("missing required argument: --ground-control-url")
-				}
-				if opts.HarborRegistryURL == "" {
-					validationError = fmt.Errorf("missing required argument: --harbor-registry-url")
-				}
-			}
-			if opts.BYORegistry && opts.RegistryURL == "" {
-				validationError = fmt.Errorf("missing required argument: --registry-url is required when --byo-registry is enabled")
-			}
-
-			// Check if validation passes/fails as expected
-			if tt.shouldPassValidation {
-				require.NoError(t, validationError, "Validation should have passed but got error: %v", validationError)
-			} else {
-				require.Error(t, validationError, "Validation should have failed but passed")
-			}
-		})
-	}
 }
