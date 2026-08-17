@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/env"
@@ -114,6 +115,19 @@ func main() {
 	if opts.RegistryPassword == "" {
 		opts.RegistryPassword = envCfg.RegistryPassword
 	}
+
+	// Trim all string fields to avoid whitespace-only values
+	opts.GroundControlURL = strings.TrimSpace(opts.GroundControlURL)
+	opts.Token = strings.TrimSpace(opts.Token)
+	opts.HarborRegistryURL = strings.TrimSpace(opts.HarborRegistryURL)
+	opts.RegistryURL = strings.TrimSpace(opts.RegistryURL)
+	opts.RegistryUsername = strings.TrimSpace(opts.RegistryUsername)
+	opts.RegistryPassword = strings.TrimSpace(opts.RegistryPassword)
+	opts.ConfigDir = strings.TrimSpace(opts.ConfigDir)
+	opts.RegistryDataDir = strings.TrimSpace(opts.RegistryDataDir)
+	opts.ImageDir = strings.TrimSpace(opts.ImageDir)
+	opts.SPIFFEEndpointSocket = strings.TrimSpace(opts.SPIFFEEndpointSocket)
+	opts.SPIFFEExpectedServerID = strings.TrimSpace(opts.SPIFFEExpectedServerID)
 
 	// Resolve config directory path
 	if opts.ConfigDir == "" {
