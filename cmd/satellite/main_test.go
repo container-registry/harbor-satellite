@@ -210,6 +210,7 @@ func TestValidateAndTrimOptions(t *testing.T) {
 		spiffeEnabled        bool
 		byoRegistry          bool
 		shouldPassValidation bool
+		envToken             string // simulate envCfg.Token for fallback
 		expectedGroundControlURL string
 		expectedToken        string
 		expectedHarborRegistryURL string
@@ -240,6 +241,7 @@ func TestValidateAndTrimOptions(t *testing.T) {
 			spiffeEnabled:        false,
 			byoRegistry:          true,
 			shouldPassValidation: true,
+			envToken:             "", // not used in this test
 			expectedGroundControlURL: "http://gc:8080",
 			expectedToken:        "valid-token",
 			expectedHarborRegistryURL: "http://hr:8080",
@@ -270,6 +272,7 @@ func TestValidateAndTrimOptions(t *testing.T) {
 			spiffeEnabled:        false,
 			byoRegistry:          false,
 			shouldPassValidation: false,
+			envToken:             "", // not used
 			expectedGroundControlURL: "",
 			expectedToken:        "",
 			expectedHarborRegistryURL: "",
@@ -300,8 +303,9 @@ func TestValidateAndTrimOptions(t *testing.T) {
 			spiffeEnabled:        false,
 			byoRegistry:          false,
 			shouldPassValidation: true, // Should fall back to env token
+			envToken:             "env-token", // This is the simulated envCfg.Token
 			expectedGroundControlURL: "http://gc:8080",
-			expectedToken:        "env-token", // This will be set in test setup
+			expectedToken:        "env-token",
 			expectedHarborRegistryURL: "http://hr:8080",
 			expectedRegistryURL: "",
 			expectedRegistryUsername: "",
@@ -330,6 +334,7 @@ func TestValidateAndTrimOptions(t *testing.T) {
 			spiffeEnabled:        true,
 			byoRegistry:          false,
 			shouldPassValidation: true, // SPIFFE mode doesn't require token/gc-url
+			envToken:             "", // not used
 			expectedGroundControlURL: "",
 			expectedToken:        "",
 			expectedHarborRegistryURL: "http://hr:8080",
@@ -360,6 +365,7 @@ func TestValidateAndTrimOptions(t *testing.T) {
 			spiffeEnabled:        false,
 			byoRegistry:          true,
 			shouldPassValidation: false,
+			envToken:             "", // not used
 			expectedGroundControlURL: "http://gc:8080",
 			expectedToken:        "valid-token",
 			expectedHarborRegistryURL: "http://hr:8080",
@@ -390,6 +396,7 @@ func TestValidateAndTrimOptions(t *testing.T) {
 			spiffeEnabled:        false,
 			byoRegistry:          false,
 			shouldPassValidation: true, // shutdownTimeout is not required for validation
+			envToken:             "", // not used
 			expectedGroundControlURL: "http://gc:8080",
 			expectedToken:        "valid-token",
 			expectedHarborRegistryURL: "http://hr:8080",
@@ -427,12 +434,12 @@ func TestValidateAndTrimOptions(t *testing.T) {
 			shutdownTimeout := tt.shutdownTimeout
 
 			// For the environment fallback test, we need to simulate env values
-			if tt.name == "whitespace-only token with valid env token should fall back" {
-				// Simulate what happens in main() after flag parsing but before validation
-				if strings.TrimSpace(opts.Token) == "" {
-					opts.Token = "env-token" // This simulates envCfg.Token
-				}
+			// Simulate what happens in main() after flag parsing but before validation
+			if strings.TrimSpace(opts.Token) == "" && tt.envToken != "" {
+				opts.Token = tt.envToken // This simulates envCfg.Token
 			}
+			// Note: we are not simulating env fallback for RegistryPassword in these tests because none of the tests need it.
+			// If we had a test that needed it, we would add an envRegistryPassword field and do similarly.
 
 			// Call the validation function
 			err := validateAndTrimOptions(&opts, &shutdownTimeout)

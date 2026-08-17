@@ -60,7 +60,6 @@ type SatelliteOptions struct {
 	DirectDelivery         bool
 	ImageDir               string
 }
-
 func main() {
 	_ = godotenv.Load(".env") //nolint:errcheck // .env file is optional
 
@@ -117,18 +116,11 @@ func main() {
 		opts.RegistryPassword = envCfg.RegistryPassword
 	}
 
-	// Trim all string fields to avoid whitespace-only values
-	opts.GroundControlURL = strings.TrimSpace(opts.GroundControlURL)
-	opts.Token = strings.TrimSpace(opts.Token)
-	opts.HarborRegistryURL = strings.TrimSpace(opts.HarborRegistryURL)
-	opts.RegistryURL = strings.TrimSpace(opts.RegistryURL)
-	opts.RegistryUsername = strings.TrimSpace(opts.RegistryUsername)
-	opts.RegistryPassword = strings.TrimSpace(opts.RegistryPassword)
-	opts.ConfigDir = strings.TrimSpace(opts.ConfigDir)
-	opts.RegistryDataDir = strings.TrimSpace(opts.RegistryDataDir)
-	opts.ImageDir = strings.TrimSpace(opts.ImageDir)
-	opts.SPIFFEEndpointSocket = strings.TrimSpace(opts.SPIFFEEndpointSocket)
-	opts.SPIFFEExpectedServerID = strings.TrimSpace(opts.SPIFFEExpectedServerID)
+	// Validate and trim options
+	if err := validateAndTrimOptions(&opts, &shutdownTimeout); err != nil {
+		fmt.Printf("Invalid arguments: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Resolve config directory path
 	if opts.ConfigDir == "" {
@@ -151,44 +143,12 @@ func main() {
 		pathConfig.ZotStorageDir = opts.RegistryDataDir
 	}
 
-	// For --fallback-only mode, relax token/gc-url requirements
-	if !opts.FallbackOnly {
-		if !opts.SPIFFEEnabled && (opts.Token == "" || opts.GroundControlURL == "") {
-			fmt.Println("Missing required arguments: --token and --ground-control-url or matching env vars (or enable SPIFFE with --spiffe-enabled).")
-			os.Exit(1)
-		}
-		if opts.GroundControlURL == "" {
-			fmt.Println("Missing required argument: --ground-control-url or GROUND_CONTROL_URL env var.")
-			os.Exit(1)
-		}
-		if opts.HarborRegistryURL == "" {
-			fmt.Println("Missing required argument: --harbor-registry-url or HARBOR_REGISTRY_URL env var.")
-			os.Exit(1)
-		}
-	}
-	if opts.GroundControlURL == "" {
-		opts.GroundControlURL = config.DefaultGroundControlURL
-	}
-	if opts.BYORegistry && opts.RegistryURL == "" {
-		fmt.Println("Missing required argument: --registry-url is required when --byo-registry is enabled.")
-		os.Exit(1)
-	}
-
-	// Validate and trim options
-	if err := validateAndTrimOptions(&opts, &shutdownTimeout); err != nil {
-		fmt.Printf("Invalid arguments: %v\n", err)
-		os.Exit(1)
-	}
-
 	err = run(opts, pathConfig, shutdownTimeout)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
 }
-
-// validateAndTrimOptions trims whitespace from appropriate fields and validates
-// required options. It returns an error if validation fails.
 func validateAndTrimOptions(opts *SatelliteOptions, shutdownTimeout *string) error {
 	// Trim string fields where leading/trailing whitespace is meaningless
 	// NOTE: We do NOT trim RegistryPassword as it may contain intentional whitespace
