@@ -17,6 +17,9 @@ func TestFromJSONLogsStructuredUnmarshalError(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unmarshal state")
 
+	var syntaxErr *json.SyntaxError
+	require.ErrorAs(t, err, &syntaxErr)
+
 	got := buf.String()
 	require.NotEmpty(t, got)
 	require.True(t, json.Valid([]byte(got)))
@@ -24,6 +27,9 @@ func TestFromJSONLogsStructuredUnmarshalError(t *testing.T) {
 	var entry map[string]any
 	require.NoError(t, json.Unmarshal([]byte(got), &entry))
 	require.Equal(t, "error", entry["level"])
-	require.Contains(t, got, "Error in unmarshalling")
-	require.Contains(t, got, "invalid character")
+	require.Equal(t, "Error in unmarshalling", entry["message"])
+
+	errorField, ok := entry["error"].(string)
+	require.True(t, ok)
+	require.Contains(t, errorField, "invalid character")
 }

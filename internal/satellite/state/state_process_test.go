@@ -336,6 +336,9 @@ func TestProcessStateLogsStructuredError(t *testing.T) {
 	var entry map[string]any
 	require.NoError(t, json.Unmarshal([]byte(got), &entry))
 	require.Equal(t, "error", entry["level"])
-	require.Contains(t, got, "Error in getting repository and image name")
-	require.Contains(t, got, "invalid repository format")
+	require.Equal(t, "Error in getting repository and image name", entry["message"])
+
+	errorField, ok := entry["error"].(string)
+	require.True(t, ok)
+	require.Contains(t, errorField, "invalid repository format")
 }
