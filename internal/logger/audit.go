@@ -311,6 +311,15 @@ func closeAll(ts []Transport) {
 	}
 }
 
+// Close releases all active audit log transports.
+func (a *AuditLogger) Close() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	closeAll(a.transports)
+	return nil
+}
+
 // ensureWritable verifies that path can be created and written to now.
 // lumberjack opens its file lazily on first write and silently tolerates write
 // errors, so without this probe an unwritable path would look enabled while

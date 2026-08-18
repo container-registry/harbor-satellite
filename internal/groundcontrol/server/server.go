@@ -71,6 +71,7 @@ type ServerResult struct {
 	SPIFFEProvider spiffe.Provider
 	SPIFFEConfig   *spiffe.Config
 	EmbeddedSpire  *spiffe.EmbeddedSpireServer
+	AuditLogger    *auditlog.AuditLogger
 }
 
 func NewServer() *ServerResult {
@@ -232,6 +233,7 @@ func NewServer() *ServerResult {
 		SPIFFEProvider: spiffeProvider,
 		SPIFFEConfig:   spiffeCfg,
 		EmbeddedSpire:  embeddedSpire,
+		AuditLogger:    auditLogger,
 	}
 }
 
