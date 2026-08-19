@@ -16,7 +16,14 @@ import (
 // useMockDeviceIdentity swaps the manager's encryptor for one keyed off a mock
 // device identity. The real one reads Linux machine identifiers, so key
 // derivation fails on other platforms and the test would only run on Linux.
+//
+// The encryptor is manager state rather than config, so cm.With() cannot reach
+// it: its mutators are func(*Config). The swap is instead made under the same
+// lock every other mutation of the manager takes.
 func useMockDeviceIdentity(cm *ConfigManager) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
 	cm.encryptor = secure.NewConfigEncryptor(crypto.NewDefaultProvider(), identity.NewMockDeviceIdentity())
 }
 
