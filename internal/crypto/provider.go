@@ -45,6 +45,12 @@ type Provider interface {
 	GenerateKeyPair() (crypto.PrivateKey, crypto.PublicKey, error)
 
 	// Hash computes a cryptographic hash of the data.
+	//
+	// This signature has no error return, but an implementation may be unable
+	// to hash at all: the nospiffe build ships a provider with no cryptography
+	// and returns nil. Callers must treat a zero-length result as a failure,
+	// never as the valid hash of an empty input, and must not persist or
+	// compare it as if it were a real digest.
 	Hash(data []byte) []byte
 
 	// RandomBytes generates cryptographically secure random bytes.
