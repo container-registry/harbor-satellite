@@ -249,6 +249,7 @@ func TestFetchEntitiesFromState(t *testing.T) {
 		}
 
 		entities := FetchEntitiesFromState(state)
+		require.NotNil(t, entities)
 		require.Empty(t, entities)
 	})
 }
@@ -277,6 +278,111 @@ func TestPersistState(t *testing.T) {
 	require.Len(t, loaded.Groups, 1)
 	require.Equal(t, "http://registry.example.com/group1", loaded.Groups[0].URL)
 	require.Equal(t, process.stateMap[0].Entities, loaded.Groups[0].Entities)
+}
+
+func TestPersistStateSkipsIncompleteGroups(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	process := &FetchAndReplicateStateProcess{
+		stateFilePath:       path,
+		currentConfigDigest: "sha256:config",
+		stateMap: []StateMap{
+			{
+				url: "http://registry.example.com/complete",
+				Entities: []Entity{
+					{Name: "alpine", Repository: "library", Tag: "latest", Digest: "sha256:abc123"},
+				},
+			},
+			{
+				url:      "http://registry.example.com/pending",
+				Entities: nil,
+			},
+		},
+	}
+
+	require.NoError(t, process.PersistState())
+
+	loaded, err := LoadState(path)
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Equal(t, "sha256:config", loaded.ConfigDigest)
+	require.Len(t, loaded.Groups, 1)
+	require.Equal(t, "http://registry.example.com/complete", loaded.Groups[0].URL)
+}
+
+func TestPersistStatePreservesCompletedEmptyGroup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	process := &FetchAndReplicateStateProcess{
+		stateFilePath: path,
+		stateMap: []StateMap{
+			{
+				url:      "http://registry.example.com/empty",
+				Entities: []Entity{},
+			},
+		},
+	}
+
+	require.NoError(t, process.PersistState())
+
+	loaded, err := LoadState(path)
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Len(t, loaded.Groups, 1)
+	require.Equal(t, "http://registry.example.com/empty", loaded.Groups[0].URL)
+	require.NotNil(t, loaded.Groups[0].Entities)
+	require.Empty(t, loaded.Groups[0].Entities)
+}
+
+func TestPersistenceRecoveryRequeuesOnlyIncompleteGroups(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	completeURL := "http://registry.example.com/complete"
+	pendingURL := "http://registry.example.com/pending"
+	process := &FetchAndReplicateStateProcess{
+		stateFilePath: path,
+		stateMap: []StateMap{
+			{
+				url: completeURL,
+				Entities: []Entity{
+					{Name: "alpine", Repository: "library", Tag: "latest", Digest: "sha256:abc123"},
+				},
+			},
+			{url: pendingURL},
+		},
+	}
+	require.NoError(t, process.PersistState())
+
+	log := zerolog.Nop()
+	restarted := NewFetchAndReplicateStateProcess(nil, path, &log)
+	require.Len(t, restarted.stateMap, 1)
+	require.Equal(t, completeURL, restarted.stateMap[0].url)
+
+	require.True(t, restarted.updateStateMap([]string{completeURL, pendingURL}))
+	require.Len(t, restarted.stateMap, 2)
+	require.Equal(t, pendingURL, restarted.stateMap[1].url)
+	require.Nil(t, restarted.stateMap[1].Entities)
+}
+
+func TestPersistStateRemovesStaleGroupBeforeReplacementCompletes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	process := &FetchAndReplicateStateProcess{
+		stateFilePath: path,
+		stateMap: []StateMap{
+			{
+				url: "http://registry.example.com/stale",
+				Entities: []Entity{
+					{Name: "alpine", Repository: "library", Tag: "latest", Digest: "sha256:abc123"},
+				},
+			},
+		},
+	}
+	require.NoError(t, process.PersistState())
+
+	require.True(t, process.updateStateMap([]string{"http://registry.example.com/replacement"}))
+	require.NoError(t, process.PersistState())
+
+	loaded, err := LoadState(path)
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Empty(t, loaded.Groups)
 }
 
 func TestRemoveNullTagArtifacts(t *testing.T) {
