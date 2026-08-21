@@ -117,13 +117,14 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 	f.mu.Lock()
 	changed := f.updateStateMap(satelliteState.States)
-	f.mu.Unlock()
-
+	var persistErr error
 	// Persist state if groups were added, removed, or swapped
 	if f.stateFilePath != "" && changed {
-		if err := f.PersistState(); err != nil {
-			log.Warn().Err(err).Msg("Failed to persist state after group changes")
-		}
+		persistErr = f.persistStateLocked()
+	}
+	f.mu.Unlock()
+	if persistErr != nil {
+		log.Warn().Err(persistErr).Msg("Failed to persist state after group changes")
 	}
 
 	// Create channels for results
