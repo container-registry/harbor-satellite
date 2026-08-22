@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Harbor Satellite is a registry fleet management and artifact distribution solution that extends Harbor container registry to edge computing environments. Two main components:
 
-1. Satellite: Runs at edge locations as a lightweight, standalone registry (primary for local workloads, fallback for central Harbor)
+1. Satellite: Runs at edge locations and replicates OCI content to a local ORAS image layout or an external BYO registry
 2. Ground Control: Cloud-side management service for device management, onboarding, state management, and artifact orchestration
 
 ## Build and Development Commands
@@ -82,8 +82,8 @@ When making changes, keep binary entrypoints in `cmd/` and implementation packag
 - cmd/satellite/main.go: Entry point, handles CLI flags (token, ground-control-url, mirrors, json-logging)
 - pkg/config/: Configuration management, validation, hot-reloading
 - internal/satellite/: Core orchestration logic
-- internal/state/: State management (replication, fetching, artifact handling, registration)
-- internal/registry/: Local OCI registry management (Zot integration)
+- internal/satellite/state/: State management (replication, fetching, artifact handling, registration)
+- internal/satellite/store/: Local OCI layout and remote registry storage backends
 - internal/scheduler/: Cron-based job scheduling
 - internal/container_runtime/: CRI config management (Docker, containerd, CRI-O, Podman)
 - internal/server/: HTTP server for metrics and health
@@ -102,20 +102,20 @@ When making changes, keep binary entrypoints in `cmd/` and implementation packag
 
 Groups: Collections of container images that satellites replicate. Contains artifact metadata (repository, tag, digest, type).
 
-Configs: Define how satellites connect to Ground Control, replication intervals, and local registry settings (including Zot config).
+Configs: Define how satellites connect to Ground Control, replication intervals, and optional BYO registry settings.
 
 State Replication: Periodic sync where satellites fetch desired state from Ground Control and replicate artifacts locally.
 
 Registration: Periodic heartbeat where satellites register with Ground Control using their token.
 
-Mirror Configuration: Satellites configure container runtimes to use local registry as mirror, with fallback to upstream.
+Mirror Configuration: In BYO registry mode, satellites can configure container runtimes to use the external registry as a mirror.
 
 ### Configuration Files
 
-Satellite uses JSON configuration with three sections:
+Satellite uses JSON configuration with two sections:
 - state_config: Registry credentials and state URL
-- app_config: Ground Control URL, log level, replication intervals, local registry settings
-- zot_config: Embedded Zot registry configuration (storage, HTTP, logging)
+- app_config: Ground Control URL, log level, replication intervals, and optional BYO registry settings
+- Local content is stored in an ORAS OCI image layout under the configured registry data directory.
 
 Ground Control uses environment variables from `.env` or the process environment (see `.env.example`):
 - Harbor access and health behavior: HARBOR_URL, HARBOR_USERNAME, HARBOR_PASSWORD, SKIP_HARBOR_HEALTH_CHECK, ROBOT_DURATION_DAYS.
@@ -137,7 +137,7 @@ The satellite maintains state in a JSON file (default: config.json) containing c
 
 ### Container Runtime Integration
 
-Satellite configures CRIs as mirrors using --mirrors flag:
+In BYO registry mode, Satellite configures CRIs as mirrors using the --mirrors flag:
 - Format: --mirrors=<CRI>:<registry1>,<registry2>
 - Example: --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
 - Docker only supports mirroring docker.io, use --mirrors=docker:true
@@ -172,6 +172,7 @@ All CI uses Taskfile for consistent builds.
 ADRs in docs/decisions/:
 - ADR-0001: Skopeo vs Crane (chose Skopeo for image copying)
 - ADR-0002: Zot vs Docker Registry (chose Zot for OCI compliance)
+- ADR-0009: ORAS OCI storage and a policy-enforcing transparent proxy (supersedes ADR-0001/0002 target-state choices)
 - ADR-0003: Remote config injection (chose API-based config delivery)
 
 ## Common Workflows
@@ -193,9 +194,11 @@ ADRs in docs/decisions/:
 
 ### Modifying state replication logic
 
-State replication in internal/state/:
+State replication in internal/satellite/state/ and internal/satellite/store/:
 - fetcher.go: Fetching state from Ground Control
-- replicator.go: Replicating artifacts to local registry
+- store/store.go: Backend-neutral replication contract
+- store/oci.go: Replicating OCI graphs into the local image layout
+- store/registry.go: Replicating images to an external BYO registry
 - state_process.go: Orchestrating the state sync process
 - registration_process.go: Satellite registration with Ground Control
 

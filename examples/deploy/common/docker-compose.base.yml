@@ -20,17 +20,20 @@ services:
     networks:
       - harbor-satellite
 
-  # Mock Harbor Registry (Zot)
+  # Mock Harbor uses the Docker Official Distribution registry image with
+  # filesystem storage and its HTTP listener configured explicitly below.
   mock-harbor:
-    image: ghcr.io/project-zot/zot-linux-amd64:v2.1.1
+    image: registry:2
     container_name: mock-harbor
+    environment:
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /var/lib/registry
+      REGISTRY_HTTP_ADDR: 0.0.0.0:5000
     volumes:
-      - ./mock-harbor-config.json:/etc/zot/config.json:ro
-      - mock-harbor-data:/var/lib/zot
+      - mock-harbor-data:/var/lib/registry
     ports:
       - "5000:5000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/v2/"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:5000/v2/"]
       interval: 10s
       timeout: 5s
       retries: 5
