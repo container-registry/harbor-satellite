@@ -17,56 +17,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 )
 
-// SatelliteGroupParams links or unlinks a satellite and a group.
-//
-// swagger:model SatelliteGroupParams
-type SatelliteGroupParams struct {
-	Satellite string `json:"satellite"`
-	Group     string `json:"group"`
-}
-
-// RegisterSatelliteParams registers a token-managed satellite.
-//
-// swagger:model RegisterSatelliteParams
-type RegisterSatelliteParams struct {
-	Name       string    `json:"name"`
-	Groups     *[]string `json:"groups,omitempty"`
-	ConfigName string    `json:"config_name"`
-}
-
-// RegisterSatelliteResponse contains a single-use ZTR token.
-//
-// swagger:model RegisterSatelliteResponse
-type RegisterSatelliteResponse struct {
-	Token string `json:"token"`
-}
-
-// CachedImage describes an image cached by a satellite.
-//
-// swagger:model CachedImage
-type CachedImage struct {
-	Reference string `json:"reference"`
-	SizeBytes int64  `json:"size_bytes"`
-}
-
-// SatelliteStatusParams reports the current satellite status and cache metrics.
-//
-// swagger:model SatelliteStatusParams
-type SatelliteStatusParams struct {
-	Name                string        `json:"name"`
-	Activity            string        `json:"activity"`
-	StateReportInterval string        `json:"state_report_interval"`
-	LatestStateDigest   string        `json:"latest_state_digest"`
-	LatestConfigDigest  string        `json:"latest_config_digest"`
-	MemoryUsedBytes     uint64        `json:"memory_used_bytes"`
-	StorageUsedBytes    uint64        `json:"storage_used_bytes"`
-	CPUPercent          float64       `json:"cpu_percent"`
-	RequestCreatedTime  time.Time     `json:"request_created_time"`
-	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
-	ImageCount          int           `json:"image_count"`
-	CachedImages        []CachedImage `json:"cached_images,omitempty"`
-}
-
 type SatelliteSyncResponse struct {
 	Events []string `json:"events"`
 }
@@ -658,7 +608,7 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 	resp := SatelliteSyncResponse{
 		Events: make([]string, 0),
 	}
-	var req SatelliteStatusParams
+	var req SatelliteStatusRequest
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
 		HandleAppError(w, err)

@@ -64,8 +64,6 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 	s.start()
 	defer s.stop()
 
-	// log := logger.FromContext(context.Background()).With().Str("process", s.name).Logger()
-
 	if s.cm == nil {
 		return fmt.Errorf("config manager not found")
 	}
@@ -79,15 +77,6 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 			logger.FromContext(ctx).Warn().Err(err).Msg("error closing response body")
 		}
 	}()
-
-	// log.Printf("Status: %s", resp.Status)
-	// log.Printf("Body: %s", r)
-	//
-	// var respBody RefreshEndpointResponse
-	// err = json.NewDecoder(resp.Body).Decode(&respBody)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to decode body: %v", err)
-	// }
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -114,8 +103,6 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 			return fmt.Errorf("persist refreshed credentials: %w", err)
 		}
 	}
-
-	s.log.Info().Msgf("Secret After Update: %s", s.cm.GetStateConfig().RegistryCredentials.Password)
 
 	return nil
 }
@@ -170,7 +157,6 @@ func (s *RefreshCredentialProcess) createRequest(ctx context.Context, reqURL str
 
 		username := s.cm.GetSourceRegistryUsername()
 		password := s.cm.GetSourceRegistryPassword()
-		s.log.Info().Msgf("Using username: %s, password: %s", username, password)
 		httpReq.SetBasicAuth(username, password)
 	}
 
@@ -206,10 +192,3 @@ func (s *RefreshCredentialProcess) stop() {
 	defer s.mu.Unlock()
 	s.isRunning = false
 }
-
-// TODO: To be addressed in a separate PR
-// func (s *RefreshCredentialProcess) complete() {
-// 	s.mu.Lock()
-// 	defer s.mu.Unlock()
-// 	s.isComplete = true
-// }

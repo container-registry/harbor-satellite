@@ -6,7 +6,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
-	eventscheduler "github.com/container-registry/harbor-satellite/internal/satellite/event-scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/state"
@@ -19,10 +18,10 @@ type Satellite struct {
 	schedulers     []*scheduler.Scheduler
 	stateFilePath  string
 	stateProcess   *state.FetchAndReplicateStateProcess
-	eventscheduler *eventscheduler.EventScheduler
+	eventscheduler *events.EventScheduler
 }
 
-func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string, jq *eventscheduler.EventScheduler) *Satellite {
+func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string, jq *events.EventScheduler) *Satellite {
 	return &Satellite{
 		cm:             cm,
 		criResults:     criResults,
@@ -162,7 +161,7 @@ func (s *Satellite) registerEvents(ctx context.Context, cm *config.ConfigManager
 	}
 
 	// Register Schedulers
-	s.eventscheduler.Register(refreshSched)
+	s.eventscheduler.Register(ctx, refreshSched)
 
 	return errors.Join(errs...)
 }

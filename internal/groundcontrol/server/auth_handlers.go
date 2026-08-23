@@ -16,30 +16,6 @@ import (
 
 const maxFailedAttempts = 5
 
-// swagger:strfmt password
-type swaggerPassword string
-
-// swagger:strfmt date-time
-type swaggerDateTime string
-
-// LoginRequest contains user credentials for session creation.
-//
-// swagger:model LoginRequest
-type loginRequest struct {
-	// required: true
-	Username string `json:"username"`
-	// required: true
-	Password swaggerPassword `json:"password"`
-}
-
-// LoginResponse contains a bearer token and its expiration timestamp.
-//
-// swagger:model LoginResponse
-type loginResponse struct {
-	Token     string          `json:"token"`
-	ExpiresAt swaggerDateTime `json:"expires_at"`
-}
-
 type refreshCredentialResponse struct {
 	Secret string `json:"secret"`
 }

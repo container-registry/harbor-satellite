@@ -13,7 +13,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
-	eventscheduler "github.com/container-registry/harbor-satellite/internal/satellite/event-scheduler"
+	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -28,7 +28,7 @@ type StatusReportingProcess struct {
 	cm             *config.ConfigManager
 	spiffeClient   *spiffe.Client
 	pendingCRI     []runtime.CRIConfigResult
-	eventScheduler *eventscheduler.EventScheduler
+	eventScheduler *events.EventScheduler
 	criReported    bool
 }
 
@@ -36,7 +36,7 @@ type StatusReportResponse struct {
 	Events []string `json:"events"`
 }
 
-func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *eventscheduler.EventScheduler) *StatusReportingProcess {
+func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *events.EventScheduler) *StatusReportingProcess {
 	p := &StatusReportingProcess{
 		name:           config.StatusReportJobName,
 		mu:             &sync.Mutex{},
@@ -230,11 +230,6 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 			logger.FromContext(ctx).Warn().Err(err).Msg("error closing response body")
 		}
 	}()
-
-	logger.FromContext(ctx).Info().
-		Str("finalMethod", resp.Request.Method).
-		Str("finalURL", resp.Request.URL.String()).
-		Msg("status report response details")
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("status report failed: %s", resp.Status)

@@ -683,9 +683,6 @@ type ServerInterface interface {
 	// SyncSatellite Reports satellite status.
 	// (POST /satellites/sync)
 	SyncSatellite(w http.ResponseWriter, r *http.Request)
-	// RefreshSatellite refreshes satellite token.
-	// (POST /satellites/refresh)
-	RefreshSatellite(w http.ResponseWriter, r *http.Request)
 	// Ztr Performs token-based zero-touch registration.
 	// (POST /satellites/ztr)
 	Ztr(w http.ResponseWriter, r *http.Request)
@@ -1379,20 +1376,6 @@ func (siw *ServerInterfaceWrapper) SyncSatellite(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
-// SyncSatellite operation middleware
-func (siw *ServerInterfaceWrapper) RefreshSatellite(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RefreshSatellite(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // Ztr operation middleware
 func (siw *ServerInterfaceWrapper) Ztr(w http.ResponseWriter, r *http.Request) {
 
@@ -1593,8 +1576,6 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 	r.HandleFunc(options.BaseURL+"/satellites/sync", wrapper.SyncSatellite).Methods(http.MethodPost)
 
 	r.HandleFunc(options.BaseURL+"/satellites/ztr", wrapper.Ztr).Methods(http.MethodPost)
-
-	r.HandleFunc(options.BaseURL+"/satellites/refresh", wrapper.RefreshSatellite).Methods(http.MethodPost)
 
 	return r
 }

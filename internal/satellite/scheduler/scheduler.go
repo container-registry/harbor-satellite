@@ -164,13 +164,6 @@ func (s *Scheduler) ResetIntervalFromExpr(intervalExpr string) error {
 	return nil
 }
 
-// // GetInterval returns the current interval
-// func (s *Scheduler) GetInterval() time.Duration {
-// 	s.mu.Lock()
-// 	defer s.mu.Unlock()
-// 	return s.interval
-// }
-
 // Name returns the name of the scheduler.
 func (s *Scheduler) Name() string {
 	return s.name

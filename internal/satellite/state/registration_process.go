@@ -116,9 +116,6 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 		return fmt.Errorf("failed to register satellite: could not update state auth config")
 	}
 
-	log.Info().Msgf("Registering State: %#v", stateConfig)
-	log.Info().Msgf("Actual State: %#v", z.cm.GetStateConfig())
-
 	audit.Log(logger.AuditEvent{
 		Operation:    logger.OpRegister,
 		ResourceType: logger.ResSatellite,

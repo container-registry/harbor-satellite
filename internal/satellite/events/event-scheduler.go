@@ -1,4 +1,4 @@
-package eventscheduler
+package events
 
 import (
 	"context"
@@ -23,24 +23,21 @@ func NewEventScheduler(log *zerolog.Logger) *EventScheduler {
 	}
 }
 
-func (s *EventScheduler) Register(sched *scheduler.Scheduler) {
+func (s *EventScheduler) Register(ctx context.Context, sched *scheduler.Scheduler) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.log.Info().Msgf("registered event: %s", sched.Name())
 	s.eventMap[sched.Name()] = sched
 
-	sched.Start(context.Background())
+	sched.Start(ctx)
 }
 
 func (s *EventScheduler) SendEvent(event string) {
-	s.log.Info().Msgf("executing event %s: ", event)
 	sched, ok := s.eventMap[event]
 	if !ok {
-		s.log.Warn().Msgf("event not found: %s", event)
 		return
 	}
 
-	s.log.Info().Msgf("executing event: %s", event)
 	sched.Trigger()
 }
