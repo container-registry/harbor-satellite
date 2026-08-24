@@ -31,7 +31,7 @@ const BringOwnRegistry bool = false
 const DefaultZotConfigJSON = `{
   "distSpecVersion": "1.1.0",
   "storage": {
-    "rootDirectory": "./zot"
+    "rootDirectory": ""
   },
   "http": {
     "address": "0.0.0.0",
