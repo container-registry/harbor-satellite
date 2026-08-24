@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
 )

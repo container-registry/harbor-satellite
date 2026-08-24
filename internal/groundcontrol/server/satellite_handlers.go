@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
-	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
+	auditlog "github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 )

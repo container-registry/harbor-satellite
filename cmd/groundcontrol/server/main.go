@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harborhealth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/migrator"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"

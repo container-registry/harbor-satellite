@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 )
