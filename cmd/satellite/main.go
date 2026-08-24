@@ -13,7 +13,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
-	eventscheduler "github.com/container-registry/harbor-satellite/internal/satellite/event-scheduler"
+	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
 	"github.com/container-registry/harbor-satellite/internal/satellite/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
@@ -420,7 +420,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	})
 
-	eventScheduler := eventscheduler.NewEventScheduler(log)
+	eventScheduler := events.NewEventScheduler(log)
 
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, eventScheduler)
 	err = s.Run(ctx)
