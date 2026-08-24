@@ -1,10 +1,6 @@
 package config
 
-import (
-	"encoding/json"
-
-	"github.com/rs/zerolog"
-)
+import "github.com/rs/zerolog"
 
 type URL string
 
@@ -212,9 +208,8 @@ type StateConfig struct {
 }
 
 type Config struct {
-	StateConfig  StateConfig     `json:"state_config,omitempty"`
-	AppConfig    AppConfig       `json:"app_config,omitempty"`
-	ZotConfigRaw json.RawMessage `json:"zot_config,omitempty"`
+	StateConfig StateConfig `json:"state_config,omitempty"`
+	AppConfig   AppConfig   `json:"app_config,omitempty"`
 }
 
 var validLogLevels = map[string]bool{

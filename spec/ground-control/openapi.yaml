@@ -1570,11 +1570,6 @@ components:
             - $ref: "#/components/schemas/StateConfigValue"
           x-go-name: StateConfig
           nullable: true
-        zot_config:
-          type: object
-          additionalProperties: {}
-          x-go-name: ZotConfig
-          nullable: true
     ConfigResponse:
       type: object
       title: ConfigResponse describes a stored satellite configuration.
@@ -1603,10 +1598,6 @@ components:
           $ref: "#/components/schemas/StateConfigValue"
         app_config:
           $ref: "#/components/schemas/AppConfig"
-        zot_config:
-          type: object
-          additionalProperties: {}
-          x-go-name: ZotConfig
     DirectDeliveryConfig:
       type: object
       title: DirectDeliveryConfig controls direct image delivery to a node.

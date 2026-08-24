@@ -5,6 +5,22 @@ inputs:
   IMAGE_TAGS:
     description: 'Tags for the image, e.g. "latest, v1.0.0"'
     required: true
+  SOURCE_IMAGE_TAGS:
+    description: "Source tags used for intermediate platform images"
+    required: false
+  PUBLISH_MODE:
+    description: "Publish mode: all, platform, or manifest"
+    required: false
+    default: all
+  PLATFORM:
+    description: "Single platform to build, e.g. linux/amd64"
+    required: false
+  ARCH_SUFFIX:
+    description: "Architecture suffix for temporary image tags, e.g. amd64"
+    required: false
+  ARCH_SUFFIXES:
+    description: "Space-separated architecture suffixes to combine into the final manifest"
+    required: false
   GITHUB_TOKEN:
     description: "GitHub token"
     required: true
@@ -37,10 +53,14 @@ runs:
 
     - name: Set up Docker Buildx with remote BuildKit
       shell: bash
+      env:
+        BUILDER_SUFFIX: ${{ inputs.PUBLISH_MODE }}-${{ inputs.PLATFORM }}
       run: |
-        docker buildx rm remote >/dev/null 2>&1 || true
-        docker buildx create --name remote --driver remote tcp://buildkitd.github-runners.svc:1234 --use
-        docker buildx inspect remote --bootstrap
+        BUILDER_NAME=$(printf 'remote-%s-%s-%s' "${GITHUB_RUN_ID:-local}" "${GITHUB_RUN_ATTEMPT:-0}" "${BUILDER_SUFFIX:-default}" | tr -c 'A-Za-z0-9_.-' '-')
+        echo "BUILDX_BUILDER=$BUILDER_NAME" >> "$GITHUB_ENV"
+        docker buildx rm "$BUILDER_NAME" >/dev/null 2>&1 || true
+        docker buildx create --name "$BUILDER_NAME" --driver remote tcp://buildkitd.github-runners.svc:1234 --use
+        docker buildx inspect "$BUILDER_NAME" --bootstrap
 
     - name: Provide envsubst for Cosign installer
       shell: bash
@@ -76,7 +96,7 @@ runs:
         GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
       run: cosign env
 
-    - name: Publish and Sign Both Components
+    - name: Publish Images or Manifest
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
@@ -85,9 +105,24 @@ runs:
         REG_PASS: ${{ inputs.REGISTRY_PASSWORD }}
         PROJECT_NAME: ${{ inputs.PROJECT_NAME }}
         TAG: ${{ inputs.IMAGE_TAGS }}
+        SOURCE_IMAGE_TAGS: ${{ inputs.SOURCE_IMAGE_TAGS }}
+        PUBLISH_MODE: ${{ inputs.PUBLISH_MODE }}
+        PLATFORM: ${{ inputs.PLATFORM }}
+        ARCH_SUFFIX: ${{ inputs.ARCH_SUFFIX }}
+        ARCH_SUFFIXES: ${{ inputs.ARCH_SUFFIXES }}
       run: |
         for attempt in 1 2 3; do
-          if task publish-and-sign; then
+          case "$PUBLISH_MODE" in
+            platform) publish_cmd=(task publish-platform) ;;
+            manifest) publish_cmd=(task publish-manifest-and-sign) ;;
+            all)      publish_cmd=(task publish-and-sign) ;;
+            *)
+              echo "Unsupported PUBLISH_MODE: $PUBLISH_MODE" >&2
+              exit 2
+              ;;
+          esac
+
+          if "${publish_cmd[@]}"; then
             exit 0
           else
             status=$?
@@ -98,13 +133,13 @@ runs:
           fi
 
           echo "Publish attempt $attempt failed with status $status; resetting remote BuildKit builder before retry..."
-          docker buildx rm remote >/dev/null 2>&1 || true
-          if ! docker buildx create --name remote --driver remote tcp://buildkitd.github-runners.svc:1234 --use; then
+          docker buildx rm "$BUILDX_BUILDER" >/dev/null 2>&1 || true
+          if ! docker buildx create --name "$BUILDX_BUILDER" --driver remote tcp://buildkitd.github-runners.svc:1234 --use; then
             echo "Remote BuildKit builder creation failed; retrying after backoff..."
             sleep $((attempt * 20))
             continue
           fi
-          if ! docker buildx inspect remote --bootstrap; then
+          if ! docker buildx inspect "$BUILDX_BUILDER" --bootstrap; then
             echo "Remote BuildKit builder bootstrap failed; retrying after backoff..."
             sleep $((attempt * 20))
             continue

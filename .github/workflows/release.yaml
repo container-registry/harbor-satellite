@@ -10,13 +10,43 @@ on:
       - "*.md"
       - "assets/**"
 
+concurrency:
+  # For pushes to main the publishing flow is two-phase (per-arch matrix then
+  # sequential manifest assembly for both components). Cancelling mid-run can
+  # leave satellite:latest and ground-control:latest pointing at different
+  # commits with nothing to repair the inconsistency, so we let main-branch
+  # runs queue instead of cancelling each other.
+  # For pull requests we keep cancel-in-progress: true for fast feedback.
+  group: ${{ github.ref == 'refs/heads/main' && 'publish-main' || format('ci-{0}', github.ref_name) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
+  setup:
+    permissions: {}
+    runs-on: container-registry
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      arches: ${{ steps.arch-list.outputs.arches }}
+      arch_suffixes: ${{ steps.arch-list.outputs.arch_suffixes }}
+    steps:
+      - name: Emit supported architectures
+        id: arch-list
+        run: |
+          ARCHES='["amd64","arm64","ppc64le","s390x","riscv64"]'
+          echo "arches=$ARCHES" >> "$GITHUB_OUTPUT"
+          echo "arch_suffixes=amd64 arm64 ppc64le s390x riscv64" >> "$GITHUB_OUTPUT"
+
   push-latest-images:
+    needs: [setup]
     permissions:
       contents: read
       id-token: write
     runs-on: container-registry
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.setup.outputs.arches) }}
     steps:
       - name: Print GitHub ref for debugging
         run: |
@@ -28,16 +58,77 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Publish and Sign Snapshot Image
+      - name: Publish Snapshot Platform Image
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main')
         uses: ./.github/actions/publish-and-sign
         with:
           IMAGE_TAGS: latest
+          SOURCE_IMAGE_TAGS: latest-${{ github.sha }}
+          PUBLISH_MODE: platform
+          PLATFORM: linux/${{ matrix.arch }}
+          ARCH_SUFFIX: ${{ matrix.arch }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
           REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS }}
           REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
           PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+
+  create-latest-manifest:
+    needs: [setup, push-latest-images]
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: container-registry
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Create and Sign Snapshot Manifest
+        uses: ./.github/actions/publish-and-sign
+        with:
+          IMAGE_TAGS: latest
+          SOURCE_IMAGE_TAGS: latest-${{ github.sha }}
+          PUBLISH_MODE: manifest
+          ARCH_SUFFIXES: ${{ needs.setup.outputs.arch_suffixes }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS }}
+          REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+
+  cleanup-temp-tags:
+    needs: [setup, create-latest-manifest]
+    permissions:
+      contents: read
+    runs-on: container-registry
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Task
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
+
+      - name: Delete temporary per-arch source tags
+        continue-on-error: true
+        env:
+          REGISTRY: ${{ vars.REGISTRY_ADDRESS }}
+          REG_USER: ${{ vars.REGISTRY_USERNAME }}
+          REG_PASS: ${{ secrets.REGISTRY_PASSWORD }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          SOURCE_IMAGE_TAGS: latest-${{ github.sha }}
+          ARCH_SUFFIXES: ${{ needs.setup.outputs.arch_suffixes }}
+        run: task cleanup-platform-tags
 
   publish-release:
     permissions:
@@ -76,6 +167,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Install GoReleaser
         if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))

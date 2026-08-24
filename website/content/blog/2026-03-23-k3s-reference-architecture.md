@@ -12,6 +12,10 @@ tags:
   - Zot
 ---
 
+> **Architecture update:** This article documents the March 2026 implementation.
+> ADR-0009 superseded its embedded-registry design with ORAS OCI layout storage.
+> See the current K3s reference architecture guide before deploying it.
+
 Deploying Kubernetes at the edge introduces architectural challenges not seen in centralized datacenters. Edge nodes often run with intermittent, low-bandwidth, or metered connectivity. At scale, relying on a centralized registry over WAN becomes a fragile single point of failure.
 
 Harbor Satellite mitigates this by placing a lightweight local OCI registry at each edge site, powered by Zot. It synchronizes layers from Central Harbor when connectivity is available, then serves local K3s workloads without external dependency.

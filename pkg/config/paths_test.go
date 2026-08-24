@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -154,23 +153,7 @@ func TestResolvePathConfig(t *testing.T) {
 			require.DirExists(t, pathConfig.ConfigDir)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "config.json"), pathConfig.ConfigFile)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "prev_config.json"), pathConfig.PrevConfigFile)
-			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "zot-hot.json"), pathConfig.ZotTempConfig)
-			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "zot"), pathConfig.ZotStorageDir)
+			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "oci"), pathConfig.StoreDir)
 		})
 	}
-}
-
-func TestBuildZotConfigWithStoragePath(t *testing.T) {
-	storagePath := "/custom/zot/storage"
-
-	result, err := BuildZotConfigWithStoragePath(storagePath)
-	require.NoError(t, err)
-	require.NotEmpty(t, result)
-
-	var parsed map[string]any
-	require.NoError(t, json.Unmarshal([]byte(result), &parsed), "output should be valid JSON")
-
-	storage, ok := parsed["storage"].(map[string]any)
-	require.True(t, ok, "storage section should exist")
-	require.Equal(t, storagePath, storage["rootDirectory"])
 }

@@ -105,7 +105,7 @@ CI runs lint and tests automatically on all pull requests. A clean local run sav
 Use [Conventional Commits](https://www.conventionalcommits.org/) style:
 
 ```bash
-git commit -s -m "fix(registry): handle zot startup race on slow hosts"
+git commit -s -m "fix(store): handle startup race on slow hosts"
 ```
 
 Common prefixes:
