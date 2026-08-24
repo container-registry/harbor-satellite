@@ -67,7 +67,6 @@ func TestInitConfigManager(t *testing.T) {
 			GroundControlURL: "http://localhost",
 			LogLevel:         "info",
 		},
-		ZotConfigRaw: json.RawMessage(`{"storage": {}}`),
 	}
 	validConfigPath := writeTempConfig(t, validConfig)
 
@@ -105,7 +104,6 @@ func TestConfigManager_WriteConfig(t *testing.T) {
 		AppConfig: AppConfig{
 			LogLevel: "info",
 		},
-		ZotConfigRaw: json.RawMessage(`{"storage": {}}`),
 	}
 	path := filepath.Join(t.TempDir(), "config.json")
 	cm, err := NewConfigManager(path, "", "", "", false, cfg)

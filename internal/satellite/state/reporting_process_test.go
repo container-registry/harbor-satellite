@@ -129,7 +129,6 @@ func newReportingTestCM(t *testing.T, gcURL string) *config.ConfigManager {
 			HeartbeatInterval: "@every 30s",
 			UseUnsecure:       true,
 		},
-		ZotConfigRaw: json.RawMessage(`{}`),
 	}
 	cm, err := config.NewConfigManager(
 		filepath.Join(dir, "config.json"),

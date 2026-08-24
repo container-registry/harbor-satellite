@@ -1,4 +1,4 @@
-package state
+package store
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
-	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -18,80 +17,40 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/types"
 )
 
-type Replicator interface {
-	// Replicate copies images from the source registry to the local registry.
-	Replicate(ctx context.Context, replicationEntities []Entity) error
-	// DeleteReplicationEntity deletes the image from the local registry.
-	DeleteReplicationEntity(ctx context.Context, replicationEntity []Entity) error
+// RegistryStore copies OCI images between remote registries using Crane.
+type RegistryStore struct {
+	source      RegistryOptions
+	destination RegistryOptions
 }
 
-type BasicReplicator struct {
-	useUnsecure       bool
-	sourceUsername    string
-	sourcePassword    string
-	sourceRegistry    string
-	remoteRegistryURL string
-	remoteUsername    string
-	remotePassword    string
-	tlsCfg            config.TLSConfig
-}
-
-func NewBasicReplicator(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool) Replicator {
-	return NewBasicReplicatorWithTLS(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword, useUnsecure, config.TLSConfig{})
-}
-
-func NewBasicReplicatorWithTLS(sourceUsername, sourcePassword, sourceRegistry, remoteURL, remoteUsername, remotePassword string, useUnsecure bool, tlsCfg config.TLSConfig) Replicator {
-	return &BasicReplicator{
-		sourceUsername:    sourceUsername,
-		sourcePassword:    sourcePassword,
-		useUnsecure:       useUnsecure,
-		remoteRegistryURL: remoteURL,
-		sourceRegistry:    sourceRegistry,
-		remoteUsername:    remoteUsername,
-		remotePassword:    remotePassword,
-		tlsCfg:            tlsCfg,
+// NewRegistryStore creates a store that copies OCI images from one remote
+// registry endpoint to another.
+func NewRegistryStore(source, destination RegistryOptions) Store {
+	return &RegistryStore{
+		source:      source,
+		destination: destination,
 	}
 }
 
-// Entity represents an image or artifact which needs to be handled by the replicator.
-type Entity struct {
-	Name       string `json:"name"`
-	Repository string `json:"repository"`
-	Tag        string `json:"tag"`
-	Digest     string `json:"digest"`
-}
-
-func (e Entity) GetName() string {
-	return e.Name
-}
-
-func (e Entity) GetRepository() string {
-	return e.Repository
-}
-
-func (e Entity) GetTag() string {
-	return e.Tag
-}
-
-// Replicate replicates images from the source registry to the local registry.
+// Replicate copies images from the source registry to the destination registry.
 // Before pulling, it checks which blobs already exist at the destination and
 // only downloads missing layers from source, saving bandwidth on crash recovery.
-func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []Entity) error {
+func (r *RegistryStore) Replicate(ctx context.Context, replicationEntities []Artifact) error {
 	log := logger.FromContext(ctx)
 	pullAuth := authn.FromConfig(authn.AuthConfig{
-		Username: r.sourceUsername,
-		Password: r.sourcePassword,
+		Username: r.source.Username,
+		Password: r.source.Password,
 	})
 	pushAuth := authn.FromConfig(authn.AuthConfig{
-		Username: r.remoteUsername,
-		Password: r.remotePassword,
+		Username: r.destination.Username,
+		Password: r.destination.Password,
 	})
 
 	var nameOpts []name.Option
 	pullOpts := []remote.Option{remote.WithAuth(pullAuth), remote.WithContext(ctx)}
 	pushOpts := []remote.Option{remote.WithAuth(pushAuth), remote.WithContext(ctx)}
 
-	if r.useUnsecure {
+	if r.source.PlainHTTP {
 		nameOpts = append(nameOpts, name.Insecure)
 	} else {
 		transport, err := r.buildTLSTransport()
@@ -113,8 +72,12 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		default:
 		}
 
-		srcRef := fmt.Sprintf("%s/%s/%s:%s", r.sourceRegistry, entity.GetRepository(), entity.GetName(), entity.GetTag())
-		dstRef := fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag())
+		if err := entity.validate(); err != nil {
+			return err
+		}
+
+		srcRef := r.source.reference(entity, entity.sourceIdentifier())
+		dstRef := r.destination.reference(entity, entity.destinationIdentifier())
 
 		src, err := name.ParseReference(srcRef, nameOpts...)
 		if err != nil {
@@ -150,7 +113,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 
 		dstDesc, dstErr := remote.Head(dst, pushOpts...)
 		if dstErr == nil && dstDesc.Digest == srcDigest {
-			log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.GetName())
+			log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.Name)
 			continue
 		}
 
@@ -161,7 +124,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 		}
 
 		missing := r.countMissingLayers(dst, srcLayers, pushOpts)
-		log.Info().Msgf("Replicating image %s: %d/%d layers to pull", entity.GetName(), missing, len(srcLayers))
+		log.Info().Msgf("Replicating image %s: %d/%d layers to pull", entity.Name, missing, len(srcLayers))
 
 		// remote.Write streams layers one-by-one. For each layer it HEAD-checks
 		// the destination first; only missing blobs are pulled from source.
@@ -170,7 +133,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 			log.Error().Msgf("Failed to replicate image: %v", err)
 			return err
 		}
-		log.Info().Msgf("Image %s replicated successfully", entity.GetName())
+		log.Info().Msgf("Image %s replicated successfully", entity.Name)
 	}
 
 	return nil
@@ -178,7 +141,7 @@ func (r *BasicReplicator) Replicate(ctx context.Context, replicationEntities []E
 
 // countMissingLayers checks which source layers are absent from the destination
 // by comparing against the existing image's layer digests (if any).
-func (r *BasicReplicator) countMissingLayers(dst name.Reference, srcLayers []v1.Layer, pushOpts []remote.Option) int {
+func (r *RegistryStore) countMissingLayers(dst name.Reference, srcLayers []v1.Layer, pushOpts []remote.Option) int {
 	dstImg, err := remote.Image(dst, pushOpts...)
 	if err != nil {
 		// No image at destination, all layers are missing
@@ -214,15 +177,17 @@ func (r *BasicReplicator) countMissingLayers(dst name.Reference, srcLayers []v1.
 	return missing
 }
 
-func (r *BasicReplicator) DeleteReplicationEntity(ctx context.Context, replicationEntity []Entity) error {
+// Delete removes artifact manifests from the destination registry. Registry
+// support for delete-by-reference is required by the configured endpoint.
+func (r *RegistryStore) Delete(ctx context.Context, replicationEntity []Artifact) error {
 	log := logger.FromContext(ctx)
 	auth := authn.FromConfig(authn.AuthConfig{
-		Username: r.remoteUsername,
-		Password: r.remotePassword,
+		Username: r.destination.Username,
+		Password: r.destination.Password,
 	})
 
 	options := []crane.Option{crane.WithAuth(auth), crane.WithContext(ctx)}
-	if r.useUnsecure {
+	if r.source.PlainHTTP {
 		options = append(options, crane.Insecure)
 	}
 
@@ -235,29 +200,35 @@ func (r *BasicReplicator) DeleteReplicationEntity(ctx context.Context, replicati
 		default:
 		}
 
-		log.Info().Msgf("Deleting image %s from repository %s at registry %s with tag %s", entity.GetName(), entity.GetRepository(), r.remoteRegistryURL, entity.GetTag())
+		if err := entity.validate(); err != nil {
+			return err
+		}
 
-		err := crane.Delete(fmt.Sprintf("%s/%s/%s:%s", r.remoteRegistryURL, entity.GetRepository(), entity.GetName(), entity.GetTag()), options...)
+		log.Info().Msgf("Deleting image %s from repository %s at registry %s with tag %s", entity.Name, r.destination.repositoryPath(entity), r.destination.Endpoint, entity.Tag)
+
+		err := crane.Delete(r.destination.reference(entity, entity.destinationIdentifier()), options...)
 		if err != nil {
 			log.Error().Msgf("Failed to delete image: %v", err)
 			return err
 		}
-		log.Info().Msgf("Image %s deleted successfully", entity.GetName())
+		log.Info().Msgf("Image %s deleted successfully", entity.Name)
 	}
 
 	return nil
 }
 
-func (r *BasicReplicator) buildTLSTransport() (http.RoundTripper, error) {
-	if r.tlsCfg.CertFile == "" && r.tlsCfg.CAFile == "" {
+// buildTLSTransport builds the source registry transport when custom TLS
+// material is configured. A nil transport selects the library default.
+func (r *RegistryStore) buildTLSTransport() (http.RoundTripper, error) {
+	if r.source.TLS.CertFile == "" && r.source.TLS.CAFile == "" {
 		return nil, nil
 	}
 
 	cfg := &satTLS.Config{
-		CertFile:   r.tlsCfg.CertFile,
-		KeyFile:    r.tlsCfg.KeyFile,
-		CAFile:     r.tlsCfg.CAFile,
-		SkipVerify: r.tlsCfg.SkipVerify,
+		CertFile:   r.source.TLS.CertFile,
+		KeyFile:    r.source.TLS.KeyFile,
+		CAFile:     r.source.TLS.CAFile,
+		SkipVerify: r.source.TLS.SkipVerify,
 		MinVersion: tls.VersionTLS12,
 	}
 

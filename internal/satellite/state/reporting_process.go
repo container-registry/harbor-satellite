@@ -100,7 +100,10 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 	s.mu.Unlock()
 
-	registryURL := utils.FormatRegistryURL(s.cm.GetLocalRegistryURL())
+	var registryURL string
+	if s.cm.GetOwnRegistry() {
+		registryURL = utils.FormatRegistryURL(s.cm.GetLocalRegistryURL())
+	}
 	insecure := s.cm.UseUnsecure()
 	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
 

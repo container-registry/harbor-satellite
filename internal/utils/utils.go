@@ -14,7 +14,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 )
 
@@ -34,17 +33,6 @@ func ValidateRegistryAddress(registryAdr, registryPort string) (string, error) {
 	}
 
 	return fmt.Sprintf("%s:%s", registryAdr, registryPort), nil
-}
-
-// / HandleOwnRegistry handles the own registry address and port and sets the Zot URL
-func HandleOwnRegistry(cm *config.ConfigManager) error {
-	remoteRegistryURL := cm.GetLocalRegistryURL()
-	_, err := url.Parse(remoteRegistryURL)
-	if err != nil {
-		return fmt.Errorf("error parsing URL: %w", err)
-	}
-	cm.With(config.SetLocalRegistryURL(FormatRegistryURL(remoteRegistryURL)))
-	return nil
 }
 
 // Helper function to determine if input is a valid URL

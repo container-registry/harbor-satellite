@@ -184,7 +184,7 @@ func TestCreateConfigAcceptsYAMLManifest(t *testing.T) {
 	defer server.Close()
 
 	manifest := filepath.Join(t.TempDir(), "config.yaml")
-	require.NoError(t, os.WriteFile(manifest, []byte("config_name: edge\nconfig:\n  zot_config: {}\n"), 0o600))
+	require.NoError(t, os.WriteFile(manifest, []byte("config_name: edge\nconfig:\n  app_config: {}\n"), 0o600))
 
 	output, err := execute(t,
 		"--server", server.URL,

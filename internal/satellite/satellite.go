@@ -15,15 +15,17 @@ type Satellite struct {
 	criResults    []runtime.CRIConfigResult
 	schedulers    []*scheduler.Scheduler
 	stateFilePath string
+	storeRoot     string
 	stateProcess  *state.FetchAndReplicateStateProcess
 }
 
-func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath string) *Satellite {
+func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, storeRoot string) *Satellite {
 	return &Satellite{
 		cm:            cm,
 		criResults:    criResults,
 		schedulers:    make([]*scheduler.Scheduler, 0),
 		stateFilePath: stateFilePath,
+		storeRoot:     storeRoot,
 	}
 }
 
@@ -31,7 +33,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
 
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, log)
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, s.storeRoot, log)
 	s.stateProcess = fetchAndReplicateStateProcess
 
 	// Create ZTR scheduler if not already done

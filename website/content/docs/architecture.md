@@ -16,7 +16,7 @@ graph LR
 
     subgraph Edge
         SpireAgentSat[SPIRE Agent - Satellite]
-        Satellite[Satellite + Zot]
+        Satellite[Satellite + OCI Store]
     end
 
     Harbor <--> GC
@@ -51,7 +51,7 @@ graph LR
 | SPIRE Server | Cloud | Issues and manages X.509 identities |
 | SPIRE Agent (GC) | Cloud | Provides identity to Ground Control |
 | SPIRE Agent (Satellite) | Edge | Provides identity to Satellite |
-| Satellite | Edge | Local OCI registry (Zot) + image replication |
+| Satellite | Edge | ORAS OCI layout + image replication |
 
 ## The Complete Flow
 
@@ -198,8 +198,8 @@ The satellite runs three concurrent schedulers:
 2. For each group, fetches the group state artifact (list of images)
 3. Compares current state vs desired state
 4. Deletes images that were removed from groups
-5. Replicates new or changed images from Harbor to the local Zot registry
-6. Fetches and applies config changes (replication intervals, Zot settings)
+5. Replicates new or changed OCI content from Harbor to the selected store
+6. Fetches and applies config changes, including replication intervals
 
 **Heartbeat Scheduler** (default: every 30s)
 
@@ -267,11 +267,7 @@ State is stored as OCI artifacts in Harbor. There are three types:
     "log_level": "info",
     "state_replication_interval": "@every 00h00m10s",
     "heartbeat_interval": "@every 00h00m30s",
-    "local_registry": { "url": "http://127.0.0.1:8585" }
-  },
-  "zot_config": {
-    "storage": { "rootDirectory": "./zot" },
-    "http": { "address": "0.0.0.0", "port": "8585" }
+    "bring_own_registry": false
   }
 }
 ```
@@ -280,24 +276,23 @@ The satellite fetches these artifacts using `crane` (a Go library for interactin
 
 ## Image Replication
 
-When the satellite detects new images in its desired state, it replicates them from Harbor to its local Zot registry using a lazy-loading strategy:
+When the satellite detects new content in its desired state, it copies the complete OCI descriptor graph from Harbor to its store:
 
-1. Fetch the image manifest from Harbor (metadata only, no layers downloaded yet)
-2. Check if the image already exists in Zot with the same digest
+1. Resolve the artifact manifest from Harbor
+2. Check if the destination reference already has the same digest
 3. If it exists, skip it (no work needed)
-4. If not, count which layers are missing at the destination
-5. Pull only the missing layers from Harbor
-6. Push to local Zot
+4. If not, copy missing manifests, configs, and blobs through ORAS
+5. Tag the root descriptor in the local OCI layout
 
 This approach minimizes bandwidth usage - if an image update only changes one layer, only that layer gets transferred.
 
 ### Offline Behavior
 
-If the satellite cannot reach Harbor or Ground Control (network outage), it continues serving images from its local Zot registry. Workloads keep pulling from the local registry without interruption. The state replication scheduler logs errors and retries on the next interval. Once connectivity is restored, replication resumes from where it left off.
+If the satellite cannot reach Harbor or Ground Control, retained content remains on disk and the state replication scheduler retries on the next interval. The local OCI layout is not currently exposed through the Distribution API. Use BYO registry mode or experimental direct delivery when workloads need to consume retained content before the transparent proxy is implemented.
 
 ## Container Runtime Mirroring
 
-Once images are in the local Zot registry, the satellite can configure local container runtimes to use it as a mirror. This means workloads (Kubernetes pods, Docker containers) automatically pull from the local registry first, falling back to the central registry only if needed.
+Container runtime mirroring currently requires BYO registry mode. In the default mode, Satellite skips mirror configuration because the local OCI layout has no registry endpoint.
 
 Supported runtimes:
 
@@ -363,7 +358,7 @@ sequenceDiagram
     loop Every 10s
         Satellite->>Harbor: Fetch state artifact (robot creds)
         Satellite->>Harbor: Pull new/changed image layers
-        Satellite->>Satellite: Store in local Zot registry
+        Satellite->>Satellite: Store in local OCI layout
     end
     loop Every 30s
         Satellite->>GC: Heartbeat (CPU, memory, storage)

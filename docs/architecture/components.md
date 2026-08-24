@@ -49,7 +49,7 @@ The Satellite component runs at edge locations and manages local container image
 
 ### Responsibilities
 
-- Acts as a local container registry using Zot
+- Maintains a local OCI image layout using ORAS
 - Synchronizes with central Harbor
 - Manages local container images
 - Handles image distribution
@@ -82,35 +82,30 @@ The Satellite maintains state in a JSON file containing:
 - Registry URLs
 - Configuration settings
 
-## Registry
+## Store
 
-The Registry component (using Zot) is responsible for storing and serving container images.
+The Store abstraction is responsible for copying and retaining OCI content.
 
 ### Responsibilities
 
-- Storing container images locally
+- Storing OCI content locally in an OCI image layout
 - Serving images to local workloads
+- Copying images to an external registry in BYO mode
 - Managing image metadata
-- Handling image operations
+- Removing references and garbage-collecting unreferenced local content
 
 ### Configuration
 
 ```json
 {
-  "storage": {
-    "rootDirectory": "/var/lib/hotshot",
-    "gc": true,
-    "dedupe": true
-  },
-  "http": {
-    "address": "0.0.0.0",
-    "port": "5000"
-  },
-  "log": {
-    "level": "debug"
+  "app_config": {
+    "bring_own_registry": false
   }
 }
 ```
+
+The local store path defaults to `<config-dir>/oci` and can be overridden with
+`--registry-data-dir` or `REGISTRY_DATA_DIR`.
 
 ## Component Interactions
 
@@ -131,23 +126,23 @@ The Registry component (using Zot) is responsible for storing and serving contai
    - Ground Control tracks status
    - Alerts are generated if needed
 
-### Satellite to Registry
+### Satellite to Store
 
-1. **Image Management**
-   - Satellite requests image operations
-   - Registry performs operations
-   - Results are reported back
+1. **Content Management**
+   - Satellite resolves desired OCI artifacts
+   - The store copies complete descriptor graphs
+   - Removed references are garbage-collected locally
 
 2. **Metadata Management**
-   - Registry maintains metadata
-   - Satellite queries metadata
+   - The OCI layout index maintains references
+   - Satellite compares descriptor digests
    - Updates are synchronized
 
 ### Satellite to Local Workloads
 
 1. **Image Serving**
    - Workloads request images
-   - Satellite serves from local registry
+   - Satellite serves from local store 
    - Pull requests are handled
 
 2. **Health Reporting**

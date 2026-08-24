@@ -8,6 +8,9 @@ informed: [Harbor Satellite Developers, Operators]
 
 # SPIFFE Identity and Security
 
+> Storage references and diagrams in this record describe the architecture at acceptance time.
+> ADR-0009 supersedes the embedded-registry target state.
+
 ## Context and Problem Statement
 
 Satellites deployed at edge locations need cryptographic identity without pre-shared secrets. The current token-based Zero Touch Registration (ZTR) requires manual token distribution per satellite, which does not scale to large fleets. Configuration files stored at rest contain registry credentials that need protection. The system needs mutual authentication between satellites and Ground Control.

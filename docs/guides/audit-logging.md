@@ -230,7 +230,7 @@ rather than silently drop events.
 ## Roadmap
 
 - `policy.pull_block.failure` - once registry-level policy hooks land, emit
-  when the local Zot or fallback layer denies a pull.
+  when the transparent proxy or fallback layer denies a pull.
 - `satellite.revoke.success` / `satellite.unrevoke.success` - pending the
   revocation workflow added in Ground Control.
 - **CloudEvents transport** - the syslog and OpenTelemetry transports ship

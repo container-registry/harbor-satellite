@@ -205,7 +205,7 @@ chmod 644 ssh-ca
 ### 2. Start the agent and register via GC API
 
 A compose override file `docker-compose.edge-02.yml` is provided in `sat/`.
-It defines `spire-agent-satellite-2` and `satellite-2` services (zot on port 5051).
+It defines `spire-agent-satellite-2` and `satellite-2` services with a separate persistent OCI store.
 
 ```bash
 cd ../sat
@@ -250,8 +250,7 @@ docker compose -f docker-compose.yml -f docker-compose.edge-02.yml up -d satelli
 
 ```bash
 docker logs satellite-2
-# edge-02 zot registry is on port 5051
-curl http://localhost:5051/v2/_catalog
+docker exec satellite-2 test -f /data/oci/oci-layout
 ```
 
 The same pattern applies for any additional satellite: generate a host key, sign it with the

@@ -137,9 +137,9 @@ graph TB
 - [ADR: Ground Control authentication](docs/decisions/0004-ground-control-authentication.md)
 - [ADR: SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md)
 
-### Registry Data Directory
+### OCI Store Directory
 
-The satellite stores registry data in a configurable location. By default, it uses a `zot` subdirectory inside the configuration directory (`~/.config/satellite/zot`).
+By default, Satellite replicates content into an OCI image layout at `~/.config/satellite/oci`. The layout is backed by `oras-go` and contains `oci-layout`, `index.json`, and content-addressed blobs.
 
 You can override the storage location using:
 
@@ -158,7 +158,7 @@ The flag takes precedence over the environment variable, which takes precedence 
 
 ## BYO (Bring Your Own) Registry
 
-Satellite embeds a Zot registry by default. To use an external registry instead (e.g. `registry:2`), pass the BYO flags via CLI or env vars:
+To replicate into an external registry instead of the local OCI layout, pass the BYO flags via CLI or environment variables:
 
 | CLI Flag | Env Var | Description |
 |---|---|---|
@@ -197,10 +197,10 @@ Compatibility with all container registries or edge devices can't be guaranteed.
 
 ### Overall Architecture
 
-Harbor Satellite, at its most basic, will run in a single container and will be divided in the following 2 components:
+Harbor Satellite, at its most basic, consists of the following components:
 
-- **Satellite**: Is responsible for moving artifacts from upstream (using Skopeo/Crane/Other), identifying the source, and reading the list of images that need to be replicated. Additionally, it can modify and manage container runtime configuration to prevent unnecessary remote fetches.
-- **OCI Registry**: Is responsible for storing required OCI artifacts locally (using zotregistry or docker registry).
+- **Satellite**: Is responsible for moving artifacts from upstream, identifying the source, and reading the list of images that need to be replicated.
+- **OCI Store**: Stores required artifacts in a local OCI image layout using ORAS. In BYO mode, Satellite instead replicates images to an external OCI registry using Crane.
 - **Ground Control**: Is a component of Harbor and is responsible for serving a Harbor Satellite with the list of images it needs.
 
 ![Basic Harbor Satellite Diagram](docs/images/harbor-satellite-overview.svg)
@@ -211,11 +211,11 @@ Harbor Satellite, at its most basic, will run in a single container and will be 
 
 Harbor Satellite may be implemented following 1 or several of 3 different architectures depending on its use cases:
 
-#### Use Case #1: Replicating from a remote registry to a local registry
+#### Use Case #1: Replicating from a remote registry to a local OCI store
 
-In this basic use case, the stateless Satellite component pulls container images from a remote registry and pushes them to the local OCI-compliant registry. This local registry is then accessible to other local edge devices, which can pull the required images directly from it. _Direct access from edge devices to the remote registry is still possible when network conditions permit._ The Satellite component may also handle updating container runtime configurations and fetching image lists from Ground Control, a part of Harbor. The stateful local registry will also need to handle storing and managing data from local volumes. A typical scenario might look like this:
+In the default mode, Satellite copies complete OCI artifact graphs from a remote registry into a persistent OCI image layout on local disk. The layout retains content for later delivery and for the transparent proxy described in ADR-0009; it is not itself a Distribution API endpoint. Deployments that need an immediately pullable endpoint can use BYO registry mode, which preserves the existing remote-to-remote replication flow.
 
-_In an edge computing environment where IoT devices are deployed to a location with limited or no internet connectivity, these devices need to run containerized images but cannot pull from a central Harbor registry. A local Harbor Satellite instance can be deployed and take up this role while Internet connectivity is unreliable and distribute all required images. Once a reliable connection is re-established, the Harbor Satellite instance will be able to pull required images from its central Harbor registry and thus store up-to-date images locally._
+_In an edge computing environment where IoT devices have limited connectivity, Satellite can pre-position required OCI content during connected periods. A BYO registry or direct delivery can make that content available to workloads while the transparent proxy is developed._
 
 ![Use Case #1](docs/images/satellite_use_case_1.svg)
 <p align="center"><em>Use case #1</em></p>
@@ -223,16 +223,16 @@ _In an edge computing environment where IoT devices are deployed to a location w
 #### Use Case #2: Replicating from a remote registry to a local Spegel registry
 
 The stateless Satellite component sends pull instructions to Spegel instances running with each node of a Kubernetes cluster. The node will then directly pull images from a remote registry and share it with other local nodes, removing the need for each of them to individually pull an image from a remote registry.
-The network interfaces (boundaries) represented in this use case should and will be the same as those represented in [Use Case #1](#use-case-1-replicating-from-a-remote-registry-to-a-local-registry). A typical use case would work as follows:
+The network interfaces (boundaries) represented in this use case should and will be the same as those represented in [Use Case #1](#use-case-1-replicating-from-a-remote-registry-to-a-local-oci-store). A typical use case would work as follows:
 
 _In a larger scale edge computing environment with a significant amount of IoT devices needing to run containerized applications, a single local registry in might not be able to handle the increased amount of demands from edge devices. The solution is to deploy several registries to several nodes who are able to automatically replicate images across each other thanks to Spegel instances running together with each node. The Satellite component will use the same interface to instruct each node when, where and how to pull new images that need to be replicated across the cluster._
 
 ![Use Case #2](docs/images/satellite_use_case_2.svg)
 <p align="center"><em>Use case #2</em></p>
 
-#### Use Case #3: Proxying from a remote registry over the local registry
+#### Use Case #3: Proxying from a remote registry over the local store 
 
-The stateless satellite component will be in charge of configuring the local OCI compliant registry, which will be running in proxy mode only. This local registry will then handle pulling necessary images from the remote registry and serving them up for use by local edge devices.
+ADR-0009 defines a transparent proxy that will enforce policy and serve allowed content from upstream or the local OCI layout. That proxy is intentionally outside the current storage-backend change.
 A typical use case would work as follows:
 
 _When, for a number of possible different reasons, the remote registry side of the diagram would not be able to produce a list of images to push down to the Harbor Satellite, the Satellite would then act as a proxy and forward all requests from edge devices to the remote registry. This ensures the availability of necessary images without the need for a pre-compiled list of images_
@@ -242,12 +242,7 @@ _When, for a number of possible different reasons, the remote registry side of t
 
 ### Container Runtime Configuration
 
-In each of these use cases, we need to ensure that IoT edge devices needing to run containers will be able to access the registry and pull images from it. To solve this issue, we propose 4 solutions:
-
-1. By using **containerd** or **CRI-O** and  configuring a mirror within them.
-2. By setting up an **HTTP Proxy** to manage and optimize pull requests to the registry.
-3. By **directly referencing** the registry.
-4. By **directly referencing** the registry and using Kubernetes' mutating webhooks to point to the correct registry.
+CRI mirror configuration currently requires BYO registry mode because the local ORAS layout does not expose a registry endpoint. Direct delivery to the k3s/RKE2 image directory is also available as an experimental option.
 
 ## Development
 

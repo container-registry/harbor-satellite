@@ -30,13 +30,13 @@
 
 Deploying Kubernetes at the edge introduces architectural challenges that are not present in centralized cloud datacenters. Edge nodes frequently operate in resource-constrained environments with intermittent, low-bandwidth, or highly metered network connections. When orchestrating K3s across thousands of remote sites, relying on a centralized container registry over a Wide Area Network (WAN) introduces a critical single point of failure.
 
-**Harbor Satellite** — an edge extension of the CNCF-graduated Harbor registry — mitigates this vulnerability by distributing a lightweight, localized OCI registry directly to each edge site. Powered by [Zot](https://zotregistry.dev/), it continuously synchronizes cryptographic image layers from a Central Harbor registry during optimal network conditions, subsequently serving them to local K3s workloads with zero external network dependency.
+**Harbor Satellite** — an edge extension of the CNCF-graduated Harbor registry — mitigates this vulnerability by pre-positioning OCI content at each edge site. It uses ORAS to synchronize complete OCI descriptor graphs from a central Harbor registry into a persistent local OCI image layout. Workload delivery currently uses the experimental k3s/RKE2 direct-delivery mode or an external BYO registry; transparent proxy serving is a separate phase described by ADR-0009.
 
 ### Challenges & Solutions
 
 | Edge Challenge | Harbor Satellite Solution |
 |---|---|
-| **Workload failures during network partitions** | Local Zot cache serves images over the loopback interface; WAN status becomes irrelevant. |
+| **Content unavailable during network partitions** | The local OCI layout retains synchronized content; direct delivery can preload it into k3s/RKE2. |
 | **High bandwidth costs on metered links** | Layer-diff synchronization transfers only modified image layers, drastically reducing payload sizes. |
 | **Bootstrapping restricted clusters** | Automated direct delivery injects images into K3s auto-import without manual tarball handling. |
 | **Credential management at scale** | SPIFFE/SPIRE Zero-Touch Registration (ZTR) eliminates all static secrets from edge devices. |
@@ -86,7 +86,7 @@ The architecture is strictly divided into two distinct operational planes, separ
 ║  Central Harbor                                          ║
 ║    └──► Ground Control assigns images to Edge Group      ║
 ║            └──► Satellite pulls layers over mTLS         ║
-║                  └──► Layers stored in local Zot (:5050) ║
+║                  └──► Graph stored in local OCI layout   ║
 ║                                                          ║
 ╠══════════════════════════════════════════════════════════╣
 ║  EXECUTION PHASE (Fully Autonomous / Offline Capable)    ║
@@ -94,7 +94,7 @@ The architecture is strictly divided into two distinct operational planes, separ
 ║                                                          ║
 ║  K3s containerd Engine                                   ║
 ║    └──► Intercept via Mirror: 127.0.0.1:5050             ║
-║            └──► Zot serves layers from local disk cache  ║
+║            └──► Direct delivery preloads the node store  ║
 ║                  └──► Workload starts (Zero WAN latency) ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝
@@ -156,12 +156,12 @@ The Satellite utilizes three concurrent scheduling loops:
 Instead of downloading monolithic images, the Satellite employs an OCI layer-diff approach:
 
 1. Fetches lightweight metadata manifests from Harbor.
-2. Compares individual layer SHA256 digests against the local Zot cache.
+2. Resolves the destination reference and compares its OCI digest.
 3. Downloads **only** missing or modified layers over the network.
 
 ### 4.3 Network Outage Behavior
 
-During a WAN partition, the State Replication and Heartbeat schedulers enter a silent retry loop. The local Zot registry remains fully operational on port `5050`. K3s `containerd` continues to pull images locally, guaranteeing **zero disruption** to pod rescheduling or workload scaling during the outage.
+During a WAN partition, the State Replication and Heartbeat schedulers retry on their next intervals and the local OCI layout remains intact. With direct delivery enabled, previously delivered images remain available in the k3s/RKE2 node image store. The OCI layout itself does not listen on a registry port.
 
 ---
 
@@ -494,7 +494,7 @@ SUSE and Bosch describe a hybrid cloud control and monitoring architecture for I
 ### 7.4 Smart Agriculture / Remote Monitoring
 
 - **Challenge:** Agricultural IoT edge nodes running complex sensor processing or AI camera inference operate on strictly metered, highly intermittent cellular or satellite links.
-- **Solution:** Large inference model containers are pre-synchronized during narrow connectivity windows. K3s operates autonomously from the local Zot cache during extended offline periods. When connectivity returns, Layer-Diff sync ensures only new algorithmic weights are downloaded, preserving expensive bandwidth. Additionally, device-bound encryption ensures Harbor credentials remain secure even if an edge device is physically compromised in a remote field.
+- **Solution:** Large inference model containers are pre-synchronized during narrow connectivity windows and retained in the local OCI layout. Direct delivery can preload them into k3s for offline operation. When connectivity returns, content-addressed copying transfers only missing blobs. Additionally, device-bound encryption keeps Harbor credentials protected at rest.
 
 ---
 
@@ -521,7 +521,7 @@ To explore the underlying technologies and concepts discussed in this reference 
 
 - **[Harbor Satellite Official Documentation](https://satellite.container-registry.com/docs/)** : *Comprehensive guides on architecture, deployment patterns, and Ground Control API usage.*
 - **[Harbor Satellite GitHub Repository](https://github.com/container-registry/harbor-satellite)** : *Source code, issue tracking, and technical contribution guidelines.*
-- **[Project Zot](https://zotregistry.dev/)** : *Details on the embedded, CNCF-hosted lightweight OCI registry that powers the Satellite cache.*
+- **[ORAS Go](https://oras.land/docs/client_libraries/go/)** : *The OCI content APIs used by Satellite's local image-layout store.*
 
 ### K3s & SUSE Edge Ecosystem
 

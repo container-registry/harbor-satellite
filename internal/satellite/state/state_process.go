@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
+	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
@@ -20,6 +21,7 @@ type FetchAndReplicateStateProcess struct {
 	cm                  *config.ConfigManager
 	mu                  sync.Mutex
 	stateFilePath       string
+	storeRoot           string
 	directDeliverer     *DirectDeliverer
 }
 
@@ -37,11 +39,12 @@ type ConfigFetcherResult struct {
 	Cancelled    bool
 }
 
-func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath string, log *zerolog.Logger) *FetchAndReplicateStateProcess {
+func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath, storeRoot string, log *zerolog.Logger) *FetchAndReplicateStateProcess {
 	p := &FetchAndReplicateStateProcess{
 		name:          config.ReplicateStateJobName,
 		cm:            cm,
 		stateFilePath: stateFilePath,
+		storeRoot:     storeRoot,
 	}
 
 	if stateFilePath != "" {
@@ -90,9 +93,12 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	default:
 	}
 
-	replicator, sourceURL, srcUsername, srcPassword, remoteURL, useUnsecure, satelliteStateURL := f.setupReplication()
+	replicator, sourceURL, srcUsername, srcPassword, destination, useUnsecure, satelliteStateURL, err := f.setupReplication()
+	if err != nil {
+		return fmt.Errorf("set up content store: %w", err)
+	}
 
-	canExecute, reason := f.CanExecute(satelliteStateURL, remoteURL, sourceURL, srcUsername, srcPassword)
+	canExecute, reason := f.CanExecute(satelliteStateURL, destination, sourceURL, srcUsername, srcPassword)
 	if !canExecute {
 		log.Warn().Msgf("Process %s cannot execute: %s", f.name, reason)
 		return nil
@@ -244,13 +250,13 @@ func (f *FetchAndReplicateStateProcess) IsComplete() bool {
 	return false
 }
 
-func (f *FetchAndReplicateStateProcess) CanExecute(satelliteStateURL, remoteURL, srcURL, srcUsername, srcPassword string) (bool, string) {
+func (f *FetchAndReplicateStateProcess) CanExecute(satelliteStateURL, destination, srcURL, srcUsername, srcPassword string) (bool, string) {
 	checks := []struct {
 		condition bool
 		message   string
 	}{
 		{satelliteStateURL == "", "satelliteState is empty"},
-		{remoteURL == "", "remote registry URL is empty"},
+		{destination == "", "store destination is empty"},
 		{srcUsername == "", "username is empty"},
 		{srcURL == "", "source registry is empty"},
 		{srcPassword == "", "password is empty"},
@@ -415,7 +421,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	index int,
 	srcUsername, srcPassword string,
 	useUnsecure bool,
-	replicator Replicator,
+	replicator store.Store,
 	log *zerolog.Logger,
 ) StateFetcherResult {
 	stateFetcherLog := log.With().
@@ -456,7 +462,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, &stateFetcherLog, f.stateMap[index].Entities)
 	f.LogChanges(deleteEntity, replicateEntity, &stateFetcherLog)
 
-	if err := replicator.DeleteReplicationEntity(ctx, deleteEntity); err != nil {
+	if err := replicator.Delete(ctx, deleteEntity); err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
 		result.Error = fmt.Errorf("failed to delete entities for %s: %w", f.stateMap[index].url, err)
 		return result
@@ -468,7 +474,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		return result
 	}
 
-	// Direct delivery: write tarballs to k3s/RKE2 image dir after registry push
+	// Direct delivery: write tarballs to k3s/RKE2 image dir after store replication.
 	if f.directDeliverer != nil {
 		if err := f.directDeliverer.Delete(ctx, deleteEntity); err != nil {
 			stateFetcherLog.Warn().Err(err).Msg("Direct delivery: failed to remove old tarballs")
@@ -510,15 +516,23 @@ func (f *FetchAndReplicateStateProcess) fetchSatelliteRootState(
 	return satelliteState, nil
 }
 
-func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, string, string, string, bool, string) {
-	sourceURL := utils.FormatRegistryURL(f.cm.GetSourceRegistryURL())
-	remoteURL := utils.FormatRegistryURL(f.cm.GetLocalRegistryURL())
-	srcUsername := f.cm.GetSourceRegistryUsername()
-	srcPassword := f.cm.GetSourceRegistryPassword()
+func (f *FetchAndReplicateStateProcess) setupReplication() (
+	replicator store.Store,
+	sourceURL string,
+	sourceUsername string,
+	sourcePassword string,
+	destination string,
+	useUnsecure bool,
+	satelliteStateURL string,
+	err error,
+) {
+	sourceURL = utils.FormatRegistryURL(f.cm.GetSourceRegistryURL())
+	sourceUsername = f.cm.GetSourceRegistryUsername()
+	sourcePassword = f.cm.GetSourceRegistryPassword()
 	remoteUsername := f.cm.GetRemoteRegistryUsername()
 	remotePassword := f.cm.GetRemoteRegistryPassword()
-	useUnsecure := f.cm.UseUnsecure()
-	satelliteStateURL := f.cm.GetStateURL()
+	useUnsecure = f.cm.UseUnsecure()
+	satelliteStateURL = f.cm.GetStateURL()
 
 	// Override source and state URLs if --harbor-registry-url is set
 	if override := f.cm.GetHarborRegistryURL(); override != "" {
@@ -530,17 +544,40 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (Replicator, string, 
 		}
 	}
 
-	replicator := NewBasicReplicator(srcUsername, srcPassword, sourceURL, remoteURL, remoteUsername, remotePassword, useUnsecure)
+	source := store.RegistryOptions{
+		Endpoint:  sourceURL,
+		Username:  sourceUsername,
+		Password:  sourcePassword,
+		PlainHTTP: useUnsecure,
+		TLS:       f.cm.GetTLSConfig(),
+	}
+
+	if f.cm.GetOwnRegistry() {
+		destination = utils.FormatRegistryURL(f.cm.GetLocalRegistryURL())
+		replicator = store.NewRegistryStore(source, store.RegistryOptions{
+			Endpoint:  destination,
+			Username:  remoteUsername,
+			Password:  remotePassword,
+			PlainHTTP: useUnsecure,
+			TLS:       f.cm.GetTLSConfig(),
+		})
+	} else {
+		destination = f.storeRoot
+		replicator, err = store.NewOCIStore(f.storeRoot, source)
+		if err != nil {
+			return nil, "", "", "", "", false, "", err
+		}
+	}
 
 	// Set up direct delivery if enabled, clear if disabled
 	dd := f.cm.GetDirectDeliveryConfig()
 	if dd.Enabled && dd.ImageDir != "" {
-		f.directDeliverer = NewDirectDeliverer(dd.ImageDir, srcUsername, srcPassword, sourceURL, useUnsecure)
+		f.directDeliverer = NewDirectDeliverer(dd.ImageDir, sourceUsername, sourcePassword, sourceURL, useUnsecure)
 	} else {
 		f.directDeliverer = nil
 	}
 
-	return replicator, sourceURL, srcUsername, srcPassword, remoteURL, useUnsecure, satelliteStateURL
+	return replicator, sourceURL, sourceUsername, sourcePassword, destination, useUnsecure, satelliteStateURL, nil
 }
 
 func (f *FetchAndReplicateStateProcess) start() {

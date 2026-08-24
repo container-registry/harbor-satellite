@@ -1,5 +1,7 @@
 # Zot registry vs Docker registry
 
+> Historical decision: ADR-0009 supersedes this target-state storage choice.
+
 ## Context and Problem Statement
 
 In order to start development of Harbor Satellite's first use case, we need to choose which local registry we want to use. While both (and other solutions) are viable, we want to focus on getting started quickly, so deployment and usability ease are our temporary focus.

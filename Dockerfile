@@ -41,6 +41,6 @@ USER appuser
 
 WORKDIR /data
 
-EXPOSE 8080 8585
+EXPOSE 8080
 
 ENTRYPOINT ["/app/app"]

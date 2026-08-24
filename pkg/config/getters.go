@@ -1,7 +1,5 @@
 package config
 
-import "encoding/json"
-
 // Threadsafe getter functions to fetch config data.
 
 func (cm *ConfigManager) IsZTRDone() bool {
@@ -154,13 +152,6 @@ func (cm *ConfigManager) GetToken() string {
 	defer cm.mu.RUnlock()
 
 	return cm.Token
-}
-
-func (cm *ConfigManager) GetRawZotConfig() json.RawMessage {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-
-	return cm.config.ZotConfigRaw
 }
 
 func (cm *ConfigManager) GetConfig() *Config {

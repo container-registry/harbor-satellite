@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,8 +12,7 @@ type PathConfig struct {
 	ConfigDir      string
 	ConfigFile     string
 	PrevConfigFile string
-	ZotTempConfig  string
-	ZotStorageDir  string
+	StoreDir       string
 	StateFile      string
 }
 
@@ -87,31 +85,7 @@ func ResolvePathConfig(configDir string) (*PathConfig, error) {
 		ConfigDir:      expanded,
 		ConfigFile:     filepath.Join(expanded, "config.json"),
 		PrevConfigFile: filepath.Join(expanded, "prev_config.json"),
-		ZotTempConfig:  filepath.Join(expanded, "zot-hot.json"),
-		ZotStorageDir:  filepath.Join(expanded, "zot"),
+		StoreDir:       filepath.Join(expanded, "oci"),
 		StateFile:      filepath.Join(expanded, "state.json"),
 	}, nil
-}
-
-// BuildZotConfigWithStoragePath updates the Zot configuration JSON to use
-// the specified storage directory path.
-func BuildZotConfigWithStoragePath(storageDir string) (string, error) {
-	var zotConfig map[string]any
-	if err := json.Unmarshal([]byte(DefaultZotConfigJSON), &zotConfig); err != nil {
-		return "", fmt.Errorf("unmarshal default Zot config: %w", err)
-	}
-
-	storage, ok := zotConfig["storage"].(map[string]any)
-	if !ok {
-		return "", fmt.Errorf("invalid Zot config: storage section not found")
-	}
-
-	storage["rootDirectory"] = storageDir
-
-	updatedJSON, err := json.MarshalIndent(zotConfig, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("marshal updated Zot config: %w", err)
-	}
-
-	return string(updatedJSON), nil
 }

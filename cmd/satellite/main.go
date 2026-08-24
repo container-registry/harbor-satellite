@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -14,7 +13,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
-	"github.com/container-registry/harbor-satellite/internal/satellite/registry"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -94,7 +92,7 @@ func main() {
 	flag.BoolVar(&opts.SPIFFEEnabled, "spiffe-enabled", opts.SPIFFEEnabled, "Enable SPIFFE/SPIRE authentication")
 	flag.StringVar(&opts.SPIFFEEndpointSocket, "spiffe-endpoint-socket", opts.SPIFFEEndpointSocket, "SPIFFE Workload API endpoint socket")
 	flag.StringVar(&opts.SPIFFEExpectedServerID, "spiffe-expected-server-id", opts.SPIFFEExpectedServerID, "Expected SPIFFE ID of Ground Control server")
-	flag.BoolVar(&opts.BYORegistry, "byo-registry", opts.BYORegistry, "Use external registry instead of embedded Zot")
+	flag.BoolVar(&opts.BYORegistry, "byo-registry", opts.BYORegistry, "Use an external registry as the replication store")
 	flag.StringVar(&opts.RegistryURL, "registry-url", opts.RegistryURL, "External registry URL")
 	flag.StringVar(&opts.RegistryUsername, "registry-username", opts.RegistryUsername, "External registry username")
 	flag.StringVar(&opts.RegistryPassword, "registry-password", "", "External registry password")
@@ -131,9 +129,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Override ZotStorageDir if --registry-data-dir flag or env var is set
+	// Override StoreDir if --registry-data-dir flag or env var is set.
 	if opts.RegistryDataDir != "" {
-		pathConfig.ZotStorageDir = opts.RegistryDataDir
+		pathConfig.StoreDir = opts.RegistryDataDir
 	}
 
 	// For --fallback-only mode, relax token/gc-url requirements
@@ -293,18 +291,8 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	}
 
-	// Update Zot config with storage path
-	zotConfigJSON, err := config.BuildZotConfigWithStoragePath(pathConfig.ZotStorageDir)
-	if err != nil {
-		return fmt.Errorf("build Zot config: %w", err)
-	}
-	cm.With(config.SetZotConfigRaw(json.RawMessage(zotConfigJSON)))
-
 	// Resolve local registry endpoint for CRI mirror config
-	localRegistryEndpoint, err := resolveLocalRegistryEndpoint(cm)
-	if err != nil {
-		return fmt.Errorf("resolving local registry endpoint: %w", err)
-	}
+	localRegistryEndpoint := resolveLocalRegistryEndpoint(cm)
 
 	// Resolve and apply CRI configs
 	criResults := resolveCRIAndApply(cm, opts.Mirrors, opts.NoRegistryFallback, localRegistryEndpoint)
@@ -369,14 +357,10 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		ctx,
 		cm,
 		log,
-		pathConfig.ZotTempConfig,
 		nil, // Will be set after scheduler creation
 	)
 
 	eventChan := make(chan struct{})
-
-	// Handle registry setup
-	wg.Go(func() error { return handleRegistrySetup(ctx, log, cm, pathConfig) })
 
 	// Watch for changes in the config file
 	wg.Go(func() error {
@@ -419,7 +403,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	})
 
-	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile)
+	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir)
 	err = s.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("unable to start satellite: %w", err)
@@ -492,6 +476,10 @@ func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Sat
 // Priority: config file registry_fallback > --mirrors flag > --no-registry-fallback/env.
 func resolveCRIAndApply(cm *config.ConfigManager, mirrors mirrorFlags, noFallback bool, localRegistry string) []runtime.CRIConfigResult {
 	fbCfg := cm.GetRegistryFallbackConfig()
+	if localRegistry == "" && (fbCfg.Enabled || len(mirrors) > 0) {
+		fmt.Println("warning: CRI registry fallback requires --byo-registry until a registry proxy is configured")
+		return nil
+	}
 
 	// Config file registry_fallback takes highest priority (from GC)
 	if fbCfg.Enabled {
@@ -522,46 +510,9 @@ func resolveCRIAndApply(cm *config.ConfigManager, mirrors mirrorFlags, noFallbac
 	return nil
 }
 
-func resolveLocalRegistryEndpoint(cm *config.ConfigManager) (string, error) {
+func resolveLocalRegistryEndpoint(cm *config.ConfigManager) string {
 	if cm.GetOwnRegistry() {
-		return utils.FormatRegistryURL(cm.GetLocalRegistryURL()), nil
+		return utils.FormatRegistryURL(cm.GetLocalRegistryURL())
 	}
-	var data map[string]any
-	if err := json.Unmarshal(cm.GetRawZotConfig(), &data); err != nil {
-		return "", fmt.Errorf("unmarshalling zot config: %w", err)
-	}
-	httpData, ok := data["http"].(map[string]any)
-	if !ok {
-		return "", fmt.Errorf("missing 'http' section in zot config")
-	}
-	addr, addrOK := httpData["address"].(string)
-	port, portOK := httpData["port"].(string)
-	if !addrOK || !portOK || addr == "" || port == "" {
-		return "", fmt.Errorf("missing 'address' or 'port' in zot http config")
-	}
-	return addr + ":" + port, nil
-}
-
-func handleRegistrySetup(ctx context.Context, log *zerolog.Logger, cm *config.ConfigManager, pathConfig *config.PathConfig) error {
-	log.Debug().Msg("Setting up local registry")
-
-	if cm.GetOwnRegistry() {
-		log.Info().Msg("Configuring own registry")
-		if err := utils.HandleOwnRegistry(cm); err != nil {
-			log.Error().Err(err).Msg("Error handling own registry")
-			return err
-		}
-		log.Info().Msg("Own registry configured successfully")
-		return nil
-	}
-
-	log.Info().Msg("Launching default registry")
-
-	zm := registry.NewZotManager(log.With().Str("component", "zot manager").Logger(), cm.GetRawZotConfig(), pathConfig.ZotTempConfig)
-
-	if err := zm.HandleRegistrySetup(ctx); err != nil {
-		return fmt.Errorf("default registry setup failed: %w", err)
-	}
-
-	return nil
+	return ""
 }

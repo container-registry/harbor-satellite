@@ -7,7 +7,7 @@ Harbor Satellite extends Harbor to edge computing environments. For a full intro
 
 ## Deployment Models
 
-Harbor Satellite supports two authentication flows and two registry modes. Pick the combination that fits your environment.
+Harbor Satellite supports two authentication flows and two storage modes. Pick the combination that fits your environment.
 
 ### Authentication: Token-based vs SPIFFE
 
@@ -15,11 +15,11 @@ Harbor Satellite supports two authentication flows and two registry modes. Pick 
 
 - **SPIFFE/SPIRE** - Zero-trust identity using X.509 SVIDs. A SPIRE server issues cryptographic identities to satellites via SPIRE agents. Ground Control verifies identity over mTLS and automatically provisions Harbor robot account credentials. Best for production, multi-tenant, or security-sensitive environments.
 
-### Registry: Embedded Zot vs BYO
+### Storage: Local OCI Layout vs BYO
 
-- **Embedded Zot** (default) - Satellite runs an embedded [Zot](https://zotregistry.dev) OCI registry. No external registry needed. Images are stored locally and served to workloads.
+- **Local OCI layout** (default) - Satellite copies OCI content into a persistent image layout using ORAS. No external registry is needed, but the layout is not a registry endpoint.
 
-- **Bring Your Own (BYO) Registry** - Point satellite at an existing registry with `--byo-registry --registry-url <url>`. Satellite replicates images to your registry instead of running its own.
+- **Bring Your Own (BYO) Registry** - Point satellite at an existing registry with `--byo-registry --registry-url <url>`. Satellite replicates images to that registry instead of the local layout.
 
 ### Choosing a Deployment Model
 
@@ -30,7 +30,7 @@ flowchart TD
     B -->|Production| D[SPIFFE/SPIRE auth]
     C --> E{Existing registry?}
     D --> E
-    E -->|No| F[Embedded Zot]
+    E -->|No| F[Local OCI layout]
     E -->|Yes| G[BYO Registry]
     F --> H[Ready to install]
     G --> H
@@ -53,7 +53,7 @@ graph LR
     subgraph Edge
         SpireAgentSat[SPIRE Agent]
         Satellite[Satellite]
-        Zot[Zot Registry]
+        OCI[(OCI Image Layout)]
     end
 
     GC --> PG
@@ -64,7 +64,7 @@ graph LR
     SpireAgentSat -.->|SVID| Satellite
     Satellite <-->|mTLS or HTTPS| GC
     Satellite -->|pull images| Harbor
-    Satellite --> Zot
+    Satellite --> OCI
 ```
 
 | Component | Location | Role |
@@ -75,8 +75,8 @@ graph LR
 | SPIRE Server | Cloud | Issues X.509 identities (SPIFFE deployments only) |
 | SPIRE Agent (GC) | Cloud | Provides identity to Ground Control (SPIFFE only) |
 | SPIRE Agent (Sat) | Edge | Provides identity to Satellite (SPIFFE only) |
-| Satellite | Edge | Replicates images, serves local registry |
-| Zot | Edge | Embedded OCI registry (or BYO alternative) |
+| Satellite | Edge | Replicates and manages OCI content |
+| OCI image layout | Edge | Default persistent ORAS-backed content store |
 
 ## Supported Platforms
 
@@ -96,7 +96,7 @@ Container images:
 
 ## Supported Container Runtimes
 
-Satellite can configure local container runtimes to use its registry as a mirror. Workloads pull from the local registry first, falling back to the upstream registry.
+Satellite can configure local container runtimes to use an external BYO registry as a mirror. The default local OCI layout is not addressable by a container runtime, so mirror configuration is skipped unless BYO mode provides a registry endpoint.
 
 | Runtime | Mirror Config Location | Notes |
 |---------|----------------------|-------|
