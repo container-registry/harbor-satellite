@@ -59,6 +59,7 @@ type Entity struct {
 	Repository string `json:"repository"`
 	Tag        string `json:"tag"`
 	Digest     string `json:"digest"`
+	Deleted    bool   `json:"deleted,omitempty"`
 }
 
 func (e Entity) GetName() string {
@@ -71,6 +72,10 @@ func (e Entity) GetRepository() string {
 
 func (e Entity) GetTag() string {
 	return e.Tag
+}
+
+func (e Entity) Key() string {
+	return e.Repository + "|" + e.Name + "|" + e.Tag
 }
 
 // Replicate replicates images from the source registry to the local registry.
