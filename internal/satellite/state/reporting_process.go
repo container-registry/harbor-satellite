@@ -163,6 +163,48 @@ func formatCRIActivity(results []runtime.CRIConfigResult) string {
 	return "cri_fallback_configured: " + strings.Join(parts, ", ")
 }
 
+// newReportClient builds the HTTP client used to send a status report,
+// preferring the SPIFFE-backed client when one is configured.
+func (s *StatusReportingProcess) newReportClient(ctx context.Context) (*http.Client, error) {
+	if s.spiffeClient != nil {
+		if err := s.spiffeClient.Connect(ctx); err != nil {
+			return nil, fmt.Errorf("connect to SPIRE agent: %w", err)
+		}
+		client, err := s.spiffeClient.CreateHTTPClient()
+		if err != nil {
+			return nil, fmt.Errorf("create SPIFFE HTTP client: %w", err)
+		}
+		return client, nil
+	}
+
+	client, err := createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure())
+	if err != nil {
+		return nil, fmt.Errorf("create HTTP client: %w", err)
+	}
+	return client, nil
+}
+
+// checkStatusReportRedirect caps status-report redirects, blocks cross-scheme
+// hops, and re-attaches the request body Go otherwise clears on redirect.
+func checkStatusReportRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if req.URL.Scheme != via[0].URL.Scheme {
+		return fmt.Errorf("refusing cross-scheme redirect from %s to %s", via[0].URL.Scheme, req.URL.Scheme)
+	}
+	if via[0].GetBody != nil {
+		body, err := via[0].GetBody()
+		if err != nil {
+			return err
+		}
+		req.Body = body
+	}
+	req.Method = via[0].Method
+	req.ContentLength = via[0].ContentLength
+	return nil
+}
+
 func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundControlURL string, req *StatusReportParams) (*StatusReportResponse, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -171,20 +213,9 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 
 	syncURL := fmt.Sprintf("%s/%s", groundControlURL, StatusReportRoute)
 
-	var client *http.Client
-	if s.spiffeClient != nil {
-		if err := s.spiffeClient.Connect(ctx); err != nil {
-			return nil, fmt.Errorf("connect to SPIRE agent: %w", err)
-		}
-		client, err = s.spiffeClient.CreateHTTPClient()
-		if err != nil {
-			return nil, fmt.Errorf("create SPIFFE HTTP client: %w", err)
-		}
-	} else {
-		client, err = createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure())
-		if err != nil {
-			return nil, fmt.Errorf("create HTTP client: %w", err)
-		}
+	client, err := s.newReportClient(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, syncURL, bytes.NewReader(body))
@@ -204,25 +235,7 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 		}
 	}
 
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 10 {
-			return errors.New("stopped after 10 redirects")
-		}
-		if req.URL.Scheme != via[0].URL.Scheme {
-			return fmt.Errorf("refusing cross-scheme redirect from %s to %s", via[0].URL.Scheme, req.URL.Scheme)
-		}
-		// Re-attach the body, since Go clears it by default on redirect
-		if via[0].GetBody != nil {
-			body, err := via[0].GetBody()
-			if err != nil {
-				return err
-			}
-			req.Body = body
-		}
-		req.Method = via[0].Method
-		req.ContentLength = via[0].ContentLength
-		return nil
-	}
+	client.CheckRedirect = checkStatusReportRedirect
 
 	resp, err := client.Do(httpReq)
 	if err != nil {
@@ -239,8 +252,7 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 	}
 
 	var data StatusReportResponse
-	err = json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return nil, fmt.Errorf("error reading body: %w", err)
 	}
 
