@@ -60,6 +60,7 @@ tasks:
         msg: "PROJECT_NAME is required. Set via task var or PROJECT_NAME env var."
     cmds:
       - |
+        set -e
         DOCKERFILE="Dockerfile"
         CONTEXT="."
         BUILD_COMPONENT="{{.COMPONENT}}"
@@ -147,6 +148,128 @@ tasks:
           "$IMAGE_ADDR" \
           --timeout 1m
       - echo "Signed {{.COMPONENT}}"
+    silent: true
+
+  manifest-and-sign:
+    desc: Create and sign a multi-arch image manifest from arch-specific tags
+    vars:
+      REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
+      PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
+      COMPONENT: "{{.COMPONENT | default .Env.COMPONENT | default \"satellite\"}}"
+      IMAGE_TAGS: "{{.IMAGE_TAGS | default .Env.IMAGE_TAGS | default \"dev\"}}"
+      SOURCE_IMAGE_TAGS: "{{.SOURCE_IMAGE_TAGS | default .Env.SOURCE_IMAGE_TAGS | default .IMAGE_TAGS | default .Env.IMAGE_TAGS | default \"dev\"}}"
+      ARCH_SUFFIXES: "{{.ARCH_SUFFIXES | default .Env.ARCH_SUFFIXES}}"
+    preconditions:
+      - sh: test -n "{{.REGISTRY}}"
+        msg: "REGISTRY is required. Set via task var or REGISTRY env var."
+      - sh: test -n "{{.PROJECT_NAME}}"
+        msg: "PROJECT_NAME is required. Set via task var or PROJECT_NAME env var."
+      - sh: test -n "{{.ARCH_SUFFIXES}}"
+        msg: "ARCH_SUFFIXES is required. Set via task var or ARCH_SUFFIXES env var."
+    cmds:
+      - |
+        set -e
+        if command -v docker &>/dev/null && ! docker --version 2>&1 | grep -qi podman; then
+          RUNTIME="docker"
+        else
+          RUNTIME="podman"
+        fi
+        echo "Using $RUNTIME runtime..."
+
+        if [ -n "$REG_USER" ] && [ -n "$REG_PASS" ]; then
+          echo "Logging into {{.REGISTRY}}..."
+          echo "$REG_PASS" | $RUNTIME login {{.REGISTRY}} -u "$REG_USER" --password-stdin
+        fi
+
+        IFS=',' read -r -a TARGET_TAGS <<< "{{.IMAGE_TAGS}}"
+        IFS=',' read -r -a SOURCE_TAGS <<< "{{.SOURCE_IMAGE_TAGS}}"
+
+        if [ "${#TARGET_TAGS[@]}" -ne "${#SOURCE_TAGS[@]}" ]; then
+          echo "Error: IMAGE_TAGS count (${#TARGET_TAGS[@]}) does not match SOURCE_IMAGE_TAGS count (${#SOURCE_TAGS[@]})" >&2
+          exit 1
+        fi
+
+        for i in "${!TARGET_TAGS[@]}"; do
+          tag=$(echo "${TARGET_TAGS[$i]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^v//')
+          source_tag=$(echo "${SOURCE_TAGS[$i]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^v//')
+          if [ -z "$tag" ] || [ -z "$source_tag" ]; then
+            continue
+          fi
+          IMAGE_ADDR="{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
+          SOURCES=""
+          for suffix in {{.ARCH_SUFFIXES}}; do
+            SOURCES="$SOURCES {{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$source_tag-$suffix"
+          done
+
+          echo "Creating {{.COMPONENT}} manifest $IMAGE_ADDR from:$SOURCES"
+          if [ "$RUNTIME" = "docker" ]; then
+            docker buildx imagetools create -t "$IMAGE_ADDR" $SOURCES
+          else
+            MANIFEST_NAME="localhost/{{.COMPONENT}}:$tag-manifest"
+            podman manifest rm "$MANIFEST_NAME" 2>/dev/null || true
+            podman manifest create "$MANIFEST_NAME" $SOURCES
+            podman manifest push --all "$MANIFEST_NAME" "docker://$IMAGE_ADDR"
+          fi
+
+          echo "Signing {{.COMPONENT}} manifest $IMAGE_ADDR..."
+          cosign sign --yes --recursive \
+            --registry-username="$REG_USER" \
+            --registry-password="$REG_PASS" \
+            "$IMAGE_ADDR" \
+            --timeout 1m
+        done
+      - echo "Created and signed {{.COMPONENT}} manifest"
+    silent: true
+
+  cleanup-platform-tags:
+    desc: Delete temporary per-arch source tags from Harbor after manifest assembly
+    vars:
+      REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
+      PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
+      SOURCE_IMAGE_TAGS: "{{.SOURCE_IMAGE_TAGS | default .Env.SOURCE_IMAGE_TAGS}}"
+      ARCH_SUFFIXES: "{{.ARCH_SUFFIXES | default .Env.ARCH_SUFFIXES}}"
+    preconditions:
+      - sh: test -n "{{.REGISTRY}}"
+        msg: "REGISTRY is required. Set via task var or REGISTRY env var."
+      - sh: test -n "{{.PROJECT_NAME}}"
+        msg: "PROJECT_NAME is required. Set via task var or PROJECT_NAME env var."
+      - sh: test -n "{{.SOURCE_IMAGE_TAGS}}"
+        msg: "SOURCE_IMAGE_TAGS is required."
+      - sh: test -n "{{.ARCH_SUFFIXES}}"
+        msg: "ARCH_SUFFIXES is required. Set via task var or ARCH_SUFFIXES env var."
+    cmds:
+      - |
+        set +e
+        failed=0
+        IFS=',' read -r -a source_tags_arr <<< "{{.SOURCE_IMAGE_TAGS}}"
+        for component in satellite ground-control; do
+          for suffix in {{.ARCH_SUFFIXES}}; do
+            for source_tag in "${source_tags_arr[@]}"; do
+              source_tag=$(echo "$source_tag" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              [ -z "$source_tag" ] && continue
+              tag="${source_tag}-${suffix}"
+              url="https://{{.REGISTRY}}/api/v2.0/projects/{{.PROJECT_NAME}}/repositories/${component}/artifacts/${tag}/tags/${tag}"
+              echo "Removing temporary tag ${tag} from ${component}..."
+              http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+                --connect-timeout 10 \
+                --max-time 30 \
+                -X DELETE \
+                -u "$REG_USER:$REG_PASS" \
+                "$url")
+              case "$http_code" in
+                200|202|404) echo "  done (HTTP ${http_code})" ;;
+                *)
+                  echo "  warning: HTTP ${http_code} deleting ${component}:${tag}" >&2
+                  failed=1
+                  ;;
+              esac
+            done
+          done
+        done
+        if [ "$failed" -ne 0 ]; then
+          echo "Warning: some tag deletions returned unexpected status codes (see above)." >&2
+        fi
+        exit 0  # cleanup is best-effort; never block CI
     silent: true
 
   snapshot-release:

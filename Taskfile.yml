@@ -152,7 +152,7 @@ tasks:
     desc: "Publish both components to registry"
     aliases: [p]
     vars:
-      TAG: '{{.TAG | default "dev"}}'
+      TAG: '{{.TAG | default .Env.TAG | default "dev"}}'
       PLATFORMS: "{{.PLATFORMS}}"
     cmds:
       - task: _publish:both
@@ -164,7 +164,9 @@ tasks:
   publish-and-sign:
     desc: Build, push, and sign both components
     vars:
-      TAG: '{{.TAG | default "dev"}}'
+      TAG: '{{.TAG | default .Env.TAG | default "dev"}}'
+      REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
+      PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
     cmds:
       - task: _publish:image-and-sign
         vars:
@@ -178,6 +180,80 @@ tasks:
           PROJECT_NAME: "{{.PROJECT_NAME}}"
           COMPONENT: ground-control
           IMAGE_TAGS: "{{.TAG}}"
+
+  publish-platform:
+    desc: Build and push one platform for both components
+    vars:
+      TAG: '{{.TAG | default .Env.TAG | default "dev"}}'
+      SOURCE_TAGS: "{{.SOURCE_IMAGE_TAGS | default .SOURCE_TAG | default .TAG}}"
+      PLATFORM_IMAGE_TAGS:
+        sh: |
+          printf '%s' "{{.SOURCE_TAGS}}" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^v//' | awk 'NF { printf "%s%s-{{.ARCH_SUFFIX}}", sep, $0; sep="," }'
+      REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
+      PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
+      PLATFORM: "{{.PLATFORM | default .Env.PLATFORM}}"
+      ARCH_SUFFIX: "{{.ARCH_SUFFIX | default .Env.ARCH_SUFFIX}}"
+    preconditions:
+      - sh: test -n "{{.PLATFORM}}"
+        msg: "PLATFORM is required. Set via task var or PLATFORM env var."
+      - sh: test -n "{{.ARCH_SUFFIX}}"
+        msg: "ARCH_SUFFIX is required. Set via task var or ARCH_SUFFIX env var."
+    cmds:
+      - task: _publish:image
+        vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT_NAME}}"
+          COMPONENT: satellite
+          IMAGE_TAGS: "{{.PLATFORM_IMAGE_TAGS}}"
+          PLATFORMS: "{{.PLATFORM}}"
+      - task: _publish:image
+        vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT_NAME}}"
+          COMPONENT: ground-control
+          IMAGE_TAGS: "{{.PLATFORM_IMAGE_TAGS}}"
+          PLATFORMS: "{{.PLATFORM}}"
+
+  publish-manifest-and-sign:
+    desc: Create and sign multi-arch manifests for both components
+    vars:
+      TAG: '{{.TAG | default .Env.TAG | default "dev"}}'
+      SOURCE_TAGS: "{{.SOURCE_IMAGE_TAGS | default .SOURCE_TAG | default .TAG}}"
+      REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
+      PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
+      ARCH_SUFFIXES: "{{.ARCH_SUFFIXES | default .Env.ARCH_SUFFIXES | default .PLATFORMS_LINUX}}"
+    cmds:
+      - task: _publish:manifest-and-sign
+        vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT_NAME}}"
+          COMPONENT: satellite
+          IMAGE_TAGS: "{{.TAG}}"
+          SOURCE_IMAGE_TAGS: "{{.SOURCE_TAGS}}"
+          ARCH_SUFFIXES: "{{.ARCH_SUFFIXES}}"
+      - task: _publish:manifest-and-sign
+        vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT_NAME}}"
+          COMPONENT: ground-control
+          IMAGE_TAGS: "{{.TAG}}"
+          SOURCE_IMAGE_TAGS: "{{.SOURCE_TAGS}}"
+          ARCH_SUFFIXES: "{{.ARCH_SUFFIXES}}"
+
+  cleanup-platform-tags:
+    desc: Delete temporary per-arch source tags from the registry after manifest assembly
+    vars:
+      REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
+      PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
+      SOURCE_TAGS: "{{.SOURCE_IMAGE_TAGS | default .Env.SOURCE_IMAGE_TAGS}}"
+      ARCH_SUFFIXES: "{{.ARCH_SUFFIXES | default .Env.ARCH_SUFFIXES}}"
+    cmds:
+      - task: _publish:cleanup-platform-tags
+        vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT_NAME}}"
+          SOURCE_IMAGE_TAGS: "{{.SOURCE_TAGS}}"
+          ARCH_SUFFIXES: "{{.ARCH_SUFFIXES}}"
 
   release:
     desc: Create release with GoReleaser
