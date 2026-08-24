@@ -17,7 +17,7 @@ type Satellite struct {
 	criResults     []runtime.CRIConfigResult
 	schedulers     []*scheduler.Scheduler
 	stateFilePath  string
-	storeRoot     string
+	storeRoot      string
 	stateProcess   *state.FetchAndReplicateStateProcess
 	eventscheduler *events.EventScheduler
 }
@@ -28,7 +28,7 @@ func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult
 		criResults:     criResults,
 		schedulers:     make([]*scheduler.Scheduler, 0),
 		stateFilePath:  stateFilePath,
-    storeRoot:     storeRoot,
+		storeRoot:      storeRoot,
 		eventscheduler: jq,
 	}
 }
@@ -107,7 +107,10 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	// Registering events
 	log.Info().Msg("registering events")
-	s.registerEvents(context.Background(), s.cm)
+	err = s.registerEvents(context.Background(), s.cm)
+	if err != nil {
+		return err
+	}
 
 	return ctx.Err()
 }

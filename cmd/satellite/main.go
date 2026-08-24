@@ -405,7 +405,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	})
 
 	eventScheduler := events.NewEventScheduler(log)
-	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile,pathConfig.StoreDir, eventScheduler)
+	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir, eventScheduler)
 
 	err = s.Run(ctx)
 	if err != nil {

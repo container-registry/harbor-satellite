@@ -70,7 +70,7 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 
 	resp, err := s.sendRequest(ctx)
 	if err != nil {
-		return fmt.Errorf("error sending refresh request: %v", err)
+		return fmt.Errorf("error sending refresh request: %w", err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {

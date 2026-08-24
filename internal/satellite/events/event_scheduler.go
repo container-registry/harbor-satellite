@@ -16,7 +16,6 @@ type EventScheduler struct {
 }
 
 func NewEventScheduler(log *zerolog.Logger) *EventScheduler {
-
 	return &EventScheduler{
 		log:      log,
 		eventMap: make(map[string]*scheduler.Scheduler),

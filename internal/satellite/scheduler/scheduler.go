@@ -43,10 +43,7 @@ func NewSchedulerWithInterval(intervalExpr string, process process.Process, log 
 		log:          log,
 	}
 
-	err = createTrigger(ctx, duration, triggerChan)
-	if err != nil {
-		return nil, err
-	}
+	createTrigger(ctx, duration, triggerChan)
 
 	return sched, nil
 }
@@ -109,7 +106,7 @@ func (s *Scheduler) Trigger() {
 	s.triggerChan <- time.Now()
 }
 
-func createTrigger(ctx context.Context, duration time.Duration, trigger chan time.Time) error {
+func createTrigger(ctx context.Context, duration time.Duration, trigger chan time.Time) {
 	ticker := time.NewTicker(duration)
 
 	go func() {
@@ -129,8 +126,6 @@ func createTrigger(ctx context.Context, duration time.Duration, trigger chan tim
 			}
 		}
 	}()
-
-	return nil
 }
 
 // ResetInterval changes the ticker interval dynamically
