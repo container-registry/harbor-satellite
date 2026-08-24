@@ -1,9 +1,7 @@
 package state
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -15,9 +13,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 )
-
-const StatusReportRoute = "satellites/sync"
 
 type StatusReportingProcess struct {
 	name         string
@@ -85,7 +82,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 
 	metricsCfg := s.cm.GetMetricsConfig()
 
-	req := &StatusReportParams{
+	req := &groundcontrol.SatelliteStatusRequest{
 		Name:                satelliteName,
 		StateReportInterval: heartbeatExpr,
 		RequestCreatedTime:  time.Now().UTC(),
@@ -140,62 +137,67 @@ func formatCRIActivity(results []runtime.CRIConfigResult) string {
 	return "cri_fallback_configured: " + strings.Join(parts, ", ")
 }
 
-func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundControlURL string, req *StatusReportParams) error {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("marshal status report: %w", err)
+func (s *StatusReportingProcess) sendStatusReport(
+	ctx context.Context,
+	groundControlURL string,
+	req *groundcontrol.SatelliteStatusRequest,
+) error {
+	var httpClient *http.Client
+	var err error
+	clientOptions := make([]groundcontrol.ClientOption, 0, 2)
+	if !s.cm.UseUnsecure() && !strings.HasPrefix(groundControlURL, "https://") {
+		return fmt.Errorf("insecure connection: Ground Control URL %q must use HTTPS when use_unsecure is false", groundControlURL)
 	}
 
-	syncURL := fmt.Sprintf("%s/%s", groundControlURL, StatusReportRoute)
-
-	var client *http.Client
 	if s.spiffeClient != nil {
 		if err := s.spiffeClient.Connect(ctx); err != nil {
 			return fmt.Errorf("connect to SPIRE agent: %w", err)
 		}
-		client, err = s.spiffeClient.CreateHTTPClient()
+		httpClient, err = s.spiffeClient.CreateHTTPClient()
 		if err != nil {
 			return fmt.Errorf("create SPIFFE HTTP client: %w", err)
 		}
 	} else {
-		client, err = createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure())
+		httpClient, err = createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure())
 		if err != nil {
 			return fmt.Errorf("create HTTP client: %w", err)
 		}
-	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, syncURL, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	if s.spiffeClient == nil {
-		if !s.cm.UseUnsecure() && !strings.HasPrefix(syncURL, "https://") {
-			return fmt.Errorf("insecure connection: sync URL %q must use HTTPS when use_unsecure is false", syncURL)
-		}
 		username := s.cm.GetSourceRegistryUsername()
 		password := s.cm.GetSourceRegistryPassword()
 		if username != "" && password != "" {
-			httpReq.SetBasicAuth(username, password)
+			clientOptions = append(clientOptions, groundcontrol.WithRequestEditorFn(
+				func(_ context.Context, request *http.Request) error {
+					request.SetBasicAuth(username, password)
+					return nil
+				},
+			))
 		}
 	}
 
-	resp, err := client.Do(httpReq)
+	clientOptions = append(clientOptions, groundcontrol.WithHTTPClient(httpClient))
+	client, err := groundcontrol.NewClientWithResponses(groundControlURL, clientOptions...)
 	if err != nil {
-		return fmt.Errorf("send request: %w", err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.FromContext(ctx).Warn().Err(err).Msg("error closing response body")
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("status report failed: %s", resp.Status)
+		return fmt.Errorf("create Ground Control client: %w", err)
 	}
 
-	return nil
+	response, err := client.SyncSatelliteWithResponse(ctx, *req)
+	if err != nil {
+		return fmt.Errorf("send status report: %w", err)
+	}
+
+	switch {
+	case response.StatusCode() == 200:
+		return nil
+	case response.JSON400 != nil:
+		return responseError("status report failed", response.Status(), response.JSON400)
+	case response.JSON403 != nil:
+		return responseError("status report failed", response.Status(), response.JSON403)
+	case response.JSON500 != nil:
+		return responseError("status report failed", response.Status(), response.JSON500)
+	default:
+		return unknownResponseError("status report failed", response.Status(), response.Body)
+	}
 }
 
 func (s *StatusReportingProcess) Name() string {

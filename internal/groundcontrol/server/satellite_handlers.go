@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -606,6 +607,15 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
+	if req.MemoryUsedBytes > math.MaxInt64 ||
+		req.StorageUsedBytes > math.MaxInt64 ||
+		req.LastSyncDurationMs > math.MaxInt64 {
+		HandleAppError(w, &AppError{
+			Message: "status metrics exceed the maximum supported value",
+			Code:    http.StatusBadRequest,
+		})
+		return
+	}
 
 	// Check SPIFFE identity first for dual auth
 	var satelliteName string
@@ -671,9 +681,9 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 		LatestStateDigest:  toNullString(req.LatestStateDigest),
 		LatestConfigDigest: toNullString(req.LatestConfigDigest),
 		CpuPercent:         toNullString(fmt.Sprintf("%.2f", req.CPUPercent)),
-		MemoryUsedBytes:    toNullInt64(req.MemoryUsedBytes),
-		StorageUsedBytes:   toNullInt64(req.StorageUsedBytes),
-		LastSyncDurationMs: toNullInt64(req.LastSyncDurationMs),
+		MemoryUsedBytes:    toNullUInt64(req.MemoryUsedBytes),
+		StorageUsedBytes:   toNullUInt64(req.StorageUsedBytes),
+		LastSyncDurationMs: toNullUInt64(req.LastSyncDurationMs),
 		ImageCount:         toNullInt32(req.ImageCount),
 		ReportedAt:         req.RequestCreatedTime,
 		ArtifactIds:        artifactIDs,

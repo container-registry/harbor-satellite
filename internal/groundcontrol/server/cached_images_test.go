@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -262,6 +263,33 @@ func TestSyncHandler_InvalidBody(t *testing.T) {
 	server.SyncSatellite(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+func TestSyncHandler_RejectsMetricsAboveMaxInt64(t *testing.T) {
+	tests := []struct {
+		name string
+		req  SatelliteStatusRequest
+	}{
+		{name: "memory used bytes", req: SatelliteStatusRequest{MemoryUsedBytes: math.MaxInt64 + 1}},
+		{name: "storage used bytes", req: SatelliteStatusRequest{StorageUsedBytes: math.MaxInt64 + 1}},
+		{name: "last sync duration", req: SatelliteStatusRequest{LastSyncDurationMs: math.MaxInt64 + 1}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server, mock := newMockServer(t)
+			body := mustMarshalJSON(t, tt.req)
+			req := httptest.NewRequest(http.MethodPost, "/satellites/sync", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+
+			rr := httptest.NewRecorder()
+			server.SyncSatellite(rr, req)
+
+			require.Equal(t, http.StatusBadRequest, rr.Code)
+			require.Contains(t, rr.Body.String(), "status metrics exceed the maximum supported value")
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
 
 func TestSyncHandler_InvalidHeartbeatInterval(t *testing.T) {

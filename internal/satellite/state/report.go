@@ -10,27 +10,20 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
-type StatusReportParams struct {
-	Name                string        `json:"name"`
-	Activity            string        `json:"activity"`
-	StateReportInterval string        `json:"state_report_interval"`
-	LatestStateDigest   string        `json:"latest_state_digest"`
-	LatestConfigDigest  string        `json:"latest_config_digest"`
-	MemoryUsedBytes     uint64        `json:"memory_used_bytes"`
-	StorageUsedBytes    uint64        `json:"storage_used_bytes"`
-	CPUPercent          float64       `json:"cpu_percent"`
-	RequestCreatedTime  time.Time     `json:"request_created_time"`
-	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
-	ImageCount          int           `json:"image_count"`
-	CachedImages        []CachedImage `json:"cached_images,omitempty"`
-}
-
-func collectStatusReportParams(ctx context.Context, heartbeatInterval time.Duration, req *StatusReportParams, cfg config.MetricsConfig, registryURL string, insecure bool) {
+func collectStatusReportParams(
+	ctx context.Context,
+	heartbeatInterval time.Duration,
+	req *groundcontrol.SatelliteStatusRequest,
+	cfg config.MetricsConfig,
+	registryURL string,
+	insecure bool,
+) {
 	log := logger.FromContext(ctx)
 
 	if cfg.CollectCPU {
@@ -49,7 +42,7 @@ func collectStatusReportParams(ctx context.Context, heartbeatInterval time.Durat
 			log.Warn().Err(err).Msg("Failed to collect cached images")
 		} else {
 			req.CachedImages = cached
-			req.ImageCount = len(cached)
+			req.ImageCount = int32(len(cached))
 		}
 	}
 }

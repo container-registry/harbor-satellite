@@ -359,8 +359,8 @@ func toNullString(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: s != ""}
 }
 
-func toNullInt64(n int64) sql.NullInt64 {
-	return sql.NullInt64{Int64: n, Valid: true}
+func toNullUInt64(n uint64) sql.NullInt64 {
+	return sql.NullInt64{Int64: int64(n), Valid: true}
 }
 
 func toNullInt32(n int32) sql.NullInt32 {

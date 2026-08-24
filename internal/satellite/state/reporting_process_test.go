@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
+	"github.com/container-registry/harbor-satellite/internal/spiffe"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 	"github.com/stretchr/testify/require"
 )
 
@@ -147,7 +149,7 @@ func TestExecute_CRIReporting(t *testing.T) {
 	}
 
 	t.Run("successful send clears CRI results", func(t *testing.T) {
-		var received StatusReportParams
+		var received groundcontrol.SatelliteStatusRequest
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
 			w.WriteHeader(http.StatusOK)
@@ -194,7 +196,7 @@ func TestExecute_CRIReporting(t *testing.T) {
 		var callCount int
 		var lastActivity string
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var req StatusReportParams
+			var req groundcontrol.SatelliteStatusRequest
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 			callCount++
 			lastActivity = req.Activity
@@ -220,7 +222,7 @@ func TestExecute_CRIReporting(t *testing.T) {
 		shouldFail := true
 		var lastActivity string
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var req StatusReportParams
+			var req groundcontrol.SatelliteStatusRequest
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 			lastActivity = req.Activity
 			if shouldFail {
@@ -255,4 +257,88 @@ func TestExecute_CRIReporting(t *testing.T) {
 		require.Nil(t, p.pendingCRI)
 		p.mu.Unlock()
 	})
+}
+
+func TestSendStatusReportUsesBasicAuthEditor(t *testing.T) {
+	const (
+		username = "robot$satellite-test"
+		password = "robot-secret"
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		gotUsername, gotPassword, ok := request.BasicAuth()
+		require.True(t, ok)
+		require.Equal(t, username, gotUsername)
+		require.Equal(t, password, gotPassword)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cm := newReportingTestCM(t, server.URL)
+	cm.With(config.SetStateConfig(config.StateConfig{
+		RegistryCredentials: config.RegistryCredentials{
+			Username: username,
+			Password: password,
+		},
+		StateURL: cm.GetStateURL(),
+	}))
+	process := &StatusReportingProcess{name: "test", mu: &sync.Mutex{}, cm: cm}
+
+	err := process.sendStatusReport(testContext(), server.URL, &groundcontrol.SatelliteStatusRequest{Name: "test-sat"})
+
+	require.NoError(t, err)
+}
+
+func TestSendStatusReportRejectsInsecureURLBeforeSPIFFESetup(t *testing.T) {
+	cm := newReportingTestCM(t, "http://ground-control.test")
+	cm.With(config.SetUseUnsecure(false))
+	process := &StatusReportingProcess{
+		name:         "test",
+		mu:           &sync.Mutex{},
+		cm:           cm,
+		spiffeClient: &spiffe.Client{},
+	}
+
+	err := process.sendStatusReport(
+		testContext(),
+		"http://ground-control.test",
+		&groundcontrol.SatelliteStatusRequest{Name: "test-sat"},
+	)
+
+	require.ErrorContains(t, err, "must use HTTPS when use_unsecure is false")
+}
+
+func TestSendStatusReportReturnsTypedError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, err := w.Write([]byte(`{"code":40301,"message":"satellite is not authorized"}`))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	cm := newReportingTestCM(t, server.URL)
+	process := &StatusReportingProcess{name: "test", mu: &sync.Mutex{}, cm: cm}
+
+	err := process.sendStatusReport(testContext(), server.URL, &groundcontrol.SatelliteStatusRequest{Name: "test-sat"})
+
+	require.ErrorContains(t, err, "403 Forbidden")
+	require.ErrorContains(t, err, "code=40301")
+	require.ErrorContains(t, err, "satellite is not authorized")
+}
+
+func TestSendStatusReportPreservesUnknownResponseContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, err := w.Write([]byte("upstream unavailable"))
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	cm := newReportingTestCM(t, server.URL)
+	process := &StatusReportingProcess{name: "test", mu: &sync.Mutex{}, cm: cm}
+
+	err := process.sendStatusReport(testContext(), server.URL, &groundcontrol.SatelliteStatusRequest{Name: "test-sat"})
+
+	require.ErrorContains(t, err, "502 Bad Gateway")
+	require.ErrorContains(t, err, "upstream unavailable")
 }

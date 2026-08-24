@@ -5,30 +5,31 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCollectStatusReportParams_EmptyRegistryURL(t *testing.T) {
 	ctx := testContext()
-	req := &StatusReportParams{}
+	req := &groundcontrol.SatelliteStatusRequest{}
 	cfg := config.MetricsConfig{}
 
 	collectStatusReportParams(ctx, 30*time.Second, req, cfg, "", false)
 
 	require.Nil(t, req.CachedImages)
-	require.Equal(t, 0, req.ImageCount)
+	require.Equal(t, int32(0), req.ImageCount)
 }
 
 func TestCollectStatusReportParams_UnreachableRegistry(t *testing.T) {
 	ctx := testContext()
-	req := &StatusReportParams{}
+	req := &groundcontrol.SatelliteStatusRequest{}
 	cfg := config.MetricsConfig{}
 
 	collectStatusReportParams(ctx, 30*time.Second, req, cfg, "127.0.0.1:1", true)
 
 	// Should gracefully handle the error - no cached images, image count stays 0
 	require.Nil(t, req.CachedImages)
-	require.Equal(t, 0, req.ImageCount)
+	require.Equal(t, int32(0), req.ImageCount)
 }
 
 func TestExtractSatelliteNameFromURL(t *testing.T) {
