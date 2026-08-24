@@ -42,9 +42,10 @@ type ConfigManager struct {
 	mu                      sync.RWMutex
 	encryptor               *secure.ConfigEncryptor
 	encryptEnabled          bool
+	headless                bool
 }
 
-func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config) (*ConfigManager, error) {
+func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config, headless bool) (*ConfigManager, error) {
 	cryptoProvider := crypto.NewAESProvider()
 	deviceIdentity := identity.NewLinuxDeviceIdentity()
 	encryptor := secure.NewConfigEncryptor(cryptoProvider, deviceIdentity)
@@ -58,7 +59,14 @@ func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL
 		JsonLog:                 jsonLog,
 		encryptor:               encryptor,
 		encryptEnabled:          config.AppConfig.EncryptConfig,
+		headless:                headless,
 	}, nil
+}
+
+func (cm *ConfigManager) IsHeadless() bool {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return cm.headless
 }
 
 func (cm *ConfigManager) With(mutators ...func(*Config)) *ConfigManager {
@@ -162,7 +170,7 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 		return nil, nil, fmt.Errorf("failed to read config from disk: %w", err)
 	}
 
-	validatedConfig, warnings, err := ValidateAndEnforceDefaults(newConfig, cm.DefaultGroundControlURL)
+	validatedConfig, warnings, err := ValidateAndEnforceDefaults(newConfig, cm.DefaultGroundControlURL, cm.headless)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to validate reloaded config: %w", err)
 	}
@@ -174,12 +182,14 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 	return changes, warnings, nil
 }
 
-func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure bool) (*ConfigManager, []string, error) {
+func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure, headless bool) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
 
-	if _, err := url.ParseRequestURI(groundControlURL); err != nil {
-		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url env var: %w", err)
+	if !headless {
+		if _, err := url.ParseRequestURI(groundControlURL); err != nil {
+			return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url env var: %w", err)
+		}
 	}
 
 	cfg, err = readAndReturnConfig(configPath)
@@ -194,12 +204,12 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 		cfg.AppConfig.UseUnsecure = true
 	}
 
-	cfg, warnings, err := ValidateAndEnforceDefaults(cfg, groundControlURL)
+	cfg, warnings, err := ValidateAndEnforceDefaults(cfg, groundControlURL, headless)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("invalid config: %w", err)
 	}
 
-	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, jsonLogging, cfg)
+	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, jsonLogging, cfg, headless)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to create config manager: %w", err)
 	}

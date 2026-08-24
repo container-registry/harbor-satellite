@@ -17,7 +17,7 @@ import (
 // It applies default values where required, verifies URLs, cron expressions,
 // and handles the logic for bring-your-own-registry vs default registry setup.
 // Returns warnings for any defaulted or ignored fields and a fatal error for critical misconfigurations.
-func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) (*Config, []string, error) {
+func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string, headless bool) (*Config, []string, error) {
 	if config == nil {
 		config = &Config{}
 	}
@@ -35,8 +35,10 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		config.AppConfig.GroundControlURL = URL(defaultGroundControlURL)
 	}
 
-	if _, err := url.ParseRequestURI(string(config.AppConfig.GroundControlURL)); err != nil {
-		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url: %w", err)
+	if !headless {
+		if _, err := url.ParseRequestURI(string(config.AppConfig.GroundControlURL)); err != nil {
+			return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url: %w", err)
+		}
 	}
 
 	warnings = append(warnings, validateAndEnforceLogLevel(config)...)

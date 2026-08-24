@@ -34,70 +34,72 @@ func (s *Satellite) Run(ctx context.Context) error {
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, log)
 	s.stateProcess = fetchAndReplicateStateProcess
 
-	// Create ZTR scheduler if not already done
-	if !s.cm.IsZTRDone() {
-		var ztrScheduler *scheduler.Scheduler
-		var err error
+	if !s.cm.IsHeadless() {
+		// Create ZTR scheduler if not already done
+		if !s.cm.IsZTRDone() {
+			var ztrScheduler *scheduler.Scheduler
+			var err error
 
-		if s.cm.IsSPIFFEEnabled() {
-			log.Info().Msg("SPIFFE authentication enabled, using SPIFFE-based ZTR")
-			spiffeZtrProcess, processErr := state.NewSpiffeZtrProcess(s.cm)
-			if processErr != nil {
-				log.Error().Err(processErr).Msg("Failed to create SPIFFE ZTR process")
-				return processErr
+			if s.cm.IsSPIFFEEnabled() {
+				log.Info().Msg("SPIFFE authentication enabled, using SPIFFE-based ZTR")
+				spiffeZtrProcess, processErr := state.NewSpiffeZtrProcess(s.cm)
+				if processErr != nil {
+					log.Error().Err(processErr).Msg("Failed to create SPIFFE ZTR process")
+					return processErr
+				}
+				ztrScheduler, err = scheduler.NewSchedulerWithInterval(
+					s.cm.GetRegistrationInterval(),
+					spiffeZtrProcess,
+					log,
+				)
+			} else {
+				log.Info().Msg("Using token-based ZTR")
+				ztrProcess := state.NewZtrProcess(s.cm)
+				ztrScheduler, err = scheduler.NewSchedulerWithInterval(
+					s.cm.GetRegistrationInterval(),
+					ztrProcess,
+					log,
+				)
 			}
-			ztrScheduler, err = scheduler.NewSchedulerWithInterval(
-				s.cm.GetRegistrationInterval(),
-				spiffeZtrProcess,
-				log,
-			)
-		} else {
-			log.Info().Msg("Using token-based ZTR")
-			ztrProcess := state.NewZtrProcess(s.cm)
-			ztrScheduler, err = scheduler.NewSchedulerWithInterval(
-				s.cm.GetRegistrationInterval(),
-				ztrProcess,
-				log,
-			)
+
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to create ZTR scheduler")
+				return err
+			}
+			s.schedulers = append(s.schedulers, ztrScheduler)
+			ztrScheduler.Start(ctx)
 		}
 
+		// Create state replication scheduler
+		stateScheduler, err := scheduler.NewSchedulerWithInterval(
+			s.cm.GetStateReplicationInterval(),
+			fetchAndReplicateStateProcess,
+			log,
+		)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to create ZTR scheduler")
+			log.Error().Err(err).Msg("Failed to create state replication scheduler")
 			return err
 		}
-		s.schedulers = append(s.schedulers, ztrScheduler)
-		ztrScheduler.Start(ctx)
-	}
+		s.schedulers = append(s.schedulers, stateScheduler)
+		stateScheduler.Start(ctx)
 
-	// Create state replication scheduler
-	stateScheduler, err := scheduler.NewSchedulerWithInterval(
-		s.cm.GetStateReplicationInterval(),
-		fetchAndReplicateStateProcess,
-		log,
-	)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create state replication scheduler")
-		return err
+		// Create status report scheduler with pending CRI results
+		statusReportProcess := state.NewStatusReportingProcess(s.cm)
+		if len(s.criResults) > 0 {
+			statusReportProcess.SetPendingCRIResults(s.criResults)
+		}
+		statusScheduler, err := scheduler.NewSchedulerWithInterval(
+			s.cm.GetHeartbeatInterval(),
+			statusReportProcess,
+			log,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to create status report scheduler")
+			return err
+		}
+		s.schedulers = append(s.schedulers, statusScheduler)
+		statusScheduler.Start(ctx)
 	}
-	s.schedulers = append(s.schedulers, stateScheduler)
-	stateScheduler.Start(ctx)
-
-	// Create status report scheduler with pending CRI results
-	statusReportProcess := state.NewStatusReportingProcess(s.cm)
-	if len(s.criResults) > 0 {
-		statusReportProcess.SetPendingCRIResults(s.criResults)
-	}
-	statusScheduler, err := scheduler.NewSchedulerWithInterval(
-		s.cm.GetHeartbeatInterval(),
-		statusReportProcess,
-		log,
-	)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create status report scheduler")
-		return err
-	}
-	s.schedulers = append(s.schedulers, statusScheduler)
-	statusScheduler.Start(ctx)
 
 	return ctx.Err()
 }
