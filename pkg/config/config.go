@@ -188,22 +188,30 @@ type DirectDeliveryConfig struct {
 }
 
 type AppConfig struct {
-	GroundControlURL          URL                    `json:"ground_control_url,omitempty"`
-	LogLevel                  string                 `json:"log_level,omitempty"`
-	UseUnsecure               bool                   `json:"use_unsecure,omitempty"`
-	StateReplicationInterval  string                 `json:"state_replication_interval,omitempty"`
-	RegisterSatelliteInterval string                 `json:"register_satellite_interval,omitempty"`
-	HeartbeatInterval         string                 `json:"heartbeat_interval,omitempty"`
-	Metrics                   MetricsConfig          `json:"metrics,omitempty"`
-	BringOwnRegistry          bool                   `json:"bring_own_registry,omitempty"`
-	LocalRegistryCredentials  RegistryCredentials    `json:"local_registry,omitempty"`
-	TLS                       TLSConfig              `json:"tls,omitempty"`
-	SPIFFE                    SPIFFEConfig           `json:"spiffe,omitempty"`
-	EncryptConfig             bool                   `json:"encrypt_config,omitempty"`
-	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty"`
-	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty"`
-	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
-	Audit                     AuditConfig            `json:"audit,omitempty"`
+	GroundControlURL URL    `json:"ground_control_url,omitempty"`
+	LogLevel         string `json:"log_level,omitempty"`
+	// UseUnsecure allows plain-HTTP connections to registries. It must never
+	// affect how Ground Control's TLS certificate is verified; use
+	// GroundControlSkipTLSVerify for that.
+	UseUnsecure bool `json:"use_unsecure,omitempty"`
+	// GroundControlSkipTLSVerify disables verification of Ground Control's TLS
+	// certificate. This exposes the registration token and the Harbor robot
+	// credentials in the response to anyone who can intercept the connection,
+	// so it is a separate opt-in and is never derived from UseUnsecure.
+	GroundControlSkipTLSVerify bool                   `json:"ground_control_skip_tls_verify,omitempty"`
+	StateReplicationInterval   string                 `json:"state_replication_interval,omitempty"`
+	RegisterSatelliteInterval  string                 `json:"register_satellite_interval,omitempty"`
+	HeartbeatInterval          string                 `json:"heartbeat_interval,omitempty"`
+	Metrics                    MetricsConfig          `json:"metrics,omitempty"`
+	BringOwnRegistry           bool                   `json:"bring_own_registry,omitempty"`
+	LocalRegistryCredentials   RegistryCredentials    `json:"local_registry,omitempty"`
+	TLS                        TLSConfig              `json:"tls,omitempty"`
+	SPIFFE                     SPIFFEConfig           `json:"spiffe,omitempty"`
+	EncryptConfig              bool                   `json:"encrypt_config,omitempty"`
+	RegistryFallback           RegistryFallbackConfig `json:"registry_fallback,omitempty"`
+	HarborRegistryURL          string                 `json:"harbor_registry_url,omitempty"`
+	DirectDelivery             DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
+	Audit                      AuditConfig            `json:"audit,omitempty"`
 }
 
 type StateConfig struct {

@@ -43,6 +43,7 @@ type SatelliteOptions struct {
 	GroundControlURL       string
 	Token                  string
 	UseUnsecure            bool
+	GCSkipTLSVerify        bool
 	Mirrors                mirrorFlags
 	SPIFFEEnabled          bool
 	SPIFFEEndpointSocket   string
@@ -71,6 +72,7 @@ func main() {
 	opts := SatelliteOptions{
 		GroundControlURL:       envCfg.GroundControlURL,
 		UseUnsecure:            envCfg.UseUnsecure,
+		GCSkipTLSVerify:        envCfg.GCSkipTLSVerify,
 		SPIFFEEnabled:          envCfg.SPIFFEEnabled,
 		SPIFFEEndpointSocket:   envCfg.SPIFFEEndpointSocket,
 		SPIFFEExpectedServerID: envCfg.SPIFFEExpectedServerID,
@@ -89,7 +91,8 @@ func main() {
 	flag.StringVar(&opts.GroundControlURL, "ground-control-url", opts.GroundControlURL, "URL to ground control")
 	flag.BoolVar(&opts.JSONLogging, "json-logging", true, "Enable JSON logging")
 	flag.StringVar(&opts.Token, "token", "", "Satellite token")
-	flag.BoolVar(&opts.UseUnsecure, "use-unsecure", opts.UseUnsecure, "Use insecure (HTTP) connections to registries")
+	flag.BoolVar(&opts.UseUnsecure, "use-unsecure", opts.UseUnsecure, "Use insecure (HTTP) connections to registries. Does not affect Ground Control certificate verification")
+	flag.BoolVar(&opts.GCSkipTLSVerify, "gc-skip-tls-verify", opts.GCSkipTLSVerify, "INSECURE: skip verification of Ground Control's TLS certificate. Exposes the registration token and Harbor credentials to network interception")
 	flag.Var(&opts.Mirrors, "mirrors", "Override CRI registry config. Format: CRI:registry1,registry2")
 	flag.BoolVar(&opts.SPIFFEEnabled, "spiffe-enabled", opts.SPIFFEEnabled, "Enable SPIFFE/SPIRE authentication")
 	flag.StringVar(&opts.SPIFFEEndpointSocket, "spiffe-endpoint-socket", opts.SPIFFEEndpointSocket, "SPIFFE Workload API endpoint socket")
@@ -254,10 +257,15 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
 
-	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
+	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure, opts.GCSkipTLSVerify)
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v\n", err)
 		return err
+	}
+
+	// Warn once at startup rather than on every registration and heartbeat.
+	if cm.GroundControlSkipTLSVerify() {
+		warnings = append(warnings, config.GroundControlSkipTLSVerifyWarning)
 	}
 
 	// Apply SPIFFE config from CLI flags

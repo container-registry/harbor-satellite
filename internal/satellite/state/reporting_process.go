@@ -148,6 +148,14 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 
 	syncURL := fmt.Sprintf("%s/%s", groundControlURL, StatusReportRoute)
 
+	// Checked before the client is chosen so it covers the SPIFFE path too: a
+	// transport's TLS config is never applied to an http:// URL, so an mTLS or
+	// SPIFFE client still sends plaintext to one. use_unsecure only permits
+	// plain-HTTP registry connections and must not downgrade this channel.
+	if !strings.HasPrefix(strings.ToLower(syncURL), "https://") {
+		return fmt.Errorf("insecure connection: sync URL %q must use HTTPS", syncURL)
+	}
+
 	var client *http.Client
 	if s.spiffeClient != nil {
 		if err := s.spiffeClient.Connect(ctx); err != nil {
@@ -158,7 +166,7 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 			return fmt.Errorf("create SPIFFE HTTP client: %w", err)
 		}
 	} else {
-		client, err = createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure())
+		client, err = createHTTPClient(ctx, s.cm.GetTLSConfig(), s.cm.GroundControlSkipTLSVerify())
 		if err != nil {
 			return fmt.Errorf("create HTTP client: %w", err)
 		}
@@ -171,9 +179,6 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	if s.spiffeClient == nil {
-		if !s.cm.UseUnsecure() && !strings.HasPrefix(syncURL, "https://") {
-			return fmt.Errorf("insecure connection: sync URL %q must use HTTPS when use_unsecure is false", syncURL)
-		}
 		username := s.cm.GetSourceRegistryUsername()
 		password := s.cm.GetSourceRegistryPassword()
 		if username != "" && password != "" {

@@ -59,3 +59,11 @@ const (
 	DefaultAuditSyslogTag    string = "harbor-audit"
 	DefaultAuditSyslogSocket string = "/dev/log"
 )
+
+// GroundControlSkipTLSVerifyWarning is emitted once at startup when Ground
+// Control certificate verification has been disabled. It is deliberately not
+// logged per request: registration and heartbeats run on a timer and would
+// flood the log.
+const GroundControlSkipTLSVerifyWarning string = "SECURITY: Ground Control TLS certificate verification is DISABLED " +
+	"(ground_control_skip_tls_verify). The registration token and Harbor " +
+	"credentials can be intercepted by anyone on the network path. Do not use this in production."

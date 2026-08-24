@@ -128,6 +128,9 @@ func newReportingTestCM(t *testing.T, gcURL string) *config.ConfigManager {
 			GroundControlURL:  config.URL(gcURL),
 			HeartbeatInterval: "@every 30s",
 			UseUnsecure:       true,
+			// Status reports require HTTPS; the test server presents a
+			// self-signed certificate, so trust it via the dedicated opt-in.
+			GroundControlSkipTLSVerify: true,
 		},
 		ZotConfigRaw: json.RawMessage(`{}`),
 	}
@@ -148,7 +151,7 @@ func TestExecute_CRIReporting(t *testing.T) {
 
 	t.Run("successful send clears CRI results", func(t *testing.T) {
 		var received StatusReportParams
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
 			w.WriteHeader(http.StatusOK)
 		}))
@@ -171,7 +174,7 @@ func TestExecute_CRIReporting(t *testing.T) {
 	})
 
 	t.Run("failed send preserves CRI results", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 		}))
 		defer srv.Close()
@@ -193,7 +196,7 @@ func TestExecute_CRIReporting(t *testing.T) {
 	t.Run("second Execute after success skips CRI", func(t *testing.T) {
 		var callCount int
 		var lastActivity string
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var req StatusReportParams
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 			callCount++
@@ -219,7 +222,7 @@ func TestExecute_CRIReporting(t *testing.T) {
 	t.Run("retry after failure includes CRI", func(t *testing.T) {
 		shouldFail := true
 		var lastActivity string
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var req StatusReportParams
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 			lastActivity = req.Activity

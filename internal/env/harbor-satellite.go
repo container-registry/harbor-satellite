@@ -11,6 +11,7 @@ type HarborSatellite struct {
 	SPIFFEEndpointSocket   string `env:"SPIFFE_ENDPOINT_SOCKET"    envDefault:"unix:///run/spire/sockets/agent.sock"`
 	SPIFFEExpectedServerID string `env:"SPIFFE_EXPECTED_SERVER_ID"`
 	UseUnsecure            bool   `env:"USE_UNSECURE"              envDefault:"false"`
+	GCSkipTLSVerify        bool   `env:"GC_SKIP_TLS_VERIFY"        envDefault:"false"`
 	BYORegistry            bool   `env:"BYO_REGISTRY"              envDefault:"false"`
 	RegistryURL            string `env:"REGISTRY_URL"`
 	RegistryUsername       string `env:"REGISTRY_USERNAME"`
