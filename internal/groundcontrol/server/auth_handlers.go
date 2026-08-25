@@ -11,9 +11,14 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 )
 
 const maxFailedAttempts = 5
+
+type refreshCredentialResponse struct {
+	Secret string `json:"secret"`
+}
 
 func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
@@ -134,6 +139,54 @@ func (s *Server) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) RefreshSatellite(w http.ResponseWriter, r *http.Request) {
+	// Check SPIFFE identity first for dual auth
+	var satelliteName string
+	if name, ok := spiffe.GetSatelliteName(r.Context()); ok {
+		satelliteName = name
+	} else {
+		HandleAppError(w, &AppError{
+			Message: "unknown satellite entity",
+			Code:    http.StatusForbidden,
+		})
+		return
+	}
+
+	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
+	if err != nil {
+		log.Printf("Unknown satellite: %s", satelliteName)
+		HandleAppError(w, &AppError{
+			Message: "unknown satellite entity",
+			Code:    http.StatusForbidden,
+		})
+		return
+	}
+
+	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("Failed to find robot account for satellite : %s", satelliteName)
+		HandleAppError(w, &AppError{
+			Message: "Failed to find robot account",
+			Code:    http.StatusForbidden,
+		})
+		return
+	}
+
+	newSecret, err := refreshRobotSecret(r, s.dbQueries, robotAcc)
+	if err != nil {
+		log.Printf("Failed to refresh robot secret for satellite %s: %v", satelliteName, err)
+		HandleAppError(w, &AppError{
+			Message: "Error: failed to refresh robot secret",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, refreshCredentialResponse{
+		Secret: newSecret,
+	})
 }
 
 func (s *Server) recordFailedAttempt(r *http.Request, username string) {

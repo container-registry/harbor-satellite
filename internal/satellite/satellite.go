@@ -2,30 +2,34 @@ package satellite
 
 import (
 	"context"
+	"errors"
 
 	"github.com/container-registry/harbor-satellite/internal/logger"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
+	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
 type Satellite struct {
-	cm            *config.ConfigManager
-	criResults    []runtime.CRIConfigResult
-	schedulers    []*scheduler.Scheduler
-	stateFilePath string
-	storeRoot     string
-	stateProcess  *state.FetchAndReplicateStateProcess
+	cm             *config.ConfigManager
+	criResults     []runtime.CRIConfigResult
+	schedulers     []*scheduler.Scheduler
+	stateFilePath  string
+	storeRoot      string
+	stateProcess   *state.FetchAndReplicateStateProcess
+	eventscheduler *events.EventScheduler
 }
 
-func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, storeRoot string) *Satellite {
+func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, storeRoot string, jq *events.EventScheduler) *Satellite {
 	return &Satellite{
-		cm:            cm,
-		criResults:    criResults,
-		schedulers:    make([]*scheduler.Scheduler, 0),
-		stateFilePath: stateFilePath,
-		storeRoot:     storeRoot,
+		cm:             cm,
+		criResults:     criResults,
+		schedulers:     make([]*scheduler.Scheduler, 0),
+		stateFilePath:  stateFilePath,
+		storeRoot:      storeRoot,
+		eventscheduler: jq,
 	}
 }
 
@@ -85,7 +89,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	stateScheduler.Start(ctx)
 
 	// Create status report scheduler with pending CRI results
-	statusReportProcess := state.NewStatusReportingProcess(s.cm)
+	statusReportProcess := state.NewStatusReportingProcess(s.cm, s.eventscheduler)
 	if len(s.criResults) > 0 {
 		statusReportProcess.SetPendingCRIResults(s.criResults)
 	}
@@ -100,6 +104,13 @@ func (s *Satellite) Run(ctx context.Context) error {
 	}
 	s.schedulers = append(s.schedulers, statusScheduler)
 	statusScheduler.Start(ctx)
+
+	// Registering events
+	log.Info().Msg("registering events")
+	err = s.registerEvents(context.Background(), s.cm)
+	if err != nil {
+		return err
+	}
 
 	return ctx.Err()
 }
@@ -140,4 +151,22 @@ func (s *Satellite) Stop(ctx context.Context) {
 	} else {
 		log.Info().Msg("All schedulers stopped")
 	}
+}
+
+// Registers actions that the Job Queue understands
+// and executes
+func (s *Satellite) registerEvents(ctx context.Context, cm *config.ConfigManager) error {
+	log := logger.FromContext(ctx)
+	var errs []error
+
+	// Create Event Schedulers
+	refreshSched, err := events.NewRefreshCredentialsEvent(cm, log)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	// Register Schedulers
+	s.eventscheduler.Register(ctx, refreshSched)
+
+	return errors.Join(errs...)
 }

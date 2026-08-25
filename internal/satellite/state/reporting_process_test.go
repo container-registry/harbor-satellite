@@ -150,6 +150,8 @@ func TestExecute_CRIReporting(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
 			w.WriteHeader(http.StatusOK)
+			_, err := w.Write([]byte("{}"))
+			require.NoError(t, err)
 		}))
 		defer srv.Close()
 
@@ -198,6 +200,8 @@ func TestExecute_CRIReporting(t *testing.T) {
 			callCount++
 			lastActivity = req.Activity
 			w.WriteHeader(http.StatusOK)
+			_, err := w.Write([]byte("{}"))
+			require.NoError(t, err)
 		}))
 		defer srv.Close()
 
@@ -227,6 +231,8 @@ func TestExecute_CRIReporting(t *testing.T) {
 				return
 			}
 			w.WriteHeader(http.StatusOK)
+			_, err := w.Write([]byte("{}"))
+			require.NoError(t, err)
 		}))
 		defer srv.Close()
 

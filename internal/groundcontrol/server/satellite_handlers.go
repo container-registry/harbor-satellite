@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/env"
@@ -15,6 +16,10 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 )
+
+type SatelliteSyncResponse struct {
+	Events []string `json:"events"`
+}
 
 func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 	if s.spiffeProvider != nil || s.spireClient != nil {
@@ -600,6 +605,9 @@ func (s *Server) ListSatellites(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
+	resp := SatelliteSyncResponse{
+		Events: make([]string, 0),
+	}
 	var req SatelliteStatusRequest
 	if err := DecodeRequestBody(r, &req); err != nil {
 		log.Println(err)
@@ -630,6 +638,32 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Invalid heartbeat interval %q: %v", req.StateReportInterval, err)
 		HandleAppError(w, &AppError{Message: "invalid heartbeat interval format", Code: http.StatusBadRequest})
 		return
+	}
+
+	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	if err != nil {
+		log.Printf("Failed to find robot account for satellite : %s", satelliteName)
+		HandleAppError(w, &AppError{
+			Message: "Failed to find robot account",
+			Code:    http.StatusForbidden,
+		})
+		return
+	}
+
+	if robotAcc.RobotExpiry.Valid {
+		duration, err := time.ParseDuration(strings.TrimPrefix(normalizedInterval, "@every "))
+		if err != nil {
+			log.Printf("Invalid heartbeat interval %q: %v", req.StateReportInterval, err)
+			HandleAppError(w, &AppError{Message: "invalid heartbeat interval format", Code: http.StatusBadRequest})
+			return
+		}
+
+		// Basically checks whether the robot expires before the 2nd state sync from now
+		// or not
+		future := time.Now().Add(duration).Add(duration)
+		if robotAcc.RobotExpiry.Time.Before(future) {
+			resp.Events = append(resp.Events, "refresh_credentials")
+		}
 	}
 
 	var artifactIDs []int32
@@ -694,7 +728,7 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	WriteJSONResponse(w, http.StatusOK, resp)
 }
 
 func (s *Server) GetSatelliteStatus(w http.ResponseWriter, r *http.Request, satelliteName string) {
