@@ -200,6 +200,7 @@ func TestHTTPParserRejectsInvalidRequests(t *testing.T) {
 		status int
 	}{
 		{"unknown route", http.MethodGet, "/metrics", proxy.ErrorCodeUnsupported, http.StatusNotFound},
+		{"ping without trailing slash", http.MethodGet, "/v2", proxy.ErrorCodeUnsupported, http.StatusNotFound},
 		{"vendor route", http.MethodGet, "/v2/team/app/search", proxy.ErrorCodeUnsupported, http.StatusNotFound},
 		{"catalog extension", http.MethodGet, "/v2/_catalog", proxy.ErrorCodeUnsupported, http.StatusNotFound},
 		{"wrong method", http.MethodPost, "/v2/team/app/manifests/latest", proxy.ErrorCodeUnsupported, http.StatusMethodNotAllowed},

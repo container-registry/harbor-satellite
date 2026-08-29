@@ -44,7 +44,7 @@ type endpointDescriptor struct {
 // retained as one substring.
 func describeEndpoint(requestPath string) endpointDescriptor {
 	endpoint := endpointDescriptor{}
-	if requestPath == "/v2" || requestPath == "/v2/" {
+	if requestPath == "/v2/" {
 		endpoint.keywords.ping = true
 		return endpoint
 	}
