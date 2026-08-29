@@ -1,11 +1,10 @@
 package proxy
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
+	"strings"
 )
 
 // ErrorCode is an error identifier defined by OCI Distribution Specification
@@ -39,10 +38,9 @@ type DistributionError struct {
 	Message string    `json:"message,omitempty"`
 	Detail  any       `json:"detail,omitempty"`
 
-	httpStatus int
+	httpStatus   int
+	allowHeaders []string
 }
-
-var errInvalidHTTPRequest = errors.New("proxy: HTTP request and URL are required")
 
 // NewError returns an OCI Distribution error with the code's conventional HTTP
 // status. Occurrence-specific status overrides are internal to the adapter.
@@ -171,46 +169,61 @@ func (code ErrorCode) HTTPStatus() int {
 	}
 }
 
-type distributionErrorEnvelope struct {
-	Errors []*DistributionError `json:"errors"`
+func newErrorRouteNotFound(path string) error {
+	return newDistributionError(
+		http.StatusNotFound,
+		ErrorCodeUnsupported,
+		"unsupported OCI distribution route",
+		map[string]string{"path": path},
+	)
 }
 
-func handleError(response http.ResponseWriter, request *http.Request, err error) {
-	var distributionError *DistributionError
-	if !errors.As(err, &distributionError) || !distributionError.Code.Valid() {
-		http.Error(
-			response,
-			http.StatusText(http.StatusInternalServerError),
-			http.StatusInternalServerError,
-		)
-		return
+func newErrorMethodNotAllowed(method Method, allowed ...Method) error {
+	distributionError := newDistributionError(
+		http.StatusMethodNotAllowed,
+		ErrorCodeUnsupported,
+		"HTTP method is not supported for this OCI distribution route",
+		map[string]string{"method": method.String()},
+	)
+	distributionError.allowHeaders = make([]string, len(allowed))
+	for index, allowedMethod := range allowed {
+		distributionError.allowHeaders[index] = allowedMethod.String()
 	}
+	return distributionError
+}
 
-	payload, marshalErr := json.Marshal(distributionErrorEnvelope{
-		Errors: []*DistributionError{distributionError},
-	})
-	if marshalErr != nil {
-		withoutDetail := *distributionError
-		withoutDetail.Detail = nil
-		payload, marshalErr = json.Marshal(distributionErrorEnvelope{
-			Errors: []*DistributionError{&withoutDetail},
-		})
-		if marshalErr != nil {
-			http.Error(
-				response,
-				http.StatusText(http.StatusInternalServerError),
-				http.StatusInternalServerError,
+func newErrorMalformedQuery(endpoint endpointDescriptor, method Method) error {
+	if endpoint.keywords.blobs && endpoint.keywords.uploads {
+		if endpoint.reference != "" && method == PUT {
+			return NewError(
+				ErrorCodeDigestInvalid,
+				"one valid digest query parameter is required",
+				nil,
 			)
-			return
 		}
+		return NewError(ErrorCodeBlobUploadInvalid, "invalid upload query", nil)
+	}
+	return newErrorInvalidQuery("invalid endpoint query")
+}
+
+func newErrorInvalidQuery(message string) error {
+	return newDistributionError(
+		http.StatusBadRequest,
+		ErrorCodeUnsupported,
+		message,
+		nil,
+	)
+}
+
+func newErrorInvalidPath(path, message string) error {
+	code := ErrorCodeUnsupported
+	if strings.HasPrefix(path, apiPrefix) {
+		code = ErrorCodeNameInvalid
 	}
 
-	response.Header().Set("Content-Type", "application/json")
-	response.Header().Set("Content-Length", strconv.Itoa(len(payload)))
-	response.WriteHeader(distributionError.HTTPStatus())
-	if request.Method != http.MethodHead {
-		if _, writeErr := response.Write(payload); writeErr != nil {
-			return
-		}
-	}
+	return newDistributionError(http.StatusBadRequest, code, message, nil)
+}
+
+func newErrorInvalidHTTPRequest() error {
+	return errors.New("proxy: HTTP request and URL are required")
 }

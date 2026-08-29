@@ -116,6 +116,7 @@ func TestCanonicalPathValidation(t *testing.T) {
 		{"double separator", "/v2/team//app/manifests/latest", ""},
 		{"traversal", "/v2/team/../app/manifests/latest", ""},
 		{"backslash", "/v2/team\\app/manifests/latest", ""},
+		{"space re-encoded by URL", "/v2/team/app/blobs/uploads/with space", ""},
 		{"control byte", "/v2/team/\x1fapp/manifests/latest", ""},
 		{"non ASCII", "/v2/team/\u00e9app/manifests/latest", ""},
 	}
@@ -141,7 +142,7 @@ func TestCanonicalPathValidation(t *testing.T) {
 	}
 }
 
-func TestUploadIDValidationAtHTTPBoundary(t *testing.T) {
+func TestVisibleASCIIUploadIDIsAccepted(t *testing.T) {
 	t.Parallel()
 
 	response := serveRequest(t, httptest.NewRequest(
@@ -150,17 +151,4 @@ func TestUploadIDValidationAtHTTPBoundary(t *testing.T) {
 		nil,
 	))
 	require.Equal(t, http.StatusOK, response.Code)
-
-	request := httptest.NewRequest(
-		http.MethodGet,
-		"/v2/team/app/blobs/uploads/01UPLOAD",
-		nil,
-	)
-	request.URL.Path = "/v2/team/app/blobs/uploads/with space"
-	requireDistributionResponse(
-		t,
-		request,
-		proxy.ErrorCodeNameInvalid,
-		http.StatusBadRequest,
-	)
 }

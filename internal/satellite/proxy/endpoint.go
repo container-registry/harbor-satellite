@@ -1,9 +1,18 @@
 package proxy
 
-import (
-	"net/url"
-	"strings"
-)
+import "strings"
+
+// Query contains the validated query parameters defined by OCI Distribution
+// endpoints. Pointers distinguish an absent parameter from a valid zero or empty
+// primitive value; endpoint validation rejects invalid empty values.
+type Query struct {
+	N            *int
+	Last         *string
+	Mount        *string
+	From         *string
+	ArtifactType *string
+	Digest       *string
+}
 
 // endpointKeywords records the static words found at the end of an OCI path.
 // Combinations distinguish endpoint families without depending on repository depth.
@@ -22,24 +31,10 @@ func (keywords endpointKeywords) known() bool {
 		keywords.tags || keywords.referrers
 }
 
-// endpointQuery retains every value for known OCI query parameters. Nil means
-// absent; a non-nil slice also preserves empty and duplicate parameters.
-type endpointQuery struct {
-	n            []string
-	last         []string
-	mount        []string
-	from         []string
-	artifactType []string
-	digest       []string
-
-	invalid bool
-}
-
-// endpointDescriptor is the result of one reverse scan of the path and one
-// query parse. value is a manifest reference, digest, or upload identifier.
+// endpointDescriptor is the result of one reverse scan of the path. Reference
+// is a manifest reference, digest, or upload identifier.
 type endpointDescriptor struct {
 	keywords   endpointKeywords
-	query      endpointQuery
 	repository string
 	reference  string
 }
@@ -47,8 +42,8 @@ type endpointDescriptor struct {
 // describeEndpoint scans from the fixed right-hand side of the path. Repository
 // components are never split or counted, so arbitrary valid repository depth is
 // retained as one substring.
-func describeEndpoint(requestPath, rawQuery string) endpointDescriptor {
-	endpoint := endpointDescriptor{query: describeQuery(rawQuery)}
+func describeEndpoint(requestPath string) endpointDescriptor {
+	endpoint := endpointDescriptor{}
 	if requestPath == "/v2" || requestPath == "/v2/" {
 		endpoint.keywords.ping = true
 		return endpoint
@@ -128,22 +123,6 @@ func describeValueEndpoint(
 		}
 	}
 	return endpoint
-}
-
-func describeQuery(rawQuery string) endpointQuery {
-	if rawQuery == "" {
-		return endpointQuery{}
-	}
-	values, err := url.ParseQuery(rawQuery)
-	return endpointQuery{
-		n:            values["n"],
-		last:         values["last"],
-		mount:        values["mount"],
-		from:         values["from"],
-		artifactType: values["artifactType"],
-		digest:       values["digest"],
-		invalid:      err != nil,
-	}
 }
 
 func cutLastSegment(value string) (parent, last string, found bool) {

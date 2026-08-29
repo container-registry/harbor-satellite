@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"mime"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -17,24 +19,24 @@ const (
 func canonicalPath(requestURL *url.URL) (string, error) {
 	requestPath := requestURL.Path
 	if requestPath == "" {
-		return "", invalidPath(requestPath, "request path is required")
+		return "", newErrorInvalidPath(requestPath, "request path is required")
 	}
 	escapedPath := requestURL.EscapedPath()
 	if requestURL.RawPath != "" || strings.ContainsRune(escapedPath, '%') {
-		return "", invalidPath(requestPath, "encoded path is not canonical")
+		return "", newErrorInvalidPath(requestPath, "encoded path is not canonical")
 	}
 	if strings.ContainsRune(requestPath, '\\') || strings.Contains(requestPath, "//") {
-		return "", invalidPath(requestPath, "ambiguous path separator")
+		return "", newErrorInvalidPath(requestPath, "ambiguous path separator")
 	}
 	for _, pathByte := range []byte(requestPath) {
 		if pathByte < asciiSpace || pathByte >= asciiDelete {
-			return "", invalidPath(requestPath, "path must contain printable ASCII")
+			return "", newErrorInvalidPath(requestPath, "path must contain printable ASCII")
 		}
 	}
 	for remaining := requestPath; remaining != ""; {
 		segment, rest, found := strings.Cut(remaining, "/")
 		if segment == "." || segment == ".." {
-			return "", invalidPath(requestPath, "path traversal segment")
+			return "", newErrorInvalidPath(requestPath, "path traversal segment")
 		}
 		if !found {
 			break
@@ -120,6 +122,32 @@ func validTag(tag string) bool {
 		}
 	}
 	return true
+}
+
+func parseTagLimit(value string) (int, bool) {
+	if value == "" {
+		return 0, false
+	}
+	for _, valueByte := range []byte(value) {
+		if valueByte < '0' || valueByte > '9' {
+			return 0, false
+		}
+	}
+	limit, err := strconv.Atoi(value)
+	return limit, err == nil
+}
+
+func parseArtifactType(value string) (string, bool) {
+	mediaType, parameters, err := mime.ParseMediaType(value)
+	if err != nil || len(parameters) != 0 {
+		return "", false
+	}
+	typeName, subtypeName, found := strings.Cut(mediaType, "/")
+	if !found || typeName == "" || subtypeName == "" ||
+		typeName == "*" || subtypeName == "*" {
+		return "", false
+	}
+	return mediaType, true
 }
 
 func validOpaqueSegment(value string) bool {
