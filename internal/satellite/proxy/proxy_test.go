@@ -358,6 +358,35 @@ func TestRequestWriteResponseForwardsHTTPResponse(t *testing.T) {
 	require.Equal(t, "manifest", response.Body.String())
 }
 
+func TestRequestWriteResponseRemovesHopByHopHeaders(t *testing.T) {
+	t.Parallel()
+
+	response := serveRequest(
+		t,
+		httptest.NewRequest(http.MethodGet, "/v2/", nil),
+		proxy.Process(func(requestState *proxy.Request) error {
+			return requestState.WriteResponse(&http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Connection":        []string{"keep-alive, X-Upstream-Hop"},
+					"Keep-Alive":        []string{"timeout=5"},
+					"Transfer-Encoding": []string{"chunked"},
+					"X-Upstream-Hop":    []string{"remove-me"},
+					"X-Registry":        []string{"retain-me"},
+				},
+				Body: io.NopCloser(strings.NewReader("content")),
+			})
+		}),
+	)
+
+	require.Empty(t, response.Header().Get("Connection"))
+	require.Empty(t, response.Header().Get("Keep-Alive"))
+	require.Empty(t, response.Header().Get("Transfer-Encoding"))
+	require.Empty(t, response.Header().Get("X-Upstream-Hop"))
+	require.Equal(t, "retain-me", response.Header().Get("X-Registry"))
+	require.Equal(t, "content", response.Body.String())
+}
+
 func TestHTTPHandlerSupportsConcurrentRequests(t *testing.T) {
 	t.Parallel()
 

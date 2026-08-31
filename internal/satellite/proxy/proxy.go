@@ -26,8 +26,7 @@ func (p *proxy) Wrap(processor Processor) *proxy {
 // WrapAll immediately wraps the current process with each processor in argument
 // order. Nil processors are ignored, and the last processor becomes outermost.
 func (p *proxy) WrapAll(processors ...Processor) *proxy {
-	for i := len(processors) - 1; i >= 0; i-- {
-		processor := processors[i]
+	for _, processor := range processors {
 		if processor != nil {
 			p.process = processor(p.process)
 		}
