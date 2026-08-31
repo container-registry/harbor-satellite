@@ -17,7 +17,7 @@ const (
 	registriesConfigPath     = "/etc/containers/registries.conf"
 )
 
-func setCrioConfig(upstreamRegistries []string, localMirror string) (string, error) {
+func setCrioConfig(upstreamRegistries []string, proxyEndpoint string) (string, error) {
 	if _, err := os.Stat(registriesConfigPath); os.IsNotExist(err) {
 		f, err := os.Create(registriesConfigPath)
 		if err != nil {
@@ -52,7 +52,7 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) (string, err
 		return bkPath, fmt.Errorf("failed to unmarshal registries.conf: %w", err)
 	}
 
-	insecure := !strings.HasPrefix(localMirror, "https://")
+	insecure := !strings.HasPrefix(proxyEndpoint, "https://")
 
 	for _, upstream := range upstreamRegistries {
 		idx := slices.IndexFunc(cfg.Registries, func(r Registry) bool {
@@ -62,15 +62,15 @@ func setCrioConfig(upstreamRegistries []string, localMirror string) (string, err
 		if idx >= 0 {
 			r := &cfg.Registries[idx]
 			hasMirror := slices.ContainsFunc(r.Mirrors, func(m Mirror) bool {
-				return m.Location == localMirror
+				return m.Location == proxyEndpoint
 			})
 			if !hasMirror {
-				r.Mirrors = append(r.Mirrors, Mirror{Location: localMirror, Insecure: insecure})
+				r.Mirrors = append(r.Mirrors, Mirror{Location: proxyEndpoint, Insecure: insecure})
 			}
 		} else {
 			cfg.Registries = append(cfg.Registries, Registry{
 				Location: upstream,
-				Mirrors:  []Mirror{{Location: localMirror, Insecure: insecure}},
+				Mirrors:  []Mirror{{Location: proxyEndpoint, Insecure: insecure}},
 			})
 		}
 	}

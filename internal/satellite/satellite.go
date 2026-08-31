@@ -9,6 +9,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/state"
+	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
@@ -20,6 +21,14 @@ type Satellite struct {
 	storeRoot      string
 	stateProcess   *state.FetchAndReplicateStateProcess
 	eventscheduler *events.EventScheduler
+	localStore     store.Store
+	remoteStore    store.Store
+}
+
+// SetStores supplies the same local and Harbor stores used by the proxy.
+func (s *Satellite) SetStores(localStore, remoteStore store.Store) {
+	s.localStore = localStore
+	s.remoteStore = remoteStore
 }
 
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, storeRoot string, jq *events.EventScheduler) *Satellite {
@@ -38,6 +47,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	log.Info().Msg("Starting Satellite")
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, s.storeRoot, log)
+	fetchAndReplicateStateProcess.SetStores(s.localStore, s.remoteStore)
 	s.stateProcess = fetchAndReplicateStateProcess
 
 	// Create ZTR scheduler if not already done
@@ -112,7 +122,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 
-	return ctx.Err()
+	return nil
 }
 
 func (s *Satellite) GetSchedulers() []*scheduler.Scheduler {
