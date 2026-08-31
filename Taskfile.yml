@@ -214,6 +214,25 @@ tasks:
           IMAGE_TAGS: "{{.PLATFORM_IMAGE_TAGS}}"
           PLATFORMS: "{{.PLATFORM}}"
 
+  publish-platform-prebuilt:
+    desc: Build and push single-arch images using pre-built binaries (used by CI release matrix)
+    vars:
+      TAG: '{{.TAG | default .Env.TAG | default "dev"}}'
+      REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
+      PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
+      ARCH: "{{.ARCH | default .Env.ARCH}}"
+      SATELLITE_BINARY: "{{.SATELLITE_BINARY | default .Env.SATELLITE_BINARY}}"
+      GC_BINARY: "{{.GC_BINARY | default .Env.GC_BINARY}}"
+    cmds:
+      - task: _publish:platform-prebuilt
+        vars:
+          REGISTRY: "{{.REGISTRY}}"
+          PROJECT_NAME: "{{.PROJECT_NAME}}"
+          IMAGE_TAG: "{{.TAG}}"
+          ARCH: "{{.ARCH}}"
+          SATELLITE_BINARY: "{{.SATELLITE_BINARY}}"
+          GC_BINARY: "{{.GC_BINARY}}"
+
   publish-manifest-and-sign:
     desc: Create and sign multi-arch manifests for both components
     vars:

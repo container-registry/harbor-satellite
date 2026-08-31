@@ -9,7 +9,7 @@ inputs:
     description: "Source tags used for intermediate platform images"
     required: false
   PUBLISH_MODE:
-    description: "Publish mode: all, platform, or manifest"
+    description: "Publish mode: all, platform, manifest, or prebuilt"
     required: false
     default: all
   PLATFORM:
@@ -18,6 +18,18 @@ inputs:
   ARCH_SUFFIX:
     description: "Architecture suffix for temporary image tags, e.g. amd64"
     required: false
+  SATELLITE_BINARY_PATH:
+    description: "Path to pre-built satellite binary (used with PUBLISH_MODE: prebuilt)"
+    required: false
+    default: ""
+  GC_BINARY_PATH:
+    description: "Path to pre-built ground-control binary (used with PUBLISH_MODE: prebuilt)"
+    required: false
+    default: ""
+  ARCH:
+    description: "Target architecture for prebuilt mode, e.g. amd64"
+    required: false
+    default: ""
   ARCH_SUFFIXES:
     description: "Space-separated architecture suffixes to combine into the final manifest"
     required: false
@@ -47,11 +59,12 @@ runs:
         cache: false
 
     - name: Install Task
-      uses: arduino/setup-task@v2
+      uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
       with:
         version: 3.x
 
     - name: Set up Docker Buildx with remote BuildKit
+      if: inputs.PUBLISH_MODE == 'platform' || inputs.PUBLISH_MODE == 'all'
       shell: bash
       env:
         BUILDER_SUFFIX: ${{ inputs.PUBLISH_MODE }}-${{ inputs.PLATFORM }}
@@ -63,6 +76,7 @@ runs:
         docker buildx inspect "$BUILDER_NAME" --bootstrap
 
     - name: Provide envsubst for Cosign installer
+      if: inputs.PUBLISH_MODE != 'prebuilt'
       shell: bash
       run: |
         if command -v envsubst >/dev/null 2>&1; then
@@ -88,9 +102,11 @@ runs:
         echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
     - name: Install Cosign
+      if: inputs.PUBLISH_MODE != 'prebuilt'
       uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
     - name: Check Env Variables
+      if: inputs.PUBLISH_MODE != 'prebuilt'
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
@@ -110,12 +126,58 @@ runs:
         PLATFORM: ${{ inputs.PLATFORM }}
         ARCH_SUFFIX: ${{ inputs.ARCH_SUFFIX }}
         ARCH_SUFFIXES: ${{ inputs.ARCH_SUFFIXES }}
+        SATELLITE_BINARY: ${{ inputs.SATELLITE_BINARY_PATH }}
+        GC_BINARY: ${{ inputs.GC_BINARY_PATH }}
+        ARCH: ${{ inputs.ARCH }}
       run: |
+        echo "Publish target: registry=$REGISTRY project=$PROJECT_NAME mode=$PUBLISH_MODE"
+        if [ "$REGISTRY" = "ghcr.io" ] && [[ "$PROJECT_NAME" != */* ]]; then
+          echo "For ghcr.io, PROJECT_NAME must include the owner, for example: ${GITHUB_REPOSITORY:-owner/repo}" >&2
+          exit 2
+        fi
+
         for attempt in 1 2 3; do
           case "$PUBLISH_MODE" in
-            platform) publish_cmd=(task publish-platform) ;;
-            manifest) publish_cmd=(task publish-manifest-and-sign) ;;
-            all)      publish_cmd=(task publish-and-sign) ;;
+            platform)
+              publish_cmd=(
+                task publish-platform
+                REGISTRY="$REGISTRY"
+                PROJECT_NAME="$PROJECT_NAME"
+                TAG="$TAG"
+                SOURCE_IMAGE_TAGS="$SOURCE_IMAGE_TAGS"
+                PLATFORM="$PLATFORM"
+                ARCH_SUFFIX="$ARCH_SUFFIX"
+              )
+              ;;
+            manifest)
+              publish_cmd=(
+                task publish-manifest-and-sign
+                REGISTRY="$REGISTRY"
+                PROJECT_NAME="$PROJECT_NAME"
+                TAG="$TAG"
+                SOURCE_IMAGE_TAGS="$SOURCE_IMAGE_TAGS"
+                ARCH_SUFFIXES="$ARCH_SUFFIXES"
+              )
+              ;;
+            prebuilt)
+              publish_cmd=(
+                task publish-platform-prebuilt
+                REGISTRY="$REGISTRY"
+                PROJECT_NAME="$PROJECT_NAME"
+                TAG="$TAG"
+                ARCH="$ARCH"
+                SATELLITE_BINARY="$SATELLITE_BINARY"
+                GC_BINARY="$GC_BINARY"
+              )
+              ;;
+            all)
+              publish_cmd=(
+                task publish-and-sign
+                REGISTRY="$REGISTRY"
+                PROJECT_NAME="$PROJECT_NAME"
+                TAG="$TAG"
+              )
+              ;;
             *)
               echo "Unsupported PUBLISH_MODE: $PUBLISH_MODE" >&2
               exit 2
@@ -130,6 +192,12 @@ runs:
 
           if [ "$attempt" -eq 3 ]; then
             exit "$status"
+          fi
+
+          if [ "$PUBLISH_MODE" = "prebuilt" ] || [ "$PUBLISH_MODE" = "manifest" ]; then
+            echo "Publish attempt $attempt failed with status $status; retrying after backoff..."
+            sleep $((attempt * 20))
+            continue
           fi
 
           echo "Publish attempt $attempt failed with status $status; resetting remote BuildKit builder before retry..."

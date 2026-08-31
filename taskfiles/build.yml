@@ -142,3 +142,37 @@ tasks:
           echo "  {{.ITEM.GOOS}}/{{.ITEM.GOARCH}}..."
           GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/groundcontrol/groundcontrol-{{.ITEM.GOOS}}-{{.ITEM.GOARCH}} ./cmd/groundcontrol/cli
     silent: true
+
+  cross-compile:
+    desc: Cross-compile a single component for a target GOOS/GOARCH (used by CI release matrix)
+    vars:
+      COMPONENT: "{{.COMPONENT}}"
+      GOARCH: "{{.GOARCH}}"
+      GOOS: '{{.GOOS | default "linux"}}'
+      OUTPUT: "{{.OUTPUT}}"
+      VERSION: '{{.VERSION | default "dev"}}'
+      GIT_COMMIT: '{{.GIT_COMMIT | default "unknown"}}'
+    preconditions:
+      - sh: test -n "{{.COMPONENT}}"
+        msg: "COMPONENT is required."
+      - sh: test -n "{{.GOARCH}}"
+        msg: "GOARCH is required."
+      - sh: test -n "{{.OUTPUT}}"
+        msg: "OUTPUT is required."
+    cmds:
+      - mkdir -p $(dirname {{.OUTPUT}})
+      - |
+        echo "Cross-compiling {{.COMPONENT}} for {{.GOOS}}/{{.GOARCH}}..."
+        # Export as env vars so their values are never interpolated into shell
+        # source; the shell expands $VERSION/$GIT_COMMIT safely at runtime.
+        export VERSION={{.VERSION | shellQuote}}
+        export GIT_COMMIT={{.GIT_COMMIT | shellQuote}}
+        CGO_ENABLED=0 GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build \
+          -trimpath \
+          -ldflags "-w -s \
+            -X github.com/container-registry/harbor-satellite/internal/version.GitCommit=$GIT_COMMIT \
+            -X github.com/container-registry/harbor-satellite/internal/version.Version=$VERSION" \
+          -o {{.OUTPUT}} \
+          ./cmd/{{.COMPONENT}}
+        echo "Built {{.OUTPUT}}"
+    silent: true

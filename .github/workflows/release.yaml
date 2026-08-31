@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
     tags:
+      # Tag push protection (restricting who may create v*.*.* tags) must be
+      # enforced via GitHub repository tag-protection rules or rulesets, not
+      # here. Ensure only release administrators have permission to push these
+      # tags in the repository settings.
       - "v*.*.*"
   pull_request:
     paths-ignore:
@@ -71,7 +75,7 @@ jobs:
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
           REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS }}
           REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
-          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME || github.repository }}
 
   create-latest-manifest:
     needs: [setup, push-latest-images]
@@ -98,7 +102,7 @@ jobs:
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
           REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS }}
           REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
-          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME || github.repository }}
 
   cleanup-temp-tags:
     needs: [setup, create-latest-manifest]
@@ -125,62 +129,213 @@ jobs:
           REGISTRY: ${{ vars.REGISTRY_ADDRESS }}
           REG_USER: ${{ vars.REGISTRY_USERNAME }}
           REG_PASS: ${{ secrets.REGISTRY_PASSWORD }}
-          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME || github.repository }}
           SOURCE_IMAGE_TAGS: latest-${{ github.sha }}
           ARCH_SUFFIXES: ${{ needs.setup.outputs.arch_suffixes }}
         run: task cleanup-platform-tags
 
-  publish-release:
+  release-setup:
+    permissions: {}
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    outputs:
+      arches: ${{ steps.arch-list.outputs.arches }}
+      arch_suffixes: ${{ steps.arch-list.outputs.arch_suffixes }}
+    steps:
+      - name: Emit supported architectures
+        id: arch-list
+        run: |
+          ARCHES='["amd64","arm64","ppc64le","s390x","riscv64"]'
+          echo "arches=$ARCHES" >> "$GITHUB_OUTPUT"
+          echo "arch_suffixes=amd64 arm64 ppc64le s390x riscv64" >> "$GITHUB_OUTPUT"
+
+  build-release-binaries:
+    needs: [release-setup]
     permissions:
-      contents: write
-      packages: write
-      id-token: write
-    runs-on: container-registry
-    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
+      contents: read
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.release-setup.outputs.arches) }}
     steps:
       - name: Checkout repo
-        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           fetch-depth: 0
-
-      - name: Publish and Sign Tagged Image
-        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
-        uses: ./.github/actions/publish-and-sign
-        with:
-          IMAGE_TAGS: "latest,${{ github.ref_name }}"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
-          REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS }}
-          REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
-          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          persist-credentials: false
 
       - name: Setup Go
-        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: "1.26.5"
           cache: false
 
       - name: Install Task
-        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
+
+      - name: Build release binaries
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
+          RELEASE_ARCH: ${{ matrix.arch }}
+        run: |
+          task _build:cross-compile \
+            COMPONENT=satellite \
+            GOARCH="$RELEASE_ARCH" \
+            VERSION="$RELEASE_VERSION" \
+            GIT_COMMIT="$RELEASE_COMMIT" \
+            OUTPUT=bin/release/satellite-linux-"$RELEASE_ARCH"
+          task _build:cross-compile \
+            COMPONENT=groundcontrol/server \
+            GOARCH="$RELEASE_ARCH" \
+            VERSION="$RELEASE_VERSION" \
+            GIT_COMMIT="$RELEASE_COMMIT" \
+            OUTPUT=bin/release/ground-control-linux-"$RELEASE_ARCH"
+
+      - name: Upload release binaries
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-binaries-${{ matrix.arch }}
+          path: bin/release/*
+          if-no-files-found: error
+
+  publish-release-images:
+    needs: [release-setup, build-release-binaries]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.release-setup.outputs.arches) }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download release binaries
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-binaries-${{ matrix.arch }}
+          path: bin/release
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+
+      - name: Publish Release Platform Image
+        uses: ./.github/actions/publish-and-sign
+        with:
+          IMAGE_TAGS: ${{ github.ref_name }}
+          PUBLISH_MODE: prebuilt
+          SATELLITE_BINARY_PATH: bin/release/satellite-linux-${{ matrix.arch }}
+          GC_BINARY_PATH: bin/release/ground-control-linux-${{ matrix.arch }}
+          ARCH: ${{ matrix.arch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS }}
+          REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME || github.repository }}
+
+  create-release-manifest:
+    needs: [release-setup, publish-release-images]
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Create and Sign Release Manifest
+        uses: ./.github/actions/publish-and-sign
+        with:
+          IMAGE_TAGS: latest,${{ github.ref_name }}
+          SOURCE_IMAGE_TAGS: ${{ github.ref_name }},${{ github.ref_name }}
+          PUBLISH_MODE: manifest
+          ARCH_SUFFIXES: ${{ needs.release-setup.outputs.arch_suffixes }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          REGISTRY_ADDRESS: ${{ vars.REGISTRY_ADDRESS }}
+          REGISTRY_USERNAME: ${{ vars.REGISTRY_USERNAME }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME || github.repository }}
+
+  cleanup-release-temp-tags:
+    needs: [release-setup, create-release-manifest]
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Task
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
+
+      - name: Delete temporary release platform tags
+        continue-on-error: true
+        env:
+          REGISTRY: ${{ vars.REGISTRY_ADDRESS }}
+          REG_USER: ${{ vars.REGISTRY_USERNAME }}
+          REG_PASS: ${{ secrets.REGISTRY_PASSWORD }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME || github.repository }}
+          SOURCE_IMAGE_TAGS: ${{ github.ref_name }}
+          ARCH_SUFFIXES: ${{ needs.release-setup.outputs.arch_suffixes }}
+        run: task cleanup-platform-tags
+
+  publish-release:
+    needs: [create-release-manifest]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.26.5"
+          cache: false
+
+      - name: Install Task
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
           repo-token: ${{ github.token }}
 
       - name: Install GoReleaser
-        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
         uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
         with:
           install-only: true
 
       - name: Install Syft
-        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
 
       - name: Create Release
-        if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/'))
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: task release

@@ -245,7 +245,7 @@ tasks:
         for component in satellite ground-control; do
           for suffix in {{.ARCH_SUFFIXES}}; do
             for source_tag in "${source_tags_arr[@]}"; do
-              source_tag=$(echo "$source_tag" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              source_tag=$(echo "$source_tag" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^v//')
               [ -z "$source_tag" ] && continue
               tag="${source_tag}-${suffix}"
               url="https://{{.REGISTRY}}/api/v2.0/projects/{{.PROJECT_NAME}}/repositories/${component}/artifacts/${tag}/tags/${tag}"
@@ -270,6 +270,74 @@ tasks:
           echo "Warning: some tag deletions returned unexpected status codes (see above)." >&2
         fi
         exit 0  # cleanup is best-effort; never block CI
+    silent: true
+
+  platform-prebuilt:
+    desc: Build and push a single-arch image for both components using pre-built binaries
+    vars:
+      REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
+      PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
+      IMAGE_TAG: "{{.IMAGE_TAG | default .Env.IMAGE_TAG}}"
+      ARCH: "{{.ARCH | default .Env.ARCH}}"
+      SATELLITE_BINARY: "{{.SATELLITE_BINARY | default .Env.SATELLITE_BINARY}}"
+      GC_BINARY: "{{.GC_BINARY | default .Env.GC_BINARY}}"
+    preconditions:
+      - sh: test -n "{{.REGISTRY}}"
+        msg: "REGISTRY is required. Set via task var or REGISTRY env var."
+      - sh: test -n "{{.PROJECT_NAME}}"
+        msg: "PROJECT_NAME is required. Set via task var or PROJECT_NAME env var."
+      - sh: test -n "{{.IMAGE_TAG}}"
+        msg: "IMAGE_TAG is required."
+      - sh: test -n "{{.ARCH}}"
+        msg: "ARCH is required."
+      - sh: test -n "{{.SATELLITE_BINARY}}"
+        msg: "SATELLITE_BINARY is required."
+      - sh: test -n "{{.GC_BINARY}}"
+        msg: "GC_BINARY is required."
+      - sh: test -f "{{.SATELLITE_BINARY}}"
+        msg: "Satellite binary not found at SATELLITE_BINARY path."
+      - sh: test -f "{{.GC_BINARY}}"
+        msg: "Ground-control binary not found at GC_BINARY path."
+    cmds:
+      - |
+        set -e
+        if [ -n "$REG_USER" ] && [ -n "$REG_PASS" ]; then
+          echo "$REG_PASS" | docker login {{.REGISTRY}} -u "$REG_USER" --password-stdin
+        fi
+      - |
+        set -e
+        cleanup() {
+          rm -f ./prebuilt-binary
+        }
+        trap cleanup EXIT
+
+        for COMPONENT in satellite ground-control; do
+          if [ "$COMPONENT" = "satellite" ]; then
+            BINARY="{{.SATELLITE_BINARY}}"
+            BUILD_COMPONENT="satellite"
+          else
+            BINARY="{{.GC_BINARY}}"
+            BUILD_COMPONENT="groundcontrol/server"
+          fi
+
+          TAG=$(echo "{{.IMAGE_TAG}}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^v//')
+          TAG="${TAG}-{{.ARCH}}"
+          IMAGE_ADDR="{{.REGISTRY}}/{{.PROJECT_NAME}}/$COMPONENT:$TAG"
+          echo "Image target: $IMAGE_ADDR"
+          echo "Building $COMPONENT for linux/{{.ARCH}} using pre-built binary..."
+          cp "$BINARY" ./prebuilt-binary
+          chmod +x ./prebuilt-binary
+          docker buildx build \
+            --platform linux/{{.ARCH}} \
+            --build-arg BUILDER_MODE=prebuilt \
+            --build-arg PREBUILT_BINARY=./prebuilt-binary \
+            --build-arg COMPONENT=$BUILD_COMPONENT \
+            -t "$IMAGE_ADDR" \
+            --push \
+            .
+          rm -f ./prebuilt-binary
+          echo "Pushed $IMAGE_ADDR"
+        done
     silent: true
 
   snapshot-release:
