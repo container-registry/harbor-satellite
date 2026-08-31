@@ -72,4 +72,7 @@ func main() {
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Printf("HTTP shutdown error: %v", err)
 	}
+	if err := serverResult.AuditLogger.Close(); err != nil {
+		log.Printf("Audit logger shutdown error: %v", err)
+	}
 }

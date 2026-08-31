@@ -38,6 +38,7 @@ func TestSyslog_FileTargetWritesRFC5424(t *testing.T) {
 		},
 	}, ComponentSatellite)
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, a.Close()) })
 	require.True(t, a.Enabled())
 
 	a.Log(AuditEvent{

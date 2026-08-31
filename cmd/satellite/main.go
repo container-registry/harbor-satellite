@@ -418,10 +418,10 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	}
 
-	return gracefulShutdown(ctx, log, s, wg, shutdownTimeout)
+	return gracefulShutdown(ctx, log, s, wg, audit, shutdownTimeout)
 }
 
-func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Satellite, wg *errgroup.Group, shutdownTimeout string) error {
+func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Satellite, wg *errgroup.Group, audit *logger.AuditLogger, shutdownTimeout string) error {
 	// Wait until context is cancelled
 	<-ctx.Done()
 
@@ -466,9 +466,19 @@ func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Sat
 		} else {
 			log.Info().Msg("State persisted successfully")
 		}
+
+		if err := audit.Close(); err != nil {
+			log.Warn().Err(err).Msg("Failed to close audit logger during shutdown")
+		}
+
 		log.Info().Msg("Graceful shutdown completed successfully")
 	case <-shutdownCtx.Done():
 		log.Warn().Msg("Shutdown timeout exceeded, forcing exit")
+
+		if err := audit.Close(); err != nil {
+			log.Warn().Err(err).Msg("Failed to close audit logger during shutdown")
+		}
+
 		return fmt.Errorf("graceful shutdown timeout exceeded")
 	}
 

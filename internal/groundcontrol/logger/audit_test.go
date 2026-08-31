@@ -51,6 +51,7 @@ func TestAuditLogger_WritesStructuredEvent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	a, err := NewAuditLogger(fileSyslogConfig(path), ComponentSatellite)
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, a.Close()) })
 	require.True(t, a.Enabled())
 
 	a.Log(AuditEvent{
@@ -102,6 +103,7 @@ func TestAuditLogger_DerivesDefaultSeverityAndOmitsEmptyFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	a, err := NewAuditLogger(fileSyslogConfig(path), ComponentSatellite)
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, a.Close()) })
 
 	a.Log(AuditEvent{
 		Operation:    OpRegister,
@@ -124,6 +126,7 @@ func TestAuditLogger_EmptyRequiredFieldsGetSentinel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	a, err := NewAuditLogger(fileSyslogConfig(path), ComponentSatellite)
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, a.Close()) })
 
 	// A caller that forgets the required fields must not produce an event_type
 	// with empty segments ("user..success" / "..") that would become a broken
@@ -141,6 +144,7 @@ func TestAuditLogger_SeverityOverride(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	a, err := NewAuditLogger(fileSyslogConfig(path), ComponentSatellite)
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, a.Close()) })
 
 	a.Log(AuditEvent{
 		Operation:    OpDeregister,
@@ -157,6 +161,7 @@ func TestAuditLogger_UniqueEventIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.log")
 	a, err := NewAuditLogger(fileSyslogConfig(path), ComponentSatellite)
 	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, a.Close()) })
 
 	for range 5 {
 		a.Log(AuditEvent{Operation: OpRegister, ResourceType: ResSatellite, Outcome: OutcomeSuccess})
