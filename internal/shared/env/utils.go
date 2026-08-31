@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net"
 
-	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
+	auditlog "github.com/container-registry/harbor-satellite/internal/shared/logger"
 )
 
 func (d Database) URL() string {
