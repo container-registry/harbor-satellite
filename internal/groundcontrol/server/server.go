@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -19,6 +20,7 @@ import (
 	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 )
 
 type Server struct {
@@ -52,6 +54,9 @@ type Server struct {
 	// from spoofing the audit source_ip. Enable only when GC sits behind a
 	// trusted reverse proxy.
 	trustForwardedHeaders bool
+
+	groupStateCache   map[int32][]string
+	groupStateCacheMu sync.RWMutex
 }
 
 // ServerTLSConfig holds TLS settings for the Ground Control HTTP server.
@@ -172,6 +177,8 @@ func NewServer() *ServerResult {
 		// Audit logger
 		audit:                 auditLogger,
 		trustForwardedHeaders: cfg.Audit.TrustForwardedHeaders,
+
+		groupStateCache: make(map[int32][]string),
 	}
 
 	// Bootstrap system admin user if not exists
@@ -259,4 +266,68 @@ func buildServerTLSConfigWithWatcher(cfg *ServerTLSConfig, cw *middleware.CertWa
 	}
 
 	return tlsConfig, nil
+}
+
+func (s *Server) getCachedGroupStates(satID int32) ([]string, bool) {
+	s.groupStateCacheMu.RLock()
+	defer s.groupStateCacheMu.RUnlock()
+	if s.groupStateCache == nil {
+		return nil, false
+	}
+	states, ok := s.groupStateCache[satID]
+	return states, ok
+}
+
+func (s *Server) setCachedGroupStates(satID int32, states []string) {
+	s.groupStateCacheMu.Lock()
+	defer s.groupStateCacheMu.Unlock()
+	if s.groupStateCache == nil {
+		s.groupStateCache = make(map[int32][]string)
+	}
+	s.groupStateCache[satID] = states
+}
+
+func (s *Server) invalidateCachedGroupStates(satID int32) {
+	s.groupStateCacheMu.Lock()
+	defer s.groupStateCacheMu.Unlock()
+	if s.groupStateCache == nil {
+		return
+	}
+	delete(s.groupStateCache, satID)
+}
+
+func (s *Server) clearGroupStateCache() {
+	s.groupStateCacheMu.Lock()
+	defer s.groupStateCacheMu.Unlock()
+	s.groupStateCache = make(map[int32][]string)
+}
+
+func (s *Server) getOrFillGroupStates(ctx context.Context, satID int32, q *database.Queries) ([]string, error) {
+	s.groupStateCacheMu.Lock()
+	defer s.groupStateCacheMu.Unlock()
+
+	if s.groupStateCache == nil {
+		s.groupStateCache = make(map[int32][]string)
+	}
+
+	if states, ok := s.groupStateCache[satID]; ok {
+		return states, nil
+	}
+
+	groupList, err := q.SatelliteGroupList(ctx, satID)
+	if err != nil {
+		return nil, err
+	}
+
+	groupStates := make([]string, 0, len(groupList))
+	for _, group := range groupList {
+		grp, err := q.GetGroupByID(ctx, group.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
+	}
+
+	s.groupStateCache[satID] = groupStates
+	return groupStates, nil
 }

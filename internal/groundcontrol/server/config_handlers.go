@@ -475,31 +475,15 @@ func (s *Server) SetSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
+	groupStates, err := s.getOrFillGroupStates(r.Context(), sat.ID, q)
 	if err != nil {
-		log.Printf("Could not get satellite group list: %v", err)
+		log.Printf("Could not get satellite group states: %v", err)
 		err := &AppError{
 			Message: "Error: Failed to Add satellite to config",
 			Code:    http.StatusInternalServerError,
 		}
 		HandleAppError(w, err)
 		return
-	}
-
-	// TODO: Store the groupStates in memory to survive hot reloads
-	var groupStates []string
-	for _, group := range groupList {
-		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
-		if err != nil {
-			log.Printf("Error: Failed: %v", err)
-			err := &AppError{
-				Message: "Error: Failed to Add satellite to config",
-				Code:    http.StatusInternalServerError,
-			}
-			HandleAppError(w, err)
-			return
-		}
-		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
 	err = createOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, req.ConfigName)
