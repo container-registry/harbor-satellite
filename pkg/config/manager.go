@@ -40,11 +40,10 @@ type ConfigManager struct {
 	prevConfigPath          string
 	mu                      sync.RWMutex
 	encryptor               *secure.ConfigEncryptor
-	encryptEnabled          bool
 }
 
 func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config) (*ConfigManager, error) {
-	cryptoProvider := crypto.NewAESProvider()
+	cryptoProvider := crypto.NewDefaultProvider()
 	deviceIdentity := identity.NewLinuxDeviceIdentity()
 	encryptor := secure.NewConfigEncryptor(cryptoProvider, deviceIdentity)
 
@@ -56,7 +55,6 @@ func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL
 		DefaultGroundControlURL: defaultGroundControlURL,
 		JsonLog:                 jsonLog,
 		encryptor:               encryptor,
-		encryptEnabled:          config.AppConfig.EncryptConfig,
 	}, nil
 }
 
@@ -81,7 +79,17 @@ func (cm *ConfigManager) writeConfigUnlocked(config *Config, path string) error 
 	var data []byte
 	var err error
 
-	if cm.encryptEnabled {
+	// Decided from the config actually being written, not from a flag cached at
+	// construction: ReloadConfig can replace cm.config, and WriteConfigToDisk /
+	// WritePrevConfigToDisk are called with configs that differ from it.
+	if config.AppConfig.EncryptConfig {
+		// Refuse rather than fall back to plaintext. A build without a
+		// cryptographic provider must not write a file that carries the
+		// encrypted-config header while holding readable credentials.
+		if !crypto.EncryptionAvailable {
+			return fmt.Errorf("encrypt config: %w: encrypt_config is enabled but this binary was built without encryption support", crypto.ErrCryptoUnavailable)
+		}
+
 		data, err = cm.encryptor.EncryptConfig(config)
 		if err != nil {
 			return fmt.Errorf("encrypt config: %w", err)
@@ -211,7 +219,7 @@ func readAndReturnConfig(path string) (*Config, error) {
 	}
 
 	if secure.IsEncrypted(data) {
-		cryptoProvider := crypto.NewAESProvider()
+		cryptoProvider := crypto.NewDefaultProvider()
 		deviceIdentity := identity.NewLinuxDeviceIdentity()
 		encryptor := secure.NewConfigEncryptor(cryptoProvider, deviceIdentity)
 

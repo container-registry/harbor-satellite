@@ -3,6 +3,7 @@ package secure
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -64,7 +65,9 @@ func (e *ConfigEncryptor) EncryptBytes(plaintext []byte) ([]byte, error) {
 
 	encrypted, err := e.crypto.Encrypt(plaintext, key)
 	if err != nil {
-		return nil, ErrEncryptionFailed
+		// Wrapped so callers can still see the cause, in particular
+		// crypto.ErrCryptoUnavailable from a build with no crypto provider.
+		return nil, fmt.Errorf("%w: %w", ErrEncryptionFailed, err)
 	}
 
 	encConfig := EncryptedConfig{
@@ -155,7 +158,7 @@ func IsEncrypted(data []byte) bool {
 func (e *ConfigEncryptor) deriveKey() ([]byte, []byte, error) {
 	salt, err := e.crypto.RandomBytes(saltSize)
 	if err != nil {
-		return nil, nil, ErrKeyDeriveFailed
+		return nil, nil, fmt.Errorf("%w: %w", ErrKeyDeriveFailed, err)
 	}
 
 	key, err := e.deriveKeyWithSalt(salt)
@@ -174,7 +177,7 @@ func (e *ConfigEncryptor) deriveKeyWithSalt(salt []byte) ([]byte, error) {
 
 	key, err := e.crypto.DeriveKey([]byte(fingerprint), salt, keySize)
 	if err != nil {
-		return nil, ErrKeyDeriveFailed
+		return nil, fmt.Errorf("%w: %w", ErrKeyDeriveFailed, err)
 	}
 
 	return key, nil

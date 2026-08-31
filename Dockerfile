@@ -35,6 +35,9 @@ COPY . .
 
 # Build the binary. Default: no extra tags (production-equivalent of main).
 # Pass --build-arg GO_TAGS=parsec to opt into the PARSEC code path.
+# Do not add "nospiffe" unless you mean it: that build has no cryptographic
+# provider, so config encryption is unavailable and every write of a config
+# with encrypt_config set is refused. See docs/guides/build-tags.md.
 ARG GO_TAGS=""
 ARG COMPONENT=satellite
 RUN CGO_ENABLED=0 GOOS=linux go build -tags "${GO_TAGS}" -o /app-bin ./cmd/${COMPONENT}

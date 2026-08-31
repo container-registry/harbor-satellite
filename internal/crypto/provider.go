@@ -11,6 +11,12 @@ var (
 	ErrInvalidKeyLength  = errors.New("invalid key length")
 	ErrInvalidInput      = errors.New("invalid input")
 	ErrSignatureMismatch = errors.New("signature verification failed")
+
+	// ErrCryptoUnavailable is returned by every operation of the provider
+	// compiled into the nospiffe build, which has no cryptographic
+	// implementation. Callers must treat it as a hard failure: it means the
+	// operation was not performed, not that it succeeded trivially.
+	ErrCryptoUnavailable = errors.New("cryptographic provider not available in this build (built with the nospiffe tag)")
 )
 
 // Provider abstracts cryptographic operations for the satellite.
@@ -39,6 +45,12 @@ type Provider interface {
 	GenerateKeyPair() (crypto.PrivateKey, crypto.PublicKey, error)
 
 	// Hash computes a cryptographic hash of the data.
+	//
+	// This signature has no error return, but an implementation may be unable
+	// to hash at all: the nospiffe build ships a provider with no cryptography
+	// and returns nil. Callers must treat a zero-length result as a failure,
+	// never as the valid hash of an empty input, and must not persist or
+	// compare it as if it were a real digest.
 	Hash(data []byte) []byte
 
 	// RandomBytes generates cryptographically secure random bytes.
