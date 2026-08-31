@@ -19,7 +19,7 @@ const (
 	dockerRestartTimeout = 30 * time.Second
 )
 
-func setDockerdConfig(mirrors []string, localRegistry string) (string, error) {
+func setDockerdConfig(mirrors []string, proxyEndpoint string) (string, error) {
 	if len(mirrors) == 0 {
 		return "", nil
 	}
@@ -31,8 +31,8 @@ func setDockerdConfig(mirrors []string, localRegistry string) (string, error) {
 		return "", nil
 	}
 
-	if !strings.HasPrefix(localRegistry, "http://") && !strings.HasPrefix(localRegistry, "https://") {
-		localRegistry = "http://" + localRegistry
+	if !strings.HasPrefix(proxyEndpoint, "http://") && !strings.HasPrefix(proxyEndpoint, "https://") {
+		proxyEndpoint = "http://" + proxyEndpoint
 	}
 
 	backupPath, err := backupFile(dockerConfigPath)
@@ -53,8 +53,8 @@ func setDockerdConfig(mirrors []string, localRegistry string) (string, error) {
 	}
 	currentMirrors := v.GetStringSlice("registry-mirrors")
 
-	if !slices.Contains(currentMirrors, localRegistry) {
-		currentMirrors = append(currentMirrors, localRegistry)
+	if !slices.Contains(currentMirrors, proxyEndpoint) {
+		currentMirrors = append(currentMirrors, proxyEndpoint)
 		v.Set("registry-mirrors", currentMirrors)
 	}
 
