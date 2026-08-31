@@ -9,8 +9,8 @@ informed: [Harbor Satellite Developers]
 ## Context
 
 Satellite currently uses Crane to replicate selected images into Zot. The revised
-goal is a policy-enforcing OCI proxy, not a full registry and not a mandatory
-pull-through cache.
+goal is a policy-enforcing OCI proxy, not a full registry. It can operate as a
+local-only replica or as a pull-through proxy backed by retained local content.
 
 The proxy must inspect every OCI request before it reaches an upstream. Request data
 such as identity, method, repository, reference, digest, and upstream may be enough
@@ -20,8 +20,8 @@ policy again. Only an allowed request is forwarded or served from retained conte
 
 The same design must support container images and arbitrary OCI artifacts, including
 Helm charts, SBOMs, signatures, attestations, Wasm modules, models, and unknown valid
-media types. It must also keep local replication and caching optional for constrained
-edge deployments.
+media types. It must support both desired-state-only replication and controlled
+pull-through retention for constrained edge deployments.
 
 ADR-0009 supersedes the target-state choices in [ADR-0001](0001-skopeo-vs-crane.md)
 and [ADR-0002](0002-zot-vs-docker-registries.md). Those records remain historical.
@@ -34,9 +34,8 @@ and [ADR-0002](0002-zot-vs-docker-registries.md). Those records remain historica
   conditions, cancellation, and streaming behavior.
 * The content model must be OCI descriptor graphs rather than only container images.
 * Local and remote content should use one resolve, fetch, copy, and metadata model.
-* Proxy-only deployments should require neither a registry process nor persistent
-  artifact storage.
-* Optional local content should remain interoperable with OCI tooling and avoid an
+* Replica mode must never contact the upstream registry while serving a client pull.
+* Locally retained content should remain interoperable with OCI tooling and avoid an
   unnecessary deduplication database.
 
 ## Decision
@@ -44,10 +43,11 @@ and [ADR-0002](0002-zot-vs-docker-registries.md). Those records remain historica
 Satellite will implement a catch-all `net/http` proxy handler that parses each
 request into a typed OCI operation. It will perform a request pre-check, acquire
 verified metadata through `oras-go` when necessary, perform a content-aware policy
-check, and then either deny, forward, or serve retained content.
+check, and then either deny, serve retained content, or fill a local miss from the
+upstream before serving it.
 
 `oras-go` will replace Crane for registry resolution, OCI graph transfer, metadata
-access, and replication. Optional local replica or cache content will use
+access, and replication. Local replica and proxy content will use
 `oras.land/oras-go/v2/content/oci`. Zot and bbolt are not part of the target
 architecture.
 
@@ -66,7 +66,7 @@ This decision covers:
 * local or remote metadata resolution for content-aware decisions;
 * arbitrary OCI artifact transfer through ORAS;
 * desired-state replication; and
-* optional local replica and cache modes backed by an ORAS OCI image layout.
+* replica and pull-through proxy modes backed by an ORAS OCI image layout.
 
 The first delivery remains pull-oriented and adds mutation operations incrementally.
 Search, scanning, administration, and other general registry features are included
@@ -109,11 +109,11 @@ flowchart TB
     subgraph Execute[3. Allowed execution]
         Source{Selected source}
         LocalRead[Serve verified<br/>local content]
-        Forward[Forward original request<br/>with scoped credentials]
+        Forward[Fill local miss<br/>with scoped credentials]
         Upstream[Upstream registry]
 
-        Source -->|replica or cache hit| LocalRead
-        Source -->|upstream| Forward --> Upstream
+        Source -->|local hit| LocalRead
+        Source -->|proxy mode miss| Forward --> Upstream
     end
 
     Deny[Deny and audit]
@@ -154,7 +154,7 @@ sequenceDiagram
             S-->>C: Policy error
         else Content allowed
             P-->>S: Allow resolved digest
-            S->>R: Serve locally or forward upstream
+            S->>R: Serve locally or fill a proxy-mode miss
             R-->>S: OCI response
             S-->>C: OCI response
         end
@@ -170,17 +170,17 @@ digest so that it cannot authorize one graph and return another.
 
 | Mode | Behavior |
 |---|---|
-| `proxy` | Evaluate policy and forward; do not persist passing content |
-| `replica` | Serve explicitly replicated content locally and proxy other allowed requests |
-| `cache` | Retain selected verified upstream content under admission and retention policy |
+| `proxy` | Serve retained content locally and fill a local miss from the upstream Harbor registry before serving it |
+| `replica` | Serve only explicitly replicated local content; a local miss is returned without contacting the upstream |
 
-`proxy` is the default. Offline access is available only for content retained by
-`replica` or `cache` mode. Retained content is derived state and does not make
-Satellite the authoritative upstream registry.
+`proxy` is the default. Both modes serve responses from the configured local store.
+Retained content is derived state and does not make Satellite the authoritative
+upstream registry.
 
 ### ORAS OCI Storage Layout
 
-Replica and cache modes initially use one Satellite-owned OCI image layout:
+Replica and proxy modes use the configured BYO registry or one Satellite-owned OCI
+image layout:
 
 ```text
 <storage-root>/
@@ -228,7 +228,7 @@ removes hop-by-hop headers, and never sends credentials to another authority wit
 an explicit rule.
 
 An embedded registry is not selected because the primary operation is controlled
-forwarding, not serving authoritative local state:
+local serving with optional upstream cache fill, not authoritative registry state:
 
 * **olareg** is the closest lightweight behavior reference, but its server and store
   do not expose the required two-stage policy, multi-upstream, and transparent
@@ -259,8 +259,8 @@ Its main benefits are:
 * one library for policy metadata, replication, import, export, and future peer
   transfer.
 
-The storage packages have clear roles: `content/oci` is the durable replica or cache,
-`content/memory` is limited to bounded tests or short-lived staging, and
+The storage packages have clear roles: `content/oci` is the durable replica or proxy
+cache, `content/memory` is limited to bounded tests or short-lived staging, and
 `content/file` is for artifact file and working-directory workflows rather than a
 restartable registry store.
 
@@ -301,9 +301,9 @@ Zot storage is capable and more registry-oriented, with filesystem and object-st
 drivers, hardlink deduplication, Bolt-backed lookup, garbage collection, and scrub.
 Using it alone would still introduce a second storage API and publication model next
 to the ORAS APIs used for remote metadata and transfer. Running Zot would additionally
-introduce a full registry lifecycle that proxy-only mode does not need.
+introduce a full registry lifecycle that the Satellite-owned OCI layout does not need.
 
-Using ORAS `content/oci` keeps optional local content in the same descriptor model as
+Using ORAS `content/oci` keeps local content in the same descriptor model as
 remote access and replication. Its global content-addressable namespace already
 deduplicates blobs, so the initial design does not need Zot storage, hardlink modes,
 or a bbolt digest cache. Zot remains a reference for durability and maintenance
@@ -311,10 +311,12 @@ behavior rather than an embedded dependency.
 
 ## Consequences
 
-* Good: Satellite remains a focused policy proxy; storage is optional.
+* Good: Satellite remains a focused policy proxy with explicit local-only and
+  pull-through behavior.
 * Good: ORAS provides one arbitrary-artifact model for metadata, replication, local
   content, and future peer transfer.
-* Good: Proxy-only mode needs neither Zot, bbolt, nor persistent artifact storage.
+* Good: Neither mode needs Zot or bbolt; a BYO registry or OCI layout provides the
+  local content store.
 * Good: The global OCI blob namespace deduplicates content without a separate lookup
   database.
 * Good: Policy can evaluate verified descriptor graphs, subjects, referrers,
