@@ -2,10 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"net"
+	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/env"
@@ -14,6 +19,9 @@ import (
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
+	proxyhandler "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
+	proxyimage "github.com/container-registry/harbor-satellite/internal/satellite/proxy/process/image"
+	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
 	"github.com/container-registry/harbor-satellite/internal/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -57,6 +65,8 @@ type SatelliteOptions struct {
 	HarborRegistryURL      string
 	DirectDelivery         bool
 	ImageDir               string
+	ProxyMode              proxyhandler.Mode
+	ProxyPort              int
 }
 
 func main() {
@@ -82,6 +92,8 @@ func main() {
 		HarborRegistryURL:      envCfg.HarborRegistryURL,
 		DirectDelivery:         envCfg.DirectDelivery,
 		ImageDir:               envCfg.ImageDir,
+		ProxyMode:              envCfg.ProxyMode,
+		ProxyPort:              envCfg.ProxyPort,
 	}
 	shutdownTimeout := envCfg.ShutdownTimeout
 
@@ -105,6 +117,8 @@ func main() {
 	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", opts.HarborRegistryURL, "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
 	flag.BoolVar(&opts.DirectDelivery, "direct-delivery", opts.DirectDelivery, "[Experimental] Write image tarballs directly to k3s/RKE2 agent images directory")
 	flag.StringVar(&opts.ImageDir, "image-dir", opts.ImageDir, "Override image directory for direct delivery (auto-detected if empty)")
+	flag.Var(&opts.ProxyMode, "proxy-mode", "OCI proxy mode: proxy or replica")
+	flag.IntVar(&opts.ProxyPort, "proxy-port", opts.ProxyPort, "Local OCI registry proxy port")
 
 	flag.Parse()
 	if opts.Token == "" {
@@ -112,6 +126,10 @@ func main() {
 	}
 	if opts.RegistryPassword == "" {
 		opts.RegistryPassword = envCfg.RegistryPassword
+	}
+	if err := validateSatelliteOptions(opts); err != nil {
+		fmt.Printf("Invalid arguments: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Resolve config directory path
@@ -163,6 +181,19 @@ func main() {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func validateSatelliteOptions(opts SatelliteOptions) error {
+	if !opts.ProxyMode.Valid() {
+		return fmt.Errorf("--proxy-mode must be %q or %q, got %q", proxyhandler.ModeProxy, proxyhandler.ModeReplica, opts.ProxyMode)
+	}
+	if opts.ProxyPort < 1 || opts.ProxyPort > 65535 {
+		return fmt.Errorf("--proxy-port must be between 1 and 65535, got %d", opts.ProxyPort)
+	}
+	if opts.FallbackOnly {
+		return errors.New("--proxy-mode cannot be combined with --fallback-only")
+	}
+	return nil
 }
 
 // reconfigureAuditOnReload swaps the audit logger to match next when the audit
@@ -292,8 +323,42 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	}
 
+	var (
+		proxyServer   *http.Server
+		proxyListener net.Listener
+		localStore    store.Store
+		remoteStore   store.Store
+	)
+	localStore, remoteStore, err = proxyStores(cm, pathConfig.StoreDir)
+	if err != nil {
+		return fmt.Errorf("initialize proxy stores: %w", err)
+	}
+
+	proxyLifecycleCtx, cancelProxy := context.WithCancel(context.Background())
+	defer cancelProxy()
+	proxyAddress := net.JoinHostPort("127.0.0.1", strconv.Itoa(opts.ProxyPort))
+	proxyServer = &http.Server{
+		Addr:              proxyAddress,
+		Handler:           proxyhandler.New(proxyimage.NewPull(proxyLifecycleCtx, opts.ProxyMode, localStore, remoteStore)).Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       time.Minute,
+	}
+	proxyListener, err = net.Listen("tcp", proxyAddress)
+	if err != nil {
+		return fmt.Errorf("listen for OCI proxy on %s: %w", proxyAddress, err)
+	}
+	defer proxyServer.Close()
+
+	wg.Go(func() error {
+		err := proxyServer.Serve(proxyListener)
+		if err == nil || errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return fmt.Errorf("serve OCI proxy: %w", err)
+	})
+
 	// Resolve local registry endpoint for CRI mirror config
-	localRegistryEndpoint := resolveLocalRegistryEndpoint(cm)
+	localRegistryEndpoint := resolveLocalRegistryEndpoint(opts.ProxyMode, opts.ProxyPort)
 
 	// Resolve and apply CRI configs
 	criResults := resolveCRIAndApply(cm, opts.Mirrors, opts.NoRegistryFallback, localRegistryEndpoint)
@@ -406,10 +471,15 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	eventScheduler := events.NewEventScheduler(log)
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir, eventScheduler)
+	s.SetStores(localStore, remoteStore)
 
 	err = s.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("unable to start satellite: %w", err)
+	}
+
+	if proxyServer != nil {
+		log.Info().Str("address", proxyServer.Addr).Str("mode", opts.ProxyMode.String()).Msg("OCI registry proxy is listening")
 	}
 
 	for _, s := range s.GetSchedulers() {
@@ -418,10 +488,17 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	}
 
-	return gracefulShutdown(ctx, log, s, wg, shutdownTimeout)
+	return gracefulShutdown(ctx, log, s, proxyServer, wg, shutdownTimeout)
 }
 
-func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Satellite, wg *errgroup.Group, shutdownTimeout string) error {
+func gracefulShutdown(
+	ctx context.Context,
+	log *zerolog.Logger,
+	s *satellite.Satellite,
+	proxyServer *http.Server,
+	wg *errgroup.Group,
+	shutdownTimeout string,
+) error {
 	// Wait until context is cancelled
 	<-ctx.Done()
 
@@ -445,26 +522,38 @@ func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Sat
 
 	// Wait for in-progress tasks and scheduler goroutines with timeout
 	log.Info().Msg("Waiting for in-progress replication tasks and scheduler goroutines to complete")
-	shutdownDone := make(chan struct{})
+	shutdownDone := make(chan error, 1)
 	go func() {
-		// Stop schedulers (blocks until scheduler goroutines complete)
-		s.Stop(shutdownCtx)
-		// Wait for errgroup tasks
-		err := wg.Wait()
-		if err != nil {
-			log.Error().Err(err).Msg("Error waiting for goroutines during shutdown")
+		var shutdownGroup errgroup.Group
+		shutdownGroup.Go(func() error {
+			s.Stop(shutdownCtx)
+			return nil
+		})
+		if proxyServer != nil {
+			shutdownGroup.Go(func() error {
+				if err := proxyServer.Shutdown(shutdownCtx); err != nil {
+					return fmt.Errorf("shut down OCI proxy: %w", err)
+				}
+				return nil
+			})
 		}
-		close(shutdownDone)
+
+		shutdownErr := shutdownGroup.Wait()
+		runtimeErr := wg.Wait()
+		shutdownDone <- errors.Join(shutdownErr, runtimeErr)
 	}()
 
 	select {
-	case <-shutdownDone:
+	case shutdownErr := <-shutdownDone:
 		// Persist state to disk before exit (reuses #228 SaveState logic)
 		log.Info().Msg("Persisting state to disk before exit")
 		if err := s.PersistState(); err != nil {
 			log.Warn().Err(err).Msg("Failed to persist state during shutdown")
 		} else {
 			log.Info().Msg("State persisted successfully")
+		}
+		if shutdownErr != nil {
+			return fmt.Errorf("runtime shutdown: %w", shutdownErr)
 		}
 		log.Info().Msg("Graceful shutdown completed successfully")
 	case <-shutdownCtx.Done():
@@ -479,8 +568,8 @@ func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Sat
 // Priority: config file registry_fallback > --mirrors flag > --no-registry-fallback/env.
 func resolveCRIAndApply(cm *config.ConfigManager, mirrors mirrorFlags, noFallback bool, localRegistry string) []runtime.CRIConfigResult {
 	fbCfg := cm.GetRegistryFallbackConfig()
-	if localRegistry == "" && (fbCfg.Enabled || len(mirrors) > 0) {
-		fmt.Println("warning: CRI registry fallback requires --byo-registry until a registry proxy is configured")
+	if strings.TrimSpace(localRegistry) == "" && (fbCfg.Enabled || len(mirrors) > 0) {
+		fmt.Println("warning: CRI registry configuration requires --proxy-mode")
 		return nil
 	}
 
@@ -513,9 +602,64 @@ func resolveCRIAndApply(cm *config.ConfigManager, mirrors mirrorFlags, noFallbac
 	return nil
 }
 
-func resolveLocalRegistryEndpoint(cm *config.ConfigManager) string {
-	if cm.GetOwnRegistry() {
-		return utils.FormatRegistryURL(cm.GetLocalRegistryURL())
+func resolveLocalRegistryEndpoint(proxyMode proxyhandler.Mode, proxyPort int) string {
+	if !proxyMode.Valid() {
+		return ""
 	}
-	return ""
+	return net.JoinHostPort("127.0.0.1", strconv.Itoa(proxyPort))
+}
+
+func proxyStores(cm *config.ConfigManager, storeRoot string) (store.Store, store.Store, error) {
+	remoteOptions, err := sourceRegistryOptions(cm)
+	if err != nil {
+		return nil, nil, err
+	}
+	remoteStore, err := store.NewRegistryStore(remoteOptions)
+	if err != nil {
+		return nil, nil, fmt.Errorf("initialize Harbor registry store: %w", err)
+	}
+
+	if cm.GetOwnRegistry() {
+		credentials := cm.GetRemoteRegistryCredentials()
+		localStore, err := store.NewRegistryStore(store.RegistryOptions{
+			Endpoint:  utils.FormatRegistryURL(string(credentials.URL)),
+			Username:  credentials.Username,
+			Password:  credentials.Password,
+			PlainHTTP: cm.UseUnsecure(),
+			TLS:       cm.GetTLSConfig(),
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("initialize BYO registry store: %w", err)
+		}
+		return localStore, remoteStore, nil
+	}
+
+	localStore, err := store.NewOCIStore(storeRoot)
+	if err != nil {
+		return nil, nil, fmt.Errorf("initialize OCI layout store: %w", err)
+	}
+	return localStore, remoteStore, nil
+}
+
+func sourceRegistryOptions(cm *config.ConfigManager) (store.RegistryOptions, error) {
+	credentials := cm.GetSourceRegistryCredentials()
+	sourceURL := string(credentials.URL)
+	if override := cm.GetHarborRegistryURL(); override != "" {
+		if sourceURL == "" {
+			sourceURL = override
+		} else {
+			replaced, err := config.ReplaceURLHost(sourceURL, override)
+			if err != nil {
+				return store.RegistryOptions{}, fmt.Errorf("apply Harbor registry override: %w", err)
+			}
+			sourceURL = replaced
+		}
+	}
+	return store.RegistryOptions{
+		Endpoint:  utils.FormatRegistryURL(sourceURL),
+		Username:  credentials.Username,
+		Password:  credentials.Password,
+		PlainHTTP: cm.UseUnsecure(),
+		TLS:       cm.GetTLSConfig(),
+	}, nil
 }

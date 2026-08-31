@@ -87,6 +87,8 @@ func TestLoadSatelliteParsesEnvironment(t *testing.T) {
 	t.Setenv("HARBOR_REGISTRY_URL", "https://harbor.example")
 	t.Setenv("DIRECT_DELIVERY", "true")
 	t.Setenv("IMAGE_DIR", "/var/lib/rancher/k3s/agent/images")
+	t.Setenv("PROXY_MODE", "replica")
+	t.Setenv("PROXY_PORT", "9090")
 
 	if err := LoadSatellite(); err != nil {
 		t.Fatalf("LoadSatellite() error = %v", err)
@@ -101,5 +103,33 @@ func TestLoadSatelliteParsesEnvironment(t *testing.T) {
 	}
 	if cfg.RegistryDataDir != "/tmp/registry" || cfg.ShutdownTimeout != "45s" {
 		t.Fatalf("satellite path/timing env was not parsed: %+v", cfg)
+	}
+	if cfg.ProxyMode != "replica" || cfg.ProxyPort != 9090 {
+		t.Fatalf("satellite proxy env was not parsed: %+v", cfg)
+	}
+}
+
+func TestHarborSatelliteApplyDefaults(t *testing.T) {
+	cfg := (HarborSatellite{}).ApplyDefaults()
+
+	if cfg.ProxyMode != "proxy" {
+		t.Fatalf("proxy mode default = %q, want proxy", cfg.ProxyMode)
+	}
+	if cfg.ProxyPort != 8585 {
+		t.Fatalf("proxy port default = %d, want 8585", cfg.ProxyPort)
+	}
+}
+
+func TestLoadSatelliteRejectsInvalidProxyPort(t *testing.T) {
+	t.Setenv("PROXY_PORT", "not-a-port")
+	if err := LoadSatellite(); err == nil {
+		t.Fatal("LoadSatellite() accepted an invalid proxy port")
+	}
+}
+
+func TestLoadSatelliteRejectsInvalidProxyMode(t *testing.T) {
+	t.Setenv("PROXY_MODE", "cache")
+	if err := LoadSatellite(); err == nil {
+		t.Fatal("LoadSatellite() accepted an invalid proxy mode")
 	}
 }
