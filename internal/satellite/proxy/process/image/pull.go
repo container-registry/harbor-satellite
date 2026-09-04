@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,7 +18,7 @@ import (
 
 const distributionAPIVersion = "registry/2.0"
 
-type pullProcess struct {
+type pullHandler struct {
 	lifecycleCtx context.Context
 	mode         proxy.Mode
 	localStore   store.Store
@@ -30,25 +29,24 @@ type pullProcess struct {
 // NewPull serves retained content from localStore and fills it from remoteStore
 // on a miss. The shared operation returns only an immutable descriptor; every
 // HTTP request opens and streams its own reader after the flight completes.
-func NewPull(lifecycleCtx context.Context, mode proxy.Mode, localStore, remoteStore store.Store) proxy.Process {
+func NewPull(lifecycleCtx context.Context, mode proxy.Mode, localStore, remoteStore store.Store) proxy.HandlerFunc {
 	if lifecycleCtx == nil {
 		lifecycleCtx = context.Background()
 	}
-	process := &pullProcess{
+	handler := &pullHandler{
 		lifecycleCtx: lifecycleCtx,
 		mode:         mode,
 		localStore:   localStore,
 		remoteStore:  remoteStore,
 	}
-	return process.execute
+	return handler.handle
 }
 
-func (p *pullProcess) execute(request *proxy.Request) error {
+func (p *pullHandler) handle(request *proxy.Request) error {
 	request.ResponseHeader().Set("Docker-Distribution-API-Version", distributionAPIVersion)
 	if request.Operation == proxy.CheckRegistry {
 		return request.Write(http.StatusOK, nil)
 	}
-	log.Printf("pulling %s %s:%s", request.Operation, request.Repository, request.Reference)
 
 	artifact, resource, identifier, err := pullArtifactFor(request)
 	if err != nil {
@@ -142,7 +140,7 @@ func pullArtifactFor(request *proxy.Request) (
 		proxy.ListReferrers:
 		return store.Artifact{}, 0, "", proxy.NewError(
 			proxy.ErrorCodeUnsupported,
-			fmt.Sprintf("operation %s is not supported by the image pull process", request.Operation),
+			fmt.Sprintf("operation %s is not supported by the image pull handler", request.Operation),
 			nil,
 		)
 	}

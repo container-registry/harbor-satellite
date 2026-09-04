@@ -23,7 +23,7 @@ type errorEnvelope struct {
 	} `json:"errors"`
 }
 
-func TestNewUsesDefaultServeMuxWithoutProcess(t *testing.T) {
+func TestNewUsesDefaultServeMuxWithoutHandler(t *testing.T) {
 	original := http.DefaultServeMux
 	http.DefaultServeMux = http.NewServeMux()
 	t.Cleanup(func() { http.DefaultServeMux = original })
@@ -40,11 +40,11 @@ func TestNewUsesDefaultServeMuxWithoutProcess(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, response.Code)
 }
 
-func TestNewInstallsProcess(t *testing.T) {
+func TestNewInstallsHandler(t *testing.T) {
 	t.Parallel()
 
 	var captured *proxy.Request
-	adapter := proxy.New(proxy.Process(func(requestState *proxy.Request) error {
+	adapter := proxy.New(proxy.HandlerFunc(func(requestState *proxy.Request) error {
 		captured = requestState
 		return requestState.Write(http.StatusNoContent, nil)
 	}))
@@ -62,15 +62,15 @@ func TestNewInstallsProcess(t *testing.T) {
 	require.Equal(t, "team/app", captured.Repository)
 }
 
-func TestWrapComposesProcessorsInExecutionOrder(t *testing.T) {
+func TestWrapComposesMiddlewareFuncsInExecutionOrder(t *testing.T) {
 	t.Parallel()
 
 	order := make([]string, 0, 5)
-	process := func(requestState *proxy.Request) error {
+	handler := func(requestState *proxy.Request) error {
 		order = append(order, "handler")
 		return requestState.Write(http.StatusNoContent, nil)
 	}
-	logger := func(next proxy.Process) proxy.Process {
+	logger := func(next proxy.HandlerFunc) proxy.HandlerFunc {
 		return func(requestState *proxy.Request) error {
 			order = append(order, "logger:before")
 			err := next(requestState)
@@ -78,7 +78,7 @@ func TestWrapComposesProcessorsInExecutionOrder(t *testing.T) {
 			return err
 		}
 	}
-	auth := func(next proxy.Process) proxy.Process {
+	auth := func(next proxy.HandlerFunc) proxy.HandlerFunc {
 		return func(requestState *proxy.Request) error {
 			order = append(order, "auth:before")
 			err := next(requestState)
@@ -88,7 +88,7 @@ func TestWrapComposesProcessorsInExecutionOrder(t *testing.T) {
 	}
 
 	response := httptest.NewRecorder()
-	proxy.New(process).
+	proxy.New(handler).
 		Wrap(auth).
 		Wrap(logger).
 		Handler().
@@ -104,15 +104,15 @@ func TestWrapComposesProcessorsInExecutionOrder(t *testing.T) {
 	}, order)
 }
 
-func TestWrapAllComposesProcessorsInArgumentOrder(t *testing.T) {
+func TestWrapAllComposesMiddlewareFuncsInArgumentOrder(t *testing.T) {
 	t.Parallel()
 
 	order := make([]string, 0, 5)
-	process := func(requestState *proxy.Request) error {
-		order = append(order, "process")
+	handler := func(requestState *proxy.Request) error {
+		order = append(order, "handler")
 		return requestState.Write(http.StatusNoContent, nil)
 	}
-	first := func(next proxy.Process) proxy.Process {
+	first := func(next proxy.HandlerFunc) proxy.HandlerFunc {
 		return func(requestState *proxy.Request) error {
 			order = append(order, "first:before")
 			err := next(requestState)
@@ -120,7 +120,7 @@ func TestWrapAllComposesProcessorsInArgumentOrder(t *testing.T) {
 			return err
 		}
 	}
-	second := func(next proxy.Process) proxy.Process {
+	second := func(next proxy.HandlerFunc) proxy.HandlerFunc {
 		return func(requestState *proxy.Request) error {
 			order = append(order, "second:before")
 			err := next(requestState)
@@ -130,7 +130,7 @@ func TestWrapAllComposesProcessorsInArgumentOrder(t *testing.T) {
 	}
 
 	response := httptest.NewRecorder()
-	proxy.New(process).
+	proxy.New(handler).
 		WrapAll(first, nil, second).
 		Handler().
 		ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v2/", nil))
@@ -139,22 +139,22 @@ func TestWrapAllComposesProcessorsInArgumentOrder(t *testing.T) {
 	require.Equal(t, []string{
 		"second:before",
 		"first:before",
-		"process",
+		"handler",
 		"first:after",
 		"second:after",
 	}, order)
 }
 
-func TestWrittenResponseStopsProcessChain(t *testing.T) {
+func TestWrittenResponseStopsHandlerChain(t *testing.T) {
 	t.Parallel()
 
 	innerCalled := false
-	inner := proxy.Process(func(*proxy.Request) error {
+	inner := proxy.HandlerFunc(func(*proxy.Request) error {
 		innerCalled = true
 		return nil
 	})
-	outer := proxy.Processor(func(proxy.Process) proxy.Process {
-		return proxy.Process(func(requestState *proxy.Request) error {
+	outer := proxy.MiddlewareFunc(func(proxy.HandlerFunc) proxy.HandlerFunc {
+		return proxy.HandlerFunc(func(requestState *proxy.Request) error {
 			return requestState.Write(http.StatusAccepted, []byte("complete"))
 		})
 	})
@@ -170,16 +170,16 @@ func TestWrittenResponseStopsProcessChain(t *testing.T) {
 	require.False(t, innerCalled)
 }
 
-func TestProcessorErrorStopsInnerProcess(t *testing.T) {
+func TestMiddlewareFuncErrorStopsInnerHandler(t *testing.T) {
 	t.Parallel()
 
 	innerCalled := false
-	inner := proxy.Process(func(*proxy.Request) error {
+	inner := proxy.HandlerFunc(func(*proxy.Request) error {
 		innerCalled = true
 		return nil
 	})
-	outer := proxy.Processor(func(proxy.Process) proxy.Process {
-		return proxy.Process(func(*proxy.Request) error {
+	outer := proxy.MiddlewareFunc(func(proxy.HandlerFunc) proxy.HandlerFunc {
+		return proxy.HandlerFunc(func(*proxy.Request) error {
 			return proxy.NewError(proxy.ErrorCodeDenied, "policy denied request", nil)
 		})
 	})
@@ -194,11 +194,11 @@ func TestProcessorErrorStopsInnerProcess(t *testing.T) {
 	require.False(t, innerCalled)
 }
 
-func TestNilProcessorsLeaveCurrentProcessUnchanged(t *testing.T) {
+func TestNilWrappersLeaveCurrentHandlerUnchanged(t *testing.T) {
 	t.Parallel()
 
 	called := false
-	adapter := proxy.New(proxy.Process(func(*proxy.Request) error {
+	adapter := proxy.New(proxy.HandlerFunc(func(*proxy.Request) error {
 		called = true
 		return nil
 	}))
@@ -209,7 +209,7 @@ func TestNilProcessorsLeaveCurrentProcessUnchanged(t *testing.T) {
 	require.True(t, called)
 }
 
-func TestHandlerCapturesComposedProcess(t *testing.T) {
+func TestHandlerCapturesComposedHandlerFunc(t *testing.T) {
 	t.Parallel()
 
 	wrapped := false
@@ -217,7 +217,7 @@ func TestHandlerCapturesComposedProcess(t *testing.T) {
 		return requestState.Write(http.StatusNoContent, nil)
 	})
 	handler := adapter.Handler()
-	adapter.Wrap(func(next proxy.Process) proxy.Process {
+	adapter.Wrap(func(next proxy.HandlerFunc) proxy.HandlerFunc {
 		return func(requestState *proxy.Request) error {
 			wrapped = true
 			return next(requestState)
@@ -231,7 +231,7 @@ func TestHandlerCapturesComposedProcess(t *testing.T) {
 	require.False(t, wrapped)
 }
 
-func TestAdapterStopsBeforeProcessWhenParsingFails(t *testing.T) {
+func TestAdapterStopsBeforeHandlerWhenParsingFails(t *testing.T) {
 	t.Parallel()
 
 	called := false
@@ -239,7 +239,7 @@ func TestAdapterStopsBeforeProcessWhenParsingFails(t *testing.T) {
 		http.MethodPost,
 		"/v2/team/app/manifests/latest",
 		nil,
-	), proxy.Process(func(*proxy.Request) error {
+	), proxy.HandlerFunc(func(*proxy.Request) error {
 		called = true
 		return nil
 	}))
@@ -270,7 +270,7 @@ func TestAdapterWritesDistributionErrors(t *testing.T) {
 			response := serveRequest(
 				t,
 				httptest.NewRequest(http.MethodGet, "/v2/", nil),
-				proxy.Process(func(*proxy.Request) error { return test.err }),
+				proxy.HandlerFunc(func(*proxy.Request) error { return test.err }),
 			)
 			envelope := decodeError(t, response)
 			require.Equal(t, test.status, response.Code)
@@ -288,7 +288,7 @@ func TestAdapterOmitsDistributionErrorBodyForHead(t *testing.T) {
 		http.MethodHead,
 		"/v2/team/app/manifests/latest",
 		nil,
-	), proxy.Process(func(*proxy.Request) error {
+	), proxy.HandlerFunc(func(*proxy.Request) error {
 		return proxy.NewError(proxy.ErrorCodeManifestUnknown, "release does not exist", nil)
 	}))
 
@@ -309,7 +309,7 @@ func TestAdapterDoesNotInventAnErrorCodeForInternalErrors(t *testing.T) {
 		response := serveRequest(
 			t,
 			httptest.NewRequest(http.MethodGet, "/v2/", nil),
-			proxy.Process(func(*proxy.Request) error { return handlerError }),
+			proxy.HandlerFunc(func(*proxy.Request) error { return handlerError }),
 		)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Equal(t, "Internal Server Error\n", response.Body.String())
@@ -322,7 +322,7 @@ func TestAdapterDoesNotAppendAnErrorAfterResponseCommit(t *testing.T) {
 	response := serveRequest(
 		t,
 		httptest.NewRequest(http.MethodGet, "/v2/", nil),
-		proxy.Process(func(requestState *proxy.Request) error {
+		proxy.HandlerFunc(func(requestState *proxy.Request) error {
 			require.NoError(t, requestState.Write(
 				http.StatusAccepted,
 				[]byte("response started"),
@@ -342,7 +342,7 @@ func TestRequestWriteResponseForwardsHTTPResponse(t *testing.T) {
 	response := serveRequest(
 		t,
 		httptest.NewRequest(http.MethodGet, "/v2/", nil),
-		proxy.Process(func(requestState *proxy.Request) error {
+		proxy.HandlerFunc(func(requestState *proxy.Request) error {
 			return requestState.WriteResponse(&http.Response{
 				StatusCode: http.StatusAccepted,
 				Header: http.Header{
@@ -364,7 +364,7 @@ func TestRequestWriteResponseRemovesHopByHopHeaders(t *testing.T) {
 	response := serveRequest(
 		t,
 		httptest.NewRequest(http.MethodGet, "/v2/", nil),
-		proxy.Process(func(requestState *proxy.Request) error {
+		proxy.HandlerFunc(func(requestState *proxy.Request) error {
 			return requestState.WriteResponse(&http.Response{
 				StatusCode: http.StatusOK,
 				Header: http.Header{
@@ -390,7 +390,7 @@ func TestRequestWriteResponseRemovesHopByHopHeaders(t *testing.T) {
 func TestHTTPHandlerSupportsConcurrentRequests(t *testing.T) {
 	t.Parallel()
 
-	handler := proxy.New(proxy.Process(func(requestState *proxy.Request) error {
+	handler := proxy.New(proxy.HandlerFunc(func(requestState *proxy.Request) error {
 		if requestState.Operation != proxy.PullManifest || requestState.Method != proxy.GET {
 			return errors.New("unexpected operation")
 		}
@@ -423,19 +423,19 @@ func TestHTTPHandlerSupportsConcurrentRequests(t *testing.T) {
 func serveRequest(
 	t *testing.T,
 	request *http.Request,
-	processes ...proxy.Process,
+	handlers ...proxy.HandlerFunc,
 ) *httptest.ResponseRecorder {
 	t.Helper()
-	require.LessOrEqual(t, len(processes), 1)
-	process := proxy.Process(func(*proxy.Request) error {
+	require.LessOrEqual(t, len(handlers), 1)
+	handler := proxy.HandlerFunc(func(*proxy.Request) error {
 		return nil
 	})
-	if len(processes) != 0 {
-		process = processes[0]
+	if len(handlers) != 0 {
+		handler = handlers[0]
 	}
 
 	response := httptest.NewRecorder()
-	proxy.New(process).Handler().ServeHTTP(response, request)
+	proxy.New(handler).Handler().ServeHTTP(response, request)
 	return response
 }
 
