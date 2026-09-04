@@ -2,44 +2,44 @@ package proxy
 
 import "net/http"
 
-// proxy holds the currently composed process until Handler builds the HTTP
+// proxy holds the currently composed handler until Handler builds the HTTP
 // adapter.
 type proxy struct {
-	process Process
+	handler HandlerFunc
 }
 
-// New returns a proxy configuration for a terminal process. A nil process leaves
+// New returns a proxy configuration for a terminal handler. A nil handler leaves
 // http.DefaultServeMux as the final HTTP handler.
-func New(process Process) *proxy {
-	return &proxy{process: process}
+func New(handler HandlerFunc) *proxy {
+	return &proxy{handler: handler}
 }
 
-// Wrap immediately wraps the current process with processor. A nil processor is
-// ignored. Successive calls make the last processor the outermost one.
-func (p *proxy) Wrap(processor Processor) *proxy {
-	if processor != nil {
-		p.process = processor(p.process)
+// Wrap immediately wraps the current handler with wrapper. A nil wrapper is
+// ignored. Successive calls make the last wrapper the outermost one.
+func (p *proxy) Wrap(wrapper MiddlewareFunc) *proxy {
+	if wrapper != nil {
+		p.handler = wrapper(p.handler)
 	}
 	return p
 }
 
-// WrapAll immediately wraps the current process with each processor in argument
-// order. Nil processors are ignored, and the last processor becomes outermost.
-func (p *proxy) WrapAll(processors ...Processor) *proxy {
-	for _, processor := range processors {
-		if processor != nil {
-			p.process = processor(p.process)
+// WrapAll immediately wraps the current handler with each wrapper in argument
+// order. Nil wrappers are ignored, and the last wrapper becomes outermost.
+func (p *proxy) WrapAll(wrappers ...MiddlewareFunc) *proxy {
+	for _, wrapper := range wrappers {
+		if wrapper != nil {
+			p.handler = wrapper(p.handler)
 		}
 	}
 	return p
 }
 
-// Handler adapts the composed process to http.Handler.
+// Handler adapts the composed HandlerFunc to http.Handler.
 func (p *proxy) Handler() http.Handler {
-	if p.process == nil {
+	if p.handler == nil {
 		return http.DefaultServeMux
 	}
-	process := p.process
+	handler := p.handler
 
 	return http.HandlerFunc(func(response http.ResponseWriter, httpRequest *http.Request) {
 		request, err := newRequest(response, httpRequest)
@@ -49,7 +49,7 @@ func (p *proxy) Handler() http.Handler {
 			}
 			return
 		}
-		if err := process(request); err != nil && !request.responseWritten() {
+		if err := handler(request); err != nil && !request.responseWritten() {
 			if writeErr := request.WriteError(err); writeErr != nil {
 				return
 			}

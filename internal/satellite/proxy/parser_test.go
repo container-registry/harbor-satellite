@@ -50,7 +50,7 @@ func TestHTTPParserCreatesRequests(t *testing.T) {
 			request := httptest.NewRequest(test.method, test.target, nil)
 			response := httptest.NewRecorder()
 			var requestState *proxy.Request
-			handler := proxy.New(proxy.Process(func(current *proxy.Request) error {
+			handler := proxy.New(proxy.HandlerFunc(func(current *proxy.Request) error {
 				requestState = current
 				return nil
 			})).Handler()
@@ -80,7 +80,7 @@ func TestHTTPParserUsesFirstKnownQueryValue(t *testing.T) {
 		nil,
 	)
 	var requestState *proxy.Request
-	response := serveRequest(t, request, proxy.Process(func(current *proxy.Request) error {
+	response := serveRequest(t, request, proxy.HandlerFunc(func(current *proxy.Request) error {
 		requestState = current
 		return nil
 	}))
@@ -158,7 +158,7 @@ func TestRequestQueryStoresValidatedParameters(t *testing.T) {
 			response := serveRequest(
 				t,
 				httptest.NewRequest(test.method, test.target, nil),
-				proxy.Process(func(current *proxy.Request) error {
+				proxy.HandlerFunc(func(current *proxy.Request) error {
 					requestState = current
 					return nil
 				}),
@@ -178,7 +178,7 @@ func TestRequestQueryLeavesAbsentParameterNil(t *testing.T) {
 	response := serveRequest(
 		t,
 		httptest.NewRequest(http.MethodGet, "/v2/team/app/tags/list", nil),
-		proxy.Process(func(current *proxy.Request) error {
+		proxy.HandlerFunc(func(current *proxy.Request) error {
 			requestState = current
 			return nil
 		}),
@@ -280,7 +280,7 @@ func TestRequestRetainsStandardHTTPObjects(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/v2/", nil)
 	response := httptest.NewRecorder()
-	handler := proxy.New(proxy.Process(func(requestState *proxy.Request) error {
+	handler := proxy.New(proxy.HandlerFunc(func(requestState *proxy.Request) error {
 		require.Same(t, request, requestState.HTTPRequest())
 		requestState.HTTPRequest().Header.Set("Authorization", "updated")
 		requestState.ResponseHeader().Set("X-Satellite", "handler")
