@@ -9,6 +9,10 @@ vars:
   GC_CLIENT_CONFIG: "{{.OAPI_CODEGEN_CONFIG_DIR}}/client.cfg.yaml"
   GC_CLIENT_OUTPUT_DIR: "{{.ROOT_DIR}}/pkg/groundcontrol"
   GC_CLIENT_OUTPUT: "{{.GC_CLIENT_OUTPUT_DIR}}/client.gen.go"
+  GC_SQLC_CONFIG: "{{.ROOT_DIR}}/spec/ground-control/sqlc.yaml"
+  GC_DB_QUERIES: "{{.ROOT_DIR}}/spec/ground-control/sql/queries"
+  GC_DB_SCHEMA: "{{.ROOT_DIR}}/spec/ground-control/sql/schema"
+  GC_DB_OUTPUT_DIR: "{{.ROOT_DIR}}/internal/groundcontrol/database"
 
 tasks:
   oapi-codegen:install:
@@ -23,11 +27,24 @@ tasks:
       - test -x {{.BIN_DIR}}/oapi-codegen
       - "{{.BIN_DIR}}/oapi-codegen -version | grep -q '{{.OAPI_CODEGEN_RELEASE_VERSION}}'"
 
+  sqlc:install:
+    internal: true
+    desc: Install sqlc
+    env:
+      GOBIN: "{{.BIN_DIR}}"
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go install github.com/sqlc-dev/sqlc/cmd/sqlc@{{.SQLC_VERSION}}
+    status:
+      - test -x {{.BIN_DIR}}/sqlc
+      - "{{.BIN_DIR}}/sqlc version | grep -q '{{.SQLC_VERSION}}'"
+
   ground-control:
-    desc: Generate Ground Control OpenAPI server and client code
+    desc: Generate Ground Control OpenAPI server, client, and database code
     cmds:
       - task: ground-control-server
       - task: ground-control-client
+      - task: ground-control-database
 
   ground-control-server:
     desc: Generate Ground Control OpenAPI server code
@@ -52,3 +69,15 @@ tasks:
       - "{{.GC_CLIENT_CONFIG}}"
     generates:
       - "{{.GC_CLIENT_OUTPUT}}"
+
+  ground-control-database:
+    desc: Generate Ground Control database code with sqlc
+    cmds:
+      - task: sqlc:install
+      - '"{{.BIN_DIR}}/sqlc" generate --file "{{.GC_SQLC_CONFIG}}"'
+    sources:
+      - "{{.GC_SQLC_CONFIG}}"
+      - "{{.GC_DB_QUERIES}}/**/*.sql"
+      - "{{.GC_DB_SCHEMA}}/**/*.sql"
+    generates:
+      - "{{.GC_DB_OUTPUT_DIR}}/**/*.go"

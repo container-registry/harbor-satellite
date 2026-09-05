@@ -52,7 +52,7 @@ func waitForPostgresReady(db *sql.DB, timeout time.Duration) {
 func runMigrations(db *sql.DB) {
 	migrationsPath := "/migrations"
 	if _, err := os.Stat(migrationsPath); os.IsNotExist(err) {
-		migrationsPath = "internal/groundcontrol/sql/schema"
+		migrationsPath = "spec/ground-control/sql/schema"
 	}
 
 	provider, err := goose.NewProvider(goose.DialectPostgres, db, os.DirFS(migrationsPath))
