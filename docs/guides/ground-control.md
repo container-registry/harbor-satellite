@@ -62,9 +62,10 @@ Key groups include:
 - `cmd/groundcontrol/server/main.go` - service entrypoint
 - `cmd/groundcontrol/cli/root.go` - CLI entrypoint
 - `internal/groundcontrol/server` - routes, handlers, auth middleware, bootstrap, cleanup, and status APIs
-- `internal/groundcontrol/database` - sqlc-generated database access code
-- `internal/groundcontrol/sql/schema` - PostgreSQL migrations
-- `internal/groundcontrol/sql/queries` - sqlc query definitions
+- `internal/groundcontrol/database` - sqlc-generated database access code (generated; do not edit manually)
+- `spec/ground-control/sql/schema` - PostgreSQL migrations
+- `spec/ground-control/sql/queries` - sqlc query definitions
+- `spec/ground-control/sqlc.yaml` - sqlc configuration
 - `internal/groundcontrol/migrator` - migration runner
 - `internal/groundcontrol/harbor` - Harbor API client helpers
 - `internal/groundcontrol/spiffe` - SPIFFE/SPIRE provider and server client integration

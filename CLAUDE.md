@@ -29,6 +29,16 @@ go run ./cmd/satellite --token "<token>" --ground-control-url "<url>"
 go run ./cmd/groundcontrol/server
 ```
 
+### Code Generation
+
+```bash
+# Generate all Ground Control code (OpenAPI server, client, and sqlc database)
+task generate:ground-control
+
+# Generate only database code with sqlc
+task generate:ground-control-database
+```
+
 ### Testing
 
 ```bash
@@ -94,7 +104,7 @@ When making changes, keep binary entrypoints in `cmd/` and implementation packag
 
 - cmd/groundcontrol/server/main.go: Entry point, checks Harbor health, starts server
 - internal/groundcontrol/server/: HTTP API handlers (satellites, groups, configs)
-- internal/groundcontrol/database/: Database models and operations (PostgreSQL)
+- internal/groundcontrol/database/: Database models and operations (PostgreSQL, sqlc-generated; do not edit manually)
 - internal/groundcontrol/harbor/: Harbor API client (projects, robots, replication)
 - internal/groundcontrol/migrator/: Database migration handling
 

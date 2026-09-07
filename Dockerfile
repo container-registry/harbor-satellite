@@ -63,7 +63,7 @@ WORKDIR /app
 COPY --from=builder /app-bin /app/app
 # Copy migrations directly from the build context (not from builder-source) so
 # the Go build stage is never forced to run in prebuilt mode.
-COPY internal/groundcontrol/sql/schema /migrations
+COPY spec/ground-control/sql/schema /migrations
 
 # Create data directory
 RUN mkdir -p /data
