@@ -144,7 +144,7 @@ tasks:
     silent: true
 
   cross-compile:
-    desc: Cross-compile a single component for a target GOOS/GOARCH (used by CI release matrix)
+    desc: Cross-compile a single component for a target GOOS/GOARCH (used by CI publish matrix)
     vars:
       COMPONENT: "{{.COMPONENT}}"
       GOARCH: "{{.GOARCH}}"

@@ -2,7 +2,8 @@
 # FROM directives (Docker multi-stage scoping rule).
 #
 #   Prebuilt path:    docker buildx build --build-arg BUILDER_MODE=prebuilt
-#                                         --build-arg PREBUILT_BINARY=./prebuilt-binary ...
+#                                         --build-arg BINARY_NAME=satellite ...
+#                     (expects bin/linux-${TARGETARCH}/${BINARY_NAME})
 #   From-source path: docker buildx build ...   (default; BUILDER_MODE=source)
 ARG BUILDER_MODE=source
 
@@ -14,8 +15,9 @@ FROM alpine:3.20 AS builder-prebuilt
 
 RUN apk add --no-cache ca-certificates
 
-ARG PREBUILT_BINARY=""
-COPY ${PREBUILT_BINARY} /app-bin
+ARG TARGETARCH
+ARG BINARY_NAME=satellite
+COPY --chmod=755 bin/linux-${TARGETARCH}/${BINARY_NAME} /app-bin
 
 # ── From-source path ─────────────────────────────────────────────────────────
 # Full in-Docker Go build. Git is required by go mod download for
