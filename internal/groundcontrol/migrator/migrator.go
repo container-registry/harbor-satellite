@@ -29,23 +29,29 @@ func parseDBConfig() DBConfig {
 }
 
 func waitForPostgresReady(db *sql.DB, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
-	for {
-		if time.Now().After(deadline) {
-			log.Fatalf("timed out waiting for PostgreSQL readiness")
-		}
+	const retryInterval = 2 * time.Second
 
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		err := db.PingContext(ctx)
-		cancel()
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	for {
+		pingCtx, pingCancel := context.WithTimeout(timeoutCtx, 2*time.Second)
+		err := db.PingContext(pingCtx)
+		pingCancel()
 
 		if err == nil {
 			log.Println("PostgreSQL is ready for queries.")
 			return
 		}
 
-		log.Println("Waiting for PostgreSQL...")
-		time.Sleep(2 * time.Second)
+		log.Printf("PostgreSQL is not ready: %v; retrying in %s", err, retryInterval)
+
+		select {
+		case <-time.After(retryInterval):
+		case <-timeoutCtx.Done():
+			log.Println("timed out waiting for PostgreSQL readiness")
+			return
+		}
 	}
 }
 
