@@ -52,12 +52,13 @@ task e2e
 | `task snapshot` | Create snapshot release with GoReleaser |
 | `task release` | Create official release |
 
-CI publishing is **not** these Task recipes. `.github/workflows/release.yaml` always:
+Local image publishing uses `task publish`. CI does **not** use that recipe. `.github/workflows/release.yaml` instead:
 
 1. Cross-compiles `satellite` and `ground-control` per architecture (`task _build:cross-compile`)
 2. Builds and pushes each image by digest (`BUILDER_MODE=prebuilt`)
-3. Merges the five digests into one multi-arch tag
+3. Merges the five architecture digests into a multi-arch tag for each of `satellite` and `ground-control`
 4. Signs the tagged images with keyless cosign
+5. On `vX.Y.Z` tags, creates the GitHub Release (`task release`)
 
 Tagging:
 
