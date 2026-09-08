@@ -207,7 +207,7 @@ sequenceDiagram
 
 ### 5. Satellite SPIFFE Client
 
-File: `internal/spiffe/client.go`
+File: `internal/shared/spiffe/client.go`
 
 - Connects to SPIRE agent via Workload API socket (embedded or external)
 - Obtains X.509 SVID, creates mTLS HTTP client
@@ -234,7 +234,7 @@ sequenceDiagram
 ### 6. Embedded SPIRE Agent in Satellite (Phase 1 - TO IMPLEMENT)
 
 - Mirror the pattern from GC's `embedded_server.go`
-- Create `internal/spiffe/embedded_agent.go`: subprocess manager for `spire-agent run`
+- Create `internal/shared/spiffe/embedded_agent.go`: subprocess manager for `spire-agent run`
 - Start/stop with readiness polling, graceful shutdown
 - Config generation: trust domain, attestation method
 - SPIRE server address must be explicitly configured (no assumption that GC runs the server)
@@ -307,7 +307,7 @@ spiffe://<trust-domain>/satellite/region/<region>/<name>
 ### 11. Device Identity and Config Encryption
 
 - `internal/identity/device_linux.go`: SHA-256 fingerprint from machine-id + MAC + disk serial
-- `internal/crypto/aes_provider.go`: AES-256-GCM, Argon2id key derivation (OWASP 2024)
+- `internal/shared/crypto/aes_provider.go`: AES-256-GCM, Argon2id key derivation (OWASP 2024)
 - `internal/secure/config.go`: encrypted config-at-rest, version 1 envelope
 - Device-bound: config cannot migrate between machines
 - Encryption must work in ALL builds (currently broken in nospiffe build tag; must be decoupled)
@@ -439,12 +439,12 @@ sequenceDiagram
 ## Source Files
 
 - `internal/satellite/satellite.go:35-55` - ZTR path selection
-- `internal/state/spiffe_registration.go` - SPIFFE ZTR process
-- `internal/state/registration_process.go` - Token ZTR process
-- `internal/spiffe/client.go` - Workload API client
+- `internal/satellite/state/spiffe_registration.go` - SPIFFE ZTR process
+- `internal/satellite/state/registration_process.go` - Token ZTR process
+- `internal/shared/spiffe/client.go` - Workload API client
 - `internal/identity/device_linux.go` - Device fingerprinting
-- `internal/crypto/aes_provider.go` - AES encryption
-- `internal/crypto/provider_stub.go` - nospiffe stub (no-op)
+- `internal/shared/crypto/aes_provider.go` - AES encryption
+- `internal/shared/crypto/provider_stub.go` - nospiffe stub (no-op)
 - `internal/identity/device_stub.go` - nospiffe stub (errors)
 - `internal/secure/config.go` - Config encryption wrapper
 - `pkg/config/manager.go` - EncryptConfig flag, write logic

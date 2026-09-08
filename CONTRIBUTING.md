@@ -32,8 +32,8 @@ This repository uses a single Go module at the root, with two binaries:
 
 | Path | Purpose |
 |---|---|
-| `cmd/harbor-satellite/` | Satellite edge daemon - CLI, config, registry, state replication |
-| `cmd/ground-control/` | Ground Control cloud service - satellite management, Harbor integration, PostgreSQL |
+| `cmd/satellite/` | Satellite edge daemon - CLI, config, registry, state replication |
+| `cmd/groundcontrol/` | Ground Control cloud service (server and CLI) - satellite management, Harbor integration, PostgreSQL |
 
 Run all Go commands from the repository root.
 
@@ -48,10 +48,10 @@ task _build:satellite
 task _build:ground-control
 
 # Run the satellite directly
-go run cmd/harbor-satellite/main.go --token "<token>" --ground-control-url "http://127.0.0.1:8080"
+go run cmd/satellite/main.go --token "<token>" --ground-control-url "http://127.0.0.1:8080"
 
 # Run Ground Control directly (requires a configured .env file)
-go run cmd/ground-control/main.go
+go run cmd/groundcontrol/server/main.go
 ```
 
 For Ground Control local setup, copy `.env.example` to `.env` and fill in the required values.

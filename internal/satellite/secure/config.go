@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/container-registry/harbor-satellite/internal/satellite/identity"
+	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
 )
 
 var (

@@ -8,14 +8,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
-	"github.com/container-registry/harbor-satellite/internal/logger"
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
-	"github.com/container-registry/harbor-satellite/internal/utils"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/logger"
+	"github.com/container-registry/harbor-satellite/internal/shared/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 
 	"github.com/joho/godotenv"

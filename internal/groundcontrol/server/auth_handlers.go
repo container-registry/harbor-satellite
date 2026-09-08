@@ -10,8 +10,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
-	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
+	auditlog "github.com/container-registry/harbor-satellite/internal/shared/logger"
 )
 
 const maxFailedAttempts = 5
