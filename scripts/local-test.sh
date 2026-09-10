@@ -142,23 +142,7 @@ create_test_config() {
                     "use_unsecure": true,
                     "state_replication_interval": "@every 00h00m30s",
                     "register_satellite_interval": "@every 00h00m30s",
-                    "local_registry": {
-                        "url": "http://0.0.0.0:8585"
-                    },
                     "encrypt_config": false
-                },
-                "zot_config": {
-                    "distSpecVersion": "1.1.0",
-                    "storage": {
-                        "rootDirectory": "./zot-data"
-                    },
-                    "http": {
-                        "address": "0.0.0.0",
-                        "port": "8585"
-                    },
-                    "log": {
-                        "level": "info"
-                    }
                 }
             }
         }')
@@ -210,28 +194,12 @@ run_satellite() {
         "log_level": "debug",
         "use_unsecure": true,
         "state_replication_interval": "@every 00h00m30s",
-        "register_satellite_interval": "@every 00h00m30s",
-        "local_registry": {
-            "url": "http://0.0.0.0:8585"
-        }
-    },
-    "zot_config": {
-        "distSpecVersion": "1.1.0",
-        "storage": {
-            "rootDirectory": "./zot-data"
-        },
-        "http": {
-            "address": "0.0.0.0",
-            "port": "8585"
-        },
-        "log": {
-            "level": "info"
-        }
+        "register_satellite_interval": "@every 00h00m30s"
     }
 }
 EOF
 
-    go run ./cmd/satellite --token "$token" --ground-control-url "http://127.0.0.1:$GC_PORT" --harbor-registry-url "http://127.0.0.1:8080" --json-logging=false &
+    go run ./cmd/satellite --token "$token" --ground-control-url "http://127.0.0.1:$GC_PORT" --harbor-registry-url "http://127.0.0.1:8080" --registry-data-dir "$PROJECT_ROOT/oci-data" --json-logging=false &
     SAT_PID=$!
 
     log_info "Satellite started with PID $SAT_PID"

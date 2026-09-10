@@ -193,9 +193,8 @@ type ConfigCreateRequest struct {
 
 // ConfigMergePatch defines model for ConfigMergePatch.
 type ConfigMergePatch struct {
-	AppConfig   nullable.Nullable[AppConfig]              `json:"app_config,omitempty,omitzero"`
-	StateConfig nullable.Nullable[StateConfigValue]       `json:"state_config,omitempty,omitzero"`
-	ZotConfig   nullable.Nullable[map[string]interface{}] `json:"zot_config,omitempty,omitzero"`
+	AppConfig   nullable.Nullable[AppConfig]        `json:"app_config,omitempty,omitzero"`
+	StateConfig nullable.Nullable[StateConfigValue] `json:"state_config,omitempty,omitzero"`
 }
 
 // ConfigResponse defines model for ConfigResponse.
@@ -210,9 +209,8 @@ type ConfigResponse struct {
 
 // ConfigValue defines model for ConfigValue.
 type ConfigValue struct {
-	AppConfig   AppConfig              `json:"app_config,omitempty,omitzero"`
-	StateConfig StateConfigValue       `json:"state_config,omitempty,omitzero"`
-	ZotConfig   map[string]interface{} `json:"zot_config,omitempty,omitzero"`
+	AppConfig   AppConfig        `json:"app_config,omitempty,omitzero"`
+	StateConfig StateConfigValue `json:"state_config,omitempty,omitzero"`
 }
 
 // CreateUserRequest defines model for CreateUserRequest.

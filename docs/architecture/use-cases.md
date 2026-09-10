@@ -24,7 +24,6 @@ This document outlines the current use cases and deployment patterns for Harbor 
     "ground_control_url": "http://localhost:8080",
     "log_level": "info",
     "use_unsecure": false,
-    "zot_config_path": "./registry/config.json",
     "token": "your_satellite_token",
     "jobs": [
       {
@@ -40,12 +39,7 @@ This document outlines the current use cases and deployment patterns for Harbor 
         "schedule": "@every 00h00m05s"
       }
     ],
-    "local_registry": {
-      "url": "http://localhost:5000",
-      "username": "admin",
-      "password": "password",
-      "bring_own_registry": false
-    }
+    "bring_own_registry": false
   }
 }
 ```
@@ -60,7 +54,7 @@ This document outlines the current use cases and deployment patterns for Harbor 
 
 #### Implementation Details
 - Single container deployment
-- Uses Zot as the local registry
+- Uses an ORAS OCI image layout as the local store
 - Synchronizes with central Harbor registry
 - Manages local image storage
 - Handles state replication
@@ -90,8 +84,8 @@ This feature is planned for future implementation to support:
 # 1. Deploy Satellite
 docker run -d \
   --name satellite \
-  -p 5000:5000 \
-  -v /var/lib/registry:/var/lib/registry \
+  -e REGISTRY_DATA_DIR=/data/oci \
+  -v /var/lib/harbor-satellite:/data \
   harbor-satellite:latest
 
 # 2. Configure Ground Control
@@ -102,10 +96,8 @@ curl -X POST http://localhost:8080/satellites/register \
     "groups": ["edge-group"]
   }'
 
-# 3. Deploy Workload
-docker run -d \
-  --name workload \
-  localhost:5000/myapp:latest
+# 3. Inspect the persisted OCI layout
+test -f /var/lib/harbor-satellite/oci/oci-layout
 ```
 
 ## Next Steps

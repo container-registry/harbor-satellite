@@ -46,6 +46,13 @@ func TestSyncHandler_WithCachedImages(t *testing.T) {
 		WithArgs("edge-01").
 		WillReturnRows(satRows)
 
+	// Mock GetRobotAccBySatelliteID
+	robotRows := sqlmock.NewRows([]string{"id", "robot_name", "robot_secret_hash", "robot_id", "satellite_id", "robot_expiry", "created_at", "updated_at"}).
+		AddRow(1, "robot$satellite-edge-01", "hashed-secret", "100", 1, sql.NullTime{}, now, now)
+	mock.ExpectQuery("SELECT .+ FROM robot_accounts WHERE satellite_id").
+		WithArgs(int32(1)).
+		WillReturnRows(robotRows)
+
 	// Mock BatchInsertArtifacts
 	mock.ExpectExec("INSERT INTO artifacts").
 		WithArgs(
@@ -113,6 +120,13 @@ func TestSyncHandler_NoCachedImages(t *testing.T) {
 	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
 		WithArgs("edge-01").
 		WillReturnRows(satRows)
+
+	// Mock GetRobotAccBySatelliteID
+	robotRows := sqlmock.NewRows([]string{"id", "robot_name", "robot_secret_hash", "robot_id", "satellite_id", "robot_expiry", "created_at", "updated_at"}).
+		AddRow(1, "robot$satellite-edge-01", "hashed-secret", "100", 1, sql.NullTime{}, now, now)
+	mock.ExpectQuery("SELECT .+ FROM robot_accounts WHERE satellite_id").
+		WithArgs(int32(1)).
+		WillReturnRows(robotRows)
 
 	statusRows := sqlmock.NewRows([]string{
 		"id", "satellite_id", "activity", "latest_state_digest", "latest_config_digest",
@@ -301,6 +315,13 @@ func TestSyncHandler_BatchInsertArtifactsFails(t *testing.T) {
 	mock.ExpectQuery("SELECT .+ FROM satellites WHERE name").
 		WithArgs("edge-01").
 		WillReturnRows(satRows)
+
+	// Mock GetRobotAccBySatelliteID
+	robotRows := sqlmock.NewRows([]string{"id", "robot_name", "robot_secret_hash", "robot_id", "satellite_id", "robot_expiry", "created_at", "updated_at"}).
+		AddRow(1, "robot$satellite-edge-01", "hashed-secret", "100", 1, sql.NullTime{}, now, now)
+	mock.ExpectQuery("SELECT .+ FROM robot_accounts WHERE satellite_id").
+		WithArgs(int32(1)).
+		WillReturnRows(robotRows)
 
 	mock.ExpectExec("INSERT INTO artifacts").
 		WithArgs(

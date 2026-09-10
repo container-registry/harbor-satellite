@@ -254,15 +254,7 @@ curl -sk -X POST https://localhost:9080/api/configs \
             "collect_memory": true,
             "collect_storage": true
           },
-          "local_registry": {
-            "url": "http://127.0.0.1:8585"
-          }
-        },
-        "zot_config": {
-          "distSpecVersion": "1.1.0",
-          "storage": { "rootDirectory": "./zot" },
-          "http": { "address": "0.0.0.0", "port": "8585" },
-          "log": { "level": "info" }
+          "bring_own_registry": false
         }
       }
     }'
@@ -328,18 +320,14 @@ docker logs satellite
 
 Look for messages indicating image replication succeeded.
 
-### Pull from the satellite registry
+### Inspect the satellite OCI store
 
-The satellite's local Zot registry is exposed on port 5050 (configurable via `SATELLITE_ZOT_PORT`):
-
-```bash
-docker pull localhost:5050/library/nginx:alpine --tls-verify=false
-```
-
-Or with podman:
+The compose file persists Satellite data in the `satellite-data` volume. Verify the OCI layout and list its retained references:
 
 ```bash
-podman pull localhost:5050/library/nginx:alpine --tls-verify=false
+docker exec satellite test -f /data/oci/oci-layout
+docker exec satellite sh -c \
+  'grep -o "org.opencontainers.image.ref.name[^}]*" /data/oci/index.json'
 ```
 
 ### Check SPIRE agent status

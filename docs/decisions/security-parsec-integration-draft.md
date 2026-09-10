@@ -51,7 +51,7 @@ PARSEC and SPIRE are **complementary, not competing**:
 | Workload identity | SPIRE | Issues X.509 SVIDs after attestation succeeds |
 | mTLS & ZTR | Existing SPIFFE client | Unchanged — receives SVID and uses it for mTLS with Ground Control |
 
-PARSEC plugs into SPIRE at the **node attestation layer**. The existing `internal/spiffe/client.go`
+PARSEC plugs into SPIRE at the **node attestation layer**. The existing `internal/shared/spiffe/client.go`
 SVID delivery flow is unaffected. This maps directly onto ADR-0005's explicit roadmap:
 
 - **Phase 2** (planned): TPM-based node attestation via SPIRE `tpm_devid` plugin — PARSEC enables this
@@ -139,7 +139,7 @@ internal/parsec/
   provider_stub.go   # no-op stubs, same shape as spiffe/client_stub.go      [!parsec]
 ```
 
-All files under `internal/parsec/` follow the same build tag pattern as `internal/spiffe/`:
+All files under `internal/parsec/` follow the same build tag pattern as `internal/shared/spiffe/`:
 `//go:build parsec` for real implementations, `//go:build !parsec` for stubs. Default builds
 compile to zero PARSEC dependency.
 
@@ -253,7 +253,7 @@ core PARSEC integration and should be designed independently.
 
 ### Tests needed
 
-- Unit tests for `KeyProvider` using a mock PARSEC client (same pattern as `internal/crypto/mock.go`)
+- Unit tests for `KeyProvider` using a mock PARSEC client (same pattern as `internal/shared/crypto/mock.go`)
 - E2E test similar to `TestSpiffeJoinTokenE2E` that exercises the full flow with a real PARSEC
   daemon in CI (the `parsec-client-go` repo has a Docker-based test harness that can be reused)
 

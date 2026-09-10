@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -53,95 +52,36 @@ func TestResolveLocalRegistryEndpoint_BYO(t *testing.T) {
 						URL: config.URL(tt.url),
 					},
 				},
-				ZotConfigRaw: json.RawMessage(`{}`),
 			}
 			cm := newTestConfigManager(t, cfg)
 
-			endpoint, err := resolveLocalRegistryEndpoint(cm)
-			require.NoError(t, err)
+			endpoint := resolveLocalRegistryEndpoint(cm)
 			require.Equal(t, tt.expected, endpoint)
 		})
 	}
 }
 
-func TestResolveLocalRegistryEndpoint_Zot(t *testing.T) {
-	tests := []struct {
-		name        string
-		zotJSON     string
-		expected    string
-		expectError bool
-		errContains string
-	}{
-		{
-			name:     "valid zot config",
-			zotJSON:  `{"http":{"address":"0.0.0.0","port":"8585"}}`,
-			expected: "0.0.0.0:8585",
-		},
-		{
-			name:     "custom address and port",
-			zotJSON:  `{"http":{"address":"127.0.0.1","port":"9090"}}`,
-			expected: "127.0.0.1:9090",
-		},
-		{
-			name:        "missing http section",
-			zotJSON:     `{"storage":{}}`,
-			expectError: true,
-			errContains: "missing 'http' section",
-		},
-		{
-			name:        "missing address",
-			zotJSON:     `{"http":{"port":"8585"}}`,
-			expectError: true,
-			errContains: "missing 'address' or 'port'",
-		},
-		{
-			name:        "missing port",
-			zotJSON:     `{"http":{"address":"0.0.0.0"}}`,
-			expectError: true,
-			errContains: "missing 'address' or 'port'",
-		},
-		{
-			name:        "invalid json",
-			zotJSON:     `not-json`,
-			expectError: true,
-			errContains: "unmarshalling zot config",
-		},
-		{
-			name:        "empty json object",
-			zotJSON:     `{}`,
-			expectError: true,
-			errContains: "missing 'http' section",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				AppConfig: config.AppConfig{
-					BringOwnRegistry: false,
-				},
-				ZotConfigRaw: json.RawMessage(tt.zotJSON),
-			}
-			cm := newTestConfigManager(t, cfg)
-
-			endpoint, err := resolveLocalRegistryEndpoint(cm)
-			if tt.expectError {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.errContains)
-
-				return
-			}
-			require.NoError(t, err)
-			require.Equal(t, tt.expected, endpoint)
-		})
-	}
+func TestResolveLocalRegistryEndpoint_LocalStore(t *testing.T) {
+	cm := newTestConfigManager(t, &config.Config{})
+	endpoint := resolveLocalRegistryEndpoint(cm)
+	require.Empty(t, endpoint)
 }
 
 func TestResolveCRIAndApply(t *testing.T) {
-	t.Run("noFallback returns nil", func(t *testing.T) {
+	t.Run("local OCI store does not configure registry fallback", func(t *testing.T) {
 		cfg := &config.Config{
-			ZotConfigRaw: json.RawMessage(`{}`),
+			AppConfig: config.AppConfig{
+				RegistryFallback: config.RegistryFallbackConfig{Enabled: true},
+			},
 		}
+		cm := newTestConfigManager(t, cfg)
+
+		results := resolveCRIAndApply(cm, nil, false, "")
+		require.Nil(t, results)
+	})
+
+	t.Run("noFallback returns nil", func(t *testing.T) {
+		cfg := &config.Config{}
 		cm := newTestConfigManager(t, cfg)
 
 		results := resolveCRIAndApply(cm, nil, true, "localhost:8585")
@@ -149,9 +89,7 @@ func TestResolveCRIAndApply(t *testing.T) {
 	})
 
 	t.Run("no config no mirrors returns nil", func(t *testing.T) {
-		cfg := &config.Config{
-			ZotConfigRaw: json.RawMessage(`{}`),
-		}
+		cfg := &config.Config{}
 		cm := newTestConfigManager(t, cfg)
 
 		results := resolveCRIAndApply(cm, nil, false, "localhost:8585")
@@ -167,7 +105,6 @@ func TestResolveCRIAndApply(t *testing.T) {
 					Runtimes:   []string{"unsupported_cri"},
 				},
 			},
-			ZotConfigRaw: json.RawMessage(`{}`),
 		}
 		cm := newTestConfigManager(t, cfg)
 
@@ -179,9 +116,7 @@ func TestResolveCRIAndApply(t *testing.T) {
 	})
 
 	t.Run("mirrors used when config disabled", func(t *testing.T) {
-		cfg := &config.Config{
-			ZotConfigRaw: json.RawMessage(`{}`),
-		}
+		cfg := &config.Config{}
 		cm := newTestConfigManager(t, cfg)
 
 		mirrors := mirrorFlags{"badformat"}
