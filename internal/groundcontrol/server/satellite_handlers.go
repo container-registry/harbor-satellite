@@ -227,6 +227,9 @@ func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
+	// Cache the initial group states for the new satellite
+	s.setGroupStatesCache(satellite.ID, groupStates)
+
 	// This endpoint is user-authenticated (AuthMiddleware): the actor is the
 	// admin performing the registration, and the satellite is the target.
 	s.auditEvent(r, auditlog.AuditEvent{
@@ -1082,6 +1085,9 @@ func (s *Server) DeleteSatellite(w http.ResponseWriter, r *http.Request, satelli
 	}
 	committed = true
 
+	// Invalidate cache for deleted satellite
+	s.invalidateGroupStatesCache(sat.ID)
+
 	actor := "unknown"
 	if u, ok := GetUserFromContext(r.Context()); ok {
 		actor = u.Username
@@ -1284,6 +1290,9 @@ func (s *Server) AddSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
+	// Update cache with new group states
+	s.setGroupStatesCache(sat.ID, groupStates)
+
 	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Satellite successfully added to group"})
 }
 
@@ -1440,6 +1449,9 @@ func (s *Server) RemoveSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 	committed = true
+
+	// Update cache with new group states
+	s.setGroupStatesCache(sat.ID, groupStates)
 
 	WriteJSONResponse(w, http.StatusOK, map[string]string{})
 }

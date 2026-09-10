@@ -284,6 +284,7 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 			HandleAppError(w, err)
 			return
 		}
+
 	}
 
 	if err := q.DeleteGroup(r.Context(), group.ID); err != nil {
@@ -306,6 +307,11 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 	}
 
 	committed = true
+
+	// Invalidate cached group states so the next read refetches from the database.
+	for _, satellite := range satellites {
+		s.invalidateGroupStatesCache(satellite.SatelliteID)
+	}
 
 	err = utils.DeleteArtifact(utils.ConstructHarborDeleteURL(groupName, "group"))
 	if err != nil {

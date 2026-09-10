@@ -475,23 +475,12 @@ func (s *Server) SetSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
-	if err != nil {
-		log.Printf("Could not get satellite group list: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to Add satellite to config",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	// TODO: Store the groupStates in memory to survive hot reloads
-	var groupStates []string
-	for _, group := range groupList {
-		grp, err := q.GetGroupByID(r.Context(), group.GroupID)
+	// Check cache first, fallback to database query
+	groupStates := s.getGroupStatesFromCache(sat.ID)
+	if groupStates == nil {
+		groupStates, err = s.fetchGroupStatesForSatellite(r.Context(), sat.ID)
 		if err != nil {
-			log.Printf("Error: Failed: %v", err)
+			log.Printf("Error: Failed to fetch group states: %v", err)
 			err := &AppError{
 				Message: "Error: Failed to Add satellite to config",
 				Code:    http.StatusInternalServerError,
@@ -499,7 +488,6 @@ func (s *Server) SetSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 			HandleAppError(w, err)
 			return
 		}
-		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
 	err = createOrUpdateSatStateArtifact(r.Context(), sat.Name, groupStates, req.ConfigName)
