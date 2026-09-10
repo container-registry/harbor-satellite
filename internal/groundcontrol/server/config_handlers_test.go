@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -189,4 +190,45 @@ func TestConfigMergePatchPreservesExplicitNull(t *testing.T) {
 			require.JSONEq(t, tt.input, string(encoded))
 		})
 	}
+}
+
+func TestListConfigsLogsDBError(t *testing.T) {
+	server, mock := newMockServer(t)
+	mock.ExpectQuery("SELECT .+ FROM configs").WillReturnError(fmt.Errorf("db boom"))
+
+	var buf bytes.Buffer
+	previousWriter := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(previousWriter) })
+
+	rr := httptest.NewRecorder()
+	server.ListConfigs(rr, httptest.NewRequest(http.MethodGet, "/api/configs", nil))
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	require.NoError(t, mock.ExpectationsWereMet())
+	require.Contains(t, buf.String(), "Could not list configs:")
+	require.Contains(t, buf.String(), "db boom")
+}
+
+func TestGetConfigLogsDBError(t *testing.T) {
+	server, mock := newMockServer(t)
+	mock.ExpectQuery("SELECT .+ FROM configs WHERE config_name").
+		WithArgs("missing").
+		WillReturnError(sql.ErrNoRows)
+
+	var buf bytes.Buffer
+	previousWriter := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(previousWriter) })
+
+	req := httptest.NewRequest(http.MethodGet, "/api/configs/missing", nil)
+	req = mux.SetURLVars(req, map[string]string{"config": "missing"})
+
+	rr := httptest.NewRecorder()
+	server.GetConfig(rr, req, "missing")
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
+	require.NoError(t, mock.ExpectationsWereMet())
+	require.Contains(t, buf.String(), "Could not get config:")
+	require.Contains(t, buf.String(), "sql: no rows in result set")
 }

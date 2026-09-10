@@ -228,9 +228,9 @@ func (f *URLStateFetcher) extractArtifactJSON(url string, img v1.Image, out any,
 	return fmt.Errorf("artifacts.json not found in the state artifact")
 }
 
-func FromJSON(data []byte, reg StateReader) (StateReader, error) {
+func FromJSON(data []byte, reg StateReader, log *zerolog.Logger) (StateReader, error) {
 	if err := json.Unmarshal(data, &reg); err != nil {
-		fmt.Print("Error in unmarshalling")
+		log.Error().Err(err).Msg("Error in unmarshalling")
 		return nil, fmt.Errorf("unmarshal state: %w", err)
 	}
 	if reg.GetRegistryURL() == "" {
