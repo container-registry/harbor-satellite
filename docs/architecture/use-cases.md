@@ -11,38 +11,25 @@ This document outlines the current use cases and deployment patterns for Harbor 
 {
   "state_config": {
     "auth": {
-      "name": "your_username",
-      "registry": "https://harbor.example.com",
-      "secret": "your_password"
+      "url": "https://harbor.example.com",
+      "username": "robot$satellite",
+      "password": ""
     },
-    "states": [
-      "project1",
-      "project2"
-    ]
+    "state": ""
   },
-  "environment_variables": {
-    "ground_control_url": "http://localhost:8080",
+  "app_config": {
+    "ground_control_url": "http://127.0.0.1:8080",
     "log_level": "info",
     "use_unsecure": false,
-    "token": "your_satellite_token",
-    "jobs": [
-      {
-        "name": "replicate_state",
-        "schedule": "@every 00h00m10s"
-      },
-      {
-        "name": "update_config",
-        "schedule": "@every 00h00m30s"
-      },
-      {
-        "name": "register_satellite",
-        "schedule": "@every 00h00m05s"
-      }
-    ],
+    "state_replication_interval": "@every 00h00m10s",
+    "register_satellite_interval": "@every 00h00m05s",
+    "heartbeat_interval": "@every 00h00m30s",
     "bring_own_registry": false
   }
 }
 ```
+
+The registration token is a CLI/env flag, not a config.json field. A fuller example is in [examples/config.example.json](../../examples/config.example.json).
 
 #### Use Cases
 - Remote deployments
