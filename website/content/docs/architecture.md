@@ -41,6 +41,7 @@ graph LR
 - **Robot Account** - A Harbor service account with scoped pull/push permissions, used by satellites to access images.
 - **OCI Artifact** - A generic blob stored in an OCI-compliant registry. Harbor Satellite uses OCI artifacts to store state and config alongside container images.
 - **ZTR** - Zero-Touch Registration. The process by which a satellite registers with Ground Control without any pre-shared secrets.
+- **Certificate Issuer** - The CA that signed a given X.509 certificate. Harbor Satellite uses multiple issuers across attestation and runtime layers. See [Certificate Issuer](certificate-issuer.md).
 
 ## Components at a Glance
 

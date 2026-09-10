@@ -68,7 +68,7 @@ fi
 REG_RESP=$(curl -sk -w "\n%{http_code}" -X POST "${GC_URL}/api/satellites/register" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{"satellite_name":"edge-01","selectors":["docker:label:com.docker.compose.service:satellite"],"attestation_method":"x509pop"}')
+    -d '{"satellite_name":"agent-satellite","selectors":["docker:label:com.docker.compose.service:satellite"],"attestation_method":"x509pop"}')
 HTTP_CODE=$(echo "$REG_RESP" | tail -1)
 REG_BODY=$(echo "$REG_RESP" | sed '$d')
 

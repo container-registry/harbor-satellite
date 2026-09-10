@@ -145,7 +145,7 @@ flowchart LR
 | Method | Use Case | Bootstrap Secret |
 |--------|----------|-----------------|
 | Join Token | Simplest setup, dev/test | One-time token (invalidated after use) |
-| X.509 PoP | Production with existing PKI | Pre-provisioned X.509 certificate |
+| X.509 PoP | Production with existing PKI | Pre-provisioned X.509 certificate (see [Certificate Issuer](certificate-issuer.md)) |
 | SSH PoP | Environments with SSH CA infrastructure | SSH host certificate |
 
 ## Next Steps

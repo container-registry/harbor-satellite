@@ -9,7 +9,7 @@ echo "=== Cleaning up Satellite (X.509 PoP) ==="
 
 echo "> Deleting Satellite SPIRE entry..."
 ENTRY_ID=$(docker exec spire-server /opt/spire/bin/spire-server entry show \
-    -spiffeID spiffe://harbor-satellite.local/satellite/region/default/edge-01 \
+    -spiffeID spiffe://harbor-satellite.local/satellite/region/default/agent-satellite \
     -socketPath /tmp/spire-server/private/api.sock 2>/dev/null \
     | grep "Entry ID" | awk '{print $4}') || true
 if [ -n "$ENTRY_ID" ]; then
@@ -25,7 +25,7 @@ docker compose down -v --remove-orphans
 HARBOR_URL="${HARBOR_URL:-http://localhost:8080}"
 HARBOR_USERNAME="${HARBOR_USERNAME:-admin}"
 HARBOR_PASSWORD="${HARBOR_PASSWORD:-Harbor12345}"
-SATELLITE_NAME="${SATELLITE_NAME:-edge-01}"
+SATELLITE_NAME="${SATELLITE_NAME:-agent-satellite}"
 
 echo "> Querying Harbor for robot account matching ${SATELLITE_NAME}..."
 ROBOT_ID=$(curl -s -u "${HARBOR_USERNAME}:${HARBOR_PASSWORD}" \

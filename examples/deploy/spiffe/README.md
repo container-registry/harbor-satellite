@@ -32,6 +32,10 @@ cd join-token/external/gc && ./setup.sh
 cd ../sat && ./setup.sh
 ```
 
+## Certificate Issuer Chain
+
+Harbor Satellite uses multiple X.509 certificate layers (SPIRE CA, X.509 PoP CA, agent certs, workload SVIDs). See the [Certificate Issuer guide](https://satellite.container-registry.com/docs/certificate-issuer/) for the full issuer hierarchy and troubleshooting.
+
 ## Architecture
 
 ```mermaid

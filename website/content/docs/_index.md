@@ -59,3 +59,4 @@ Runs at each edge location. A single binary that:
 - [Installation](installation.md) - Install Ground Control and Satellite (binary, Docker Compose, Helm)
 - [Architecture](architecture.md) - Understand the full flow of how these components work together
 - [Quickstart](quickstart.md) - Get Harbor Satellite running end-to-end with SPIFFE
+- [Certificate Issuer](certificate-issuer.md) - TLS/SPIFFE certificate chain and issuer hierarchy

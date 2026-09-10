@@ -126,7 +126,7 @@ curl -sk -X POST https://localhost:9080/api/satellites/register \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{
-      "satellite_name": "edge-01",
+      "satellite_name": "agent-satellite",
       "selectors": ["docker:label:com.docker.compose.service:satellite"],
       "attestation_method": "x509pop"
     }'
