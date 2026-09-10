@@ -109,6 +109,35 @@ func TestOCIStoreDeleteRetainsSharedContent(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestOCIStore_Replicate_ContinuesAfterEntityFailure(t *testing.T) {
+	source := newTestRegistry(t)
+	pushImage(t, source, "img1", "v1", 1)
+	// img2 is NOT pushed — will fail at source.Resolve
+	pushImage(t, source, "img3", "v1", 1)
+
+	root := t.TempDir()
+	storage, err := NewOCIStore(root, RegistryOptions{Endpoint: source, PlainHTTP: true})
+	require.NoError(t, err)
+
+	ctx := testContext()
+	err = storage.Replicate(ctx, []Artifact{
+		{Name: "img1", Repository: "library", Tag: "v1"},
+		{Name: "img2", Repository: "library", Tag: "v1"},
+		{Name: "img3", Repository: "library", Tag: "v1"},
+	})
+	require.Error(t, err, "should report partial failure")
+	require.Contains(t, err.Error(), "img2")
+
+	reopened, err := oci.New(root)
+	require.NoError(t, err)
+
+	_, err = reopened.Resolve(ctx, source+"/library/img1:v1")
+	require.NoError(t, err, "img1 should have been replicated")
+
+	_, err = reopened.Resolve(ctx, source+"/library/img3:v1")
+	require.NoError(t, err, "img3 should have been replicated despite img2 failure")
+}
+
 func TestOCIStoreDeleteMissingReferenceIsIdempotent(t *testing.T) {
 	storage, err := NewOCIStore(t.TempDir(), RegistryOptions{Endpoint: "registry.example.com"})
 	require.NoError(t, err)

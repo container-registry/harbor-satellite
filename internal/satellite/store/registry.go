@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
@@ -35,8 +37,8 @@ func NewRegistryStore(source, destination RegistryOptions) Store {
 // Replicate copies images from the source registry to the destination registry.
 // Before pulling, it checks which blobs already exist at the destination and
 // only downloads missing layers from source, saving bandwidth on crash recovery.
+// Entities are dispatched to a bounded pool of goroutines for concurrent replication.
 func (r *RegistryStore) Replicate(ctx context.Context, replicationEntities []Artifact) error {
-	log := logger.FromContext(ctx)
 	pullAuth := authn.FromConfig(authn.AuthConfig{
 		Username: r.source.Username,
 		Password: r.source.Password,
@@ -63,79 +65,113 @@ func (r *RegistryStore) Replicate(ctx context.Context, replicationEntities []Art
 		}
 	}
 
-	for _, entity := range replicationEntities {
-		// Check context cancellation before processing each image
-		select {
-		case <-ctx.Done():
-			log.Warn().Err(ctx.Err()).Msg("Context cancelled, stopping replication")
-			return ctx.Err()
-		default:
-		}
-
-		if err := entity.validate(); err != nil {
-			return err
-		}
-
-		srcRef := r.source.reference(entity, entity.sourceIdentifier())
-		dstRef := r.destination.reference(entity, entity.destinationIdentifier())
-
-		src, err := name.ParseReference(srcRef, nameOpts...)
-		if err != nil {
-			return fmt.Errorf("parse source ref %s: %w", srcRef, err)
-		}
-
-		dst, err := name.ParseReference(dstRef, nameOpts...)
-		if err != nil {
-			return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
-		}
-
-		// Lazy fetch: only the manifest is downloaded, no layer data yet
-		desc, err := remote.Get(src, pullOpts...)
-		if err != nil {
-			log.Error().Msgf("Failed to fetch image descriptor: %v", err)
-			return err
-		}
-
-		img, err := desc.Image()
-		if err != nil {
-			log.Error().Msgf("Failed to resolve image: %v", err)
-			return err
-		}
-
-		// Lazy OCI conversion, no data materialized
-		ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
-
-		// Check if image already exists at destination with same digest
-		srcDigest, err := ociImage.Digest()
-		if err != nil {
-			return fmt.Errorf("compute source digest: %w", err)
-		}
-
-		dstDesc, dstErr := remote.Head(dst, pushOpts...)
-		if dstErr == nil && dstDesc.Digest == srcDigest {
-			log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.Name)
-			continue
-		}
-
-		// Log which layers need pulling vs already present
-		srcLayers, err := ociImage.Layers()
-		if err != nil {
-			return fmt.Errorf("get source layers: %w", err)
-		}
-
-		missing := r.countMissingLayers(dst, srcLayers, pushOpts)
-		log.Info().Msgf("Replicating image %s: %d/%d layers to pull", entity.Name, missing, len(srcLayers))
-
-		// remote.Write streams layers one-by-one. For each layer it HEAD-checks
-		// the destination first; only missing blobs are pulled from source.
-		// Manifest is pushed last.
-		if err := remote.Write(dst, ociImage, pushOpts...); err != nil {
-			log.Error().Msgf("Failed to replicate image: %v", err)
-			return err
-		}
-		log.Info().Msgf("Image %s replicated successfully", entity.Name)
+	const maxWorkers = 5
+	workers := min(maxWorkers, len(replicationEntities))
+	if workers == 0 {
+		return nil
 	}
 
+	entityCh := make(chan Artifact)
+	var (
+		mu   sync.Mutex
+		errs []error
+		wg   sync.WaitGroup
+	)
+
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for entity := range entityCh {
+				if err := r.replicateEntity(ctx, entity, nameOpts, pullOpts, pushOpts); err != nil {
+					mu.Lock()
+					errs = append(errs, err)
+					mu.Unlock()
+				}
+			}
+		}()
+	}
+
+dispatch:
+	for _, entity := range replicationEntities {
+		select {
+		case <-ctx.Done():
+			break dispatch
+		case entityCh <- entity:
+		}
+	}
+	close(entityCh)
+	wg.Wait()
+
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return errors.Join(errs...)
+}
+
+func (r *RegistryStore) replicateEntity(ctx context.Context, entity Artifact, nameOpts []name.Option, pullOpts, pushOpts []remote.Option) error {
+	log := logger.FromContext(ctx)
+
+	if err := entity.validate(); err != nil {
+		log.Warn().Err(err).Str("entity", entity.Name).Msg("Skipping entity: validation failed")
+		return fmt.Errorf("validate entity %s: %w", entity.Name, err)
+	}
+
+	srcRef := r.source.reference(entity, entity.sourceIdentifier())
+	dstRef := r.destination.reference(entity, entity.destinationIdentifier())
+
+	src, err := name.ParseReference(srcRef, nameOpts...)
+	if err != nil {
+		log.Warn().Err(err).Str("entity", entity.Name).Str("ref", srcRef).Msg("Skipping entity: failed to parse source ref")
+		return fmt.Errorf("parse source ref %s: %w", srcRef, err)
+	}
+
+	dst, err := name.ParseReference(dstRef, nameOpts...)
+	if err != nil {
+		log.Warn().Err(err).Str("entity", entity.Name).Str("ref", dstRef).Msg("Skipping entity: failed to parse dest ref")
+		return fmt.Errorf("parse dest ref %s: %w", dstRef, err)
+	}
+
+	desc, err := remote.Get(src, pullOpts...)
+	if err != nil {
+		log.Warn().Err(err).Str("entity", entity.Name).Str("ref", srcRef).Msg("Skipping entity: failed to fetch image descriptor")
+		return fmt.Errorf("fetch image descriptor %s: %w", entity.Name, err)
+	}
+
+	img, err := desc.Image()
+	if err != nil {
+		log.Warn().Err(err).Str("entity", entity.Name).Msg("Skipping entity: failed to resolve image")
+		return fmt.Errorf("resolve image %s: %w", entity.Name, err)
+	}
+
+	ociImage := mutate.MediaType(img, types.OCIManifestSchema1)
+
+	srcDigest, err := ociImage.Digest()
+	if err != nil {
+		log.Warn().Err(err).Str("entity", entity.Name).Msg("Skipping entity: failed to compute source digest")
+		return fmt.Errorf("compute source digest %s: %w", entity.Name, err)
+	}
+
+	dstDesc, dstErr := remote.Head(dst, pushOpts...)
+	if dstErr == nil && dstDesc.Digest == srcDigest {
+		log.Info().Msgf("Image %s already up-to-date at destination, skipping", entity.Name)
+		return nil
+	}
+
+	srcLayers, err := ociImage.Layers()
+	if err != nil {
+		log.Warn().Err(err).Str("entity", entity.Name).Msg("Skipping entity: failed to get source layers")
+		return fmt.Errorf("get source layers %s: %w", entity.Name, err)
+	}
+
+	missing := r.countMissingLayers(dst, srcLayers, pushOpts)
+	log.Info().Msgf("Replicating image %s: %d/%d layers to pull", entity.Name, missing, len(srcLayers))
+
+	if err := remote.Write(dst, ociImage, pushOpts...); err != nil {
+		log.Warn().Err(err).Str("entity", entity.Name).Msg("Skipping entity: failed to replicate image")
+		return fmt.Errorf("replicate image %s: %w", entity.Name, err)
+	}
+	log.Info().Msgf("Image %s replicated successfully", entity.Name)
 	return nil
 }
 

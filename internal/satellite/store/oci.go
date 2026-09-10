@@ -51,24 +51,31 @@ func (s *OCIStore) Replicate(ctx context.Context, artifacts []Artifact) error {
 	defer s.mu.Unlock()
 
 	log := logger.FromContext(ctx)
+	var errs []error
 	for _, artifact := range artifacts {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if err := artifact.validate(); err != nil {
-			return err
+			log.Warn().Err(err).Str("artifact", artifact.Name).Msg("Skipping artifact: validation failed")
+			errs = append(errs, fmt.Errorf("validate artifact %s: %w", artifact.Name, err))
+			continue
 		}
 
 		source, err := newRepository(s.source, artifact)
 		if err != nil {
-			return err
+			log.Warn().Err(err).Str("artifact", artifact.Name).Msg("Skipping artifact: failed to create source repository")
+			errs = append(errs, fmt.Errorf("create source repository for artifact %s: %w", artifact.Name, err))
+			continue
 		}
 		destinationRef := s.reference(artifact)
 
 		sourceIdentifier := artifact.sourceIdentifier()
 		desc, err := source.Resolve(ctx, sourceIdentifier)
 		if err != nil {
-			return fmt.Errorf("resolve source artifact %s: %w", destinationRef, err)
+			log.Warn().Err(err).Str("artifact", artifact.Name).Str("reference", destinationRef).Msg("Skipping artifact: failed to resolve source")
+			errs = append(errs, fmt.Errorf("resolve source artifact %s: %w", destinationRef, err))
+			continue
 		}
 		current, err := s.target.Resolve(ctx, destinationRef)
 		if err == nil && current.Digest == desc.Digest {
@@ -76,16 +83,20 @@ func (s *OCIStore) Replicate(ctx context.Context, artifacts []Artifact) error {
 			continue
 		}
 		if err != nil && !errors.Is(err, errdef.ErrNotFound) {
-			return fmt.Errorf("resolve OCI store reference %s: %w", destinationRef, err)
+			log.Warn().Err(err).Str("artifact", artifact.Name).Str("reference", destinationRef).Msg("Skipping artifact: failed to resolve OCI store reference")
+			errs = append(errs, fmt.Errorf("resolve OCI store reference %s: %w", destinationRef, err))
+			continue
 		}
 
 		if _, err := oras.Copy(ctx, source, sourceIdentifier, s.target, destinationRef, oras.DefaultCopyOptions); err != nil {
-			return fmt.Errorf("copy artifact %s to OCI store: %w", destinationRef, err)
+			log.Warn().Err(err).Str("artifact", artifact.Name).Str("reference", destinationRef).Msg("Skipping artifact: failed to copy to OCI store")
+			errs = append(errs, fmt.Errorf("copy artifact %s to OCI store: %w", destinationRef, err))
+			continue
 		}
 		log.Info().Str("reference", destinationRef).Str("digest", desc.Digest.String()).Msg("Artifact replicated to OCI store")
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // Delete removes the selected references and garbage-collects content that is

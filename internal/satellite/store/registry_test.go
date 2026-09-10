@@ -375,6 +375,37 @@ func TestReplicate_CancelledContextStopsProcessing(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestReplicate_ContinuesAfterEntityFailure(t *testing.T) {
+	srcAddr := newTestRegistry(t)
+	dstAddr := newTestRegistry(t)
+
+	pushImage(t, srcAddr, "img1", "v1", 1)
+	// img2 is NOT pushed — will fail at remote.Get
+	pushImage(t, srcAddr, "img3", "v1", 1)
+
+	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
+	ctx := testContext()
+
+	err := r.Replicate(ctx, []Artifact{
+		{Name: "img1", Repository: "library", Tag: "v1"},
+		{Name: "img2", Repository: "library", Tag: "v1"},
+		{Name: "img3", Repository: "library", Tag: "v1"},
+	})
+	require.Error(t, err, "should report partial failure")
+	require.Contains(t, err.Error(), "img2")
+
+	// img1 and img3 should still have been replicated
+	for _, ref := range []string{
+		dstAddr + "/library/img1:v1",
+		dstAddr + "/library/img3:v1",
+	} {
+		parsed, err := name.ParseReference(ref, name.Insecure)
+		require.NoError(t, err)
+		_, err = remote.Head(parsed)
+		require.NoError(t, err, "image should exist at destination: %s", ref)
+	}
+}
+
 func TestDelete_CancelledContextStopsProcessing(t *testing.T) {
 	dstAddr := newTestRegistry(t)
 
