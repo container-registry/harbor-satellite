@@ -84,11 +84,10 @@ When making changes, keep binary entrypoints in `cmd/` and implementation packag
 - internal/satellite/: Core orchestration logic
 - internal/satellite/state/: State management (replication, fetching, artifact handling, registration)
 - internal/satellite/store/: Local OCI layout and remote registry storage backends
-- internal/scheduler/: Cron-based job scheduling
-- internal/container_runtime/: CRI config management (Docker, containerd, CRI-O, Podman)
-- internal/server/: HTTP server for metrics and health
-- internal/watcher/: Config file watching for hot-reload
-- internal/hotreload/: Hot-reload mechanism
+- internal/satellite/scheduler/: Cron-based job scheduling
+- internal/satellite/container_runtime/: CRI config management (Docker, containerd, CRI-O, Podman)
+- internal/satellite/watcher/: Config file watching for hot-reload
+- internal/satellite/hotreload/: Hot-reload mechanism
 
 ### Ground Control Component Structure
 
