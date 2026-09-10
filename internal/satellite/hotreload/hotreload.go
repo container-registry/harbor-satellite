@@ -2,23 +2,18 @@ package hotreload
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"sync"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
-	cfg "zotregistry.dev/zot/v2/pkg/api/config"
-	"zotregistry.dev/zot/v2/pkg/cli/server"
 )
 
 type HotReloadManager struct {
 	cm                        *config.ConfigManager
 	log                       *zerolog.Logger
 	ctx                       context.Context
-	zotTempPath               string
 	stateReplicationScheduler *scheduler.Scheduler
 	changeCallbacks           map[config.ConfigChangeType][]config.ConfigChangeCallback
 	callbackMu                sync.RWMutex
@@ -28,14 +23,12 @@ func NewHotReloadManager(
 	ctx context.Context,
 	cm *config.ConfigManager,
 	log *zerolog.Logger,
-	zotTempPath string,
 	stateReplicationScheduler *scheduler.Scheduler,
 ) *HotReloadManager {
 	manager := &HotReloadManager{
 		cm:                        cm,
 		log:                       log,
 		ctx:                       ctx,
-		zotTempPath:               zotTempPath,
 		stateReplicationScheduler: stateReplicationScheduler,
 		changeCallbacks:           make(map[config.ConfigChangeType][]config.ConfigChangeCallback),
 	}
@@ -47,7 +40,6 @@ func NewHotReloadManager(
 
 func (hrm *HotReloadManager) registerCallbacks() {
 	hrm.registerChangeCallback(config.IntervalsChanged, hrm.handleIntervalsChange)
-	hrm.registerChangeCallback(config.ZotConfigChanged, hrm.handleZotConfigChange)
 	hrm.registerChangeCallback(config.LogLevelChanged, hrm.handleLogLevelChange)
 }
 
@@ -120,35 +112,6 @@ func (hrm *HotReloadManager) handleLogLevelChange(change config.ConfigChange) er
 
 	zerolog.SetGlobalLevel(level)
 	hrm.log.Info().Str("new_level", level.String()).Msg("Log level updated successfully")
-
-	return nil
-}
-
-func (hrm *HotReloadManager) handleZotConfigChange(change config.ConfigChange) error {
-	hrm.log.Info().
-		Str("type", string(change.Type)).
-		Msg("Handling Zot configuration change")
-
-	hrm.log.Warn().
-		Str("type", string(change.Type)).
-		Msg("Some Zot configuration may require to restart")
-
-	// verify the zot configuration before apply
-	var cfg cfg.Config
-	if err := json.Unmarshal(hrm.cm.GetRawZotConfig(), &cfg); err != nil {
-		return fmt.Errorf("unable to unmarshal zot config: %w, defaulting to previous zot configuration", err)
-	}
-
-	// Zot verify the config using below function hence taking same the path
-	if err := server.LoadConfiguration(&cfg, hrm.zotTempPath); err != nil {
-		hrm.log.Error().Interface("config", &cfg).Msg("invalid config file")
-		return err
-	}
-
-	err := os.WriteFile(hrm.zotTempPath, hrm.cm.GetRawZotConfig(), 0o600)
-	if err != nil {
-		return fmt.Errorf("unable to change zot configuration: %w", err)
-	}
 
 	return nil
 }

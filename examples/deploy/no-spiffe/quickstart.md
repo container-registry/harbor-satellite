@@ -114,7 +114,7 @@ curl -X POST http://localhost:8080/api/groups/sync \
 
 ## Step 5: Configure the Satellite
 
-Create a config artifact for the satellite. See [config example](https://github.com/container-registry/harbor-satellite/blob/main/examples/config.json). This artifact tells the satellite where Ground Control is located and defines how and when to replicate artifacts. It also includes the local OCI-compliant registry configuration.
+Create a config artifact for the satellite. See [config example](https://github.com/container-registry/harbor-satellite/blob/main/examples/config.json). This artifact tells the satellite where Ground Control is located and defines how and when to replicate artifacts. By default, replicated content is stored in an ORAS-backed OCI image layout.
 
 ```bash
 curl -i --location 'http://localhost:8080/api/configs' \
@@ -132,29 +132,14 @@ curl -i --location 'http://localhost:8080/api/configs' \
         "use_unsecure": true,
         "state_replication_interval": "@every 00h00m10s",
         "register_satellite_interval": "@every 00h00m10s",
-        "local_registry": {
-            "url": "http://0.0.0.0:8585"
-        }
-    },
-    "zot_config": {
-        "distSpecVersion": "1.1.0",
-        "storage": {
-            "rootDirectory": "./zot"
-        },
-        "http": {
-            "address": "0.0.0.0",
-            "port": "8585"
-        },
-        "log": {
-            "level": "info"
-        }
-      }
+        "bring_own_registry": false
+    }
 }
 }
 '
 ```
 
-> Tip: Adjust `ground_control_url` and `local_registry.url` if running on a different host or port.
+> Tip: Adjust `ground_control_url` if Ground Control is running on a different host or port. Use `--registry-data-dir` to change the local OCI layout path.
 
 ## Step 6: Register the Satellite
 
@@ -211,9 +196,9 @@ Use the token from Step 6 to start the satellite. See [.env.example](https://git
 
    > Note: By default, JSON logging is enabled. To disable it, pass `--json-logging=false`.
 
-## Configure Local Registry as Mirror (Optional)
+## Configure a BYO Registry as Mirror (Optional)
 
-Harbor Satellite allows setting up a local registry as a mirror for upstream registries. Using the `--mirrors` flag, you can specify which upstream registries to mirror. The configured container runtime will pull from the local registry (Zot by default) first, falling back to the upstream registry.
+Harbor Satellite can configure an external BYO registry as a mirror for upstream registries. Start Satellite with `--byo-registry --registry-url <url>` and use `--mirrors` to select the upstream registries. The default local OCI layout does not expose a registry endpoint and cannot be used as a CRI mirror yet.
 
 ### Supported CRIs
 - `docker`
@@ -248,7 +233,7 @@ Harbor Satellite allows setting up a local registry as a mirror for upstream reg
 3. Satellite Not Replicating Artifacts
    - Verify the group and config names in the satellite registration.
    - Check the artifact digest and repository details in the group configuration.
-   - Ensure the local registry (`http://127.0.0.1:8585`) is running.
+   - Check Satellite logs and verify that `<config-dir>/oci/oci-layout` exists.
 
 ## Need Help?
 
