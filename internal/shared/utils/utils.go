@@ -60,13 +60,17 @@ func HasInvalidPathChars(input string) bool {
 }
 
 func GetRepositoryAndImageNameFromArtifact(repository string) (string, string, error) {
+	repository = strings.TrimSpace(repository)
 	parts := strings.Split(repository, "/")
 	if len(parts) < 2 {
 		return "", "", fmt.Errorf("invalid repository format: %s. Expected format: repo/image", repository)
 	}
 
-	repo := parts[0]
-	image := strings.Join(parts[1:], "/")
+	repo := strings.TrimSpace(parts[0])
+	image := strings.TrimSpace(strings.Join(parts[1:], "/"))
+	if repo == "" || image == "" || strings.HasPrefix(image, "/") || strings.HasSuffix(image, "/") {
+		return "", "", fmt.Errorf("invalid repository format: %s. Expected non-empty repository and image names", repository)
+	}
 	return repo, image, nil
 }
 
