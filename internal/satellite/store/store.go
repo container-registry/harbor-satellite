@@ -22,6 +22,7 @@ type Store interface {
 var (
 	_ Store = (*OCIStore)(nil)
 	_ Store = (*RegistryStore)(nil)
+	_ Store = (*PeerStore)(nil)
 )
 
 // Artifact identifies OCI content independently of its source or destination
@@ -93,6 +94,21 @@ type RegistryOptions struct {
 	PlainHTTP bool
 	// TLS configures certificate validation for HTTPS registry communication.
 	TLS config.TLSConfig
+}
+
+// PlainHTTPFromURL reports whether ORAS should speak HTTP to this registry.
+// An explicit https:// URL stays TLS even when USE_UNSECURE is set so Ground
+// Control can be reached over HTTP.
+func PlainHTTPFromURL(raw string, useUnsecure bool) bool {
+	lower := strings.ToLower(strings.TrimSpace(raw))
+	switch {
+	case strings.HasPrefix(lower, "https://"):
+		return false
+	case strings.HasPrefix(lower, "http://"):
+		return true
+	default:
+		return useUnsecure
+	}
 }
 
 // repositoryPath returns the endpoint-specific repository path for an artifact.
