@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
+	"github.com/container-registry/harbor-satellite/internal/satellite/peer"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
@@ -57,6 +59,8 @@ type SatelliteOptions struct {
 	HarborRegistryURL      string
 	DirectDelivery         bool
 	ImageDir               string
+	PeerListen             string
+	PeerURLs               []string
 }
 
 func main() {
@@ -82,6 +86,8 @@ func main() {
 		HarborRegistryURL:      envCfg.HarborRegistryURL,
 		DirectDelivery:         envCfg.DirectDelivery,
 		ImageDir:               envCfg.ImageDir,
+		PeerListen:             envCfg.RegistryListen,
+		PeerURLs:               peer.SplitURLs(envCfg.PeerURLs),
 	}
 	shutdownTimeout := envCfg.ShutdownTimeout
 
@@ -105,8 +111,13 @@ func main() {
 	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", opts.HarborRegistryURL, "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
 	flag.BoolVar(&opts.DirectDelivery, "direct-delivery", opts.DirectDelivery, "[Experimental] Write image tarballs directly to k3s/RKE2 agent images directory")
 	flag.StringVar(&opts.ImageDir, "image-dir", opts.ImageDir, "Override image directory for direct delivery (auto-detected if empty)")
+	flag.StringVar(&opts.PeerListen, "registry-listen", opts.PeerListen, "Bind address for this satellite's replica OCI proxy (empty disables it)")
+	flag.StringVar(&opts.PeerListen, "peer-listen", opts.PeerListen, "Deprecated alias of --registry-listen")
+	peerURLs := strings.Join(opts.PeerURLs, ",")
+	flag.StringVar(&peerURLs, "peers", peerURLs, "Comma-separated replica-proxy URLs of satellites in the same Ground Control group (empty means Harbor only)")
 
 	flag.Parse()
+	opts.PeerURLs = peer.SplitURLs(peerURLs)
 	if opts.Token == "" {
 		opts.Token = envCfg.Token
 	}
@@ -406,6 +417,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	eventScheduler := events.NewEventScheduler(log)
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir, eventScheduler)
+	s.ConfigurePeer(opts.PeerListen, opts.PeerURLs)
 
 	err = s.Run(ctx)
 	if err != nil {

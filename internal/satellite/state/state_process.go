@@ -23,6 +23,8 @@ type FetchAndReplicateStateProcess struct {
 	stateFilePath       string
 	storeRoot           string
 	directDeliverer     *DirectDeliverer
+	ociStore            *store.OCIStore
+	peerURLs            []string
 }
 
 // Define result types for channels
@@ -63,6 +65,20 @@ func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath, s
 	}
 
 	return p
+}
+
+// SetOCIStore reuses a process-wide OCI layout for replication and the replica proxy.
+func (f *FetchAndReplicateStateProcess) SetOCIStore(ociStore *store.OCIStore) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.ociStore = ociStore
+}
+
+// SetPeerURLs records the static same-group peer proxy allow-list. Empty means Harbor only.
+func (f *FetchAndReplicateStateProcess) SetPeerURLs(urls []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.peerURLs = append([]string(nil), urls...)
 }
 
 type StateMap struct {
@@ -526,7 +542,8 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 	satelliteStateURL string,
 	err error,
 ) {
-	sourceURL = utils.FormatRegistryURL(f.cm.GetSourceRegistryURL())
+	rawSourceURL := f.cm.GetSourceRegistryURL()
+	sourceURL = utils.FormatRegistryURL(rawSourceURL)
 	sourceUsername = f.cm.GetSourceRegistryUsername()
 	sourcePassword = f.cm.GetSourceRegistryPassword()
 	remoteUsername := f.cm.GetRemoteRegistryUsername()
@@ -536,7 +553,8 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 
 	// Override source and state URLs if --harbor-registry-url is set
 	if override := f.cm.GetHarborRegistryURL(); override != "" {
-		if replaced, err := config.ReplaceURLHost(f.cm.GetSourceRegistryURL(), override); err == nil {
+		if replaced, err := config.ReplaceURLHost(rawSourceURL, override); err == nil {
+			rawSourceURL = replaced
 			sourceURL = utils.FormatRegistryURL(replaced)
 		}
 		if replaced, err := config.ReplaceURLHost(satelliteStateURL, override); err == nil {
@@ -548,22 +566,23 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 		Endpoint:  sourceURL,
 		Username:  sourceUsername,
 		Password:  sourcePassword,
-		PlainHTTP: useUnsecure,
+		PlainHTTP: store.PlainHTTPFromURL(rawSourceURL, useUnsecure),
 		TLS:       f.cm.GetTLSConfig(),
 	}
 
 	if f.cm.GetOwnRegistry() {
-		destination = utils.FormatRegistryURL(f.cm.GetLocalRegistryURL())
+		rawDestination := f.cm.GetLocalRegistryURL()
+		destination = utils.FormatRegistryURL(rawDestination)
 		replicator = store.NewRegistryStore(source, store.RegistryOptions{
 			Endpoint:  destination,
 			Username:  remoteUsername,
 			Password:  remotePassword,
-			PlainHTTP: useUnsecure,
+			PlainHTTP: store.PlainHTTPFromURL(rawDestination, useUnsecure),
 			TLS:       f.cm.GetTLSConfig(),
 		})
 	} else {
 		destination = f.storeRoot
-		replicator, err = store.NewOCIStore(f.storeRoot, source)
+		replicator, err = f.localReplicator(source, useUnsecure)
 		if err != nil {
 			return nil, "", "", "", "", false, "", err
 		}
@@ -578,6 +597,30 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 	}
 
 	return replicator, sourceURL, sourceUsername, sourcePassword, destination, useUnsecure, satelliteStateURL, nil
+}
+
+func (f *FetchAndReplicateStateProcess) localReplicator(source store.RegistryOptions, useUnsecure bool) (store.Store, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.ociStore == nil {
+		opened, err := store.NewOCIStore(f.storeRoot, source)
+		if err != nil {
+			return nil, err
+		}
+		f.ociStore = opened
+	} else {
+		f.ociStore.SetSource(source)
+	}
+
+	if len(f.peerURLs) == 0 {
+		return f.ociStore, nil
+	}
+
+	// Same-group replica-proxy URLs from --peers / PEER_URLS. Empty list
+	// above means Harbor only; a miss or failed peer copy also falls back.
+	peers := store.PeerOptionsFromURLs(f.peerURLs, useUnsecure, source.TLS)
+	return store.NewPeerStore(f.ociStore, peers), nil
 }
 
 func (f *FetchAndReplicateStateProcess) start() {

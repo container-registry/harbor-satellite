@@ -22,6 +22,14 @@ type HarborSatellite struct {
 	HarborRegistryURL      string `env:"HARBOR_REGISTRY_URL"`
 	DirectDelivery         bool   `env:"DIRECT_DELIVERY"           envDefault:"false"`
 	ImageDir               string `env:"IMAGE_DIR"`
+	// RegistryListen is this satellite's replica-proxy bind (empty disables it).
+	RegistryListen string `env:"REGISTRY_LISTEN"`
+	// PeerListen is a deprecated alias of RegistryListen.
+	PeerListen string `env:"PEER_LISTEN"`
+	// PeerURLs is a comma-separated allow-list of replica-proxy URLs for
+	// satellites in the same Ground Control group. Out-of-group URLs must
+	// not be listed. Empty means replicate from Harbor only.
+	PeerURLs string `env:"PEER_URLS"`
 }
 
 func (h HarborSatellite) ApplyDefaults() HarborSatellite {
@@ -30,6 +38,9 @@ func (h HarborSatellite) ApplyDefaults() HarborSatellite {
 	}
 	if h.ShutdownTimeout == "" {
 		h.ShutdownTimeout = "30s"
+	}
+	if h.RegistryListen == "" {
+		h.RegistryListen = h.PeerListen
 	}
 	return h
 }

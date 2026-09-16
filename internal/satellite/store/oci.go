@@ -13,6 +13,7 @@ import (
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/rs/zerolog"
 	oras "oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/oci"
 	"oras.land/oras-go/v2/errdef"
@@ -43,10 +44,35 @@ func NewOCIStore(root string, source RegistryOptions) (*OCIStore, error) {
 	return &OCIStore{source: source, target: target}, nil
 }
 
-// Replicate copies complete OCI descriptor graphs from a remote repository to
+// SetSource updates the Harbor registry used for destination tagging and
+// fallback replication. The layout handle is unchanged.
+func (s *OCIStore) SetSource(source RegistryOptions) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.source = source
+}
+
+// Layout returns the shared ORAS image-layout handle. Callers that serve or
+// inspect content must not replace this store; graph writes stay serialized
+// through Replicate, CopyFrom, and Delete.
+func (s *OCIStore) Layout() *oci.Store {
+	return s.target
+}
+
+// Replicate copies complete OCI descriptor graphs from the Harbor source to
 // the local OCI layout. High-level operations are serialized so index updates
 // and garbage collection cannot interleave with an in-progress graph copy.
 func (s *OCIStore) Replicate(ctx context.Context, artifacts []Artifact) error {
+	return s.copyArtifacts(ctx, s.source, artifacts)
+}
+
+// CopyFrom copies artifacts from a peer registry into the local layout while
+// tagging them with the Harbor source reference, never the peer host.
+func (s *OCIStore) CopyFrom(ctx context.Context, peer RegistryOptions, artifacts []Artifact) error {
+	return s.copyArtifacts(ctx, peer, artifacts)
+}
+
+func (s *OCIStore) copyArtifacts(ctx context.Context, source RegistryOptions, artifacts []Artifact) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -55,36 +81,51 @@ func (s *OCIStore) Replicate(ctx context.Context, artifacts []Artifact) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := artifact.validate(); err != nil {
+		if err := s.copyOne(ctx, source, artifact, log); err != nil {
 			return err
 		}
-
-		source, err := newRepository(s.source, artifact)
-		if err != nil {
-			return err
-		}
-		destinationRef := s.reference(artifact)
-
-		sourceIdentifier := artifact.sourceIdentifier()
-		desc, err := source.Resolve(ctx, sourceIdentifier)
-		if err != nil {
-			return fmt.Errorf("resolve source artifact %s: %w", destinationRef, err)
-		}
-		current, err := s.target.Resolve(ctx, destinationRef)
-		if err == nil && current.Digest == desc.Digest {
-			log.Info().Str("reference", destinationRef).Msg("Artifact already up-to-date in OCI store, skipping")
-			continue
-		}
-		if err != nil && !errors.Is(err, errdef.ErrNotFound) {
-			return fmt.Errorf("resolve OCI store reference %s: %w", destinationRef, err)
-		}
-
-		if _, err := oras.Copy(ctx, source, sourceIdentifier, s.target, destinationRef, oras.DefaultCopyOptions); err != nil {
-			return fmt.Errorf("copy artifact %s to OCI store: %w", destinationRef, err)
-		}
-		log.Info().Str("reference", destinationRef).Str("digest", desc.Digest.String()).Msg("Artifact replicated to OCI store")
 	}
 
+	return nil
+}
+
+func (s *OCIStore) copyOne(
+	ctx context.Context,
+	source RegistryOptions,
+	artifact Artifact,
+	log *zerolog.Logger,
+) error {
+	if err := artifact.validate(); err != nil {
+		return err
+	}
+
+	repo, err := newRepository(source, artifact)
+	if err != nil {
+		return err
+	}
+	destinationRef := s.reference(artifact)
+	sourceIdentifier := artifact.sourceIdentifier()
+	desc, err := repo.Resolve(ctx, sourceIdentifier)
+	if err != nil {
+		return fmt.Errorf("resolve source artifact %s: %w", destinationRef, err)
+	}
+	current, err := s.target.Resolve(ctx, destinationRef)
+	if err == nil && current.Digest == desc.Digest {
+		log.Info().Str("reference", destinationRef).Msg("Artifact already up-to-date in OCI store, skipping")
+		return nil
+	}
+	if err != nil && !errors.Is(err, errdef.ErrNotFound) {
+		return fmt.Errorf("resolve OCI store reference %s: %w", destinationRef, err)
+	}
+
+	if _, err := oras.Copy(ctx, repo, sourceIdentifier, s.target, destinationRef, oras.DefaultCopyOptions); err != nil {
+		return fmt.Errorf("copy artifact %s to OCI store: %w", destinationRef, err)
+	}
+	log.Info().
+		Str("source", source.Endpoint).
+		Str("reference", destinationRef).
+		Str("digest", desc.Digest.String()).
+		Msg("Artifact replicated to OCI store")
 	return nil
 }
 

@@ -1,0 +1,69 @@
+# Peer-copy overlay. satellite-a and satellite-b must share a Ground Control
+# group. PEER_URLS is a static same-group allow-list of replica-proxy URLs,
+# not a global roster: B pulls from A; A does not push. Do not list satellites
+# outside this group.
+#
+# Profiles keep A and B from starting together (ZTR tokens are one-shot;
+# B should start only after A has Harbor content). Do not `up -d` the whole
+# stack. Runbook: docs/poc/peer-oci-copy.md
+#
+#   COMPOSE="docker compose -f docker-compose.yml -f docker-compose.peer-poc.yml"
+#   $COMPOSE up -d postgres ground-control
+#   $COMPOSE --profile peer-a up -d --no-deps satellite-a
+#   $COMPOSE --profile peer-b up -d --no-deps satellite-b
+services:
+  satellite:
+    profiles: ["single"]
+
+  satellite-a:
+    profiles: ["peer-a"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        COMPONENT: satellite
+    container_name: satellite-a
+    environment:
+      - GROUND_CONTROL_URL=http://ground-control:8080
+      - HARBOR_REGISTRY_URL=${HARBOR_REGISTRY_URL:-https://demo.goharbor.io}
+      - TOKEN=${TOKEN_A}
+      - CONFIG_DIR=/data
+      - USE_UNSECURE=true
+      - REGISTRY_LISTEN=:5000
+    volumes:
+      - satellite-a-data:/data
+    ports:
+      - "5000:5000"
+    depends_on:
+      ground-control:
+        condition: service_healthy
+    restart: always
+
+  satellite-b:
+    profiles: ["peer-b"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        COMPONENT: satellite
+    container_name: satellite-b
+    environment:
+      - GROUND_CONTROL_URL=http://ground-control:8080
+      - HARBOR_REGISTRY_URL=${HARBOR_REGISTRY_URL:-https://demo.goharbor.io}
+      - TOKEN=${TOKEN_B}
+      - CONFIG_DIR=/data
+      - USE_UNSECURE=true
+      - REGISTRY_LISTEN=:5000
+      - PEER_URLS=http://satellite-a:5000
+    volumes:
+      - satellite-b-data:/data
+    ports:
+      - "5001:5000"
+    depends_on:
+      ground-control:
+        condition: service_healthy
+    restart: always
+
+volumes:
+  satellite-a-data:
+  satellite-b-data:

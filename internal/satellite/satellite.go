@@ -3,11 +3,15 @@ package satellite
 import (
 	"context"
 	"errors"
+	"net"
+	"net/http"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
+	"github.com/container-registry/harbor-satellite/internal/satellite/peer"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/state"
+	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
@@ -20,6 +24,9 @@ type Satellite struct {
 	storeRoot      string
 	stateProcess   *state.FetchAndReplicateStateProcess
 	eventscheduler *events.EventScheduler
+	peerListen     string
+	peerURLs       []string
+	peerServer     *http.Server
 }
 
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, storeRoot string, jq *events.EventScheduler) *Satellite {
@@ -33,12 +40,25 @@ func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult
 	}
 }
 
+// ConfigurePeer sets the replica-proxy bind address and the static peer allow-list.
+// listen is this satellite's registry bind (ADR-0009 replica GET/HEAD). urls are
+// other satellites' replica-proxy URLs in the same Ground Control group;
+// empty urls means Harbor only. Out-of-group URLs must not be listed.
+func (s *Satellite) ConfigurePeer(listen string, urls []string) {
+	s.peerListen = listen
+	s.peerURLs = append([]string(nil), urls...)
+}
+
 func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, s.storeRoot, log)
 	s.stateProcess = fetchAndReplicateStateProcess
+
+	if err := s.startReplicaProxy(ctx, fetchAndReplicateStateProcess); err != nil {
+		return err
+	}
 
 	// Create ZTR scheduler if not already done
 	if !s.cm.IsZTRDone() {
@@ -115,6 +135,44 @@ func (s *Satellite) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
+func (s *Satellite) startReplicaProxy(ctx context.Context, process *state.FetchAndReplicateStateProcess) error {
+	log := logger.FromContext(ctx)
+	if s.cm.GetOwnRegistry() {
+		if s.peerListen != "" || len(s.peerURLs) > 0 {
+			log.Warn().Msg("Peer distribution is skipped in BYO registry mode")
+		}
+		return nil
+	}
+	if s.storeRoot == "" {
+		return nil
+	}
+
+	ociStore, err := store.NewOCIStore(s.storeRoot, store.RegistryOptions{})
+	if err != nil {
+		return err
+	}
+	process.SetOCIStore(ociStore)
+	process.SetPeerURLs(s.peerURLs)
+
+	if s.peerListen == "" {
+		return nil
+	}
+
+	addr := peer.NormalizeAddr(s.peerListen)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	s.peerServer = peer.NewHTTPServer(addr, ociStore.Layout())
+	log.Info().Str("addr", listener.Addr().String()).Msg("Replica proxy listening")
+	go func() {
+		if serveErr := s.peerServer.Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			log.Error().Err(serveErr).Msg("Replica proxy server failed")
+		}
+	}()
+	return nil
+}
+
 func (s *Satellite) GetSchedulers() []*scheduler.Scheduler {
 	return s.schedulers
 }
@@ -131,6 +189,11 @@ func (s *Satellite) PersistState() error {
 // Stop gracefully stops all schedulers and logs the shutdown process.
 func (s *Satellite) Stop(ctx context.Context) {
 	log := logger.FromContext(ctx)
+	if s.peerServer != nil {
+		if err := s.peerServer.Shutdown(ctx); err != nil {
+			log.Warn().Err(err).Msg("Replica proxy shutdown failed")
+		}
+	}
 	log.Info().Int("scheduler_count", len(s.schedulers)).
 		Msg("Initiating scheduler shutdown")
 

@@ -54,6 +54,28 @@ func TestSetupReplicationSelectsStore(t *testing.T) {
 		require.Equal(t, root, destination)
 	})
 
+	t.Run("reuses shared OCI store", func(t *testing.T) {
+		root := t.TempDir()
+		existing, err := store.NewOCIStore(root, store.RegistryOptions{})
+		require.NoError(t, err)
+		process := &FetchAndReplicateStateProcess{cm: newManager(t, false), storeRoot: root}
+		process.SetOCIStore(existing)
+
+		storage, _, _, _, _, _, _, err := process.setupReplication()
+		require.NoError(t, err)
+		require.Same(t, existing, storage)
+	})
+
+	t.Run("wraps peer store when peers are configured", func(t *testing.T) {
+		root := t.TempDir()
+		process := &FetchAndReplicateStateProcess{cm: newManager(t, false), storeRoot: root}
+		process.SetPeerURLs([]string{"http://satellite-a:5000"})
+
+		storage, _, _, _, _, _, _, err := process.setupReplication()
+		require.NoError(t, err)
+		require.IsType(t, &store.PeerStore{}, storage)
+	})
+
 	t.Run("BYO uses remote registry store", func(t *testing.T) {
 		process := &FetchAndReplicateStateProcess{cm: newManager(t, true), storeRoot: t.TempDir()}
 

@@ -87,6 +87,8 @@ func TestLoadSatelliteParsesEnvironment(t *testing.T) {
 	t.Setenv("HARBOR_REGISTRY_URL", "https://harbor.example")
 	t.Setenv("DIRECT_DELIVERY", "true")
 	t.Setenv("IMAGE_DIR", "/var/lib/rancher/k3s/agent/images")
+	t.Setenv("REGISTRY_LISTEN", ":5000")
+	t.Setenv("PEER_URLS", "http://satellite-a:5000, http://satellite-c:5000")
 
 	if err := LoadSatellite(); err != nil {
 		t.Fatalf("LoadSatellite() error = %v", err)
@@ -101,5 +103,15 @@ func TestLoadSatelliteParsesEnvironment(t *testing.T) {
 	}
 	if cfg.RegistryDataDir != "/tmp/registry" || cfg.ShutdownTimeout != "45s" {
 		t.Fatalf("satellite path/timing env was not parsed: %+v", cfg)
+	}
+	if cfg.RegistryListen != ":5000" || cfg.PeerURLs != "http://satellite-a:5000, http://satellite-c:5000" {
+		t.Fatalf("satellite peer env was not parsed: %+v", cfg)
+	}
+}
+
+func TestApplyDefaultsCopiesPeerListenToRegistryListen(t *testing.T) {
+	cfg := HarborSatellite{PeerListen: ":5000"}.ApplyDefaults()
+	if cfg.RegistryListen != ":5000" {
+		t.Fatalf("RegistryListen = %q, want :5000 from PEER_LISTEN", cfg.RegistryListen)
 	}
 }

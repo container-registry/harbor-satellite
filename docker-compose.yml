@@ -29,17 +29,24 @@ services:
       DB_DATABASE: groundcontrol
       DB_USERNAME: postgres
       DB_PASSWORD: password
-      HARBOR_USERNAME: admin
-      HARBOR_PASSWORD: Harbor12345
-      HARBOR_URL: http://harbor-sat.kube.bupd.xyz
+      HARBOR_USERNAME: ${HARBOR_USERNAME}
+      HARBOR_PASSWORD: ${HARBOR_PASSWORD}
+      HARBOR_URL: ${HARBOR_URL}
       PORT: 8080
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Harbor12345}
       SKIP_HARBOR_HEALTH_CHECK: "true"
       SPIFFE_SERVER_ENABLED: "false"
       SPIFFE_TRUST_DOMAIN: harbor-satellite.local
       SPIFFE_PROVIDER: sidecar
       SPIFFE_ENDPOINT_SOCKET: unix:///run/spire/sockets/agent.sock
     ports:
-      - "8080:8080"
+      - "${GC_PORT:-7080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,7 +60,7 @@ services:
     container_name: satellite
     environment:
       - GROUND_CONTROL_URL=http://ground-control:8080
-      - HARBOR_REGISTRY_URL=http://172.17.0.1:8080
+      - HARBOR_REGISTRY_URL=${HARBOR_REGISTRY_URL:-https://demo.goharbor.io}
       - TOKEN=${TOKEN:-changeme}
       - CONFIG_DIR=/data
     volumes:

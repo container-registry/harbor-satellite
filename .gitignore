@@ -43,6 +43,11 @@ config.json
 bin/
 .task/
 
+# MicroVM host state (binary is shared via 9p; tokens stay off git)
+test/microvm/secrets/
+test/microvm/*.img
+test/microvm/result
+
 # Top-level satellite binary (built by `go build ./cmd/satellite` or similar);
 # never check this in.
 /main

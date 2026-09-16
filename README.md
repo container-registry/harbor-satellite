@@ -133,6 +133,7 @@ graph TB
 
 - [Architecture overview](docs/architecture/README.md)
 - [Ground Control guide](docs/guides/ground-control.md)
+- [Peer OCI copy PoC](docs/poc/peer-oci-copy.md)
 - [SPIFFE quickstart guide](examples/deploy/spiffe/README.md)
 - [ADR: Ground Control authentication](docs/decisions/0004-ground-control-authentication.md)
 - [ADR: SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md)
