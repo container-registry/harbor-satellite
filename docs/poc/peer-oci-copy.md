@@ -1,4 +1,4 @@
-# Peer OCI copy PoC (Day 1)
+# Peer OCI copy PoC
 
 Pull-based copy between default-mode satellites (ORAS OCI layout). Each satellite
 **is** the ADR-0009 replica proxy on `--registry-listen`: GET/HEAD from the local
@@ -28,7 +28,11 @@ lists; they do not publish peer listen URLs this term.
 - Full ADR-0009 proxy (forward to Harbor + policy)
 - Ground Control peer-IP API
 - `REACHOUT_SATS=global` (cross-group)
-- Day 2 NixOS microvms (Fedora host + Nix + QEMU; later)
+
+## MicroVM testbed
+
+Isolated-node (kill-A) runs use NixOS MicroVMs on qemu user-net. Same protocol;
+see [test/microvm/README.md](../../test/microvm/README.md).
 
 ## Demo layout
 

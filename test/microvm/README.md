@@ -7,7 +7,7 @@ MicroVMs are only the kill-a-node demo. Protocol is unchanged from
 Hypervisor is **qemu** with **user-mode** networking (no TAP, no Cloud
 Hypervisor). Guest gateway `10.0.2.2` is the Fedora host.
 
-## Chunk 1 — host smoke (do this first)
+## Host smoke (do this first)
 
 Do not start `sat-a` / `sat-b` yet. Confirm Nix, KVM, and one empty guest.
 
@@ -88,9 +88,11 @@ RAM ([microvm.nix#171](https://github.com/microvm-nix/microvm.nix/issues/171)).
 sat-a / sat-b use `mem = 2049`. Ctrl-C the hung QEMU, then relaunch. Leave a
 healthy sat-a running; only restart the VM that hung.
 
-## Chunk 2 — sat-a (host-built binary)
+## sat-a (host-built binary)
 
-Smoke proved QEMU user-net. Now one guest runs the **same** `bin/satellite` as Day 1, talking to Ground Control on the host (`10.0.2.2:7080`). Do not start sat-b yet.
+Smoke proved QEMU user-net. Now one guest runs the **same** host-built
+`bin/satellite` as the compose overlay, talking to Ground Control on the host
+(`10.0.2.2:7080`). Do not start sat-b yet.
 
 `--impure` is required so the flake can read `SATELLITE_ROOT` and 9p-mount `bin/` plus `test/microvm/secrets/`.
 
@@ -145,7 +147,7 @@ systemctl status harbor-satellite --no-pager
 journalctl -u harbor-satellite -e -n 50 --no-pager
 ```
 
-Success looks like Day 1 A:
+Success:
 
 ```text
 Replica proxy listening
@@ -163,7 +165,7 @@ Expect HTTP 200 and `Docker-Distribution-API-Version: registry/2.0`.
 
 If `harbor-satellite` fails immediately: 9p path (`ls /mnt/satellite-bin/satellite`), empty `TOKEN`, or GC not reachable from the guest.
 
-## Chunk 3 — sat-b (peer pull) and kill-A
+## sat-b (peer pull) and kill-A
 
 Leave **sat-a running**. B pulls A's replica proxy through the host:
 `PEER_URLS=http://10.0.2.2:5000` (QEMU user-net gateway → host 5000 → sat-a).
@@ -257,8 +259,7 @@ Expect `No peer has artifact, falling back to Harbor` then
 
 ## After a host crash
 
-QEMU guests die with the host. **Code for chunk 3 is already in the tree**;
-re-run the VMs. Do not `git add` secrets.
+QEMU guests die with the host. Re-run the VMs. Do not `git add` secrets.
 
 1. Ground Control: `curl -sf http://127.0.0.1:7080/ping` — if empty, `up -d postgres ground-control`.
 2. Static binary: `file bin/satellite` must say statically linked; if not, `CGO_ENABLED=0 go build -o bin/satellite ./cmd/satellite`.
