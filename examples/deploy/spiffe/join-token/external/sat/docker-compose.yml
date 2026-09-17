@@ -33,11 +33,10 @@ services:
       - SPIFFE_ENABLED=true
       - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
       - SPIFFE_EXPECTED_SERVER_ID=spiffe://harbor-satellite.local/ground-control
+      - CONFIG_DIR=/data
     volumes:
       - spire-agent-satellite-socket:/run/spire/sockets:ro
       - satellite-data:/data
-    ports:
-      - "${SATELLITE_ZOT_PORT:-5050}:5000"
     depends_on:
       spire-agent-satellite:
         condition: service_healthy

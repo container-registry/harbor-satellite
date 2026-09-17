@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
-	auditlog "github.com/container-registry/harbor-satellite/internal/groundcontrol/logger"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
+	auditlog "github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/google/uuid"
 )
 

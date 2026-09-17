@@ -19,7 +19,7 @@ cleanup() {
     [ -n "$GC_PID" ] && kill $GC_PID 2>/dev/null || true
     [ -n "$SAT_PID" ] && kill $SAT_PID 2>/dev/null || true
     rm -f "$PROJECT_ROOT/config.json" "$PROJECT_ROOT/prev_config.json" 2>/dev/null || true
-    rm -rf "$PROJECT_ROOT/zot-data" 2>/dev/null || true
+    rm -rf "$PROJECT_ROOT/oci-data" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -112,14 +112,7 @@ CONFIG_RESP=$(curl -s -X POST "http://localhost:$GC_PORT/configs" \
                 "use_unsecure": true,
                 "state_replication_interval": "@every 00h01m00s",
                 "register_satellite_interval": "@every 00h01m00s",
-                "local_registry": {"url": "http://0.0.0.0:8585"},
                 "encrypt_config": false
-            },
-            "zot_config": {
-                "distSpecVersion": "1.1.0",
-                "storage": {"rootDirectory": "./zot-data"},
-                "http": {"address": "0.0.0.0", "port": "8585"},
-                "log": {"level": "info"}
             }
         }
     }')
@@ -154,19 +147,12 @@ cat > config.json << EOF
     "app_config": {
         "ground_control_url": "http://127.0.0.1:$GC_PORT",
         "log_level": "debug",
-        "use_unsecure": true,
-        "local_registry": {"url": "http://0.0.0.0:8585"}
-    },
-    "zot_config": {
-        "distSpecVersion": "1.1.0",
-        "storage": {"rootDirectory": "./zot-data"},
-        "http": {"address": "0.0.0.0", "port": "8585"},
-        "log": {"level": "info"}
+        "use_unsecure": true
     }
 }
 EOF
 
-go run ./cmd/satellite --token "$TOKEN" --ground-control-url "http://127.0.0.1:$GC_PORT" --harbor-registry-url "http://127.0.0.1:8080" --json-logging=false > /tmp/sat.log 2>&1 &
+go run ./cmd/satellite --token "$TOKEN" --ground-control-url "http://127.0.0.1:$GC_PORT" --harbor-registry-url "http://127.0.0.1:8080" --registry-data-dir "$PROJECT_ROOT/oci-data" --json-logging=false > /tmp/sat.log 2>&1 &
 SAT_PID=$!
 
 log "Satellite started (PID: $SAT_PID)"

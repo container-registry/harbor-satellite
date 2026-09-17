@@ -152,7 +152,7 @@ tasks:
     desc: "Publish both components to registry"
     aliases: [p]
     vars:
-      TAG: '{{.TAG | default "dev"}}'
+      TAG: '{{.TAG | default .Env.TAG | default "dev"}}'
       PLATFORMS: "{{.PLATFORMS}}"
     cmds:
       - task: _publish:both
@@ -164,7 +164,9 @@ tasks:
   publish-and-sign:
     desc: Build, push, and sign both components
     vars:
-      TAG: '{{.TAG | default "dev"}}'
+      TAG: '{{.TAG | default .Env.TAG | default "dev"}}'
+      REGISTRY: "{{.REGISTRY | default .Env.REGISTRY}}"
+      PROJECT_NAME: "{{.PROJECT_NAME | default .Env.PROJECT_NAME}}"
     cmds:
       - task: _publish:image-and-sign
         vars:

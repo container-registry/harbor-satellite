@@ -270,34 +270,34 @@ curl -X POST http://localhost:8080/groups/satellite \
 
 ### Verifying Replication
 
-After assigning a group, the satellite begins replicating images on its next sync interval (default: 10 seconds). Check the satellite logs for replication activity and verify images are available locally:
+After assigning a group, the satellite begins replicating content on its next sync interval (default: 10 seconds). Check the satellite logs and verify the local OCI image layout:
 
 ```bash
-crane catalog localhost:8585
+test -f ~/.config/satellite/oci/oci-layout
+jq '.manifests[].annotations["org.opencontainers.image.ref.name"]' \
+    ~/.config/satellite/oci/index.json
 ```
 
-Or pull directly:
+### Configuring CRI Mirroring with BYO Registry
 
-```bash
-docker pull localhost:8585/library/nginx:alpine
-```
-
-### Configuring CRI Mirroring
-
-Configure container runtimes to use the satellite's local registry as a mirror:
+The default OCI layout is not a registry endpoint. To configure a container runtime mirror, enable BYO mode and supply the external registry endpoint:
 
 ```bash
 # containerd: mirror docker.io and quay.io
-./harbor-satellite --mirrors=containerd:docker.io,quay.io ...
+./harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+  --mirrors=containerd:docker.io,quay.io ...
 
 # Docker: mirror docker.io (only registry Docker supports mirroring)
-./harbor-satellite --mirrors=docker:true ...
+./harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+  --mirrors=docker:true ...
 
 # Podman
-./harbor-satellite --mirrors=podman:docker.io ...
+./harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+  --mirrors=podman:docker.io ...
 
 # CRI-O
-./harbor-satellite --mirrors=crio:docker.io,quay.io ...
+./harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+  --mirrors=crio:docker.io,quay.io ...
 ```
 
 Notes:

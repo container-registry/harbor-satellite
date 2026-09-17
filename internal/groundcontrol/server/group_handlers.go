@@ -5,10 +5,10 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 )
 
 func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {

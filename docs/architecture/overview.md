@@ -18,20 +18,23 @@ Ground Control is the central management component that orchestrates the Harbor 
 
 The Satellite component runs at edge locations and:
 
-- Acts as a local container registry using Zot
+- Maintains a local OCI image layout using ORAS
 - Synchronizes with central Harbor
-- Manages local container images
+- Manages local OCI content
 - Handles image distribution
+- Can replicate to an external registry in BYO mode
 - Maintains local state
 
-### 3. Registry
+### 3. Store
 
-The Registry component (using Zot) is responsible for:
+The Store abstraction is responsible for:
 
-- Storing container images locally
+- Copying OCI content from its source
 - Serving images to local workloads
 - Managing image metadata
 - Handling image operations
+- Replicating images to an external registry in BYO mode
+- Removing references and unreferenced local content
 
 ## System Architecture
 
@@ -44,7 +47,7 @@ The Registry component (using Zot) is responsible for:
          ↓
 [Satellite]
     ↓
-[Local Registry (Zot)]
+[Local OCI Layout (ORAS)]
     ↓
 [Local Workloads]
 ```
@@ -57,8 +60,8 @@ The Registry component (using Zot) is responsible for:
    - Health monitoring
    - Registration management
 
-2. **Satellite to Registry**
-   - Image storage and retrieval
+2. **Satellite to Store**
+   - OCI graph copying
    - Metadata management
    - Layer management
 
@@ -94,14 +97,14 @@ The Registry component (using Zot) is responsible for:
 
 ## Deployment Pattern
 
-### Basic Edge Registry
+### Basic Edge Store
 ```
-[Central Harbor] <-> [Satellite] <-> [Local Workloads]
+[Central Harbor] <-> [Satellite] <-> [Local OCI Layout] <-> [Local Workloads]
 ```
 - Simple deployment
 - Direct image serving
 - Basic synchronization
-- Uses Zot as local registry
+- Uses ORAS OCI layout storage
 
 ## Planned Deployment Patterns
 
@@ -125,12 +128,12 @@ The Registry component (using Zot) is responsible for:
 
 ### 1. Image Distribution
 ```
-[Central Harbor] → [Ground Control] → [Satellite] → [Local Registry]
+[Central Harbor] → [Ground Control] → [Satellite] → [OCI Store]
 ```
 
 ### 2. State Synchronization
 ```
-[Ground Control] ←→ [Satellite] ←→ [Local Registry]
+[Ground Control] ←→ [Satellite] → [OCI Store]
 ```
 
 ### 3. Health Monitoring

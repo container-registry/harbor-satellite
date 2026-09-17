@@ -3,7 +3,7 @@ package harbor
 import (
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/stretchr/testify/require"
 )
 

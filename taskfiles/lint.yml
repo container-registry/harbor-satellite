@@ -61,7 +61,7 @@ tasks:
     silent: true
 
   vulnerability-check:
-    desc: Run govulncheck inside a pinned Docker container (filters known unfixable zot vulnerabilities)
+    desc: Run govulncheck inside a pinned Docker container
     cmds:
       - echo "Running vulnerability check..."
       - |

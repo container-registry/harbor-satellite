@@ -111,7 +111,7 @@ internal/parsec/
 
 ### `KeyProvider` implements `crypto.Provider`
 
-`KeyProvider` implements the existing `internal/crypto.Provider` interface so it can be swapped
+`KeyProvider` implements the existing `internal/shared/crypto.Provider` interface so it can be swapped
 into `pkg/config/manager.go` without changes to any downstream consumer.
 
 The key design challenge is that `crypto.Provider.Sign(data []byte, key crypto.PrivateKey)`
@@ -193,7 +193,7 @@ In Phase 2, `Signer` is used as the private key for SPIRE's `tpm_devid` node att
 This makes the SPIRE agent's attestation to the SPIRE server hardware-rooted: Ground Control's
 trust in the satellite is cryptographically bound to the physical device.
 
-The existing `workloadapi.X509Source` SVID delivery flow in `internal/spiffe/client.go` is
+The existing `workloadapi.X509Source` SVID delivery flow in `internal/shared/spiffe/client.go` is
 unaffected — PARSEC operates below the SVID layer.
 
 ```
@@ -210,7 +210,7 @@ PARSEC (hardware key) → SPIRE tpm_devid (node attestation) → SVID issuance
 
 Target coverage (not all of these exist yet; see Phase-1 Limitations below):
 
-- Unit tests for `KeyProvider` using a mock PARSEC client (same pattern as `internal/crypto/mock.go`)
+- Unit tests for `KeyProvider` using a mock PARSEC client (same pattern as `internal/shared/crypto/mock.go`)
 - `parsec` build tag compiles cleanly alongside `nospiffe` and default builds
 - Default build (no `parsec` tag) continues to pass all existing tests unchanged
 - E2E test (`test-parsec` task in `taskfiles/e2e.yml`) using a real PARSEC daemon in CI,

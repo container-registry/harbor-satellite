@@ -6,7 +6,7 @@ package runtime
 // 	"path/filepath"
 // 	"strings"
 
-// 	"github.com/container-registry/harbor-satellite/internal/utils"
+// 	"github.com/container-registry/harbor-satellite/internal/shared/utils"
 // 	"github.com/pelletier/go-toml/v2"
 // 	"github.com/rs/zerolog"
 // )

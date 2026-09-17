@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 )
 
 type PasswordPolicy struct {

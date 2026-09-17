@@ -55,12 +55,15 @@ services:
       - GROUND_CONTROL_URL=http://ground-control:8080
       - HARBOR_REGISTRY_URL=http://172.17.0.1:8080
       - TOKEN=${TOKEN:-changeme}
+      - CONFIG_DIR=/data
+    volumes:
+      - satellite-data:/data
     ports:
       - "${SATELLITE_PORT:-9090}:9090"
-      - "8585:8585"
     depends_on:
       - ground-control
     restart: always
 
 volumes:
   pgdata:
+  satellite-data:

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/robot"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 	"github.com/google/go-containerregistry/pkg/authn"

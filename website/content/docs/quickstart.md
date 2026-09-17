@@ -679,19 +679,14 @@ The satellite logs directly to stdout. You should see:
 2. Successful Zero-Touch Registration (ZTR) with Ground Control
 3. State fetching and image replication beginning
 
-### Pull from the satellite's local registry (edge device)
+### Inspect the satellite's local OCI store (edge device)
 
-The satellite exposes its Zot registry on port 5000. You can verify images are available using [crane](https://github.com/google/go-containerregistry/tree/main/cmd/crane) or any container tool:
+The default store is an OCI image layout under the Satellite configuration directory. Verify that the layout and its content index were created:
 
 ```bash
-# Using crane (lightweight, no runtime needed)
-crane catalog localhost:5000
-
-# Using Docker (if available)
-docker pull localhost:5000/library/nginx:alpine
-
-# Using Podman (if available)
-podman pull localhost:5000/library/nginx:alpine --tls-verify=false
+test -f ~/.config/satellite/oci/oci-layout
+jq '.manifests[].annotations["org.opencontainers.image.ref.name"]' \
+    ~/.config/satellite/oci/index.json
 ```
 
 ### Check SPIRE agents (cloud server)
@@ -725,8 +720,8 @@ Here is what happened end to end:
 9. **Satellite** sent an mTLS request to Ground Control's `/satellites/spiffe-ztr` endpoint
 10. **Ground Control** verified the SVID, created robot credentials, returned the state URL
 11. **Satellite** used the robot credentials to pull its state from Harbor
-12. **Satellite** saw `nginx:alpine` in its desired state and replicated it to local Zot
-13. **Satellite** now serves `nginx:alpine` locally on port 5000
+12. **Satellite** saw `nginx:alpine` in its desired state and copied its OCI graph into the local layout
+13. **Satellite** retained the content on disk for later delivery or proxy serving
 
 No runtime tokens were used. The only secrets transported to the edge were the X.509 agent certificate and key (Step 2.2), which can be pre-provisioned during device setup. After attestation, all credentials are handled automatically via SPIRE SVIDs and mTLS.
 

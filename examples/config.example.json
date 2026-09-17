@@ -14,9 +14,6 @@
       "collect_memory": true,
       "collect_storage": true
     },
-    "local_registry": {
-      "url": "http://0.0.0.0:8585"
-    },
     "tls": {
       "cert_file": "",
       "key_file": "",
@@ -49,19 +46,6 @@
         "enabled": false,
         "endpoint": ""
       }
-    }
-  },
-  "zot_config": {
-    "distSpecVersion": "1.1.0",
-    "storage": {
-      "rootDirectory": "./zot"
-    },
-    "http": {
-      "address": "0.0.0.0",
-      "port": "8585"
-    },
-    "log": {
-      "level": "info"
     }
   }
 }
