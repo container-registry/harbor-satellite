@@ -144,7 +144,7 @@ The agent connects to the SPIRE server, attests itself, and becomes ready to iss
 
 Run the satellite binary with just two pieces of information:
 ```bash
-satellite --ground-control-url https://gc.example.com \
+satellite serve --ground-control-url https://gc.example.com \
           --spiffe-enabled \
           --spiffe-endpoint-socket unix:///run/spire/sockets/agent.sock
 ```
@@ -303,7 +303,7 @@ Supported runtimes:
 
 Configure mirroring with the `--mirrors` flag:
 ```bash
-satellite --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
+satellite configure --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
 ```
 
 ## Full End-to-End Flow

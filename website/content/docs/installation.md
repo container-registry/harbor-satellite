@@ -145,7 +145,7 @@ go build -o harbor-satellite ./cmd/satellite
 Run with token-based auth:
 
 ```bash
-./harbor-satellite \
+./harbor-satellite serve \
   --ground-control-url http://gc.example.com:8080 \
   --token "<your-satellite-token>"
 ```
@@ -153,7 +153,7 @@ Run with token-based auth:
 Run with SPIFFE auth:
 
 ```bash
-./harbor-satellite \
+./harbor-satellite serve \
   --ground-control-url https://gc.example.com:8080 \
   --spiffe-enabled \
   --spiffe-endpoint-socket unix:///run/spire/sockets/agent.sock
@@ -181,7 +181,7 @@ docker run -d \
   -e GROUND_CONTROL_URL=http://gc.example.com:8080 \
   -e TOKEN="<your-satellite-token>" \
   -p 8585:8585 \
-  registry.goharbor.io/harbor-satellite/satellite:latest
+  registry.goharbor.io/harbor-satellite/satellite:latest serve
 ```
 
 For SPIFFE auth, mount the SPIRE agent socket:
@@ -194,7 +194,7 @@ docker run -d \
   -e SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock \
   -v /run/spire/sockets:/run/spire/sockets:ro \
   -p 8585:8585 \
-  registry.goharbor.io/harbor-satellite/satellite:latest
+  registry.goharbor.io/harbor-satellite/satellite:latest serve
 ```
 
 ## Authentication Flows
@@ -284,19 +284,19 @@ The default OCI layout is not a registry endpoint. To configure a container runt
 
 ```bash
 # containerd: mirror docker.io and quay.io
-./harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+./harbor-satellite serve --byo-registry --registry-url registry.edge:5000 \
   --mirrors=containerd:docker.io,quay.io ...
 
 # Docker: mirror docker.io (only registry Docker supports mirroring)
-./harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+./harbor-satellite serve --byo-registry --registry-url registry.edge:5000 \
   --mirrors=docker:true ...
 
 # Podman
-./harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+./harbor-satellite serve --byo-registry --registry-url registry.edge:5000 \
   --mirrors=podman:docker.io ...
 
 # CRI-O
-./harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+./harbor-satellite serve --byo-registry --registry-url registry.edge:5000 \
   --mirrors=crio:docker.io,quay.io ...
 ```
 

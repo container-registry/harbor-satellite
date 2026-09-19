@@ -67,6 +67,10 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 	if s.cm == nil {
 		return fmt.Errorf("config manager not found")
 	}
+	if !s.cm.HasGroundControl() {
+		s.log.Debug().Msg("Ground Control is not configured, skipping credential refresh")
+		return nil
+	}
 
 	resp, err := s.sendRequest(ctx)
 	if err != nil {

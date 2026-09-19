@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -52,12 +52,11 @@ func TestValidateSatelliteOptions(t *testing.T) {
 		{name: "invalid mode", opts: SatelliteOptions{ProxyMode: "cache", ProxyPort: 8585}, wantErr: "must be"},
 		{name: "zero port", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy}, wantErr: "between 1 and 65535"},
 		{name: "port too large", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyPort: 65536}, wantErr: "between 1 and 65535"},
-		{name: "fallback only", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyPort: 8585, FallbackOnly: true}, wantErr: "cannot be combined"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateSatelliteOptions(tt.opts)
+			err := validateSatelliteOptions(&tt.opts)
 			if tt.wantErr == "" {
 				require.NoError(t, err)
 				return
@@ -86,7 +85,7 @@ func TestSourceRegistryOptionsUsesHarborOverride(t *testing.T) {
 	require.Equal(t, "harbor.example:8443", options.Endpoint)
 	require.Equal(t, "old-user", options.Username)
 	require.Equal(t, "old-password", options.Password)
-	require.True(t, options.PlainHTTP)
+	require.False(t, options.PlainHTTP)
 }
 
 func TestProxyStoresPrioritizesBYORegistry(t *testing.T) {

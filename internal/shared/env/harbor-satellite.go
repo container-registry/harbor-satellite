@@ -8,6 +8,10 @@ import (
 type HarborSatellite struct {
 	Token                  string     `env:"TOKEN"`
 	GroundControlURL       string     `env:"GROUND_CONTROL_URL"`
+	StateURL               string     `env:"STATE_URL"`
+	StateAuthURL           string     `env:"STATE_AUTH_URL"`
+	StateAuthUsername      string     `env:"STATE_AUTH_USERNAME"`
+	StateAuthPassword      string     `env:"STATE_AUTH_PASSWORD"`
 	SPIFFEEnabled          bool       `env:"SPIFFE_ENABLED"            envDefault:"false"`
 	SPIFFEEndpointSocket   string     `env:"SPIFFE_ENDPOINT_SOCKET"    envDefault:"unix:///run/spire/sockets/agent.sock"`
 	SPIFFEExpectedServerID string     `env:"SPIFFE_EXPECTED_SERVER_ID"`

@@ -49,9 +49,10 @@ func (s *Satellite) Run(ctx context.Context) error {
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, s.storeRoot, log)
 	fetchAndReplicateStateProcess.SetStores(s.localStore, s.remoteStore)
 	s.stateProcess = fetchAndReplicateStateProcess
+	hasGroundControl := s.cm.HasGroundControl()
 
 	// Create ZTR scheduler if not already done
-	if !s.cm.IsZTRDone() {
+	if !s.cm.IsZTRDone() && hasGroundControl {
 		var ztrScheduler *scheduler.Scheduler
 		var err error
 
@@ -83,6 +84,8 @@ func (s *Satellite) Run(ctx context.Context) error {
 		}
 		s.schedulers = append(s.schedulers, ztrScheduler)
 		ztrScheduler.Start(ctx)
+	} else if !s.cm.IsZTRDone() {
+		log.Warn().Msg("Ground Control is not configured; satellite registration is disabled")
 	}
 
 	// Create state replication scheduler
@@ -98,28 +101,30 @@ func (s *Satellite) Run(ctx context.Context) error {
 	s.schedulers = append(s.schedulers, stateScheduler)
 	stateScheduler.Start(ctx)
 
-	// Create status report scheduler with pending CRI results
-	statusReportProcess := state.NewStatusReportingProcess(s.cm, s.eventscheduler)
-	if len(s.criResults) > 0 {
-		statusReportProcess.SetPendingCRIResults(s.criResults)
-	}
-	statusScheduler, err := scheduler.NewSchedulerWithInterval(
-		s.cm.GetHeartbeatInterval(),
-		statusReportProcess,
-		log,
-	)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to create status report scheduler")
-		return err
-	}
-	s.schedulers = append(s.schedulers, statusScheduler)
-	statusScheduler.Start(ctx)
+	if hasGroundControl {
+		// Create status report scheduler with pending CRI results.
+		statusReportProcess := state.NewStatusReportingProcess(s.cm, s.eventscheduler)
+		if len(s.criResults) > 0 {
+			statusReportProcess.SetPendingCRIResults(s.criResults)
+		}
+		statusScheduler, err := scheduler.NewSchedulerWithInterval(
+			s.cm.GetHeartbeatInterval(),
+			statusReportProcess,
+			log,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to create status report scheduler")
+			return err
+		}
+		s.schedulers = append(s.schedulers, statusScheduler)
+		statusScheduler.Start(ctx)
 
-	// Registering events
-	log.Info().Msg("registering events")
-	err = s.registerEvents(context.Background(), s.cm)
-	if err != nil {
-		return err
+		log.Info().Msg("registering Ground Control events")
+		if err := s.registerEvents(ctx, s.cm); err != nil {
+			return err
+		}
+	} else {
+		log.Info().Msg("Ground Control is not configured; status reporting and remote events are disabled")
 	}
 
 	return nil

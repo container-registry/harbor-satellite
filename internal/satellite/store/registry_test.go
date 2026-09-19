@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,31 @@ import (
 	"github.com/stretchr/testify/require"
 	"oras.land/oras-go/v2/errdef"
 )
+
+func TestDynamicRegistryStoreResolvesOptionsAfterBootstrap(t *testing.T) {
+	options := RegistryOptions{}
+	calls := 0
+	dynamic, err := NewDynamicRegistryStore(func() (RegistryOptions, error) {
+		calls++
+		return options, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, calls)
+
+	options.Endpoint = "harbor.example.com"
+	repository, err := dynamic.repository(Artifact{Name: "team/app", Tag: "latest"})
+	require.NoError(t, err)
+	require.NotNil(t, repository)
+	require.Equal(t, 2, calls)
+}
+
+func TestDynamicRegistryStorePropagatesProviderError(t *testing.T) {
+	want := errors.New("credentials unavailable")
+	_, err := NewDynamicRegistryStore(func() (RegistryOptions, error) {
+		return RegistryOptions{}, want
+	})
+	require.ErrorIs(t, err, want)
+}
 
 func TestRegistryStorePullFetchAndReplicate(t *testing.T) {
 	source, manifestPayload, manifestDesc, _, _ := testArtifact(t, "team/app", "latest")

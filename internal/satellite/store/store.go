@@ -91,6 +91,19 @@ type RegistryOptions struct {
 	TLS        config.TLSConfig
 }
 
+// UsesPlainHTTP respects an explicit endpoint scheme. For legacy endpoints
+// without a scheme, useUnsecure retains the previous HTTP fallback behavior.
+func UsesPlainHTTP(endpoint string, useUnsecure bool) bool {
+	switch {
+	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(endpoint)), "http://"):
+		return true
+	case strings.HasPrefix(strings.ToLower(strings.TrimSpace(endpoint)), "https://"):
+		return false
+	default:
+		return useUnsecure
+	}
+}
+
 func (o RegistryOptions) validate() error {
 	if normalizeRegistry(o.Endpoint) == "" {
 		return errors.New("registry endpoint is required")

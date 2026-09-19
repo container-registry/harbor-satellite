@@ -20,14 +20,39 @@ import (
 	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
-// RegistryStore provides direct ORAS access to one OCI registry.
-type RegistryStore struct{ options RegistryOptions }
+// RegistryStore provides direct ORAS access to one OCI registry. A provider is
+// used so credentials obtained during bootstrap or hot reload take effect
+// without rebuilding the proxy and replication processes.
+type RegistryStore struct {
+	optionsProvider func() (RegistryOptions, error)
+}
 
 func NewRegistryStore(options RegistryOptions) (*RegistryStore, error) {
 	if err := options.validate(); err != nil {
 		return nil, err
 	}
-	return &RegistryStore{options: options}, nil
+	return &RegistryStore{optionsProvider: func() (RegistryOptions, error) {
+		return options, nil
+	}}, nil
+}
+
+// NewDynamicRegistryStore creates a registry store whose connection options
+// are resolved for every operation. An empty endpoint is allowed initially so
+// a Satellite using Ground Control bootstrap can start before ZTR completes.
+func NewDynamicRegistryStore(provider func() (RegistryOptions, error)) (*RegistryStore, error) {
+	if provider == nil {
+		return nil, errors.New("registry options provider is required")
+	}
+	options, err := provider()
+	if err != nil {
+		return nil, err
+	}
+	if normalizeRegistry(options.Endpoint) != "" {
+		if err := options.validate(); err != nil {
+			return nil, err
+		}
+	}
+	return &RegistryStore{optionsProvider: provider}, nil
 }
 
 func (r *RegistryStore) Pull(ctx context.Context, artifact Artifact, resource PullResource) (ocispec.Descriptor, error) {
@@ -116,7 +141,14 @@ func (r *RegistryStore) targetFor(artifact Artifact) (oras.Target, error) {
 }
 
 func (r *RegistryStore) repository(artifact Artifact) (*remote.Repository, error) {
-	return newRepository(r.options, artifact)
+	options, err := r.optionsProvider()
+	if err != nil {
+		return nil, err
+	}
+	if err := options.validate(); err != nil {
+		return nil, err
+	}
+	return newRepository(options, artifact)
 }
 
 type storeTarget interface {

@@ -663,7 +663,7 @@ rm satellite.tar.gz
 Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname:
 
 ```bash
-./harbor-satellite \
+./harbor-satellite serve \
     --ground-control-url https://<CLOUD_SERVER_IP>:9080 \
     --spiffe-enabled \
     --spiffe-endpoint-socket unix:///tmp/spire-agent/agent.sock

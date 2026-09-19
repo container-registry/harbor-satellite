@@ -86,7 +86,7 @@ docker run -d \
   --name satellite \
   -e REGISTRY_DATA_DIR=/data/oci \
   -v /var/lib/harbor-satellite:/data \
-  harbor-satellite:latest
+  harbor-satellite:latest serve
 
 # 2. Configure Ground Control
 curl -X POST http://localhost:8080/satellites/register \

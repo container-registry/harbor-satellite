@@ -1,11 +1,6 @@
 {
   "state_config": {
-    "auth": {
-      "url": "https://harbor.example.com",
-      "username": "robot$satellite",
-      "password": "replace-with-robot-account-token"
-    },
-    "state": "https://harbor.example.com/satellite/satellite-state/example-satellite/state:latest"
+    "auth": {}
   },
   "app_config": {
     "ground_control_url": "http://127.0.0.1:8080",
@@ -19,17 +14,20 @@
       "collect_memory": true,
       "collect_storage": true
     },
-    "tls": {
-      "cert_file": "",
-      "key_file": "",
-      "ca_file": "",
-      "skip_verify": false
-    },
-    "encrypt_config": false,
+    "local_registry": {},
+    "tls": {},
+    "spiffe": {},
     "registry_fallback": {
-      "enabled": false,
-      "registries": ["docker.io"],
-      "runtimes": []
+      "registries": [
+        "docker.io"
+      ]
+    },
+    "direct_delivery": {},
+    "audit": {
+      "syslog": {
+        "file": {}
+      },
+      "otel": {}
     }
   }
 }

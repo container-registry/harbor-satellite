@@ -1,9 +1,14 @@
 {
   "state_config": {
-    "auth": {}
+    "auth": {
+      "url": "https://harbor.example.com",
+      "username": "robot$satellite",
+      "password": "replace-with-robot-account-token"
+    },
+    "state": "https://harbor.example.com/satellite/satellite-state/example-satellite/state:latest"
   },
   "app_config": {
-    "ground_control_url": "http://gc:8080",
+    "ground_control_url": "",
     "log_level": "info",
     "use_unsecure": true,
     "state_replication_interval": "@every 00h00m10s",

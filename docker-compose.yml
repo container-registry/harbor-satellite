@@ -51,6 +51,7 @@ services:
       args:
         COMPONENT: satellite
     container_name: satellite
+    command: ["serve"]
     environment:
       - GROUND_CONTROL_URL=http://ground-control:8080
       - HARBOR_REGISTRY_URL=http://172.17.0.1:8080

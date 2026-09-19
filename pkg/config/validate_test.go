@@ -237,6 +237,35 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 	}
 }
 
+func TestValidateAndEnforceDefaultsAllowsMissingGroundControl(t *testing.T) {
+	result, _, err := ValidateAndEnforceDefaults(&Config{}, "")
+	require.NoError(t, err)
+	require.Empty(t, result.AppConfig.GroundControlURL)
+}
+
+func TestValidateStateConfig(t *testing.T) {
+	valid := StateConfig{
+		RegistryCredentials: RegistryCredentials{
+			URL:      "https://harbor.example.com",
+			Username: "robot$satellite",
+			Password: "secret",
+		},
+		StateURL: "https://harbor.example.com/satellite/state/example:latest",
+	}
+
+	require.NoError(t, ValidateStateConfig(valid))
+	require.False(t, IsStateConfigEmpty(valid))
+	require.True(t, IsStateConfigEmpty(StateConfig{}))
+
+	invalid := valid
+	invalid.RegistryCredentials.Password = ""
+	require.ErrorContains(t, ValidateStateConfig(invalid), "auth.password")
+
+	invalid = valid
+	invalid.RegistryCredentials.URL = "://bad"
+	require.ErrorContains(t, ValidateStateConfig(invalid), "invalid auth.url")
+}
+
 func TestValidateTLSConfig(t *testing.T) {
 	t.Run("valid TLS with cert and key files", func(t *testing.T) {
 		tmpDir := t.TempDir()

@@ -1,12 +1,18 @@
 package config
 
+import "strings"
+
 // Threadsafe getter functions to fetch config data.
 
 func (cm *ConfigManager) IsZTRDone() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
-	return cm.config.StateConfig.RegistryCredentials.Username != ""
+	state := cm.config.StateConfig
+	return strings.TrimSpace(state.StateURL) != "" &&
+		strings.TrimSpace(string(state.RegistryCredentials.URL)) != "" &&
+		strings.TrimSpace(state.RegistryCredentials.Username) != "" &&
+		strings.TrimSpace(state.RegistryCredentials.Password) != ""
 }
 
 func (cm *ConfigManager) GetLogLevel() string {
@@ -145,6 +151,10 @@ func (cm *ConfigManager) ResolveGroundControlURL() string {
 	}
 
 	return cm.DefaultGroundControlURL
+}
+
+func (cm *ConfigManager) HasGroundControl() bool {
+	return strings.TrimSpace(cm.ResolveGroundControlURL()) != ""
 }
 
 func (cm *ConfigManager) GetToken() string {

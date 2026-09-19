@@ -152,7 +152,7 @@ cat > config.json << EOF
 }
 EOF
 
-go run ./cmd/satellite --token "$TOKEN" --ground-control-url "http://127.0.0.1:$GC_PORT" --harbor-registry-url "http://127.0.0.1:8080" --registry-data-dir "$PROJECT_ROOT/oci-data" --json-logging=false > /tmp/sat.log 2>&1 &
+go run ./cmd/satellite serve --token "$TOKEN" --ground-control-url "http://127.0.0.1:$GC_PORT" --harbor-registry-url "http://127.0.0.1:8080" --registry-data-dir "$PROJECT_ROOT/oci-data" --json-logging=false > /tmp/sat.log 2>&1 &
 SAT_PID=$!
 
 log "Satellite started (PID: $SAT_PID)"

@@ -99,6 +99,13 @@ func TestInitConfigManager(t *testing.T) {
 	}
 }
 
+func TestInitConfigManagerAllowsMissingGroundControl(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	cm, _, err := InitConfigManager("", "", configPath, "", false, false)
+	require.NoError(t, err)
+	require.False(t, cm.HasGroundControl())
+}
+
 func TestConfigManager_WriteConfig(t *testing.T) {
 	cfg := &Config{
 		AppConfig: AppConfig{

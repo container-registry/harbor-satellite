@@ -33,8 +33,10 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		config.AppConfig.GroundControlURL = URL(defaultGroundControlURL)
 	}
 
-	if _, err := url.ParseRequestURI(string(config.AppConfig.GroundControlURL)); err != nil {
-		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url: %w", err)
+	if strings.TrimSpace(string(config.AppConfig.GroundControlURL)) != "" {
+		if _, err := url.ParseRequestURI(string(config.AppConfig.GroundControlURL)); err != nil {
+			return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url: %w", err)
+		}
 	}
 
 	warnings = append(warnings, validateAndEnforceLogLevel(config)...)
@@ -67,6 +69,43 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	warnings = append(warnings, validateAndEnforceAuditConfig(config)...)
 
 	return config, warnings, nil
+}
+
+// ValidateStateConfig verifies the Harbor credentials and state artifact used
+// when Satellite starts without Ground Control bootstrap.
+func ValidateStateConfig(state StateConfig) error {
+	missing := make([]string, 0, 4)
+	if strings.TrimSpace(state.StateURL) == "" {
+		missing = append(missing, "state")
+	}
+	if strings.TrimSpace(string(state.RegistryCredentials.URL)) == "" {
+		missing = append(missing, "auth.url")
+	}
+	if strings.TrimSpace(state.RegistryCredentials.Username) == "" {
+		missing = append(missing, "auth.username")
+	}
+	if strings.TrimSpace(state.RegistryCredentials.Password) == "" {
+		missing = append(missing, "auth.password")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required field(s): %s", strings.Join(missing, ", "))
+	}
+
+	if _, err := url.ParseRequestURI(string(state.RegistryCredentials.URL)); err != nil {
+		return fmt.Errorf("invalid auth.url: %w", err)
+	}
+	if _, err := url.ParseRequestURI(state.StateURL); err != nil {
+		return fmt.Errorf("invalid state URL: %w", err)
+	}
+	return nil
+}
+
+// IsStateConfigEmpty reports whether no standalone state input was supplied.
+func IsStateConfigEmpty(state StateConfig) bool {
+	return strings.TrimSpace(state.StateURL) == "" &&
+		strings.TrimSpace(string(state.RegistryCredentials.URL)) == "" &&
+		strings.TrimSpace(state.RegistryCredentials.Username) == "" &&
+		strings.TrimSpace(state.RegistryCredentials.Password) == ""
 }
 
 // validateAndEnforceAuditConfig fills in defaults for the audit syslog transport

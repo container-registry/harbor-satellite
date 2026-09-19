@@ -169,7 +169,7 @@ sudo k3s crictl rmi --prune
 Optional mirror wiring from Satellite runtime flags:
 
 ```bash
-go run ./cmd/satellite \
+go run ./cmd/satellite serve \
   --token "<token>" \
   --ground-control-url "https://<GROUND_CONTROL_HOST>:9080" \
   --mirrors=containerd:docker.io
