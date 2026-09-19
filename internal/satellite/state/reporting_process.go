@@ -72,6 +72,11 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 
 	log := logger.FromContext(ctx).With().Str("process", s.name).Logger()
 
+	if !s.cm.HasGroundControl() {
+		log.Debug().Msg("Ground Control is not configured, skipping status report")
+		return nil
+	}
+
 	stateURL := s.cm.GetStateURL()
 	if stateURL == "" {
 		log.Warn().Msg("State URL not available yet, skipping status report")

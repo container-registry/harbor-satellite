@@ -169,8 +169,10 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 	var cfg *Config
 	var err error
 
-	if _, err := url.ParseRequestURI(groundControlURL); err != nil {
-		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url env var: %w", err)
+	if strings.TrimSpace(groundControlURL) != "" {
+		if _, err := url.ParseRequestURI(groundControlURL); err != nil {
+			return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url env var: %w", err)
+		}
 	}
 
 	cfg, err = readAndReturnConfig(configPath)

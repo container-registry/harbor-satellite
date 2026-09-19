@@ -23,6 +23,7 @@ services:
       args:
         COMPONENT: satellite
     container_name: satellite
+    command: ["serve"]
     depends_on:
       registry:
         condition: service_healthy

@@ -417,7 +417,7 @@ tasks:
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e REGISTRY_DATA_DIR=/data/oci \
           -e JSON_LOGGING=true \
-          satellite:e2e
+          satellite:e2e serve
 
         echo "Waiting for satellite OCI store to initialize..."
         sleep 5
@@ -675,7 +675,7 @@ tasks:
           -e BYO_REGISTRY=true \
           -e REGISTRY_URL=http://byo-registry:5000 \
           -e USE_UNSECURE=true \
-          satellite:e2e
+          satellite:e2e serve
 
   verify-byo:
     desc: Verify image replication to BYO registry
@@ -785,7 +785,7 @@ tasks:
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/satellite-state \
-          satellite:e2e
+          satellite:e2e serve
 
   crash-and-restart-satellite:
     desc: Kill satellite and restart it to test crash recovery
@@ -804,7 +804,7 @@ tasks:
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/satellite-state \
-          satellite:e2e
+          satellite:e2e serve
 
         echo "Waiting for satellite to start..."
         sleep 15
@@ -920,7 +920,7 @@ tasks:
           -e REGISTRY_URL=http://byo-registry:5000 \
           -e USE_UNSECURE=true \
           -e CONFIG_DIR=/satellite-state \
-          satellite:e2e
+          satellite:e2e serve
 
   crash-and-restart-satellite-byo:
     desc: Kill BYO satellite and restart it to test crash recovery
@@ -942,7 +942,7 @@ tasks:
           -e REGISTRY_URL=http://byo-registry:5000 \
           -e USE_UNSECURE=true \
           -e CONFIG_DIR=/satellite-state \
-          satellite:e2e
+          satellite:e2e serve
 
         echo "Waiting for satellite to start..."
         sleep 15

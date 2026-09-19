@@ -108,7 +108,7 @@ Satellite can configure local container runtimes to use an external BYO registry
 Usage:
 
 ```bash
-satellite --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
+satellite configure --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
 ```
 
 Docker only supports mirroring docker.io. Use `--mirrors=docker:true` to enable.

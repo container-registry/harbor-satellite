@@ -129,6 +129,27 @@ graph TB
 | Certificate rotation | N/A | Automatic |
 | Best for | Dev, testing, small deployments | Production, fleet-scale deployments |
 
+### Satellite Commands
+
+Running `satellite` without arguments prints help. Use `satellite serve` for
+normal operation and `satellite configure` to apply container-runtime mirror
+configuration and exit.
+
+Ground Control is optional for `serve`. The normal standalone form is:
+
+```bash
+satellite serve --config-dir /etc/harbor-satellite
+```
+
+The directory must contain `config.json` with a complete `state_config.state`
+and `state_config.auth` block. As alternatives, provide all four
+`--state-url`, `--state-auth-url`, `--state-auth-username`, and
+`--state-auth-password` flags, or bootstrap through Ground Control with
+`--token` and `--ground-control-url` (SPIFFE bootstrap is also supported).
+Without Ground Control, registration, heartbeat/metrics reporting, and remote
+credential-refresh events are disabled; Harbor state replication and the OCI
+proxy continue to run.
+
 ### Further Reading
 
 - [Architecture overview](docs/architecture/README.md)
@@ -145,13 +166,13 @@ You can override the storage location using:
 
 **Command-line flag:**
 ```bash
-./bin --token "<your-token>" --ground-control-url "http://127.0.0.1:8080" --registry-data-dir "/custom/path"
+./bin serve --token "<your-token>" --ground-control-url "http://127.0.0.1:8080" --registry-data-dir "/custom/path"
 ```
 
 **Environment variable:**
 ```bash
 export REGISTRY_DATA_DIR="/custom/path"
-./bin --token "<your-token>" --ground-control-url "http://127.0.0.1:8080"
+./bin serve --token "<your-token>" --ground-control-url "http://127.0.0.1:8080"
 ```
 
 The flag takes precedence over the environment variable, which takes precedence over the default path.

@@ -23,7 +23,7 @@ task _build:ground-control
 task _build:groundcontrol-cli
 
 # Run satellite directly
-go run ./cmd/satellite --token "<token>" --ground-control-url "<url>"
+go run ./cmd/satellite serve --token "<token>" --ground-control-url "<url>"
 
 # Run ground-control directly
 go run ./cmd/groundcontrol/server
@@ -57,10 +57,10 @@ Uses strict golangci-lint with 50+ linters (see golangci.yaml). Key rules: no gl
 docker compose up -d
 
 # Satellite with Go
-go run ./cmd/satellite --token "<token>" --ground-control-url "http://127.0.0.1:8080"
+go run ./cmd/satellite serve --token "<token>" --ground-control-url "http://127.0.0.1:8080"
 
 # Satellite with mirror config
-go run ./cmd/satellite --token "<token>" --ground-control-url "<url>" --mirrors=containerd:docker.io,quay.io
+go run ./cmd/satellite serve --token "<token>" --ground-control-url "<url>" --mirrors=containerd:docker.io,quay.io
 
 # Ground Control with Docker Compose
 docker compose up postgres ground-control
@@ -79,7 +79,8 @@ When making changes, keep binary entrypoints in `cmd/` and implementation packag
 
 ### Satellite Component Structure
 
-- cmd/satellite/main.go: Entry point, handles CLI flags (token, ground-control-url, mirrors, json-logging)
+- cmd/satellite/main.go: Thin Satellite process entry point
+- internal/satellite/cli/: Cobra commands, flags, configuration, and startup wiring
 - pkg/config/: Configuration management, validation, hot-reloading
 - internal/satellite/: Core orchestration logic
 - internal/satellite/state/: State management (replication, fetching, artifact handling, registration)
@@ -189,7 +190,7 @@ ADRs in docs/decisions/:
 1. Implement in appropriate internal/ package
 2. Update pkg/config/ if configuration changes needed
 3. Add validation in pkg/config/validate.go
-4. Update cmd/satellite/main.go if new CLI flags are needed
+4. Update internal/satellite/cli/ if new CLI flags are needed
 5. Update config.example.json
 
 ### Modifying state replication logic
