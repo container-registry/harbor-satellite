@@ -19,6 +19,10 @@ layout as OCI Distribution on `PROXY_PORT`:
   pull-through, forwarding, or CRI miss-fill.
 * **proxy** — a local miss may fill from upstream (out of scope for peer copy).
 
+For this decision, a replica miss returns OCI not-found and never contacts an
+upstream. This narrows ADR-0009's replica-mode row and depends on [#669](https://github.com/container-registry/harbor-satellite/pull/669);
+proxy mode remains the only mode that may fill a miss.
+
 `oras-go` copies descriptor graphs between `Target` implementations. The
 networked Target is `registry/remote.Repository` (OCI Distribution HTTP). A
 default Satellite's `content/oci` store is a directory; `oras.Copy` cannot open
@@ -41,9 +45,9 @@ satisfy air-gap by itself: the process never reaches transfer. Peer copy
 therefore needs a **degraded list path** (persisted last-known state or an
 operator-supplied state file), not a second listen server.
 
-This decision does not replace [ADR-0009](0009-transparent-oci-registry-proxy.md).
-Proxy vs replica **modes**, Spegel in-cluster distribution, and full headless
-mode ([#227](https://github.com/container-registry/harbor-satellite/issues/227))
+This decision supersedes only ADR-0009's replica-miss behavior. Its other
+decisions, Spegel in-cluster distribution, and full headless mode
+([#227](https://github.com/container-registry/harbor-satellite/issues/227))
 remain separate. Peer copy **consumes replica mode**; it does not reimplement
 it.
 
@@ -61,20 +65,26 @@ it.
   canonical desired-state references.
 * The feature is opt-in and off by default. Existing replication is unchanged
   when it is disabled.
-* Peer membership starts as an operator allow-list. Groups already on the
-  Satellite are the default reachability boundary (colocated, lower latency).
-  `REACHOUT_SATS=global` is the explicit override. Cross-group traffic without
-  that override must not happen.
+* Peer membership starts as an operator allow-list. Each static peer descriptor
+  carries a stable identity, URL, and operator-declared Ground Control group
+  IDs; the Satellite does not infer membership from a URL or peer self-report.
+  A peer is eligible by default only when its groups intersect the Satellite's
+  locally configured and persisted group IDs. Unknown or non-matching
+  membership fails closed. `REACHOUT_SATS=global` is the explicit override.
 * Config must accept a Ground Control-sourced peer list later without a
-  breaking change. Static URLs and GC URLs coexist. This term does not require
-  shipping GC peer HTTP APIs or latency ranking.
-* Ground Control owns peer health when it is present. Satellites must not
-  locally blacklist a peer as dead. An unreachable peer that GC still lists
-  is retried once, logged, and failed predictably — not silently skipped.
+  breaking change. Static and GC descriptors coexist. This term does not
+  require shipping GC peer HTTP APIs or latency ranking.
+* Ground Control owns health for GC-sourced peers. Static peers remain an
+  operator-controlled floor. Satellites must not locally blacklist a peer as
+  dead. An unreachable eligible peer is retried once, logged, and failed
+  predictably — not silently skipped.
 * Concurrent peer work is cancelled only when some peer has returned the
   **complete** artifact (digest-verified graph), not when the first digest
   `Resolve` succeeds.
 * A failed or unreachable peer must not publish a partial artifact.
+* A complete peer graph must pass ADR-0009 content-aware policy admission, or
+  remain untagged in quarantine, before Satellite publishes a canonical
+  desired-state reference.
 * Listen path is the existing replica proxy. Peer copy must not bind a second
   `/v2/` server.
 
@@ -86,6 +96,7 @@ it.
 * Defer peer copy until the transparent proxy ([#234](https://github.com/container-registry/harbor-satellite/issues/234))
 * Custom non-OCI transfer protocol
 * Group-scoped peers vs always-global vs GC latency ranking
+* Operator/GC group metadata vs URL inference or peer self-report
 * Static allow-list only vs GC-only roster vs union of both
 * Cancel siblings on first digest `Resolve` vs on first complete artifact
 * Satellite-local dead-peer skip vs GC-owned health
@@ -108,36 +119,53 @@ Satellite will add opt-in peer distribution **on top of replica mode**:
   mode. Implementing replica/proxy itself is the proxy-integration work, not
   this decision.
 * A **source resolver** in front of `store.Store`. The effective peer set is
-  the union of static `peer_distribution` URLs and, when present, a
-  GC-sourced roster, then **group-filtered** unless `REACHOUT_SATS=global`.
+  the union of static `peer_distribution` descriptors and, when present, a
+  GC-sourced roster using the same descriptor schema, deduplicated by stable
+  peer identity (canonical URL as fallback), then **group-filtered** unless
+  `REACHOUT_SATS=global`. Static group membership is operator-declared; future
+  GC membership is supplied through authenticated GC configuration and is
+  authoritative when the two sources conflict. Deduplication retains static
+  provenance: GC omission or health does not remove a static descriptor. No
+  group claim is read from the peer endpoint.
   For each missing desired artifact, Satellite starts concurrent pulls toward
   that set. The **winner is the first peer that returns the complete,
   digest-verified graph**, not the first successful digest `Resolve`. At that
   instant every other in-flight peer request is cancelled.
+* **Policy admission before publication.** The complete peer graph is
+  digest-verified and evaluated using ADR-0009's bounded content evidence
+  before publication. An implementation may evaluate before copying into the
+  durable store, or copy into untagged quarantine and promote only after
+  approval. Rejection is terminal for that graph: quarantine or delete it,
+  fail the artifact, and do not fall back to Harbor to publish the same graph.
+  This admission boundary does not add policy-enforcing pull-through or CRI
+  miss-fill; both remain out of scope.
 * **Canonical destination references** (fully qualified desired-state names,
-  as `OCIStore` already stores them). The peer is transport. The local tag is
-  never the peer hostname.
+  as `OCIStore` already stores them) are tagged only after policy approval.
+  The peer is transport. The local tag is never the peer hostname.
 * **Harbor `Replicate`** only when no peer delivered a complete artifact
   **and** Harbor is reachable. An air-gapped miss fails predictably and does
   not tag. Harbor fallback is not the #542 acceptance test.
-* **Health.** Satellites do not mark peers dead. When Ground Control is
-  present it only surfaces healthy peers. If a listed peer is unreachable:
-  retry that attempt **once**, log, fail that attempt. Do not silently skip
-  it off the roster. Other concurrent peers may still win. If none complete
-  and Harbor is down, fail and do not tag.
+* **Health.** Satellites do not mark peers dead. Ground Control surfaces
+  healthy GC peers and may influence ordering, but omission or an unhealthy
+  verdict does not remove an operator-configured static peer. If an eligible
+  peer is unreachable: retry that attempt **once**, log, fail that attempt.
+  Do not locally blacklist it. Other concurrent peers may still win. If none
+  complete and Harbor is down, fail and do not tag.
 * A **degraded replication path** when Harbor state fetch fails: if the
   feature is on and persisted last-known state exists, continue from that
   list. A new Satellite with an empty disk uses an operator-supplied state
   file. This is not `--headless`, does not skip ZTR or heartbeat as a product
   mode, and does not close [#227](https://github.com/container-registry/harbor-satellite/issues/227).
-  Air-gap still uses the static (and last-known) peer URLs; it does not wait
+  Air-gap still uses static and last-known peer descriptors; it does not wait
   on GC health APIs.
-* **Local** `peer_distribution` config (enablement, static peer URLs,
-  `REACHOUT_SATS`, timeouts, retries, probe concurrency, optional per-peer
-  credentials and TLS, and a field for a GC-sourced list that may be empty).
-  Remote config reconcile preserves it the same way `StateConfig` is
-  preserved. GC peer HTTP APIs can fill that field later without renaming
-  static URLs.
+* **Local** `peer_distribution` config (enablement, persisted `local_groups`,
+  static peer descriptors with identity, URL, group IDs, optional credentials
+  and TLS, `REACHOUT_SATS`, timeouts, retries, probe concurrency, and a field
+  for a GC-sourced list that may be empty). Initially the operator supplies
+  `local_groups` and static membership. Future authenticated GC configuration
+  may refresh both without changing the schema. Remote config reconcile must
+  not drop the last authenticated or operator-supplied values, so the filter
+  remains enforceable while air-gapped.
 
 ORAS remains the content and copy layer. The proxy owns listen address and
 replica vs proxy mode. Peer copy owns the union roster, group filter,
@@ -148,16 +176,17 @@ degraded `CanExecute` path.
 
 | Topic | Choice |
 |---|---|
-| Peer reachability | ADR-0009 **replica** mode on `PROXY_PORT` (not a separate facade) |
+| Peer reachability | **Replica** mode on `PROXY_PORT`; local miss returns not-found without upstream contact (narrowing ADR-0009 via #669), not a separate facade |
 | Copy trigger | Desired-state replication timer, not CRI miss-fill |
 | Air-gap list | Persisted last-known state; operator state file for a new Satellite |
 | Local name | Canonical Harbor-style desired-state reference |
-| Trust | Static URLs plus optional GC roster; optional credential and TLS; anonymous HTTP only when `use_unsecure` is already set |
-| Peer selection | Same Ground Control **group** by default (config groups already exist). `REACHOUT_SATS=global` is the only cross-group override |
-| Peer roster | Union of static allow-list and GC-sourced URLs. Empty GC list is valid. No breaking rename when GC APIs land |
-| Peer health | GC owns health when present. Satellite does not blacklist. Unreachable listed peer: retry once, log, fail that attempt — not a silent skip |
+| Trust | Group claims come only from operator config or authenticated GC data. For peer requests, `use_unsecure` permits credential-free HTTP only; credentials require HTTPS with certificate verification enabled |
+| Peer selection | A peer is eligible by default only when `local_groups` intersects its group IDs. Missing or non-matching membership fails closed. `REACHOUT_SATS=global` explicitly admits listed cross-group and unknown-group peers |
+| Peer roster | Union of static and GC-sourced descriptors (`id`, URL, group IDs, auth/TLS). Deduplicate by stable ID, then canonical URL; GC omission does not remove the static floor. Empty GC list is valid |
+| Peer health | GC health selects/orders GC-sourced peers but never removes the static floor. Satellite does not blacklist; unreachable eligible peer: retry once, log, fail that attempt |
 | Winner / cancel | First **complete** digest-verified artifact wins; then cancel all other in-flight peer requests. Digest `Resolve` alone does not win or cancel |
-| Config | Local `peer_distribution` (static URLs, `REACHOUT_SATS`, optional `gc_peers`); preserve on remote reconcile |
+| Policy admission | Apply ADR-0009 content-aware admission before tagging. Pre-admit or use untagged quarantine; rejected graphs are quarantined/deleted and never receive the canonical reference |
+| Config | Local `peer_distribution` (`local_groups`, static peer descriptors, `REACHOUT_SATS`, optional `gc_peers`); preserve group metadata on remote reconcile and across air-gap |
 | Observability | Zerolog first; Ground Control metrics optional |
 | Spegel | Concurrent first-complete-artifact only; no Spegel runtime, DHT, or libp2p |
 | #227 / #234 | Out of scope except the degraded list path above |
@@ -167,16 +196,18 @@ degraded `CanExecute` path.
 
 This decision covers:
 
-* opt-in peer distribution configuration (enablement, static peer URLs,
-  `REACHOUT_SATS`, optional GC-sourced list field, timeouts, retries, probe
-  concurrency, optional per-peer credentials and TLS);
+* opt-in peer distribution configuration (enablement, persisted local group
+  IDs, static peer descriptors, `REACHOUT_SATS`, optional GC-sourced list
+  field, timeouts, retries, probe concurrency, optional per-peer credentials
+  and TLS);
 * using replica mode as the peer Distribution endpoint (no second listen
   process);
 * group-scoped filtering of the union roster, with `REACHOUT_SATS=global`
   as the override;
 * concurrent peer pulls whose siblings cancel only when a complete
   digest-verified artifact has arrived;
-* digest-verified graph copy into `OCIStore` or `RegistryStore`;
+* digest-verified graph copy into `OCIStore` or `RegistryStore`, with
+  ADR-0009 policy admission or untagged quarantine before canonical tagging;
 * one retry, structured log, and predictable failure for an unreachable
   listed peer (no local dead-peer roster);
 * Harbor `Replicate` when no peer delivered a complete artifact and Harbor
@@ -220,21 +251,24 @@ flowchart TB
 
     artifacts --> missing{Absent locally?}
     missing -->|no| skip[Skip]
-    missing -->|yes| roster[Union static plus GC URLs]
+    missing -->|yes| roster[Union and deduplicate peer descriptors]
     roster --> scope{REACHOUT_SATS}
-    scope -->|unset / group| group[Peers in same group]
-    scope -->|global| all[All listed peers]
+    scope -->|unset / group| group["Group IDs intersect; unknown fails closed"]
+    scope -->|global| all[All listed peers, including unknown group]
     group --> probe["Concurrent peer pulls (unreachable: retry once, log)"]
     all --> probe
 
     probe --> hit{First complete artifact}
     hit -->|yes| cancel[Cancel in-flight peers]
-    cancel --> copyPeer["Verify digests, tag canonical ref"]
+    cancel --> copyPeer["Verify complete graph in staging / quarantine"]
+    copyPeer --> admit{ADR-0009 policy admission}
+    admit -->|allow| publish[Tag canonical ref]
+    admit -->|deny| reject["Quarantine / delete; fail; do not tag"]
     hit -->|none complete| online{Harbor reachable?}
     online -->|yes| harbor[Existing Harbor Replicate]
     online -->|no| fail[Fail, do not tag]
 
-    copyPeer --> store[OCIStore or RegistryStore]
+    publish --> store[OCIStore or RegistryStore]
     harbor --> store
 ```
 
@@ -260,7 +294,14 @@ sequenceDiagram
     end
 
     alt Some peer returned the complete artifact
-        B->>DiskB: Tag canonical desired-state ref
+        B->>DiskB: Stage without canonical tag
+        B->>B: ADR-0009 content-aware policy admission
+        alt Policy approved
+            B->>DiskB: Tag canonical desired-state ref
+        else Policy rejected
+            B->>DiskB: Quarantine or delete graph; do not tag
+            B->>B: Fail artifact; no Harbor bypass
+        end
     else No complete peer artifact and Harbor reachable
         B->>Harbor: Existing Replicate
         Harbor-->>B: Descriptor graph
@@ -287,28 +328,79 @@ Writes into one `OCIStore` stay serialized under the existing mutex. Probe
 concurrency is bounded separately. A failed copy does not publish a tag.
 Siblings are cancelled only after a complete graph is in hand, so a fast
 `Resolve` cannot abort a slower peer that would have delivered the bytes.
+Completion wins the peer race; it does not imply policy approval. ADR-0009
+requires either resolving the bounded evidence needed by policy before a
+publishing copy, or copying into untagged quarantine until admission succeeds.
+Only an approved graph receives the canonical desired-state reference.
 
 ### Trust and configuration
 
 The effective roster is the **union** of:
 
-* operator static URLs in `peer_distribution`;
+* operator-supplied static peer descriptors in `peer_distribution`;
 * an optional GC-sourced list (`gc_peers` or equivalent), empty until those
   APIs exist.
 
-Each URL may carry optional username and password or token, plus TLS.
-Anonymous HTTP is allowed only when the Satellite already runs with
-`use_unsecure`. SPIFFE between Satellites is out of this decision.
+Both sources use the same descriptor: stable peer identity, Distribution URL,
+Ground Control group IDs, and optional credentials and TLS. Entries are
+deduplicated by stable identity and then canonical URL. When the sources
+conflict, authenticated GC group membership is authoritative, but
+deduplication retains static provenance. GC omission or health may select or
+order GC-sourced peers but does not remove an operator-configured static
+descriptor. Local trust settings are not silently weakened. Anonymous HTTP is
+allowed only when the Satellite already runs with `use_unsecure`.
+Credential-bearing peer requests require HTTPS with certificate validation
+enabled (`skip_verify=false`); invalid combinations fail config validation
+before probing. SPIFFE between Satellites is out of this decision.
 
-By default only peers in the **same group** (already on the Satellite config)
-are probed. Groups are assumed colocated. `REACHOUT_SATS=global` is the only
-way to probe listed peers outside the group. Cross-group copies without that
-override are out of spec.
+The configuration shape is:
 
-When Ground Control is present it decides which peers are healthy and may
-populate the GC list. The Satellite does not keep a local dead-peer set.
-`peer_distribution` lives in local Satellite config. Remote config reconcile
-must not drop static URLs, `REACHOUT_SATS`, or the GC list field.
+```json
+{
+  "peer_distribution": {
+    "local_groups": ["edge-site-a"],
+    "static_peers": [
+      {
+        "id": "satellite-a",
+        "url": "https://satellite-a.example:5000",
+        "groups": ["edge-site-a"]
+      }
+    ],
+    "gc_peers": [],
+    "reachout_sats": "group"
+  }
+}
+```
+
+`id` is the stable deduplication and audit identity. The URL-to-identity and
+group binding is trusted because it came from local operator configuration or
+authenticated GC configuration; it is never learned by calling the peer.
+Configured TLS and credentials authenticate the endpoint when enabled.
+
+`local_groups` is persisted in local `peer_distribution` config. Initially it
+is operator-supplied; future authenticated GC configuration may refresh it.
+Static peer group IDs are operator-declared. Future GC peer descriptors carry
+GC-declared IDs. The Satellite neither infers groups from URLs nor accepts a
+peer's self-reported group claim.
+
+With `REACHOUT_SATS` unset or set to `group`, a peer is eligible only when
+`local_groups` and the peer's group IDs have a non-empty intersection. Missing
+local groups, missing peer groups, and non-matching groups fail closed: the
+peer is not probed. `REACHOUT_SATS=global` explicitly admits listed cross-group
+and unknown-group peers; it does not bypass the allow-list, authentication,
+TLS, health, or digest verification.
+
+Groups are a desired-content membership boundary and may encode colocation by
+operator convention; they are not measured latency. This follows Spegel's
+useful boundary principle—scope discovery before content lookup—without
+adopting its Kubernetes node selectors, separate peer networks, DHT, or
+libp2p.
+
+Ground Control owns health for GC-sourced peers and may populate or order the
+GC list. The Satellite does not keep a local dead-peer set. Remote config
+reconcile must not drop `local_groups`, static descriptors, `REACHOUT_SATS`,
+or the GC list field; the last authenticated or operator-supplied group
+metadata remains usable while air-gapped.
 
 ## Pros and Cons of the Options
 
@@ -369,41 +461,50 @@ A Satellite-specific RPC or stream as an `oras.Target`.
 
 ### Group-scoped peers vs always-global vs GC latency ranking
 
-Default probe set is peers in the same Ground Control group. Groups already
-exist on Satellite config. `REACHOUT_SATS=global` probes the full union
-roster. GC latency ranking is not this term.
+Default probe set is peers whose declared Ground Control group IDs intersect
+persisted `local_groups`. Static metadata is operator-supplied, so this works
+without a GC peer API. Future authenticated GC configuration uses the same
+schema. Unknown membership fails closed. `REACHOUT_SATS=global` probes the
+full listed roster. GC latency ranking is not this term.
 
-* Good, because colocated Satellites are the common air-gap case and groups
-  already encode that boundary without a new GC API.
+* Good, because selection is enforceable offline and does not infer identity
+  from a URL or trust peer self-report.
 * Good, because `REACHOUT_SATS=global` is an explicit, operator-visible
   override rather than silent cross-site traffic.
-* Neutral, because group membership is an approximation of latency, not a
-  measurement.
+* Neutral, because group membership is a desired-content boundary and only an
+  operator-defined approximation of topology, not a latency measurement.
 * Bad, because a mis-grouped Satellite will not see LAN peers until the
   operator sets `REACHOUT_SATS=global` or fixes the group.
+* Bad, because operators must keep static peer group metadata and
+  `local_groups` correct until authenticated GC configuration owns them.
 * Bad, because RTT-ranked selection would need Ground Control measurements
   this term does not ship.
 
 Always-global probing of the allow-list is rejected as the default: it
-ignores the colocated assumption and can pull across WAN links the operator
-did not intend. GC RTT ranking is deferred until peer APIs exist.
+can pull across WAN links the operator did not intend. URL inference and peer
+self-report are rejected because neither establishes trusted group membership.
+GC RTT ranking is deferred until peer APIs exist.
 
 ### Static allow-list only vs GC-only roster vs union of both
 
-The effective roster is the **union** of static `peer_distribution` URLs and
-an optional GC-sourced list (`gc_peers` or equivalent). The GC field may be
-empty. Static URLs are not renamed when GC APIs land.
+The effective roster is the **union** of static `peer_distribution`
+descriptors and an optional GC-sourced list (`gc_peers` or equivalent) using
+the same schema. The GC field may be empty. Static descriptors are not renamed
+when GC APIs land.
 
 * Good, because air-gap and first bring-up still work with only the static
   list (no GC round-trip).
 * Good, because Ground Control can later inject near or healthy peers
   without a config schema break.
-* Good, because operators can keep a floor of known URLs even when GC is
-  wrong or unreachable.
-* Neutral, because duplicate URLs in both lists are the same peer and must
-  be deduplicated before probe.
-* Bad, because two sources can disagree; group filter and GC health still
-  apply to the union, they do not pick a winner between lists.
+* Good, because operators can keep a floor of known descriptors even when GC
+  is wrong or unreachable.
+* Neutral, because duplicate identities or URLs must be deduplicated before
+  probe.
+* Neutral, because deduplication retains source provenance: GC omission or
+  health does not remove an operator-configured static entry.
+* Bad, because a static override may still be probed when GC considers the
+  same peer unhealthy; that is explicit operator policy, not Satellite health
+  inference.
 * Bad, because a GC-only roster would fail the #542 air-gap case until
   those APIs exist.
 
@@ -433,12 +534,12 @@ race exists for.
 
 ### Satellite-local dead-peer skip vs GC-owned health
 
-Ground Control owns peer health when it is present. It only surfaces
-healthy peers on the GC list. The Satellite does not maintain a local
-dead-peer set. If a listed peer is unreachable: **retry once, log, fail
+Ground Control owns health for GC-sourced peers and surfaces healthy peers on
+that list. GC omission or an unhealthy verdict does not suppress an
+operator-configured static peer. The Satellite does not maintain a local
+dead-peer set. If an eligible peer is unreachable: **retry once, log, fail
 that attempt**. Do not silently drop it from the roster. Other concurrent
-peers may still win. If none complete and Harbor is down, fail and do not
-tag.
+peers may still win. If none complete and Harbor is down, fail and do not tag.
 
 * Good, because health is one picture (GC) rather than N independent
   Satellite blacklists that diverge after a flap.
@@ -465,28 +566,33 @@ probes that persist across ticks are rejected.
 * Good: Existing Harbor replication remains the online fallback and is
   unchanged when the feature is off.
 * Good: Canonical refs keep later Harbor sync from duplicating peer copies.
-* Good: Same-group default keeps LAN copies inside the colocated boundary
-  operators already manage; `REACHOUT_SATS=global` is the documented
-  exception.
+* Good: Explicit group metadata makes the same-group default enforceable
+  offline. Unknown and non-matching membership fails closed;
+  `REACHOUT_SATS=global` is the documented exception.
 * Good: Union roster plus an empty-valid `gc_peers` field lets GC peer APIs
-  land later without renaming static URLs or breaking air-gap config.
+  land later without renaming static descriptors or breaking air-gap config.
 * Good: Cancelling only on a complete artifact avoids aborting a slower peer
   that would have delivered the graph.
+* Good: Peer transport cannot bypass ADR-0009 policy; canonical references
+  expose only admitted graphs.
 * Good: Unreachable listed peers are retried once and logged; operators and
   GC see the failure instead of a silent skip.
 * Neutral: Air-gap for a brand-new Satellite still needs an operator-supplied
   list; this is documented rather than a headless product flag.
 * Neutral: Without GC, the static list is the whole roster and is treated as
   healthy; GC health ownership applies when GC is present.
-* Bad: Operators must place peer URLs and, where required, credentials in
-  local config and keep that block (including `REACHOUT_SATS` and `gc_peers`)
-  across Ground Control config pushes.
+* Bad: Until authenticated GC configuration supplies membership, operators
+  must maintain `local_groups` and each static peer's identity, URL, group IDs,
+  and credentials. Incorrect metadata can exclude a valid peer.
 * Bad: `OCIStore` remains a single-writer store; peer probes scale, local
   graph commits do not.
+* Bad: Policies that need complete-graph evidence require either a bounded
+  pre-admission fetch or temporary untagged quarantine storage.
 * Bad: A peer that is down but still listed is probed (and retried once)
   every tick until GC or the operator removes it.
-* Bad: Group membership is a latency heuristic, not a measurement; wrong
-  groups need `REACHOUT_SATS=global` or a group fix.
+* Bad: Group membership is a content boundary, not measured topology; using it
+  as a locality hint depends on operator placement. Wrong or missing metadata
+  needs `REACHOUT_SATS=global` or a group fix.
 
 ## Validation
 
@@ -495,20 +601,42 @@ probes that persist across ticks are rejected.
 * `oras.Copy` from a replica-mode `/v2/` over a temporary OCI layout succeeds
   and verifies digests.
 * Failed or cancelled copy does not tag the destination reference.
+* Approved peer graph: digest and size verification completes, ADR-0009
+  content-aware policy allows it, and only then the canonical desired-state
+  reference is tagged.
+* Rejected peer graph: policy denial leaves no canonical reference; staged
+  content is quarantined or deleted, the artifact fails predictably, and
+  Harbor fallback does not publish the same rejected graph.
 * Canonical destination refs match later Harbor reconcile names.
-* Remote config reconcile preserves `peer_distribution`, including static
-  URLs, `REACHOUT_SATS`, and the GC list field.
+* Remote config reconcile preserves `peer_distribution`, including
+  `local_groups`, static peer descriptors, `REACHOUT_SATS`, and the GC list
+  field. The last authenticated or operator-supplied group metadata survives
+  an air-gap.
 * Degraded path: Harbor fetch failure with persisted state and peers enabled
   still copies.
 * `CanExecute` no longer no-ops solely for missing Harbor credentials when
   that degraded path applies.
 * Feature disabled: no peer probe; replication identical to current behavior.
   Replica listen remains the proxy's concern (CRI may still use `PROXY_PORT`).
-* Group filter: with `REACHOUT_SATS` unset, a listed peer in another group is
-  not probed. With `REACHOUT_SATS=global`, it is.
-* Union roster: static URLs and a populated `gc_peers` list are both probed
-  (after group filter). An empty GC list is equivalent to static-only and is
-  not an error.
+* Peer transport: anonymous HTTP requires `use_unsecure`; HTTP with credentials
+  and HTTPS with credentials plus `skip_verify=true` are rejected; verified
+  HTTPS with credentials is accepted.
+* Group filter: with `REACHOUT_SATS` unset or `group`, only peers whose group
+  IDs intersect `local_groups` are probed. Missing local groups, missing peer
+  groups, and non-matching groups are not probed.
+* Global override: `REACHOUT_SATS=global` admits listed cross-group and
+  unknown-group peers but does not bypass allow-list, authentication, TLS,
+  health, or digest verification.
+* Membership source: static group IDs are operator-declared; authenticated GC
+  values are authoritative when static and GC descriptors disagree. Group
+  claims returned by a peer endpoint are ignored.
+* Union roster: static descriptors and a populated `gc_peers` list are both
+  considered after deduplication by stable identity and canonical URL while
+  retaining static provenance. An empty GC list is equivalent to static-only
+  and is not an error.
+* GC health: omission or an unhealthy verdict can exclude a GC-only entry but
+  not a matching static entry. GC metadata may order eligible peers. Group
+  filtering still applies to the combined roster afterward.
 * Winner / cancel: a peer that only succeeds at digest `Resolve` does not
   cancel siblings and does not count as a hit. The first complete
   digest-verified graph cancels remaining in-flight pulls. Cancelled copies
@@ -516,9 +644,10 @@ probes that persist across ticks are rejected.
 * Unreachable listed peer: retry once, emit a structured log, fail that
   attempt. The peer remains on the roster (no local blacklist). If no other
   peer completes and Harbor is down, the artifact is not tagged.
-* Integration: Satellite A holds an artifact, Satellite B is configured with
-  A as a same-group peer, Harbor and Ground Control are unreachable, B
-  obtains the graph, digests match.
+* Integration: Satellite A holds an artifact, Satellite B has a persisted
+  local group matching A's operator-declared group, Harbor and Ground Control
+  are unreachable, B obtains the graph, digests match. Removing either side's
+  group metadata prevents the default probe.
 * Logs include probe result, transfer outcome, bytes, duration, unreachable
   retry, cancel-on-complete, group-filter skip, and fallback reason.
 
@@ -527,21 +656,22 @@ probes that persist across ticks are rejected.
 This record was locked in the 7 Sep 2026 design review for LFX Term 3
 ([#542](https://github.com/container-registry/harbor-satellite/issues/542)).
 Revised 21 Sep 2026: the read-only serve path is ADR-0009 replica mode after
-proxy integration, not a separate facade. The same revision locks
-group-scoped selection (`REACHOUT_SATS=global` override), a union roster
-that can accept GC-sourced URLs without a breaking change, cancellation
-only on a complete artifact, and GC-owned peer health (retry once, log,
-fail — no silent skip). Shipping Ground Control peer HTTP APIs, dashboards,
-or RTT ranking remains follow-on work; this record only scaffolds the
-Satellite config and behavior those APIs will fill.
+proxy integration, not a separate facade. The same revision locks explicit
+group metadata with fail-closed same-group selection
+(`REACHOUT_SATS=global` override), a union descriptor roster that can accept
+GC-sourced peers without a breaking change, cancellation only on a complete
+artifact, and GC-owned peer health (retry once, log, fail — no silent skip).
+Shipping Ground Control peer HTTP APIs, dashboards, or RTT ranking remains
+follow-on work; this record only scaffolds the Satellite config and behavior
+those APIs will fill.
 
 Implementation follows as separate PRs **on the proxy-integration line**
 ([#669](https://github.com/container-registry/harbor-satellite/pull/669)):
-configuration (static URLs, `REACHOUT_SATS`, empty-valid `gc_peers`), probe
-and copy (`PeerStore`) with first-complete-artifact cancel and one retry on
-unreachable listed peers, degraded state path, then tests and operator
-documentation. A PoC branch that bound a second listen address is evidence
-only and is not merged.
+configuration (`local_groups`, static peer descriptors, `REACHOUT_SATS`,
+empty-valid `gc_peers`), probe and copy (`PeerStore`) with
+first-complete-artifact cancel and one retry on unreachable listed peers,
+degraded state path, then tests and operator documentation. A PoC branch that
+bound a second listen address is evidence only and is not merged.
 
 This record should not grow into Spegel, #227, or #234.
 
@@ -560,3 +690,5 @@ This record should not grow into Spegel, #227, or #234.
 * [ORAS copy implementation](https://github.com/oras-project/oras-go/blob/v2.6.2/copy.go)
 * [ORAS OCI store](https://pkg.go.dev/oras.land/oras-go/v2@v2.6.2/content/oci)
 * [ORAS remote repository](https://pkg.go.dev/oras.land/oras-go/v2@v2.6.2/registry/remote)
+* [Spegel overview](https://spegel.dev/docs/overview/)
+* [Spegel FAQ: separate peer networks for topology boundaries](https://spegel.dev/docs/faq/#can-i-deploy-multiple-spegel-clusters)
