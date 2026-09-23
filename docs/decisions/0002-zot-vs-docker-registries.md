@@ -1,6 +1,12 @@
+---
+status: superseded (Zot replaced by ORAS in #648)
+---
+
 # Zot registry vs Docker registry
 
-> Historical decision: ADR-0009 supersedes this target-state storage choice.
+> Historical decision. The current direction is in the proposed [ADR-0009](0009-transparent-oci-registry-proxy.md).
+> Zot was removed and replaced with an ORAS-backed local OCI image layout in
+> [#648](https://github.com/container-registry/harbor-satellite/pull/648).
 
 ## Context and Problem Statement
 
@@ -13,7 +19,7 @@ In order to start development of Harbor Satellite's first use case, we need to c
 
 ## Decision Outcome
 
-Chosen option: " ", because after considering elements in the table below, it was the best choice.
+Chosen option: "Zot", because after considering elements in the table below, it was the best choice.
 
 | Feature                                | Docker Registry                           | Zot                             |
 |----------------------------------------|-------------------------------------------|---------------------------------|

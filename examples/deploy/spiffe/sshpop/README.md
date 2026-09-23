@@ -7,14 +7,13 @@ The SSH CA public key is trusted by the SPIRE server, and each agent presents a 
 ## Prerequisites
 
 - Docker and docker compose installed
-- Harbor running (or use SKIP_HARBOR_HEALTH_CHECK=true for testing)
-- ssh-keygen installed (for SSH CA and host certificate generation)
+- Harbor running (or set `SKIP_HARBOR_HEALTH_CHECK=true` for testing)
+- ssh-keygen and OpenSSL installed (for the SSH CA, host certificates and the bootstrap CA)
+- `HARBOR_*`, `ADMIN_PASSWORD` and `HARBOR_REGISTRY_URL` exported if you do not use the defaults. See [Environment Variables](../README.md#environment-variables).
 
 ## Satellite Naming
 
-The satellite name is derived from the SPIFFE ID path:
-- `spiffe://<trust-domain>/satellite/edge-01` registers the satellite as `edge-01`
-- `spiffe://<trust-domain>/satellite` registers the satellite as `default`
+`POST /api/satellites/register` issues the workload SPIFFE ID `spiffe://<trust-domain>/satellite/region/<region>/<name>`. The region defaults to `default`, so `edge-01` gets `spiffe://harbor-satellite.local/satellite/region/default/edge-01`. Ground Control derives the satellite name from the last path segment.
 
 ## Step 1: Start Ground Control with External SPIRE
 
@@ -27,23 +26,12 @@ cd external/gc
 ./generate-certs.sh
 ```
 
-Or manually:
-```bash
-mkdir -p certs
+The script creates, in `certs/`:
+- `ssh-ca`, `ssh-ca.pub`: SSH CA key pair trusted by the SPIRE server
+- `bootstrap.key`, `bootstrap.crt`: self-signed X.509 CA that seeds the SPIRE server
+- `agent-gc-host-key*`, `agent-satellite-host-key*`, `agent-satellite-2-host-key*`: host keys and CA-signed host certificates for the GC agent, the satellite agent and the optional second satellite ([Adding More Satellites](#adding-more-satellites))
 
-# SSH CA key pair
-ssh-keygen -t ed25519 -f certs/ssh-ca -N "" -C "harbor-satellite-ssh-ca"
-
-# Bootstrap trust bundle (self-signed X.509 for SPIRE upstream CA)
-openssl genrsa -out certs/bootstrap.key 4096
-openssl req -new -x509 -days 365 -key certs/bootstrap.key -out certs/bootstrap.crt \
-    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=SPIRE Bootstrap CA"
-
-# Agent host key + certificate (repeat for each agent)
-ssh-keygen -t ed25519 -f certs/agent-gc-host-key -N "" -C "agent-gc"
-ssh-keygen -s certs/ssh-ca -I "agent-gc" -h -n "spire-agent-gc" \
-    -V "+52w" certs/agent-gc-host-key.pub
-```
+To generate them by hand, run the commands in [`external/gc/generate-certs.sh`](external/gc/generate-certs.sh).
 
 > NOTE: The bootstrap trust bundle uses a self-signed X.509 certificate as the SPIRE server's
 > upstream CA. This is the standard SPIRE quickstart approach and is architecturally correct
@@ -80,8 +68,8 @@ docker compose up -d spire-agent-gc
 
 ### 1.5 Register GC workload
 
-The sshpop attestor assigns agent SPIFFE IDs based on the SSH public key fingerprint
-(not the certificate identity), so the parentID must be extracted dynamically after
+The sshpop attestor assigns agent SPIFFE IDs based on a SHA-256 hash of the agent's host
+certificate (not the certificate identity), so the parentID is read from the server after
 the agent attests.
 
 ```bash
@@ -107,16 +95,14 @@ docker compose up -d ground-control
 
 ### 1.7 Verify
 
-```bash
-curl -sk https://localhost:9080/ping
-```
+See [Health checks](../README.md#health-checks).
 
 ## Step 2: Start Satellite with External SPIRE
 
 ### 2.1 Start SPIRE agent for Satellite
 
 The satellite agent must start and attest before registering the workload entry,
-since the parentID is derived from the agent's SSH key fingerprint.
+since the parentID is derived from the agent's host certificate.
 
 ```bash
 cd ../sat
@@ -131,20 +117,19 @@ docker exec spire-agent-satellite /opt/spire/bin/spire-agent healthcheck \
 
 ### 2.2 Register satellite via Ground Control
 
-Register the satellite using the GC API. For sshpop, compute the agent SPIFFE ID from the
-SSH key fingerprint (deterministic) and pass it as `parent_agent_id`.
+Register the satellite using the GC API. For sshpop, pass the agent SPIFFE ID as `parent_agent_id`.
+SPIRE derives it from the unpadded base64url SHA-256 of the whole host certificate blob, not from the
+key fingerprint that `ssh-keygen -l` prints. You can also read it from
+`spire-server agent list` once the agent has attested.
+
+First [log in](../README.md#log-in) to get `AUTH_TOKEN`, then:
 
 ```bash
-# Compute agent SPIFFE ID from SSH key fingerprint
-SSH_FINGERPRINT=$(ssh-keygen -lf ../gc/certs/agent-satellite-host-key.pub -E sha256 | awk '{print $2}')
+# Compute agent SPIFFE ID from the host certificate
+SSH_FINGERPRINT=$(awk '{print $2}' ../gc/certs/agent-satellite-host-key-cert.pub \
+    | openssl base64 -d -A | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
 SAT_AGENT_ID="spiffe://harbor-satellite.local/spire/agent/sshpop/${SSH_FINGERPRINT}"
 echo "Satellite agent SPIFFE ID: $SAT_AGENT_ID"
-
-# Login to Ground Control
-LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
-    -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"Harbor12345"}')
-AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
 # Register satellite with explicit parent_agent_id
 curl -sk -X POST https://localhost:9080/api/satellites/register \
@@ -158,60 +143,46 @@ curl -sk -X POST https://localhost:9080/api/satellites/register \
     }"
 ```
 
-The API creates the SPIRE workload entry, satellite DB record, and robot account.
+The API creates the SPIRE workload entry, satellite DB record and robot account, and assigns the `default` config.
 
 ### 2.3 Start Satellite
 
+The satellite needs `HARBOR_REGISTRY_URL` (default `http://host.docker.internal:8080`).
+
 ```bash
 docker compose up -d satellite
-```
-
-### 2.4 Verify
-
-```bash
 docker logs satellite
-docker exec spire-server /opt/spire/bin/spire-server agent list \
-    -socketPath /tmp/spire-server/private/api.sock
 ```
 
-## Automated Setup
+## Step 3: Groups, Configs and Verification
 
-```bash
-cd external/gc && ./setup.sh
-cd ../sat && ./setup.sh
-```
+Continue with the [shared steps](../README.md#shared-steps): assign a group (and optionally a custom config) to `edge-01`, then [verify](../README.md#verify) replication.
+
+## Automated Setup and Cleanup
+
+See [Automated setup](../README.md#automated-setup) and [Cleanup](../README.md#cleanup) with `<method>` set to `sshpop`.
 
 ## Adding More Satellites
 
 To spin up an additional satellite (e.g., `edge-02`), follow these steps from the `external/` directory.
 The GC setup and first satellite must already be running.
 
-### 1. Generate SSH host key for the new agent
+### 1. Host key for the new agent
 
-```bash
-cd gc/certs
-
-# Temporarily fix CA key permissions for signing
-chmod 600 ssh-ca
-
-ssh-keygen -t ed25519 -f agent-satellite-2-host-key -N "" -C "agent-satellite-2"
-ssh-keygen -s ssh-ca -I "agent-satellite-2" -h -n "spire-agent-satellite-2" \
-    -V "+52w" agent-satellite-2-host-key.pub
-
-# Restore permissions
-chmod 644 ssh-ca
-```
+`generate-certs.sh` already created `gc/certs/agent-satellite-2-host-key` and its certificate `agent-satellite-2-host-key-cert.pub` for `edge-02`.
 
 ### 2. Start the agent and register via GC API
 
-A compose override file `docker-compose.edge-02.yml` is provided in `sat/`.
-It defines `spire-agent-satellite-2` and `satellite-2` services with a separate persistent OCI store.
+The compose override file `sat/docker-compose.edge-02.yml` defines the `spire-agent-satellite-2` and `satellite-2` services, with a separate persistent OCI store.
+
+Run from the `external/` directory. First [log in](../README.md#log-in) to get `AUTH_TOKEN` if you have not already.
 
 ```bash
-cd ../sat
+cd sat
 
-# Compute agent SPIFFE ID from SSH key fingerprint (deterministic)
-SSH_FINGERPRINT=$(ssh-keygen -lf ../gc/certs/agent-satellite-2-host-key.pub -E sha256 | awk '{print $2}')
+# Compute agent SPIFFE ID from the host certificate
+SSH_FINGERPRINT=$(awk '{print $2}' ../gc/certs/agent-satellite-2-host-key-cert.pub \
+    | openssl base64 -d -A | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
 SAT2_AGENT_ID="spiffe://harbor-satellite.local/spire/agent/sshpop/${SSH_FINGERPRINT}"
 echo "Agent SPIFFE ID: $SAT2_AGENT_ID"
 
@@ -222,13 +193,7 @@ docker compose -f docker-compose.yml -f docker-compose.edge-02.yml up -d spire-a
 docker exec spire-agent-satellite-2 /opt/spire/bin/spire-agent healthcheck \
     -socketPath /run/spire/sockets/agent.sock
 
-# Login to Ground Control
-LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
-    -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"Harbor12345"}')
-AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-
-# Register satellite via GC API
+# Register satellite via GC API (AUTH_TOKEN from the login step)
 curl -sk -X POST https://localhost:9080/api/satellites/register \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
@@ -253,13 +218,10 @@ docker logs satellite-2
 docker exec satellite-2 test -f /data/oci/oci-layout
 ```
 
+`sat/cleanup.sh` removes the `edge-02` containers and volumes along with the first satellite.
+
 The same pattern applies for any additional satellite: generate a host key, sign it with the
-SSH CA, add compose services with unique container names and port mappings, start the agent,
-register the workload with a unique SPIFFE ID (`/satellite/<name>`), and start the satellite.
-
-## Cleanup
-
-```bash
-cd external/sat && ./cleanup.sh
-cd ../gc && ./cleanup.sh
-```
+SSH CA, add compose services with unique container names and volumes, start the agent,
+register it with a unique `satellite_name` (Ground Control issues `/satellite/region/<region>/<name>`),
+and start the satellite. Assign groups to the new satellite as in the
+[shared steps](../README.md#create-and-assign-a-group).

@@ -58,7 +58,7 @@ Both Ground Control and Satellite support embedded and external SPIRE:
 | Ground Control | Embedded SPIRE server (subprocess) | External SPIRE server (sidecar/standalone) |
 | Satellite | Embedded SPIRE agent (subprocess) - TO IMPLEMENT | External SPIRE agent (sidecar/standalone) |
 
-Config: `SPIFFE_PROVIDER=embedded` (default) or `SPIFFE_PROVIDER=sidecar`
+Config (Ground Control): the SVID source is `SPIFFE_PROVIDER=sidecar` (default, SPIRE agent Workload API) or `SPIFFE_PROVIDER=static` (cert files). The embedded SPIRE server is enabled separately with `EMBEDDED_SPIRE_ENABLED=true` (requires `spire-server` on `PATH`). The satellite has no embedded agent yet; it always uses an external agent via `SPIFFE_ENDPOINT_SOCKET`.
 
 ### Trust Relationships (Phase 1)
 
@@ -90,7 +90,7 @@ Admin creates trust between SPIRE server and agent via join token, TPM, or cloud
 | Satellite sync | Robot credentials | Ongoing state replication after ZTR |
 
 Key rules:
-- Token and SPIFFE ZTR are mutually exclusive (if/else at `satellite.go:35`, no fallback)
+- Token and SPIFFE ZTR are mutually exclusive (if/else in `internal/satellite/satellite.go` `Run`, no fallback)
 - If SPIFFE is enabled and client creation fails, satellite halts with error
 - Token ZTR is never a fallback for SPIFFE
 
@@ -117,7 +117,9 @@ sequenceDiagram
 
 | Method | Status | How It Works |
 |--------|--------|-------------|
-| Join token | Implemented, E2E tested | Admin generates token via GC API, passes to SPIRE agent |
+| Join token | Implemented, E2E tested (`task e2e-spiffe`) | Admin generates token via GC API, passes to SPIRE agent |
+| X.509 PoP (x509pop) | Implemented (quickstart in `examples/deploy/spiffe/x509pop`) | Agent proves possession of a pre-provisioned certificate; GC matches the agent by `x509pop:subject:cn:<satellite_name>` |
+| SSH PoP (sshpop) | Implemented (quickstart in `examples/deploy/spiffe/sshpop`) | Agent proves possession of an SSH host certificate; registration requires `parent_agent_id` |
 | TPM (DevID) | Planned (phase 2) | SPIRE native plugin. Zero-touch hardware-rooted attestation. |
 | Cloud (AWS/GCP/Azure) | Planned (phase 2) | SPIRE native plugins. Instance identity auto-verified. |
 
@@ -135,7 +137,7 @@ When a satellite with a valid SPIFFE ID calls `/satellites/spiffe-ztr`:
 6. If not found: auto-create satellite record (no groups assigned; admin assigns later)
 7. Create robot account in Harbor for this satellite
 8. Return StateConfig (registry creds + state URL)
-9. Satellite encrypts and stores StateConfig with device fingerprint
+9. Satellite stores StateConfig in `config.json`, encrypted with the device fingerprint only when `app_config.encrypt_config` is true (default false)
 
 ```mermaid
 sequenceDiagram
@@ -253,13 +255,13 @@ sequenceDiagram
 
 ### 8. Unified Satellite Registration
 
-- `POST /api/satellites/register`: unified registration for all attestation methods (admin only)
+- `POST /api/satellites/register`: unified registration for all attestation methods (`system_admin` only)
 - Supports `attestation_method`: `join_token`, `x509pop`, `sshpop`
 - Creates satellite record, robot account, SPIRE workload entry in one call
 - For `join_token`: generates and returns join token
 - For `x509pop`: auto-matches agent by CN selector
 - For `sshpop`: requires `parent_agent_id` (discover via `GET /api/spire/agents`)
-- E2E tested: `TestSpiffeJoinTokenE2E` in `taskfiles/e2e.yml`
+- E2E tested: `task e2e-spiffe` (`test-spiffe` in `taskfiles/e2e.yml`, join token only)
 
 ```mermaid
 sequenceDiagram
@@ -298,17 +300,19 @@ spiffe://<trust-domain>/gc/main
 spiffe://<trust-domain>/satellite/region/<region>/<name>
 ```
 
+Note: `BuildGroundControlSPIFFEID` in `internal/groundcontrol/spiffe/authorizer.go` returns `/gc/main` but has no callers. The quickstarts register Ground Control as `spiffe://<trust-domain>/ground-control`, and satellites verify that ID via `SPIFFE_EXPECTED_SERVER_ID`.
+
 ### 10. Trust Domain
 
-- Dev default: `harbor-satellite.local` (when `APP_ENV` != `production`)
-- Production: must configure `SPIFFE_TRUST_DOMAIN` env var
-- When `APP_ENV=production` and trust domain is unset or default, startup fails
+- Default: `harbor-satellite.local` (`SPIFFE_TRUST_DOMAIN` / `SPIRE_TRUST_DOMAIN`)
+- Production: set `SPIFFE_TRUST_DOMAIN` explicitly
+- No startup check enforces a non-default trust domain; the earlier `APP_ENV=production` check does not exist
 
 ### 11. Device Identity and Config Encryption
 
-- `internal/identity/device_linux.go`: SHA-256 fingerprint from machine-id + MAC + disk serial
+- `internal/satellite/identity/device_linux.go`: SHA-256 fingerprint from machine-id + MAC + disk serial
 - `internal/shared/crypto/aes_provider.go`: AES-256-GCM, Argon2id key derivation (OWASP 2024)
-- `internal/secure/config.go`: encrypted config-at-rest, version 1 envelope
+- `internal/satellite/secure/config.go`: encrypted config-at-rest, version 1 envelope, used only when `app_config.encrypt_config` is true
 - Device-bound: config cannot migrate between machines
 - Encryption must work in ALL builds (currently broken in nospiffe build tag; must be decoupled)
 
@@ -338,7 +342,7 @@ sequenceDiagram
 
 ### 12. TLS Support
 
-- `internal/tls/config.go`: cert/key/CA loading, client and server configs
+- `internal/satellite/tls/config.go`: cert/key/CA loading, client and server configs
 - Skip-verify for development only
 - SPIFFE mTLS uses auto-rotating SVIDs
 - Minimum TLS 1.2
@@ -414,7 +418,7 @@ sequenceDiagram
 
 ## Validation
 
-- E2E: `TestSpiffeJoinTokenE2E` in `taskfiles/e2e.yml`
+- E2E: `task e2e-spiffe` (`test-spiffe` in `taskfiles/e2e.yml`)
 - `nospiffe` build compiles without SPIFFE dependencies
 - Token-based ZTR works when SPIFFE disabled
 - Embedded SPIRE agent in satellite (to be implemented and tested)
@@ -423,8 +427,8 @@ sequenceDiagram
 
 1. Embedded SPIRE agent in satellite: not yet implemented (blocks full SPIFFE flow without external agent)
 2. Config encryption decoupled from nospiffe tag: all builds must encrypt config at rest
-3. `authorizer.go` missing nospiffe stub: breaks nospiffe compilation
-4. `generateJoinTokenHandler` SPIRE API integration commented out for pre-registered satellites
+3. ~~`authorizer.go` missing nospiffe stub~~: resolved, `go build -tags nospiffe ./...` succeeds
+4. ~~`generateJoinTokenHandler` SPIRE API integration commented out~~: obsolete, join tokens are created by `POST /api/satellites/register` via the SPIRE server API (`spire_handlers.go`)
 
 ## Future Work
 
@@ -438,15 +442,15 @@ sequenceDiagram
 
 ## Source Files
 
-- `internal/satellite/satellite.go:35-55` - ZTR path selection
+- `internal/satellite/satellite.go` (`Run`) - ZTR path selection
 - `internal/satellite/state/spiffe_registration.go` - SPIFFE ZTR process
 - `internal/satellite/state/registration_process.go` - Token ZTR process
 - `internal/shared/spiffe/client.go` - Workload API client
-- `internal/identity/device_linux.go` - Device fingerprinting
+- `internal/satellite/identity/device_linux.go` - Device fingerprinting
 - `internal/shared/crypto/aes_provider.go` - AES encryption
 - `internal/shared/crypto/provider_stub.go` - nospiffe stub (no-op)
-- `internal/identity/device_stub.go` - nospiffe stub (errors)
-- `internal/secure/config.go` - Config encryption wrapper
+- `internal/satellite/identity/device_stub.go` - nospiffe / non-Linux stub (errors)
+- `internal/satellite/secure/config.go` - Config encryption wrapper
 - `pkg/config/manager.go` - EncryptConfig flag, write logic
 - `internal/groundcontrol/spiffe/` - All GC SPIFFE files
 - `internal/groundcontrol/server/routes.go` - Route structure

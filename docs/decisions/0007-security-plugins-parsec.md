@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: deprecated
 date: 2026-03-22
 deciders: [Harbor Satellite Development Team]
 consulted: [Harbor Satellite Users, Security Architects, Edge Operators]
@@ -7,6 +7,15 @@ informed: [Harbor Satellite Developers, Operators]
 ---
 
 # PARSEC Hardware-Backed Identity for Edge Satellites
+
+> **Status: deprecated.** The Phase 1 implementation (`internal/satellite/parsec`, the `parsec-client-go`
+> module, the `parsec` build tag, and the `--parsec-enabled` / `--parsec-socket` flags) was removed in
+> [#526](https://github.com/container-registry/harbor-satellite/pull/526) (issue
+> [#525](https://github.com/container-registry/harbor-satellite/issues/525)), following the decision in the
+> community meeting of 6 July 2026. None of the packages, flags, build tags or keys described below exist in the
+> current code base. The record is kept for its rationale; hardware-backed identity remains open in
+> [#327](https://github.com/container-registry/harbor-satellite/issues/327). The last commit with the code is
+> `6d89e3c^`.
 
 ## Context and Problem Statement
 
@@ -301,16 +310,16 @@ scope for Phase 1 and tracked separately:
 ## More Information
 
 - [CNCF PARSEC Documentation](https://parallaxsecond.github.io/parsec-book/)
-- [parsec-client-go](https://github.com/parallaxsecond/parsec-client-go) (local: `../parsec-client-go`)
+- [parsec-client-go](https://github.com/parallaxsecond/parsec-client-go)
 - [harbor-satellite#327](https://github.com/container-registry/harbor-satellite/issues/327) — tracking issue
-- `docs/decisions/0005-spiffe-identity-and-security.md` — ADR this builds upon
-- `PARSEC Integration & Zero-Trust Bootstrapping Flow.md` — original 6-step flow proposal
-- `security-parsec-integration-draft.md` — full design notes and implementation detail
+- [ADR-0005](0005-spiffe-identity-and-security.md): SPIFFE identity, the ADR this builds upon
+- [ADR-0008](0008-parsec-integration-and-zero-trust-bootstrapping-flow.md): original 6-step flow proposal
 
-### Source Files (skeleton)
+### Removed Source Files
 
-- `internal/parsec/config.go` — Config, constants
-- `internal/parsec/detect.go` / `detect_stub.go` — daemon detection
-- `internal/parsec/signer.go` — `crypto.Signer` implementation
-- `internal/parsec/provider.go` / `provider_stub.go` — `crypto.Provider` implementation
-- `cmd/satellite/main.go` — flag wiring and startup check
+These files existed as `internal/satellite/parsec/*` until #526 removed them:
+
+- `config.go`: Config, constants
+- `detect.go` / `detect_stub.go`: daemon detection
+- `signer.go`: `crypto.Signer` implementation
+- `provider.go` / `provider_stub.go`: `crypto.Provider` implementation

@@ -8,6 +8,7 @@ Tokens are single-use: once a SPIRE agent uses a token to attest, it cannot be r
 
 - Docker and docker compose installed
 - Harbor running with at least one image pushed (e.g. `library/nginx:alpine`)
+- `HARBOR_*`, `ADMIN_PASSWORD` and `HARBOR_REGISTRY_URL` exported if you do not use the defaults. See [Environment Variables](../README.md#environment-variables).
 
 ## Step 1: Start Ground Control
 
@@ -111,24 +112,15 @@ docker compose up -d ground-control --build
 
 ### 1.8 Verify GC is running
 
-GC serves HTTPS when SPIFFE is enabled. Use `-k` to skip certificate verification.
+See [Health checks](../README.md#health-checks).
 
-```bash
-curl -sk https://localhost:9080/ping
-```
+## Step 2: Log In
 
-## Step 2: Login and Get Auth Token
-
-```bash
-LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
-    -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"Harbor12345"}')
-AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-```
+See [Log in](../README.md#log-in) in the shared steps. It sets `AUTH_TOKEN`.
 
 ## Step 3: Register Satellite
 
-Register the satellite with Ground Control. This creates a join token, registers the SPIRE workload entry, creates the satellite DB record, and provisions a robot account in Harbor.
+Register the satellite with Ground Control. This creates a join token, registers the SPIRE workload entry, creates the satellite DB record, provisions a robot account in Harbor, and assigns the `default` config (created if missing).
 
 ```bash
 curl -sk -X POST https://localhost:9080/api/satellites/register \
@@ -158,7 +150,7 @@ The response includes the join token and SPIRE connection details:
 }
 ```
 
-Save the `join_token` value.
+Save the `join_token` value. It is single-use and expires after 10 minutes by default. Pass `"ttl_seconds"` (1 to 86400) in the request for a longer window.
 
 ## Step 4: Start Satellite
 
@@ -214,6 +206,8 @@ EOF
 
 ### 4.2 Start SPIRE agent and satellite
 
+The satellite needs `HARBOR_REGISTRY_URL` (default `http://host.docker.internal:8080`).
+
 ```bash
 docker compose up -d spire-agent-satellite
 docker compose up -d satellite --build
@@ -229,135 +223,10 @@ docker logs satellite
 
 Look for messages indicating successful SPIFFE authentication and registration.
 
-## Step 5: Create and Assign Config
+## Step 5: Groups, Configs and Verification
 
-After the satellite has started and completed ZTR, create a config and assign it.
+Continue with the [shared steps](../README.md#shared-steps): assign a group (and optionally a custom config) to `edge-01`, then [verify](../README.md#verify) replication into the satellite's OCI layout. The satellite's SPIFFE ID is `spiffe://harbor-satellite.local/satellite/region/us-west/edge-01`.
 
-### 5.1 Create a satellite config
+## Automated Setup and Cleanup
 
-```bash
-cd ../gc
-
-curl -sk -X POST https://localhost:9080/api/configs \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{
-      "config_name": "default",
-      "config": {
-        "app_config": {
-          "log_level": "info",
-          "state_replication_interval": "@every 00h00m30s",
-          "register_satellite_interval": "@every 00h00m05s",
-          "heartbeat_interval": "@every 00h00m30s",
-          "metrics": {
-            "collect_cpu": true,
-            "collect_memory": true,
-            "collect_storage": true
-          },
-          "bring_own_registry": false
-        }
-      }
-    }'
-```
-
-### 5.2 Assign config to satellite
-
-```bash
-curl -sk -X POST https://localhost:9080/api/configs/satellite \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{"satellite": "edge-01", "config_name": "default"}'
-```
-
-## Step 6: Create and Assign Group
-
-### 6.1 Push an image to Harbor (if not already present)
-
-```bash
-docker pull nginx:alpine
-docker tag nginx:alpine localhost:8080/library/nginx:alpine
-docker push localhost:8080/library/nginx:alpine
-```
-
-### 6.2 Create a group with images
-
-Replace the digest with the actual digest from your Harbor instance:
-
-```bash
-curl -sk -X POST https://localhost:9080/api/groups/sync \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{
-      "group": "edge-images",
-      "registry": "http://localhost:8080",
-      "artifacts": [
-        {
-          "repository": "library/nginx",
-          "tag": ["alpine"],
-          "type": "image",
-          "digest": "sha256:YOUR_DIGEST_HERE"
-        }
-      ]
-    }'
-```
-
-### 6.3 Assign group to satellite
-
-```bash
-curl -sk -X POST https://localhost:9080/api/groups/satellite \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    -d '{"satellite": "edge-01", "group": "edge-images"}'
-```
-
-## Step 7: Verify
-
-### Check satellite logs for replication
-
-```bash
-docker logs satellite
-```
-
-Look for messages indicating image replication succeeded.
-
-### Inspect the satellite OCI store
-
-The compose file persists Satellite data in the `satellite-data` volume. Verify the OCI layout and list its retained references:
-
-```bash
-docker exec satellite test -f /data/oci/oci-layout
-docker exec satellite sh -c \
-  'grep -o "org.opencontainers.image.ref.name[^}]*" /data/oci/index.json'
-```
-
-### Check SPIRE agent status
-
-```bash
-docker exec spire-server /opt/spire/bin/spire-server agent list \
-    -socketPath /tmp/spire-server/private/api.sock
-```
-
-### Check satellite status in Ground Control
-
-```bash
-curl -sk https://localhost:9080/api/satellites \
-    -H "Authorization: Bearer ${AUTH_TOKEN}" | jq .
-```
-
-## Automated Setup
-
-```bash
-cd external/gc && ./setup.sh
-cd ../sat && ./setup.sh
-```
-
-Note: the automated scripts handle token generation, agent config creation, and workload registration. You still need to create configs, groups, and assign them to the satellite manually after setup completes.
-
-## Cleanup
-
-Satellite must be cleaned up first since it depends on the GC docker network.
-
-```bash
-cd external/sat && ./cleanup.sh
-cd ../gc && ./cleanup.sh
-```
+See [Automated setup](../README.md#automated-setup) and [Cleanup](../README.md#cleanup) with `<method>` set to `join-token`. The scripts handle token generation, agent config creation, workload registration and satellite registration.

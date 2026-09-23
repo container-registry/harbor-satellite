@@ -21,7 +21,7 @@ Running containers at the edge creates three problems:
 
 **Reliability** - Edge locations have unreliable network connections. Satellite prepositions content in persistent local storage and resumes reconciliation when connectivity returns. BYO registry mode or experimental k3s/RKE2 direct delivery can make that content available to workloads today; transparent proxy serving is tracked in ADR-0009.
 
-**Security** - Traditional approaches require shipping registry credentials to every edge device. Harbor Satellite uses [SPIFFE/SPIRE](https://spiffe.io) for zero-trust identity. After a one-time bootstrap, satellites get cryptographic identities from hardware-backed attestation. Registry credentials (Harbor robot accounts - service accounts with scoped pull permissions) are automatically created, delivered over mTLS (mutual TLS), and rotated by Ground Control.
+**Security** - Traditional approaches require shipping registry credentials to every edge device. Harbor Satellite uses [SPIFFE/SPIRE](https://spiffe.io) for zero-trust identity. After a one-time bootstrap (join token, X.509 certificate or SSH host certificate), satellites get short-lived X.509 identities that SPIRE rotates automatically. Registry credentials (Harbor robot accounts - service accounts with scoped pull permissions) are created by Ground Control and delivered over mTLS (mutual TLS).
 
 **Fleet Management** - When you have dozens or hundreds of edge locations, manually managing which images go where becomes impossible. Ground Control lets you create groups of images and assign them to satellites. Change a group, and every satellite in that group automatically gets the update.
 
@@ -36,7 +36,7 @@ Your existing Harbor instance in the cloud. Harbor Satellite does not replace Ha
 Runs alongside Harbor in the cloud. Ground Control:
 
 - Onboards satellites using SPIFFE/SPIRE identity
-- Creates and rotates robot account credentials in Harbor on behalf of satellites
+- Creates robot account credentials in Harbor on behalf of satellites and refreshes their secrets
 - Manages groups (collections of images) and assigns them to satellites
 - Stores satellite state and config as OCI artifacts in Harbor
 - Receives heartbeats and status reports from satellites
@@ -51,7 +51,7 @@ Runs at each edge location. A single binary that:
 - Periodically fetches its desired state (which images to have)
 - Replicates OCI content from Harbor into a local ORAS OCI layout by default
 - Preserves remote-to-remote replication to an external registry in BYO mode
-- Configures local container runtimes (containerd, Docker, CRI-O, Podman) to use itself as a mirror
+- Optionally configures local container runtimes (containerd, Docker, CRI-O, Podman) to mirror through a BYO registry, or writes image tarballs into the k3s/RKE2 auto-import directory (experimental direct delivery)
 
 ## Next Steps
 

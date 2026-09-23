@@ -14,7 +14,7 @@ tags:
 
 A registry that runs at the edge is a registry that runs far away from your security team. Who logged in to Ground Control last night? Which satellite registered this morning, and did someone change its config? Until now, answers to those questions were scattered across operational logs. Harbor Satellite now ships a dedicated **security audit log**: structured, transport-ready events built for compliance (SOC 2, ISO 27001), incident investigation, and SIEM integration.
 
-The feature landed in [PR #448](https://github.com/container-registry/harbor-satellite/pull/448) and covers both sides of the system: **Ground Control** (the central management plane) and every **Satellite** (the edge registry) each produce their own audit stream when enabled.
+The feature landed in [PR #448](https://github.com/container-registry/harbor-satellite/pull/448) and covers both sides of the system: **Ground Control** (the central management plane) and every **Satellite** (the edge component) each produce their own audit stream when enabled.
 
 ## One event, one JSON line
 
@@ -134,7 +134,7 @@ Omitted fields keep their defaults (`target` defaults to `file`, rotation to 100
 
 ### Enabling audit on Ground Control
 
-Ground Control reads the same knobs from environment variables (see `ground-control/.env.example`). This is the equivalent both-transports setup:
+Ground Control reads the same knobs from environment variables (see the root `.env.example`). This is the equivalent both-transports setup:
 
 ```env
 AUDIT_LOG_ENABLED=true

@@ -1,4 +1,14 @@
+---
+status: deprecated
+---
+
 # **PARSEC Integration & Zero-Trust Bootstrapping Flow**
+
+> **Status: deprecated.** Steps 1 and 2 were implemented under [ADR-0007](0007-security-plugins-parsec.md) and
+> removed again in [#526](https://github.com/container-registry/harbor-satellite/pull/526) following the
+> community decision of 6 July 2026. Steps 3 to 6 were never implemented. The `--parsec-enabled` / `PARSEC_ENABLED`
+> flag and the `ParsecKeyProvider` referenced below no longer exist. Robot credential refresh (Step 6) is addressed
+> separately, without PARSEC, by the heartbeat `refresh_credentials` event (#501).
 
 ## **Objective**
 

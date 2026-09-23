@@ -3,7 +3,7 @@ title: "How Harbor Satellite Works"
 weight: 5
 ---
 
-This document walks through the complete flow of Harbor Satellite - from deploying the cloud components to a satellite pulling images at the edge.
+This document walks through the complete flow of Harbor Satellite - from deploying the cloud components to a satellite replicating images at the edge.
 
 ```mermaid
 graph LR
@@ -40,7 +40,7 @@ graph LR
 - **Selectors** - Attributes SPIRE uses to identify workloads (e.g., `docker:label:service:satellite`, `k8s:pod-label:app:satellite`).
 - **Robot Account** - A Harbor service account with scoped pull/push permissions, used by satellites to access images.
 - **OCI Artifact** - A generic blob stored in an OCI-compliant registry. Harbor Satellite uses OCI artifacts to store state and config alongside container images.
-- **ZTR** - Zero-Touch Registration. The process by which a satellite registers with Ground Control without any pre-shared secrets.
+- **ZTR** - Zero-Touch Registration. The process by which a satellite registers with Ground Control and receives its Harbor credentials, using either a single-use registration token or its SPIFFE identity.
 
 ## Components at a Glance
 
@@ -65,7 +65,7 @@ Set up your Harbor registry with the images you want to distribute. For example,
 
 #### Step 2 - Deploy SPIRE Server and Agent
 
-Deploy a SPIRE server and a SPIRE agent in the cloud. The SPIRE agent runs alongside Ground Control and provides it with a hardware-backed X.509 identity (SVID).
+Deploy a SPIRE server and a SPIRE agent in the cloud. The SPIRE agent runs alongside Ground Control and provides it with an X.509 identity (SVID).
 
 The SPIRE server configuration uses a trust domain (e.g., `harbor-satellite.local`) and supports multiple attestation methods:
 
@@ -75,10 +75,12 @@ The SPIRE server configuration uses a trust domain (e.g., `harbor-satellite.loca
 
 #### Step 3 - Deploy Ground Control
 
-Ground Control starts up, connects to the local SPIRE agent, and gets its own identity:
+Ground Control starts up, connects to the local SPIRE agent, and gets its own identity. The SPIFFE ID comes from the workload entry you create for Ground Control; the examples use:
 ```text
-spiffe://harbor-satellite.local/gc/main
+spiffe://harbor-satellite.local/ground-control
 ```
+
+Satellites can pin this ID with `--spiffe-expected-server-id`.
 
 Ground Control also needs Harbor credentials (`HARBOR_USERNAME`, `HARBOR_PASSWORD`, `HARBOR_URL`) so it can:
 
@@ -92,11 +94,12 @@ With the cloud side running, register your first satellite through Ground Contro
 
 #### Step 4 - Create a Satellite
 
-Register a satellite in Ground Control. You provide:
+Register a satellite in Ground Control with `POST /api/satellites/register` (system admin only). You provide:
 
 - A name (e.g., `edge-us-east-01`)
-- Optional region (e.g., `us-east`)
-- SPIFFE selectors for identity verification (e.g., Docker labels, Kubernetes selectors, AWS instance IDs)
+- Optional region (e.g., `us-east`, defaults to `default`)
+- The attestation method of the edge SPIRE agent: `join_token`, `x509pop` or `sshpop`
+- SPIFFE workload selectors (e.g., `docker:label:com.docker.compose.service:satellite`, `unix:uid:1000`)
 
 Ground Control:
 
@@ -104,9 +107,9 @@ Ground Control:
    ```text
    spiffe://harbor-satellite.local/satellite/region/us-east/edge-us-east-01
    ```
-2. Generates a join token for the satellite's SPIRE agent to bootstrap with
+2. Finds the parent SPIRE agent: for `join_token` it generates a join token (default TTL 600 seconds) for agent ID `spiffe://harbor-satellite.local/agent/<name>`; for `x509pop` it looks up the attested agent whose certificate CN equals the satellite name (or uses `parent_agent_id`); for `sshpop` `parent_agent_id` is required
 3. Creates a robot account in Harbor with pull permissions
-4. Creates a default config for the satellite
+4. Assigns the `default` config, creating it if it does not exist
 
 #### Step 5 - Create a Group and Assign Images
 
@@ -134,7 +137,7 @@ harbor.example.com/satellite/satellite-state/edge-us-east-01/state:latest
 Deploy a SPIRE agent on the edge device. Configure it with:
 
 - The SPIRE server address (TCP port 8081 must be reachable from the edge device)
-- The join token generated during satellite registration
+- The join token generated during satellite registration (or the X.509 / SSH host certificate for the PoP methods)
 
 The join token is a one-time bootstrap credential. Once the SPIRE agent uses it to attest, the token becomes invalid. After attestation, the agent receives a proper certificate-based identity that automatically rotates. This is the only secret that needs to be transported to the edge, and it is single-use.
 
@@ -142,11 +145,12 @@ The agent connects to the SPIRE server, attests itself, and becomes ready to iss
 
 #### Step 7 - Start the Satellite
 
-Run the satellite binary with just two pieces of information:
+Run the satellite binary with the Ground Control and Harbor URLs and the SPIRE agent socket:
 ```bash
-satellite --ground-control-url https://gc.example.com \
-          --spiffe-enabled \
-          --spiffe-endpoint-socket unix:///run/spire/sockets/agent.sock
+harbor-satellite --ground-control-url https://gc.example.com \
+                 --harbor-registry-url https://harbor.example.com \
+                 --spiffe-enabled \
+                 --spiffe-endpoint-socket unix:///run/spire/sockets/agent.sock
 ```
 
 No secrets. No credentials. No config files to manage.
@@ -180,19 +184,19 @@ Ground Control:
    - Robot account credentials (username + password)
    - Harbor registry URL
 
-The satellite encrypts this config with a device fingerprint (derived from machine-id, MAC address, and disk serial) and writes it to disk.
+The satellite writes this config to `config.json` in its config directory. When `encrypt_config` is enabled in the satellite config, it is encrypted with AES-256-GCM using a key derived from a device fingerprint (machine-id, MAC address and disk serial, Linux only). Encryption is off by default.
 
 ### Phase 5: Steady State
 
 The satellite runs three concurrent schedulers:
 
-**Registration Scheduler** (retries every 30s until success)
+**Registration Scheduler** (retries every 5s until success, `register_satellite_interval`)
 
-- Runs ZTR to obtain robot account credentials
-- On failure, retries on the next 30s cycle
+- Runs ZTR to obtain robot account credentials (`POST /satellites/ztr` with a token, or `GET /satellites/spiffe-ztr` over mTLS)
+- On failure, retries on the next cycle
 - Once registration succeeds and the satellite has valid credentials, the scheduler completes and stops
 
-**State Replication Scheduler** (default: every 10s)
+**State Replication Scheduler** (default: every 30s, `state_replication_interval`)
 
 1. Fetches the root satellite state artifact from Harbor (list of group URLs + config URL)
 2. For each group, fetches the group state artifact (list of images)
@@ -201,10 +205,11 @@ The satellite runs three concurrent schedulers:
 5. Replicates new or changed OCI content from Harbor to the selected store
 6. Fetches and applies config changes, including replication intervals
 
-**Heartbeat Scheduler** (default: every 30s)
+**Heartbeat Scheduler** (default: every 30s, `heartbeat_interval`)
 
-- Reports satellite status to Ground Control (CPU, memory, storage, cached images)
-- Endpoint: `POST /satellites/sync`
+- Reports satellite status to Ground Control: CPU, memory and storage when enabled under `metrics` in the satellite config, and the cached image list in BYO registry mode
+- Endpoint: `POST /satellites/sync`, authenticated with the satellite's SVID (SPIFFE) or its robot account credentials (HTTP Basic auth)
+- The response can carry a `refresh_credentials` event when the robot account expires within two heartbeat intervals. The satellite then requests a new robot secret from Ground Control
 
 ## Zero-Trust Identity
 
@@ -218,18 +223,18 @@ Harbor Satellite approach:
 One-time join token --> SPIRE agent attests --> automatic SVID identity --> mTLS to Ground Control
 ```
 
-The only secret transported to the edge is a one-time SPIRE join token used to bootstrap the SPIRE agent. Once used, the token is invalidated. After that, the satellite's identity comes from its SVID, which is automatically issued and rotated by SPIRE. No registry credentials, no config files, and no ongoing secret management.
+With the join-token method, the only secret transported to the edge is a one-time SPIRE join token used to bootstrap the SPIRE agent. Once used, the token is invalidated. With X.509 PoP or SSH PoP, the bootstrap material is a pre-provisioned certificate and key. After that, the satellite's identity comes from its SVID, which is automatically issued and rotated by SPIRE. No registry credentials are shipped to the device.
 
 Ground Control trusts the satellite because SPIRE vouches for it. Ground Control also has privileged access to the SPIRE server API, allowing it to create workload entries and generate join tokens for new satellites.
 
 Robot account credentials (used to pull images from Harbor) are:
 
-- Created automatically by Ground Control
+- Created automatically by Ground Control, valid for `ROBOT_DURATION_DAYS` (default 30)
 - Delivered over the mTLS connection
-- Encrypted at rest with the device fingerprint
-- Refreshed when the satellite re-runs ZTR (e.g., after hardware change or config reset)
+- Stored in the satellite's `config.json`, encrypted with the device fingerprint only when `encrypt_config` is enabled
+- Given a new secret each time the satellite runs ZTR, and refreshed when Ground Control signals `refresh_credentials` in a heartbeat response
 
-If the satellite's hardware changes (different machine), the encrypted config becomes unreadable and the satellite re-does ZTR with its new SVID.
+With encryption enabled, if the satellite's hardware changes (different machine), the encrypted config becomes unreadable and the satellite re-does ZTR with its new SVID.
 
 ## State Replication
 
@@ -252,7 +257,7 @@ State is stored as OCI artifacts in Harbor. There are three types:
   "artifacts": [
     {
       "repository": "library/nginx",
-      "tag": "latest",
+      "tag": ["latest"],
       "digest": "sha256:abc123...",
       "type": "image"
     }
@@ -265,24 +270,24 @@ State is stored as OCI artifacts in Harbor. There are three types:
 {
   "app_config": {
     "log_level": "info",
-    "state_replication_interval": "@every 00h00m10s",
+    "state_replication_interval": "@every 00h00m30s",
     "heartbeat_interval": "@every 00h00m30s",
     "bring_own_registry": false
   }
 }
 ```
 
-The satellite fetches these artifacts using `crane` (a Go library for interacting with OCI registries), authenticating with its robot account credentials.
+The satellite fetches these artifacts using `crane` (from go-containerregistry), authenticating with its robot account credentials.
 
 ## Image Replication
 
-When the satellite detects new content in its desired state, it copies the complete OCI descriptor graph from Harbor to its store:
+When the satellite detects new content in its desired state, it copies the complete OCI descriptor graph from Harbor to its store with ORAS. The default store is an OCI image layout at `<config-dir>/oci` (`--registry-data-dir` overrides it). In BYO mode the store is the external registry:
 
 1. Resolve the artifact manifest from Harbor
 2. Check if the destination reference already has the same digest
 3. If it exists, skip it (no work needed)
 4. If not, copy missing manifests, configs, and blobs through ORAS
-5. Tag the root descriptor in the local OCI layout
+5. Tag the root descriptor in the store
 
 This approach minimizes bandwidth usage - if an image update only changes one layer, only that layer gets transferred.
 
@@ -292,19 +297,22 @@ If the satellite cannot reach Harbor or Ground Control, retained content remains
 
 ## Container Runtime Mirroring
 
-Container runtime mirroring currently requires BYO registry mode. In the default mode, Satellite skips mirror configuration because the local OCI layout has no registry endpoint.
+Container runtime mirroring currently requires BYO registry mode. In the default mode, Satellite skips mirror configuration with a warning because the local OCI layout has no registry endpoint.
 
 Supported runtimes:
 
-- **containerd** - Configures registry mirrors in `/etc/containerd/config.toml`
-- **Docker** - Configures mirror in `/etc/docker/daemon.json` (docker.io only)
-- **CRI-O** - Configures mirrors in `/etc/crio/crio.conf.d/`
+- **containerd** - Writes `/etc/containerd/certs.d/<registry>/hosts.toml` and sets `config_path` in `/etc/containerd/config.toml`
+- **Docker** - Configures `registry-mirrors` in `/etc/docker/daemon.json` (docker.io only)
+- **CRI-O** - Configures mirrors in `/etc/containers/registries.conf`
 - **Podman** - Configures mirrors in `/etc/containers/registries.conf`
 
 Configure mirroring with the `--mirrors` flag:
 ```bash
-satellite --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
+harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+  --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io ...
 ```
+
+For k3s and RKE2 nodes, experimental direct delivery (`--direct-delivery`) writes image tarballs into the agent images directory instead, without any registry endpoint.
 
 ## Full End-to-End Flow
 
@@ -330,7 +338,7 @@ sequenceDiagram
     Admin->>GC: POST /api/satellites/register
     GC->>SpireServer: Create workload entry + join token
     GC->>Harbor: Create robot account
-    GC-->>Admin: Return join token
+    GC-->>Admin: Return join token (join_token method)
     Admin->>GC: POST /api/groups/sync (assign images)
     GC->>Harbor: Push group state as OCI artifact
     end
@@ -355,7 +363,7 @@ sequenceDiagram
 
     rect rgb(248, 248, 248)
     note right of Satellite: Phase 5 - Steady State
-    loop Every 10s
+    loop Every 30s
         Satellite->>Harbor: Fetch state artifact (robot creds)
         Satellite->>Harbor: Pull new/changed image layers
         Satellite->>Satellite: Store in local OCI layout
