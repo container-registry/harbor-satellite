@@ -1,78 +1,93 @@
-# Harbor Satellite — Software Distribution to the Edge
+# Harbor Satellite: Container Registries at the Edge
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/container-registry/harbor-satellite)](https://goreportcard.com/report/github.com/container-registry/harbor-satellite)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-Harbor Satellite brings the power of the Harbor container registry to edge computing. Satellite is a registry fleet management and artifact distribution solution around a central source of truth Harbor cluster.  
+Harbor Satellite puts a lightweight, standalone OCI registry at every edge location and manages the whole fleet from one place. Each satellite pulls the images it is assigned from your central [Harbor](https://goharbor.io) registry and serves them locally, so workloads keep starting and updating when the uplink is slow, intermittent, or gone.
 
-A lightweight, standalone registry at edge locations is acting as both a primary registry for local workloads and a fallback for the central Harbor instance. This stateful satellite registry ensures consistent, available, and integrity-checked container images for edge devices, even when network connectivity is intermittent or unavailable (air-gapped). Harbor Satellite optimizes image distribution and management for edge environments, addressing challenges like bandwidth limitations, remote fleet orchestration and artifact distribution.
+It is built for platform and engineering teams who run containers outside the data center and need a controlled, auditable way to get software there.
 
+**Website and docs:** [satellite.container-registry.com](https://satellite.container-registry.com/)
 
-## What Problems Harbor Satellite Addresses
+## Is This For You?
 
-- Fleet management for edge registries 
-- Manage centrally the distribution artifacts to thousands of sites
-- Predictable behavior in challenging connectivity situations
-- Control edge artifact replication and presence
-- Optimized resource and bandwidth utilization
-- Transparent deployment process
-- Air-gapped capable
+Harbor Satellite fits if you operate containers in places like:
 
-## Use Cases
+- Retail stores, branches, factories, or warehouses running a small cluster per site
+- Ships, trains, vehicles, remote or mobile sites with intermittent connectivity
+- Telco cell sites and far-edge compute with thousands of locations
+- Air-gapped or highly isolated networks with restricted ingress/egress
+- Multi-region setups that need images close to workloads (a container image CDN)
 
-- Edge/IoT
-- Environment without permanent connectivity
-  - e.g. Remote Locations, Ships, Satellites, Firewalls
-- High Availability of container images close to workloads
-- Multiple sites
-- Highly isolated sites 
-- Restricted ingress/egress data flow
-- Global image distribution 
-- Container Image CDN
-- Immediate application updates across regions
+And you are running into problems like:
 
+- Pods fail to start because the central registry is unreachable
+- The same image is pulled over a thin WAN link once per node, per site
+- There is no single view of which image versions are present at which site
+- Running and upgrading a full registry at every location is not operationally feasible
+- Edge devices need registry credentials without shipping long-lived secrets to them
 
-## How Satellite Works
+## What You Get
 
-- Satellite acts as gateway or proxy for containerized artifacts on site
-- Artifacts are managed and orchestrated remotely
-- Desired artifacts are securely synced with desired state on remote site 
-- Satellite can initiate updates or deployments on site (Hooks)
-- Runs on edge location as a single process in unattended mode
+| | |
+|---|---|
+| **Local availability** | An OCI registry at each site. Workloads pull from it, even with no upstream connection. |
+| **Air-gapped operation** | Images are served from local storage. Replication resumes automatically when connectivity returns. |
+| **Central fleet management** | Ground Control assigns image groups to satellites and tracks status (heartbeat, storage, cached images, sync duration) for every site. |
+| **Desired-state sync** | Satellites reconcile against the state defined in Ground Control. You declare what should be at a site; the satellite makes it so. |
+| **Zero-trust identity** | Optional SPIFFE/SPIRE mTLS with automatic certificate rotation. Harbor robot credentials are provisioned for you. |
+| **Runtime integration** | Configures containerd, CRI-O, Podman, and Docker to use the local registry as a mirror, with upstream fallback. |
+| **Lightweight** | Single binary with an embedded [Zot](https://zotregistry.dev) registry, unattended operation, builds for amd64, arm64, and many more architectures. |
+| **Bring your own registry** | Replicate into an existing registry instead of the embedded Zot. |
 
+## How It Works
 
-## Satellite Components
+![Basic Harbor Satellite Diagram](docs/images/harbor-satellite-overview.svg)
 
-- Cloud Side
-  - Ground Control
-    -  Devices management
-    -  Onboarding and grouping of sites
-    -  State management and verification
-  - Harbor (with satellite extension)
-- Edge (Satellite Side)
-  - Satellite
-    - Artifact store and synchronizer
-  - Runtime configuration updater
-  - Downstream event executor
+<p align="center"><em>Basic Harbor Satellite Diagram</em></p>
 
+1. You define **groups** of artifacts (repository, tag, digest) and **configs** in Ground Control, then assign them to satellites.
+2. A satellite at the edge **registers** with Ground Control, either with a one-time token or with a SPIFFE identity over mTLS (zero-touch registration).
+3. The satellite periodically **fetches its desired state** and **replicates** the listed artifacts from Harbor into its local registry.
+4. Local container runtimes **pull from the satellite**. If an image is missing locally, they fall back to the upstream registry when it is reachable.
+5. The satellite **reports status** back to Ground Control, giving you a fleet-wide view of what is present where.
 
-## Background
+### Components
 
-Containers have extended beyond their traditional cloud environments, becoming increasingly prevalent in remote and edge computing contexts. These environments often lack reliable internet connectivity, posing significant challenges in managing and running containerized applications due to difficulties in fetching container images. To address this, the project aims to decentralize container registries, making them more accessible to edge devices. The need for a satellite that can operate independently, store images on disk, and run indefinitely with stored data is crucial for maintaining operations in areas with limited or no internet connectivity.
+| Component | Runs in | Role |
+|---|---|---|
+| **Harbor** | Cloud | Central source of truth for all artifacts |
+| **Ground Control** | Cloud | Fleet management: onboarding, grouping, desired state, credentials, status. Backed by PostgreSQL. |
+| **Satellite** | Edge | Registers, syncs desired state, replicates artifacts, configures the container runtime |
+| **Local registry** | Edge | Embedded Zot (default) or your own OCI registry |
+| **SPIRE** (optional) | Cloud and edge | Issues X.509 identities for mTLS between satellites and Ground Control |
 
-## Concept
+## Getting Started
 
-Harbor Satellite is an extension to the existing Harbor container registry that enables the operation of decentralized registries in edge locations.
+Pick the path that matches where you are:
 
-Harbor Satellite will synchronize with the central Harbor registry, when Internet connectivity permits it, allowing it to receive and store images. This will ensure that even in environments with limited or unreliable internet connectivity, containerized applications can still fetch their required images from the local Harbor Satellite.
+| Goal | Start here |
+|---|---|
+| Try it locally, dev or test | [Token-based quickstart](deploy/no-spiffe/quickstart.md) |
+| Production with zero-trust identity | [SPIFFE/SPIRE quickstart](deploy/quickstart/README.md) |
+| Compare auth methods | [QUICKSTART.md](QUICKSTART.md) |
+| Install binaries, containers, Helm | [Installation docs](https://satellite.container-registry.com/docs/installation/) |
+| Reference setup on k3s | [k3s reference architecture](docs/guides/k3s-reference-architecture.md) |
 
-Harbor Satellite will also include a toolset enabling the monitoring and management of local decentralized registries.
+Prerequisite: a Harbor instance with the satellite adapter. See [harbor-next (satellite branch)](https://github.com/container-registry/harbor-next/tree/satellite).
 
-## QuickStart
-Please refer to the latest setup instructions in `QUICKSTART.md` file for detailed steps on setting up Harbor Satellite locally.
+### Deployment Choices
 
-## BYO (Bring Your Own) Registry
+| Decision | Option | When |
+|---|---|---|
+| Authentication | Token-based ZTR | Dev, test, small deployments. No extra infrastructure. |
+| | SPIFFE/SPIRE mTLS | Production and fleet scale. Supports join token, X.509 PoP, and SSH PoP attestation. |
+| Registry | Embedded Zot (default) | Nothing else to run at the edge |
+| | Bring your own | You already operate a registry at the site |
 
-Satellite embeds a Zot registry by default. To use an external registry instead (e.g. `registry:2`), pass the BYO flags via CLI or env vars:
+#### BYO (Bring Your Own) Registry
+
+Pass the BYO flags via CLI or env vars:
 
 | CLI Flag | Env Var | Description |
 |---|---|---|
@@ -81,120 +96,105 @@ Satellite embeds a Zot registry by default. To use an external registry instead 
 | `--registry-username` | `REGISTRY_USERNAME` | External registry username (optional) |
 | `--registry-password` | `REGISTRY_PASSWORD` | External registry password (optional) |
 
-A docker-compose setup with `registry:2` as a sidecar is available:
+A Docker Compose setup with `registry:2` as a sidecar is available:
 
 ```bash
 task byo-up    # start satellite + registry:2
 task byo-down  # stop and cleanup
 ```
 
-## Non-Goals
+### Container Runtime Configuration
 
-T.B.D.
+The satellite can point local runtimes at its registry as a mirror, with fallback to upstream:
 
-## Rationale
+```bash
+satellite --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
+```
 
-Deploying a complete Harbor instance on edge devices in poor/no coverage areas could prove problematic since:
+| Runtime | Config location | Notes |
+|---|---|---|
+| containerd | `/etc/containerd/config.toml` | Mirrors any registry |
+| CRI-O | `/etc/crio/crio.conf.d/` | Mirrors any registry |
+| Podman | `/etc/containers/registries.conf` | Mirrors any registry |
+| Docker | `/etc/docker/daemon.json` | docker.io only, use `--mirrors=docker:true` |
 
-- Harbor wasn't designed to run on edge devices (e.g. Multiple processes, no unattended mode).
-- Harbor could behave unexpectedly in poor/no connectivity environments.
-- Managing hundreds or thousands of container registries is not operationally feasible with Harbor.
-- Harbor would be too similar to a simple registry mirror.
+Updating runtime config requires root. Docker needs a service restart to apply changes. Alternatives to mirroring are referencing the satellite registry directly, or rewriting image references with a Kubernetes mutating webhook.
 
-Harbor Satellite aims to be resilient, lightweight and will be able to keep functioning independently of Harbor instances.
+## Distribution Patterns
 
-## Compatibility
+### Pattern 1: Replicate from a remote registry to a local registry (implemented)
 
-Compatibility with all container registries or edge devices can't be guaranteed.
+The satellite pulls the assigned images from Harbor and pushes them into the local OCI registry. Edge devices pull from the local registry; direct access to the remote registry remains possible when the network allows.
 
-## Implementation
-
-### Overall Architecture
-
-Harbor Satellite, at its most basic, will run in a single container and will be divided in the following 2 components:
-
-- **Satellite**: Is responsible for moving artifacts from upstream (using Skopeo/Crane/Other), identifying the source, and reading the list of images that need to be replicated. Additionally, it can modify and manage container runtime configuration to prevent unnecessary remote fetches.
-- **OCI Registry**: Is responsible for storing required OCI artifacts locally (using zotregistry or docker registry).
-- **Ground Control**: Is a component of Harbor and is responsible for serving a Harbor Satellite with the list of images it needs.
-
-![Basic Harbor Satellite Diagram](docs/images/harbor-satellite-overview.svg)
-
-<p align="center"><em>Basic Harbor Satellite Diagram</em></p>
-
-### Specific Use Cases
-
-Harbor Satellite may be implemented following 1 or several of 3 different architectures depending on its use cases:
-
-#### Use Case #1: Replicating from a remote registry to a local registry
-
-In this basic use case, the stateless Satellite component pulls container images from a remote registry and pushes them to the local OCI-compliant registry. This local registry is then accessible to other local edge devices, which can pull the required images directly from it. _Direct access from edge devices to the remote registry is still possible when network conditions permit._ The Satellite component may also handle updating container runtime configurations and fetching image lists from Ground Control, a part of Harbor. The stateful local registry will also need to handle storing and managing data from local volumes. A typical scenario might look like this:
-
-_In an edge computing environment where IoT devices are deployed to a location with limited or no internet connectivity, these devices need to run containerized images but cannot pull from a central Harbor registry. A local Harbor Satellite instance can be deployed and take up this role while Internet connectivity is unreliable and distribute all required images. Once a reliable connection is re-established, the Harbor Satellite instance will be able to pull required images from its central Harbor registry and thus store up-to-date images locally._
+_Example: IoT devices at a site with limited or no connectivity need to run containerized workloads but cannot reliably reach central Harbor. The satellite serves all required images locally and refreshes them whenever the connection is back._
 
 ![Use Case #1](docs/images/satellite_use_case_1.svg)
 <p align="center"><em>Use case #1</em></p>
 
-#### Use Case #2: Replicating from a remote registry to a local Spegel registry
+### Pattern 2: Replicate to a local Spegel registry (in progress)
 
-The stateless Satellite component sends pull instructions to Spegel instances running with each node of a Kubernetes cluster. The node will then directly pull images from a remote registry and share it with other local nodes, removing the need for each of them to individually pull an image from a remote registry.
-The network interfaces (boundaries) represented in this use case should and will be the same as those represented in [Use Case #1](#use-case-1-replicating-from-a-remote-registry-to-a-local-registry). A typical use case would work as follows:
+The satellite sends pull instructions to [Spegel](https://github.com/spegel-org/spegel) instances running on each node of a Kubernetes cluster. One node pulls from the remote registry and shares the image peer-to-peer with the other nodes, so each node does not pull individually. Network boundaries are the same as in Pattern 1.
 
-_In a larger scale edge computing environment with a significant amount of IoT devices needing to run containerized applications, a single local registry in might not be able to handle the increased amount of demands from edge devices. The solution is to deploy several registries to several nodes who are able to automatically replicate images across each other thanks to Spegel instances running together with each node. The Satellite component will use the same interface to instruct each node when, where and how to pull new images that need to be replicated across the cluster._
+_Example: a larger edge site where a single local registry cannot keep up with demand. Images are spread across nodes, and the satellite tells the cluster when, where, and what to pull._
 
 ![Use Case #2](docs/images/satellite_use_case_2.svg)
 <p align="center"><em>Use case #2</em></p>
 
-#### Use Case #3: Proxying from a remote registry over the local registry
+### Pattern 3: Proxy through the local registry (in progress)
 
-The stateless satellite component will be in charge of configuring the local OCI compliant registry, which will be running in proxy mode only. This local registry will then handle pulling necessary images from the remote registry and serving them up for use by local edge devices.
-A typical use case would work as follows:
+The local registry runs in proxy mode. It pulls images from the remote registry on demand and caches them for local devices.
 
-_When, for a number of possible different reasons, the remote registry side of the diagram would not be able to produce a list of images to push down to the Harbor Satellite, the Satellite would then act as a proxy and forward all requests from edge devices to the remote registry. This ensures the availability of necessary images without the need for a pre-compiled list of images_
+_Example: the central side cannot produce a list of images for a site ahead of time. The satellite forwards requests upstream and caches the results, so images stay available without a pre-compiled list._
 
 ![Use Case #3](docs/images/satellite_use_case_3.svg)
 <p align="center"><em>Use case #3</em></p>
 
-### Container Runtime Configuration
+## Why Not Run Harbor at Every Site?
 
-In each of these use cases, we need to ensure that IoT edge devices needing to run containers will be able to access the registry and pull images from it. To solve this issue, we propose 4 solutions:
+- Harbor is not designed for edge devices: multiple processes, a database, no unattended mode.
+- Harbor can behave unpredictably with poor or no connectivity.
+- Operating hundreds or thousands of Harbor instances is not feasible.
+- A plain registry mirror does not give you central control over which artifacts are present where.
 
-1. By using **containerd** or **CRI-O** and  configuring a mirror within them.
-2. By setting up an **HTTP Proxy** to manage and optimize pull requests to the registry.
-3. By **directly referencing** the registry.
-4. By **directly referencing** the registry and using Kubernetes' mutating webhooks to point to the correct registry.
+Harbor Satellite keeps Harbor as the central source of truth and puts only what is needed at the edge: a single process and a local registry that keep working independently of the central instance.
 
-## Development
+## Security
 
-The project is currently in active development. If you are interested in participating or using the product, [reach out](https://container-registry.com/contact/).
+- Satellites authenticate to Ground Control with a single-use token or a SPIFFE X.509 SVID over mTLS.
+- Ground Control provisions a Harbor robot account per satellite and issues fresh robot secrets on registration. No static registry credentials are shipped to the edge.
+- Satellite config at rest can be encrypted with AES-256-GCM, bound to the device (`encrypt_config`).
+- Hardware-backed identity via [CNCF PARSEC](https://parsec.community/) is available as an experimental, opt-in build (`--parsec-enabled`). See [ADR-0007](docs/decisions/0007-security-plugins-parsec.md).
 
-## Website
+Design details: [ADR-0004 Ground Control authentication](docs/decisions/0004-ground-control-authentication.md), [ADR-0005 SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md).
 
-The project website lives in `website/` and is built with [Hugo](https://gohugo.io).
+## Status and Roadmap
 
-### Prerequisites
+Harbor Satellite is in active development. Implemented today: Ground Control, token and SPIFFE registration, desired-state replication (Pattern 1), status reporting, runtime mirror configuration, embedded Zot and BYO registries.
 
-- [Hugo](https://gohugo.io/installation/) (v0.138.0 or later, extended edition)
+In progress:
 
-### Running locally
+- Spegel-based distribution (Pattern 2) and proxy mode (Pattern 3)
 
-```bash
-cd website
-hugo server
-```
+Planned:
 
-Opens at `http://localhost:1313` with live reload.
+- Downstream event executor: detect state changes at the site and trigger actions such as rollouts
+- Broader hardware-backed identity support
 
-### Production build
+Compatibility with every container registry and edge device cannot be guaranteed. If you are evaluating Harbor Satellite for your environment, [reach out](https://container-registry.com/contact/).
 
-```bash
-cd website
-hugo --gc --minify
-```
+## Documentation
 
-Output goes to `website/public/`.
+- [Architecture overview](docs/architecture/README.md), [components](docs/architecture/components.md), [use cases](docs/architecture/use-cases.md)
+- [Architecture decision records](docs/decisions/)
+- [Project website](https://satellite.container-registry.com/), source in [`website/`](website/README.md)
 
 ## Community, Discussion, Contribution, and Support
 
-You can reach the Harbor community and developers via the following channels:
+Harbor Satellite is part of the Harbor CNCF project.
 
-- [#harbor-satellite on CNCF Slack](https://cloud-native.slack.com/archives/C06NE6EJBU1) (Request an invite to join the CNCF Slack via [slack.cncf.io](https://slack.cncf.io/))
+- [#harbor-satellite on CNCF Slack](https://cloud-native.slack.com/archives/C06NE6EJBU1) (request an invite at [slack.cncf.io](https://slack.cncf.io/))
+- [GitHub issues](https://github.com/container-registry/harbor-satellite/issues)
+
+## License
+
+[Apache License 2.0](LICENSE)
