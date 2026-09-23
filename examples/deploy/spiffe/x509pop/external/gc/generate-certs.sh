@@ -47,10 +47,12 @@ openssl x509 -req -days 365 -in "$CERTS_DIR/agent-gc.csr" \
     -out "$CERTS_DIR/agent-gc.crt" -extfile "$CERTS_DIR/agent-gc.ext"
 
 # 4. Satellite agent certificate
+# Ground Control matches x509pop agents by the selector x509pop:subject:cn:<satellite_name>,
+# so the CN must equal the satellite_name registered in ../sat/setup.sh.
 echo "Generating Satellite agent certificate..."
 openssl genrsa -out "$CERTS_DIR/agent-satellite.key" 2048
 openssl req -new -key "$CERTS_DIR/agent-satellite.key" -out "$CERTS_DIR/agent-satellite.csr" \
-    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=agent-satellite"
+    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=edge-01"
 
 cat > "$CERTS_DIR/agent-satellite.ext" << EOF
 authorityKeyIdentifier=keyid,issuer

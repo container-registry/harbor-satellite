@@ -7,7 +7,8 @@ CERTS_DIR="$SCRIPT_DIR/certs"
 
 mkdir -p "$CERTS_DIR"
 
-if [ -f "$CERTS_DIR/ssh-ca" ] && [ -f "$CERTS_DIR/agent-gc-host-key-cert.pub" ]; then
+if [ -f "$CERTS_DIR/ssh-ca" ] && [ -f "$CERTS_DIR/agent-gc-host-key-cert.pub" ] \
+    && [ -f "$CERTS_DIR/agent-satellite-2-host-key-cert.pub" ]; then
     echo "Certificates already exist, skipping generation"
     exit 0
 fi
@@ -36,9 +37,16 @@ ssh-keygen -t ed25519 -f "$CERTS_DIR/agent-satellite-host-key" -N "" -C "agent-s
 ssh-keygen -s "$CERTS_DIR/ssh-ca" -I "agent-satellite" -h -n "spire-agent-satellite" \
     -V "+52w" "$CERTS_DIR/agent-satellite-host-key.pub"
 
+# 5. Second satellite agent host key, used by ../sat/docker-compose.edge-02.yml
+echo "Generating second Satellite agent host key (edge-02)..."
+ssh-keygen -t ed25519 -f "$CERTS_DIR/agent-satellite-2-host-key" -N "" -C "agent-satellite-2"
+ssh-keygen -s "$CERTS_DIR/ssh-ca" -I "agent-satellite-2" -h -n "spire-agent-satellite-2" \
+    -V "+52w" "$CERTS_DIR/agent-satellite-2-host-key.pub"
+
 # ssh-ca needs 600 for ssh-keygen -s signing. Other keys need 644 for container access.
 chmod 600 "$CERTS_DIR/ssh-ca"
-chmod 644 "$CERTS_DIR/bootstrap.key" "$CERTS_DIR/agent-gc-host-key" "$CERTS_DIR/agent-satellite-host-key"
+chmod 644 "$CERTS_DIR/bootstrap.key" "$CERTS_DIR/agent-gc-host-key" "$CERTS_DIR/agent-satellite-host-key" \
+    "$CERTS_DIR/agent-satellite-2-host-key"
 chmod 644 "$CERTS_DIR/ssh-ca.pub" "$CERTS_DIR"/*.pub "$CERTS_DIR/bootstrap.crt"
 
 echo "SSH certificates generated in $CERTS_DIR"

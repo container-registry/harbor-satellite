@@ -1,21 +1,21 @@
-# Docker Compose for Satellite with External SPIRE Agent (X.509 PoP Attestation)
-# Requires the GC-side SPIRE server to be running (from ../gc/)
+# Second satellite (edge-02) with its own SSH PoP SPIRE agent.
+# Use as an override: docker compose -f docker-compose.yml -f docker-compose.edge-02.yml up -d <service>
+# Requires ../gc/certs/agent-satellite-2-host-key{,-cert.pub} (created by ../gc/generate-certs.sh).
 
 services:
-  spire-agent-satellite:
+  spire-agent-satellite-2:
     image: ghcr.io/spiffe/spire-agent:1.12.3
-    container_name: spire-agent-satellite
-    hostname: spire-agent-satellite
+    container_name: spire-agent-satellite-2
+    hostname: spire-agent-satellite-2
     pid: host
     command: ["-config", "/opt/spire/conf/agent/agent.conf"]
     volumes:
       - ./spire/agent-satellite.conf:/opt/spire/conf/agent/agent.conf:ro
-      - ../gc/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
-      - ../gc/certs/agent-satellite.crt:/opt/spire/conf/agent/agent.crt:ro
-      - ../gc/certs/agent-satellite.key:/opt/spire/conf/agent/agent.key:ro
-      - spire-agent-satellite-data:/opt/spire/data/agent
-      - spire-agent-satellite-socket:/run/spire/sockets
-      # Required for SPIRE workload attestor (identifies containers by Docker labels)
+      - ../gc/certs/bootstrap.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - ../gc/certs/agent-satellite-2-host-key:/opt/spire/conf/agent/host-key:ro
+      - ../gc/certs/agent-satellite-2-host-key-cert.pub:/opt/spire/conf/agent/host-key-cert.pub:ro
+      - spire-agent-satellite-2-data:/opt/spire/data/agent
+      - spire-agent-satellite-2-socket:/run/spire/sockets
       - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
     healthcheck:
       test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck", "-socketPath", "/run/spire/sockets/agent.sock"]
@@ -26,11 +26,11 @@ services:
     networks:
       - harbor-satellite
 
-  satellite:
+  satellite-2:
     build:
       context: ../../../../../..
       dockerfile: Dockerfile
-    container_name: satellite
+    container_name: satellite-2
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -42,18 +42,18 @@ services:
       - SPIFFE_EXPECTED_SERVER_ID=spiffe://harbor-satellite.local/ground-control
       - CONFIG_DIR=/data
     volumes:
-      - spire-agent-satellite-socket:/run/spire/sockets:ro
-      - satellite-data:/data
+      - spire-agent-satellite-2-socket:/run/spire/sockets:ro
+      - satellite-2-data:/data
     depends_on:
-      spire-agent-satellite:
+      spire-agent-satellite-2:
         condition: service_healthy
     networks:
       - harbor-satellite
 
 volumes:
-  spire-agent-satellite-data:
-  spire-agent-satellite-socket:
-  satellite-data:
+  spire-agent-satellite-2-data:
+  spire-agent-satellite-2-socket:
+  satellite-2-data:
 
 networks:
   harbor-satellite:

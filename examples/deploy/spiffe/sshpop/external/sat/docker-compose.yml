@@ -31,8 +31,11 @@ services:
       context: ../../../../../..
       dockerfile: Dockerfile
     container_name: satellite
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - GROUND_CONTROL_URL=https://ground-control:8080
+      - HARBOR_REGISTRY_URL=${HARBOR_REGISTRY_URL:-http://host.docker.internal:8080}
       - USE_UNSECURE=true
       - SPIFFE_ENABLED=true
       - SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
