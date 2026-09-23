@@ -1,4 +1,11 @@
 # PARSEC Integration Proposal for Harbor
+
+> **Scope note.** This is a proposal for **Harbor Core** (goharbor/harbor), not a Harbor Satellite architecture
+> decision. It was previously filed as `docs/decisions/0008-parsec-harbor-integration-proposal.md`. Harbor
+> Satellite removed its own PARSEC integration in
+> [#526](https://github.com/container-registry/harbor-satellite/pull/526); nothing in this document is
+> implemented in this repository. The architecture diagram source is
+> [assets/parsec-harbor-core-architecture.drawio](assets/parsec-harbor-core-architecture.drawio).
 ## Using PARSEC as a Secure Backend for SSL/TLS, Identity, and Attestation Management
 
 **Version:** 1.0  
