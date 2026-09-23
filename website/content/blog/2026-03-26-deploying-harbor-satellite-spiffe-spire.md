@@ -13,6 +13,12 @@ tags:
 
 This is a practical walkthrough to deploy Harbor Satellite with SPIFFE/SPIRE and validate offline image pulls.
 
+> **Architecture update:** This walkthrough documents the March 2026 implementation.
+> Since v0.0.5, ADR-0009 replaced the embedded Zot registry with ORAS OCI layout storage,
+> so the satellite no longer serves images on `localhost:5050`. Steps 1 to 5 still set up
+> and sync the satellite; the `5050` checks and the air-gap pull test need a BYO registry
+> now. See [Delivering Images to Workloads](/docs/installation/#delivering-images-to-workloads).
+
 ## What you will achieve
 
 - Run Central Harbor as source registry
@@ -50,7 +56,7 @@ HARBOR_URL=http://<YOUR_HARBOR_IP>:80 ./setup.sh
 
 ```bash
 cd ../sat
-./setup.sh
+HARBOR_REGISTRY_URL=http://<YOUR_HARBOR_IP>:80 ./setup.sh
 # Expected: Satellite starts and authenticates using SPIFFE/SPIRE
 ```
 
@@ -59,11 +65,13 @@ cd ../sat
 ```bash
 # Ground Control health
 curl -k https://localhost:9080/health
-# Expected: ok
+# Expected: {"status":"healthy"}
 
 # Edge Satellite registry endpoint
 curl -i http://localhost:5050/v2/
-# Expected: HTTP/1.1 200 OK
+# Expected (March 2026 releases): HTTP/1.1 200 OK
+# Current releases: no registry endpoint, check the OCI layout instead:
+# docker exec satellite cat /data/oci/index.json
 ```
 
 ## Step 5: Tell Satellite to cache images
@@ -71,7 +79,7 @@ curl -i http://localhost:5050/v2/
 ```bash
 # 1) Login and get auth token
 TOKEN=$(curl -sk -X POST "https://localhost:9080/login" \
-  -d '{"username":"admin","password":"<HARBOR_PASSWORD>"}' | \
+  -d '{"username":"admin","password":"<ADMIN_PASSWORD>"}' | \
   grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
 # 2) Get nginx:alpine digest from Harbor
@@ -100,12 +108,18 @@ curl -sk -X POST "https://localhost:9080/api/groups/satellite" \
 ```
 
 ```bash
-# Verify cache catalog
+# Verify cache catalog (March 2026 releases)
 curl -s http://localhost:5050/v2/_catalog
 # Expected: {"repositories":["library/nginx"]}
+
+# Current releases
+docker exec satellite cat /data/oci/index.json
 ```
 
 ## Testing without internet (air-gap validation)
+
+> **Current releases:** the pulls below need a registry at `localhost:5050`. Run the
+> satellite in BYO registry mode with a registry on that port to repeat this test.
 
 ### Step 1: Clear local cache
 

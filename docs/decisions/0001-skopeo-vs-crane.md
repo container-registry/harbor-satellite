@@ -1,4 +1,12 @@
+---
+status: accepted
+---
+
 # Skopeo vs Crane
+
+> [ADR-0009](0009-transparent-oci-registry-proxy.md) supersedes the target state and plans to replace Crane with ORAS.
+> Current state: the local OCI-layout store uses ORAS (#648). Crane / go-containerregistry is still used for the
+> BYO registry store, direct delivery, state fetching and the image catalog.
 
 ## Context and Problem Statement
 

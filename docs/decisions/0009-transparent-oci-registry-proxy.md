@@ -6,6 +6,19 @@ informed: [Harbor Satellite Developers]
 ---
 # Build a policy-enforcing transparent OCI registry proxy with ORAS
 
+## Implementation Status
+
+Partly implemented. The Context section below describes the code base when this record was written.
+
+| Part | State |
+|---|---|
+| ORAS OCI image layout replaces Zot as the local store | Done in [#648](https://github.com/container-registry/harbor-satellite/pull/648) (`internal/satellite/store`, default path `<config-dir>/oci`) |
+| Typed OCI request parsing and process chain | Package added in [#649](https://github.com/container-registry/harbor-satellite/pull/649) (`internal/satellite/proxy`). Not wired: `cmd/satellite` does not import it and the satellite opens no listener |
+| Forwarding, CEL policy, `proxy` / `replica` / `cache` modes | Not implemented |
+| Replace Crane with ORAS | Not done. go-containerregistry is still used by the BYO registry store, direct delivery, state fetching and the image catalog |
+
+Until the proxy is wired, workloads get images from a BYO registry (`--byo-registry`) or via k3s/RKE2 direct delivery (`--direct-delivery`).
+
 ## Context
 
 Satellite currently uses Crane to replicate selected images into Zot. The revised

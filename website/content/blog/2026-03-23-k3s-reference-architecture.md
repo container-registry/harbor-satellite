@@ -13,8 +13,12 @@ tags:
 ---
 
 > **Architecture update:** This article documents the March 2026 implementation.
-> ADR-0009 superseded its embedded-registry design with ORAS OCI layout storage.
-> See the current K3s reference architecture guide before deploying it.
+> Since v0.0.5, ADR-0009 replaced the embedded Zot registry with ORAS OCI layout storage,
+> so the satellite no longer listens on port `5050`. Method 1 (network mirror to
+> `127.0.0.1:5050`) and every `5050` check below do not work against current releases;
+> mirroring now needs BYO registry mode. Method 2 (Direct Delivery) still works. See
+> [Delivering Images to Workloads](/docs/installation/#delivering-images-to-workloads)
+> for the current options.
 
 Deploying Kubernetes at the edge introduces architectural challenges not seen in centralized datacenters. Edge nodes often run with intermittent, low-bandwidth, or metered connectivity. At scale, relying on a centralized registry over WAN becomes a fragile single point of failure.
 
@@ -172,8 +176,13 @@ Optional mirror wiring from Satellite runtime flags:
 go run ./cmd/satellite \
   --token "<token>" \
   --ground-control-url "https://<GROUND_CONTROL_HOST>:9080" \
+  --harbor-registry-url "http://<CENTRAL_HARBOR_IP>:80" \
   --mirrors=containerd:docker.io
 ```
+
+> **Current releases:** `--harbor-registry-url` is required, and `--mirrors` is only
+> applied together with `--byo-registry --registry-url <edge-registry>`. Without BYO mode
+> the satellite logs a warning and leaves containerd untouched.
 
 ### Step 3: Start Ground Control and Satellite (Zero-Touch)
 
@@ -184,7 +193,7 @@ HARBOR_URL=http://<CENTRAL_HARBOR_IP>:80 ./setup.sh
 
 ```bash
 cd ../sat
-./setup.sh
+HARBOR_REGISTRY_URL=http://<CENTRAL_HARBOR_IP>:80 ./setup.sh
 ```
 
 Verify SPIFFE onboarding and robot account provisioning:
@@ -197,7 +206,7 @@ docker logs ground-control | grep "SPIFFE ZTR"
 
 ```bash
 # Get Ground Control Bearer Token
-TOKEN=$(curl -sk -X POST "https://localhost:9080/login" -d '{"username":"admin","password":"<HARBOR_PASSWORD>"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+TOKEN=$(curl -sk -X POST "https://localhost:9080/login" -d '{"username":"admin","password":"<ADMIN_PASSWORD>"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
 # Get the SHA256 Digest from Central Harbor
 DIGEST=$(curl -sk -u "admin:<HARBOR_PASSWORD>" "http://<CENTRAL_HARBOR_IP>/api/v2.0/projects/library/repositories/nginx/artifacts?q=tags%3Dalpine&page_size=1" | grep -m1 '"digest":' | cut -d'"' -f4)
@@ -224,6 +233,9 @@ curl -s http://127.0.0.1:5050/v2/_catalog
 # Expected: {"repositories":["library/nginx"]}
 ```
 
+> **Current releases:** there is no registry on `5050`. Check the OCI layout instead:
+> `docker exec satellite cat /data/oci/index.json`
+
 ### Step 5: Air-gap behavior test
 
 ```bash
@@ -235,6 +247,9 @@ docker stop harbor-core ground-control harbor-db redis registry registryctl harb
 # Deploy workload using standard image name
 kubectl run true-airgap-test --image=nginx:alpine
 ```
+
+> **Current releases:** this test relies on the `127.0.0.1:5050` mirror and fails
+> without a BYO registry at that address. Use Method 2 for offline pulls.
 
 Validation checks:
 
@@ -264,6 +279,7 @@ Use this when sites must run with no live registry path.
 # examples/deploy/spiffe/join-token/external/sat/docker-compose.yml
 services:
   satellite:
+    user: "0:0" # the image runs as a non-root user; writing to the k3s images directory needs root
     environment:
       - DIRECT_DELIVERY=true
       - IMAGE_DIR=/var/lib/rancher/k3s/agent/images
@@ -287,7 +303,7 @@ If using RKE2, set `IMAGE_DIR=/var/lib/rancher/rke2/agent/images`.
 
 ```bash
 # Get Ground Control Bearer Token
-TOKEN=$(curl -sk -X POST "https://localhost:9080/login" -d '{"username":"admin","password":"<HARBOR_PASSWORD>"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+TOKEN=$(curl -sk -X POST "https://localhost:9080/login" -d '{"username":"admin","password":"<ADMIN_PASSWORD>"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
 # Get image digest from Harbor
 DIGEST=$(curl -sk -u "admin:<HARBOR_PASSWORD>" "http://<CENTRAL_HARBOR_IP>/api/v2.0/projects/library/repositories/nginx/artifacts?q=tags%3Dalpine&page_size=1" | grep -m1 '"digest":' | cut -d'"' -f4)
@@ -304,8 +320,8 @@ curl -sk -X POST "https://localhost:9080/api/groups/satellite" \
   -H "Authorization: Bearer ${TOKEN}" \
   -d '{"satellite": "edge-01", "group": "edge-group"}'
 
-# Confirm Satellite has the artifact
-curl -s http://127.0.0.1:5050/v2/_catalog
+# Confirm Satellite delivered the artifact
+docker logs satellite | grep "Direct delivery: tarball written"
 ```
 
 Then verify image appears in K3s runtime:

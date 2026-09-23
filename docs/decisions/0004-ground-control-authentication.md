@@ -1,3 +1,7 @@
+---
+status: accepted
+---
+
 # Ground Control Authentication
 
 ## Context and Problem Statement
@@ -31,7 +35,7 @@ management, and brute-force protection without requiring external identity provi
 
 ### Account Lockout
 
-* 5 failed attempts triggers lockout (configurable via `LOCKOUT_DURATION_MINUTES`, default: 15)
+* 5 failed attempts triggers lockout for `LOCKOUT_DURATION` (Go duration, default: `5m`)
 
 ### User Roles
 
@@ -41,22 +45,26 @@ management, and brute-force protection without requiring external identity provi
 ### API Routes
 
 Public:
-* `POST /login`, `POST /satellites/ztr`, `POST /satellites/sync`
+* `GET /ping`, `GET /health`, `POST /login`, `POST /satellites/ztr` (rate limited)
 
 Token-based ZTR sends the single-use token in the JSON request body as
 `{"token":"<32-character token>"}`; the token is not part of the URL.
 
+Satellite-authenticated (robot account basic auth or SPIFFE mTLS, added in #500):
+* `POST /satellites/sync`, `GET /satellites/spiffe-ztr` (SPIFFE only)
+
 Protected (all authenticated users):
-* `POST /logout`, `GET /users`, `PATCH /users/password`
+* `POST /api/logout`, `GET /api/users`, `GET /api/users/{username}`, `PATCH /api/users/password`
 
 Protected (system_admin only):
-* `POST /users`, `DELETE /users/{username}`, `PATCH /users/{username}/password`
+* `POST /api/users`, `DELETE /api/users/{username}`, `PATCH /api/users/{username}/password`
+* `DELETE /api/groups/{group}`, `POST /api/satellites/register`, `/api/spire/*`
 
-All `/groups/*`, `/configs/*`, `/satellites/*` management endpoints require authentication.
+All other `/api/groups/*`, `/api/configs/*`, `/api/satellites/*` management endpoints require authentication.
 
 ### Session Management
 
-* Configurable duration via `SESSION_DURATION_HOURS` (default: 24)
+* Configurable duration via `SESSION_DURATION` (Go duration, default: `24h`)
 * Password changes invalidate all user sessions
 * User deletion cascades to session deletion
 
@@ -73,8 +81,8 @@ ADMIN_PASSWORD=<strong-password>
 
 Optional:
 ```
-SESSION_DURATION_HOURS=24
-LOCKOUT_DURATION_MINUTES=15
+SESSION_DURATION=24h
+LOCKOUT_DURATION=5m
 PASSWORD_MIN_LENGTH=8
 PASSWORD_REQUIRE_SPECIAL=false
 ```

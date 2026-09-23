@@ -7,8 +7,9 @@ Suitable for environments where certificates can be securely distributed before 
 ## Prerequisites
 
 - Docker and docker compose installed
-- Harbor running (or use SKIP_HARBOR_HEALTH_CHECK=true for testing)
+- Harbor running (or set `SKIP_HARBOR_HEALTH_CHECK=true` for testing)
 - OpenSSL installed (for certificate generation)
+- `HARBOR_*`, `ADMIN_PASSWORD` and `HARBOR_REGISTRY_URL` exported if you do not use the defaults. See [Environment Variables](../README.md#environment-variables).
 
 ## Step 1: Start Ground Control with External SPIRE
 
@@ -21,29 +22,13 @@ cd external/gc
 ./generate-certs.sh
 ```
 
-Or manually:
-```bash
-mkdir -p certs
+The script creates, in `certs/`:
+- `ca.key`, `ca.crt`: SPIRE upstream authority CA
+- `x509pop-ca.key`, `x509pop-ca.crt`: X.509 PoP CA that signs the agent certificates
+- `agent-gc.key`, `agent-gc.crt`: GC agent certificate
+- `agent-satellite.key`, `agent-satellite.crt`: satellite agent certificate with `CN=edge-01`
 
-# SPIRE upstream authority CA
-openssl genrsa -out certs/ca.key 4096
-openssl req -new -x509 -days 365 -key certs/ca.key -out certs/ca.crt \
-    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=SPIRE CA"
-
-# X.509 PoP CA (signs agent certs)
-openssl genrsa -out certs/x509pop-ca.key 4096
-openssl req -new -x509 -days 365 -key certs/x509pop-ca.key -out certs/x509pop-ca.crt \
-    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=X509 PoP CA"
-
-# Agent certificate (repeat for each agent)
-openssl genrsa -out certs/agent-gc.key 2048
-openssl req -new -key certs/agent-gc.key -out certs/agent-gc.csr \
-    -subj "/C=US/ST=State/L=City/O=Harbor Satellite/CN=agent-gc"
-# Sign with x509pop CA (add SPIFFE URI SAN)
-openssl x509 -req -days 365 -in certs/agent-gc.csr \
-    -CA certs/x509pop-ca.crt -CAkey certs/x509pop-ca.key -CAcreateserial \
-    -out certs/agent-gc.crt
-```
+The satellite certificate CN must equal the `satellite_name` used in step 2.2, because Ground Control finds the attested agent by the `x509pop:subject:cn:<satellite_name>` selector. To generate the certificates by hand, run the commands in [`external/gc/generate-certs.sh`](external/gc/generate-certs.sh), including the SAN extension files.
 
 ### 1.2 Start SPIRE server and PostgreSQL
 
@@ -93,9 +78,7 @@ docker compose up -d ground-control
 
 ### 1.7 Verify
 
-```bash
-curl -sk https://localhost:9080/ping
-```
+See [Health checks](../README.md#health-checks).
 
 ## Step 2: Start Satellite with External SPIRE
 
@@ -111,16 +94,12 @@ docker compose up -d spire-agent-satellite
 
 ### 2.2 Register satellite via Ground Control
 
-Register the satellite using the GC API. The API automatically discovers the x509pop agent
-by matching the certificate CN selector and creates the workload entry.
+Register the satellite using the GC API. The API finds the attested x509pop agent
+by matching the certificate CN (`edge-01`) and creates the workload entry.
+
+First [log in](../README.md#log-in) to get `AUTH_TOKEN`, then:
 
 ```bash
-# Login to Ground Control
-LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
-    -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"Harbor12345"}')
-AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-
 # Register satellite (auto-matches x509pop agent by CN)
 curl -sk -X POST https://localhost:9080/api/satellites/register \
     -H "Content-Type: application/json" \
@@ -132,32 +111,21 @@ curl -sk -X POST https://localhost:9080/api/satellites/register \
     }'
 ```
 
-The API creates the SPIRE workload entry, satellite DB record, and robot account.
+The API creates the SPIRE workload entry, satellite DB record and robot account, and assigns the `default` config. The satellite's SPIFFE ID is `spiffe://harbor-satellite.local/satellite/region/default/edge-01`.
 
 ### 2.3 Start Satellite
 
+The satellite needs `HARBOR_REGISTRY_URL` (default `http://host.docker.internal:8080`).
+
 ```bash
 docker compose up -d satellite
-```
-
-### 2.4 Verify
-
-```bash
 docker logs satellite
-docker exec spire-server /opt/spire/bin/spire-server agent list \
-    -socketPath /tmp/spire-server/private/api.sock
 ```
 
-## Automated Setup
+## Step 3: Groups, Configs and Verification
 
-```bash
-cd external/gc && ./setup.sh
-cd ../sat && ./setup.sh
-```
+Continue with the [shared steps](../README.md#shared-steps): assign a group (and optionally a custom config) to `edge-01`, then [verify](../README.md#verify) replication.
 
-## Cleanup
+## Automated Setup and Cleanup
 
-```bash
-cd external/sat && ./cleanup.sh
-cd ../gc && ./cleanup.sh
-```
+See [Automated setup](../README.md#automated-setup) and [Cleanup](../README.md#cleanup) with `<method>` set to `x509pop`.

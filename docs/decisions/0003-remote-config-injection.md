@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2025-03-29
 deciders: [Harbor-Satellite Development Team]
 consulted: [Harbor-Satellite Users, Architects]
@@ -7,6 +7,14 @@ informed: [Harbor-Satellite Developers, Operators]
 ---
 
 # Remote Satellite Configuration Management
+
+> Implementation note: remote configs are implemented. Ground Control stores each config as a
+> `satellite/config-state/<name>/state` artifact in Harbor and the satellite state references it.
+> The API differs from the examples below: configs are managed with `POST /api/configs`,
+> `PATCH /api/configs/{config}` (JSON Merge Patch) and `DELETE /api/configs/{config}`, and satellites are
+> created with `POST /api/satellites` (`name`, `groups`, `config_name`). All `/api/*` routes require
+> authentication (ADR-0004). The satellite keeps the previous config in `prev_config.json`. The proposed split
+> into a separate `state_config.json` was not implemented; `state_config` remains a section of `config.json`.
 
 ## Context and Problem Statement
 

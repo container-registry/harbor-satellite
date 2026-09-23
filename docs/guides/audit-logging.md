@@ -67,12 +67,13 @@ events emitted today.
 | `user.create.success`        | Ground Control | - | `system_admin` creates a user |
 | `user.delete.success`        | Ground Control | - | `system_admin` deletes a user |
 | `user.password_change.success` | Ground Control | - | Self-service or admin-driven password change |
-| `satellite.register.success` | Both           | - | Successful `/register`, `/ztr/{token}`, or SPIFFE ZTR; satellite logs its own successful registration |
-| `satellite.register.failure` | Satellite      | `registration_failed`, `invalid_state_auth_config` | Satellite-side registration fails: network/HTTP error reaching Ground Control, or an invalid state-auth config is returned |
-| `satellite.deregister.success` | Ground Control | - | `DELETE /satellites/{name}` |
-| `satellite.auth.failure`     | Ground Control | `invalid_token`, `token_expired`, `missing_spiffe_identity`, `invalid_spiffe_id` | Invalid/expired token, or missing/invalid SPIFFE identity. Kept distinct from `satellite.register.failure` so brute-force alerts on auth failures are not triggered by benign network errors |
+| `satellite.register.success` | Both           | - | GC: `POST /api/satellites`, token ZTR (`POST /satellites/ztr`), or SPIFFE ZTR (`GET /satellites/spiffe-ztr`). Satellite: its own successful token ZTR (not emitted for SPIFFE ZTR) |
+| `satellite.register.failure` | Satellite      | `registration_failed`, `invalid_state_auth_config` | Satellite-side token ZTR fails: network/HTTP error reaching Ground Control, or an invalid state-auth config is returned |
+| `satellite.deregister.success` | Ground Control | - | `DELETE /api/satellites/{satellite}` |
+| `satellite.auth.failure`     | Ground Control | `invalid_token`, `token_expired`, `missing_spiffe_identity`, `invalid_spiffe_id`, `invalid_credentials`, `missing_credentials` | Invalid/expired ZTR token, missing/invalid SPIFFE identity, or rejected robot/SPIFFE credentials on `POST /satellites/sync`. Kept distinct from `satellite.register.failure` so brute-force alerts on auth failures are not triggered by benign network errors |
 | `config.create.success`      | Ground Control | - | Config created via API |
-| `config.update.success`      | Both           | - | GC: config updated via API. Satellite: config hot-reloaded |
+| `config.update.success`      | Both           | - | GC: config updated via API. Satellite: config file hot-reloaded |
+| `config.update.failure`      | Satellite      | `reconfigure_failed` | A hot reload changed the audit settings but the audit logger could not be reconfigured; the previous audit configuration stays active |
 | `config.delete.success`      | Ground Control | - | Config deleted via API |
 | `satellite.revoke.success`   | Reserved       | - | Not yet emitted - see roadmap |
 | `satellite.unrevoke.success` | Reserved       | - | Not yet emitted - see roadmap |

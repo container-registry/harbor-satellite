@@ -1,5 +1,7 @@
 # Migrate Ground Control Into the Harbor Satellite Module
 
+> Status: implemented in #497 (module merge), #498 (cmd layout) and #614 (shared packages under `internal/shared`). The repository now has a single `go.mod`.
+
 ## Summary
 
 Migrate `ground-control` from a nested Go module into the root Harbor Satellite module. The repository should maintain a single `go.mod`, with `harbor-satellite` and `ground-control` built as separate binaries from one module.

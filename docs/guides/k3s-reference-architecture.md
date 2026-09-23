@@ -6,7 +6,7 @@
 [![K3s](https://img.shields.io/badge/K3s-Edge-orange?logo=k3s)](https://k3s.io)
 [![SUSE](https://img.shields.io/badge/SUSE-Open%20Source-73BA25?logo=suse)](https://github.com/suse)
 
-*A comprehensive reference architecture covering network topology, SPIFFE/SPIRE security, end-to-end setup procedures, enterprise use cases, and ecosystem alignment for deploying Harbor Satellite with K3s.*
+*A reference architecture covering network topology, SPIFFE/SPIRE security, end-to-end setup procedures, enterprise use cases, and ecosystem alignment for deploying Harbor Satellite with K3s.*
 
 ---
 
@@ -18,7 +18,7 @@
 | 2 | [Reference Architecture](#2-reference-architecture) |
 | 3 | [Security Model : SPIFFE/SPIRE Integration](#3-security-model--spiffespire-integration) |
 | 4 | [Connectivity Model](#4-connectivity-model) |
-| 5 | [Setup Guide: Method 1 - Network-Based Registry Mirror](#5-setup-guide-method-1---network-based-registry-mirror) |
+| 5 | [Setup Guide: Method 1 - Registry Mirror via BYO Registry](#5-setup-guide-method-1---registry-mirror-via-byo-registry) |
 | 6 | [Setup Guide: Method 2 - Automated Air-Gap via Direct Delivery](#6-setup-guide-method-2---automated-air-gap-via-direct-delivery) |
 | 7 | [Enterprise Use Cases](#7-enterprise-use-cases) |
 | 8 | [Ecosystem Alignment](#8-ecosystem-alignment) |
@@ -28,19 +28,29 @@
 
 ## 1. Introduction & Challenges Addressed
 
-Deploying Kubernetes at the edge introduces architectural challenges that are not present in centralized cloud datacenters. Edge nodes frequently operate in resource-constrained environments with intermittent, low-bandwidth, or highly metered network connections. When orchestrating K3s across thousands of remote sites, relying on a centralized container registry over a Wide Area Network (WAN) introduces a critical single point of failure.
+Deploying Kubernetes at the edge introduces architectural challenges that are not present in centralized cloud datacenters. Edge nodes frequently operate in resource-constrained environments with intermittent, low-bandwidth, or highly metered network connections. When orchestrating K3s across many remote sites, relying on a centralized container registry over a Wide Area Network (WAN) introduces a single point of failure.
 
-**Harbor Satellite** — an edge extension of the CNCF-graduated Harbor registry — mitigates this vulnerability by pre-positioning OCI content at each edge site. It uses ORAS to synchronize complete OCI descriptor graphs from a central Harbor registry into a persistent local OCI image layout. Workload delivery currently uses the experimental k3s/RKE2 direct-delivery mode or an external BYO registry; transparent proxy serving is a separate phase described by ADR-0009.
+**Harbor Satellite**, an edge extension of the CNCF-graduated Harbor registry, pre-positions OCI content at each edge site. It synchronizes the artifacts assigned to it by Ground Control from a central Harbor registry into one of two stores:
+
+- **Local OCI image layout** (default): an ORAS-backed OCI layout on disk (`<config-dir>/oci`). It does not listen on any port, so workloads cannot pull from it directly.
+- **BYO registry** (`--byo-registry`): an external OCI registry you run next to the node (for example `registry:2`). Satellite copies images into it and container runtimes pull from it.
+
+Workloads receive images in one of two ways today:
+
+- **Method 1:** a containerd mirror pointing at a BYO registry ([Section 5](#5-setup-guide-method-1---registry-mirror-via-byo-registry)).
+- **Method 2:** the experimental k3s/RKE2 **direct delivery** mode, which writes image tarballs into the K3s auto-import directory ([Section 6](#6-setup-guide-method-2---automated-air-gap-via-direct-delivery)).
+
+A transparent proxy that serves workloads from Satellite itself is designed in [ADR-0009](../decisions/0009-transparent-oci-registry-proxy.md). It is not wired into the satellite binary yet.
 
 ### Challenges & Solutions
 
 | Edge Challenge | Harbor Satellite Solution |
 |---|---|
-| **Content unavailable during network partitions** | The local OCI layout retains synchronized content; direct delivery can preload it into k3s/RKE2. |
-| **High bandwidth costs on metered links** | Layer-diff synchronization transfers only modified image layers, drastically reducing payload sizes. |
-| **Bootstrapping restricted clusters** | Automated direct delivery injects images into K3s auto-import without manual tarball handling. |
-| **Credential management at scale** | SPIFFE/SPIRE Zero-Touch Registration (ZTR) eliminates all static secrets from edge devices. |
-| **Widespread certificate rotation** | SPIRE Workload API rotates X.509 SVIDs automatically without application downtime. |
+| **Content unavailable during network partitions** | The BYO registry or the K3s node image store keeps synchronized images available while the WAN is down. |
+| **High bandwidth costs on metered links** | Content-addressed copying transfers only blobs that are missing at the destination. |
+| **Bootstrapping restricted clusters** | Direct delivery writes images into K3s auto-import without manual tarball handling. |
+| **Credential management at scale** | SPIFFE/SPIRE Zero-Touch Registration (ZTR) replaces the per-satellite registration token with an attested workload identity. Ground Control then issues a Harbor robot account per satellite. |
+| **Certificate rotation** | The SPIRE Workload API rotates X.509 SVIDs automatically. |
 
 ---
 
@@ -48,54 +58,74 @@ Deploying Kubernetes at the edge introduces architectural challenges that are no
 
 ### 2.1 Network Topology
 
-The architecture is strictly divided into two distinct operational planes, separated by a geographic network boundary:
+The architecture is divided into two operational planes separated by a network boundary:
 
-- **Cloud / Datacenter Plane:** Central registry, fleet management, and identity authority.
-- **Edge Site Plane:** Localized caching, workload runtime, and device attestation.
+- **Cloud / Datacenter Plane:** central registry, fleet management, and identity authority.
+- **Edge Site Plane:** Satellite, the local image store, the workload runtime, and the SPIRE agent.
 
-![Architecture Overview](../images/architecture-overview.png)
+```text
+        CLOUD                              |                 EDGE
+                                           |
+  +-----------+   state artifacts,         |
+  |  Harbor   |<-- robot basic auth -------+------------+
+  +-----------+   (image pulls)            |            |
+        ^                                  |      +-----------+     +------------------+
+        | robot accounts,                  |      | Satellite |---->| BYO registry     |
+        | state artifacts                  |      +-----------+     | or K3s image dir |
+  +----------------+  ZTR, heartbeat       |        |   ^           +------------------+
+  | Ground Control |<-- (mTLS with SVID) --+--------+   |                    ^
+  +----------------+                       |            | SVID               | pull / import
+        ^                                  |      +-------------+     +-------------+
+        | SVID                             |      | SPIRE agent |     | K3s         |
+  +--------------+  node attestation       |      +-------------+     | containerd  |
+  | SPIRE server |<------------------------+-------------+            +-------------+
+  +--------------+                         |
+```
 
-**Diagram Workflow:**
+**Flows:**
 
 | Flow | Description |
 |---|---|
-| **Desired State** | Satellite polls Ground Control for image assignments, then pulls required OCI layers directly from Harbor over mTLS. |
-| **Reconciliation Loop** | Satellite continuously compares local state against the cloud state, pulling new layers and pruning stale data. |
-| **Containerd Mirroring** | K3s containerd intercepts upstream image requests and redirects them to `127.0.0.1:5050`, ensuring localized delivery. |
-| **Event Streaming** | The Event Forwarder/Executor handles bidirectional telemetry and execution commands between the Edge and Ground Control. |
+| **Registration (ZTR)** | Satellite calls Ground Control once at first start (mTLS with its SVID, or a registration token when SPIFFE is off) and receives Harbor robot credentials plus its state artifact URL. |
+| **Desired State** | Satellite reads its state artifacts from Harbor and pulls the listed images from Harbor using the robot account (HTTP basic auth). mTLS is used only between Satellite and Ground Control. |
+| **Reconciliation Loop** | Satellite compares the fetched state with its last applied state, copies new artifacts, and removes artifacts that are no longer assigned. |
+| **Heartbeat** | Satellite sends a status report (CPU, memory, storage, cached images, sync timing) to `POST /satellites/sync`. The response can carry events for Satellite to act on. There is no command channel beyond this. |
+| **Workload delivery** | K3s containerd pulls from the BYO registry through a `registries.yaml` mirror (Method 1), or imports tarballs written by direct delivery (Method 2). |
 
 ### 2.2 Component Placement
 
 | Component | Deployment Location | Primary Role |
 |---|---|---|
-| **Central Harbor** | Cloud | Immutable source of truth for enterprise container images. |
-| **Ground Control** | Cloud | Fleet management, sync policy orchestration, and credential brokering. |
-| **SPIRE Server** | Cloud | Central X.509 identity authority and root of the trust domain. |
-| **SPIRE Agent (GC)** | Cloud (co-located) | Attests and issues SVIDs to Ground Control. |
-| **SPIRE Agent (Edge)**| Edge Node | Attests the physical edge machine and issues SVIDs to Harbor Satellite. |
-| **Harbor Satellite** | Edge Node | Autonomous local OCI registry cache and state replication engine. |
-| **K3s + containerd** | Edge Node | Lightweight Kubernetes runtime natively configured to consume the localized mirror. |
+| **Central Harbor** | Cloud | Source of truth for container images and state artifacts. |
+| **Ground Control** | Cloud | Fleet management, group and config orchestration, robot account brokering. |
+| **SPIRE Server** | Cloud | X.509 identity authority and root of the trust domain. |
+| **SPIRE Agent (GC)** | Cloud (co-located) | Attests Ground Control and issues its SVID. |
+| **SPIRE Agent (Edge)**| Edge Node | Attests the edge machine and issues SVIDs to Harbor Satellite. |
+| **Harbor Satellite** | Edge Node | State replication engine. Runs as a standalone binary or container. |
+| **BYO registry** (Method 1) | Edge Node | OCI registry that Satellite fills and containerd pulls from. |
+| **K3s + containerd** | Edge Node | Lightweight Kubernetes runtime. |
 
 ### 2.3 Image Synchronization Flow
 
 ```text
 ╔══════════════════════════════════════════════════════════╗
-║  SYNC PHASE (Optimal Network Conditions)                 ║
+║  SYNC PHASE (WAN available)                              ║
 ╠══════════════════════════════════════════════════════════╣
 ║                                                          ║
-║  Central Harbor                                          ║
-║    └──► Ground Control assigns images to Edge Group      ║
-║            └──► Satellite pulls layers over mTLS         ║
-║                  └──► Graph stored in local OCI layout   ║
+║  Ground Control assigns images to an edge group          ║
+║    └──► Satellite reads group state from Harbor          ║
+║            └──► Satellite pulls images (robot account)   ║
+║                  └──► Copies into BYO registry           ║
+║                       and/or writes K3s tarballs         ║
 ║                                                          ║
 ╠══════════════════════════════════════════════════════════╣
-║  EXECUTION PHASE (Fully Autonomous / Offline Capable)    ║
+║  EXECUTION PHASE (offline capable)                       ║
 ╠══════════════════════════════════════════════════════════╣
 ║                                                          ║
-║  K3s containerd Engine                                   ║
-║    └──► Intercept via Mirror: 127.0.0.1:5050             ║
-║            └──► Direct delivery preloads the node store  ║
-║                  └──► Workload starts (Zero WAN latency) ║
+║  K3s containerd                                          ║
+║    └──► Method 1: mirror to BYO registry on the node     ║
+║    └──► Method 2: image already imported from tarball    ║
+║            └──► Workload starts without WAN access       ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝
 ```
@@ -104,25 +134,23 @@ The architecture is strictly divided into two distinct operational planes, separ
 
 ## 3. Security Model : SPIFFE/SPIRE Integration
 
-Distributing static registry credentials (`docker login` tokens) to thousands of edge devices is a critical security anti-pattern; a single compromised physical device exposes the credentials for the entire fleet. This architecture replaces all static secrets with **cryptographic identity** utilizing SPIFFE/SPIRE and **Zero-Touch Registration (ZTR)**.
-![SPIFFE Security Model](../images/spiffe-security-model.png)
+Distributing shared registry credentials to many edge devices means one compromised device exposes the whole fleet. With SPIFFE/SPIRE, each satellite proves its identity with an X.509 SVID and receives its **own** Harbor robot account from Ground Control.
 
 ### 3.1 Zero-Touch Registration (ZTR) Provisioning Flow
 
-1. **Token Generation:** Administrator registers a new Satellite in Ground Control. The SPIRE Server generates a secure, one-time Join Token.
-2. **Device Attestation:** The SPIRE Agent deployed on the edge node consumes the Join Token. It is permanently invalidated, and the Agent receives a certificate-based identity.
-3. **Workload Identity:** The Harbor Satellite binary starts, connects to the local SPIRE Agent via a Unix socket, and is issued an X.509 SVID.
-4. **Credential Brokering:** Satellite presents its SVID to Ground Control over mTLS. Ground Control verifies the SPIFFE ID and automatically provisions a highly scoped Harbor Robot Account.
-5. **Steady State:** The Satellite encrypts the Robot Account credentials using a hardware-bound fingerprint and operates autonomously.
+1. **Token Generation:** A system admin calls `POST /api/satellites/register` on Ground Control with `attestation_method: join_token`. Ground Control creates the satellite record, the SPIRE workload entry, and a one-time SPIRE join token.
+2. **Device Attestation:** The SPIRE agent on the edge node consumes the join token and attests to the SPIRE server. x509pop and sshpop attestation are also supported (see [3.3](#33-spire-attestation-methods-for-k3s-edge-nodes)).
+3. **Workload Identity:** Harbor Satellite connects to the local SPIRE agent over its Unix socket and receives an X.509 SVID.
+4. **Credential Brokering:** Satellite calls `GET /satellites/spiffe-ztr` over mTLS. Ground Control verifies the SPIFFE ID and returns Harbor robot credentials and the satellite state URL.
+5. **Steady State:** Satellite writes the credentials to `config.json` in its config directory. ZTR does not run again after it succeeds.
 
-### 3.2 Certificate Rotation & Device-Bound Encryption
+### 3.2 Certificate Rotation & Credential Storage
 
-- **Automated Rotation:** SVIDs maintain a strict Time-To-Live (TTL). The SPIRE Workload API seamlessly renews certificates before expiration, eliminating maintenance windows and human intervention.
-- **Hardware-Change Protection:** Credentials are encrypted at rest using a device fingerprint derived from the `machine-id`, MAC address, and disk serial number. If an edge device is physically stolen or its storage is cloned, the credentials become unreadable.
+- **SVID rotation:** The SPIRE Workload API renews SVIDs before they expire without restarting Satellite.
+- **Robot account lifetime:** Robot accounts expire after `ROBOT_DURATION_DAYS` (Ground Control env, default `30`). Ground Control flags soon-to-expire credentials in the heartbeat response with a `refresh_credentials` event, and Satellite then calls `POST /sat/refresh` on Ground Control. At the time of writing, Ground Control does not register a route for `/sat/refresh`, so this automatic refresh does not complete. Plan robot lifetimes and re-registration accordingly.
+- **Config encryption is opt-in:** By default the robot credentials are stored in plaintext in `config.json`. With `app_config.encrypt_config: true`, Satellite encrypts the file with AES-256-GCM using a key derived from a device fingerprint (`/etc/machine-id`, MAC address, and disk serial). A copy of the encrypted file cannot be decrypted on other hardware. Builds with the `nospiffe` tag do not encrypt.
 
 ### 3.3 SPIRE Attestation Methods for K3s Edge Nodes
-
-Harbor Satellite supports multiple SPIRE node attestation methods:
 
 | Method | Best Fit | Notes |
 | --- | --- | --- |
@@ -132,253 +160,247 @@ Harbor Satellite supports multiple SPIRE node attestation methods:
 
 ### 3.4 Trust Domain Design
 
-- **Single trust domain:** Recommended when cloud and edge are under one platform/security team.
-- **Federated trust domains:** Recommended when multiple organizations, regions, or teams need separate trust roots with controlled federation between them.
+- **Single trust domain:** Suitable when cloud and edge are run by one platform/security team.
+- **Federated trust domains:** Suitable when multiple organizations, regions, or teams need separate trust roots with controlled federation between them.
 
 ---
 
 ## 4. Connectivity Model
 
-> **Architectural Principle:** Harbor Satellite treats WAN connectivity as an optional enhancement, not an operational requirement.
+> **Architectural Principle:** WAN connectivity is needed to sync. It is not needed to start workloads whose images were already synced.
 
 ### 4.1 Background Schedulers
 
-The Satellite utilizes three concurrent scheduling loops:
-
 | Scheduler | Default Interval | Behavior |
 | --- | --- | --- |
-| **State Replication** | 30 seconds | Fetches desired state from Ground Control, then pulls missing layers from Harbor and purges stale artifacts. |
-| **Telemetry Heartbeat** | 30 seconds | Transmits CPU, memory, disk utilization, and local inventory to Ground Control. |
-| **Registration** | 5 seconds (Retry) | Re-authenticates via ZTR to refresh Harbor credentials if required. |
+| **Registration (ZTR)** | 5 seconds | Retries until ZTR succeeds, then stops. Skipped on later starts once credentials are stored. |
+| **State Replication** | 30 seconds | Fetches desired state, copies new artifacts, and removes artifacts that are no longer assigned. |
+| **Heartbeat** | 30 seconds | Sends CPU, memory, storage, and cached image data to Ground Control. |
 
-### 4.2 Bandwidth Optimization (Layer-Diff Strategy)
+### 4.2 Bandwidth Optimization
 
-Instead of downloading monolithic images, the Satellite employs an OCI layer-diff approach:
+1. Satellite resolves each artifact in Harbor and compares its digest with the copy at the destination.
+2. If the digests match, the artifact is skipped.
+3. Otherwise it copies the artifact graph, transferring only blobs the destination does not already have.
 
-1. Fetches lightweight metadata manifests from Harbor.
-2. Resolves the destination reference and compares its OCI digest.
-3. Downloads **only** missing or modified layers over the network.
+Direct delivery (Method 2) pulls each changed image from Harbor a second time to write the tarball. Take that into account on metered links.
 
 ### 4.3 Network Outage Behavior
 
-During a WAN partition, the State Replication and Heartbeat schedulers retry on their next intervals and the local OCI layout remains intact. With direct delivery enabled, previously delivered images remain available in the k3s/RKE2 node image store. The OCI layout itself does not listen on a registry port.
+During a WAN partition, the state replication and heartbeat schedulers fail and retry on their next interval. Content already in the BYO registry or imported into the K3s image store stays available to workloads.
 
 ---
 
-## 5. Setup Guide: Method 1 - Network-Based Registry Mirror
+## 5. Setup Guide: Method 1 - Registry Mirror via BYO Registry
 
-This guide provides end-to-end instructions on how to integrate Harbor Satellite with K3s. By the end of this guide, you will have a resilient Edge node capable of deploying container workloads even when completely disconnected from the central cloud registry.
-This reference uses the **standalone Satellite deployment** path on K3s nodes (valid scope: `DaemonSet` or standalone).
+In this method a plain OCI registry runs on the edge node. Satellite copies the assigned images into it (BYO registry mode) and K3s containerd uses it as a mirror for the central Harbor. Satellite and the edge SPIRE agent run as Docker containers from the SPIFFE join-token quickstart.
 
 ### Prerequisites
 
 - A Linux machine (Edge Node) with **K3s** installed.
-- A reachable **Central Harbor Registry** with at least one test image.
-- **Ground Control** deployment for group/config orchestration.
-- **SPIRE Server + SPIRE Agents** (Ground Control side and Edge side).
-- **Docker** and **Docker Compose** installed.
+- A reachable **Central Harbor Registry** (v2.10+).
+- **Docker** and **Docker Compose** on the machines that run Ground Control and Satellite.
+- A clone of this repository. The commands below use `examples/deploy/spiffe/join-token/external/`.
 
 ---
 
 ### Step 1: Prepare the Central Harbor & Seed Image
 
-First, we need a working Central Harbor registry and an image to test with.
-
-1. **Install Harbor:** Ensure Central Harbor (v2.10+) is running on your network at `http://<CENTRAL_HARBOR_IP>:80`.
-2. **Push a Test Image:** Pull a standard image from Docker Hub and push it into your Central Harbor instance.
+1. **Install Harbor:** Ensure Central Harbor is running at `http://<CENTRAL_HARBOR_IP>:80`.
+2. **Push a Test Image:**
 
 ```bash
-# Pull the standard Nginx image
 docker pull nginx:alpine
-
-# Tag it for your Central Harbor
 docker tag nginx:alpine <CENTRAL_HARBOR_IP>:80/library/nginx:alpine
 
-# Login and push the image to Central Harbor
 docker login -u admin -p Harbor12345 <CENTRAL_HARBOR_IP>:80
 docker push <CENTRAL_HARBOR_IP>:80/library/nginx:alpine
 
 # Remove local copies to ensure a clean test later
-docker rmi nginx:alpine
-docker rmi <CENTRAL_HARBOR_IP>:80/library/nginx:alpine
+docker rmi nginx:alpine <CENTRAL_HARBOR_IP>:80/library/nginx:alpine
 ```
 
 ---
 
-### Step 2: Configure K3s Registry Mirror
+### Step 2: Start Ground Control (with external SPIRE)
 
-We must instruct the K3s `containerd` engine to intercept requests for standard `docker.io` images and route them to our local Harbor Satellite (which will run on port `5050`).
+```bash
+cd examples/deploy/spiffe/join-token/external/gc
+HARBOR_URL=http://<CENTRAL_HARBOR_IP>:80 ADMIN_PASSWORD='<ADMIN_PASSWORD>' ./setup.sh
+```
 
-**1. Create the K3s Configuration:**
+The script starts PostgreSQL, the SPIRE server (host port `${SPIRE_HOST_PORT:-9081}`), the Ground Control SPIRE agent, and Ground Control (HTTPS on host port `${GC_HOST_PORT:-9080}`). If unset, the compose file defaults `HARBOR_URL` to `http://host.docker.internal:8080`, `HARBOR_USERNAME`/`HARBOR_PASSWORD` to `admin`/`Harbor12345`, and `ADMIN_PASSWORD` to `Harbor12345`. Wait until the Ground Control logs show that it is serving.
+
+---
+
+### Step 3: Configure Satellite for BYO Registry Mode
+
+Satellite reads the Harbor address from `HARBOR_REGISTRY_URL` (default `http://host.docker.internal:8080` in the quickstart). Export it before running `setup.sh` in Step 4:
+
+```bash
+export HARBOR_REGISTRY_URL=http://<CENTRAL_HARBOR_IP>:80
+```
+
+Then edit `examples/deploy/spiffe/join-token/external/sat/docker-compose.yml` to enable BYO mode and add a registry service, published on the node's loopback interface. The satellite container itself exposes no port.
+
+```yaml
+services:
+  edge-registry:
+    image: registry:2
+    container_name: edge-registry
+    ports:
+      - "127.0.0.1:5050:5000"
+    volumes:
+      - edge-registry-data:/var/lib/registry
+    restart: unless-stopped
+    networks:
+      - harbor-satellite
+
+  satellite:
+    environment:
+      - BYO_REGISTRY=true
+      - REGISTRY_URL=http://edge-registry:5000
+      # keep the existing entries (GROUND_CONTROL_URL, HARBOR_REGISTRY_URL, USE_UNSECURE, SPIFFE_*, CONFIG_DIR)
+    depends_on:
+      # add next to the existing spire-agent-satellite entry
+      edge-registry:
+        condition: service_started
+
+volumes:
+  edge-registry-data:
+```
+
+`USE_UNSECURE=true`, already set in the quickstart, makes Satellite use plain HTTP for both Harbor and the BYO registry. Satellite keeps the Harbor repository path at the destination, so `<CENTRAL_HARBOR_IP>:80/library/nginx:alpine` is stored as `library/nginx:alpine` in the edge registry.
+
+---
+
+### Step 4: Register and Start Satellite
+
+```bash
+cd ../sat
+ADMIN_PASSWORD='<ADMIN_PASSWORD>' ./setup.sh
+```
+
+`setup.sh` logs in to Ground Control, registers satellite `edge-01` through `POST /api/satellites/register` (join token), starts the edge SPIRE agent, and starts Satellite.
+
+**Verification:** Confirm that SPIFFE ZTR succeeded:
+
+```bash
+docker logs ground-control 2>&1 | grep "SPIFFE ZTR"
+docker logs satellite 2>&1 | grep -i ztr
+```
+
+---
+
+### Step 5: Configure the K3s Registry Mirror
+
+Point K3s containerd at the edge registry for the Harbor host:
 
 ```bash
 sudo mkdir -p /etc/rancher/k3s
 sudo tee /etc/rancher/k3s/registries.yaml > /dev/null << 'EOF'
 mirrors:
-  "docker.io":
+  "<CENTRAL_HARBOR_IP>:80":
     endpoint:
       - "http://127.0.0.1:5050"
 EOF
-```
 
-**2. Restart K3s and Clear Cache:**
-
-```bash
-# Apply the new mirror settings
 sudo systemctl restart k3s
-
-# Force K3s to forget any previously cached images
-sudo k3s crictl rmi --prune
 ```
 
-**3. Alternative Mirror Configuration via Satellite Flag (Optional):**
-
-If Satellite is launched directly, you can configure containerd mirror wiring with:
-
-```bash
-go run ./cmd/satellite \
-  --token "<token>" \
-  --ground-control-url "https://<GROUND_CONTROL_HOST>:9080" \
-  --mirrors=containerd:docker.io
-```
+The satellite `--mirrors` flag writes `/etc/containerd/certs.d`. K3s uses its own containerd configuration generated from `registries.yaml`, so configure K3s with `registries.yaml` as shown here.
 
 ---
 
-### Step 3: Deploy Ground Control & Satellite (Zero-Touch)
+### Step 6: Sync Content to the Edge
 
-Deploy the Harbor Satellite components. This utilizes SPIFFE/SPIRE for Zero-Touch Registration (ZTR), automatically authenticating the Edge node without manual secrets.
-This walkthrough uses the **external SPIRE** quickstart; embedded SPIRE is an alternative deployment model.
-The setup scripts start the required SPIRE agents (including the edge-side agent on the K3s node).
-
-**1. Start Ground Control:**
+**1. Log in and read the image digest:**
 
 ```bash
-cd examples/deploy/spiffe/join-token/external/gc
-HARBOR_URL=http://<CENTRAL_HARBOR_IP>:80 ./setup.sh
+TOKEN=$(curl -sk -X POST "https://localhost:9080/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"<ADMIN_PASSWORD>"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+DIGEST=$(curl -s -u "admin:Harbor12345" "http://<CENTRAL_HARBOR_IP>/api/v2.0/projects/library/repositories/nginx/artifacts?q=tags%3Dalpine&page_size=1" | grep -m1 '"digest":' | cut -d'"' -f4)
 ```
 
-*(Wait until Ground Control logs indicate it is fully ready and connected to Harbor).*
-
-**2. Start Harbor Satellite:**
+**2. Create the group and assign the satellite:**
 
 ```bash
-cd ../sat
-./setup.sh
-```
-
-**Verification:** Check the Ground Control logs to confirm the SPIFFE identity was verified and a Robot Account was created automatically.
-
-```bash
-docker logs ground-control | grep "SPIFFE ZTR"
-```
-
----
-
-### Step 4: Sync Content to the Edge
-
-Use the Ground Control API to assign the `nginx:alpine` image to your Edge Satellite.
-
-**1. Retrieve Auth Token & Image Digest:**
-
-```bash
-# Get Ground Control Bearer Token
-TOKEN=$(curl -sk -X POST "https://localhost:9080/login" -d '{"username":"admin","password":"Harbor12345"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-
-# Get the SHA256 Digest from Central Harbor
-DIGEST=$(curl -sk -u "admin:Harbor12345" "http://<CENTRAL_HARBOR_IP>/api/v2.0/projects/library/repositories/nginx/artifacts?q=tags%3Dalpine&page_size=1" | grep -m1 '"digest":' | cut -d'"' -f4)
-
-```
-
-**2. Create Sync Group & Assign Satellite:**
-
-```bash
-# Create the Edge Group
 curl -sk -X POST "https://localhost:9080/api/groups/sync" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${TOKEN}" \
-  -d "{\"group\": \"edge-group\", \"registry\": \"http://<CENTRAL_HARBOR_IP>:80\", \"artifacts\": [{\"repository\": \"library/nginx\", \"tag\": [\"alpine\"], \"type\": \"image\", \"digest\": \"${DIGEST}\"}]}"
+  -d "{\"group\": \"edge-group\", \"artifacts\": [{\"repository\": \"library/nginx\", \"tag\": [\"alpine\"], \"type\": \"image\", \"digest\": \"${DIGEST}\"}]}"
 
-# Link the Satellite to the Group
 curl -sk -X POST "https://localhost:9080/api/groups/satellite" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${TOKEN}" \
   -d '{"satellite": "edge-01", "group": "edge-group"}'
 ```
 
-**3. Verify Download:** Wait 30-60 seconds, then check the local Satellite catalog to ensure the image was downloaded.
+Ground Control always uses its own `HARBOR_URL` for group state, so the request does not need a `registry` field.
+
+**3. Verify the copy:** After one or two replication intervals (30 s each by default), check the edge registry:
 
 ```bash
 curl -s http://127.0.0.1:5050/v2/_catalog
-# Expected Output: {"repositories":["library/nginx"]}
+# Expected: {"repositories":["library/nginx"]}
 ```
 
 ---
 
-### Step 5: The Air-Gap Verification Test
+### Step 7: Air-Gap Verification Test
 
-To prove the architecture works, we will sever the connection to the Central Harbor and deploy the workload purely from the Edge cache.
-
-**1. Simulate Total Network Outage:** Stop the central components.
+**1. Simulate a WAN outage:** Stop Harbor and Ground Control (container names depend on your Harbor installation):
 
 ```bash
-docker stop harbor-core ground-control harbor-db redis registry registryctl harbor-portal harbor-log harbor-jobservice nginx
+docker stop ground-control harbor-core harbor-db registry harbor-portal harbor-jobservice nginx
 ```
 
-**2. Deploy the Pod:** Notice we are requesting the standard `nginx:alpine` image.
+**2. Deploy the pod** with the Harbor image reference:
 
 ```bash
-kubectl run true-airgap-test --image=nginx:alpine
+sudo k3s crictl rmi <CENTRAL_HARBOR_IP>:80/library/nginx:alpine 2>/dev/null || true
+sudo kubectl run airgap-test --image=<CENTRAL_HARBOR_IP>:80/library/nginx:alpine
+sudo kubectl get pod airgap-test
 ```
 
-### Proving the Architecture (Verification)
-
-To confirm the image was pulled dynamically from the local Satellite mirror and not a hidden local cache, check the following:
-
-**1. Check K3s Events:**
+**3. Confirm the image came from the edge registry:**
 
 ```bash
-kubectl describe pod true-airgap-test | grep -A 5 "Events:"
+sudo kubectl describe pod airgap-test | grep -A 5 "Events:"
+docker logs edge-registry 2>&1 | grep "library/nginx"
 ```
 
-*You should see `Pulling image "nginx:alpine"`, proving K3s had to actively fetch it over the network.*
-
-**2. Check Satellite Network Logs:**
-
-```bash
-docker logs satellite | grep "nginx/blobs"
-```
-
-*You should see `GET` requests with a `200` status code and the User-Agent `containerd/v2.x.x-k3s1`. This is undeniable proof that K3s routed the request to the local Harbor Satellite via the `registries.yaml` mirror configuration.*
+The pod events show `Pulling image` followed by `Successfully pulled`, and the `edge-registry` access log shows the manifest and blob `GET` requests from containerd.
 
 ---
 
 ## 6. Setup Guide: Method 2 - Automated Air-Gap via Direct Delivery
 
-This guide documents the automated **Direct Delivery** workflow for integrating Harbor Satellite with K3s. Instead of manually running `docker pull`, `docker tag`, and `docker save`, Satellite writes image tarballs directly into the K3s import directory, where `containerd` loads them automatically.
+> **Experimental.** Direct delivery is flagged experimental in the satellite binary.
+
+With direct delivery enabled, Satellite writes one image tarball per synced artifact into the K3s image directory. K3s imports tar archives from that directory automatically. Workloads keep using the original Harbor reference (`<CENTRAL_HARBOR_IP>:80/library/nginx:alpine`) and do not need a mirror.
 
 ### Architectural Concept: Automated Tarball Injection
 
-When Direct Delivery is enabled, each synchronized artifact is written to the K3s image directory (`/var/lib/rancher/k3s/agent/images/`).
-
-**Why this matters:**
-K3s automatically imports tar archives placed in this directory. This preserves the original image reference (`<CENTRAL_HARBOR_IP>:80/library/nginx:alpine`) and removes manual export steps.
-
-Method 2 is fully automated after group assignment.
+- After each successful replication, Satellite pulls the changed images from Harbor and writes them as `.tar` files to the image directory. Tarballs for artifacts removed from the group are deleted.
+- The image directory is auto-detected (`/var/lib/rancher/k3s/agent/images` or `/var/lib/rancher/rke2/agent/images`), or set with `--image-dir` / `IMAGE_DIR`. If neither is found, Satellite exits with an error.
+- Satellite still replicates into its store (the local OCI layout, or a BYO registry if configured).
 
 ---
 
 ### Method 2 Prerequisites
 
 - A Linux Edge node running **K3s**.
-- Method 1 completed through group assignment (`library/nginx:alpine` synced to `edge-01`).
+- Ground Control and Satellite from Method 1 Steps 1 to 4. BYO mode is not required.
 - Root privileges on the K3s node.
-- Ability to edit `examples/deploy/spiffe/join-token/external/sat/docker-compose.yml`.
 
 ---
 
 ### Step 1: Enable Direct Delivery in Satellite
 
-Update the Satellite service so it can write to the host K3s image directory:
+Mount the host K3s image directory into the Satellite container and enable the feature:
 
 ```yaml
 # examples/deploy/spiffe/join-token/external/sat/docker-compose.yml
@@ -391,54 +413,27 @@ services:
       - /var/lib/rancher/k3s/agent/images:/var/lib/rancher/k3s/agent/images
 ```
 
----
-
-Restart Satellite after editing:
+Restart Satellite:
 
 ```bash
 cd examples/deploy/spiffe/join-token/external/sat
 docker compose up -d satellite --build
 
-# Optional: confirm Direct Delivery is active
-docker logs satellite | grep -E "direct delivery enabled|Direct delivery: tarball written"
+docker logs satellite 2>&1 | grep -E "direct delivery enabled|Direct delivery: tarball written"
 ```
 
-If your target runtime is RKE2, use `/var/lib/rancher/rke2/agent/images` as `IMAGE_DIR`.
+For RKE2, use `/var/lib/rancher/rke2/agent/images`.
 
 ---
 
 ### Step 2: Trigger Sync and Verify Auto-Import
 
-From Ground Control, create the sync group and assign the satellite:
+If you have not created the group yet, run Method 1 [Step 6](#step-6-sync-content-to-the-edge) items 1 and 2.
+
+Wait for one or two replication intervals, then check the tarball and the K3s image store:
 
 ```bash
-# Get Ground Control Bearer Token
-TOKEN=$(curl -sk -X POST "https://localhost:9080/login" -d '{"username":"admin","password":"Harbor12345"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-
-# Get image digest from Harbor
-DIGEST=$(curl -sk -u "admin:Harbor12345" "http://<CENTRAL_HARBOR_IP>/api/v2.0/projects/library/repositories/nginx/artifacts?q=tags%3Dalpine&page_size=1" | grep -m1 '"digest":' | cut -d'"' -f4)
-
-# Create sync group
-curl -sk -X POST "https://localhost:9080/api/groups/sync" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -d "{\"group\": \"edge-group\", \"registry\": \"http://<CENTRAL_HARBOR_IP>:80\", \"artifacts\": [{\"repository\": \"library/nginx\", \"tag\": [\"alpine\"], \"type\": \"image\", \"digest\": \"${DIGEST}\"}]}"
-
-# Assign satellite to group
-curl -sk -X POST "https://localhost:9080/api/groups/satellite" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -d '{"satellite": "edge-01", "group": "edge-group"}'
-
-# Confirm Satellite has the artifact
-curl -s http://127.0.0.1:5050/v2/_catalog
-```
-
----
-
-Allow 20-60 seconds for replication and auto-import, then validate that K3s sees the image:
-
-```bash
+sudo ls -l /var/lib/rancher/k3s/agent/images/
 sudo k3s crictl images | grep "<CENTRAL_HARBOR_IP>:80/library/nginx"
 ```
 
@@ -446,28 +441,24 @@ sudo k3s crictl images | grep "<CENTRAL_HARBOR_IP>:80/library/nginx"
 
 ### Step 3: Simulate Air-Gap and Deploy
 
-Run the offline validation using the original Harbor image reference:
-
 ```bash
 # Simulate outage
-docker stop satellite spire-agent-satellite ground-control harbor-core harbor-db harbor-jobservice harbor-portal harbor-satellite-postgres harbor-log
+docker stop satellite spire-agent-satellite ground-control harbor-core harbor-db harbor-jobservice harbor-portal harbor-satellite-postgres
 
-# Deploy with upstream Harbor URL (not localhost)
+# Deploy with the Harbor reference
 sudo kubectl run test --image=<CENTRAL_HARBOR_IP>:80/library/nginx:alpine
 sudo kubectl get pod test
 ```
 
-*Expected result: the pod reaches `Running` even with Satellite and Ground Control stopped, because K3s has already imported the image via Direct Delivery.*
+*Expected result: the pod reaches `Running` with Satellite, Ground Control and Harbor stopped, because K3s already imported the image.*
 
 ### Verification Logging
-
-You can further verify the offline cache hit with pod events:
 
 ```bash
 sudo kubectl describe pod test | grep "Container image"
 ```
 
-*You should see the event: `Container image "<CENTRAL_HARBOR_IP>:80/library/nginx:alpine" already present on machine`, confirming a successful offline cache hit.*
+*Expected event: `Container image "<CENTRAL_HARBOR_IP>:80/library/nginx:alpine" already present on machine`.*
 
 ---
 
@@ -476,7 +467,7 @@ sudo kubectl describe pod test | grep "Container image"
 ### 7.1 Retail / Point-of-Sale (POS)
 
 - **Challenge:** A WAN outage at a retail store prevents POS terminals from restarting, halting revenue.
-- **Solution:** Satellites cache critical POS images locally. If the WAN fails, terminals pull from `127.0.0.1:5050`. Updates are staged geographically via Ground Control groups to prevent global WAN saturation.
+- **Solution:** Satellites keep critical POS images on site, in a BYO registry mirror or pre-imported by direct delivery. Updates are staged per store group via Ground Control to avoid saturating the WAN.
 
 ### 7.2 Industrial IoT / Manufacturing (SUSE + Bosch IIoT)
 
@@ -484,58 +475,58 @@ SUSE and Bosch describe a hybrid cloud control and monitoring architecture for I
 
 - **The Edge Workloads:** Manufacturing control, monitoring, and analytics workloads run on local edge Kubernetes nodes.
 - **The Challenge:** Industrial sites often run on restricted networks and cannot afford downtime when WAN links degrade or fail.
-- **The Solution:** Harbor Satellite acts as the local OCI registry layer. During connectivity windows, Ground Control synchronizes required images to each site. During outages, K3s pulls from the local Satellite mirror (`127.0.0.1:5050`), and for fully isolated environments, **Method 2 (Automated Direct Delivery)** preloads images into K3s auto-import. *(Reference: [SUSE + Bosch Joint Architecture](https://www.suse.com/c/suse-and-bosch-pioneering-industrial-iot-with-a-hybrid-cloud-control-and-monitoring-architecture/))*
+- **The Solution:** Harbor Satellite synchronizes the required images to each site during connectivity windows. During outages, K3s pulls from the on-site BYO registry (Method 1), and for fully isolated nodes **Method 2 (Direct Delivery)** preloads images into K3s auto-import. *(Reference: [SUSE + Bosch Joint Architecture](https://www.suse.com/c/suse-and-bosch-pioneering-industrial-iot-with-a-hybrid-cloud-control-and-monitoring-architecture/))*
 
 ### 7.3 Remote Fleet Management (Energy/Telecom)
 
 - **Challenge:** Remote SCADA systems operate over expensive, metered cellular links.
-- **Solution:** The Satellite Layer-Diff synchronization transfers only modified layers, slashing bandwidth consumption. Ground Control Heartbeats provide real-time visibility into edge inventory states before initiating cutovers.
+- **Solution:** Satellite copies only blobs that are missing at the destination. Heartbeats show each site's cached images in Ground Control before a cutover.
 
 ### 7.4 Smart Agriculture / Remote Monitoring
 
-- **Challenge:** Agricultural IoT edge nodes running complex sensor processing or AI camera inference operate on strictly metered, highly intermittent cellular or satellite links.
-- **Solution:** Large inference model containers are pre-synchronized during narrow connectivity windows and retained in the local OCI layout. Direct delivery can preload them into k3s for offline operation. When connectivity returns, content-addressed copying transfers only missing blobs. Additionally, device-bound encryption keeps Harbor credentials protected at rest.
+- **Challenge:** Agricultural IoT edge nodes running sensor processing or AI camera inference operate on metered, intermittent cellular or satellite links.
+- **Solution:** Large inference images are synchronized during connectivity windows and preloaded into K3s with direct delivery for offline operation. When connectivity returns, only missing blobs are transferred. Enabling `encrypt_config` keeps the Harbor robot credentials encrypted at rest.
 
 ---
 
 ## 8. Ecosystem Alignment
 
-Harbor Satellite serves as a critical **registry layer** within the broader SUSE and CNCF Edge ecosystems. As an official extension of Harbor (a graduated CNCF project), Satellite perfectly complements existing enterprise stacks:
+Harbor Satellite provides a **registry layer** within the SUSE and CNCF edge ecosystems:
 
 | Component | Integration Value |
 | --- | ---  |
-| **K3s** | Native integration via `registries.yaml` or auto-import; requires zero external CRDs or operators. |
-| **SUSE Edge 3.x Stack (SLE Micro + K3s + Rancher)** | Satellite serves as the local registry layer while the SUSE stack handles OS, orchestration, and lifecycle. |
-| **Rancher Fleet** | While Fleet synchronizes GitOps YAML manifests, Satellite guarantees the binary image blobs are physically present at the edge site before execution. |
+| **K3s** | Integrates via `registries.yaml` mirrors (BYO registry) or image auto-import (direct delivery); no CRDs or operators required. |
+| **SUSE Edge 3.x Stack (SLE Micro + K3s + Rancher)** | Satellite provides image availability at the site while the SUSE stack handles OS, orchestration, and lifecycle. |
+| **Rancher Fleet** | Fleet synchronizes GitOps manifests; Satellite makes sure the referenced images are present at the edge site before they run. |
 | **ATIP (Adaptive Telecom Infrastructure Platform)** | Complements telecom edge platforms with local image availability under constrained WAN links. |
-| **Akri** | Works with edge device discovery workflows by ensuring discovered workloads have local image availability. |
-| **Elemental** | Node provisioning automatically registers the Harbor Satellite via ZTR, providing end-to-end zero-touch edge bootstrapping. |
+| **Akri** | Discovered-device workloads can use images that Satellite already placed on the site. |
+| **Elemental** | Can provision nodes that run the SPIRE agent and Satellite. There is no built-in Elemental integration; registration still goes through the Ground Control API. |
 
 ---
 
 ## 9. References & Further Reading
 
-To explore the underlying technologies and concepts discussed in this reference architecture, consult the following official resources:
+### Harbor Satellite
 
-### Harbor Satellite & Local Caching
-
-- **[Harbor Satellite Official Documentation](https://satellite.container-registry.com/docs/)** : *Comprehensive guides on architecture, deployment patterns, and Ground Control API usage.*
-- **[Harbor Satellite GitHub Repository](https://github.com/container-registry/harbor-satellite)** : *Source code, issue tracking, and technical contribution guidelines.*
+- **[Harbor Satellite Official Documentation](https://satellite.container-registry.com/docs/)** : *Guides on architecture, deployment patterns, and Ground Control API usage.*
+- **[Harbor Satellite GitHub Repository](https://github.com/container-registry/harbor-satellite)** : *Source code, issue tracking, and contribution guidelines.*
+- **[ADR-0009: Transparent OCI Registry Proxy](../decisions/0009-transparent-oci-registry-proxy.md)** : *Target architecture for serving workloads from Satellite directly.*
 - **[ORAS Go](https://oras.land/docs/client_libraries/go/)** : *The OCI content APIs used by Satellite's local image-layout store.*
 
 ### K3s & SUSE Edge Ecosystem
 
-- **[K3s Private Registry Configuration](https://docs.k3s.io/installation/private-registry)**  : *Official Rancher/K3s documentation detailing how to configure `registries.yaml` for mirror routing and auto-importing.*
-- **[SUSE + Bosch IIoT Architecture](https://www.suse.com/c/suse-and-bosch-pioneering-industrial-iot-with-a-hybrid-cloud-control-and-monitoring-architecture/)** : *The real-world enterprise case study demonstrating K3s running mission-critical workloads on restricted factory floors.*
-- **[SUSE Edge Framework](https://documentation.suse.com/suse-edge/3.4/single-html/edge/edge.html)** : *Broader documentation on integrating SLE Micro, K3s, and GitOps at the edge.*
-- **[Rancher Fleet Overview](https://ranchermanager.docs.rancher.com/v2.10/integrations-in-rancher/fleet/overview)** : *Official Fleet overview for multi-cluster GitOps operations.*
-- **[SUSE ATIP Overview](https://documentation.suse.com/suse-edge/3.1/html/edge/atip.html)** : *SUSE documentation for the Adaptive Telecom Infrastructure Platform (ATIP).*
-- **[SUSE Edge Akri Component](https://documentation.suse.com/en-us/suse-edge/3.1/html/edge/components-akri.html)** : *SUSE documentation for Akri integration in edge environments.*
-- **[SUSE Edge Elemental Component](https://documentation.suse.com/suse-edge/3.5/html/edge/components-elemental.html)** : *SUSE documentation for Elemental-based node onboarding and lifecycle.*
+- **[K3s Private Registry Configuration](https://docs.k3s.io/installation/private-registry)**  : *Official K3s documentation for `registries.yaml` mirrors.*
+- **[K3s Air-Gap Install](https://docs.k3s.io/installation/airgap)** : *Documents the `agent/images` auto-import directory used by direct delivery.*
+- **[SUSE + Bosch IIoT Architecture](https://www.suse.com/c/suse-and-bosch-pioneering-industrial-iot-with-a-hybrid-cloud-control-and-monitoring-architecture/)** : *Enterprise case study with K3s running workloads on restricted factory floors.*
+- **[SUSE Edge Framework](https://documentation.suse.com/suse-edge/3.4/single-html/edge/edge.html)** : *Integrating SLE Micro, K3s, and GitOps at the edge.*
+- **[Rancher Fleet Overview](https://ranchermanager.docs.rancher.com/v2.10/integrations-in-rancher/fleet/overview)** : *Multi-cluster GitOps operations.*
+- **[SUSE ATIP Overview](https://documentation.suse.com/suse-edge/3.1/html/edge/atip.html)** : *Adaptive Telecom Infrastructure Platform.*
+- **[SUSE Edge Akri Component](https://documentation.suse.com/en-us/suse-edge/3.1/html/edge/components-akri.html)** : *Akri in edge environments.*
+- **[SUSE Edge Elemental Component](https://documentation.suse.com/suse-edge/3.5/html/edge/components-elemental.html)** : *Elemental node onboarding and lifecycle.*
 
-### Security & Identity (Zero-Trust)
+### Security & Identity
 
-- **[SPIFFE & SPIRE Architecture](https://spiffe.io/docs/latest/spire-about/)** : *Foundational reading on how SPIFFE cryptographic identities and SPIRE workload attestation replace static secrets at scale.*
-- **[Harbor Satellite SPIFFE Quickstarts](https://github.com/container-registry/harbor-satellite/tree/main/examples/deploy/spiffe)** : *Join token, x509pop, and sshpop setup variants for practical deployment paths.*
+- **[SPIFFE & SPIRE Architecture](https://spiffe.io/docs/latest/spire-about/)** : *How SPIFFE identities and SPIRE workload attestation work.*
+- **[Harbor Satellite SPIFFE Quickstarts](../../examples/deploy/spiffe/README.md)** : *Join token, x509pop, and sshpop setup variants.*
 
 ---

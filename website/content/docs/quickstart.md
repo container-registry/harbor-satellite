@@ -8,9 +8,9 @@ This guide walks you through deploying Harbor Satellite end-to-end with SPIFFE/S
 - A Harbor registry with images
 - A SPIRE server issuing identities
 - Ground Control managing the fleet
-- A satellite at the "edge" pulling images automatically
+- A satellite at the "edge" replicating images into its local OCI layout automatically
 
-Everything runs locally with Docker Compose. No need to clone the repository.
+The cloud side runs with Docker Compose, the edge side with native binaries. No need to clone the repository.
 
 ## Prerequisites
 
@@ -324,6 +324,8 @@ services:
   ground-control:
     image: registry.goharbor.io/harbor-satellite/ground-control:latest
     container_name: ground-control
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -331,7 +333,6 @@ services:
       - DB_USERNAME=harbor
       - DB_PASSWORD=harbor
       - PORT=8080
-      - APP_ENV=development
       - HARBOR_URL=${HARBOR_URL:-http://host.docker.internal:8080}
       - HARBOR_USERNAME=${HARBOR_USERNAME:-admin}
       - HARBOR_PASSWORD=${HARBOR_PASSWORD:-Harbor12345}
@@ -568,7 +569,7 @@ Run all commands in this step on your **cloud server**. The satellite SPIRE agen
 ```bash
 LOGIN_RESP=$(curl -sk -X POST https://localhost:9080/login \
     -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"Harbor12345"}')
+    -d "{\"username\":\"admin\",\"password\":\"${ADMIN_PASSWORD:-Harbor12345}\"}")
 AUTH_TOKEN=$(echo "$LOGIN_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 ```
 
@@ -580,7 +581,7 @@ This API call finds the attested satellite agent by matching `x509pop:subject:cn
 - Creates a SPIRE workload entry with the satellite's SPIFFE ID
 - Creates a robot account in Harbor
 
-Both `satellite_name` and `region` are arbitrary names you choose. The `satellite_name` must match the CN in the satellite agent certificate (Step 1.2). The `region` is a label for organizing satellites (e.g., `us-east-1`, `eu-west-2`, `factory-floor`).
+Both `satellite_name` and `region` are arbitrary names you choose. The `satellite_name` must match the CN in the satellite agent certificate (Step 1.2). The `region` is a label for organizing satellites (e.g., `us-east-1`, `eu-west-2`, `factory-floor`). The workload selector `unix:uid:1000` must match the UID of the user that runs `harbor-satellite` on the edge device (check with `id -u` there).
 
 ```bash
 curl -sk -X POST https://localhost:9080/api/satellites/register \
@@ -596,7 +597,7 @@ curl -sk -X POST https://localhost:9080/api/satellites/register \
 
 ### 3.3 Create a group with an image
 
-Note: The `registry` field uses the Docker-internal service name (`http://harbor:8080`), not your host-facing `HARBOR_URL`. Ground Control runs inside Docker and resolves `harbor` via the Compose network.
+Ground Control always uses its own `HARBOR_URL` as the source registry for the group, so the request has no registry field.
 
 ```bash
 curl -sk -X POST https://localhost:9080/api/groups/sync \
@@ -604,7 +605,6 @@ curl -sk -X POST https://localhost:9080/api/groups/sync \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{
       "group": "edge-images",
-      "registry": "http://harbor:8080",
       "artifacts": [
         {
           "repository": "library/nginx",
@@ -646,28 +646,36 @@ Run this on your **edge device** from the `sat/` directory.
 
 ### 4.1 Download the satellite binary
 
+Release archives are versioned. Pick the latest version from the [releases page](https://github.com/container-registry/harbor-satellite/releases):
+
 ```bash
+VERSION=0.0.6
+
 # Linux amd64
 curl -Lo satellite.tar.gz \
-    https://github.com/container-registry/harbor-satellite/releases/latest/download/harbor-satellite_Linux_x86_64.tar.gz
-tar xzf satellite.tar.gz
+    https://github.com/container-registry/harbor-satellite/releases/download/v${VERSION}/harbor-satellite_${VERSION}_linux_amd64.tar.gz
+tar xzf satellite.tar.gz harbor-satellite
 rm satellite.tar.gz
 
 # Linux arm64
 # curl -Lo satellite.tar.gz \
-#     https://github.com/container-registry/harbor-satellite/releases/latest/download/harbor-satellite_Linux_arm64.tar.gz
+#     https://github.com/container-registry/harbor-satellite/releases/download/v${VERSION}/harbor-satellite_${VERSION}_linux_arm64.tar.gz
 ```
 
 ### 4.2 Run the satellite
 
-Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname:
+Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname and `<HARBOR_HOST>` with the Harbor address as reachable from the edge device. `--harbor-registry-url` is required: Ground Control returns its own `HARBOR_URL` (`host.docker.internal` in this setup), which the edge device cannot resolve. `--use-unsecure` allows plain HTTP to Harbor; drop it if Harbor serves HTTPS:
 
 ```bash
 ./harbor-satellite \
     --ground-control-url https://<CLOUD_SERVER_IP>:9080 \
+    --harbor-registry-url http://<HARBOR_HOST>:8080 \
+    --use-unsecure \
     --spiffe-enabled \
     --spiffe-endpoint-socket unix:///tmp/spire-agent/agent.sock
 ```
+
+The satellite stores its config and OCI layout in `~/.config/satellite` (`--config-dir` to change it).
 
 ## Step 5: Verify
 
@@ -721,7 +729,7 @@ Here is what happened end to end:
 10. **Ground Control** verified the SVID, created robot credentials, returned the state URL
 11. **Satellite** used the robot credentials to pull its state from Harbor
 12. **Satellite** saw `nginx:alpine` in its desired state and copied its OCI graph into the local layout
-13. **Satellite** retained the content on disk for later delivery or proxy serving
+13. **Satellite** keeps the content on disk and sends heartbeats to Ground Control. The layout is not a registry endpoint; to hand images to a container runtime, use BYO registry mode or direct delivery (see [Installation](installation.md#delivering-images-to-workloads))
 
 No runtime tokens were used. The only secrets transported to the edge were the X.509 agent certificate and key (Step 2.2), which can be pre-provisioned during device setup. After attestation, all credentials are handled automatically via SPIRE SVIDs and mTLS.
 

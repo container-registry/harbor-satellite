@@ -1,6 +1,6 @@
 # Contributing to Harbor Satellite
 
-Thank you for your interest in contributing to Harbor Satellite! We welcome contributions of all kinds - bug fixes, documentation improvements, new features, and discussion.
+Thank you for your interest in contributing to Harbor Satellite! We welcome contributions of all kinds: bug fixes, documentation improvements, new features, and discussion.
 
 ## Code of Conduct
 
@@ -23,40 +23,43 @@ This appends a `Signed-off-by` line to your commit message. Make sure the name a
 ### Prerequisites
 
 - [Go](https://go.dev/dl/) `1.26.5`
-- [Task](https://taskfile.dev/installation/) — used for all build, lint, and test automation
-- [Docker](https://docs.docker.com/get-docker/) and Docker Compose — required for local development and E2E tests
+- [Task](https://taskfile.dev/installation/), used for all build, lint, and test automation
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose, required for local development, lint (runs in a container) and E2E tests
 
 ### Repository Structure
 
-This repository uses a single Go module at the root, with two binaries:
+This repository uses a single Go module at the root, with three executables:
 
 | Path | Purpose |
 |---|---|
-| `cmd/satellite/` | Satellite edge daemon - CLI, config, registry, state replication |
-| `cmd/groundcontrol/` | Ground Control cloud service (server and CLI) - satellite management, Harbor integration, PostgreSQL |
+| `cmd/satellite/` | Satellite edge daemon (`bin/satellite`): config, state replication, local OCI store |
+| `cmd/groundcontrol/server/` | Ground Control cloud service (`bin/ground-control`): satellite management, Harbor integration, PostgreSQL |
+| `cmd/groundcontrol/cli/` | Ground Control CLI (`bin/groundcontrol`) |
 
-Run all Go commands from the repository root.
+Implementation lives under `internal/satellite/`, `internal/groundcontrol/` and `internal/shared/`. Run all Go commands from the repository root.
 
 ### Building
 
 ```bash
-# Build both components for the current platform
+# Build all three executables for the current platform
 task build
 
 # Build individual components
 task _build:satellite
 task _build:ground-control
+task _build:groundcontrol-cli
 
 # Run the satellite directly
-go run cmd/satellite/main.go --token "<token>" --ground-control-url "http://127.0.0.1:8080"
+go run ./cmd/satellite --token "<token>" --ground-control-url "http://127.0.0.1:8080" \
+  --harbor-registry-url "<harbor url>"
 
 # Run Ground Control directly (requires a configured .env file)
-go run cmd/groundcontrol/server/main.go
+go run ./cmd/groundcontrol/server
 ```
 
-For Ground Control local setup, copy `.env.example` to `.env` and fill in the required values.
+For Ground Control local setup, copy `.env.example` to `.env` and fill in the required values (at least `HARBOR_URL`, `HARBOR_USERNAME`, `HARBOR_PASSWORD`, `ADMIN_PASSWORD` and the `DB_*` settings).
 
-For satellite quickstart instructions, refer to [website/content/docs/quickstart.md](website/content/docs/quickstart.md).
+For end-to-end setup instructions, refer to the [token-based quickstart](examples/deploy/no-spiffe/quickstart.md) or the [SPIFFE/SPIRE quickstarts](examples/deploy/README.md).
 
 ## How to Contribute
 
@@ -79,7 +82,7 @@ git checkout -b fix/<short-description>
 
 ### 3. Make Your Changes
 
-Follow the code style and standards described below. Keep changes focused — avoid mixing unrelated fixes or features in a single branch.
+Follow the code style and standards described below. Keep changes focused. Avoid mixing unrelated fixes or features in a single branch.
 
 ### 4. Run Tests and Lint
 
@@ -90,9 +93,12 @@ Before pushing, verify your changes pass all checks:
 go test ./... -v -count=1
 
 # Run E2E tests
+task e2e         # runs e2e-test, e2e-byo and e2e-spiffe
 task e2e-test    # standard E2E
 task e2e-byo     # BYO registry E2E
 task e2e-spiffe  # SPIFFE mTLS E2E
+task e2e-crash-recovery      # crash recovery with the local OCI store
+task e2e-crash-recovery-byo  # crash recovery with a BYO registry
 
 # Lint
 task lint
@@ -140,24 +146,24 @@ Note on AI-assisted contributions: using AI tools to assist your work is fine, b
 
 ## Code Style
 
-The project uses a strict `golangci-lint` configuration with 50+ linters. Key rules to follow:
+The project uses a strict `golangci-lint` configuration (`.golangci.yaml`). `task lint` must pass. In addition, follow these conventions:
 
 - Prefer `any` over `interface{}` (Go 1.18+)
-- Avoid package-level global variables (`gochecknoglobals`)
-- Avoid `init()` functions (`gochecknoinits`)
+- Avoid package-level global variables
+- Avoid `init()` functions
 - Use `t.TempDir()` in tests instead of `os.TempDir()`
-- For configuration mutations, always use the `With()` modifiers on the config manager — never mutate directly via `GetConfig()`
+- For configuration mutations, always use the `With()` modifiers on the config manager. Never mutate directly via `GetConfig()`
 - Keep functions under 100 lines and 50 statements
 
 ## Running Tests
 
-Unit tests are colocated with source files (`*_test.go`). E2E tests live in `test/e2e/`.
+Unit tests are colocated with source files (`*_test.go`). E2E tests are Task workflows in `taskfiles/e2e.yml` that use the compose stacks and fixtures in `test/e2e/`.
 
 See [step 4 in How to Contribute](#4-run-tests-and-lint) for the full test matrix and lint commands.
 
 ## Community and Communication
 
-- **CNCF Slack**: [#harbor-satellite](https://cloud-native.slack.com/archives/C06NE6EJBU1) — request an invite at [slack.cncf.io](https://slack.cncf.io/)
+- **CNCF Slack**: [#harbor-satellite](https://cloud-native.slack.com/archives/C06NE6EJBU1). Request an invite at [slack.cncf.io](https://slack.cncf.io/)
 - **Mailing lists**:
   - Users: [harbor-users@lists.cncf.io](https://lists.cncf.io/g/harbor-users)
   - Developers: [harbor-dev@lists.cncf.io](https://lists.cncf.io/g/harbor-dev)
