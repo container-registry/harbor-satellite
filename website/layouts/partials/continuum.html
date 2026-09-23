@@ -1,0 +1,102 @@
+<section class="continuum" id="continuum">
+  <div class="continuum__container">
+    <div class="continuum__header">
+      <span class="continuum__eyebrow">The Registry Continuum</span>
+      <h2 class="continuum__title">Same Tool from Cloud to Air Gap</h2>
+      <p class="continuum__subtitle">Every site is a satellite in the same fleet. How images reach it, live sync or a signed bundle, is a property of the site, not a separate product.</p>
+    </div>
+
+    <ol class="continuum__track">
+      <li class="continuum__stage continuum__stage--core">
+        <span class="continuum__label">Harbor Core</span>
+        <div class="continuum__card">
+          <div class="continuum__icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>
+          </div>
+          <h3 class="continuum__name">Central Harbor + Ground Control</h3>
+          <p class="continuum__desc">Define groups, policies and signing keys once. The single source of truth for the whole fleet.</p>
+          <p class="continuum__delivery">Source of truth</p>
+        </div>
+      </li>
+
+      <li class="continuum__stage continuum__stage--big">
+        <span class="continuum__label">Big Edge</span>
+        <div class="continuum__card">
+          <div class="continuum__icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="6" rx="1"/><rect x="3" y="11" width="18" height="6" rx="1"/><line x1="7" y1="6" x2="7.01" y2="6"/><line x1="7" y1="14" x2="7.01" y2="14"/><path d="M8 21h8"/></svg>
+          </div>
+          <h3 class="continuum__name">Regional DC, factory floor, telco PoP</h3>
+          <p class="continuum__desc">Satellite on Kubernetes with continuous replication and SPIFFE/SPIRE workload identity.</p>
+          <p class="continuum__delivery">Live sync</p>
+        </div>
+      </li>
+
+      <li class="continuum__stage continuum__stage--small">
+        <span class="continuum__label">Small Edge</span>
+        <div class="continuum__card">
+          <div class="continuum__icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>
+          </div>
+          <h3 class="continuum__name">Retail store, vehicle, single-board device</h3>
+          <p class="continuum__desc">Single binary with embedded Zot. Minimal footprint, CRI mirror with upstream fallback.</p>
+          <p class="continuum__delivery">Live sync, offline tolerant</p>
+        </div>
+      </li>
+
+      <li class="continuum__stage continuum__stage--airgap">
+        <span class="continuum__label">Air-Gapped</span>
+        <div class="continuum__card">
+          <div class="continuum__icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><line x1="12" y1="15" x2="12" y2="17"/></svg>
+          </div>
+          <h3 class="continuum__name">Classified sites, ships, OT networks</h3>
+          <p class="continuum__desc">Same satellite record, same groups, same policy. Only the transport changes.</p>
+          <p class="continuum__delivery">Signed bundle across a media break</p>
+        </div>
+      </li>
+    </ol>
+
+    <div class="airgap">
+      <div class="airgap__intro">
+        <span class="airgap__badge">Air-gapped</span>
+        <h3 class="airgap__title">Same Process, Just a Media Break</h3>
+        <p class="airgap__text">Other air-gap tools make you build a second pipeline, with separate packaging, separate inventory and separate trust. With Harbor Satellite, an air-gapped site is the same satellite in the same fleet. Ground Control produces a signed, differential OCI bundle in place of a live sync. You carry it across, the satellite verifies and imports it, and the site's state stays consistent with the fleet. When the site reconnects, replication picks up from the last applied bundle.</p>
+        <p class="airgap__claim">Harbor Satellite is the only registry solution that keeps one process across the whole spectrum. The air gap is a transport detail, not a second workflow.</p>
+      </div>
+
+      <div class="airgap__table-wrap">
+        <table class="airgap__table">
+          <thead>
+            <tr>
+              <th scope="col"></th>
+              <th scope="col">Temporary air gap</th>
+              <th scope="col">Full air gap</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Example</th>
+              <td>Ship at sea, remote mine, link outage</td>
+              <td>Classified network, OT zone that never connects</td>
+            </tr>
+            <tr>
+              <th scope="row">Delivery</th>
+              <td>Live sync while online. Local Zot serves images offline.</td>
+              <td>Signed differential bundles only</td>
+            </tr>
+            <tr>
+              <th scope="row">Recovery</th>
+              <td>Resumes automatically from the last known state</td>
+              <td>Sequence chain rejects skipped or replayed bundles</td>
+            </tr>
+            <tr class="airgap__row--same">
+              <th scope="row">Process</th>
+              <td>Identical: same fleet record, groups and policy</td>
+              <td>Identical: same fleet record, groups and policy</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
