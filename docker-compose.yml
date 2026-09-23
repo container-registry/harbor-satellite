@@ -23,46 +23,52 @@ services:
       args:
         COMPONENT: groundcontrol/server
     container_name: ground-control
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_DATABASE: groundcontrol
       DB_USERNAME: postgres
       DB_PASSWORD: password
-      HARBOR_USERNAME: admin
-      HARBOR_PASSWORD: Harbor12345
-      HARBOR_URL: http://harbor-sat.kube.bupd.xyz
+      HARBOR_URL: ${HARBOR_URL:?set HARBOR_URL to the Harbor instance Ground Control manages}
+      HARBOR_USERNAME: ${HARBOR_USERNAME:-admin}
+      HARBOR_PASSWORD: ${HARBOR_PASSWORD:-Harbor12345}
+      # Bootstraps the "admin" user on first start. Must satisfy the password policy.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       PORT: 8080
-      SKIP_HARBOR_HEALTH_CHECK: "true"
+      # Testing only: skips the Harbor check at startup and uses placeholder robot credentials for SPIFFE ZTR.
+      SKIP_HARBOR_HEALTH_CHECK: ${SKIP_HARBOR_HEALTH_CHECK:-true}
       SPIFFE_SERVER_ENABLED: "false"
-      SPIFFE_TRUST_DOMAIN: harbor-satellite.local
-      SPIFFE_PROVIDER: sidecar
-      SPIFFE_ENDPOINT_SOCKET: unix:///run/spire/sockets/agent.sock
     ports:
-      - "8080:8080"
+      - "${GC_HOST_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
 
+  # Needs a token from Ground Control, so `docker compose up -d` skips it.
+  # Start it explicitly: TOKEN=<token> docker compose up -d satellite
   satellite:
+    profiles: ["satellite"]
     build:
       context: .
       dockerfile: Dockerfile
       args:
         COMPONENT: satellite
     container_name: satellite
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - GROUND_CONTROL_URL=http://ground-control:8080
-      - HARBOR_REGISTRY_URL=http://172.17.0.1:8080
-      - TOKEN=${TOKEN:-changeme}
+      - HARBOR_REGISTRY_URL=${HARBOR_REGISTRY_URL:-${HARBOR_URL}}
+      - TOKEN=${TOKEN:-}
+      - USE_UNSECURE=${USE_UNSECURE:-false}
       - CONFIG_DIR=/data
     volumes:
       - satellite-data:/data
-    ports:
-      - "${SATELLITE_PORT:-9090}:9090"
     depends_on:
       - ground-control
-    restart: always
+    restart: unless-stopped
 
 volumes:
   pgdata:

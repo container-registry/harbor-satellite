@@ -76,6 +76,8 @@ services:
       args:
         COMPONENT: groundcontrol/server
     container_name: ground-control
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -83,7 +85,6 @@ services:
       - DB_USERNAME=harbor
       - DB_PASSWORD=harbor
       - PORT=8080
-      - APP_ENV=development
       - HARBOR_URL=${HARBOR_URL:-http://host.docker.internal:8080}
       - HARBOR_USERNAME=${HARBOR_USERNAME:-admin}
       - HARBOR_PASSWORD=${HARBOR_PASSWORD:-Harbor12345}

@@ -65,8 +65,10 @@ if [ -z "$AUTH_TOKEN" ]; then
     exit 1
 fi
 
-# Compute agent SPIFFE ID from SSH key fingerprint (deterministic)
-SSH_FINGERPRINT=$(ssh-keygen -lf ../gc/certs/agent-satellite-host-key.pub -E sha256 | awk '{print $2}')
+# SPIRE's sshpop agent ID is the unpadded base64url SHA-256 of the whole host
+# certificate blob, not the key fingerprint that `ssh-keygen -l` prints.
+SSH_FINGERPRINT=$(awk '{print $2}' ../gc/certs/agent-satellite-host-key-cert.pub \
+    | openssl base64 -d -A | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
 SAT_AGENT_ID="spiffe://harbor-satellite.local/spire/agent/sshpop/${SSH_FINGERPRINT}"
 echo "Satellite agent SPIFFE ID: $SAT_AGENT_ID"
 

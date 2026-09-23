@@ -1,15 +1,9 @@
 version: "3"
 
 vars:
-  GO_VERSION: "1.26.5"
-  GOLANGCILINT_VERSION: "v2.12.2"
   GOVULNCHECK_VERSION: "v1.1.4"
-  GORELEASER_VERSION: "v2.9.0"
-  GO_SWAGGER_VERSION: "v0.35.0"
   OAPI_CODEGEN_VERSION: "de2d8b2b0afb287198554eb305bb0d2687d26a85"
   OAPI_CODEGEN_RELEASE_VERSION: "v2.8.0"
-  PLATFORMS_LINUX: "amd64 arm64 ppc64le s390x riscv64"
-  PLATFORMS_DARWIN: "amd64 arm64"
   VULN_FILTER: "GO-2025-3409|GO-2024-2979"
   BIN_DIR: "{{.ROOT_DIR}}/bin"
 
@@ -72,31 +66,6 @@ tasks:
     desc: Run vulnerability check and export to file
     cmds:
       - task: _lint:vulnerability-check-report
-
-  swagger:install:
-    desc: Install pinned go-swagger binary
-    env:
-      GOBIN: "{{.BIN_DIR}}"
-    cmds:
-      - mkdir -p {{.BIN_DIR}}
-      - go install github.com/go-swagger/go-swagger/cmd/swagger@{{.GO_SWAGGER_VERSION}}
-    status:
-      - test -x {{.BIN_DIR}}/swagger
-      - "{{.BIN_DIR}}/swagger version | grep -q '{{.GO_SWAGGER_VERSION}}'"
-
-  swagger:generate:
-    desc: Generate Ground Control OpenAPI specs
-    dir: "{{.ROOT_DIR}}/ground-control"
-    cmds:
-      - task: swagger:install
-      - "{{.BIN_DIR}}/swagger generate spec -i meta.yml -o swagger.yml"
-      - "{{.BIN_DIR}}/swagger flatten --format yaml --with-flatten=remove-unused -o swagger-flatten.yml swagger.yml"
-    sources:
-      - meta.yml
-      - "**/*.go"
-    generates:
-      - swagger.yml
-      - swagger-flatten.yml
 
   generate:ground-control:
     desc: Generate Ground Control OpenAPI server and client code
@@ -199,8 +168,9 @@ tasks:
       - rm -f golangci-lint.report vulnerability-check.report
       - echo "Stopping containers..."
       - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
-      - docker compose -f test/e2e/docker/spiffe/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
-      - docker compose -f docker-compose.yml down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f test/e2e/docker/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
+      - HARBOR_URL="${HARBOR_URL:-unused}" docker compose -f docker-compose.yml --profile satellite down -v --remove-orphans 2>/dev/null || true
+      - docker compose -f docker-compose.byo.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f satellite satellite-byo byo-registry gc 2>/dev/null || true
       - echo "Removing e2e images..."
       - docker rmi -f gc:e2e satellite:e2e 2>/dev/null || true
@@ -210,10 +180,10 @@ tasks:
   byo-up:
     desc: Start satellite with BYO registry (registry:2 sidecar)
     cmds:
-      - docker compose -f docker-compose.yml -f docker-compose.override.byo.yml up -d
-      - docker compose -f docker-compose.yml -f docker-compose.override.byo.yml ps
+      - docker compose -f docker-compose.byo.yml up -d
+      - docker compose -f docker-compose.byo.yml ps
 
   byo-down:
     desc: Stop satellite BYO registry setup
     cmds:
-      - docker compose -f docker-compose.yml down -v
+      - docker compose -f docker-compose.byo.yml down -v

@@ -45,12 +45,18 @@ spec:
             httpGet:
               path: /health
               port: http
+              {{- if .Values.spiffe.enabled }}
+              scheme: HTTPS
+              {{- end }}
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /health
               port: http
+              {{- if .Values.spiffe.enabled }}
+              scheme: HTTPS
+              {{- end }}
             initialDelaySeconds: 5
             periodSeconds: 10
           {{- with .Values.resources }}
