@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -794,6 +795,30 @@ func TestValidatePeerDistributionConfig(t *testing.T) {
 		require.ErrorContains(t, err, "credentials")
 	})
 
+	t.Run("http url userinfo is rejected", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.UseUnsecure = true
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{
+				ID: "a", URL: URL("http://user:pass@satellite-a:5000"),
+			}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "credentials")
+	})
+
+	t.Run("https url userinfo with skip_verify is rejected", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{
+				ID: "a", URL: URL("https://user:pass@satellite-a:5000"),
+				TLS: TLSConfig{SkipVerify: true},
+			}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "skip_verify")
+	})
+
 	t.Run("https credentials with skip_verify are rejected", func(t *testing.T) {
 		cfg := base()
 		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
@@ -842,6 +867,98 @@ func TestValidatePeerDistributionConfig(t *testing.T) {
 		_, _, err = ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
 		require.ErrorContains(t, err, "url is required")
 	})
+
+	tests := []struct {
+		name string
+		peer PeerDistributionConfig
+		want string
+	}{
+		{
+			name: "unparseable peer url",
+			peer: PeerDistributionConfig{
+				StaticPeers: []PeerDescriptor{{ID: "a", URL: URL("not a url")}},
+			},
+			want: "url is invalid",
+		},
+		{
+			name: "opaque peer url",
+			peer: PeerDistributionConfig{
+				StaticPeers: []PeerDescriptor{{ID: "a", URL: URL("https:peer-a")}},
+			},
+			want: "must include a host",
+		},
+		{
+			name: "unsupported peer url scheme",
+			peer: PeerDistributionConfig{
+				StaticPeers: []PeerDescriptor{{ID: "a", URL: URL("ftp://satellite-a.example:5000")}},
+			},
+			want: "scheme",
+		},
+		{
+			name: "invalid timeout",
+			peer: PeerDistributionConfig{
+				StaticPeers: []PeerDescriptor{httpsPeer},
+				Timeout:     "soon",
+			},
+			want: "timeout",
+		},
+		{
+			name: "non-positive timeout",
+			peer: PeerDistributionConfig{
+				StaticPeers: []PeerDescriptor{httpsPeer},
+				Timeout:     "0s",
+			},
+			want: "timeout",
+		},
+		{
+			name: "negative retries",
+			peer: PeerDistributionConfig{
+				StaticPeers: []PeerDescriptor{httpsPeer},
+				Retries:     -1,
+			},
+			want: "retries",
+		},
+		{
+			name: "negative concurrency",
+			peer: PeerDistributionConfig{
+				StaticPeers: []PeerDescriptor{httpsPeer},
+				Concurrency: -1,
+			},
+			want: "concurrency",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := base()
+			cfg.AppConfig.PeerDistribution = tt.peer
+			_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+			require.ErrorContains(t, err, tt.want)
+		})
+	}
+}
+
+func TestPeerDistributionJSONOmitsAbsentBlock(t *testing.T) {
+	omitted, err := json.Marshal(Config{})
+	require.NoError(t, err)
+	require.NotContains(t, string(omitted), "peer_distribution")
+
+	emptySlices, err := json.Marshal(Config{
+		AppConfig: AppConfig{
+			PeerDistribution: PeerDistributionConfig{GCPeers: []PeerDescriptor{}},
+		},
+	})
+	require.NoError(t, err)
+	require.NotContains(t, string(emptySlices), "peer_distribution")
+
+	present, err := json.Marshal(Config{
+		AppConfig: AppConfig{
+			PeerDistribution: PeerDistributionConfig{
+				StaticPeers: []PeerDescriptor{{ID: "satellite-a", URL: "https://satellite-a.example:5000"}},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Contains(t, string(present), `"peer_distribution"`)
 }
 
 func TestPreservePeerDistribution(t *testing.T) {
@@ -865,6 +982,23 @@ func TestPreservePeerDistribution(t *testing.T) {
 		PreservePeerDistribution(&remote, &local)
 		require.True(t, remote.Enabled)
 		require.Equal(t, []string{"from-gc"}, remote.LocalGroups)
+	})
+
+	t.Run("explicit remote enabled false is kept", func(t *testing.T) {
+		var remote Config
+		require.NoError(t, json.Unmarshal([]byte(`{"app_config":{"peer_distribution":{"enabled":false}}}`), &remote))
+		peers := remote.AppConfig.PeerDistribution
+		PreservePeerDistribution(&peers, &local)
+		require.False(t, peers.Enabled)
+		require.Empty(t, peers.StaticPeers)
+	})
+
+	t.Run("omitted remote block keeps local", func(t *testing.T) {
+		var remote Config
+		require.NoError(t, json.Unmarshal([]byte(`{"app_config":{}}`), &remote))
+		peers := remote.AppConfig.PeerDistribution
+		PreservePeerDistribution(&peers, &local)
+		require.Equal(t, local, peers)
 	})
 }
 
