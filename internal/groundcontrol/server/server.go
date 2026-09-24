@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -52,6 +53,10 @@ type Server struct {
 	// from spoofing the audit source_ip. Enable only when GC sits behind a
 	// trusted reverse proxy.
 	trustForwardedHeaders bool
+
+	// In-memory cache for satellite group states (survives hot reloads)
+	groupStatesCache   map[int32][]string
+	groupStatesCacheMu sync.RWMutex
 }
 
 // ServerTLSConfig holds TLS settings for the Ground Control HTTP server.
@@ -172,6 +177,9 @@ func NewServer() *ServerResult {
 		// Audit logger
 		audit:                 auditLogger,
 		trustForwardedHeaders: cfg.Audit.TrustForwardedHeaders,
+
+		// Initialize group states cache
+		groupStatesCache: make(map[int32][]string),
 	}
 
 	// Bootstrap system admin user if not exists
