@@ -1,6 +1,8 @@
 package state
 
 import (
+	"bytes"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -366,4 +368,33 @@ func TestRemoveNullTagArtifacts(t *testing.T) {
 
 		require.Len(t, result.GetArtifacts(), 1)
 	})
+}
+
+func TestProcessStateLogsStructuredError(t *testing.T) {
+	var buf bytes.Buffer
+	log := zerolog.New(&buf)
+
+	var sr StateReader = &State{
+		Registry: "registry.example.com",
+		Artifacts: []Artifact{
+			{Repository: "missing-slash"},
+		},
+	}
+
+	_, err := ProcessState(&sr, &log)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid repository format")
+
+	got := buf.String()
+	require.NotEmpty(t, got)
+	require.True(t, json.Valid([]byte(got)))
+
+	var entry map[string]any
+	require.NoError(t, json.Unmarshal([]byte(got), &entry))
+	require.Equal(t, "error", entry["level"])
+	require.Equal(t, "Error in getting repository and image name", entry["message"])
+
+	errorField, ok := entry["error"].(string)
+	require.True(t, ok)
+	require.Contains(t, errorField, "invalid repository format")
 }

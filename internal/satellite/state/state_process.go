@@ -616,11 +616,11 @@ func (f *FetchAndReplicateStateProcess) RemoveNullTagArtifacts(state StateReader
 	return state
 }
 
-func ProcessState(state *StateReader) (*StateReader, error) {
+func ProcessState(state *StateReader, log *zerolog.Logger) (*StateReader, error) {
 	for _, artifact := range (*state).GetArtifacts() {
 		repo, image, err := utils.GetRepositoryAndImageNameFromArtifact(artifact.GetRepository())
 		if err != nil {
-			fmt.Printf("Error in getting repository and image name: %v", err)
+			log.Error().Err(err).Msg("Error in getting repository and image name")
 			return nil, err
 		}
 		artifact.SetRepository(repo)
@@ -637,7 +637,7 @@ func (f *FetchAndReplicateStateProcess) FetchAndProcessState(ctx context.Context
 		return nil, err
 	}
 	// update this function to now fetch the list of states from earlier
-	return ProcessState(&state)
+	return ProcessState(&state, log)
 }
 
 func (f *FetchAndReplicateStateProcess) LogChanges(deleteEntity, replicateEntity []Entity, log *zerolog.Logger) {
