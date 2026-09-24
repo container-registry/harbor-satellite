@@ -272,3 +272,45 @@ func TestLaunchProcess_NeverRunsTheProcessTwiceAtOnce(t *testing.T) {
 	require.EqualValues(t, 1, peak.Load(), "runs at once")
 	require.EqualValues(t, 1, proc.execCount.Load())
 }
+
+func TestParseEveryExpr(t *testing.T) {
+	tests := []struct {
+		name    string
+		expr    string
+		wantDur time.Duration
+		wantErr bool
+	}{
+		{
+			name:    "valid 30s",
+			expr:    "@every 30s",
+			wantDur: 30 * time.Second,
+		},
+		{
+			name:    "valid complex",
+			expr:    "@every 00h01m30s",
+			wantDur: 90 * time.Second,
+		},
+		{
+			name:    "empty",
+			expr:    "",
+			wantErr: true,
+		},
+		{
+			name:    "missing prefix",
+			expr:    "30s",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d, err := parseEveryExpr(tt.expr)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantDur, d)
+		})
+	}
+}

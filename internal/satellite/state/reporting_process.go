@@ -96,12 +96,6 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 
 	heartbeatExpr := s.cm.GetHeartbeatInterval()
-	heartbeatDuration, err := parseEveryExpr(heartbeatExpr)
-	if err != nil {
-		log.Warn().Err(err).Msgf("Failed to parse heartbeat interval %q, using 30s", heartbeatExpr)
-		heartbeatDuration = 30 * time.Second
-	}
-
 	metricsCfg := s.cm.GetMetricsConfig()
 
 	req := &StatusReportParams{
@@ -124,7 +118,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 		registryURL = utils.FormatRegistryURL(s.cm.GetLocalRegistryURL())
 	}
 	insecure := s.cm.UseUnsecure()
-	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
+	collectStatusReportParams(ctx, req, metricsCfg, registryURL, insecure)
 	s.mu.Lock()
 	runSummary := s.runSummary
 	s.mu.Unlock()
