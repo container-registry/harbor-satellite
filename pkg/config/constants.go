@@ -42,3 +42,11 @@ const (
 	DefaultAuditSyslogTag    string = "harbor-audit"
 	DefaultAuditSyslogSocket string = "/dev/log"
 )
+
+// Default peer distribution settings, applied only when the block is present.
+const (
+	DefaultPeerReachoutSats string = "group"
+	DefaultPeerTimeout      string = "30s"
+	DefaultPeerRetries      int    = 1
+	DefaultPeerConcurrency  int    = 4
+)
