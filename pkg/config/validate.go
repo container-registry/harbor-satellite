@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
@@ -63,6 +64,10 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	}
 
 	warnings = append(warnings, validateRegistryFallbackConfig(config)...)
+
+	if err := validateAndEnforcePeerDistribution(config); err != nil {
+		return nil, warnings, err
+	}
 
 	warnings = append(warnings, validateAndEnforceAuditConfig(config)...)
 
@@ -259,6 +264,111 @@ func validateAndEnforceCronSchedules(config *Config) []string {
 	}
 
 	return warnings
+}
+
+// validateAndEnforcePeerDistribution defaults and checks the opt-in peer block.
+// An omitted block is left zero so existing configs do not grow a new section.
+func validateAndEnforcePeerDistribution(config *Config) error {
+	p := &config.AppConfig.PeerDistribution
+	if p.IsZero() {
+		return nil
+	}
+
+	if err := enforcePeerDistributionDefaults(p); err != nil {
+		return err
+	}
+
+	if err := validatePeerList(p.StaticPeers, config.AppConfig.UseUnsecure, "static_peers"); err != nil {
+		return err
+	}
+
+	return validatePeerList(p.GCPeers, config.AppConfig.UseUnsecure, "gc_peers")
+}
+
+func enforcePeerDistributionDefaults(p *PeerDistributionConfig) error {
+	switch p.ReachoutSats {
+	case "":
+		p.ReachoutSats = DefaultPeerReachoutSats
+	case "group", "global":
+	default:
+		return fmt.Errorf("peer_distribution.reachout_sats %q is invalid (expected group|global)", p.ReachoutSats)
+	}
+
+	if p.Timeout == "" {
+		p.Timeout = DefaultPeerTimeout
+	} else if d, err := time.ParseDuration(p.Timeout); err != nil || d <= 0 {
+		return fmt.Errorf("peer_distribution.timeout %q must be a duration greater than 0", p.Timeout)
+	}
+
+	if p.Retries < 0 {
+		return fmt.Errorf("peer_distribution.retries must be >= 0")
+	}
+	if p.Retries == 0 {
+		p.Retries = DefaultPeerRetries
+	}
+
+	if p.Concurrency < 0 {
+		return fmt.Errorf("peer_distribution.concurrency must be >= 1")
+	}
+	if p.Concurrency == 0 {
+		p.Concurrency = DefaultPeerConcurrency
+	}
+
+	return nil
+}
+
+func validatePeerList(peers []PeerDescriptor, useUnsecure bool, field string) error {
+	for i, peer := range peers {
+		if err := validatePeerDescriptor(peer, useUnsecure, field, i); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validatePeerDescriptor(peer PeerDescriptor, useUnsecure bool, field string, index int) error {
+	if strings.TrimSpace(peer.ID) == "" {
+		return fmt.Errorf("peer_distribution.%s[%d].id is required", field, index)
+	}
+	if strings.TrimSpace(string(peer.URL)) == "" {
+		return fmt.Errorf("peer_distribution.%s[%d].url is required", field, index)
+	}
+
+	parsed, err := url.ParseRequestURI(string(peer.URL))
+	if err != nil {
+		return fmt.Errorf("peer_distribution.%s[%d].url is invalid: %w", field, index, err)
+	}
+	if parsed.Hostname() == "" {
+		return fmt.Errorf("peer_distribution.%s[%d].url must include a host", field, index)
+	}
+
+	hasCreds := peerHasCredentials(peer) || parsed.User != nil
+	return validatePeerTransport(parsed.Scheme, hasCreds, peer.TLS.SkipVerify, useUnsecure, field, index)
+}
+
+func peerHasCredentials(peer PeerDescriptor) bool {
+	return peer.Username != "" || peer.Password != ""
+}
+
+func validatePeerTransport(scheme string, hasCreds, skipVerify, useUnsecure bool, field string, index int) error {
+	switch scheme {
+	case "http":
+		if !useUnsecure {
+			return fmt.Errorf("peer_distribution.%s[%d] uses HTTP but use_unsecure is false", field, index)
+		}
+		if hasCreds {
+			return fmt.Errorf("peer_distribution.%s[%d] must not send credentials over HTTP", field, index)
+		}
+	case "https":
+		if hasCreds && skipVerify {
+			return fmt.Errorf("peer_distribution.%s[%d] credentials require HTTPS with skip_verify=false", field, index)
+		}
+	default:
+		return fmt.Errorf("peer_distribution.%s[%d].url scheme %q is invalid (expected http|https)", field, index, scheme)
+	}
+
+	return nil
 }
 
 // validateRegistryFallbackConfig validates registry fallback settings when enabled.

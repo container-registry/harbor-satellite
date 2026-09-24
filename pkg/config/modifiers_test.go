@@ -76,6 +76,24 @@ func TestConfigManagerModifiers(t *testing.T) {
 			},
 		},
 		{
+			name: "SetPeerDistributionConfig",
+			mutator: SetPeerDistributionConfig(PeerDistributionConfig{
+				Enabled:      false,
+				LocalGroups:  []string{"edge-site-a"},
+				ReachoutSats: "group",
+				StaticPeers: []PeerDescriptor{{
+					ID:     "satellite-a",
+					URL:    URL("https://satellite-a.example:5000"),
+					Groups: []string{"edge-site-a"},
+				}},
+			}),
+			check: func(t *testing.T, c *Config) {
+				require.False(t, c.AppConfig.PeerDistribution.Enabled)
+				require.Equal(t, []string{"edge-site-a"}, c.AppConfig.PeerDistribution.LocalGroups)
+				require.Equal(t, "satellite-a", c.AppConfig.PeerDistribution.StaticPeers[0].ID)
+			},
+		},
+		{
 			name: "SetRegistryFallbackConfig",
 			mutator: SetRegistryFallbackConfig(RegistryFallbackConfig{
 				Enabled:    true,
@@ -116,6 +134,24 @@ func TestGetRegistryFallbackConfig(t *testing.T) {
 	require.True(t, got.Enabled)
 	require.Equal(t, []string{"docker.io"}, got.Registries)
 	require.Equal(t, []string{"containerd", "docker"}, got.Runtimes)
+}
+
+func TestGetPeerDistributionConfig(t *testing.T) {
+	cfg := &Config{
+		AppConfig: AppConfig{
+			PeerDistribution: PeerDistributionConfig{
+				Enabled:     false,
+				LocalGroups: []string{"edge-site-a"},
+			},
+		},
+	}
+
+	cm, err := NewConfigManager("", "", "", "", true, cfg)
+	require.NoError(t, err)
+
+	got := cm.GetPeerDistributionConfig()
+	require.False(t, got.Enabled)
+	require.Equal(t, []string{"edge-site-a"}, got.LocalGroups)
 }
 
 func TestGetRegistryFallbackConfigEmpty(t *testing.T) {

@@ -1,6 +1,11 @@
 package config
 
-import "github.com/rs/zerolog"
+import (
+	"bytes"
+	"encoding/json"
+
+	"github.com/rs/zerolog"
+)
 
 type URL string
 
@@ -183,6 +188,77 @@ type DirectDeliveryConfig struct {
 	ImageDir string `json:"image_dir,omitempty"` // auto-detected if empty
 }
 
+// PeerDescriptor is one allow-listed Satellite (or BYO registry) that may be
+// copied from. Group IDs are operator- or GC-declared; they are never learned
+// from the peer itself.
+type PeerDescriptor struct {
+	ID       string    `json:"id"`
+	URL      URL       `json:"url"`
+	Groups   []string  `json:"groups,omitempty"`
+	Username string    `json:"username,omitempty"`
+	Password string    `json:"password,omitempty"`
+	TLS      TLSConfig `json:"tls,omitempty"`
+}
+
+// PeerDistributionConfig is the opt-in peer copy block. Enabled defaults to
+// false, so an omitted block leaves replication unchanged.
+type PeerDistributionConfig struct {
+	Enabled      bool             `json:"enabled,omitempty"`
+	LocalGroups  []string         `json:"local_groups,omitempty"`
+	StaticPeers  []PeerDescriptor `json:"static_peers,omitempty"`
+	GCPeers      []PeerDescriptor `json:"gc_peers,omitempty"`
+	ReachoutSats string           `json:"reachout_sats,omitempty"` // group | global
+	Timeout      string           `json:"timeout,omitempty"`       // Go duration, e.g. "30s"
+	Retries      int              `json:"retries,omitempty"`
+	Concurrency  int              `json:"concurrency,omitempty"`
+	// present is set when JSON contained the object, including {"enabled": false}.
+	present bool `json:"-"`
+}
+
+// UnmarshalJSON records that the object was present. Null is treated as omitted.
+func (p *PeerDistributionConfig) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		*p = PeerDistributionConfig{}
+		return nil
+	}
+
+	type plain PeerDistributionConfig
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*p = PeerDistributionConfig(decoded)
+	p.present = true
+	return nil
+}
+
+// IsZero reports whether the block was omitted. An explicit JSON object is not
+// omitted, even when every field is the zero value.
+func (p PeerDistributionConfig) IsZero() bool {
+	if p.present {
+		return false
+	}
+	return !p.Enabled &&
+		len(p.LocalGroups) == 0 &&
+		len(p.StaticPeers) == 0 &&
+		len(p.GCPeers) == 0 &&
+		p.ReachoutSats == "" &&
+		p.Timeout == "" &&
+		p.Retries == 0 &&
+		p.Concurrency == 0
+}
+
+// PreservePeerDistribution keeps the local operator block when remote config
+// omitted it. A populated remote block is left unchanged.
+func PreservePeerDistribution(dst, src *PeerDistributionConfig) {
+	if dst == nil || src == nil {
+		return
+	}
+	if dst.IsZero() {
+		*dst = *src
+	}
+}
+
 type AppConfig struct {
 	GroundControlURL          URL                    `json:"ground_control_url,omitempty"`
 	LogLevel                  string                 `json:"log_level,omitempty"`
@@ -200,6 +276,7 @@ type AppConfig struct {
 	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty"`
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
 	Audit                     AuditConfig            `json:"audit,omitempty"`
+	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitzero"`
 }
 
 type StateConfig struct {
