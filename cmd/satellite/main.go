@@ -57,6 +57,7 @@ type SatelliteOptions struct {
 	HarborRegistryURL      string
 	DirectDelivery         bool
 	ImageDir               string
+	ShutdownTimeout        string
 }
 
 func main() {
@@ -82,8 +83,8 @@ func main() {
 		HarborRegistryURL:      envCfg.HarborRegistryURL,
 		DirectDelivery:         envCfg.DirectDelivery,
 		ImageDir:               envCfg.ImageDir,
+		ShutdownTimeout:        envCfg.ShutdownTimeout,
 	}
-	shutdownTimeout := envCfg.ShutdownTimeout
 
 	flag.StringVar(&opts.GroundControlURL, "ground-control-url", opts.GroundControlURL, "URL to ground control")
 	flag.BoolVar(&opts.JSONLogging, "json-logging", true, "Enable JSON logging")
@@ -99,7 +100,7 @@ func main() {
 	flag.StringVar(&opts.RegistryPassword, "registry-password", "", "External registry password")
 	flag.StringVar(&opts.ConfigDir, "config-dir", opts.ConfigDir, "Configuration directory path (default: ~/.config/satellite)")
 	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", opts.RegistryDataDir, "Registry data directory (overrides default storage path derived from config-dir)")
-	flag.StringVar(&shutdownTimeout, "shutdown-timeout", shutdownTimeout, "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
+	flag.StringVar(&opts.ShutdownTimeout, "shutdown-timeout", opts.ShutdownTimeout, "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
 	flag.BoolVar(&opts.NoRegistryFallback, "no-registry-fallback", opts.NoRegistryFallback, "Disable all CRI registry fallback configuration")
 	flag.BoolVar(&opts.FallbackOnly, "fallback-only", false, "Apply CRI registry fallback configs and exit without starting satellite")
 	flag.StringVar(&opts.HarborRegistryURL, "harbor-registry-url", opts.HarborRegistryURL, "Override Harbor registry URL from Ground Control (e.g., http://10.0.0.1:8080)")
@@ -158,7 +159,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = run(opts, pathConfig, shutdownTimeout)
+	err = run(opts, pathConfig)
 	if err != nil {
 		fmt.Printf("fatal: %v\n", err)
 		os.Exit(1)
@@ -248,7 +249,7 @@ func reconfigureAuditOnReload(audit *logger.AuditLogger, current, next config.Au
 	return current
 }
 
-func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout string) error {
+func run(opts SatelliteOptions, pathConfig *config.PathConfig) error {
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
@@ -418,7 +419,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	}
 
-	return gracefulShutdown(ctx, log, s, wg, shutdownTimeout)
+	return gracefulShutdown(ctx, log, s, wg, opts.ShutdownTimeout)
 }
 
 func gracefulShutdown(ctx context.Context, log *zerolog.Logger, s *satellite.Satellite, wg *errgroup.Group, shutdownTimeout string) error {
