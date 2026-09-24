@@ -339,8 +339,12 @@ func validatePeerDescriptor(peer PeerDescriptor, useUnsecure bool, field string,
 	if err != nil {
 		return fmt.Errorf("peer_distribution.%s[%d].url is invalid: %w", field, index, err)
 	}
+	if parsed.Hostname() == "" {
+		return fmt.Errorf("peer_distribution.%s[%d].url must include a host", field, index)
+	}
 
-	return validatePeerTransport(parsed.Scheme, peerHasCredentials(peer), peer.TLS.SkipVerify, useUnsecure, field, index)
+	hasCreds := peerHasCredentials(peer) || parsed.User != nil
+	return validatePeerTransport(parsed.Scheme, hasCreds, peer.TLS.SkipVerify, useUnsecure, field, index)
 }
 
 func peerHasCredentials(peer PeerDescriptor) bool {

@@ -1,6 +1,11 @@
 package config
 
-import "github.com/rs/zerolog"
+import (
+	"bytes"
+	"encoding/json"
+
+	"github.com/rs/zerolog"
+)
 
 type URL string
 
@@ -206,11 +211,33 @@ type PeerDistributionConfig struct {
 	Timeout      string           `json:"timeout,omitempty"`       // Go duration, e.g. "30s"
 	Retries      int              `json:"retries,omitempty"`
 	Concurrency  int              `json:"concurrency,omitempty"`
+	// present is set when JSON contained the object, including {"enabled": false}.
+	present bool `json:"-"`
 }
 
-// IsZero reports whether the block was omitted. Empty slices count as unset so
-// a remote config that does not send peer_distribution does not wipe local values.
+// UnmarshalJSON records that the object was present. Null is treated as omitted.
+func (p *PeerDistributionConfig) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		*p = PeerDistributionConfig{}
+		return nil
+	}
+
+	type plain PeerDistributionConfig
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*p = PeerDistributionConfig(decoded)
+	p.present = true
+	return nil
+}
+
+// IsZero reports whether the block was omitted. An explicit JSON object is not
+// omitted, even when every field is the zero value.
 func (p PeerDistributionConfig) IsZero() bool {
+	if p.present {
+		return false
+	}
 	return !p.Enabled &&
 		len(p.LocalGroups) == 0 &&
 		len(p.StaticPeers) == 0 &&
@@ -249,7 +276,7 @@ type AppConfig struct {
 	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty"`
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
 	Audit                     AuditConfig            `json:"audit,omitempty"`
-	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitempty"`
+	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitzero"`
 }
 
 type StateConfig struct {
