@@ -26,6 +26,22 @@
       "registries": ["docker.io"],
       "runtimes": []
     },
+    "peer_distribution": {
+      "enabled": false,
+      "local_groups": ["edge-site-a"],
+      "static_peers": [
+        {
+          "id": "satellite-a",
+          "url": "https://satellite-a.example:5000",
+          "groups": ["edge-site-a"]
+        }
+      ],
+      "gc_peers": [],
+      "reachout_sats": "group",
+      "timeout": "30s",
+      "retries": 1,
+      "concurrency": 4
+    },
     "audit": {
       "enabled": false,
       "syslog": {

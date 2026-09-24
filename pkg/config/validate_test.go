@@ -714,5 +714,159 @@ func TestAuditConfig_Equal(t *testing.T) {
 	})
 }
 
+func TestValidatePeerDistributionConfig(t *testing.T) {
+	base := func() *Config {
+		return &Config{
+			AppConfig: AppConfig{
+				GroundControlURL: URL("https://example.com"),
+			},
+		}
+	}
+	httpsPeer := PeerDescriptor{
+		ID:     "satellite-a",
+		URL:    URL("https://satellite-a.example:5000"),
+		Groups: []string{"edge-site-a"},
+	}
+
+	t.Run("omitted block stays zero", func(t *testing.T) {
+		cfg := base()
+		result, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+		require.True(t, result.AppConfig.PeerDistribution.IsZero())
+	})
+
+	t.Run("enabled false with valid https peer", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			Enabled:     false,
+			StaticPeers: []PeerDescriptor{httpsPeer},
+		}
+		result, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+		require.False(t, result.AppConfig.PeerDistribution.Enabled)
+		require.Equal(t, DefaultPeerReachoutSats, result.AppConfig.PeerDistribution.ReachoutSats)
+		require.Equal(t, DefaultPeerTimeout, result.AppConfig.PeerDistribution.Timeout)
+		require.Equal(t, DefaultPeerRetries, result.AppConfig.PeerDistribution.Retries)
+		require.Equal(t, DefaultPeerConcurrency, result.AppConfig.PeerDistribution.Concurrency)
+	})
+
+	t.Run("reachout global is accepted", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{ReachoutSats: "global"}
+		result, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+		require.Equal(t, "global", result.AppConfig.PeerDistribution.ReachoutSats)
+	})
+
+	t.Run("reachout other is rejected", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{ReachoutSats: "other"}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "reachout_sats")
+	})
+
+	t.Run("anonymous http requires use_unsecure", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.UseUnsecure = true
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{ID: "a", URL: URL("http://satellite-a:5000")}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+
+		cfg = base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{ID: "a", URL: URL("http://satellite-a:5000")}},
+		}
+		_, _, err = ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "use_unsecure")
+	})
+
+	t.Run("http with credentials is rejected", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.UseUnsecure = true
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{
+				ID: "a", URL: URL("http://satellite-a:5000"), Username: "u", Password: "p",
+			}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "credentials")
+	})
+
+	t.Run("https credentials with skip_verify are rejected", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{
+				ID: "a", URL: URL("https://satellite-a:5000"), Password: "p",
+				TLS: TLSConfig{SkipVerify: true},
+			}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "skip_verify")
+	})
+
+	t.Run("https credentials with verification are accepted", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{
+				ID: "a", URL: URL("https://satellite-a:5000"), Password: "p",
+			}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+	})
+
+	t.Run("empty gc_peers is valid", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{httpsPeer},
+			GCPeers:     []PeerDescriptor{},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+	})
+
+	t.Run("missing peer id or url is rejected", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{URL: URL("https://satellite-a:5000")}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "id is required")
+
+		cfg = base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{ID: "a"}},
+		}
+		_, _, err = ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "url is required")
+	})
+}
+
+func TestPreservePeerDistribution(t *testing.T) {
+	local := PeerDistributionConfig{
+		Enabled:     false,
+		LocalGroups: []string{"edge-site-a"},
+		StaticPeers: []PeerDescriptor{{ID: "satellite-a", URL: URL("https://satellite-a.example:5000")}},
+	}
+
+	t.Run("zero remote keeps local", func(t *testing.T) {
+		remote := PeerDistributionConfig{}
+		PreservePeerDistribution(&remote, &local)
+		require.Equal(t, local, remote)
+	})
+
+	t.Run("populated remote wins", func(t *testing.T) {
+		remote := PeerDistributionConfig{
+			Enabled:     true,
+			LocalGroups: []string{"from-gc"},
+		}
+		PreservePeerDistribution(&remote, &local)
+		require.True(t, remote.Enabled)
+		require.Equal(t, []string{"from-gc"}, remote.LocalGroups)
+	})
+}
+
 func intPtr(i int) *int    { return &i }
 func boolPtr(b bool) *bool { return &b }
