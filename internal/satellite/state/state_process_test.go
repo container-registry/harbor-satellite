@@ -48,19 +48,52 @@ func TestSetupReplicationSelectsStore(t *testing.T) {
 		root := t.TempDir()
 		process := &FetchAndReplicateStateProcess{cm: newManager(t, false), storeRoot: root}
 
-		storage, _, _, _, destination, _, _, err := process.setupReplication()
+		storage, source, _, _, _, destination, _, _, err := process.setupReplication()
 		require.NoError(t, err)
 		require.IsType(t, &store.OCIStore{}, storage)
+		require.IsType(t, &store.RegistryStore{}, source)
+		require.Equal(t, root, destination)
+	})
+
+	t.Run("default reuses injected local OCI store", func(t *testing.T) {
+		root := t.TempDir()
+		shared, err := store.NewOCIStore(root)
+		require.NoError(t, err)
+		remote, err := store.NewRegistryStore(store.RegistryOptions{Endpoint: "source.example.com"})
+		require.NoError(t, err)
+		process := &FetchAndReplicateStateProcess{cm: newManager(t, false), storeRoot: root}
+		process.SetStores(shared, remote)
+
+		storage, source, _, _, _, destination, _, _, err := process.setupReplication()
+		require.NoError(t, err)
+		require.Same(t, shared, storage)
+		require.Same(t, remote, source)
 		require.Equal(t, root, destination)
 	})
 
 	t.Run("BYO uses remote registry store", func(t *testing.T) {
 		process := &FetchAndReplicateStateProcess{cm: newManager(t, true), storeRoot: t.TempDir()}
 
-		storage, _, _, _, destination, _, _, err := process.setupReplication()
+		storage, source, _, _, _, destination, _, _, err := process.setupReplication()
 		require.NoError(t, err)
 		require.IsType(t, &store.RegistryStore{}, storage)
+		require.IsType(t, &store.RegistryStore{}, source)
 		require.Equal(t, "destination.example.com", destination)
+	})
+
+	t.Run("BYO reuses injected stores", func(t *testing.T) {
+		root := t.TempDir()
+		shared, err := store.NewOCIStore(root)
+		require.NoError(t, err)
+		remote, err := store.NewRegistryStore(store.RegistryOptions{Endpoint: "source.example.com"})
+		require.NoError(t, err)
+		process := &FetchAndReplicateStateProcess{cm: newManager(t, true), storeRoot: root}
+		process.SetStores(shared, remote)
+
+		storage, source, _, _, _, _, _, _, err := process.setupReplication()
+		require.NoError(t, err)
+		require.Same(t, shared, storage)
+		require.Same(t, remote, source)
 	})
 }
 

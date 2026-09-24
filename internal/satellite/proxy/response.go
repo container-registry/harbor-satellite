@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var errResponseWritten = errors.New("proxy: response has already been written")
@@ -55,10 +56,7 @@ func (request *Request) WriteResponse(response *http.Response) error {
 		return errResponseWritten
 	}
 
-	destination := request.responseWriter.Header()
-	for key, values := range response.Header {
-		destination[key] = append([]string(nil), values...)
-	}
+	copyResponseHeaders(request.responseWriter.Header(), response.Header)
 
 	request.written = true
 	request.responseWriter.WriteHeader(response.StatusCode)
@@ -71,6 +69,63 @@ func (request *Request) WriteResponse(response *http.Response) error {
 	}
 	_, err := io.Copy(request.responseWriter, response.Body)
 	return err
+}
+
+// WriteContent sends a content response to the client. Seekable bodies are
+// served with net/http's range and conditional-request handling; other bodies
+// use WriteResponse's direct streaming path.
+func (request *Request) WriteContent(response *http.Response) error {
+	if response == nil {
+		return errors.New("proxy: HTTP response is required")
+	}
+	if request.responseWritten() {
+		return errResponseWritten
+	}
+
+	seeker, seekable := response.Body.(io.ReadSeeker)
+	if response.StatusCode != http.StatusOK || !seekable {
+		return request.WriteResponse(response)
+	}
+
+	copyResponseHeaders(request.responseWriter.Header(), response.Header)
+	request.written = true
+	defer response.Body.Close()
+	http.ServeContent(
+		request.responseWriter,
+		request.httpRequest,
+		request.Reference,
+		time.Time{},
+		seeker,
+	)
+	return nil
+}
+
+func copyResponseHeaders(destination, source http.Header) {
+	hopByHop := map[string]struct{}{
+		"Connection":          {},
+		"Keep-Alive":          {},
+		"Proxy-Authenticate":  {},
+		"Proxy-Authorization": {},
+		"Proxy-Connection":    {},
+		"Te":                  {},
+		"Trailer":             {},
+		"Transfer-Encoding":   {},
+		"Upgrade":             {},
+	}
+	for _, value := range source.Values("Connection") {
+		for token := range strings.SplitSeq(value, ",") {
+			token = http.CanonicalHeaderKey(strings.TrimSpace(token))
+			if token != "" {
+				hopByHop[token] = struct{}{}
+			}
+		}
+	}
+	for key, values := range source {
+		if _, found := hopByHop[http.CanonicalHeaderKey(key)]; found {
+			continue
+		}
+		destination[key] = append([]string(nil), values...)
+	}
 }
 
 // WriteError sends an OCI Distribution error envelope. Non-distribution errors
