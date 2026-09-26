@@ -343,6 +343,10 @@ func validatePeerDescriptor(peer PeerDescriptor, useUnsecure bool, field string,
 		return fmt.Errorf("peer_distribution.%s[%d].url must include a host", field, index)
 	}
 
+	if _, err := validateTLSConfig(&peer.TLS); err != nil {
+		return fmt.Errorf("peer_distribution.%s[%d].tls: %w", field, index, err)
+	}
+
 	hasCreds := peerHasCredentials(peer) || parsed.User != nil
 	return validatePeerTransport(parsed.Scheme, hasCreds, peer.TLS.SkipVerify, useUnsecure, field, index)
 }

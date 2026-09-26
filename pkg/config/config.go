@@ -249,13 +249,19 @@ func (p PeerDistributionConfig) IsZero() bool {
 }
 
 // PreservePeerDistribution keeps the local operator block when remote config
-// omitted it. A populated remote block is left unchanged.
+// omitted it. A present remote block keeps its own fields. Local static_peers
+// fill that block when the remote list is empty, so a Ground Control gc_peers
+// update does not drop the operator allow-list.
 func PreservePeerDistribution(dst, src *PeerDistributionConfig) {
 	if dst == nil || src == nil {
 		return
 	}
 	if dst.IsZero() {
 		*dst = *src
+		return
+	}
+	if len(dst.StaticPeers) == 0 {
+		dst.StaticPeers = append([]PeerDescriptor(nil), src.StaticPeers...)
 	}
 }
 

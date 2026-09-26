@@ -767,6 +767,7 @@ func TestValidatePeerDistributionConfig(t *testing.T) {
 	})
 
 	t.Run("anonymous http requires use_unsecure", func(t *testing.T) {
+		t.Setenv("USE_UNSECURE", "")
 		cfg := base()
 		cfg.AppConfig.UseUnsecure = true
 		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
@@ -784,6 +785,7 @@ func TestValidatePeerDistributionConfig(t *testing.T) {
 	})
 
 	t.Run("http with credentials is rejected", func(t *testing.T) {
+		t.Setenv("USE_UNSECURE", "")
 		cfg := base()
 		cfg.AppConfig.UseUnsecure = true
 		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
@@ -796,6 +798,7 @@ func TestValidatePeerDistributionConfig(t *testing.T) {
 	})
 
 	t.Run("http url userinfo is rejected", func(t *testing.T) {
+		t.Setenv("USE_UNSECURE", "")
 		cfg := base()
 		cfg.AppConfig.UseUnsecure = true
 		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
@@ -829,6 +832,48 @@ func TestValidatePeerDistributionConfig(t *testing.T) {
 		}
 		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
 		require.ErrorContains(t, err, "skip_verify")
+	})
+
+	t.Run("peer tls cert without key is rejected", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{
+				ID: "a", URL: URL("https://satellite-a:5000"),
+				TLS: TLSConfig{CertFile: "/tmp/peer-cert.pem"},
+			}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "both cert_file and key_file must be provided")
+	})
+
+	t.Run("peer tls missing ca file is rejected", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{
+				ID: "a", URL: URL("https://satellite-a:5000"),
+				TLS: TLSConfig{CAFile: "/nonexistent/peer-ca.pem"},
+			}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "ca_file not found")
+	})
+
+	t.Run("peer tls cert and key files are accepted", func(t *testing.T) {
+		dir := t.TempDir()
+		certFile := filepath.Join(dir, "cert.pem")
+		keyFile := filepath.Join(dir, "key.pem")
+		require.NoError(t, os.WriteFile(certFile, []byte("cert"), 0o600))
+		require.NoError(t, os.WriteFile(keyFile, []byte("key"), 0o600))
+
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{
+				ID: "a", URL: URL("https://satellite-a:5000"),
+				TLS: TLSConfig{CertFile: certFile, KeyFile: keyFile},
+			}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
 	})
 
 	t.Run("https credentials with verification are accepted", func(t *testing.T) {
@@ -974,7 +1019,7 @@ func TestPreservePeerDistribution(t *testing.T) {
 		require.Equal(t, local, remote)
 	})
 
-	t.Run("populated remote wins", func(t *testing.T) {
+	t.Run("populated remote keeps its fields and local static peers", func(t *testing.T) {
 		remote := PeerDistributionConfig{
 			Enabled:     true,
 			LocalGroups: []string{"from-gc"},
@@ -982,15 +1027,37 @@ func TestPreservePeerDistribution(t *testing.T) {
 		PreservePeerDistribution(&remote, &local)
 		require.True(t, remote.Enabled)
 		require.Equal(t, []string{"from-gc"}, remote.LocalGroups)
+		require.Equal(t, local.StaticPeers, remote.StaticPeers)
 	})
 
-	t.Run("explicit remote enabled false is kept", func(t *testing.T) {
+	t.Run("explicit remote enabled false keeps local static peers", func(t *testing.T) {
 		var remote Config
 		require.NoError(t, json.Unmarshal([]byte(`{"app_config":{"peer_distribution":{"enabled":false}}}`), &remote))
 		peers := remote.AppConfig.PeerDistribution
 		PreservePeerDistribution(&peers, &local)
 		require.False(t, peers.Enabled)
-		require.Empty(t, peers.StaticPeers)
+		require.Equal(t, local.StaticPeers, peers.StaticPeers)
+	})
+
+	t.Run("remote gc peers keep local static peers", func(t *testing.T) {
+		var remote Config
+		require.NoError(t, json.Unmarshal([]byte(`{"app_config":{"peer_distribution":{"enabled":true,"gc_peers":[{"id":"satellite-b","url":"https://satellite-b.example:5000"}]}}}`), &remote))
+		peers := remote.AppConfig.PeerDistribution
+		PreservePeerDistribution(&peers, &local)
+		require.True(t, peers.Enabled)
+		require.Equal(t, local.StaticPeers, peers.StaticPeers)
+		require.Equal(t, "satellite-b", peers.GCPeers[0].ID)
+	})
+
+	t.Run("remote static peers stay", func(t *testing.T) {
+		remote := PeerDistributionConfig{
+			Enabled:     true,
+			StaticPeers: []PeerDescriptor{{ID: "satellite-c", URL: URL("https://satellite-c.example:5000")}},
+			GCPeers:     []PeerDescriptor{{ID: "satellite-b", URL: URL("https://satellite-b.example:5000")}},
+		}
+		PreservePeerDistribution(&remote, &local)
+		require.Equal(t, "satellite-c", remote.StaticPeers[0].ID)
+		require.Equal(t, "satellite-b", remote.GCPeers[0].ID)
 	})
 
 	t.Run("omitted remote block keeps local", func(t *testing.T) {
