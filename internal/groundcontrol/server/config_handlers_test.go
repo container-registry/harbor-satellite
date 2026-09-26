@@ -169,6 +169,42 @@ func TestDeleteConfigHandler_ConfigInUse(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestConfigValueKeepsPeerDistribution(t *testing.T) {
+	const withPeers = `{
+		"app_config": {
+			"peer_distribution": {
+				"enabled": true,
+				"gc_peers": [{"id": "satellite-b", "url": "https://satellite-b.example:5000"}]
+			}
+		}
+	}`
+
+	var created ConfigValue
+	require.NoError(t, json.Unmarshal([]byte(withPeers), &created))
+	stored, err := json.Marshal(created)
+	require.NoError(t, err)
+	require.Contains(t, string(stored), `"gc_peers"`)
+	require.Contains(t, string(stored), "satellite-b")
+
+	const optOut = `{"app_config":{"peer_distribution":{"enabled":false}}}`
+	var disabled ConfigValue
+	require.NoError(t, json.Unmarshal([]byte(optOut), &disabled))
+	encoded, err := json.Marshal(disabled)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), `"peer_distribution"`)
+}
+
+func TestConfigMergePatchKeepsPeerDistribution(t *testing.T) {
+	const patchBody = `{"app_config":{"peer_distribution":{"enabled":true,"gc_peers":[{"id":"satellite-b","url":"https://satellite-b.example:5000"}]}}}`
+
+	var patch ConfigMergePatch
+	require.NoError(t, json.Unmarshal([]byte(patchBody), &patch))
+	encoded, err := json.Marshal(patch)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), `"gc_peers"`)
+	require.Contains(t, string(encoded), "satellite-b")
+}
+
 func TestConfigMergePatchPreservesExplicitNull(t *testing.T) {
 	tests := []struct {
 		name  string
