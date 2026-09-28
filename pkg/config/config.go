@@ -209,8 +209,10 @@ type PeerDistributionConfig struct {
 	GCPeers      []PeerDescriptor `json:"gc_peers,omitempty"`
 	ReachoutSats string           `json:"reachout_sats,omitempty"` // group | global
 	Timeout      string           `json:"timeout,omitempty"`       // Go duration, e.g. "30s"
-	Retries      int              `json:"retries,omitempty"`
-	Concurrency  int              `json:"concurrency,omitempty"`
+	// Retries is extra attempts after the first pull. Nil means the default of 1.
+	// An explicit 0 turns retries off.
+	Retries     *int `json:"retries,omitempty"`
+	Concurrency int  `json:"concurrency,omitempty"`
 	// present is set when JSON contained the object, including {"enabled": false}.
 	present bool `json:"-"`
 }
@@ -244,7 +246,7 @@ func (p PeerDistributionConfig) IsZero() bool {
 		len(p.GCPeers) == 0 &&
 		p.ReachoutSats == "" &&
 		p.Timeout == "" &&
-		p.Retries == 0 &&
+		p.Retries == nil &&
 		p.Concurrency == 0
 }
 

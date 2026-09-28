@@ -747,8 +747,22 @@ func TestValidatePeerDistributionConfig(t *testing.T) {
 		require.False(t, result.AppConfig.PeerDistribution.Enabled)
 		require.Equal(t, DefaultPeerReachoutSats, result.AppConfig.PeerDistribution.ReachoutSats)
 		require.Equal(t, DefaultPeerTimeout, result.AppConfig.PeerDistribution.Timeout)
-		require.Equal(t, DefaultPeerRetries, result.AppConfig.PeerDistribution.Retries)
+		require.NotNil(t, result.AppConfig.PeerDistribution.Retries)
+		require.Equal(t, DefaultPeerRetries, *result.AppConfig.PeerDistribution.Retries)
 		require.Equal(t, DefaultPeerConcurrency, result.AppConfig.PeerDistribution.Concurrency)
+	})
+
+	t.Run("explicit zero retries is kept", func(t *testing.T) {
+		cfg := base()
+		require.NoError(t, json.Unmarshal([]byte(`{"app_config":{"peer_distribution":{"retries":0}}}`), cfg))
+		result, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+		require.NotNil(t, result.AppConfig.PeerDistribution.Retries)
+		require.Equal(t, 0, *result.AppConfig.PeerDistribution.Retries)
+
+		out, err := json.Marshal(result.AppConfig.PeerDistribution)
+		require.NoError(t, err)
+		require.Contains(t, string(out), `"retries":0`)
 	})
 
 	t.Run("reachout global is accepted", func(t *testing.T) {
@@ -842,6 +856,48 @@ func TestValidatePeerDistributionConfig(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("peer tls cert without key is rejected", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{
+				ID: "a", URL: URL("https://satellite-a:5000"),
+				TLS: TLSConfig{CertFile: "/tmp/peer-cert.pem"},
+			}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "both cert_file and key_file must be provided")
+	})
+
+	t.Run("peer tls missing ca file is rejected", func(t *testing.T) {
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{
+				ID: "a", URL: URL("https://satellite-a:5000"),
+				TLS: TLSConfig{CAFile: "/nonexistent/peer-ca.pem"},
+			}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "ca_file not found")
+	})
+
+	t.Run("peer tls cert and key files are accepted", func(t *testing.T) {
+		dir := t.TempDir()
+		certFile := filepath.Join(dir, "cert.pem")
+		keyFile := filepath.Join(dir, "key.pem")
+		require.NoError(t, os.WriteFile(certFile, []byte("cert"), 0o600))
+		require.NoError(t, os.WriteFile(keyFile, []byte("key"), 0o600))
+
+		cfg := base()
+		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
+			StaticPeers: []PeerDescriptor{{
+				ID: "a", URL: URL("https://satellite-a:5000"),
+				TLS: TLSConfig{CertFile: certFile, KeyFile: keyFile},
+			}},
+		}
+		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
+		require.NoError(t, err)
+	})
+
 	t.Run("empty gc_peers is valid", func(t *testing.T) {
 		cfg := base()
 		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
@@ -914,7 +970,7 @@ func TestValidatePeerDistributionConfig(t *testing.T) {
 			name: "negative retries",
 			peer: PeerDistributionConfig{
 				StaticPeers: []PeerDescriptor{httpsPeer},
-				Retries:     -1,
+				Retries:     intPtr(-1),
 			},
 			want: "retries",
 		},
@@ -1000,6 +1056,78 @@ func TestPreservePeerDistribution(t *testing.T) {
 		PreservePeerDistribution(&peers, &local)
 		require.Equal(t, local, peers)
 	})
+}
+
+func TestApplyRetainedPeerTransport(t *testing.T) {
+	t.Setenv("USE_UNSECURE", "")
+
+	httpPeers := PeerDistributionConfig{
+		StaticPeers: []PeerDescriptor{{ID: "a", URL: URL("http://satellite-a:5000")}},
+	}
+	httpsPeers := PeerDistributionConfig{
+		StaticPeers: []PeerDescriptor{{ID: "a", URL: URL("https://satellite-a.example:5000")}},
+	}
+
+	t.Run("omitted remote keeps an http peer and use_unsecure", func(t *testing.T) {
+		remote := omittedRemoteConfig(t)
+		ApplyRetainedPeerTransport(&remote, httpPeers, true)
+		require.True(t, remote.AppConfig.UseUnsecure)
+		require.Equal(t, httpPeers.StaticPeers, remote.AppConfig.PeerDistribution.StaticPeers)
+
+		_, _, err := ValidateAndEnforceDefaults(&remote, DefaultGroundControlURL)
+		require.NoError(t, err)
+	})
+
+	t.Run("https peers leave use_unsecure unset", func(t *testing.T) {
+		remote := omittedRemoteConfig(t)
+		ApplyRetainedPeerTransport(&remote, httpsPeers, true)
+		require.False(t, remote.AppConfig.UseUnsecure)
+
+		_, _, err := ValidateAndEnforceDefaults(&remote, DefaultGroundControlURL)
+		require.NoError(t, err)
+	})
+
+	t.Run("fetched peer block is left unchanged", func(t *testing.T) {
+		var remote Config
+		require.NoError(t, json.Unmarshal([]byte(`{"app_config":{"ground_control_url":"https://gc.example","peer_distribution":{"enabled":false}}}`), &remote))
+		ApplyRetainedPeerTransport(&remote, httpPeers, true)
+		require.False(t, remote.AppConfig.UseUnsecure)
+		require.False(t, remote.AppConfig.PeerDistribution.Enabled)
+		require.Empty(t, remote.AppConfig.PeerDistribution.StaticPeers)
+	})
+
+	t.Run("secure process does not keep an http peer valid", func(t *testing.T) {
+		remote := omittedRemoteConfig(t)
+		ApplyRetainedPeerTransport(&remote, httpPeers, false)
+		require.False(t, remote.AppConfig.UseUnsecure)
+
+		_, _, err := ValidateAndEnforceDefaults(&remote, DefaultGroundControlURL)
+		require.ErrorContains(t, err, "use_unsecure")
+	})
+
+	t.Run("fetched use_unsecure true stays true", func(t *testing.T) {
+		var remote Config
+		require.NoError(t, json.Unmarshal([]byte(`{"app_config":{"ground_control_url":"https://gc.example","use_unsecure":true}}`), &remote))
+		ApplyRetainedPeerTransport(&remote, httpsPeers, false)
+		require.True(t, remote.AppConfig.UseUnsecure)
+		require.Equal(t, httpsPeers.StaticPeers, remote.AppConfig.PeerDistribution.StaticPeers)
+	})
+
+	t.Run("http gc peer keeps use_unsecure", func(t *testing.T) {
+		remote := omittedRemoteConfig(t)
+		local := PeerDistributionConfig{
+			GCPeers: []PeerDescriptor{{ID: "g", URL: URL("http://gc-peer:5000")}},
+		}
+		ApplyRetainedPeerTransport(&remote, local, true)
+		require.True(t, remote.AppConfig.UseUnsecure)
+	})
+}
+
+func omittedRemoteConfig(t *testing.T) Config {
+	t.Helper()
+	var remote Config
+	require.NoError(t, json.Unmarshal([]byte(`{"app_config":{"ground_control_url":"https://gc.example"}}`), &remote))
+	return remote
 }
 
 func intPtr(i int) *int    { return &i }

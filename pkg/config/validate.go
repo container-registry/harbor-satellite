@@ -300,11 +300,11 @@ func enforcePeerDistributionDefaults(p *PeerDistributionConfig) error {
 		return fmt.Errorf("peer_distribution.timeout %q must be a duration greater than 0", p.Timeout)
 	}
 
-	if p.Retries < 0 {
+	if p.Retries == nil {
+		v := DefaultPeerRetries
+		p.Retries = &v
+	} else if *p.Retries < 0 {
 		return fmt.Errorf("peer_distribution.retries must be >= 0")
-	}
-	if p.Retries == 0 {
-		p.Retries = DefaultPeerRetries
 	}
 
 	if p.Concurrency < 0 {
@@ -343,12 +343,48 @@ func validatePeerDescriptor(peer PeerDescriptor, useUnsecure bool, field string,
 		return fmt.Errorf("peer_distribution.%s[%d].url must include a host", field, index)
 	}
 
+	if _, err := validateTLSConfig(&peer.TLS); err != nil {
+		return fmt.Errorf("peer_distribution.%s[%d].tls: %w", field, index, err)
+	}
+
 	hasCreds := peerHasCredentials(peer) || parsed.User != nil
 	return validatePeerTransport(parsed.Scheme, hasCreds, peer.TLS.SkipVerify, useUnsecure, field, index)
 }
 
 func peerHasCredentials(peer PeerDescriptor) bool {
 	return peer.Username != "" || peer.Password != ""
+}
+
+// ApplyRetainedPeerTransport keeps the local peer block when the fetched config
+// omitted it. When a retained peer uses HTTP and this process is already
+// insecure, use_unsecure is set so validation accepts that peer. A fetched
+// peer block is left unchanged, and a fetched use_unsecure of true stays true.
+func ApplyRetainedPeerTransport(remote *Config, local PeerDistributionConfig, processUseUnsecure bool) {
+	if remote == nil {
+		return
+	}
+	omitted := remote.AppConfig.PeerDistribution.IsZero()
+	PreservePeerDistribution(&remote.AppConfig.PeerDistribution, &local)
+	if omitted && processUseUnsecure && !remote.AppConfig.UseUnsecure && peerListUsesHTTP(local) {
+		remote.AppConfig.UseUnsecure = true
+	}
+}
+
+func peerListUsesHTTP(peers PeerDistributionConfig) bool {
+	return descriptorsUseHTTP(peers.StaticPeers) || descriptorsUseHTTP(peers.GCPeers)
+}
+
+func descriptorsUseHTTP(peers []PeerDescriptor) bool {
+	for _, peer := range peers {
+		parsed, err := url.Parse(string(peer.URL))
+		if err != nil {
+			continue
+		}
+		if parsed.Scheme == "http" {
+			return true
+		}
+	}
+	return false
 }
 
 func validatePeerTransport(scheme string, hasCreds, skipVerify, useUnsecure bool, field string, index int) error {
