@@ -266,7 +266,7 @@ flowchart TB
     probe --> hit{First complete artifact}
     hit -->|yes| cancel[Cancel in-flight peers]
     cancel --> copyPeer["Verify complete graph in staging / quarantine"]
-    copyPeer --> admit{Content policy (ADR-0009)}
+    copyPeer --> admit{"Content policy (ADR-0009)"}
     admit -->|allow| publish[Tag canonical ref]
     admit -->|deny| reject["Quarantine / delete; fail; do not tag"]
     hit -->|none complete| online{Harbor reachable?}
