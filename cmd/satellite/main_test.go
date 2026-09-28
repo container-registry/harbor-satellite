@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,9 +15,11 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
+	"oras.land/oras-go/v2/errdef"
 )
 
 func newTestConfigManager(t *testing.T, cfg *config.Config) *config.ConfigManager {
@@ -52,7 +55,9 @@ func TestValidateSatelliteOptions(t *testing.T) {
 		{name: "invalid mode", opts: SatelliteOptions{ProxyMode: "cache", ProxyPort: 8585}, wantErr: "must be"},
 		{name: "zero port", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy}, wantErr: "between 1 and 65535"},
 		{name: "port too large", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyPort: 65536}, wantErr: "between 1 and 65535"},
-		{name: "fallback only", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyPort: 8585, FallbackOnly: true}, wantErr: "cannot be combined"},
+		{name: "fallback only", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyPort: 8585, FallbackOnly: true}},
+		{name: "fallback only ignores proxy validation", opts: SatelliteOptions{FallbackOnly: true}},
+		{name: "explicit proxy mode with fallback only", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyPort: 8585, ProxyModeExplicit: true, FallbackOnly: true}, wantErr: "cannot be combined"},
 	}
 
 	for _, tt := range tests {
@@ -65,6 +70,16 @@ func TestValidateSatelliteOptions(t *testing.T) {
 			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
+}
+
+func TestFallbackOnlyExitsBeforeProxyInitialization(t *testing.T) {
+	paths, err := config.ResolvePathConfig(t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, run(SatelliteOptions{
+		FallbackOnly: true,
+		ProxyMode:    proxy.ModeProxy,
+		ProxyPort:    0,
+	}, paths, "1s"))
 }
 
 func TestSourceRegistryOptionsUsesHarborOverride(t *testing.T) {
@@ -89,6 +104,17 @@ func TestSourceRegistryOptionsUsesHarborOverride(t *testing.T) {
 	require.True(t, options.PlainHTTP)
 }
 
+func TestSourceRegistryOptionsHonorsHTTPOverride(t *testing.T) {
+	cm := newTestConfigManager(t, &config.Config{
+		StateConfig: config.StateConfig{RegistryCredentials: config.RegistryCredentials{URL: "https://registry.internal:5000"}},
+		AppConfig:   config.AppConfig{HarborRegistryURL: "http://harbor.example:5000"},
+	})
+	options, err := sourceRegistryOptions(cm)
+	require.NoError(t, err)
+	require.Equal(t, "harbor.example:5000", options.Endpoint)
+	require.True(t, options.PlainHTTP)
+}
+
 func TestProxyStoresPrioritizesBYORegistry(t *testing.T) {
 	cm := newTestConfigManager(t, &config.Config{
 		StateConfig: config.StateConfig{RegistryCredentials: config.RegistryCredentials{URL: "http://harbor.example.com"}},
@@ -102,6 +128,36 @@ func TestProxyStoresPrioritizesBYORegistry(t *testing.T) {
 	require.NoError(t, err)
 	require.IsType(t, &store.RegistryStore{}, local)
 	require.IsType(t, &store.RegistryStore{}, remote)
+}
+
+func TestProxyStoresUseCredentialsRegisteredAfterStartup(t *testing.T) {
+	registryHandler := registry.New()
+	upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		_, password, ok := request.BasicAuth()
+		if !ok || password != "registered-password" {
+			response.Header().Set("WWW-Authenticate", `Basic realm="test"`)
+			response.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		registryHandler.ServeHTTP(response, request)
+	}))
+	t.Cleanup(upstream.Close)
+
+	cm := newTestConfigManager(t, &config.Config{AppConfig: config.AppConfig{
+		HarborRegistryURL: upstream.URL,
+		UseUnsecure:       true,
+	}})
+	local, remote, err := proxyStores(cm, t.TempDir())
+	require.NoError(t, err)
+	require.IsType(t, &store.OCIStore{}, local)
+	artifact := store.Artifact{Name: "team/app", Tag: "missing"}
+	_, err = remote.Pull(context.Background(), artifact, store.PullResourceManifest)
+	require.Error(t, err)
+
+	cm.With(config.SetStateAuth("robot", "registered-password", config.URL(upstream.URL)))
+	_, err = remote.Pull(context.Background(), artifact, store.PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+	require.Equal(t, upstream.URL, cm.GetSourceRegistryURL())
 }
 
 func TestGracefulShutdownDrainsActiveProxyResponse(t *testing.T) {

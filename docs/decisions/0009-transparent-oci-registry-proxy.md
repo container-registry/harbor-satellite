@@ -126,6 +126,10 @@ flowchart TB
     Admit -->|allow| Source
 ```
 
+Source registry credentials are sent over HTTP when `UseUnsecure` is enabled
+for an HTTP upstream. Credential confidentiality requires `UseUnsecure=false`
+and an HTTPS upstream with certificate verification enabled.
+
 The interaction for a request that needs content evidence is:
 
 ```mermaid

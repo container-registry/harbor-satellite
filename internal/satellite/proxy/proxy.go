@@ -18,6 +18,7 @@ func New(handler HandlerFunc) *proxy {
 // ignored. Successive calls make the last wrapper the outermost one.
 func (p *proxy) Wrap(wrapper MiddlewareFunc) *proxy {
 	if wrapper != nil {
+		p.ensureHandler()
 		p.handler = wrapper(p.handler)
 	}
 	return p
@@ -28,10 +29,21 @@ func (p *proxy) Wrap(wrapper MiddlewareFunc) *proxy {
 func (p *proxy) WrapAll(wrappers ...MiddlewareFunc) *proxy {
 	for _, wrapper := range wrappers {
 		if wrapper != nil {
+			p.ensureHandler()
 			p.handler = wrapper(p.handler)
 		}
 	}
 	return p
+}
+
+func (p *proxy) ensureHandler() {
+	if p.handler == nil {
+		p.handler = func(request *Request) error {
+			http.DefaultServeMux.ServeHTTP(request.responseWriter, request.httpRequest)
+			request.written = true
+			return nil
+		}
+	}
 }
 
 // Handler adapts the composed HandlerFunc to http.Handler.

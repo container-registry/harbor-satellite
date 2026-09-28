@@ -3,6 +3,8 @@ package env
 import (
 	"testing"
 	"time"
+
+	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
 func TestLoadParsesGroundControlEnvironment(t *testing.T) {
@@ -115,8 +117,15 @@ func TestHarborSatelliteApplyDefaults(t *testing.T) {
 	if cfg.ProxyMode != "proxy" {
 		t.Fatalf("proxy mode default = %q, want proxy", cfg.ProxyMode)
 	}
-	if cfg.ProxyPort != 8585 {
-		t.Fatalf("proxy port default = %d, want 8585", cfg.ProxyPort)
+}
+
+func TestLoadSatelliteDefaultsProxyPort(t *testing.T) {
+	t.Setenv("PROXY_PORT", "")
+	if err := LoadSatellite(); err != nil {
+		t.Fatalf("LoadSatellite() error = %v", err)
+	}
+	if Satellite.ProxyPort != config.DefaultProxyPort {
+		t.Fatalf("proxy port default = %d, want %d", Satellite.ProxyPort, config.DefaultProxyPort)
 	}
 }
 
@@ -124,6 +133,16 @@ func TestLoadSatelliteRejectsInvalidProxyPort(t *testing.T) {
 	t.Setenv("PROXY_PORT", "not-a-port")
 	if err := LoadSatellite(); err == nil {
 		t.Fatal("LoadSatellite() accepted an invalid proxy port")
+	}
+}
+
+func TestLoadSatellitePreservesExplicitZeroProxyPort(t *testing.T) {
+	t.Setenv("PROXY_PORT", "0")
+	if err := LoadSatellite(); err != nil {
+		t.Fatalf("LoadSatellite() error = %v", err)
+	}
+	if got := Satellite.ProxyPort; got != 0 {
+		t.Fatalf("explicit PROXY_PORT=0 became %d", got)
 	}
 }
 

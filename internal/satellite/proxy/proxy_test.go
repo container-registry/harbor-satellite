@@ -40,6 +40,45 @@ func TestNewUsesDefaultServeMuxWithoutHandler(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, response.Code)
 }
 
+func TestNilTerminalHandlerCanBeWrapped(t *testing.T) {
+	original := http.DefaultServeMux
+	http.DefaultServeMux = http.NewServeMux()
+	t.Cleanup(func() { http.DefaultServeMux = original })
+	http.DefaultServeMux.HandleFunc("GET /v2/", func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNoContent)
+	})
+
+	wrap := func(next proxy.HandlerFunc) proxy.HandlerFunc {
+		require.NotNil(t, next)
+		return func(request *proxy.Request) error {
+			request.ResponseHeader().Set("X-Wrapped", "yes")
+			return next(request)
+		}
+	}
+	for _, handler := range []http.Handler{
+		proxy.New(nil).Wrap(wrap).Handler(),
+		proxy.New(nil).WrapAll(nil, wrap).Handler(),
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v2/", nil))
+		require.Equal(t, http.StatusNoContent, response.Code)
+		require.Equal(t, "yes", response.Header().Get("X-Wrapped"))
+	}
+
+	lateError := proxy.New(nil).Wrap(func(next proxy.HandlerFunc) proxy.HandlerFunc {
+		return func(request *proxy.Request) error {
+			if err := next(request); err != nil {
+				return err
+			}
+			return errors.New("middleware failed after response")
+		}
+	}).Handler()
+	response := httptest.NewRecorder()
+	lateError.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v2/", nil))
+	require.Equal(t, http.StatusNoContent, response.Code)
+	require.Empty(t, response.Body.String())
+}
+
 func TestNewInstallsHandler(t *testing.T) {
 	t.Parallel()
 

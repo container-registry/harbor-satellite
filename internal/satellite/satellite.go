@@ -122,6 +122,8 @@ func (s *Satellite) Run(ctx context.Context) error {
 		return err
 	}
 
+	// Run completes after starting the schedulers. The caller handles context
+	// cancellation and drains them during graceful shutdown.
 	return nil
 }
 

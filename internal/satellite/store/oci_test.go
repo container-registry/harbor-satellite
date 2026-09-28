@@ -64,6 +64,59 @@ func TestOCIStoreStandaloneBlobReplication(t *testing.T) {
 	require.Equal(t, layer, payload)
 }
 
+func TestOCIStoreResolvesRetainedManifestByDigestWithinRepository(t *testing.T) {
+	remote, _, manifestDesc, _, _ := testArtifact(t, "team/app", "latest")
+	local, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{{Name: "team/app", Tag: "latest"}}))
+
+	digestRef := Artifact{Name: "team/app", Tag: manifestDesc.Digest.String()}
+	desc, err := local.Pull(context.Background(), digestRef, PullResourceManifest)
+	require.NoError(t, err)
+	require.Equal(t, manifestDesc.Digest, desc.Digest)
+
+	_, err = local.Pull(context.Background(), Artifact{Name: "another/app", Tag: manifestDesc.Digest.String()}, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+}
+
+func TestOCIStoreDeleteRetainsSharedContentAndMissingDeleteIsIdempotent(t *testing.T) {
+	remote, manifestPayload, _, layer, layerDesc := testArtifact(t, "team/app", "latest")
+	var secondManifest ocispec.Manifest
+	require.NoError(t, json.Unmarshal(manifestPayload, &secondManifest))
+	secondManifest.Annotations = map[string]string{"org.opencontainers.image.version": "second"}
+	secondPayload, err := json.Marshal(secondManifest)
+	require.NoError(t, err)
+	secondDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageManifest, secondPayload)
+	repository, err := remote.(*RegistryStore).repository(Artifact{Name: "team/app"})
+	require.NoError(t, err)
+	require.NoError(t, repository.PushReference(context.Background(), secondDesc, bytes.NewReader(secondPayload), "second"))
+
+	local, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	latest := Artifact{Name: "team/app", Tag: "latest"}
+	second := Artifact{Name: "team/app", Tag: "second"}
+	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{latest, second}))
+	require.NoError(t, local.Delete(context.Background(), []Artifact{latest}))
+	require.NoError(t, local.Delete(context.Background(), []Artifact{latest}))
+
+	desc, err := local.Pull(context.Background(), second, PullResourceManifest)
+	require.NoError(t, err)
+	require.Equal(t, secondDesc.Digest, desc.Digest)
+	blob := Artifact{Name: "team/app", Digest: layerDesc.Digest.String()}
+	blobDesc, err := local.Pull(context.Background(), blob, PullResourceBlob)
+	require.NoError(t, err)
+	reader, err := local.Fetch(context.Background(), blob, blobDesc)
+	require.NoError(t, err)
+	payload, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.NoError(t, reader.Close())
+	require.Equal(t, layer, payload)
+
+	require.NoError(t, local.Delete(context.Background(), []Artifact{second}))
+	_, err = local.Pull(context.Background(), blob, PullResourceBlob)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+}
+
 func testArtifact(t *testing.T, repository, tag string) (Store, []byte, ocispec.Descriptor, []byte, ocispec.Descriptor) {
 	t.Helper()
 	server := httptest.NewServer(registry.New())

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -20,12 +21,28 @@ import (
 	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
-// RegistryStore provides direct ORAS access to one OCI registry.
-type RegistryStore struct{ options RegistryOptions }
+// RegistryStore provides direct ORAS access to one OCI registry. The option
+// source may change after registration or a configuration reload.
+type RegistryStore struct {
+	options func() (RegistryOptions, error)
+	mu      sync.Mutex
+	current RegistryOptions
+	client  *auth.Client
+}
 
 func NewRegistryStore(options RegistryOptions) (*RegistryStore, error) {
 	if err := options.validate(); err != nil {
 		return nil, err
+	}
+	return &RegistryStore{options: func() (RegistryOptions, error) { return options, nil }}, nil
+}
+
+// NewRegistryStoreWithOptions resolves registry settings for each operation.
+// This lets a shared source store observe refreshed credentials without
+// changing readers or graph copies already in progress.
+func NewRegistryStoreWithOptions(options func() (RegistryOptions, error)) (*RegistryStore, error) {
+	if options == nil {
+		return nil, errors.New("registry options source is required")
 	}
 	return &RegistryStore{options: options}, nil
 }
@@ -116,20 +133,46 @@ func (r *RegistryStore) targetFor(artifact Artifact) (oras.Target, error) {
 }
 
 func (r *RegistryStore) repository(artifact Artifact) (*remote.Repository, error) {
-	return newRepository(r.options, artifact)
+	options, err := r.options()
+	if err != nil {
+		return nil, err
+	}
+	if err := options.validate(); err != nil {
+		return nil, err
+	}
+
+	r.mu.Lock()
+	if r.client == nil || r.current != options {
+		client, err := newRegistryAuthClient(options)
+		if err != nil {
+			r.mu.Unlock()
+			return nil, err
+		}
+		r.client = client
+		r.current = options
+	}
+	client := r.client
+	r.mu.Unlock()
+	return newRepository(options, artifact, client)
 }
 
 type storeTarget interface {
 	targetFor(Artifact) (oras.Target, error)
 }
 
-func newRepository(options RegistryOptions, artifact Artifact) (*remote.Repository, error) {
+func newRepository(options RegistryOptions, artifact Artifact, client *auth.Client) (*remote.Repository, error) {
 	registry := normalizeRegistry(options.Endpoint)
 	repository, err := remote.NewRepository(strings.TrimSuffix(registry, "/") + "/" + options.repositoryPath(artifact))
 	if err != nil {
 		return nil, fmt.Errorf("create remote repository: %w", err)
 	}
 	repository.PlainHTTP = options.PlainHTTP
+	repository.Client = client
+	return repository, nil
+}
+
+func newRegistryAuthClient(options RegistryOptions) (*auth.Client, error) {
+	registry := normalizeRegistry(options.Endpoint)
 	host, err := registryHost(registry)
 	if err != nil {
 		return nil, err
@@ -138,12 +181,11 @@ func newRepository(options RegistryOptions, artifact Artifact) (*remote.Reposito
 	if err != nil {
 		return nil, err
 	}
-	repository.Client = &auth.Client{
+	return &auth.Client{
 		Client:     client,
 		Cache:      auth.NewCache(),
 		Credential: auth.StaticCredential(host, auth.Credential{Username: options.Username, Password: options.Password}),
-	}
-	return repository, nil
+	}, nil
 }
 
 func normalizeRegistry(reference string) string {

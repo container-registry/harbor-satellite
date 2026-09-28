@@ -34,9 +34,6 @@ func (h HarborSatellite) ApplyDefaults() HarborSatellite {
 	if h.ShutdownTimeout == "" {
 		h.ShutdownTimeout = "30s"
 	}
-	if h.ProxyPort == 0 {
-		h.ProxyPort = config.DefaultProxyPort
-	}
 	if h.ProxyMode == "" {
 		h.ProxyMode = proxy.ModeProxy
 	}

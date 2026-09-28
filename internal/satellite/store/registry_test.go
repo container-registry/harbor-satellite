@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/registry"
@@ -33,4 +35,39 @@ func TestRegistryStorePullFetchAndReplicate(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, reader.Close())
 	require.Equal(t, manifestPayload, payload)
+}
+
+func TestRegistryStoreReusesAuthClientAndRefreshesCredentials(t *testing.T) {
+	var expectedPassword atomic.Value
+	expectedPassword.Store("first")
+	registryHandler := registry.New()
+	upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		_, password, ok := request.BasicAuth()
+		if !ok || password != expectedPassword.Load().(string) {
+			response.Header().Set("WWW-Authenticate", `Basic realm="test"`)
+			response.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		registryHandler.ServeHTTP(response, request)
+	}))
+	t.Cleanup(upstream.Close)
+
+	options := RegistryOptions{Endpoint: strings.TrimPrefix(upstream.URL, "http://"), Username: "robot", Password: "first", PlainHTTP: true}
+	storage, err := NewRegistryStoreWithOptions(func() (RegistryOptions, error) { return options, nil })
+	require.NoError(t, err)
+	first, err := storage.repository(Artifact{Name: "team/app"})
+	require.NoError(t, err)
+	second, err := storage.repository(Artifact{Name: "team/app"})
+	require.NoError(t, err)
+	require.Same(t, first.Client, second.Client)
+	_, err = storage.Pull(context.Background(), Artifact{Name: "team/app", Tag: "missing"}, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+
+	options.Password = "second"
+	expectedPassword.Store("second")
+	third, err := storage.repository(Artifact{Name: "team/app"})
+	require.NoError(t, err)
+	require.NotSame(t, first.Client, third.Client)
+	_, err = storage.Pull(context.Background(), Artifact{Name: "team/app", Tag: "missing"}, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
 }

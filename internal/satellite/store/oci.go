@@ -45,7 +45,27 @@ func (s *OCIStore) Pull(ctx context.Context, artifact Artifact, resource PullRes
 
 	switch resource {
 	case PullResourceManifest:
-		return s.store.Resolve(ctx, artifact.Reference())
+		if desc, err := s.store.Resolve(ctx, artifact.Reference()); err == nil {
+			return desc, nil
+		} else if !errors.Is(err, errdef.ErrNotFound) {
+			return ocispec.Descriptor{}, err
+		}
+		identifier := artifact.sourceIdentifier()
+		if err := digest.Digest(identifier).Validate(); err != nil {
+			return ocispec.Descriptor{}, errdef.ErrNotFound
+		}
+		desc, err := s.store.Resolve(ctx, identifier)
+		if err != nil {
+			return ocispec.Descriptor{}, err
+		}
+		known, err := s.repositoryGraphContains(ctx, artifact.Name, desc.Digest)
+		if err != nil {
+			return ocispec.Descriptor{}, err
+		}
+		if !known {
+			return ocispec.Descriptor{}, errdef.ErrNotFound
+		}
+		return desc, nil
 	case PullResourceBlob:
 		if desc, err := s.store.Resolve(ctx, artifact.Reference()); err == nil {
 			return desc, nil
@@ -91,8 +111,8 @@ func (s *OCIStore) Replicate(ctx context.Context, source Store, artifacts []Arti
 	if !ok {
 		return errors.New("source store does not support OCI graph transfer")
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	for _, artifact := range artifacts {
 		if err := artifact.validate(); err != nil {

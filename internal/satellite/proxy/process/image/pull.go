@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	proxy "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
@@ -16,7 +17,10 @@ import (
 	"oras.land/oras-go/v2/errdef"
 )
 
-const distributionAPIVersion = "registry/2.0"
+const (
+	distributionAPIVersion = "registry/2.0"
+	pullFillTimeout        = 30 * time.Minute
+)
 
 type pullHandler struct {
 	lifecycleCtx context.Context
@@ -66,10 +70,12 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	}
 
 	resultChannel := p.operations.DoChan(pullKey(resource, artifact.Name, identifier), func() (any, error) {
-		if err := p.lifecycleCtx.Err(); err != nil {
+		fillCtx, cancel := context.WithTimeout(p.lifecycleCtx, pullFillTimeout)
+		defer cancel()
+		if err := fillCtx.Err(); err != nil {
 			return nil, err
 		}
-		descriptor, err := p.localStore.Pull(p.lifecycleCtx, artifact, resource)
+		descriptor, err := p.localStore.Pull(fillCtx, artifact, resource)
 		if err == nil {
 			return descriptor, nil
 		}
@@ -80,10 +86,10 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 			return nil, err
 		}
 
-		if err := p.localStore.Replicate(p.lifecycleCtx, p.remoteStore, []store.Artifact{artifact}); err != nil {
+		if err := p.localStore.Replicate(fillCtx, p.remoteStore, []store.Artifact{artifact}); err != nil {
 			return nil, err
 		}
-		return p.localStore.Pull(p.lifecycleCtx, artifact, resource)
+		return p.localStore.Pull(fillCtx, artifact, resource)
 	})
 
 	var operationResult singleflight.Result

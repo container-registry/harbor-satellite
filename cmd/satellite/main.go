@@ -67,6 +67,7 @@ type SatelliteOptions struct {
 	ImageDir               string
 	ProxyMode              proxyhandler.Mode
 	ProxyPort              int
+	ProxyModeExplicit      bool
 }
 
 func main() {
@@ -95,6 +96,7 @@ func main() {
 		ProxyMode:              envCfg.ProxyMode,
 		ProxyPort:              envCfg.ProxyPort,
 	}
+	_, opts.ProxyModeExplicit = os.LookupEnv("PROXY_MODE")
 	shutdownTimeout := envCfg.ShutdownTimeout
 
 	flag.StringVar(&opts.GroundControlURL, "ground-control-url", opts.GroundControlURL, "URL to ground control")
@@ -121,6 +123,11 @@ func main() {
 	flag.IntVar(&opts.ProxyPort, "proxy-port", opts.ProxyPort, "Local OCI registry proxy port")
 
 	flag.Parse()
+	flag.Visit(func(current *flag.Flag) {
+		if current.Name == "proxy-mode" {
+			opts.ProxyModeExplicit = true
+		}
+	})
 	if opts.Token == "" {
 		opts.Token = envCfg.Token
 	}
@@ -184,14 +191,17 @@ func main() {
 }
 
 func validateSatelliteOptions(opts SatelliteOptions) error {
+	if opts.FallbackOnly {
+		if opts.ProxyModeExplicit {
+			return errors.New("--proxy-mode cannot be combined with --fallback-only")
+		}
+		return nil
+	}
 	if !opts.ProxyMode.Valid() {
 		return fmt.Errorf("--proxy-mode must be %q or %q, got %q", proxyhandler.ModeProxy, proxyhandler.ModeReplica, opts.ProxyMode)
 	}
 	if opts.ProxyPort < 1 || opts.ProxyPort > 65535 {
 		return fmt.Errorf("--proxy-port must be between 1 and 65535, got %d", opts.ProxyPort)
-	}
-	if opts.FallbackOnly {
-		return errors.New("--proxy-mode cannot be combined with --fallback-only")
 	}
 	return nil
 }
@@ -283,6 +293,9 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	ctx, cancel := utils.SetupContext(context.Background())
 	defer cancel()
 	wg, ctx := errgroup.WithContext(ctx)
+	if opts.FallbackOnly && opts.GroundControlURL == "" {
+		opts.GroundControlURL = config.DefaultGroundControlURL
+	}
 
 	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
 	if err != nil {
@@ -321,6 +334,20 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 			}
 			cm.With(config.SetStateConfig(sc))
 		}
+	}
+
+	if opts.FallbackOnly {
+		endpoint := resolveLocalRegistryEndpoint(opts.ProxyMode, opts.ProxyPort)
+		criResults := resolveCRIAndApply(cm, opts.Mirrors, opts.NoRegistryFallback, endpoint)
+		for _, result := range criResults {
+			if result.Success {
+				fmt.Printf("CRI %s configured (backup: %s)\n", result.CRI, result.BackupPath)
+			} else {
+				fmt.Printf("warning: %s config error: %s\n", result.CRI, result.Error)
+			}
+		}
+		fmt.Println("--fallback-only: CRI configs applied, exiting.")
+		return nil
 	}
 
 	var (
@@ -368,11 +395,6 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		} else {
 			fmt.Printf("warning: %s config error: %s\n", r.CRI, r.Error)
 		}
-	}
-
-	if opts.FallbackOnly {
-		fmt.Println("--fallback-only: CRI configs applied, exiting.")
-		return nil
 	}
 
 	// Configure direct delivery if enabled (after fallback-only exit). This
@@ -610,23 +632,23 @@ func resolveLocalRegistryEndpoint(proxyMode proxyhandler.Mode, proxyPort int) st
 }
 
 func proxyStores(cm *config.ConfigManager, storeRoot string) (store.Store, store.Store, error) {
-	remoteOptions, err := sourceRegistryOptions(cm)
-	if err != nil {
-		return nil, nil, err
-	}
-	remoteStore, err := store.NewRegistryStore(remoteOptions)
+	remoteStore, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
+		return sourceRegistryOptions(cm)
+	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("initialize Harbor registry store: %w", err)
 	}
 
 	if cm.GetOwnRegistry() {
-		credentials := cm.GetRemoteRegistryCredentials()
-		localStore, err := store.NewRegistryStore(store.RegistryOptions{
-			Endpoint:  utils.FormatRegistryURL(string(credentials.URL)),
-			Username:  credentials.Username,
-			Password:  credentials.Password,
-			PlainHTTP: cm.UseUnsecure(),
-			TLS:       cm.GetTLSConfig(),
+		localStore, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
+			credentials := cm.GetRemoteRegistryCredentials()
+			return store.RegistryOptions{
+				Endpoint:  utils.FormatRegistryURL(string(credentials.URL)),
+				Username:  credentials.Username,
+				Password:  credentials.Password,
+				PlainHTTP: cm.UseUnsecure() || strings.HasPrefix(strings.ToLower(string(credentials.URL)), "http://"),
+				TLS:       cm.GetTLSConfig(),
+			}, nil
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize BYO registry store: %w", err)
@@ -659,7 +681,7 @@ func sourceRegistryOptions(cm *config.ConfigManager) (store.RegistryOptions, err
 		Endpoint:  utils.FormatRegistryURL(sourceURL),
 		Username:  credentials.Username,
 		Password:  credentials.Password,
-		PlainHTTP: cm.UseUnsecure(),
+		PlainHTTP: cm.UseUnsecure() || strings.HasPrefix(strings.ToLower(sourceURL), "http://"),
 		TLS:       cm.GetTLSConfig(),
 	}, nil
 }
