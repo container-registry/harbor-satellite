@@ -19,7 +19,7 @@ import (
 )
 
 func TestOCIStoreReplicatesAndStreamsManifestGraph(t *testing.T) {
-	remote, manifestPayload, manifestDesc, layer, layerDesc := testArtifact(t, "team/app", "latest")
+	remote, manifestPayload, manifestDesc, layer, layerDesc := testArtifact(t)
 	local, err := NewOCIStore(t.TempDir())
 	require.NoError(t, err)
 	artifact := Artifact{Name: "team/app", Tag: "latest"}
@@ -49,7 +49,7 @@ func TestOCIStoreReplicatesAndStreamsManifestGraph(t *testing.T) {
 }
 
 func TestOCIStoreStandaloneBlobReplication(t *testing.T) {
-	remote, _, _, layer, layerDesc := testArtifact(t, "team/app", "latest")
+	remote, _, _, layer, layerDesc := testArtifact(t)
 	local, err := NewOCIStore(t.TempDir())
 	require.NoError(t, err)
 	artifact := Artifact{Name: "team/app", Digest: layerDesc.Digest.String()}
@@ -64,8 +64,62 @@ func TestOCIStoreStandaloneBlobReplication(t *testing.T) {
 	require.Equal(t, layer, payload)
 }
 
-func testArtifact(t *testing.T, repository, tag string) (Store, []byte, ocispec.Descriptor, []byte, ocispec.Descriptor) {
+func TestScopedOCIStoreSeparatesUpstreamEndpoints(t *testing.T) {
+	remote, _, expected, _, _ := testArtifact(t)
+	options := RegistryOptions{Endpoint: "source-a.example.com"}
+	root := t.TempDir()
+	local, err := NewScopedOCIStore(root, func() (RegistryOptions, error) { return options, nil })
+	require.NoError(t, err)
+	artifact := Artifact{Name: "team/app", Tag: "latest"}
+	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{artifact}))
+	actual, err := local.Pull(context.Background(), artifact, PullResourceManifest)
+	require.NoError(t, err)
+	require.Equal(t, expected.Digest, actual.Digest)
+
+	options.Endpoint = "source-b.example.com"
+	_, err = local.Pull(context.Background(), artifact, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+	options.Endpoint = "source-a.example.com"
+	reopened, err := NewScopedOCIStore(root, func() (RegistryOptions, error) { return options, nil })
+	require.NoError(t, err)
+	actual, err = reopened.Pull(context.Background(), artifact, PullResourceManifest)
+	require.NoError(t, err)
+	require.Equal(t, expected.Digest, actual.Digest)
+}
+
+func TestOCIStoreDeletePreservesSharedContent(t *testing.T) {
+	remote, _, _, _, _ := testArtifact(t)
+	local, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	latest := Artifact{Name: "team/app", Tag: "latest"}
+	other := Artifact{Name: "team/app", Tag: "other"}
+	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{latest}))
+	desc, err := local.Pull(context.Background(), latest, PullResourceManifest)
+	require.NoError(t, err)
+	require.NoError(t, local.store.Tag(context.Background(), desc, other.Reference()))
+	require.NoError(t, local.Delete(context.Background(), []Artifact{latest, latest}))
+	_, err = local.Pull(context.Background(), latest, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+	_, err = local.Pull(context.Background(), other, PullResourceManifest)
+	require.NoError(t, err)
+	require.NoError(t, local.Delete(context.Background(), []Artifact{other}))
+	_, err = local.Pull(context.Background(), other, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+}
+
+func TestOCIStoreDeleteHonorsCancellation(t *testing.T) {
+	local, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err = local.Delete(ctx, []Artifact{{Name: "team/app", Tag: "latest"}})
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func testArtifact(t *testing.T) (Store, []byte, ocispec.Descriptor, []byte, ocispec.Descriptor) {
 	t.Helper()
+	const repository = "team/app"
+	const tag = "latest"
 	server := httptest.NewServer(registry.New())
 	t.Cleanup(server.Close)
 	address := strings.TrimPrefix(server.URL, "http://")

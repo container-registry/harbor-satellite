@@ -21,6 +21,7 @@ import (
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/require"
+	oras "oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/errdef"
 	orasremote "oras.land/oras-go/v2/registry/remote"
@@ -51,6 +52,8 @@ func (f *fakeStore) Replicate(ctx context.Context, source store.Store, artifacts
 }
 
 func (*fakeStore) Delete(context.Context, []store.Artifact) error { return nil }
+
+func (*fakeStore) TargetFor(store.Artifact) (oras.Target, error) { return nil, nil }
 
 func TestPullCoalescesCacheFillAndOpensIndependentStreams(t *testing.T) {
 	payload := []byte(`{"schemaVersion":2}`)
@@ -166,10 +169,19 @@ func TestCancelledWaiterDoesNotCancelSharedFill(t *testing.T) {
 	}()
 	<-fillStarted
 	secondDone := make(chan *httptest.ResponseRecorder, 1)
+	secondWaiting := make(chan struct{})
 	go func() {
-		secondDone <- serve(handler, http.MethodGet, "/v2/team/app/blobs/"+descriptor.Digest.String(), nil)
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/v2/team/app/blobs/"+descriptor.Digest.String(), nil)
+		request = request.WithContext(&observingContext{Context: request.Context(), waiting: secondWaiting})
+		handler.ServeHTTP(response, request)
+		secondDone <- response
 	}()
-	time.Sleep(20 * time.Millisecond)
+	select {
+	case <-secondWaiting:
+	case <-time.After(time.Second):
+		t.Fatal("second request did not join the shared fill")
+	}
 	cancelFirst()
 	require.Equal(t, http.StatusInternalServerError, (<-firstDone).Code)
 	close(releaseFill)
@@ -193,6 +205,39 @@ func TestPullSupportsRangeConditionalAndHeadRequests(t *testing.T) {
 	head := serve(handler, http.MethodHead, path, nil)
 	require.Equal(t, http.StatusOK, head.Code)
 	require.Empty(t, head.Body.Bytes())
+	require.Equal(t, int32(2), local.fetchCalls.Load())
+}
+
+func TestPullSupportsRangesFromNonSeekableStore(t *testing.T) {
+	payload := []byte("0123456789")
+	descriptor := descriptorFor("application/octet-stream", payload)
+	local := descriptorStore(descriptor, payload)
+	local.fetch = func(context.Context, store.Artifact, ocispec.Descriptor) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(payload)), nil
+	}
+	handler := proxy.New(image.NewPull(context.Background(), proxy.ModeReplica, local, nil)).Handler()
+	path := "/v2/team/app/blobs/" + descriptor.Digest.String()
+
+	ranged := serve(handler, http.MethodGet, path, http.Header{"Range": []string{"bytes=2-5"}})
+	require.Equal(t, http.StatusPartialContent, ranged.Code)
+	require.Equal(t, "2345", ranged.Body.String())
+	notModified := serve(handler, http.MethodGet, path, http.Header{"If-None-Match": []string{`"` + descriptor.Digest.String() + `"`}})
+	require.Equal(t, http.StatusNotModified, notModified.Code)
+	multiRange := serve(handler, http.MethodGet, path, http.Header{"Range": []string{"bytes=0-1,8-9"}})
+	require.Equal(t, http.StatusPartialContent, multiRange.Code)
+	require.Contains(t, multiRange.Body.String(), "01")
+	require.Contains(t, multiRange.Body.String(), "89")
+}
+
+type observingContext struct {
+	context.Context
+	waiting chan struct{}
+	once    sync.Once
+}
+
+func (c *observingContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.waiting) })
+	return c.Context.Done()
 }
 
 func TestPullStreamsBeforeSourceEOF(t *testing.T) {
@@ -227,6 +272,7 @@ func TestPullStreamsBeforeSourceEOF(t *testing.T) {
 
 func TestProxyPullsIntoOCIStoreAndServesOffline(t *testing.T) {
 	upstream := httptest.NewServer(registry.New())
+	defer upstream.Close()
 	address := strings.TrimPrefix(upstream.URL, "http://")
 	repository, err := orasremote.NewRepository(address + "/team/app")
 	require.NoError(t, err)

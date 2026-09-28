@@ -260,10 +260,25 @@ func TestValidateStateConfig(t *testing.T) {
 	invalid := valid
 	invalid.RegistryCredentials.Password = ""
 	require.ErrorContains(t, ValidateStateConfig(invalid), "auth.password")
+	invalid = valid
+	invalid.StateURL = ""
+	require.ErrorContains(t, ValidateStateConfig(invalid), "state")
+	invalid = valid
+	invalid.StateURL = "://bad"
+	require.ErrorContains(t, ValidateStateConfig(invalid), "invalid state URL")
 
 	invalid = valid
 	invalid.RegistryCredentials.URL = "://bad"
 	require.ErrorContains(t, ValidateStateConfig(invalid), "invalid auth.url")
+
+	for _, url := range []string{"/relative/path", "harbor.example.com/path", "ftp://harbor.example.com"} {
+		invalid = valid
+		invalid.RegistryCredentials.URL = URL(url)
+		require.ErrorContains(t, ValidateStateConfig(invalid), "invalid auth.url")
+		invalid = valid
+		invalid.StateURL = url
+		require.ErrorContains(t, ValidateStateConfig(invalid), "invalid state")
+	}
 }
 
 func TestValidateTLSConfig(t *testing.T) {

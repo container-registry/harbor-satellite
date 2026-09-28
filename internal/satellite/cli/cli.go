@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/proxy"
@@ -105,7 +106,7 @@ func optionsFromEnvironment() (*SatelliteOptions, error) {
 	_ = godotenv.Load(".env") //nolint:errcheck // .env is optional.
 
 	opts := &SatelliteOptions{
-		JSONLogging:          false,
+		JSONLogging:          true,
 		ProxyMode:            proxy.ModeProxy,
 		ProxyPort:            config.DefaultProxyPort,
 		SPIFFEEndpointSocket: config.DefaultSPIFFEEndpointSocket,
@@ -152,7 +153,7 @@ func newServeCommand(opts *SatelliteOptions, envErr error) *cobra.Command {
 				return envErr
 			}
 			opts.applySecretEnvironment()
-			pathConfig, cm, warnings, err := initializeConfig(opts, true)
+			pathConfig, cm, warnings, err := initializeServeConfig(opts)
 			if err != nil {
 				return err
 			}
@@ -174,17 +175,25 @@ func newConfigureCommand(opts *SatelliteOptions, envErr error) *cobra.Command {
 				return envErr
 			}
 			opts.applySecretEnvironment()
-			_, cm, _, err := initializeConfig(opts, false)
+			_, cm, _, err := initializeConfig(opts)
 			if err != nil {
 				return err
 			}
-			results := resolveCRIAndApply(
+			results, err := resolveCRIAndApply(
 				cm,
 				opts.Mirrors,
 				opts.NoRegistryFallback,
 				resolveLocalRegistryEndpoint(opts.ProxyMode, opts.ProxyPort),
 			)
+			if err != nil {
+				return err
+			}
 			printCRIResults(cmd, results)
+			for _, result := range results {
+				if !result.Success {
+					return fmt.Errorf("CRI %s configuration failed: %s", result.CRI, result.Error)
+				}
+			}
 			fmt.Fprintln(cmd.OutOrStdout(), "Container runtime configuration complete.")
 			return nil
 		},
@@ -248,19 +257,41 @@ func validateSatelliteOptions(opts *SatelliteOptions) error {
 	if opts.BYORegistry && strings.TrimSpace(opts.RegistryURL) == "" {
 		return errors.New("--registry-url is required when --byo-registry is enabled")
 	}
+	timeout, err := time.ParseDuration(opts.ShutdownTimeout)
+	if err != nil {
+		return fmt.Errorf("invalid --shutdown-timeout: %w", err)
+	}
+	if timeout <= 0 {
+		return errors.New("--shutdown-timeout must be positive")
+	}
 	return nil
 }
 
-func initializeConfig(opts *SatelliteOptions, requireServeInputs bool) (*config.PathConfig, *config.ConfigManager, []string, error) {
+func initializeServeConfig(opts *SatelliteOptions) (*config.PathConfig, *config.ConfigManager, []string, error) {
+	if strings.TrimSpace(opts.ConfigDir) == "" && !opts.hasCompleteStateFlags() && !opts.canBootstrap(opts.GroundControlURL) {
+		return nil, nil, nil, errors.New("--config-dir is required unless complete state auth flags or Ground Control bootstrap credentials are provided")
+	}
+	pathConfig, cm, warnings, err := initializeConfig(opts)
+	if err != nil {
+		return nil, nil, warnings, err
+	}
+	stateConfig := cm.GetStateConfig()
+	stateErr := config.ValidateStateConfig(stateConfig)
+	switch {
+	case stateErr == nil:
+	case config.IsStateConfigEmpty(stateConfig) && opts.canBootstrapConfig(cm):
+	default:
+		return nil, nil, warnings, fmt.Errorf("invalid state_config: %w", stateErr)
+	}
+	return pathConfig, cm, warnings, nil
+}
+
+func initializeConfig(opts *SatelliteOptions) (*config.PathConfig, *config.ConfigManager, []string, error) {
 	if err := validateSatelliteOptions(opts); err != nil {
 		return nil, nil, nil, err
 	}
 
 	configDirProvided := strings.TrimSpace(opts.ConfigDir) != ""
-	if requireServeInputs && !configDirProvided && !opts.hasCompleteStateFlags() && !opts.canBootstrap(opts.GroundControlURL) {
-		return nil, nil, nil, errors.New("--config-dir is required unless complete state auth flags or Ground Control bootstrap credentials are provided")
-	}
-
 	if !configDirProvided {
 		defaultDir, err := config.DefaultConfigDir()
 		if err != nil {
@@ -289,17 +320,6 @@ func initializeConfig(opts *SatelliteOptions, requireServeInputs bool) (*config.
 	}
 	if err := applyConfigOverrides(cm, opts); err != nil {
 		return nil, nil, warnings, err
-	}
-
-	if requireServeInputs {
-		stateConfig := cm.GetStateConfig()
-		stateErr := config.ValidateStateConfig(stateConfig)
-		switch {
-		case stateErr == nil:
-		case config.IsStateConfigEmpty(stateConfig) && opts.canBootstrapConfig(cm):
-		default:
-			return nil, nil, warnings, fmt.Errorf("invalid state_config: %w", stateErr)
-		}
 	}
 
 	return pathConfig, cm, warnings, nil
@@ -363,11 +383,15 @@ func (opts *SatelliteOptions) canBootstrap(groundControlURL string) bool {
 	if strings.TrimSpace(groundControlURL) == "" {
 		return false
 	}
-	return opts.SPIFFEEnabled || strings.TrimSpace(opts.Token) != ""
+	return opts.hasBootstrapCredentials(opts.SPIFFEEnabled)
 }
 
 func (opts *SatelliteOptions) canBootstrapConfig(cm *config.ConfigManager) bool {
-	return cm.HasGroundControl() && (cm.IsSPIFFEEnabled() || strings.TrimSpace(opts.Token) != "")
+	return cm.HasGroundControl() && opts.hasBootstrapCredentials(cm.IsSPIFFEEnabled())
+}
+
+func (opts *SatelliteOptions) hasBootstrapCredentials(spiffeEnabled bool) bool {
+	return spiffeEnabled || strings.TrimSpace(opts.Token) != ""
 }
 
 func printCRIResults(cmd *cobra.Command, results []runtime.CRIConfigResult) {

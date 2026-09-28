@@ -9,6 +9,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	oras "oras.land/oras-go/v2"
 )
 
 // Store is a location where Satellite can resolve, stream, replicate, and
@@ -17,6 +18,7 @@ import (
 type Store interface {
 	Pull(ctx context.Context, artifact Artifact, resource PullResource) (ocispec.Descriptor, error)
 	Fetch(ctx context.Context, artifact Artifact, descriptor ocispec.Descriptor) (io.ReadCloser, error)
+	TargetFor(artifact Artifact) (oras.Target, error)
 	Replicate(ctx context.Context, source Store, artifacts []Artifact) error
 	Delete(ctx context.Context, artifacts []Artifact) error
 }
@@ -139,4 +141,15 @@ func artifactReference(repository, name, identifier string) string {
 		separator = "@"
 	}
 	return fmt.Sprintf("%s%s%s", path, separator, identifier)
+}
+
+func copyBlobGraph(ctx context.Context, source Store, from, to oras.Target, artifact Artifact) (ocispec.Descriptor, error) {
+	desc, err := source.Pull(ctx, artifact, PullResourceBlob)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	if err := oras.CopyGraph(ctx, from, to, desc, oras.DefaultCopyGraphOptions); err != nil {
+		return desc, err
+	}
+	return desc, nil
 }

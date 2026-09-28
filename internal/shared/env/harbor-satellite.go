@@ -28,7 +28,7 @@ type HarborSatellite struct {
 	DirectDelivery         bool       `env:"DIRECT_DELIVERY"           envDefault:"false"`
 	ImageDir               string     `env:"IMAGE_DIR"`
 	ProxyMode              proxy.Mode `env:"PROXY_MODE"                envDefault:"proxy"`
-	ProxyPort              int        `env:"PROXY_PORT"                envDefault:"8585"`
+	ProxyPort              int        `env:"PROXY_PORT"`
 }
 
 func (h HarborSatellite) ApplyDefaults() HarborSatellite {

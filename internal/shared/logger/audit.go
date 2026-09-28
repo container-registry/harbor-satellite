@@ -226,6 +226,7 @@ type AuditConfig struct {
 type AuditLogger struct {
 	mu         sync.RWMutex
 	transports []Transport
+	inFlight   *sync.WaitGroup
 	enabled    bool
 	component  Component
 }
@@ -259,10 +260,15 @@ func (a *AuditLogger) Reconfigure(cfg AuditConfig) error {
 
 	a.mu.Lock()
 	old := a.transports
+	oldInFlight := a.inFlight
 	a.transports = newTransports
+	a.inFlight = &sync.WaitGroup{}
 	a.enabled = len(newTransports) > 0
 	a.mu.Unlock()
 
+	if oldInFlight != nil {
+		oldInFlight.Wait()
+	}
 	closeAll(old)
 
 	return nil
@@ -334,10 +340,8 @@ func ensureWritable(path string) error {
 // is fanned out to every transport. Empty optional fields are omitted. Safe to
 // call on a nil or disabled logger.
 //
-// The transport slice is snapshotted under the lock and the actual emit happens
-// after the lock is released, so a slow transport (e.g. syslog over the network)
-// never blocks a concurrent Reconfigure. Reconfigure always replaces the slice
-// rather than mutating it, so the snapshot stays valid.
+// A generation-specific wait group keeps old transports alive until all events
+// that captured them have finished emitting.
 func (a *AuditLogger) Log(e AuditEvent) {
 	if a == nil {
 		return
@@ -346,9 +350,16 @@ func (a *AuditLogger) Log(e AuditEvent) {
 	enabled := a.enabled
 	transports := a.transports
 	component := a.component
+	inFlight := a.inFlight
+	if enabled && inFlight != nil {
+		inFlight.Add(1)
+	}
 	a.mu.RUnlock()
 	if !enabled {
 		return
+	}
+	if inFlight != nil {
+		defer inFlight.Done()
 	}
 
 	e = e.withRequiredDefaults()

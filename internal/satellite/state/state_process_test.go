@@ -95,6 +95,15 @@ func TestSetupReplicationSelectsStore(t *testing.T) {
 		require.Same(t, shared, storage)
 		require.Same(t, remote, source)
 	})
+
+	t.Run("partial injection is rejected", func(t *testing.T) {
+		local, err := store.NewOCIStore(t.TempDir())
+		require.NoError(t, err)
+		process := &FetchAndReplicateStateProcess{cm: newManager(t, false), storeRoot: t.TempDir()}
+		process.SetStores(local, nil)
+		_, _, _, _, _, _, _, _, err = process.setupReplication()
+		require.ErrorContains(t, err, "must be provided together")
+	})
 }
 
 func TestCanExecute(t *testing.T) {

@@ -27,6 +27,7 @@ func TestDynamicRegistryStoreResolvesOptionsAfterBootstrap(t *testing.T) {
 	repository, err := dynamic.repository(Artifact{Name: "team/app", Tag: "latest"})
 	require.NoError(t, err)
 	require.NotNil(t, repository)
+	require.Equal(t, "harbor.example.com/team/app", repository.Reference.String())
 	require.Equal(t, 2, calls)
 }
 
@@ -39,7 +40,7 @@ func TestDynamicRegistryStorePropagatesProviderError(t *testing.T) {
 }
 
 func TestRegistryStorePullFetchAndReplicate(t *testing.T) {
-	source, manifestPayload, manifestDesc, _, _ := testArtifact(t, "team/app", "latest")
+	source, manifestPayload, manifestDesc, _, _ := testArtifact(t)
 	destinationServer := httptest.NewServer(registry.New())
 	t.Cleanup(destinationServer.Close)
 	destination, err := NewRegistryStore(RegistryOptions{
@@ -59,4 +60,36 @@ func TestRegistryStorePullFetchAndReplicate(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, reader.Close())
 	require.Equal(t, manifestPayload, payload)
+}
+
+func TestRegistryStoreMissingSourceAndDelete(t *testing.T) {
+	source, _, _, _, _ := testArtifact(t)
+	destinationServer := httptest.NewServer(registry.New())
+	t.Cleanup(destinationServer.Close)
+	destination, err := NewRegistryStore(RegistryOptions{
+		Endpoint: strings.TrimPrefix(destinationServer.URL, "http://"), PlainHTTP: true,
+	})
+	require.NoError(t, err)
+	missing := Artifact{Name: "team/app", Tag: "missing"}
+	require.Error(t, destination.Replicate(context.Background(), source, []Artifact{missing}))
+	require.NoError(t, destination.Delete(context.Background(), []Artifact{missing}))
+	artifact := Artifact{Name: "team/app", Tag: "latest"}
+	require.NoError(t, destination.Replicate(context.Background(), source, []Artifact{artifact}))
+	require.NoError(t, destination.Delete(context.Background(), []Artifact{artifact}))
+	require.NoError(t, destination.Delete(context.Background(), []Artifact{missing}))
+}
+
+func TestRegistryStoreOperationsHonorCancellation(t *testing.T) {
+	source, _, _, _, _ := testArtifact(t)
+	destinationServer := httptest.NewServer(registry.New())
+	t.Cleanup(destinationServer.Close)
+	destination, err := NewRegistryStore(RegistryOptions{
+		Endpoint: strings.TrimPrefix(destinationServer.URL, "http://"), PlainHTTP: true,
+	})
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	artifact := Artifact{Name: "team/app", Tag: "latest"}
+	require.ErrorIs(t, destination.Replicate(ctx, source, []Artifact{artifact}), context.Canceled)
+	require.ErrorIs(t, destination.Delete(ctx, []Artifact{artifact}), context.Canceled)
 }

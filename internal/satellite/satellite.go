@@ -20,6 +20,7 @@ type Satellite struct {
 	stateFilePath  string
 	storeRoot      string
 	stateProcess   *state.FetchAndReplicateStateProcess
+	statusProcess  *state.StatusReportingProcess
 	eventscheduler *events.EventScheduler
 	localStore     store.Store
 	remoteStore    store.Store
@@ -29,6 +30,14 @@ type Satellite struct {
 func (s *Satellite) SetStores(localStore, remoteStore store.Store) {
 	s.localStore = localStore
 	s.remoteStore = remoteStore
+}
+
+// SetCRIResults queues runtime configuration outcomes for the next heartbeat.
+func (s *Satellite) SetCRIResults(results []runtime.CRIConfigResult) {
+	s.criResults = results
+	if s.statusProcess != nil {
+		s.statusProcess.SetPendingCRIResults(results)
+	}
 }
 
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, storeRoot string, jq *events.EventScheduler) *Satellite {
@@ -104,6 +113,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	if hasGroundControl {
 		// Create status report scheduler with pending CRI results.
 		statusReportProcess := state.NewStatusReportingProcess(s.cm, s.eventscheduler)
+		s.statusProcess = statusReportProcess
 		if len(s.criResults) > 0 {
 			statusReportProcess.SetPendingCRIResults(s.criResults)
 		}

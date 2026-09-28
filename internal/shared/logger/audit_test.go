@@ -6,11 +6,60 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+type blockingAuditTransport struct {
+	started chan struct{}
+	release chan struct{}
+	closed  chan struct{}
+	once    sync.Once
+}
+
+func (b *blockingAuditTransport) Emit(Record) error {
+	b.once.Do(func() { close(b.started) })
+	<-b.release
+	return nil
+}
+
+func (b *blockingAuditTransport) Close() error {
+	close(b.closed)
+	return nil
+}
+
+func TestAuditReconfigureWaitsForInFlightEvent(t *testing.T) {
+	transport := &blockingAuditTransport{
+		started: make(chan struct{}), release: make(chan struct{}), closed: make(chan struct{}),
+	}
+	a := &AuditLogger{
+		component: ComponentSatellite, enabled: true,
+		transports: []Transport{transport}, inFlight: &sync.WaitGroup{},
+	}
+	logged := make(chan struct{})
+	go func() {
+		a.Log(AuditEvent{Operation: OpLogin, ResourceType: ResUser, Outcome: OutcomeSuccess})
+		close(logged)
+	}()
+	<-transport.started
+	reconfigured := make(chan error, 1)
+	go func() { reconfigured <- a.Reconfigure(AuditConfig{}) }()
+	require.Never(t, func() bool {
+		select {
+		case <-transport.closed:
+			return true
+		default:
+			return false
+		}
+	}, 20*time.Millisecond, time.Millisecond)
+	close(transport.release)
+	<-logged
+	require.NoError(t, <-reconfigured)
+	<-transport.closed
+}
 
 // fileSyslogConfig builds an audit config whose only destination is the syslog
 // file target at path. The raw-JSON file transport has been removed, so the file

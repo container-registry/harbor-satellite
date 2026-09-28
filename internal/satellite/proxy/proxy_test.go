@@ -336,6 +336,33 @@ func TestAdapterDoesNotAppendAnErrorAfterResponseCommit(t *testing.T) {
 	require.NotContains(t, response.Body.String(), "errors")
 }
 
+type closeTrackingReader struct {
+	io.Reader
+	closed bool
+}
+
+func (r *closeTrackingReader) Close() error {
+	r.closed = true
+	return nil
+}
+
+func TestResponseBodyClosedAfterCommit(t *testing.T) {
+	for _, useContent := range []bool{false, true} {
+		body := &closeTrackingReader{Reader: strings.NewReader("unused")}
+		response := serveRequest(t, httptest.NewRequest(http.MethodGet, "/v2/", nil),
+			proxy.HandlerFunc(func(request *proxy.Request) error {
+				require.NoError(t, request.Write(http.StatusAccepted, nil))
+				forwarded := &http.Response{StatusCode: http.StatusOK, Body: body}
+				if useContent {
+					return request.WriteContent(forwarded)
+				}
+				return request.WriteResponse(forwarded)
+			}))
+		require.Equal(t, http.StatusAccepted, response.Code)
+		require.True(t, body.closed)
+	}
+}
+
 func TestRequestWriteResponseForwardsHTTPResponse(t *testing.T) {
 	t.Parallel()
 

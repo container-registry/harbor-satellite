@@ -149,19 +149,6 @@ func run(parent context.Context, opts *SatelliteOptions, pathConfig *config.Path
 		return fmt.Errorf("serve OCI proxy: %w", err)
 	})
 
-	// Resolve local registry endpoint for CRI mirror config
-	localRegistryEndpoint := resolveLocalRegistryEndpoint(opts.ProxyMode, opts.ProxyPort)
-
-	// Resolve and apply CRI configs
-	criResults := resolveCRIAndApply(cm, opts.Mirrors, opts.NoRegistryFallback, localRegistryEndpoint)
-	for _, r := range criResults {
-		if r.Success {
-			fmt.Printf("CRI %s configured (backup: %s)\n", r.CRI, r.BackupPath)
-		} else {
-			fmt.Printf("warning: %s config error: %s\n", r.CRI, r.Error)
-		}
-	}
-
 	// Configure direct delivery if enabled. This feature shipped in c2dbea8 (#356).
 	if opts.DirectDelivery {
 		imageDir := opts.ImageDir
@@ -256,13 +243,28 @@ func run(parent context.Context, opts *SatelliteOptions, pathConfig *config.Path
 	})
 
 	eventScheduler := events.NewEventScheduler(log)
-	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir, eventScheduler)
+	s := satellite.NewSatellite(cm, nil, pathConfig.StateFile, pathConfig.StoreDir, eventScheduler)
 	s.SetStores(localStore, remoteStore)
 
 	err = s.Run(ctx)
 	if err != nil {
 		return fmt.Errorf("unable to start satellite: %w", err)
 	}
+
+	// Apply host runtime changes only after all fallible Satellite startup steps.
+	criResults, criErr := resolveCRIAndApply(cm, opts.Mirrors, opts.NoRegistryFallback,
+		resolveLocalRegistryEndpoint(opts.ProxyMode, opts.ProxyPort))
+	if criErr != nil {
+		log.Warn().Err(criErr).Msg("CRI registry configuration was not applied")
+	}
+	for _, result := range criResults {
+		if result.Success {
+			fmt.Printf("CRI %s configured (backup: %s)\n", result.CRI, result.BackupPath)
+		} else {
+			fmt.Printf("warning: %s config error: %s\n", result.CRI, result.Error)
+		}
+	}
+	s.SetCRIResults(criResults)
 
 	if proxyServer != nil {
 		log.Info().Str("address", proxyServer.Addr).Str("mode", opts.ProxyMode.String()).Msg("OCI registry proxy is listening")
@@ -339,6 +341,9 @@ func gracefulShutdown(
 			log.Info().Msg("State persisted successfully")
 		}
 		if shutdownErr != nil {
+			if errors.Is(shutdownErr, context.DeadlineExceeded) || errors.Is(shutdownCtx.Err(), context.DeadlineExceeded) {
+				return fmt.Errorf("graceful shutdown timeout exceeded")
+			}
 			return fmt.Errorf("runtime shutdown: %w", shutdownErr)
 		}
 		log.Info().Msg("Graceful shutdown completed successfully")
@@ -352,40 +357,37 @@ func gracefulShutdown(
 
 // resolveCRIAndApply determines which CRI configs to apply and applies them.
 // Priority: config file registry_fallback > --mirrors flag > --no-registry-fallback/env.
-func resolveCRIAndApply(cm *config.ConfigManager, mirrors mirrorFlags, noFallback bool, localRegistry string) []runtime.CRIConfigResult {
+func resolveCRIAndApply(cm *config.ConfigManager, mirrors mirrorFlags, noFallback bool, localRegistry string) ([]runtime.CRIConfigResult, error) {
 	fbCfg := cm.GetRegistryFallbackConfig()
 	if strings.TrimSpace(localRegistry) == "" && (fbCfg.Enabled || len(mirrors) > 0) {
-		fmt.Println("warning: CRI registry configuration requires --proxy-mode")
-		return nil
+		return nil, errors.New("CRI registry configuration requires --proxy-mode")
 	}
 
 	// Config file registry_fallback takes highest priority (from GC)
 	if fbCfg.Enabled {
 		configs, err := runtime.ResolveCRIConfigs(nil, true, fbCfg.Registries, fbCfg.Runtimes)
 		if err != nil {
-			fmt.Printf("warning: failed to resolve CRI configs: %v\n", err)
-			return nil
+			return nil, fmt.Errorf("resolve CRI configs: %w", err)
 		}
-		return runtime.ApplyCRIConfigs(configs, localRegistry)
+		return runtime.ApplyCRIConfigs(configs, localRegistry), nil
 	}
 
 	// Explicit --mirrors flag
 	if len(mirrors) > 0 {
 		configs, err := runtime.ResolveCRIConfigs(mirrors, false, nil, nil)
 		if err != nil {
-			fmt.Printf("warning: failed to parse mirror flags: %v\n", err)
-			return nil
+			return nil, fmt.Errorf("parse mirror flags: %w", err)
 		}
-		return runtime.ApplyCRIConfigs(configs, localRegistry)
+		return runtime.ApplyCRIConfigs(configs, localRegistry), nil
 	}
 
 	// Disabled via flag or env var
 	if noFallback {
-		return nil
+		return nil, nil
 	}
 
 	// No CRI config requested
-	return nil
+	return nil, nil
 }
 
 func resolveLocalRegistryEndpoint(proxyMode proxyhandler.Mode, proxyPort int) string {
@@ -405,20 +407,16 @@ func proxyStores(cm *config.ConfigManager, storeRoot string) (store.Store, store
 
 	if cm.GetOwnRegistry() {
 		credentials := cm.GetRemoteRegistryCredentials()
-		localStore, err := store.NewRegistryStore(store.RegistryOptions{
-			Endpoint:  utils.FormatRegistryURL(string(credentials.URL)),
-			Username:  credentials.Username,
-			Password:  credentials.Password,
-			PlainHTTP: store.UsesPlainHTTP(string(credentials.URL), cm.UseUnsecure()),
-			TLS:       cm.GetTLSConfig(),
-		})
+		localStore, err := store.NewRegistryStore(registryOptions(credentials, cm))
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize BYO registry store: %w", err)
 		}
 		return localStore, remoteStore, nil
 	}
 
-	localStore, err := store.NewOCIStore(storeRoot)
+	localStore, err := store.NewScopedOCIStore(storeRoot, func() (store.RegistryOptions, error) {
+		return sourceRegistryOptions(cm)
+	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("initialize OCI layout store: %w", err)
 	}
@@ -439,11 +437,16 @@ func sourceRegistryOptions(cm *config.ConfigManager) (store.RegistryOptions, err
 			sourceURL = replaced
 		}
 	}
+	credentials.URL = config.URL(sourceURL)
+	return registryOptions(credentials, cm), nil
+}
+
+func registryOptions(credentials config.RegistryCredentials, cm *config.ConfigManager) store.RegistryOptions {
 	return store.RegistryOptions{
-		Endpoint:  utils.FormatRegistryURL(sourceURL),
+		Endpoint:  utils.FormatRegistryURL(string(credentials.URL)),
 		Username:  credentials.Username,
 		Password:  credentials.Password,
-		PlainHTTP: store.UsesPlainHTTP(sourceURL, cm.UseUnsecure()),
+		PlainHTTP: store.UsesPlainHTTP(string(credentials.URL), cm.UseUnsecure()),
 		TLS:       cm.GetTLSConfig(),
-	}, nil
+	}
 }

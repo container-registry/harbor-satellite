@@ -73,10 +73,18 @@ func TestConfigureDoesNotRequireStateOrGroundControl(t *testing.T) {
 	require.Contains(t, output.String(), "Container runtime configuration complete.")
 }
 
+func TestConfigureFailsWhenMirrorConfigIsInvalid(t *testing.T) {
+	opts := testOptions()
+	opts.ConfigDir = t.TempDir()
+	opts.Mirrors = mirrorFlags{"invalid-mirror"}
+	command := newConfigureCommand(opts, nil)
+	require.ErrorContains(t, command.Execute(), "parse mirror flags")
+}
+
 func TestInitializeConfigRequiresAnInputSource(t *testing.T) {
 	opts := testOptions()
 
-	_, _, _, err := initializeConfig(opts, true)
+	_, _, _, err := initializeServeConfig(opts)
 	require.ErrorContains(t, err, "--config-dir is required")
 }
 
@@ -86,7 +94,7 @@ func TestInitializeConfigFromDirectoryWithoutGroundControl(t *testing.T) {
 	opts := testOptions()
 	opts.ConfigDir = dir
 
-	_, cm, _, err := initializeConfig(opts, true)
+	_, cm, _, err := initializeServeConfig(opts)
 	require.NoError(t, err)
 	require.True(t, cm.IsZTRDone())
 	require.False(t, cm.HasGroundControl())
@@ -100,7 +108,7 @@ func TestInitializeConfigRejectsPartialStateConfig(t *testing.T) {
 	opts := testOptions()
 	opts.ConfigDir = dir
 
-	_, _, _, err := initializeConfig(opts, true)
+	_, _, _, err := initializeServeConfig(opts)
 	require.ErrorContains(t, err, "missing required field(s): state")
 }
 
@@ -112,7 +120,7 @@ func TestInitializeConfigFromStateFlags(t *testing.T) {
 	opts.StateAuthUsername = "robot$satellite"
 	opts.StateAuthPassword = "secret"
 
-	pathConfig, cm, _, err := initializeConfig(opts, true)
+	pathConfig, cm, _, err := initializeServeConfig(opts)
 	require.NoError(t, err)
 	require.NotEmpty(t, pathConfig.ConfigDir)
 	require.Equal(t, standaloneStateConfig(), cm.GetStateConfig())
@@ -124,7 +132,7 @@ func TestInitializeConfigFromGroundControlBootstrap(t *testing.T) {
 	opts.GroundControlURL = "https://ground-control.example.com"
 	opts.Token = "bootstrap-token"
 
-	_, cm, _, err := initializeConfig(opts, true)
+	_, cm, _, err := initializeServeConfig(opts)
 	require.NoError(t, err)
 	require.False(t, cm.IsZTRDone())
 	require.True(t, cm.HasGroundControl())
@@ -136,7 +144,7 @@ func TestInitializeConfigFromSPIFFEBootstrap(t *testing.T) {
 	opts.GroundControlURL = "https://ground-control.example.com"
 	opts.SPIFFEEnabled = true
 
-	_, cm, _, err := initializeConfig(opts, true)
+	_, cm, _, err := initializeServeConfig(opts)
 	require.NoError(t, err)
 	require.True(t, cm.IsSPIFFEEnabled())
 }
@@ -150,7 +158,15 @@ func TestInitializeConfigFromFileSPIFFEBootstrap(t *testing.T) {
 	opts := testOptions()
 	opts.ConfigDir = dir
 
-	_, cm, _, err := initializeConfig(opts, true)
+	_, cm, _, err := initializeServeConfig(opts)
 	require.NoError(t, err)
 	require.True(t, cm.IsSPIFFEEnabled())
+}
+
+func TestValidateSatelliteOptionsRejectsNonPositiveShutdownTimeout(t *testing.T) {
+	for _, timeout := range []string{"0s", "-1s", "invalid"} {
+		opts := testOptions()
+		opts.ShutdownTimeout = timeout
+		require.Error(t, validateSatelliteOptions(opts))
+	}
 }

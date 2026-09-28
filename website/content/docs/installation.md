@@ -278,26 +278,22 @@ jq '.manifests[].annotations["org.opencontainers.image.ref.name"]' \
     ~/.config/satellite/oci/index.json
 ```
 
-### Configuring CRI Mirroring with BYO Registry
+### Configuring CRI Mirroring
 
-The default OCI layout is not a registry endpoint. To configure a container runtime mirror, enable BYO mode and supply the external registry endpoint:
+`configure` points container runtimes at the local Satellite proxy (default `127.0.0.1:8585`) and exits. Run `./harbor-satellite serve` with a valid state configuration so that proxy is available for image pulls.
 
 ```bash
 # containerd: mirror docker.io and quay.io
-./harbor-satellite serve --byo-registry --registry-url registry.edge:5000 \
-  --mirrors=containerd:docker.io,quay.io ...
+./harbor-satellite configure --mirrors=containerd:docker.io,quay.io
 
 # Docker: mirror docker.io (only registry Docker supports mirroring)
-./harbor-satellite serve --byo-registry --registry-url registry.edge:5000 \
-  --mirrors=docker:true ...
+./harbor-satellite configure --mirrors=docker:true
 
 # Podman
-./harbor-satellite serve --byo-registry --registry-url registry.edge:5000 \
-  --mirrors=podman:docker.io ...
+./harbor-satellite configure --mirrors=podman:docker.io
 
 # CRI-O
-./harbor-satellite serve --byo-registry --registry-url registry.edge:5000 \
-  --mirrors=crio:docker.io,quay.io ...
+./harbor-satellite configure --mirrors=crio:docker.io,quay.io
 ```
 
 Notes:

@@ -84,6 +84,9 @@ This feature is planned for future implementation to support:
 # 1. Deploy Satellite
 docker run -d \
   --name satellite \
+  --network host \
+  -e GROUND_CONTROL_URL=http://127.0.0.1:8080 \
+  -e TOKEN="<registration-token>" \
   -e REGISTRY_DATA_DIR=/data/oci \
   -v /var/lib/harbor-satellite:/data \
   harbor-satellite:latest serve

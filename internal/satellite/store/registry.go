@@ -79,15 +79,14 @@ func (r *RegistryStore) Fetch(ctx context.Context, artifact Artifact, descriptor
 }
 
 func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts []Artifact) error {
-	sourceTarget, ok := source.(storeTarget)
-	if !ok {
-		return errors.New("source store does not support OCI graph transfer")
-	}
 	for _, artifact := range artifacts {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := artifact.validate(); err != nil {
 			return err
 		}
-		from, err := sourceTarget.targetFor(artifact)
+		from, err := source.TargetFor(artifact)
 		if err != nil {
 			return err
 		}
@@ -96,11 +95,7 @@ func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts [
 			return err
 		}
 		if artifact.Tag == "" {
-			desc, err := source.Pull(ctx, artifact, PullResourceBlob)
-			if err != nil {
-				return err
-			}
-			if err := oras.CopyGraph(ctx, from, to, desc, oras.DefaultCopyGraphOptions); err != nil {
+			if _, err := copyBlobGraph(ctx, source, from, to, artifact); err != nil {
 				return err
 			}
 			continue
@@ -115,6 +110,9 @@ func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts [
 // Delete removes manifest roots from this registry.
 func (r *RegistryStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	for _, artifact := range artifacts {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := artifact.validate(); err != nil {
 			return err
 		}
@@ -136,7 +134,7 @@ func (r *RegistryStore) Delete(ctx context.Context, artifacts []Artifact) error 
 	return nil
 }
 
-func (r *RegistryStore) targetFor(artifact Artifact) (oras.Target, error) {
+func (r *RegistryStore) TargetFor(artifact Artifact) (oras.Target, error) {
 	return r.repository(artifact)
 }
 
@@ -149,10 +147,6 @@ func (r *RegistryStore) repository(artifact Artifact) (*remote.Repository, error
 		return nil, err
 	}
 	return newRepository(options, artifact)
-}
-
-type storeTarget interface {
-	targetFor(Artifact) (oras.Target, error)
 }
 
 func newRepository(options RegistryOptions, artifact Artifact) (*remote.Repository, error) {
@@ -180,8 +174,12 @@ func newRepository(options RegistryOptions, artifact Artifact) (*remote.Reposito
 
 func normalizeRegistry(reference string) string {
 	reference = strings.TrimSpace(reference)
-	reference = strings.TrimPrefix(reference, "https://")
-	reference = strings.TrimPrefix(reference, "http://")
+	lower := strings.ToLower(reference)
+	if strings.HasPrefix(lower, "https://") {
+		reference = reference[len("https://"):]
+	} else if strings.HasPrefix(lower, "http://") {
+		reference = reference[len("http://"):]
+	}
 	return strings.TrimSuffix(reference, "/")
 }
 

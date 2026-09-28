@@ -74,6 +74,21 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 // ValidateStateConfig verifies the Harbor credentials and state artifact used
 // when Satellite starts without Ground Control bootstrap.
 func ValidateStateConfig(state StateConfig) error {
+	missing := missingStateFields(state)
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required field(s): %s", strings.Join(missing, ", "))
+	}
+
+	if err := validateAbsoluteStateURL(string(state.RegistryCredentials.URL)); err != nil {
+		return fmt.Errorf("invalid auth.url: %w", err)
+	}
+	if err := validateAbsoluteStateURL(state.StateURL); err != nil {
+		return fmt.Errorf("invalid state URL: %w", err)
+	}
+	return nil
+}
+
+func missingStateFields(state StateConfig) []string {
 	missing := make([]string, 0, 4)
 	if strings.TrimSpace(state.StateURL) == "" {
 		missing = append(missing, "state")
@@ -87,25 +102,23 @@ func ValidateStateConfig(state StateConfig) error {
 	if strings.TrimSpace(state.RegistryCredentials.Password) == "" {
 		missing = append(missing, "auth.password")
 	}
-	if len(missing) > 0 {
-		return fmt.Errorf("missing required field(s): %s", strings.Join(missing, ", "))
-	}
+	return missing
+}
 
-	if _, err := url.ParseRequestURI(string(state.RegistryCredentials.URL)); err != nil {
-		return fmt.Errorf("invalid auth.url: %w", err)
+func validateAbsoluteStateURL(raw string) error {
+	parsed, err := url.ParseRequestURI(raw)
+	if err != nil {
+		return err
 	}
-	if _, err := url.ParseRequestURI(state.StateURL); err != nil {
-		return fmt.Errorf("invalid state URL: %w", err)
+	if !parsed.IsAbs() || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return errors.New("must be an absolute HTTP(S) URL with a registry host")
 	}
 	return nil
 }
 
 // IsStateConfigEmpty reports whether no standalone state input was supplied.
 func IsStateConfigEmpty(state StateConfig) bool {
-	return strings.TrimSpace(state.StateURL) == "" &&
-		strings.TrimSpace(string(state.RegistryCredentials.URL)) == "" &&
-		strings.TrimSpace(state.RegistryCredentials.Username) == "" &&
-		strings.TrimSpace(state.RegistryCredentials.Password) == ""
+	return len(missingStateFields(state)) == 4
 }
 
 // validateAndEnforceAuditConfig fills in defaults for the audit syslog transport

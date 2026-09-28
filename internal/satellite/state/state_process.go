@@ -584,42 +584,23 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 		PlainHTTP: store.UsesPlainHTTP(sourceRegistryURL, useUnsecure),
 		TLS:       f.cm.GetTLSConfig(),
 	}
-	if f.remoteStore != nil {
-		sourceStore = f.remoteStore
-	} else {
-		sourceStore, err = store.NewRegistryStore(source)
-		if err != nil {
-			return nil, nil, "", "", "", "", false, "", err
-		}
-	}
-
+	var destinationOptions store.RegistryOptions
 	if f.cm.GetOwnRegistry() {
 		destinationURL := f.cm.GetLocalRegistryURL()
 		destination = utils.FormatRegistryURL(destinationURL)
-		if f.localStore != nil {
-			replicator = f.localStore
-		} else {
-			replicator, err = store.NewRegistryStore(store.RegistryOptions{
-				Endpoint:  destination,
-				Username:  remoteUsername,
-				Password:  remotePassword,
-				PlainHTTP: store.UsesPlainHTTP(destinationURL, useUnsecure),
-				TLS:       f.cm.GetTLSConfig(),
-			})
-			if err != nil {
-				return nil, nil, "", "", "", "", false, "", err
-			}
+		destinationOptions = store.RegistryOptions{
+			Endpoint:  destination,
+			Username:  remoteUsername,
+			Password:  remotePassword,
+			PlainHTTP: store.UsesPlainHTTP(destinationURL, useUnsecure),
+			TLS:       f.cm.GetTLSConfig(),
 		}
 	} else {
 		destination = f.storeRoot
-		if f.localStore != nil {
-			replicator = f.localStore
-		} else {
-			replicator, err = store.NewOCIStore(f.storeRoot)
-			if err != nil {
-				return nil, nil, "", "", "", "", false, "", err
-			}
-		}
+	}
+	replicator, sourceStore, err = f.resolveStores(source, destinationOptions)
+	if err != nil {
+		return nil, nil, "", "", "", "", false, "", err
 	}
 
 	// Set up direct delivery if enabled, clear if disabled
@@ -631,6 +612,27 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 	}
 
 	return replicator, sourceStore, sourceURL, sourceUsername, sourcePassword, destination, useUnsecure, satelliteStateURL, nil
+}
+
+func (f *FetchAndReplicateStateProcess) resolveStores(source, destination store.RegistryOptions) (store.Store, store.Store, error) {
+	if (f.localStore == nil) != (f.remoteStore == nil) {
+		return nil, nil, fmt.Errorf("local and remote stores must be provided together")
+	}
+	if f.localStore != nil {
+		return f.localStore, f.remoteStore, nil
+	}
+	sourceStore, err := store.NewRegistryStore(source)
+	if err != nil {
+		return nil, nil, err
+	}
+	if f.cm.GetOwnRegistry() {
+		localStore, err := store.NewRegistryStore(destination)
+		return localStore, sourceStore, err
+	}
+	localStore, err := store.NewScopedOCIStore(f.storeRoot, func() (store.RegistryOptions, error) {
+		return source, nil
+	})
+	return localStore, sourceStore, err
 }
 
 func (f *FetchAndReplicateStateProcess) start() {

@@ -56,6 +56,7 @@ func TestValidateSatelliteOptions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			tt.opts.ShutdownTimeout = "30s"
 			err := validateSatelliteOptions(&tt.opts)
 			if tt.wantErr == "" {
 				require.NoError(t, err)
@@ -216,15 +217,17 @@ func TestResolveCRIAndApply(t *testing.T) {
 		}
 		cm := newTestConfigManager(t, cfg)
 
-		results := resolveCRIAndApply(cm, nil, false, "")
+		results, err := resolveCRIAndApply(cm, nil, false, "")
 		require.Nil(t, results)
+		require.ErrorContains(t, err, "requires --proxy-mode")
 	})
 
 	t.Run("noFallback returns nil", func(t *testing.T) {
 		cfg := &config.Config{}
 		cm := newTestConfigManager(t, cfg)
 
-		results := resolveCRIAndApply(cm, nil, true, "localhost:8585")
+		results, err := resolveCRIAndApply(cm, nil, true, "localhost:8585")
+		require.NoError(t, err)
 		require.Nil(t, results)
 	})
 
@@ -232,7 +235,8 @@ func TestResolveCRIAndApply(t *testing.T) {
 		cfg := &config.Config{}
 		cm := newTestConfigManager(t, cfg)
 
-		results := resolveCRIAndApply(cm, nil, false, "localhost:8585")
+		results, err := resolveCRIAndApply(cm, nil, false, "localhost:8585")
+		require.NoError(t, err)
 		require.Nil(t, results)
 	})
 
@@ -249,7 +253,8 @@ func TestResolveCRIAndApply(t *testing.T) {
 		cm := newTestConfigManager(t, cfg)
 
 		mirrors := mirrorFlags{"containerd:quay.io"}
-		results := resolveCRIAndApply(cm, mirrors, false, "localhost:8585")
+		results, err := resolveCRIAndApply(cm, mirrors, false, "localhost:8585")
+		require.NoError(t, err)
 		require.Len(t, results, 1)
 		require.Equal(t, runtime.CRIType("unsupported_cri"), results[0].CRI)
 		require.False(t, results[0].Success)
@@ -260,8 +265,9 @@ func TestResolveCRIAndApply(t *testing.T) {
 		cm := newTestConfigManager(t, cfg)
 
 		mirrors := mirrorFlags{"badformat"}
-		results := resolveCRIAndApply(cm, mirrors, false, "localhost:8585")
+		results, err := resolveCRIAndApply(cm, mirrors, false, "localhost:8585")
 		require.Nil(t, results)
+		require.ErrorContains(t, err, "invalid mirror format")
 	})
 }
 

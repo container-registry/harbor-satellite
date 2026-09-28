@@ -35,14 +35,6 @@ func satelliteTestConfigManager(t *testing.T, cfg *config.Config, token, groundC
 
 func TestRunWithoutGroundControlOnlySchedulesStateReplication(t *testing.T) {
 	cfg := &config.Config{
-		StateConfig: config.StateConfig{
-			RegistryCredentials: config.RegistryCredentials{
-				URL:      "https://harbor.example.com",
-				Username: "robot$satellite",
-				Password: "secret",
-			},
-			StateURL: "https://harbor.example.com/satellite/state/example:latest",
-		},
 		AppConfig: config.AppConfig{
 			StateReplicationInterval: config.DefaultFetchAndReplicateCronExpr,
 			HeartbeatInterval:        config.DefaultHeartbeatCronExpr,

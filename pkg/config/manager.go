@@ -168,6 +168,7 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure bool) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
+	groundControlURL = strings.TrimSpace(groundControlURL)
 
 	if strings.TrimSpace(groundControlURL) != "" {
 		if _, err := url.ParseRequestURI(groundControlURL); err != nil {

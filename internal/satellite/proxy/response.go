@@ -53,6 +53,9 @@ func (request *Request) WriteResponse(response *http.Response) error {
 		return errors.New("proxy: HTTP response is required")
 	}
 	if request.responseWritten() {
+		if response.Body != nil {
+			_ = response.Body.Close()
+		}
 		return errResponseWritten
 	}
 
@@ -79,6 +82,9 @@ func (request *Request) WriteContent(response *http.Response) error {
 		return errors.New("proxy: HTTP response is required")
 	}
 	if request.responseWritten() {
+		if response.Body != nil {
+			_ = response.Body.Close()
+		}
 		return errResponseWritten
 	}
 

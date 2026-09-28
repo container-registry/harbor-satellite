@@ -100,8 +100,18 @@ func TestInitConfigManager(t *testing.T) {
 }
 
 func TestInitConfigManagerAllowsMissingGroundControl(t *testing.T) {
-	configPath := filepath.Join(t.TempDir(), "config.json")
+	configPath := writeTempConfig(t, Config{StateConfig: StateConfig{
+		StateURL: "https://harbor.example.com/satellite/state:latest",
+		RegistryCredentials: RegistryCredentials{
+			URL: "https://harbor.example.com", Username: "robot", Password: "secret",
+		},
+	}})
 	cm, _, err := InitConfigManager("", "", configPath, "", false, false)
+	require.NoError(t, err)
+	require.False(t, cm.HasGroundControl())
+	require.True(t, cm.IsZTRDone())
+
+	cm, _, err = InitConfigManager("", "  ", configPath, "", false, false)
 	require.NoError(t, err)
 	require.False(t, cm.HasGroundControl())
 }

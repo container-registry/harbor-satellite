@@ -22,6 +22,7 @@ type OCIStore struct {
 	store      *oci.Store
 	mu         sync.RWMutex
 	provenance sync.Map
+	source     func() (RegistryOptions, error)
 }
 
 // NewOCIStore opens or creates an OCI image-layout store at root.
@@ -36,18 +37,65 @@ func NewOCIStore(root string) (*OCIStore, error) {
 	return &OCIStore{store: target}, nil
 }
 
+// NewScopedOCIStore uses the endpoint-scoped reference format of the original
+// OCI store, so previously retained endpoint-scoped content remains readable.
+func NewScopedOCIStore(root string, source func() (RegistryOptions, error)) (*OCIStore, error) {
+	if source == nil {
+		return nil, errors.New("OCI source options provider is required")
+	}
+	storage, err := NewOCIStore(root)
+	if err != nil {
+		return nil, err
+	}
+	storage.source = source
+	return storage, nil
+}
+
+func (s *OCIStore) sourceOptions() (RegistryOptions, error) {
+	if s.source == nil {
+		return RegistryOptions{}, nil
+	}
+	options, err := s.source()
+	if err != nil {
+		return RegistryOptions{}, err
+	}
+	if err := options.validate(); err != nil {
+		return RegistryOptions{}, err
+	}
+	return options, nil
+}
+
+func (s *OCIStore) reference(options RegistryOptions, artifact Artifact) string {
+	if s.source == nil {
+		return artifact.Reference()
+	}
+	return options.reference(artifact, artifact.destinationIdentifier())
+}
+
+func (s *OCIStore) repositoryKey(options RegistryOptions, artifact Artifact) string {
+	if s.source == nil {
+		return strings.TrimSuffix(artifactReference(artifact.Repository, artifact.Name, ""), ":")
+	}
+	return normalizeRegistry(options.Endpoint) + "/" + options.repositoryPath(artifact)
+}
+
 // Pull resolves already retained content. It deliberately performs no request
 // validation or remote access: proxy routing owns validation, and Replicate
 // fills local content from the configured Harbor store.
 func (s *OCIStore) Pull(ctx context.Context, artifact Artifact, resource PullResource) (ocispec.Descriptor, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	options, err := s.sourceOptions()
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	reference := s.reference(options, artifact)
 
 	switch resource {
 	case PullResourceManifest:
-		return s.store.Resolve(ctx, artifact.Reference())
+		return s.store.Resolve(ctx, reference)
 	case PullResourceBlob:
-		if desc, err := s.store.Resolve(ctx, artifact.Reference()); err == nil {
+		if desc, err := s.store.Resolve(ctx, reference); err == nil {
 			return desc, nil
 		} else if !errors.Is(err, errdef.ErrNotFound) {
 			return ocispec.Descriptor{}, err
@@ -56,7 +104,7 @@ func (s *OCIStore) Pull(ctx context.Context, artifact Artifact, resource PullRes
 		if err != nil {
 			return ocispec.Descriptor{}, err
 		}
-		known, err := s.repositoryGraphContains(ctx, artifact.Name, desc.Digest)
+		known, err := s.repositoryGraphContains(ctx, s.repositoryKey(options, artifact), desc.Digest)
 		if err != nil || !known {
 			if err != nil {
 				return ocispec.Descriptor{}, err
@@ -87,49 +135,48 @@ func (s *OCIStore) Fetch(ctx context.Context, _ Artifact, descriptor ocispec.Des
 // Replicate copies complete manifest graphs or standalone blobs from source.
 // ORAS streams through its ingest path and commits only verified descriptors.
 func (s *OCIStore) Replicate(ctx context.Context, source Store, artifacts []Artifact) error {
-	sourceTarget, ok := source.(storeTarget)
-	if !ok {
-		return errors.New("source store does not support OCI graph transfer")
-	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	options, err := s.sourceOptions()
+	if err != nil {
+		return err
+	}
 
 	for _, artifact := range artifacts {
 		if err := artifact.validate(); err != nil {
 			return err
 		}
-		remote, err := sourceTarget.targetFor(artifact)
+		remote, err := source.TargetFor(artifact)
 		if err != nil {
 			return err
 		}
+		reference := s.reference(options, artifact)
+		repository := s.repositoryKey(options, artifact)
 		if artifact.Tag == "" {
-			desc, err := source.Pull(ctx, artifact, PullResourceBlob)
+			desc, err := copyBlobGraph(ctx, source, remote, s.store, artifact)
 			if err != nil {
-				return err
-			}
-			if err := oras.CopyGraph(ctx, remote, s.store, desc, oras.DefaultCopyGraphOptions); err != nil {
 				return fmt.Errorf("copy blob %s to OCI store: %w", desc.Digest, err)
 			}
-			if err := s.store.Tag(ctx, desc, artifact.Reference()); err != nil {
+			if err := s.store.Tag(ctx, desc, reference); err != nil {
 				return fmt.Errorf("tag local blob %s: %w", desc.Digest, err)
 			}
-			s.provenance.Store(provenanceKey(artifact.Name, desc.Digest), struct{}{})
+			s.provenance.Store(provenanceKey(repository, desc.Digest), struct{}{})
 			continue
 		}
 
-		desc, err := oras.Copy(ctx, remote, artifact.sourceIdentifier(), s.store, artifact.Reference(), oras.DefaultCopyOptions)
+		desc, err := oras.Copy(ctx, remote, artifact.sourceIdentifier(), s.store, reference, oras.DefaultCopyOptions)
 		if err != nil {
-			return fmt.Errorf("copy artifact %s to OCI store: %w", artifact.Reference(), err)
+			return fmt.Errorf("copy artifact %s to OCI store: %w", reference, err)
 		}
-		if err := s.recordGraphProvenance(ctx, artifact.Name, desc); err != nil {
+		if err := s.recordGraphProvenance(ctx, repository, desc); err != nil {
 			return err
 		}
-		logger.FromContext(ctx).Info().Str("reference", artifact.Reference()).Str("digest", desc.Digest.String()).Msg("artifact replicated to OCI store")
+		logger.FromContext(ctx).Info().Str("reference", reference).Str("digest", desc.Digest.String()).Msg("artifact replicated to OCI store")
 	}
 	return nil
 }
 
-func (s *OCIStore) targetFor(Artifact) (oras.Target, error) { //nolint:unparam // shared adapter permits registry construction errors.
+func (s *OCIStore) TargetFor(Artifact) (oras.Target, error) {
 	return s.store, nil
 }
 
@@ -137,18 +184,26 @@ func (s *OCIStore) targetFor(Artifact) (oras.Target, error) { //nolint:unparam /
 func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	options, err := s.sourceOptions()
+	if err != nil {
+		return err
+	}
 	changed := false
 	for _, artifact := range artifacts {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := artifact.validate(); err != nil {
 			return err
 		}
-		if _, err := s.store.Resolve(ctx, artifact.Reference()); err != nil {
+		reference := s.reference(options, artifact)
+		if _, err := s.store.Resolve(ctx, reference); err != nil {
 			if errors.Is(err, errdef.ErrNotFound) {
 				continue
 			}
 			return err
 		}
-		if err := s.store.Untag(ctx, artifact.Reference()); err != nil {
+		if err := s.store.Untag(ctx, reference); err != nil {
 			return err
 		}
 		changed = true

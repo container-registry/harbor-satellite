@@ -8,11 +8,7 @@ func (cm *ConfigManager) IsZTRDone() bool {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
-	state := cm.config.StateConfig
-	return strings.TrimSpace(state.StateURL) != "" &&
-		strings.TrimSpace(string(state.RegistryCredentials.URL)) != "" &&
-		strings.TrimSpace(state.RegistryCredentials.Username) != "" &&
-		strings.TrimSpace(state.RegistryCredentials.Password) != ""
+	return len(missingStateFields(cm.config.StateConfig)) == 0
 }
 
 func (cm *ConfigManager) GetLogLevel() string {

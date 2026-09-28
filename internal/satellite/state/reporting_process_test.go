@@ -140,6 +140,17 @@ func newReportingTestCM(t *testing.T, gcURL string) *config.ConfigManager {
 	return cm
 }
 
+func TestExecuteSkipsReportingWithoutGroundControl(t *testing.T) {
+	cm := newReportingTestCM(t, "")
+	p := &StatusReportingProcess{name: "test", mu: &sync.Mutex{}, cm: cm}
+	p.SetPendingCRIResults([]runtime.CRIConfigResult{{CRI: runtime.CRIDocker, Success: true}})
+	require.NoError(t, p.Execute(testContext()))
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	require.False(t, p.criReported)
+	require.Len(t, p.pendingCRI, 1)
+}
+
 func TestExecute_CRIReporting(t *testing.T) {
 	criResults := []runtime.CRIConfigResult{
 		{CRI: runtime.CRIDocker, Success: true, BackupPath: "/etc/docker/daemon.json.bak"},

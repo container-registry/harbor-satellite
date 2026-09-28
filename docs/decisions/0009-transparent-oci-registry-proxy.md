@@ -47,8 +47,8 @@ check, and then either deny, serve retained content, or fill a local miss from t
 upstream before serving it.
 
 `oras-go` will replace Crane for registry resolution, OCI graph transfer, metadata
-access, and replication. Local replica and proxy content will use
-`oras.land/oras-go/v2/content/oci`. Zot and bbolt are not part of the target
+access, and replication. Local replica and proxy content will use a configured
+BYO registry or `oras.land/oras-go/v2/content/oci`. Zot and bbolt are not part of the target
 architecture.
 
 ORAS is not the HTTP proxy. Satellite owns request parsing, authentication, policy,
@@ -114,6 +114,7 @@ flowchart TB
 
         Source -->|local hit| LocalRead
         Source -->|proxy mode miss| Forward --> Upstream
+        Source -->|replica mode miss| Deny
     end
 
     Deny[Deny and audit]
@@ -170,7 +171,7 @@ digest so that it cannot authorize one graph and return another.
 
 | Mode | Behavior |
 |---|---|
-| `proxy` | Serve retained content locally and fill a local miss from the upstream Harbor registry before serving it |
+| `proxy` | Serve retained content locally and fill a local miss from the upstream before serving it |
 | `replica` | Serve only explicitly replicated local content; a local miss is returned without contacting the upstream |
 
 `proxy` is the default. Both modes serve responses from the configured local store.
@@ -179,7 +180,7 @@ upstream registry.
 
 ### ORAS OCI Storage Layout
 
-Replica and proxy modes use the configured BYO registry or one Satellite-owned OCI
+Without a BYO registry, replica and proxy modes use one Satellite-owned OCI
 image layout:
 
 ```text

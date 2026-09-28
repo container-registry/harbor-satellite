@@ -14,6 +14,7 @@ func TestUsesPlainHTTP(t *testing.T) {
 		wantPlainHTTP bool
 	}{
 		{name: "explicit HTTP", endpoint: "http://registry.example.com", wantPlainHTTP: true},
+		{name: "uppercase HTTP", endpoint: "HTTP://registry.example.com", wantPlainHTTP: true},
 		{name: "explicit HTTPS stays secure", endpoint: "https://registry.example.com", useUnsecure: true},
 		{name: "legacy endpoint uses insecure fallback", endpoint: "registry.example.com", useUnsecure: true, wantPlainHTTP: true},
 		{name: "legacy endpoint defaults to HTTPS", endpoint: "registry.example.com"},
@@ -32,6 +33,12 @@ func TestRegistryReferenceUsesEndpointRepository(t *testing.T) {
 	options := RegistryOptions{Endpoint: "https://registry.example.com/", Repository: "/teams/platform/images/"}
 	artifact := Artifact{Name: "httpd", Repository: "ignored/source/project", Tag: "2.4-trixie"}
 	require.Equal(t, "registry.example.com/teams/platform/images/httpd:2.4-trixie", options.reference(artifact, artifact.Tag))
+	require.Equal(t, "registry.example.com/ignored/source/project/httpd:2.4-trixie", (RegistryOptions{
+		Endpoint: "https://registry.example.com/",
+	}).reference(artifact, artifact.Tag))
+	require.Equal(t, "registry.example.com/ignored/source/project/httpd:2.4-trixie", (RegistryOptions{
+		Endpoint: "HTTPS://registry.example.com/",
+	}).reference(artifact, artifact.Tag))
 }
 
 func TestArtifactSourceIdentifierAcceptsFullDigestReference(t *testing.T) {
@@ -44,4 +51,10 @@ func TestStoreConstructorsValidateConfiguration(t *testing.T) {
 	require.ErrorContains(t, err, "root")
 	_, err = NewRegistryStore(RegistryOptions{})
 	require.ErrorContains(t, err, "endpoint")
+}
+
+func TestArtifactValidateRejectsIncompleteReference(t *testing.T) {
+	require.ErrorContains(t, (Artifact{Tag: "latest"}).validate(), "name")
+	require.ErrorContains(t, (Artifact{Name: "team/app"}).validate(), "tag or digest")
+	require.NoError(t, (Artifact{Name: "team/app", Tag: "latest"}).validate())
 }

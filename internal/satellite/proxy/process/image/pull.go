@@ -99,6 +99,9 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	if !ok {
 		return errors.New("proxy image pull returned an invalid descriptor")
 	}
+	if request.Method == proxy.HEAD {
+		return writePullResponse(request, resource, descriptor, nil)
+	}
 
 	body, err := p.localStore.Fetch(request.Context(), artifact, descriptor)
 	if err != nil {
@@ -106,6 +109,15 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	}
 	if body == nil {
 		return errors.New("proxy image pull returned a nil content reader")
+	}
+	if _, seekable := body.(io.ReadSeeker); !seekable {
+		body = &reopeningReader{
+			body: body,
+			size: descriptor.Size,
+			open: func() (io.ReadCloser, error) {
+				return p.localStore.Fetch(request.Context(), artifact, descriptor)
+			},
+		}
 	}
 	return writePullResponse(request, resource, descriptor, body)
 }
@@ -180,10 +192,14 @@ func writePullResponse(request *proxy.Request, resource store.PullResource, desc
 	}
 	header.Set("Docker-Distribution-API-Version", distributionAPIVersion)
 
-	return request.WriteContent(&http.Response{
+	response := &http.Response{
 		StatusCode:    http.StatusOK,
 		Header:        header,
 		Body:          body,
 		ContentLength: descriptor.Size,
-	})
+	}
+	if body == nil {
+		return request.WriteResponse(response)
+	}
+	return request.WriteContent(response)
 }
