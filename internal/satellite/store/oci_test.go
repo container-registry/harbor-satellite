@@ -19,7 +19,7 @@ import (
 )
 
 func TestOCIStoreReplicatesAndStreamsManifestGraph(t *testing.T) {
-	remote, manifestPayload, manifestDesc, layer, layerDesc := testArtifact(t, "team/app", "latest")
+	remote, manifestPayload, manifestDesc, layer, layerDesc := testArtifact(t)
 	local, err := NewOCIStore(t.TempDir())
 	require.NoError(t, err)
 	artifact := Artifact{Name: "team/app", Tag: "latest"}
@@ -49,7 +49,7 @@ func TestOCIStoreReplicatesAndStreamsManifestGraph(t *testing.T) {
 }
 
 func TestOCIStoreStandaloneBlobReplication(t *testing.T) {
-	remote, _, _, layer, layerDesc := testArtifact(t, "team/app", "latest")
+	remote, _, _, layer, layerDesc := testArtifact(t)
 	local, err := NewOCIStore(t.TempDir())
 	require.NoError(t, err)
 	artifact := Artifact{Name: "team/app", Digest: layerDesc.Digest.String()}
@@ -65,7 +65,7 @@ func TestOCIStoreStandaloneBlobReplication(t *testing.T) {
 }
 
 func TestOCIStoreResolvesRetainedManifestByDigestWithinRepository(t *testing.T) {
-	remote, _, manifestDesc, _, _ := testArtifact(t, "team/app", "latest")
+	remote, _, manifestDesc, _, _ := testArtifact(t)
 	local, err := NewOCIStore(t.TempDir())
 	require.NoError(t, err)
 	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{{Name: "team/app", Tag: "latest"}}))
@@ -80,14 +80,14 @@ func TestOCIStoreResolvesRetainedManifestByDigestWithinRepository(t *testing.T) 
 }
 
 func TestOCIStoreDeleteRetainsSharedContentAndMissingDeleteIsIdempotent(t *testing.T) {
-	remote, manifestPayload, _, layer, layerDesc := testArtifact(t, "team/app", "latest")
+	remote, manifestPayload, _, layer, layerDesc := testArtifact(t)
 	var secondManifest ocispec.Manifest
 	require.NoError(t, json.Unmarshal(manifestPayload, &secondManifest))
 	secondManifest.Annotations = map[string]string{"org.opencontainers.image.version": "second"}
 	secondPayload, err := json.Marshal(secondManifest)
 	require.NoError(t, err)
 	secondDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageManifest, secondPayload)
-	repository, err := remote.(*RegistryStore).repository(Artifact{Name: "team/app"})
+	repository, err := remote.repository(Artifact{Name: "team/app"})
 	require.NoError(t, err)
 	require.NoError(t, repository.PushReference(context.Background(), secondDesc, bytes.NewReader(secondPayload), "second"))
 
@@ -117,12 +117,12 @@ func TestOCIStoreDeleteRetainsSharedContentAndMissingDeleteIsIdempotent(t *testi
 	require.ErrorIs(t, err, errdef.ErrNotFound)
 }
 
-func testArtifact(t *testing.T, repository, tag string) (Store, []byte, ocispec.Descriptor, []byte, ocispec.Descriptor) {
+func testArtifact(t *testing.T) (*RegistryStore, []byte, ocispec.Descriptor, []byte, ocispec.Descriptor) {
 	t.Helper()
 	server := httptest.NewServer(registry.New())
 	t.Cleanup(server.Close)
 	address := strings.TrimPrefix(server.URL, "http://")
-	repo, err := orasremote.NewRepository(address + "/" + repository)
+	repo, err := orasremote.NewRepository(address + "/team/app")
 	require.NoError(t, err)
 	repo.PlainHTTP = true
 	layer := []byte("satellite-streamed-layer")
@@ -137,7 +137,7 @@ func testArtifact(t *testing.T, repository, tag string) (Store, []byte, ocispec.
 	manifestDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageManifest, manifestPayload)
 	require.NoError(t, repo.Push(context.Background(), layerDesc, bytes.NewReader(layer)))
 	require.NoError(t, repo.Push(context.Background(), configDesc, bytes.NewReader(configPayload)))
-	require.NoError(t, repo.PushReference(context.Background(), manifestDesc, bytes.NewReader(manifestPayload), tag))
+	require.NoError(t, repo.PushReference(context.Background(), manifestDesc, bytes.NewReader(manifestPayload), "latest"))
 	storage, err := NewRegistryStore(RegistryOptions{Endpoint: address, PlainHTTP: true})
 	require.NoError(t, err)
 	return storage, manifestPayload, manifestDesc, layer, layerDesc

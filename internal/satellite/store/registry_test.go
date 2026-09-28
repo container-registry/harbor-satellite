@@ -15,7 +15,7 @@ import (
 )
 
 func TestRegistryStorePullFetchAndReplicate(t *testing.T) {
-	source, manifestPayload, manifestDesc, _, _ := testArtifact(t, "team/app", "latest")
+	source, manifestPayload, manifestDesc, _, _ := testArtifact(t)
 	destinationServer := httptest.NewServer(registry.New())
 	t.Cleanup(destinationServer.Close)
 	destination, err := NewRegistryStore(RegistryOptions{
@@ -43,7 +43,8 @@ func TestRegistryStoreReusesAuthClientAndRefreshesCredentials(t *testing.T) {
 	registryHandler := registry.New()
 	upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		_, password, ok := request.BasicAuth()
-		if !ok || password != expectedPassword.Load().(string) {
+		expected, valid := expectedPassword.Load().(string)
+		if !ok || !valid || password != expected {
 			response.Header().Set("WWW-Authenticate", `Basic realm="test"`)
 			response.WriteHeader(http.StatusUnauthorized)
 			return
