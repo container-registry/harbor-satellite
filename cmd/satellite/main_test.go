@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -82,6 +83,33 @@ func TestFallbackOnlyExitsBeforeProxyInitialization(t *testing.T) {
 	}, paths, "1s"))
 }
 
+func TestRunFallbackOnlySelectsBYOEndpoint(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		useBYO   bool
+		endpoint string
+	}{
+		{name: "BYO registry", useBYO: true, endpoint: "https://byo.example:5443"},
+		{name: "no BYO registry", useBYO: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cm := newTestConfigManager(t, &config.Config{AppConfig: config.AppConfig{
+				BringOwnRegistry:         test.useBYO,
+				LocalRegistryCredentials: config.RegistryCredentials{URL: "https://byo.example:5443"},
+			}})
+			called := false
+			runFallbackOnly(cm, SatelliteOptions{FallbackOnly: true}, func(
+				_ *config.ConfigManager, _ mirrorFlags, _ bool, endpoint string,
+			) []runtime.CRIConfigResult {
+				called = true
+				require.Equal(t, test.endpoint, endpoint)
+				return nil
+			})
+			require.True(t, called)
+		})
+	}
+}
+
 func TestSourceRegistryOptionsUsesHarborOverride(t *testing.T) {
 	cm := newTestConfigManager(t, &config.Config{
 		StateConfig: config.StateConfig{
@@ -96,7 +124,7 @@ func TestSourceRegistryOptionsUsesHarborOverride(t *testing.T) {
 			HarborRegistryURL: "https://harbor.example:8443",
 		},
 	})
-	options, err := sourceRegistryOptions(cm)
+	options, err := store.ResolveSourceRegistry(cm)
 	require.NoError(t, err)
 	require.Equal(t, "harbor.example:8443", options.Endpoint)
 	require.Equal(t, "old-user", options.Username)
@@ -109,7 +137,7 @@ func TestSourceRegistryOptionsHonorsHTTPOverride(t *testing.T) {
 		StateConfig: config.StateConfig{RegistryCredentials: config.RegistryCredentials{URL: "https://registry.internal:5000"}},
 		AppConfig:   config.AppConfig{HarborRegistryURL: "http://harbor.example:5000"},
 	})
-	options, err := sourceRegistryOptions(cm)
+	options, err := store.ResolveSourceRegistry(cm)
 	require.NoError(t, err)
 	require.Equal(t, "harbor.example:5000", options.Endpoint)
 	require.True(t, options.PlainHTTP)
@@ -161,8 +189,36 @@ func TestProxyStoresUseCredentialsRegisteredAfterStartup(t *testing.T) {
 }
 
 func TestGracefulShutdownDrainsActiveProxyResponse(t *testing.T) {
+	releaseRequest, clientDone, shutdownDone := startGatedProxyShutdown(t, "1s")
+
+	select {
+	case err := <-shutdownDone:
+		t.Fatalf("shutdown returned before the active response drained: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	releaseRequest()
+	require.NoError(t, <-clientDone)
+	require.NoError(t, <-shutdownDone)
+}
+
+func TestGracefulShutdownTimesOutStuckProxyResponse(t *testing.T) {
+	releaseRequest, clientDone, shutdownDone := startGatedProxyShutdown(t, "20ms")
+	require.ErrorIs(t, <-shutdownDone, context.DeadlineExceeded)
+
+	releaseRequest()
+	select {
+	case <-clientDone:
+	case <-time.After(time.Second):
+		t.Fatal("stuck proxy request did not exit after it was released")
+	}
+}
+
+func startGatedProxyShutdown(t *testing.T, timeout string) (func(), <-chan error, <-chan error) {
+	t.Helper()
 	requestStarted := make(chan struct{})
 	releaseRequest := make(chan struct{})
+	release := sync.OnceFunc(func() { close(releaseRequest) })
+	t.Cleanup(release)
 	server, listener, group := startTestProxyServer(t, http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		close(requestStarted)
 		<-releaseRequest
@@ -184,50 +240,9 @@ func TestGracefulShutdownDrainsActiveProxyResponse(t *testing.T) {
 	log := zerolog.Nop()
 	shutdownDone := make(chan error, 1)
 	go func() {
-		shutdownDone <- gracefulShutdown(ctx, &log, &satellite.Satellite{}, server, group, "1s")
+		shutdownDone <- gracefulShutdown(ctx, &log, &satellite.Satellite{}, server, group, timeout)
 	}()
-
-	select {
-	case err := <-shutdownDone:
-		t.Fatalf("shutdown returned before the active response drained: %v", err)
-	case <-time.After(30 * time.Millisecond):
-	}
-	close(releaseRequest)
-	require.NoError(t, <-clientDone)
-	require.NoError(t, <-shutdownDone)
-}
-
-func TestGracefulShutdownTimesOutStuckProxyResponse(t *testing.T) {
-	requestStarted := make(chan struct{})
-	releaseRequest := make(chan struct{})
-	server, listener, group := startTestProxyServer(t, http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
-		close(requestStarted)
-		<-releaseRequest
-		response.WriteHeader(http.StatusNoContent)
-	}))
-
-	clientDone := make(chan struct{})
-	go func() {
-		response, err := http.Get("http://" + listener.Addr().String() + "/v2/") //nolint:noctx // test request lifetime is controlled by the server gate.
-		if err == nil {
-			_ = response.Body.Close()
-		}
-		close(clientDone)
-	}()
-	<-requestStarted
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	log := zerolog.Nop()
-	err := gracefulShutdown(ctx, &log, &satellite.Satellite{}, server, group, "20ms")
-	require.ErrorContains(t, err, "graceful shutdown timeout exceeded")
-
-	close(releaseRequest)
-	select {
-	case <-clientDone:
-	case <-time.After(time.Second):
-		t.Fatal("stuck proxy request did not exit after it was released")
-	}
+	return release, clientDone, shutdownDone
 }
 
 func TestGracefulShutdownReturnsRuntimeError(t *testing.T) {

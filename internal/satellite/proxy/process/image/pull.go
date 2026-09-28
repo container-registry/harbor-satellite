@@ -33,9 +33,9 @@ type pullHandler struct {
 // NewPull serves retained content from localStore and fills it from remoteStore
 // on a miss. The shared operation returns only an immutable descriptor; every
 // HTTP request opens and streams its own reader after the flight completes.
-func NewPull(lifecycleCtx context.Context, mode proxy.Mode, localStore, remoteStore store.Store) proxy.HandlerFunc {
+func NewPull(lifecycleCtx context.Context, mode proxy.Mode, localStore, remoteStore store.Store) (proxy.HandlerFunc, error) {
 	if lifecycleCtx == nil {
-		lifecycleCtx = context.Background()
+		return nil, errors.New("image.NewPull: lifecycle context is required")
 	}
 	handler := &pullHandler{
 		lifecycleCtx: lifecycleCtx,
@@ -43,7 +43,7 @@ func NewPull(lifecycleCtx context.Context, mode proxy.Mode, localStore, remoteSt
 		localStore:   localStore,
 		remoteStore:  remoteStore,
 	}
-	return handler.handle
+	return handler.handle, nil
 }
 
 func (p *pullHandler) handle(request *proxy.Request) error {
@@ -69,7 +69,12 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 		return err
 	}
 
-	resultChannel := p.operations.DoChan(pullKey(resource, artifact.Name, identifier), func() (any, error) {
+	metadataOnly := request.Operation == proxy.CheckManifest || request.Operation == proxy.CheckBlob
+	key := pullKey(resource, artifact.Name, identifier)
+	if metadataOnly {
+		key += "\x00head"
+	}
+	resultChannel := p.operations.DoChan(key, func() (any, error) {
 		fillCtx, cancel := context.WithTimeout(p.lifecycleCtx, pullFillTimeout)
 		defer cancel()
 		if err := fillCtx.Err(); err != nil {
@@ -84,6 +89,9 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 		}
 		if !p.mode.AllowsUpstreamPull() {
 			return nil, err
+		}
+		if metadataOnly {
+			return p.remoteStore.Pull(fillCtx, artifact, resource)
 		}
 
 		if err := p.localStore.Replicate(fillCtx, p.remoteStore, []store.Artifact{artifact}); err != nil {
@@ -105,6 +113,15 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	if !ok {
 		return errors.New("proxy image pull returned an invalid descriptor")
 	}
+	if metadataOnly {
+		if descriptor.Size < 0 {
+			setPullHeaders(request.ResponseHeader(), descriptor)
+			return request.Write(http.StatusOK, nil)
+		}
+		return writePullResponse(request, descriptor, &metadataReadSeekCloser{
+			SectionReader: io.NewSectionReader(metadataReaderAt{}, 0, descriptor.Size),
+		})
+	}
 
 	body, err := p.localStore.Fetch(request.Context(), artifact, descriptor)
 	if err != nil {
@@ -113,7 +130,7 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	if body == nil {
 		return errors.New("proxy image pull returned a nil content reader")
 	}
-	return writePullResponse(request, resource, descriptor, body)
+	return writePullResponse(request, descriptor, body)
 }
 
 func pullArtifactFor(request *proxy.Request) (
@@ -167,10 +184,21 @@ func mapPullError(resource store.PullResource, err error) error {
 	return proxy.NewError(proxy.ErrorCodeManifestUnknown, "manifest is not available", nil)
 }
 
-func writePullResponse(request *proxy.Request, resource store.PullResource, descriptor ocispec.Descriptor, body io.ReadCloser) error {
+func writePullResponse(request *proxy.Request, descriptor ocispec.Descriptor, body io.ReadCloser) error {
 	header := make(http.Header)
+	setPullHeaders(header, descriptor)
+
+	return request.WriteContent(&http.Response{
+		StatusCode:    http.StatusOK,
+		Header:        header,
+		Body:          body,
+		ContentLength: descriptor.Size,
+	})
+}
+
+func setPullHeaders(header http.Header, descriptor ocispec.Descriptor) {
 	mediaType := descriptor.MediaType
-	if mediaType == "" && resource == store.PullResourceBlob {
+	if mediaType == "" {
 		mediaType = "application/octet-stream"
 	}
 	if mediaType != "" {
@@ -185,11 +213,17 @@ func writePullResponse(request *proxy.Request, resource store.PullResource, desc
 		header.Set("ETag", strconv.Quote(digest))
 	}
 	header.Set("Docker-Distribution-API-Version", distributionAPIVersion)
-
-	return request.WriteContent(&http.Response{
-		StatusCode:    http.StatusOK,
-		Header:        header,
-		Body:          body,
-		ContentLength: descriptor.Size,
-	})
 }
+
+// ServeContent only seeks a HEAD body to determine its length; it never reads
+// bytes. This reader retains HEAD conditional and range behavior without
+// opening content from either store.
+type metadataReadSeekCloser struct {
+	*io.SectionReader
+}
+
+func (*metadataReadSeekCloser) Close() error { return nil }
+
+type metadataReaderAt struct{}
+
+func (metadataReaderAt) ReadAt([]byte, int64) (int, error) { return 0, io.EOF }

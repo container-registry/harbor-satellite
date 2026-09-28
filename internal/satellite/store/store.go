@@ -11,11 +11,11 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-// Store is a location where Satellite can resolve, stream, replicate, and
-// remove OCI content. Pull accepts metadata already parsed by the proxy and
-// returns only immutable OCI descriptor data; Fetch owns the response stream.
+// Store resolves and streams OCI content and manages replicated artifacts.
 type Store interface {
+	// Pull returns immutable metadata for an artifact parsed by the proxy.
 	Pull(ctx context.Context, artifact Artifact, resource PullResource) (ocispec.Descriptor, error)
+	// Fetch opens an independent stream for the resolved content.
 	Fetch(ctx context.Context, artifact Artifact, descriptor ocispec.Descriptor) (io.ReadCloser, error)
 	Replicate(ctx context.Context, source Store, artifacts []Artifact) error
 	Delete(ctx context.Context, artifacts []Artifact) error

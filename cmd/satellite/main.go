@@ -337,16 +337,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	}
 
 	if opts.FallbackOnly {
-		endpoint := resolveLocalRegistryEndpoint(opts.ProxyMode, opts.ProxyPort)
-		criResults := resolveCRIAndApply(cm, opts.Mirrors, opts.NoRegistryFallback, endpoint)
-		for _, result := range criResults {
-			if result.Success {
-				fmt.Printf("CRI %s configured (backup: %s)\n", result.CRI, result.BackupPath)
-			} else {
-				fmt.Printf("warning: %s config error: %s\n", result.CRI, result.Error)
-			}
-		}
-		fmt.Println("--fallback-only: CRI configs applied, exiting.")
+		runFallbackOnly(cm, opts, resolveCRIAndApply)
 		return nil
 	}
 
@@ -363,10 +354,14 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	proxyLifecycleCtx, cancelProxy := context.WithCancel(context.Background())
 	defer cancelProxy()
+	pullHandler, err := proxyimage.NewPull(proxyLifecycleCtx, opts.ProxyMode, localStore, remoteStore)
+	if err != nil {
+		return fmt.Errorf("initialize OCI proxy pull handler: %w", err)
+	}
 	proxyAddress := net.JoinHostPort("127.0.0.1", strconv.Itoa(opts.ProxyPort))
 	proxyServer = &http.Server{
 		Addr:              proxyAddress,
-		Handler:           proxyhandler.New(proxyimage.NewPull(proxyLifecycleCtx, opts.ProxyMode, localStore, remoteStore)).Handler(),
+		Handler:           proxyhandler.New(pullHandler).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       time.Minute,
 	}
@@ -389,13 +384,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	// Resolve and apply CRI configs
 	criResults := resolveCRIAndApply(cm, opts.Mirrors, opts.NoRegistryFallback, localRegistryEndpoint)
-	for _, r := range criResults {
-		if r.Success {
-			fmt.Printf("CRI %s configured (backup: %s)\n", r.CRI, r.BackupPath)
-		} else {
-			fmt.Printf("warning: %s config error: %s\n", r.CRI, r.Error)
-		}
-	}
+	reportCRIResults(criResults)
 
 	// Configure direct delivery if enabled (after fallback-only exit). This
 	// feature shipped in c2dbea8 (#356).
@@ -580,7 +569,7 @@ func gracefulShutdown(
 		log.Info().Msg("Graceful shutdown completed successfully")
 	case <-shutdownCtx.Done():
 		log.Warn().Msg("Shutdown timeout exceeded, forcing exit")
-		return fmt.Errorf("graceful shutdown timeout exceeded")
+		return fmt.Errorf("graceful shutdown timeout exceeded: %w", shutdownCtx.Err())
 	}
 
 	return nil
@@ -591,7 +580,7 @@ func gracefulShutdown(
 func resolveCRIAndApply(cm *config.ConfigManager, mirrors mirrorFlags, noFallback bool, localRegistry string) []runtime.CRIConfigResult {
 	fbCfg := cm.GetRegistryFallbackConfig()
 	if strings.TrimSpace(localRegistry) == "" && (fbCfg.Enabled || len(mirrors) > 0) {
-		fmt.Println("warning: CRI registry configuration requires --proxy-mode")
+		fmt.Println("warning: CRI registry configuration requires a reachable registry endpoint")
 		return nil
 	}
 
@@ -624,6 +613,32 @@ func resolveCRIAndApply(cm *config.ConfigManager, mirrors mirrorFlags, noFallbac
 	return nil
 }
 
+func reportCRIResults(results []runtime.CRIConfigResult) {
+	for _, result := range results {
+		if result.Success {
+			fmt.Printf("CRI %s configured (backup: %s)\n", result.CRI, result.BackupPath)
+		} else {
+			fmt.Printf("warning: %s config error: %s\n", result.CRI, result.Error)
+		}
+	}
+}
+
+func runFallbackOnly(
+	cm *config.ConfigManager,
+	opts SatelliteOptions,
+	apply func(*config.ConfigManager, mirrorFlags, bool, string) []runtime.CRIConfigResult,
+) {
+	reportCRIResults(apply(cm, opts.Mirrors, opts.NoRegistryFallback, fallbackRegistryEndpoint(cm)))
+	fmt.Println("--fallback-only: CRI configs applied, exiting.")
+}
+
+func fallbackRegistryEndpoint(cm *config.ConfigManager) string {
+	if !cm.GetOwnRegistry() {
+		return ""
+	}
+	return cm.GetLocalRegistryURL()
+}
+
 func resolveLocalRegistryEndpoint(proxyMode proxyhandler.Mode, proxyPort int) string {
 	if !proxyMode.Valid() {
 		return ""
@@ -633,7 +648,7 @@ func resolveLocalRegistryEndpoint(proxyMode proxyhandler.Mode, proxyPort int) st
 
 func proxyStores(cm *config.ConfigManager, storeRoot string) (store.Store, store.Store, error) {
 	remoteStore, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
-		return sourceRegistryOptions(cm)
+		return store.ResolveSourceRegistry(cm)
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("initialize Harbor registry store: %w", err)
@@ -661,27 +676,4 @@ func proxyStores(cm *config.ConfigManager, storeRoot string) (store.Store, store
 		return nil, nil, fmt.Errorf("initialize OCI layout store: %w", err)
 	}
 	return localStore, remoteStore, nil
-}
-
-func sourceRegistryOptions(cm *config.ConfigManager) (store.RegistryOptions, error) {
-	credentials := cm.GetSourceRegistryCredentials()
-	sourceURL := string(credentials.URL)
-	if override := cm.GetHarborRegistryURL(); override != "" {
-		if sourceURL == "" {
-			sourceURL = override
-		} else {
-			replaced, err := config.ReplaceURLHost(sourceURL, override)
-			if err != nil {
-				return store.RegistryOptions{}, fmt.Errorf("apply Harbor registry override: %w", err)
-			}
-			sourceURL = replaced
-		}
-	}
-	return store.RegistryOptions{
-		Endpoint:  utils.FormatRegistryURL(sourceURL),
-		Username:  credentials.Username,
-		Password:  credentials.Password,
-		PlainHTTP: cm.UseUnsecure() || strings.HasPrefix(strings.ToLower(sourceURL), "http://"),
-		TLS:       cm.GetTLSConfig(),
-	}, nil
 }

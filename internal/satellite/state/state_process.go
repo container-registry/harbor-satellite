@@ -536,31 +536,25 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 	satelliteStateURL string,
 	err error,
 ) {
-	sourceURL = utils.FormatRegistryURL(f.cm.GetSourceRegistryURL())
-	sourceUsername = f.cm.GetSourceRegistryUsername()
-	sourcePassword = f.cm.GetSourceRegistryPassword()
+	source, err := store.ResolveSourceRegistry(f.cm)
+	if err != nil {
+		return nil, nil, "", "", "", "", false, "", err
+	}
+	sourceURL = source.Endpoint
+	sourceUsername = source.Username
+	sourcePassword = source.Password
 	remoteUsername := f.cm.GetRemoteRegistryUsername()
 	remotePassword := f.cm.GetRemoteRegistryPassword()
-	useUnsecure = f.cm.UseUnsecure()
+	useUnsecure = source.PlainHTTP
 	satelliteStateURL = f.cm.GetStateURL()
 
-	// Override source and state URLs if --harbor-registry-url is set
+	// State URLs use the same Harbor override as the image source.
 	if override := f.cm.GetHarborRegistryURL(); override != "" {
-		if replaced, err := config.ReplaceURLHost(f.cm.GetSourceRegistryURL(), override); err == nil {
-			sourceURL = utils.FormatRegistryURL(replaced)
-		}
 		if replaced, err := config.ReplaceURLHost(satelliteStateURL, override); err == nil {
 			satelliteStateURL = replaced
 		}
 	}
 
-	source := store.RegistryOptions{
-		Endpoint:  sourceURL,
-		Username:  sourceUsername,
-		Password:  sourcePassword,
-		PlainHTTP: useUnsecure,
-		TLS:       f.cm.GetTLSConfig(),
-	}
 	if f.remoteStore != nil {
 		sourceStore = f.remoteStore
 	} else {

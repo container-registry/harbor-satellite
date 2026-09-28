@@ -47,9 +47,9 @@ check, and then either deny, serve retained content, or fill a local miss from t
 upstream before serving it.
 
 `oras-go` will replace Crane for registry resolution, OCI graph transfer, metadata
-access, and replication. Local replica and proxy content will use
-`oras.land/oras-go/v2/content/oci`. Zot and bbolt are not part of the target
-architecture.
+access, and replication. OCI-layout deployments will retain replica and proxy content
+with `oras.land/oras-go/v2/content/oci`; BYO deployments use the configured registry.
+Zot and bbolt are not part of the target architecture.
 
 ORAS is not the HTTP proxy. Satellite owns request parsing, authentication, policy,
 upstream and credential selection, forwarding, body replay, response handling, and
@@ -263,8 +263,8 @@ Its main benefits are:
 * one library for policy metadata, replication, import, export, and future peer
   transfer.
 
-The storage packages have clear roles: `content/oci` is the durable replica or proxy
-cache, `content/memory` is limited to bounded tests or short-lived staging, and
+The storage packages have clear roles: `content/oci` retains content for OCI-layout
+deployments, `content/memory` is limited to bounded tests or short-lived staging, and
 `content/file` is for artifact file and working-directory workflows rather than a
 restartable registry store.
 
