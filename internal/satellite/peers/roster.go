@@ -31,7 +31,8 @@ func mergePeers(staticPeers, gcPeers []config.PeerDescriptor) []config.PeerDescr
 	byURL := make(map[string]int, len(staticPeers)+len(gcPeers))
 
 	for _, peer := range staticPeers {
-		if peerIndex(byID, byURL, peer) >= 0 {
+		if index := peerIndex(byID, byURL, peer); index >= 0 {
+			rememberPeer(byID, byURL, index, peer)
 			continue
 		}
 		addPeer(&slots, byID, byURL, clonePeer(peer), true)
@@ -43,6 +44,7 @@ func mergePeers(staticPeers, gcPeers []config.PeerDescriptor) []config.PeerDescr
 			addPeer(&slots, byID, byURL, clonePeer(peer), false)
 			continue
 		}
+		rememberPeer(byID, byURL, index, peer)
 		if slots[index].static && !sameGroupSet(slots[index].peer.Groups, peer.Groups) {
 			slots[index].peer.Groups = cloneGroups(peer.Groups)
 		}
@@ -58,12 +60,27 @@ func mergePeers(staticPeers, gcPeers []config.PeerDescriptor) []config.PeerDescr
 func addPeer(slots *[]rosterSlot, byID, byURL map[string]int, peer config.PeerDescriptor, static bool) {
 	index := len(*slots)
 	*slots = append(*slots, rosterSlot{peer: peer, static: static})
-	if peer.ID != "" {
-		byID[peer.ID] = index
-	}
+	rememberPeer(byID, byURL, index, peer)
+}
+
+// rememberPeer records an id or URL on the matched slot when that key is new.
+// A key that already names another slot stays there, so an id match does not
+// take over that slot's URL.
+func rememberPeer(byID, byURL map[string]int, index int, peer config.PeerDescriptor) {
+	rememberAlias(byID, peer.ID, index)
 	if canonical, ok := canonicalPeerURL(string(peer.URL)); ok {
-		byURL[canonical] = index
+		rememberAlias(byURL, canonical, index)
 	}
+}
+
+func rememberAlias(indexByKey map[string]int, key string, index int) {
+	if key == "" {
+		return
+	}
+	if _, exists := indexByKey[key]; exists {
+		return
+	}
+	indexByKey[key] = index
 }
 
 // peerIndex matches a non-empty id first, then a canonical URL.

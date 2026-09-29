@@ -69,6 +69,103 @@ func TestEligiblePeers(t *testing.T) {
 			}},
 		},
 		{
+			name: "discarded static id stays an alias of the kept url",
+			cfg: config.PeerDistributionConfig{
+				Enabled:     true,
+				LocalGroups: []string{"edge"},
+				StaticPeers: []config.PeerDescriptor{
+					{
+						ID:     "a",
+						URL:    "https://peer.example:5000",
+						Groups: []string{"edge"},
+					},
+					{
+						ID:     "b",
+						URL:    "https://peer.example:5000",
+						Groups: []string{"other"},
+					},
+				},
+				GCPeers: []config.PeerDescriptor{{
+					ID:     "b",
+					URL:    "https://other.example:5000",
+					Groups: []string{"from-gc"},
+				}},
+				ReachoutSats: "global",
+			},
+			want: []config.PeerDescriptor{{
+				ID:     "a",
+				URL:    "https://peer.example:5000",
+				Groups: []string{"from-gc"},
+			}},
+		},
+		{
+			name: "id match leaves a different static url in place",
+			cfg: config.PeerDistributionConfig{
+				Enabled:     true,
+				LocalGroups: []string{"edge"},
+				StaticPeers: []config.PeerDescriptor{
+					{
+						ID:     "a",
+						URL:    "https://peer-a.example:5000",
+						Groups: []string{"edge"},
+					},
+					{
+						ID:     "b",
+						URL:    "https://peer-b.example:5000",
+						Groups: []string{"edge"},
+					},
+				},
+				GCPeers: []config.PeerDescriptor{{
+					ID:     "a",
+					URL:    "https://peer-b.example:5000",
+					Groups: []string{"from-gc"},
+				}},
+				ReachoutSats: "global",
+			},
+			want: []config.PeerDescriptor{
+				{
+					ID:     "a",
+					URL:    "https://peer-a.example:5000",
+					Groups: []string{"from-gc"},
+				},
+				{
+					ID:     "b",
+					URL:    "https://peer-b.example:5000",
+					Groups: []string{"edge"},
+				},
+			},
+		},
+		{
+			name: "gc url learned on an id match collapses the next peer",
+			cfg: config.PeerDistributionConfig{
+				Enabled:     true,
+				LocalGroups: []string{"edge"},
+				StaticPeers: []config.PeerDescriptor{{
+					ID:     "a",
+					URL:    "https://peer-a.example:5000",
+					Groups: []string{"edge"},
+				}},
+				GCPeers: []config.PeerDescriptor{
+					{
+						ID:     "a",
+						URL:    "https://alias.example:5000",
+						Groups: []string{"from-gc"},
+					},
+					{
+						ID:     "c",
+						URL:    "https://alias.example:5000",
+						Groups: []string{"from-gc"},
+					},
+				},
+				ReachoutSats: "global",
+			},
+			want: []config.PeerDescriptor{{
+				ID:     "a",
+				URL:    "https://peer-a.example:5000",
+				Groups: []string{"from-gc"},
+			}},
+		},
+		{
 			name: "same canonical url collapses to the first peer",
 			cfg: config.PeerDistributionConfig{
 				Enabled:     true,

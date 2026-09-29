@@ -1154,13 +1154,16 @@ func TestApplyRetainedPeerTransport(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("fetched peer block is left unchanged", func(t *testing.T) {
+	t.Run("fetched disabled block keeps local static peers", func(t *testing.T) {
 		var remote Config
 		require.NoError(t, json.Unmarshal([]byte(`{"app_config":{"ground_control_url":"https://gc.example","peer_distribution":{"enabled":false}}}`), &remote))
 		ApplyRetainedPeerTransport(&remote, httpPeers, true)
-		require.False(t, remote.AppConfig.UseUnsecure)
+		require.True(t, remote.AppConfig.UseUnsecure)
 		require.False(t, remote.AppConfig.PeerDistribution.Enabled)
-		require.Empty(t, remote.AppConfig.PeerDistribution.StaticPeers)
+		require.Equal(t, httpPeers.StaticPeers, remote.AppConfig.PeerDistribution.StaticPeers)
+
+		_, _, err := ValidateAndEnforceDefaults(&remote, DefaultGroundControlURL)
+		require.NoError(t, err)
 	})
 
 	t.Run("secure process does not keep an http peer valid", func(t *testing.T) {
