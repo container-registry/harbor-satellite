@@ -38,8 +38,10 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 			handler = spiffe.RequireSPIFFEAuth(handler)
 			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
 		case "/satellites/sync":
-			handler = spiffe.AuthMiddleware(handler)
+			// Wrapping is inside-out: spiffe.AuthMiddleware must run first so
+			// SatelliteAuthMiddleware sees the satellite name from the SVID.
 			handler = s.SatelliteAuthMiddleware(handler)
+			handler = spiffe.AuthMiddleware(handler)
 			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
 		}
 
