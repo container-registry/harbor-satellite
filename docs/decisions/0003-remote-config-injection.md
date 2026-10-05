@@ -91,7 +91,7 @@ This spawns a few more decisions to consider regarding the handling of the confi
 
 ### Creating a Configuration State
 We will deal with the configuration as a different kind of state too, this means that we also need to create a configuration state before we reference
-it within a satellite state. For this, we will send a request to ground-control that looks like so:
+it within a satellite state. For this, we will send a request to Ground Control that looks like so:
 ```bash
  curl --location 'http://localhost:8080/configs/sync' \
 --header 'Content-Type: application/json' \
@@ -106,7 +106,7 @@ it within a satellite state. For this, we will send a request to ground-control 
 }
 '
 ```
-Once the ground-control receives the request, it shall parse the config and validate it statically. If there is an error, abort the operation
+Once the Ground Control receives the request, it shall parse the config and validate it statically. If there is an error, abort the operation
 and let the user know that the configuration is erroneous. Further down the flow of events, the Satellite itself will perform a dynamic
 validation to ensure that the configuration is valid.
 
@@ -123,7 +123,7 @@ curl --location 'http://localhost:8080/satellites/register' \
     "config": "CONFIG_NAME"
 }'
 ```
-The ground-control must provide API endpoints for the CRUD operations on configuration states as well, similar to what we
+The Ground Control must provide API endpoints for the CRUD operations on configuration states as well, similar to what we
 have with group states.
 
 ## Flow of Events
@@ -152,7 +152,7 @@ have with group states.
             - Store the `config.json` on disk.
         - If the configuration is in-valid:
             - Roll back to the previous configuration that is already stored on-disk.
-            - Report to the ground-control about the erroneous configuration and the rolled back configuration that the satellite
+            - Report to the Ground Control about the erroneous configuration and the rolled back configuration that the satellite
               is following.
             - **The satellite must never store an invalid configuration on-disk**
    - Uses the fetched state information to sync itself with the group states.
@@ -162,7 +162,7 @@ have with group states.
      - Fetches updates from its state artifact and syncs group states.
      - Applies configuration changes dynamically
    - In case the latest configuration is erroneous, the system rolls back to the previous healthy configuration.
-     - Further, the Satellite should report back to the ground-control that the current config is erroneous and it has rolled back
+     - Further, the Satellite should report back to the Ground Control that the current config is erroneous and it has rolled back
        to a previous version of the configuration.
      - The request body may also contain the current config and the config that has been rolled back to.
 
@@ -188,8 +188,8 @@ The new `satellite_state` might look something like:
 ```
 
 ### `state_config.json`
-This is managed by ground control and is read-only for the satellite. This need not be stored in the upstream registry.
-We may take the decision to store it at ground-control, in the future if we see a use case.
+This is managed by Ground Control and is read-only for the satellite. This need not be stored in the upstream registry.
+We may take the decision to store it at Ground Control, in the future if we see a use case.
 
 ```json
 {
@@ -199,8 +199,8 @@ We may take the decision to store it at ground-control, in the future if we see 
 ```
 
 ### `config.json`
-This is managed by the user, via ground-control and may be edited by the satellite during run-time locally (e.g, for defaults). The decision to
-include `ground_control_url` was made since it feels like a valid use case that the user wants to change the ground control endpoint
+This is managed by the user, via Ground Control and may be edited by the satellite during run-time locally (e.g, for defaults). The decision to
+include `ground_control_url` was made since it feels like a valid use case that the user wants to change the Ground Control endpoint
 after the initial deployment.
 
 ```json

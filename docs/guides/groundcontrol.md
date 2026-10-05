@@ -2,11 +2,11 @@
 
 Ground Control is the cloud-side management service for Harbor Satellite. It manages satellites, groups, configs, registration, desired state, status reporting, and Harbor integration.
 
-Ground Control is part of the single Go module at the repository root. Its code lives under `internal/groundcontrol/` with the entrypoint in `cmd/groundcontrol/server/main.go`. Run all Go commands from the repository root.
+Ground Control is part of the single Go module at the repository root. Its code lives under `internal/groundcontrol/` with the entrypoint in `cmd/groundcontrol/main.go`. Run all Go commands from the repository root.
 
 ## What It Starts
 
-`cmd/groundcontrol/server/main.go` performs the Ground Control startup sequence:
+`groundcontrol serve` performs the Ground Control startup sequence:
 
 - Checks Harbor health
 - Runs PostgreSQL migrations
@@ -24,7 +24,7 @@ On first start against an empty database, Ground Control creates the `admin` sys
 Run Ground Control locally from the repository root:
 
 ```bash
-go run cmd/groundcontrol/server/main.go
+go run ./cmd/groundcontrol serve
 ```
 
 Run Ground Control tests:
@@ -65,12 +65,12 @@ Key groups include:
 - Optional embedded SPIRE server: `EMBEDDED_SPIRE_ENABLED` plus the `SPIRE_*` variables
 - Optional audit logging: `AUDIT_*` variables, see [Audit Logging](audit-logging.md)
 
-The full list with defaults is in `internal/shared/env/ground-control.go`.
+The full list with defaults is in `internal/shared/env/groundcontrol.go`.
 
 ## Directory Guide
 
-- `cmd/groundcontrol/server/main.go` - service entrypoint
-- `cmd/groundcontrol/cli/root.go` - CLI entrypoint
+- `cmd/groundcontrol/main.go` - signal-aware executable entrypoint
+- `internal/groundcontrol/cli/root/serve.go` - server command and lifecycle
 - `internal/groundcontrol/server` - routes, handlers, auth middleware, bootstrap, cleanup, and status APIs
 - `internal/groundcontrol/database` - sqlc-generated database access code
 - `internal/groundcontrol/sql/schema` - PostgreSQL migrations
@@ -83,6 +83,7 @@ The full list with defaults is in `internal/shared/env/ground-control.go`.
 
 ## Related Docs
 
+- [Command migration](groundcontrol-command-migration.md)
 - [Project README](../../README.md)
 - [Quickstart](../../website/content/docs/quickstart.md)
 - [Decision records](../decisions/README.md)

@@ -16,7 +16,7 @@ This project uses [Task](https://taskfile.dev) as the build tool.
 # List all available tasks
 task --list
 
-# Build the satellite, Ground Control server, and Ground Control CLI
+# Build Satellite and Ground Control
 task build
 
 # Run linter
@@ -30,19 +30,19 @@ task e2e
 
 | Command | Description |
 |---------|-------------|
-| `task build` | Build all three executables for the current platform into `bin/satellite`, `bin/ground-control` (server) and `bin/groundcontrol` (CLI) |
-| `task build-all` | Build all three executables for all supported platforms into `bin/<name>/<name>-<os>-<arch>` |
+| `task build` | Build both executables for the current platform into `bin/satellite` and `bin/groundcontrol` |
+| `task build-all` | Build both executables for all supported platforms into `bin/<os>-<arch>/satellite` and `bin/<os>-<arch>/groundcontrol` |
 | `task clean` | Remove `bin/`, `dist/` and lint reports, stop E2E and compose containers, remove E2E images |
 
-Single components: `task _build:satellite`, `task _build:ground-control`, `task _build:groundcontrol-cli`.
+Single components: `task _build:satellite`, `task _build:groundcontrol`. Start the Ground Control server with `./bin/groundcontrol serve`; administration commands use the same executable.
 
 ## Code Generation Tasks
 
 | Command | Description |
 |---------|-------------|
-| `task generate:ground-control` (`task gen:gc`) | Generate the Ground Control OpenAPI server and client code from `spec/ground-control/openapi.yaml` |
-| `task generate:ground-control-server` | Generate the server code only |
-| `task generate:ground-control-client` | Generate the client code only |
+| `task generate:groundcontrol` (`task gen:groundcontrol`) | Generate the Ground Control OpenAPI server and client code from `spec/groundcontrol/openapi.yaml` |
+| `task generate:groundcontrol-server` | Generate the server code only |
+| `task generate:groundcontrol-client` | Generate the client code only |
 
 ## Lint Tasks
 
@@ -67,7 +67,7 @@ CI (`.github/workflows/lint.yaml`) runs golangci-lint v2.12.2 directly.
 
 Local image publishing uses `task publish`. CI does **not** use that recipe. `.github/workflows/release.yaml` instead:
 
-1. Cross-compiles `satellite` and `ground-control` per architecture (`task _build:cross-compile`)
+1. Cross-compiles `satellite` and `groundcontrol` per architecture (`task _build:cross-compile`)
 2. Builds and pushes each image by digest (`BUILDER_MODE=prebuilt`)
 3. Merges the five architecture digests into a multi-arch tag for each of `satellite` and `ground-control`
 4. Signs the tagged images with keyless cosign

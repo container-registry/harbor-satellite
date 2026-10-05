@@ -15,6 +15,8 @@ type RateLimiter struct {
 	requests     map[string][]time.Time
 	maxRequests  int
 	windowPeriod time.Duration
+	done         chan struct{}
+	stopOnce     sync.Once
 }
 
 // NewRateLimiter creates a new rate limiter.
@@ -23,6 +25,7 @@ func NewRateLimiter(maxRequests int, windowPeriod time.Duration) *RateLimiter {
 		requests:     make(map[string][]time.Time),
 		maxRequests:  maxRequests,
 		windowPeriod: windowPeriod,
+		done:         make(chan struct{}),
 	}
 
 	// Start cleanup goroutine
@@ -63,7 +66,12 @@ func (rl *RateLimiter) cleanup() {
 	ticker := time.NewTicker(rl.windowPeriod)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
+		select {
+		case <-rl.done:
+			return
+		case <-ticker.C:
+		}
 		rl.mu.Lock()
 		cutoff := time.Now().Add(-rl.windowPeriod)
 
@@ -82,6 +90,11 @@ func (rl *RateLimiter) cleanup() {
 		}
 		rl.mu.Unlock()
 	}
+}
+
+// Stop terminates the background cleanup worker.
+func (rl *RateLimiter) Stop() {
+	rl.stopOnce.Do(func() { close(rl.done) })
 }
 
 // RateLimitMiddleware returns an HTTP middleware that rate limits requests.

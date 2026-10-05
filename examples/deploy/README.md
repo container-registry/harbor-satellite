@@ -22,10 +22,10 @@ Each method guide covers the method-specific setup. The [SPIFFE/SPIRE quickstart
 
 ## Helm
 
-[`helm/ground-control/`](helm/ground-control/) deploys Ground Control and PostgreSQL to Kubernetes. Set `harbor.url`, `harbor.password`, `adminPassword` and `database.password`; the chart refuses to render without the three passwords. See `values.yaml` for all settings:
+[`helm/groundcontrol/`](helm/groundcontrol/) deploys Ground Control and PostgreSQL to Kubernetes. Set `harbor.url`, `harbor.password`, `adminPassword` and `database.password`; the chart refuses to render without the three passwords. See `values.yaml` for all settings:
 
 ```bash
-helm install ground-control examples/deploy/helm/ground-control \
+helm install ground-control examples/deploy/helm/groundcontrol \
   --set harbor.url=https://harbor.example.com \
   --set harbor.password=<harbor-password> \
   --set adminPassword=<admin-password> \

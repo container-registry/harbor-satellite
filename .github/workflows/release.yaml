@@ -13,6 +13,9 @@ on:
 permissions:
   contents: read
 
+env:
+  COMPONENT_IMAGES: '{"satellite":"satellite","groundcontrol":"ground-control"}'
+
 concurrency:
   # Cancelling a main-branch run mid-merge can leave satellite:latest and
   # ground-control:latest pointing at different commits, so main publishes
@@ -113,11 +116,11 @@ jobs:
             GIT_COMMIT="$RELEASE_COMMIT" \
             OUTPUT=bin/linux-"$RELEASE_ARCH"/satellite
           task _build:cross-compile \
-            COMPONENT=groundcontrol/server \
+            COMPONENT=groundcontrol \
             GOARCH="$RELEASE_ARCH" \
             VERSION="$RELEASE_VERSION" \
             GIT_COMMIT="$RELEASE_COMMIT" \
-            OUTPUT=bin/linux-"$RELEASE_ARCH"/ground-control
+            OUTPUT=bin/linux-"$RELEASE_ARCH"/groundcontrol
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
@@ -142,13 +145,13 @@ jobs:
           build-args: |
             BUILDER_MODE=prebuilt
             BINARY_NAME=satellite
-          tags: ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/satellite
+          tags: ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/${{ fromJSON(env.COMPONENT_IMAGES).satellite }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
           provenance: false
           sbom: false
 
-      - name: Build and push ground-control by digest
-        id: build-ground-control
+      - name: Build and push Ground Control by digest
+        id: build-groundcontrol
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -156,8 +159,8 @@ jobs:
           platforms: linux/${{ matrix.arch }}
           build-args: |
             BUILDER_MODE=prebuilt
-            BINARY_NAME=ground-control
-          tags: ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/ground-control
+            BINARY_NAME=groundcontrol
+          tags: ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/${{ fromJSON(env.COMPONENT_IMAGES).groundcontrol }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
           provenance: false
           sbom: false
@@ -165,12 +168,12 @@ jobs:
       - name: Export digests
         env:
           SATELLITE_DIGEST: ${{ steps.build-satellite.outputs.digest }}
-          GC_DIGEST: ${{ steps.build-ground-control.outputs.digest }}
+          GROUNDCONTROL_DIGEST: ${{ steps.build-groundcontrol.outputs.digest }}
         run: |
           set -euo pipefail
-          mkdir -p "${{ runner.temp }}/digests/satellite" "${{ runner.temp }}/digests/ground-control"
+          mkdir -p "${{ runner.temp }}/digests/satellite" "${{ runner.temp }}/digests/groundcontrol"
           touch "${{ runner.temp }}/digests/satellite/${SATELLITE_DIGEST#sha256:}"
-          touch "${{ runner.temp }}/digests/ground-control/${GC_DIGEST#sha256:}"
+          touch "${{ runner.temp }}/digests/groundcontrol/${GROUNDCONTROL_DIGEST#sha256:}"
 
       - name: Upload digests
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -213,8 +216,10 @@ jobs:
         working-directory: ${{ runner.temp }}/digests
         run: |
           set -euo pipefail
-          for component in satellite ground-control; do
-            image="${REGISTRY}/${PROJECT_NAME}/${component}"
+          for component_image in $(jq -r 'to_entries[] | "\(.key):\(.value)"' <<< "$COMPONENT_IMAGES"); do
+            component="${component_image%%:*}"
+            image_component="${component_image#*:}"
+            image="${REGISTRY}/${PROJECT_NAME}/${image_component}"
             if [ ! -d "${component}" ]; then
               echo "Missing digest directory for ${component}" >&2
               exit 1
@@ -261,8 +266,9 @@ jobs:
       - name: Sign images
         run: |
           set -euo pipefail
-          for component in satellite ground-control; do
-            image="${REGISTRY}/${PROJECT_NAME}/${component}:${IMAGE_TAG}"
+          for component_image in $(jq -r 'to_entries[] | "\(.key):\(.value)"' <<< "$COMPONENT_IMAGES"); do
+            image_component="${component_image#*:}"
+            image="${REGISTRY}/${PROJECT_NAME}/${image_component}:${IMAGE_TAG}"
             echo "Signing ${image}"
             cosign sign --yes --recursive "${image}"
           done

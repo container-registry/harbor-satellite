@@ -18,7 +18,7 @@ Suitable for environments where certificates can be securely distributed before 
 This generates: SPIRE upstream authority CA, X.509 PoP CA, and per-agent leaf certificates.
 
 ```bash
-cd external/gc
+cd external/groundcontrol
 ./generate-certs.sh
 ```
 
@@ -28,7 +28,7 @@ The script creates, in `certs/`:
 - `agent-gc.key`, `agent-gc.crt`: GC agent certificate
 - `agent-satellite.key`, `agent-satellite.crt`: satellite agent certificate with `CN=edge-01`
 
-The satellite certificate CN must equal the `satellite_name` used in step 2.2, because Ground Control finds the attested agent by the `x509pop:subject:cn:<satellite_name>` selector. To generate the certificates by hand, run the commands in [`external/gc/generate-certs.sh`](external/gc/generate-certs.sh), including the SAN extension files.
+The satellite certificate CN must equal the `satellite_name` used in step 2.2, because Ground Control finds the attested agent by the `x509pop:subject:cn:<satellite_name>` selector. To generate the certificates by hand, run the commands in [`external/groundcontrol/generate-certs.sh`](external/groundcontrol/generate-certs.sh), including the SAN extension files.
 
 ### 1.2 Start SPIRE server and PostgreSQL
 

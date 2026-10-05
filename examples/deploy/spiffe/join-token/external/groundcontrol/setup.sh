@@ -49,7 +49,7 @@ echo "GC Agent Token: $GC_TOKEN"
 
 # Step 4: Create runtime agent config with token
 echo "[4/6] Creating agent config with join token..."
-cat > ./spire/agent-gc-runtime.conf << EOF
+cat > ./spire/agent-groundcontrol-runtime.conf << EOF
 agent {
     data_dir = "/opt/spire/data/agent"
     log_level = "INFO"
