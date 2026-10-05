@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -73,18 +74,27 @@ type ServerResult struct {
 	EmbeddedSpire  *spiffe.EmbeddedSpireServer
 }
 
-func NewServer() *ServerResult {
+func NewServer(ctx context.Context) (result *ServerResult, err error) {
+	result = &ServerResult{AppServer: &Server{}}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, result.Close())
+			result = nil
+		}
+	}()
 	cfg := env.GC
 
 	db, err := sql.Open("postgres", cfg.Database.URL())
 	if err != nil {
-		log.Fatalf("Error in sql: %v", err)
+		return result, fmt.Errorf("open database: %w", err)
 	}
+	result.AppServer.db = db
 
 	dbQueries := database.New(db)
 
 	// Initialize rate limiter: 10 requests per minute per IP for ZTR endpoint
 	rateLimiter := middleware.NewRateLimiter(10, time.Minute)
+	result.AppServer.rateLimiter = rateLimiter
 
 	// Load SPIFFE configuration
 	spiffeCfg := spiffe.LoadConfig()
@@ -93,8 +103,9 @@ func NewServer() *ServerResult {
 	if spiffeCfg.Enabled {
 		spiffeProvider, err = spiffe.NewProvider(spiffeCfg)
 		if err != nil {
-			log.Fatalf("Failed to create SPIFFE provider: %v", err)
+			return result, fmt.Errorf("create SPIFFE provider: %w", err)
 		}
+		result.SPIFFEProvider = spiffeProvider
 		log.Printf("SPIFFE enabled with trust domain: %s", spiffeCfg.TrustDomain)
 	}
 
@@ -109,9 +120,10 @@ func NewServer() *ServerResult {
 			BindPort:    8081,
 		}
 		embeddedSpire = spiffe.NewEmbeddedSpireServer(spireCfg)
-		if err := embeddedSpire.Start(context.Background()); err != nil {
-			log.Fatalf("Failed to start embedded SPIRE server: %v", err)
+		if err := embeddedSpire.Start(ctx); err != nil {
+			return result, fmt.Errorf("start embedded SPIRE server: %w", err)
 		}
+		result.EmbeddedSpire = embeddedSpire
 	}
 
 	// Initialize SPIRE client: prefer embedded, fall back to external socket
@@ -137,14 +149,15 @@ func NewServer() *ServerResult {
 		spireServerAddress = cfg.SPIRE.ServerAddress
 		spireServerPort = cfg.SPIRE.ServerPort
 	}
+	result.AppServer.spireClient = spireClient
 
 	auditCfg, auditErr := cfg.Audit.Config()
 	if auditErr != nil {
-		log.Fatalf("Failed to load audit config: %v", auditErr)
+		return result, fmt.Errorf("load audit config: %w", auditErr)
 	}
 	auditLogger, auditErr := auditlog.NewAuditLogger(auditCfg, auditlog.ComponentGroundControl)
 	if auditErr != nil {
-		log.Fatalf("Failed to initialize audit logger: %v", auditErr)
+		return result, fmt.Errorf("initialize audit logger: %w", auditErr)
 	}
 
 	newServer := &Server{
@@ -173,10 +186,11 @@ func NewServer() *ServerResult {
 		audit:                 auditLogger,
 		trustForwardedHeaders: cfg.Audit.TrustForwardedHeaders,
 	}
+	result.AppServer = newServer
 
 	// Bootstrap system admin user if not exists
-	if err := newServer.BootstrapSystemAdmin(context.Background()); err != nil {
-		log.Fatalf("Failed to bootstrap system admin: %v", err)
+	if err := newServer.BootstrapSystemAdmin(ctx); err != nil {
+		return result, fmt.Errorf("bootstrap system admin: %w", err)
 	}
 
 	tlsCfg := &ServerTLSConfig{
@@ -201,7 +215,7 @@ func NewServer() *ServerResult {
 	if spiffeCfg.Enabled && spiffeProvider != nil {
 		tlsConfig, err := buildSPIFFETLSConfig(spiffeProvider, spiffeCfg)
 		if err != nil {
-			log.Fatalf("Failed to build SPIFFE TLS config: %v", err)
+			return result, fmt.Errorf("build SPIFFE TLS config: %w", err)
 		}
 		httpServer.TLSConfig = tlsConfig
 		log.Println("Using SPIFFE-based mTLS for server authentication")
@@ -210,12 +224,13 @@ func NewServer() *ServerResult {
 		var err error
 		certWatcher, err = middleware.NewCertWatcher(tlsCfg.CertFile, tlsCfg.KeyFile)
 		if err != nil {
-			log.Fatalf("Failed to create certificate watcher: %v", err)
+			return result, fmt.Errorf("create certificate watcher: %w", err)
 		}
+		result.CertWatcher = certWatcher
 
 		tlsConfig, err := buildServerTLSConfigWithWatcher(tlsCfg, certWatcher)
 		if err != nil {
-			log.Fatalf("Failed to load TLS config: %v", err)
+			return result, fmt.Errorf("load TLS config: %w", err)
 		}
 		httpServer.TLSConfig = tlsConfig
 
@@ -232,7 +247,33 @@ func NewServer() *ServerResult {
 		SPIFFEProvider: spiffeProvider,
 		SPIFFEConfig:   spiffeCfg,
 		EmbeddedSpire:  embeddedSpire,
+	}, nil
+}
+
+// Close releases server resources after requests and cleanup work have stopped.
+func (r *ServerResult) Close() error {
+	var err error
+	if r.CertWatcher != nil {
+		r.CertWatcher.Stop()
 	}
+	if r.SPIFFEProvider != nil {
+		err = errors.Join(err, r.SPIFFEProvider.Close())
+	}
+	if r.EmbeddedSpire != nil {
+		err = errors.Join(err, r.EmbeddedSpire.Stop())
+	} else if r.AppServer.spireClient != nil {
+		err = errors.Join(err, r.AppServer.spireClient.Close())
+	}
+	if r.AppServer.rateLimiter != nil {
+		r.AppServer.rateLimiter.Stop()
+	}
+	if r.AppServer.db != nil {
+		err = errors.Join(err, r.AppServer.db.Close())
+	}
+	if r.AppServer.audit != nil {
+		err = errors.Join(err, r.AppServer.audit.Reconfigure(auditlog.AuditConfig{}))
+	}
+	return err
 }
 
 // buildServerTLSConfigWithWatcher creates a TLS config that uses the certificate watcher

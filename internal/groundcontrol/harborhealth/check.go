@@ -1,6 +1,7 @@
 package harborhealth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -30,7 +31,7 @@ func defaultConfig() *config {
 	}
 }
 
-func CheckHealth() error {
+func CheckHealth(ctx context.Context) error {
 	cfg := env.GC
 	// Allow skipping health check for development/testing
 	if cfg.Harbor.SkipHealthCheck {
@@ -39,10 +40,10 @@ func CheckHealth() error {
 	}
 
 	config := defaultConfig()
-	return checkhealth(config)
+	return checkhealth(ctx, config)
 }
 
-func checkhealth(config *config) error {
+func checkhealth(ctx context.Context, config *config) error {
 	parsed, err := url.ParseRequestURI(config.HarborURL)
 	if err != nil {
 		return fmt.Errorf("invalid URL format: %w", err)
@@ -56,7 +57,11 @@ func checkhealth(config *config) error {
 		Timeout: config.Timeout,
 	}
 
-	resp, err := client.Get(config.HarborURL + "/api/v2.0/health")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, config.HarborURL+"/api/v2.0/health", nil)
+	if err != nil {
+		return fmt.Errorf("create health request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to call API: %w", err)
 	}
