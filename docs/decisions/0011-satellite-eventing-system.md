@@ -24,7 +24,7 @@ synchronized) and Actions (local CLI/shell/container, REST), and points at
 candidate formats.
 
 Satellite already ships one production event pipeline: the audit logger
-(`internal/logger/audit.go`), which fans a fixed-schema `AuditEvent` out to
+(`internal/shared/logger/audit.go`), which fans a fixed-schema `AuditEvent` out to
 pluggable `Transport`s (syslog, OTel) for security-relevant actions (login, ZTR,
 config change). It is not a fit for operational lifecycle signals — its
 `Operation`/`ResourceType`/`Outcome` vocabulary is deliberately closed
@@ -42,9 +42,9 @@ routing, or acting on them.
 
 * Must not duplicate or overload the audit logger's fixed security-event schema.
 * Must reuse the `Transport`/`Reconfigure` pattern already proven in production
-  (`internal/logger/audit.go`) rather than invent a new plugin shape.
+  (`internal/shared/logger/audit.go`) rather than invent a new plugin shape.
 * Must not block the replication critical path
-  (`FetchAndReplicateStateProcess.Execute`, `internal/satellite/state/state_process.go:79`)
+  (`FetchAndReplicateStateProcess.Execute`, `internal/satellite/state/state_process.go:90`)
   — event emission is best-effort and asynchronous.
 * Must not turn Satellite into a workflow engine or CD platform (maintainer
   constraint from the #117 discussion) — Satellite emits, downstream systems decide
@@ -95,7 +95,7 @@ consumer already understands.
   transports and the local CLI/shell/container action from #58 are deferred (see
   Future Work) pending a security review of arbitrary local execution.
 * Neutral, because per-artifact events require threading a reporter through
-  `BasicReplicator.Replicate` (`internal/satellite/state/replicator.go:107-177`),
+  `RegistryStore.Replicate` (`internal/satellite/store/registry.go:120-151`),
   which today only returns one aggregate error for the whole batch — a small
   interface change, not a rewrite.
 * Bad, because a second best-effort delivery pipeline (webhook) is now part of
@@ -137,64 +137,69 @@ through today — no new control flow is introduced, only observation points.
               ▼
 ┌─────────────────────────────────────────┐
 │ Execute(ctx) (err error): start()         │
-│ state_process.go:79-81                    │
+│ state_process.go:90-92                    │
 │ deferred emit of sync.completed/failed    │
 │ covers every return below, not just       │
 │ collectResults (see note)                 │
 └─────────────┬───────────────────────────────┘
               │
               ▼
-      ┌────────────────┐   ctx cancelled (:87-91)
+      ┌────────────────┐   ctx cancelled (:98-102)
       │  ctx.Done()?    │─────────────────────────▶ return ctx.Err()
       └───────┬─────────┘                            (deferred sync.failed —
               │ not yet                                no sync.started ever
               ▼                                        fired for this cycle)
-      ┌────────────────┐   missing creds (:95-99)
+      ┌────────────────┐   setup failed (:104-107)
+      │ setupReplication │───────────────────────▶ return err
+      │ (e.g. TLS config) │                          (deferred sync.failed —
+      └───────┬─────────┘                            same as ctx-cancelled:
+              │ ok                                    no sync.started yet)
+              ▼
+      ┌────────────────┐   missing creds (:109-113)
       │  CanExecute?    │─────────────────────────▶ return nil, no event
       └───────┬─────────┘                            (neither started nor
               │ ok                                    failed: not-yet-ready,
               ▼                                        not a failure)
 ┌─────────────────────────────────────────┐
 │ eligibility confirmed                     │──emit──▶ ((sync.started))
-│ state_process.go:100                      │
+│ state_process.go:114                      │
 └─────────────┬───────────────────────────────┘
               │
               ▼
 ┌─────────────────────────────────────────┐
 │ fetchSatelliteRootState /                 │
 │ Harbor-URL override                       │──emit──▶ ((state.received))
-│ state_process.go:102-114                  │──error──▶ return err
+│ state_process.go:116-128                  │──error──▶ return err
 └─────────────┬───────────────────────────────┘
               │ ok
               ▼
 ┌─────────────────────────────────────────┐
 │ processGroupState per group               │
-│ state_process.go:130-135                  │
+│ state_process.go:144-149                  │
 └─────────────┬───────────────────────────────┘
               │
               ▼
 ┌─────────────────────────────────────────┐
 │ GetChanges diff                           │
-│ state_process.go:179-227                  │
+│ state_process.go:193-241                  │
 └─────────────┬───────────────────────────────┘
               │
               ▼
 ┌─────────────────────────────────────────┐
-│ Replicator.Replicate /                    │
-│ DeleteReplicationEntity                   │──emit──▶ ((artifact.synchronized
-│ replicator.go:107-177                     │           / artifact.deleted))
+│ Store.Replicate / Delete                  │──emit──▶ ((artifact.synchronized
+│ registry.go:120-151, :155-176             │           / artifact.deleted))
 └─────────────┬───────────────────────────────┘
               │
               ▼
 ┌─────────────────────────────────────────┐
 │ collectResults                            │
-│ state_process.go:273-327                  │
+│ state_process.go:287-341                  │
 └─────────────┬───────────────────────────────┘
               │
               ▼
-     Execute(ctx) returns (nil or err) ◀── ctx-cancel / fetch-error
-              │                             returns above also land here
-       ┌──────┴───────┐
+     Execute(ctx) returns (nil or err) ◀── ctx-cancel / setup-failure /
+              │                             fetch-error returns above also
+       ┌──────┴───────┐                     land here
    nil err           non-nil err
        │                │
        ▼                ▼
@@ -204,9 +209,10 @@ through today — no new control flow is introduced, only observation points.
   every return path except the "missing creds" one (which is not a
   failure, just not-yet-ready, and intentionally emits nothing).
   sync.started fires only once eligibility is confirmed, so a
-  ctx-cancelled cycle emits sync.failed with no preceding sync.started —
-  that pairing is not guaranteed, and consumers correlating by cycle_id
-  should not assume every sync.failed has a matching sync.started.
+  ctx-cancelled or setup-failed cycle emits sync.failed with no preceding
+  sync.started — that pairing is not guaranteed, and consumers correlating
+  by cycle_id should not assume every sync.failed has a matching
+  sync.started.
 ```
 
 Delivery is decoupled from the sync cycle by a bounded queue: the process emits
@@ -256,13 +262,13 @@ minting a new one, so receivers can deduplicate by `id` if they need to.
 
 | Event type | Trigger | Source | Payload highlights |
 |---|---|---|---|
-| `io.harborsatellite.state.sync.started` | `CanExecute` passes (not at `Execute()` entry — see Architecture) | `state_process.go:100` | `satellite_id`, `cycle_id`, `schema_version` |
-| `io.harborsatellite.state.received` | Root or group state artifact fetched | `state_process.go:102`, `:448` | `cycle_id`, `group`, `digest`, `artifact_count`, `schema_version` |
-| `io.harborsatellite.artifact.synchronized` | Entity replicated | `replicator.go:152-173` | `cycle_id`, `group`, `repository`, `tag`, `digest`, `bytes`, `duration_ms`, `schema_version` |
-| `io.harborsatellite.artifact.deleted` | Entity removed | `state_process.go:459` | `cycle_id`, `group`, `repository`, `tag`, `digest`, `schema_version` |
-| `io.harborsatellite.config.updated` | Remote config digest changed | `state_process.go:329-411` | `cycle_id`, `digest_old`, `digest_new`, `schema_version` |
-| `io.harborsatellite.state.sync.completed` | `Execute()` returns nil, via a deferred emit (only reachable through `collectResults`) | `state_process.go:273-327` | `cycle_id`, `duration_ms`, `groups_synced`, `schema_version` |
-| `io.harborsatellite.state.sync.failed` | `Execute()` returns a non-nil error, via a deferred emit — covers context cancellation and root-state/Harbor-override fetch errors, not just `collectResults`'s aggregate error | `state_process.go:87-91`, `:102-114`, `:273-327` | `cycle_id`, `error`, `groups_failed` (omitted for early-return errors), `schema_version` |
+| `io.harborsatellite.state.sync.started` | `CanExecute` passes (not at `Execute()` entry — see Architecture) | `state_process.go:114` | `satellite_id`, `cycle_id`, `schema_version` |
+| `io.harborsatellite.state.received` | Root or group state artifact fetched | `state_process.go:116`, `:471` | `cycle_id`, `group`, `digest`, `artifact_count`, `schema_version` |
+| `io.harborsatellite.artifact.synchronized` | Entity replicated via `oras.Copy`/`oras.CopyGraph` | `registry.go:125-149` | `cycle_id`, `group`, `repository`, `tag`, `digest`, `bytes`, `duration_ms`, `schema_version` |
+| `io.harborsatellite.artifact.deleted` | Entity removed | `state_process.go:476` | `cycle_id`, `group`, `repository`, `tag`, `digest`, `schema_version` |
+| `io.harborsatellite.config.updated` | Remote config digest changed | `state_process.go:343-427` | `cycle_id`, `digest_old`, `digest_new`, `schema_version` |
+| `io.harborsatellite.state.sync.completed` | `Execute()` returns nil, via a deferred emit (only reachable through `collectResults`) | `state_process.go:287-341` | `cycle_id`, `duration_ms`, `groups_synced`, `schema_version` |
+| `io.harborsatellite.state.sync.failed` | `Execute()` returns a non-nil error, via a deferred emit — covers context cancellation, `setupReplication` failure, and root-state/Harbor-override fetch errors, not just `collectResults`'s aggregate error | `state_process.go:98-102`, `:104-107`, `:116-128`, `:287-341` | `cycle_id`, `error`, `groups_failed` (omitted for early-return errors), `schema_version` |
 
 ### Event Payload Schema and Correlation
 
@@ -282,7 +288,7 @@ ADR — the schema-evolution rule above is what's being decided here.
 
 ### Emitter and Transport shape
 
-Mirrors `internal/logger/audit.go`'s `Transport` interface, with a context so a
+Mirrors `internal/shared/logger/audit.go`'s `Transport` interface, with a context so a
 webhook POST respects cancellation on shutdown. `Emitter` is the sibling of
 `AuditLogger`: it owns the bounded queue and dispatcher goroutine, and exposes
 `Reconfigure` the same way `AuditLogger.Reconfigure` does (`audit.go:254-269`)
@@ -398,7 +404,7 @@ func (e *Emitter) Reconfigure(cfg EventingConfig) error // mirrors AuditLogger.R
 ### Config shape
 
 Slots into `AppConfig` next to `Audit`, following the existing
-`AuditConfig`/`SyslogAudit`/`OtelAudit` nesting (`pkg/config/config.go:190-207`).
+`AuditConfig`/`SyslogAudit`/`OtelAudit` nesting (`pkg/config/config.go:264-282`).
 `eventing.enabled` is the master switch, exactly like `AuditConfig.Enabled`:
 when `false`, the `Emitter` is a no-op regardless of `webhook.enabled`, so an
 operator can keep the webhook config on file and toggle all of eventing off
@@ -418,8 +424,8 @@ with one flag:
 ```
 
 `GetEventingConfig()` / `SetEventingConfig(...)` follow the same one-liner
-getter/modifier pattern as `GetAuditConfig()` (`pkg/config/getters.go:208`) and
-`SetDirectDelivery` (`pkg/config/modifiers.go:121`).
+getter/modifier pattern as `GetAuditConfig()` (`pkg/config/getters.go:199`) and
+`SetDirectDelivery` (`pkg/config/modifiers.go:120`).
 
 ## Validation
 
@@ -500,7 +506,7 @@ getter/modifier pattern as `GetAuditConfig()` (`pkg/config/getters.go:208`) and
 * [Issue #63 - Track and report upstream how many bytes were transferred](https://github.com/container-registry/harbor-satellite/issues/63) (related, not implemented here)
 * [CloudEvents Specification](https://cloudevents.io/)
 * [CDEvents](https://cdevents.dev/)
-* `internal/logger/audit.go` - existing `Transport`/`Reconfigure` precedent
+* `internal/shared/logger/audit.go` - existing `Transport`/`Reconfigure` precedent
 * [ADR-0003](0003-remote-config-injection.md) - Remote Config Injection
 * [ADR-0006](0006-satellite-lifecycle-states.md) - Satellite Lifecycle States
 * [ADR-0009](0009-transparent-oci-registry-proxy.md) - Transparent OCI Registry Proxy
