@@ -1,6 +1,6 @@
 #!/bin/bash
 # Setup Satellite with External SPIRE Agent (Join Token Attestation)
-# Requires GC-side setup to be running (../gc/setup.sh)
+# Requires GC-side setup to be running (../groundcontrol/setup.sh)
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,7 +12,7 @@ echo ""
 # Verify GC is running
 echo "[1/4] Verifying Ground Control is running..."
 if ! curl -sk https://localhost:${GC_HOST_PORT:-9080}/ping > /dev/null 2>&1; then
-    echo "ERROR: Ground Control is not running. Run ../gc/setup.sh first."
+    echo "ERROR: Ground Control is not running. Run ../groundcontrol/setup.sh first."
     exit 1
 fi
 echo "Ground Control is reachable"
@@ -20,10 +20,10 @@ echo "Ground Control is reachable"
 # Generate join token for satellite agent via GC API
 echo "[2/4] Requesting join token from Ground Control..."
 
-GC_URL="https://localhost:${GC_HOST_PORT:-9080}"
+GROUNDCONTROL_URL="https://localhost:${GC_HOST_PORT:-9080}"
 
 # Login to get Bearer token
-LOGIN_RESP=$(curl -sk -w "\n%{http_code}" -X POST "${GC_URL}/login" \
+LOGIN_RESP=$(curl -sk -w "\n%{http_code}" -X POST "${GROUNDCONTROL_URL}/login" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"admin\",\"password\":\"${ADMIN_PASSWORD:-Harbor12345}\"}")
 HTTP_CODE=$(echo "$LOGIN_RESP" | tail -1)
@@ -40,7 +40,7 @@ if [ -z "$AUTH_TOKEN" ]; then
     exit 1
 fi
 
-TOKEN_RESP=$(curl -sk -X POST "${GC_URL}/api/satellites/register" \
+TOKEN_RESP=$(curl -sk -X POST "${GROUNDCONTROL_URL}/api/satellites/register" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
     -d '{"satellite_name":"edge-01","region":"us-west","selectors":["docker:label:com.docker.compose.service:satellite"],"attestation_method":"join_token"}')

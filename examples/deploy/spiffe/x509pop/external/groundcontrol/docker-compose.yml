@@ -1,4 +1,4 @@
-# Docker Compose for Ground Control with External SPIRE (SSH PoP Attestation)
+# Docker Compose for Ground Control with External SPIRE (X.509 PoP Attestation)
 
 services:
   postgres:
@@ -26,9 +26,9 @@ services:
     command: ["-config", "/opt/spire/conf/server/server.conf"]
     volumes:
       - ./spire/server.conf:/opt/spire/conf/server/server.conf:ro
-      - ./certs/ssh-ca.pub:/opt/spire/conf/server/ssh-ca.pub:ro
-      - ./certs/bootstrap.crt:/opt/spire/conf/server/bootstrap.crt:ro
-      - ./certs/bootstrap.key:/opt/spire/conf/server/bootstrap.key:ro
+      - ./certs/ca.crt:/opt/spire/conf/server/ca.crt:ro
+      - ./certs/ca.key:/opt/spire/conf/server/ca.key:ro
+      - ./certs/x509pop-ca.crt:/opt/spire/conf/server/x509pop-ca.crt:ro
       - spire-server-data:/opt/spire/data/server
       - spire-server-socket:/tmp/spire-server/private
     ports:
@@ -49,10 +49,10 @@ services:
     pid: host
     command: ["-config", "/opt/spire/conf/agent/agent.conf"]
     volumes:
-      - ./spire/agent-gc.conf:/opt/spire/conf/agent/agent.conf:ro
-      - ./certs/bootstrap.crt:/opt/spire/conf/agent/bootstrap.crt:ro
-      - ./certs/agent-gc-host-key:/opt/spire/conf/agent/host-key:ro
-      - ./certs/agent-gc-host-key-cert.pub:/opt/spire/conf/agent/host-key-cert.pub:ro
+      - ./spire/agent-groundcontrol.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - ./certs/agent-gc.crt:/opt/spire/conf/agent/agent.crt:ro
+      - ./certs/agent-gc.key:/opt/spire/conf/agent/agent.key:ro
       - spire-agent-gc-data:/opt/spire/data/agent
       - spire-agent-gc-socket:/run/spire/sockets
       # Required for SPIRE workload attestor (identifies containers by Docker labels)
@@ -70,11 +70,12 @@ services:
       - harbor-satellite
 
   ground-control:
+    command: ["serve"]
     build:
       context: ../../../../../../
       dockerfile: Dockerfile
       args:
-        COMPONENT: groundcontrol/server
+        COMPONENT: groundcontrol
     container_name: ground-control
     extra_hosts:
       - "host.docker.internal:host-gateway"

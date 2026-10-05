@@ -28,33 +28,31 @@ This appends a `Signed-off-by` line to your commit message. Make sure the name a
 
 ### Repository Structure
 
-This repository uses a single Go module at the root, with three executables:
+This repository uses a single Go module at the root, with two executables:
 
 | Path | Purpose |
 |---|---|
 | `cmd/satellite/` | Satellite edge daemon (`bin/satellite`): config, state replication, local OCI store |
-| `cmd/groundcontrol/server/` | Ground Control cloud service (`bin/ground-control`): satellite management, Harbor integration, PostgreSQL |
-| `cmd/groundcontrol/cli/` | Ground Control CLI (`bin/groundcontrol`) |
+| `cmd/groundcontrol/` | Ground Control (`bin/groundcontrol`): administration commands and the `serve` subcommand for the cloud service |
 
 Implementation lives under `internal/satellite/`, `internal/groundcontrol/` and `internal/shared/`. Run all Go commands from the repository root.
 
 ### Building
 
 ```bash
-# Build all three executables for the current platform
+# Build both executables for the current platform
 task build
 
 # Build individual components
 task _build:satellite
-task _build:ground-control
-task _build:groundcontrol-cli
+task _build:groundcontrol
 
 # Run the satellite directly
 go run ./cmd/satellite --token "<token>" --ground-control-url "http://127.0.0.1:8080" \
   --harbor-registry-url "<harbor url>"
 
 # Run Ground Control directly (requires a configured .env file)
-go run ./cmd/groundcontrol/server
+go run ./cmd/groundcontrol serve
 ```
 
 For Ground Control local setup, copy `.env.example` to `.env` and fill in the required values (at least `HARBOR_URL`, `HARBOR_USERNAME`, `HARBOR_PASSWORD`, `ADMIN_PASSWORD` and the `DB_*` settings).

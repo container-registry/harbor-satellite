@@ -7,45 +7,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Harbor Satellite is a registry fleet management and artifact distribution solution that extends Harbor container registry to edge computing environments. Two main components:
 
 1. Satellite: Runs at edge locations and replicates OCI content from Harbor into a local ORAS OCI image layout (default) or an external BYO registry
-2. Ground Control (GC): Cloud-side management service for device management, onboarding, state management, and artifact orchestration. Ships with a companion CLI (`groundcontrol`)
+2. Ground Control (GC): Cloud-side management service for device management, onboarding, state management, and artifact orchestration. The `groundcontrol` executable provides administration commands and starts the server with `serve`
 
 ## Build and Development Commands
 
 ### Building
 
 ```bash
-# Build satellite, Ground Control server, and Ground Control CLI into bin/
+# Build Satellite and Ground Control (Taskfile)
 task build
 
 # Build individual components
-task _build:satellite            # bin/satellite
-task _build:ground-control       # bin/ground-control
-task _build:groundcontrol-cli    # bin/groundcontrol
-
-# Cross-platform builds (linux amd64/arm64/ppc64le/s390x/riscv64, darwin amd64/arm64)
-task build-all
+task _build:satellite
+task _build:groundcontrol
 
 # Run satellite directly
 go run ./cmd/satellite --token "<token>" --ground-control-url "<url>" --harbor-registry-url "<harbor-url>"
 
-# Run Ground Control directly (reads .env from the working directory)
-go run ./cmd/groundcontrol/server
-
-# Run the Ground Control CLI
-go run ./cmd/groundcontrol/cli --help
+# Run Ground Control directly
+go run ./cmd/groundcontrol serve
 ```
 
 ### Code Generation
 
 ```bash
 # OpenAPI server (internal/groundcontrol/server/server.gen.go) and client (pkg/groundcontrol/client.gen.go)
-task generate:ground-control     # alias gen:gc; also gen:gc-server, gen:gc-client
+task generate:groundcontrol     # alias gen:groundcontrol; also gen:groundcontrol-server, gen:groundcontrol-client
 
 # sqlc: queries in internal/groundcontrol/sql/queries, schema in internal/groundcontrol/sql/schema
 sqlc generate                    # config in sqlc.yaml, output in internal/groundcontrol/database/
 ```
 
-The spec is `spec/ground-control/openapi.yaml` (oapi-codegen configs in `spec/ground-control/oapi-codegen/`). Route matching, parameter binding and request/response types come from the generated server; do not hand-edit `*.gen.go` or `internal/groundcontrol/database/*.sql.go`.
+The spec is `spec/groundcontrol/openapi.yaml` (oapi-codegen configs in `spec/groundcontrol/oapi-codegen/`). Route matching, parameter binding and request/response types come from the generated server; do not hand-edit `*.gen.go` or `internal/groundcontrol/database/*.sql.go`.
 
 ### Testing
 
@@ -98,19 +91,21 @@ go run ./cmd/satellite --token "<token>" --ground-control-url "http://127.0.0.1:
 go run ./cmd/satellite --token "<token>" --ground-control-url "<url>" --harbor-registry-url "<harbor-url>" \
   --byo-registry --registry-url "<registry>" --mirrors=containerd:docker.io,quay.io
 
-# Ground Control with Go (requires .env, see .env.example)
-go run ./cmd/groundcontrol/server
+# Ground Control with Docker Compose
+docker compose up postgres ground-control
+
+# Ground Control with Go (requires .env file)
+go run ./cmd/groundcontrol serve
 ```
 
 ## Architecture
 
 ### Module Structure
 
-One Go module at the repository root (`github.com/container-registry/harbor-satellite`, `go 1.26.5`). Satellite, Ground Control server and Ground Control CLI are separate binaries built from it. Keep entrypoints in `cmd/` and implementation under `internal/`; `pkg/` holds the satellite config package and the generated GC client.
+One Go module at the repository root (`github.com/container-registry/harbor-satellite`, `go 1.26.5`). It builds two binaries, `satellite` and `groundcontrol`. Ground Control administration commands and the `serve` subcommand share one executable. Keep entrypoints in `cmd/` and implementation under `internal/`; `pkg/` holds the satellite config package and the generated GC client.
 
 - cmd/satellite/: satellite entrypoint
-- cmd/groundcontrol/server/: Ground Control server entrypoint
-- cmd/groundcontrol/cli/: `groundcontrol` CLI entrypoint (cobra)
+- cmd/groundcontrol/: Signal-aware `groundcontrol` entrypoint (Cobra)
 
 ### Satellite Component Structure
 
@@ -140,17 +135,18 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 
 ### Ground Control Component Structure
 
-- cmd/groundcontrol/server/main.go: Loads env, checks Harbor health, runs migrations, starts HTTP/TLS/SPIFFE server and the cleanup job
+- cmd/groundcontrol/main.go: Creates the signal-aware context and executes the unified command
+- internal/groundcontrol/cli/root/serve.go: Loads env, checks Harbor health, runs migrations, starts HTTP/TLS/SPIFFE server and the cleanup job, and shuts down on context cancellation
 - internal/groundcontrol/server/: Handlers (satellites, groups, configs, auth, users, SPIRE), generated router (`server.gen.go`), per-route security middleware (`routes.go`), cleanup job
 - internal/groundcontrol/database/: sqlc-generated PostgreSQL access (do not edit)
 - internal/groundcontrol/sql/: `schema/` (goose migrations, also the sqlc schema) and `queries/`
-- internal/groundcontrol/migrator/: goose runner; reads `/migrations` in the container image, else `internal/groundcontrol/sql/schema`
+- internal/groundcontrol/migrator/: goose runner; reads `/migrations` when present, otherwise uses the embedded SQL schema so installed binaries work outside the checkout
 - internal/groundcontrol/harbor/: Harbor v2 API client (projects, robots, replication)
 - internal/groundcontrol/harborhealth/: Startup Harbor health check (skippable via SKIP_HARBOR_HEALTH_CHECK)
 - internal/groundcontrol/auth/: Password policy validation
 - internal/groundcontrol/middleware/: Rate limiting, TLS cert watching
 - internal/groundcontrol/spiffe/: SPIFFE provider, middleware, authorizer, embedded SPIRE server, SPIRE server client
-- internal/groundcontrol/cli/: `groundcontrol` CLI commands (auth, get, create, update, delete, register, add, remove, sync, ping, health)
+- internal/groundcontrol/cli/: `groundcontrol` commands (serve, auth, get, create, update, delete, register, add, remove, sync, ping, health)
 - internal/groundcontrol/utils/: State/config artifact URL helpers, robot project updates
 - internal/groundcontrol/logger/: Unused copy of internal/shared/logger audit code
 - pkg/groundcontrol/: Generated Go client for the GC API
@@ -214,7 +210,7 @@ Ground Control CLI (`groundcontrol`): flags `--server` (default https://localhos
 - Account lockout after failed login attempts (LOCKOUT_DURATION)
 - Bootstrap: creates `admin` user from ADMIN_PASSWORD on first startup
 
-**Ground Control API Routes** (spec/ground-control/openapi.yaml, security wrapping in internal/groundcontrol/server/routes.go):
+**Ground Control API Routes** (spec/groundcontrol/openapi.yaml, security wrapping in internal/groundcontrol/server/routes.go):
 - Public: `GET /ping`, `GET /health`, `POST /login`, `POST /satellites/ztr` (rate limited), `GET /satellites/spiffe-ztr` (SPIFFE required, rate limited)
 - Satellite-authenticated: `POST /satellites/sync` (SPIFFE SVID or robot Basic auth, rate limited)
 - Protected (under `/api`): groups, configs, satellites, users, logout
@@ -298,7 +294,7 @@ GitHub Actions workflows:
 - .github/workflows/release.yaml (push to main and `v*` tags, ubuntu-latest): per-arch image builds (linux amd64/arm64/ppc64le/s390x/riscv64) of `satellite` and `ground-control` to `${REGISTRY_ADDRESS}/${PROJECT_NAME}` (registry.goharbor.io/harbor-satellite), multi-arch manifest, Cosign keyless signing; tags additionally run `task release` (GoReleaser)
 - .github/workflows/labeler.yaml: auto-labels PRs (documentation for *.md, golang for *.go)
 
-Key tasks: `build`, `build-all`, `lint`, `lint-report`, `vuln`, `vuln-report`, `e2e*`, `generate:ground-control`, `publish`, `publish-and-sign`, `release`, `snapshot`, `clean`.
+Key tasks: `build`, `build-all`, `lint`, `lint-report`, `vuln`, `vuln-report`, `e2e*`, `generate:groundcontrol`, `publish`, `publish-and-sign`, `release`, `snapshot`, `clean`.
 
 ## Architecture Decisions
 
@@ -311,14 +307,14 @@ ADRs in docs/decisions/:
 - ADR-0006: Satellite lifecycle states (proposed; not implemented)
 - ADR-0007, ADR-0008: PARSEC hardware-backed identity and bootstrapping flow (proposed; PARSEC code was removed in #526). Related proposal in docs/proposals/
 - ADR-0009: ORAS OCI storage and a policy-enforcing transparent proxy (proposed; ORAS store landed in #648, proxy package in #649 is not wired)
-- ground-control-internal-package-migration.md: moving GC into the root module (done)
+- groundcontrol-internal-package-migration.md: moving GC into the root module (done)
 
 ## Common Workflows
 
 ### Adding a new API endpoint to Ground Control
 
-1. Add the path and schemas to spec/ground-control/openapi.yaml
-2. Run `task generate:ground-control` (server and client)
+1. Add the path and schemas to spec/groundcontrol/openapi.yaml
+2. Run `task generate:groundcontrol` (server and client)
 3. Implement the generated interface method in internal/groundcontrol/server/*_handlers.go
 4. If the route needs non-default auth (public, satellite, system admin), update routeSecurityMiddleware / requiresSystemAdmin in routes.go
 5. Add SQL in internal/groundcontrol/sql/queries (and a migration in sql/schema if needed), then `sqlc generate`
@@ -353,7 +349,7 @@ This is core functionality; changes require careful review.
 - `docker-compose.yml`: dev stack (PostgreSQL + Ground Control, `satellite` behind the `satellite` profile), built from source. SKIP_HARBOR_HEALTH_CHECK defaults to true in the compose file; a root `.env` copied from `.env.example` sets it to false
 - `docker-compose.byo.yml`: satellite + `registry:2` sidecar (`task byo-up` / `byo-down`)
 - `test/e2e/docker/`: E2E stacks (standard and SPIFFE)
-- `examples/deploy/`: token (no-spiffe) quickstart, SPIFFE join-token/sshpop/x509pop compose setups (GC on https://localhost:${GC_HOST_PORT:-9080}), GC Helm chart in `examples/deploy/helm/ground-control`
+- `examples/deploy/`: token (no-spiffe) quickstart, SPIFFE join-token/sshpop/x509pop compose setups (GC on https://localhost:${GC_HOST_PORT:-9080}), GC Helm chart in `examples/deploy/helm/groundcontrol`
 
 ### Adding SPIFFE support to a new component
 

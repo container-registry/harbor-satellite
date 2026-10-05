@@ -47,7 +47,7 @@ services:
     pid: host
     command: ["-config", "/opt/spire/conf/agent/agent.conf"]
     volumes:
-      - ./spire/agent-gc-runtime.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./spire/agent-groundcontrol-runtime.conf:/opt/spire/conf/agent/agent.conf:ro
       - ./certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
       - spire-agent-gc-data:/opt/spire/data/agent
       - spire-agent-gc-socket:/run/spire/sockets
@@ -65,11 +65,12 @@ services:
       - harbor-satellite
 
   ground-control:
+    command: ["serve"]
     build:
       context: ../../../../../../
       dockerfile: Dockerfile
       args:
-        COMPONENT: groundcontrol/server
+        COMPONENT: groundcontrol
     container_name: ground-control
     extra_hosts:
       - "host.docker.internal:host-gateway"

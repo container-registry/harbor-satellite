@@ -15,7 +15,7 @@ Tokens are single-use: once a SPIRE agent uses a token to attest, it cannot be r
 ### 1.1 Generate bootstrap CA certificate
 
 ```bash
-cd external/gc
+cd external/groundcontrol
 ./generate-certs.sh
 ```
 
@@ -44,10 +44,10 @@ Save the token value from the output.
 
 ### 1.4 Create agent config with token
 
-Create `spire/agent-gc-runtime.conf` using the token from step 1.3:
+Create `spire/agent-groundcontrol-runtime.conf` using the token from step 1.3:
 
 ```bash
-cat > spire/agent-gc-runtime.conf << EOF
+cat > spire/agent-groundcontrol-runtime.conf << EOF
 agent {
     data_dir = "/opt/spire/data/agent"
     log_level = "INFO"

@@ -187,7 +187,7 @@ go run ./cmd/satellite \
 ### Step 3: Start Ground Control and Satellite (Zero-Touch)
 
 ```bash
-cd examples/deploy/spiffe/join-token/external/gc
+cd examples/deploy/spiffe/join-token/external/groundcontrol
 HARBOR_URL=http://<CENTRAL_HARBOR_IP>:80 ./setup.sh
 ```
 

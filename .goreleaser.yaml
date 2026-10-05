@@ -8,7 +8,7 @@ before:
 builds:
   - id: satellite
     main: ./cmd/satellite
-    binary: harbor-satellite
+    binary: satellite
     env:
       - CGO_ENABLED=0
     ldflags:
@@ -53,55 +53,8 @@ builds:
       - goos: linux
         goarch: mipsle
     mod_timestamp: "{{ .CommitTimestamp }}"
-  - id: ground-control
-    main: ./cmd/groundcontrol/server
-    binary: ground-control
-    env:
-      - CGO_ENABLED=0
-    ldflags:
-      - -w -s -X github.com/container-registry/harbor-satellite/internal/version.GitCommit={{.FullCommit}}
-      - -X github.com/container-registry/harbor-satellite/internal/version.Version={{.Tag}}
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-      - ppc64le
-      - s390x
-      - "386"
-      - loong64
-      - mips64
-      - mips64le
-      - mips
-      - mipsle
-      - riscv64
-    ignore:
-      - goos: darwin
-        goarch: ppc64le
-      - goos: darwin
-        goarch: s390x
-      - goos: darwin
-        goarch: "386"
-      - goos: darwin
-        goarch: loong64
-      - goos: darwin
-        goarch: mips64
-      - goos: darwin
-        goarch: mips64le
-      - goos: darwin
-        goarch: mips
-      - goos: darwin
-        goarch: mipsle
-      - goos: darwin
-        goarch: riscv64
-      - goos: linux
-        goarch: mips
-      - goos: linux
-        goarch: mipsle
-    mod_timestamp: "{{ .CommitTimestamp }}"
-  - id: groundcontrol-cli
-    main: ./cmd/groundcontrol/cli
+  - id: groundcontrol
+    main: ./cmd/groundcontrol
     binary: groundcontrol
     env:
       - CGO_ENABLED=0
@@ -155,15 +108,8 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
-  - id: ground-control
-    ids: [ground-control]
-    name_template: "ground-control_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    formats: [tar.gz]
-    format_overrides:
-      - goos: windows
-        formats: [zip]
-  - id: groundcontrol-cli
-    ids: [groundcontrol-cli]
+  - id: groundcontrol
+    ids: [groundcontrol]
     name_template: "groundcontrol_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:
@@ -181,9 +127,9 @@ nfpms:
       - deb
       - apk
       - archlinux
-  - id: ground-control
-    ids: [ground-control]
-    package_name: ground-control
+  - id: groundcontrol
+    ids: [groundcontrol]
+    package_name: groundcontrol
     homepage: https://github.com/container-registry/harbor-satellite
     maintainer: Harbor Community
     description: "Ground Control"

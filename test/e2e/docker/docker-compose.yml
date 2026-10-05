@@ -93,6 +93,7 @@ services:
       retries: 12
 
   gc:
+    command: ["serve"]
     image: gc:e2e
     container_name: gc
     depends_on:

@@ -38,6 +38,7 @@ COPY . .
 # Build the binary. Default: no extra tags (production-equivalent of main).
 # Pass --build-arg GO_TAGS=parsec to opt into the PARSEC code path.
 ARG GO_TAGS=""
+# COMPONENT=groundcontrol builds the unified executable; run its image with serve.
 ARG COMPONENT=satellite
 RUN CGO_ENABLED=0 GOOS=linux go build -tags "${GO_TAGS}" -o /app-bin ./cmd/${COMPONENT}
 

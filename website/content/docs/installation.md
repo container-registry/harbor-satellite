@@ -20,17 +20,19 @@ Ground Control is the cloud-side management service. It needs a PostgreSQL datab
 
 ### Ground Control Binary
 
-Release archives are versioned (see the [releases page](https://github.com/container-registry/harbor-satellite/releases)). The binary reads SQL migrations from `/migrations` or `./internal/groundcontrol/sql/schema`, and the archive does not include them, so run it from a checkout of the matching tag:
+Download the versioned `groundcontrol_<version>_<os>_<arch>.tar.gz` archive from
+[Releases](https://github.com/container-registry/harbor-satellite/releases).
+SQL migrations are embedded in the executable, so a source checkout is not
+required. An optional `/migrations` directory overrides the embedded schema.
+Choose a release that includes the unified `groundcontrol` executable:
 
 ```bash
-VERSION=0.0.6
-git clone --depth 1 --branch v${VERSION} https://github.com/container-registry/harbor-satellite.git
-cd harbor-satellite
+VERSION="<version>"
 
-# Linux amd64. Other platforms: ground-control_${VERSION}_<os>_<arch>.tar.gz
-curl -Lo ground-control.tar.gz \
-  https://github.com/container-registry/harbor-satellite/releases/download/v${VERSION}/ground-control_${VERSION}_linux_amd64.tar.gz
-tar xzf ground-control.tar.gz ground-control
+# Linux amd64. Other platforms: groundcontrol_${VERSION}_<os>_<arch>.tar.gz
+curl -Lo groundcontrol.tar.gz \
+  https://github.com/container-registry/harbor-satellite/releases/download/v${VERSION}/groundcontrol_${VERSION}_linux_amd64.tar.gz
+tar xzf groundcontrol.tar.gz groundcontrol
 ```
 
 Create a `.env` file in the same directory (see [`.env.example`](https://github.com/container-registry/harbor-satellite/blob/main/.env.example) for all options):
@@ -53,8 +55,20 @@ EOF
 Run (requires a running PostgreSQL instance):
 
 ```bash
-./ground-control
+./groundcontrol serve
 ```
+
+Alternatively, install the same release with Go:
+
+```bash
+go install github.com/container-registry/harbor-satellite/cmd/groundcontrol@v${VERSION}
+groundcontrol serve
+```
+
+The former `ground-control` server command is now `groundcontrol serve`.
+Administration commands retain their existing syntax. Ground Control container
+images also require the `serve` argument; the repository's Compose files and
+Helm deployment include it.
 
 ### Ground Control Docker Compose
 
@@ -85,10 +99,10 @@ curl http://localhost:8080/health
 The Helm chart is experimental and not fully tested. Use it at your own risk in production environments.
 {{< /callout >}}
 
-Install with the [Helm chart](https://github.com/container-registry/harbor-satellite/tree/main/examples/deploy/helm/ground-control):
+Install with the [Helm chart](https://github.com/container-registry/harbor-satellite/tree/main/examples/deploy/helm/groundcontrol):
 
 ```bash
-helm install ground-control examples/deploy/helm/ground-control \
+helm install ground-control examples/deploy/helm/groundcontrol \
   --set harbor.url=https://harbor.example.com \
   --set harbor.username=admin \
   --set harbor.password=Harbor12345 \
@@ -101,7 +115,7 @@ helm install ground-control examples/deploy/helm/ground-control \
 This deploys Ground Control and an internal PostgreSQL StatefulSet. To use an external database:
 
 ```bash
-helm install ground-control examples/deploy/helm/ground-control \
+helm install ground-control examples/deploy/helm/groundcontrol \
   --set harbor.url=https://harbor.example.com \
   --set harbor.username=admin \
   --set harbor.password=Harbor12345 \
@@ -115,7 +129,7 @@ helm install ground-control examples/deploy/helm/ground-control \
 To enable SPIFFE:
 
 ```bash
-helm install ground-control examples/deploy/helm/ground-control \
+helm install ground-control examples/deploy/helm/groundcontrol \
   --set spiffe.enabled=true \
   --set spiffe.trustDomain=harbor-satellite.local \
   --set harbor.url=https://harbor.example.com \
@@ -126,7 +140,7 @@ helm install ground-control examples/deploy/helm/ground-control \
 
 With `spiffe.enabled=true` Ground Control serves HTTPS with SPIFFE mTLS and expects a SPIRE agent Workload API socket at `spiffe.endpointSocket`. The chart does not deploy SPIRE.
 
-See `examples/deploy/helm/ground-control/values.yaml` for all configurable values.
+See `examples/deploy/helm/groundcontrol/values.yaml` for all configurable values.
 
 ## Installing Satellite
 
@@ -139,24 +153,25 @@ Satellite runs at each edge location. Required settings:
 | `--token` | `TOKEN` | Unless `--spiffe-enabled` / `SPIFFE_ENABLED=true` |
 | `--registry-url` | `REGISTRY_URL` | With `--byo-registry` / `BYO_REGISTRY=true` |
 
-Other options: `--config-dir` / `CONFIG_DIR` (default `~/.config/satellite`), `--registry-data-dir` / `REGISTRY_DATA_DIR` (default `<config-dir>/oci`), `--use-unsecure` / `USE_UNSECURE` (plain HTTP to registries), `--spiffe-endpoint-socket`, `--spiffe-expected-server-id`, `--mirrors`, `--direct-delivery` / `DIRECT_DELIVERY`, `--image-dir` / `IMAGE_DIR`, `--shutdown-timeout` / `SHUTDOWN_TIMEOUT` (default 30s). Run `harbor-satellite -h` for the full list.
+Other options: `--config-dir` / `CONFIG_DIR` (default `~/.config/satellite`), `--registry-data-dir` / `REGISTRY_DATA_DIR` (default `<config-dir>/oci`), `--use-unsecure` / `USE_UNSECURE` (plain HTTP to registries), `--spiffe-endpoint-socket`, `--spiffe-expected-server-id`, `--mirrors`, `--direct-delivery` / `DIRECT_DELIVERY`, `--image-dir` / `IMAGE_DIR`, `--shutdown-timeout` / `SHUTDOWN_TIMEOUT` (default 30s). Run `satellite -h` for the full list.
 
 ### Satellite Binary
 
-Release archives are versioned. Each contains a single `harbor-satellite` binary:
+Release archives are versioned. Releases with the unified command layout contain
+a single `satellite` binary in the Satellite archive:
 
 ```bash
-VERSION=0.0.6
+VERSION="<version>"
 
 # Linux amd64
 curl -Lo satellite.tar.gz \
   https://github.com/container-registry/harbor-satellite/releases/download/v${VERSION}/harbor-satellite_${VERSION}_linux_amd64.tar.gz
-tar xzf satellite.tar.gz harbor-satellite
+tar xzf satellite.tar.gz satellite
 
 # Linux arm64
 curl -Lo satellite.tar.gz \
   https://github.com/container-registry/harbor-satellite/releases/download/v${VERSION}/harbor-satellite_${VERSION}_linux_arm64.tar.gz
-tar xzf satellite.tar.gz harbor-satellite
+tar xzf satellite.tar.gz satellite
 ```
 
 See the [releases page](https://github.com/container-registry/harbor-satellite/releases) for all available platforms and formats (tar.gz, deb, rpm, apk, archlinux).
@@ -166,13 +181,13 @@ See the [releases page](https://github.com/container-registry/harbor-satellite/r
 ```bash
 git clone https://github.com/container-registry/harbor-satellite.git
 cd harbor-satellite
-go build -o harbor-satellite ./cmd/satellite
+go build -o satellite ./cmd/satellite
 ```
 
 Run with token-based auth:
 
 ```bash
-./harbor-satellite \
+./satellite \
   --ground-control-url http://gc.example.com:8080 \
   --harbor-registry-url https://harbor.example.com \
   --token "<your-satellite-token>"
@@ -181,7 +196,7 @@ Run with token-based auth:
 Run with SPIFFE auth:
 
 ```bash
-./harbor-satellite \
+./satellite \
   --ground-control-url https://gc.example.com:8080 \
   --harbor-registry-url https://harbor.example.com \
   --spiffe-enabled \
@@ -348,19 +363,19 @@ With `--byo-registry --registry-url`, Satellite replicates into an external regi
 
 ```bash
 # containerd: mirror docker.io and quay.io
-./harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+./satellite --byo-registry --registry-url registry.edge:5000 \
   --mirrors=containerd:docker.io,quay.io ...
 
 # Docker: mirror docker.io (only registry Docker supports mirroring)
-./harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+./satellite --byo-registry --registry-url registry.edge:5000 \
   --mirrors=docker:true ...
 
 # Podman
-./harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+./satellite --byo-registry --registry-url registry.edge:5000 \
   --mirrors=podman:docker.io ...
 
 # CRI-O
-./harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+./satellite --byo-registry --registry-url registry.edge:5000 \
   --mirrors=crio:docker.io,quay.io ...
 ```
 
@@ -382,7 +397,7 @@ Notes:
 With `--direct-delivery`, Satellite pulls each assigned image from Harbor and writes it as a tarball into the k3s or RKE2 agent images directory, which the node imports automatically. The directory is detected from `/var/lib/rancher/k3s/agent/images` or `/var/lib/rancher/rke2/agent/images`, or set with `--image-dir`:
 
 ```bash
-sudo ./harbor-satellite --direct-delivery \
+sudo ./satellite --direct-delivery \
   --ground-control-url https://gc.example.com:8080 \
   --harbor-registry-url https://harbor.example.com \
   --spiffe-enabled

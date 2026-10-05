@@ -87,7 +87,11 @@ Built from the GoReleaser configuration:
 | Linux | amd64, arm64, 386, ppc64le, s390x, riscv64, mips64, mips64le, loong64 |
 | macOS (Darwin) | amd64, arm64 |
 
-Package formats: tar.gz, rpm, deb, apk, archlinux. Release archives are versioned, for example `harbor-satellite_0.0.6_linux_amd64.tar.gz` (binary `harbor-satellite`) and `ground-control_0.0.6_linux_amd64.tar.gz` (binary `ground-control`).
+Package formats: tar.gz, rpm, deb, apk, archlinux. Release archives are versioned:
+`harbor-satellite_<version>_linux_amd64.tar.gz` contains `satellite`, and
+`groundcontrol_<version>_linux_amd64.tar.gz` contains `groundcontrol`.
+Use `groundcontrol serve` to run the server, or `groundcontrol <command>` to
+administer it.
 
 Container images (tags `latest` and release versions without a `v` prefix, for example `0.0.6`), built for linux/amd64, arm64, ppc64le, riscv64 and s390x:
 
@@ -108,7 +112,7 @@ Satellite can configure local container runtimes to use an external BYO registry
 Usage:
 
 ```bash
-harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+satellite --byo-registry --registry-url registry.edge:5000 \
   --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io ...
 ```
 
