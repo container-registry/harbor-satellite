@@ -19,6 +19,7 @@ General information about architectural decision records is available at <https:
 | [ADR-0007](0007-security-plugins-parsec.md) | PARSEC Hardware-Backed Identity for Edge Satellites | deprecated (code removed in #526) |
 | [ADR-0008](0008-parsec-integration-and-zero-trust-bootstrapping-flow.md) | PARSEC Integration & Zero-Trust Bootstrapping Flow | deprecated (code removed in #526) |
 | [ADR-0009](0009-transparent-oci-registry-proxy.md) | Policy-Enforcing Transparent OCI Registry Proxy with ORAS | proposed, partly implemented (ORAS store landed in #648) |
+| [ADR-0010](0010-peer-to-peer-distribution.md) | Copy OCI artifacts between trusted Satellites on an isolated network | proposed |
 
 ## Design Notes
 
