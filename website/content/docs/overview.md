@@ -7,19 +7,19 @@ Harbor Satellite extends Harbor to edge computing environments. For a full intro
 
 ## Deployment Models
 
-Harbor Satellite supports two authentication flows and two registry modes. Pick the combination that fits your environment.
+Harbor Satellite supports two authentication flows and two storage modes. Pick the combination that fits your environment.
 
 ### Authentication: Token-based vs SPIFFE
 
-- **Token-based** - Ground Control issues a static token when you register a satellite. Pass it to the satellite binary with `--token`. Best for development, testing, and simple deployments where managing SPIFFE infrastructure is unnecessary.
+- **Token-based** - Ground Control issues a single-use registration token (valid for 24 hours) when you register a satellite. Pass it to the satellite binary with `--token`. The satellite exchanges it once for Harbor robot credentials. Best for development, testing, and simple deployments where managing SPIFFE infrastructure is unnecessary.
 
 - **SPIFFE/SPIRE** - Zero-trust identity using X.509 SVIDs. A SPIRE server issues cryptographic identities to satellites via SPIRE agents. Ground Control verifies identity over mTLS and automatically provisions Harbor robot account credentials. Best for production, multi-tenant, or security-sensitive environments.
 
-### Registry: Embedded Zot vs BYO
+### Storage: Local OCI Layout vs BYO
 
-- **Embedded Zot** (default) - Satellite runs an embedded [Zot](https://zotregistry.dev) OCI registry. No external registry needed. Images are stored locally and served to workloads.
+- **Local OCI layout** (default) - Satellite copies OCI content into a persistent image layout using ORAS, stored at `<config-dir>/oci` (default `~/.config/satellite/oci`, override with `--registry-data-dir`). No external registry is needed, but the layout is not a registry endpoint: container runtimes cannot pull from it.
 
-- **Bring Your Own (BYO) Registry** - Point satellite at an existing registry with `--byo-registry --registry-url <url>`. Satellite replicates images to your registry instead of running its own.
+- **Bring Your Own (BYO) Registry** - Point satellite at an existing registry with `--byo-registry --registry-url <url>`. Satellite replicates images to that registry instead of the local layout.
 
 ### Choosing a Deployment Model
 
@@ -30,7 +30,7 @@ flowchart TD
     B -->|Production| D[SPIFFE/SPIRE auth]
     C --> E{Existing registry?}
     D --> E
-    E -->|No| F[Embedded Zot]
+    E -->|No| F[Local OCI layout]
     E -->|Yes| G[BYO Registry]
     F --> H[Ready to install]
     G --> H
@@ -53,7 +53,7 @@ graph LR
     subgraph Edge
         SpireAgentSat[SPIRE Agent]
         Satellite[Satellite]
-        Zot[Zot Registry]
+        OCI[(OCI Image Layout)]
     end
 
     GC --> PG
@@ -64,7 +64,7 @@ graph LR
     SpireAgentSat -.->|SVID| Satellite
     Satellite <-->|mTLS or HTTPS| GC
     Satellite -->|pull images| Harbor
-    Satellite --> Zot
+    Satellite --> OCI
 ```
 
 | Component | Location | Role |
@@ -75,8 +75,8 @@ graph LR
 | SPIRE Server | Cloud | Issues X.509 identities (SPIFFE deployments only) |
 | SPIRE Agent (GC) | Cloud | Provides identity to Ground Control (SPIFFE only) |
 | SPIRE Agent (Sat) | Edge | Provides identity to Satellite (SPIFFE only) |
-| Satellite | Edge | Replicates images, serves local registry |
-| Zot | Edge | Embedded OCI registry (or BYO alternative) |
+| Satellite | Edge | Replicates and manages OCI content |
+| OCI image layout | Edge | Default persistent ORAS-backed content store |
 
 ## Supported Platforms
 
@@ -84,32 +84,35 @@ Built from the GoReleaser configuration:
 
 | OS | Architectures |
 |----|---------------|
-| Linux | amd64, arm64, 386, ppc64le, s390x, riscv64, mips, mipsle, mips64, mips64le, loong64 |
+| Linux | amd64, arm64, 386, ppc64le, s390x, riscv64, mips64, mips64le, loong64 |
 | macOS (Darwin) | amd64, arm64 |
 
-Package formats: tar.gz, rpm, deb, apk, archlinux.
+Package formats: tar.gz, rpm, deb, apk, archlinux. Release archives are versioned, for example `harbor-satellite_0.0.6_linux_amd64.tar.gz` (binary `harbor-satellite`) and `ground-control_0.0.6_linux_amd64.tar.gz` (binary `ground-control`).
 
-Container images:
+Container images (tags `latest` and release versions without a `v` prefix, for example `0.0.6`), built for linux/amd64, arm64, ppc64le, riscv64 and s390x:
 
 - Satellite: `registry.goharbor.io/harbor-satellite/satellite`
 - Ground Control: `registry.goharbor.io/harbor-satellite/ground-control`
 
 ## Supported Container Runtimes
 
-Satellite can configure local container runtimes to use its registry as a mirror. Workloads pull from the local registry first, falling back to the upstream registry.
+Satellite can configure local container runtimes to use an external BYO registry as a mirror. The default local OCI layout is not addressable by a container runtime, so mirror configuration is skipped unless BYO mode provides a registry endpoint.
 
 | Runtime | Mirror Config Location | Notes |
 |---------|----------------------|-------|
-| containerd | `/etc/containerd/config.toml` | Mirrors any registry |
+| containerd | `/etc/containerd/certs.d/<registry>/hosts.toml` (sets `config_path` in `/etc/containerd/config.toml`) | Mirrors any registry |
 | Docker | `/etc/docker/daemon.json` | Mirrors docker.io only |
-| CRI-O | `/etc/crio/crio.conf.d/` | Mirrors any registry |
+| CRI-O | `/etc/containers/registries.conf` | Mirrors any registry |
 | Podman | `/etc/containers/registries.conf` | Mirrors any registry |
 
 Usage:
 
 ```bash
-satellite --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
+harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+  --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io ...
 ```
+
+Without `--byo-registry`, Satellite prints `warning: CRI registry fallback requires --byo-registry until a registry proxy is configured` and leaves runtime configs untouched.
 
 Docker only supports mirroring docker.io. Use `--mirrors=docker:true` to enable.
 
@@ -144,7 +147,7 @@ flowchart LR
 
 | Method | Use Case | Bootstrap Secret |
 |--------|----------|-----------------|
-| Join Token | Simplest setup, dev/test | One-time token (invalidated after use) |
+| Join Token | Simplest setup, dev/test | One-time token (invalidated after use, default TTL 600 seconds) |
 | X.509 PoP | Production with existing PKI | Pre-provisioned X.509 certificate |
 | SSH PoP | Environments with SSH CA infrastructure | SSH host certificate |
 

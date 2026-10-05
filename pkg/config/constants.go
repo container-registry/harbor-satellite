@@ -28,24 +28,7 @@ const (
 
 const BringOwnRegistry bool = false
 
-const DefaultZotConfigJSON = `{
-  "distSpecVersion": "1.1.0",
-  "storage": {
-    "rootDirectory": "./zot"
-  },
-  "http": {
-    "address": "0.0.0.0",
-    "port": "8585"
-  },
-  "log": {
-    "level": "info"
-  }
-}`
-
-const (
-	DefaultRemoteRegistryURL = "http://127.0.0.1:8585"
-	DefaultGroundControlURL  = "http://127.0.0.1:8080"
-)
+const DefaultGroundControlURL = "http://127.0.0.1:8080"
 
 // Default audit settings, applied when audit is enabled but the user does not
 // specify a value.

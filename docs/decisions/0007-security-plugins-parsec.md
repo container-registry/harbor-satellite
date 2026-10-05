@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: deprecated
 date: 2026-03-22
 deciders: [Harbor Satellite Development Team]
 consulted: [Harbor Satellite Users, Security Architects, Edge Operators]
@@ -7,6 +7,15 @@ informed: [Harbor Satellite Developers, Operators]
 ---
 
 # PARSEC Hardware-Backed Identity for Edge Satellites
+
+> **Status: deprecated.** The Phase 1 implementation (`internal/satellite/parsec`, the `parsec-client-go`
+> module, the `parsec` build tag, and the `--parsec-enabled` / `--parsec-socket` flags) was removed in
+> [#526](https://github.com/container-registry/harbor-satellite/pull/526) (issue
+> [#525](https://github.com/container-registry/harbor-satellite/issues/525)), following the decision in the
+> community meeting of 6 July 2026. None of the packages, flags, build tags or keys described below exist in the
+> current code base. The record is kept for its rationale; hardware-backed identity remains open in
+> [#327](https://github.com/container-registry/harbor-satellite/issues/327). The last commit with the code is
+> `6d89e3c^`.
 
 ## Context and Problem Statement
 
@@ -111,7 +120,7 @@ internal/parsec/
 
 ### `KeyProvider` implements `crypto.Provider`
 
-`KeyProvider` implements the existing `internal/crypto.Provider` interface so it can be swapped
+`KeyProvider` implements the existing `internal/shared/crypto.Provider` interface so it can be swapped
 into `pkg/config/manager.go` without changes to any downstream consumer.
 
 The key design challenge is that `crypto.Provider.Sign(data []byte, key crypto.PrivateKey)`
@@ -193,7 +202,7 @@ In Phase 2, `Signer` is used as the private key for SPIRE's `tpm_devid` node att
 This makes the SPIRE agent's attestation to the SPIRE server hardware-rooted: Ground Control's
 trust in the satellite is cryptographically bound to the physical device.
 
-The existing `workloadapi.X509Source` SVID delivery flow in `internal/spiffe/client.go` is
+The existing `workloadapi.X509Source` SVID delivery flow in `internal/shared/spiffe/client.go` is
 unaffected — PARSEC operates below the SVID layer.
 
 ```
@@ -210,7 +219,7 @@ PARSEC (hardware key) → SPIRE tpm_devid (node attestation) → SVID issuance
 
 Target coverage (not all of these exist yet; see Phase-1 Limitations below):
 
-- Unit tests for `KeyProvider` using a mock PARSEC client (same pattern as `internal/crypto/mock.go`)
+- Unit tests for `KeyProvider` using a mock PARSEC client (same pattern as `internal/shared/crypto/mock.go`)
 - `parsec` build tag compiles cleanly alongside `nospiffe` and default builds
 - Default build (no `parsec` tag) continues to pass all existing tests unchanged
 - E2E test (`test-parsec` task in `taskfiles/e2e.yml`) using a real PARSEC daemon in CI,
@@ -301,16 +310,16 @@ scope for Phase 1 and tracked separately:
 ## More Information
 
 - [CNCF PARSEC Documentation](https://parallaxsecond.github.io/parsec-book/)
-- [parsec-client-go](https://github.com/parallaxsecond/parsec-client-go) (local: `../parsec-client-go`)
+- [parsec-client-go](https://github.com/parallaxsecond/parsec-client-go)
 - [harbor-satellite#327](https://github.com/container-registry/harbor-satellite/issues/327) — tracking issue
-- `docs/decisions/0005-spiffe-identity-and-security.md` — ADR this builds upon
-- `PARSEC Integration & Zero-Trust Bootstrapping Flow.md` — original 6-step flow proposal
-- `security-parsec-integration-draft.md` — full design notes and implementation detail
+- [ADR-0005](0005-spiffe-identity-and-security.md): SPIFFE identity, the ADR this builds upon
+- [ADR-0008](0008-parsec-integration-and-zero-trust-bootstrapping-flow.md): original 6-step flow proposal
 
-### Source Files (skeleton)
+### Removed Source Files
 
-- `internal/parsec/config.go` — Config, constants
-- `internal/parsec/detect.go` / `detect_stub.go` — daemon detection
-- `internal/parsec/signer.go` — `crypto.Signer` implementation
-- `internal/parsec/provider.go` / `provider_stub.go` — `crypto.Provider` implementation
-- `cmd/satellite/main.go` — flag wiring and startup check
+These files existed as `internal/satellite/parsec/*` until #526 removed them:
+
+- `config.go`: Config, constants
+- `detect.go` / `detect_stub.go`: daemon detection
+- `signer.go`: `crypto.Signer` implementation
+- `provider.go` / `provider_stub.go`: `crypto.Provider` implementation

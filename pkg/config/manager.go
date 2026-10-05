@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/container-registry/harbor-satellite/internal/crypto"
 	"github.com/container-registry/harbor-satellite/internal/satellite/identity"
 	"github.com/container-registry/harbor-satellite/internal/satellite/secure"
+	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
 )
 
 type ConfigChangeType string
@@ -20,7 +20,6 @@ type ConfigChangeType string
 const (
 	LogLevelChanged    ConfigChangeType = "log_level"
 	IntervalsChanged   ConfigChangeType = "intervals"
-	ZotConfigChanged   ConfigChangeType = "zot_config"
 	AuditConfigChanged ConfigChangeType = "audit"
 )
 
@@ -129,14 +128,6 @@ func (cm *ConfigManager) detectChanges(oldConfig *Config, newConfig *Config) []C
 			Type:     IntervalsChanged,
 			OldValue: oldConfig.AppConfig.StateReplicationInterval,
 			NewValue: newConfig.AppConfig.StateReplicationInterval,
-		})
-	}
-
-	if string(oldConfig.ZotConfigRaw) != string(newConfig.ZotConfigRaw) {
-		changes = append(changes, ConfigChange{
-			Type:     ZotConfigChanged,
-			OldValue: "zot_config_changed",
-			NewValue: "zot_config_changed",
 		})
 	}
 

@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harborhealth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/migrator"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/joho/godotenv"
 )
 
@@ -25,12 +25,14 @@ func main() {
 		log.Fatalf("failed to load environment: %v", err)
 	}
 
-	err := harborhealth.CheckHealth()
-	if err != nil {
+	if err := harborhealth.CheckHealth(); err != nil {
 		log.Fatalf("health check failed: %v", err)
 	}
 
-	migrator.DoMigrations()
+	if err := migrator.DoMigrations(); err != nil {
+		log.Fatalf("failed to run migrations: %v", err)
+	}
+
 	serverResult := server.NewServer()
 	httpServer := serverResult.Server
 	tlsCfg := serverResult.TLSConfig

@@ -4,9 +4,65 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSetupReplicationSelectsStore(t *testing.T) {
+	newManager := func(t *testing.T, byo bool) *config.ConfigManager {
+		t.Helper()
+		dir := t.TempDir()
+		cm, err := config.NewConfigManager(
+			filepath.Join(dir, "config.json"),
+			filepath.Join(dir, "prev.json"),
+			"token",
+			"http://gc:8080",
+			false,
+			&config.Config{
+				StateConfig: config.StateConfig{
+					RegistryCredentials: config.RegistryCredentials{
+						URL:      "http://source.example.com",
+						Username: "source-user",
+						Password: "source-password",
+					},
+					StateURL: "http://source.example.com/satellite/state:latest",
+				},
+				AppConfig: config.AppConfig{
+					BringOwnRegistry: byo,
+					UseUnsecure:      true,
+					LocalRegistryCredentials: config.RegistryCredentials{
+						URL:      "http://destination.example.com",
+						Username: "destination-user",
+						Password: "destination-password",
+					},
+				},
+			},
+		)
+		require.NoError(t, err)
+		return cm
+	}
+
+	t.Run("default uses local OCI store", func(t *testing.T) {
+		root := t.TempDir()
+		process := &FetchAndReplicateStateProcess{cm: newManager(t, false), storeRoot: root}
+
+		storage, _, _, _, destination, _, _, err := process.setupReplication()
+		require.NoError(t, err)
+		require.IsType(t, &store.OCIStore{}, storage)
+		require.Equal(t, root, destination)
+	})
+
+	t.Run("BYO uses remote registry store", func(t *testing.T) {
+		process := &FetchAndReplicateStateProcess{cm: newManager(t, true), storeRoot: t.TempDir()}
+
+		storage, _, _, _, destination, _, _, err := process.setupReplication()
+		require.NoError(t, err)
+		require.IsType(t, &store.RegistryStore{}, storage)
+		require.Equal(t, "destination.example.com", destination)
+	})
+}
 
 func TestCanExecute(t *testing.T) {
 	process := &FetchAndReplicateStateProcess{name: "test"}
@@ -14,7 +70,7 @@ func TestCanExecute(t *testing.T) {
 	tests := []struct {
 		name              string
 		satelliteStateURL string
-		remoteURL         string
+		destination       string
 		srcURL            string
 		srcUsername       string
 		srcPassword       string
@@ -24,7 +80,7 @@ func TestCanExecute(t *testing.T) {
 		{
 			name:              "all fields present",
 			satelliteStateURL: "https://registry.example.com/state",
-			remoteURL:         "https://remote.example.com",
+			destination:       "https://remote.example.com",
 			srcURL:            "https://source.example.com",
 			srcUsername:       "user",
 			srcPassword:       "pass",
@@ -34,7 +90,7 @@ func TestCanExecute(t *testing.T) {
 		{
 			name:              "missing satelliteStateURL",
 			satelliteStateURL: "",
-			remoteURL:         "https://remote.example.com",
+			destination:       "https://remote.example.com",
 			srcURL:            "https://source.example.com",
 			srcUsername:       "user",
 			srcPassword:       "pass",
@@ -42,19 +98,19 @@ func TestCanExecute(t *testing.T) {
 			expectMsgContains: "satelliteState is empty",
 		},
 		{
-			name:              "missing remoteURL",
+			name:              "missing destination",
 			satelliteStateURL: "https://registry.example.com/state",
-			remoteURL:         "",
+			destination:       "",
 			srcURL:            "https://source.example.com",
 			srcUsername:       "user",
 			srcPassword:       "pass",
 			expectCanExecute:  false,
-			expectMsgContains: "remote registry URL is empty",
+			expectMsgContains: "store destination is empty",
 		},
 		{
 			name:              "missing srcUsername",
 			satelliteStateURL: "https://registry.example.com/state",
-			remoteURL:         "https://remote.example.com",
+			destination:       "https://remote.example.com",
 			srcURL:            "https://source.example.com",
 			srcUsername:       "",
 			srcPassword:       "pass",
@@ -64,7 +120,7 @@ func TestCanExecute(t *testing.T) {
 		{
 			name:              "missing srcPassword",
 			satelliteStateURL: "https://registry.example.com/state",
-			remoteURL:         "https://remote.example.com",
+			destination:       "https://remote.example.com",
 			srcURL:            "https://source.example.com",
 			srcUsername:       "user",
 			srcPassword:       "",
@@ -74,7 +130,7 @@ func TestCanExecute(t *testing.T) {
 		{
 			name:              "missing srcURL",
 			satelliteStateURL: "https://registry.example.com/state",
-			remoteURL:         "https://remote.example.com",
+			destination:       "https://remote.example.com",
 			srcURL:            "",
 			srcUsername:       "user",
 			srcPassword:       "pass",
@@ -84,7 +140,7 @@ func TestCanExecute(t *testing.T) {
 		{
 			name:              "multiple missing fields",
 			satelliteStateURL: "",
-			remoteURL:         "",
+			destination:       "",
 			srcURL:            "",
 			srcUsername:       "",
 			srcPassword:       "",
@@ -97,7 +153,7 @@ func TestCanExecute(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			canExecute, reason := process.CanExecute(
 				tt.satelliteStateURL,
-				tt.remoteURL,
+				tt.destination,
 				tt.srcURL,
 				tt.srcUsername,
 				tt.srcPassword,

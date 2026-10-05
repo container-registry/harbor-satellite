@@ -60,6 +60,7 @@ tasks:
         msg: "PROJECT_NAME is required. Set via task var or PROJECT_NAME env var."
     cmds:
       - |
+        set -e
         DOCKERFILE="Dockerfile"
         CONTEXT="."
         BUILD_COMPONENT="{{.COMPONENT}}"

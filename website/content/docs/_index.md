@@ -3,7 +3,7 @@ title: "Harbor Satellite"
 weight: 1
 ---
 
-Harbor Satellite extends [Harbor](https://goharbor.io) container registry to edge computing environments. It brings a lightweight, standalone OCI registry to each edge location that automatically syncs images from your central Harbor instance, with zero-trust identity, fleet management, and automatic credential rotation.
+Harbor Satellite extends [Harbor](https://goharbor.io) container registry to edge computing environments. It automatically synchronizes OCI content from your central Harbor instance into a persistent local OCI layout or an external registry, with zero-trust identity, fleet management, and automatic credential rotation.
 
 ## What is Harbor Satellite?
 
@@ -11,7 +11,7 @@ Harbor Satellite is a registry fleet management and artifact distribution system
 
 - **Harbor** - Your central container registry in the cloud, holding all your images
 - **Ground Control** - A management service that handles device onboarding, identity, and decides which images go to which edge locations
-- **Satellite** - A lightweight binary that runs at each edge location, embedding a local OCI registry ([Zot](https://zotregistry.dev)) and automatically pulling the images it needs
+- **Satellite** - A lightweight binary that runs at each edge location and automatically copies the OCI content it needs into a local ORAS OCI layout or a BYO registry
 
 Together, these components let you manage container images across hundreds of edge locations from a single control plane.
 
@@ -19,9 +19,9 @@ Together, these components let you manage container images across hundreds of ed
 
 Running containers at the edge creates three problems:
 
-**Reliability** - Edge locations have unreliable network connections. If your workloads pull images from a central registry and the network goes down, pods can't start. Satellite gives each location its own registry, so workloads always have local access to the images they need.
+**Reliability** - Edge locations have unreliable network connections. Satellite prepositions content in persistent local storage and resumes reconciliation when connectivity returns. BYO registry mode or experimental k3s/RKE2 direct delivery can make that content available to workloads today; transparent proxy serving is tracked in ADR-0009.
 
-**Security** - Traditional approaches require shipping registry credentials to every edge device. Harbor Satellite uses [SPIFFE/SPIRE](https://spiffe.io) for zero-trust identity. After a one-time bootstrap, satellites get cryptographic identities from hardware-backed attestation. Registry credentials (Harbor robot accounts - service accounts with scoped pull permissions) are automatically created, delivered over mTLS (mutual TLS), and rotated by Ground Control.
+**Security** - Traditional approaches require shipping registry credentials to every edge device. Harbor Satellite uses [SPIFFE/SPIRE](https://spiffe.io) for zero-trust identity. After a one-time bootstrap (join token, X.509 certificate or SSH host certificate), satellites get short-lived X.509 identities that SPIRE rotates automatically. Registry credentials (Harbor robot accounts - service accounts with scoped pull permissions) are created by Ground Control and delivered over mTLS (mutual TLS).
 
 **Fleet Management** - When you have dozens or hundreds of edge locations, manually managing which images go where becomes impossible. Ground Control lets you create groups of images and assign them to satellites. Change a group, and every satellite in that group automatically gets the update.
 
@@ -36,12 +36,12 @@ Your existing Harbor instance in the cloud. Harbor Satellite does not replace Ha
 Runs alongside Harbor in the cloud. Ground Control:
 
 - Onboards satellites using SPIFFE/SPIRE identity
-- Creates and rotates robot account credentials in Harbor on behalf of satellites
+- Creates robot account credentials in Harbor on behalf of satellites and refreshes their secrets
 - Manages groups (collections of images) and assigns them to satellites
 - Stores satellite state and config as OCI artifacts in Harbor
 - Receives heartbeats and status reports from satellites
 
-### Satellite (Edge Registry)
+### Satellite (Edge Store)
 
 Runs at each edge location. A single binary that:
 
@@ -49,8 +49,9 @@ Runs at each edge location. A single binary that:
 - Registers with Ground Control over mTLS (mutual TLS - both sides verify each other's identity)
 - Receives robot account credentials for pulling from Harbor
 - Periodically fetches its desired state (which images to have)
-- Replicates images from Harbor to its embedded Zot registry
-- Configures local container runtimes (containerd, Docker, CRI-O, Podman) to use itself as a mirror
+- Replicates OCI content from Harbor into a local ORAS OCI layout by default
+- Preserves remote-to-remote replication to an external registry in BYO mode
+- Optionally configures local container runtimes (containerd, Docker, CRI-O, Podman) to mirror through a BYO registry, or writes image tarballs into the k3s/RKE2 auto-import directory (experimental direct delivery)
 
 ## Next Steps
 

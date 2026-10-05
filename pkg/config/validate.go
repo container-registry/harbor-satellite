@@ -1,14 +1,12 @@
 package config
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
 
-	"github.com/container-registry/harbor-satellite/internal/satellite/registry"
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )
@@ -54,12 +52,6 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		if borErr != nil {
 			return nil, warnings, borErr
 		}
-	}
-
-	zotWarnings, zotErr := validateAndEnforceZotConfig(config, bringOwnRegistry)
-	warnings = append(warnings, zotWarnings...)
-	if zotErr != nil {
-		return nil, warnings, zotErr
 	}
 
 	warnings = append(warnings, validateAndEnforceCronSchedules(config)...)
@@ -244,11 +236,6 @@ func validateBringOwnRegistry(config *Config) ([]string, error) {
 		warnings = append(warnings, "username or password for custom registry is empty.")
 	}
 
-	if len(config.ZotConfigRaw) > 0 {
-		warnings = append(warnings, "redundant zot_config provided for bring_own_registry: `true`.")
-		config.ZotConfigRaw = json.RawMessage{}
-	}
-
 	return warnings, nil
 }
 
@@ -272,46 +259,6 @@ func validateAndEnforceCronSchedules(config *Config) []string {
 	}
 
 	return warnings
-}
-
-// validateAndEnforceZotConfig validates and defaults zot registry configuration.
-func validateAndEnforceZotConfig(config *Config, bringOwnRegistry bool) ([]string, error) {
-	var warnings []string
-
-	if bringOwnRegistry {
-		return warnings, nil
-	}
-
-	needsDefault := len(config.ZotConfigRaw) == 0 || strings.TrimSpace(string(config.ZotConfigRaw)) == "{}"
-	if needsDefault {
-		warnings = append(warnings, fmt.Sprintf(
-			"empty zot_config provided. Defaulting to: %v", DefaultZotConfigJSON,
-		))
-		config.ZotConfigRaw = json.RawMessage(DefaultZotConfigJSON)
-	}
-
-	var zotConfig registry.ZotConfig
-	if err := json.Unmarshal(config.ZotConfigRaw, &zotConfig); err != nil {
-		return nil, fmt.Errorf("invalid zot_config: %w", err)
-	}
-
-	if zotConfig.HTTP.Address == "" || zotConfig.HTTP.Port == "" {
-		warnings = append(warnings, "zot_config missing required http address/port. Applying defaults.")
-		config.ZotConfigRaw = json.RawMessage(DefaultZotConfigJSON)
-		if err := json.Unmarshal(config.ZotConfigRaw, &zotConfig); err != nil {
-			return nil, fmt.Errorf("invalid default zot_config: %w", err)
-		}
-	}
-
-	if config.AppConfig.LocalRegistryCredentials.URL == "" {
-		warnings = append(warnings, fmt.Sprintf(
-			"remote registry URL is empty. Defaulting to value from zot_config %s",
-			DefaultRemoteRegistryURL,
-		))
-		config.AppConfig.LocalRegistryCredentials.URL = URL(zotConfig.GetRegistryURL())
-	}
-
-	return warnings, nil
 }
 
 // validateRegistryFallbackConfig validates registry fallback settings when enabled.

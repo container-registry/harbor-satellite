@@ -26,14 +26,15 @@ services:
     depends_on:
       registry:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      - GROUND_CONTROL_URL=${GROUND_CONTROL_URL:-http://172.17.0.1:8888}
-      - TOKEN=${TOKEN:-changeme}
+      - GROUND_CONTROL_URL=${GROUND_CONTROL_URL:-http://host.docker.internal:8080}
+      - HARBOR_REGISTRY_URL=${HARBOR_REGISTRY_URL:-}
+      - TOKEN=${TOKEN:-}
       - BYO_REGISTRY=true
       - REGISTRY_URL=http://registry:5000
       - USE_UNSECURE=true
-    ports:
-      - "${SATELLITE_PORT:-9090}:9090"
     restart: unless-stopped
 
 volumes:

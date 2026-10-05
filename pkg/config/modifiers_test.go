@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,9 +8,8 @@ import (
 
 func TestConfigManagerModifiers(t *testing.T) {
 	cfg := &Config{
-		AppConfig:    AppConfig{},
-		StateConfig:  StateConfig{},
-		ZotConfigRaw: json.RawMessage(`{"storage": {}}`),
+		AppConfig:   AppConfig{},
+		StateConfig: StateConfig{},
 	}
 	cm, err := NewConfigManager("", "", "", "", true, cfg)
 	require.NoError(t, err)
@@ -109,7 +107,6 @@ func TestGetRegistryFallbackConfig(t *testing.T) {
 				Runtimes:   []string{"containerd", "docker"},
 			},
 		},
-		ZotConfigRaw: json.RawMessage(`{}`),
 	}
 
 	cm, err := NewConfigManager("", "", "", "", true, cfg)
@@ -123,8 +120,7 @@ func TestGetRegistryFallbackConfig(t *testing.T) {
 
 func TestGetRegistryFallbackConfigEmpty(t *testing.T) {
 	cfg := &Config{
-		AppConfig:    AppConfig{},
-		ZotConfigRaw: json.RawMessage(`{}`),
+		AppConfig: AppConfig{},
 	}
 
 	cm, err := NewConfigManager("", "", "", "", true, cfg)

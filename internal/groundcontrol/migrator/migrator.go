@@ -3,77 +3,78 @@ package migrator
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"os"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
 )
 
-type DBConfig struct {
-	URL  string
-	Host string
-	Port string
-}
+func waitForPostgresReady(db *sql.DB, timeout time.Duration) error {
+	const retryInterval = 2 * time.Second
 
-func parseDBConfig() DBConfig {
-	cfg := env.GC.Database
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
-	return DBConfig{
-		URL:  cfg.URL(),
-		Host: cfg.Host,
-		Port: cfg.Port,
-	}
-}
-
-func waitForPostgresReady(db *sql.DB, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
 	for {
-		if time.Now().After(deadline) {
-			log.Fatalf("timed out waiting for PostgreSQL readiness")
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		err := db.PingContext(ctx)
-		cancel()
+		pingCtx, pingCancel := context.WithTimeout(timeoutCtx, 2*time.Second)
+		err := db.PingContext(pingCtx)
+		pingCancel()
 
 		if err == nil {
 			log.Println("PostgreSQL is ready for queries.")
-			return
+			return nil
 		}
 
-		log.Println("Waiting for PostgreSQL...")
-		time.Sleep(2 * time.Second)
+		log.Printf("PostgreSQL is not ready: %v; retrying in %s", err, retryInterval)
+
+		select {
+		case <-time.After(retryInterval):
+		case <-timeoutCtx.Done():
+			log.Println("timed out waiting for PostgreSQL readiness")
+			return timeoutCtx.Err()
+		}
 	}
 }
 
-func runMigrations(db *sql.DB) {
+func runMigrations(db *sql.DB) error {
 	migrationsPath := "/migrations"
-	if _, err := os.Stat(migrationsPath); os.IsNotExist(err) {
-		migrationsPath = "internal/groundcontrol/sql/schema"
+	_, err := os.Stat(migrationsPath)
+	if err != nil {
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			migrationsPath = "internal/groundcontrol/sql/schema"
+		default:
+			log.Println("failed to access migrations path")
+			return err
+		}
 	}
 
 	provider, err := goose.NewProvider(goose.DialectPostgres, db, os.DirFS(migrationsPath))
 	if err != nil {
-		log.Fatalf("failed to create goose provider: %v", err)
+		log.Println("failed to create goose provider")
+		return err
 	}
 
-	ctx := context.Background()
-	if _, err := provider.Up(ctx); err != nil {
-		log.Fatalf("failed to run migrations: %v", err)
+	if _, err := provider.Up(context.Background()); err != nil {
+		log.Println("failed to run migrations")
+		return err
 	}
 
 	log.Println("Migrations completed successfully.")
+	return nil
 }
 
-func DoMigrations() {
-	cfg := parseDBConfig()
+func DoMigrations() error {
+	cfg := env.GC.Database
 
-	db, err := sql.Open("postgres", cfg.URL)
+	db, err := sql.Open("postgres", cfg.URL())
 	if err != nil {
-		log.Fatalf("failed to open DB: %v", err)
+		log.Println("failed to open DB connection")
+		return err
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
@@ -81,6 +82,17 @@ func DoMigrations() {
 		}
 	}()
 
-	waitForPostgresReady(db, 60*time.Second)
-	runMigrations(db)
+	err = waitForPostgresReady(db, 60*time.Second)
+	if err != nil {
+		log.Println("PostgreSQL is not ready for queries")
+		return err
+	}
+
+	err = runMigrations(db)
+	if err != nil {
+		log.Println("failed to run migrations")
+		return err
+	}
+
+	return nil
 }
