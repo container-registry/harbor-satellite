@@ -23,6 +23,14 @@ type FetchAndReplicateStateProcess struct {
 	stateFilePath       string
 	storeRoot           string
 	directDeliverer     *DirectDeliverer
+	localStore          store.Store
+	remoteStore         store.Store
+}
+
+// SetStores shares the proxy's local destination and Harbor source with state replication.
+func (f *FetchAndReplicateStateProcess) SetStores(localStore, remoteStore store.Store) {
+	f.localStore = localStore
+	f.remoteStore = remoteStore
 }
 
 // Define result types for channels
@@ -93,7 +101,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	default:
 	}
 
-	replicator, sourceURL, srcUsername, srcPassword, destination, useUnsecure, satelliteStateURL, err := f.setupReplication()
+	replicator, sourceStore, sourceURL, srcUsername, srcPassword, destination, useUnsecure, satelliteStateURL, err := f.setupReplication()
 	if err != nil {
 		return fmt.Errorf("set up content store: %w", err)
 	}
@@ -135,7 +143,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	// Launch state fetcher goroutines
 	for i := range f.stateMap {
 		go func(index int) {
-			result := f.processGroupState(ctx, index, srcUsername, srcPassword, useUnsecure, replicator, &log)
+			result := f.processGroupState(ctx, index, srcUsername, srcPassword, useUnsecure, replicator, sourceStore, &log)
 			stateFetcherResults <- result
 		}(i)
 	}
@@ -422,6 +430,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	srcUsername, srcPassword string,
 	useUnsecure bool,
 	replicator store.Store,
+	sourceStore store.Store,
 	log *zerolog.Logger,
 ) StateFetcherResult {
 	stateFetcherLog := log.With().
@@ -468,7 +477,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		return result
 	}
 
-	if err := replicator.Replicate(ctx, replicateEntity); err != nil {
+	if err := replicator.Replicate(ctx, sourceStore, replicateEntity); err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error replicating state")
 		result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
 		return result
@@ -518,6 +527,7 @@ func (f *FetchAndReplicateStateProcess) fetchSatelliteRootState(
 
 func (f *FetchAndReplicateStateProcess) setupReplication() (
 	replicator store.Store,
+	sourceStore store.Store,
 	sourceURL string,
 	sourceUsername string,
 	sourcePassword string,
@@ -526,46 +536,59 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 	satelliteStateURL string,
 	err error,
 ) {
-	sourceURL = utils.FormatRegistryURL(f.cm.GetSourceRegistryURL())
-	sourceUsername = f.cm.GetSourceRegistryUsername()
-	sourcePassword = f.cm.GetSourceRegistryPassword()
-	remoteUsername := f.cm.GetRemoteRegistryUsername()
-	remotePassword := f.cm.GetRemoteRegistryPassword()
-	useUnsecure = f.cm.UseUnsecure()
+	source, err := store.ResolveSourceRegistry(f.cm)
+	if err != nil {
+		return nil, nil, "", "", "", "", false, "", err
+	}
+	sourceURL = source.Endpoint
+	sourceUsername = source.Username
+	sourcePassword = source.Password
+	remoteCredentials := f.cm.GetRemoteRegistryCredentials()
+	useUnsecure = source.PlainHTTP
 	satelliteStateURL = f.cm.GetStateURL()
 
-	// Override source and state URLs if --harbor-registry-url is set
+	// State URLs use the same Harbor override as the image source.
 	if override := f.cm.GetHarborRegistryURL(); override != "" {
-		if replaced, err := config.ReplaceURLHost(f.cm.GetSourceRegistryURL(), override); err == nil {
-			sourceURL = utils.FormatRegistryURL(replaced)
-		}
 		if replaced, err := config.ReplaceURLHost(satelliteStateURL, override); err == nil {
 			satelliteStateURL = replaced
 		}
 	}
 
-	source := store.RegistryOptions{
-		Endpoint:  sourceURL,
-		Username:  sourceUsername,
-		Password:  sourcePassword,
-		PlainHTTP: useUnsecure,
-		TLS:       f.cm.GetTLSConfig(),
+	if f.remoteStore != nil {
+		sourceStore = f.remoteStore
+	} else {
+		sourceStore, err = store.NewRegistryStore(source)
+		if err != nil {
+			return nil, nil, "", "", "", "", false, "", err
+		}
 	}
 
 	if f.cm.GetOwnRegistry() {
-		destination = utils.FormatRegistryURL(f.cm.GetLocalRegistryURL())
-		replicator = store.NewRegistryStore(source, store.RegistryOptions{
-			Endpoint:  destination,
-			Username:  remoteUsername,
-			Password:  remotePassword,
-			PlainHTTP: useUnsecure,
-			TLS:       f.cm.GetTLSConfig(),
-		})
+		destinationURL := string(remoteCredentials.URL)
+		destination = utils.FormatRegistryURL(destinationURL)
+		if f.localStore != nil {
+			replicator = f.localStore
+		} else {
+			replicator, err = store.NewRegistryStore(store.RegistryOptions{
+				Endpoint:  destination,
+				Username:  remoteCredentials.Username,
+				Password:  remoteCredentials.Password,
+				PlainHTTP: f.cm.UseUnsecure() || strings.HasPrefix(strings.ToLower(destinationURL), "http://"),
+				TLS:       f.cm.GetTLSConfig(),
+			})
+			if err != nil {
+				return nil, nil, "", "", "", "", false, "", err
+			}
+		}
 	} else {
 		destination = f.storeRoot
-		replicator, err = store.NewOCIStore(f.storeRoot, source)
-		if err != nil {
-			return nil, "", "", "", "", false, "", err
+		if f.localStore != nil {
+			replicator = f.localStore
+		} else {
+			replicator, err = store.NewOCIStore(f.storeRoot)
+			if err != nil {
+				return nil, nil, "", "", "", "", false, "", err
+			}
 		}
 	}
 
@@ -577,7 +600,7 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 		f.directDeliverer = nil
 	}
 
-	return replicator, sourceURL, sourceUsername, sourcePassword, destination, useUnsecure, satelliteStateURL, nil
+	return replicator, sourceStore, sourceURL, sourceUsername, sourcePassword, destination, useUnsecure, satelliteStateURL, nil
 }
 
 func (f *FetchAndReplicateStateProcess) start() {

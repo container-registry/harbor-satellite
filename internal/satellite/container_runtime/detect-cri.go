@@ -73,9 +73,10 @@ func parseMirrorFlags(mirrors []string) ([]CRIConfig, error) {
 	return configs, nil
 }
 
-// ApplyCRIConfigs applies the given CRI configs and returns results.
+// ApplyCRIConfigs configures each runtime use the Satellite proxy endpoint
+// and the given CRI configs and returns the results.
 // Errors are collected per-CRI rather than failing on the first error.
-func ApplyCRIConfigs(configs []CRIConfig, localRegistry string) []CRIConfigResult {
+func ApplyCRIConfigs(configs []CRIConfig, proxyEndpoint string) []CRIConfigResult {
 	var results []CRIConfigResult
 
 	for _, cfg := range configs {
@@ -86,11 +87,11 @@ func ApplyCRIConfigs(configs []CRIConfig, localRegistry string) []CRIConfigResul
 
 		switch cfg.CRI {
 		case CRIDocker:
-			backupPath, err = setDockerdConfig(cfg.Registries, localRegistry)
+			backupPath, err = setDockerdConfig(cfg.Registries, proxyEndpoint)
 		case CRICrio, CRIPodman:
-			backupPath, err = setCrioConfig(cfg.Registries, localRegistry)
+			backupPath, err = setCrioConfig(cfg.Registries, proxyEndpoint)
 		case CRIContainerd:
-			backupPath, err = setContainerdConfig(cfg.Registries, localRegistry)
+			backupPath, err = setContainerdConfig(cfg.Registries, proxyEndpoint)
 		default:
 			err = fmt.Errorf("unsupported CRI: %s", cfg.CRI)
 		}

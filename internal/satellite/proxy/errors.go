@@ -154,7 +154,7 @@ func (code ErrorCode) HTTPStatus() int {
 	case ErrorCodeDenied:
 		return http.StatusForbidden
 	case ErrorCodeUnsupported:
-		return http.StatusMethodNotAllowed
+		return http.StatusBadRequest
 	case ErrorCodeTooManyRequests:
 		return http.StatusTooManyRequests
 	case ErrorCodeBlobUploadInvalid,
