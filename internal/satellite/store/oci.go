@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -91,7 +92,7 @@ func (s *OCIStore) Pull(ctx context.Context, artifact Artifact, resource PullRes
 
 // Fetch opens one independent local stream. Holding the read lock until Close
 // prevents Delete and GC from removing a blob while it is being served.
-func (s *OCIStore) Fetch(ctx context.Context, _ Artifact, descriptor ocispec.Descriptor) (io.ReadCloser, error) {
+func (s *OCIStore) Fetch(ctx context.Context, _ Artifact, descriptor ocispec.Descriptor, _ PullResource, _ http.Header) (*http.Response, error) {
 	s.mu.RLock()
 	reader, err := s.store.Fetch(ctx, descriptor)
 	if err != nil {
@@ -99,9 +100,9 @@ func (s *OCIStore) Fetch(ctx context.Context, _ Artifact, descriptor ocispec.Des
 		return nil, err
 	}
 	if seeker, ok := reader.(io.ReadSeekCloser); ok {
-		return &lockedReadSeekCloser{ReadSeekCloser: seeker, unlock: s.mu.RUnlock}, nil
+		return contentResponse(descriptor, &lockedReadSeekCloser{ReadSeekCloser: seeker, unlock: s.mu.RUnlock}), nil
 	}
-	return &lockedReadCloser{ReadCloser: reader, unlock: s.mu.RUnlock}, nil
+	return contentResponse(descriptor, &lockedReadCloser{ReadCloser: reader, unlock: s.mu.RUnlock}), nil
 }
 
 // Replicate copies complete manifest graphs or standalone blobs from source.

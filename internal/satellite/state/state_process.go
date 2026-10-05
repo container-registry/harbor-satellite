@@ -543,8 +543,7 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 	sourceURL = source.Endpoint
 	sourceUsername = source.Username
 	sourcePassword = source.Password
-	remoteUsername := f.cm.GetRemoteRegistryUsername()
-	remotePassword := f.cm.GetRemoteRegistryPassword()
+	remoteCredentials := f.cm.GetRemoteRegistryCredentials()
 	useUnsecure = source.PlainHTTP
 	satelliteStateURL = f.cm.GetStateURL()
 
@@ -565,15 +564,16 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 	}
 
 	if f.cm.GetOwnRegistry() {
-		destination = utils.FormatRegistryURL(f.cm.GetLocalRegistryURL())
+		destinationURL := string(remoteCredentials.URL)
+		destination = utils.FormatRegistryURL(destinationURL)
 		if f.localStore != nil {
 			replicator = f.localStore
 		} else {
 			replicator, err = store.NewRegistryStore(store.RegistryOptions{
 				Endpoint:  destination,
-				Username:  remoteUsername,
-				Password:  remotePassword,
-				PlainHTTP: useUnsecure,
+				Username:  remoteCredentials.Username,
+				Password:  remoteCredentials.Password,
+				PlainHTTP: f.cm.UseUnsecure() || strings.HasPrefix(strings.ToLower(destinationURL), "http://"),
 				TLS:       f.cm.GetTLSConfig(),
 			})
 			if err != nil {

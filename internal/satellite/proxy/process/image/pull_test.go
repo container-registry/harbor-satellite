@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -40,9 +41,22 @@ func (f *fakeStore) Pull(ctx context.Context, artifact store.Artifact, resource 
 	return f.pull(ctx, artifact, resource, call)
 }
 
-func (f *fakeStore) Fetch(ctx context.Context, artifact store.Artifact, descriptor ocispec.Descriptor) (io.ReadCloser, error) {
+func (f *fakeStore) Fetch(ctx context.Context, artifact store.Artifact, descriptor ocispec.Descriptor, _ store.PullResource, _ http.Header) (*http.Response, error) {
 	f.fetchCalls.Add(1)
-	return f.fetch(ctx, artifact, descriptor)
+	body, err := f.fetch(ctx, artifact, descriptor)
+	if err != nil {
+		return nil, err
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type":          {descriptor.MediaType},
+			"Docker-Content-Digest": {descriptor.Digest.String()},
+			"Etag":                  {strconv.Quote(descriptor.Digest.String())},
+			"Content-Length":        {strconv.FormatInt(descriptor.Size, 10)},
+		},
+		Body: body, ContentLength: descriptor.Size,
+	}, nil
 }
 
 func (f *fakeStore) Replicate(ctx context.Context, source store.Store, artifacts []store.Artifact) error {
@@ -358,6 +372,52 @@ func TestRegistryCheckDoesNotRequireStores(t *testing.T) {
 	handler := proxy.New(newPull(t, proxy.ModeReplica, nil, nil)).Handler()
 	response := serve(handler, http.MethodGet, "/v2/", nil)
 	require.Equal(t, http.StatusOK, response.Code)
+}
+
+func TestBYORegistrySupportsRangeAndConditionalPulls(t *testing.T) {
+	payload := []byte("0123456789")
+	descriptor := content.NewDescriptorFromBytes("application/octet-stream", payload)
+	var upstreamBytes atomic.Int64
+	var upstreamRange atomic.Value
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Docker-Content-Digest", descriptor.Digest.String())
+		response.Header().Set("Etag", strconv.Quote(descriptor.Digest.String()))
+		if request.Method == http.MethodGet {
+			upstreamRange.Store(request.Header.Get("Range"))
+		}
+		http.ServeContent(&countingResponseWriter{ResponseWriter: response, bytes: &upstreamBytes}, request, "blob", time.Time{}, bytes.NewReader(payload))
+	}))
+	t.Cleanup(server.Close)
+	address := strings.TrimPrefix(server.URL, "http://")
+	local, err := store.NewRegistryStore(store.RegistryOptions{Endpoint: address, PlainHTTP: true})
+	require.NoError(t, err)
+	handler := proxy.New(newPull(t, proxy.ModeReplica, local, nil)).Handler()
+	path := "/v2/team/app/blobs/" + descriptor.Digest.String()
+
+	ranged := serve(handler, http.MethodGet, path, http.Header{"Range": []string{"bytes=2-5"}})
+	require.Equal(t, http.StatusPartialContent, ranged.Code)
+	require.Equal(t, "2345", ranged.Body.String())
+	require.Equal(t, "bytes 2-5/10", ranged.Header().Get("Content-Range"))
+	require.Equal(t, "4", ranged.Header().Get("Content-Length"))
+	require.Equal(t, "bytes=2-5", upstreamRange.Load())
+	require.Equal(t, int64(4), upstreamBytes.Load())
+	conditional := serve(handler, http.MethodGet, path, http.Header{
+		"If-None-Match": []string{strconv.Quote(descriptor.Digest.String())},
+	})
+	require.Equal(t, http.StatusNotModified, conditional.Code)
+	require.Empty(t, conditional.Body.Bytes())
+	require.Equal(t, int64(4), upstreamBytes.Load(), "conditional request must not transfer content")
+}
+
+type countingResponseWriter struct {
+	http.ResponseWriter
+	bytes *atomic.Int64
+}
+
+func (writer *countingResponseWriter) Write(payload []byte) (int, error) {
+	n, err := writer.ResponseWriter.Write(payload)
+	writer.bytes.Add(int64(n))
+	return n, err
 }
 
 func newPull(t *testing.T, mode proxy.Mode, local, remote store.Store) proxy.HandlerFunc {

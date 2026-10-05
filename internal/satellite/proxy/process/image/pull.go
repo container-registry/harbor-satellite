@@ -123,14 +123,14 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 		})
 	}
 
-	body, err := p.localStore.Fetch(request.Context(), artifact, descriptor)
+	response, err := p.localStore.Fetch(request.Context(), artifact, descriptor, resource, request.HTTPRequest().Header) //nolint:bodyclose // WriteContent owns and closes the content response body.
 	if err != nil {
 		return mapPullError(resource, err)
 	}
-	if body == nil {
-		return errors.New("proxy image pull returned a nil content reader")
+	if response == nil || response.Body == nil {
+		return errors.New("proxy image pull returned a nil content response")
 	}
-	return writePullResponse(request, descriptor, body)
+	return request.WriteContent(response)
 }
 
 func pullArtifactFor(request *proxy.Request) (

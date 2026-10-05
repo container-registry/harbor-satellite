@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -62,12 +61,60 @@ func (r *RegistryStore) Pull(ctx context.Context, artifact Artifact, resource Pu
 	}
 }
 
-func (r *RegistryStore) Fetch(ctx context.Context, artifact Artifact, descriptor ocispec.Descriptor) (io.ReadCloser, error) {
+func (r *RegistryStore) Fetch(ctx context.Context, artifact Artifact, descriptor ocispec.Descriptor, resource PullResource, headers http.Header) (*http.Response, error) {
 	repository, err := r.repository(artifact)
 	if err != nil {
 		return nil, err
 	}
-	return repository.Fetch(ctx, descriptor)
+	path := "blobs"
+	if resource == PullResourceManifest {
+		path = "manifests"
+	}
+	scheme := "https"
+	if repository.PlainHTTP {
+		scheme = "http"
+	}
+	endpoint := url.URL{
+		Scheme: scheme,
+		Host:   repository.Reference.Host(),
+		Path:   "/v2/" + repository.Reference.Repository + "/" + path + "/" + descriptor.Digest.String(),
+	}
+	ctx = auth.AppendRepositoryScope(ctx, repository.Reference, auth.ActionPull)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	// Forward representation controls, never client credentials or hop-by-hop
+	// headers. The shared ORAS client supplies scoped registry authentication.
+	for _, name := range []string{"Range", "If-Range", "If-Match", "If-None-Match", "If-Modified-Since", "If-Unmodified-Since"} {
+		for _, value := range headers.Values(name) {
+			request.Header.Add(name, value)
+		}
+	}
+	request.Header.Set("Accept-Encoding", "identity")
+	if descriptor.MediaType != "" {
+		request.Header.Set("Accept", descriptor.MediaType)
+	}
+	response, err := repository.Client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode == http.StatusNotFound {
+		_ = response.Body.Close()
+		return nil, errdef.ErrNotFound
+	}
+	if response.StatusCode == http.StatusOK || response.StatusCode == http.StatusPartialContent {
+		if value := response.Header.Get("Docker-Content-Digest"); value != "" && value != descriptor.Digest.String() {
+			_ = response.Body.Close()
+			return nil, errors.New("registry content digest does not match resolved descriptor")
+		}
+		if response.StatusCode == http.StatusOK && response.ContentLength >= 0 && descriptor.Size >= 0 && response.ContentLength != descriptor.Size {
+			_ = response.Body.Close()
+			return nil, errors.New("registry content length does not match resolved descriptor")
+		}
+		response.Header.Set("Docker-Content-Digest", descriptor.Digest.String())
+	}
+	return response, nil
 }
 
 func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts []Artifact) error {

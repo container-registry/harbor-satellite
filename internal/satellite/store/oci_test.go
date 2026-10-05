@@ -30,21 +30,21 @@ func TestOCIStoreReplicatesAndStreamsManifestGraph(t *testing.T) {
 	descriptor, err := local.Pull(context.Background(), artifact, PullResourceManifest)
 	require.NoError(t, err)
 	require.Equal(t, manifestDesc, descriptor)
-	reader, err := local.Fetch(context.Background(), artifact, descriptor)
+	response, err := local.Fetch(context.Background(), artifact, descriptor, PullResourceManifest, nil)
 	require.NoError(t, err)
-	payload, err := io.ReadAll(reader)
+	payload, err := io.ReadAll(response.Body)
 	require.NoError(t, err)
-	require.NoError(t, reader.Close())
+	require.NoError(t, response.Body.Close())
 	require.Equal(t, manifestPayload, payload)
 
 	blobArtifact := Artifact{Name: "team/app", Digest: layerDesc.Digest.String()}
 	blobDescriptor, err := local.Pull(context.Background(), blobArtifact, PullResourceBlob)
 	require.NoError(t, err)
-	blobReader, err := local.Fetch(context.Background(), blobArtifact, blobDescriptor)
+	blobResponse, err := local.Fetch(context.Background(), blobArtifact, blobDescriptor, PullResourceBlob, nil)
 	require.NoError(t, err)
-	blobPayload, err := io.ReadAll(blobReader)
+	blobPayload, err := io.ReadAll(blobResponse.Body)
 	require.NoError(t, err)
-	require.NoError(t, blobReader.Close())
+	require.NoError(t, blobResponse.Body.Close())
 	require.Equal(t, layer, blobPayload)
 }
 
@@ -56,11 +56,11 @@ func TestOCIStoreStandaloneBlobReplication(t *testing.T) {
 	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{artifact}))
 	descriptor, err := local.Pull(context.Background(), artifact, PullResourceBlob)
 	require.NoError(t, err)
-	reader, err := local.Fetch(context.Background(), artifact, descriptor)
+	response, err := local.Fetch(context.Background(), artifact, descriptor, PullResourceBlob, nil)
 	require.NoError(t, err)
-	payload, err := io.ReadAll(reader)
+	payload, err := io.ReadAll(response.Body)
 	require.NoError(t, err)
-	require.NoError(t, reader.Close())
+	require.NoError(t, response.Body.Close())
 	require.Equal(t, layer, payload)
 }
 
@@ -105,11 +105,11 @@ func TestOCIStoreDeleteRetainsSharedContentAndMissingDeleteIsIdempotent(t *testi
 	blob := Artifact{Name: "team/app", Digest: layerDesc.Digest.String()}
 	blobDesc, err := local.Pull(context.Background(), blob, PullResourceBlob)
 	require.NoError(t, err)
-	reader, err := local.Fetch(context.Background(), blob, blobDesc)
+	response, err := local.Fetch(context.Background(), blob, blobDesc, PullResourceBlob, nil)
 	require.NoError(t, err)
-	payload, err := io.ReadAll(reader)
+	payload, err := io.ReadAll(response.Body)
 	require.NoError(t, err)
-	require.NoError(t, reader.Close())
+	require.NoError(t, response.Body.Close())
 	require.Equal(t, layer, payload)
 
 	require.NoError(t, local.Delete(context.Background(), []Artifact{second}))

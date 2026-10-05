@@ -1,13 +1,17 @@
 package state
 
 import (
+	"context"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"oras.land/oras-go/v2/errdef"
 )
 
 func TestSetupReplicationSelectsStore(t *testing.T) {
@@ -95,6 +99,35 @@ func TestSetupReplicationSelectsStore(t *testing.T) {
 		require.Same(t, shared, storage)
 		require.Same(t, remote, source)
 	})
+
+	plainRegistry := httptest.NewServer(registry.New())
+	t.Cleanup(plainRegistry.Close)
+	secureRegistry := httptest.NewTLSServer(registry.New())
+	t.Cleanup(secureRegistry.Close)
+	for _, scenario := range []struct {
+		name, sourceURL, destinationURL string
+	}{
+		{"HTTP source and HTTPS destination", plainRegistry.URL, secureRegistry.URL},
+		{"HTTPS source and HTTP destination", secureRegistry.URL, plainRegistry.URL},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			cm := newManager(t, true)
+			cm.With(
+				config.SetUseUnsecure(false),
+				config.SetStateAuth("source-user", "source-password", config.URL(scenario.sourceURL)),
+				config.SetLocalRegistryURL(scenario.destinationURL),
+				func(cfg *config.Config) { cfg.AppConfig.TLS.SkipVerify = true },
+			)
+			process := &FetchAndReplicateStateProcess{cm: cm, storeRoot: t.TempDir()}
+			destination, source, _, _, _, _, _, _, err := process.setupReplication()
+			require.NoError(t, err)
+			artifact := store.Artifact{Name: "team/app", Tag: "missing"}
+			for _, contentStore := range []store.Store{source, destination} {
+				_, err := contentStore.Pull(context.Background(), artifact, store.PullResourceManifest)
+				require.ErrorIs(t, err, errdef.ErrNotFound, "request should reach the registry using its own transport")
+			}
+		})
+	}
 }
 
 func TestCanExecute(t *testing.T) {

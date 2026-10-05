@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -15,8 +17,10 @@ import (
 type Store interface {
 	// Pull returns immutable metadata for an artifact parsed by the proxy.
 	Pull(ctx context.Context, artifact Artifact, resource PullResource) (ocispec.Descriptor, error)
-	// Fetch opens an independent stream for the resolved content.
-	Fetch(ctx context.Context, artifact Artifact, descriptor ocispec.Descriptor) (io.ReadCloser, error)
+	// Fetch opens an independent content response. Registry stores forward range
+	// and conditional headers upstream; OCI stores return a seekable local body.
+	// The caller owns and must close the response body.
+	Fetch(ctx context.Context, artifact Artifact, descriptor ocispec.Descriptor, resource PullResource, headers http.Header) (*http.Response, error)
 	Replicate(ctx context.Context, source Store, artifacts []Artifact) error
 	Delete(ctx context.Context, artifacts []Artifact) error
 }
@@ -25,6 +29,22 @@ var (
 	_ Store = (*OCIStore)(nil)
 	_ Store = (*RegistryStore)(nil)
 )
+
+func contentResponse(descriptor ocispec.Descriptor, body io.ReadCloser) *http.Response {
+	mediaType := descriptor.MediaType
+	if mediaType == "" {
+		mediaType = "application/octet-stream"
+	}
+	header := http.Header{
+		"Content-Type":          {mediaType},
+		"Docker-Content-Digest": {descriptor.Digest.String()},
+		"Etag":                  {strconv.Quote(descriptor.Digest.String())},
+	}
+	if descriptor.Size >= 0 {
+		header.Set("Content-Length", strconv.FormatInt(descriptor.Size, 10))
+	}
+	return &http.Response{StatusCode: http.StatusOK, Header: header, Body: body, ContentLength: descriptor.Size}
+}
 
 // PullResource identifies the OCI Distribution resource addressed by a pull.
 // It is intentionally small: route parsing belongs to the proxy package.
