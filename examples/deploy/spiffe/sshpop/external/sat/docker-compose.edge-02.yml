@@ -1,6 +1,6 @@
 # Second satellite (edge-02) with its own SSH PoP SPIRE agent.
 # Use as an override: docker compose -f docker-compose.yml -f docker-compose.edge-02.yml up -d <service>
-# Requires ../gc/certs/agent-satellite-2-host-key{,-cert.pub} (created by ../gc/generate-certs.sh).
+# Requires ../groundcontrol/certs/agent-satellite-2-host-key{,-cert.pub} (created by ../groundcontrol/generate-certs.sh).
 
 services:
   spire-agent-satellite-2:
@@ -11,9 +11,9 @@ services:
     command: ["-config", "/opt/spire/conf/agent/agent.conf"]
     volumes:
       - ./spire/agent-satellite.conf:/opt/spire/conf/agent/agent.conf:ro
-      - ../gc/certs/bootstrap.crt:/opt/spire/conf/agent/bootstrap.crt:ro
-      - ../gc/certs/agent-satellite-2-host-key:/opt/spire/conf/agent/host-key:ro
-      - ../gc/certs/agent-satellite-2-host-key-cert.pub:/opt/spire/conf/agent/host-key-cert.pub:ro
+      - ../groundcontrol/certs/bootstrap.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - ../groundcontrol/certs/agent-satellite-2-host-key:/opt/spire/conf/agent/host-key:ro
+      - ../groundcontrol/certs/agent-satellite-2-host-key-cert.pub:/opt/spire/conf/agent/host-key-cert.pub:ro
       - spire-agent-satellite-2-data:/opt/spire/data/agent
       - spire-agent-satellite-2-socket:/run/spire/sockets
       - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro

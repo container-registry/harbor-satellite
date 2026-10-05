@@ -20,6 +20,31 @@ import (
 
 var credentialsFile string
 
+func TestRootHelpIncludesServeAndAdministration(t *testing.T) {
+	t.Parallel()
+	output, err := execute(t, "--help")
+	require.NoError(t, err)
+	for _, command := range []string{"serve", "auth", "get", "create", "update", "delete", "add", "remove", "sync", "register", "health", "ping"} {
+		require.Contains(t, output, command)
+	}
+}
+
+func TestRootWithoutCommandDisplaysHelp(t *testing.T) {
+	t.Setenv("GROUND_CONTROL_URL", "invalid-url")
+	t.Setenv("GROUND_CONTROL_CREDENTIALS_FILE", t.TempDir())
+	output, err := execute(t)
+	require.NoError(t, err)
+	require.Contains(t, output, "serve")
+}
+
+func TestServeBypassesClientConfiguration(t *testing.T) {
+	t.Setenv("PORT", "invalid-port")
+	t.Setenv("GROUND_CONTROL_CREDENTIALS_FILE", t.TempDir())
+	_, err := execute(t, "--server", "invalid-url", "--config", "missing.yaml", "serve")
+	require.ErrorContains(t, err, "failed to load environment")
+	require.ErrorContains(t, err, "invalid-port")
+}
+
 func TestMain(testingMain *testing.M) {
 	testConfigDir, err := os.MkdirTemp("", "groundcontrol-cli-test-")
 	if err != nil {

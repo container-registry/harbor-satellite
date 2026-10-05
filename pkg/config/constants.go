@@ -30,6 +30,9 @@ const BringOwnRegistry bool = false
 
 const DefaultGroundControlURL = "http://127.0.0.1:8080"
 
+// DefaultProxyPort is the loopback port used by Satellite's OCI proxy.
+const DefaultProxyPort = 8585
+
 // Default audit settings, applied when audit is enabled but the user does not
 // specify a value.
 const (
@@ -41,4 +44,12 @@ const (
 	DefaultAuditSyslogTarget string = "file"
 	DefaultAuditSyslogTag    string = "harbor-audit"
 	DefaultAuditSyslogSocket string = "/dev/log"
+)
+
+// Default peer distribution settings, applied only when the block is present.
+const (
+	DefaultPeerReachoutSats string = "group"
+	DefaultPeerTimeout      string = "30s"
+	DefaultPeerRetries      int    = 1
+	DefaultPeerConcurrency  int    = 4
 )

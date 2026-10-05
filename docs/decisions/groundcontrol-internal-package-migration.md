@@ -4,7 +4,7 @@
 
 ## Summary
 
-Migrate `ground-control` from a nested Go module into the root Harbor Satellite module. The repository should maintain a single `go.mod`, with `harbor-satellite` and `ground-control` built as separate binaries from one module.
+Migrate Ground Control from a nested Go module into the root Harbor Satellite module. The repository maintains a single `go.mod`, with `satellite` and `groundcontrol` built as separate binaries from one module. Ground Control server startup uses `groundcontrol serve`; administration commands use the same executable.
 
 ## Background
 
@@ -73,10 +73,10 @@ harbor-satellite/
 
 ### Phase 4: Move Ground Control Command
 
-- [x] Move `ground-control/main.go` to `cmd/groundcontrol/server/main.go`.
+- [x] Move `ground-control/main.go` to `cmd/groundcontrol/main.go`.
 - [x] Update the Ground Control command imports to root-module packages.
-- [x] Update build, Docker, CI, Helm, and release references from `ground-control` to `./cmd/groundcontrol/server`.
-- [x] Build `./cmd/groundcontrol/server`.
+- [x] Update build, Docker, CI, Helm, and release references from `ground-control` to `./cmd/groundcontrol`.
+- [x] Build `./cmd/groundcontrol`.
 
 ### Phase 5: Supporting Files and Packages
 
@@ -94,12 +94,11 @@ harbor-satellite/
 
 ### Phase 7: Validation
 
-- [ ] Build all three executables from the root module:
+- [ ] Build both executables from the root module:
 
 ```sh
 go build ./cmd/satellite
-go build ./cmd/groundcontrol/server
-go build ./cmd/groundcontrol/cli
+go build ./cmd/groundcontrol
 ```
 
 - [ ] Run root module tests:

@@ -2,10 +2,11 @@ version: "3"
 
 vars:
   PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/riscv64
+  IMAGE_COMPONENT: '{{if eq (.COMPONENT | default .Env.COMPONENT | default "satellite") "groundcontrol"}}ground-control{{else}}{{.COMPONENT | default .Env.COMPONENT | default "satellite"}}{{end}}'
 
 tasks:
   both:
-    desc: Publish both satellite and ground-control
+    desc: Publish Satellite and Ground Control
     vars:
       TAG: "{{.TAG | default \"dev\"}}"
       REGISTRY:
@@ -39,7 +40,7 @@ tasks:
         vars:
           REGISTRY: "{{.REGISTRY}}"
           PROJECT_NAME: "{{.PROJECT}}"
-          COMPONENT: ground-control
+          COMPONENT: groundcontrol
           IMAGE_TAGS: "{{.TAG}}"
           PLATFORMS: "{{.PLATFORMS}}"
       - echo "Published satellite and ground-control to {{.DEST}}"
@@ -64,9 +65,7 @@ tasks:
         DOCKERFILE="Dockerfile"
         CONTEXT="."
         BUILD_COMPONENT="{{.COMPONENT}}"
-        if [ "$BUILD_COMPONENT" = "ground-control" ]; then
-          BUILD_COMPONENT="groundcontrol/server"
-        fi
+        IMAGE_COMPONENT={{.IMAGE_COMPONENT | shellQuote}}
 
         # Detect container runtime (docker vs podman)
         if command -v docker &>/dev/null && ! docker --version 2>&1 | grep -qi podman; then
@@ -88,7 +87,7 @@ tasks:
           TAGS=""
           for tag in $(echo "{{.IMAGE_TAGS}}" | tr ',' ' '); do
             tag=$(echo "$tag" | sed 's/^v//')
-            TAGS="$TAGS -t {{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
+            TAGS="$TAGS -t {{.REGISTRY}}/{{.PROJECT_NAME}}/$IMAGE_COMPONENT:$tag"
           done
 
           docker buildx build \
@@ -112,7 +111,7 @@ tasks:
           for tag in $(echo "{{.IMAGE_TAGS}}" | tr ',' ' '); do
             tag=$(echo "$tag" | sed 's/^v//')
             podman manifest push --all "$MANIFEST_NAME" \
-              "docker://{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$tag"
+              "docker://{{.REGISTRY}}/{{.PROJECT_NAME}}/$IMAGE_COMPONENT:$tag"
           done
         fi
       - echo "Published {{.COMPONENT}}"
@@ -140,7 +139,8 @@ tasks:
       - echo "Signing {{.COMPONENT}} image..."
       - |
         FIRST_TAG=$(echo "{{.IMAGE_TAGS}}" | cut -d',' -f1 | sed 's/^v//')
-        IMAGE_ADDR="{{.REGISTRY}}/{{.PROJECT_NAME}}/{{.COMPONENT}}:$FIRST_TAG"
+        IMAGE_COMPONENT={{.IMAGE_COMPONENT | shellQuote}}
+        IMAGE_ADDR="{{.REGISTRY}}/{{.PROJECT_NAME}}/$IMAGE_COMPONENT:$FIRST_TAG"
 
         cosign sign --yes --recursive \
           --registry-username="$REG_USER" \

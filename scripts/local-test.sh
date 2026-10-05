@@ -81,11 +81,11 @@ setup_gc_env() {
 }
 
 # Step 3: Start Ground Control
-start_ground_control() {
+start_groundcontrol() {
     log_info "Starting Ground Control on port $GC_PORT..."
 
     cd "$PROJECT_ROOT"
-    go run ./cmd/groundcontrol/server &
+    go run ./cmd/groundcontrol serve &
     GC_PID=$!
 
     # Wait for Ground Control to be ready
@@ -213,7 +213,7 @@ main() {
 
     check_postgres
     setup_gc_env
-    start_ground_control
+    start_groundcontrol
 
     sleep 2
 

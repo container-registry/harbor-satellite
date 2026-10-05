@@ -7,11 +7,11 @@ import (
 	digest "github.com/opencontainers/go-digest"
 )
 
-// Process handles one validated OCI Distribution request.
-type Process func(*Request) error
+// HandlerFunc handles one validated OCI Distribution request.
+type HandlerFunc func(*Request) error
 
-// Processor decorates a Process and controls whether and when it continues.
-type Processor func(Process) Process
+// MiddlewareFunc decorates a HandlerFunc and controls whether and when it continues.
+type MiddlewareFunc func(HandlerFunc) HandlerFunc
 
 // httpExchange owns the transport objects and response state for one request.
 // It is embedded so transport ownership remains private to the parsed request.

@@ -69,7 +69,7 @@ quickstart/
     certs/                         <-- Generated certificates (CA + x509pop CA + agent certs)
     spire/
       server.conf
-      agent-gc.conf
+      agent-groundcontrol.conf
   sat/                             <-- Edge device (native binaries)
     certs/                         <-- Copied from cloud (ca.crt, us-east-1.crt, us-east-1.key)
     us-east-1.conf
@@ -201,10 +201,10 @@ EOF
 
 ### 1.4 Create the SPIRE Agent Config for Ground Control
 
-Create `spire/agent-gc.conf`. This is a static config file with no tokens. The agent authenticates using its X.509 certificate:
+Create `spire/agent-groundcontrol.conf`. This is a static config file with no tokens. The agent authenticates using its X.509 certificate:
 
 ```bash
-cat > spire/agent-gc.conf << 'EOF'
+cat > spire/agent-groundcontrol.conf << 'EOF'
 agent {
     data_dir = "/opt/spire/data/agent"
     log_level = "INFO"
@@ -302,7 +302,7 @@ services:
     pid: host
     command: ["-config", "/opt/spire/conf/agent/agent.conf"]
     volumes:
-      - ./spire/agent-gc.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./spire/agent-groundcontrol.conf:/opt/spire/conf/agent/agent.conf:ro
       - ./certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
       - ./certs/agent-gc.crt:/opt/spire/conf/agent/agent.crt:ro
       - ./certs/agent-gc.key:/opt/spire/conf/agent/agent.key:ro
@@ -322,6 +322,7 @@ services:
       - harbor-satellite
 
   ground-control:
+    command: ["serve"]
     image: registry.goharbor.io/harbor-satellite/ground-control:latest
     container_name: ground-control
     extra_hosts:
@@ -649,12 +650,12 @@ Run this on your **edge device** from the `sat/` directory.
 Release archives are versioned. Pick the latest version from the [releases page](https://github.com/container-registry/harbor-satellite/releases):
 
 ```bash
-VERSION=0.0.6
+VERSION="<version>" # Choose a release with the satellite executable.
 
 # Linux amd64
 curl -Lo satellite.tar.gz \
     https://github.com/container-registry/harbor-satellite/releases/download/v${VERSION}/harbor-satellite_${VERSION}_linux_amd64.tar.gz
-tar xzf satellite.tar.gz harbor-satellite
+tar xzf satellite.tar.gz satellite
 rm satellite.tar.gz
 
 # Linux arm64
@@ -667,7 +668,7 @@ rm satellite.tar.gz
 Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname and `<HARBOR_HOST>` with the Harbor address as reachable from the edge device. `--harbor-registry-url` is required: Ground Control returns its own `HARBOR_URL` (`host.docker.internal` in this setup), which the edge device cannot resolve. `--use-unsecure` allows plain HTTP to Harbor; drop it if Harbor serves HTTPS:
 
 ```bash
-./harbor-satellite \
+./satellite \
     --ground-control-url https://<CLOUD_SERVER_IP>:9080 \
     --harbor-registry-url http://<HARBOR_HOST>:8080 \
     --use-unsecure \

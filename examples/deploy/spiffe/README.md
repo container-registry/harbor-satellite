@@ -39,13 +39,13 @@ The compose files use defaults that assume Harbor runs on the Docker host at por
 
 | Variable | Used by | Default | Description |
 |----------|---------|---------|-------------|
-| `HARBOR_URL` | `external/gc` | `http://host.docker.internal:8080` | Harbor URL used by Ground Control |
-| `HARBOR_USERNAME` | `external/gc` | `admin` | Harbor user allowed to create projects and robot accounts |
-| `HARBOR_PASSWORD` | `external/gc` | `Harbor12345` | Password for `HARBOR_USERNAME` |
-| `ADMIN_PASSWORD` | `external/gc` | `Harbor12345` | Password of the Ground Control `admin` user, created on first startup |
-| `SKIP_HARBOR_HEALTH_CHECK` | `external/gc` | `false` | Skip the Harbor health check at Ground Control startup (testing only) |
-| `GC_HOST_PORT` | `external/gc` | `9080` | Host port for Ground Control |
-| `SPIRE_HOST_PORT` | `external/gc` | `9081` | Host port for the SPIRE server |
+| `HARBOR_URL` | `external/groundcontrol` | `http://host.docker.internal:8080` | Harbor URL used by Ground Control |
+| `HARBOR_USERNAME` | `external/groundcontrol` | `admin` | Harbor user allowed to create projects and robot accounts |
+| `HARBOR_PASSWORD` | `external/groundcontrol` | `Harbor12345` | Password for `HARBOR_USERNAME` |
+| `ADMIN_PASSWORD` | `external/groundcontrol` | `Harbor12345` | Password of the Ground Control `admin` user, created on first startup |
+| `SKIP_HARBOR_HEALTH_CHECK` | `external/groundcontrol` | `false` | Skip the Harbor health check at Ground Control startup (testing only) |
+| `GC_HOST_PORT` | `external/groundcontrol` | `9080` | Host port for Ground Control |
+| `SPIRE_HOST_PORT` | `external/groundcontrol` | `9081` | Host port for the SPIRE server |
 | `HARBOR_REGISTRY_URL` | `external/sat` | `http://host.docker.internal:8080` | Harbor address as reachable from the satellite container. Replaces the scheme and host of the Harbor URL that Ground Control hands out. The satellite exits without it. |
 
 ```bash
@@ -62,7 +62,7 @@ export HARBOR_REGISTRY_URL=http://host.docker.internal:8080
 
 ### External SPIRE
 
-SPIRE server and agents run as separate containers alongside Ground Control and the satellite. Each method has an `external/` directory with separate `gc/` and `sat/` setups. All quickstarts use this mode.
+SPIRE server and agents run as separate containers alongside Ground Control and the satellite. Each method has an `external/` directory with separate `groundcontrol/` and `sat/` setups. All quickstarts use this mode.
 
 ### Embedded SPIRE
 
@@ -196,7 +196,7 @@ curl -sk https://localhost:9080/api/satellites/edge-01/images \
 Each method ships `setup.sh` scripts that run the method-specific steps (certificates or tokens, agents, workload registration, satellite registration):
 
 ```bash
-cd <method>/external/gc && ./setup.sh
+cd <method>/external/groundcontrol && ./setup.sh
 cd ../sat && ./setup.sh
 ```
 
@@ -208,7 +208,7 @@ Clean up the satellite first, since it depends on the Ground Control Docker netw
 
 ```bash
 cd <method>/external/sat && ./cleanup.sh
-cd ../gc && ./cleanup.sh
+cd ../groundcontrol && ./cleanup.sh
 ```
 
 ## Troubleshooting
@@ -246,16 +246,16 @@ spiffe/
   join-token/
     README.md              # Method guide
     external/
-      gc/                  # Ground Control + SPIRE server + agent
+      groundcontrol/       # Ground Control + SPIRE server + agent
       sat/                 # Satellite + SPIRE agent
   x509pop/
     README.md
     external/
-      gc/
+      groundcontrol/
       sat/
   sshpop/
     README.md
     external/
-      gc/
+      groundcontrol/
       sat/
 ```

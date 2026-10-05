@@ -24,6 +24,7 @@ spec:
         fsGroup: 65534
       containers:
         - name: {{ .Chart.Name }}
+          args: ["serve"]
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:

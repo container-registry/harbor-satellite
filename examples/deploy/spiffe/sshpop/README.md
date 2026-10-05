@@ -22,7 +22,7 @@ The SSH CA public key is trusted by the SPIRE server, and each agent presents a 
 This generates: SSH CA key pair, bootstrap trust bundle, and per-agent host certificates.
 
 ```bash
-cd external/gc
+cd external/groundcontrol
 ./generate-certs.sh
 ```
 
@@ -31,7 +31,7 @@ The script creates, in `certs/`:
 - `bootstrap.key`, `bootstrap.crt`: self-signed X.509 CA that seeds the SPIRE server
 - `agent-gc-host-key*`, `agent-satellite-host-key*`, `agent-satellite-2-host-key*`: host keys and CA-signed host certificates for the GC agent, the satellite agent and the optional second satellite ([Adding More Satellites](#adding-more-satellites))
 
-To generate them by hand, run the commands in [`external/gc/generate-certs.sh`](external/gc/generate-certs.sh).
+To generate them by hand, run the commands in [`external/groundcontrol/generate-certs.sh`](external/groundcontrol/generate-certs.sh).
 
 > NOTE: The bootstrap trust bundle uses a self-signed X.509 certificate as the SPIRE server's
 > upstream CA. This is the standard SPIRE quickstart approach and is architecturally correct
@@ -126,7 +126,7 @@ First [log in](../README.md#log-in) to get `AUTH_TOKEN`, then:
 
 ```bash
 # Compute agent SPIFFE ID from the host certificate
-SSH_FINGERPRINT=$(awk '{print $2}' ../gc/certs/agent-satellite-host-key-cert.pub \
+SSH_FINGERPRINT=$(awk '{print $2}' ../groundcontrol/certs/agent-satellite-host-key-cert.pub \
     | openssl base64 -d -A | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
 SAT_AGENT_ID="spiffe://harbor-satellite.local/spire/agent/sshpop/${SSH_FINGERPRINT}"
 echo "Satellite agent SPIFFE ID: $SAT_AGENT_ID"
@@ -169,7 +169,7 @@ The GC setup and first satellite must already be running.
 
 ### 1. Host key for the new agent
 
-`generate-certs.sh` already created `gc/certs/agent-satellite-2-host-key` and its certificate `agent-satellite-2-host-key-cert.pub` for `edge-02`.
+`generate-certs.sh` already created `groundcontrol/certs/agent-satellite-2-host-key` and its certificate `agent-satellite-2-host-key-cert.pub` for `edge-02`.
 
 ### 2. Start the agent and register via GC API
 
@@ -181,7 +181,7 @@ Run from the `external/` directory. First [log in](../README.md#log-in) to get `
 cd sat
 
 # Compute agent SPIFFE ID from the host certificate
-SSH_FINGERPRINT=$(awk '{print $2}' ../gc/certs/agent-satellite-2-host-key-cert.pub \
+SSH_FINGERPRINT=$(awk '{print $2}' ../groundcontrol/certs/agent-satellite-2-host-key-cert.pub \
     | openssl base64 -d -A | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
 SAT2_AGENT_ID="spiffe://harbor-satellite.local/spire/agent/sshpop/${SSH_FINGERPRINT}"
 echo "Agent SPIFFE ID: $SAT2_AGENT_ID"

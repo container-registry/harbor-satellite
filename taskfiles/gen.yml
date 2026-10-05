@@ -1,14 +1,14 @@
 version: "3"
 
 vars:
-  OAPI_CODEGEN_CONFIG_DIR: "{{.ROOT_DIR}}/spec/ground-control/oapi-codegen"
-  GC_OPENAPI_SPEC: "{{.ROOT_DIR}}/spec/ground-control/openapi.yaml"
-  GC_SERVER_CONFIG: "{{.OAPI_CODEGEN_CONFIG_DIR}}/server.cfg.yaml"
-  GC_SERVER_OUTPUT_DIR: "{{.ROOT_DIR}}/internal/groundcontrol/server"
-  GC_SERVER_OUTPUT: "{{.GC_SERVER_OUTPUT_DIR}}/server.gen.go"
-  GC_CLIENT_CONFIG: "{{.OAPI_CODEGEN_CONFIG_DIR}}/client.cfg.yaml"
-  GC_CLIENT_OUTPUT_DIR: "{{.ROOT_DIR}}/pkg/groundcontrol"
-  GC_CLIENT_OUTPUT: "{{.GC_CLIENT_OUTPUT_DIR}}/client.gen.go"
+  OAPI_CODEGEN_CONFIG_DIR: "{{.ROOT_DIR}}/spec/groundcontrol/oapi-codegen"
+  GROUNDCONTROL_OPENAPI_SPEC: "{{.ROOT_DIR}}/spec/groundcontrol/openapi.yaml"
+  GROUNDCONTROL_SERVER_CONFIG: "{{.OAPI_CODEGEN_CONFIG_DIR}}/server.cfg.yaml"
+  GROUNDCONTROL_SERVER_OUTPUT_DIR: "{{.ROOT_DIR}}/internal/groundcontrol/server"
+  GROUNDCONTROL_SERVER_OUTPUT: "{{.GROUNDCONTROL_SERVER_OUTPUT_DIR}}/server.gen.go"
+  GROUNDCONTROL_CLIENT_CONFIG: "{{.OAPI_CODEGEN_CONFIG_DIR}}/client.cfg.yaml"
+  GROUNDCONTROL_CLIENT_OUTPUT_DIR: "{{.ROOT_DIR}}/pkg/groundcontrol"
+  GROUNDCONTROL_CLIENT_OUTPUT: "{{.GROUNDCONTROL_CLIENT_OUTPUT_DIR}}/client.gen.go"
 
 tasks:
   oapi-codegen:install:
@@ -23,32 +23,32 @@ tasks:
       - test -x {{.BIN_DIR}}/oapi-codegen
       - "{{.BIN_DIR}}/oapi-codegen -version | grep -q '{{.OAPI_CODEGEN_RELEASE_VERSION}}'"
 
-  ground-control:
+  groundcontrol:
     desc: Generate Ground Control OpenAPI server and client code
     cmds:
-      - task: ground-control-server
-      - task: ground-control-client
+      - task: groundcontrol-server
+      - task: groundcontrol-client
 
-  ground-control-server:
+  groundcontrol-server:
     desc: Generate Ground Control OpenAPI server code
     cmds:
       - task: oapi-codegen:install
-      - mkdir -p "{{.GC_SERVER_OUTPUT_DIR}}"
-      - '"{{.BIN_DIR}}/oapi-codegen" -config "{{.GC_SERVER_CONFIG}}" -o "{{.GC_SERVER_OUTPUT}}" "{{.GC_OPENAPI_SPEC}}"'
+      - mkdir -p "{{.GROUNDCONTROL_SERVER_OUTPUT_DIR}}"
+      - '"{{.BIN_DIR}}/oapi-codegen" -config "{{.GROUNDCONTROL_SERVER_CONFIG}}" -o "{{.GROUNDCONTROL_SERVER_OUTPUT}}" "{{.GROUNDCONTROL_OPENAPI_SPEC}}"'
     sources:
-      - "{{.GC_OPENAPI_SPEC}}"
-      - "{{.GC_SERVER_CONFIG}}"
+      - "{{.GROUNDCONTROL_OPENAPI_SPEC}}"
+      - "{{.GROUNDCONTROL_SERVER_CONFIG}}"
     generates:
-      - "{{.GC_SERVER_OUTPUT}}"
+      - "{{.GROUNDCONTROL_SERVER_OUTPUT}}"
 
-  ground-control-client:
+  groundcontrol-client:
     desc: Generate Ground Control OpenAPI client code
     cmds:
       - task: oapi-codegen:install
-      - mkdir -p "{{.GC_CLIENT_OUTPUT_DIR}}"
-      - '"{{.BIN_DIR}}/oapi-codegen" -config "{{.GC_CLIENT_CONFIG}}" -o "{{.GC_CLIENT_OUTPUT}}" "{{.GC_OPENAPI_SPEC}}"'
+      - mkdir -p "{{.GROUNDCONTROL_CLIENT_OUTPUT_DIR}}"
+      - '"{{.BIN_DIR}}/oapi-codegen" -config "{{.GROUNDCONTROL_CLIENT_CONFIG}}" -o "{{.GROUNDCONTROL_CLIENT_OUTPUT}}" "{{.GROUNDCONTROL_OPENAPI_SPEC}}"'
     sources:
-      - "{{.GC_OPENAPI_SPEC}}"
-      - "{{.GC_CLIENT_CONFIG}}"
+      - "{{.GROUNDCONTROL_OPENAPI_SPEC}}"
+      - "{{.GROUNDCONTROL_CLIENT_CONFIG}}"
     generates:
-      - "{{.GC_CLIENT_OUTPUT}}"
+      - "{{.GROUNDCONTROL_CLIENT_OUTPUT}}"

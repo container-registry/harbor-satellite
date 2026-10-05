@@ -1,12 +1,26 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
+	"github.com/container-registry/harbor-satellite/internal/satellite/proxy"
+	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/google/go-containerregistry/pkg/registry"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
+	"oras.land/oras-go/v2/errdef"
 )
 
 func newTestConfigManager(t *testing.T, cfg *config.Config) *config.ConfigManager {
@@ -20,51 +34,249 @@ func newTestConfigManager(t *testing.T, cfg *config.Config) *config.ConfigManage
 	return cm
 }
 
-func TestResolveLocalRegistryEndpoint_BYO(t *testing.T) {
+func TestResolveLocalRegistryEndpointInvalidMode(t *testing.T) {
+	endpoint := resolveLocalRegistryEndpoint("", config.DefaultProxyPort)
+	require.Empty(t, endpoint)
+}
+
+func TestResolveLocalRegistryEndpoint(t *testing.T) {
+	for _, mode := range []proxy.Mode{proxy.ModeProxy, proxy.ModeReplica} {
+		require.Equal(t, "127.0.0.1:9090", resolveLocalRegistryEndpoint(mode, 9090))
+	}
+}
+
+func TestValidateSatelliteOptions(t *testing.T) {
 	tests := []struct {
-		name     string
-		url      string
-		expected string
+		name    string
+		opts    SatelliteOptions
+		wantErr string
 	}{
-		{
-			name:     "strips http prefix",
-			url:      "http://registry:5000",
-			expected: "registry:5000",
-		},
-		{
-			name:     "strips https prefix",
-			url:      "https://registry.example.com:5000",
-			expected: "registry.example.com:5000",
-		},
-		{
-			name:     "no prefix passthrough",
-			url:      "registry:5000",
-			expected: "registry:5000",
-		},
+		{name: "proxy mode", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyPort: 8585}},
+		{name: "replica mode", opts: SatelliteOptions{ProxyMode: proxy.ModeReplica, ProxyPort: 8585}},
+		{name: "invalid mode", opts: SatelliteOptions{ProxyMode: "cache", ProxyPort: 8585}, wantErr: "must be"},
+		{name: "zero port", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy}, wantErr: "between 1 and 65535"},
+		{name: "port too large", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyPort: 65536}, wantErr: "between 1 and 65535"},
+		{name: "fallback only", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyPort: 8585, FallbackOnly: true}},
+		{name: "fallback only ignores proxy validation", opts: SatelliteOptions{FallbackOnly: true}},
+		{name: "explicit proxy mode with fallback only", opts: SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyPort: 8585, ProxyModeExplicit: true, FallbackOnly: true}, wantErr: "cannot be combined"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				AppConfig: config.AppConfig{
-					BringOwnRegistry: true,
-					LocalRegistryCredentials: config.RegistryCredentials{
-						URL: config.URL(tt.url),
-					},
-				},
+			err := validateSatelliteOptions(tt.opts)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
 			}
-			cm := newTestConfigManager(t, cfg)
-
-			endpoint := resolveLocalRegistryEndpoint(cm)
-			require.Equal(t, tt.expected, endpoint)
+			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
 }
 
-func TestResolveLocalRegistryEndpoint_LocalStore(t *testing.T) {
-	cm := newTestConfigManager(t, &config.Config{})
-	endpoint := resolveLocalRegistryEndpoint(cm)
-	require.Empty(t, endpoint)
+func TestFallbackOnlyExitsBeforeProxyInitialization(t *testing.T) {
+	paths, err := config.ResolvePathConfig(t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, run(SatelliteOptions{
+		FallbackOnly: true,
+		ProxyMode:    proxy.ModeProxy,
+		ProxyPort:    0,
+	}, paths, "1s"))
+}
+
+func TestRunFallbackOnlySelectsBYOEndpoint(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		useBYO   bool
+		endpoint string
+	}{
+		{name: "BYO registry", useBYO: true, endpoint: "https://byo.example:5443"},
+		{name: "no BYO registry", useBYO: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cm := newTestConfigManager(t, &config.Config{AppConfig: config.AppConfig{
+				BringOwnRegistry:         test.useBYO,
+				LocalRegistryCredentials: config.RegistryCredentials{URL: "https://byo.example:5443"},
+			}})
+			called := false
+			runFallbackOnly(cm, SatelliteOptions{FallbackOnly: true}, func(
+				_ *config.ConfigManager, _ mirrorFlags, _ bool, endpoint string,
+			) []runtime.CRIConfigResult {
+				called = true
+				require.Equal(t, test.endpoint, endpoint)
+				return nil
+			})
+			require.True(t, called)
+		})
+	}
+}
+
+func TestSourceRegistryOptionsUsesHarborOverride(t *testing.T) {
+	cm := newTestConfigManager(t, &config.Config{
+		StateConfig: config.StateConfig{
+			RegistryCredentials: config.RegistryCredentials{
+				URL:      "http://registry.internal:5000",
+				Username: "old-user",
+				Password: "old-password",
+			},
+		},
+		AppConfig: config.AppConfig{
+			UseUnsecure:       true,
+			HarborRegistryURL: "https://harbor.example:8443",
+		},
+	})
+	options, err := store.ResolveSourceRegistry(cm)
+	require.NoError(t, err)
+	require.Equal(t, "harbor.example:8443", options.Endpoint)
+	require.Equal(t, "old-user", options.Username)
+	require.Equal(t, "old-password", options.Password)
+	require.True(t, options.PlainHTTP)
+}
+
+func TestSourceRegistryOptionsHonorsHTTPOverride(t *testing.T) {
+	cm := newTestConfigManager(t, &config.Config{
+		StateConfig: config.StateConfig{RegistryCredentials: config.RegistryCredentials{URL: "https://registry.internal:5000"}},
+		AppConfig:   config.AppConfig{HarborRegistryURL: "http://harbor.example:5000"},
+	})
+	options, err := store.ResolveSourceRegistry(cm)
+	require.NoError(t, err)
+	require.Equal(t, "harbor.example:5000", options.Endpoint)
+	require.True(t, options.PlainHTTP)
+}
+
+func TestProxyStoresPrioritizesBYORegistry(t *testing.T) {
+	cm := newTestConfigManager(t, &config.Config{
+		StateConfig: config.StateConfig{RegistryCredentials: config.RegistryCredentials{URL: "http://harbor.example.com"}},
+		AppConfig: config.AppConfig{
+			BringOwnRegistry:         true,
+			UseUnsecure:              true,
+			LocalRegistryCredentials: config.RegistryCredentials{URL: "http://byor.example.com"},
+		},
+	})
+	local, remote, err := proxyStores(cm, t.TempDir())
+	require.NoError(t, err)
+	require.IsType(t, &store.RegistryStore{}, local)
+	require.IsType(t, &store.RegistryStore{}, remote)
+}
+
+func TestProxyStoresUseCredentialsRegisteredAfterStartup(t *testing.T) {
+	registryHandler := registry.New()
+	upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		_, password, ok := request.BasicAuth()
+		if !ok || password != "registered-password" {
+			response.Header().Set("WWW-Authenticate", `Basic realm="test"`)
+			response.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		registryHandler.ServeHTTP(response, request)
+	}))
+	t.Cleanup(upstream.Close)
+
+	cm := newTestConfigManager(t, &config.Config{AppConfig: config.AppConfig{
+		HarborRegistryURL: upstream.URL,
+		UseUnsecure:       true,
+	}})
+	local, remote, err := proxyStores(cm, t.TempDir())
+	require.NoError(t, err)
+	require.IsType(t, &store.OCIStore{}, local)
+	artifact := store.Artifact{Name: "team/app", Tag: "missing"}
+	_, err = remote.Pull(context.Background(), artifact, store.PullResourceManifest)
+	require.Error(t, err)
+
+	cm.With(config.SetStateAuth("robot", "registered-password", config.URL(upstream.URL)))
+	_, err = remote.Pull(context.Background(), artifact, store.PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+	require.Equal(t, upstream.URL, cm.GetSourceRegistryURL())
+}
+
+func TestGracefulShutdownDrainsActiveProxyResponse(t *testing.T) {
+	releaseRequest, clientDone, shutdownDone := startGatedProxyShutdown(t, "1s")
+
+	select {
+	case err := <-shutdownDone:
+		t.Fatalf("shutdown returned before the active response drained: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	releaseRequest()
+	require.NoError(t, <-clientDone)
+	require.NoError(t, <-shutdownDone)
+}
+
+func TestGracefulShutdownTimesOutStuckProxyResponse(t *testing.T) {
+	releaseRequest, clientDone, shutdownDone := startGatedProxyShutdown(t, "20ms")
+	require.ErrorIs(t, <-shutdownDone, context.DeadlineExceeded)
+
+	releaseRequest()
+	select {
+	case <-clientDone:
+	case <-time.After(time.Second):
+		t.Fatal("stuck proxy request did not exit after it was released")
+	}
+}
+
+func startGatedProxyShutdown(t *testing.T, timeout string) (func(), <-chan error, <-chan error) {
+	t.Helper()
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	release := sync.OnceFunc(func() { close(releaseRequest) })
+	t.Cleanup(release)
+	server, listener, group := startTestProxyServer(t, http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		close(requestStarted)
+		<-releaseRequest
+		response.WriteHeader(http.StatusNoContent)
+	}))
+
+	clientDone := make(chan error, 1)
+	go func() {
+		response, err := http.Get("http://" + listener.Addr().String() + "/v2/") //nolint:noctx // test request lifetime is controlled by the server gate.
+		if err == nil {
+			err = response.Body.Close()
+		}
+		clientDone <- err
+	}()
+	<-requestStarted
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	log := zerolog.Nop()
+	shutdownDone := make(chan error, 1)
+	go func() {
+		shutdownDone <- gracefulShutdown(ctx, &log, &satellite.Satellite{}, server, group, timeout)
+	}()
+	return release, clientDone, shutdownDone
+}
+
+func TestGracefulShutdownReturnsRuntimeError(t *testing.T) {
+	want := errors.New("watcher failed")
+	group := &errgroup.Group{}
+	group.Go(func() error { return want })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	log := zerolog.Nop()
+
+	err := gracefulShutdown(ctx, &log, &satellite.Satellite{}, nil, group, "1s")
+	require.ErrorIs(t, err, want)
+}
+
+func startTestProxyServer(
+	t *testing.T,
+	handler http.Handler,
+) (*http.Server, net.Listener, *errgroup.Group) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := &http.Server{Handler: handler}
+	group := &errgroup.Group{}
+	group.Go(func() error {
+		err := server.Serve(listener)
+		if err == nil || errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	})
+	t.Cleanup(func() {
+		_ = server.Close()
+	})
+	return server, listener, group
 }
 
 func TestResolveCRIAndApply(t *testing.T) {

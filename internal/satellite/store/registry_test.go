@@ -1,395 +1,208 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"mime"
+	"mime/multipart"
+	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/logger"
-	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"github.com/google/go-containerregistry/pkg/v1/mutate"
-	"github.com/google/go-containerregistry/pkg/v1/random"
-	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/google/go-containerregistry/pkg/v1/types"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/errdef"
 )
 
-func testContext() context.Context {
-	log := zerolog.Nop()
-	return context.WithValue(context.Background(), logger.LoggerKey, &log)
-}
-
-// newTestRegistry starts an in-memory OCI registry and returns its host:port address.
-func newTestRegistry(t *testing.T) string {
-	t.Helper()
-	srv := httptest.NewServer(registry.New())
-	t.Cleanup(srv.Close)
-	return strings.TrimPrefix(srv.URL, "http://")
-}
-
-// pushImage pushes a random image with the given number of layers to the
-// registry at the specified reference. Returns the pushed image.
-func pushImage(t *testing.T, addr, imgName, tag string, layerCount int64) v1.Image {
-	t.Helper()
-	img, err := random.Image(1024, layerCount)
-	require.NoError(t, err)
-
-	ref, err := name.ParseReference(addr+"/library/"+imgName+":"+tag, name.Insecure)
-	require.NoError(t, err)
-	require.NoError(t, remote.Write(ref, img))
-	return img
-}
-
-func TestReplicate_NewImage(t *testing.T) {
-	srcAddr := newTestRegistry(t)
-	dstAddr := newTestRegistry(t)
-
-	pushImage(t, srcAddr, "alpine", "latest", 2)
-
-	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
-	ctx := testContext()
-
-	err := r.Replicate(ctx, []Artifact{
-		{Name: "alpine", Repository: "library", Tag: "latest"},
-	})
-	require.NoError(t, err)
-
-	// Verify image exists at destination
-	dstRef, err := name.ParseReference(dstAddr+"/library/alpine:latest", name.Insecure)
-	require.NoError(t, err)
-	_, err = remote.Head(dstRef)
-	require.NoError(t, err)
-}
-
-func TestReplicate_UsesIndependentEndpointRepositories(t *testing.T) {
-	srcAddr := newTestRegistry(t)
-	dstAddr := newTestRegistry(t)
-	img, err := random.Image(1024, 2)
-	require.NoError(t, err)
-
-	srcRef, err := name.ParseReference(srcAddr+"/source/team/images/httpd:2.4-trixie", name.Insecure)
-	require.NoError(t, err)
-	require.NoError(t, remote.Write(srcRef, img))
-
-	r := NewRegistryStore(
-		RegistryOptions{Endpoint: srcAddr, Repository: "source/team/images", PlainHTTP: true},
-		RegistryOptions{Endpoint: dstAddr, Repository: "destination/account", PlainHTTP: true},
-	)
-	require.NoError(t, r.Replicate(testContext(), []Artifact{
-		{Name: "httpd", Repository: "must-not-leak", Tag: "2.4-trixie"},
-	}))
-
-	dstRef, err := name.ParseReference(dstAddr+"/destination/account/httpd:2.4-trixie", name.Insecure)
-	require.NoError(t, err)
-	_, err = remote.Head(dstRef)
-	require.NoError(t, err)
-
-	leakedRef, err := name.ParseReference(dstAddr+"/destination/account/must-not-leak/httpd:2.4-trixie", name.Insecure)
-	require.NoError(t, err)
-	_, err = remote.Head(leakedRef)
-	require.Error(t, err)
-}
-
-func TestReplicate_SkipsExistingImage(t *testing.T) {
-	srcAddr := newTestRegistry(t)
-	dstAddr := newTestRegistry(t)
-
-	// Push same image to both source and destination
-	img := pushImage(t, srcAddr, "nginx", "1.25", 2)
-
-	dstRef, err := name.ParseReference(dstAddr+"/library/nginx:1.25", name.Insecure)
-	require.NoError(t, err)
-	require.NoError(t, remote.Write(dstRef, img))
-
-	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
-	ctx := testContext()
-
-	// Should succeed without error and skip the image
-	err = r.Replicate(ctx, []Artifact{
-		{Name: "nginx", Repository: "library", Tag: "1.25"},
-	})
-	require.NoError(t, err)
-}
-
-func TestReplicate_UpdatesChangedImage(t *testing.T) {
-	srcAddr := newTestRegistry(t)
-	dstAddr := newTestRegistry(t)
-
-	// Push one version to destination
-	pushImage(t, dstAddr, "redis", "7", 1)
-
-	// Push a different version to source (different random image)
-	srcImg := pushImage(t, srcAddr, "redis", "7", 2)
-
-	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
-	ctx := testContext()
-
-	err := r.Replicate(ctx, []Artifact{
-		{Name: "redis", Repository: "library", Tag: "7"},
-	})
-	require.NoError(t, err)
-
-	// Verify destination now has the source image
-	dstRef, err := name.ParseReference(dstAddr+"/library/redis:7", name.Insecure)
-	require.NoError(t, err)
-
-	dstDesc, err := remote.Head(dstRef)
-	require.NoError(t, err)
-
-	srcDigest, err := srcImg.Digest()
-	require.NoError(t, err)
-
-	// Digests won't match exactly due to OCI media type conversion,
-	// but the image should exist at destination
-	require.NotEmpty(t, dstDesc.Digest)
-	_ = srcDigest
-}
-
-func TestReplicate_MultipleEntities(t *testing.T) {
-	srcAddr := newTestRegistry(t)
-	dstAddr := newTestRegistry(t)
-
-	pushImage(t, srcAddr, "alpine", "latest", 1)
-	pushImage(t, srcAddr, "nginx", "1.25", 2)
-
-	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
-	ctx := testContext()
-
-	err := r.Replicate(ctx, []Artifact{
-		{Name: "alpine", Repository: "library", Tag: "latest"},
-		{Name: "nginx", Repository: "library", Tag: "1.25"},
-	})
-	require.NoError(t, err)
-
-	// Both images should exist at destination
-	for _, ref := range []string{
-		dstAddr + "/library/alpine:latest",
-		dstAddr + "/library/nginx:1.25",
-	} {
-		parsed, err := name.ParseReference(ref, name.Insecure)
-		require.NoError(t, err)
-		_, err = remote.Head(parsed)
-		require.NoError(t, err, "image should exist: %s", ref)
+func TestRegistryStoreFetchForwardsRangesAndConditions(t *testing.T) {
+	t.Parallel()
+	payload := []byte("0123456789")
+	descriptor := content.NewDescriptorFromBytes("application/octet-stream", payload)
+	etag := strconv.Quote(descriptor.Digest.String())
+	for _, resource := range []PullResource{PullResourceManifest, PullResourceBlob} {
+		for _, scenario := range []struct {
+			name         string
+			headers      http.Header
+			status       int
+			body         string
+			contentRange string
+		}{
+			{name: "full", status: http.StatusOK, body: "0123456789"},
+			{name: "single", headers: http.Header{"Range": {"bytes=2-5"}}, status: http.StatusPartialContent, body: "2345", contentRange: "bytes 2-5/10"},
+			{name: "suffix", headers: http.Header{"Range": {"bytes=-3"}}, status: http.StatusPartialContent, body: "789", contentRange: "bytes 7-9/10"},
+			{name: "resume", headers: http.Header{"Range": {"bytes=7-"}}, status: http.StatusPartialContent, body: "789", contentRange: "bytes 7-9/10"},
+			{name: "not modified", headers: http.Header{"If-None-Match": {etag}}, status: http.StatusNotModified},
+			{name: "precondition failed", headers: http.Header{"If-Match": {`"other"`}}, status: http.StatusPreconditionFailed},
+			{name: "if range matches", headers: http.Header{"Range": {"bytes=2-5"}, "If-Range": {etag}}, status: http.StatusPartialContent, body: "2345", contentRange: "bytes 2-5/10"},
+			{name: "if range mismatches", headers: http.Header{"Range": {"bytes=2-5"}, "If-Range": {`"other"`}}, status: http.StatusOK, body: "0123456789"},
+			{name: "unsatisfiable", headers: http.Header{"Range": {"bytes=20-"}}, status: http.StatusRequestedRangeNotSatisfiable, body: "invalid range: failed to overlap\n", contentRange: "bytes */10"},
+		} {
+			t.Run(strconv.Itoa(int(resource))+"/"+scenario.name, func(t *testing.T) {
+				t.Parallel()
+				path := "blobs"
+				if resource == PullResourceManifest {
+					path = "manifests"
+				}
+				server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+					if _, password, ok := request.BasicAuth(); !ok || password != "secret" {
+						response.Header().Set("WWW-Authenticate", `Basic realm="registry"`)
+						response.WriteHeader(http.StatusUnauthorized)
+						return
+					}
+					require.Equal(t, "/v2/team/app/"+path+"/"+descriptor.Digest.String(), request.URL.Path)
+					require.Equal(t, "identity", request.Header.Get("Accept-Encoding"))
+					require.Empty(t, request.Header.Get("Cookie"))
+					for name, values := range scenario.headers {
+						require.Equal(t, values, request.Header.Values(name))
+					}
+					response.Header().Set("Etag", etag)
+					http.ServeContent(response, request, "content", time.Time{}, bytes.NewReader(payload))
+				}))
+				t.Cleanup(server.Close)
+				storage, err := NewRegistryStore(RegistryOptions{Endpoint: server.URL, PlainHTTP: true, Username: "robot", Password: "secret"})
+				require.NoError(t, err)
+				headers := scenario.headers.Clone()
+				if headers == nil {
+					headers = make(http.Header)
+				}
+				headers.Set("Authorization", "Bearer client-secret")
+				headers.Set("Cookie", "session=client-secret")
+				response, err := storage.Fetch(context.Background(), Artifact{Name: "team/app"}, descriptor, resource, headers)
+				require.NoError(t, err)
+				body, err := io.ReadAll(response.Body)
+				require.NoError(t, err)
+				require.NoError(t, response.Body.Close())
+				require.Equal(t, scenario.status, response.StatusCode)
+				require.Equal(t, scenario.body, string(body))
+				require.Equal(t, scenario.contentRange, response.Header.Get("Content-Range"))
+				if response.StatusCode == http.StatusPartialContent {
+					require.Equal(t, int64(len(body)), response.ContentLength)
+				}
+			})
+		}
 	}
 }
 
-func TestReplicate_SourceNotFound(t *testing.T) {
-	srcAddr := newTestRegistry(t)
-	dstAddr := newTestRegistry(t)
-
-	// Don't push anything to source
-	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
-	ctx := testContext()
-
-	err := r.Replicate(ctx, []Artifact{
-		{Name: "missing", Repository: "library", Tag: "latest"},
-	})
-	require.Error(t, err)
+func TestRegistryStoreFetchStreamsMultipartRangesInRequestedOrder(t *testing.T) {
+	t.Parallel()
+	payload := []byte("0123456789")
+	descriptor := content.NewDescriptorFromBytes("application/octet-stream", payload)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		require.Equal(t, "bytes=7-8,0-1", request.Header.Get("Range"))
+		http.ServeContent(response, request, "blob", time.Time{}, bytes.NewReader(payload))
+	}))
+	t.Cleanup(server.Close)
+	storage, err := NewRegistryStore(RegistryOptions{Endpoint: server.URL, PlainHTTP: true})
+	require.NoError(t, err)
+	response, err := storage.Fetch(context.Background(), Artifact{Name: "team/app"}, descriptor, PullResourceBlob, http.Header{"Range": {"bytes=7-8,0-1"}})
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusPartialContent, response.StatusCode)
+	mediaType, parameters, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
+	require.NoError(t, err)
+	require.Equal(t, "multipart/byteranges", mediaType)
+	parts := multipart.NewReader(response.Body, parameters["boundary"])
+	for _, expected := range []string{"78", "01"} {
+		part, err := parts.NextPart()
+		require.NoError(t, err)
+		body, err := io.ReadAll(part)
+		require.NoError(t, err)
+		require.NoError(t, part.Close())
+		require.Equal(t, expected, string(body))
+	}
+	_, err = parts.NextPart()
+	require.ErrorIs(t, err, io.EOF)
 }
 
-func TestReplicate_EmptyEntities(t *testing.T) {
-	srcAddr := newTestRegistry(t)
-	dstAddr := newTestRegistry(t)
-
-	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
-	ctx := testContext()
-
-	err := r.Replicate(ctx, []Artifact{})
+func TestRegistryStoreFetchStreamsBeforeEOFAndCancelsWithRequest(t *testing.T) {
+	t.Parallel()
+	payload := []byte("firstlater")
+	descriptor := content.NewDescriptorFromBytes("application/octet-stream", payload)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Length", "10")
+		_, err := response.Write(payload[:5])
+		require.NoError(t, err)
+		require.NoError(t, http.NewResponseController(response).Flush())
+		<-request.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+	storage, err := NewRegistryStore(RegistryOptions{Endpoint: server.URL, PlainHTTP: true})
 	require.NoError(t, err)
-}
-
-func TestCountMissingLayers_AllMissing(t *testing.T) {
-	dstAddr := newTestRegistry(t)
-
-	// Create a random image (not pushed to destination)
-	img, err := random.Image(1024, 3)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	response, err := storage.Fetch(ctx, Artifact{Name: "team/app"}, descriptor, PullResourceBlob, nil)
 	require.NoError(t, err)
-
-	layers, err := img.Layers()
+	defer response.Body.Close()
+	first := make([]byte, 5)
+	_, err = io.ReadFull(response.Body, first)
 	require.NoError(t, err)
-
-	dstRef, err := name.ParseReference(dstAddr+"/library/test:latest", name.Insecure)
-	require.NoError(t, err)
-
-	r := &RegistryStore{}
-	missing := r.countMissingLayers(dstRef, layers, nil)
-	require.Equal(t, 3, missing)
-}
-
-func TestCountMissingLayers_NoneMissing(t *testing.T) {
-	dstAddr := newTestRegistry(t)
-
-	img, err := random.Image(1024, 2)
-	require.NoError(t, err)
-
-	// Push image to destination
-	dstRef, err := name.ParseReference(dstAddr+"/library/test:latest", name.Insecure)
-	require.NoError(t, err)
-	require.NoError(t, remote.Write(dstRef, img))
-
-	layers, err := img.Layers()
-	require.NoError(t, err)
-
-	r := &RegistryStore{}
-	missing := r.countMissingLayers(dstRef, layers, nil)
-	require.Equal(t, 0, missing)
-}
-
-func TestCountMissingLayers_PartialOverlap(t *testing.T) {
-	dstAddr := newTestRegistry(t)
-
-	// Push one image to destination (has its own layers)
-	oldImg, err := random.Image(1024, 2)
-	require.NoError(t, err)
-
-	dstRef, err := name.ParseReference(dstAddr+"/library/test:latest", name.Insecure)
-	require.NoError(t, err)
-	require.NoError(t, remote.Write(dstRef, oldImg))
-
-	// Create a new image with different layers
-	newImg, err := random.Image(1024, 3)
-	require.NoError(t, err)
-
-	newLayers, err := newImg.Layers()
-	require.NoError(t, err)
-
-	r := &RegistryStore{}
-	missing := r.countMissingLayers(dstRef, newLayers, nil)
-	// Random images have unique layers, so all new layers should be missing
-	require.Equal(t, 3, missing)
-}
-
-func TestDelete(t *testing.T) {
-	dstAddr := newTestRegistry(t)
-
-	pushImage(t, dstAddr, "alpine", "latest", 1)
-
-	r := NewRegistryStore(RegistryOptions{Endpoint: "", PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
-	ctx := testContext()
-
-	err := r.Delete(ctx, []Artifact{
-		{Name: "alpine", Repository: "library", Tag: "latest"},
-	})
-	require.NoError(t, err)
-}
-
-// TestReplicate_LayerResume simulates crash mid-replication and verifies that
-// already-present layers are skipped during resume. This tests the blob-level
-// deduplication that happens inside remote.Write via HEAD checks.
-func TestReplicate_LayerResume(t *testing.T) {
-	srcAddr := newTestRegistry(t)
-	dstAddr := newTestRegistry(t)
-
-	// Step 1: Create base image with 3 layers
-	baseImg, err := random.Image(1024, 3)
-	require.NoError(t, err)
-	baseLayers, err := baseImg.Layers()
-	require.NoError(t, err)
-	require.Len(t, baseLayers, 3, "base image should have 3 layers")
-
-	// Step 2: Create extended image by appending 2 new layers to base image
-	// This creates an image with 5 layers where first 3 are shared with baseImg
-	newLayer1, err := random.Layer(1024, types.DockerLayer)
-	require.NoError(t, err)
-	newLayer2, err := random.Layer(1024, types.DockerLayer)
-	require.NoError(t, err)
-
-	extendedImgRaw, err := mutate.AppendLayers(baseImg, newLayer1, newLayer2)
-	require.NoError(t, err)
-
-	// Convert to OCI format (same as what replicator does) for consistent digest
-	extendedImg := mutate.MediaType(extendedImgRaw, types.OCIManifestSchema1)
-	extendedLayers, err := extendedImg.Layers()
-	require.NoError(t, err)
-	require.Len(t, extendedLayers, 5, "extended image should have 5 layers")
-
-	// Step 3: Push base image to both source and dest
-	// This simulates a previous replication that completed (establishing 3 layers at dest)
-	baseRefSrc, err := name.ParseReference(srcAddr+"/library/app:base", name.Insecure)
-	require.NoError(t, err)
-	require.NoError(t, remote.Write(baseRefSrc, baseImg))
-
-	baseRefDst, err := name.ParseReference(dstAddr+"/library/app:base", name.Insecure)
-	require.NoError(t, err)
-	require.NoError(t, remote.Write(baseRefDst, baseImg))
-
-	// Step 4: Push extended image to source only
-	extRefSrc, err := name.ParseReference(srcAddr+"/library/app:extended", name.Insecure)
-	require.NoError(t, err)
-	require.NoError(t, remote.Write(extRefSrc, extendedImg))
-
-	// Step 5: Replicate the extended image from source to dest
-	// The destination already has 3 of the 5 layers (from base image)
-	// remote.Write should detect these via blob HEAD checks and only pull the 2 new layers
-	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
-	ctx := testContext()
-
-	err = r.Replicate(ctx, []Artifact{
-		{Name: "app", Repository: "library", Tag: "extended"},
-	})
-	require.NoError(t, err, "replication should succeed with layer-level resume")
-
-	// Step 6: Verify the image exists at destination with correct content
-	extRefDst, err := name.ParseReference(dstAddr+"/library/app:extended", name.Insecure)
-	require.NoError(t, err)
-
-	dstImg, err := remote.Image(extRefDst, remote.WithContext(ctx))
-	require.NoError(t, err, "replicated image should exist at destination")
-
-	// Verify layer count matches source
-	finalLayers, err := dstImg.Layers()
-	require.NoError(t, err)
-	require.Len(t, finalLayers, 5, "destination should have all 5 layers")
-
-	// Verify digest matches source (proves all layers were correctly replicated)
-	srcDigest, err := extendedImg.Digest()
-	require.NoError(t, err)
-	dstDigest, err := dstImg.Digest()
-	require.NoError(t, err)
-	require.Equal(t, srcDigest, dstDigest, "digests should match after replication")
-}
-
-func TestReplicate_CancelledContextStopsProcessing(t *testing.T) {
-	srcAddr := newTestRegistry(t)
-	dstAddr := newTestRegistry(t)
-
-	pushImage(t, srcAddr, "img1", "v1", 1)
-	pushImage(t, srcAddr, "img2", "v1", 1)
-	pushImage(t, srcAddr, "img3", "v1", 1)
-
-	r := NewRegistryStore(RegistryOptions{Endpoint: srcAddr, PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
-
-	ctx, cancel := context.WithCancel(testContext())
-	cancel() // cancel immediately
-
-	err := r.Replicate(ctx, []Artifact{
-		{Name: "img1", Repository: "library", Tag: "v1"},
-		{Name: "img2", Repository: "library", Tag: "v1"},
-		{Name: "img3", Repository: "library", Tag: "v1"},
-	})
-
-	require.ErrorIs(t, err, context.Canceled)
-}
-
-func TestDelete_CancelledContextStopsProcessing(t *testing.T) {
-	dstAddr := newTestRegistry(t)
-
-	pushImage(t, dstAddr, "img1", "v1", 1)
-	pushImage(t, dstAddr, "img2", "v1", 1)
-
-	r := NewRegistryStore(RegistryOptions{Endpoint: "", PlainHTTP: true}, RegistryOptions{Endpoint: dstAddr, PlainHTTP: true})
-
-	ctx, cancel := context.WithCancel(testContext())
+	require.Equal(t, payload[:5], first)
 	cancel()
-
-	err := r.Delete(ctx, []Artifact{
-		{Name: "img1", Repository: "library", Tag: "v1"},
-		{Name: "img2", Repository: "library", Tag: "v1"},
-	})
-
+	_, err = io.ReadAll(response.Body)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestRegistryStorePullFetchAndReplicate(t *testing.T) {
+	source, manifestPayload, manifestDesc, _, _ := testArtifact(t)
+	destinationServer := httptest.NewServer(registry.New())
+	t.Cleanup(destinationServer.Close)
+	destination, err := NewRegistryStore(RegistryOptions{
+		Endpoint: strings.TrimPrefix(destinationServer.URL, "http://"), PlainHTTP: true,
+	})
+	require.NoError(t, err)
+	artifact := Artifact{Name: "team/app", Tag: "latest"}
+	_, err = destination.Pull(context.Background(), artifact, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+	require.NoError(t, destination.Replicate(context.Background(), source, []Artifact{artifact}))
+	descriptor, err := destination.Pull(context.Background(), artifact, PullResourceManifest)
+	require.NoError(t, err)
+	require.Equal(t, manifestDesc, descriptor)
+	response, err := destination.Fetch(context.Background(), artifact, descriptor, PullResourceManifest, nil)
+	require.NoError(t, err)
+	payload, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+	require.Equal(t, manifestPayload, payload)
+}
+
+func TestRegistryStoreReusesAuthClientAndRefreshesCredentials(t *testing.T) {
+	var expectedPassword atomic.Value
+	expectedPassword.Store("first")
+	registryHandler := registry.New()
+	upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		_, password, ok := request.BasicAuth()
+		expected, valid := expectedPassword.Load().(string)
+		if !ok || !valid || password != expected {
+			response.Header().Set("WWW-Authenticate", `Basic realm="test"`)
+			response.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		registryHandler.ServeHTTP(response, request)
+	}))
+	t.Cleanup(upstream.Close)
+
+	options := RegistryOptions{Endpoint: strings.TrimPrefix(upstream.URL, "http://"), Username: "robot", Password: "first", PlainHTTP: true}
+	storage, err := NewRegistryStoreWithOptions(func() (RegistryOptions, error) { return options, nil })
+	require.NoError(t, err)
+	first, err := storage.repository(Artifact{Name: "team/app"})
+	require.NoError(t, err)
+	second, err := storage.repository(Artifact{Name: "team/app"})
+	require.NoError(t, err)
+	require.Same(t, first.Client, second.Client)
+	_, err = storage.Pull(context.Background(), Artifact{Name: "team/app", Tag: "missing"}, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+
+	options.Password = "second"
+	expectedPassword.Store("second")
+	third, err := storage.repository(Artifact{Name: "team/app"})
+	require.NoError(t, err)
+	require.NotSame(t, first.Client, third.Client)
+	_, err = storage.Pull(context.Background(), Artifact{Name: "team/app", Tag: "missing"}, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
 }

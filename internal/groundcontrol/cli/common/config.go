@@ -90,7 +90,10 @@ func Load(command *cobra.Command) *Runtime {
 	mustBindFlag(configuration.BindPFlag(insecureKey, command.PersistentFlags().Lookup("insecure")))
 
 	runtime := &Runtime{config: configuration}
-	command.PersistentPreRunE = func(_ *cobra.Command, _ []string) error {
+	command.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
+		if cmd == command {
+			return nil
+		}
 		if rootFlags.configFile != "" {
 			configuration.SetConfigFile(rootFlags.configFile)
 			if err := configuration.ReadInConfig(); err != nil {

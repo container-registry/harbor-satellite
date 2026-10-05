@@ -7,9 +7,9 @@ vars:
   HARBOR_URL: http://localhost:8080
   HARBOR_INTERNAL_URL: http://core:8080
   HARBOR_API: "{{.HARBOR_URL}}/api/v2.0"
-  GC_ADMIN_USER: admin
-  GC_ADMIN_PASSWORD: AdminPass123
-  GC_URL: http://localhost:9080
+  GROUNDCONTROL_ADMIN_USER: admin
+  GROUNDCONTROL_ADMIN_PASSWORD: AdminPass123
+  GROUNDCONTROL_URL: http://localhost:9080
   PROJECT_NAME: harbor-satellite
   REGISTRY_NAME: test-registry
   DEST_NAMESPACE: test-group
@@ -21,9 +21,9 @@ tasks:
       - task: setup
       - defer: { task: cleanup }
       - task: wait-harbor
-      - task: wait-gc
+      - task: wait-groundcontrol
       - task: init-harbor
-      - task: init-gc
+      - task: init-groundcontrol
       - task: register-satellite
       - task: verify
 
@@ -33,9 +33,9 @@ tasks:
       - task: setup
       - defer: { task: cleanup-byo }
       - task: wait-harbor
-      - task: wait-gc
+      - task: wait-groundcontrol
       - task: init-harbor
-      - task: init-gc-byo
+      - task: init-groundcontrol-byo
       - task: register-satellite-byo
       - task: verify-byo
       - echo "BYO registry E2E test passed"
@@ -45,15 +45,15 @@ tasks:
     cmds:
       - task: setup-spiffe
       - defer: { task: cleanup-spiffe }
-      - task: wait-gc-spiffe
+      - task: wait-groundcontrol-spiffe
       - task: generate-join-token
       - task: verify-spiffe-attestation
       - echo "SPIFFE join token E2E test passed"
   setup:
     desc: Start Harbor and Ground Control stack
     cmds:
-      - echo "Building ground-control image..."
-      - docker build --build-arg COMPONENT=groundcontrol/server -t gc:e2e -f Dockerfile .
+      - echo "Building Ground Control image..."
+      - docker build --build-arg COMPONENT=groundcontrol -t gc:e2e -f Dockerfile .
       - echo "Starting Harbor and GC stack..."
       - docker compose -f test/e2e/docker/docker-compose.yml up -d
       - sleep 5
@@ -63,12 +63,12 @@ tasks:
   setup-spiffe:
     desc: Start SPIFFE test stack with external SPIRE
     cmds:
-      - echo "Building ground-control image..."
-      - docker build --build-arg COMPONENT=groundcontrol/server -t gc:e2e -f Dockerfile .
+      - echo "Building Ground Control image..."
+      - docker build --build-arg COMPONENT=groundcontrol -t gc:e2e -f Dockerfile .
       - task: generate-spiffe-certs
       - task: start-spire-server
-      - task: setup-gc-agent
-      - task: start-gc-spiffe
+      - task: setup-groundcontrol-agent
+      - task: start-groundcontrol-spiffe
     silent: true
 
   generate-spiffe-certs:
@@ -105,7 +105,7 @@ tasks:
         docker logs spire-server 2>&1 | tail -50
         exit 1
 
-  setup-gc-agent:
+  setup-groundcontrol-agent:
     desc: Generate join token and start GC SPIRE agent
     cmds:
       - |
@@ -120,7 +120,7 @@ tasks:
         echo "GC Agent Token: $GC_TOKEN"
 
         echo "Creating agent config with join token..."
-        cat > test/e2e/docker/spiffe/agent-gc-runtime.conf << EOF
+        cat > test/e2e/docker/spiffe/agent-groundcontrol-runtime.conf << EOF
         agent {
             data_dir = "/tmp/spire-agent"
             log_level = "INFO"
@@ -181,7 +181,7 @@ tasks:
           -selector docker:label:com.docker.compose.service:gc \
           -socketPath /tmp/spire-server/private/api.sock || true
 
-  start-gc-spiffe:
+  start-groundcontrol-spiffe:
     desc: Start Ground Control with SPIFFE
     cmds:
       - |
@@ -215,7 +215,7 @@ tasks:
       - echo "Stopping spiffe containers..."
       - docker compose -f test/e2e/docker/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f spire-agent-satellite satellite-spiffe 2>/dev/null || true
-      - rm -f test/e2e/docker/spiffe/agent-gc-runtime.conf test/e2e/docker/spiffe/agent-satellite-runtime.conf 2>/dev/null || true
+      - rm -f test/e2e/docker/spiffe/agent-groundcontrol-runtime.conf test/e2e/docker/spiffe/agent-satellite-runtime.conf 2>/dev/null || true
       - rm -rf test/e2e/docker/spiffe/certs 2>/dev/null || true
       - echo "Cleanup complete"
     silent: true
@@ -236,13 +236,13 @@ tasks:
         echo "Timeout waiting for Harbor"
         exit 1
 
-  wait-gc:
+  wait-groundcontrol:
     desc: Wait for Ground Control to be healthy
     cmds:
       - |
         echo "Waiting for Ground Control to be healthy..."
         for i in $(seq 1 30); do
-          if curl -sf {{.GC_URL}}/health > /dev/null 2>&1; then
+          if curl -sf {{.GROUNDCONTROL_URL}}/health > /dev/null 2>&1; then
             echo "Ground Control is healthy"
             exit 0
           fi
@@ -252,7 +252,7 @@ tasks:
         echo "Timeout waiting for Ground Control"
         exit 1
 
-  wait-gc-spiffe:
+  wait-groundcontrol-spiffe:
     desc: Wait for Ground Control with SPIRE to be healthy
     cmds:
       - |
@@ -337,19 +337,19 @@ tasks:
 
         echo "Harbor initialized"
 
-  init-gc:
+  init-groundcontrol:
     desc: Initialize Ground Control with config and group
     vars:
       GC_TOKEN:
         sh: |
-          curl -sf -X POST {{.GC_URL}}/login \
+          curl -sf -X POST {{.GROUNDCONTROL_URL}}/login \
             -H "Content-Type: application/json" \
-            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            -d '{"username":"{{.GROUNDCONTROL_ADMIN_USER}}","password":"{{.GROUNDCONTROL_ADMIN_PASSWORD}}"}' | \
             grep -o '"token":"[^"]*"' | cut -d'"' -f4
     cmds:
       - |
         echo "Creating config..."
-        curl -sf -X POST {{.GC_URL}}/api/configs \
+        curl -sf -X POST {{.GROUNDCONTROL_URL}}/api/configs \
           -H "Authorization: Bearer {{.GC_TOKEN}}" \
           -H "Content-Type: application/json" \
           -d '{
@@ -368,7 +368,7 @@ tasks:
           }'
 
         echo "Creating group..."
-        curl -sf -X POST {{.GC_URL}}/api/groups/sync \
+        curl -sf -X POST {{.GROUNDCONTROL_URL}}/api/groups/sync \
           -H "Authorization: Bearer {{.GC_TOKEN}}" \
           -H "Content-Type: application/json" \
           -d '{
@@ -384,14 +384,14 @@ tasks:
     vars:
       GC_TOKEN:
         sh: |
-          curl -sf -X POST {{.GC_URL}}/login \
+          curl -sf -X POST {{.GROUNDCONTROL_URL}}/login \
             -H "Content-Type: application/json" \
-            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            -d '{"username":"{{.GROUNDCONTROL_ADMIN_USER}}","password":"{{.GROUNDCONTROL_ADMIN_PASSWORD}}"}' | \
             grep -o '"token":"[^"]*"' | cut -d'"' -f4
     cmds:
       - |
         echo "Registering satellite..."
-        RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
+        RESPONSE=$(curl -sf -X POST {{.GROUNDCONTROL_URL}}/api/satellites \
           -H "Authorization: Bearer {{.GC_TOKEN}}" \
           -H "Content-Type: application/json" \
           -d '{
@@ -456,7 +456,7 @@ tasks:
         sh: |
           curl -sfk -X POST https://localhost:9080/login \
             -H "Content-Type: application/json" \
-            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            -d '{"username":"{{.GROUNDCONTROL_ADMIN_USER}}","password":"{{.GROUNDCONTROL_ADMIN_PASSWORD}}"}' | \
             grep -o '"token":"[^"]*"' | cut -d'"' -f4
     cmds:
       - |
@@ -561,13 +561,13 @@ tasks:
 
         echo "SPIFFE join token attestation verified successfully"
 
-  init-gc-byo:
+  init-groundcontrol-byo:
     desc: Initialize Ground Control with BYO registry config
     cmds:
       - |
-        GC_TOKEN=$(curl -sf -X POST {{.GC_URL}}/login \
+        GC_TOKEN=$(curl -sf -X POST {{.GROUNDCONTROL_URL}}/login \
           -H "Content-Type: application/json" \
-          -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+          -d '{"username":"{{.GROUNDCONTROL_ADMIN_USER}}","password":"{{.GROUNDCONTROL_ADMIN_PASSWORD}}"}' | \
           grep -o '"token":"[^"]*"' | cut -d'"' -f4)
         if [ -z "$GC_TOKEN" ]; then
           echo "ERROR: Failed to get GC token"
@@ -575,7 +575,7 @@ tasks:
         fi
 
         echo "Creating BYO config..."
-        RESP=$(curl -s -w '\n%{http_code}' -X POST {{.GC_URL}}/api/configs \
+        RESP=$(curl -s -w '\n%{http_code}' -X POST {{.GROUNDCONTROL_URL}}/api/configs \
           -H "Authorization: Bearer $GC_TOKEN" \
           -H "Content-Type: application/json" \
           -d '{
@@ -602,7 +602,7 @@ tasks:
         echo "Config created (HTTP $HTTP_CODE)"
 
         echo "Creating group..."
-        curl -sf -X POST {{.GC_URL}}/api/groups/sync \
+        curl -sf -X POST {{.GROUNDCONTROL_URL}}/api/groups/sync \
           -H "Authorization: Bearer $GC_TOKEN" \
           -H "Content-Type: application/json" \
           -d '{
@@ -617,9 +617,9 @@ tasks:
     desc: Register satellite with BYO registry and start it
     cmds:
       - |
-        GC_TOKEN=$(curl -sf -X POST {{.GC_URL}}/login \
+        GC_TOKEN=$(curl -sf -X POST {{.GROUNDCONTROL_URL}}/login \
           -H "Content-Type: application/json" \
-          -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+          -d '{"username":"{{.GROUNDCONTROL_ADMIN_USER}}","password":"{{.GROUNDCONTROL_ADMIN_PASSWORD}}"}' | \
           grep -o '"token":"[^"]*"' | cut -d'"' -f4)
         if [ -z "$GC_TOKEN" ]; then
           echo "ERROR: Failed to get GC token"
@@ -627,7 +627,7 @@ tasks:
         fi
 
         echo "Registering satellite..."
-        RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
+        RESPONSE=$(curl -sf -X POST {{.GROUNDCONTROL_URL}}/api/satellites \
           -H "Authorization: Bearer $GC_TOKEN" \
           -H "Content-Type: application/json" \
           -d '{
@@ -722,9 +722,9 @@ tasks:
       - task: setup
       - defer: { task: cleanup-crash-recovery }
       - task: wait-harbor
-      - task: wait-gc
+      - task: wait-groundcontrol
       - task: init-harbor
-      - task: init-gc
+      - task: init-groundcontrol
       - task: register-and-run-satellite-with-volume
       - task: verify
       - task: crash-and-restart-satellite
@@ -737,9 +737,9 @@ tasks:
       - task: setup
       - defer: { task: cleanup-crash-recovery-byo }
       - task: wait-harbor
-      - task: wait-gc
+      - task: wait-groundcontrol
       - task: init-harbor
-      - task: init-gc-byo
+      - task: init-groundcontrol-byo
       - task: register-and-run-satellite-byo-with-volume
       - task: verify-byo
       - task: crash-and-restart-satellite-byo
@@ -751,14 +751,14 @@ tasks:
     vars:
       GC_TOKEN:
         sh: |
-          curl -sf -X POST {{.GC_URL}}/login \
+          curl -sf -X POST {{.GROUNDCONTROL_URL}}/login \
             -H "Content-Type: application/json" \
-            -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+            -d '{"username":"{{.GROUNDCONTROL_ADMIN_USER}}","password":"{{.GROUNDCONTROL_ADMIN_PASSWORD}}"}' | \
             grep -o '"token":"[^"]*"' | cut -d'"' -f4
     cmds:
       - |
         echo "Registering satellite..."
-        RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
+        RESPONSE=$(curl -sf -X POST {{.GROUNDCONTROL_URL}}/api/satellites \
           -H "Authorization: Bearer {{.GC_TOKEN}}" \
           -H "Content-Type: application/json" \
           -d '{
@@ -859,9 +859,9 @@ tasks:
     desc: Register satellite with BYO registry and start with named volume
     cmds:
       - |
-        GC_TOKEN=$(curl -sf -X POST {{.GC_URL}}/login \
+        GC_TOKEN=$(curl -sf -X POST {{.GROUNDCONTROL_URL}}/login \
           -H "Content-Type: application/json" \
-          -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+          -d '{"username":"{{.GROUNDCONTROL_ADMIN_USER}}","password":"{{.GROUNDCONTROL_ADMIN_PASSWORD}}"}' | \
           grep -o '"token":"[^"]*"' | cut -d'"' -f4)
         if [ -z "$GC_TOKEN" ]; then
           echo "ERROR: Failed to get GC token"
@@ -869,7 +869,7 @@ tasks:
         fi
 
         echo "Registering satellite..."
-        RESPONSE=$(curl -sf -X POST {{.GC_URL}}/api/satellites \
+        RESPONSE=$(curl -sf -X POST {{.GROUNDCONTROL_URL}}/api/satellites \
           -H "Authorization: Bearer $GC_TOKEN" \
           -H "Content-Type: application/json" \
           -d '{

@@ -83,7 +83,7 @@ Pick the path that matches where you are:
 | Try it locally, dev or test | [Token-based quickstart](examples/deploy/no-spiffe/quickstart.md) |
 | Production with zero-trust identity | [SPIFFE/SPIRE quickstarts](examples/deploy/README.md) |
 | Install binaries, containers, Helm | [Installation docs](https://satellite.container-registry.com/docs/installation/) |
-| Run Ground Control | [Ground Control guide](docs/guides/ground-control.md) |
+| Run Ground Control | [Ground Control guide](docs/guides/groundcontrol.md) |
 | Reference setup on k3s | [k3s reference architecture](docs/guides/k3s-reference-architecture.md) |
 
 Published container images: `registry.goharbor.io/harbor-satellite/satellite` and `registry.goharbor.io/harbor-satellite/ground-control`. Binaries and packages are on the [releases page](https://github.com/container-registry/harbor-satellite/releases).
@@ -136,7 +136,7 @@ graph TB
 The satellite requires the Ground Control URL, the Harbor registry URL as reachable from the satellite, and a token unless SPIFFE is enabled:
 
 ```bash
-harbor-satellite \
+satellite \
   --ground-control-url https://gc.example.com \
   --harbor-registry-url https://harbor.example.com \
   --token "<your-token>"
@@ -171,7 +171,7 @@ task byo-down  # stop and cleanup
 In BYO mode the satellite can point local runtimes at the site registry as a mirror, with fallback to upstream. Without BYO these options print a warning and change nothing.
 
 ```bash
-harbor-satellite ... --byo-registry --registry-url http://127.0.0.1:5000 \
+satellite ... --byo-registry --registry-url http://127.0.0.1:5000 \
   --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
 ```
 
@@ -234,7 +234,7 @@ Harbor Satellite keeps Harbor as the central source of truth and puts only what 
 - Satellite config at rest can be encrypted with AES-256-GCM, bound to the device fingerprint (`app_config.encrypt_config`, Linux only, off by default).
 - Container images are signed with Cosign; release archives ship with SBOMs.
 
-Design details: [ADR-0004 Ground Control authentication](docs/decisions/0004-ground-control-authentication.md), [ADR-0005 SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md).
+Design details: [ADR-0004 Ground Control authentication](docs/decisions/0004-groundcontrol-authentication.md), [ADR-0005 SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md).
 
 ## Status and Roadmap
 
