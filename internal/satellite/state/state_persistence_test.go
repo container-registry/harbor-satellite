@@ -37,6 +37,7 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	}
 	if loaded == nil {
 		t.Fatal("LoadState returned nil")
+		return
 	}
 
 	if loaded.ConfigDigest != configDigest {
@@ -89,6 +90,7 @@ func TestSaveEmptyState(t *testing.T) {
 	}
 	if loaded == nil {
 		t.Fatal("LoadState returned nil for empty state")
+		return
 	}
 	if loaded.ConfigDigest != "" {
 		t.Errorf("ConfigDigest = %q, want empty", loaded.ConfigDigest)

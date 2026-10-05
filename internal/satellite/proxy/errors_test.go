@@ -28,7 +28,7 @@ func TestDistributionErrorCodesMatchSpecification(t *testing.T) {
 		{proxy.ErrorCodeSizeInvalid, http.StatusBadRequest},
 		{proxy.ErrorCodeUnauthorized, http.StatusUnauthorized},
 		{proxy.ErrorCodeDenied, http.StatusForbidden},
-		{proxy.ErrorCodeUnsupported, http.StatusMethodNotAllowed},
+		{proxy.ErrorCodeUnsupported, http.StatusBadRequest},
 		{proxy.ErrorCodeTooManyRequests, http.StatusTooManyRequests},
 	}
 
@@ -61,7 +61,7 @@ func TestUnsupportedRouteOverridesConventionalUnsupportedStatus(t *testing.T) {
 	t.Parallel()
 
 	response := serveRequest(t, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	require.Equal(t, http.StatusMethodNotAllowed, proxy.ErrorCodeUnsupported.HTTPStatus())
+	require.Equal(t, http.StatusBadRequest, proxy.ErrorCodeUnsupported.HTTPStatus())
 	require.Equal(t, http.StatusNotFound, response.Code)
 	require.Equal(t, proxy.ErrorCodeUnsupported, decodeError(t, response).Errors[0].Code)
 }

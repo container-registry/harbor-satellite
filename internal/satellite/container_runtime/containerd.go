@@ -15,14 +15,14 @@ const (
 )
 
 // setContainerdConfig writes hosts.toml for multiple upstream registries and updates containerd registry plugin
-func setContainerdConfig(upstreamRegistries []string, localMirror string) (string, error) {
+func setContainerdConfig(upstreamRegistries []string, proxyEndpoint string) (string, error) {
 	backupPath, err := configureContainerd(containerdCertsDir)
 	if err != nil {
 		return backupPath, fmt.Errorf("failed to configure registry plugin: %w", err)
 	}
 
 	for _, registryURL := range upstreamRegistries {
-		if err := writeContainerdHostToml(registryURL, localMirror); err != nil {
+		if err := writeContainerdHostToml(registryURL, proxyEndpoint); err != nil {
 			return backupPath, fmt.Errorf("failed to configure containerd for %s: %w", registryURL, err)
 		}
 	}
@@ -31,7 +31,7 @@ func setContainerdConfig(upstreamRegistries []string, localMirror string) (strin
 }
 
 // writeContainerdHostToml creates or updates hosts.toml for a registry
-func writeContainerdHostToml(registryURL, localMirror string) error {
+func writeContainerdHostToml(registryURL, proxyEndpoint string) error {
 	dir := filepath.Join(containerdCertsDir, registryURL)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
@@ -62,11 +62,11 @@ func writeContainerdHostToml(registryURL, localMirror string) error {
 	}
 	cfg.Server = registryURL
 
-	if !strings.HasPrefix(localMirror, "http://") && !strings.HasPrefix(localMirror, "https://") {
-		localMirror = "http://" + localMirror
+	if !strings.HasPrefix(proxyEndpoint, "http://") && !strings.HasPrefix(proxyEndpoint, "https://") {
+		proxyEndpoint = "http://" + proxyEndpoint
 	}
 
-	cfg.Host[localMirror] = Host{
+	cfg.Host[proxyEndpoint] = Host{
 		Capabilities: []string{"pull", "resolve"},
 	}
 
