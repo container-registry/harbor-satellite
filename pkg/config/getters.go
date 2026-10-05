@@ -210,6 +210,13 @@ func (cm *ConfigManager) GetHarborRegistryURL() string {
 	return cm.config.AppConfig.HarborRegistryURL
 }
 
+func (cm *ConfigManager) GetPeerDistributionConfig() PeerDistributionConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.AppConfig.PeerDistribution
+}
+
 func (cm *ConfigManager) GetDirectDeliveryConfig() DirectDeliveryConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
