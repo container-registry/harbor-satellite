@@ -385,6 +385,8 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 
 		remoteConfig.StateConfig = f.cm.GetStateConfig()
 		remoteConfig.AppConfig.HarborRegistryURL = f.cm.GetHarborRegistryURL()
+		localPeers := f.cm.GetPeerDistributionConfig()
+		config.ApplyRetainedPeerTransport(&remoteConfig, localPeers, useUnsecure)
 		validatedRemoteConfig, warnings, err := config.ValidateAndEnforceDefaults(&remoteConfig, f.cm.DefaultGroundControlURL)
 		if err != nil {
 			configFetcherLog.Error().Err(err).

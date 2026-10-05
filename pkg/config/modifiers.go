@@ -111,6 +111,12 @@ func SetHarborRegistryURL(url string) func(*Config) {
 	}
 }
 
+func SetPeerDistributionConfig(peers PeerDistributionConfig) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.PeerDistribution = peers
+	}
+}
+
 func SetDirectDelivery(dd DirectDeliveryConfig) func(*Config) {
 	return func(cfg *Config) {
 		cfg.AppConfig.DirectDelivery = dd
