@@ -66,29 +66,25 @@ tasks:
   all-satellite:
     desc: Build satellite for all platforms
     cmds:
-      - echo "Building satellite for all platforms..."
-      - for:
-          matrix:
-            GOOS: [linux]
-            GOARCH: [amd64, arm64, ppc64le, s390x, riscv64]
-        cmd: |
-          echo "  {{.ITEM.GOOS}}/{{.ITEM.GOARCH}}..."
-          mkdir -p {{.BIN_DIR}}/{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}
-          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}/satellite ./cmd/satellite
-      - for:
-          matrix:
-            GOOS: [darwin]
-            GOARCH: [amd64, arm64]
-        cmd: |
-          echo "  {{.ITEM.GOOS}}/{{.ITEM.GOARCH}}..."
-          mkdir -p {{.BIN_DIR}}/{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}
-          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}/satellite ./cmd/satellite
+      - task: all-component
+        vars:
+          BINARY: satellite
+          PACKAGE: ./cmd/satellite
     silent: true
 
   all-groundcontrol:
     desc: Build Ground Control for all platforms
     cmds:
-      - echo "Building Ground Control for all platforms..."
+      - task: all-component
+        vars:
+          BINARY: groundcontrol
+          PACKAGE: ./cmd/groundcontrol
+    silent: true
+
+  all-component:
+    internal: true
+    cmds:
+      - echo "Building {{.BINARY}} for all platforms..."
       - for:
           matrix:
             GOOS: [linux]
@@ -96,7 +92,7 @@ tasks:
         cmd: |
           echo "  {{.ITEM.GOOS}}/{{.ITEM.GOARCH}}..."
           mkdir -p {{.BIN_DIR}}/{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}
-          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}/groundcontrol ./cmd/groundcontrol
+          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}/{{.BINARY}} {{.PACKAGE}}
       - for:
           matrix:
             GOOS: [darwin]
@@ -104,7 +100,7 @@ tasks:
         cmd: |
           echo "  {{.ITEM.GOOS}}/{{.ITEM.GOARCH}}..."
           mkdir -p {{.BIN_DIR}}/{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}
-          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}/groundcontrol ./cmd/groundcontrol
+          GOOS={{.ITEM.GOOS}} GOARCH={{.ITEM.GOARCH}} go build -o {{.BIN_DIR}}/{{.ITEM.GOOS}}-{{.ITEM.GOARCH}}/{{.BINARY}} {{.PACKAGE}}
     silent: true
 
   cross-compile:

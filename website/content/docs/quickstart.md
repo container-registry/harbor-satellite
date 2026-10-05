@@ -249,7 +249,7 @@ EOF
 
 ### 1.5 Create the Docker Compose file
 
-Create `docker-compose.yml` in the `groundcontrol/` directory:
+Create `docker-compose.yml` in the `gc/` directory:
 
 {{< details summary="gc/docker-compose.yml (click to expand)" >}}
 ```yaml

@@ -13,6 +13,9 @@ on:
 permissions:
   contents: read
 
+env:
+  COMPONENT_IMAGES: '{"satellite":"satellite","groundcontrol":"ground-control"}'
+
 concurrency:
   # Cancelling a main-branch run mid-merge can leave satellite:latest and
   # ground-control:latest pointing at different commits, so main publishes
@@ -142,7 +145,7 @@ jobs:
           build-args: |
             BUILDER_MODE=prebuilt
             BINARY_NAME=satellite
-          tags: ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/satellite
+          tags: ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/${{ fromJSON(env.COMPONENT_IMAGES).satellite }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
           provenance: false
           sbom: false
@@ -157,7 +160,7 @@ jobs:
           build-args: |
             BUILDER_MODE=prebuilt
             BINARY_NAME=groundcontrol
-          tags: ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/ground-control
+          tags: ${{ env.REGISTRY }}/${{ env.PROJECT_NAME }}/${{ fromJSON(env.COMPONENT_IMAGES).groundcontrol }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
           provenance: false
           sbom: false
@@ -213,9 +216,9 @@ jobs:
         working-directory: ${{ runner.temp }}/digests
         run: |
           set -euo pipefail
-          for component in satellite groundcontrol; do
-            image_component="$component"
-            if [ "$component" = "groundcontrol" ]; then image_component="ground-control"; fi
+          for component_image in $(jq -r 'to_entries[] | "\(.key):\(.value)"' <<< "$COMPONENT_IMAGES"); do
+            component="${component_image%%:*}"
+            image_component="${component_image#*:}"
             image="${REGISTRY}/${PROJECT_NAME}/${image_component}"
             if [ ! -d "${component}" ]; then
               echo "Missing digest directory for ${component}" >&2
@@ -263,9 +266,8 @@ jobs:
       - name: Sign images
         run: |
           set -euo pipefail
-          for component in satellite groundcontrol; do
-            image_component="$component"
-            if [ "$component" = "groundcontrol" ]; then image_component="ground-control"; fi
+          for component_image in $(jq -r 'to_entries[] | "\(.key):\(.value)"' <<< "$COMPONENT_IMAGES"); do
+            image_component="${component_image#*:}"
             image="${REGISTRY}/${PROJECT_NAME}/${image_component}:${IMAGE_TAG}"
             echo "Signing ${image}"
             cosign sign --yes --recursive "${image}"

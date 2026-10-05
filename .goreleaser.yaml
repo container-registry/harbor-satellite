@@ -130,6 +130,9 @@ nfpms:
   - id: groundcontrol
     ids: [groundcontrol]
     package_name: groundcontrol
+    replaces: [ground-control]
+    provides: [ground-control]
+    conflicts: [ground-control]
     homepage: https://github.com/container-registry/harbor-satellite
     maintainer: Harbor Community
     description: "Ground Control"

@@ -2,6 +2,7 @@ version: "3"
 
 vars:
   PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/riscv64
+  IMAGE_COMPONENT: '{{if eq (.COMPONENT | default .Env.COMPONENT | default "satellite") "groundcontrol"}}ground-control{{else}}{{.COMPONENT | default .Env.COMPONENT | default "satellite"}}{{end}}'
 
 tasks:
   both:
@@ -64,10 +65,7 @@ tasks:
         DOCKERFILE="Dockerfile"
         CONTEXT="."
         BUILD_COMPONENT="{{.COMPONENT}}"
-        IMAGE_COMPONENT="$BUILD_COMPONENT"
-        if [ "$BUILD_COMPONENT" = "groundcontrol" ]; then
-          IMAGE_COMPONENT="ground-control"
-        fi
+        IMAGE_COMPONENT={{.IMAGE_COMPONENT | shellQuote}}
 
         # Detect container runtime (docker vs podman)
         if command -v docker &>/dev/null && ! docker --version 2>&1 | grep -qi podman; then
@@ -141,10 +139,7 @@ tasks:
       - echo "Signing {{.COMPONENT}} image..."
       - |
         FIRST_TAG=$(echo "{{.IMAGE_TAGS}}" | cut -d',' -f1 | sed 's/^v//')
-        IMAGE_COMPONENT="{{.COMPONENT}}"
-        if [ "$IMAGE_COMPONENT" = "groundcontrol" ]; then
-          IMAGE_COMPONENT="ground-control"
-        fi
+        IMAGE_COMPONENT={{.IMAGE_COMPONENT | shellQuote}}
         IMAGE_ADDR="{{.REGISTRY}}/{{.PROJECT_NAME}}/$IMAGE_COMPONENT:$FIRST_TAG"
 
         cosign sign --yes --recursive \

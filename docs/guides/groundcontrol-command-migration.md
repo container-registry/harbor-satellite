@@ -27,6 +27,22 @@ Linux package name is `groundcontrol`. Update package installation scripts and
 service units to invoke `groundcontrol serve`. Satellite release archives now
 contain the `satellite` executable, matching `go install` and local builds.
 
+### Linux Package Transition
+
+Install the new `groundcontrol` package explicitly; upgrading only the old
+`ground-control` package does not discover the renamed release. Debian, RPM,
+and Arch packages declare that they replace, provide, and conflict with
+`ground-control`, allowing the package manager to remove the old package when
+installing the new one. Stop the old service before installing, then update its
+service unit to run `groundcontrol serve` before restarting it.
+
+For Alpine, remove the old package with `apk del ground-control` before
+installing the new release with `apk add --allow-untrusted ./groundcontrol_<version>_linux_<arch>.apk`.
+The APK packager supports replacement and provider metadata but does not emit
+the conflict metadata needed to prevent both names remaining installed.
+Configuration and database settings are unchanged; preserve any locally
+maintained service units and configuration during the transition.
+
 Container image names remain `registry.goharbor.io/harbor-satellite/ground-control`.
 Pass `serve` after the image name in `docker run`, use `command: ["serve"]` in
 Compose, and `args: ["serve"]` in Kubernetes. Without a command, the image displays

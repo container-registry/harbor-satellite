@@ -45,6 +45,9 @@ func NewEmbeddedSpireServer(cfg *EmbeddedSpireConfig) *EmbeddedSpireServer {
 
 // Start starts the embedded SPIRE server subprocess and waits for it to be ready.
 func (s *EmbeddedSpireServer) Start(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(s.config.DataDir, 0o700); err != nil {
 		return fmt.Errorf("create data directory: %w", err)
 	}
@@ -53,7 +56,9 @@ func (s *EmbeddedSpireServer) Start(ctx context.Context) error {
 		return fmt.Errorf("write config: %w", err)
 	}
 
-	s.cmd = exec.CommandContext(ctx, "spire-server", "run", "-config", filepath.Clean(s.configPath))
+	// Startup cancellation is handled by readiness; Stop owns the process lifetime
+	// so the server remains available while HTTP requests drain during shutdown.
+	s.cmd = exec.Command("spire-server", "run", "-config", filepath.Clean(s.configPath))
 	s.cmd.Stdout = os.Stdout
 	s.cmd.Stderr = os.Stderr
 

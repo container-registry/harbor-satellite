@@ -83,21 +83,31 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 		}
 	}()
 	cfg := env.GC
+	appServer := result.AppServer
+	appServer.port = cfg.Server.Port
+	appServer.passwordPolicy = auth.LoadPolicyFromConfig(cfg.PasswordPolicy)
+	appServer.sessionDuration = cfg.Server.SessionDuration
+	appServer.lockoutDuration = cfg.Server.LockoutDuration
+	appServer.staleThreshold = cfg.Server.StaleThreshold
+	appServer.trustForwardedHeaders = cfg.Audit.TrustForwardedHeaders
 
 	db, err := sql.Open("postgres", cfg.Database.URL())
 	if err != nil {
 		return result, fmt.Errorf("open database: %w", err)
 	}
-	result.AppServer.db = db
+	appServer.db = db
 
 	dbQueries := database.New(db)
+	appServer.dbQueries = dbQueries
 
 	// Initialize rate limiter: 10 requests per minute per IP for ZTR endpoint
 	rateLimiter := middleware.NewRateLimiter(10, time.Minute)
-	result.AppServer.rateLimiter = rateLimiter
+	appServer.rateLimiter = rateLimiter
 
 	// Load SPIFFE configuration
 	spiffeCfg := spiffe.LoadConfig()
+	result.SPIFFEConfig = spiffeCfg
+	appServer.spireEnabled = spiffeCfg.Enabled || cfg.EmbeddedSPIRE.Enabled || cfg.SPIRE.ServerSocket != ""
 
 	var spiffeProvider spiffe.Provider
 	if spiffeCfg.Enabled {
@@ -106,6 +116,7 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 			return result, fmt.Errorf("create SPIFFE provider: %w", err)
 		}
 		result.SPIFFEProvider = spiffeProvider
+		appServer.spiffeProvider = spiffeProvider
 		log.Printf("SPIFFE enabled with trust domain: %s", spiffeCfg.TrustDomain)
 	}
 
@@ -124,6 +135,7 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 			return result, fmt.Errorf("start embedded SPIRE server: %w", err)
 		}
 		result.EmbeddedSpire = embeddedSpire
+		appServer.embeddedSpire = embeddedSpire
 	}
 
 	// Initialize SPIRE client: prefer embedded, fall back to external socket
@@ -149,7 +161,10 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 		spireServerAddress = cfg.SPIRE.ServerAddress
 		spireServerPort = cfg.SPIRE.ServerPort
 	}
-	result.AppServer.spireClient = spireClient
+	appServer.spireClient = spireClient
+	appServer.spireServerAddress = spireServerAddress
+	appServer.spireServerPort = spireServerPort
+	appServer.spireTrustDomain = spireTrustDomain
 
 	auditCfg, auditErr := cfg.Audit.Config()
 	if auditErr != nil {
@@ -160,36 +175,10 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 		return result, fmt.Errorf("initialize audit logger: %w", auditErr)
 	}
 
-	newServer := &Server{
-		port:           cfg.Server.Port,
-		db:             db,
-		dbQueries:      dbQueries,
-		rateLimiter:    rateLimiter,
-		spiffeProvider: spiffeProvider,
-		embeddedSpire:  embeddedSpire,
-		spireClient:    spireClient,
-		spireEnabled:   spiffeCfg.Enabled || cfg.EmbeddedSPIRE.Enabled || cfg.SPIRE.ServerSocket != "",
-
-		spireServerAddress: spireServerAddress,
-		spireServerPort:    spireServerPort,
-		spireTrustDomain:   spireTrustDomain,
-
-		// User auth settings
-		passwordPolicy:  auth.LoadPolicyFromConfig(cfg.PasswordPolicy),
-		sessionDuration: cfg.Server.SessionDuration,
-		lockoutDuration: cfg.Server.LockoutDuration,
-
-		// Satellite status
-		staleThreshold: cfg.Server.StaleThreshold,
-
-		// Audit logger
-		audit:                 auditLogger,
-		trustForwardedHeaders: cfg.Audit.TrustForwardedHeaders,
-	}
-	result.AppServer = newServer
+	appServer.audit = auditLogger
 
 	// Bootstrap system admin user if not exists
-	if err := newServer.BootstrapSystemAdmin(ctx); err != nil {
+	if err := appServer.BootstrapSystemAdmin(ctx); err != nil {
 		return result, fmt.Errorf("bootstrap system admin: %w", err)
 	}
 
@@ -199,15 +188,17 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 		CAFile:   cfg.TLS.CAFile,
 		Enabled:  cfg.TLS.Enabled(),
 	}
+	result.TLSConfig = tlsCfg
 
 	httpServer := &http.Server{
-		Addr:              fmt.Sprintf(":%d", newServer.port),
-		Handler:           newServer.RegisterRoutes(),
+		Addr:              fmt.Sprintf(":%d", appServer.port),
+		Handler:           appServer.RegisterRoutes(),
 		IdleTimeout:       time.Minute,
 		ReadTimeout:       10 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      30 * time.Second,
 	}
+	result.Server = httpServer
 
 	var certWatcher *middleware.CertWatcher
 
@@ -239,15 +230,7 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 		log.Println("Certificate watcher started for TLS hot-reload")
 	}
 
-	return &ServerResult{
-		Server:         httpServer,
-		AppServer:      newServer,
-		TLSConfig:      tlsCfg,
-		CertWatcher:    certWatcher,
-		SPIFFEProvider: spiffeProvider,
-		SPIFFEConfig:   spiffeCfg,
-		EmbeddedSpire:  embeddedSpire,
-	}, nil
+	return result, nil
 }
 
 // Close releases server resources after requests and cleanup work have stopped.
