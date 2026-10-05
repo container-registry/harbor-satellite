@@ -66,8 +66,10 @@ func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath, s
 }
 
 type StateMap struct {
-	url      string
-	State    StateReader
+	url   string
+	State StateReader
+	// A nil Entities slice marks a group that has not completed reconciliation.
+	// A completed group with no artifacts uses a non-nil empty slice.
 	Entities []Entity
 }
 
@@ -119,13 +121,16 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		}
 	}
 
+	f.mu.Lock()
 	changed := f.updateStateMap(satelliteState.States)
-
+	var persistErr error
 	// Persist state if groups were added, removed, or swapped
 	if f.stateFilePath != "" && changed {
-		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
-			log.Warn().Err(err).Msg("Failed to persist state after group changes")
-		}
+		persistErr = f.persistStateLocked()
+	}
+	f.mu.Unlock()
+	if persistErr != nil {
+		log.Warn().Err(persistErr).Msg("Failed to persist state after group changes")
 	}
 
 	// Create channels for results
@@ -404,10 +409,8 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 		}
 		f.mu.Lock()
 		f.currentConfigDigest = configDigest
-		if f.stateFilePath != "" {
-			if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
-				configFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
-			}
+		if err := f.persistStateLocked(); err != nil {
+			configFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
 		}
 		f.mu.Unlock()
 	}
@@ -487,10 +490,8 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	f.mu.Lock()
 	f.stateMap[index].State = newState
 	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
-	if f.stateFilePath != "" {
-		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
-			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
-		}
+	if err := f.persistStateLocked(); err != nil {
+		stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
 	}
 	f.mu.Unlock()
 
@@ -599,10 +600,25 @@ func (f *FetchAndReplicateStateProcess) PersistState() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	return f.persistStateLocked()
+}
+
+// persistStateLocked writes only fully reconciled groups. Callers must hold
+// f.mu so the snapshot cannot change while it is serialized.
+func (f *FetchAndReplicateStateProcess) persistStateLocked() error {
 	if f.stateFilePath == "" {
 		return nil
 	}
-	return SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest)
+
+	reconciled := make([]StateMap, 0, len(f.stateMap))
+	for _, stateMap := range f.stateMap {
+		if stateMap.Entities == nil {
+			continue
+		}
+		reconciled = append(reconciled, stateMap)
+	}
+
+	return SaveState(f.stateFilePath, reconciled, f.currentConfigDigest)
 }
 
 func (f *FetchAndReplicateStateProcess) RemoveNullTagArtifacts(state StateReader) StateReader {
@@ -646,7 +662,7 @@ func (f *FetchAndReplicateStateProcess) LogChanges(deleteEntity, replicateEntity
 }
 
 func FetchEntitiesFromState(state StateReader) []Entity {
-	var entities []Entity
+	entities := make([]Entity, 0)
 	for _, artifact := range state.GetArtifacts() {
 		for _, tag := range artifact.GetTags() {
 			entities = append(entities, Entity{
