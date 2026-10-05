@@ -71,16 +71,16 @@ This starts PostgreSQL and Ground Control. The satellite service is skipped unti
    docker compose up -d postgres
    ```
 
-2. Build the Ground Control binary (written to `bin/ground-control`):
+2. Build the Ground Control binary (written to `bin/groundcontrol`):
 
    ```bash
-   task _build:ground-control
+   task _build:groundcontrol
    ```
 
 3. Run the binary from the repository root so it picks up `.env`:
 
    ```bash
-   ./bin/ground-control
+   ./bin/groundcontrol serve
    ```
 
 ## Step 3: Verify Ground Control Health

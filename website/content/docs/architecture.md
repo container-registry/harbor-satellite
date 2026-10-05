@@ -147,7 +147,7 @@ The agent connects to the SPIRE server, attests itself, and becomes ready to iss
 
 Run the satellite binary with the Ground Control and Harbor URLs and the SPIRE agent socket:
 ```bash
-harbor-satellite --ground-control-url https://gc.example.com \
+satellite --ground-control-url https://gc.example.com \
                  --harbor-registry-url https://harbor.example.com \
                  --spiffe-enabled \
                  --spiffe-endpoint-socket unix:///run/spire/sockets/agent.sock
@@ -308,7 +308,7 @@ Supported runtimes:
 
 Configure mirroring with the `--mirrors` flag:
 ```bash
-harbor-satellite --byo-registry --registry-url registry.edge:5000 \
+satellite --byo-registry --registry-url registry.edge:5000 \
   --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io ...
 ```
 

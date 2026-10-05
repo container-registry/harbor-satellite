@@ -47,6 +47,7 @@ bin/
 # never check this in.
 /main
 /satellite
+/groundcontrol
 
 # Hugo
 website/public/

@@ -31,7 +31,7 @@ tasks:
       - task --list
 
   build:
-    desc: Build the satellite, Ground Control server, and Ground Control CLI
+    desc: Build Satellite and Ground Control
     aliases: [b]
     cmds:
       - task: _build:dev
@@ -67,23 +67,23 @@ tasks:
     cmds:
       - task: _lint:vulnerability-check-report
 
-  generate:ground-control:
+  generate:groundcontrol:
     desc: Generate Ground Control OpenAPI server and client code
-    aliases: [gen:gc]
+    aliases: [gen:groundcontrol]
     cmds:
-      - task: _gen:ground-control
+      - task: _gen:groundcontrol
 
-  generate:ground-control-server:
+  generate:groundcontrol-server:
     desc: Generate Ground Control OpenAPI server code
-    aliases: [gen:gc-server]
+    aliases: [gen:groundcontrol-server]
     cmds:
-      - task: _gen:ground-control-server
+      - task: _gen:groundcontrol-server
 
-  generate:ground-control-client:
+  generate:groundcontrol-client:
     desc: Generate Ground Control OpenAPI client code
-    aliases: [gen:gc-client]
+    aliases: [gen:groundcontrol-client]
     cmds:
-      - task: _gen:ground-control-client
+      - task: _gen:groundcontrol-client
 
   e2e:
     desc: Run all E2E tests
@@ -147,7 +147,7 @@ tasks:
         vars:
           REGISTRY: "{{.REGISTRY}}"
           PROJECT_NAME: "{{.PROJECT_NAME}}"
-          COMPONENT: ground-control
+          COMPONENT: groundcontrol
           IMAGE_TAGS: "{{.TAG}}"
 
   release:

@@ -4,19 +4,21 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io/fs"
 	"log"
 	"os"
 	"time"
 
+	migrations "github.com/container-registry/harbor-satellite/internal/groundcontrol/sql"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
 )
 
-func waitForPostgresReady(db *sql.DB, timeout time.Duration) error {
+func waitForPostgresReady(ctx context.Context, db *sql.DB, timeout time.Duration) error {
 	const retryInterval = 2 * time.Second
 
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	for {
@@ -40,26 +42,31 @@ func waitForPostgresReady(db *sql.DB, timeout time.Duration) error {
 	}
 }
 
-func runMigrations(db *sql.DB) error {
-	migrationsPath := "/migrations"
-	_, err := os.Stat(migrationsPath)
+func runMigrations(ctx context.Context, db *sql.DB) error {
+	schema, err := fs.Sub(migrations.Schema, "schema")
+	if err != nil {
+		return err
+	}
+	_, err = os.Stat("/migrations")
 	if err != nil {
 		switch {
 		case errors.Is(err, os.ErrNotExist):
-			migrationsPath = "internal/groundcontrol/sql/schema"
+			// Use embedded migrations when no container override is mounted.
 		default:
 			log.Println("failed to access migrations path")
 			return err
 		}
+	} else {
+		schema = os.DirFS("/migrations")
 	}
 
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, os.DirFS(migrationsPath))
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, schema)
 	if err != nil {
 		log.Println("failed to create goose provider")
 		return err
 	}
 
-	if _, err := provider.Up(context.Background()); err != nil {
+	if _, err := provider.Up(ctx); err != nil {
 		log.Println("failed to run migrations")
 		return err
 	}
@@ -68,7 +75,7 @@ func runMigrations(db *sql.DB) error {
 	return nil
 }
 
-func DoMigrations() error {
+func DoMigrations(ctx context.Context) error {
 	cfg := env.GC.Database
 
 	db, err := sql.Open("postgres", cfg.URL())
@@ -78,17 +85,17 @@ func DoMigrations() error {
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Fatalf("error closing DB: %v", err)
+			log.Printf("error closing DB: %v", err)
 		}
 	}()
 
-	err = waitForPostgresReady(db, 60*time.Second)
+	err = waitForPostgresReady(ctx, db, 60*time.Second)
 	if err != nil {
 		log.Println("PostgreSQL is not ready for queries")
 		return err
 	}
 
-	err = runMigrations(db)
+	err = runMigrations(ctx, db)
 	if err != nil {
 		log.Println("failed to run migrations")
 		return err

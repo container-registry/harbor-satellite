@@ -63,7 +63,7 @@ export DB_USERNAME=postgres
 export DB_PASSWORD=password
 
 cd "$PROJECT_ROOT"
-go run ./cmd/groundcontrol/server > /tmp/gc.log 2>&1 &
+go run ./cmd/groundcontrol serve > /tmp/groundcontrol.log 2>&1 &
 GC_PID=$!
 
 log "Waiting for Ground Control (PID: $GC_PID)..."
@@ -74,7 +74,7 @@ for i in {1..30}; do
     fi
     if ! kill -0 $GC_PID 2>/dev/null; then
         error "Ground Control crashed. Logs:"
-        cat /tmp/gc.log
+        cat /tmp/groundcontrol.log
         exit 1
     fi
     sleep 1

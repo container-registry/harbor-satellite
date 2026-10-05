@@ -225,7 +225,7 @@ docker rmi nginx:alpine <CENTRAL_HARBOR_IP>:80/library/nginx:alpine
 ### Step 2: Start Ground Control (with external SPIRE)
 
 ```bash
-cd examples/deploy/spiffe/join-token/external/gc
+cd examples/deploy/spiffe/join-token/external/groundcontrol
 HARBOR_URL=http://<CENTRAL_HARBOR_IP>:80 ADMIN_PASSWORD='<ADMIN_PASSWORD>' ./setup.sh
 ```
 
