@@ -48,6 +48,7 @@ tasks:
       - task: wait-gc-spiffe
       - task: generate-join-token
       - task: verify-spiffe-attestation
+      - task: verify-spiffe-sync
       - echo "SPIFFE join token E2E test passed"
   setup:
     desc: Start Harbor and Ground Control stack
@@ -215,6 +216,8 @@ tasks:
       - echo "Stopping spiffe containers..."
       - docker compose -f test/e2e/docker/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
       - docker rm -f spire-agent-satellite satellite-spiffe 2>/dev/null || true
+      - docker volume rm -f spire-agent-satellite-socket 2>/dev/null || true
+      - rm -rf /tmp/spiffe-satellite-svid 2>/dev/null || true
       - rm -f test/e2e/docker/spiffe/agent-gc-runtime.conf test/e2e/docker/spiffe/agent-satellite-runtime.conf 2>/dev/null || true
       - rm -rf test/e2e/docker/spiffe/certs 2>/dev/null || true
       - echo "Cleanup complete"
@@ -532,6 +535,7 @@ tasks:
         docker run -d --name spire-agent-satellite \
           --network spiffe-e2e \
           --pid host \
+          -v spire-agent-satellite-socket:/run/spire/sockets \
           -v $(pwd)/test/e2e/docker/spiffe/agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro \
           -v $(pwd)/test/e2e/docker/spiffe/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro \
           -v ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro \
@@ -560,6 +564,78 @@ tasks:
           -socketPath /tmp/spire-server/private/api.sock
 
         echo "SPIFFE join token attestation verified successfully"
+
+  verify-spiffe-sync:
+    desc: Verify a satellite authenticated only by its SVID can heartbeat via /satellites/sync
+    cmds:
+      - |
+        SVID_DIR=/tmp/spiffe-satellite-svid
+        rm -rf "$SVID_DIR" && mkdir -p "$SVID_DIR"
+
+        echo "Fetching satellite X.509 SVID from the satellite SPIRE agent..."
+        for i in $(seq 1 20); do
+          if docker run --rm \
+            --label com.docker.compose.service=satellite-spiffe \
+            --user "$(id -u):$(id -g)" \
+            --entrypoint /opt/spire/bin/spire-agent \
+            -v spire-agent-satellite-socket:/run/spire/sockets:ro \
+            -v "$SVID_DIR":/svid \
+            ghcr.io/spiffe/spire-agent:1.12.3 \
+            api fetch x509 -socketPath /run/spire/sockets/agent.sock -write /svid > /dev/null 2>&1 \
+            && [ -s "$SVID_DIR/svid.0.pem" ] && [ -s "$SVID_DIR/svid.0.key" ]; then
+            echo "Satellite SVID fetched"
+            break
+          fi
+          if [ "$i" -eq 20 ]; then
+            echo "ERROR: Failed to fetch satellite SVID"
+            docker logs spire-agent-satellite 2>&1 | tail -30
+            exit 1
+          fi
+          echo "Waiting for satellite SVID... ($i/20)"
+          sleep 3
+        done
+
+        SYNC_BODY='{"activity":"e2e spiffe heartbeat","state_report_interval":"@every 00h00m30s","request_created_time":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}'
+
+        echo "Sending heartbeat to /satellites/sync without credentials (expect 401)..."
+        HTTP_CODE=$(curl -sk -o /dev/null -w '%{http_code}' -X POST https://localhost:9080/satellites/sync \
+          -H "Content-Type: application/json" -d "$SYNC_BODY")
+        if [ "$HTTP_CODE" != "401" ]; then
+          echo "ERROR: Expected 401 without credentials, got HTTP $HTTP_CODE"
+          exit 1
+        fi
+
+        echo "Sending heartbeat to /satellites/sync with only the satellite SVID (mTLS)..."
+        RESP=$(curl -sk -w '\n%{http_code}' -X POST https://localhost:9080/satellites/sync \
+          --cert "$SVID_DIR/svid.0.pem" --key "$SVID_DIR/svid.0.key" \
+          -H "Content-Type: application/json" -d "$SYNC_BODY")
+        HTTP_CODE=$(echo "$RESP" | tail -1)
+        BODY=$(echo "$RESP" | sed '$d')
+        if [ "$HTTP_CODE" != "200" ]; then
+          echo "ERROR: SPIFFE-authenticated sync failed (HTTP $HTTP_CODE): $BODY"
+          docker logs gc 2>&1 | tail -30
+          exit 1
+        fi
+        echo "SPIFFE-authenticated sync succeeded: $BODY"
+
+        echo "Verifying Ground Control recorded the heartbeat..."
+        GC_TOKEN=$(curl -sfk -X POST https://localhost:9080/login \
+          -H "Content-Type: application/json" \
+          -d '{"username":"{{.GC_ADMIN_USER}}","password":"{{.GC_ADMIN_PASSWORD}}"}' | \
+          grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$GC_TOKEN" ]; then
+          echo "ERROR: Failed to get GC token"
+          exit 1
+        fi
+        STATUS=$(curl -sk -w '\n%{http_code}' https://localhost:9080/api/satellites/test-satellite/status \
+          -H "Authorization: Bearer $GC_TOKEN")
+        HTTP_CODE=$(echo "$STATUS" | tail -1)
+        BODY=$(echo "$STATUS" | sed '$d')
+        if [ "$HTTP_CODE" != "200" ] || ! echo "$BODY" | grep -q "e2e spiffe heartbeat"; then
+          echo "ERROR: Satellite status not recorded (HTTP $HTTP_CODE): $BODY"
+          exit 1
+        fi
+        echo "SPIFFE-only satellite heartbeat verified successfully"
 
   init-gc-byo:
     desc: Initialize Ground Control with BYO registry config
