@@ -48,6 +48,25 @@ func TestSetupReplicationSelectsStore(t *testing.T) {
 		return cm
 	}
 
+	t.Run("enabled peers wrap the local store", func(t *testing.T) {
+		cm := newManager(t, false)
+		cm.With(func(cfg *config.Config) {
+			cfg.AppConfig.PeerDistribution = config.PeerDistributionConfig{
+				Enabled:      true,
+				ReachoutSats: "global",
+				StaticPeers: []config.PeerDescriptor{{
+					ID:  "sat-a",
+					URL: "http://127.0.0.1:8585",
+				}},
+			}
+		})
+		process := &FetchAndReplicateStateProcess{cm: cm, storeRoot: t.TempDir()}
+
+		storage, _, _, _, _, _, _, _, err := process.setupReplication()
+		require.NoError(t, err)
+		require.IsType(t, &store.PeerFillingStore{}, storage)
+	})
+
 	t.Run("default uses local OCI store", func(t *testing.T) {
 		root := t.TempDir()
 		process := &FetchAndReplicateStateProcess{cm: newManager(t, false), storeRoot: root}

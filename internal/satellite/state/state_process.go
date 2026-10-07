@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/peers"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/shared/utils"
@@ -594,6 +596,11 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 		}
 	}
 
+	replicator, err = f.wrapWithPeerFill(replicator)
+	if err != nil {
+		return nil, nil, "", "", "", "", false, "", err
+	}
+
 	// Set up direct delivery if enabled, clear if disabled
 	dd := f.cm.GetDirectDeliveryConfig()
 	if dd.Enabled && dd.ImageDir != "" {
@@ -603,6 +610,48 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 	}
 
 	return replicator, sourceStore, sourceURL, sourceUsername, sourcePassword, destination, useUnsecure, satelliteStateURL, nil
+}
+
+// wrapWithPeerFill tries eligible peers before Harbor when peer distribution
+// is enabled. A disabled block returns the local store unchanged.
+func (f *FetchAndReplicateStateProcess) wrapWithPeerFill(local store.Store) (store.Store, error) {
+	cfg := f.cm.GetPeerDistributionConfig()
+	if !cfg.Enabled {
+		return local, nil
+	}
+
+	timeout, err := time.ParseDuration(cfg.Timeout)
+	if err != nil || timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	retries := config.DefaultPeerRetries
+	if cfg.Retries != nil {
+		retries = *cfg.Retries
+	}
+
+	return store.NewPeerFillingStore(local, f.peerStores, store.PeerFillOptions{
+		Timeout: timeout,
+		Retries: retries,
+	})
+}
+
+func (f *FetchAndReplicateStateProcess) peerStores() []store.Store {
+	eligible := peers.EligiblePeers(f.cm.GetPeerDistributionConfig())
+	out := make([]store.Store, 0, len(eligible))
+	for _, peer := range eligible {
+		peerStore, err := store.NewRegistryStore(store.RegistryOptions{
+			Endpoint:  utils.FormatRegistryURL(string(peer.URL)),
+			Username:  peer.Username,
+			Password:  peer.Password,
+			PlainHTTP: f.cm.UseUnsecure() || strings.HasPrefix(strings.ToLower(string(peer.URL)), "http://"),
+			TLS:       peer.TLS,
+		})
+		if err != nil {
+			continue
+		}
+		out = append(out, store.LabelStore(peerStore, string(peer.URL)))
+	}
+	return out
 }
 
 func (f *FetchAndReplicateStateProcess) start() {
