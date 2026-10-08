@@ -149,6 +149,62 @@ func TestSetupReplicationSelectsStore(t *testing.T) {
 	}
 }
 
+func TestPeerStoreTransportFollowsPeerURL(t *testing.T) {
+	plain := httptest.NewServer(registry.New())
+	t.Cleanup(plain.Close)
+	secure := httptest.NewTLSServer(registry.New())
+	t.Cleanup(secure.Close)
+
+	artifact := store.Artifact{Name: "team/app", Tag: "missing"}
+	pull := func(t *testing.T, peerURL string, skipVerify bool) {
+		t.Helper()
+		dir := t.TempDir()
+		cm, err := config.NewConfigManager(
+			filepath.Join(dir, "config.json"),
+			filepath.Join(dir, "prev.json"),
+			"token",
+			"http://gc:8080",
+			false,
+			&config.Config{
+				StateConfig: config.StateConfig{
+					RegistryCredentials: config.RegistryCredentials{
+						URL:      "https://source.example.com",
+						Username: "source-user",
+						Password: "source-password",
+					},
+					StateURL: "https://source.example.com/satellite/state:latest",
+				},
+				AppConfig: config.AppConfig{UseUnsecure: true},
+			},
+		)
+		require.NoError(t, err)
+		cm.With(func(cfg *config.Config) {
+			cfg.AppConfig.PeerDistribution = config.PeerDistributionConfig{
+				Enabled:      true,
+				ReachoutSats: "global",
+				StaticPeers: []config.PeerDescriptor{{
+					ID:  "sat-a",
+					URL: config.URL(peerURL),
+					TLS: config.TLSConfig{SkipVerify: skipVerify},
+				}},
+			}
+		})
+
+		process := &FetchAndReplicateStateProcess{cm: cm, storeRoot: t.TempDir()}
+		peerStores := process.peerStores()
+		require.Len(t, peerStores, 1)
+		_, err = peerStores[0].Pull(context.Background(), artifact, store.PullResourceManifest)
+		require.ErrorIs(t, err, errdef.ErrNotFound)
+	}
+
+	t.Run("https peer stays on TLS when use_unsecure is set", func(t *testing.T) {
+		pull(t, secure.URL, true)
+	})
+	t.Run("http peer stays on plain HTTP", func(t *testing.T) {
+		pull(t, plain.URL, false)
+	})
+}
+
 func TestCanExecute(t *testing.T) {
 	process := &FetchAndReplicateStateProcess{name: "test"}
 
