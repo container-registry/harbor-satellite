@@ -330,14 +330,7 @@ type OTelAuditConfig struct {
 }
 
 // PeerDescriptor defines model for PeerDescriptor.
-type PeerDescriptor struct {
-	Groups   []string  `json:"groups,omitempty,omitzero"`
-	ID       string    `json:"id,omitempty,omitzero"`
-	Password string    `json:"password,omitempty,omitzero"`
-	TLS      TLSConfig `json:"tls,omitempty,omitzero"`
-	URL      string    `json:"url,omitempty,omitzero"`
-	Username string    `json:"username,omitempty,omitzero"`
-}
+type PeerDescriptor = config.PeerDescriptor
 
 // PeerDistributionConfig Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
 type PeerDistributionConfig = config.PeerDistributionConfig

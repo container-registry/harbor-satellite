@@ -1573,6 +1573,10 @@ components:
     PeerDescriptor:
       type: object
       title: PeerDescriptor is one allow-listed Satellite that may be copied from.
+      x-go-type: config.PeerDescriptor
+      x-go-type-import:
+        path: github.com/container-registry/harbor-satellite/pkg/config
+        name: config
       properties:
         id:
           type: string

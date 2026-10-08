@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -639,11 +640,15 @@ func (f *FetchAndReplicateStateProcess) peerStores() []store.Store {
 	eligible := peers.EligiblePeers(f.cm.GetPeerDistributionConfig())
 	out := make([]store.Store, 0, len(eligible))
 	for _, peer := range eligible {
+		plainHTTP, err := peerPlainHTTP(string(peer.URL))
+		if err != nil {
+			continue
+		}
 		peerStore, err := store.NewRegistryStore(store.RegistryOptions{
 			Endpoint:  utils.FormatRegistryURL(string(peer.URL)),
 			Username:  peer.Username,
 			Password:  peer.Password,
-			PlainHTTP: f.cm.UseUnsecure() || strings.HasPrefix(strings.ToLower(string(peer.URL)), "http://"),
+			PlainHTTP: plainHTTP,
 			TLS:       peer.TLS,
 		})
 		if err != nil {
@@ -652,6 +657,16 @@ func (f *FetchAndReplicateStateProcess) peerStores() []store.Store {
 		out = append(out, store.LabelStore(peerStore, string(peer.URL)))
 	}
 	return out
+}
+
+// peerPlainHTTP is true only for an http peer URL. use_unsecure permits those
+// peers, but it must not turn an https peer into a plain HTTP client.
+func peerPlainHTTP(rawURL string) (bool, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false, err
+	}
+	return strings.EqualFold(parsed.Scheme, "http"), nil
 }
 
 func (f *FetchAndReplicateStateProcess) start() {
