@@ -1,0 +1,6 @@
+{{- if and .TableOfContents (ne .TableOfContents "<nav id=\"TableOfContents\"></nav>") -}}
+<aside class="docs-toc">
+  <div class="docs-toc__title">On this page</div>
+  {{ .TableOfContents }}
+</aside>
+{{- end -}}
