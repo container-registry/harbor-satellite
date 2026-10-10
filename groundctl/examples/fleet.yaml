@@ -1,0 +1,30 @@
+apiVersion: satellite.harbor.io/v1alpha1
+kind: SatelliteFleet
+metadata:
+  name: prod-asia
+spec:
+  # Default config applied to all satellites (can be overridden per satellite)
+  configName: prod-config
+
+  # Default image groups for all satellites (can be overridden per satellite)
+  groups:
+    - base-images
+
+  satellites:
+    - name: edge-tokyo-01
+      groups:
+        - base-images
+        - ml-models
+
+    - name: edge-osaka-02
+      # Inherits fleet-level config and groups
+
+    - name: edge-seoul-03
+      groups:
+        - base-images
+        - ml-models
+
+    - name: edge-singapore-04
+      configName: staging-config   # Override fleet-level config
+      groups:
+        - base-images
