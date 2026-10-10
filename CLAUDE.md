@@ -148,7 +148,6 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 - internal/groundcontrol/spiffe/: SPIFFE provider, middleware, authorizer, embedded SPIRE server, SPIRE server client
 - internal/groundcontrol/cli/: `groundcontrol` commands (serve, auth, get, create, update, delete, register, add, remove, sync, ping, health)
 - internal/groundcontrol/utils/: State/config artifact URL helpers, robot project updates
-- internal/groundcontrol/logger/: Unused copy of internal/shared/logger audit code
 - pkg/groundcontrol/: Generated Go client for the GC API
 
 ### Key Concepts
