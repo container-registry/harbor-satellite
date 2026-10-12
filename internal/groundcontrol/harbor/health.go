@@ -56,6 +56,9 @@ func checkHealth(ctx context.Context, client health.API) error {
 	if response == nil || response.Payload == nil {
 		return fmt.Errorf("failed to get Harbor health: empty response")
 	}
+	if len(response.Payload.Components) == 0 {
+		return fmt.Errorf("failed to get Harbor health: empty component list")
+	}
 
 	unhealthy := getUnhealthyComponents(response.Payload.Components, ignoredHealthComponents)
 	if len(unhealthy) > 0 {
