@@ -821,19 +821,18 @@ func TestValidatePeerDistributionConfig(t *testing.T) {
 			}},
 		}
 		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
-		require.ErrorContains(t, err, "credentials")
+		require.ErrorContains(t, err, "userinfo")
 	})
 
-	t.Run("https url userinfo with skip_verify is rejected", func(t *testing.T) {
+	t.Run("https url userinfo is rejected", func(t *testing.T) {
 		cfg := base()
 		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
 			StaticPeers: []PeerDescriptor{{
 				ID: "a", URL: URL("https://user:pass@satellite-a:5000"),
-				TLS: TLSConfig{SkipVerify: true},
 			}},
 		}
 		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
-		require.ErrorContains(t, err, "skip_verify")
+		require.ErrorContains(t, err, "userinfo")
 	})
 
 	t.Run("https credentials with skip_verify are rejected", func(t *testing.T) {
