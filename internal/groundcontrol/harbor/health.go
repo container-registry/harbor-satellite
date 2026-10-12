@@ -23,7 +23,7 @@ var ignoredHealthComponents = map[string]struct{}{
 }
 
 // CheckHealth verifies that all required Harbor components are healthy.
-func CheckHealth() error {
+func CheckHealth(ctx context.Context) error {
 	if env.GC.Harbor.SkipHealthCheck {
 		log.Println("WARNING: Harbor health check skipped (SKIP_HARBOR_HEALTH_CHECK=true)")
 		return nil
@@ -33,7 +33,7 @@ func CheckHealth() error {
 	if err != nil {
 		return fmt.Errorf("create Harbor client: %w", err)
 	}
-	return checkHealth(client.Health)
+	return checkHealth(ctx, client.Health)
 }
 
 func newHealthClient(rawURL string) (*v2client.HarborAPI, error) {
@@ -47,9 +47,9 @@ func newHealthClient(rawURL string) (*v2client.HarborAPI, error) {
 	return v2client.New(v2client.Config{URL: harborURL}), nil
 }
 
-func checkHealth(client health.API) error {
+func checkHealth(ctx context.Context, client health.API) error {
 	params := health.NewGetHealthParamsWithTimeout(defaultHealthCheckTimeout)
-	response, err := client.GetHealth(context.Background(), params)
+	response, err := client.GetHealth(ctx, params)
 	if err != nil {
 		return fmt.Errorf("failed to get Harbor health: %w", err)
 	}

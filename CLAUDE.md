@@ -141,8 +141,7 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 - internal/groundcontrol/database/: sqlc-generated PostgreSQL access (do not edit)
 - internal/groundcontrol/sql/: `schema/` (goose migrations, also the sqlc schema) and `queries/`
 - internal/groundcontrol/migrator/: goose runner; reads `/migrations` when present, otherwise uses the embedded SQL schema so installed binaries work outside the checkout
-- internal/groundcontrol/harbor/: Harbor v2 API client (projects, robots, replication)
-- internal/groundcontrol/harborhealth/: Startup Harbor health check (skippable via SKIP_HARBOR_HEALTH_CHECK)
+- internal/groundcontrol/harbor/: Harbor v2 API client (projects, robots, replication) and startup health check (skippable via SKIP_HARBOR_HEALTH_CHECK)
 - internal/groundcontrol/auth/: Password policy validation
 - internal/groundcontrol/middleware/: Rate limiting, TLS cert watching
 - internal/groundcontrol/spiffe/: SPIFFE provider, middleware, authorizer, embedded SPIRE server, SPIRE server client
