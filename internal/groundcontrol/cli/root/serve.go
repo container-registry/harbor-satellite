@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harborhealth"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/migrator"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
@@ -25,7 +25,7 @@ type serveDependencies struct {
 func ServeCommand() *cobra.Command {
 	return newServeCommand(serveDependencies{
 		loadEnvironment: env.LoadGC,
-		checkHealth:     harborhealth.CheckHealth,
+		checkHealth:     harbor.CheckHealth,
 		migrate:         migrator.DoMigrations,
 		newServer:       server.NewServer,
 	})
