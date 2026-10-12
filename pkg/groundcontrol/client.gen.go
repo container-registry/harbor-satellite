@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	config "github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/oapi-codegen/nullable"
 	"github.com/oapi-codegen/runtime"
 )
@@ -130,16 +131,19 @@ type AgentListResponse struct {
 
 // AppConfig defines model for AppConfig.
 type AppConfig struct {
-	Audit                     AuditConfig            `json:"audit,omitempty,omitzero"`
-	BringOwnRegistry          bool                   `json:"bring_own_registry,omitempty,omitzero"`
-	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty,omitzero"`
-	EncryptConfig             bool                   `json:"encrypt_config,omitempty,omitzero"`
-	GroundControlURL          string                 `json:"ground_control_url,omitempty,omitzero"`
-	HarborRegistryURL         string                 `json:"harbor_registry_url,omitempty,omitzero"`
-	HeartbeatInterval         string                 `json:"heartbeat_interval,omitempty,omitzero"`
-	LocalRegistry             RegistryCredentials    `json:"local_registry,omitempty,omitzero"`
-	LogLevel                  string                 `json:"log_level,omitempty,omitzero"`
-	Metrics                   MetricsConfig          `json:"metrics,omitempty,omitzero"`
+	Audit             AuditConfig          `json:"audit,omitempty,omitzero"`
+	BringOwnRegistry  bool                 `json:"bring_own_registry,omitempty,omitzero"`
+	DirectDelivery    DirectDeliveryConfig `json:"direct_delivery,omitempty,omitzero"`
+	EncryptConfig     bool                 `json:"encrypt_config,omitempty,omitzero"`
+	GroundControlURL  string               `json:"ground_control_url,omitempty,omitzero"`
+	HarborRegistryURL string               `json:"harbor_registry_url,omitempty,omitzero"`
+	HeartbeatInterval string               `json:"heartbeat_interval,omitempty,omitzero"`
+	LocalRegistry     RegistryCredentials  `json:"local_registry,omitempty,omitzero"`
+	LogLevel          string               `json:"log_level,omitempty,omitzero"`
+	Metrics           MetricsConfig        `json:"metrics,omitempty,omitzero"`
+
+	// PeerDistribution Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
+	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitempty,omitzero"`
 	RegisterSatelliteInterval string                 `json:"register_satellite_interval,omitempty,omitzero"`
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty,omitzero"`
 	Spiffe                    SPIFFEClientConfig     `json:"spiffe,omitempty,omitzero"`
@@ -328,6 +332,19 @@ type OTelAuditConfig struct {
 	Enabled  bool   `json:"enabled,omitempty,omitzero"`
 	Endpoint string `json:"endpoint,omitempty,omitzero"`
 }
+
+// PeerDescriptor defines model for PeerDescriptor.
+type PeerDescriptor struct {
+	Groups   []string  `json:"groups,omitempty,omitzero"`
+	ID       string    `json:"id,omitempty,omitzero"`
+	Password string    `json:"password,omitempty,omitzero"`
+	TLS      TLSConfig `json:"tls,omitempty,omitzero"`
+	URL      string    `json:"url,omitempty,omitzero"`
+	Username string    `json:"username,omitempty,omitzero"`
+}
+
+// PeerDistributionConfig Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
+type PeerDistributionConfig = config.PeerDistributionConfig
 
 // RegistryCredentials defines model for RegistryCredentials.
 type RegistryCredentials struct {

@@ -356,16 +356,24 @@ func peerHasCredentials(peer PeerDescriptor) bool {
 }
 
 // ApplyRetainedPeerTransport keeps the local peer block when the fetched config
-// omitted it. When a retained peer uses HTTP and this process is already
-// insecure, use_unsecure is set so validation accepts that peer. A fetched
-// peer block is left unchanged, and a fetched use_unsecure of true stays true.
+// omitted it. When a kept or backfilled peer uses HTTP and this process is
+// already insecure, use_unsecure is set so validation accepts that peer. A
+// fetched peer block keeps its own fields, and an empty static_peers list is
+// filled from the local operator allow-list. A fetched use_unsecure of true
+// stays true.
 func ApplyRetainedPeerTransport(remote *Config, local PeerDistributionConfig, processUseUnsecure bool) {
 	if remote == nil {
 		return
 	}
 	omitted := remote.AppConfig.PeerDistribution.IsZero()
+	hadStaticPeers := len(remote.AppConfig.PeerDistribution.StaticPeers) > 0
 	PreservePeerDistribution(&remote.AppConfig.PeerDistribution, &local)
-	if omitted && processUseUnsecure && !remote.AppConfig.UseUnsecure && peerListUsesHTTP(local) {
+	if !processUseUnsecure || remote.AppConfig.UseUnsecure {
+		return
+	}
+	keptHTTP := omitted && peerListUsesHTTP(local)
+	backfilledHTTP := !omitted && !hadStaticPeers && descriptorsUseHTTP(remote.AppConfig.PeerDistribution.StaticPeers)
+	if keptHTTP || backfilledHTTP {
 		remote.AppConfig.UseUnsecure = true
 	}
 }

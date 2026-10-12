@@ -1513,6 +1513,9 @@ components:
           $ref: "#/components/schemas/DirectDeliveryConfig"
         audit:
           $ref: "#/components/schemas/AuditConfig"
+        peer_distribution:
+          $ref: "#/components/schemas/PeerDistributionConfig"
+          x-go-name: PeerDistribution
     AuditConfig:
       type: object
       title: AuditConfig controls satellite security-event audit logging.
@@ -1524,6 +1527,73 @@ components:
           $ref: "#/components/schemas/SyslogAuditConfig"
         otel:
           $ref: "#/components/schemas/OTelAuditConfig"
+    PeerDistributionConfig:
+      type: object
+      title: PeerDistributionConfig is the opt-in peer copy block.
+      description: >
+        Opt-in peer copy block. static_peers and gc_peers share one descriptor
+        shape. An omitted block leaves replication unchanged.
+      x-go-type: config.PeerDistributionConfig
+      x-go-type-import:
+        path: github.com/container-registry/harbor-satellite/pkg/config
+        name: config
+      properties:
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+        local_groups:
+          type: array
+          items:
+            type: string
+          x-go-name: LocalGroups
+        static_peers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PeerDescriptor"
+          x-go-name: StaticPeers
+        gc_peers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PeerDescriptor"
+          x-go-name: GCPeers
+        reachout_sats:
+          type: string
+          description: group or global
+          x-go-name: ReachoutSats
+        timeout:
+          type: string
+          description: Go duration, for example 30s
+          x-go-name: Timeout
+        retries:
+          type: integer
+          x-go-name: Retries
+        concurrency:
+          type: integer
+          x-go-name: Concurrency
+    PeerDescriptor:
+      type: object
+      title: PeerDescriptor is one allow-listed Satellite that may be copied from.
+      properties:
+        id:
+          type: string
+          x-go-name: ID
+        url:
+          type: string
+          x-go-name: URL
+        groups:
+          type: array
+          items:
+            type: string
+          x-go-name: Groups
+        username:
+          type: string
+          x-go-name: Username
+        password:
+          type: string
+          x-go-name: Password
+        tls:
+          $ref: "#/components/schemas/TLSConfig"
+          x-go-name: TLS
     CachedArtifactResponse:
       type: object
       title: CachedArtifactResponse describes an image cached by a satellite.
