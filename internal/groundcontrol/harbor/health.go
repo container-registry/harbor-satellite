@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	v2client "github.com/goharbor/go-client/pkg/sdk/v2.0/client"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/health"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
