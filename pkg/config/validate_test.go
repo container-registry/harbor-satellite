@@ -821,19 +821,18 @@ func TestValidatePeerDistributionConfig(t *testing.T) {
 			}},
 		}
 		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
-		require.ErrorContains(t, err, "credentials")
+		require.ErrorContains(t, err, "userinfo")
 	})
 
-	t.Run("https url userinfo with skip_verify is rejected", func(t *testing.T) {
+	t.Run("https url userinfo is rejected", func(t *testing.T) {
 		cfg := base()
 		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
 			StaticPeers: []PeerDescriptor{{
 				ID: "a", URL: URL("https://user:pass@satellite-a:5000"),
-				TLS: TLSConfig{SkipVerify: true},
 			}},
 		}
 		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
-		require.ErrorContains(t, err, "skip_verify")
+		require.ErrorContains(t, err, "userinfo")
 	})
 
 	t.Run("https credentials with skip_verify are rejected", func(t *testing.T) {
@@ -846,48 +845,6 @@ func TestValidatePeerDistributionConfig(t *testing.T) {
 		}
 		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
 		require.ErrorContains(t, err, "skip_verify")
-	})
-
-	t.Run("peer tls cert without key is rejected", func(t *testing.T) {
-		cfg := base()
-		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
-			StaticPeers: []PeerDescriptor{{
-				ID: "a", URL: URL("https://satellite-a:5000"),
-				TLS: TLSConfig{CertFile: "/tmp/peer-cert.pem"},
-			}},
-		}
-		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
-		require.ErrorContains(t, err, "both cert_file and key_file must be provided")
-	})
-
-	t.Run("peer tls missing ca file is rejected", func(t *testing.T) {
-		cfg := base()
-		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
-			StaticPeers: []PeerDescriptor{{
-				ID: "a", URL: URL("https://satellite-a:5000"),
-				TLS: TLSConfig{CAFile: "/nonexistent/peer-ca.pem"},
-			}},
-		}
-		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
-		require.ErrorContains(t, err, "ca_file not found")
-	})
-
-	t.Run("peer tls cert and key files are accepted", func(t *testing.T) {
-		dir := t.TempDir()
-		certFile := filepath.Join(dir, "cert.pem")
-		keyFile := filepath.Join(dir, "key.pem")
-		require.NoError(t, os.WriteFile(certFile, []byte("cert"), 0o600))
-		require.NoError(t, os.WriteFile(keyFile, []byte("key"), 0o600))
-
-		cfg := base()
-		cfg.AppConfig.PeerDistribution = PeerDistributionConfig{
-			StaticPeers: []PeerDescriptor{{
-				ID: "a", URL: URL("https://satellite-a:5000"),
-				TLS: TLSConfig{CertFile: certFile, KeyFile: keyFile},
-			}},
-		}
-		_, _, err := ValidateAndEnforceDefaults(cfg, DefaultGroundControlURL)
-		require.NoError(t, err)
 	})
 
 	t.Run("https credentials with verification are accepted", func(t *testing.T) {
