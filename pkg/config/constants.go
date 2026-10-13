@@ -53,3 +53,7 @@ const (
 	DefaultPeerRetries      int    = 1
 	DefaultPeerConcurrency  int    = 4
 )
+
+// DefaultDesiredStateFile is the bootstrap desired-state filename in the
+// satellite config directory. Used when state.json is missing.
+const DefaultDesiredStateFile = "desired-state.json"
