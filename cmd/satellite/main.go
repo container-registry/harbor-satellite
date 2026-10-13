@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -59,6 +60,7 @@ type SatelliteOptions struct {
 	RegistryUsername       string
 	RegistryPassword       string
 	ConfigDir              string
+	DesiredStateFile       string
 	RegistryDataDir        string
 	NoRegistryFallback     bool
 	FallbackOnly           bool
@@ -88,6 +90,7 @@ func main() {
 		RegistryURL:            envCfg.RegistryURL,
 		RegistryUsername:       envCfg.RegistryUsername,
 		ConfigDir:              envCfg.ConfigDir,
+		DesiredStateFile:       envCfg.DesiredStateFile,
 		RegistryDataDir:        envCfg.RegistryDataDir,
 		NoRegistryFallback:     envCfg.NoRegistryFallback,
 		HarborRegistryURL:      envCfg.HarborRegistryURL,
@@ -112,6 +115,7 @@ func main() {
 	flag.StringVar(&opts.RegistryUsername, "registry-username", opts.RegistryUsername, "External registry username")
 	flag.StringVar(&opts.RegistryPassword, "registry-password", "", "External registry password")
 	flag.StringVar(&opts.ConfigDir, "config-dir", opts.ConfigDir, "Configuration directory path (default: ~/.config/satellite)")
+	flag.StringVar(&opts.DesiredStateFile, "desired-state-file", opts.DesiredStateFile, "Bootstrap desired-state JSON used when state.json is empty (default: <config-dir>/desired-state.json)")
 	flag.StringVar(&opts.RegistryDataDir, "registry-data-dir", opts.RegistryDataDir, "Registry data directory (overrides default storage path derived from config-dir)")
 	flag.StringVar(&shutdownTimeout, "shutdown-timeout", shutdownTimeout, "Graceful shutdown timeout (e.g., '30s'). Defaults to SHUTDOWN_TIMEOUT env var or 30s")
 	flag.BoolVar(&opts.NoRegistryFallback, "no-registry-fallback", opts.NoRegistryFallback, "Disable all CRI registry fallback configuration")
@@ -158,6 +162,15 @@ func main() {
 	// Override StoreDir if --registry-data-dir flag or env var is set.
 	if opts.RegistryDataDir != "" {
 		pathConfig.StoreDir = opts.RegistryDataDir
+	}
+	if opts.DesiredStateFile != "" {
+		desiredStateFile := opts.DesiredStateFile
+		if !filepath.IsAbs(desiredStateFile) {
+			if abs, err := filepath.Abs(desiredStateFile); err == nil {
+				desiredStateFile = abs
+			}
+		}
+		pathConfig.DesiredStateFile = desiredStateFile
 	}
 
 	// For --fallback-only mode, relax token/gc-url requirements
@@ -481,7 +494,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	})
 
 	eventScheduler := events.NewEventScheduler(log)
-	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir, eventScheduler)
+	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir, pathConfig.DesiredStateFile, eventScheduler)
 	s.SetStores(localStore, remoteStore)
 
 	err = s.Run(ctx)
