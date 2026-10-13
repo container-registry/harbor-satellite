@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Harbor Satellite is a registry fleet management and artifact distribution solution that extends Harbor container registry to edge computing environments. Two main components:
 
-1. Satellite: Runs at edge locations and replicates OCI content from Harbor into a local ORAS OCI image layout (default) or an external BYO registry
+1. Satellite: Runs at edge locations, replicates OCI content from Harbor into a local ORAS OCI image layout (default) or an external BYO registry, and serves pulls to local workloads through a loopback OCI proxy
 2. Ground Control (GC): Cloud-side management service for device management, onboarding, state management, and artifact orchestration. The `groundcontrol` executable provides administration commands and starts the server with `serve`
 
 ## Build and Development Commands
@@ -69,7 +69,7 @@ task lint-report   # writes golangci-lint.report
 task vuln          # govulncheck in a pinned Docker image
 ```
 
-Single config `.golangci.yaml` (golangci-lint v2, CI pins v2.12.2) with 50 enabled linters plus gofmt, gofumpt and goimports formatters. Notable enabled linters: gosec, errcheck (check-blank, type assertions), errorlint, depguard (bans io/ioutil), interfacebloat (max 10 methods), nakedret (no naked returns at all), tagalign, nolintlint (requires explanation). `cyclop`, `funlen`, `gochecknoglobals` and `gochecknoinits` have settings in the file but are not enabled.
+Single config `.golangci.yaml` (golangci-lint v2, CI pins v2.12.2) with `default: none`, 47 enabled linters and the gofmt, gofumpt and goimports formatters. Notable enabled linters: gosec, errcheck (check-blank, type assertions), errorlint, depguard (bans io/ioutil), interfacebloat (max 10 methods), nakedret (no naked returns at all), tagalign, nolintlint (requires explanation). `cyclop`, `funlen`, `govet`, `wrapcheck` and others have settings in the file but are not enabled; `gochecknoglobals` and `gochecknoinits` are not enabled either.
 
 ### Running Locally
 
@@ -87,9 +87,9 @@ task byo-up    # docker-compose.byo.yml; task byo-down to stop
 # Satellite with Go
 go run ./cmd/satellite --token "<token>" --ground-control-url "http://127.0.0.1:8080" --harbor-registry-url "<harbor-url>"
 
-# Satellite with CRI mirror config (requires --byo-registry, see Container Runtime Integration)
+# Satellite with CRI mirror config pointing at the local OCI proxy (see Container Runtime Integration)
 go run ./cmd/satellite --token "<token>" --ground-control-url "<url>" --harbor-registry-url "<harbor-url>" \
-  --byo-registry --registry-url "<registry>" --mirrors=containerd:docker.io,quay.io
+  --mirrors=containerd:docker.io,quay.io
 
 # Ground Control with Docker Compose
 docker compose up postgres ground-control
@@ -109,11 +109,13 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 
 ### Satellite Component Structure
 
-- cmd/satellite/main.go: CLI flags and env vars, CRI config application, direct-delivery setup, audit logger, config watcher, graceful shutdown
+- cmd/satellite/main.go: CLI flags and env vars, store setup, OCI proxy listener, CRI config application, direct-delivery setup, audit logger, config watcher, graceful shutdown
 - pkg/config/: Configuration management (ConfigManager), validation and default enforcement, path resolution, optional encryption on write
 - internal/satellite/satellite.go: Orchestration: picks token or SPIFFE ZTR, starts ZTR, state replication and status report schedulers, registers events
 - internal/satellite/state/: State fetching, replication, token and SPIFFE registration, status reporting, state persistence, direct delivery
-- internal/satellite/store/: `Store` interface; `OCIStore` (ORAS OCI image layout, default) and `RegistryStore` (go-containerregistry copy to a BYO registry)
+- internal/satellite/store/: `Store` interface (Pull, Fetch, Replicate, Delete); `OCIStore` (ORAS OCI image layout, default local store) and `RegistryStore` (ORAS remote repository, used for Harbor as the source and for a BYO registry as the local store)
+- internal/satellite/proxy/: Pull-only OCI Distribution proxy (ADR-0009): request parser and validation, handler chain, `proxy`/`replica` modes; `proxy/process/image/` is the pull handler
+- internal/satellite/peers/: `EligiblePeers` builds the peer allow-list from `peer_distribution` (merges static_peers and gc_peers, applies the group filter). No caller outside tests yet; nothing dials peers
 - internal/satellite/events/: Event scheduler for GC-triggered one-shot jobs (currently only `refresh_credentials`)
 - internal/satellite/scheduler/: Interval scheduler (`@every <duration>` parsed into a time.Ticker, runs once immediately on start)
 - internal/satellite/process/: `Process` interface (Name, Execute, IsRunning, IsComplete)
@@ -122,13 +124,12 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 - internal/satellite/identity/: Device fingerprint (machine-id, MAC, disk serial); real only on Linux default builds
 - internal/satellite/secure/: Device-bound config encryption (AES-256-GCM, Argon2id key from fingerprint)
 - internal/satellite/tls/: Client TLS config loading
-- internal/satellite/proxy/: OCI Distribution request parser and handler chain for the ADR-0009 proxy. Not wired into cmd/satellite yet
 
 ### Shared Packages
 
 - internal/shared/env/: All env var parsing for satellite and GC (caarlos0/env struct tags)
 - internal/shared/logger/: zerolog logger (context-carried) and audit logger (syslog daemon/network/file, OTLP/HTTP)
-- internal/shared/crypto/: AES-GCM provider, Argon2id helpers
+- internal/shared/crypto/: AES-GCM provider, Argon2id helpers (m=19 MiB, t=2, p=1)
 - internal/shared/spiffe/: SPIFFE Workload API client (X.509 SVID, mTLS HTTP client)
 - internal/shared/utils/: Misc utilities (signal context, URL formatting, file I/O)
 - internal/version/: Version and GitCommit, set via ldflags
@@ -143,7 +144,7 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 - internal/groundcontrol/migrator/: goose runner; reads `/migrations` when present, otherwise uses the embedded SQL schema so installed binaries work outside the checkout
 - internal/groundcontrol/harbor/: Harbor v2 API client (projects, robots, replication)
 - internal/groundcontrol/harborhealth/: Startup Harbor health check (skippable via SKIP_HARBOR_HEALTH_CHECK)
-- internal/groundcontrol/auth/: Password policy validation
+- internal/groundcontrol/auth/: Password policy validation, Argon2id password hashing (via internal/shared/crypto), session token generation
 - internal/groundcontrol/middleware/: Rate limiting, TLS cert watching
 - internal/groundcontrol/spiffe/: SPIFFE provider, middleware, authorizer, embedded SPIRE server, SPIRE server client
 - internal/groundcontrol/cli/: `groundcontrol` commands (serve, auth, get, create, update, delete, register, add, remove, sync, ping, health)
@@ -154,19 +155,23 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 
 Groups: Collections of artifacts (repository, tag, digest, type) that satellites replicate. GC pushes each group's state as an OCI artifact into Harbor under `satellite/group-state/<group>/state`.
 
-Configs: Named satellite app configs (intervals, metrics, BYO registry, registry fallback, audit, TLS, etc.) delivered through Harbor as config state artifacts. Updates use JSON Merge Patch.
+Configs: Named satellite app configs (intervals, metrics, BYO registry, registry fallback, audit, TLS, peer distribution, etc.) delivered through Harbor as config state artifacts (`satellite/config-state/<config>/state`). Updates use JSON Merge Patch (evanphx/json-patch).
 
-State Replication: The satellite fetches its root state artifact (`satellite/satellite-state/<name>/state`) directly from Harbor with its robot credentials, then fetches each group state and replicates changes into the store. GC is not on the replication data path.
+State Replication: The satellite fetches its root state artifact (`satellite/satellite-state/<name>/state`) directly from Harbor with its robot credentials, then fetches each group state and replicates changes into the local store. GC is not on the replication data path.
+
+OCI Proxy: Unless `--fallback-only`, cmd/satellite always serves a pull-only OCI Distribution endpoint on `127.0.0.1:<proxy-port>` (default 8585, loopback hard-coded) backed by the same local store. `proxy` mode (default) fills a local miss from Harbor (GET replicates into the local store, HEAD only reads metadata); `replica` mode serves only replicated content. Push, delete, tag list, referrers and catalog return UNSUPPORTED. CEL policy and a `cache` mode from ADR-0009 are not implemented.
 
 Registration (ZTR, Zero Touch Registration): Two mutually exclusive paths:
-- Token ZTR: Satellite POSTs `{token}` to `/satellites/ztr` and receives Harbor robot credentials and its state URL. Tokens expire after 24h and are deleted after a successful ZTR. Managed in state/registration_process.go.
+- Token ZTR: Satellite POSTs `{"token": ...}` to `/satellites/ztr` and receives Harbor robot credentials and its state URL. Tokens expire after 24h and are deleted after a successful ZTR. Managed in state/registration_process.go.
 - SPIFFE ZTR: Satellite presents an X.509 SVID via mTLS to `GET /satellites/spiffe-ztr` and is auto-registered. Managed in state/spiffe_registration.go.
 
-Heartbeat and Status Reporting: The satellite POSTs to `/satellites/sync` (SPIFFE identity or robot Basic auth) with CPU, memory, storage, image count, cached images, sync duration and CRI activity. The response can carry events (e.g. `refresh_credentials` when the robot expires within two heartbeat intervals). Managed in state/reporting_process.go and state/report.go.
+Heartbeat and Status Reporting: The satellite POSTs to `/satellites/sync` (SPIFFE identity or robot Basic auth) with CPU, memory, storage, image count, cached images (BYO only) and CRI activity. `last_sync_duration_ms`, `latest_state_digest` and `latest_config_digest` are in the payload but never populated. The response can carry events (e.g. `refresh_credentials` when the robot expires within two heartbeat intervals). Managed in state/reporting_process.go and state/report.go.
 
 Stale detection: A satellite is stale when `last_seen` is older than 3x its reported heartbeat interval (15 min if not `@every`). `STALE_THRESHOLD` is parsed but not used by any query.
 
-BYO Registry: `--byo-registry --registry-url ...` replicates into an external registry instead of the local OCI layout. This is the only mode that exposes a pullable registry endpoint.
+BYO Registry: `--byo-registry --registry-url ...` replicates into an external registry instead of the local OCI layout. The proxy then serves from that registry, and it is the only endpoint `--fallback-only` can point CRIs at.
+
+Peer Distribution (ADR-0010, proposed): opt-in `app_config.peer_distribution` block (static_peers, gc_peers, local_groups, reachout_sats group|global, timeout, retries, concurrency) is validated, defaulted when present, and kept across remote config reconciles. No peer copy is implemented.
 
 Direct Delivery (experimental): `--direct-delivery` writes docker-save tarballs pulled from Harbor into the k3s/RKE2 agent images directory.
 
@@ -176,7 +181,7 @@ Satellite config directory defaults to `os.UserConfigDir()/satellite` (`~/.confi
 
 `config.json` has two sections:
 - state_config: Harbor robot credentials (`auth`) and the satellite state URL (`state`)
-- app_config: Ground Control URL, log level, intervals, metrics, BYO registry (`bring_own_registry`, `local_registry`), TLS, SPIFFE, `encrypt_config`, `registry_fallback`, `harbor_registry_url`, `direct_delivery`, `audit`
+- app_config: Ground Control URL, log level, intervals, metrics, BYO registry (`bring_own_registry`, `local_registry`), TLS, SPIFFE, `encrypt_config`, `registry_fallback`, `harbor_registry_url`, `direct_delivery`, `audit`, `peer_distribution`
 
 Example: `examples/config.example.json`. Fallback intervals when missing or invalid: state replication `@every 30s`, registration `@every 5s`, heartbeat `@every 30s` (pkg/config/constants.go).
 
@@ -186,7 +191,7 @@ Config encryption is opt-in via `app_config.encrypt_config` (default false) and 
 
 Both binaries load `.env` from the working directory if present. Template: `.env.example`. Source of truth: `internal/shared/env/`.
 
-Satellite (each also has a CLI flag, see Satellite CLI Flags): TOKEN, GROUND_CONTROL_URL, HARBOR_REGISTRY_URL, USE_UNSECURE, SPIFFE_ENABLED, SPIFFE_ENDPOINT_SOCKET, SPIFFE_EXPECTED_SERVER_ID, BYO_REGISTRY, REGISTRY_URL, REGISTRY_USERNAME, REGISTRY_PASSWORD, CONFIG_DIR, REGISTRY_DATA_DIR, SHUTDOWN_TIMEOUT (30s), NO_REGISTRY_FALLBACK, DIRECT_DELIVERY, IMAGE_DIR.
+Satellite (each also has a CLI flag, see Satellite CLI Flags): TOKEN, GROUND_CONTROL_URL, HARBOR_REGISTRY_URL, USE_UNSECURE, SPIFFE_ENABLED, SPIFFE_ENDPOINT_SOCKET, SPIFFE_EXPECTED_SERVER_ID, BYO_REGISTRY, REGISTRY_URL, REGISTRY_USERNAME, REGISTRY_PASSWORD, CONFIG_DIR, REGISTRY_DATA_DIR, SHUTDOWN_TIMEOUT (30s), NO_REGISTRY_FALLBACK, DIRECT_DELIVERY, IMAGE_DIR, PROXY_MODE (proxy|replica, default proxy), PROXY_PORT (8585).
 
 Ground Control:
 - Harbor: HARBOR_URL, HARBOR_USERNAME, HARBOR_PASSWORD, ROBOT_DURATION_DAYS (30), SKIP_HARBOR_HEALTH_CHECK (false, testing only)
@@ -206,15 +211,15 @@ Ground Control CLI (`groundcontrol`): flags `--server` (default https://localhos
 - Bearer Token: `Authorization: Bearer <session_token>` (from /login)
 - Basic Auth: `Authorization: Basic <base64(username:password)>`
 - Roles: `system_admin` (full access including user management) and `admin` (standard management)
-- Account lockout after failed login attempts (LOCKOUT_DURATION)
+- Account lockout for LOCKOUT_DURATION after 5 failed login attempts
 - Bootstrap: creates `admin` user from ADMIN_PASSWORD on first startup
 
 **Ground Control API Routes** (spec/groundcontrol/openapi.yaml, security wrapping in internal/groundcontrol/server/routes.go):
-- Public: `GET /ping`, `GET /health`, `POST /login`, `POST /satellites/ztr` (rate limited), `GET /satellites/spiffe-ztr` (SPIFFE required, rate limited)
+- Public: `GET /ping`, `GET /health`, `POST /login` (rate limited), `POST /satellites/ztr` (rate limited), `GET /satellites/spiffe-ztr` (SPIFFE required, rate limited)
 - Satellite-authenticated: `POST /satellites/sync` (SPIFFE SVID or robot Basic auth, rate limited)
 - Protected (under `/api`): groups, configs, satellites, users, logout
 - System admin only: user create/delete and admin password reset, group delete, `/api/spire/*`, `POST /api/satellites/register` (SPIFFE registration)
-- Background cleanup job: every 24h, deletes status records older than 7 days and orphaned artifacts
+- Background cleanup job: every 24h under a PostgreSQL advisory lock, deletes status records older than 7 days and orphaned artifacts
 
 **SPIFFE/SPIRE Authentication** (satellite to Ground Control):
 - mTLS using X.509 SVIDs from the SPIRE Workload API
@@ -226,11 +231,11 @@ Ground Control CLI (`groundcontrol`): flags `--server` (default https://localhos
 - Default build: full functionality including SPIFFE, AES config encryption and Linux device fingerprinting
 - `nospiffe`: compiles the `*_stub.go` files (internal/shared/spiffe, internal/groundcontrol/spiffe, internal/groundcontrol/server/server_spiffe_stub.go). It also swaps crypto for a pass-through `NoOpProvider` (internal/shared/crypto/provider_stub.go) and device identity for `NoOpIdentity`, so `encrypt_config` stores plaintext. Use `go build -tags nospiffe ./...`
 - Device identity is real only for `linux && !nospiffe`; all other platforms get the stub
-- Release artifacts and images are built without tags
+- Release artifacts and images are built without tags. The Dockerfile's `GO_TAGS` comment still mentions `parsec`; that code was removed in #526
 
 ## Go Style Rules
 
-- Go 1.26.5 (go.mod, Taskfile GO_VERSION, CI, Dockerfile)
+- Go 1.26.5 (go.mod, CI, Dockerfile)
 - Use `any` instead of `interface{}`.
 - Use `t.TempDir()` in tests instead of manual temp paths with `os.TempDir()`.
 - Use `cm.With()` modifiers for all ConfigManager mutations (never mutate via `cm.GetConfig()` directly).
@@ -242,7 +247,9 @@ Ground Control CLI (`groundcontrol`): flags `--server` (default https://localhos
 
 ### State Management
 
-The satellite keeps credentials and app config in `config.json` and the replicated group state in `state.json` (atomic write). State is re-fetched from Harbor on every state replication tick; on shutdown the in-memory state is persisted.
+The satellite keeps credentials and app config in `config.json` and the replicated group state in `state.json` (atomic write via temp file + rename). State is re-fetched from Harbor on every state replication tick; on shutdown the in-memory state is persisted.
+
+`ConfigManager.GetRemoteRegistryCredentials()` returns the BYO `local_registry` credentials despite its name.
 
 ### Satellite CLI Flags
 
@@ -258,12 +265,13 @@ Flags default to their env var equivalents (see internal/shared/env/harbor-satel
 - `--config-dir` / `CONFIG_DIR`, `--registry-data-dir` / `REGISTRY_DATA_DIR`
 - `--shutdown-timeout` / `SHUTDOWN_TIMEOUT` (30s)
 - `--no-registry-fallback` / `NO_REGISTRY_FALLBACK`
-- `--fallback-only`: Apply CRI fallback configs and exit, no env var
+- `--fallback-only`: Apply CRI fallback configs and exit, no env var; rejected together with an explicit `--proxy-mode` / `PROXY_MODE`
+- `--proxy-mode` / `PROXY_MODE` (proxy|replica), `--proxy-port` / `PROXY_PORT` (8585)
 - `--direct-delivery` / `DIRECT_DELIVERY`, `--image-dir` / `IMAGE_DIR`: experimental k3s/RKE2 tarball delivery
 
 ### Container Runtime Integration
 
-CRI mirror config only applies in BYO registry mode: without `--byo-registry` cmd/satellite prints a warning and skips it, because the local OCI layout is not a registry endpoint. Priority: GC-delivered `registry_fallback` > `--mirrors` > `--no-registry-fallback`.
+CRI configs make the runtime pull through the satellite with the upstream as fallback (containerd: `hosts.toml` with the upstream as `server` and the endpoint as a `pull`/`resolve` host). In a normal run the endpoint is the OCI proxy at `127.0.0.1:<proxy-port>`. With `--fallback-only` no proxy runs, so the endpoint is the BYO registry URL; without `--byo-registry` it prints a warning and skips. Priority: GC-delivered `registry_fallback` > `--mirrors` > `--no-registry-fallback`.
 - Format: `--mirrors=<CRI>:<registry1>,<registry2>`
 - Example: `--mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io`
 - Docker only supports mirroring docker.io, use `--mirrors=docker:true`
@@ -290,22 +298,23 @@ The satellite watches `config.json`. Log level, state replication interval and a
 GitHub Actions workflows:
 - .github/workflows/test.yaml (PRs): unit tests + Codecov (ubuntu-latest); govulncheck, GoReleaser snapshot, satellite and GC builds (self-hosted `container-registry`); E2E main, BYO, SPIFFE (ubuntu-latest). Crash-recovery E2E is not run in CI
 - .github/workflows/lint.yaml (PRs): golangci-lint v2.12.2 binary on `container-registry` (no Docker daemon there, so it does not use `task lint-report`)
-- .github/workflows/release.yaml (push to main and `v*` tags, ubuntu-latest): per-arch image builds (linux amd64/arm64/ppc64le/s390x/riscv64) of `satellite` and `ground-control` to `${REGISTRY_ADDRESS}/${PROJECT_NAME}` (registry.goharbor.io/harbor-satellite), multi-arch manifest, Cosign keyless signing; tags additionally run `task release` (GoReleaser)
-- .github/workflows/labeler.yaml: auto-labels PRs (documentation for *.md, golang for *.go)
+- .github/workflows/release.yaml (push to main and `v*.*.*` tags, ubuntu-latest): per-arch builds (linux amd64/arm64/ppc64le/s390x/riscv64) of the `satellite` and `ground-control` images to `${REGISTRY_ADDRESS}/${PROJECT_NAME}` from repository variables (README: registry.goharbor.io/harbor-satellite), multi-arch manifest, Cosign keyless signing; tags additionally run `task release` (GoReleaser)
+- .github/workflows/labeler.yaml (`container-registry`): auto-labels PRs (documentation for *.md, golang for *.go)
 
-Key tasks: `build`, `build-all`, `lint`, `lint-report`, `vuln`, `vuln-report`, `e2e*`, `generate:groundcontrol`, `publish`, `publish-and-sign`, `release`, `snapshot`, `clean`.
+Key tasks: `build`, `build-all`, `lint`, `lint-report`, `vuln`, `vuln-report`, `e2e*`, `generate:groundcontrol`, `byo-up`, `byo-down`, `publish`, `publish-and-sign`, `release`, `snapshot`, `clean`.
 
 ## Architecture Decisions
 
 ADRs in docs/decisions/:
-- ADR-0001: Skopeo vs Crane (chose Crane; historical, superseded by ADR-0009)
-- ADR-0002: Zot vs Docker Registry (historical, superseded by ADR-0009)
-- ADR-0003: Remote config injection (proposed; API-based config delivery with rollback)
-- ADR-0004: Ground Control authentication (session-based auth with bearer tokens)
+- ADR-0001: Skopeo vs Crane (accepted, chose Crane; ADR-0009 supersedes the target state)
+- ADR-0002: Zot vs Docker Registry (superseded, Zot replaced by ORAS in #648)
+- ADR-0003: Remote config injection (accepted, implemented with a different API than its examples)
+- ADR-0004: Ground Control authentication (accepted; session-based auth with bearer tokens)
 - PDR-0005: SPIFFE identity and security (accepted)
 - ADR-0006: Satellite lifecycle states (proposed; not implemented)
-- ADR-0007, ADR-0008: PARSEC hardware-backed identity and bootstrapping flow (proposed; PARSEC code was removed in #526). Related proposal in docs/proposals/
-- ADR-0009: ORAS OCI storage and a policy-enforcing transparent proxy (proposed; ORAS store landed in #648, proxy package in #649 is not wired)
+- ADR-0007, ADR-0008: PARSEC hardware-backed identity and bootstrapping flow (deprecated; PARSEC code was removed in #526). Related proposal in docs/proposals/
+- ADR-0009: ORAS OCI storage and a policy-enforcing transparent proxy (proposed; ORAS store #648, proxy package #649, wired with proxy/replica modes in #654; CEL policy and cache mode not implemented). Its Implementation Status table predates #654
+- ADR-0010: Peer-to-peer distribution between satellites (proposed; config block #674 and peer roster #676 only)
 - groundcontrol-internal-package-migration.md: moving GC into the root module (done)
 
 ## Common Workflows
@@ -332,9 +341,10 @@ ADRs in docs/decisions/:
 State replication in internal/satellite/state/ and internal/satellite/store/:
 - fetcher.go: Fetching state artifacts from Harbor
 - state_process.go: Orchestrating fetch, diff, delete/replicate, config reconcile, direct delivery
-- store/store.go: Backend-neutral `Store` contract
+- store/store.go: Backend-neutral `Store` contract shared with the OCI proxy
 - store/oci.go: Replicating OCI graphs into the local image layout (ORAS)
-- store/registry.go: Replicating images to an external BYO registry (go-containerregistry)
+- store/registry.go: Remote registry store (ORAS) for Harbor and BYO registries
+- proxy/process/image/pull.go: Proxy pull path; proxy-mode misses replicate through the same `Store.Replicate`
 - direct_delivery.go: k3s/RKE2 tarball delivery
 - registration_process.go, spiffe_registration.go: Token and SPIFFE ZTR
 - reporting_process.go, report.go, catalog.go: Heartbeat, metrics, cached image list (BYO only)
@@ -345,7 +355,7 @@ This is core functionality; changes require careful review.
 
 ### Docker Compose Files
 
-- `docker-compose.yml`: dev stack (PostgreSQL + Ground Control, `satellite` behind the `satellite` profile), built from source. SKIP_HARBOR_HEALTH_CHECK defaults to true in the compose file; a root `.env` copied from `.env.example` sets it to false
+- `docker-compose.yml`: dev stack (PostgreSQL + Ground Control, `satellite` behind the `satellite` profile), built from source. SKIP_HARBOR_HEALTH_CHECK defaults to true in the compose file; a root `.env` copied from `.env.example` sets it to false. The satellite's proxy binds the container's loopback, so it is not reachable from the host
 - `docker-compose.byo.yml`: satellite + `registry:2` sidecar (`task byo-up` / `byo-down`)
 - `test/e2e/docker/`: E2E stacks (standard and SPIFFE)
 - `examples/deploy/`: token (no-spiffe) quickstart, SPIFFE join-token/sshpop/x509pop compose setups (GC on https://localhost:${GC_HOST_PORT:-9080}), GC Helm chart in `examples/deploy/helm/groundcontrol`
