@@ -101,10 +101,6 @@ func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := tx.Rollback(); err != nil {
 				log.Printf("Error: Failed to rollback transaction: %v", err)
-				HandleAppError(w, &AppError{
-					Message: "Error: Failed to rollback transaction",
-					Code:    http.StatusInternalServerError,
-				})
 			}
 		}
 	}()
@@ -1003,10 +999,6 @@ func (s *Server) DeleteSatellite(w http.ResponseWriter, r *http.Request, satelli
 		if !committed {
 			if err := tx.Rollback(); err != nil {
 				log.Printf("Error: Failed to rollback transaction: %v", err)
-				HandleAppError(w, &AppError{
-					Message: "Error: Failed to rollback transaction",
-					Code:    http.StatusInternalServerError,
-				})
 			}
 		}
 	}()
@@ -1180,10 +1172,6 @@ func (s *Server) AddSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		if !committed {
 			if err := tx.Rollback(); err != nil {
 				log.Printf("Error: Failed to rollback transaction: %v", err)
-				HandleAppError(w, &AppError{
-					Message: "Error: Failed to rollback transaction",
-					Code:    http.StatusInternalServerError,
-				})
 			}
 		}
 	}()
@@ -1316,10 +1304,6 @@ func (s *Server) RemoveSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		if !committed {
 			if err := tx.Rollback(); err != nil {
 				log.Printf("Error: Failed to rollback transaction: %v", err)
-				HandleAppError(w, &AppError{
-					Message: "Error: Failed to rollback transaction",
-					Code:    http.StatusInternalServerError,
-				})
 			}
 		}
 	}()
