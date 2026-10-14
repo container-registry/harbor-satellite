@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	migrations "github.com/container-registry/harbor-satellite/internal/groundcontrol/sql"
+	migrations "github.com/container-registry/harbor-satellite/spec/groundcontrol/sql"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"

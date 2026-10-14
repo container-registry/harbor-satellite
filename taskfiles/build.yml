@@ -31,7 +31,7 @@ tasks:
       - echo "Built bin/groundcontrol"
     sources:
       - "**/*.go"
-      - "internal/groundcontrol/sql/schema/*.sql"
+      - "spec/groundcontrol/sql/schema/*.sql"
       - go.mod
       - go.sum
     generates:
