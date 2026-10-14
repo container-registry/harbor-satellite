@@ -2,9 +2,19 @@ package state
 
 import (
 	"encoding/json"
+	"io"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/registry"
+	"github.com/google/go-containerregistry/pkg/v1/random"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/tarball"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTarballFilename(t *testing.T) {
@@ -139,4 +149,72 @@ func TestDeliverEmptyEntitiesIsNoop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Deliver([]): %v", err)
 	}
+}
+
+func TestDeliver_DigestPinned(t *testing.T) {
+	srv := httptest.NewServer(registry.New())
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+
+	imgA, err := random.Image(1024, 1)
+	require.NoError(t, err)
+	refA, err := name.ParseReference(host+"/repo/name:v1", name.Insecure)
+	require.NoError(t, err)
+	require.NoError(t, remote.Write(refA, imgA))
+	digestA, err := imgA.Digest()
+	require.NoError(t, err)
+
+	imgB, err := random.Image(1024, 1)
+	require.NoError(t, err)
+	refB, err := name.ParseReference(host+"/repo/name:v1", name.Insecure)
+	require.NoError(t, err)
+	require.NoError(t, remote.Write(refB, imgB))
+
+	dir := t.TempDir()
+	d := NewDirectDeliverer(dir, "", "", host, true)
+
+	entity := Entity{Repository: "repo", Name: "name", Tag: "v1", Digest: digestA.String()}
+	require.NoError(t, d.Deliver(testContext(), []Entity{entity}))
+
+	tarPath := filepath.Join(dir, tarballFilename(entity))
+	got, err := tarball.ImageFromPath(tarPath, nil)
+	require.NoError(t, err)
+	gotDigest, err := got.Digest()
+	require.NoError(t, err)
+	require.Equal(t, digestA, gotDigest, "should deliver the pinned digest, not the moved tag")
+
+	// Verify the tarball's RepoTags uses the tag, not the digest ref,
+	// so k3s imports the image under the expected name:tag.
+	manifest, err := tarball.LoadManifest(func() (io.ReadCloser, error) { return os.Open(tarPath) })
+	require.NoError(t, err)
+	require.NotEmpty(t, manifest)
+	require.NotEmpty(t, manifest[0].RepoTags, "tarball must carry RepoTags for k3s import")
+	require.Contains(t, manifest[0].RepoTags[0], ":v1", "RepoTags should use tag, not digest ref")
+	require.NotContains(t, manifest[0].RepoTags[0], "@sha256:", "RepoTags must not contain digest ref")
+}
+
+func TestDeliver_TagFallback(t *testing.T) {
+	srv := httptest.NewServer(registry.New())
+	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+
+	imgB, err := random.Image(1024, 1)
+	require.NoError(t, err)
+	ref, err := name.ParseReference(host+"/repo/name:v1", name.Insecure)
+	require.NoError(t, err)
+	require.NoError(t, remote.Write(ref, imgB))
+	digestB, err := imgB.Digest()
+	require.NoError(t, err)
+
+	dir := t.TempDir()
+	d := NewDirectDeliverer(dir, "", "", host, true)
+
+	entity := Entity{Repository: "repo", Name: "name", Tag: "v1", Digest: ""}
+	require.NoError(t, d.Deliver(testContext(), []Entity{entity}))
+
+	got, err := tarball.ImageFromPath(filepath.Join(dir, tarballFilename(entity)), nil)
+	require.NoError(t, err)
+	gotDigest, err := got.Digest()
+	require.NoError(t, err)
+	require.Equal(t, digestB, gotDigest, "should deliver the tag-resolved image when no digest is present")
 }
