@@ -4,6 +4,8 @@ vars:
   GOVULNCHECK_VERSION: "v1.1.4"
   OAPI_CODEGEN_VERSION: "de2d8b2b0afb287198554eb305bb0d2687d26a85"
   OAPI_CODEGEN_RELEASE_VERSION: "v2.8.0"
+  # Matches the version recorded in internal/groundcontrol/database.
+  SQLC_VERSION: "v1.31.1"
   VULN_FILTER: "GO-2025-3409|GO-2024-2979"
   BIN_DIR: "{{.ROOT_DIR}}/bin"
 
@@ -68,10 +70,16 @@ tasks:
       - task: _lint:vulnerability-check-report
 
   generate:groundcontrol:
-    desc: Generate Ground Control OpenAPI server and client code
+    desc: Generate Ground Control OpenAPI server, client, and database code
     aliases: [gen:groundcontrol]
     cmds:
       - task: _gen:groundcontrol
+
+  generate:groundcontrol-database:
+    desc: Generate Ground Control database code
+    aliases: [gen:groundcontrol-database]
+    cmds:
+      - task: _gen:groundcontrol-database
 
   generate:groundcontrol-server:
     desc: Generate Ground Control OpenAPI server code

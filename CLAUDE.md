@@ -31,14 +31,16 @@ go run ./cmd/groundcontrol serve
 ### Code Generation
 
 ```bash
-# OpenAPI server (internal/groundcontrol/server/server.gen.go) and client (pkg/groundcontrol/client.gen.go)
-task generate:groundcontrol     # alias gen:groundcontrol; also gen:groundcontrol-server, gen:groundcontrol-client
+# OpenAPI server (internal/groundcontrol/server/server.gen.go), client (pkg/groundcontrol/client.gen.go),
+# and database package (internal/groundcontrol/database)
+task generate:groundcontrol     # alias gen:groundcontrol; also gen:groundcontrol-server, gen:groundcontrol-client, gen:groundcontrol-database
 
-# sqlc: queries in internal/groundcontrol/sql/queries, schema in internal/groundcontrol/sql/schema
-sqlc generate                    # config in sqlc.yaml, output in internal/groundcontrol/database/
+# Database only. Config is spec/groundcontrol/sqlc.yaml (sqlc v1.31.1).
+# Queries and migrations are under spec/groundcontrol/sql/.
+task generate:groundcontrol-database
 ```
 
-The spec is `spec/groundcontrol/openapi.yaml` (oapi-codegen configs in `spec/groundcontrol/oapi-codegen/`). Route matching, parameter binding and request/response types come from the generated server; do not hand-edit `*.gen.go` or `internal/groundcontrol/database/*.sql.go`.
+The OpenAPI spec is `spec/groundcontrol/openapi.yaml` (oapi-codegen configs in `spec/groundcontrol/oapi-codegen/`). SQLC inputs are `spec/groundcontrol/sqlc.yaml`, `spec/groundcontrol/sql/queries` and `spec/groundcontrol/sql/schema`. Route matching, parameter binding and request/response types come from the generated server. Do not hand-edit `*.gen.go` or anything under `internal/groundcontrol/database`; that package is generated.
 
 ### Testing
 
@@ -140,7 +142,7 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 - internal/groundcontrol/cli/root/serve.go: Loads env, checks Harbor health, runs migrations, starts HTTP/TLS/SPIFFE server and the cleanup job, and shuts down on context cancellation
 - internal/groundcontrol/server/: Handlers (satellites, groups, configs, auth, users, SPIRE), generated router (`server.gen.go`), per-route security middleware (`routes.go`), cleanup job
 - internal/groundcontrol/database/: sqlc-generated PostgreSQL access (do not edit)
-- internal/groundcontrol/sql/: `schema/` (goose migrations, also the sqlc schema) and `queries/`
+- spec/groundcontrol/sql/: goose migrations (`schema/`), sqlc queries (`queries/`), and `schema.go`, which embeds `schema/*.sql` for the migrator
 - internal/groundcontrol/migrator/: goose runner; reads `/migrations` when present, otherwise uses the embedded SQL schema so installed binaries work outside the checkout
 - internal/groundcontrol/harbor/: Harbor v2 API client (projects, robots, replication)
 - internal/groundcontrol/harborhealth/: Startup Harbor health check (skippable via SKIP_HARBOR_HEALTH_CHECK)
@@ -280,7 +282,7 @@ CRI configs make the runtime pull through the satellite with the upstream as fal
 
 ### Database Migrations
 
-goose migrations live in `internal/groundcontrol/sql/schema/` (001 to 015, no 014) and run automatically on GC startup. The Dockerfile copies them to `/migrations`.
+goose migrations live in `spec/groundcontrol/sql/schema/` (001 to 015, no 014) and run automatically on GC startup. `spec/groundcontrol/sql/schema.go` embeds that directory so an installed binary can migrate without a source checkout. The Dockerfile copies the same directory to `/migrations`, which the migrator uses when that path exists.
 
 ### Hot Reload
 
@@ -297,12 +299,12 @@ The satellite watches `config.json`. Log level, state replication interval and a
 ## CI/CD
 
 GitHub Actions workflows:
-- .github/workflows/test.yaml (PRs): unit tests + Codecov (ubuntu-latest); govulncheck, GoReleaser snapshot, satellite and GC builds (self-hosted `container-registry`); E2E main, BYO, SPIFFE (ubuntu-latest). Crash-recovery E2E is not run in CI
+- .github/workflows/test.yaml (PRs): unit tests + Codecov (ubuntu-latest); SQLC database generation drift check (ubuntu-latest); govulncheck, GoReleaser snapshot, satellite and GC builds (self-hosted `container-registry`); E2E main, BYO, SPIFFE (ubuntu-latest). Crash-recovery E2E is not run in CI
 - .github/workflows/lint.yaml (PRs): golangci-lint v2.12.2 binary on `container-registry` (no Docker daemon there, so it does not use `task lint-report`)
 - .github/workflows/release.yaml (push to main and `v*.*.*` tags, ubuntu-latest): per-arch builds (linux amd64/arm64/ppc64le/s390x/riscv64) of the `satellite` and `ground-control` images to `${REGISTRY_ADDRESS}/${PROJECT_NAME}` from repository variables (README: registry.goharbor.io/harbor-satellite), multi-arch manifest, Cosign keyless signing; tags additionally run `task release` (GoReleaser)
 - .github/workflows/labeler.yaml (`container-registry`): auto-labels PRs (documentation for *.md, golang for *.go)
 
-Key tasks: `build`, `build-all`, `lint`, `lint-report`, `vuln`, `vuln-report`, `e2e*`, `generate:groundcontrol`, `byo-up`, `byo-down`, `publish`, `publish-and-sign`, `release`, `snapshot`, `clean`.
+Key tasks: `build`, `build-all`, `lint`, `lint-report`, `vuln`, `vuln-report`, `e2e*`, `generate:groundcontrol`, `generate:groundcontrol-database`, `byo-up`, `byo-down`, `publish`, `publish-and-sign`, `release`, `snapshot`, `clean`.
 
 ## Architecture Decisions
 
@@ -323,10 +325,10 @@ ADRs in docs/decisions/:
 ### Adding a new API endpoint to Ground Control
 
 1. Add the path and schemas to spec/groundcontrol/openapi.yaml
-2. Run `task generate:groundcontrol` (server and client)
+2. Run `task generate:groundcontrol` (server, client, and database code)
 3. Implement the generated interface method in internal/groundcontrol/server/*_handlers.go
 4. If the route needs non-default auth (public, satellite, system admin), update routeSecurityMiddleware / requiresSystemAdmin in routes.go
-5. Add SQL in internal/groundcontrol/sql/queries (and a migration in sql/schema if needed), then `sqlc generate`
+5. Add SQL in spec/groundcontrol/sql/queries (and a migration in spec/groundcontrol/sql/schema if needed), then `task generate:groundcontrol-database`
 6. Add a CLI command under internal/groundcontrol/cli/root if operators need it
 
 ### Adding a new satellite feature
