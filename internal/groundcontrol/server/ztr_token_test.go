@@ -9,6 +9,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
 	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
@@ -44,7 +45,7 @@ func TestClaimZTRToken_SecondClaimIsInvalid(t *testing.T) {
 	require.Equal(t, satelliteID, id)
 
 	_, err = claimZTRToken(ctx, q, valid)
-	require.ErrorIs(t, err, errTokenInvalid)
+	require.ErrorIs(t, err, fleet.ErrTokenInvalid)
 	require.ErrorIs(t, err, errTokenConsumed)
 }
 
@@ -54,7 +55,7 @@ func TestClaimZTRToken_UnknownIsInvalid(t *testing.T) {
 
 	_, err := claimZTRToken(context.Background(), q, "unknown-token")
 
-	require.ErrorIs(t, err, errTokenInvalid)
+	require.ErrorIs(t, err, fleet.ErrTokenInvalid)
 	require.NotErrorIs(t, err, errTokenConsumed)
 }
 
@@ -64,7 +65,7 @@ func TestClaimZTRToken_ExpiredIsExpired(t *testing.T) {
 
 	_, err := claimZTRToken(context.Background(), q, expired)
 
-	require.ErrorIs(t, err, errTokenExpired)
+	require.ErrorIs(t, err, fleet.ErrTokenExpired)
 }
 
 func TestUnclaimZTRToken_AllowsRetry(t *testing.T) {

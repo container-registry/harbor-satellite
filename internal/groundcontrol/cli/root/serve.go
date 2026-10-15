@@ -27,7 +27,9 @@ func ServeCommand() *cobra.Command {
 		loadEnvironment: env.LoadGC,
 		checkHealth:     harborhealth.CheckHealth,
 		migrate:         migrator.DoMigrations,
-		newServer:       server.NewServer,
+		newServer: func(ctx context.Context) (*server.ServerResult, error) {
+			return server.NewServer(ctx)
+		},
 	})
 }
 

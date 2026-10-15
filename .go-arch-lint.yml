@@ -33,6 +33,12 @@ components:
     in: internal/groundcontrol/cli/**
   gc-server:
     in: internal/groundcontrol/server
+  gc-fleet:
+    in: internal/groundcontrol/fleet
+  gc-adapters:
+    in: internal/groundcontrol/adapters/**
+  gc-app:
+    in: internal/groundcontrol/app
   gc-infra:
     in:
       - internal/groundcontrol/auth
@@ -105,10 +111,28 @@ deps:
       - pkg-groundcontrol
   gc-server:
     mayDependOn:
+      - gc-fleet
       - gc-infra
       - shared
       - shared-env
       - pkg-config
+  # The domain core: ports only, no adapter, no infrastructure.
+  gc-fleet:
+    mayDependOn:
+      - shared
+  # Adapters get their configuration injected and never read env.
+  gc-adapters:
+    mayDependOn:
+      - gc-fleet
+      - gc-infra
+      - shared
+  gc-app:
+    mayDependOn:
+      - gc-fleet
+      - gc-adapters
+      - gc-infra
+      - shared
+      - shared-env
   gc-infra:
     mayDependOn:
       - gc-infra

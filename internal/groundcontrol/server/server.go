@@ -16,6 +16,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
@@ -54,6 +55,17 @@ type Server struct {
 	// from spoofing the audit source_ip. Enable only when GC sits behind a
 	// trusted reverse proxy.
 	trustForwardedHeaders bool
+
+	// services is set by WithFleet; no handler calls it before plan item 1.4.
+	services *fleet.Services
+}
+
+// Option configures NewServer.
+type Option func(*Server)
+
+// WithFleet hands the fleet services to the handlers.
+func WithFleet(services *fleet.Services) Option {
+	return func(s *Server) { s.services = services }
 }
 
 // ServerTLSConfig holds TLS settings for the Ground Control HTTP server.
@@ -75,7 +87,7 @@ type ServerResult struct {
 	EmbeddedSpire  *spiffe.EmbeddedSpireServer
 }
 
-func NewServer(ctx context.Context) (result *ServerResult, err error) {
+func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err error) {
 	result = &ServerResult{AppServer: &Server{}}
 	defer func() {
 		if err != nil {
@@ -85,6 +97,9 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 	}()
 	cfg := env.GC
 	appServer := result.AppServer
+	for _, opt := range opts {
+		opt(appServer)
+	}
 	appServer.port = cfg.Server.Port
 	appServer.passwordPolicy = auth.LoadPolicyFromConfig(cfg.PasswordPolicy)
 	appServer.sessionDuration = cfg.Server.SessionDuration

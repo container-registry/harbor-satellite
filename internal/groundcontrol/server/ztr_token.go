@@ -9,17 +9,13 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 )
 
-var (
-	errTokenInvalid  = errors.New("registration token invalid")
-	errTokenExpired  = errors.New("registration token expired")
-	errTokenConsumed = errors.New("registration token already consumed")
-)
+var errTokenConsumed = errors.New("registration token already consumed")
 
 // claimZTRToken claims token in one statement, so exactly one of several
-// concurrent registrations wins. A missing token is errTokenInvalid and an
-// already claimed one errTokenInvalid wrapping errTokenConsumed; Ztr answers
-// both like an unknown token so the response does not reveal that the token
-// is in use. An expired token is errTokenExpired.
+// concurrent registrations wins. A missing token is fleet.ErrTokenInvalid and
+// an already claimed one fleet.ErrTokenInvalid wrapping errTokenConsumed; Ztr
+// answers both like an unknown token so the response does not reveal that the
+// token is in use. An expired token is fleet.ErrTokenExpired.
 func claimZTRToken(_ context.Context, _ *database.Queries, token string) (int32, error) {
 	return 0, fmt.Errorf("%w: D7 claim token %s", notimpl.ErrNotImplemented, maskToken(token))
 }
