@@ -1,8 +1,19 @@
 package events
 
 import (
+	"bytes"
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/container-registry/harbor-satellite/internal/shared/logger"
+	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
+	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestRefreshProcess() *RefreshCredentialProcess {
@@ -77,4 +88,51 @@ func TestRefreshCredentialProcess_StartStop_Concurrent(t *testing.T) {
 	if p.IsRunning() {
 		t.Error("expected IsRunning to be false after final stop()")
 	}
+}
+
+func TestRefreshCredentialProcess_ExecuteDoesNotLogSecrets(t *testing.T) {
+	pending.Plan(t, "D4", "credential refresh logs the response body with the new secret")
+
+	const (
+		currentSecret   = "d4-refresh-current-robot-secret"
+		refreshedSecret = "d4-refresh-new-robot-secret"
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"secret":"` + refreshedSecret + `"}`))
+		require.NoError(t, err)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	cm, err := config.NewConfigManager(
+		filepath.Join(dir, "config.json"),
+		filepath.Join(dir, "prev.json"),
+		"", srv.URL, false,
+		&config.Config{
+			StateConfig: config.StateConfig{
+				RegistryCredentials: config.RegistryCredentials{
+					URL:      "http://registry",
+					Username: "robot$test-sat",
+					Password: currentSecret,
+				},
+			},
+			AppConfig: config.AppConfig{
+				GroundControlURL: config.URL(srv.URL),
+				UseUnsecure:      true,
+			},
+		},
+	)
+	require.NoError(t, err)
+	var logs bytes.Buffer
+	log := zerolog.New(&logs).Level(zerolog.TraceLevel)
+	ctx := context.WithValue(context.Background(), logger.LoggerKey, &log)
+	p := newTestRefreshProcess()
+	p.cm = cm
+	p.log = &log
+
+	require.NoError(t, p.Execute(ctx))
+	require.Equal(t, refreshedSecret, cm.GetSourceRegistryPassword())
+	require.NotContains(t, logs.String(), refreshedSecret)
+	require.NotContains(t, logs.String(), currentSecret)
 }

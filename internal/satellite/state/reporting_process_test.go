@@ -1,15 +1,21 @@
 package state
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
+	"github.com/container-registry/harbor-satellite/internal/shared/logger"
+	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -260,4 +266,26 @@ func TestExecute_CRIReporting(t *testing.T) {
 		require.Nil(t, p.pendingCRI)
 		p.mu.Unlock()
 	})
+}
+
+func TestExecute_StatusReportDoesNotLogRegistrySecret(t *testing.T) {
+	pending.Plan(t, "D4", "status report logs the registry password")
+
+	const secret = "d4-status-report-robot-secret"
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writeJSON(t, w, StatusReportResponse{})
+	}))
+	defer srv.Close()
+
+	cm := newReportingTestCM(t, srv.URL)
+	cm.With(config.SetStateAuth("robot$test-sat", secret, "http://registry"))
+	var logs bytes.Buffer
+	log := zerolog.New(&logs).Level(zerolog.TraceLevel)
+	ctx := context.WithValue(context.Background(), logger.LoggerKey, &log)
+
+	require.NoError(t, NewStatusReportingProcess(cm, nil).Execute(ctx))
+	require.EqualValues(t, 1, requests.Load())
+	require.NotContains(t, logs.String(), secret)
 }
