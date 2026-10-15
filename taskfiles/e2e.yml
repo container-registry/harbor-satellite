@@ -576,7 +576,7 @@ tasks:
         echo "---"
 
   verify:
-    desc: Verify image replication to the local OCI layout
+    desc: Verify image replication to the local OCI layout, a proxy pull and the heartbeat
     cmds:
       - |
         echo "Waiting for replication..."
@@ -597,6 +597,98 @@ tasks:
         echo "--- Full satellite logs ---"
         docker logs {{.SATELLITE_CONTAINER}} 2>&1
         echo "---"
+        exit 1
+      - task: verify-proxy-pull
+        vars: { CONTAINER: "{{.SATELLITE_CONTAINER}}" }
+      - task: verify-heartbeat
+        vars: { SATELLITE: "{{.SATELLITE_NAME}}", CONTAINER: "{{.SATELLITE_CONTAINER}}" }
+
+  verify-proxy-pull:
+    desc: Pull the replicated image through the satellite's loopback OCI proxy and check digests
+    internal: true
+    requires:
+      vars: [CONTAINER]
+    vars:
+      REPOSITORY: "{{.PROJECT_NAME}}/alpine"
+      PROXY_URL: http://127.0.0.1:8585
+    cmds:
+      - |
+        ACCEPT="application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json"
+        fail() {
+          echo "FAIL: $1"
+          echo "--- satellite logs ---"
+          docker logs {{.CONTAINER}} 2>&1 | tail -30
+          exit 1
+        }
+        proxy_get() {
+          docker exec {{.CONTAINER}} curl -sf -H "Accept: $ACCEPT" "{{.PROXY_URL}}/v2/{{.REPOSITORY}}/$1"
+        }
+        proxy_header_digest() {
+          docker exec {{.CONTAINER}} curl -sf -o /dev/null -D - -H "Accept: $ACCEPT" "{{.PROXY_URL}}/v2/{{.REPOSITORY}}/$1" |
+            tr -d '\r' | awk 'tolower($1) == "docker-content-digest:" { print $2 }'
+        }
+        proxy_body_digest() {
+          echo "sha256:$(docker exec {{.CONTAINER}} sh -c "curl -sf -H '$ACCEPT' '{{.PROXY_URL}}/v2/{{.REPOSITORY}}/$1' | sha256sum" | cut -d' ' -f1)"
+        }
+
+        EXPECTED=$(curl -sf -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
+          "{{.HARBOR_API}}/projects/{{.PROJECT_NAME}}/repositories/alpine/artifacts/latest" | jq -r '.digest // empty')
+        [ -n "$EXPECTED" ] || fail "Harbor did not return the digest of {{.REPOSITORY}}:latest"
+        echo "Pulling {{.REPOSITORY}}:latest through the proxy in {{.CONTAINER}} (Harbor digest $EXPECTED)..."
+
+        HEADER_DIGEST=$(proxy_header_digest manifests/latest)
+        [ "$HEADER_DIGEST" = "$EXPECTED" ] || fail "proxy Docker-Content-Digest is '$HEADER_DIGEST', want $EXPECTED"
+        BODY_DIGEST=$(proxy_body_digest manifests/latest)
+        [ "$BODY_DIGEST" = "$EXPECTED" ] || fail "proxy manifest body digest is $BODY_DIGEST, want $EXPECTED"
+
+        MANIFEST=$(proxy_get manifests/latest) || fail "proxy GET manifests/latest failed"
+        if echo "$MANIFEST" | jq -e '.manifests' > /dev/null; then
+          CHILD=$(echo "$MANIFEST" | jq -r '[.manifests[] | select(.platform.os != "unknown")][0].digest')
+          [ "$(proxy_body_digest "manifests/$CHILD")" = "$CHILD" ] || fail "proxy child manifest $CHILD has a different digest"
+          MANIFEST=$(proxy_get "manifests/$CHILD") || fail "proxy GET manifests/$CHILD failed"
+        fi
+        LAYER=$(echo "$MANIFEST" | jq -r '.layers[0].digest // empty')
+        [ -n "$LAYER" ] || fail "manifest has no layers"
+        LAYER_DIGEST=$(proxy_body_digest "blobs/$LAYER")
+        [ "$LAYER_DIGEST" = "$LAYER" ] || fail "proxy blob body digest is $LAYER_DIGEST, want $LAYER"
+        echo "PASS: proxy served manifest $EXPECTED and blob $LAYER with matching digests"
+
+  verify-heartbeat:
+    desc: Require a recent heartbeat in GET /api/satellites/{satellite}/status (pending plan item D1)
+    internal: true
+    requires:
+      vars: [SATELLITE, CONTAINER]
+    cmds:
+      - |
+        if [ -z "$HARBOR3_PENDING" ]; then
+          echo "SKIP pending plan item D1: heartbeat of {{.SATELLITE}} not checked (set HARBOR3_PENDING=1 to run)"
+          exit 0
+        fi
+        GC_TOKEN=$(curl -sf -X POST {{.GROUNDCONTROL_URL}}/login \
+          -H "Content-Type: application/json" \
+          -d '{"username":"{{.GROUNDCONTROL_ADMIN_USER}}","password":"{{.GROUNDCONTROL_ADMIN_PASSWORD}}"}' | jq -r '.token')
+        echo "Waiting for two consecutive heartbeats of {{.SATELLITE}}..."
+        FIRST=""
+        for i in $(seq 1 24); do
+          SEEN=$(curl -sf -H "Authorization: Bearer $GC_TOKEN" "{{.GROUNDCONTROL_URL}}/api/satellites/{{.SATELLITE}}/status" |
+            jq -r '.CreatedAt // .created_at // empty' 2>/dev/null)
+          if [ -n "$SEEN" ] && [ -z "$FIRST" ]; then
+            FIRST="$SEEN"
+            echo "Heartbeat recorded at $FIRST"
+          elif [ -n "$SEEN" ] && [ "$SEEN" != "$FIRST" ]; then
+            echo "PASS: heartbeat recorded at $SEEN after $FIRST"
+            exit 0
+          fi
+          echo "Waiting for heartbeat... ($i/24)"
+          sleep 5
+        done
+        echo "FAIL: no recent heartbeat for {{.SATELLITE}}"
+        curl -s -H "Authorization: Bearer $GC_TOKEN" "{{.GROUNDCONTROL_URL}}/api/satellites/{{.SATELLITE}}/status"
+        echo
+        echo "--- satellite status report logs ---"
+        docker logs {{.CONTAINER}} 2>&1 | grep '"process":"status_report"' | tail -5
+        echo "--- Ground Control logs ---"
+        docker logs {{.E2E_PREFIX}}gc 2>&1 | tail -20
         exit 1
 
   generate-join-token:
@@ -828,7 +920,7 @@ tasks:
           satellite:e2e
 
   verify-byo:
-    desc: Verify image replication to BYO registry
+    desc: Verify image replication to BYO registry, a proxy pull and the heartbeat
     cmds:
       - |
         echo "Waiting for replication to BYO registry..."
@@ -856,6 +948,10 @@ tasks:
         echo "BYO registry catalog:"
         docker exec {{.BYO_REGISTRY_CONTAINER}} wget -q -O - http://localhost:5000/v2/_catalog 2>&1 || true
         exit 1
+      - task: verify-proxy-pull
+        vars: { CONTAINER: "{{.SATELLITE_BYO_CONTAINER}}" }
+      - task: verify-heartbeat
+        vars: { SATELLITE: "{{.BYO_SATELLITE_NAME}}", CONTAINER: "{{.SATELLITE_BYO_CONTAINER}}" }
 
   cleanup-byo:
     desc: Stop and remove BYO E2E containers
