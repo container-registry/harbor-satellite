@@ -61,6 +61,11 @@ task e2e-byo                # BYO registry E2E
 task e2e-spiffe             # SPIFFE join-token E2E
 task e2e-crash-recovery     # Crash recovery with the local OCI store
 task e2e-crash-recovery-byo # Crash recovery with BYO registry
+task e2e-multi-group        # Satellite in two groups (pending plan item D5, runs with HARBOR3_PENDING=1)
+
+# Harbor-backed variants against a running Harbor instead of the bundled one: containers, projects,
+# robots and state artifacts are prefixed hs-e2e-, GC listens on host port 9180, cleanup removes only those
+HARBOR_EXTERNAL=1 HARBOR_NETWORK=<harbor network> HARBOR_HOST_URL=http://localhost:<port> task e2e-test
 ```
 
 ### Linting
