@@ -225,7 +225,7 @@ Ground Control CLI (`groundcontrol`): flags `--server` (default https://localhos
 
 **Ground Control API Routes** (spec/groundcontrol/openapi.yaml, security wrapping in internal/groundcontrol/server/routes.go):
 - Public: `GET /ping`, `GET /health`, `POST /login` (rate limited), `POST /satellites/ztr` (rate limited), `GET /satellites/spiffe-ztr` (SPIFFE required, rate limited)
-- Satellite-authenticated: `POST /satellites/sync` (SPIFFE SVID or robot Basic auth, rate limited)
+- Satellite-authenticated: `POST /satellites/sync` (SPIFFE SVID or robot Basic auth, rate limited); `POST /satellites/refresh` sits behind the same chain and answers 501 until D2 lands
 - Protected (under `/api`): groups, configs, satellites, users, logout
 - System admin only: user create/delete and admin password reset, group delete, `/api/spire/*`, `POST /api/satellites/register` (SPIFFE registration)
 - Background cleanup job: every 24h under a PostgreSQL advisory lock, deletes status records older than 7 days and orphaned artifacts
@@ -384,3 +384,4 @@ Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNo
 
 - internal/shared/notimpl/: `ErrNotImplemented` and `Err(item)`, returned by every skeleton stub
 - internal/satellite/gcclient/: D1, the single satellite→GC client over pkg/groundcontrol (token ZTR, SPIFFE ZTR, sync) with its own result types (no pkg/config import) and `Credentials` (`RobotBasic`, `NoCredentials`); the state processes still join URLs themselves
+- D2: `POST /satellites/refresh` is routed behind satellite auth and answers 501 (`server/satellite_refresh.go`, `server/notimplemented.go`); `scheduler.NewScheduler` (no interval, used for the `refresh_credentials` event) still runs its process on Start; the fix makes it run only on Trigger

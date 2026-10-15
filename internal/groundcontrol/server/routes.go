@@ -37,7 +37,7 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 		case "/satellites/spiffe-ztr":
 			handler = spiffe.RequireSPIFFEAuth(handler)
 			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
-		case "/satellites/sync":
+		case "/satellites/sync", "/satellites/refresh":
 			handler = spiffe.AuthMiddleware(handler)
 			handler = s.SatelliteAuthMiddleware(handler)
 			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)

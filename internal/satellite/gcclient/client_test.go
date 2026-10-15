@@ -242,3 +242,18 @@ func TestNew_RequiresHTTPSUnlessInsecure(t *testing.T) {
 		})
 	}
 }
+
+func TestClientRefreshCredentials_PostsToSatellitesRefresh(t *testing.T) {
+	pending.Plan(t, "D2", "the credential refresh goes to /sat/refresh outside the generated client")
+	gc := newFakeGC(t, http.StatusOK, map[string]string{"secret": "n3w"})
+	c := newClient(t, gc.server.URL)
+
+	res, err := c.RefreshCredentials(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, "n3w", res.Secret)
+	got := gc.requests()
+	require.Len(t, got, 1)
+	require.Equal(t, http.MethodPost, got[0].Method)
+	require.Equal(t, "/satellites/refresh", got[0].Path)
+}

@@ -1303,6 +1303,43 @@ paths:
             text/plain:
               schema:
                 type: string
+  /satellites/refresh:
+    post:
+      tags:
+        - satellites
+      summary: Rotates the satellite's Harbor robot secret.
+      operationId: refreshSatelliteCredentials
+      responses:
+        "200":
+          description: Robot secret rotated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshCredentialsResponse"
+        "401":
+          description: Satellite credentials are missing, invalid or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: Satellite or robot account is unknown.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "429":
+          description: Too many satellite requests.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Robot secret could not be rotated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
   /satellites/spiffe-ztr:
     get:
       tags:
@@ -2433,6 +2470,15 @@ components:
           items:
             type: string
           x-go-name: Events
+    RefreshCredentialsResponse:
+      type: object
+      title: RefreshCredentialsResponse carries the satellite's new robot secret.
+      required:
+        - secret
+      properties:
+        secret:
+          type: string
+          x-go-name: Secret
     GroupSyncRequest:
       type: object
       title: GroupSyncRequest contains a group state artifact synchronized from

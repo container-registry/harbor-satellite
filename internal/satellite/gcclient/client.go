@@ -45,6 +45,10 @@ type RobotAccount struct {
 	Password    string
 }
 
+type RefreshResult struct {
+	Secret string
+}
+
 var (
 	ErrUnauthorized = errors.New("ground control rejected the satellite credentials")
 	ErrForbidden    = errors.New("ground control refused the satellite")
@@ -81,4 +85,10 @@ func (c *Client) SPIFFEZeroTouch(ctx context.Context) (ZTRResult, error) {
 // the satellite.
 func (c *Client) Sync(ctx context.Context, report StatusReport) (SyncResult, error) {
 	return SyncResult{}, notimpl.Err("D1 heartbeat via generated client")
+}
+
+// RefreshCredentials asks Ground Control to rotate the satellite's robot
+// secret and returns the new one.
+func (c *Client) RefreshCredentials(ctx context.Context) (RefreshResult, error) {
+	return RefreshResult{}, notimpl.Err("D2 credential refresh via generated client")
 }
