@@ -4,6 +4,8 @@ status: accepted
 
 # Ground Control Authentication
 
+Partly superseded: satellite authentication by [ADR-0016](0016-satellite-session-authentication.md).
+
 ## Context and Problem Statement
 
 Ground Control manages satellites via HTTP API. Without authentication, any client can modify

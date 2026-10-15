@@ -15,7 +15,7 @@ General information about architectural decision records is available at <https:
 | [ADR-0003](0003-remote-config-injection.md) | Remote Config Injection | accepted |
 | [ADR-0004](0004-groundcontrol-authentication.md) | Ground Control Authentication | accepted |
 | [PDR-0005](0005-spiffe-identity-and-security.md) | SPIFFE Identity and Security | accepted |
-| [ADR-0006](0006-satellite-lifecycle-states.md) | Satellite Lifecycle States | proposed |
+| [ADR-0006](0006-satellite-lifecycle-states.md) | Satellite Lifecycle States | proposed; ADR-0016 designs its implementation |
 | [ADR-0007](0007-security-plugins-parsec.md) | PARSEC Hardware-Backed Identity for Edge Satellites | deprecated (code removed in #526) |
 | [ADR-0008](0008-parsec-integration-and-zero-trust-bootstrapping-flow.md) | PARSEC Integration & Zero-Trust Bootstrapping Flow | deprecated (code removed in #526) |
 | [ADR-0009](0009-transparent-oci-registry-proxy.md) | Policy-Enforcing Transparent OCI Registry Proxy with ORAS | proposed, partly implemented (ORAS store landed in #648) |
@@ -23,6 +23,7 @@ General information about architectural decision records is available at <https:
 | [ADR-0013](0013-edge-store-concurrency-and-pull-through-streaming.md) | Edge store concurrency and pull-through streaming | proposed; skeleton only |
 | [ADR-0014](0014-ground-control-async-plane.md) | Ground Control async plane: transactional outbox and level-triggered publisher | proposed; skeleton only |
 | [ADR-0015](0015-edge-journal-and-upload-protocol.md) | Edge journal and upload protocol | proposed; skeleton only |
+| [ADR-0016](0016-satellite-session-authentication.md) | Satellite sessions and the fleet hot path | proposed; skeleton only |
 
 ## Design Notes
 

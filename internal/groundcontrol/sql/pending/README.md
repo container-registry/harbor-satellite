@@ -6,8 +6,9 @@ SQL for Harbor 3 plan items that is written but not applied. goose embeds only `
 |---|---|---|
 | `constraints.sql` | 3.4 | `sql/schema/<next free number>_constraints.sql` |
 | `configs_version_queries.sql` | 3.4 | appended to `sql/queries/configs.sql`, then `sqlc generate` |
+| `satellite_status_partitions.sql` | 4.5 | `sql/schema/<next free number>_satellite_status_partitions.sql`. From then on `PartitionMaintainer` (`adapters/postgres`) owns status retention and the cleanup job stops calling `DeleteOldSatelliteStatus` |
 
-The tests in `internal/groundcontrol/server/constraints_test.go` describe the result; the change that moves the files removes their `pending.Plan` markers. `UpdateConfig` then uses `UpdateConfigIfVersion` and answers 409 when it updates no row.
+`internal/groundcontrol/sql/migrations_test.go` and `pending_partitions_test.go` apply each file as the next migration and revert it, so the DDL stays valid. The tests in `internal/groundcontrol/server/constraints_test.go` describe the result of 3.4; the change that moves the files removes their `pending.Plan` markers. `UpdateConfig` then uses `UpdateConfigIfVersion` and answers 409 when it updates no row.
 
 ## Duplicate robot accounts
 

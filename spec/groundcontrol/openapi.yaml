@@ -908,6 +908,88 @@ paths:
                 $ref: "#/components/schemas/AppError"
       security:
         - tokenAuth: []
+  "/api/satellites/{satellite}/lifecycle":
+    get:
+      tags:
+        - satellites
+      summary: Gets a satellite's lifecycle state and convergence (ADR-0006, plan item 4.3).
+      operationId: getSatelliteLifecycle
+      parameters:
+        - x-go-name: Satellite
+          description: Satellite name.
+          name: satellite
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Satellite lifecycle returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatelliteLifecycleResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Satellite was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite lifecycle could not be loaded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/satellites/{satellite}/revoke":
+    post:
+      tags:
+        - satellites
+      summary: Revokes a satellite; sync and ZTR answer 403 until it is unrevoked.
+      operationId: revokeSatellite
+      parameters:
+        - x-go-name: Satellite
+          description: Satellite name.
+          name: satellite
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Satellite revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatelliteLifecycleResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Satellite was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite could not be revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
   "/api/satellites/{satellite}/status":
     get:
       tags:
@@ -943,6 +1025,47 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "500":
           description: Satellite status could not be loaded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/satellites/{satellite}/unrevoke":
+    post:
+      tags:
+        - satellites
+      summary: Returns a revoked satellite to pending; it goes online with its next heartbeat.
+      operationId: unrevokeSatellite
+      parameters:
+        - x-go-name: Satellite
+          description: Satellite name.
+          name: satellite
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Satellite unrevoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatelliteLifecycleResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Satellite was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite could not be unrevoked.
           content:
             application/json:
               schema:
@@ -2205,6 +2328,9 @@ components:
         state:
           type: string
           x-go-name: State
+        session:
+          $ref: "#/components/schemas/SatelliteSession"
+          x-go-type-skip-optional-pointer: false
     StateConfigValue:
       type: object
       title: StateConfigValue contains state artifact and registry settings in a
@@ -2625,6 +2751,13 @@ components:
           type: integer
           format: int32
           x-go-name: ImageCount
+        inventory_digest:
+          type: string
+          description: >
+            Digest of cached_images (internal/shared/inventory, plan item 4.4,
+            not read yet). A satellite sends cached_images only when this
+            changed or Ground Control asked with inventory_requested.
+          x-go-name: InventoryDigest
         journal:
           $ref: "#/components/schemas/JournalUpload"
         last_replication_error:
@@ -2674,6 +2807,101 @@ components:
         journal:
           $ref: "#/components/schemas/JournalAck"
           x-go-type-skip-optional-pointer: false
+        session:
+          $ref: "#/components/schemas/SatelliteSession"
+          x-go-type-skip-optional-pointer: false
+        inventory_requested:
+          type: boolean
+          description: Ground Control has no inventory for the reported digest; the next heartbeat sends cached_images.
+          x-go-name: InventoryRequested
+    SatelliteSession:
+      type: object
+      title: SatelliteSession is the Ground Control session a satellite authenticates with (ADR-0016).
+      required:
+        - token
+        - expires_at
+      properties:
+        token:
+          type: string
+          x-go-name: Token
+        expires_at:
+          type: string
+          format: date-time
+          x-go-name: ExpiresAt
+    StateConvergence:
+      type: object
+      title: StateConvergence is one group state of a satellite, applied and published.
+      required:
+        - ref
+      properties:
+        ref:
+          type: string
+          x-go-name: Ref
+        digest:
+          type: string
+          description: Applied digest the satellite reported.
+          x-go-name: Digest
+        published_digest:
+          type: string
+          description: Artifact digest GC published last.
+          x-go-name: PublishedDigest
+    SatelliteLifecycleResponse:
+      type: object
+      title: SatelliteLifecycleResponse is a satellite's lifecycle and convergence (ADR-0006, plan 4.3).
+      required:
+        - name
+        - state
+        - converged
+      properties:
+        name:
+          type: string
+          x-go-name: Name
+        state:
+          type: string
+          description: pending, online, stale or revoked
+          x-go-name: State
+        last_seen:
+          type: string
+          format: date-time
+          x-go-name: LastSeen
+        revoked_at:
+          type: string
+          format: date-time
+          x-go-name: RevokedAt
+        desired_version:
+          type: integer
+          format: int64
+          x-go-name: DesiredVersion
+        rendered_digest:
+          type: string
+          x-go-name: RenderedDigest
+        published_artifact_digest:
+          type: string
+          x-go-name: PublishedArtifactDigest
+        applied_state_digest:
+          type: string
+          x-go-name: AppliedStateDigest
+        applied_config_digest:
+          type: string
+          x-go-name: AppliedConfigDigest
+        applied_states:
+          type: array
+          items:
+            $ref: "#/components/schemas/StateConvergence"
+          x-go-name: AppliedStates
+        converged:
+          type: boolean
+          x-go-name: Converged
+        publish_error:
+          type: string
+          x-go-name: PublishError
+        last_replication_error:
+          type: string
+          x-go-name: LastReplicationError
+        updated_at:
+          type: string
+          format: date-time
+          x-go-name: UpdatedAt
     AppliedState:
       type: object
       title: AppliedState is a group state reference and the digest a satellite applied.

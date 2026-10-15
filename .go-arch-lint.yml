@@ -38,6 +38,8 @@ components:
   gc-core:
     in:
       - internal/groundcontrol/async
+      - internal/groundcontrol/authn
+      - internal/groundcontrol/heartbeat
   gc-adapters:
     in: internal/groundcontrol/adapters/**
   gc-app:
@@ -60,6 +62,7 @@ components:
     in:
       - internal/shared/crypto
       - internal/shared/edgejournal
+      - internal/shared/inventory
       - internal/shared/logger
       - internal/shared/notimpl
       - internal/shared/spiffe

@@ -100,6 +100,11 @@ tasks:
     cmds:
       - task: _test:integration
 
+  test:load:
+    desc: Run the fleet load test (build tag load) against the Ground Control at LOAD_GC_URL, admin password LOAD_ADMIN_PASSWORD
+    cmds:
+      - go test -tags load -count=1 -timeout 30m -v ./test/load/...
+
   test:integration-db-down:
     desc: Remove the integration test Postgres
     cmds:

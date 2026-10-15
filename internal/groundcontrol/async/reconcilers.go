@@ -23,6 +23,9 @@ var (
 // (fleet.RenderSatelliteDesiredState): its robot may pull
 // fleet.RobotProjects of its groups (this supersedes D5's helper), and its
 // state artifact lists its groups and config, groupless included (D10).
+// It renders with robotDisabled = (the view state is revoked), applies
+// SetRobotAccess(projects, disabled), then PushState, so a revoked
+// satellite's robot is disabled with its projects kept (plan item 4.3).
 // It creates the robot when the satellite has none, named
 // fleet.RobotName; when the registry answers ErrAlreadyExists, an earlier
 // attempt created it before it could be stored, so the robot of exactly
@@ -34,7 +37,10 @@ func NewSatelliteReconciler(repo fleet.Repository, registry fleet.Registry, desi
 }
 
 func (r *SatelliteReconciler) Kinds() []fleet.EventKind {
-	return []fleet.EventKind{fleet.EventSatelliteCreated, fleet.EventAssignmentChanged, fleet.EventSatelliteChanged}
+	return []fleet.EventKind{
+		fleet.EventSatelliteCreated, fleet.EventAssignmentChanged, fleet.EventSatelliteChanged,
+		fleet.EventSatelliteRevoked, fleet.EventSatelliteUnrevoked,
+	}
 }
 
 func (r *SatelliteReconciler) Reconcile(ctx context.Context, id fleet.SatelliteID) error {

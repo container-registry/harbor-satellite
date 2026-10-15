@@ -87,9 +87,16 @@ func insertDuplicateRobots(t *testing.T, db *sql.DB) {
 // as the next migration, which is where 3.4 puts it.
 func withPendingConstraints(t *testing.T) (fs.FS, int64) {
 	t.Helper()
+	return withPendingMigration(t, "constraints")
+}
+
+// withPendingMigration is the embedded schema plus sql/pending/<name>.sql
+// as the next migration.
+func withPendingMigration(t *testing.T, name string) (fs.FS, int64) {
+	t.Helper()
 	latest, err := dbtest.LatestMigration()
 	require.NoError(t, err)
-	pendingSQL, err := os.ReadFile("pending/constraints.sql")
+	pendingSQL, err := os.ReadFile("pending/" + name + ".sql")
 	require.NoError(t, err)
 
 	files := fstest.MapFS{}
@@ -100,7 +107,7 @@ func withPendingConstraints(t *testing.T) (fs.FS, int64) {
 		require.NoError(t, err)
 		files[e.Name()] = &fstest.MapFile{Data: data}
 	}
-	files[fmt.Sprintf("%03d_constraints.sql", latest+1)] = &fstest.MapFile{Data: pendingSQL}
+	files[fmt.Sprintf("%03d_%s.sql", latest+1, name)] = &fstest.MapFile{Data: pendingSQL}
 	return files, latest
 }
 

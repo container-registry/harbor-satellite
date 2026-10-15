@@ -20,6 +20,8 @@ type world struct {
 	repo     *fleettest.Repository
 	registry *fleettest.Registry
 	identity *fleettest.WorkloadIdentity
+	sessions *fleettest.SessionIssuer
+	beats    *fleettest.HeartbeatSink
 }
 
 func newWorld() *world {
@@ -29,20 +31,26 @@ func newWorld() *world {
 		repo:     fleettest.NewRepository(rec),
 		registry: fleettest.NewRegistry(rec),
 		identity: fleettest.NewWorkloadIdentity(rec),
+		sessions: fleettest.NewSessionIssuer(rec),
+		beats:    fleettest.NewHeartbeatSink(rec),
 	}
 }
 
 func (w *world) services(t *testing.T) *fleet.Services {
 	t.Helper()
 	svc, err := fleet.NewServices(fleet.Deps{
-		Repository: w.repo,
-		Registry:   w.registry,
-		Identity:   w.identity,
-		Clock:      fleettest.Clock{T: now},
+		Repository:    w.repo,
+		Registry:      w.registry,
+		Identity:      w.identity,
+		Sessions:      w.sessions,
+		HeartbeatSink: w.beats,
+		Clock:         fleettest.Clock{T: now},
 		Settings: fleet.Settings{
-			RegistryURL:   registryURL,
-			RobotDuration: 30 * 24 * time.Hour,
-			TokenTTL:      fleet.DefaultTokenTTL,
+			RegistryURL:            registryURL,
+			RobotDuration:          30 * 24 * time.Hour,
+			TokenTTL:               fleet.DefaultTokenTTL,
+			StaleThreshold:         15 * time.Minute,
+			HeartbeatFlushInterval: 5 * time.Second,
 		},
 	})
 	require.NoError(t, err)
@@ -73,7 +81,7 @@ func onlyCall(t *testing.T, rec *fleettest.Recorder, method string) fleettest.Ca
 // registryMethods are the fleet.Registry calls; the 2.5 services make none
 // in a request except ZeroTouch's rotation.
 var registryMethods = []string{
-	"FindRobot", "CreateRobot", "SetRobotProjects", "RotateRobotSecret", "DeleteRobot",
+	"FindRobot", "CreateRobot", "SetRobotAccess", "RotateRobotSecret", "DeleteRobot",
 	"PushState", "DeleteState", "EnsureProject", "ReplicationPolicyExists", "Ping",
 }
 

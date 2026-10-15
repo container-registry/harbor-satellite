@@ -73,9 +73,23 @@ func TestRenderSatelliteDesiredState_MatchesGolden(t *testing.T) {
 	}
 	state := fleet.DesiredState{Satellite: 7, GroupStates: []fleet.ArtifactRef{ref("group", "g1"), ref("group", "g2")}, ConfigState: ref("config", "edge-config")}
 
-	doc, digest, err := fleet.RenderSatelliteDesiredState(state, fleet.RobotProjects([]string{"library", "library"}))
+	doc, digest, err := fleet.RenderSatelliteDesiredState(state, fleet.RobotProjects([]string{"library", "library"}), false)
 
 	require.NoError(t, err)
 	require.Equal(t, goldenDesiredSatellite, string(doc))
 	require.Equal(t, goldenDesiredSatelliteDigest, digest)
+}
+
+func TestRenderSatelliteDesiredState_RobotDisabledOnlyWhenTrue(t *testing.T) {
+	pending.Plan(t, "4.3", pendingLifecycle)
+	state := fleet.DesiredState{Satellite: 7, ConfigState: stateRef("config", "edge-config")}
+
+	enabled, enabledDigest, err := fleet.RenderSatelliteDesiredState(state, []string{"library", "satellite"}, false)
+	require.NoError(t, err)
+	disabled, disabledDigest, err := fleet.RenderSatelliteDesiredState(state, []string{"library", "satellite"}, true)
+	require.NoError(t, err)
+
+	require.NotContains(t, string(enabled), "robot_disabled")
+	require.Contains(t, string(disabled), `"robot_disabled":true`)
+	require.NotEqual(t, enabledDigest, disabledDigest)
 }

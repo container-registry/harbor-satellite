@@ -106,10 +106,25 @@ type SatelliteGroup struct {
 	GroupID     int32
 }
 
+type SatelliteIdentity struct {
+	SatelliteID   int32
+	SpiffeID      string
+	SpireEntryIds []string
+}
+
 type SatelliteJournalCursor struct {
 	SatelliteID int32
 	Epoch       int64
 	AckedSeq    int64
+}
+
+type SatelliteSession struct {
+	ID          int64
+	SatelliteID int32
+	TokenHash   []byte
+	RenewedFrom sql.NullInt64
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
 }
 
 type SatelliteStatus struct {
@@ -136,6 +151,23 @@ type SatelliteToken struct {
 	UpdatedAt   time.Time
 	ExpiresAt   time.Time
 	ConsumedAt  sql.NullTime
+}
+
+type SatelliteView struct {
+	SatelliteID          int32
+	State                string
+	LastSeen             sql.NullTime
+	HeartbeatInterval    sql.NullString
+	LastActivity         sql.NullString
+	LastReportedAt       sql.NullTime
+	AppliedStateDigest   sql.NullString
+	AppliedConfigDigest  sql.NullString
+	AppliedStates        json.RawMessage
+	InventoryDigest      sql.NullString
+	InventoryArtifactIds []int32
+	LastReplicationError sql.NullString
+	RevokedAt            sql.NullTime
+	UpdatedAt            time.Time
 }
 
 type Session struct {

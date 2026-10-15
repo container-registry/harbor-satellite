@@ -9,6 +9,8 @@ import (
 var (
 	_ Job = (*Publisher)(nil)
 	_ Job = (*RegistryProbe)(nil)
+	_ Job = (*StaleDetector)(nil)
+	_ Job = (*SessionExpirer)(nil)
 )
 
 // Job is a long-running part of the async plane. A job retries its own

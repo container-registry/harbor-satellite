@@ -21,6 +21,11 @@ type Settings struct {
 	// only lifetime the registry adapter reads.
 	RobotDuration time.Duration
 	TokenTTL      time.Duration
+	// StaleThreshold is how long a satellite without an @every interval
+	// may stay silent before it is stale (STALE_THRESHOLD); the floor of
+	// every threshold is twice HeartbeatFlushInterval, because a beat
+	// reaches the database only with the next flush.
+	StaleThreshold, HeartbeatFlushInterval time.Duration
 }
 
 // GroupStateRef is <registry>/satellite/group-state/<group>/state:latest.
@@ -47,10 +52,12 @@ func RenderSatelliteState(state DesiredState) ([]byte, Digest, error) {
 }
 
 // RenderSatelliteDesiredState is the document the satellite reconciler
-// records: {"robot_projects": [...], "state": <RenderSatelliteState>}. Its
-// digest covers both parts, so a change of either is published; PushState
-// stores only the state part.
-func RenderSatelliteDesiredState(state DesiredState, robotProjects []string) ([]byte, Digest, error) {
+// records: {"robot_projects": [...], "state": <RenderSatelliteState>}, with
+// "robot_disabled": true added only for a revoked satellite, so the digest
+// of every other satellite stays what it was. Its digest covers every
+// part, so a change of either is published; PushState stores only the
+// state part.
+func RenderSatelliteDesiredState(state DesiredState, robotProjects []string, robotDisabled bool) ([]byte, Digest, error) {
 	return nil, "", notimpl.Err("2.3 render satellite desired state")
 }
 

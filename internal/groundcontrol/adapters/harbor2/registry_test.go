@@ -59,14 +59,14 @@ func TestRegistry_CreateRobotLikeTheRobotTemplate(t *testing.T) {
 	require.ErrorIs(t, err, fleet.ErrNotFound)
 }
 
-func TestRegistry_SetRobotProjectsReadsThenReplaces(t *testing.T) {
+func TestRegistry_SetRobotAccessReadsThenReplaces(t *testing.T) {
 	pending.Plan(t, "1.3", pendingAdapter)
 	stub := harbortest.New(t)
 	seeded := stub.SeedRobot(harbortest.RobotPrefix+"edge-01", fleet.SatelliteProject)
 	r := newRegistry(t, stub)
 	mark := stub.Mark()
 
-	require.NoError(t, r.SetRobotProjects(context.Background(), seeded.ID, []string{"library", "team", fleet.SatelliteProject}))
+	require.NoError(t, r.SetRobotAccess(context.Background(), seeded.ID, []string{"library", "team", fleet.SatelliteProject}, false))
 
 	var routes []string
 	for _, c := range stub.CallsSince(mark) {
@@ -74,6 +74,36 @@ func TestRegistry_SetRobotProjectsReadsThenReplaces(t *testing.T) {
 	}
 	require.Equal(t, []string{harbortest.RouteGetRobot, harbortest.RouteUpdateRobot}, routes)
 	require.Equal(t, []string{"library", fleet.SatelliteProject, "team"}, stub.RobotProjects(seeded.Name))
+}
+
+// Harbor rejects an empty permission list, so revoking disables the robot
+// in the same PUT and keeps its projects.
+func TestRegistry_SetRobotAccessOnePutKeepsOtherFields(t *testing.T) {
+	pending.Plan(t, "4.3", pendingAdapter)
+	stub := harbortest.New(t)
+	seeded := stub.SeedRobot(harbortest.RobotPrefix+"edge-01", "library", fleet.SatelliteProject)
+	r := newRegistry(t, stub)
+	mark := stub.Mark()
+
+	require.NoError(t, r.SetRobotAccess(context.Background(), seeded.ID, []string{"library", fleet.SatelliteProject}, true))
+
+	var updates int
+	for _, c := range stub.CallsSince(mark) {
+		if c.Route == harbortest.RouteUpdateRobot {
+			updates++
+		}
+	}
+	require.Equal(t, 1, updates)
+	robot, ok := stub.Robot(seeded.Name)
+	require.True(t, ok)
+	require.True(t, robot.Disable)
+	require.Equal(t, []string{"library", fleet.SatelliteProject}, stub.RobotProjects(seeded.Name))
+	require.Equal(t, seeded.Duration, robot.Duration)
+	require.Equal(t, seeded.Level, robot.Level)
+
+	require.NoError(t, r.SetRobotAccess(context.Background(), seeded.ID, []string{"library", fleet.SatelliteProject}, false))
+	robot, _ = stub.Robot(seeded.Name)
+	require.False(t, robot.Disable)
 }
 
 func TestRegistry_RotateRobotSecretReturnsTheNewSecret(t *testing.T) {
@@ -175,5 +205,5 @@ func TestRegistry_MissingObjectsAreErrNotFound(t *testing.T) {
 	require.ErrorIs(t, r.DeleteState(context.Background(), stateRef(stub, "satellite", "never-pushed")), fleet.ErrNotFound)
 	_, err := r.RotateRobotSecret(context.Background(), 4711)
 	require.ErrorIs(t, err, fleet.ErrNotFound)
-	require.ErrorIs(t, r.SetRobotProjects(context.Background(), 4711, []string{fleet.SatelliteProject}), fleet.ErrNotFound)
+	require.ErrorIs(t, r.SetRobotAccess(context.Background(), 4711, []string{fleet.SatelliteProject}, false), fleet.ErrNotFound)
 }

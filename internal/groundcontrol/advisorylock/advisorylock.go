@@ -9,6 +9,10 @@ package advisorylock
 const (
 	// Cleanup serializes the status cleanup across replicas.
 	Cleanup = 12345
+	// StaleDetector and StatusPartitions make the worker jobs of plan
+	// items 4.3 and 4.5 run once across workers.
+	StaleDetector    = 12346
+	StatusPartitions = 12347
 )
 
 // Namespaces of the two-key locks, one per aggregate type.
@@ -16,12 +20,16 @@ const (
 	SatelliteAggregates = 1
 	GroupAggregates     = 2
 	ConfigAggregates    = 3
+	// SatelliteSessions serialises the first session of a satellite.
+	SatelliteSessions = 4
 )
 
 // IDs lists every one-key lock ID above by its constant's name.
 func IDs() map[string]int64 {
 	return map[string]int64{
-		"Cleanup": Cleanup,
+		"Cleanup":          Cleanup,
+		"StaleDetector":    StaleDetector,
+		"StatusPartitions": StatusPartitions,
 	}
 }
 
@@ -31,5 +39,6 @@ func Namespaces() map[string]int32 {
 		"SatelliteAggregates": SatelliteAggregates,
 		"GroupAggregates":     GroupAggregates,
 		"ConfigAggregates":    ConfigAggregates,
+		"SatelliteSessions":   SatelliteSessions,
 	}
 }

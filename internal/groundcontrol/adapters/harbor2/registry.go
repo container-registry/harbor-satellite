@@ -43,10 +43,11 @@ func (r *Registry) CreateRobot(ctx context.Context, spec fleet.RobotSpec) (fleet
 	return fleet.RobotCredentials{}, notimpl.Err("1.3 harbor2 create robot")
 }
 
-// SetRobotProjects reads the robot and writes it back with the new
-// permissions, because Harbor's update replaces the whole robot.
-func (r *Registry) SetRobotProjects(ctx context.Context, harborID int64, projects []string) error {
-	return notimpl.Err("1.3 harbor2 set robot projects")
+// SetRobotAccess reads the robot and writes it back with the new
+// permissions and disable flag in one PUT, because Harbor's update
+// replaces the whole robot; every other field is written back as read.
+func (r *Registry) SetRobotAccess(ctx context.Context, harborID int64, projects []string, disabled bool) error {
+	return notimpl.Err("1.3 harbor2 set robot access")
 }
 
 func (r *Registry) RotateRobotSecret(ctx context.Context, harborID int64) (fleet.RobotCredentials, error) {

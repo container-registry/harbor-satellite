@@ -13,6 +13,13 @@ type Deps struct {
 	Policy   Policy
 	Clock    Clock
 	Settings Settings
+	// Sessions issues and invalidates satellite sessions (ADR-0016).
+	Sessions SessionIssuer
+	// HeartbeatSink is this replica's heartbeat buffer.
+	HeartbeatSink HeartbeatSink
+	// SatelliteRepository is the fleet pool's repository for registration,
+	// heartbeats and the journal; nil means Repository.
+	SatelliteRepository Repository
 }
 
 // Services is what the HTTP handlers call: each handler decodes, calls one
@@ -22,10 +29,14 @@ type Services struct {
 	Groups       *GroupService
 	Configs      *ConfigService
 	Registration *RegistrationService
+	// Heartbeats owns the JournalService (plan items 4.2 and 6.5).
+	Heartbeats *HeartbeatService
 }
 
 // NewServices fails with ErrInvalid when Repository or Registry is
 // missing; a missing Clock is SystemClock and a missing Policy AllowAll.
+// It builds the JournalService on SatelliteRepository and hands it to the
+// HeartbeatService only.
 // Every method authorizes PrincipalFrom(ctx) with Policy before it reads
 // or writes, and fails with ErrForbidden when the policy denies.
 func NewServices(deps Deps) (*Services, error) {

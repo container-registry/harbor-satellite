@@ -107,7 +107,7 @@ func TestSatelliteReconciler_UnionAndSinglePush(t *testing.T) {
 
 	require.NoError(t, r.Reconcile(context.Background(), 7))
 
-	sets := p.rec.CallsTo("SetRobotProjects")
+	sets := p.rec.CallsTo("SetRobotAccess")
 	require.Len(t, sets, 1)
 	require.Equal(t, int64(42), sets[0].Args[0])
 	require.Equal(t, []string{"library", fleet.SatelliteProject, "team"}, sets[0].Args[1], "fleet.RobotProjects of the groups")
@@ -146,7 +146,7 @@ func TestSatelliteReconciler_GrouplessPublishesEmptyState(t *testing.T) {
 	var doc map[string]any
 	require.NoError(t, json.Unmarshal(payload, &doc))
 	require.Empty(t, doc["states"])
-	require.Equal(t, []string{fleet.SatelliteProject}, p.rec.CallsTo("SetRobotProjects")[0].Args[1])
+	require.Equal(t, []string{fleet.SatelliteProject}, p.rec.CallsTo("SetRobotAccess")[0].Args[1])
 
 	calls := len(p.registry.Calls())
 	require.NoError(t, r.Reconcile(context.Background(), 7))
@@ -217,7 +217,7 @@ func TestSatelliteReconciler_CreatesTheRobotAndAdoptsItAfterACrash(t *testing.T)
 
 // grantOf is what robot harborID may pull after the recorded calls: what
 // CreateRobot gave it (the fake registry hands out one robot), replaced by
-// every later SetRobotProjects for it.
+// every later SetRobotAccess for it.
 func grantOf(t *testing.T, rec *fleettest.Recorder, harborID int64) []string {
 	t.Helper()
 	var projects []string
@@ -228,7 +228,7 @@ func grantOf(t *testing.T, rec *fleettest.Recorder, harborID int64) []string {
 			spec, ok := c.Args[0].(fleet.RobotSpec)
 			require.True(t, ok)
 			projects, granted = spec.Projects, true
-		case "SetRobotProjects":
+		case "SetRobotAccess":
 			if c.Args[0] == harborID {
 				p, ok := c.Args[1].([]string)
 				require.True(t, ok)
@@ -261,7 +261,7 @@ func TestGroupReconciler_PublishesAndFansOutToMembers(t *testing.T) {
 	fanOut := p.rec.CallsTo("Events.AppendToGroupMembers")
 	require.Len(t, fanOut, 1)
 	require.Equal(t, []any{fleet.GroupID(1), fleet.EventSatelliteChanged}, fanOut[0].Args)
-	require.Zero(t, p.rec.Count("SetRobotProjects"), "members are reconciled from their own events")
+	require.Zero(t, p.rec.Count("SetRobotAccess"), "members are reconciled from their own events")
 	require.Equal(t, 1, p.rec.Count("Commit"), "the fan-out commits on its own")
 }
 
@@ -428,4 +428,59 @@ func TestLimitRegistry_SpacesCalls(t *testing.T) {
 
 	require.GreaterOrEqual(t, time.Since(start), 450*time.Millisecond, "11 calls at 20/s take at least 0.5s")
 	require.Equal(t, 11, registry.Count("Ping"))
+}
+
+const pendingRevoke = "ADR-0006 lifecycle is not implemented; a revoked satellite keeps an enabled robot"
+
+func TestSatelliteReconciler_KindsIncludeLifecycle(t *testing.T) {
+	var r *async.SatelliteReconciler
+	kinds := r.Kinds()
+	require.Contains(t, kinds, fleet.EventSatelliteRevoked)
+	require.Contains(t, kinds, fleet.EventSatelliteUnrevoked)
+	require.NotContains(t, kinds, fleet.EventSatelliteStale)
+	require.True(t, fleet.EventSatelliteStale.LogOnly())
+	require.False(t, fleet.EventSatelliteRevoked.LogOnly())
+	require.False(t, fleet.EventSatelliteUnrevoked.LogOnly())
+}
+
+// lastAccess is the last SetRobotAccess call: its projects and disabled flag.
+func lastAccess(t *testing.T, rec *fleettest.Recorder) ([]string, bool) {
+	t.Helper()
+	sets := rec.CallsTo("SetRobotAccess")
+	require.NotEmpty(t, sets, "SetRobotAccess not called: %v", rec.Methods())
+	last := sets[len(sets)-1]
+	projects, ok := last.Args[1].([]string)
+	require.True(t, ok)
+	disabled, ok := last.Args[2].(bool)
+	require.True(t, ok)
+	return projects, disabled
+}
+
+func TestSatelliteReconciler_RevokedEndsDisabledWithProjects(t *testing.T) {
+	pending.Plan(t, "4.3", pendingRevoke)
+	p := newPlane()
+	p.repo.Views.ByID = map[fleet.SatelliteID]fleet.SatelliteView{7: {Satellite: fleet.Satellite{ID: 7, Name: "edge-01"}, State: fleet.StateRevoked}}
+
+	require.NoError(t, p.satellites(t).Handle(context.Background(),
+		event(t, 1, fleet.EventSatelliteRevoked, fleet.AggregateSatellite, 7, fleet.SatelliteLifecyclePayload{Name: "edge-01", State: fleet.StateRevoked, PreviousState: fleet.StateOnline})))
+
+	projects, disabled := lastAccess(t, p.rec)
+	require.True(t, disabled)
+	require.Equal(t, []string{"library", fleet.SatelliteProject, "team"}, projects, "Harbor rejects an empty permission list")
+	payload, ok := p.rec.CallsTo("PushState")[0].Args[1].([]byte)
+	require.True(t, ok)
+	require.Contains(t, string(payload), `"robot_disabled":true`)
+}
+
+func TestSatelliteReconciler_UnrevokedEndsEnabled(t *testing.T) {
+	pending.Plan(t, "4.3", pendingRevoke)
+	p := newPlane()
+	p.repo.Views.ByID = map[fleet.SatelliteID]fleet.SatelliteView{7: {Satellite: fleet.Satellite{ID: 7, Name: "edge-01"}, State: fleet.StatePending}}
+
+	require.NoError(t, p.satellites(t).Handle(context.Background(),
+		event(t, 1, fleet.EventSatelliteUnrevoked, fleet.AggregateSatellite, 7, fleet.SatelliteLifecyclePayload{Name: "edge-01", State: fleet.StatePending, PreviousState: fleet.StateRevoked})))
+
+	projects, disabled := lastAccess(t, p.rec)
+	require.False(t, disabled)
+	require.Equal(t, []string{"library", fleet.SatelliteProject, "team"}, projects)
 }

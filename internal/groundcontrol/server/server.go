@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/netip"
 	"os"
 	"time"
 
@@ -29,10 +30,15 @@ type Server struct {
 	dbQueries      *database.Queries
 	rateLimiter    *middleware.RateLimiter
 	FailureLimiter *middleware.FailureLimiter
-	spiffeProvider spiffe.Provider
-	embeddedSpire  *spiffe.EmbeddedSpireServer
-	spireClient    *spiffe.ServerClient
-	spireEnabled   bool
+	// AnonymousLimiter (ZTR per client IP) and FleetLimiter (per
+	// authenticated satellite) replace rateLimiter on those endpoints; both
+	// exist only with RATE_LIMIT_SPLIT (plan item 4.6).
+	AnonymousLimiter *middleware.Limiter[netip.Addr]
+	FleetLimiter     *middleware.Limiter[fleet.SatelliteID]
+	spiffeProvider   spiffe.Provider
+	embeddedSpire    *spiffe.EmbeddedSpireServer
+	spireClient      *spiffe.ServerClient
+	spireEnabled     bool
 
 	// External SPIRE server metadata (used when embeddedSpire is nil)
 	spireServerAddress string
@@ -67,6 +73,10 @@ type Server struct {
 	// outbox is set by WithOutboxReader; ListOutboxEvents does not read
 	// it before plan item 2.3.
 	outbox OutboxReader
+
+	// satelliteAuth is set by WithSatelliteAuthenticator; nil keeps the
+	// robot Basic chain of today.
+	satelliteAuth SatelliteAuthenticator
 }
 
 // HarborContact reports the last successful contact with Harbor; the
@@ -157,6 +167,18 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 	rateLimiter := middleware.NewRateLimiter(10, time.Minute)
 	appServer.rateLimiter = rateLimiter
 	appServer.FailureLimiter = middleware.NewFailureLimiter(cfg.Server.AuthFailureLimit, cfg.Server.AuthFailureWindow)
+	if cfg.Server.RateLimitSplit {
+		anonymous, err := middleware.ParseRate(cfg.Server.RateLimitAnonymous)
+		if err != nil {
+			return result, fmt.Errorf("RATE_LIMIT_ANONYMOUS: %w", err)
+		}
+		fleetRate, err := middleware.ParseRate(cfg.Server.RateLimitFleet)
+		if err != nil {
+			return result, fmt.Errorf("RATE_LIMIT_FLEET: %w", err)
+		}
+		appServer.AnonymousLimiter = middleware.NewLimiter[netip.Addr](anonymous)
+		appServer.FleetLimiter = middleware.NewLimiter[fleet.SatelliteID](fleetRate)
+	}
 
 	// Load SPIFFE configuration
 	spiffeCfg := spiffe.LoadConfig()
@@ -306,6 +328,12 @@ func (r *ServerResult) Close() error {
 	}
 	if r.AppServer.FailureLimiter != nil {
 		r.AppServer.FailureLimiter.Stop()
+	}
+	if r.AppServer.AnonymousLimiter != nil {
+		r.AppServer.AnonymousLimiter.Stop()
+	}
+	if r.AppServer.FleetLimiter != nil {
+		r.AppServer.FleetLimiter.Stop()
 	}
 	if r.AppServer.db != nil {
 		err = errors.Join(err, r.AppServer.db.Close())

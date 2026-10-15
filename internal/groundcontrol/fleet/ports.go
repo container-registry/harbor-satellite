@@ -13,9 +13,10 @@ type RobotAccounts interface {
 	// CreateRobot fails with ErrAlreadyExists when a robot of that name
 	// exists. The lifetime is spec.Duration.
 	CreateRobot(ctx context.Context, spec RobotSpec) (RobotCredentials, error)
-	// SetRobotProjects replaces the robot's pull permissions with exactly
-	// projects.
-	SetRobotProjects(ctx context.Context, harborID int64, projects []string) error
+	// SetRobotAccess sets the robot's pull projects and its disabled flag in
+	// one read-modify-write PUT. Harbor rejects an empty permission list, so
+	// a revoked satellite's robot is disabled with its projects kept.
+	SetRobotAccess(ctx context.Context, harborID int64, projects []string, disabled bool) error
 	RotateRobotSecret(ctx context.Context, harborID int64) (RobotCredentials, error)
 	DeleteRobot(ctx context.Context, harborID int64) error
 }
@@ -80,6 +81,7 @@ type Tx interface {
 	// plan item 2.
 	Events() EventSink
 	Journal() JournalRepo
+	Views() ViewRepo
 }
 
 type SatelliteRepo interface {
@@ -95,6 +97,11 @@ type SatelliteRepo interface {
 	RobotGrants(ctx context.Context, ids []SatelliteID) ([]RobotGrant, error)
 	SetConfig(ctx context.Context, id SatelliteID, config ConfigID) error
 	Config(ctx context.Context, id SatelliteID) (Config, error)
+	// SetIdentity stores the SPIFFE ID and SPIRE entry IDs of a satellite
+	// registered through SPIRE (satellite_identities); Get, GetByName and
+	// List fill Satellite.SPIFFEID from it. It is the tenth method, so a
+	// further satellite method needs a split first.
+	SetIdentity(ctx context.Context, id SatelliteID, spiffeID string, entryIDs []string) error
 }
 
 type GroupRepo interface {

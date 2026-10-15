@@ -34,6 +34,14 @@ func (r *Recorder) Record(method string, args ...any) error {
 	return r.fails[method]
 }
 
+// Note logs a call of a method that cannot fail, such as a buffered
+// write; FailOn has no effect on it.
+func (r *Recorder) Note(method string, args ...any) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, Call{Method: method, Args: args})
+}
+
 // FailOn makes every later call of method return err.
 func (r *Recorder) FailOn(method string, err error) {
 	r.mu.Lock()

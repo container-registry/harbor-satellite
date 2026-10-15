@@ -27,6 +27,12 @@ func SetStateConfig(sc StateConfig) func(*Config) {
 	}
 }
 
+func SetGCSession(session GCSession) func(*Config) {
+	return func(cfg *Config) {
+		cfg.StateConfig.GCSession = session
+	}
+}
+
 func SetGroundControlURL(url string) func(*Config) {
 	return func(cfg *Config) {
 		cfg.AppConfig.GroundControlURL = URL(url)

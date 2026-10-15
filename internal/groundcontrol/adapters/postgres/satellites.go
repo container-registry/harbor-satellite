@@ -45,3 +45,9 @@ func (satelliteRepo) SetConfig(ctx context.Context, id fleet.SatelliteID, config
 func (satelliteRepo) Config(ctx context.Context, id fleet.SatelliteID) (fleet.Config, error) {
 	return fleet.Config{}, notimpl.Err("1.3 postgres satellite config")
 }
+
+// SetIdentity runs UpsertSatelliteIdentity, with an empty entry list for
+// nil because the column is NOT NULL.
+func (satelliteRepo) SetIdentity(ctx context.Context, id fleet.SatelliteID, spiffeID string, entryIDs []string) error {
+	return notimpl.Err("4.3 postgres set satellite identity")
+}

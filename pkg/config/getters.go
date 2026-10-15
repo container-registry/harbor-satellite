@@ -135,6 +135,13 @@ func (cm *ConfigManager) GetStateConfig() StateConfig {
 	return cm.config.StateConfig
 }
 
+func (cm *ConfigManager) GetGCSession() GCSession {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.StateConfig.GCSession
+}
+
 // You MUST use ResolveGroundControlURL to get the ground control URL.
 func (cm *ConfigManager) ResolveGroundControlURL() string {
 	cm.mu.RLock()

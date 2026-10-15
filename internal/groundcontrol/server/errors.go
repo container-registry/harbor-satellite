@@ -8,9 +8,9 @@ import (
 
 // StatusForError maps a fleet service error to its HTTP status:
 // fleet.ErrNotFound 404; ErrAlreadyExists, ErrConflict and ErrInUse 409;
-// ErrInvalid and ErrTokenInvalid 400; ErrTokenExpired 401; ErrRevoked and
-// ErrForbidden 403; ErrRegistryUnavailable 502; ErrNotProvisioned 503;
-// anything else 500.
+// ErrInvalid and ErrTokenInvalid 400; ErrTokenExpired, ErrSessionInvalid
+// and ErrSessionExpired 401; ErrRevoked and ErrForbidden 403;
+// ErrRegistryUnavailable 502; ErrNotProvisioned 503; anything else 500.
 func StatusForError(err error) int {
 	return http.StatusNotImplemented
 }

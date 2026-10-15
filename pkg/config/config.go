@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -304,6 +305,16 @@ type JournalConfig struct {
 type StateConfig struct {
 	RegistryCredentials RegistryCredentials `json:"auth,omitempty"`
 	StateURL            string              `json:"state,omitempty"`
+	// GCSession authenticates the satellite to Ground Control once it has
+	// one (plan item 4.1, ADR-0016); the robot credentials then only pull
+	// from Harbor.
+	GCSession GCSession `json:"gc_session,omitzero"`
+}
+
+// GCSession is a Ground Control session token and its expiry.
+type GCSession struct {
+	Token     string    `json:"token,omitempty"`
+	ExpiresAt time.Time `json:"expires_at,omitzero"`
 }
 
 type Config struct {

@@ -37,12 +37,15 @@ func EventKinds() []EventKind {
 		EventEdgePullThrough,
 		EventEdgeCRIConfigured,
 		EventEdgeJournalGap,
+		EventSatelliteStale,
+		EventSatelliteRevoked,
+		EventSatelliteUnrevoked,
 	}
 }
 
 // LogOnlyKinds are recorded for readers such as webhooks but handled by
 // nobody, so they are appended already done. The edge events of plan items
-// 6 and 9 go here.
+// 6 and 9 and SatelliteStale (4.3) go here.
 func LogOnlyKinds() []EventKind {
 	return []EventKind{
 		EventEdgeReplicated,
@@ -51,6 +54,7 @@ func LogOnlyKinds() []EventKind {
 		EventEdgePullThrough,
 		EventEdgeCRIConfigured,
 		EventEdgeJournalGap,
+		EventSatelliteStale,
 	}
 }
 

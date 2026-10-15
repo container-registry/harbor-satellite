@@ -21,4 +21,8 @@ var (
 	// ErrOutsideTransaction is returned by the event sink of
 	// Repository.Autocommit.
 	ErrOutsideTransaction = errors.New("events need a transaction")
+	// ErrSessionInvalid is anything that is not a known session token;
+	// ErrSessionExpired a known one past its expiry. Both are 401.
+	ErrSessionInvalid = errors.New("satellite session invalid")
+	ErrSessionExpired = errors.New("satellite session expired")
 )

@@ -33,6 +33,12 @@ type SyncResult struct {
 	// Journal answers the report's journal; nil when Ground Control
 	// ignores journals (plan item 6.5).
 	Journal *JournalAck
+	// Session is a new or renewed Ground Control session; nil when the
+	// current one stays (plan item 4.1).
+	Session *Session
+	// InventoryRequested asks for cached_images with the next report,
+	// because Ground Control has no inventory for its digest (plan item 4.4).
+	InventoryRequested bool
 }
 
 // JournalAck is Ground Control's answer to a journal upload: its epoch for
@@ -48,6 +54,8 @@ type JournalAck struct {
 type ZTRResult struct {
 	StateURL string
 	Robot    RobotAccount
+	// Session is nil for SPIFFE ZTR, whose SVID authenticates every beat.
+	Session *Session
 }
 
 type RobotAccount struct {

@@ -10,6 +10,8 @@ informed: [Harbor-Satellite Developers, Operators]
 
 Tracks: [#268](https://github.com/container-registry/harbor-satellite/issues/268)
 
+Implementation: [ADR-0016](0016-satellite-session-authentication.md) (plan item 4.3) holds the states in `satellite_view`.
+
 ## Context and Problem Statement
 
 Harbor Satellite currently has no explicit lifecycle state for satellites. Whether a satellite is waiting for onboarding, actively heartbeating, unreachable, or administratively blocked is determined implicitly through ad-hoc queries (`GetStaleSatellites`, `GetActiveSatellites`) against `last_seen` timestamps. There is no way to revoke a compromised satellite or distinguish a newly registered satellite from one that has been operating normally.

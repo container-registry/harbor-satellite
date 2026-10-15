@@ -88,7 +88,10 @@ type Server struct {
 	AdminPassword   string        `env:"ADMIN_PASSWORD"`
 	SessionDuration time.Duration `env:"SESSION_DURATION" envDefault:"24h"`
 	LockoutDuration time.Duration `env:"LOCKOUT_DURATION" envDefault:"5m"`
-	StaleThreshold  time.Duration `env:"STALE_THRESHOLD"  envDefault:"1h"`
+	// StaleThreshold is how long a satellite without an @every heartbeat
+	// interval may stay silent before it is stale (plan item 4.3, A8);
+	// parsed but not used yet.
+	StaleThreshold time.Duration `env:"STALE_THRESHOLD" envDefault:"15m"`
 	// D6 skeleton: the FailureLimiter is built from these but never blocks yet.
 	AuthFailureLimit  int           `env:"AUTH_FAILURE_LIMIT"  envDefault:"20"`
 	AuthFailureWindow time.Duration `env:"AUTH_FAILURE_WINDOW" envDefault:"1m"`
@@ -96,6 +99,33 @@ type Server struct {
 	// 6.5 skeleton: parsed, not enforced yet. POST /satellites/sync answers
 	// 413 for a larger body, a journal upload included.
 	SyncMaxBodyBytes int64 `env:"SYNC_MAX_BODY_BYTES" envDefault:"4194304"`
+
+	FleetHotPath
+}
+
+// FleetHotPath configures plan item 4 (ADR-0016): satellite sessions, the
+// heartbeat buffer, the lifecycle jobs, status partitions and the split
+// rate limits. Parsed but not used yet, except that RATE_LIMIT_SPLIT
+// builds the split limiters, which answer 501 until 4.6. The rates are strings ("<requests>/<duration>")
+// because env cannot import the middleware that parses them.
+type FleetHotPath struct {
+	SatelliteSessionTTL       time.Duration `env:"SATELLITE_SESSION_TTL"        envDefault:"720h"`
+	SatelliteSessionCacheTTL  time.Duration `env:"SATELLITE_SESSION_CACHE_TTL"  envDefault:"30s"`
+	SatelliteSessionCacheSize int           `env:"SATELLITE_SESSION_CACHE_SIZE" envDefault:"10000"`
+	// SatelliteRobotAuth keeps robot Basic auth on the satellite endpoints
+	// next to sessions and SVIDs.
+	SatelliteRobotAuth        bool          `env:"SATELLITE_ROBOT_AUTH"         envDefault:"true"`
+	HeartbeatFlushInterval    time.Duration `env:"HEARTBEAT_FLUSH_INTERVAL"     envDefault:"5s"`
+	HeartbeatBufferMax        int           `env:"HEARTBEAT_BUFFER_MAX"         envDefault:"10000"`
+	HeartbeatMaxFlushFailures int           `env:"HEARTBEAT_MAX_FLUSH_FAILURES" envDefault:"3"`
+	StaleCheckInterval        time.Duration `env:"STALE_CHECK_INTERVAL"         envDefault:"1m"`
+	SessionExpiryInterval     time.Duration `env:"SESSION_EXPIRY_INTERVAL"      envDefault:"1h"`
+	StatusRetentionDays       int           `env:"STATUS_RETENTION_DAYS"        envDefault:"7"`
+	StatusPartitionsAhead     int           `env:"STATUS_PARTITIONS_AHEAD"      envDefault:"3"`
+	RateLimitSplit            bool          `env:"RATE_LIMIT_SPLIT"             envDefault:"false"`
+	RateLimitAnonymous        string        `env:"RATE_LIMIT_ANONYMOUS"         envDefault:"10/1m"`
+	// RateLimitFleet: 3 per the 1s heartbeat floor of normalizeHeartbeatInterval.
+	RateLimitFleet string `env:"RATE_LIMIT_FLEET" envDefault:"3/1s"`
 }
 
 type PasswordPolicy struct {

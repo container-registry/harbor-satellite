@@ -32,11 +32,16 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 		cleanPath := path.Clean(r.URL.Path)
 
 		switch cleanPath {
-		case "/login", "/satellites/ztr":
-			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
+		case "/login":
+			// With RATE_LIMIT_SPLIT the FailureLimiter alone guards /login.
+			if s.AnonymousLimiter == nil {
+				handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
+			}
+		case "/satellites/ztr":
+			handler = s.limitAnonymous(handler)
 		case "/satellites/spiffe-ztr":
 			handler = spiffe.RequireSPIFFEAuth(handler)
-			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
+			handler = s.limitAnonymous(handler)
 		case "/satellites/sync", "/satellites/refresh":
 			handler = s.satelliteAuthChain(handler)
 		}
@@ -54,8 +59,19 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 
 // satelliteAuthChain authenticates satellite-facing endpoints. D3: the
 // SPIFFE middleware must run first so an SVID is authoritative; today it is
-// the inner one, so SatelliteAuthMiddleware never sees the SVID.
+// the inner one, so SatelliteAuthMiddleware never sees the SVID. With a
+// SatelliteAuthenticator (plan item 4.1) the chain is the SPIFFE
+// middleware, then authenticateSatellite, then the per-satellite fleet
+// limiter; the shared pre-auth limiter stays only while there is no fleet
+// limiter.
 func (s *Server) satelliteAuthChain(next http.Handler) http.Handler {
+	if s.satelliteAuth != nil {
+		handler := spiffe.AuthMiddleware(s.authenticateSatellite(s.fleetLimit(next)))
+		if s.FleetLimiter == nil {
+			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
+		}
+		return handler
+	}
 	handler := spiffe.AuthMiddleware(next)
 	handler = s.SatelliteAuthMiddleware(handler)
 	return middleware.RateLimitMiddleware(s.rateLimiter)(handler)

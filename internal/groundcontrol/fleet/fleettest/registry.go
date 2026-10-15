@@ -44,8 +44,8 @@ func (r *Registry) CreateRobot(_ context.Context, spec fleet.RobotSpec) (fleet.R
 	return r.Credentials, nil
 }
 
-func (r *Registry) SetRobotProjects(_ context.Context, harborID int64, projects []string) error {
-	return r.Record("SetRobotProjects", harborID, projects)
+func (r *Registry) SetRobotAccess(_ context.Context, harborID int64, projects []string, disabled bool) error {
+	return r.Record("SetRobotAccess", harborID, projects, disabled)
 }
 
 func (r *Registry) RotateRobotSecret(_ context.Context, harborID int64) (fleet.RobotCredentials, error) {

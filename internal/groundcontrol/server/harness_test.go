@@ -46,6 +46,8 @@ type gcHarness struct {
 	// admin is a session of the bootstrap admin. Sessions keep the cost of
 	// an admin request independent of how Basic auth evolves.
 	admin authFunc
+	// sessionClock is the sessions' clock of newHotPathHarness.
+	sessionClock *manualClock
 }
 
 // newGCHarness needs TEST_DATABASE_URL and skips without it. Set extra GC

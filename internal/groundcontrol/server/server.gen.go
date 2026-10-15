@@ -496,6 +496,26 @@ type SatelliteGroupRequest struct {
 	Satellite string `json:"satellite"`
 }
 
+// SatelliteLifecycleResponse defines model for SatelliteLifecycleResponse.
+type SatelliteLifecycleResponse struct {
+	AppliedConfigDigest     string             `json:"applied_config_digest,omitempty,omitzero"`
+	AppliedStateDigest      string             `json:"applied_state_digest,omitempty,omitzero"`
+	AppliedStates           []StateConvergence `json:"applied_states,omitempty,omitzero"`
+	Converged               bool               `json:"converged"`
+	DesiredVersion          int64              `json:"desired_version,omitempty,omitzero"`
+	LastReplicationError    string             `json:"last_replication_error,omitempty,omitzero"`
+	LastSeen                time.Time          `json:"last_seen,omitempty,omitzero"`
+	Name                    string             `json:"name"`
+	PublishError            string             `json:"publish_error,omitempty,omitzero"`
+	PublishedArtifactDigest string             `json:"published_artifact_digest,omitempty,omitzero"`
+	RenderedDigest          string             `json:"rendered_digest,omitempty,omitzero"`
+	RevokedAt               time.Time          `json:"revoked_at,omitempty,omitzero"`
+
+	// State pending, online, stale or revoked
+	State     string    `json:"state"`
+	UpdatedAt time.Time `json:"updated_at,omitempty,omitzero"`
+}
+
 // SatelliteResponse defines model for SatelliteResponse.
 type SatelliteResponse struct {
 	CreatedAt         time.Time           `json:"CreatedAt,omitempty,omitzero"`
@@ -504,6 +524,12 @@ type SatelliteResponse struct {
 	LastSeen          NullableTimeValue   `json:"LastSeen,omitempty,omitzero"`
 	Name              string              `json:"Name,omitempty,omitzero"`
 	UpdatedAt         time.Time           `json:"UpdatedAt,omitempty,omitzero"`
+}
+
+// SatelliteSession defines model for SatelliteSession.
+type SatelliteSession struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	Token     string    `json:"token"`
 }
 
 // SatelliteStateArtifact defines model for SatelliteStateArtifact.
@@ -517,20 +543,23 @@ type SatelliteStatusRequest struct {
 	Activity string `json:"activity,omitempty,omitzero"`
 
 	// AppliedStates The group states the last replication run applied, by reference as listed in the satellite state (plan item 6.6, not read yet).
-	AppliedStates        []AppliedState      `json:"applied_states,omitempty,omitzero"`
-	CachedImages         []CachedImageReport `json:"cached_images,omitempty,omitzero"`
-	CPUPercent           float64             `json:"cpu_percent,omitempty,omitzero"`
-	ImageCount           int32               `json:"image_count,omitempty,omitzero"`
-	Journal              JournalUpload       `json:"journal,omitempty,omitzero"`
-	LastReplicationError string              `json:"last_replication_error,omitempty,omitzero"`
-	LastSyncDurationMs   int64               `json:"last_sync_duration_ms,omitempty,omitzero"`
-	LatestConfigDigest   string              `json:"latest_config_digest,omitempty,omitzero"`
-	LatestStateDigest    string              `json:"latest_state_digest,omitempty,omitzero"`
-	MemoryUsedBytes      int64               `json:"memory_used_bytes,omitempty,omitzero"`
-	Name                 string              `json:"name,omitempty,omitzero"`
-	RequestCreatedTime   time.Time           `json:"request_created_time,omitempty,omitzero"`
-	StateReportInterval  string              `json:"state_report_interval,omitempty,omitzero"`
-	StorageUsedBytes     int64               `json:"storage_used_bytes,omitempty,omitzero"`
+	AppliedStates []AppliedState      `json:"applied_states,omitempty,omitzero"`
+	CachedImages  []CachedImageReport `json:"cached_images,omitempty,omitzero"`
+	CPUPercent    float64             `json:"cpu_percent,omitempty,omitzero"`
+	ImageCount    int32               `json:"image_count,omitempty,omitzero"`
+
+	// InventoryDigest Digest of cached_images (internal/shared/inventory, plan item 4.4, not read yet). A satellite sends cached_images only when this changed or Ground Control asked with inventory_requested.
+	InventoryDigest      string        `json:"inventory_digest,omitempty,omitzero"`
+	Journal              JournalUpload `json:"journal,omitempty,omitzero"`
+	LastReplicationError string        `json:"last_replication_error,omitempty,omitzero"`
+	LastSyncDurationMs   int64         `json:"last_sync_duration_ms,omitempty,omitzero"`
+	LatestConfigDigest   string        `json:"latest_config_digest,omitempty,omitzero"`
+	LatestStateDigest    string        `json:"latest_state_digest,omitempty,omitzero"`
+	MemoryUsedBytes      int64         `json:"memory_used_bytes,omitempty,omitzero"`
+	Name                 string        `json:"name,omitempty,omitzero"`
+	RequestCreatedTime   time.Time     `json:"request_created_time,omitempty,omitzero"`
+	StateReportInterval  string        `json:"state_report_interval,omitempty,omitzero"`
+	StorageUsedBytes     int64         `json:"storage_used_bytes,omitempty,omitzero"`
 }
 
 // SatelliteStatusResponse defines model for SatelliteStatusResponse.
@@ -552,8 +581,12 @@ type SatelliteStatusResponse struct {
 
 // SatelliteSyncResponse defines model for SatelliteSyncResponse.
 type SatelliteSyncResponse struct {
-	Events  []string    `json:"events"`
-	Journal *JournalAck `json:"journal,omitempty"`
+	Events []string `json:"events"`
+
+	// InventoryRequested Ground Control has no inventory for the reported digest; the next heartbeat sends cached_images.
+	InventoryRequested bool              `json:"inventory_requested,omitempty,omitzero"`
+	Journal            *JournalAck       `json:"journal,omitempty"`
+	Session            *SatelliteSession `json:"session,omitempty"`
 }
 
 // StaleSatelliteResponse defines model for StaleSatelliteResponse.
@@ -569,14 +602,25 @@ type StaleSatelliteResponse struct {
 
 // StateConfigResponse defines model for StateConfigResponse.
 type StateConfigResponse struct {
-	Auth  RegistryCredentials `json:"auth"`
-	State string              `json:"state"`
+	Auth    RegistryCredentials `json:"auth"`
+	Session *SatelliteSession   `json:"session,omitempty"`
+	State   string              `json:"state"`
 }
 
 // StateConfigValue defines model for StateConfigValue.
 type StateConfigValue struct {
 	Auth  RegistryCredentials `json:"auth,omitempty,omitzero"`
 	State string              `json:"state,omitempty,omitzero"`
+}
+
+// StateConvergence defines model for StateConvergence.
+type StateConvergence struct {
+	// Digest Applied digest the satellite reported.
+	Digest string `json:"digest,omitempty,omitzero"`
+
+	// PublishedDigest Artifact digest GC published last.
+	PublishedDigest string `json:"published_digest,omitempty,omitzero"`
+	Ref             string `json:"ref"`
 }
 
 // SyslogAuditConfig defines model for SyslogAuditConfig.
@@ -766,9 +810,18 @@ type ServerInterface interface {
 	// GetCachedImages Lists the latest cached images reported by a satellite.
 	// (GET /api/satellites/{satellite}/images)
 	GetCachedImages(w http.ResponseWriter, r *http.Request, satellite string)
+	// GetSatelliteLifecycle Gets a satellite's lifecycle state and convergence (ADR-0006, plan item 4.3).
+	// (GET /api/satellites/{satellite}/lifecycle)
+	GetSatelliteLifecycle(w http.ResponseWriter, r *http.Request, satellite string)
+	// RevokeSatellite Revokes a satellite; sync and ZTR answer 403 until it is unrevoked.
+	// (POST /api/satellites/{satellite}/revoke)
+	RevokeSatellite(w http.ResponseWriter, r *http.Request, satellite string)
 	// GetSatelliteStatus Gets the latest satellite status report.
 	// (GET /api/satellites/{satellite}/status)
 	GetSatelliteStatus(w http.ResponseWriter, r *http.Request, satellite string)
+	// UnrevokeSatellite Returns a revoked satellite to pending; it goes online with its next heartbeat.
+	// (POST /api/satellites/{satellite}/unrevoke)
+	UnrevokeSatellite(w http.ResponseWriter, r *http.Request, satellite string)
 	// ListSpireAgents Lists attested SPIRE agents.
 	// (GET /api/spire/agents)
 	ListSpireAgents(w http.ResponseWriter, r *http.Request, params ListSpireAgentsParams)
@@ -1287,6 +1340,58 @@ func (siw *ServerInterfaceWrapper) GetCachedImages(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetSatelliteLifecycle operation middleware
+func (siw *ServerInterfaceWrapper) GetSatelliteLifecycle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "satellite" -------------
+	var satellite string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "satellite", mux.Vars(r)["satellite"], &satellite, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "satellite", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSatelliteLifecycle(w, r, satellite)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeSatellite operation middleware
+func (siw *ServerInterfaceWrapper) RevokeSatellite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "satellite" -------------
+	var satellite string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "satellite", mux.Vars(r)["satellite"], &satellite, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "satellite", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeSatellite(w, r, satellite)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetSatelliteStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetSatelliteStatus(w http.ResponseWriter, r *http.Request) {
 
@@ -1304,6 +1409,32 @@ func (siw *ServerInterfaceWrapper) GetSatelliteStatus(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetSatelliteStatus(w, r, satellite)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnrevokeSatellite operation middleware
+func (siw *ServerInterfaceWrapper) UnrevokeSatellite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "satellite" -------------
+	var satellite string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "satellite", mux.Vars(r)["satellite"], &satellite, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "satellite", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnrevokeSatellite(w, r, satellite)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1737,7 +1868,13 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 
 	r.HandleFunc(options.BaseURL+"/api/satellites/{satellite}/images", wrapper.GetCachedImages).Methods(http.MethodGet)
 
+	r.HandleFunc(options.BaseURL+"/api/satellites/{satellite}/lifecycle", wrapper.GetSatelliteLifecycle).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/api/satellites/{satellite}/revoke", wrapper.RevokeSatellite).Methods(http.MethodPost)
+
 	r.HandleFunc(options.BaseURL+"/api/satellites/{satellite}/status", wrapper.GetSatelliteStatus).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/api/satellites/{satellite}/unrevoke", wrapper.UnrevokeSatellite).Methods(http.MethodPost)
 
 	r.HandleFunc(options.BaseURL+"/api/spire/agents", wrapper.ListSpireAgents).Methods(http.MethodGet)
 

@@ -28,6 +28,9 @@ func (s *SatelliteService) Register(ctx context.Context, cmd RegisterSatelliteCm
 	return RegistrationToken{}, notimpl.Err("1.2 register satellite")
 }
 
+// Delete appends the tombstone in the satellite's transaction and, after
+// the commit, invalidates its sessions (Sessions.Invalidate), so the
+// deleted satellite gets 401 within the session cache TTL.
 func (s *SatelliteService) Delete(ctx context.Context, name string) error {
 	return notimpl.Err("1.2 delete satellite")
 }
@@ -38,4 +41,33 @@ func (s *SatelliteService) Get(ctx context.Context, name string) (Satellite, err
 
 func (s *SatelliteService) List(ctx context.Context) ([]Satellite, error) {
 	return nil, notimpl.Err("1.2 list satellites")
+}
+
+// Revoke runs one transaction: Views().Revoke, then SatelliteRevoked only
+// when the state changed. Sessions are kept: a revoked satellite still
+// authenticates and gets 403, and ADR-0006's re-enable needs no new
+// onboarding.
+func (s *SatelliteService) Revoke(ctx context.Context, name string) (SatelliteView, error) {
+	return SatelliteView{}, notimpl.Err("4.3 revoke satellite")
+}
+
+// Unrevoke returns a revoked satellite to pending and appends
+// SatelliteUnrevoked; a satellite that is not revoked is left alone.
+func (s *SatelliteService) Unrevoke(ctx context.Context, name string) (SatelliteView, error) {
+	return SatelliteView{}, notimpl.Err("4.3 unrevoke satellite")
+}
+
+// View is the satellite's lifecycle and convergence; it fills the
+// PublishedGroups refs from Settings.GroupStateRef.
+func (s *SatelliteService) View(ctx context.Context, name string) (SatelliteView, error) {
+	return SatelliteView{}, notimpl.Err("4.3 satellite view")
+}
+
+func (s *SatelliteService) ListByState(ctx context.Context, state LifecycleState) ([]SatelliteView, error) {
+	return nil, notimpl.Err("4.3 list satellites by state")
+}
+
+// Inventory is the satellite's last reported inventory (plan item 4.4).
+func (s *SatelliteService) Inventory(ctx context.Context, name string) ([]InventoryItem, error) {
+	return nil, notimpl.Err("4.4 satellite inventory")
 }

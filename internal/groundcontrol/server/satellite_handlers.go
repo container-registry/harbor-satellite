@@ -601,6 +601,10 @@ func (s *Server) ListSatellites(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
+	if s.satelliteAuth != nil {
+		s.syncWithAuth(w, r)
+		return
+	}
 	resp := SatelliteSyncResponse{
 		Events: make([]string, 0),
 	}

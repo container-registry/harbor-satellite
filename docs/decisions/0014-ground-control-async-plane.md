@@ -47,7 +47,7 @@ Ground Control (GC) keeps the fleet in PostgreSQL, but every admin write also ca
 * Bad: a satellite registered while Harbor is down waits for its robot (503 on ZTR).
 * Bad: one dedicated connection per worker for the aggregate locks.
 * Neutral: done rows accumulate; retention and partitioning by day come when the volume needs them, and keep every row above the lowest webhook checkpoint. Ordered consumers need the xid guard (ADR-0019).
-* Open: GC keeps no SPIFFE ID for a satellite today; `fleet.Satellite.SPIFFEID` needs a home (for example a `satellite_identities` table) before the tombstone can name it.
+* Open: GC keeps no SPIFFE ID for a satellite today; `fleet.Satellite.SPIFFEID` needs a home before the tombstone can name it. Plan item 4 adds `satellite_identities` (migration 019, ADR-0016).
 
 ## Implementation Status
 

@@ -499,6 +499,26 @@ type SatelliteGroupRequest struct {
 	Satellite string `json:"satellite"`
 }
 
+// SatelliteLifecycleResponse defines model for SatelliteLifecycleResponse.
+type SatelliteLifecycleResponse struct {
+	AppliedConfigDigest     string             `json:"applied_config_digest,omitempty,omitzero"`
+	AppliedStateDigest      string             `json:"applied_state_digest,omitempty,omitzero"`
+	AppliedStates           []StateConvergence `json:"applied_states,omitempty,omitzero"`
+	Converged               bool               `json:"converged"`
+	DesiredVersion          int64              `json:"desired_version,omitempty,omitzero"`
+	LastReplicationError    string             `json:"last_replication_error,omitempty,omitzero"`
+	LastSeen                time.Time          `json:"last_seen,omitempty,omitzero"`
+	Name                    string             `json:"name"`
+	PublishError            string             `json:"publish_error,omitempty,omitzero"`
+	PublishedArtifactDigest string             `json:"published_artifact_digest,omitempty,omitzero"`
+	RenderedDigest          string             `json:"rendered_digest,omitempty,omitzero"`
+	RevokedAt               time.Time          `json:"revoked_at,omitempty,omitzero"`
+
+	// State pending, online, stale or revoked
+	State     string    `json:"state"`
+	UpdatedAt time.Time `json:"updated_at,omitempty,omitzero"`
+}
+
 // SatelliteResponse defines model for SatelliteResponse.
 type SatelliteResponse struct {
 	CreatedAt         time.Time           `json:"CreatedAt,omitempty,omitzero"`
@@ -507,6 +527,12 @@ type SatelliteResponse struct {
 	LastSeen          NullableTimeValue   `json:"LastSeen,omitempty,omitzero"`
 	Name              string              `json:"Name,omitempty,omitzero"`
 	UpdatedAt         time.Time           `json:"UpdatedAt,omitempty,omitzero"`
+}
+
+// SatelliteSession defines model for SatelliteSession.
+type SatelliteSession struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	Token     string    `json:"token"`
 }
 
 // SatelliteStateArtifact defines model for SatelliteStateArtifact.
@@ -520,20 +546,23 @@ type SatelliteStatusRequest struct {
 	Activity string `json:"activity,omitempty,omitzero"`
 
 	// AppliedStates The group states the last replication run applied, by reference as listed in the satellite state (plan item 6.6, not read yet).
-	AppliedStates        []AppliedState      `json:"applied_states,omitempty,omitzero"`
-	CachedImages         []CachedImageReport `json:"cached_images,omitempty,omitzero"`
-	CPUPercent           float64             `json:"cpu_percent,omitempty,omitzero"`
-	ImageCount           int32               `json:"image_count,omitempty,omitzero"`
-	Journal              JournalUpload       `json:"journal,omitempty,omitzero"`
-	LastReplicationError string              `json:"last_replication_error,omitempty,omitzero"`
-	LastSyncDurationMs   int64               `json:"last_sync_duration_ms,omitempty,omitzero"`
-	LatestConfigDigest   string              `json:"latest_config_digest,omitempty,omitzero"`
-	LatestStateDigest    string              `json:"latest_state_digest,omitempty,omitzero"`
-	MemoryUsedBytes      int64               `json:"memory_used_bytes,omitempty,omitzero"`
-	Name                 string              `json:"name,omitempty,omitzero"`
-	RequestCreatedTime   time.Time           `json:"request_created_time,omitempty,omitzero"`
-	StateReportInterval  string              `json:"state_report_interval,omitempty,omitzero"`
-	StorageUsedBytes     int64               `json:"storage_used_bytes,omitempty,omitzero"`
+	AppliedStates []AppliedState      `json:"applied_states,omitempty,omitzero"`
+	CachedImages  []CachedImageReport `json:"cached_images,omitempty,omitzero"`
+	CPUPercent    float64             `json:"cpu_percent,omitempty,omitzero"`
+	ImageCount    int32               `json:"image_count,omitempty,omitzero"`
+
+	// InventoryDigest Digest of cached_images (internal/shared/inventory, plan item 4.4, not read yet). A satellite sends cached_images only when this changed or Ground Control asked with inventory_requested.
+	InventoryDigest      string        `json:"inventory_digest,omitempty,omitzero"`
+	Journal              JournalUpload `json:"journal,omitempty,omitzero"`
+	LastReplicationError string        `json:"last_replication_error,omitempty,omitzero"`
+	LastSyncDurationMs   int64         `json:"last_sync_duration_ms,omitempty,omitzero"`
+	LatestConfigDigest   string        `json:"latest_config_digest,omitempty,omitzero"`
+	LatestStateDigest    string        `json:"latest_state_digest,omitempty,omitzero"`
+	MemoryUsedBytes      int64         `json:"memory_used_bytes,omitempty,omitzero"`
+	Name                 string        `json:"name,omitempty,omitzero"`
+	RequestCreatedTime   time.Time     `json:"request_created_time,omitempty,omitzero"`
+	StateReportInterval  string        `json:"state_report_interval,omitempty,omitzero"`
+	StorageUsedBytes     int64         `json:"storage_used_bytes,omitempty,omitzero"`
 }
 
 // SatelliteStatusResponse defines model for SatelliteStatusResponse.
@@ -555,8 +584,12 @@ type SatelliteStatusResponse struct {
 
 // SatelliteSyncResponse defines model for SatelliteSyncResponse.
 type SatelliteSyncResponse struct {
-	Events  []string    `json:"events"`
-	Journal *JournalAck `json:"journal,omitempty"`
+	Events []string `json:"events"`
+
+	// InventoryRequested Ground Control has no inventory for the reported digest; the next heartbeat sends cached_images.
+	InventoryRequested bool              `json:"inventory_requested,omitempty,omitzero"`
+	Journal            *JournalAck       `json:"journal,omitempty"`
+	Session            *SatelliteSession `json:"session,omitempty"`
 }
 
 // StaleSatelliteResponse defines model for StaleSatelliteResponse.
@@ -572,14 +605,25 @@ type StaleSatelliteResponse struct {
 
 // StateConfigResponse defines model for StateConfigResponse.
 type StateConfigResponse struct {
-	Auth  RegistryCredentials `json:"auth"`
-	State string              `json:"state"`
+	Auth    RegistryCredentials `json:"auth"`
+	Session *SatelliteSession   `json:"session,omitempty"`
+	State   string              `json:"state"`
 }
 
 // StateConfigValue defines model for StateConfigValue.
 type StateConfigValue struct {
 	Auth  RegistryCredentials `json:"auth,omitempty,omitzero"`
 	State string              `json:"state,omitempty,omitzero"`
+}
+
+// StateConvergence defines model for StateConvergence.
+type StateConvergence struct {
+	// Digest Applied digest the satellite reported.
+	Digest string `json:"digest,omitempty,omitzero"`
+
+	// PublishedDigest Artifact digest GC published last.
+	PublishedDigest string `json:"published_digest,omitempty,omitzero"`
+	Ref             string `json:"ref"`
 }
 
 // SyslogAuditConfig defines model for SyslogAuditConfig.
@@ -959,10 +1003,25 @@ type ClientInterface interface {
 	// Corresponds with GET /api/satellites/{satellite}/images (the `GetCachedImages` operationId).
 	GetCachedImages(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetSatelliteLifecycle Gets a satellite's lifecycle state and convergence (ADR-0006, plan item 4.3).
+	//
+	// Corresponds with GET /api/satellites/{satellite}/lifecycle (the `GetSatelliteLifecycle` operationId).
+	GetSatelliteLifecycle(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeSatellite Revokes a satellite; sync and ZTR answer 403 until it is unrevoked.
+	//
+	// Corresponds with POST /api/satellites/{satellite}/revoke (the `RevokeSatellite` operationId).
+	RevokeSatellite(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetSatelliteStatus Gets the latest satellite status report.
 	//
 	// Corresponds with GET /api/satellites/{satellite}/status (the `GetSatelliteStatus` operationId).
 	GetSatelliteStatus(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UnrevokeSatellite Returns a revoked satellite to pending; it goes online with its next heartbeat.
+	//
+	// Corresponds with POST /api/satellites/{satellite}/unrevoke (the `UnrevokeSatellite` operationId).
+	UnrevokeSatellite(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSpireAgents Lists attested SPIRE agents.
 	//
@@ -1591,11 +1650,56 @@ func (c *Client) GetCachedImages(ctx context.Context, satellite string, reqEdito
 	return c.Client.Do(req)
 }
 
+// GetSatelliteLifecycle Gets a satellite's lifecycle state and convergence (ADR-0006, plan item 4.3).
+//
+// Corresponds with GET /api/satellites/{satellite}/lifecycle (the `GetSatelliteLifecycle` operationId).
+func (c *Client) GetSatelliteLifecycle(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSatelliteLifecycleRequest(c.Server, satellite)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeSatellite Revokes a satellite; sync and ZTR answer 403 until it is unrevoked.
+//
+// Corresponds with POST /api/satellites/{satellite}/revoke (the `RevokeSatellite` operationId).
+func (c *Client) RevokeSatellite(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeSatelliteRequest(c.Server, satellite)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetSatelliteStatus Gets the latest satellite status report.
 //
 // Corresponds with GET /api/satellites/{satellite}/status (the `GetSatelliteStatus` operationId).
 func (c *Client) GetSatelliteStatus(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSatelliteStatusRequest(c.Server, satellite)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UnrevokeSatellite Returns a revoked satellite to pending; it goes online with its next heartbeat.
+//
+// Corresponds with POST /api/satellites/{satellite}/unrevoke (the `UnrevokeSatellite` operationId).
+func (c *Client) UnrevokeSatellite(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnrevokeSatelliteRequest(c.Server, satellite)
 	if err != nil {
 		return nil, err
 	}
@@ -2764,6 +2868,74 @@ func NewGetCachedImagesRequest(server string, satellite string) (*http.Request, 
 	return req, nil
 }
 
+// NewGetSatelliteLifecycleRequest constructs an http.Request for the GetSatelliteLifecycle method
+func NewGetSatelliteLifecycleRequest(server string, satellite string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "satellite", satellite, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/satellites/%s/lifecycle", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRevokeSatelliteRequest constructs an http.Request for the RevokeSatellite method
+func NewRevokeSatelliteRequest(server string, satellite string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "satellite", satellite, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/satellites/%s/revoke", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetSatelliteStatusRequest constructs an http.Request for the GetSatelliteStatus method
 func NewGetSatelliteStatusRequest(server string, satellite string) (*http.Request, error) {
 	var err error
@@ -2791,6 +2963,40 @@ func NewGetSatelliteStatusRequest(server string, satellite string) (*http.Reques
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUnrevokeSatelliteRequest constructs an http.Request for the UnrevokeSatellite method
+func NewUnrevokeSatelliteRequest(server string, satellite string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "satellite", satellite, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/satellites/%s/unrevoke", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3586,12 +3792,33 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/satellites/{satellite}/images (the `GetCachedImages` operationId).
 	GetCachedImagesWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*GetCachedImagesHTTPResponse, error)
 
+	// GetSatelliteLifecycleWithResponse Gets a satellite's lifecycle state and convergence (ADR-0006, plan item 4.3).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/satellites/{satellite}/lifecycle (the `GetSatelliteLifecycle` operationId).
+	GetSatelliteLifecycleWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*GetSatelliteLifecycleHTTPResponse, error)
+
+	// RevokeSatelliteWithResponse Revokes a satellite; sync and ZTR answer 403 until it is unrevoked.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/satellites/{satellite}/revoke (the `RevokeSatellite` operationId).
+	RevokeSatelliteWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*RevokeSatelliteHTTPResponse, error)
+
 	// GetSatelliteStatusWithResponse Gets the latest satellite status report.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/satellites/{satellite}/status (the `GetSatelliteStatus` operationId).
 	GetSatelliteStatusWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*GetSatelliteStatusHTTPResponse, error)
+
+	// UnrevokeSatelliteWithResponse Returns a revoked satellite to pending; it goes online with its next heartbeat.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/satellites/{satellite}/unrevoke (the `UnrevokeSatellite` operationId).
+	UnrevokeSatelliteWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*UnrevokeSatelliteHTTPResponse, error)
 
 	// ListSpireAgentsWithResponse Lists attested SPIRE agents.
 	//
@@ -5160,6 +5387,130 @@ func (r GetCachedImagesHTTPResponse) ContentType() string {
 	return ""
 }
 
+type GetSatelliteLifecycleHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SatelliteLifecycleResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSatelliteLifecycleHTTPResponse) GetJSON200() *SatelliteLifecycleResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSatelliteLifecycleHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSatelliteLifecycleHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetSatelliteLifecycleHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSatelliteLifecycleHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSatelliteLifecycleHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSatelliteLifecycleHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSatelliteLifecycleHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RevokeSatelliteHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SatelliteLifecycleResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RevokeSatelliteHTTPResponse) GetJSON200() *SatelliteLifecycleResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RevokeSatelliteHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RevokeSatelliteHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r RevokeSatelliteHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeSatelliteHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeSatelliteHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeSatelliteHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeSatelliteHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetSatelliteStatusHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5216,6 +5567,68 @@ func (r GetSatelliteStatusHTTPResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetSatelliteStatusHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UnrevokeSatelliteHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SatelliteLifecycleResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UnrevokeSatelliteHTTPResponse) GetJSON200() *SatelliteLifecycleResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UnrevokeSatelliteHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UnrevokeSatelliteHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r UnrevokeSatelliteHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r UnrevokeSatelliteHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UnrevokeSatelliteHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnrevokeSatelliteHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UnrevokeSatelliteHTTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -6611,6 +7024,32 @@ func (c *ClientWithResponses) GetCachedImagesWithResponse(ctx context.Context, s
 	return ParseGetCachedImagesHTTPResponse(rsp)
 }
 
+// GetSatelliteLifecycleWithResponse Gets a satellite's lifecycle state and convergence (ADR-0006, plan item 4.3).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/satellites/{satellite}/lifecycle (the `GetSatelliteLifecycle` operationId).
+func (c *ClientWithResponses) GetSatelliteLifecycleWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*GetSatelliteLifecycleHTTPResponse, error) {
+	rsp, err := c.GetSatelliteLifecycle(ctx, satellite, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSatelliteLifecycleHTTPResponse(rsp)
+}
+
+// RevokeSatelliteWithResponse Revokes a satellite; sync and ZTR answer 403 until it is unrevoked.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/satellites/{satellite}/revoke (the `RevokeSatellite` operationId).
+func (c *ClientWithResponses) RevokeSatelliteWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*RevokeSatelliteHTTPResponse, error) {
+	rsp, err := c.RevokeSatellite(ctx, satellite, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeSatelliteHTTPResponse(rsp)
+}
+
 // GetSatelliteStatusWithResponse Gets the latest satellite status report.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6622,6 +7061,19 @@ func (c *ClientWithResponses) GetSatelliteStatusWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseGetSatelliteStatusHTTPResponse(rsp)
+}
+
+// UnrevokeSatelliteWithResponse Returns a revoked satellite to pending; it goes online with its next heartbeat.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/satellites/{satellite}/unrevoke (the `UnrevokeSatellite` operationId).
+func (c *ClientWithResponses) UnrevokeSatelliteWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*UnrevokeSatelliteHTTPResponse, error) {
+	rsp, err := c.UnrevokeSatellite(ctx, satellite, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnrevokeSatelliteHTTPResponse(rsp)
 }
 
 // ListSpireAgentsWithResponse Lists attested SPIRE agents.
@@ -7977,6 +8429,100 @@ func ParseGetCachedImagesHTTPResponse(rsp *http.Response) (*GetCachedImagesHTTPR
 	return response, nil
 }
 
+// ParseGetSatelliteLifecycleHTTPResponse parses an HTTP response from a GetSatelliteLifecycleWithResponse call
+func ParseGetSatelliteLifecycleHTTPResponse(rsp *http.Response) (*GetSatelliteLifecycleHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSatelliteLifecycleHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SatelliteLifecycleResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeSatelliteHTTPResponse parses an HTTP response from a RevokeSatelliteWithResponse call
+func ParseRevokeSatelliteHTTPResponse(rsp *http.Response) (*RevokeSatelliteHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeSatelliteHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SatelliteLifecycleResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetSatelliteStatusHTTPResponse parses an HTTP response from a GetSatelliteStatusWithResponse call
 func ParseGetSatelliteStatusHTTPResponse(rsp *http.Response) (*GetSatelliteStatusHTTPResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7993,6 +8539,53 @@ func ParseGetSatelliteStatusHTTPResponse(rsp *http.Response) (*GetSatelliteStatu
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest SatelliteStatusResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUnrevokeSatelliteHTTPResponse parses an HTTP response from a UnrevokeSatelliteWithResponse call
+func ParseUnrevokeSatelliteHTTPResponse(rsp *http.Response) (*UnrevokeSatelliteHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnrevokeSatelliteHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SatelliteLifecycleResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -33,6 +33,7 @@ type Repository struct {
 	Tokens     *TokenRepo
 	Events     *EventSink
 	Journal    *JournalRepo
+	Views      *ViewRepo
 }
 
 // NewRepository records into rec, or into a new Recorder when rec is nil.
@@ -47,6 +48,7 @@ func NewRepository(rec *Recorder) *Repository {
 		Tokens:     &TokenRepo{rec: rec},
 		Events:     NewEventSink(rec),
 		Journal:    &JournalRepo{rec: rec},
+		Views:      &ViewRepo{rec: rec},
 	}
 }
 
@@ -84,6 +86,8 @@ func (t tx) Events() fleet.EventSink {
 }
 
 func (t tx) Journal() fleet.JournalRepo { return t.r.Journal }
+
+func (t tx) Views() fleet.ViewRepo { return t.r.Views }
 
 // lookup records the call and answers it from m.
 func lookup[K comparable, V any](rec *Recorder, method string, m map[K]V, key K) (V, error) {
@@ -193,6 +197,10 @@ func (s *SatelliteRepo) SetConfig(_ context.Context, id fleet.SatelliteID, confi
 
 func (s *SatelliteRepo) Config(_ context.Context, id fleet.SatelliteID) (fleet.Config, error) {
 	return lookup(s.rec, "Satellites.Config", s.ConfigOf, id)
+}
+
+func (s *SatelliteRepo) SetIdentity(_ context.Context, id fleet.SatelliteID, spiffeID string, entryIDs []string) error {
+	return s.rec.Record("Satellites.SetIdentity", id, spiffeID, entryIDs)
 }
 
 // GroupRepo is a recording fleet.GroupRepo.
