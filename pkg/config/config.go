@@ -285,6 +285,20 @@ type AppConfig struct {
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
 	Audit                     AuditConfig            `json:"audit,omitempty"`
 	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitzero"`
+	// Plan items 6.2 and 6.4 (Harbor 3 skeleton): accepted, not read yet. A
+	// ReplicationConcurrency of 0 replicates every group at once, as today.
+	ReplicationConcurrency          int           `json:"replication_concurrency,omitempty"`
+	ReplicationBandwidthBytesPerSec int64         `json:"replication_bandwidth_bytes_per_sec,omitempty"`
+	Journal                         JournalConfig `json:"journal,omitzero"`
+}
+
+// JournalConfig sizes the edge journal (internal/satellite/journal). Zero
+// fields take the Default* values of constants.go.
+type JournalConfig struct {
+	MaxSegmentBytes int64 `json:"max_segment_bytes,omitempty"`
+	MaxTotalBytes   int64 `json:"max_total_bytes,omitempty"`
+	// UploadBatch is how many records one heartbeat carries.
+	UploadBatch int `json:"upload_batch,omitempty"`
 }
 
 type StateConfig struct {

@@ -106,6 +106,12 @@ type SatelliteGroup struct {
 	GroupID     int32
 }
 
+type SatelliteJournalCursor struct {
+	SatelliteID int32
+	Epoch       int64
+	AckedSeq    int64
+}
+
 type SatelliteStatus struct {
 	ID                 int32
 	SatelliteID        int32

@@ -141,6 +141,7 @@ type AppConfig struct {
 	GroundControlURL  string               `json:"ground_control_url,omitempty,omitzero"`
 	HarborRegistryURL string               `json:"harbor_registry_url,omitempty,omitzero"`
 	HeartbeatInterval string               `json:"heartbeat_interval,omitempty,omitzero"`
+	Journal           JournalConfig        `json:"journal,omitempty,omitzero"`
 	LocalRegistry     RegistryCredentials  `json:"local_registry,omitempty,omitzero"`
 	LogLevel          string               `json:"log_level,omitempty,omitzero"`
 	Metrics           MetricsConfig        `json:"metrics,omitempty,omitzero"`
@@ -149,16 +150,28 @@ type AppConfig struct {
 	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitempty,omitzero"`
 	RegisterSatelliteInterval string                 `json:"register_satellite_interval,omitempty,omitzero"`
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty,omitzero"`
-	Spiffe                    SPIFFEClientConfig     `json:"spiffe,omitempty,omitzero"`
-	StateReplicationInterval  string                 `json:"state_replication_interval,omitempty,omitzero"`
-	Tls                       TLSConfig              `json:"tls,omitempty,omitzero"`
-	UseUnsecure               bool                   `json:"use_unsecure,omitempty,omitzero"`
+
+	// ReplicationBandwidthBytesPerSec Bandwidth budget of state replication (plan item 6.2, not read yet).
+	ReplicationBandwidthBytesPerSec int64 `json:"replication_bandwidth_bytes_per_sec,omitempty,omitzero"`
+
+	// ReplicationConcurrency Group states replicated at once; 0 replicates every group at once as today (plan item 6.2, not read yet).
+	ReplicationConcurrency   int                `json:"replication_concurrency,omitempty,omitzero"`
+	Spiffe                   SPIFFEClientConfig `json:"spiffe,omitempty,omitzero"`
+	StateReplicationInterval string             `json:"state_replication_interval,omitempty,omitzero"`
+	Tls                      TLSConfig          `json:"tls,omitempty,omitzero"`
+	UseUnsecure              bool               `json:"use_unsecure,omitempty,omitzero"`
 }
 
 // AppError defines model for AppError.
 type AppError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+}
+
+// AppliedState defines model for AppliedState.
+type AppliedState struct {
+	Digest string `json:"digest"`
+	Ref    string `json:"ref"`
 }
 
 // AuditConfig defines model for AuditConfig.
@@ -295,6 +308,45 @@ type HealthResponse struct {
 
 // HealthResponseStatus defines model for HealthResponse.Status.
 type HealthResponseStatus string
+
+// JournalAck defines model for JournalAck.
+type JournalAck struct {
+	// AckedSeq The seq Ground Control holds the epoch up to; the satellite deletes records up to it.
+	AckedSeq int64 `json:"acked_seq"`
+
+	// Epoch Ground Control's epoch for the satellite. A satellite whose epoch is older continues as epoch + 1.
+	Epoch int64 `json:"epoch"`
+
+	// Error Why the upload was rejected. The ack does not advance; the heartbeat itself is accepted.
+	Error string `json:"error,omitempty,omitzero"`
+}
+
+// JournalConfig defines model for JournalConfig.
+type JournalConfig struct {
+	MaxSegmentBytes int64 `json:"max_segment_bytes,omitempty,omitzero"`
+	MaxTotalBytes   int64 `json:"max_total_bytes,omitempty,omitzero"`
+	UploadBatch     int   `json:"upload_batch,omitempty,omitzero"`
+}
+
+// JournalRecord defines model for JournalRecord.
+type JournalRecord struct {
+	Payload    json.RawMessage `json:"payload"`
+	RecordedAt time.Time       `json:"recorded_at"`
+	Seq        int64           `json:"seq"`
+
+	// Type replication, cri or pull_through; the payload is the record type's internal/shared/edgejournal payload.
+	Type string `json:"type"`
+}
+
+// JournalUpload defines model for JournalUpload.
+type JournalUpload struct {
+	// AfterSeq The satellite's floor: it holds nothing at or below this seq for Ground Control any more. A floor above Ground Control's cursor is recorded as an EdgeJournalGap event.
+	AfterSeq int64 `json:"after_seq"`
+
+	// Epoch Identifies the satellite's journal. Epochs are time-ordered: a newer one resets Ground Control's cursor, an older one is answered with Ground Control's epoch.
+	Epoch   int64           `json:"epoch"`
+	Records []JournalRecord `json:"records"`
+}
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
@@ -465,18 +517,23 @@ type SatelliteStateArtifact struct {
 
 // SatelliteStatusRequest defines model for SatelliteStatusRequest.
 type SatelliteStatusRequest struct {
-	Activity            string              `json:"activity,omitempty,omitzero"`
-	CachedImages        []CachedImageReport `json:"cached_images,omitempty,omitzero"`
-	CPUPercent          float64             `json:"cpu_percent,omitempty,omitzero"`
-	ImageCount          int32               `json:"image_count,omitempty,omitzero"`
-	LastSyncDurationMs  int64               `json:"last_sync_duration_ms,omitempty,omitzero"`
-	LatestConfigDigest  string              `json:"latest_config_digest,omitempty,omitzero"`
-	LatestStateDigest   string              `json:"latest_state_digest,omitempty,omitzero"`
-	MemoryUsedBytes     int64               `json:"memory_used_bytes,omitempty,omitzero"`
-	Name                string              `json:"name,omitempty,omitzero"`
-	RequestCreatedTime  time.Time           `json:"request_created_time,omitempty,omitzero"`
-	StateReportInterval string              `json:"state_report_interval,omitempty,omitzero"`
-	StorageUsedBytes    int64               `json:"storage_used_bytes,omitempty,omitzero"`
+	Activity string `json:"activity,omitempty,omitzero"`
+
+	// AppliedStates The group states the last replication run applied, by reference as listed in the satellite state (plan item 6.6, not read yet).
+	AppliedStates        []AppliedState      `json:"applied_states,omitempty,omitzero"`
+	CachedImages         []CachedImageReport `json:"cached_images,omitempty,omitzero"`
+	CPUPercent           float64             `json:"cpu_percent,omitempty,omitzero"`
+	ImageCount           int32               `json:"image_count,omitempty,omitzero"`
+	Journal              JournalUpload       `json:"journal,omitempty,omitzero"`
+	LastReplicationError string              `json:"last_replication_error,omitempty,omitzero"`
+	LastSyncDurationMs   int64               `json:"last_sync_duration_ms,omitempty,omitzero"`
+	LatestConfigDigest   string              `json:"latest_config_digest,omitempty,omitzero"`
+	LatestStateDigest    string              `json:"latest_state_digest,omitempty,omitzero"`
+	MemoryUsedBytes      int64               `json:"memory_used_bytes,omitempty,omitzero"`
+	Name                 string              `json:"name,omitempty,omitzero"`
+	RequestCreatedTime   time.Time           `json:"request_created_time,omitempty,omitzero"`
+	StateReportInterval  string              `json:"state_report_interval,omitempty,omitzero"`
+	StorageUsedBytes     int64               `json:"storage_used_bytes,omitempty,omitzero"`
 }
 
 // SatelliteStatusResponse defines model for SatelliteStatusResponse.
@@ -498,7 +555,8 @@ type SatelliteStatusResponse struct {
 
 // SatelliteSyncResponse defines model for SatelliteSyncResponse.
 type SatelliteSyncResponse struct {
-	Events []string `json:"events"`
+	Events  []string    `json:"events"`
+	Journal *JournalAck `json:"journal,omitempty"`
 }
 
 // StaleSatelliteResponse defines model for StaleSatelliteResponse.
@@ -5988,6 +6046,8 @@ type SyncSatelliteHTTPResponse struct {
 	JSON401 *AppError
 	// JSON403 the response for an HTTP 403 `application/json` response
 	JSON403 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON429 the response for an HTTP 429 `application/json` response
 	JSON429 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
@@ -6012,6 +6072,11 @@ func (r SyncSatelliteHTTPResponse) GetJSON401() *AppError {
 // GetJSON403 returns the response for an HTTP 403 `application/json` response
 func (r SyncSatelliteHTTPResponse) GetJSON403() *AppError {
 	return r.JSON403
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r SyncSatelliteHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON429 returns the response for an HTTP 429 `application/json` response
@@ -8630,6 +8695,13 @@ func ParseSyncSatelliteHTTPResponse(rsp *http.Response) (*SyncSatelliteHTTPRespo
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest AppError

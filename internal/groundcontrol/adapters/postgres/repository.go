@@ -43,3 +43,5 @@ func (t tx) Events() fleet.EventSink {
 	}
 	return fleet.NopEventSink{}
 }
+
+func (tx) Journal() fleet.JournalRepo { return journalRepo{} }

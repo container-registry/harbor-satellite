@@ -30,6 +30,17 @@ type StatusReport = groundcontrol.SatelliteStatusRequest
 
 type SyncResult struct {
 	Events []string
+	// Journal answers the report's journal; nil when Ground Control
+	// ignores journals (plan item 6.5).
+	Journal *JournalAck
+}
+
+// JournalAck is Ground Control's answer to a journal upload: its epoch for
+// the satellite, the seq it holds that epoch up to, and why it rejected
+// the upload, if it did.
+type JournalAck struct {
+	Epoch, AckedSeq int64
+	Error           string
 }
 
 // ZTRResult is what registration hands the satellite: its state artifact

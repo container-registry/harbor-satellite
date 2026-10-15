@@ -92,6 +92,10 @@ type Server struct {
 	// D6 skeleton: the FailureLimiter is built from these but never blocks yet.
 	AuthFailureLimit  int           `env:"AUTH_FAILURE_LIMIT"  envDefault:"20"`
 	AuthFailureWindow time.Duration `env:"AUTH_FAILURE_WINDOW" envDefault:"1m"`
+
+	// 6.5 skeleton: parsed, not enforced yet. POST /satellites/sync answers
+	// 413 for a larger body, a journal upload included.
+	SyncMaxBodyBytes int64 `env:"SYNC_MAX_BODY_BYTES" envDefault:"4194304"`
 }
 
 type PasswordPolicy struct {

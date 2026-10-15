@@ -32,6 +32,7 @@ type Repository struct {
 	Robots     *RobotRepo
 	Tokens     *TokenRepo
 	Events     *EventSink
+	Journal    *JournalRepo
 }
 
 // NewRepository records into rec, or into a new Recorder when rec is nil.
@@ -45,6 +46,7 @@ func NewRepository(rec *Recorder) *Repository {
 		Robots:     &RobotRepo{rec: rec},
 		Tokens:     &TokenRepo{rec: rec},
 		Events:     NewEventSink(rec),
+		Journal:    &JournalRepo{rec: rec},
 	}
 }
 
@@ -80,6 +82,8 @@ func (t tx) Events() fleet.EventSink {
 	}
 	return t.r.Events
 }
+
+func (t tx) Journal() fleet.JournalRepo { return t.r.Journal }
 
 // lookup records the call and answers it from m.
 func lookup[K comparable, V any](rec *Recorder, method string, m map[K]V, key K) (V, error) {

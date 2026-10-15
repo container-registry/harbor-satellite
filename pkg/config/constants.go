@@ -53,3 +53,15 @@ const (
 	DefaultPeerRetries      int    = 1
 	DefaultPeerConcurrency  int    = 4
 )
+
+// Default edge journal sizes (plan item 6.4), used when app_config.journal
+// leaves a field zero. UploadBatch stays under the sync request's limit of
+// 1000 records.
+const (
+	DefaultJournalSegmentBytes int64 = 4 << 20
+	DefaultJournalTotalBytes   int64 = 64 << 20
+	DefaultJournalUploadBatch  int   = 500
+	// MaxJournalUploadBatch is the sync contract's limit; a larger
+	// upload_batch is capped to it.
+	MaxJournalUploadBatch int = 1000
+)

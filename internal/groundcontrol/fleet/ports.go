@@ -79,6 +79,7 @@ type Tx interface {
 	// Events appends to the transactional outbox; a NopEventSink until
 	// plan item 2.
 	Events() EventSink
+	Journal() JournalRepo
 }
 
 type SatelliteRepo interface {

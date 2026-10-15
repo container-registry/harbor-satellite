@@ -14,6 +14,9 @@ type PathConfig struct {
 	PrevConfigFile string
 	StoreDir       string
 	StateFile      string
+	// JournalDir holds the edge journal (plan item 6.4). It is computed,
+	// not created: the journal creates it on first open.
+	JournalDir string
 }
 
 // expandPath expands ~ and ~/ to the user's home directory in paths.
@@ -87,5 +90,6 @@ func ResolvePathConfig(configDir string) (*PathConfig, error) {
 		PrevConfigFile: filepath.Join(expanded, "prev_config.json"),
 		StoreDir:       filepath.Join(expanded, "oci"),
 		StateFile:      filepath.Join(expanded, "state.json"),
+		JournalDir:     filepath.Join(expanded, "journal"),
 	}, nil
 }

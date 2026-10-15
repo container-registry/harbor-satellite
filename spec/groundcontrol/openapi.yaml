@@ -1484,6 +1484,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds SYNC_MAX_BODY_BYTES (plan item 6.5, not
+            enforced yet).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "429":
           description: Too many status reports.
           content:
@@ -1648,6 +1656,40 @@ components:
         peer_distribution:
           $ref: "#/components/schemas/PeerDistributionConfig"
           x-go-name: PeerDistribution
+        replication_concurrency:
+          type: integer
+          minimum: 0
+          description: >
+            Group states replicated at once; 0 replicates every group at once
+            as today (plan item 6.2, not read yet).
+          x-go-name: ReplicationConcurrency
+        replication_bandwidth_bytes_per_sec:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Bandwidth budget of state replication (plan item 6.2, not read yet).
+          x-go-name: ReplicationBandwidthBytesPerSec
+        journal:
+          $ref: "#/components/schemas/JournalConfig"
+    JournalConfig:
+      type: object
+      title: JournalConfig sizes the satellite's edge journal (plan item 6.4, not read yet).
+      properties:
+        max_segment_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          x-go-name: MaxSegmentBytes
+        max_total_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          x-go-name: MaxTotalBytes
+        upload_batch:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          x-go-name: UploadBatch
     AuditConfig:
       type: object
       title: AuditConfig controls satellite security-event audit logging.
@@ -2562,6 +2604,14 @@ components:
         activity:
           type: string
           x-go-name: Activity
+        applied_states:
+          type: array
+          description: >
+            The group states the last replication run applied, by reference as
+            listed in the satellite state (plan item 6.6, not read yet).
+          items:
+            $ref: "#/components/schemas/AppliedState"
+          x-go-name: AppliedStates
         cached_images:
           type: array
           items:
@@ -2575,6 +2625,11 @@ components:
           type: integer
           format: int32
           x-go-name: ImageCount
+        journal:
+          $ref: "#/components/schemas/JournalUpload"
+        last_replication_error:
+          type: string
+          x-go-name: LastReplicationError
         last_sync_duration_ms:
           type: integer
           format: int64
@@ -2616,6 +2671,108 @@ components:
           items:
             type: string
           x-go-name: Events
+        journal:
+          $ref: "#/components/schemas/JournalAck"
+          x-go-type-skip-optional-pointer: false
+    AppliedState:
+      type: object
+      title: AppliedState is a group state reference and the digest a satellite applied.
+      required:
+        - ref
+        - digest
+      properties:
+        ref:
+          type: string
+          x-go-name: Ref
+        digest:
+          type: string
+          x-go-name: Digest
+    JournalUpload:
+      type: object
+      title: JournalUpload carries edge journal records above the satellite's floor (plan item 6.5, not read yet).
+      required:
+        - epoch
+        - after_seq
+        - records
+      properties:
+        epoch:
+          type: integer
+          format: int64
+          minimum: 1
+          description: >
+            Identifies the satellite's journal. Epochs are time-ordered: a
+            newer one resets Ground Control's cursor, an older one is answered
+            with Ground Control's epoch.
+          x-go-name: Epoch
+        after_seq:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            The satellite's floor: it holds nothing at or below this seq for
+            Ground Control any more. A floor above Ground Control's cursor is
+            recorded as an EdgeJournalGap event.
+          x-go-name: AfterSeq
+        records:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/JournalRecord"
+          x-go-name: Records
+    JournalAck:
+      type: object
+      title: JournalAck answers a journal upload; present whenever the request carried one.
+      required:
+        - epoch
+        - acked_seq
+      properties:
+        epoch:
+          type: integer
+          format: int64
+          description: >
+            Ground Control's epoch for the satellite. A satellite whose epoch
+            is older continues as epoch + 1.
+          x-go-name: Epoch
+        acked_seq:
+          type: integer
+          format: int64
+          description: The seq Ground Control holds the epoch up to; the satellite deletes records up to it.
+          x-go-name: AckedSeq
+        error:
+          type: string
+          description: >
+            Why the upload was rejected. The ack does not advance; the
+            heartbeat itself is accepted.
+          x-go-name: Error
+    JournalRecord:
+      type: object
+      title: JournalRecord is one record of a satellite's edge journal.
+      required:
+        - seq
+        - type
+        - recorded_at
+        - payload
+      properties:
+        seq:
+          type: integer
+          format: int64
+          minimum: 1
+          x-go-name: Seq
+        type:
+          type: string
+          description: >
+            replication, cri or pull_through; the payload is the record type's
+            internal/shared/edgejournal payload.
+          x-go-name: Type
+        recorded_at:
+          type: string
+          format: date-time
+          x-go-name: RecordedAt
+        payload:
+          type: object
+          additionalProperties: true
+          x-go-type: json.RawMessage
+          x-go-name: Payload
     RefreshCredentialsResponse:
       type: object
       title: RefreshCredentialsResponse carries the satellite's new robot secret.

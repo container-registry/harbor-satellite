@@ -59,6 +59,7 @@ components:
   shared:
     in:
       - internal/shared/crypto
+      - internal/shared/edgejournal
       - internal/shared/logger
       - internal/shared/notimpl
       - internal/shared/spiffe

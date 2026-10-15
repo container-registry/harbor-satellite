@@ -31,6 +31,12 @@ func EventKinds() []EventKind {
 		EventConfigDeleted,
 		EventAssignmentChanged,
 		EventSatelliteChanged,
+		EventEdgeReplicated,
+		EventEdgeDeleted,
+		EventEdgeArtifactFailed,
+		EventEdgePullThrough,
+		EventEdgeCRIConfigured,
+		EventEdgeJournalGap,
 	}
 }
 
@@ -38,7 +44,14 @@ func EventKinds() []EventKind {
 // nobody, so they are appended already done. The edge events of plan items
 // 6 and 9 go here.
 func LogOnlyKinds() []EventKind {
-	return []EventKind{}
+	return []EventKind{
+		EventEdgeReplicated,
+		EventEdgeDeleted,
+		EventEdgeArtifactFailed,
+		EventEdgePullThrough,
+		EventEdgeCRIConfigured,
+		EventEdgeJournalGap,
+	}
 }
 
 func (k EventKind) LogOnly() bool {
