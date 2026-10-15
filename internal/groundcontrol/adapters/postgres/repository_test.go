@@ -101,6 +101,41 @@ func TestRepository_RobotGrantsInOneStatement(t *testing.T) {
 	require.Equal(t, "robot$edge-00", bySatellite[ids[0]].RobotName)
 }
 
+// A group's artifacts live in group_artifacts (A81): the API transaction
+// writes them with the group, and the reconciler renders from them.
+func TestRepository_GroupUpsertStoresArtifactsInGroupArtifacts(t *testing.T) {
+	pending.Plan(t, "2.1", pendingAdapter)
+	db := dbtest.New(t)
+	repo, err := postgres.NewRepository(db.DB)
+	require.NoError(t, err)
+	ctx := context.Background()
+	groups := repo.Autocommit().Groups()
+	artifacts := []fleet.Artifact{{Repository: "library/alpine", Tags: []string{"3.20"}, Type: "image", Labels: map[string]any{"tier": "edge"}}}
+	stored := func(id fleet.GroupID) string {
+		t.Helper()
+		var raw string
+		require.NoError(t, db.QueryRowContext(ctx, "SELECT artifacts::TEXT FROM group_artifacts WHERE group_id = $1", id).Scan(&raw))
+		return raw
+	}
+
+	g, err := groups.Upsert(ctx, fleet.Group{Name: "g1", RegistryURL: "http://harbor.example", Projects: []string{"library"}, Artifacts: artifacts})
+	require.NoError(t, err)
+	require.JSONEq(t, `[{"repository":"library/alpine","tag":["3.20"],"type":"image","labels":{"tier":"edge"}}]`, stored(g.ID))
+	got, err := groups.GetByName(ctx, "g1")
+	require.NoError(t, err)
+	require.Equal(t, artifacts, got.Artifacts)
+
+	again, err := groups.Upsert(ctx, fleet.Group{Name: "g1", RegistryURL: "http://harbor.example", Projects: []string{"team"}})
+	require.NoError(t, err)
+
+	require.Equal(t, g.ID, again.ID)
+	require.JSONEq(t, `[]`, stored(g.ID), "no artifacts is an empty array")
+	got, err = groups.GetByName(ctx, "g1")
+	require.NoError(t, err)
+	require.Equal(t, []string{"team"}, got.Projects)
+	require.Empty(t, got.Artifacts)
+}
+
 func TestRepository_MapsDriverErrors(t *testing.T) {
 	pending.Plan(t, "1.3", pendingAdapter)
 	repo := newRepository(t)

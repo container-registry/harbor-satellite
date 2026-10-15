@@ -84,6 +84,7 @@ through the environment; see the help for each password-using command.`,
 
 	rootCmd.AddCommand(
 		root.ServeCommand(),
+		root.WorkerCommand(),
 		authCmd,
 		root.HealthCommand(runtime),
 		root.PingCommand(runtime),

@@ -16,15 +16,13 @@ import (
 func seedZTR(w *world) {
 	w.repo.Tokens.Claimable = map[string]fleet.SatelliteID{"tok": 7}
 	w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01"}}
-	w.repo.Satellites.GroupsOf = map[fleet.SatelliteID][]fleet.Group{7: {{ID: 1, Name: "g1"}}}
-	w.repo.Satellites.ConfigOf = map[fleet.SatelliteID]fleet.Config{7: {ID: 3, Name: "edge-config"}}
 	w.repo.Robots.BySatelliteID = map[fleet.SatelliteID]fleet.Robot{7: {ID: 5, Satellite: 7, Name: "robot$edge-01", HarborID: 42}}
 	w.registry.Credentials = fleet.RobotCredentials{HarborID: 42, Name: "robot$edge-01", Secret: "fresh", ExpiresAt: now.Add(30 * 24 * time.Hour)}
 }
 
 func TestRegistrationService_ZeroTouch(t *testing.T) {
-	t.Run("claims, rotates, publishes, then consumes", func(t *testing.T) {
-		pending.Plan(t, "1.2", pendingServices)
+	t.Run("claims, rotates, then stores the hash and consumes in one transaction", func(t *testing.T) {
+		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedZTR(w)
 
@@ -39,24 +37,37 @@ func TestRegistrationService_ZeroTouch(t *testing.T) {
 		require.Equal(t, "tok", arg[string](t, claim, 0))
 		require.Equal(t, now, arg[time.Time](t, claim, 1))
 		require.Equal(t, int64(42), arg[int64](t, onlyCall(t, w.rec, "RotateRobotSecret"), 0))
+		noRegistryCalls(t, w.rec, "RotateRobotSecret")
 		stored := arg[fleet.Robot](t, onlyCall(t, w.rec, "Robots.Update"), 0)
 		require.NotEmpty(t, stored.SecretHash)
 		require.NotEqual(t, "fresh", stored.SecretHash)
-		states, _ := pushedSatelliteState(t, onlyCall(t, w.rec, "PushState"))
-		require.Equal(t, []string{stateRef("group", "g1").String()}, states)
 		require.Equal(t, "tok", arg[string](t, onlyCall(t, w.rec, "Tokens.Consume"), 0))
-		before(t, w.rec, "Tokens.Claim", "RotateRobotSecret")
-		before(t, w.rec, "RotateRobotSecret", "Tokens.Consume")
+		// A62: neither the claim nor the registry call holds a transaction.
 		outsideTx(t, w.rec, "Tokens.Claim")
 		outsideTx(t, w.rec, "RotateRobotSecret")
 		before(t, w.rec, "Tokens.Claim", "WithTx")
 		before(t, w.rec, "RotateRobotSecret", "WithTx")
+		insideTx(t, w.rec, "Robots.Update")
+		insideTx(t, w.rec, "Tokens.Consume")
 		require.Zero(t, w.rec.Count("Tokens.Unclaim"))
 	})
 
-	for _, step := range []string{"RotateRobotSecret", "Robots.Update", "PushState"} {
+	t.Run("no robot yet is ErrNotProvisioned and keeps the token", func(t *testing.T) {
+		pending.Plan(t, "2.5", pendingServices)
+		w := newWorld()
+		seedZTR(w)
+		w.repo.Robots.BySatelliteID = nil
+
+		_, err := w.services(t).Registration.ZeroTouch(context.Background(), "tok")
+
+		require.ErrorIs(t, err, fleet.ErrNotProvisioned)
+		require.Equal(t, "tok", arg[string](t, onlyCall(t, w.rec, "Tokens.Unclaim"), 0))
+		noRegistryCalls(t, w.rec)
+	})
+
+	for _, step := range []string{"RotateRobotSecret", "Robots.Update"} {
 		t.Run("unclaims the token when "+step+" fails", func(t *testing.T) {
-			pending.Plan(t, "1.2", pendingServices)
+			pending.Plan(t, "2.5", pendingServices)
 			w := newWorld()
 			seedZTR(w)
 			boom := errors.New("step failed")
@@ -71,7 +82,7 @@ func TestRegistrationService_ZeroTouch(t *testing.T) {
 	}
 
 	t.Run("expired token is ErrTokenExpired", func(t *testing.T) {
-		pending.Plan(t, "1.2", pendingServices)
+		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedZTR(w)
 		w.rec.FailOn("Tokens.Claim", fleet.ErrTokenExpired)
@@ -83,7 +94,7 @@ func TestRegistrationService_ZeroTouch(t *testing.T) {
 	})
 
 	t.Run("unknown or claimed token is ErrTokenInvalid", func(t *testing.T) {
-		pending.Plan(t, "1.2", pendingServices)
+		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedZTR(w)
 
@@ -96,62 +107,62 @@ func TestRegistrationService_ZeroTouch(t *testing.T) {
 }
 
 func TestRegistrationService_SPIFFEZeroTouch(t *testing.T) {
-	seed := func(w *world) {
-		w.repo.Satellites.NextID = 9
-		w.repo.Configs.NextID = 4
-		w.registry.Credentials = fleet.RobotCredentials{HarborID: 44, Name: "robot$edge-09", Secret: "s3cret"}
-	}
-
-	t.Run("auto-registers an unknown satellite with the default config", func(t *testing.T) {
-		pending.Plan(t, "1.2", pendingServices)
+	t.Run("an unknown satellite is created with the default config and waits for its robot", func(t *testing.T) {
+		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
-		seed(w)
+		w.repo.Satellites.NextID = 9
 		w.repo.Configs.ByName = map[string]fleet.Config{fleet.DefaultConfigName: {ID: 3, Name: fleet.DefaultConfigName}}
 
-		res, err := w.services(t).Registration.SPIFFEZeroTouch(context.Background(), "edge-09")
+		_, err := w.services(t).Registration.SPIFFEZeroTouch(context.Background(), "edge-09")
 
-		require.NoError(t, err)
-		require.Equal(t, "s3cret", res.Credentials.Secret)
-		require.Equal(t, stateRef("satellite", "edge-09").String(), res.StateURL)
+		require.ErrorIs(t, err, fleet.ErrNotProvisioned)
 		require.Equal(t, "edge-09", arg[string](t, onlyCall(t, w.rec, "Satellites.Create"), 0))
-		onlyCall(t, w.rec, "CreateRobot")
-		require.Equal(t, []string{fleet.SatelliteProject}, grantOf(t, w.rec, 44), "a new SPIFFE satellite has no groups yet")
 		set := onlyCall(t, w.rec, "Satellites.SetConfig")
 		require.Equal(t, fleet.SatelliteID(9), arg[fleet.SatelliteID](t, set, 0))
 		require.Equal(t, fleet.ConfigID(3), arg[fleet.ConfigID](t, set, 1))
-		require.Zero(t, w.rec.Count("Configs.Create"))
+		require.Equal(t, []fleet.Event{{
+			Kind:      fleet.EventSatelliteCreated,
+			Aggregate: fleet.Aggregate{Type: fleet.AggregateSatellite, ID: 9},
+			Payload:   fleet.ChangedPayload{Name: "edge-09"},
+		}}, w.repo.Events.Appended())
 		require.Equal(t, 1, w.rec.Count("Commit"))
+		noRegistryCalls(t, w.rec)
 	})
 
 	t.Run("creates the default config when it is missing", func(t *testing.T) {
-		pending.Plan(t, "1.2", pendingServices)
+		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
-		seed(w)
+		w.repo.Satellites.NextID = 9
+		w.repo.Configs.NextID = 4
 
 		_, err := w.services(t).Registration.SPIFFEZeroTouch(context.Background(), "edge-09")
 
-		require.NoError(t, err)
+		require.ErrorIs(t, err, fleet.ErrNotProvisioned)
 		created := arg[fleet.Config](t, onlyCall(t, w.rec, "Configs.Create"), 0)
 		require.Equal(t, fleet.DefaultConfigName, created.Name)
 		require.Equal(t, fleet.ConfigID(4), arg[fleet.ConfigID](t, onlyCall(t, w.rec, "Satellites.SetConfig"), 1))
+		require.Contains(t, w.repo.Events.Appended(), configChanged(4, fleet.DefaultConfigName))
 	})
 
-	t.Run("deletes the robot when the transaction fails", func(t *testing.T) {
-		pending.Plan(t, "1.2", pendingServices)
+	t.Run("a provisioned satellite gets a fresh secret", func(t *testing.T) {
+		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
-		seed(w)
-		boom := errors.New("commit failed")
-		w.rec.FailOn("Commit", boom)
+		seedZTR(w)
 
-		_, err := w.services(t).Registration.SPIFFEZeroTouch(context.Background(), "edge-09")
+		res, err := w.services(t).Registration.SPIFFEZeroTouch(context.Background(), "edge-01")
 
-		require.ErrorIs(t, err, boom)
-		require.Equal(t, int64(44), arg[int64](t, onlyCall(t, w.rec, "DeleteRobot"), 0))
+		require.NoError(t, err)
+		require.Equal(t, "fresh", res.Credentials.Secret)
+		require.Equal(t, stateRef("satellite", "edge-01").String(), res.StateURL)
+		noRegistryCalls(t, w.rec, "RotateRobotSecret")
+		outsideTx(t, w.rec, "RotateRobotSecret")
+		require.Zero(t, w.rec.Count("Satellites.Create"))
 	})
 }
 
+// D2: the refresh returns the new secret, so it rotates in the request.
 func TestRegistrationService_RefreshCredentialsRotatesAndStoresHash(t *testing.T) {
-	pending.Plan(t, "1.2", pendingServices)
+	pending.Plan(t, "2.5", pendingServices)
 	w := newWorld()
 	seedZTR(w)
 
@@ -160,13 +171,14 @@ func TestRegistrationService_RefreshCredentialsRotatesAndStoresHash(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, "fresh", creds.Secret)
 	require.Equal(t, int64(42), arg[int64](t, onlyCall(t, w.rec, "RotateRobotSecret"), 0))
+	noRegistryCalls(t, w.rec, "RotateRobotSecret")
 	stored := arg[fleet.Robot](t, onlyCall(t, w.rec, "Robots.Update"), 0)
 	require.Equal(t, fleet.RobotID(5), stored.ID)
 	require.NotEqual(t, "fresh", stored.SecretHash)
 }
 
 func TestNewServices_RequiresRepositoryAndRegistry(t *testing.T) {
-	pending.Plan(t, "1.2", pendingServices)
+	pending.Plan(t, "1.2", "fleet services are stubs")
 	w := newWorld()
 
 	_, err := fleet.NewServices(fleet.Deps{Registry: w.registry})

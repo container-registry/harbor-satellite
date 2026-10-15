@@ -35,12 +35,16 @@ components:
     in: internal/groundcontrol/server
   gc-fleet:
     in: internal/groundcontrol/fleet
+  gc-core:
+    in:
+      - internal/groundcontrol/async
   gc-adapters:
     in: internal/groundcontrol/adapters/**
   gc-app:
     in: internal/groundcontrol/app
   gc-infra:
     in:
+      - internal/groundcontrol/advisorylock
       - internal/groundcontrol/auth
       - internal/groundcontrol/database
       - internal/groundcontrol/dbpool
@@ -103,6 +107,7 @@ deps:
   gc-cli:
     mayDependOn:
       - gc-cli
+      - gc-app
       - gc-server
       - gc-infra
       - shared
@@ -120,16 +125,26 @@ deps:
   gc-fleet:
     mayDependOn:
       - shared
+  # Core services on top of the domain; like gc-fleet they see ports only.
+  gc-core:
+    mayDependOn:
+      - gc-fleet
+      - shared
   # Adapters get their configuration injected and never read env.
   gc-adapters:
     mayDependOn:
       - gc-fleet
+      - gc-core
       - gc-infra
       - shared
+  # The composition root hands the server its options; the server itself
+  # never imports gc-core and declares small interfaces instead.
   gc-app:
     mayDependOn:
       - gc-fleet
+      - gc-core
       - gc-adapters
+      - gc-server
       - gc-infra
       - shared
       - shared-env

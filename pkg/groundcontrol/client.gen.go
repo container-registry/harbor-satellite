@@ -21,6 +21,7 @@ import (
 
 // Defines values for HealthResponseStatus.
 const (
+	Degraded  HealthResponseStatus = "degraded"
 	Healthy   HealthResponseStatus = "healthy"
 	Unhealthy HealthResponseStatus = "unhealthy"
 )
@@ -28,6 +29,8 @@ const (
 // Valid indicates whether the value is a known member of the HealthResponseStatus enum.
 func (e HealthResponseStatus) Valid() bool {
 	switch e {
+	case Degraded:
+		return true
 	case Healthy:
 		return true
 	case Unhealthy:
@@ -190,6 +193,18 @@ type ChangeUserPasswordRequest struct {
 	NewPassword string `json:"new_password"`
 }
 
+// ComponentHealth defines model for ComponentHealth.
+type ComponentHealth struct {
+	// Detail A fixed phrase such as "no contact since startup"; never a URL or error text, because /health is public.
+	Detail string `json:"detail,omitempty,omitzero"`
+
+	// LastContact Last successful contact.
+	LastContact time.Time `json:"last_contact,omitempty,omitzero"`
+
+	// Status healthy, degraded or unhealthy.
+	Status string `json:"status"`
+}
+
 // ConfigCreateRequest defines model for ConfigCreateRequest.
 type ConfigCreateRequest struct {
 	Config     ConfigValue `json:"config,omitempty,omitzero"`
@@ -273,7 +288,9 @@ type GroupSyncRequest struct {
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
-	Status HealthResponseStatus `json:"status,omitempty,omitzero"`
+	// Components Health per dependency, such as harbor. Omitted when there is nothing to report.
+	Components map[string]ComponentHealth `json:"components,omitempty,omitzero"`
+	Status     HealthResponseStatus       `json:"status,omitempty,omitzero"`
 }
 
 // HealthResponseStatus defines model for HealthResponse.Status.
@@ -331,6 +348,18 @@ type NullableTimeValue struct {
 type OTelAuditConfig struct {
 	Enabled  bool   `json:"enabled,omitempty,omitzero"`
 	Endpoint string `json:"endpoint,omitempty,omitzero"`
+}
+
+// OutboxEventResponse defines model for OutboxEventResponse.
+type OutboxEventResponse struct {
+	AggregateID   int64     `json:"aggregate_id"`
+	AggregateType string    `json:"aggregate_type"`
+	Attempts      int32     `json:"attempts"`
+	CreatedAt     time.Time `json:"created_at"`
+	ID            int64     `json:"id"`
+	Kind          string    `json:"kind"`
+	LastError     string    `json:"last_error,omitempty,omitzero"`
+	NextAttemptAt time.Time `json:"next_attempt_at,omitempty,omitzero"`
 }
 
 // PeerDescriptor defines model for PeerDescriptor.
@@ -552,6 +581,15 @@ type UserResponse struct {
 // ZTRRequest defines model for ZTRRequest.
 type ZTRRequest struct {
 	Token string `json:"token"`
+}
+
+// ListOutboxEventsParams defines parameters for ListOutboxEvents.
+type ListOutboxEventsParams struct {
+	// State pending lists every event that is not done; failed only those that reached the maximum attempts. Default pending.
+	State string `form:"state,omitempty" json:"state,omitempty,omitzero"`
+
+	// Limit Maximum number of events returned.
+	Limit int32 `form:"limit,omitempty" json:"limit,omitempty,omitzero"`
 }
 
 // ListSpireAgentsParams defines parameters for ListSpireAgents.
@@ -800,6 +838,11 @@ type ClientInterface interface {
 	// Corresponds with POST /api/logout (the `Logout` operationId).
 	Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListOutboxEvents Lists outbox events that are not done yet.
+	//
+	// Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
+	ListOutboxEvents(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSatellites Lists satellites.
 	//
 	// Corresponds with GET /api/satellites (the `ListSatellites` operationId).
@@ -930,7 +973,7 @@ type ClientInterface interface {
 	// Corresponds with PATCH /api/users/{username}/password (the `ChangeUserPassword` operationId).
 	ChangeUserPassword(ctx context.Context, username string, body ChangeUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// Health Checks database connectivity.
+	// Health Checks database connectivity and reports Harbor reachability.
 	//
 	// Corresponds with GET /health (the `Health` operationId).
 	Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1317,6 +1360,21 @@ func (c *Client) Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*ht
 	return c.Client.Do(req)
 }
 
+// ListOutboxEvents Lists outbox events that are not done yet.
+//
+// Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
+func (c *Client) ListOutboxEvents(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListOutboxEventsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListSatellites Lists satellites.
 //
 // Corresponds with GET /api/satellites (the `ListSatellites` operationId).
@@ -1667,7 +1725,7 @@ func (c *Client) ChangeUserPassword(ctx context.Context, username string, body C
 	return c.Client.Do(req)
 }
 
-// Health Checks database connectivity.
+// Health Checks database connectivity and reports Harbor reachability.
 //
 // Corresponds with GET /health (the `Health` operationId).
 func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2320,6 +2378,64 @@ func NewLogoutRequest(server string) (*http.Request, error) {
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListOutboxEventsRequest constructs an http.Request for the ListOutboxEvents method
+func NewListOutboxEventsRequest(server string, params *ListOutboxEventsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/ops/outbox")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3335,6 +3451,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/logout (the `Logout` operationId).
 	LogoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*LogoutHTTPResponse, error)
 
+	// ListOutboxEventsWithResponse Lists outbox events that are not done yet.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
+	ListOutboxEventsWithResponse(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*ListOutboxEventsHTTPResponse, error)
+
 	// ListSatellitesWithResponse Lists satellites.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -3489,7 +3612,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /api/users/{username}/password (the `ChangeUserPassword` operationId).
 	ChangeUserPasswordWithResponse(ctx context.Context, username string, body ChangeUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeUserPasswordHTTPResponse, error)
 
-	// HealthWithResponse Checks database connectivity.
+	// HealthWithResponse Checks database connectivity and reports Harbor reachability.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -4422,6 +4545,68 @@ func (r LogoutHTTPResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r LogoutHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListOutboxEventsHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]OutboxEventResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *AppError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListOutboxEventsHTTPResponse) GetJSON200() *[]OutboxEventResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListOutboxEventsHTTPResponse) GetJSON400() *AppError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListOutboxEventsHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListOutboxEventsHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListOutboxEventsHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListOutboxEventsHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListOutboxEventsHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListOutboxEventsHTTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5709,6 +5894,11 @@ func (r RefreshSatelliteCredentialsHTTPResponse) ContentType() string {
 	return ""
 }
 
+// SpiffeZtrHTTPResponse503Headers the declared response headers of an HTTP 503 response for SpiffeZtr
+type SpiffeZtrHTTPResponse503Headers struct {
+	RetryAfter int
+}
+
 type SpiffeZtrHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5722,6 +5912,10 @@ type SpiffeZtrHTTPResponse struct {
 	JSON429 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *AppError
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *SpiffeZtrHTTPResponse503Headers
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -5747,6 +5941,11 @@ func (r SpiffeZtrHTTPResponse) GetJSON429() *AppError {
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
 func (r SpiffeZtrHTTPResponse) GetJSON500() *AppError {
 	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r SpiffeZtrHTTPResponse) GetJSON503() *AppError {
+	return r.JSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5854,6 +6053,11 @@ func (r SyncSatelliteHTTPResponse) ContentType() string {
 	return ""
 }
 
+// ZtrHTTPResponse503Headers the declared response headers of an HTTP 503 response for Ztr
+type ZtrHTTPResponse503Headers struct {
+	RetryAfter int
+}
+
 type ZtrHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5869,6 +6073,10 @@ type ZtrHTTPResponse struct {
 	JSON429 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *AppError
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *ZtrHTTPResponse503Headers
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -5899,6 +6107,11 @@ func (r ZtrHTTPResponse) GetJSON429() *AppError {
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
 func (r ZtrHTTPResponse) GetJSON500() *AppError {
 	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ZtrHTTPResponse) GetJSON503() *AppError {
+	return r.JSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -6190,6 +6403,19 @@ func (c *ClientWithResponses) LogoutWithResponse(ctx context.Context, reqEditors
 	return ParseLogoutHTTPResponse(rsp)
 }
 
+// ListOutboxEventsWithResponse Lists outbox events that are not done yet.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
+func (c *ClientWithResponses) ListOutboxEventsWithResponse(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*ListOutboxEventsHTTPResponse, error) {
+	rsp, err := c.ListOutboxEvents(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListOutboxEventsHTTPResponse(rsp)
+}
+
 // ListSatellitesWithResponse Lists satellites.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6476,7 +6702,7 @@ func (c *ClientWithResponses) ChangeUserPasswordWithResponse(ctx context.Context
 	return ParseChangeUserPasswordHTTPResponse(rsp)
 }
 
-// HealthWithResponse Checks database connectivity.
+// HealthWithResponse Checks database connectivity and reports Harbor reachability.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -7264,6 +7490,53 @@ func ParseLogoutHTTPResponse(rsp *http.Response) (*LogoutHTTPResponse, error) {
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListOutboxEventsHTTPResponse parses an HTTP response from a ListOutboxEventsWithResponse call
+func ParseListOutboxEventsHTTPResponse(rsp *http.Response) (*ListOutboxEventsHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListOutboxEventsHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []OutboxEventResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	}
 
@@ -8291,6 +8564,26 @@ func ParseSpiffeZtrHTTPResponse(rsp *http.Response) (*SpiffeZtrHTTPResponse, err
 		}
 		response.JSON500 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 503:
+		var headers SpiffeZtrHTTPResponse503Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = value
+		}
+		response.Headers503 = &headers
 	}
 
 	return response, nil
@@ -8413,6 +8706,26 @@ func ParseZtrHTTPResponse(rsp *http.Response) (*ZtrHTTPResponse, error) {
 		}
 		response.JSON500 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 503:
+		var headers ZtrHTTPResponse503Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = value
+		}
+		response.Headers503 = &headers
 	}
 
 	return response, nil

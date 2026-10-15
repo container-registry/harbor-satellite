@@ -6,10 +6,12 @@ import (
 	"log"
 	"math/big"
 	"time"
+
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/advisorylock"
 )
 
 const (
-	cleanupLockID          = 12345
+	cleanupLockID          = advisorylock.Cleanup
 	defaultRetentionDays   = 7
 	defaultCleanupInterval = 24 * time.Hour
 )

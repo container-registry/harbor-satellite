@@ -12,7 +12,15 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/migrator"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
+	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 	"github.com/spf13/cobra"
+)
+
+// Values of serve --worker: where the outbox publisher runs (plan item
+// 2.4). The target default is embedded; the skeleton keeps off.
+const (
+	WorkerOff      = "off"
+	WorkerEmbedded = "embedded"
 )
 
 type serveDependencies struct {
@@ -34,16 +42,26 @@ func ServeCommand() *cobra.Command {
 }
 
 func newServeCommand(deps serveDependencies) *cobra.Command {
-	return &cobra.Command{
+	var worker string
+	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the Ground Control server",
 		Args:  cobra.NoArgs,
 		// Override the root hook: a local server needs no administration client.
 		PersistentPreRunE: func(_ *cobra.Command, _ []string) error { return nil },
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			switch worker {
+			case WorkerOff:
+			case WorkerEmbedded:
+				return notimpl.Err("2.4 embedded worker")
+			default:
+				return fmt.Errorf("invalid --worker %q: want %s or %s", worker, WorkerOff, WorkerEmbedded)
+			}
 			return runServe(cmd.Context(), cmd.OutOrStdout(), deps)
 		},
 	}
+	cmd.Flags().StringVar(&worker, "worker", WorkerOff, "where the outbox publisher runs: "+WorkerOff+" or "+WorkerEmbedded)
+	return cmd
 }
 
 func runServe(ctx context.Context, out io.Writer, deps serveDependencies) (err error) {

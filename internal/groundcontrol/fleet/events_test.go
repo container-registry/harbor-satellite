@@ -69,3 +69,13 @@ func eventKindConstants(t *testing.T) map[fleet.EventKind]bool {
 	require.NotEmpty(t, out)
 	return out
 }
+
+func TestLogOnlyKinds_AreEventKinds(t *testing.T) {
+	for _, k := range fleet.LogOnlyKinds() {
+		require.Contains(t, fleet.EventKinds(), k)
+		require.True(t, k.LogOnly())
+	}
+	for _, k := range []fleet.EventKind{fleet.EventSatelliteCreated, fleet.EventGroupChanged, fleet.EventSatelliteDeleted} {
+		require.False(t, k.LogOnly(), "%s has a handler", k)
+	}
+}

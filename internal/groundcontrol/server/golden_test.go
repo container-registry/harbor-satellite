@@ -227,6 +227,7 @@ func TestGoldenAPI(t *testing.T) {
 	g.step("satellites-status-before-heartbeat", http.MethodGet, "/api/satellites/edge-01/status", nil, admin)
 
 	g.step("ztr-unknown-token", http.MethodPost, "/satellites/ztr", ZTRRequest{Token: strings.Repeat("0", 32)}, nil)
+	h.drainOutbox()
 	ztr := g.step("ztr", http.MethodPost, "/satellites/ztr", ZTRRequest(reg), nil)
 	var stateCfg StateConfigResponse
 	ztr.decode(t, &stateCfg)

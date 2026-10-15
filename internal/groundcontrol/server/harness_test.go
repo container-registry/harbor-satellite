@@ -49,8 +49,9 @@ type gcHarness struct {
 }
 
 // newGCHarness needs TEST_DATABASE_URL and skips without it. Set extra GC
-// environment variables with t.Setenv before calling it.
-func newGCHarness(t *testing.T) *gcHarness {
+// environment variables with t.Setenv before calling it; opts go to
+// NewServer.
+func newGCHarness(t *testing.T, opts ...Option) *gcHarness {
 	t.Helper()
 	db := dbtest.New(t)
 	harborStub.Reset()
@@ -78,7 +79,7 @@ func newGCHarness(t *testing.T) *gcHarness {
 	}
 	loadGCForTest(t)
 
-	res, err := NewServer(context.Background())
+	res, err := NewServer(context.Background(), opts...)
 	require.NoError(t, err)
 	ts := httptest.NewServer(res.Server.Handler)
 	t.Cleanup(func() {
@@ -200,14 +201,24 @@ func (h *gcHarness) syncGroup(name string, repositories ...string) {
 }
 
 // registerSatellite registers a token satellite and returns its ZTR token.
+// It drains the outbox, so the satellite's robot exists when the test runs
+// its ZTR.
 func (h *gcHarness) registerSatellite(name, config string, groups ...string) string {
 	h.t.Helper()
 	r := h.mustDo(http.MethodPost, "/api/satellites", TokenSatelliteRegistrationRequest{Name: name, ConfigName: config, Groups: groups}, h.admin, http.StatusOK)
 	var tok TokenSatelliteRegistrationResponse
 	r.decode(h.t, &tok)
 	require.NotEmpty(h.t, tok.Token)
+	h.drainOutbox()
 	return tok.Token
 }
+
+// drainOutbox runs the async plane until the outbox is empty. Today the
+// request still creates the robot and pushes the states, so there is
+// nothing to drain; plan item 2.5 moves that work to the outbox and makes
+// this run the worker (see runWorker), which keeps the ZTR, golden and
+// budget tests valid.
+func (h *gcHarness) drainOutbox() {}
 
 func (h *gcHarness) ztr(token string) StateConfigResponse {
 	h.t.Helper()

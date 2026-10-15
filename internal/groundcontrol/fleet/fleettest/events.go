@@ -27,6 +27,10 @@ func (s *EventSink) Append(_ context.Context, events ...fleet.Event) error {
 	return s.Record("Events.Append", args...)
 }
 
+func (s *EventSink) AppendToGroupMembers(_ context.Context, group fleet.GroupID, kind fleet.EventKind) error {
+	return s.Record("Events.AppendToGroupMembers", group, kind)
+}
+
 // Appended returns the events of every recorded append, failed ones
 // included, in order.
 func (s *EventSink) Appended() []fleet.Event {

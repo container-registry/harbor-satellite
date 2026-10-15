@@ -58,6 +58,29 @@ type Server struct {
 
 	// services is set by WithFleet; no handler calls it before plan item 1.4.
 	services *fleet.Services
+
+	// harborContact and harborStaleAfter are set by WithHarborContact;
+	// Health does not read them before plan item 2.6.
+	harborContact    HarborContact
+	harborStaleAfter time.Duration
+
+	// outbox is set by WithOutboxReader; ListOutboxEvents does not read
+	// it before plan item 2.3.
+	outbox OutboxReader
+}
+
+// HarborContact reports the last successful contact with Harbor; the
+// async plane's registry probe implements it.
+type HarborContact interface {
+	LastContact() time.Time
+}
+
+// OutboxReader lists the outbox events that are not done, for
+// GET /api/ops/outbox: all of them for state "pending", those that ran out
+// of attempts for "failed". The composition root adapts the async plane's
+// outbox store to it, so the server does not import the async plane.
+type OutboxReader interface {
+	ListOutbox(ctx context.Context, failedOnly bool, limit int) ([]OutboxEventResponse, error)
 }
 
 // Option configures NewServer.
@@ -66,6 +89,20 @@ type Option func(*Server)
 // WithFleet hands the fleet services to the handlers.
 func WithFleet(services *fleet.Services) Option {
 	return func(s *Server) { s.services = services }
+}
+
+// WithHarborContact makes /health report Harbor as degraded, with status
+// 200, while contact's last contact is zero or older than staleAfter. The
+// database alone decides between healthy and unhealthy.
+func WithHarborContact(contact HarborContact, staleAfter time.Duration) Option {
+	return func(s *Server) {
+		s.harborContact = contact
+		s.harborStaleAfter = staleAfter
+	}
+}
+
+func WithOutboxReader(r OutboxReader) Option {
+	return func(s *Server) { s.outbox = r }
 }
 
 // ServerTLSConfig holds TLS settings for the Ground Control HTTP server.

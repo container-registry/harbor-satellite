@@ -26,6 +26,33 @@ type Config struct {
 	UpdatedAt   time.Time
 }
 
+type DesiredState struct {
+	AggregateType           string
+	AggregateID             int64
+	Version                 int64
+	Document                json.RawMessage
+	RenderedDigest          string
+	PublishedDigest         sql.NullString
+	PublishedArtifactDigest sql.NullString
+	PublishedAt             sql.NullTime
+	LastError               sql.NullString
+	UpdatedAt               time.Time
+}
+
+type EventOutbox struct {
+	ID            int64
+	Xid           interface{}
+	Kind          string
+	AggregateType string
+	AggregateID   int64
+	Payload       json.RawMessage
+	CreatedAt     time.Time
+	Attempts      int32
+	NextAttemptAt time.Time
+	LastError     sql.NullString
+	DoneAt        sql.NullTime
+}
+
 type Group struct {
 	ID          int32
 	GroupName   string
@@ -33,6 +60,12 @@ type Group struct {
 	Projects    []string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type GroupArtifact struct {
+	GroupID   int32
+	Artifacts json.RawMessage
+	UpdatedAt time.Time
 }
 
 type LoginAttempt struct {

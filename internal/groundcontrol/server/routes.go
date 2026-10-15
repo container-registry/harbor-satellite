@@ -73,6 +73,8 @@ func requiresSystemAdmin(method, requestPath string) bool {
 		return true
 	case strings.HasPrefix(requestPath, "/api/spire/"):
 		return true
+	case strings.HasPrefix(requestPath, "/api/ops/"):
+		return true
 	case method == http.MethodPost && requestPath == "/api/satellites/register":
 		return true
 	default:

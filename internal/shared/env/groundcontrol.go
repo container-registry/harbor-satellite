@@ -10,6 +10,7 @@ type GroundControl struct {
 	Server         Server
 	EmbeddedSPIRE  EmbeddedSPIRE
 	Database       Database       `envPrefix:"DB_"`
+	Outbox         Outbox         `envPrefix:"OUTBOX_"`
 	PasswordPolicy PasswordPolicy `envPrefix:"PASSWORD_"`
 	SPIFFE         SPIFFE         `envPrefix:"SPIFFE_"`
 	SPIRE          SPIRE          `envPrefix:"SPIRE_"`
@@ -55,6 +56,11 @@ type Harbor struct {
 	Password          string `env:"HARBOR_PASSWORD"`
 	SkipHealthCheck   bool   `env:"SKIP_HARBOR_HEALTH_CHECK"`
 	RobotDurationDays string `env:"ROBOT_DURATION_DAYS"      envDefault:"30"`
+	// Plan item 2 skeleton, parsed but not used yet: requests per second
+	// the async plane sends to Harbor, and how often GC pings Harbor for
+	// /health.
+	RateLimit     float64       `env:"HARBOR_RATE_LIMIT"     envDefault:"20"`
+	ProbeInterval time.Duration `env:"HARBOR_PROBE_INTERVAL" envDefault:"30s"`
 }
 
 func (h Harbor) RobotDurationDaysValue() int64 {
@@ -63,6 +69,18 @@ func (h Harbor) RobotDurationDaysValue() int64 {
 		return 30
 	}
 	return days
+}
+
+// Outbox tunes the publisher of the async plane (plan item 2.3); parsed but
+// not used yet.
+type Outbox struct {
+	BatchSize    int           `env:"BATCH_SIZE"    envDefault:"100"`
+	PollInterval time.Duration `env:"POLL_INTERVAL" envDefault:"1s"`
+	Concurrency  int           `env:"CONCURRENCY"   envDefault:"4"`
+	MaxAttempts  int           `env:"MAX_ATTEMPTS"  envDefault:"10"`
+	BackoffBase  time.Duration `env:"BACKOFF_BASE"  envDefault:"1s"`
+	BackoffMax   time.Duration `env:"BACKOFF_MAX"   envDefault:"5m"`
+	Lease        time.Duration `env:"LEASE"         envDefault:"1m"`
 }
 
 type Server struct {

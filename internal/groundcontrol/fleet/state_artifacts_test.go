@@ -1,6 +1,8 @@
 package fleet_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
@@ -43,4 +45,37 @@ func TestSettings_StateRefRejectsInvalidNames(t *testing.T) {
 		_, err := s.GroupStateRef(name)
 		require.ErrorIs(t, err, fleet.ErrInvalid, "name %q", name)
 	}
+}
+
+func TestRobotName_UniquePerSatelliteID(t *testing.T) {
+	require.Equal(t, "edge-01-7", fleet.RobotName(7, "edge-01"))
+	require.NotEqual(t, fleet.RobotName(7, "edge-01"), fleet.RobotName(9, "edge-01"), "a re-created satellite gets another robot")
+	require.NotEqual(t, fleet.RobotName(23, "x-1"), fleet.RobotName(123, "x"), "the ID after the last dash keeps names apart")
+}
+
+// goldenDesiredSatellite is what the satellite reconciler records for a
+// satellite in g1 and g2 whose robot may pull library: the state document
+// exactly as server.SatelliteStateArtifact encodes it, and the robot's
+// projects, so a change of either is published (A87).
+const goldenDesiredSatellite = `{"robot_projects":["library","satellite"],"state":{"config":"http://harbor.example:8080/satellite/config-state/edge-config/state:latest","states":["http://harbor.example:8080/satellite/group-state/g1/state:latest","http://harbor.example:8080/satellite/group-state/g2/state:latest"]}}`
+
+const goldenDesiredSatelliteDigest = fleet.Digest("sha256:ea7f03f214248c199e9325dbbced6ccec1695f08b612d6fa14bd2b96ce0a0055")
+
+func TestDesiredSatelliteGoldenDigest(t *testing.T) {
+	sum := sha256.Sum256([]byte(goldenDesiredSatellite))
+	require.Equal(t, goldenDesiredSatelliteDigest, fleet.Digest("sha256:"+hex.EncodeToString(sum[:])))
+}
+
+func TestRenderSatelliteDesiredState_MatchesGolden(t *testing.T) {
+	pending.Plan(t, "2.3", "nothing renders desired state; handlers push artifacts directly")
+	ref := func(kind, name string) fleet.ArtifactRef {
+		return fleet.ArtifactRef{Registry: "http://harbor.example:8080", Repository: "satellite/" + kind + "-state/" + name + "/state", Tag: "latest"}
+	}
+	state := fleet.DesiredState{Satellite: 7, GroupStates: []fleet.ArtifactRef{ref("group", "g1"), ref("group", "g2")}, ConfigState: ref("config", "edge-config")}
+
+	doc, digest, err := fleet.RenderSatelliteDesiredState(state, fleet.RobotProjects([]string{"library", "library"}))
+
+	require.NoError(t, err)
+	require.Equal(t, goldenDesiredSatellite, string(doc))
+	require.Equal(t, goldenDesiredSatelliteDigest, digest)
 }

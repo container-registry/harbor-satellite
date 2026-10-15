@@ -7,6 +7,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 )
 
+// groupRepo keeps a group's artifacts in group_artifacts and its other
+// fields in groups, whose columns the group endpoints serialize.
 type groupRepo struct{}
 
 func (groupRepo) Upsert(ctx context.Context, group fleet.Group) (fleet.Group, error) {

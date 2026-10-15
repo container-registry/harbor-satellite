@@ -1,6 +1,9 @@
 package fleet
 
-import "context"
+import (
+	"context"
+	"slices"
+)
 
 type EventKind string
 
@@ -12,6 +15,9 @@ const (
 	EventConfigChanged     EventKind = "ConfigChanged"
 	EventConfigDeleted     EventKind = "ConfigDeleted"
 	EventAssignmentChanged EventKind = "AssignmentChanged"
+	// EventSatelliteChanged asks for a satellite's reconcile after
+	// something it depends on changed, such as one of its groups.
+	EventSatelliteChanged EventKind = "SatelliteChanged"
 )
 
 // EventKinds lists every EventKind constant of this package.
@@ -24,7 +30,19 @@ func EventKinds() []EventKind {
 		EventConfigChanged,
 		EventConfigDeleted,
 		EventAssignmentChanged,
+		EventSatelliteChanged,
 	}
+}
+
+// LogOnlyKinds are recorded for readers such as webhooks but handled by
+// nobody, so they are appended already done. The edge events of plan items
+// 6 and 9 go here.
+func LogOnlyKinds() []EventKind {
+	return []EventKind{}
+}
+
+func (k EventKind) LogOnly() bool {
+	return slices.Contains(LogOnlyKinds(), k)
 }
 
 type AggregateType string
@@ -85,7 +103,12 @@ type ConfigDeletedPayload struct {
 }
 
 type EventSink interface {
+	// Append stores log-only kinds as already done.
 	Append(ctx context.Context, events ...Event) error
+	// AppendToGroupMembers appends one event of kind, with a
+	// ChangedPayload, for every satellite in the group, in one statement
+	// however large the group is.
+	AppendToGroupMembers(ctx context.Context, group GroupID, kind EventKind) error
 }
 
 // NopEventSink drops events; Tx.Events returns it until plan item 2.
@@ -93,7 +116,13 @@ type NopEventSink struct{}
 
 func (NopEventSink) Append(context.Context, ...Event) error { return nil }
 
+func (NopEventSink) AppendToGroupMembers(context.Context, GroupID, EventKind) error { return nil }
+
 // AutocommitEvents is the event sink of Repository.Autocommit.
 type AutocommitEvents struct{}
 
 func (AutocommitEvents) Append(context.Context, ...Event) error { return ErrOutsideTransaction }
+
+func (AutocommitEvents) AppendToGroupMembers(context.Context, GroupID, EventKind) error {
+	return ErrOutsideTransaction
+}

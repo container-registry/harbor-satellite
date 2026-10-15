@@ -34,7 +34,10 @@ type Projects interface {
 }
 
 // Registry is the upstream registry. Adapters return ErrRegistryUnavailable
-// when it cannot be reached.
+// when it cannot be reached, and ErrNotFound when the robot, project or
+// state artifact a call names does not exist, so the async plane can treat
+// an already deleted object as deleted. It has interfacebloat's 10
+// methods; robot rotation (plan item 8.4) gets its own port.
 type Registry interface {
 	RobotAccounts
 	StateArtifacts

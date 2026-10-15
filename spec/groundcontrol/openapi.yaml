@@ -555,6 +555,57 @@ paths:
                 $ref: "#/components/schemas/AppError"
       security:
         - tokenAuth: []
+  /api/ops/outbox:
+    get:
+      tags:
+        - ops
+      summary: Lists outbox events that are not done yet.
+      operationId: listOutboxEvents
+      parameters:
+        - x-go-name: State
+          description: "pending lists every event that is not done; failed only those that reached the maximum attempts. Default pending."
+          name: state
+          in: query
+          schema:
+            type: string
+        - x-go-name: Limit
+          description: Maximum number of events returned.
+          name: limit
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: Outbox events returned, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OutboxEventResponse"
+        "400":
+          description: Unknown state or limit out of range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
   /api/satellites:
     get:
       tags:
@@ -1237,11 +1288,11 @@ paths:
     get:
       tags:
         - health
-      summary: Checks database connectivity.
+      summary: Checks database connectivity and reports Harbor reachability.
       operationId: health
       responses:
         "200":
-          description: Database connection is healthy.
+          description: Database connection is healthy; status is degraded while Harbor is unreachable.
           content:
             application/json:
               schema:
@@ -1384,6 +1435,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "503":
+          description: The satellite's registry account is not provisioned yet; retry after the delay.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
   /satellites/sync:
     post:
       tags:
@@ -1480,6 +1542,17 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "500":
           description: Zero-touch registration could not be completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "503":
+          description: The satellite's registry account is not provisioned yet; retry after the delay.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
           content:
             application/json:
               schema:
@@ -1816,8 +1889,75 @@ components:
           type: string
           enum:
             - healthy
+            - degraded
             - unhealthy
           x-go-name: Status
+        components:
+          type: object
+          description: Health per dependency, such as harbor. Omitted when there is nothing to report.
+          additionalProperties:
+            $ref: "#/components/schemas/ComponentHealth"
+          x-go-name: Components
+    ComponentHealth:
+      type: object
+      title: ComponentHealth is the health of one dependency.
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          description: healthy, degraded or unhealthy.
+          x-go-name: Status
+        last_contact:
+          type: string
+          format: date-time
+          description: Last successful contact.
+          x-go-name: LastContact
+        detail:
+          type: string
+          description: A fixed phrase such as "no contact since startup"; never a URL or error text, because /health is public.
+          x-go-name: Detail
+    OutboxEventResponse:
+      type: object
+      title: OutboxEventResponse is one outbox event that is not done yet.
+      required:
+        - id
+        - kind
+        - aggregate_type
+        - aggregate_id
+        - attempts
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+          x-go-name: ID
+        kind:
+          type: string
+          x-go-name: Kind
+        aggregate_type:
+          type: string
+          x-go-name: AggregateType
+        aggregate_id:
+          type: integer
+          format: int64
+          x-go-name: AggregateID
+        attempts:
+          type: integer
+          format: int32
+          x-omitempty: false
+          x-go-name: Attempts
+        created_at:
+          type: string
+          format: date-time
+          x-go-name: CreatedAt
+        next_attempt_at:
+          type: string
+          format: date-time
+          x-go-name: NextAttemptAt
+        last_error:
+          type: string
+          x-go-name: LastError
     MessageResponse:
       type: object
       title: MessageResponse contains a human-readable operation result.

@@ -21,6 +21,7 @@ General information about architectural decision records is available at <https:
 | [ADR-0009](0009-transparent-oci-registry-proxy.md) | Policy-Enforcing Transparent OCI Registry Proxy with ORAS | proposed, partly implemented (ORAS store landed in #648) |
 | [ADR-0010](0010-peer-to-peer-distribution.md) | Copy OCI artifacts between trusted Satellites on an isolated network | proposed |
 | [ADR-0013](0013-edge-store-concurrency-and-pull-through-streaming.md) | Edge store concurrency and pull-through streaming | proposed; skeleton only |
+| [ADR-0014](0014-ground-control-async-plane.md) | Ground Control async plane: transactional outbox and level-triggered publisher | proposed; skeleton only |
 
 ## Design Notes
 

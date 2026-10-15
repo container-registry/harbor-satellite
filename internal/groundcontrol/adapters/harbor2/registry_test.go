@@ -162,3 +162,18 @@ func TestRegistry_InstancesUseTheirOwnHarbor(t *testing.T) {
 	require.True(t, second.HasProject("beta"))
 	require.False(t, second.HasProject("alpha"))
 }
+
+// Tombstones run again after a crash; an object that is already gone must
+// look like it to them (fleet.ErrNotFound), not like a failure.
+func TestRegistry_MissingObjectsAreErrNotFound(t *testing.T) {
+	pending.Plan(t, "2.3", pendingAdapter)
+	stub := harbortest.New(t)
+	stub.AddProject(fleet.SatelliteProject)
+	r := newRegistry(t, stub)
+
+	require.ErrorIs(t, r.DeleteRobot(context.Background(), 4711), fleet.ErrNotFound)
+	require.ErrorIs(t, r.DeleteState(context.Background(), stateRef(stub, "satellite", "never-pushed")), fleet.ErrNotFound)
+	_, err := r.RotateRobotSecret(context.Background(), 4711)
+	require.ErrorIs(t, err, fleet.ErrNotFound)
+	require.ErrorIs(t, r.SetRobotProjects(context.Background(), 4711, []string{fleet.SatelliteProject}), fleet.ErrNotFound)
+}

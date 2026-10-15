@@ -1,6 +1,7 @@
 package fleet
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
@@ -43,6 +44,22 @@ func (s Settings) SatelliteStateRef(satellite string) (ArtifactRef, error) {
 // byte what server.SatelliteStateArtifact encodes to, and its digest.
 func RenderSatelliteState(state DesiredState) ([]byte, Digest, error) {
 	return nil, "", notimpl.Err("1.2 render satellite state")
+}
+
+// RenderSatelliteDesiredState is the document the satellite reconciler
+// records: {"robot_projects": [...], "state": <RenderSatelliteState>}. Its
+// digest covers both parts, so a change of either is published; PushState
+// stores only the state part.
+func RenderSatelliteDesiredState(state DesiredState, robotProjects []string) ([]byte, Digest, error) {
+	return nil, "", notimpl.Err("2.3 render satellite desired state")
+}
+
+// RobotName is the registry robot name of a satellite created from plan
+// item 2 on: unique per satellite ID, so a robot left over from a deleted
+// satellite of the same name is never adopted. Robots that exist keep
+// their names.
+func RobotName(id SatelliteID, satellite string) string {
+	return satellite + "-" + strconv.FormatInt(int64(id), 10)
 }
 
 // RenderGroupState returns the group's state document, byte for byte what

@@ -17,6 +17,7 @@ import (
 
 // Defines values for HealthResponseStatus.
 const (
+	Degraded  HealthResponseStatus = "degraded"
 	Healthy   HealthResponseStatus = "healthy"
 	Unhealthy HealthResponseStatus = "unhealthy"
 )
@@ -24,6 +25,8 @@ const (
 // Valid indicates whether the value is a known member of the HealthResponseStatus enum.
 func (e HealthResponseStatus) Valid() bool {
 	switch e {
+	case Degraded:
+		return true
 	case Healthy:
 		return true
 	case Unhealthy:
@@ -186,6 +189,18 @@ type ChangeUserPasswordRequest struct {
 	NewPassword string `json:"new_password"`
 }
 
+// ComponentHealth defines model for ComponentHealth.
+type ComponentHealth struct {
+	// Detail A fixed phrase such as "no contact since startup"; never a URL or error text, because /health is public.
+	Detail string `json:"detail,omitempty,omitzero"`
+
+	// LastContact Last successful contact.
+	LastContact time.Time `json:"last_contact,omitempty,omitzero"`
+
+	// Status healthy, degraded or unhealthy.
+	Status string `json:"status"`
+}
+
 // ConfigCreateRequest defines model for ConfigCreateRequest.
 type ConfigCreateRequest struct {
 	Config     ConfigValue `json:"config,omitempty,omitzero"`
@@ -269,7 +284,9 @@ type GroupSyncRequest struct {
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
-	Status HealthResponseStatus `json:"status,omitempty,omitzero"`
+	// Components Health per dependency, such as harbor. Omitted when there is nothing to report.
+	Components map[string]ComponentHealth `json:"components,omitempty,omitzero"`
+	Status     HealthResponseStatus       `json:"status,omitempty,omitzero"`
 }
 
 // HealthResponseStatus defines model for HealthResponse.Status.
@@ -327,6 +344,18 @@ type NullableTimeValue struct {
 type OTelAuditConfig struct {
 	Enabled  bool   `json:"enabled,omitempty,omitzero"`
 	Endpoint string `json:"endpoint,omitempty,omitzero"`
+}
+
+// OutboxEventResponse defines model for OutboxEventResponse.
+type OutboxEventResponse struct {
+	AggregateID   int64     `json:"aggregate_id"`
+	AggregateType string    `json:"aggregate_type"`
+	Attempts      int32     `json:"attempts"`
+	CreatedAt     time.Time `json:"created_at"`
+	ID            int64     `json:"id"`
+	Kind          string    `json:"kind"`
+	LastError     string    `json:"last_error,omitempty,omitzero"`
+	NextAttemptAt time.Time `json:"next_attempt_at,omitempty,omitzero"`
 }
 
 // PeerDescriptor defines model for PeerDescriptor.
@@ -550,6 +579,15 @@ type ZTRRequest struct {
 	Token string `json:"token"`
 }
 
+// ListOutboxEventsParams defines parameters for ListOutboxEvents.
+type ListOutboxEventsParams struct {
+	// State pending lists every event that is not done; failed only those that reached the maximum attempts. Default pending.
+	State string `form:"state,omitempty" json:"state,omitempty,omitzero"`
+
+	// Limit Maximum number of events returned.
+	Limit int32 `form:"limit,omitempty" json:"limit,omitempty,omitzero"`
+}
+
 // ListSpireAgentsParams defines parameters for ListSpireAgents.
 type ListSpireAgentsParams struct {
 	// AttestationType Filters agents by attestation type.
@@ -642,6 +680,9 @@ type ServerInterface interface {
 	// Logout Deletes the current user session.
 	// (POST /api/logout)
 	Logout(w http.ResponseWriter, r *http.Request)
+	// ListOutboxEvents Lists outbox events that are not done yet.
+	// (GET /api/ops/outbox)
+	ListOutboxEvents(w http.ResponseWriter, r *http.Request, params ListOutboxEventsParams)
 	// ListSatellites Lists satellites.
 	// (GET /api/satellites)
 	ListSatellites(w http.ResponseWriter, r *http.Request)
@@ -693,7 +734,7 @@ type ServerInterface interface {
 	// ChangeUserPassword Resets a user's password.
 	// (PATCH /api/users/{username}/password)
 	ChangeUserPassword(w http.ResponseWriter, r *http.Request, username string)
-	// Health Checks database connectivity.
+	// Health Checks database connectivity and reports Harbor reachability.
 	// (GET /health)
 	Health(w http.ResponseWriter, r *http.Request)
 	// Login Creates a user session.
@@ -984,6 +1025,52 @@ func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOutboxEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListOutboxEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListOutboxEventsParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOutboxEvents(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1572,6 +1659,8 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 	r.HandleFunc(options.BaseURL+"/api/groups/{group}/satellites", wrapper.ListGroupSatellites).Methods(http.MethodGet)
 
 	r.HandleFunc(options.BaseURL+"/api/logout", wrapper.Logout).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/api/ops/outbox", wrapper.ListOutboxEvents).Methods(http.MethodGet)
 
 	r.HandleFunc(options.BaseURL+"/api/satellites", wrapper.ListSatellites).Methods(http.MethodGet)
 

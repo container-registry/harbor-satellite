@@ -1,7 +1,7 @@
 package fleet_test
 
 import (
-	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
@@ -70,16 +70,42 @@ func onlyCall(t *testing.T, rec *fleettest.Recorder, method string) fleettest.Ca
 	return calls[0]
 }
 
-// pushedSatelliteState decodes the satellite state document of a PushState
-// call: the group state URLs and the config state URL.
-func pushedSatelliteState(t *testing.T, push fleettest.Call) (states []string, config string) {
+// registryMethods are the fleet.Registry calls; the 2.5 services make none
+// in a request except ZeroTouch's rotation.
+var registryMethods = []string{
+	"FindRobot", "CreateRobot", "SetRobotProjects", "RotateRobotSecret", "DeleteRobot",
+	"PushState", "DeleteState", "EnsureProject", "ReplicationPolicyExists", "Ping",
+}
+
+// noRegistryCalls asserts that the request called the registry only with
+// the allowed methods.
+func noRegistryCalls(t *testing.T, rec *fleettest.Recorder, allowed ...string) {
 	t.Helper()
-	var doc struct {
-		Config string   `json:"config"`
-		States []string `json:"states"`
+	for _, m := range registryMethods {
+		if slices.Contains(allowed, m) {
+			continue
+		}
+		require.Zero(t, rec.Count(m), "%s in the request: %v", m, rec.Methods())
 	}
-	require.NoError(t, json.Unmarshal(arg[[]byte](t, push, 1), &doc))
-	return doc.States, doc.Config
+}
+
+// insideTx asserts that every call of method happens between a WithTx and
+// its Commit.
+func insideTx(t *testing.T, rec *fleettest.Recorder, method string) {
+	t.Helper()
+	inTx, seen := false, false
+	for _, m := range rec.Methods() {
+		switch m {
+		case "WithTx":
+			inTx = true
+		case "Commit", "Rollback":
+			inTx = false
+		case method:
+			seen = true
+			require.True(t, inTx, "%s runs outside a transaction: %v", method, rec.Methods())
+		}
+	}
+	require.True(t, seen, "%s not called: %v", method, rec.Methods())
 }
 
 // outsideTx asserts that method is never called between a WithTx and its
@@ -97,28 +123,6 @@ func outsideTx(t *testing.T, rec *fleettest.Recorder, method string) {
 			require.False(t, inTx, "%s runs inside a transaction: %v", method, rec.Methods())
 		}
 	}
-}
-
-// grantOf is what the robot with harborID may pull after the recorded
-// calls: what CreateRobot gave it (the fake registry hands out one robot),
-// replaced by every later SetRobotProjects for it. How a service splits
-// the calls does not matter (A73).
-func grantOf(t *testing.T, rec *fleettest.Recorder, harborID int64) []string {
-	t.Helper()
-	var projects []string
-	granted := false
-	for _, c := range rec.Calls() {
-		switch c.Method {
-		case "CreateRobot":
-			projects, granted = arg[fleet.RobotSpec](t, c, 0).Projects, true
-		case "SetRobotProjects":
-			if arg[int64](t, c, 0) == harborID {
-				projects, granted = arg[[]string](t, c, 1), true
-			}
-		}
-	}
-	require.True(t, granted, "robot %d was never granted anything: %v", harborID, rec.Methods())
-	return projects
 }
 
 // before asserts that every call to first precedes every call to then.
