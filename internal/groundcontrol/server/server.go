@@ -27,6 +27,7 @@ type Server struct {
 	db             *sql.DB
 	dbQueries      *database.Queries
 	rateLimiter    *middleware.RateLimiter
+	FailureLimiter *middleware.FailureLimiter
 	spiffeProvider spiffe.Provider
 	embeddedSpire  *spiffe.EmbeddedSpireServer
 	spireClient    *spiffe.ServerClient
@@ -103,6 +104,7 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 	// Initialize rate limiter: 10 requests per minute per IP for ZTR endpoint
 	rateLimiter := middleware.NewRateLimiter(10, time.Minute)
 	appServer.rateLimiter = rateLimiter
+	appServer.FailureLimiter = middleware.NewFailureLimiter(cfg.Server.AuthFailureLimit, cfg.Server.AuthFailureWindow)
 
 	// Load SPIFFE configuration
 	spiffeCfg := spiffe.LoadConfig()
@@ -249,6 +251,9 @@ func (r *ServerResult) Close() error {
 	}
 	if r.AppServer.rateLimiter != nil {
 		r.AppServer.rateLimiter.Stop()
+	}
+	if r.AppServer.FailureLimiter != nil {
+		r.AppServer.FailureLimiter.Stop()
 	}
 	if r.AppServer.db != nil {
 		err = errors.Join(err, r.AppServer.db.Close())

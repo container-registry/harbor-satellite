@@ -58,6 +58,7 @@ Key groups include:
 - PostgreSQL access: `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`
 - Bootstrap: `ADMIN_PASSWORD` (required on first start)
 - Server settings: `PORT` (default `8080`), `SESSION_DURATION` (default `24h`), `LOCKOUT_DURATION` (default `5m`), `STALE_THRESHOLD` (default `1h`)
+- Failed authentication limit per client IP (login and Basic auth, any username): `AUTH_FAILURE_LIMIT` (default `20`) failures within `AUTH_FAILURE_WINDOW` (default `1m`) before 429; parsed but not enforced yet
 - Harbor robot accounts: `ROBOT_DURATION_DAYS` (default `30`)
 - Password policy: `PASSWORD_MIN_LENGTH`, `PASSWORD_MAX_LENGTH`, `PASSWORD_REQUIRE_UPPERCASE`, `PASSWORD_REQUIRE_LOWERCASE`, `PASSWORD_REQUIRE_NUMBER`, `PASSWORD_REQUIRE_SPECIAL`
 - Optional TLS: `TLS_CERT_FILE`, `TLS_KEY_FILE`, `TLS_CA_FILE`

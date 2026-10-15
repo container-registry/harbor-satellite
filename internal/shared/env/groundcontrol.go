@@ -47,6 +47,9 @@ type Server struct {
 	SessionDuration time.Duration `env:"SESSION_DURATION" envDefault:"24h"`
 	LockoutDuration time.Duration `env:"LOCKOUT_DURATION" envDefault:"5m"`
 	StaleThreshold  time.Duration `env:"STALE_THRESHOLD"  envDefault:"1h"`
+	// D6 skeleton: the FailureLimiter is built from these but never blocks yet.
+	AuthFailureLimit  int           `env:"AUTH_FAILURE_LIMIT"  envDefault:"20"`
+	AuthFailureWindow time.Duration `env:"AUTH_FAILURE_WINDOW" envDefault:"1m"`
 }
 
 type PasswordPolicy struct {

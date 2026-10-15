@@ -205,7 +205,7 @@ Satellite (each also has a CLI flag, see Satellite CLI Flags): TOKEN, GROUND_CON
 Ground Control:
 - Harbor: HARBOR_URL, HARBOR_USERNAME, HARBOR_PASSWORD, ROBOT_DURATION_DAYS (30), SKIP_HARBOR_HEALTH_CHECK (false, testing only)
 - Database: DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD (sslmode=disable)
-- Server and auth: PORT (8080), ADMIN_PASSWORD (bootstraps `admin`), SESSION_DURATION (24h), LOCKOUT_DURATION (5m), STALE_THRESHOLD (1h, currently unused)
+- Server and auth: PORT (8080), ADMIN_PASSWORD (bootstraps `admin`), SESSION_DURATION (24h), LOCKOUT_DURATION (5m), STALE_THRESHOLD (1h, currently unused), AUTH_FAILURE_LIMIT (20) and AUTH_FAILURE_WINDOW (1m) (D6 skeleton, failed authentications per client IP; not enforced yet)
 - Password policy: PASSWORD_MIN_LENGTH (8), PASSWORD_MAX_LENGTH (128), PASSWORD_REQUIRE_UPPERCASE/LOWERCASE/NUMBER (true), PASSWORD_REQUIRE_SPECIAL (false)
 - TLS: TLS_CERT_FILE, TLS_KEY_FILE (both set enables HTTPS), TLS_CA_FILE (enables client cert verification)
 - SPIFFE: SPIFFE_SERVER_ENABLED (note: not SPIFFE_ENABLED, that one is the satellite's), SPIFFE_TRUST_DOMAIN (harbor-satellite.local), SPIFFE_PROVIDER (sidecar|static), SPIFFE_ENDPOINT_SOCKET, SPIFFE_CERT_FILE, SPIFFE_KEY_FILE, SPIFFE_BUNDLE_FILE
@@ -389,3 +389,4 @@ Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNo
 - internal/shared/logger/logtest/: D4 test helper, `Capture(t)` routes the context-carried zerolog logger into a buffer at every level; the D4 acceptance tests in `state` and `events` use it
 - test/arch/: repository-wide tests; `TestNoSecretsInLogArguments` (D4) parses every non-test file in cmd, internal and pkg for log arguments named like a password, secret or token
 - D5: `server.syncRobotPermissions` (for a set of satellites, one query and one Harbor update per robot with the union of the satellite's groups) and the query `GetProjectsOfSatellites`; D10 (empty satellite state artifact) has tests only
+- D6: `server.verifyUserCredentials(ctx, clientIP, username, password)` (one credential check for Login and Basic auth that owns the lockout, the attempt records and the IP failure limiter) and `middleware.FailureLimiter` (per client IP, never blocks yet), built by `NewServer` into `Server.FailureLimiter` from AUTH_FAILURE_LIMIT (20) and AUTH_FAILURE_WINDOW (1m)
