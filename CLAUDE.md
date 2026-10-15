@@ -288,7 +288,7 @@ CRI configs make the runtime pull through the satellite with the upstream as fal
 
 ### Database Migrations
 
-goose migrations live in `internal/groundcontrol/sql/schema/` (001 to 015, no 014) and run automatically on GC startup. The Dockerfile copies them to `/migrations`.
+goose migrations live in `internal/groundcontrol/sql/schema/` (001 to 016, no 014) and run automatically on GC startup. The Dockerfile copies them to `/migrations`.
 
 ### Hot Reload
 
@@ -390,3 +390,4 @@ Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNo
 - test/arch/: repository-wide tests; `TestNoSecretsInLogArguments` (D4) parses every non-test file in cmd, internal and pkg for log arguments named like a password, secret or token
 - D5: `server.syncRobotPermissions` (for a set of satellites, one query and one Harbor update per robot with the union of the satellite's groups) and the query `GetProjectsOfSatellites`; D10 (empty satellite state artifact) has tests only
 - D6: `server.verifyUserCredentials(ctx, clientIP, username, password)` (one credential check for Login and Basic auth that owns the lockout, the attempt records and the IP failure limiter) and `middleware.FailureLimiter` (per client IP, never blocks yet), built by `NewServer` into `Server.FailureLimiter` from AUTH_FAILURE_LIMIT (20) and AUTH_FAILURE_WINDOW (1m)
+- D7: migration 016 adds `satellite_token.consumed_at`; queries `ClaimToken`, `UnclaimToken`, `ConsumeToken` and the stubs `server.claimZTRToken` / `unclaimZTRToken` (a consumed token is `errTokenInvalid` wrapping `errTokenConsumed`, answered 400 like an unknown one); Ztr still reads and deletes the token without a claim

@@ -96,6 +96,7 @@ type SatelliteToken struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	ExpiresAt   time.Time
+	ConsumedAt  sql.NullTime
 }
 
 type Session struct {
