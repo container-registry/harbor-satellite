@@ -1,0 +1,76 @@
+[Unit]
+Description=Harbor Satellite - Edge Registry Fleet Management (%i)
+Documentation=https://github.com/goharbor/harbor-satellite
+After=network-online.target
+Wants=network-online.target
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+[Service]
+Type=exec
+User=harbor-satellite
+Group=harbor-satellite
+WorkingDirectory=/var/lib/harbor-satellite-%i
+
+# Binary and configuration (instance-specific)
+ExecStart=/opt/harbor-satellite/satellite
+EnvironmentFile=/etc/harbor-satellite/satellite-%i.env
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+
+# Signal handling - Go app handles SIGTERM for graceful shutdown
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+KillMode=mixed
+
+# Logging - Go binary logs to stderr
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=harbor-satellite-%i
+
+# Security Hardening - Strict defaults
+# Filesystem protection
+ProtectSystem=strict
+ReadWritePaths=/var/lib/harbor-satellite-%i
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+# User namespace isolation
+PrivateUsers=yes
+
+# System call filtering
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount
+SystemCallErrorNumber=EPERM
+
+# No capabilities needed for base service (no CRI mirroring)
+CapabilityBoundingSet=
+
+# Memory protection - Safe for statically compiled Go binaries (CGO_ENABLED=0)
+MemoryDenyWriteExecute=true
+
+# Additional hardening
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+PrivateDevices=true
+ProtectClock=true
+ProtectProc=invisible
+ProcSubset=pid
+
+# Resource limits (optional - adjust as needed)
+# LimitNOFILE=65536
+# MemoryMax=2G
+# CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target
