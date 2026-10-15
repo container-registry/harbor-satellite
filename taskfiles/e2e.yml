@@ -780,11 +780,11 @@ tasks:
 
         echo "Starting satellite with named volume..."
         docker run -d --name satellite --network harbor-e2e \
-          -v sat-state-vol:/satellite-state \
+          -v sat-state-vol:/data \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
-          -e CONFIG_DIR=/satellite-state \
+          -e CONFIG_DIR=/data \
           satellite:e2e
 
   crash-and-restart-satellite:
@@ -799,11 +799,11 @@ tasks:
 
         echo "Restarting satellite with same volume..."
         docker run -d --name satellite --network harbor-e2e \
-          -v sat-state-vol:/satellite-state \
+          -v sat-state-vol:/data \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
-          -e CONFIG_DIR=/satellite-state \
+          -e CONFIG_DIR=/data \
           satellite:e2e
 
         echo "Waiting for satellite to start..."
@@ -831,8 +831,8 @@ tasks:
         echo "Verifying OCI content is still present..."
         for i in $(seq 1 6); do
           if docker exec satellite sh -c '
-            test -f /satellite-state/oci/index.json &&
-            grep -q "alpine:latest" /satellite-state/oci/index.json
+            test -f /data/oci/index.json &&
+            grep -q "alpine:latest" /data/oci/index.json
           '; then
             echo "PASS: OCI content is still present after crash recovery"
             exit 0
@@ -912,14 +912,14 @@ tasks:
 
         echo "Starting satellite in BYO mode with named volume..."
         docker run -d --name satellite-byo --network harbor-e2e \
-          -v sat-byo-state-vol:/satellite-state \
+          -v sat-byo-state-vol:/data \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e BYO_REGISTRY=true \
           -e REGISTRY_URL=http://byo-registry:5000 \
           -e USE_UNSECURE=true \
-          -e CONFIG_DIR=/satellite-state \
+          -e CONFIG_DIR=/data \
           satellite:e2e
 
   crash-and-restart-satellite-byo:
@@ -934,14 +934,14 @@ tasks:
 
         echo "Restarting BYO satellite with same volume..."
         docker run -d --name satellite-byo --network harbor-e2e \
-          -v sat-byo-state-vol:/satellite-state \
+          -v sat-byo-state-vol:/data \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="http://gc:8080" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e BYO_REGISTRY=true \
           -e REGISTRY_URL=http://byo-registry:5000 \
           -e USE_UNSECURE=true \
-          -e CONFIG_DIR=/satellite-state \
+          -e CONFIG_DIR=/data \
           satellite:e2e
 
         echo "Waiting for satellite to start..."
