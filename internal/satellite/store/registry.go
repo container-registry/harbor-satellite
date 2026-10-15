@@ -151,7 +151,12 @@ func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts [
 	return nil
 }
 
-// Delete removes manifest roots from this registry.
+// Delete removes manifest roots from this registry. A registry cannot drop a
+// single tag, so Delete removes the artifact's own digest, never the one a
+// moved tag resolves to now, and that drops every tag of the digest: state
+// replication passes only digests no wanted entity references. The registry
+// collects the content itself. D9 skeleton: it still deletes the manifest
+// the tag resolves to.
 func (r *RegistryStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	for _, artifact := range artifacts {
 		if err := artifact.validate(); err != nil {
