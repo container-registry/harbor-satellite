@@ -1,18 +1,47 @@
 version: "3"
 
+# HARBOR_EXTERNAL=1 runs the Harbor-backed tests against an already running
+# Harbor instead of the bundled one. HARBOR_NETWORK names its docker network,
+# HARBOR_HOST_URL is its URL from the host and HARBOR_INTERNAL_URL (default
+# http://core:8080) its URL inside that network, which must match its
+# EXT_ENDPOINT. The e2e containers, Harbor projects, robots and state
+# artifacts then carry the hs-e2e- prefix, and cleanup removes only those.
+# E2E_GC_HOST_PORT (default 9180) sets the Ground Control host port.
 vars:
   E2E_DIR: "{{.ROOT_DIR}}/test/e2e/docker"
   HARBOR_ADMIN_USER: admin
   HARBOR_ADMIN_PASSWORD: Harbor12345
-  HARBOR_URL: http://localhost:8080
-  HARBOR_INTERNAL_URL: http://core:8080
+  HARBOR_EXTERNAL: '{{env "HARBOR_EXTERNAL"}}'
+  HARBOR_NETWORK: '{{env "HARBOR_NETWORK"}}'
+  E2E_PREFIX: '{{if .HARBOR_EXTERNAL}}hs-e2e-{{end}}'
+  HARBOR_URL: '{{if .HARBOR_EXTERNAL}}{{env "HARBOR_HOST_URL"}}{{else}}http://localhost:8080{{end}}'
+  HARBOR_INTERNAL_URL: '{{if .HARBOR_EXTERNAL}}{{env "HARBOR_INTERNAL_URL" | default "http://core:8080"}}{{else}}http://core:8080{{end}}'
+  HARBOR_INTERNAL_HOST: '{{.HARBOR_INTERNAL_URL | trimPrefix "http://" | trimPrefix "https://"}}'
   HARBOR_API: "{{.HARBOR_URL}}/api/v2.0"
   GROUNDCONTROL_ADMIN_USER: admin
   GROUNDCONTROL_ADMIN_PASSWORD: AdminPass123
-  GROUNDCONTROL_URL: http://localhost:9080
-  PROJECT_NAME: harbor-satellite
+  GC_HOST_PORT: '{{if .HARBOR_EXTERNAL}}{{env "E2E_GC_HOST_PORT" | default "9180"}}{{else}}9080{{end}}'
+  GROUNDCONTROL_URL: "http://localhost:{{.GC_HOST_PORT}}"
+  GC_INTERNAL_URL: "http://{{.E2E_PREFIX}}gc:8080"
+  E2E_NETWORK: '{{if .HARBOR_EXTERNAL}}hs-e2e{{else}}harbor-e2e{{end}}'
+  SATELLITE_NETWORKS: '--network {{.E2E_NETWORK}}{{if .HARBOR_EXTERNAL}} --network {{.HARBOR_NETWORK}}{{end}}'
+  COMPOSE: '{{if .HARBOR_EXTERNAL}}HARBOR_NETWORK={{.HARBOR_NETWORK}} HARBOR_INTERNAL_URL={{.HARBOR_INTERNAL_URL}} E2E_GC_HOST_PORT={{.GC_HOST_PORT}} docker compose -p hs-e2e -f test/e2e/docker/docker-compose.yml -f test/e2e/docker/docker-compose.external.yml{{else}}docker compose -f test/e2e/docker/docker-compose.yml{{end}}'
+  COMPOSE_SERVICES: '{{if .HARBOR_EXTERNAL}}postgres gc{{end}}'
+  SATELLITE_CONTAINER: "{{.E2E_PREFIX}}satellite"
+  SATELLITE_BYO_CONTAINER: "{{.E2E_PREFIX}}satellite-byo"
+  BYO_REGISTRY_CONTAINER: "{{.E2E_PREFIX}}byo-registry"
+  SAT_STATE_VOLUME: "{{.E2E_PREFIX}}sat-state-vol"
+  SAT_BYO_STATE_VOLUME: "{{.E2E_PREFIX}}sat-byo-state-vol"
+  SATELLITE_TOKEN_FILE: "/tmp/{{.E2E_PREFIX}}e2e_satellite_token"
+  BYO_SATELLITE_TOKEN_FILE: "/tmp/{{.E2E_PREFIX}}e2e_byo_satellite_token"
+  SATELLITE_PROJECT_MARKER: /tmp/hs-e2e-satellite-project-created
+  PROJECT_NAME: "{{.E2E_PREFIX}}harbor-satellite"
   REGISTRY_NAME: test-registry
-  DEST_NAMESPACE: test-group
+  DEST_NAMESPACE: "{{.E2E_PREFIX}}test-group"
+  CONFIG_NAME: "{{.E2E_PREFIX}}test-config"
+  BYO_CONFIG_NAME: "{{.E2E_PREFIX}}byo-config"
+  SATELLITE_NAME: "{{.E2E_PREFIX}}test-satellite"
+  BYO_SATELLITE_NAME: "{{.E2E_PREFIX}}byo-satellite"
 
 tasks:
   test:
@@ -49,15 +78,35 @@ tasks:
       - task: generate-join-token
       - task: verify-spiffe-attestation
       - echo "SPIFFE join token E2E test passed"
+
   setup:
     desc: Start Harbor and Ground Control stack
     cmds:
+      - task: check-external-harbor
+        if: '[ -n "{{.HARBOR_EXTERNAL}}" ]'
+      - task: cleanup-harbor
+        if: '[ -n "{{.HARBOR_EXTERNAL}}" ]'
       - echo "Building Ground Control image..."
       - docker build --build-arg COMPONENT=groundcontrol -t gc:e2e -f Dockerfile .
-      - echo "Starting Harbor and GC stack..."
-      - docker compose -f test/e2e/docker/docker-compose.yml up -d
+      - echo "Starting {{if .HARBOR_EXTERNAL}}GC stack against the external Harbor on {{.HARBOR_NETWORK}}{{else}}Harbor and GC stack{{end}}..."
+      - "{{.COMPOSE}} up -d{{if .COMPOSE_SERVICES}} {{.COMPOSE_SERVICES}}{{end}}"
       - sleep 5
-      - docker compose -f test/e2e/docker/docker-compose.yml ps
+      - "{{.COMPOSE}} ps"
+    silent: true
+
+  check-external-harbor:
+    internal: true
+    cmds:
+      - |
+        if [ -z "{{.HARBOR_NETWORK}}" ] || [ -z "{{.HARBOR_URL}}" ]; then
+          echo "ERROR: HARBOR_EXTERNAL=1 requires HARBOR_NETWORK and HARBOR_HOST_URL"
+          exit 1
+        fi
+        if ! docker network inspect "{{.HARBOR_NETWORK}}" > /dev/null; then
+          echo "ERROR: docker network {{.HARBOR_NETWORK}} does not exist"
+          exit 1
+        fi
+        echo "Using external Harbor {{.HARBOR_URL}} ({{.HARBOR_INTERNAL_URL}} on {{.HARBOR_NETWORK}})"
     silent: true
 
   setup-spiffe:
@@ -204,9 +253,54 @@ tasks:
     desc: Stop and remove E2E containers
     cmds:
       - echo "Stopping e2e containers..."
-      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
-      - docker rm -f satellite 2>/dev/null || true
+      - docker rm -f {{.SATELLITE_CONTAINER}} 2>/dev/null || true
+      - "{{.COMPOSE}} down -v --remove-orphans 2>/dev/null || true"
+      - task: cleanup-harbor
+        if: '[ -n "{{.HARBOR_EXTERNAL}}" ]'
       - echo "Cleanup complete"
+    silent: true
+
+  cleanup-harbor:
+    desc: Remove the robots, state artifacts and projects an external-Harbor run created
+    internal: true
+    cmds:
+      - |
+        PREFIX="{{.E2E_PREFIX}}"
+        if [ -z "$PREFIX" ]; then
+          echo "ERROR: cleanup-harbor only runs with HARBOR_EXTERNAL=1"
+          exit 1
+        fi
+        AUTH="{{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}}"
+        API="{{.HARBOR_API}}"
+        echo "Removing Harbor robots, state artifacts and projects named ${PREFIX}*..."
+
+        for id in $(curl -sf -u "$AUTH" "$API/robots?page_size=100&q=name%3D~$PREFIX" | jq -r --arg p "\$$PREFIX" '.[] | select(.name | contains($p)) | .id'); do
+          curl -sf -o /dev/null -X DELETE -u "$AUTH" "$API/robots/$id" && echo "Deleted robot $id"
+        done
+
+        for repo in $(curl -sf -u "$AUTH" "$API/projects/satellite/repositories?page_size=100&q=name%3D~$PREFIX" | jq -r --arg p "/$PREFIX" '.[] | select(.name | contains($p)) | .name'); do
+          encoded=$(printf '%s' "${repo#satellite/}" | sed 's#/#%252F#g')
+          curl -sf -o /dev/null -X DELETE -u "$AUTH" "$API/projects/satellite/repositories/$encoded" && echo "Deleted $repo"
+        done
+
+        if [ -f "{{.SATELLITE_PROJECT_MARKER}}" ]; then
+          if ! satellite_project=$(curl -sf -u "$AUTH" "$API/projects/satellite"); then
+            rm -f "{{.SATELLITE_PROJECT_MARKER}}"
+          elif [ "$(echo "$satellite_project" | jq -r '.repo_count // 0')" = "0" ]; then
+            curl -sf -o /dev/null -X DELETE -u "$AUTH" "$API/projects/satellite" && echo "Deleted project satellite" && rm -f "{{.SATELLITE_PROJECT_MARKER}}"
+          else
+            echo "Keeping project satellite: it holds repositories this run did not create"
+          fi
+        fi
+
+        for project in $(curl -sf -u "$AUTH" "$API/projects?page_size=100&name=$PREFIX" | jq -r --arg p "$PREFIX" '.[] | select(.name | startswith($p)) | .name'); do
+          for repo in $(curl -sf -u "$AUTH" "$API/projects/$project/repositories?page_size=100" | jq -r '.[].name'); do
+            encoded=$(printf '%s' "${repo#"$project"/}" | sed 's#/#%252F#g')
+            curl -sf -o /dev/null -X DELETE -u "$AUTH" "$API/projects/$project/repositories/$encoded" && echo "Deleted $repo"
+          done
+          curl -sf -o /dev/null -X DELETE -u "$AUTH" "$API/projects/$project" && echo "Deleted project $project"
+        done
+        exit 0
     silent: true
 
   cleanup-spiffe:
@@ -271,28 +365,84 @@ tasks:
   init-harbor:
     desc: Initialize Harbor with project, image, registry, and replication policy
     cmds:
+      - task: record-satellite-project
+        if: '[ -n "{{.HARBOR_EXTERNAL}}" ]'
+      - task: create-harbor-project
+        vars: { PROJECT: "{{.PROJECT_NAME}}" }
+      - task: push-image
+        vars: { PROJECT: "{{.PROJECT_NAME}}" }
+      - task: init-harbor-replication
+
+  record-satellite-project:
+    desc: Remember whether Ground Control will create the satellite project, so cleanup removes it only then
+    internal: true
+    cmds:
       - |
-        echo "Creating project..."
-        curl -sf -X POST {{.HARBOR_API}}/projects \
+        code=$(curl -s -o /dev/null -w '%{http_code}' -I -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} "{{.HARBOR_API}}/projects?project_name=satellite")
+        if [ "$code" = "404" ]; then
+          touch {{.SATELLITE_PROJECT_MARKER}}
+          echo "Harbor project satellite does not exist yet; cleanup removes it if it stays empty"
+        fi
+
+  create-harbor-project:
+    desc: Create a Harbor project unless it exists
+    internal: true
+    requires:
+      vars: [PROJECT]
+    cmds:
+      - |
+        echo "Creating project {{.PROJECT}}..."
+        code=$(curl -s -o /dev/null -w '%{http_code}' -X POST {{.HARBOR_API}}/projects \
           -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
           -H "Content-Type: application/json" \
-          -d '{"project_name": "{{.PROJECT_NAME}}"}'
+          -d '{"project_name": "{{.PROJECT}}"}')
+        case "$code" in
+          201) ;;
+          409) echo "Project {{.PROJECT}} already exists" ;;
+          *) echo "ERROR: creating project {{.PROJECT}} returned HTTP $code"; exit 1 ;;
+        esac
 
+  push-image:
+    desc: Push alpine:latest into a Harbor project
+    internal: true
+    requires:
+      vars: [PROJECT]
+    cmds:
+      - |
         echo "Pulling alpine locally (avoids Docker Hub rate limits in container)..."
         docker pull alpine:latest || { echo "Failed to pull alpine:latest"; exit 1; }
-
+        {{if .HARBOR_EXTERNAL}}
+        # The Docker Desktop daemon cannot reach a published Harbor port and the
+        # token realm only resolves on Harbor's network, so push from a container there.
+        echo "Pushing image to {{.HARBOR_INTERNAL_HOST}}/{{.PROJECT}} from a container on {{.HARBOR_NETWORK}}..."
+        docker save alpine:latest | docker run -i --rm --network {{.HARBOR_NETWORK}} alpine:latest sh -c '
+          apk add --no-cache crane > /dev/null &&
+          cat > /tmp/image.tar &&
+          crane auth login {{.HARBOR_INTERNAL_HOST}} -u {{.HARBOR_ADMIN_USER}} -p {{.HARBOR_ADMIN_PASSWORD}} > /dev/null &&
+          crane push --insecure /tmp/image.tar {{.HARBOR_INTERNAL_HOST}}/{{.PROJECT}}/alpine:latest
+        '
+        {{else}}
         echo "Pushing image to Harbor..."
-        docker tag alpine:latest localhost:8080/{{.PROJECT_NAME}}/alpine:latest
+        docker tag alpine:latest localhost:8080/{{.PROJECT}}/alpine:latest
 
         # Try docker login/push (Docker), fallback to podman flags (Podman)
         if docker login localhost:8080 -u admin -p Harbor12345 2>/dev/null; then
-          docker push localhost:8080/{{.PROJECT_NAME}}/alpine:latest 2>/dev/null || \
-          docker push localhost:8080/{{.PROJECT_NAME}}/alpine:latest --tls-verify=false
+          docker push localhost:8080/{{.PROJECT}}/alpine:latest 2>/dev/null || \
+          docker push localhost:8080/{{.PROJECT}}/alpine:latest --tls-verify=false
         else
           docker login localhost:8080 -u admin -p Harbor12345 --tls-verify=false
-          docker push localhost:8080/{{.PROJECT_NAME}}/alpine:latest --tls-verify=false
+          docker push localhost:8080/{{.PROJECT}}/alpine:latest --tls-verify=false
         fi
+        {{end}}
 
+  init-harbor-replication:
+    desc: Create the satellite replication registry and policy in the bundled Harbor
+    internal: true
+    cmds:
+      - |
+        {{if .HARBOR_EXTERNAL}}
+        echo "Skipping replication registry and policy: the satellite flow does not use them and an external Harbor may lack the harbor-satellite adapter"
+        {{else}}
         echo "Creating registry..."
         curl -sf -X POST {{.HARBOR_API}}/registries \
           -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
@@ -334,7 +484,7 @@ tasks:
           -u {{.HARBOR_ADMIN_USER}}:{{.HARBOR_ADMIN_PASSWORD}} \
           -H "Content-Type: application/json" \
           -d '{"policy_id": 1}'
-
+        {{end}}
         echo "Harbor initialized"
 
   init-groundcontrol:
@@ -353,11 +503,11 @@ tasks:
           -H "Authorization: Bearer {{.GC_TOKEN}}" \
           -H "Content-Type: application/json" \
           -d '{
-            "config_name": "test-config",
+            "config_name": "{{.CONFIG_NAME}}",
             "registry": "{{.HARBOR_INTERNAL_URL}}",
             "config": {
               "app_config": {
-                "ground_control_url": "http://gc:8080",
+                "ground_control_url": "{{.GC_INTERNAL_URL}}",
                 "log_level": "info",
                 "use_unsecure": true,
                 "state_replication_interval": "@every 00h00m10s",
@@ -395,9 +545,9 @@ tasks:
           -H "Authorization: Bearer {{.GC_TOKEN}}" \
           -H "Content-Type: application/json" \
           -d '{
-            "name": "test-satellite",
+            "name": "{{.SATELLITE_NAME}}",
             "groups": ["{{.DEST_NAMESPACE}}"],
-            "config_name": "test-config"
+            "config_name": "{{.CONFIG_NAME}}"
           }')
 
         TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
@@ -411,9 +561,9 @@ tasks:
         docker build -t satellite:e2e -f Dockerfile .
 
         echo "Starting satellite..."
-        docker run -d --name satellite --network harbor-e2e \
+        docker run -d --name {{.SATELLITE_CONTAINER}} {{.SATELLITE_NETWORKS}} \
           -e TOKEN="$TOKEN" \
-          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e GROUND_CONTROL_URL="{{.GC_INTERNAL_URL}}" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e REGISTRY_DATA_DIR=/data/oci \
           -e JSON_LOGGING=true \
@@ -422,7 +572,7 @@ tasks:
         echo "Waiting for satellite OCI store to initialize..."
         sleep 5
         echo "--- Early satellite logs ---"
-        docker logs satellite 2>&1 | head -30
+        docker logs {{.SATELLITE_CONTAINER}} 2>&1 | head -30
         echo "---"
 
   verify:
@@ -432,7 +582,7 @@ tasks:
         echo "Waiting for replication..."
         for i in $(seq 1 12); do
           echo "Checking replication status... ($i/12)"
-          if docker exec satellite sh -c '
+          if docker exec {{.SATELLITE_CONTAINER}} sh -c '
             test -f /data/oci/oci-layout &&
             test -f /data/oci/index.json &&
             grep -q "alpine:latest" /data/oci/index.json &&
@@ -445,7 +595,7 @@ tasks:
         done
         echo "Timeout waiting for replication"
         echo "--- Full satellite logs ---"
-        docker logs satellite 2>&1
+        docker logs {{.SATELLITE_CONTAINER}} 2>&1
         echo "---"
         exit 1
 
@@ -579,17 +729,17 @@ tasks:
           -H "Authorization: Bearer $GC_TOKEN" \
           -H "Content-Type: application/json" \
           -d '{
-            "config_name": "byo-config",
+            "config_name": "{{.BYO_CONFIG_NAME}}",
             "registry": "{{.HARBOR_INTERNAL_URL}}",
             "config": {
               "app_config": {
-                "ground_control_url": "http://gc:8080",
+                "ground_control_url": "{{.GC_INTERNAL_URL}}",
                 "log_level": "info",
                 "use_unsecure": true,
                 "state_replication_interval": "@every 00h00m10s",
                 "register_satellite_interval": "@every 00h00m10s",
                 "bring_own_registry": true,
-                "local_registry": {"url": "http://byo-registry:5000"}
+                "local_registry": {"url": "http://{{.BYO_REGISTRY_CONTAINER}}:5000"}
               }
             }
           }')
@@ -631,9 +781,9 @@ tasks:
           -H "Authorization: Bearer $GC_TOKEN" \
           -H "Content-Type: application/json" \
           -d '{
-            "name": "byo-satellite",
+            "name": "{{.BYO_SATELLITE_NAME}}",
             "groups": ["{{.DEST_NAMESPACE}}"],
-            "config_name": "byo-config"
+            "config_name": "{{.BYO_CONFIG_NAME}}"
           }')
 
         TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
@@ -644,20 +794,20 @@ tasks:
         echo "Satellite registered with token: $TOKEN"
 
         echo "Starting BYO registry (registry:2)..."
-        docker run -d --name byo-registry --network harbor-e2e \
+        docker run -d --name {{.BYO_REGISTRY_CONTAINER}} --network {{.E2E_NETWORK}} \
           -e REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry \
           -e REGISTRY_HTTP_ADDR=0.0.0.0:5000 \
           registry:2
 
         echo "Waiting for BYO registry to be healthy..."
         for i in $(seq 1 15); do
-          if docker exec byo-registry wget -q -O - http://localhost:5000/v2/ > /dev/null 2>&1; then
+          if docker exec {{.BYO_REGISTRY_CONTAINER}} wget -q -O - http://localhost:5000/v2/ > /dev/null 2>&1; then
             echo "BYO registry is healthy"
             break
           fi
           if [ "$i" -eq 15 ]; then
             echo "ERROR: BYO registry failed to start"
-            docker logs byo-registry 2>&1 | tail -20
+            docker logs {{.BYO_REGISTRY_CONTAINER}} 2>&1 | tail -20
             exit 1
           fi
           echo "Waiting for BYO registry... ($i/15)"
@@ -668,12 +818,12 @@ tasks:
         docker build -t satellite:e2e -f Dockerfile .
 
         echo "Starting satellite in BYO mode..."
-        docker run -d --name satellite-byo --network harbor-e2e \
+        docker run -d --name {{.SATELLITE_BYO_CONTAINER}} {{.SATELLITE_NETWORKS}} \
           -e TOKEN="$TOKEN" \
-          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e GROUND_CONTROL_URL="{{.GC_INTERNAL_URL}}" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e BYO_REGISTRY=true \
-          -e REGISTRY_URL=http://byo-registry:5000 \
+          -e REGISTRY_URL=http://{{.BYO_REGISTRY_CONTAINER}}:5000 \
           -e USE_UNSECURE=true \
           satellite:e2e
 
@@ -684,14 +834,14 @@ tasks:
         echo "Waiting for replication to BYO registry..."
         for i in $(seq 1 12); do
           echo "Checking BYO registry... ($i/12)"
-          if docker run --rm --network harbor-e2e alpine:latest sh -c "
+          if docker run --rm --network {{.E2E_NETWORK}} alpine:latest sh -c "
             apk add --no-cache crane > /dev/null 2>&1 &&
-            crane manifest byo-registry:5000/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
+            crane manifest {{.BYO_REGISTRY_CONTAINER}}:5000/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
           "; then
             echo "Image available in BYO registry, pulling..."
-            docker run --rm --network harbor-e2e alpine:latest sh -c "
+            docker run --rm --network {{.E2E_NETWORK}} alpine:latest sh -c "
               apk add --no-cache crane &&
-              crane pull byo-registry:5000/{{.PROJECT_NAME}}/alpine:latest alpine.tar --insecure &&
+              crane pull {{.BYO_REGISTRY_CONTAINER}}:5000/{{.PROJECT_NAME}}/alpine:latest alpine.tar --insecure &&
               tar -xf alpine.tar &&
               cat manifest.json
             "
@@ -702,17 +852,19 @@ tasks:
         done
         echo "Timeout waiting for BYO replication"
         echo "Satellite logs:"
-        docker logs satellite-byo 2>&1 | tail -50
+        docker logs {{.SATELLITE_BYO_CONTAINER}} 2>&1 | tail -50
         echo "BYO registry catalog:"
-        docker exec byo-registry wget -q -O - http://localhost:5000/v2/_catalog 2>&1 || true
+        docker exec {{.BYO_REGISTRY_CONTAINER}} wget -q -O - http://localhost:5000/v2/_catalog 2>&1 || true
         exit 1
 
   cleanup-byo:
     desc: Stop and remove BYO E2E containers
     cmds:
       - echo "Stopping BYO e2e containers..."
-      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
-      - docker rm -f satellite-byo byo-registry 2>/dev/null || true
+      - docker rm -f {{.SATELLITE_BYO_CONTAINER}} {{.BYO_REGISTRY_CONTAINER}} 2>/dev/null || true
+      - "{{.COMPOSE}} down -v --remove-orphans 2>/dev/null || true"
+      - task: cleanup-harbor
+        if: '[ -n "{{.HARBOR_EXTERNAL}}" ]'
       - echo "BYO cleanup complete"
     silent: true
 
@@ -762,9 +914,9 @@ tasks:
           -H "Authorization: Bearer {{.GC_TOKEN}}" \
           -H "Content-Type: application/json" \
           -d '{
-            "name": "test-satellite",
+            "name": "{{.SATELLITE_NAME}}",
             "groups": ["{{.DEST_NAMESPACE}}"],
-            "config_name": "test-config"
+            "config_name": "{{.CONFIG_NAME}}"
           }')
 
         TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
@@ -773,16 +925,16 @@ tasks:
           exit 1
         fi
         echo "Satellite registered with token: $TOKEN"
-        echo "$TOKEN" > /tmp/e2e_satellite_token
+        echo "$TOKEN" > {{.SATELLITE_TOKEN_FILE}}
 
         echo "Building satellite from local code..."
         docker build -t satellite:e2e -f Dockerfile .
 
         echo "Starting satellite with named volume..."
-        docker run -d --name satellite --network harbor-e2e \
-          -v sat-state-vol:/data \
+        docker run -d --name {{.SATELLITE_CONTAINER}} {{.SATELLITE_NETWORKS}} \
+          -v {{.SAT_STATE_VOLUME}}:/data \
           -e TOKEN="$TOKEN" \
-          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e GROUND_CONTROL_URL="{{.GC_INTERNAL_URL}}" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/data \
           satellite:e2e
@@ -791,17 +943,17 @@ tasks:
     desc: Kill satellite and restart it to test crash recovery
     cmds:
       - |
-        TOKEN=$(cat /tmp/e2e_satellite_token)
+        TOKEN=$(cat {{.SATELLITE_TOKEN_FILE}})
 
         echo "Killing satellite (SIGKILL to simulate crash)..."
-        docker kill satellite
-        docker rm satellite
+        docker kill {{.SATELLITE_CONTAINER}}
+        docker rm {{.SATELLITE_CONTAINER}}
 
         echo "Restarting satellite with same volume..."
-        docker run -d --name satellite --network harbor-e2e \
-          -v sat-state-vol:/data \
+        docker run -d --name {{.SATELLITE_CONTAINER}} {{.SATELLITE_NETWORKS}} \
+          -v {{.SAT_STATE_VOLUME}}:/data \
           -e TOKEN="$TOKEN" \
-          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e GROUND_CONTROL_URL="{{.GC_INTERNAL_URL}}" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/data \
           satellite:e2e
@@ -815,14 +967,14 @@ tasks:
       - |
         echo "Checking satellite logs for crash recovery..."
 
-        if docker logs satellite 2>&1 | tail -100 | grep -q "Old state has zero entities, replicating the complete state"; then
+        if docker logs {{.SATELLITE_CONTAINER}} 2>&1 | tail -100 | grep -q "Old state has zero entities, replicating the complete state"; then
           echo "FAIL: Satellite re-replicated the complete state after crash"
-          docker logs satellite 2>&1 | tail -50
+          docker logs {{.SATELLITE_CONTAINER}} 2>&1 | tail -50
           exit 1
         fi
         echo "PASS: No full re-replication detected"
 
-        if docker logs satellite 2>&1 | tail -100 | grep -q "Total artifacts to replicate: 0"; then
+        if docker logs {{.SATELLITE_CONTAINER}} 2>&1 | tail -100 | grep -q "Total artifacts to replicate: 0"; then
           echo "PASS: Zero artifacts to replicate after restart"
         else
           echo "WARN: Could not confirm zero artifacts to replicate (may still be syncing)"
@@ -830,7 +982,7 @@ tasks:
 
         echo "Verifying OCI content is still present..."
         for i in $(seq 1 6); do
-          if docker exec satellite sh -c '
+          if docker exec {{.SATELLITE_CONTAINER}} sh -c '
             test -f /data/oci/index.json &&
             grep -q "alpine:latest" /data/oci/index.json
           '; then
@@ -841,17 +993,19 @@ tasks:
           sleep 5
         done
         echo "FAIL: OCI content missing after crash recovery"
-        docker logs satellite 2>&1 | tail -50
+        docker logs {{.SATELLITE_CONTAINER}} 2>&1 | tail -50
         exit 1
 
   cleanup-crash-recovery:
     desc: Stop and remove crash recovery E2E containers
     cmds:
       - echo "Stopping crash recovery containers..."
-      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
-      - docker rm -f satellite 2>/dev/null || true
-      - docker volume rm -f sat-state-vol 2>/dev/null || true
-      - rm -f /tmp/e2e_satellite_token 2>/dev/null || true
+      - docker rm -f {{.SATELLITE_CONTAINER}} 2>/dev/null || true
+      - "{{.COMPOSE}} down -v --remove-orphans 2>/dev/null || true"
+      - docker volume rm -f {{.SAT_STATE_VOLUME}} 2>/dev/null || true
+      - rm -f {{.SATELLITE_TOKEN_FILE}} 2>/dev/null || true
+      - task: cleanup-harbor
+        if: '[ -n "{{.HARBOR_EXTERNAL}}" ]'
       - echo "Crash recovery cleanup complete"
     silent: true
 
@@ -873,9 +1027,9 @@ tasks:
           -H "Authorization: Bearer $GC_TOKEN" \
           -H "Content-Type: application/json" \
           -d '{
-            "name": "byo-satellite",
+            "name": "{{.BYO_SATELLITE_NAME}}",
             "groups": ["{{.DEST_NAMESPACE}}"],
-            "config_name": "byo-config"
+            "config_name": "{{.BYO_CONFIG_NAME}}"
           }')
 
         TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
@@ -884,23 +1038,23 @@ tasks:
           exit 1
         fi
         echo "Satellite registered with token: $TOKEN"
-        echo "$TOKEN" > /tmp/e2e_byo_satellite_token
+        echo "$TOKEN" > {{.BYO_SATELLITE_TOKEN_FILE}}
 
         echo "Starting BYO registry (registry:2)..."
-        docker run -d --name byo-registry --network harbor-e2e \
+        docker run -d --name {{.BYO_REGISTRY_CONTAINER}} --network {{.E2E_NETWORK}} \
           -e REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry \
           -e REGISTRY_HTTP_ADDR=0.0.0.0:5000 \
           registry:2
 
         echo "Waiting for BYO registry to be healthy..."
         for i in $(seq 1 15); do
-          if docker exec byo-registry wget -q -O - http://localhost:5000/v2/ > /dev/null 2>&1; then
+          if docker exec {{.BYO_REGISTRY_CONTAINER}} wget -q -O - http://localhost:5000/v2/ > /dev/null 2>&1; then
             echo "BYO registry is healthy"
             break
           fi
           if [ "$i" -eq 15 ]; then
             echo "ERROR: BYO registry failed to start"
-            docker logs byo-registry 2>&1 | tail -20
+            docker logs {{.BYO_REGISTRY_CONTAINER}} 2>&1 | tail -20
             exit 1
           fi
           echo "Waiting for BYO registry... ($i/15)"
@@ -911,13 +1065,13 @@ tasks:
         docker build -t satellite:e2e -f Dockerfile .
 
         echo "Starting satellite in BYO mode with named volume..."
-        docker run -d --name satellite-byo --network harbor-e2e \
-          -v sat-byo-state-vol:/data \
+        docker run -d --name {{.SATELLITE_BYO_CONTAINER}} {{.SATELLITE_NETWORKS}} \
+          -v {{.SAT_BYO_STATE_VOLUME}}:/data \
           -e TOKEN="$TOKEN" \
-          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e GROUND_CONTROL_URL="{{.GC_INTERNAL_URL}}" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e BYO_REGISTRY=true \
-          -e REGISTRY_URL=http://byo-registry:5000 \
+          -e REGISTRY_URL=http://{{.BYO_REGISTRY_CONTAINER}}:5000 \
           -e USE_UNSECURE=true \
           -e CONFIG_DIR=/data \
           satellite:e2e
@@ -926,20 +1080,20 @@ tasks:
     desc: Kill BYO satellite and restart it to test crash recovery
     cmds:
       - |
-        TOKEN=$(cat /tmp/e2e_byo_satellite_token)
+        TOKEN=$(cat {{.BYO_SATELLITE_TOKEN_FILE}})
 
         echo "Killing BYO satellite (SIGKILL to simulate crash)..."
-        docker kill satellite-byo
-        docker rm satellite-byo
+        docker kill {{.SATELLITE_BYO_CONTAINER}}
+        docker rm {{.SATELLITE_BYO_CONTAINER}}
 
         echo "Restarting BYO satellite with same volume..."
-        docker run -d --name satellite-byo --network harbor-e2e \
-          -v sat-byo-state-vol:/data \
+        docker run -d --name {{.SATELLITE_BYO_CONTAINER}} {{.SATELLITE_NETWORKS}} \
+          -v {{.SAT_BYO_STATE_VOLUME}}:/data \
           -e TOKEN="$TOKEN" \
-          -e GROUND_CONTROL_URL="http://gc:8080" \
+          -e GROUND_CONTROL_URL="{{.GC_INTERNAL_URL}}" \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e BYO_REGISTRY=true \
-          -e REGISTRY_URL=http://byo-registry:5000 \
+          -e REGISTRY_URL=http://{{.BYO_REGISTRY_CONTAINER}}:5000 \
           -e USE_UNSECURE=true \
           -e CONFIG_DIR=/data \
           satellite:e2e
@@ -953,14 +1107,14 @@ tasks:
       - |
         echo "Checking BYO satellite logs for crash recovery..."
 
-        if docker logs satellite-byo 2>&1 | tail -100 | grep -q "Old state has zero entities, replicating the complete state"; then
+        if docker logs {{.SATELLITE_BYO_CONTAINER}} 2>&1 | tail -100 | grep -q "Old state has zero entities, replicating the complete state"; then
           echo "FAIL: BYO satellite re-replicated the complete state after crash"
-          docker logs satellite-byo 2>&1 | tail -50
+          docker logs {{.SATELLITE_BYO_CONTAINER}} 2>&1 | tail -50
           exit 1
         fi
         echo "PASS: No full re-replication detected"
 
-        if docker logs satellite-byo 2>&1 | tail -100 | grep -q "Total artifacts to replicate: 0"; then
+        if docker logs {{.SATELLITE_BYO_CONTAINER}} 2>&1 | tail -100 | grep -q "Total artifacts to replicate: 0"; then
           echo "PASS: Zero artifacts to replicate after restart"
         else
           echo "WARN: Could not confirm zero artifacts to replicate (may still be syncing)"
@@ -968,9 +1122,9 @@ tasks:
 
         echo "Verifying image is still accessible in BYO registry..."
         for i in $(seq 1 6); do
-          if docker run --rm --network harbor-e2e alpine:latest sh -c "
+          if docker run --rm --network {{.E2E_NETWORK}} alpine:latest sh -c "
             apk add --no-cache crane > /dev/null 2>&1 &&
-            crane manifest byo-registry:5000/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
+            crane manifest {{.BYO_REGISTRY_CONTAINER}}:5000/{{.PROJECT_NAME}}/alpine:latest --insecure > /dev/null 2>&1
           "; then
             echo "PASS: Image still accessible in BYO registry after crash recovery"
             exit 0
@@ -979,16 +1133,18 @@ tasks:
           sleep 5
         done
         echo "FAIL: Image not accessible in BYO registry after crash recovery"
-        docker logs satellite-byo 2>&1 | tail -50
+        docker logs {{.SATELLITE_BYO_CONTAINER}} 2>&1 | tail -50
         exit 1
 
   cleanup-crash-recovery-byo:
     desc: Stop and remove BYO crash recovery E2E containers
     cmds:
       - echo "Stopping BYO crash recovery containers..."
-      - docker compose -f test/e2e/docker/docker-compose.yml down -v --remove-orphans 2>/dev/null || true
-      - docker rm -f satellite-byo byo-registry 2>/dev/null || true
-      - docker volume rm -f sat-byo-state-vol 2>/dev/null || true
-      - rm -f /tmp/e2e_byo_satellite_token 2>/dev/null || true
+      - docker rm -f {{.SATELLITE_BYO_CONTAINER}} {{.BYO_REGISTRY_CONTAINER}} 2>/dev/null || true
+      - "{{.COMPOSE}} down -v --remove-orphans 2>/dev/null || true"
+      - docker volume rm -f {{.SAT_BYO_STATE_VOLUME}} 2>/dev/null || true
+      - rm -f {{.BYO_SATELLITE_TOKEN_FILE}} 2>/dev/null || true
+      - task: cleanup-harbor
+        if: '[ -n "{{.HARBOR_EXTERNAL}}" ]'
       - echo "BYO crash recovery cleanup complete"
     silent: true
