@@ -45,9 +45,12 @@ func SaveState(path string, stateMap []StateMap, configDigest string) error {
 	}
 	tmpName := tmp.Name()
 
+	fileClosed := false
 	cleanup := func() {
-		if closeErr := tmp.Close(); closeErr != nil && err == nil {
-			err = fmt.Errorf("close temp file: %w", closeErr)
+		if !fileClosed {
+			if closeErr := tmp.Close(); closeErr != nil && err == nil {
+				err = fmt.Errorf("close temp file: %w", closeErr)
+			}
 		}
 		if err != nil {
 			if removeErr := os.Remove(tmpName); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
@@ -66,6 +69,7 @@ func SaveState(path string, stateMap []StateMap, configDigest string) error {
 	if err = tmp.Close(); err != nil {
 		return fmt.Errorf("close temp file: %w", err)
 	}
+	fileClosed = true
 	if err = os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("rename temp to state file: %w", err)
 	}
