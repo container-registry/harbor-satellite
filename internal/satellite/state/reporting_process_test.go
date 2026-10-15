@@ -1,8 +1,6 @@
 package state
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,10 +10,9 @@ import (
 	"testing"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
-	"github.com/container-registry/harbor-satellite/internal/shared/logger"
+	"github.com/container-registry/harbor-satellite/internal/shared/logger/logtest"
 	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -281,9 +278,7 @@ func TestExecute_StatusReportDoesNotLogRegistrySecret(t *testing.T) {
 
 	cm := newReportingTestCM(t, srv.URL)
 	cm.With(config.SetStateAuth("robot$test-sat", secret, "http://registry"))
-	var logs bytes.Buffer
-	log := zerolog.New(&logs).Level(zerolog.TraceLevel)
-	ctx := context.WithValue(context.Background(), logger.LoggerKey, &log)
+	ctx, _, logs := logtest.Capture(t)
 
 	require.NoError(t, NewStatusReportingProcess(cm, nil).Execute(ctx))
 	require.EqualValues(t, 1, requests.Load())

@@ -386,3 +386,5 @@ Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNo
 - internal/satellite/gcclient/: D1, the single satellite→GC client over pkg/groundcontrol (token ZTR, SPIFFE ZTR, sync) with its own result types (no pkg/config import) and `Credentials` (`RobotBasic`, `NoCredentials`); the state processes still join URLs themselves
 - D2: `POST /satellites/refresh` is routed behind satellite auth and answers 501 (`server/satellite_refresh.go`, `server/notimplemented.go`); `scheduler.NewScheduler` (no interval, used for the `refresh_credentials` event) still runs its process on Start; the fix makes it run only on Trigger
 - D3: `server.satelliteAuthChain` is the seam for the satellite auth order; it keeps today's order (SPIFFE middleware inner), the fix swaps it
+- internal/shared/logger/logtest/: D4 test helper, `Capture(t)` routes the context-carried zerolog logger into a buffer at every level; the D4 acceptance tests in `state` and `events` use it
+- test/arch/: repository-wide tests; `TestNoSecretsInLogArguments` (D4) parses every non-test file in cmd, internal and pkg for log arguments named like a password, secret or token

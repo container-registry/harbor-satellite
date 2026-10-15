@@ -1,18 +1,15 @@
 package events
 
 import (
-	"bytes"
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"sync"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/logger"
+	"github.com/container-registry/harbor-satellite/internal/shared/logger/logtest"
 	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -124,12 +121,10 @@ func TestRefreshCredentialProcess_ExecuteDoesNotLogSecrets(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
-	var logs bytes.Buffer
-	log := zerolog.New(&logs).Level(zerolog.TraceLevel)
-	ctx := context.WithValue(context.Background(), logger.LoggerKey, &log)
+	ctx, log, logs := logtest.Capture(t)
 	p := newTestRefreshProcess()
 	p.cm = cm
-	p.log = &log
+	p.log = log
 
 	require.NoError(t, p.Execute(ctx))
 	require.Equal(t, refreshedSecret, cm.GetSourceRegistryPassword())
