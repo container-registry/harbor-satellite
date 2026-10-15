@@ -201,7 +201,7 @@ Config encryption is opt-in via `app_config.encrypt_config` (default false) and 
 
 Both binaries load `.env` from the working directory if present. Template: `.env.example`. Source of truth: `internal/shared/env/`.
 
-Satellite (each also has a CLI flag, see Satellite CLI Flags): TOKEN, GROUND_CONTROL_URL, HARBOR_REGISTRY_URL, USE_UNSECURE, SPIFFE_ENABLED, SPIFFE_ENDPOINT_SOCKET, SPIFFE_EXPECTED_SERVER_ID, BYO_REGISTRY, REGISTRY_URL, REGISTRY_USERNAME, REGISTRY_PASSWORD, CONFIG_DIR, REGISTRY_DATA_DIR, SHUTDOWN_TIMEOUT (30s), NO_REGISTRY_FALLBACK, DIRECT_DELIVERY, IMAGE_DIR, PROXY_MODE (proxy|replica, default proxy), PROXY_PORT (8585). Parsed but not used yet (Harbor 3 skeleton, no flag): TELEMETRY_ADDR.
+Satellite (each also has a CLI flag, see Satellite CLI Flags): TOKEN, GROUND_CONTROL_URL, HARBOR_REGISTRY_URL, USE_UNSECURE, SPIFFE_ENABLED, SPIFFE_ENDPOINT_SOCKET, SPIFFE_EXPECTED_SERVER_ID, BYO_REGISTRY, REGISTRY_URL, REGISTRY_USERNAME, REGISTRY_PASSWORD, CONFIG_DIR, REGISTRY_DATA_DIR, SHUTDOWN_TIMEOUT (30s), NO_REGISTRY_FALLBACK, DIRECT_DELIVERY, IMAGE_DIR, PROXY_MODE (proxy|replica, default proxy), PROXY_PORT (8585). Parsed but not used yet (Harbor 3 skeleton, no flag): TELEMETRY_ADDR, PROXY_MAX_CONNECTIONS (0), PROXY_WRITE_TIMEOUT (0s), PROXY_STREAMING (false), PROXY_PREFETCH_CONCURRENCY (2).
 
 Ground Control:
 - Harbor: HARBOR_URL, HARBOR_USERNAME, HARBOR_PASSWORD, ROBOT_DURATION_DAYS (30), SKIP_HARBOR_HEALTH_CHECK (false, testing only)
@@ -328,6 +328,7 @@ ADRs in docs/decisions/:
 - ADR-0007, ADR-0008: PARSEC hardware-backed identity and bootstrapping flow (deprecated; PARSEC code was removed in #526). Related proposal in docs/proposals/
 - ADR-0009: ORAS OCI storage and a policy-enforcing transparent proxy (proposed; ORAS store #648, proxy package #649, wired with proxy/replica modes in #654; CEL policy and cache mode not implemented). Its Implementation Status table predates #654
 - ADR-0010: Peer-to-peer distribution between satellites (proposed; config block #674 and peer roster #676 only)
+- ADR-0013: Edge store concurrency and pull-through streaming (proposed; skeleton only, see Harbor 3 skeleton below)
 - groundcontrol-internal-package-migration.md: moving GC into the root module (done)
 
 ## Common Workflows
@@ -398,3 +399,4 @@ Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNo
 - `internal/satellite/telemetry` (0.4): metric names, `Recorder` and `Nop`, and a stub `/healthz` + `/metrics` server. `TELEMETRY_ADDR` is parsed; nothing starts the server
 - `internal/groundcontrol/dbpool` (3.2): one pool per plane (API, fleet, async); fleet and async use the API pool unless `DB_URL_FLEET`/`DB_URL_ASYNC` is set. `env.Database` parses `DB_URL_API|FLEET|ASYNC`, `DB_{API,FLEET,ASYNC}_*` pool settings and `DB_SSLMODE` (default `disable`; 3.3 makes it `require`)/`DB_SSLROOTCERT`, but GC still opens a single pool from `URL()` with `sslmode=disable`. lib/pq stays: it cancels server queries on context end (`TestLibPQCancelsQueryOnContextCancel`)
 - `internal/groundcontrol/sql/pending` (3.4): constraints DDL and `UpdateConfigIfVersion`, read by neither goose nor sqlc (README there); `updateConfig` already documents its 409. `DeleteStaleLoginAttempts` (3.5) is generated, the cleanup does not call it yet. Reverting migrations below 015 fails (015's Down recreates `satellite_cached_images`); `TestMigrations_UpDownUp` is pending
+- Edge pull path (5, ADR-0013 proposed): `store.OpenOCIStore` (atomic `index.json`, torn-index recovery), `CollectGarbage` with `FillLeases`/`RefCounter`, the optional `Filler` capability, `state.ResetReplicatedEntities`, `internal/satellite/lane`, `image.NewPullWithOptions`/`NewLanePrefetcher` (zero options are `NewPull`) and `proxy.WithWriteDeadline`. `cmd/satellite` still calls `NewOCIStore` and `NewPull`; `PROXY_MAX_CONNECTIONS`, `PROXY_WRITE_TIMEOUT`, `PROXY_STREAMING` and `PROXY_PREFETCH_CONCURRENCY` are parsed only

@@ -1,6 +1,8 @@
 package env
 
 import (
+	"time"
+
 	"github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
@@ -26,6 +28,12 @@ type HarborSatellite struct {
 	ProxyMode              proxy.Mode `env:"PROXY_MODE"                envDefault:"proxy"`
 	ProxyPort              int        `env:"PROXY_PORT"                envDefault:"8585"`
 	TelemetryAddr          string     `env:"TELEMETRY_ADDR"`
+
+	// Plan items 5.3 and 5.4, parsed only: cmd/satellite does not read them yet.
+	ProxyMaxConnections      int           `env:"PROXY_MAX_CONNECTIONS"      envDefault:"0"`
+	ProxyWriteTimeout        time.Duration `env:"PROXY_WRITE_TIMEOUT"        envDefault:"0s"`
+	ProxyStreaming           bool          `env:"PROXY_STREAMING"            envDefault:"false"`
+	ProxyPrefetchConcurrency int           `env:"PROXY_PREFETCH_CONCURRENCY" envDefault:"2"`
 }
 
 func (h HarborSatellite) ApplyDefaults() HarborSatellite {
