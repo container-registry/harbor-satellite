@@ -36,12 +36,15 @@ vars:
   BYO_SATELLITE_TOKEN_FILE: "/tmp/{{.E2E_PREFIX}}e2e_byo_satellite_token"
   SATELLITE_PROJECT_MARKER: /tmp/hs-e2e-satellite-project-created
   PROJECT_NAME: "{{.E2E_PREFIX}}harbor-satellite"
+  PROJECT_NAME_B: "{{.E2E_PREFIX}}harbor-satellite-b"
   REGISTRY_NAME: test-registry
   DEST_NAMESPACE: "{{.E2E_PREFIX}}test-group"
+  DEST_NAMESPACE_B: "{{.E2E_PREFIX}}test-group-b"
   CONFIG_NAME: "{{.E2E_PREFIX}}test-config"
   BYO_CONFIG_NAME: "{{.E2E_PREFIX}}byo-config"
   SATELLITE_NAME: "{{.E2E_PREFIX}}test-satellite"
   BYO_SATELLITE_NAME: "{{.E2E_PREFIX}}byo-satellite"
+  MULTI_GROUP_SATELLITE_NAME: "{{.E2E_PREFIX}}multi-group-satellite"
 
 tasks:
   test:
@@ -78,6 +81,32 @@ tasks:
       - task: generate-join-token
       - task: verify-spiffe-attestation
       - echo "SPIFFE join token E2E test passed"
+
+  test-multi-group:
+    desc: Run multi-group E2E test (pending plan item D5, runs with HARBOR3_PENDING=1)
+    cmds:
+      - cmd: 'echo "SKIP pending plan item D5: robot permissions keep only the projects of the last group (set HARBOR3_PENDING=1 to run)"'
+        if: '[ -z "$HARBOR3_PENDING" ]'
+      - task: run-multi-group
+        if: '[ -n "$HARBOR3_PENDING" ]'
+
+  run-multi-group:
+    internal: true
+    cmds:
+      - task: setup
+      - defer: { task: cleanup }
+      - task: wait-harbor
+      - task: wait-groundcontrol
+      - task: init-harbor
+      - task: create-harbor-project
+        vars: { PROJECT: "{{.PROJECT_NAME_B}}" }
+      - task: push-image
+        vars: { PROJECT: "{{.PROJECT_NAME_B}}" }
+      - task: init-groundcontrol
+      - task: init-group-b
+      - task: register-satellite-multi-group
+      - task: verify-multi-group
+      - echo "Multi-group E2E test passed"
 
   setup:
     desc: Start Harbor and Ground Control stack
@@ -529,6 +558,28 @@ tasks:
 
         echo "Ground Control initialized"
 
+  init-group-b:
+    desc: Create a second group backed by a second Harbor project
+    internal: true
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sf -X POST {{.GROUNDCONTROL_URL}}/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GROUNDCONTROL_ADMIN_USER}}","password":"{{.GROUNDCONTROL_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Creating group {{.DEST_NAMESPACE_B}}..."
+        curl -sf -X POST {{.GROUNDCONTROL_URL}}/api/groups/sync \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "group": "{{.DEST_NAMESPACE_B}}",
+            "registry": "{{.HARBOR_INTERNAL_URL}}",
+            "artifacts": [{"repository": "{{.PROJECT_NAME_B}}/alpine", "tag": ["latest"]}]
+          }'
+
   register-satellite:
     desc: Register satellite and start it
     vars:
@@ -575,6 +626,46 @@ tasks:
         docker logs {{.SATELLITE_CONTAINER}} 2>&1 | head -30
         echo "---"
 
+  register-satellite-multi-group:
+    desc: Register one satellite in two groups and start it
+    internal: true
+    vars:
+      GC_TOKEN:
+        sh: |
+          curl -sf -X POST {{.GROUNDCONTROL_URL}}/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"{{.GROUNDCONTROL_ADMIN_USER}}","password":"{{.GROUNDCONTROL_ADMIN_PASSWORD}}"}' | \
+            grep -o '"token":"[^"]*"' | cut -d'"' -f4
+    cmds:
+      - |
+        echo "Registering satellite in groups {{.DEST_NAMESPACE}} and {{.DEST_NAMESPACE_B}}..."
+        RESPONSE=$(curl -sf -X POST {{.GROUNDCONTROL_URL}}/api/satellites \
+          -H "Authorization: Bearer {{.GC_TOKEN}}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name": "{{.MULTI_GROUP_SATELLITE_NAME}}",
+            "groups": ["{{.DEST_NAMESPACE}}", "{{.DEST_NAMESPACE_B}}"],
+            "config_name": "{{.CONFIG_NAME}}"
+          }')
+
+        TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "$TOKEN" ]; then
+          echo "Failed to get satellite token: $RESPONSE"
+          exit 1
+        fi
+
+        echo "Building satellite from local code..."
+        docker build -t satellite:e2e -f Dockerfile .
+
+        echo "Starting satellite..."
+        docker run -d --name {{.SATELLITE_CONTAINER}} {{.SATELLITE_NETWORKS}} \
+          -e TOKEN="$TOKEN" \
+          -e GROUND_CONTROL_URL="{{.GC_INTERNAL_URL}}" \
+          -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
+          -e REGISTRY_DATA_DIR=/data/oci \
+          -e JSON_LOGGING=true \
+          satellite:e2e
+
   verify:
     desc: Verify image replication to the local OCI layout, a proxy pull and the heartbeat
     cmds:
@@ -602,6 +693,31 @@ tasks:
         vars: { CONTAINER: "{{.SATELLITE_CONTAINER}}" }
       - task: verify-heartbeat
         vars: { SATELLITE: "{{.SATELLITE_NAME}}", CONTAINER: "{{.SATELLITE_CONTAINER}}" }
+
+  verify-multi-group:
+    desc: Verify the satellite replicated the images of both groups (pending plan item D5)
+    internal: true
+    cmds:
+      - |
+        echo "Waiting for images from both groups..."
+        for i in $(seq 1 12); do
+          echo "Checking replication status... ($i/12)"
+          if docker exec {{.SATELLITE_CONTAINER}} sh -c '
+            grep -q "\"{{.PROJECT_NAME}}/alpine:latest\"" /data/oci/index.json &&
+            grep -q "\"{{.PROJECT_NAME_B}}/alpine:latest\"" /data/oci/index.json
+          '; then
+            echo "PASS: images from {{.PROJECT_NAME}} and {{.PROJECT_NAME_B}} replicated"
+            exit 0
+          fi
+          sleep 10
+        done
+        echo "FAIL: the satellite did not replicate the images of both groups"
+        echo "--- index.json ---"
+        docker exec {{.SATELLITE_CONTAINER}} cat /data/oci/index.json 2>&1 || true
+        echo
+        echo "--- satellite errors ---"
+        docker logs {{.SATELLITE_CONTAINER}} 2>&1 | grep -iE '"level":"(error|warn)"' | tail -20
+        exit 1
 
   verify-proxy-pull:
     desc: Pull the replicated image through the satellite's loopback OCI proxy and check digests
