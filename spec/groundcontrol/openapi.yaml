@@ -244,6 +244,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "409":
+          description: The configuration changed concurrently; retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "500":
           description: Configuration could not be updated.
           content:

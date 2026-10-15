@@ -3874,6 +3874,8 @@ type UpdateConfigHTTPResponse struct {
 	JSON401 *AppError
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *AppError
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -3896,6 +3898,11 @@ func (r UpdateConfigHTTPResponse) GetJSON401() *AppError {
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
 func (r UpdateConfigHTTPResponse) GetJSON404() *AppError {
 	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r UpdateConfigHTTPResponse) GetJSON409() *AppError {
+	return r.JSON409
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -6871,6 +6878,13 @@ func ParseUpdateConfigHTTPResponse(rsp *http.Response) (*UpdateConfigHTTPRespons
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError

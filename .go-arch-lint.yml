@@ -37,6 +37,7 @@ components:
     in:
       - internal/groundcontrol/auth
       - internal/groundcontrol/database
+      - internal/groundcontrol/dbpool
       - internal/groundcontrol/harbor
       - internal/groundcontrol/harborhealth
       - internal/groundcontrol/logger

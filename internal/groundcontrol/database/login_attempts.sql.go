@@ -8,7 +8,26 @@ package database
 import (
 	"context"
 	"database/sql"
+	"time"
 )
+
+const deleteStaleLoginAttempts = `-- name: DeleteStaleLoginAttempts :exec
+DELETE FROM login_attempts
+WHERE last_attempt < $1::TIMESTAMP - make_interval(days => $2::INT)
+  AND (locked_until IS NULL OR locked_until < $1::TIMESTAMP)
+`
+
+type DeleteStaleLoginAttemptsParams struct {
+	Now  time.Time
+	Days int32
+}
+
+// now is a parameter because locked_until is written by the application as
+// TIMESTAMP; NOW() would compare it with the server's wall clock.
+func (q *Queries) DeleteStaleLoginAttempts(ctx context.Context, arg DeleteStaleLoginAttemptsParams) error {
+	_, err := q.db.ExecContext(ctx, deleteStaleLoginAttempts, arg.Now, arg.Days)
+	return err
+}
 
 const getLoginAttempts = `-- name: GetLoginAttempts :one
 SELECT id, username, failed_count, locked_until, last_attempt FROM login_attempts

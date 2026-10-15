@@ -23,6 +23,30 @@ type Database struct {
 	Username string `env:"USERNAME"`
 	Port     string `env:"PORT"`
 	Host     string `env:"HOST"`
+	// SSLMode and SSLRootCert are parsed but not used yet: URL() still sends
+	// sslmode=disable. Plan 3.3 (G5) switches the default to "require".
+	SSLMode     string `env:"SSLMODE"     envDefault:"disable"`
+	SSLRootCert string `env:"SSLROOTCERT"`
+	// Not used yet (plan 3.2): the API pool opens URL_API or the single DSN;
+	// fleet and async open their own pool only when their URL is set.
+	URLAPI   string `env:"URL_API"`
+	URLFleet string `env:"URL_FLEET"`
+	URLAsync string `env:"URL_ASYNC"`
+
+	APIPool   Pool `envPrefix:"API_"`
+	FleetPool Pool `envPrefix:"FLEET_"`
+	AsyncPool Pool `envPrefix:"ASYNC_"`
+}
+
+// Pool tunes one database/sql pool; zero keeps the database/sql default.
+type Pool struct {
+	MaxOpenConns           int           `env:"MAX_OPEN_CONNS"`
+	MaxIdleConns           int           `env:"MAX_IDLE_CONNS"`
+	ConnMaxLifetime        time.Duration `env:"CONN_MAX_LIFETIME"`
+	ConnMaxIdleTime        time.Duration `env:"CONN_MAX_IDLE_TIME"`
+	StatementTimeout       time.Duration `env:"STATEMENT_TIMEOUT"`
+	LockTimeout            time.Duration `env:"LOCK_TIMEOUT"`
+	IdleInTxSessionTimeout time.Duration `env:"IDLE_IN_TX_SESSION_TIMEOUT"`
 }
 
 type Harbor struct {
