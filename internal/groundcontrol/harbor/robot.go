@@ -21,7 +21,10 @@ func GetRobotDetails(r *robot.CreateRobotCreated) (int64, string, string, int64)
 }
 
 func IsRobotPresent(ctx context.Context, name string) (bool, error) {
-	client := GetClient()
+	client, err := GetClient()
+	if err != nil {
+		return false, fmt.Errorf("getting harbor client: %w", err)
+	}
 
 	name = fmt.Sprintf("name=%s", name)
 	response, err := client.Robot.ListRobot(
@@ -42,7 +45,10 @@ func IsRobotPresent(ctx context.Context, name string) (bool, error) {
 }
 
 func ListRobots(ctx context.Context, opts ListParams) (*robot.ListRobotOK, error) {
-	client := GetClient()
+	client, err := GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("getting harbor client: %w", err)
+	}
 	response, err := client.Robot.ListRobot(
 		ctx,
 		&robot.ListRobotParams{
@@ -59,7 +65,10 @@ func ListRobots(ctx context.Context, opts ListParams) (*robot.ListRobotOK, error
 }
 
 func DeleteRobotAccount(ctx context.Context, robotID int64) (*robot.DeleteRobotOK, error) {
-	client := GetClient()
+	client, err := GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("getting harbor client: %w", err)
+	}
 	response, err := client.Robot.DeleteRobot(
 		ctx,
 		&robot.DeleteRobotParams{
@@ -73,7 +82,10 @@ func DeleteRobotAccount(ctx context.Context, robotID int64) (*robot.DeleteRobotO
 }
 
 func RefreshRobotAccount(ctx context.Context, secret string, robotID int64) (*robot.RefreshSecOK, error) {
-	client := GetClient()
+	client, err := GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("getting harbor client: %w", err)
+	}
 	response, err := client.Robot.RefreshSec(
 		ctx,
 		&robot.RefreshSecParams{
@@ -90,7 +102,10 @@ func RefreshRobotAccount(ctx context.Context, secret string, robotID int64) (*ro
 }
 
 func UpdateRobotAccount(ctx context.Context, opts *models.Robot) (*robot.UpdateRobotOK, error) {
-	client := GetClient()
+	client, err := GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("getting harbor client: %w", err)
+	}
 	response, err := client.Robot.UpdateRobot(
 		ctx,
 		&robot.UpdateRobotParams{
@@ -105,7 +120,10 @@ func UpdateRobotAccount(ctx context.Context, opts *models.Robot) (*robot.UpdateR
 }
 
 func GetRobotAccount(ctx context.Context, id int64) (*models.Robot, error) {
-	client := GetClient()
+	client, err := GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("getting harbor client: %w", err)
+	}
 	response, err := client.Robot.GetRobotByID(
 		ctx,
 		&robot.GetRobotByIDParams{
@@ -119,7 +137,10 @@ func GetRobotAccount(ctx context.Context, id int64) (*models.Robot, error) {
 }
 
 func CreateRobotAccount(ctx context.Context, opts *models.RobotCreate) (*robot.CreateRobotCreated, error) {
-	client := GetClient()
+	client, err := GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("getting harbor client: %w", err)
+	}
 	response, err := client.Robot.CreateRobot(
 		ctx,
 		&robot.CreateRobotParams{
