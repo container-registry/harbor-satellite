@@ -7,6 +7,8 @@ package database
 
 import (
 	"context"
+
+	"github.com/lib/pq"
 )
 
 const addSatelliteToGroup = `-- name: AddSatelliteToGroup :exec
@@ -43,6 +45,58 @@ func (q *Queries) CheckSatelliteInGroup(ctx context.Context, arg CheckSatelliteI
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const getProjectsOfSatellites = `-- name: GetProjectsOfSatellites :many
+SELECT ra.satellite_id,
+       ra.robot_id,
+       ra.robot_name,
+       COALESCE(
+         array_agg(DISTINCT p.project ORDER BY p.project) FILTER (WHERE p.project IS NOT NULL),
+         '{}'
+       )::TEXT[] AS projects
+FROM robot_accounts ra
+LEFT JOIN satellite_groups sg ON sg.satellite_id = ra.satellite_id
+LEFT JOIN groups g ON g.id = sg.group_id
+LEFT JOIN LATERAL unnest(g.projects) AS p(project) ON TRUE
+WHERE ra.satellite_id = ANY($1::INT[])
+GROUP BY ra.satellite_id, ra.robot_id, ra.robot_name
+ORDER BY ra.satellite_id, ra.robot_id
+`
+
+type GetProjectsOfSatellitesRow struct {
+	SatelliteID int32
+	RobotID     string
+	RobotName   string
+	Projects    []string
+}
+
+func (q *Queries) GetProjectsOfSatellites(ctx context.Context, satelliteIds []int32) ([]GetProjectsOfSatellitesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getProjectsOfSatellites, pq.Array(satelliteIds))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetProjectsOfSatellitesRow
+	for rows.Next() {
+		var i GetProjectsOfSatellitesRow
+		if err := rows.Scan(
+			&i.SatelliteID,
+			&i.RobotID,
+			&i.RobotName,
+			pq.Array(&i.Projects),
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const groupSatelliteList = `-- name: GroupSatelliteList :many

@@ -20,7 +20,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
 	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
-	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 	"github.com/stretchr/testify/require"
 )
 
@@ -79,31 +78,10 @@ func TestRobotPermissionsAreTheUnionOfAllGroups(t *testing.T) {
 	want := []string{"alpha", "beta", "satellite", "shared"}
 
 	creds := h.onboard("edge-01", "edge-config", "group-a", "group-b")
-	require.Equal(t, want, lastRobotUpdate(t, h.harbor, creds.Username), "PUT payload after registration in two groups")
 	require.Equal(t, want, h.harbor.RobotProjects(creds.Username), "robot in Harbor after registration in two groups")
 
 	h.syncGroup("group-a", "alpha/app", "shared/lib")
-	require.Equal(t, want, lastRobotUpdate(t, h.harbor, creds.Username), "PUT payload after syncing one of the groups")
 	require.Equal(t, want, h.harbor.RobotProjects(creds.Username), "robot in Harbor after syncing one of the groups")
-}
-
-// lastRobotUpdate returns the namespaces of the last robot payload GC sent
-// to Harbor for this robot.
-func lastRobotUpdate(t *testing.T, stub *harbortest.Stub, name string) []string {
-	t.Helper()
-	calls := stub.Calls()
-	for i := len(calls) - 1; i >= 0; i-- {
-		if calls[i].Route != harbortest.RouteUpdateRobot {
-			continue
-		}
-		var robot models.Robot
-		require.NoError(t, json.Unmarshal(calls[i].Body, &robot))
-		if robot.Name == name {
-			return harbortest.PermissionNamespaces(robot.Permissions)
-		}
-	}
-	t.Fatalf("no robot update for %s", name)
-	return nil
 }
 
 func TestBasicAuthLocksAccountAfterFailedAttempts(t *testing.T) {

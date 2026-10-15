@@ -21,3 +21,19 @@ SELECT EXISTS (
     FROM satellite_groups
     WHERE satellite_id = $1 AND group_id = $2
 );
+
+-- name: GetProjectsOfSatellites :many
+SELECT ra.satellite_id,
+       ra.robot_id,
+       ra.robot_name,
+       COALESCE(
+         array_agg(DISTINCT p.project ORDER BY p.project) FILTER (WHERE p.project IS NOT NULL),
+         '{}'
+       )::TEXT[] AS projects
+FROM robot_accounts ra
+LEFT JOIN satellite_groups sg ON sg.satellite_id = ra.satellite_id
+LEFT JOIN groups g ON g.id = sg.group_id
+LEFT JOIN LATERAL unnest(g.projects) AS p(project) ON TRUE
+WHERE ra.satellite_id = ANY(sqlc.arg(satellite_ids)::INT[])
+GROUP BY ra.satellite_id, ra.robot_id, ra.robot_name
+ORDER BY ra.satellite_id, ra.robot_id;

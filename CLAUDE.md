@@ -388,3 +388,4 @@ Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNo
 - D3: `server.satelliteAuthChain` is the seam for the satellite auth order; it keeps today's order (SPIFFE middleware inner), the fix swaps it
 - internal/shared/logger/logtest/: D4 test helper, `Capture(t)` routes the context-carried zerolog logger into a buffer at every level; the D4 acceptance tests in `state` and `events` use it
 - test/arch/: repository-wide tests; `TestNoSecretsInLogArguments` (D4) parses every non-test file in cmd, internal and pkg for log arguments named like a password, secret or token
+- D5: `server.syncRobotPermissions` (for a set of satellites, one query and one Harbor update per robot with the union of the satellite's groups) and the query `GetProjectsOfSatellites`; D10 (empty satellite state artifact) has tests only
