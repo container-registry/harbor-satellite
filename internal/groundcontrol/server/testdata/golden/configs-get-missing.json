@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 404,
+    "message": "Config not found: sql: no rows in result set"
+  },
+  "request": "GET /api/configs/missing",
+  "status": 404
+}

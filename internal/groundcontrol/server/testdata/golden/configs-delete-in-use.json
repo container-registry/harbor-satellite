@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 400,
+    "message": "Cannot delete config that is in use"
+  },
+  "request": "DELETE /api/configs/edge-config-2",
+  "status": 400
+}

@@ -1,0 +1,7 @@
+{
+  "body": {
+    "status": "healthy"
+  },
+  "request": "GET /health",
+  "status": 200
+}

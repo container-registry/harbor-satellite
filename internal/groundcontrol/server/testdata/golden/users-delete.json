@@ -1,0 +1,5 @@
+{
+  "body": "",
+  "request": "DELETE /api/users/operator",
+  "status": 204
+}

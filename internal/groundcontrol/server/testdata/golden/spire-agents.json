@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 503,
+    "message": "SPIRE server not configured"
+  },
+  "request": "GET /api/spire/agents",
+  "status": 503
+}

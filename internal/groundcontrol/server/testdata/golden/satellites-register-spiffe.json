@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 503,
+    "message": "SPIRE server not configured"
+  },
+  "request": "POST /api/satellites/register",
+  "status": 503
+}

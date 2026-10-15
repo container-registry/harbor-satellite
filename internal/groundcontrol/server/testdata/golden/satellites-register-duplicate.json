@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 400,
+    "message": "Error: Robot Account name already present. Try with different name"
+  },
+  "request": "POST /api/satellites",
+  "status": 400
+}

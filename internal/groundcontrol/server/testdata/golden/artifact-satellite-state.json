@@ -1,0 +1,9 @@
+{
+  "artifact": "satellite/satellite-state/edge-01/state:latest",
+  "body": {
+    "config": "http://harbor.test/satellite/config-state/edge-config/state:latest",
+    "states": [
+      "http://harbor.test/satellite/group-state/edge-group/state:latest"
+    ]
+  }
+}

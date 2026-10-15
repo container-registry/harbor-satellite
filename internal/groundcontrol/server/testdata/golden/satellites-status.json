@@ -1,0 +1,43 @@
+{
+  "body": {
+    "Activity": "replicating",
+    "ArtifactIds": [
+      "\u003cid\u003e",
+      "\u003cid\u003e"
+    ],
+    "CpuPercent": {
+      "String": "12.50",
+      "Valid": true
+    },
+    "CreatedAt": "\u003ctimestamp\u003e",
+    "ID": "\u003cid\u003e",
+    "ImageCount": {
+      "Int32": 2,
+      "Valid": true
+    },
+    "LastSyncDurationMs": {
+      "Int64": 0,
+      "Valid": true
+    },
+    "LatestConfigDigest": {
+      "String": "",
+      "Valid": false
+    },
+    "LatestStateDigest": {
+      "String": "",
+      "Valid": false
+    },
+    "MemoryUsedBytes": {
+      "Int64": 1048576,
+      "Valid": true
+    },
+    "ReportedAt": "\u003ctimestamp\u003e",
+    "SatelliteID": "\u003cid\u003e",
+    "StorageUsedBytes": {
+      "Int64": 1073741824,
+      "Valid": true
+    }
+  },
+  "request": "GET /api/satellites/edge-01/status",
+  "status": 200
+}

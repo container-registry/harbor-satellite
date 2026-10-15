@@ -1,0 +1,7 @@
+{
+  "body": {
+    "token": "\u003csecret\u003e"
+  },
+  "request": "POST /api/satellites",
+  "status": 200
+}
