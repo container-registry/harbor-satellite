@@ -38,9 +38,7 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 			handler = spiffe.RequireSPIFFEAuth(handler)
 			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
 		case "/satellites/sync", "/satellites/refresh":
-			handler = spiffe.AuthMiddleware(handler)
-			handler = s.SatelliteAuthMiddleware(handler)
-			handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
+			handler = s.satelliteAuthChain(handler)
 		}
 
 		if strings.HasPrefix(cleanPath, "/api/") {
@@ -52,6 +50,15 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 
 		handler.ServeHTTP(w, r)
 	})
+}
+
+// satelliteAuthChain authenticates satellite-facing endpoints. D3: the
+// SPIFFE middleware must run first so an SVID is authoritative; today it is
+// the inner one, so SatelliteAuthMiddleware never sees the SVID.
+func (s *Server) satelliteAuthChain(next http.Handler) http.Handler {
+	handler := spiffe.AuthMiddleware(next)
+	handler = s.SatelliteAuthMiddleware(handler)
+	return middleware.RateLimitMiddleware(s.rateLimiter)(handler)
 }
 
 func requiresSystemAdmin(method, requestPath string) bool {
