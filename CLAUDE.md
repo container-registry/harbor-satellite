@@ -49,6 +49,9 @@ go test ./... -v -count=1
 # Run a single test
 go test -v -run TestFunctionName ./path/to/package
 
+# Ground Control tests against a disposable Postgres (also runs the unit tests of internal/groundcontrol)
+task test:integration
+
 # Run E2E tests (main, BYO, SPIFFE; crash-recovery variants run separately)
 task e2e
 
@@ -292,17 +295,20 @@ The satellite watches `config.json`. Log level, state replication interval and a
 - E2E tests are Taskfile-driven shell flows (taskfiles/e2e.yml), not Go tests
 - E2E compose stacks: `test/e2e/docker/docker-compose.yml`, `test/e2e/docker/docker-compose.spiffe.yml`
 - Test configs in test/e2e/testconfig/, fixtures in test/e2e/testdata/
-- GC handler tests use go-sqlmock
+- GC handler tests use go-sqlmock. Integration tests in the same packages run against real Postgres when `TEST_DATABASE_URL` is set and skip otherwise; `task test:integration` starts `test/integration/docker-compose.yml` (postgres:17 with pg_stat_statements, host port `TEST_PG_PORT`, default 55434) and sets it
+- `internal/groundcontrol/dbtest`: a fresh database per test with all goose migrations, plus pg_stat_statements counts per test database. `internal/groundcontrol/harbortest`: in-process Harbor API and registry stub that records every call and can fail, go down or hold requests
+- `internal/groundcontrol/server`: SQL statement and Harbor call budgets (`budget_test.go`), golden responses of every endpoint in `testdata/golden` (refresh with `go test ./internal/groundcontrol/server -run TestGoldenAPI -update`). `test/contract`: the paths the satellite calls must be served by the GC router
+- Tests for Harbor 3 plan items that have not landed (defects D1..D9, planned features) start with `pending.Plan` (`internal/shared/testutil/pending`) and skip unless `HARBOR3_PENDING=1`; the implementing change removes the marker
 
 ## CI/CD
 
 GitHub Actions workflows:
-- .github/workflows/test.yaml (PRs): unit tests + Codecov (ubuntu-latest); govulncheck, GoReleaser snapshot, satellite and GC builds (self-hosted `container-registry`); E2E main, BYO, SPIFFE (ubuntu-latest). Crash-recovery E2E is not run in CI
+- .github/workflows/test.yaml (PRs): unit tests + Codecov (ubuntu-latest); Ground Control integration tests via `task test:integration` (ubuntu-latest); govulncheck, GoReleaser snapshot, satellite and GC builds (self-hosted `container-registry`); E2E main, BYO, SPIFFE (ubuntu-latest). Crash-recovery E2E is not run in CI
 - .github/workflows/lint.yaml (PRs): golangci-lint v2.12.2 binary on `container-registry` (no Docker daemon there, so it does not use `task lint-report`)
 - .github/workflows/release.yaml (push to main and `v*.*.*` tags, ubuntu-latest): per-arch builds (linux amd64/arm64/ppc64le/s390x/riscv64) of the `satellite` and `ground-control` images to `${REGISTRY_ADDRESS}/${PROJECT_NAME}` from repository variables (README: registry.goharbor.io/harbor-satellite), multi-arch manifest, Cosign keyless signing; tags additionally run `task release` (GoReleaser)
 - .github/workflows/labeler.yaml (`container-registry`): auto-labels PRs (documentation for *.md, golang for *.go)
 
-Key tasks: `build`, `build-all`, `lint`, `lint-report`, `vuln`, `vuln-report`, `e2e*`, `generate:groundcontrol`, `byo-up`, `byo-down`, `publish`, `publish-and-sign`, `release`, `snapshot`, `clean`.
+Key tasks: `build`, `build-all`, `lint`, `lint-report`, `vuln`, `vuln-report`, `test:integration`, `e2e*`, `generate:groundcontrol`, `byo-up`, `byo-down`, `publish`, `publish-and-sign`, `release`, `snapshot`, `clean`.
 
 ## Architecture Decisions
 

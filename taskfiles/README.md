@@ -92,6 +92,15 @@ task publish DEST=ttl.sh/my-test TAG=v1.0.0
 REG_USER=user REG_PASS=pass task publish DEST=ghcr.io/myorg/project
 ```
 
+## Integration Test Tasks
+
+| Command | Description |
+|---------|-------------|
+| `task test:integration` | Start the test Postgres (`test/integration/docker-compose.yml`) and run `go test ./internal/groundcontrol/...` with `TEST_DATABASE_URL` set |
+| `task test:integration-db-down` | Remove the test Postgres |
+
+The Postgres listens on `127.0.0.1:55434`; set `TEST_PG_PORT` to move it. To use another server, run `TEST_DATABASE_URL=postgres://... go test ./internal/groundcontrol/...`; the user must be allowed to create databases and the server must load `pg_stat_statements`.
+
 ## E2E Test Tasks
 
 | Command | Description |
