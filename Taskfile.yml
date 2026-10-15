@@ -2,6 +2,7 @@ version: "3"
 
 vars:
   GOVULNCHECK_VERSION: "v1.1.4"
+  GO_ARCH_LINT_VERSION: "v1.19.0"
   OAPI_CODEGEN_VERSION: "de2d8b2b0afb287198554eb305bb0d2687d26a85"
   OAPI_CODEGEN_RELEASE_VERSION: "v2.8.0"
   VULN_FILTER: "GO-2025-3409|GO-2024-2979"
@@ -45,10 +46,16 @@ tasks:
       - task: _build:all
 
   lint:
-    desc: Run golangci-lint
+    desc: Run go-arch-lint and golangci-lint
     aliases: [l]
     cmds:
+      - task: _lint:arch
       - task: _lint:lint
+
+  lint:arch:
+    desc: Check package import boundaries with go-arch-lint
+    cmds:
+      - task: _lint:arch
 
   lint-fix:
     desc: Run golangci-lint with auto-fix

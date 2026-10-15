@@ -71,13 +71,14 @@ HARBOR_EXTERNAL=1 HARBOR_NETWORK=<harbor network> HARBOR_HOST_URL=http://localho
 ### Linting
 
 ```bash
-task lint          # golangci-lint in a pinned Docker image
+task lint          # task lint:arch, then golangci-lint in a pinned Docker image
+task lint:arch     # import boundaries in .go-arch-lint.yml (go-arch-lint via go run)
 task lint-fix
 task lint-report   # writes golangci-lint.report
 task vuln          # govulncheck in a pinned Docker image
 ```
 
-Single config `.golangci.yaml` (golangci-lint v2, CI pins v2.12.2) with `default: none`, 47 enabled linters and the gofmt, gofumpt and goimports formatters. Notable enabled linters: gosec, errcheck (check-blank, type assertions), errorlint, depguard (bans io/ioutil), interfacebloat (max 10 methods), nakedret (no naked returns at all), tagalign, nolintlint (requires explanation). `cyclop`, `funlen`, `govet`, `wrapcheck` and others have settings in the file but are not enabled; `gochecknoglobals` and `gochecknoinits` are not enabled either.
+Single config `.golangci.yaml` (golangci-lint v2, CI pins v2.12.2) with `default: none`, 51 enabled linters and the gofmt, gofumpt and goimports formatters. Notable enabled linters: gosec, errcheck (check-blank, type assertions), errorlint, depguard (bans io/ioutil), govet (all analyzers except fieldalignment and shadow), interfacebloat (max 10 methods), nakedret (no naked returns at all), tagalign, nolintlint (requires explanation). `cyclop`, `funlen`, `wrapcheck` and others have settings in the file but are not enabled; `gochecknoglobals` and `gochecknoinits` are not enabled either.
 
 ### Running Locally
 
@@ -200,7 +201,7 @@ Config encryption is opt-in via `app_config.encrypt_config` (default false) and 
 
 Both binaries load `.env` from the working directory if present. Template: `.env.example`. Source of truth: `internal/shared/env/`.
 
-Satellite (each also has a CLI flag, see Satellite CLI Flags): TOKEN, GROUND_CONTROL_URL, HARBOR_REGISTRY_URL, USE_UNSECURE, SPIFFE_ENABLED, SPIFFE_ENDPOINT_SOCKET, SPIFFE_EXPECTED_SERVER_ID, BYO_REGISTRY, REGISTRY_URL, REGISTRY_USERNAME, REGISTRY_PASSWORD, CONFIG_DIR, REGISTRY_DATA_DIR, SHUTDOWN_TIMEOUT (30s), NO_REGISTRY_FALLBACK, DIRECT_DELIVERY, IMAGE_DIR, PROXY_MODE (proxy|replica, default proxy), PROXY_PORT (8585).
+Satellite (each also has a CLI flag, see Satellite CLI Flags): TOKEN, GROUND_CONTROL_URL, HARBOR_REGISTRY_URL, USE_UNSECURE, SPIFFE_ENABLED, SPIFFE_ENDPOINT_SOCKET, SPIFFE_EXPECTED_SERVER_ID, BYO_REGISTRY, REGISTRY_URL, REGISTRY_USERNAME, REGISTRY_PASSWORD, CONFIG_DIR, REGISTRY_DATA_DIR, SHUTDOWN_TIMEOUT (30s), NO_REGISTRY_FALLBACK, DIRECT_DELIVERY, IMAGE_DIR, PROXY_MODE (proxy|replica, default proxy), PROXY_PORT (8585). Parsed but not used yet (Harbor 3 skeleton, no flag): TELEMETRY_ADDR.
 
 Ground Control:
 - Harbor: HARBOR_URL, HARBOR_USERNAME, HARBOR_PASSWORD, ROBOT_DURATION_DAYS (30), SKIP_HARBOR_HEALTH_CHECK (false, testing only)
@@ -309,11 +310,11 @@ The satellite watches `config.json`. Log level, state replication interval and a
 
 GitHub Actions workflows:
 - .github/workflows/test.yaml (PRs): unit tests + Codecov (ubuntu-latest); Ground Control integration tests via `task test:integration` (ubuntu-latest); govulncheck, GoReleaser snapshot, satellite and GC builds (self-hosted `container-registry`); E2E main, BYO, SPIFFE (ubuntu-latest). Crash-recovery E2E is not run in CI
-- .github/workflows/lint.yaml (PRs): golangci-lint v2.12.2 binary on `container-registry` (no Docker daemon there, so it does not use `task lint-report`)
+- .github/workflows/lint.yaml (PRs): golangci-lint v2.12.2 binary on `container-registry` (no Docker daemon there, so it does not use `task lint-report`); job `arch` runs `task lint:arch`
 - .github/workflows/release.yaml (push to main and `v*.*.*` tags, ubuntu-latest): per-arch builds (linux amd64/arm64/ppc64le/s390x/riscv64) of the `satellite` and `ground-control` images to `${REGISTRY_ADDRESS}/${PROJECT_NAME}` from repository variables (README: registry.goharbor.io/harbor-satellite), multi-arch manifest, Cosign keyless signing; tags additionally run `task release` (GoReleaser)
 - .github/workflows/labeler.yaml (`container-registry`): auto-labels PRs (documentation for *.md, golang for *.go)
 
-Key tasks: `build`, `build-all`, `lint`, `lint-report`, `vuln`, `vuln-report`, `test:integration`, `e2e*`, `generate:groundcontrol`, `byo-up`, `byo-down`, `publish`, `publish-and-sign`, `release`, `snapshot`, `clean`.
+Key tasks: `build`, `build-all`, `lint`, `lint:arch`, `lint-report`, `vuln`, `vuln-report`, `test:integration`, `e2e*`, `generate:groundcontrol`, `byo-up`, `byo-down`, `publish`, `publish-and-sign`, `release`, `snapshot`, `clean`.
 
 ## Architecture Decisions
 
@@ -393,3 +394,5 @@ Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNo
 - D7: migration 016 adds `satellite_token.consumed_at`; queries `ClaimToken`, `UnclaimToken`, `ConsumeToken` and the stubs `server.claimZTRToken` / `unclaimZTRToken` (a consumed token is `errTokenInvalid` wrapping `errTokenConsumed`, answered 400 like an unknown one); Ztr still reads and deletes the token without a claim
 - D8: query `TryAdvisoryXactLock`; `runCleanupWithLock` still takes a session advisory lock through the pool
 - D9 and D12: `store.Store.Delete` documents the digest guard (an artifact's tag goes only while it still resolves to the artifact's digest, then unreferenced content is collected; `RegistryStore` deletes the artifact's own digest), which neither store implements yet; `state.applyGroupChanges` (replicate, then delete) and `state.withoutWanted` (removals checked against every group's wanted entities, D12) are stubs; `state_process.go` still deletes before it replicates, per group
+- `.go-arch-lint.yml` (0.1, enforced): import boundaries checked by `task lint:arch` (go-arch-lint, pinned by `GO_ARCH_LINT_VERSION`, run with `go run`). `task lint` runs it before golangci-lint and the lint workflow runs it as job `arch`. Every package must belong to a component and a component may import its own packages only when it lists itself, so a new package needs an entry; test helper packages named `*test` fall into `testsupport` by themselves, and `internal/satellite/gcclient` is its own component that may import only `pkg/groundcontrol` and the shared packages. The two `EXCEPTION 0.1` entries go once `proxy.Mode` leaves `internal/satellite` and `pkg/config` gets an injected encryptor (`test/arch` pending test). `govet` is enabled with `shadow` off
+- `internal/satellite/telemetry` (0.4): metric names, `Recorder` and `Nop`, and a stub `/healthz` + `/metrics` server. `TELEMETRY_ADDR` is parsed; nothing starts the server

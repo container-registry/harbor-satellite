@@ -25,6 +25,7 @@ type HarborSatellite struct {
 	ImageDir               string     `env:"IMAGE_DIR"`
 	ProxyMode              proxy.Mode `env:"PROXY_MODE"                envDefault:"proxy"`
 	ProxyPort              int        `env:"PROXY_PORT"                envDefault:"8585"`
+	TelemetryAddr          string     `env:"TELEMETRY_ADDR"`
 }
 
 func (h HarborSatellite) ApplyDefaults() HarborSatellite {

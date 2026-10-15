@@ -48,13 +48,14 @@ Single components: `task _build:satellite`, `task _build:groundcontrol`. Start t
 
 | Command | Description |
 |---------|-------------|
-| `task lint` | Run golangci-lint in a pinned container |
+| `task lint` | Run `task lint:arch`, then golangci-lint in a pinned container |
+| `task lint:arch` | Check import boundaries against `.go-arch-lint.yml` (go-arch-lint, version pinned in `Taskfile.yml`, run with `go run`) |
 | `task lint-fix` | Run golangci-lint with auto-fix |
 | `task lint-report` | Run lint and export to `golangci-lint.report` |
 | `task vuln` | Run govulncheck (filters known issues) |
 | `task vuln-report` | Run govulncheck and export to `vulnerability-check.report` |
 
-CI (`.github/workflows/lint.yaml`) runs golangci-lint v2.12.2 directly.
+CI (`.github/workflows/lint.yaml`) runs golangci-lint v2.12.2 directly and `task lint:arch` in a separate job.
 
 ## Publish Tasks
 

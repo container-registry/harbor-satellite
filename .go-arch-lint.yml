@@ -1,0 +1,135 @@
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: true
+  # deepScan treats passing an implementation into another component as a
+  # dependency of the receiver, which inverts ports and adapters.
+  deepScan: false
+
+# test/contract imports both the GC server and the satellite on purpose.
+exclude:
+  - bin
+  - docs
+  - examples
+  - test
+  - website
+
+excludeFiles:
+  - "^.*_test\\.go$"
+
+components:
+  cmd-satellite:
+    in: cmd/satellite
+  cmd-groundcontrol:
+    in: cmd/groundcontrol
+  satellite:
+    in: internal/satellite/**
+  # The one satellite-to-GC client (D1); the more specific path wins over
+  # satellite/**.
+  satellite-gcclient:
+    in: internal/satellite/gcclient
+  gc-cli:
+    in: internal/groundcontrol/cli/**
+  gc-server:
+    in: internal/groundcontrol/server
+  gc-infra:
+    in:
+      - internal/groundcontrol/auth
+      - internal/groundcontrol/database
+      - internal/groundcontrol/harbor
+      - internal/groundcontrol/harborhealth
+      - internal/groundcontrol/logger
+      - internal/groundcontrol/middleware
+      - internal/groundcontrol/migrator
+      - internal/groundcontrol/spiffe
+      - internal/groundcontrol/sql
+      - internal/groundcontrol/utils
+  shared:
+    in:
+      - internal/shared/crypto
+      - internal/shared/logger
+      - internal/shared/notimpl
+      - internal/shared/spiffe
+      - internal/shared/utils
+  shared-env:
+    in: internal/shared/env
+  pkg-config:
+    in: pkg/config
+  pkg-groundcontrol:
+    in: pkg/groundcontrol
+  version:
+    in: internal/version
+  # Test helpers, named *test by Go convention (dbtest, harbortest,
+  # logger/logtest, ...); the more specific glob wins over satellite/**.
+  testsupport:
+    in:
+      - internal/**/*test
+      - internal/shared/testutil/**
+
+deps:
+  cmd-satellite:
+    mayDependOn:
+      - satellite
+      - shared
+      - shared-env
+      - pkg-config
+      - version
+  cmd-groundcontrol:
+    mayDependOn:
+      - gc-cli
+      - shared
+      - version
+  satellite:
+    mayDependOn:
+      - satellite
+      - satellite-gcclient
+      - shared
+      - pkg-config
+      - pkg-groundcontrol
+      - version
+  # gcclient owns its result types; state maps them into pkg/config.
+  satellite-gcclient:
+    mayDependOn:
+      - shared
+      - pkg-groundcontrol
+  gc-cli:
+    mayDependOn:
+      - gc-cli
+      - gc-server
+      - gc-infra
+      - shared
+      - shared-env
+      - pkg-config
+      - pkg-groundcontrol
+  gc-server:
+    mayDependOn:
+      - gc-infra
+      - shared
+      - shared-env
+      - pkg-config
+  gc-infra:
+    mayDependOn:
+      - gc-infra
+      - shared
+      - shared-env
+      - pkg-config
+  shared:
+    mayDependOn:
+      - shared
+  shared-env:
+    mayDependOn:
+      - shared
+      - pkg-config
+      # EXCEPTION 0.1: env/harbor-satellite.go imports internal/satellite/proxy for proxy.Mode.
+      - satellite
+  pkg-config:
+    mayDependOn:
+      - shared
+      # EXCEPTION 0.1: manager.go imports internal/satellite/identity and secure for config encryption.
+      - satellite
+  pkg-groundcontrol:
+    mayDependOn:
+      - pkg-config
+  testsupport:
+    anyProjectDeps: true
