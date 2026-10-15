@@ -458,6 +458,11 @@ type SatelliteStatusResponse struct {
 	StorageUsedBytes   NullableInt64Value  `json:"StorageUsedBytes,omitempty,omitzero"`
 }
 
+// SatelliteSyncResponse defines model for SatelliteSyncResponse.
+type SatelliteSyncResponse struct {
+	Events []string `json:"events"`
+}
+
 // StaleSatelliteResponse defines model for StaleSatelliteResponse.
 type StaleSatelliteResponse struct {
 	CreatedAt         time.Time           `json:"CreatedAt,omitempty,omitzero"`

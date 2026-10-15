@@ -462,6 +462,11 @@ type SatelliteStatusResponse struct {
 	StorageUsedBytes   NullableInt64Value  `json:"StorageUsedBytes,omitempty,omitzero"`
 }
 
+// SatelliteSyncResponse defines model for SatelliteSyncResponse.
+type SatelliteSyncResponse struct {
+	Events []string `json:"events"`
+}
+
 // StaleSatelliteResponse defines model for StaleSatelliteResponse.
 type StaleSatelliteResponse struct {
 	CreatedAt         time.Time           `json:"CreatedAt,omitempty,omitzero"`
@@ -5641,12 +5646,23 @@ func (r SpiffeZtrHTTPResponse) ContentType() string {
 type SyncSatelliteHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SatelliteSyncResponse
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *AppError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
 	// JSON403 the response for an HTTP 403 `application/json` response
 	JSON403 *AppError
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SyncSatelliteHTTPResponse) GetJSON200() *SatelliteSyncResponse {
+	return r.JSON200
 }
 
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
@@ -5654,9 +5670,19 @@ func (r SyncSatelliteHTTPResponse) GetJSON400() *AppError {
 	return r.JSON400
 }
 
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SyncSatelliteHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
 // GetJSON403 returns the response for an HTTP 403 `application/json` response
 func (r SyncSatelliteHTTPResponse) GetJSON403() *AppError {
 	return r.JSON403
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r SyncSatelliteHTTPResponse) GetJSON429() *AppError {
+	return r.JSON429
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -8075,8 +8101,12 @@ func ParseSyncSatelliteHTTPResponse(rsp *http.Response) (*SyncSatelliteHTTPRespo
 	}
 
 	switch {
-	case rsp.StatusCode == 200:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SatelliteSyncResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest AppError
@@ -8085,12 +8115,26 @@ func ParseSyncSatelliteHTTPResponse(rsp *http.Response) (*SyncSatelliteHTTPRespo
 		}
 		response.JSON400 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
 		var dest AppError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError

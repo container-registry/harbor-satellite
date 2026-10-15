@@ -17,10 +17,6 @@ import (
 	auditlog "github.com/container-registry/harbor-satellite/internal/shared/logger"
 )
 
-type SatelliteSyncResponse struct {
-	Events []string `json:"events"`
-}
-
 func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 	if s.spiffeProvider != nil || s.spireClient != nil {
 		HandleAppError(w, &AppError{

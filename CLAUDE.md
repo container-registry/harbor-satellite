@@ -377,3 +377,10 @@ This is core functionality; changes require careful review.
 1. Create the main implementation file (e.g. `feature.go`) with `//go:build !nospiffe`
 2. Create a stub (`feature_stub.go`) with `//go:build nospiffe` that returns an error or no-ops
 3. Test both builds: `go build ./...` and `go build -tags nospiffe ./...`
+
+## Harbor 3 skeleton (not wired)
+
+Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNotImplemented` and no production path calls them yet; their behaviour is specified by `pending.Plan` tests.
+
+- internal/shared/notimpl/: `ErrNotImplemented` and `Err(item)`, returned by every skeleton stub
+- internal/satellite/gcclient/: D1, the single satellite→GC client over pkg/groundcontrol (token ZTR, SPIFFE ZTR, sync) with its own result types (no pkg/config import) and `Credentials` (`RobotBasic`, `NoCredentials`); the state processes still join URLs themselves

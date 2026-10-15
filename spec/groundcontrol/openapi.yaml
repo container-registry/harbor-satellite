@@ -1357,14 +1357,30 @@ paths:
       responses:
         "200":
           description: Satellite status report accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatelliteSyncResponse"
         "400":
           description: Status payload or heartbeat interval is invalid.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "401":
+          description: Satellite credentials are missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "403":
           description: Satellite identity is unknown or not authorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "429":
+          description: Too many status reports.
           content:
             application/json:
               schema:
@@ -2406,6 +2422,17 @@ components:
           format: int64
           minimum: 0
           x-go-name: StorageUsedBytes
+    SatelliteSyncResponse:
+      type: object
+      title: SatelliteSyncResponse carries Ground Control events for the satellite.
+      required:
+        - events
+      properties:
+        events:
+          type: array
+          items:
+            type: string
+          x-go-name: Events
     GroupSyncRequest:
       type: object
       title: GroupSyncRequest contains a group state artifact synchronized from
