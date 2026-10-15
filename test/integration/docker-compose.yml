@@ -1,0 +1,31 @@
+# Postgres for the Ground Control integration tests (task test:integration).
+# Disposable: data lives in tmpfs and durability is switched off for speed.
+name: harbor-satellite-test
+
+services:
+  postgres:
+    image: postgres:17
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:${TEST_PG_PORT:-55434}:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      # TCP probe: the init-time server listens on the unix socket only.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"]
+      interval: 1s
+      timeout: 3s
+      retries: 60

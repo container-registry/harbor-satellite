@@ -23,6 +23,9 @@ includes:
   _gen:
     taskfile: ./taskfiles/gen.yml
     dir: "{{.ROOT_DIR}}"
+  _test:
+    taskfile: ./taskfiles/test.yml
+    dir: "{{.ROOT_DIR}}"
 
 tasks:
   default:
@@ -84,6 +87,16 @@ tasks:
     aliases: [gen:groundcontrol-client]
     cmds:
       - task: _gen:groundcontrol-client
+
+  test:integration:
+    desc: Run Ground Control integration tests against a disposable Postgres (TEST_PG_PORT, default 55434)
+    cmds:
+      - task: _test:integration
+
+  test:integration-db-down:
+    desc: Remove the integration test Postgres
+    cmds:
+      - task: _test:db-down
 
   e2e:
     desc: Run all E2E tests
