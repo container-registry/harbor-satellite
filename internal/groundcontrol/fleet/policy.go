@@ -17,13 +17,15 @@ const (
 	ResourceSession   ResourceType = "session"
 	ResourceOps       ResourceType = "ops"
 	ResourcePolicy    ResourceType = "policy"
+	// ResourceWebhook is not scoped: a webhook sees every event.
+	ResourceWebhook ResourceType = "webhook"
 )
 
 // ResourceTypes lists every ResourceType constant of this package.
 func ResourceTypes() []ResourceType {
 	return []ResourceType{
 		ResourceSatellite, ResourceGroup, ResourceConfig, ResourceUser,
-		ResourceSPIRE, ResourceSession, ResourceOps, ResourcePolicy,
+		ResourceSPIRE, ResourceSession, ResourceOps, ResourcePolicy, ResourceWebhook,
 	}
 }
 

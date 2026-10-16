@@ -809,6 +809,30 @@ type UserResponse struct {
 	Username  string    `json:"username"`
 }
 
+// WebhookSubscription defines model for WebhookSubscription.
+type WebhookSubscription struct {
+	ConsecutiveFailures int32     `json:"consecutive_failures"`
+	CreatedAt           time.Time `json:"created_at"`
+	DisabledReason      string    `json:"disabled_reason,omitempty,omitzero"`
+	Enabled             bool      `json:"enabled"`
+	EventTypes          []string  `json:"event_types"`
+	ID                  int32     `json:"id"`
+	LastError           string    `json:"last_error,omitempty,omitzero"`
+	URL                 string    `json:"url"`
+}
+
+// WebhookSubscriptionRequest defines model for WebhookSubscriptionRequest.
+type WebhookSubscriptionRequest struct {
+	// EventTypes Event kinds to deliver; empty delivers every kind.
+	EventTypes []string `json:"event_types,omitempty,omitzero"`
+
+	// Secret HMAC-SHA256 key of the X-Ground-Control-Signature-256 header.
+	Secret string `json:"secret,omitempty,omitzero"`
+
+	// URL https, or http for a loopback host.
+	URL string `json:"url"`
+}
+
 // ZTRRequest defines model for ZTRRequest.
 type ZTRRequest struct {
 	Token string `json:"token"`
@@ -873,6 +897,9 @@ type ChangeOwnPasswordJSONRequestBody = ChangePasswordRequest
 
 // ChangeUserPasswordJSONRequestBody defines body for ChangeUserPassword for application/json ContentType.
 type ChangeUserPasswordJSONRequestBody = ChangeUserPasswordRequest
+
+// CreateWebhookJSONRequestBody defines body for CreateWebhook for application/json ContentType.
+type CreateWebhookJSONRequestBody = WebhookSubscriptionRequest
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
@@ -1011,6 +1038,15 @@ type ServerInterface interface {
 	// ChangeUserPassword Resets a user's password.
 	// (PATCH /api/users/{username}/password)
 	ChangeUserPassword(w http.ResponseWriter, r *http.Request, username string)
+	// ListWebhooks Lists webhook subscriptions (plan item 9.1, not implemented yet).
+	// (GET /api/webhooks)
+	ListWebhooks(w http.ResponseWriter, r *http.Request)
+	// CreateWebhook Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+	// (POST /api/webhooks)
+	CreateWebhook(w http.ResponseWriter, r *http.Request)
+	// DeleteWebhook Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+	// (DELETE /api/webhooks/{id})
+	DeleteWebhook(w http.ResponseWriter, r *http.Request, id int32)
 	// Health Checks database connectivity and reports Harbor reachability.
 	// (GET /health)
 	Health(w http.ResponseWriter, r *http.Request)
@@ -1896,6 +1932,60 @@ func (siw *ServerInterfaceWrapper) ChangeUserPassword(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// ListWebhooks operation middleware
+func (siw *ServerInterfaceWrapper) ListWebhooks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWebhooks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWebhook operation middleware
+func (siw *ServerInterfaceWrapper) CreateWebhook(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWebhook(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteWebhook operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWebhook(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", mux.Vars(r)["id"], &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWebhook(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Health operation middleware
 func (siw *ServerInterfaceWrapper) Health(w http.ResponseWriter, r *http.Request) {
 
@@ -2276,6 +2366,12 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 	r.HandleFunc(options.BaseURL+"/api/users/{username}", wrapper.GetUser).Methods(http.MethodGet)
 
 	r.HandleFunc(options.BaseURL+"/api/users/{username}/password", wrapper.ChangeUserPassword).Methods(http.MethodPatch)
+
+	r.HandleFunc(options.BaseURL+"/api/webhooks", wrapper.ListWebhooks).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/api/webhooks", wrapper.CreateWebhook).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/api/webhooks/{id}", wrapper.DeleteWebhook).Methods(http.MethodDelete)
 
 	r.HandleFunc(options.BaseURL+"/health", wrapper.Health).Methods(http.MethodGet)
 

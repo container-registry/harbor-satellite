@@ -13,6 +13,9 @@ const (
 	// items 4.3 and 4.5 run once across workers.
 	StaleDetector    = 12346
 	StatusPartitions = 12347
+	// OutboxPruner makes the outbox retention of plan item 9.1 run once
+	// across workers.
+	OutboxPruner = 12348
 )
 
 // Namespaces of the two-key locks, one per aggregate type.
@@ -22,6 +25,9 @@ const (
 	ConfigAggregates    = 3
 	// SatelliteSessions serialises the first session of a satellite.
 	SatelliteSessions = 4
+	// WebhookSubscriptions serialises one webhook subscription's delivery
+	// (plan item 9.1); the subscription's INT id is the second key.
+	WebhookSubscriptions = 5
 )
 
 // IDs lists every one-key lock ID above by its constant's name.
@@ -30,15 +36,17 @@ func IDs() map[string]int64 {
 		"Cleanup":          Cleanup,
 		"StaleDetector":    StaleDetector,
 		"StatusPartitions": StatusPartitions,
+		"OutboxPruner":     OutboxPruner,
 	}
 }
 
 // Namespaces lists every two-key namespace above by its constant's name.
 func Namespaces() map[string]int32 {
 	return map[string]int32{
-		"SatelliteAggregates": SatelliteAggregates,
-		"GroupAggregates":     GroupAggregates,
-		"ConfigAggregates":    ConfigAggregates,
-		"SatelliteSessions":   SatelliteSessions,
+		"SatelliteAggregates":  SatelliteAggregates,
+		"GroupAggregates":      GroupAggregates,
+		"ConfigAggregates":     ConfigAggregates,
+		"SatelliteSessions":    SatelliteSessions,
+		"WebhookSubscriptions": WebhookSubscriptions,
 	}
 }

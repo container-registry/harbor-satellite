@@ -10,11 +10,12 @@ type GroundControl struct {
 	Harbor         Harbor
 	Server         Server
 	EmbeddedSPIRE  EmbeddedSPIRE
-	Database       Database       `envPrefix:"DB_"`
-	Outbox         Outbox         `envPrefix:"OUTBOX_"`
-	Policy         Policy         `envPrefix:"POLICY_"`
-	OIDC           OIDC           `envPrefix:"OIDC_"`
-	RobotRotation  RobotRotation  `envPrefix:"ROBOT_ROTATION_"`
+	Database       Database      `envPrefix:"DB_"`
+	Outbox         Outbox        `envPrefix:"OUTBOX_"`
+	Policy         Policy        `envPrefix:"POLICY_"`
+	OIDC           OIDC          `envPrefix:"OIDC_"`
+	RobotRotation  RobotRotation `envPrefix:"ROBOT_ROTATION_"`
+	Webhook        Webhook
 	PasswordPolicy PasswordPolicy `envPrefix:"PASSWORD_"`
 	SPIFFE         SPIFFE         `envPrefix:"SPIFFE_"`
 	SPIRE          SPIRE          `envPrefix:"SPIRE_"`
@@ -89,6 +90,22 @@ type Outbox struct {
 	BackoffBase  time.Duration `env:"BACKOFF_BASE"  envDefault:"1s"`
 	BackoffMax   time.Duration `env:"BACKOFF_MAX"   envDefault:"5m"`
 	Lease        time.Duration `env:"LEASE"         envDefault:"1m"`
+	// Retention is how long done events stay (plan item 9.1); it is the
+	// only retention of the journal's edge events.
+	Retention time.Duration `env:"RETENTION" envDefault:"168h"`
+}
+
+// Webhook configures webhook delivery (plan item 9.1, ADR-0019). Parsed
+// but not used yet.
+type Webhook struct {
+	Enabled      bool          `env:"WEBHOOKS_ENABLED"      envDefault:"false"`
+	BatchSize    int           `env:"WEBHOOK_BATCH_SIZE"    envDefault:"100"`
+	PollInterval time.Duration `env:"WEBHOOK_POLL_INTERVAL" envDefault:"1s"`
+	BackoffBase  time.Duration `env:"WEBHOOK_BACKOFF_BASE"  envDefault:"1s"`
+	BackoffMax   time.Duration `env:"WEBHOOK_BACKOFF_MAX"   envDefault:"5m"`
+	Timeout      time.Duration `env:"WEBHOOK_TIMEOUT"       envDefault:"10s"`
+	DisableAfter time.Duration `env:"WEBHOOK_DISABLE_AFTER" envDefault:"24h"`
+	Source       string        `env:"WEBHOOK_SOURCE"        envDefault:"urn:harbor-satellite:ground-control"`
 }
 
 const (

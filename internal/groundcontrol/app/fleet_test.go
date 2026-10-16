@@ -52,11 +52,11 @@ func TestNewFleet_ServicesUseTheInjectedDatabaseAndHarbor(t *testing.T) {
 
 func TestSettings_FromTheHarborEnvironment(t *testing.T) {
 	srv := env.Server{StaleThreshold: 15 * time.Minute, FleetHotPath: env.FleetHotPath{HeartbeatFlushInterval: 5 * time.Second}}
-	got := app.Settings(env.Harbor{URL: "https://harbor.example", RobotDurationDays: "7"}, srv)
+	got := app.Settings(env.Harbor{URL: "https://harbor.example", RobotDurationDays: "7"}, srv, env.Webhook{Enabled: true})
 
 	require.Equal(t, fleet.Settings{
 		RegistryURL: "https://harbor.example", RobotDuration: 7 * 24 * time.Hour, TokenTTL: fleet.DefaultTokenTTL,
-		StaleThreshold: 15 * time.Minute, HeartbeatFlushInterval: 5 * time.Second,
+		StaleThreshold: 15 * time.Minute, HeartbeatFlushInterval: 5 * time.Second, WebhooksEnabled: true,
 	}, got)
-	require.Equal(t, 30*24*time.Hour, app.Settings(env.Harbor{RobotDurationDays: "nonsense"}, srv).RobotDuration, "ROBOT_DURATION_DAYS falls back to 30")
+	require.Equal(t, 30*24*time.Hour, app.Settings(env.Harbor{RobotDurationDays: "nonsense"}, srv, env.Webhook{}).RobotDuration, "ROBOT_DURATION_DAYS falls back to 30")
 }

@@ -352,6 +352,13 @@ func TestEdgePayloads_JSON(t *testing.T) {
 			fleet.EdgeOrigin{Name: satelliteName, Epoch: journalEpoch, Seq: 5, RecordedAt: time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)},
 			`{"name":"edge-01","epoch":1760529600000,"seq":5,"recorded_at":"2026-10-15T12:00:00Z"}`,
 		},
+		"replication with origin": {
+			fleet.EdgeReplicationPayload{
+				Replication: edgejournal.Replication{SchemaVersion: edgejournal.SchemaVersion, Action: edgejournal.ActionReplicated, Group: "g1", Repository: "library/alpine", Tag: "3.20", Digest: "sha256:abc"},
+				EdgeOrigin:  fleet.EdgeOrigin{Name: satelliteName, Epoch: journalEpoch, Seq: 5, RecordedAt: time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)},
+			},
+			`{"schema_version":"` + edgejournal.SchemaVersion + `","action":"replicated","group":"g1","repository":"library/alpine","tag":"3.20","digest":"sha256:abc","name":"edge-01","epoch":1760529600000,"seq":5,"recorded_at":"2026-10-15T12:00:00Z"}`,
+		},
 		"gap": {
 			fleet.EdgeJournalGapPayload{Name: satelliteName, Epoch: journalEpoch, From: 1, Through: 500, Cause: fleet.GapCursorBehind},
 			`{"name":"edge-01","epoch":1760529600000,"from":1,"through":500,"cause":"cursor_behind"}`,

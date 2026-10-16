@@ -1,0 +1,65 @@
+{
+  "$id": "https://satellite.container-registry.com/schemas/events/v1/EdgeArtifactFailed.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "data of the io.harborsatellite.groundcontrol.EdgeArtifactFailed event (EdgeArtifactFailed); v1 changes are additive only",
+  "properties": {
+    "action": {
+      "type": "string"
+    },
+    "bytes": {
+      "type": "integer"
+    },
+    "cycle_id": {
+      "type": "string"
+    },
+    "digest": {
+      "type": "string"
+    },
+    "duration_ms": {
+      "type": "integer"
+    },
+    "epoch": {
+      "type": "integer"
+    },
+    "error": {
+      "type": "string"
+    },
+    "group": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "recorded_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "repository": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "seq": {
+      "type": "integer"
+    },
+    "tag": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "action",
+    "group",
+    "repository",
+    "tag",
+    "digest",
+    "name",
+    "epoch",
+    "seq",
+    "recorded_at"
+  ],
+  "title": "EdgeArtifactFailed",
+  "type": "object"
+}

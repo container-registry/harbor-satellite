@@ -26,6 +26,8 @@ type Settings struct {
 	// every threshold is twice HeartbeatFlushInterval, because a beat
 	// reaches the database only with the next flush.
 	StaleThreshold, HeartbeatFlushInterval time.Duration
+	// WebhooksEnabled is WEBHOOKS_ENABLED (plan item 9.1).
+	WebhooksEnabled bool
 }
 
 // GroupStateRef is <registry>/satellite/group-state/<group>/state:latest.

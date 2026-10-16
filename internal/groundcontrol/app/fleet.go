@@ -42,6 +42,8 @@ type FleetDeps struct {
 	// Server carries the session, heartbeat and stale settings of plan
 	// item 4.
 	Server env.Server
+	// Webhook enables the webhook API (plan item 9.1).
+	Webhook env.Webhook
 	// SPIRE is nil when no SPIRE server is configured; SPIFFE
 	// registration then fails.
 	SPIRE *spiffe.ServerClient
@@ -79,7 +81,7 @@ func (l operatorLogin) Start(ctx context.Context) (redirectURL, binding string, 
 
 // NewFleet builds the services over postgres.Repository, a harbor2.Registry
 // configured from deps.Harbor and, with SPIRE, a spire.WorkloadIdentity,
-// with Settings(deps.Harbor, deps.Server). The probe pings the same
+// with Settings(deps.Harbor, deps.Server, deps.Webhook). The probe pings the same
 // registry without the rate limit every HARBOR_PROBE_INTERVAL and counts
 // it stale after three intervals. Sessions run on a postgres.SessionStore
 // and the flusher on a postgres.HeartbeatStore, both on Pools.Fleet, which
@@ -100,14 +102,15 @@ func (f *Fleet) ServerOptions(pools *dbpool.Pools) []server.Option {
 	return nil
 }
 
-// Settings maps the Harbor and server environment to the fleet settings;
-// every composition uses it, so the services and the worker agree.
-func Settings(h env.Harbor, srv env.Server) fleet.Settings {
+// Settings maps the Harbor, server and webhook environment to the fleet
+// settings; every composition uses it, so the services and the worker agree.
+func Settings(h env.Harbor, srv env.Server, webhooks env.Webhook) fleet.Settings {
 	return fleet.Settings{
 		RegistryURL:            h.URL,
 		RobotDuration:          time.Duration(h.RobotDurationDaysValue()) * 24 * time.Hour,
 		TokenTTL:               fleet.DefaultTokenTTL,
 		StaleThreshold:         srv.StaleThreshold,
 		HeartbeatFlushInterval: srv.HeartbeatFlushInterval,
+		WebhooksEnabled:        webhooks.Enabled,
 	}
 }

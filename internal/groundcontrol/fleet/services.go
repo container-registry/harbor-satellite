@@ -28,6 +28,8 @@ type Deps struct {
 	// delivers none.
 	Rotations RotationSource
 	Sealer    Sealer
+	// Webhooks stores webhook subscriptions (plan item 9.1).
+	Webhooks WebhookRepo
 }
 
 // Services is what the HTTP handlers call: each handler decodes, calls one
@@ -40,6 +42,7 @@ type Services struct {
 	// Heartbeats owns the JournalService (plan items 4.2 and 6.5).
 	Heartbeats *HeartbeatService
 	Policies   *PolicyService
+	Webhooks   *WebhookService
 }
 
 // NewServices fails with ErrInvalid when Repository or Registry is

@@ -40,6 +40,11 @@ type OutboxStore interface {
 	// minAttempts times, oldest first.
 	Stuck(ctx context.Context, minAttempts, limit int) ([]OutboxEvent, error)
 	PendingCount(ctx context.Context) (int64, error)
+	// Prune deletes up to limit done events older than retention that no
+	// enabled webhook checkpoint still needs (plan item 9.1). It runs once
+	// across workers under advisorylock.OutboxPruner and returns 0 while
+	// another worker holds it.
+	Prune(ctx context.Context, retention time.Duration, limit int) (int64, error)
 }
 
 // DesiredRecord is one row of the desired state: what GC last rendered for

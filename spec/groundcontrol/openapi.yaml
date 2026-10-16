@@ -1695,6 +1695,135 @@ paths:
                 $ref: "#/components/schemas/AppError"
       security:
         - tokenAuth: []
+  /api/webhooks:
+    get:
+      tags:
+        - webhooks
+      summary: Lists webhook subscriptions (plan item 9.1, not implemented yet).
+      operationId: listWebhooks
+      responses:
+        "200":
+          description: Webhook subscriptions returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WebhookSubscription"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Webhook subscriptions could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    post:
+      tags:
+        - webhooks
+      summary: Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+      operationId: createWebhook
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookSubscriptionRequest"
+        required: true
+      responses:
+        "201":
+          description: Webhook subscription created; delivery starts with events committed after it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSubscription"
+        "400":
+          description: URL, secret or event types are invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "409":
+          description: Webhooks are disabled (WEBHOOKS_ENABLED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Webhook subscription could not be created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/webhooks/{id}":
+    delete:
+      tags:
+        - webhooks
+      summary: Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+      operationId: deleteWebhook
+      parameters:
+        - x-go-name: ID
+          description: Webhook subscription ID.
+          name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        "204":
+          description: Webhook subscription deleted.
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Webhook subscription was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Webhook subscription could not be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
   /health:
     get:
       tags:
@@ -3619,6 +3748,69 @@ components:
         effect:
           type: string
           x-go-name: Effect
+    WebhookSubscriptionRequest:
+      type: object
+      title: WebhookSubscriptionRequest subscribes a receiver to fleet events.
+      required:
+        - url
+        - secret
+      properties:
+        url:
+          type: string
+          description: https, or http for a loopback host.
+          x-go-name: URL
+        secret:
+          type: string
+          minLength: 32
+          writeOnly: true
+          description: HMAC-SHA256 key of the X-Ground-Control-Signature-256 header.
+          x-go-name: Secret
+        event_types:
+          type: array
+          description: Event kinds to deliver; empty delivers every kind.
+          items:
+            type: string
+          x-go-name: EventTypes
+    WebhookSubscription:
+      type: object
+      title: WebhookSubscription is a receiver of fleet events and its delivery state.
+      required:
+        - id
+        - url
+        - event_types
+        - enabled
+        - consecutive_failures
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int32
+          x-go-name: ID
+        url:
+          type: string
+          x-go-name: URL
+        event_types:
+          type: array
+          items:
+            type: string
+          x-go-name: EventTypes
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+        disabled_reason:
+          type: string
+          x-go-name: DisabledReason
+        consecutive_failures:
+          type: integer
+          format: int32
+          x-go-name: ConsecutiveFailures
+        last_error:
+          type: string
+          x-go-name: LastError
+        created_at:
+          type: string
+          format: date-time
+          x-go-name: CreatedAt
     RoleBindingRequest:
       type: object
       title: RoleBindingRequest gives a principal an additional role.

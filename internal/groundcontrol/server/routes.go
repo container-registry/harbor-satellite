@@ -108,6 +108,8 @@ func requiresSystemAdmin(method, requestPath string) bool {
 		return true
 	case requestPath == "/api/role-bindings" || strings.HasPrefix(requestPath, "/api/role-bindings/"):
 		return true
+	case requestPath == "/api/webhooks" || strings.HasPrefix(requestPath, "/api/webhooks/"):
+		return true
 	case method == http.MethodPost && requestPath == "/api/satellites/register":
 		return true
 	default:

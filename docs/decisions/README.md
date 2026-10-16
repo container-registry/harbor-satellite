@@ -26,6 +26,7 @@ General information about architectural decision records is available at <https:
 | [ADR-0016](0016-satellite-session-authentication.md) | Satellite sessions and the fleet hot path | proposed; skeleton only |
 | [ADR-0017](0017-policy-engine-casbin.md) | Policy engine: Casbin for Ground Control and edge admission | proposed; skeleton only |
 | [ADR-0018](0018-operator-identity-oidc.md) | Operator identity through OIDC and satellite credential rotation | proposed; skeleton only |
+| [ADR-0019](0019-ground-control-hosting-and-extension-points.md) | Ground Control hosting and extension points | proposed; skeleton only |
 
 ## Design Notes
 

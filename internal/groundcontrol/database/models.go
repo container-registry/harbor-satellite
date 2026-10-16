@@ -243,3 +243,26 @@ type UserIdentity struct {
 	LastLoginAt sql.NullTime
 	CreatedAt   time.Time
 }
+
+type WebhookCheckpoint struct {
+	SubscriptionID int32
+	LastXid        interface{}
+	LastID         int64
+	Attempts       int32
+	FailingSince   sql.NullTime
+	NextAttemptAt  time.Time
+	LastStatus     sql.NullInt32
+	LastError      sql.NullString
+	UpdatedAt      time.Time
+}
+
+type WebhookSubscription struct {
+	ID               int32
+	Url              string
+	SecretCiphertext []byte
+	EventTypes       []string
+	Enabled          bool
+	DisabledReason   sql.NullString
+	CreatedAt        time.Time
+	CreatedBy        sql.NullString
+}

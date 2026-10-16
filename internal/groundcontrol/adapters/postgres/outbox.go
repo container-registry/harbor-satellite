@@ -54,6 +54,12 @@ func (s *OutboxStore) PendingCount(ctx context.Context) (int64, error) {
 	return 0, notimpl.Err("2.1 outbox pending count")
 }
 
+// Prune takes advisorylock.OutboxPruner with TryAdvisoryXactLock and runs
+// PruneDoneOutboxEvents in one transaction.
+func (s *OutboxStore) Prune(ctx context.Context, retention time.Duration, limit int) (int64, error) {
+	return 0, notimpl.Err("9.1 outbox prune")
+}
+
 // OutboxSink appends events with AppendOutboxEvent inside the caller's
 // transaction, so an event exists exactly when its change committed. The
 // payload is encoded as JSON; log-only kinds are inserted done.

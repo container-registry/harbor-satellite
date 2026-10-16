@@ -116,6 +116,10 @@ func (o *fakeOutbox) Stuck(context.Context, int, int) ([]async.OutboxEvent, erro
 	return nil, nil
 }
 
+func (o *fakeOutbox) Prune(context.Context, time.Duration, int) (int64, error) {
+	return 0, nil
+}
+
 func (o *fakeOutbox) PendingCount(context.Context) (int64, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()

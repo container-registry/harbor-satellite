@@ -58,4 +58,7 @@ var PolicyRoutes = []PolicyRoute{
 	{http.MethodDelete, "/api/users/{username}", fleet.ResourceUser, fleet.ActionDelete},
 	{http.MethodGet, "/api/users/{username}", fleet.ResourceUser, fleet.ActionRead},
 	{http.MethodPatch, "/api/users/{username}/password", fleet.ResourceUser, fleet.ActionSetPassword},
+	{http.MethodGet, "/api/webhooks", fleet.ResourceWebhook, fleet.ActionList},
+	{http.MethodPost, "/api/webhooks", fleet.ResourceWebhook, fleet.ActionCreate},
+	{http.MethodDelete, "/api/webhooks/{id}", fleet.ResourceWebhook, fleet.ActionDelete},
 }

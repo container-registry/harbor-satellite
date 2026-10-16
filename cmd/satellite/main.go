@@ -18,6 +18,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
 	proxyhandler "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
+	proxymw "github.com/container-registry/harbor-satellite/internal/satellite/proxy/middleware"
 	proxyimage "github.com/container-registry/harbor-satellite/internal/satellite/proxy/process/image"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
@@ -360,8 +361,10 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	}
 	proxyAddress := net.JoinHostPort("127.0.0.1", strconv.Itoa(opts.ProxyPort))
 	proxyServer = &http.Server{
-		Addr:              proxyAddress,
-		Handler:           proxyhandler.New(pullHandler).Handler(),
+		Addr: proxyAddress,
+		// Plan items 7.5, 9.3 and 0.4 fill the nil slots (admission,
+		// authentication, metrics); all nil keeps today's handler.
+		Handler:           proxyhandler.New(pullHandler).WrapAll(proxymw.Stack(nil, nil, nil)...).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       time.Minute,
 	}
