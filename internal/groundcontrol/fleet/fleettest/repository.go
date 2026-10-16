@@ -34,6 +34,7 @@ type Repository struct {
 	Events     *EventSink
 	Journal    *JournalRepo
 	Views      *ViewRepo
+	Policies   *PolicyRepo
 }
 
 // NewRepository records into rec, or into a new Recorder when rec is nil.
@@ -49,6 +50,7 @@ func NewRepository(rec *Recorder) *Repository {
 		Events:     NewEventSink(rec),
 		Journal:    &JournalRepo{rec: rec},
 		Views:      &ViewRepo{rec: rec},
+		Policies:   &PolicyRepo{rec: rec},
 	}
 }
 
@@ -87,7 +89,8 @@ func (t tx) Events() fleet.EventSink {
 
 func (t tx) Journal() fleet.JournalRepo { return t.r.Journal }
 
-func (t tx) Views() fleet.ViewRepo { return t.r.Views }
+func (t tx) Views() fleet.ViewRepo      { return t.r.Views }
+func (t tx) Policies() fleet.PolicyRepo { return t.r.Policies }
 
 // lookup records the call and answers it from m.
 func lookup[K comparable, V any](rec *Recorder, method string, m map[K]V, key K) (V, error) {
@@ -210,6 +213,9 @@ type GroupRepo struct {
 	// an existing group.
 	ByName    map[string]fleet.Group
 	MembersOf map[fleet.GroupID][]fleet.SatelliteID
+	// NamesOf answers GroupsOfSatellites; satellites without an entry are
+	// left out.
+	NamesOf map[fleet.SatelliteID][]string
 	// NextID is the ID Upsert returns for a group not in ByName.
 	NextID fleet.GroupID
 }
@@ -254,6 +260,19 @@ func (g *GroupRepo) AddMember(_ context.Context, id fleet.GroupID, satellite fle
 
 func (g *GroupRepo) RemoveMember(_ context.Context, id fleet.GroupID, satellite fleet.SatelliteID) error {
 	return g.rec.Record("Groups.RemoveMember", id, satellite)
+}
+
+func (g *GroupRepo) GroupsOfSatellites(_ context.Context, ids []fleet.SatelliteID) (map[fleet.SatelliteID][]string, error) {
+	if err := g.rec.Record("Groups.GroupsOfSatellites", ids); err != nil {
+		return nil, err
+	}
+	out := make(map[fleet.SatelliteID][]string, len(ids))
+	for _, id := range ids {
+		if names, ok := g.NamesOf[id]; ok {
+			out[id] = names
+		}
+	}
+	return out, nil
 }
 
 // ConfigRepo is a recording fleet.ConfigRepo.

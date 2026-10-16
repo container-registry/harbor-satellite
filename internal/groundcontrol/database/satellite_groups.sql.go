@@ -127,6 +127,45 @@ func (q *Queries) GroupSatelliteList(ctx context.Context, groupID int32) ([]Sate
 	return items, nil
 }
 
+const listGroupNamesOfSatellites = `-- name: ListGroupNamesOfSatellites :many
+SELECT sg.satellite_id, g.group_name
+FROM satellite_groups sg
+JOIN groups g ON g.id = sg.group_id
+WHERE sg.satellite_id = ANY($1::INT[])
+ORDER BY sg.satellite_id, g.group_name
+`
+
+type ListGroupNamesOfSatellitesRow struct {
+	SatelliteID int32
+	GroupName   string
+}
+
+// The parent scopes of a set of satellites in one statement (plan item
+// 7.3): what a service loads before it authorizes, and what filters a list
+// without a query per item.
+func (q *Queries) ListGroupNamesOfSatellites(ctx context.Context, satelliteIds []int32) ([]ListGroupNamesOfSatellitesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listGroupNamesOfSatellites, pq.Array(satelliteIds))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGroupNamesOfSatellitesRow
+	for rows.Next() {
+		var i ListGroupNamesOfSatellitesRow
+		if err := rows.Scan(&i.SatelliteID, &i.GroupName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeSatelliteFromGroup = `-- name: RemoveSatelliteFromGroup :exec
 DELETE FROM satellite_groups
 WHERE satellite_id = $1 AND group_id = $2

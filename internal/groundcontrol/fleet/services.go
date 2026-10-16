@@ -9,10 +9,13 @@ type Deps struct {
 	Registry   Registry
 	Identity   WorkloadIdentity
 	// Policy authorizes the principal of the request context (A18's
-	// scoped checks); nil is AllowAll until plan item 7.
-	Policy   Policy
-	Clock    Clock
-	Settings Settings
+	// scoped checks); nil is AllowAll.
+	Policy Policy
+	// ConfigValidator checks config documents before they are stored; nil
+	// stores them unchecked, as today.
+	ConfigValidator ConfigValidator
+	Clock           Clock
+	Settings        Settings
 	// Sessions issues and invalidates satellite sessions (ADR-0016).
 	Sessions SessionIssuer
 	// HeartbeatSink is this replica's heartbeat buffer.
@@ -31,14 +34,28 @@ type Services struct {
 	Registration *RegistrationService
 	// Heartbeats owns the JournalService (plan items 4.2 and 6.5).
 	Heartbeats *HeartbeatService
+	Policies   *PolicyService
 }
 
 // NewServices fails with ErrInvalid when Repository or Registry is
 // missing; a missing Clock is SystemClock and a missing Policy AllowAll.
 // It builds the JournalService on SatelliteRepository and hands it to the
 // HeartbeatService only.
-// Every method authorizes PrincipalFrom(ctx) with Policy before it reads
-// or writes, and fails with ErrForbidden when the policy denies.
+//
+// Every admin method authorizes PrincipalFrom(ctx) with Policy and fails
+// with ErrForbidden when the policy denies (plan item 7.3, A118). A method
+// on one satellite first loads the satellite's groups with
+// Groups().GroupsOfSatellites, one statement, and passes them as the
+// resource's Parents; Register takes its parents from the command and so
+// authorizes before any read. Register and ConfigService.Assign also need
+// add_member on every group they touch, so a scoped admin cannot reach a
+// group outside its scope through them. RegisterSPIFFE authorizes
+// register_spiffe on ResourceSPIRE, which no scoped rule may name, because
+// it creates SPIRE entries and join tokens. List methods load the parents of
+// all items in that one statement and return only the items the policy
+// allows to read. Every check precedes the first write, and a policy
+// failure is returned as is, never as ErrForbidden. The satellite-facing
+// methods are not checked.
 func NewServices(deps Deps) (*Services, error) {
 	return nil, notimpl.Err("1.2 fleet services")
 }

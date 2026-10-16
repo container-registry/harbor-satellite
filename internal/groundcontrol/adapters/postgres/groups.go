@@ -42,3 +42,8 @@ func (groupRepo) AddMember(ctx context.Context, id fleet.GroupID, satellite flee
 func (groupRepo) RemoveMember(ctx context.Context, id fleet.GroupID, satellite fleet.SatelliteID) error {
 	return notimpl.Err("1.3 postgres remove group member")
 }
+
+// GroupsOfSatellites runs ListGroupNamesOfSatellites.
+func (groupRepo) GroupsOfSatellites(ctx context.Context, ids []fleet.SatelliteID) (map[fleet.SatelliteID][]string, error) {
+	return nil, notimpl.Err("7.3 postgres groups of satellites")
+}

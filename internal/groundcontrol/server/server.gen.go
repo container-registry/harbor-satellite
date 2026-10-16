@@ -37,6 +37,24 @@ func (e HealthResponseStatus) Valid() bool {
 	}
 }
 
+// Defines values for PolicyRuleRequestEffect.
+const (
+	Allow PolicyRuleRequestEffect = "allow"
+	Deny  PolicyRuleRequestEffect = "deny"
+)
+
+// Valid indicates whether the value is a known member of the PolicyRuleRequestEffect enum.
+func (e PolicyRuleRequestEffect) Valid() bool {
+	switch e {
+	case Allow:
+		return true
+	case Deny:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SPIFFESatelliteRegistrationRequestAttestationMethod.
 const (
 	JoinToken SPIFFESatelliteRegistrationRequestAttestationMethod = "join_token"
@@ -116,6 +134,23 @@ type ActiveSatelliteResponse struct {
 	UpdatedAt         time.Time           `json:"UpdatedAt,omitempty,omitzero"`
 }
 
+// AdmissionBundle defines model for AdmissionBundle.
+type AdmissionBundle struct {
+	// ModelVersion The admission model the lines are written for, edge-admission/v1.
+	ModelVersion string `json:"model_version"`
+
+	// Policies One line per entry, [subject, repository, reference, operation, allow|deny].
+	Policies [][]string `json:"policies"`
+}
+
+// AdmissionConfig defines model for AdmissionConfig.
+type AdmissionConfig struct {
+	Bundle AdmissionBundle `json:"bundle,omitempty,omitzero"`
+
+	// Mode off (default), audit or enforce.
+	Mode string `json:"mode,omitempty,omitzero"`
+}
+
 // AgentInfoResponse defines model for AgentInfoResponse.
 type AgentInfoResponse struct {
 	AttestationType string     `json:"attestation_type"`
@@ -131,6 +166,7 @@ type AgentListResponse struct {
 
 // AppConfig defines model for AppConfig.
 type AppConfig struct {
+	Admission         AdmissionConfig      `json:"admission,omitempty,omitzero"`
 	Audit             AuditConfig          `json:"audit,omitempty,omitzero"`
 	BringOwnRegistry  bool                 `json:"bring_own_registry,omitempty,omitzero"`
 	DirectDelivery    DirectDeliveryConfig `json:"direct_delivery,omitempty,omitzero"`
@@ -238,6 +274,16 @@ type ConfigResponse struct {
 	ID          int32       `json:"ID,omitempty,omitzero"`
 	RegistryURL string      `json:"RegistryUrl,omitempty,omitzero"`
 	UpdatedAt   time.Time   `json:"UpdatedAt,omitempty,omitzero"`
+
+	// Warnings Validation warnings of a create or update (plan item 7.4); omitted when empty.
+	Warnings []string `json:"warnings,omitempty,omitzero"`
+}
+
+// ConfigValidationError defines model for ConfigValidationError.
+type ConfigValidationError struct {
+	Code     int      `json:"code"`
+	Message  string   `json:"message"`
+	Warnings []string `json:"warnings,omitempty,omitzero"`
 }
 
 // ConfigValue defines model for ConfigValue.
@@ -424,6 +470,35 @@ type PeerDescriptor struct {
 // PeerDistributionConfig Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
 type PeerDistributionConfig = config.PeerDistributionConfig
 
+// PolicyRule defines model for PolicyRule.
+type PolicyRule struct {
+	Action       string `json:"action"`
+	Effect       string `json:"effect"`
+	ID           int64  `json:"id"`
+	ResourceType string `json:"resource_type"`
+	Scope        string `json:"scope"`
+	Subject      string `json:"subject"`
+}
+
+// PolicyRuleRequest defines model for PolicyRuleRequest.
+type PolicyRuleRequest struct {
+	// Action An action or "*" (the default).
+	Action string                  `json:"action,omitempty,omitzero"`
+	Effect PolicyRuleRequestEffect `json:"effect"`
+
+	// ResourceType A resource type or "*" (the default).
+	ResourceType string `json:"resource_type,omitempty,omitzero"`
+
+	// Scope "*" (the default) or <satellite|group|config>:<name>.
+	Scope string `json:"scope,omitempty,omitzero"`
+
+	// Subject user:<name>, role:<role> or oidc:<group>.
+	Subject string `json:"subject"`
+}
+
+// PolicyRuleRequestEffect defines model for PolicyRuleRequest.Effect.
+type PolicyRuleRequestEffect string
+
 // RefreshCredentialsResponse defines model for RefreshCredentialsResponse.
 type RefreshCredentialsResponse struct {
 	Secret string `json:"secret"`
@@ -441,6 +516,22 @@ type RegistryFallbackConfig struct {
 	Enabled    bool     `json:"enabled,omitempty,omitzero"`
 	Registries []string `json:"registries,omitempty,omitzero"`
 	Runtimes   []string `json:"runtimes,omitempty,omitzero"`
+}
+
+// RoleBinding defines model for RoleBinding.
+type RoleBinding struct {
+	ID        int64  `json:"id"`
+	Principal string `json:"principal"`
+	Role      string `json:"role"`
+}
+
+// RoleBindingRequest defines model for RoleBindingRequest.
+type RoleBindingRequest struct {
+	// Principal user:<name> or oidc:<group>.
+	Principal string `json:"principal"`
+
+	// Role role:<name>, not a built-in role.
+	Role string `json:"role"`
 }
 
 // SPIFFEClientConfig defines model for SPIFFEClientConfig.
@@ -715,6 +806,12 @@ type AddSatelliteToGroupJSONRequestBody = SatelliteGroupRequest
 // SyncGroupJSONRequestBody defines body for SyncGroup for application/json ContentType.
 type SyncGroupJSONRequestBody = GroupSyncRequest
 
+// CreatePolicyRuleJSONRequestBody defines body for CreatePolicyRule for application/json ContentType.
+type CreatePolicyRuleJSONRequestBody = PolicyRuleRequest
+
+// CreateRoleBindingJSONRequestBody defines body for CreateRoleBinding for application/json ContentType.
+type CreateRoleBindingJSONRequestBody = RoleBindingRequest
+
 // RegisterSatelliteJSONRequestBody defines body for RegisterSatellite for application/json ContentType.
 type RegisterSatelliteJSONRequestBody = TokenSatelliteRegistrationRequest
 
@@ -786,6 +883,24 @@ type ServerInterface interface {
 	// ListOutboxEvents Lists outbox events that are not done yet.
 	// (GET /api/ops/outbox)
 	ListOutboxEvents(w http.ResponseWriter, r *http.Request, params ListOutboxEventsParams)
+	// ListPolicyRules Lists the stored policy rules (plan item 7.3, not implemented yet).
+	// (GET /api/policies)
+	ListPolicyRules(w http.ResponseWriter, r *http.Request)
+	// CreatePolicyRule Stores a policy rule (plan item 7.3, not implemented yet).
+	// (POST /api/policies)
+	CreatePolicyRule(w http.ResponseWriter, r *http.Request)
+	// DeletePolicyRule Deletes a stored policy rule (plan item 7.3, not implemented yet).
+	// (DELETE /api/policies/{id})
+	DeletePolicyRule(w http.ResponseWriter, r *http.Request, id int64)
+	// ListRoleBindings Lists the stored role bindings (plan item 7.3, not implemented yet).
+	// (GET /api/role-bindings)
+	ListRoleBindings(w http.ResponseWriter, r *http.Request)
+	// CreateRoleBinding Gives a principal an additional role (plan item 7.3, not implemented yet).
+	// (POST /api/role-bindings)
+	CreateRoleBinding(w http.ResponseWriter, r *http.Request)
+	// DeleteRoleBinding Deletes a stored role binding (plan item 7.3, not implemented yet).
+	// (DELETE /api/role-bindings/{id})
+	DeleteRoleBinding(w http.ResponseWriter, r *http.Request, id int64)
 	// ListSatellites Lists satellites.
 	// (GET /api/satellites)
 	ListSatellites(w http.ResponseWriter, r *http.Request)
@@ -1183,6 +1298,114 @@ func (siw *ServerInterfaceWrapper) ListOutboxEvents(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListOutboxEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPolicyRules operation middleware
+func (siw *ServerInterfaceWrapper) ListPolicyRules(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPolicyRules(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePolicyRule operation middleware
+func (siw *ServerInterfaceWrapper) CreatePolicyRule(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePolicyRule(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePolicyRule operation middleware
+func (siw *ServerInterfaceWrapper) DeletePolicyRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", mux.Vars(r)["id"], &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePolicyRule(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRoleBindings operation middleware
+func (siw *ServerInterfaceWrapper) ListRoleBindings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRoleBindings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRoleBinding operation middleware
+func (siw *ServerInterfaceWrapper) CreateRoleBinding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRoleBinding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteRoleBinding operation middleware
+func (siw *ServerInterfaceWrapper) DeleteRoleBinding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", mux.Vars(r)["id"], &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteRoleBinding(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1851,6 +2074,18 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 	r.HandleFunc(options.BaseURL+"/api/logout", wrapper.Logout).Methods(http.MethodPost)
 
 	r.HandleFunc(options.BaseURL+"/api/ops/outbox", wrapper.ListOutboxEvents).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/api/policies", wrapper.ListPolicyRules).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/api/policies", wrapper.CreatePolicyRule).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/api/policies/{id}", wrapper.DeletePolicyRule).Methods(http.MethodDelete)
+
+	r.HandleFunc(options.BaseURL+"/api/role-bindings", wrapper.ListRoleBindings).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/api/role-bindings", wrapper.CreateRoleBinding).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/api/role-bindings/{id}", wrapper.DeleteRoleBinding).Methods(http.MethodDelete)
 
 	r.HandleFunc(options.BaseURL+"/api/satellites", wrapper.ListSatellites).Methods(http.MethodGet)
 

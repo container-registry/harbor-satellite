@@ -40,6 +40,24 @@ func (e HealthResponseStatus) Valid() bool {
 	}
 }
 
+// Defines values for PolicyRuleRequestEffect.
+const (
+	Allow PolicyRuleRequestEffect = "allow"
+	Deny  PolicyRuleRequestEffect = "deny"
+)
+
+// Valid indicates whether the value is a known member of the PolicyRuleRequestEffect enum.
+func (e PolicyRuleRequestEffect) Valid() bool {
+	switch e {
+	case Allow:
+		return true
+	case Deny:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SPIFFESatelliteRegistrationRequestAttestationMethod.
 const (
 	JoinToken SPIFFESatelliteRegistrationRequestAttestationMethod = "join_token"
@@ -119,6 +137,23 @@ type ActiveSatelliteResponse struct {
 	UpdatedAt         time.Time           `json:"UpdatedAt,omitempty,omitzero"`
 }
 
+// AdmissionBundle defines model for AdmissionBundle.
+type AdmissionBundle struct {
+	// ModelVersion The admission model the lines are written for, edge-admission/v1.
+	ModelVersion string `json:"model_version"`
+
+	// Policies One line per entry, [subject, repository, reference, operation, allow|deny].
+	Policies [][]string `json:"policies"`
+}
+
+// AdmissionConfig defines model for AdmissionConfig.
+type AdmissionConfig struct {
+	Bundle AdmissionBundle `json:"bundle,omitempty,omitzero"`
+
+	// Mode off (default), audit or enforce.
+	Mode string `json:"mode,omitempty,omitzero"`
+}
+
 // AgentInfoResponse defines model for AgentInfoResponse.
 type AgentInfoResponse struct {
 	AttestationType string     `json:"attestation_type"`
@@ -134,6 +169,7 @@ type AgentListResponse struct {
 
 // AppConfig defines model for AppConfig.
 type AppConfig struct {
+	Admission         AdmissionConfig      `json:"admission,omitempty,omitzero"`
 	Audit             AuditConfig          `json:"audit,omitempty,omitzero"`
 	BringOwnRegistry  bool                 `json:"bring_own_registry,omitempty,omitzero"`
 	DirectDelivery    DirectDeliveryConfig `json:"direct_delivery,omitempty,omitzero"`
@@ -241,6 +277,16 @@ type ConfigResponse struct {
 	ID          int32       `json:"ID,omitempty,omitzero"`
 	RegistryURL string      `json:"RegistryUrl,omitempty,omitzero"`
 	UpdatedAt   time.Time   `json:"UpdatedAt,omitempty,omitzero"`
+
+	// Warnings Validation warnings of a create or update (plan item 7.4); omitted when empty.
+	Warnings []string `json:"warnings,omitempty,omitzero"`
+}
+
+// ConfigValidationError defines model for ConfigValidationError.
+type ConfigValidationError struct {
+	Code     int      `json:"code"`
+	Message  string   `json:"message"`
+	Warnings []string `json:"warnings,omitempty,omitzero"`
 }
 
 // ConfigValue defines model for ConfigValue.
@@ -427,6 +473,35 @@ type PeerDescriptor struct {
 // PeerDistributionConfig Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
 type PeerDistributionConfig = config.PeerDistributionConfig
 
+// PolicyRule defines model for PolicyRule.
+type PolicyRule struct {
+	Action       string `json:"action"`
+	Effect       string `json:"effect"`
+	ID           int64  `json:"id"`
+	ResourceType string `json:"resource_type"`
+	Scope        string `json:"scope"`
+	Subject      string `json:"subject"`
+}
+
+// PolicyRuleRequest defines model for PolicyRuleRequest.
+type PolicyRuleRequest struct {
+	// Action An action or "*" (the default).
+	Action string                  `json:"action,omitempty,omitzero"`
+	Effect PolicyRuleRequestEffect `json:"effect"`
+
+	// ResourceType A resource type or "*" (the default).
+	ResourceType string `json:"resource_type,omitempty,omitzero"`
+
+	// Scope "*" (the default) or <satellite|group|config>:<name>.
+	Scope string `json:"scope,omitempty,omitzero"`
+
+	// Subject user:<name>, role:<role> or oidc:<group>.
+	Subject string `json:"subject"`
+}
+
+// PolicyRuleRequestEffect defines model for PolicyRuleRequest.Effect.
+type PolicyRuleRequestEffect string
+
 // RefreshCredentialsResponse defines model for RefreshCredentialsResponse.
 type RefreshCredentialsResponse struct {
 	Secret string `json:"secret"`
@@ -444,6 +519,22 @@ type RegistryFallbackConfig struct {
 	Enabled    bool     `json:"enabled,omitempty,omitzero"`
 	Registries []string `json:"registries,omitempty,omitzero"`
 	Runtimes   []string `json:"runtimes,omitempty,omitzero"`
+}
+
+// RoleBinding defines model for RoleBinding.
+type RoleBinding struct {
+	ID        int64  `json:"id"`
+	Principal string `json:"principal"`
+	Role      string `json:"role"`
+}
+
+// RoleBindingRequest defines model for RoleBindingRequest.
+type RoleBindingRequest struct {
+	// Principal user:<name> or oidc:<group>.
+	Principal string `json:"principal"`
+
+	// Role role:<name>, not a built-in role.
+	Role string `json:"role"`
 }
 
 // SPIFFEClientConfig defines model for SPIFFEClientConfig.
@@ -718,6 +809,12 @@ type AddSatelliteToGroupJSONRequestBody = SatelliteGroupRequest
 // SyncGroupJSONRequestBody defines body for SyncGroup for application/json ContentType.
 type SyncGroupJSONRequestBody = GroupSyncRequest
 
+// CreatePolicyRuleJSONRequestBody defines body for CreatePolicyRule for application/json ContentType.
+type CreatePolicyRuleJSONRequestBody = PolicyRuleRequest
+
+// CreateRoleBindingJSONRequestBody defines body for CreateRoleBinding for application/json ContentType.
+type CreateRoleBindingJSONRequestBody = RoleBindingRequest
+
 // RegisterSatelliteJSONRequestBody defines body for RegisterSatellite for application/json ContentType.
 type RegisterSatelliteJSONRequestBody = TokenSatelliteRegistrationRequest
 
@@ -944,6 +1041,62 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
 	ListOutboxEvents(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPolicyRules Lists the stored policy rules (plan item 7.3, not implemented yet).
+	//
+	// Corresponds with GET /api/policies (the `ListPolicyRules` operationId).
+	ListPolicyRules(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreatePolicyRuleWithBody Stores a policy rule (plan item 7.3, not implemented yet).
+	//
+	// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+	CreatePolicyRuleWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreatePolicyRule Stores a policy rule (plan item 7.3, not implemented yet).
+	//
+	// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+	CreatePolicyRule(ctx context.Context, body CreatePolicyRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeletePolicyRule Deletes a stored policy rule (plan item 7.3, not implemented yet).
+	//
+	// Corresponds with DELETE /api/policies/{id} (the `DeletePolicyRule` operationId).
+	DeletePolicyRule(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListRoleBindings Lists the stored role bindings (plan item 7.3, not implemented yet).
+	//
+	// Corresponds with GET /api/role-bindings (the `ListRoleBindings` operationId).
+	ListRoleBindings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateRoleBindingWithBody Gives a principal an additional role (plan item 7.3, not implemented yet).
+	//
+	// Built-in roles come from the user's role and cannot be bound here.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+	CreateRoleBindingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateRoleBinding Gives a principal an additional role (plan item 7.3, not implemented yet).
+	//
+	// Built-in roles come from the user's role and cannot be bound here.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+	CreateRoleBinding(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteRoleBinding Deletes a stored role binding (plan item 7.3, not implemented yet).
+	//
+	// Corresponds with DELETE /api/role-bindings/{id} (the `DeleteRoleBinding` operationId).
+	DeleteRoleBinding(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSatellites Lists satellites.
 	//
@@ -1482,6 +1635,142 @@ func (c *Client) Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*ht
 // Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
 func (c *Client) ListOutboxEvents(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListOutboxEventsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListPolicyRules Lists the stored policy rules (plan item 7.3, not implemented yet).
+//
+// Corresponds with GET /api/policies (the `ListPolicyRules` operationId).
+func (c *Client) ListPolicyRules(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPolicyRulesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreatePolicyRuleWithBody Stores a policy rule (plan item 7.3, not implemented yet).
+//
+// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+func (c *Client) CreatePolicyRuleWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreatePolicyRuleRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreatePolicyRule Stores a policy rule (plan item 7.3, not implemented yet).
+//
+// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+func (c *Client) CreatePolicyRule(ctx context.Context, body CreatePolicyRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreatePolicyRuleRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeletePolicyRule Deletes a stored policy rule (plan item 7.3, not implemented yet).
+//
+// Corresponds with DELETE /api/policies/{id} (the `DeletePolicyRule` operationId).
+func (c *Client) DeletePolicyRule(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeletePolicyRuleRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListRoleBindings Lists the stored role bindings (plan item 7.3, not implemented yet).
+//
+// Corresponds with GET /api/role-bindings (the `ListRoleBindings` operationId).
+func (c *Client) ListRoleBindings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListRoleBindingsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateRoleBindingWithBody Gives a principal an additional role (plan item 7.3, not implemented yet).
+//
+// Built-in roles come from the user's role and cannot be bound here.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+func (c *Client) CreateRoleBindingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateRoleBindingRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateRoleBinding Gives a principal an additional role (plan item 7.3, not implemented yet).
+//
+// Built-in roles come from the user's role and cannot be bound here.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+func (c *Client) CreateRoleBinding(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateRoleBindingRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteRoleBinding Deletes a stored role binding (plan item 7.3, not implemented yet).
+//
+// Corresponds with DELETE /api/role-bindings/{id} (the `DeleteRoleBinding` operationId).
+func (c *Client) DeleteRoleBinding(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteRoleBindingRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -2598,6 +2887,208 @@ func NewListOutboxEventsRequest(server string, params *ListOutboxEventsParams) (
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListPolicyRulesRequest constructs an http.Request for the ListPolicyRules method
+func NewListPolicyRulesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/policies")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreatePolicyRuleRequest calls the generic CreatePolicyRule builder with application/json body
+func NewCreatePolicyRuleRequest(server string, body CreatePolicyRuleJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreatePolicyRuleRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreatePolicyRuleRequestWithBody constructs an http.Request for the CreatePolicyRule method, with any body, and a specified content type
+func NewCreatePolicyRuleRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/policies")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeletePolicyRuleRequest constructs an http.Request for the DeletePolicyRule method
+func NewDeletePolicyRuleRequest(server string, id int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/policies/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListRoleBindingsRequest constructs an http.Request for the ListRoleBindings method
+func NewListRoleBindingsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/role-bindings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateRoleBindingRequest calls the generic CreateRoleBinding builder with application/json body
+func NewCreateRoleBindingRequest(server string, body CreateRoleBindingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateRoleBindingRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateRoleBindingRequestWithBody constructs an http.Request for the CreateRoleBinding method, with any body, and a specified content type
+func NewCreateRoleBindingRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/role-bindings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteRoleBindingRequest constructs an http.Request for the DeleteRoleBinding method
+func NewDeleteRoleBindingRequest(server string, id int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/role-bindings/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3722,6 +4213,70 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
 	ListOutboxEventsWithResponse(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*ListOutboxEventsHTTPResponse, error)
 
+	// ListPolicyRulesWithResponse Lists the stored policy rules (plan item 7.3, not implemented yet).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/policies (the `ListPolicyRules` operationId).
+	ListPolicyRulesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPolicyRulesHTTPResponse, error)
+
+	// CreatePolicyRuleWithBodyWithResponse Stores a policy rule (plan item 7.3, not implemented yet).
+	//
+	// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+	CreatePolicyRuleWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreatePolicyRuleHTTPResponse, error)
+
+	// CreatePolicyRuleWithResponse Stores a policy rule (plan item 7.3, not implemented yet).
+	//
+	// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+	CreatePolicyRuleWithResponse(ctx context.Context, body CreatePolicyRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreatePolicyRuleHTTPResponse, error)
+
+	// DeletePolicyRuleWithResponse Deletes a stored policy rule (plan item 7.3, not implemented yet).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/policies/{id} (the `DeletePolicyRule` operationId).
+	DeletePolicyRuleWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*DeletePolicyRuleHTTPResponse, error)
+
+	// ListRoleBindingsWithResponse Lists the stored role bindings (plan item 7.3, not implemented yet).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/role-bindings (the `ListRoleBindings` operationId).
+	ListRoleBindingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListRoleBindingsHTTPResponse, error)
+
+	// CreateRoleBindingWithBodyWithResponse Gives a principal an additional role (plan item 7.3, not implemented yet).
+	//
+	// Built-in roles come from the user's role and cannot be bound here.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+	CreateRoleBindingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateRoleBindingHTTPResponse, error)
+
+	// CreateRoleBindingWithResponse Gives a principal an additional role (plan item 7.3, not implemented yet).
+	//
+	// Built-in roles come from the user's role and cannot be bound here.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+	CreateRoleBindingWithResponse(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRoleBindingHTTPResponse, error)
+
+	// DeleteRoleBindingWithResponse Deletes a stored role binding (plan item 7.3, not implemented yet).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/role-bindings/{id} (the `DeleteRoleBinding` operationId).
+	DeleteRoleBindingWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*DeleteRoleBindingHTTPResponse, error)
+
 	// ListSatellitesWithResponse Lists satellites.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -4026,14 +4581,23 @@ func (r ListConfigsHTTPResponse) ContentType() string {
 type CreateConfigHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ConfigResponse
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *AppError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *AppError
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *AppError
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ConfigValidationError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateConfigHTTPResponse) GetJSON201() *ConfigResponse {
+	return r.JSON201
 }
 
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
@@ -4049,6 +4613,11 @@ func (r CreateConfigHTTPResponse) GetJSON401() *AppError {
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
 func (r CreateConfigHTTPResponse) GetJSON409() *AppError {
 	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateConfigHTTPResponse) GetJSON422() *ConfigValidationError {
+	return r.JSON422
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -4284,6 +4853,8 @@ type UpdateConfigHTTPResponse struct {
 	JSON404 *AppError
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *AppError
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ConfigValidationError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -4311,6 +4882,11 @@ func (r UpdateConfigHTTPResponse) GetJSON404() *AppError {
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
 func (r UpdateConfigHTTPResponse) GetJSON409() *AppError {
 	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r UpdateConfigHTTPResponse) GetJSON422() *ConfigValidationError {
+	return r.JSON422
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -4892,6 +5468,406 @@ func (r ListOutboxEventsHTTPResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListOutboxEventsHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListPolicyRulesHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]PolicyRule
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListPolicyRulesHTTPResponse) GetJSON200() *[]PolicyRule {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListPolicyRulesHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListPolicyRulesHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListPolicyRulesHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListPolicyRulesHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPolicyRulesHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPolicyRulesHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListPolicyRulesHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreatePolicyRuleHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *PolicyRule
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *AppError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON201() *PolicyRule {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON400() *AppError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON409() *AppError {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreatePolicyRuleHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreatePolicyRuleHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreatePolicyRuleHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreatePolicyRuleHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeletePolicyRuleHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeletePolicyRuleHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeletePolicyRuleHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeletePolicyRuleHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeletePolicyRuleHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeletePolicyRuleHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeletePolicyRuleHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeletePolicyRuleHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeletePolicyRuleHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListRoleBindingsHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]RoleBinding
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListRoleBindingsHTTPResponse) GetJSON200() *[]RoleBinding {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListRoleBindingsHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListRoleBindingsHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListRoleBindingsHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListRoleBindingsHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListRoleBindingsHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListRoleBindingsHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListRoleBindingsHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateRoleBindingHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *RoleBinding
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *AppError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON201() *RoleBinding {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON400() *AppError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON409() *AppError {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateRoleBindingHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateRoleBindingHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateRoleBindingHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateRoleBindingHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteRoleBindingHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteRoleBindingHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteRoleBindingHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteRoleBindingHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteRoleBindingHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteRoleBindingHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteRoleBindingHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteRoleBindingHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteRoleBindingHTTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -6894,6 +7870,118 @@ func (c *ClientWithResponses) ListOutboxEventsWithResponse(ctx context.Context, 
 	return ParseListOutboxEventsHTTPResponse(rsp)
 }
 
+// ListPolicyRulesWithResponse Lists the stored policy rules (plan item 7.3, not implemented yet).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/policies (the `ListPolicyRules` operationId).
+func (c *ClientWithResponses) ListPolicyRulesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPolicyRulesHTTPResponse, error) {
+	rsp, err := c.ListPolicyRules(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPolicyRulesHTTPResponse(rsp)
+}
+
+// CreatePolicyRuleWithBodyWithResponse Stores a policy rule (plan item 7.3, not implemented yet).
+//
+// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+func (c *ClientWithResponses) CreatePolicyRuleWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreatePolicyRuleHTTPResponse, error) {
+	rsp, err := c.CreatePolicyRuleWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreatePolicyRuleHTTPResponse(rsp)
+}
+
+// CreatePolicyRuleWithResponse Stores a policy rule (plan item 7.3, not implemented yet).
+//
+// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+func (c *ClientWithResponses) CreatePolicyRuleWithResponse(ctx context.Context, body CreatePolicyRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreatePolicyRuleHTTPResponse, error) {
+	rsp, err := c.CreatePolicyRule(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreatePolicyRuleHTTPResponse(rsp)
+}
+
+// DeletePolicyRuleWithResponse Deletes a stored policy rule (plan item 7.3, not implemented yet).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/policies/{id} (the `DeletePolicyRule` operationId).
+func (c *ClientWithResponses) DeletePolicyRuleWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*DeletePolicyRuleHTTPResponse, error) {
+	rsp, err := c.DeletePolicyRule(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeletePolicyRuleHTTPResponse(rsp)
+}
+
+// ListRoleBindingsWithResponse Lists the stored role bindings (plan item 7.3, not implemented yet).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/role-bindings (the `ListRoleBindings` operationId).
+func (c *ClientWithResponses) ListRoleBindingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListRoleBindingsHTTPResponse, error) {
+	rsp, err := c.ListRoleBindings(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListRoleBindingsHTTPResponse(rsp)
+}
+
+// CreateRoleBindingWithBodyWithResponse Gives a principal an additional role (plan item 7.3, not implemented yet).
+//
+// Built-in roles come from the user's role and cannot be bound here.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+func (c *ClientWithResponses) CreateRoleBindingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateRoleBindingHTTPResponse, error) {
+	rsp, err := c.CreateRoleBindingWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateRoleBindingHTTPResponse(rsp)
+}
+
+// CreateRoleBindingWithResponse Gives a principal an additional role (plan item 7.3, not implemented yet).
+//
+// Built-in roles come from the user's role and cannot be bound here.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+func (c *ClientWithResponses) CreateRoleBindingWithResponse(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRoleBindingHTTPResponse, error) {
+	rsp, err := c.CreateRoleBinding(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateRoleBindingHTTPResponse(rsp)
+}
+
+// DeleteRoleBindingWithResponse Deletes a stored role binding (plan item 7.3, not implemented yet).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/role-bindings/{id} (the `DeleteRoleBinding` operationId).
+func (c *ClientWithResponses) DeleteRoleBindingWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*DeleteRoleBindingHTTPResponse, error) {
+	rsp, err := c.DeleteRoleBinding(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteRoleBindingHTTPResponse(rsp)
+}
+
 // ListSatellitesWithResponse Lists satellites.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -7403,8 +8491,12 @@ func ParseCreateConfigHTTPResponse(rsp *http.Response) (*CreateConfigHTTPRespons
 	}
 
 	switch {
-	case rsp.StatusCode == 201:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ConfigResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest AppError
@@ -7426,6 +8518,13 @@ func ParseCreateConfigHTTPResponse(rsp *http.Response) (*CreateConfigHTTPRespons
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ConfigValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
@@ -7628,6 +8727,13 @@ func ParseUpdateConfigHTTPResponse(rsp *http.Response) (*UpdateConfigHTTPRespons
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ConfigValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
@@ -8054,6 +9160,322 @@ func ParseListOutboxEventsHTTPResponse(rsp *http.Response) (*ListOutboxEventsHTT
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPolicyRulesHTTPResponse parses an HTTP response from a ListPolicyRulesWithResponse call
+func ParseListPolicyRulesHTTPResponse(rsp *http.Response) (*ListPolicyRulesHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPolicyRulesHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []PolicyRule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreatePolicyRuleHTTPResponse parses an HTTP response from a CreatePolicyRuleWithResponse call
+func ParseCreatePolicyRuleHTTPResponse(rsp *http.Response) (*CreatePolicyRuleHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreatePolicyRuleHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest PolicyRule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeletePolicyRuleHTTPResponse parses an HTTP response from a DeletePolicyRuleWithResponse call
+func ParseDeletePolicyRuleHTTPResponse(rsp *http.Response) (*DeletePolicyRuleHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeletePolicyRuleHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListRoleBindingsHTTPResponse parses an HTTP response from a ListRoleBindingsWithResponse call
+func ParseListRoleBindingsHTTPResponse(rsp *http.Response) (*ListRoleBindingsHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListRoleBindingsHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []RoleBinding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateRoleBindingHTTPResponse parses an HTTP response from a CreateRoleBindingWithResponse call
+func ParseCreateRoleBindingHTTPResponse(rsp *http.Response) (*CreateRoleBindingHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateRoleBindingHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest RoleBinding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteRoleBindingHTTPResponse parses an HTTP response from a DeleteRoleBindingWithResponse call
+func ParseDeleteRoleBindingHTTPResponse(rsp *http.Response) (*DeleteRoleBindingHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteRoleBindingHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 

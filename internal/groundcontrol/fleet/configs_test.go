@@ -3,9 +3,11 @@ package fleet_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
 	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +29,7 @@ func TestConfigService_CreateAppendsConfigChanged(t *testing.T) {
 	cfg, err := w.services(t).Configs.Create(context.Background(), fleet.CreateConfigCmd{Name: "edge-config", Document: doc})
 
 	require.NoError(t, err)
-	require.Equal(t, fleet.ConfigID(3), cfg.ID)
+	require.Equal(t, fleet.ConfigID(3), cfg.Config.ID)
 	created := arg[fleet.Config](t, onlyCall(t, w.rec, "Configs.Create"), 0)
 	require.Equal(t, "edge-config", created.Name)
 	require.Equal(t, registryURL, created.RegistryURL)
@@ -51,7 +53,7 @@ func TestConfigService_UpdateMergePatches(t *testing.T) {
 	cfg, err := w.services(t).Configs.Update(context.Background(), fleet.UpdateConfigCmd{Name: "edge-config", Patch: patch})
 
 	require.NoError(t, err)
-	require.JSONEq(t, want, string(cfg.Document))
+	require.JSONEq(t, want, string(cfg.Config.Document))
 	updated := arg[fleet.Config](t, onlyCall(t, w.rec, "Configs.Update"), 0)
 	require.Equal(t, fleet.ConfigID(3), updated.ID)
 	require.JSONEq(t, want, string(updated.Document))
@@ -117,4 +119,52 @@ func TestConfigService_AssignIsAssignmentChanged(t *testing.T) {
 		Payload:   fleet.ChangedPayload{Name: "edge-01"},
 	}}, w.repo.Events.Appended())
 	noRegistryCalls(t, w.rec)
+}
+
+func (w *world) validatingServices(t *testing.T, v *fleettest.ConfigValidator) *fleet.Services {
+	t.Helper()
+	svc, err := fleet.NewServices(fleet.Deps{
+		Repository: w.repo, Registry: w.registry, ConfigValidator: v,
+		Clock: fleettest.Clock{T: now}, Settings: fleet.Settings{RegistryURL: registryURL},
+	})
+	require.NoError(t, err)
+	return svc
+}
+
+const pendingValidation = "Ground Control stores config documents without validating them"
+
+func TestConfigService_InvalidIsValidationErrorNotStored(t *testing.T) {
+	pending.Plan(t, "7.4", pendingValidation)
+	w := newWorld()
+	v := fleettest.NewConfigValidator(w.rec)
+	v.Err = errors.New("heartbeat_interval: not an @every expression")
+	v.Warnings = []string{"log_level defaulted"}
+	doc := json.RawMessage(`{"app_config":{"heartbeat_interval":"often"}}`)
+
+	_, err := w.validatingServices(t, v).Configs.Create(context.Background(), fleet.CreateConfigCmd{Name: "edge-config", Document: doc})
+
+	var verr *fleet.ConfigValidationError
+	require.ErrorAs(t, err, &verr)
+	require.Equal(t, v.Warnings, verr.Warnings)
+	require.JSONEq(t, string(doc), string(arg[json.RawMessage](t, onlyCall(t, w.rec, "ValidateConfig"), 0)))
+	require.Zero(t, w.rec.Count("Configs.Create"))
+	require.Empty(t, w.repo.Events.Appended())
+}
+
+func TestConfigService_WarningsStoredAndReturned(t *testing.T) {
+	pending.Plan(t, "7.4", pendingValidation)
+	w := newWorld()
+	w.repo.Configs.NextID = 3
+	v := fleettest.NewConfigValidator(w.rec)
+	v.Warnings = []string{"log_level defaulted"}
+
+	res, err := w.validatingServices(t, v).Configs.Create(context.Background(), fleet.CreateConfigCmd{
+		Name: "edge-config", Document: json.RawMessage(`{"app_config":{}}`),
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, v.Warnings, res.Warnings)
+	require.Equal(t, fleet.ConfigID(3), res.Config.ID)
+	require.Equal(t, 1, w.rec.Count("Configs.Create"))
+	before(t, w.rec, "ValidateConfig", "Configs.Create")
 }

@@ -51,7 +51,13 @@ paths:
         required: true
       responses:
         "201":
-          description: Configuration created.
+          description: >
+            Configuration created. From plan item 7.4 the body is the stored
+            configuration with its validation warnings; today it is empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResponse"
         "400":
           description: Configuration payload or name is invalid.
           content:
@@ -70,6 +76,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "422":
+          description: >
+            The configuration fails validation (plan item 7.4, not checked
+            yet); nothing is stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigValidationError"
         "500":
           description: Configuration could not be created.
           content:
@@ -250,6 +264,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "422":
+          description: >
+            The configuration fails validation (plan item 7.4, not checked
+            yet); nothing is stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigValidationError"
         "500":
           description: Configuration could not be updated.
           content:
@@ -600,6 +622,272 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "403":
           description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/policies:
+    get:
+      tags:
+        - policies
+      summary: Lists the stored policy rules (plan item 7.3, not implemented yet).
+      operationId: listPolicyRules
+      responses:
+        "200":
+          description: Policy rules returned, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PolicyRule"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Policy rules could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    post:
+      tags:
+        - policies
+      summary: Stores a policy rule (plan item 7.3, not implemented yet).
+      description: >
+        Every stored rule bumps the policy version that Ground Control
+        replicas poll. A scoped rule (scope other than "*") may only name
+        the satellite, group or config type.
+      operationId: createPolicyRule
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyRuleRequest"
+        description: Policy rule.
+        required: true
+      responses:
+        "201":
+          description: Policy rule stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyRule"
+        "400":
+          description: The rule is malformed or names a type, action or scope it may not.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "409":
+          description: The same rule is already stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Policy rule could not be stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/policies/{id}":
+    delete:
+      tags:
+        - policies
+      summary: Deletes a stored policy rule (plan item 7.3, not implemented yet).
+      operationId: deletePolicyRule
+      parameters:
+        - x-go-name: ID
+          description: Policy rule ID.
+          name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "204":
+          description: Policy rule deleted.
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Policy rule was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Policy rule could not be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/role-bindings:
+    get:
+      tags:
+        - policies
+      summary: Lists the stored role bindings (plan item 7.3, not implemented yet).
+      operationId: listRoleBindings
+      responses:
+        "200":
+          description: Role bindings returned, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoleBinding"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Role bindings could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    post:
+      tags:
+        - policies
+      summary: Gives a principal an additional role (plan item 7.3, not implemented yet).
+      description: >
+        Built-in roles come from the user's role and cannot be bound here.
+      operationId: createRoleBinding
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleBindingRequest"
+        description: Role binding.
+        required: true
+      responses:
+        "201":
+          description: Role binding stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleBinding"
+        "400":
+          description: The principal or role is malformed or a built-in role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "409":
+          description: The principal already has the role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Role binding could not be stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/role-bindings/{id}":
+    delete:
+      tags:
+        - policies
+      summary: Deletes a stored role binding (plan item 7.3, not implemented yet).
+      operationId: deleteRoleBinding
+      parameters:
+        - x-go-name: ID
+          description: Role binding ID.
+          name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "204":
+          description: Role binding deleted.
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Role binding was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Role binding could not be deleted.
           content:
             application/json:
               schema:
@@ -1794,6 +2082,37 @@ components:
           x-go-name: ReplicationBandwidthBytesPerSec
         journal:
           $ref: "#/components/schemas/JournalConfig"
+        admission:
+          $ref: "#/components/schemas/AdmissionConfig"
+    AdmissionConfig:
+      type: object
+      title: AdmissionConfig is the edge admission policy of the satellite proxy (plan item 7.5, not read yet).
+      properties:
+        mode:
+          type: string
+          description: off (default), audit or enforce.
+          x-go-name: Mode
+        bundle:
+          $ref: "#/components/schemas/AdmissionBundle"
+    AdmissionBundle:
+      type: object
+      title: AdmissionBundle is a set of policy lines for the edge admission model.
+      required:
+        - model_version
+        - policies
+      properties:
+        model_version:
+          type: string
+          description: The admission model the lines are written for, edge-admission/v1.
+          x-go-name: ModelVersion
+        policies:
+          type: array
+          description: One line per entry, [subject, repository, reference, operation, allow|deny].
+          items:
+            type: array
+            items:
+              type: string
+          x-go-name: Policies
     JournalConfig:
       type: object
       title: JournalConfig sizes the satellite's edge journal (plan item 6.4, not read yet).
@@ -1957,6 +2276,33 @@ components:
         UpdatedAt:
           type: string
           format: date-time
+        warnings:
+          type: array
+          description: >
+            Validation warnings of a create or update (plan item 7.4);
+            omitted when empty.
+          items:
+            type: string
+          x-go-name: Warnings
+    ConfigValidationError:
+      type: object
+      title: ConfigValidationError is an AppError with the validation warnings.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          format: http-status-code
+          x-go-name: Code
+        message:
+          type: string
+          x-go-name: Message
+        warnings:
+          type: array
+          items:
+            type: string
+          x-go-name: Warnings
     ConfigValue:
       type: object
       title: ConfigValue contains a Harbor Satellite configuration document.
@@ -3001,6 +3347,98 @@ components:
           additionalProperties: true
           x-go-type: json.RawMessage
           x-go-name: Payload
+    PolicyRuleRequest:
+      type: object
+      title: PolicyRuleRequest is a policy rule to store.
+      required:
+        - subject
+        - effect
+      properties:
+        subject:
+          type: string
+          description: user:<name>, role:<role> or oidc:<group>.
+          x-go-name: Subject
+        scope:
+          type: string
+          description: '"*" (the default) or <satellite|group|config>:<name>.'
+          x-go-name: Scope
+        resource_type:
+          type: string
+          description: A resource type or "*" (the default).
+          x-go-name: ResourceType
+        action:
+          type: string
+          description: An action or "*" (the default).
+          x-go-name: Action
+        effect:
+          type: string
+          enum:
+            - allow
+            - deny
+          x-go-name: Effect
+    PolicyRule:
+      type: object
+      title: PolicyRule is a stored policy rule.
+      required:
+        - id
+        - subject
+        - scope
+        - resource_type
+        - action
+        - effect
+      properties:
+        id:
+          type: integer
+          format: int64
+          x-go-name: ID
+        subject:
+          type: string
+          x-go-name: Subject
+        scope:
+          type: string
+          x-go-name: Scope
+        resource_type:
+          type: string
+          x-go-name: ResourceType
+        action:
+          type: string
+          x-go-name: Action
+        effect:
+          type: string
+          x-go-name: Effect
+    RoleBindingRequest:
+      type: object
+      title: RoleBindingRequest gives a principal an additional role.
+      required:
+        - principal
+        - role
+      properties:
+        principal:
+          type: string
+          description: user:<name> or oidc:<group>.
+          x-go-name: Principal
+        role:
+          type: string
+          description: role:<name>, not a built-in role.
+          x-go-name: Role
+    RoleBinding:
+      type: object
+      title: RoleBinding is a stored role binding.
+      required:
+        - id
+        - principal
+        - role
+      properties:
+        id:
+          type: integer
+          format: int64
+          x-go-name: ID
+        principal:
+          type: string
+          x-go-name: Principal
+        role:
+          type: string
+          x-go-name: Role
     RefreshCredentialsResponse:
       type: object
       title: RefreshCredentialsResponse carries the satellite's new robot secret.

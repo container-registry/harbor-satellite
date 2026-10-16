@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
 	auditlog "github.com/container-registry/harbor-satellite/internal/shared/logger"
@@ -119,6 +120,10 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, user)
+		ctx = fleet.ContextWithPrincipal(ctx, fleet.Principal{
+			Subject: fleet.SubjectUser + user.Username,
+			Roles:   []string{fleet.SubjectRole + user.Role},
+		})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -372,3 +372,40 @@ func TestLogoutHandler(t *testing.T) {
 		require.Equal(t, http.StatusUnauthorized, rr.Code)
 	})
 }
+
+// The user handlers keep these rules themselves (plan item 7.2's inline
+// checks), so they hold whichever engine checks the routes: "admin" is
+// reserved, system admins are hidden, and the bootstrap admin cannot be
+// deleted, not even by another system admin.
+func TestUserInvariants_Preserved(t *testing.T) {
+	h := newGCHarness(t)
+	ctx := context.Background()
+	hash, err := auth.HashPassword("R00tPassword")
+	require.NoError(t, err)
+	_, err = h.db.ExecContext(ctx, "INSERT INTO users (username, password_hash, role) VALUES ('root2', $1, 'system_admin')", hash)
+	require.NoError(t, err)
+	root2 := basicAuth("root2", "R00tPassword")
+	h.mustDo(http.MethodPost, "/api/users", CreateUserRequest{Username: "operator", Password: "Operat0rPass"}, h.admin, http.StatusCreated)
+	operator := basicAuth("operator", "Operat0rPass")
+
+	r := h.mustDo(http.MethodPost, "/api/users", CreateUserRequest{Username: "admin", Password: "An0therPass"}, root2, http.StatusBadRequest)
+	require.Contains(t, string(r.Body), "Username 'admin' is reserved")
+
+	for _, who := range []authFunc{h.admin, root2, operator} {
+		h.mustDo(http.MethodGet, "/api/users/admin", nil, who, http.StatusNotFound)
+		h.mustDo(http.MethodGet, "/api/users/root2", nil, who, http.StatusNotFound)
+		var users []UserResponse
+		h.mustDo(http.MethodGet, "/api/users", nil, who, http.StatusOK).decode(t, &users)
+		for _, u := range users {
+			require.NotEqual(t, roleSystemAdmin, u.Role, "system admins are hidden: %+v", u)
+		}
+		require.Len(t, users, 1)
+	}
+
+	r = h.mustDo(http.MethodDelete, "/api/users/admin", nil, root2, http.StatusBadRequest)
+	require.Contains(t, string(r.Body), "Cannot delete system admin")
+	r = h.mustDo(http.MethodDelete, "/api/users/admin", nil, h.admin, http.StatusBadRequest)
+	require.Contains(t, string(r.Body), "Cannot delete yourself")
+	h.mustDo(http.MethodDelete, "/api/users/admin", nil, operator, http.StatusForbidden)
+	h.mustDo(http.MethodGet, "/api/users", nil, adminBasicAuth, http.StatusOK)
+}

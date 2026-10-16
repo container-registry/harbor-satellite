@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/container-registry/harbor-satellite/internal/shared/policybundle"
+	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -1202,3 +1204,52 @@ func omittedRemoteConfig(t *testing.T) Config {
 
 func intPtr(i int) *int    { return &i }
 func boolPtr(b bool) *bool { return &b }
+
+func TestValidateAppConfig_NeedsNoGroundControlURL(t *testing.T) {
+	pending.Plan(t, "7.4", "ValidateAppConfig is a stub")
+	app := AppConfig{
+		LogLevel:                  "info",
+		StateReplicationInterval:  "@every 00h00m30s",
+		RegisterSatelliteInterval: "@every 00h00m05s",
+		HeartbeatInterval:         "@every 00h00m30s",
+	}
+
+	warnings, err := ValidateAppConfig(app)
+
+	require.NoError(t, err)
+	require.Empty(t, warnings)
+
+	app.BringOwnRegistry = true
+	_, err = ValidateAppConfig(app)
+	require.ErrorContains(t, err, "custom registry URL is required", "a real error is still an error")
+
+	app = AppConfig{LogLevel: "loud", HeartbeatInterval: "@every 00h00m30s", Admission: AdmissionConfig{
+		Mode:   "audit",
+		Bundle: &policybundle.Bundle{ModelVersion: policybundle.ModelVersion, Policies: [][]string{{"*", "*", "*", "*", "allow"}}},
+	}}
+	before, err := json.Marshal(app)
+	require.NoError(t, err)
+	warnings, err = ValidateAppConfig(app)
+	require.NoError(t, err)
+	require.NotEmpty(t, warnings, "an invalid log level is a warning")
+	after, err := json.Marshal(app)
+	require.NoError(t, err)
+	require.JSONEq(t, string(before), string(after), "validation never rewrites the document, the bundle behind its pointer included")
+}
+
+// GC's own USE_UNSECURE must not decide whether a satellite's config may
+// use HTTP peers.
+func TestValidateAppConfig_IgnoresProcessEnv(t *testing.T) {
+	pending.Plan(t, "7.4", "ValidateAppConfig is a stub")
+	t.Setenv("USE_UNSECURE", "true")
+	app := AppConfig{
+		PeerDistribution: PeerDistributionConfig{
+			Enabled:     true,
+			StaticPeers: []PeerDescriptor{{ID: "peer-1", URL: "http://peer.local:8585"}},
+		},
+	}
+
+	_, err := ValidateAppConfig(app)
+
+	require.ErrorContains(t, err, "uses HTTP but use_unsecure is false")
+}

@@ -37,3 +37,13 @@ LEFT JOIN LATERAL unnest(g.projects) AS p(project) ON TRUE
 WHERE ra.satellite_id = ANY(sqlc.arg(satellite_ids)::INT[])
 GROUP BY ra.satellite_id, ra.robot_id, ra.robot_name
 ORDER BY ra.satellite_id, ra.robot_id;
+
+-- name: ListGroupNamesOfSatellites :many
+-- The parent scopes of a set of satellites in one statement (plan item
+-- 7.3): what a service loads before it authorizes, and what filters a list
+-- without a query per item.
+SELECT sg.satellite_id, g.group_name
+FROM satellite_groups sg
+JOIN groups g ON g.id = sg.group_id
+WHERE sg.satellite_id = ANY(sqlc.arg(satellite_ids)::INT[])
+ORDER BY sg.satellite_id, g.group_name;

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )
@@ -72,6 +73,15 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	warnings = append(warnings, validateAndEnforceAuditConfig(config)...)
 
 	return config, warnings, nil
+}
+
+// ValidateAppConfig is ValidateAndEnforceDefaults in Ground Control's mode
+// (plan item 7.4): no ground_control_url needed (GC knows its own URL), no
+// environment read (GC's USE_UNSECURE is not the satellite's). It also
+// rejects an admission mode policybundle.ParseMode rejects and a bundle of
+// another model version. It returns the warnings and leaves app unchanged.
+func ValidateAppConfig(app AppConfig) (warnings []string, err error) {
+	return nil, notimpl.Err("7.4 config validation")
 }
 
 // validateAndEnforceAuditConfig fills in defaults for the audit syslog transport

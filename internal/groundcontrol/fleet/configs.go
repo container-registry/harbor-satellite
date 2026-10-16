@@ -24,12 +24,16 @@ type AssignConfigCmd struct {
 	Satellite, Config string
 }
 
-func (s *ConfigService) Create(ctx context.Context, cmd CreateConfigCmd) (Config, error) {
-	return Config{}, notimpl.Err("1.2 create config")
+// Create and Update run Deps.ConfigValidator on the document they store,
+// the merged one for Update. A validation error is a
+// *ConfigValidationError and nothing is stored; warnings are stored with
+// the document and returned (plan item 7.4).
+func (s *ConfigService) Create(ctx context.Context, cmd CreateConfigCmd) (ConfigWriteResult, error) {
+	return ConfigWriteResult{}, notimpl.Err("1.2 create config")
 }
 
-func (s *ConfigService) Update(ctx context.Context, cmd UpdateConfigCmd) (Config, error) {
-	return Config{}, notimpl.Err("1.2 update config")
+func (s *ConfigService) Update(ctx context.Context, cmd UpdateConfigCmd) (ConfigWriteResult, error) {
+	return ConfigWriteResult{}, notimpl.Err("1.2 update config")
 }
 
 // Delete fails with ErrInUse while a satellite uses the config.

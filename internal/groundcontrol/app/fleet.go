@@ -8,11 +8,13 @@ package app
 import (
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/casbin"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/authn"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/heartbeat"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/satconfig"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
@@ -24,6 +26,8 @@ import (
 var (
 	_ server.SatelliteAuthenticator = (*authn.Sessions)(nil)
 	_ async.Job                     = (*heartbeat.Flusher)(nil)
+	_ async.Job                     = (*casbin.Policy)(nil)
+	_ fleet.ConfigValidator         = satconfig.Validator{}
 )
 
 type FleetDeps struct {
@@ -37,6 +41,8 @@ type FleetDeps struct {
 	// SPIRE is nil when no SPIRE server is configured; SPIFFE
 	// registration then fails.
 	SPIRE *spiffe.ServerClient
+	// Policy selects the /api route check (POLICY_ENGINE).
+	Policy env.Policy
 }
 
 // Fleet is what a serve process runs: the services behind the handlers,
@@ -49,6 +55,9 @@ type Fleet struct {
 	Sessions        *authn.Sessions
 	HeartbeatBuffer *heartbeat.Buffer
 	Flusher         *heartbeat.Flusher
+	// Policy is the Casbin policy, nil with POLICY_ENGINE=builtin; its
+	// poller is a job of every serve process.
+	Policy *casbin.Policy
 }
 
 // NewFleet builds the services over postgres.Repository, a harbor2.Registry
@@ -57,15 +66,18 @@ type Fleet struct {
 // registry without the rate limit every HARBOR_PROBE_INTERVAL and counts
 // it stale after three intervals. Sessions run on a postgres.SessionStore
 // and the flusher on a postgres.HeartbeatStore, both on Pools.Fleet, which
-// is also the services' SatelliteRepository.
+// is also the services' SatelliteRepository. The services validate configs
+// with satconfig.Validator. With POLICY_ENGINE=casbin, casbin.New loads
+// the repository's policies and the services and the server share it.
 func NewFleet(deps FleetDeps) (*Fleet, error) {
 	return nil, notimpl.Err("1.3 fleet composition")
 }
 
 // ServerOptions hands the server the services (server.WithFleet), the
 // probe (server.WithHarborContact), the outbox reader for
-// /api/ops/outbox (server.WithOutboxReader) and the sessions
-// (server.WithSatelliteAuthenticator(f.Sessions)).
+// /api/ops/outbox (server.WithOutboxReader), the sessions
+// (server.WithSatelliteAuthenticator(f.Sessions)) and, when set, the
+// policy (server.WithPolicy(f.Policy)).
 func (f *Fleet) ServerOptions(pools *dbpool.Pools) []server.Option {
 	return nil
 }

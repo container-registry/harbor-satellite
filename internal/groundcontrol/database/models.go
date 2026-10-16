@@ -76,6 +76,31 @@ type LoginAttempt struct {
 	LastAttempt time.Time
 }
 
+type PolicyRoleBinding struct {
+	ID        int64
+	Principal string
+	Role      string
+	CreatedAt time.Time
+	CreatedBy sql.NullString
+}
+
+type PolicyRule struct {
+	ID           int64
+	Subject      string
+	Scope        string
+	ResourceType string
+	Action       string
+	Effect       string
+	CreatedAt    time.Time
+	CreatedBy    sql.NullString
+}
+
+type PolicyVersion struct {
+	Singleton bool
+	Version   int64
+	UpdatedAt time.Time
+}
+
 type RobotAccount struct {
 	ID              int32
 	RobotName       string

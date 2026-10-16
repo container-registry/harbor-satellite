@@ -16,6 +16,7 @@ require (
 // Ground Control dependencies.
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/casbin/casbin/v2 v2.135.0
 	github.com/evanphx/json-patch v5.9.11+incompatible
 	github.com/goharbor/go-client v0.213.1
 	github.com/gorilla/mux v1.8.2-0.20240619235004-db9d1d0073d2
@@ -47,6 +48,8 @@ require (
 require (
 	github.com/Microsoft/go-winio v0.6.3-0.20251027160822-ad3df93bed29 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
+	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
+	github.com/casbin/govaluate v1.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/docker/cli v29.5.3+incompatible // indirect

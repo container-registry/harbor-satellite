@@ -1,6 +1,7 @@
 package env
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 )
@@ -11,6 +12,7 @@ type GroundControl struct {
 	EmbeddedSPIRE  EmbeddedSPIRE
 	Database       Database       `envPrefix:"DB_"`
 	Outbox         Outbox         `envPrefix:"OUTBOX_"`
+	Policy         Policy         `envPrefix:"POLICY_"`
 	PasswordPolicy PasswordPolicy `envPrefix:"PASSWORD_"`
 	SPIFFE         SPIFFE         `envPrefix:"SPIFFE_"`
 	SPIRE          SPIRE          `envPrefix:"SPIRE_"`
@@ -81,6 +83,31 @@ type Outbox struct {
 	BackoffBase  time.Duration `env:"BACKOFF_BASE"  envDefault:"1s"`
 	BackoffMax   time.Duration `env:"BACKOFF_MAX"   envDefault:"5m"`
 	Lease        time.Duration `env:"LEASE"         envDefault:"1m"`
+}
+
+const (
+	PolicyEngineBuiltin = "builtin"
+	PolicyEngineCasbin  = "casbin"
+)
+
+// Policy selects the /api route check (plan item 7.2): builtin is today's
+// system_admin check, casbin the Casbin policy, which polls
+// policy_version every PollInterval for stored changes.
+type Policy struct {
+	Engine       string        `env:"ENGINE"        envDefault:"builtin"`
+	PollInterval time.Duration `env:"POLL_INTERVAL" envDefault:"10s"`
+}
+
+// Validate rejects an unknown engine, so a typo cannot silently run
+// builtin, and a poll interval that is not positive.
+func (p Policy) Validate() error {
+	if p.Engine != PolicyEngineBuiltin && p.Engine != PolicyEngineCasbin {
+		return fmt.Errorf("POLICY_ENGINE %q: want %s or %s", p.Engine, PolicyEngineBuiltin, PolicyEngineCasbin)
+	}
+	if p.PollInterval <= 0 {
+		return fmt.Errorf("POLICY_POLL_INTERVAL %s: must be positive", p.PollInterval)
+	}
+	return nil
 }
 
 type Server struct {

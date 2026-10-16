@@ -7,6 +7,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/gorilla/mux"
 )
 
@@ -47,7 +48,9 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 		}
 
 		if strings.HasPrefix(cleanPath, "/api/") {
-			if requiresSystemAdmin(r.Method, cleanPath) {
+			if s.policyRouteCheck() {
+				handler = s.PolicyMiddleware(handler)
+			} else if requiresSystemAdmin(r.Method, cleanPath) {
 				handler = s.RequireRole(roleSystemAdmin, handler.ServeHTTP)
 			}
 			handler = s.AuthMiddleware(handler)
@@ -55,6 +58,12 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 
 		handler.ServeHTTP(w, r)
 	})
+}
+
+// policyRouteCheck reports whether the /api routes are checked by the
+// policy (PolicyMiddleware) rather than by requiresSystemAdmin.
+func (s *Server) policyRouteCheck() bool {
+	return s.policy != nil && s.policyEngine == env.PolicyEngineCasbin
 }
 
 // satelliteAuthChain authenticates satellite-facing endpoints. D3: the
@@ -90,6 +99,10 @@ func requiresSystemAdmin(method, requestPath string) bool {
 	case strings.HasPrefix(requestPath, "/api/spire/"):
 		return true
 	case strings.HasPrefix(requestPath, "/api/ops/"):
+		return true
+	case requestPath == "/api/policies" || strings.HasPrefix(requestPath, "/api/policies/"):
+		return true
+	case requestPath == "/api/role-bindings" || strings.HasPrefix(requestPath, "/api/role-bindings/"):
 		return true
 	case method == http.MethodPost && requestPath == "/api/satellites/register":
 		return true

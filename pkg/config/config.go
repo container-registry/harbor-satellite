@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/shared/policybundle"
 	"github.com/rs/zerolog"
 )
 
@@ -291,6 +292,16 @@ type AppConfig struct {
 	ReplicationConcurrency          int           `json:"replication_concurrency,omitempty"`
 	ReplicationBandwidthBytesPerSec int64         `json:"replication_bandwidth_bytes_per_sec,omitempty"`
 	Journal                         JournalConfig `json:"journal,omitzero"`
+	// Plan item 7.5 (Harbor 3 skeleton): accepted, not read yet.
+	Admission AdmissionConfig `json:"admission,omitzero"`
+}
+
+// AdmissionConfig is the edge admission policy Ground Control delivers
+// with the config state artifact; the proxy evaluates Bundle in Mode
+// (policybundle.ParseMode, "" is off).
+type AdmissionConfig struct {
+	Mode   string               `json:"mode,omitempty"`
+	Bundle *policybundle.Bundle `json:"bundle,omitempty"`
 }
 
 // JournalConfig sizes the edge journal (internal/satellite/journal). Zero

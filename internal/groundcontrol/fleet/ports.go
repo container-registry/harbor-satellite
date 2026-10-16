@@ -82,6 +82,7 @@ type Tx interface {
 	Events() EventSink
 	Journal() JournalRepo
 	Views() ViewRepo
+	Policies() PolicyRepo
 }
 
 type SatelliteRepo interface {
@@ -114,6 +115,11 @@ type GroupRepo interface {
 	Members(ctx context.Context, id GroupID) ([]SatelliteID, error)
 	AddMember(ctx context.Context, id GroupID, satellite SatelliteID) error
 	RemoveMember(ctx context.Context, id GroupID, satellite SatelliteID) error
+	// GroupsOfSatellites returns the group names of every given satellite
+	// in one statement however many satellites there are: the parent
+	// scopes a service loads before it authorizes, also used to filter a
+	// List without a query per item.
+	GroupsOfSatellites(ctx context.Context, ids []SatelliteID) (map[SatelliteID][]string, error)
 }
 
 type ConfigRepo interface {

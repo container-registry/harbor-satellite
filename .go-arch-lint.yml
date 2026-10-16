@@ -55,6 +55,7 @@ components:
       - internal/groundcontrol/logger
       - internal/groundcontrol/middleware
       - internal/groundcontrol/migrator
+      - internal/groundcontrol/satconfig
       - internal/groundcontrol/spiffe
       - internal/groundcontrol/sql
       - internal/groundcontrol/utils
@@ -65,6 +66,7 @@ components:
       - internal/shared/inventory
       - internal/shared/logger
       - internal/shared/notimpl
+      - internal/shared/policybundle
       - internal/shared/spiffe
       - internal/shared/utils
   shared-env:

@@ -77,6 +77,10 @@ type Server struct {
 	// satelliteAuth is set by WithSatelliteAuthenticator; nil keeps the
 	// robot Basic chain of today.
 	satelliteAuth SatelliteAuthenticator
+	// policy is set by WithPolicy. The /api route check uses it instead of
+	// requiresSystemAdmin only when policyEngine (POLICY_ENGINE) is casbin.
+	policy       fleet.Policy
+	policyEngine string
 }
 
 // HarborContact reports the last successful contact with Harbor; the
@@ -113,6 +117,12 @@ func WithHarborContact(contact HarborContact, staleAfter time.Duration) Option {
 
 func WithOutboxReader(r OutboxReader) Option {
 	return func(s *Server) { s.outbox = r }
+}
+
+// WithPolicy gives the /api route check a policy (plan item 7.2). With
+// POLICY_ENGINE=builtin, the default, it is not consulted.
+func WithPolicy(policy fleet.Policy) Option {
+	return func(s *Server) { s.policy = policy }
 }
 
 // ServerTLSConfig holds TLS settings for the Ground Control HTTP server.
@@ -153,6 +163,13 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 	appServer.lockoutDuration = cfg.Server.LockoutDuration
 	appServer.staleThreshold = cfg.Server.StaleThreshold
 	appServer.trustForwardedHeaders = cfg.Audit.TrustForwardedHeaders
+	appServer.policyEngine = cfg.Policy.Engine
+	if err := cfg.Policy.Validate(); err != nil {
+		return result, err
+	}
+	if appServer.policyEngine == env.PolicyEngineCasbin && appServer.policy == nil {
+		return result, fmt.Errorf("POLICY_ENGINE=%s needs a policy (WithPolicy), which serve does not pass yet", env.PolicyEngineCasbin)
+	}
 
 	db, err := sql.Open("postgres", cfg.Database.URL())
 	if err != nil {

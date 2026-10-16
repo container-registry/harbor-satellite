@@ -71,6 +71,9 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if got := cfg.Harbor.RobotDurationDaysValue(); got != 30 {
 		t.Fatalf("RobotDurationDaysValue() = %d, want 30", got)
 	}
+	if cfg.Policy.Engine != PolicyEngineBuiltin || cfg.Policy.PollInterval != 10*time.Second {
+		t.Fatalf("policy defaults were not applied: %+v", cfg.Policy)
+	}
 }
 
 func TestLoadSatelliteParsesEnvironment(t *testing.T) {

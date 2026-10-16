@@ -33,7 +33,7 @@ func TestAllowAllAllows(t *testing.T) {
 // anything, so plan item 7.3's scoped administration needs no new
 // parameters.
 func TestServices_AuthorizeThePrincipalOfTheContext(t *testing.T) {
-	pending.Plan(t, "1.2", pendingServices)
+	pending.Plan(t, "7.3", pendingServices)
 	w := newWorld()
 	seedRegistration(w)
 	policy := fleettest.NewPolicy(w.rec)
@@ -45,9 +45,16 @@ func TestServices_AuthorizeThePrincipalOfTheContext(t *testing.T) {
 	_, err = svc.Satellites.Register(ctx, fleet.RegisterSatelliteCmd{Name: "edge-01", ConfigName: "edge-config", Groups: []string{"g1"}})
 
 	require.ErrorIs(t, err, fleet.ErrForbidden)
-	authorize := onlyCall(t, w.rec, "Authorize")
-	require.Equal(t, alice, arg[fleet.Principal](t, authorize, 0))
-	require.Equal(t, []string{"Authorize"}, w.rec.Methods(), "nothing is read or written before the check")
+	// 7.3: Register takes its parents from the command, so it authorizes
+	// before any read: one check for the satellite and one per group.
+	authorize := w.rec.CallsTo("Authorize")
+	require.Len(t, authorize, 2, "register on the satellite, add_member on g1")
+	for _, c := range authorize {
+		require.Equal(t, alice, arg[fleet.Principal](t, c, 0))
+	}
+	for _, m := range w.rec.Methods() {
+		require.Equal(t, "Authorize", m, "nothing is read or written before the checks: %v", w.rec.Methods())
+	}
 
 	policy.FailOn("Authorize", errors.New("policy store down"))
 	_, err = svc.Satellites.List(ctx)

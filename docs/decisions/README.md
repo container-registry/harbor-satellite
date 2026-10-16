@@ -24,6 +24,7 @@ General information about architectural decision records is available at <https:
 | [ADR-0014](0014-ground-control-async-plane.md) | Ground Control async plane: transactional outbox and level-triggered publisher | proposed; skeleton only |
 | [ADR-0015](0015-edge-journal-and-upload-protocol.md) | Edge journal and upload protocol | proposed; skeleton only |
 | [ADR-0016](0016-satellite-session-authentication.md) | Satellite sessions and the fleet hot path | proposed; skeleton only |
+| [ADR-0017](0017-policy-engine-casbin.md) | Policy engine: Casbin for Ground Control and edge admission | proposed; skeleton only |
 
 ## Design Notes
 
