@@ -3,8 +3,8 @@
 -- Events are appended in the transaction that changes the fleet and
 -- handled by the async plane (ADR-0014). xid is the appending
 -- transaction's ID; ordered readers (webhooks) need it, the work queue
--- does not. xid8 and pg_current_xact_id() need PostgreSQL 13; ADR-0014
--- sets the minimum to 14. Log-only kinds are inserted already done.
+-- does not. xid8 and pg_current_xact_id() need PostgreSQL 13; ADR-0020
+-- sets the minimum to 19. Log-only kinds are inserted already done.
 CREATE TABLE event_outbox (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     xid             XID8 NOT NULL DEFAULT pg_current_xact_id(),

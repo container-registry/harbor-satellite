@@ -343,6 +343,7 @@ ADRs in docs/decisions/:
 - ADR-0017: Policy engine, Casbin for Ground Control and edge admission (proposed; skeleton only; supersedes ADR-0009's CEL section)
 - ADR-0018: Operator identity through OIDC and satellite credential rotation (proposed; skeleton only)
 - ADR-0019: Ground Control hosting and extension points (proposed; skeleton only; webhooks, event catalog, edge middleware seam)
+- ADR-0020: PostgreSQL 19 as the minimum version (accepted; not implemented; supersedes ADR-0014 decision 10; images move at the 19.0 release)
 - groundcontrol-internal-package-migration.md: moving GC into the root module (done)
 
 ## Common Workflows

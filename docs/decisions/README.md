@@ -27,6 +27,7 @@ General information about architectural decision records is available at <https:
 | [ADR-0017](0017-policy-engine-casbin.md) | Policy engine: Casbin for Ground Control and edge admission | proposed; skeleton only |
 | [ADR-0018](0018-operator-identity-oidc.md) | Operator identity through OIDC and satellite credential rotation | proposed; skeleton only |
 | [ADR-0019](0019-ground-control-hosting-and-extension-points.md) | Ground Control hosting and extension points | proposed; skeleton only |
+| [ADR-0020](0020-postgresql-19-minimum.md) | PostgreSQL 19 as the minimum version | accepted; not implemented |
 
 ## Design Notes
 
