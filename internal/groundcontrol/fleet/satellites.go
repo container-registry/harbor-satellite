@@ -28,7 +28,9 @@ func (s *SatelliteService) Register(ctx context.Context, cmd RegisterSatelliteCm
 	return RegistrationToken{}, notimpl.Err("1.2 register satellite")
 }
 
-// Delete appends the tombstone in the satellite's transaction and, after
+// Delete appends the tombstone in the satellite's transaction, with
+// RobotHarborIDs from Robots().HarborIDs so an unpromoted successor robot
+// (plan item 8.4) is deleted too, and, after
 // the commit, invalidates its sessions (Sessions.Invalidate), so the
 // deleted satellite gets 401 within the session cache TTL.
 func (s *SatelliteService) Delete(ctx context.Context, name string) error {

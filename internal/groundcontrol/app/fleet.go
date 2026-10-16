@@ -6,6 +6,7 @@
 package app
 
 import (
+	"context"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/casbin"
@@ -15,6 +16,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/heartbeat"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/satconfig"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/secrets"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
@@ -28,6 +30,8 @@ var (
 	_ async.Job                     = (*heartbeat.Flusher)(nil)
 	_ async.Job                     = (*casbin.Policy)(nil)
 	_ fleet.ConfigValidator         = satconfig.Validator{}
+	_ fleet.Sealer                  = (*secrets.AESGCM)(nil)
+	_ server.OperatorLogin          = operatorLogin{}
 )
 
 type FleetDeps struct {
@@ -58,6 +62,19 @@ type Fleet struct {
 	// Policy is the Casbin policy, nil with POLICY_ENGINE=builtin; its
 	// poller is a job of every serve process.
 	Policy *casbin.Policy
+	// Rotations serves pending robot rotations to the heartbeat (plan item
+	// 8.4) and Login is the OIDC operator login (8.1); both nil while
+	// disabled.
+	Rotations *async.RotationCache
+	Login     *authn.OIDCLogin
+}
+
+// operatorLogin adapts authn.OIDCLogin to server.OperatorLogin.
+type operatorLogin struct{ *authn.OIDCLogin }
+
+func (l operatorLogin) Start(ctx context.Context) (redirectURL, binding string, err error) {
+	start, err := l.OIDCLogin.Start(ctx)
+	return start.RedirectURL, start.Binding, err
 }
 
 // NewFleet builds the services over postgres.Repository, a harbor2.Registry
@@ -76,8 +93,9 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 // ServerOptions hands the server the services (server.WithFleet), the
 // probe (server.WithHarborContact), the outbox reader for
 // /api/ops/outbox (server.WithOutboxReader), the sessions
-// (server.WithSatelliteAuthenticator(f.Sessions)) and, when set, the
-// policy (server.WithPolicy(f.Policy)).
+// (server.WithSatelliteAuthenticator(f.Sessions)), when set, the policy
+// (server.WithPolicy(f.Policy)) and, with OIDC, the operator login
+// (server.WithOperatorLogin).
 func (f *Fleet) ServerOptions(pools *dbpool.Pools) []server.Option {
 	return nil
 }

@@ -81,6 +81,8 @@ type Server struct {
 	// requiresSystemAdmin only when policyEngine (POLICY_ENGINE) is casbin.
 	policy       fleet.Policy
 	policyEngine string
+	// operatorLogin is set by WithOperatorLogin (plan item 8.1).
+	operatorLogin OperatorLogin
 }
 
 // HarborContact reports the last successful contact with Harbor; the
@@ -165,6 +167,9 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 	appServer.trustForwardedHeaders = cfg.Audit.TrustForwardedHeaders
 	appServer.policyEngine = cfg.Policy.Engine
 	if err := cfg.Policy.Validate(); err != nil {
+		return result, err
+	}
+	if err := cfg.OIDC.Validate(); err != nil {
 		return result, err
 	}
 	if appServer.policyEngine == env.PolicyEngineCasbin && appServer.policy == nil {

@@ -38,6 +38,10 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 			if s.AnonymousLimiter == nil {
 				handler = middleware.RateLimitMiddleware(s.rateLimiter)(handler)
 			}
+		case "/oidc/login", "/oidc/callback", "/oidc/device", "/oidc/device/token":
+			// Anonymous with or without RATE_LIMIT_SPLIT; /oidc/login also
+			// stores a login state per request.
+			handler = s.limitAnonymous(handler)
 		case "/satellites/ztr":
 			handler = s.limitAnonymous(handler)
 		case "/satellites/spiffe-ztr":

@@ -4,7 +4,7 @@ status: accepted
 
 # Ground Control Authentication
 
-Partly superseded: satellite authentication by [ADR-0016](0016-satellite-session-authentication.md).
+Partly superseded: satellite authentication by [ADR-0016](0016-satellite-session-authentication.md), operator login through OIDC by [ADR-0018](0018-operator-identity-oidc.md).
 
 ## Context and Problem Statement
 

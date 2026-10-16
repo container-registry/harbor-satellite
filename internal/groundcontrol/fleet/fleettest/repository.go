@@ -330,6 +330,8 @@ type RobotRepo struct {
 	rec *Recorder
 	// BySatelliteID answers BySatellite and ByName.
 	BySatelliteID map[fleet.SatelliteID]fleet.Robot
+	// Successors are the Harbor IDs of unpromoted successor robots.
+	Successors map[fleet.SatelliteID][]int64
 	// NextID is the ID Add returns.
 	NextID fleet.RobotID
 }
@@ -340,6 +342,18 @@ func (r *RobotRepo) Add(_ context.Context, robot fleet.Robot) (fleet.Robot, erro
 	}
 	robot.ID = r.NextID
 	return robot, nil
+}
+
+// HarborIDs answers the seeded robot's Harbor ID plus Successors.
+func (r *RobotRepo) HarborIDs(_ context.Context, satellite fleet.SatelliteID) ([]int64, error) {
+	if err := r.rec.Record("Robots.HarborIDs", satellite); err != nil {
+		return nil, err
+	}
+	var ids []int64
+	if robot, ok := r.BySatelliteID[satellite]; ok {
+		ids = append(ids, robot.HarborID)
+	}
+	return append(ids, r.Successors[satellite]...), nil
 }
 
 func (r *RobotRepo) BySatellite(_ context.Context, satellite fleet.SatelliteID) (fleet.Robot, error) {

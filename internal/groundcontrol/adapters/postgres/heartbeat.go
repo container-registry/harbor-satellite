@@ -14,7 +14,7 @@ var _ heartbeat.Store = (*HeartbeatStore)(nil)
 // HeartbeatStore writes a heartbeat batch in one transaction on the fleet
 // plane's pool: FlushLastSeen, FlushSatelliteView,
 // InsertSatelliteStatusBatch and, when the batch has any,
-// StoreSatelliteInventories, each with the whole batch as one JSON
+// StoreSatelliteInventories and AckRobotRotations, each with the whole batch as one JSON
 // argument. The statements read times as TIMESTAMPTZ, so
 // satellites.last_seen and satellite_status.reported_at, which are
 // TIMESTAMP, get the session time zone's wall clock, as NOW() writes them.

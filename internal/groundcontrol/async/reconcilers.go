@@ -26,6 +26,9 @@ var (
 // It renders with robotDisabled = (the view state is revoked), applies
 // SetRobotAccess(projects, disabled), then PushState, so a revoked
 // satellite's robot is disabled with its projects kept (plan item 4.3).
+// For RobotRotated, Handle calls desired.ClearPublished first, so the
+// promoted successor gets the projects; the desired document does not
+// change, so the fleet is not republished (plan item 8.4).
 // It creates the robot when the satellite has none, named
 // fleet.RobotName; when the registry answers ErrAlreadyExists, an earlier
 // attempt created it before it could be stored, so the robot of exactly
@@ -39,7 +42,7 @@ func NewSatelliteReconciler(repo fleet.Repository, registry fleet.Registry, desi
 func (r *SatelliteReconciler) Kinds() []fleet.EventKind {
 	return []fleet.EventKind{
 		fleet.EventSatelliteCreated, fleet.EventAssignmentChanged, fleet.EventSatelliteChanged,
-		fleet.EventSatelliteRevoked, fleet.EventSatelliteUnrevoked,
+		fleet.EventSatelliteRevoked, fleet.EventSatelliteUnrevoked, fleet.EventRobotRotated,
 	}
 }
 

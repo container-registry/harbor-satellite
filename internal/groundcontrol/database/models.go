@@ -76,6 +76,14 @@ type LoginAttempt struct {
 	LastAttempt time.Time
 }
 
+type OidcLoginState struct {
+	State        string
+	CodeVerifier string
+	Nonce        string
+	BindingHash  []byte
+	ExpiresAt    time.Time
+}
+
 type PolicyRoleBinding struct {
 	ID        int64
 	Principal string
@@ -110,6 +118,19 @@ type RobotAccount struct {
 	RobotExpiry     sql.NullTime
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+}
+
+type RobotRotation struct {
+	SatelliteID      int32
+	Generation       int64
+	RobotName        string
+	RobotHarborID    int64
+	SecretCiphertext []byte
+	SecretHash       string
+	ExpiresAt        sql.NullTime
+	CreatedAt        time.Time
+	AckedAt          sql.NullTime
+	PromotedAt       sql.NullTime
 }
 
 type Satellite struct {
@@ -210,4 +231,15 @@ type User struct {
 	Role         string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+type UserIdentity struct {
+	ID          int64
+	UserID      int32
+	Issuer      string
+	Subject     string
+	Email       sql.NullString
+	Groups      []string
+	LastLoginAt sql.NullTime
+	CreatedAt   time.Time
 }

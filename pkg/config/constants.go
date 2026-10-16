@@ -8,6 +8,12 @@ const (
 	SPIFFEZTRConfigJobName string = "spiffe_register_satellite"
 )
 
+// Registry auth modes of app_config.registry_auth (plan item 8.3).
+const (
+	RegistryAuthRobot            = "robot"
+	RegistryAuthWorkloadIdentity = "workload_identity"
+)
+
 // Default SPIFFE endpoint socket
 const DefaultSPIFFEEndpointSocket string = "unix:///run/spire/sockets/agent.sock"
 

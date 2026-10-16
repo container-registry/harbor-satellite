@@ -138,6 +138,9 @@ type RobotRepo interface {
 	ByName(ctx context.Context, name string) (Robot, error)
 	Update(ctx context.Context, robot Robot) error
 	Delete(ctx context.Context, id RobotID) error
+	// HarborIDs are the satellite's robot and any unpromoted successor
+	// (plan item 8.4), so a tombstone deletes both.
+	HarborIDs(ctx context.Context, satellite SatelliteID) ([]int64, error)
 }
 
 // TokenRepo holds single-use registration tokens (D7): a registration

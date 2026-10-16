@@ -32,6 +32,11 @@ type Heartbeat struct {
 	InventoryDigest           Digest
 	Inventory                 []InventoryItem // nil unless the inventory changed
 	Sample                    StatusSample
+	// CredentialsGeneration acks a delivered rotation (plan item 8.4). Beat
+	// sets it only when the satellite's generation equals its pending
+	// rotation's, so the flush runs AckRobotRotations only while an ack is
+	// due, not for every satellite that reports its current generation.
+	CredentialsGeneration int64
 }
 
 // HeartbeatSink buffers heartbeats per replica; heartbeat.Buffer is the
@@ -53,6 +58,7 @@ type HeartbeatCmd struct {
 	InventoryDigest           Digest          // empty from satellites before 4.4: GC computes it
 	Inventory                 []InventoryItem // nil when none was sent
 	Journal                   *JournalUpload  // nil when the beat carries no journal
+	CredentialsGeneration     int64           // the robot generation the satellite uses (plan item 8.4)
 }
 
 type HeartbeatResult struct {
@@ -60,6 +66,11 @@ type HeartbeatResult struct {
 	InventoryRequested bool
 	Journal            *JournalAck // set whenever cmd.Journal is set, error included
 	Session            *SessionGrant
+	// Credentials is a pending rotation, delivered only to session and SVID
+	// beats whose CredentialsGeneration is older (plan item 8.4): a robot
+	// Basic satellite would switch to a robot Ground Control does not yet
+	// accept for Basic auth.
+	Credentials *RotatedCredentials
 }
 
 // HeartbeatService takes satellite heartbeats on the fleet plane; it owns

@@ -38,6 +38,10 @@ func TestEventPayloads_JSON(t *testing.T) {
 			fleet.GroupDeletedPayload{Name: "g1", Members: []fleet.SatelliteID{7, 8}, StateRef: ref},
 			`{"name":"g1","members":[7,8],"state_ref":{"registry":"http://harbor.example","repository":"satellite/satellite-state/edge-01/state","tag":"latest"}}`,
 		},
+		"robot rotated": {
+			fleet.RobotRotatedPayload{Name: "edge-01", Generation: 2, RobotHarborIDs: []int64{42, 43}},
+			`{"name":"edge-01","generation":2,"robot_harbor_ids":[42,43]}`,
+		},
 		"policy changed": {
 			fleet.PolicyChangedPayload{Name: "role:edge-admins", Version: 5, Change: fleet.PolicyRuleCreated, ID: 9},
 			`{"name":"role:edge-admins","version":5,"change":"rule_created","id":9}`,

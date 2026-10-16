@@ -30,3 +30,8 @@ func (robotRepo) Update(ctx context.Context, robot fleet.Robot) error {
 func (robotRepo) Delete(ctx context.Context, id fleet.RobotID) error {
 	return notimpl.Err("1.3 postgres delete robot")
 }
+
+// HarborIDs runs ListRobotHarborIDsOfSatellite.
+func (robotRepo) HarborIDs(ctx context.Context, satellite fleet.SatelliteID) ([]int64, error) {
+	return nil, notimpl.Err("8.4 postgres robot harbor IDs")
+}

@@ -1758,6 +1758,134 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+  /oidc/callback:
+    get:
+      tags:
+        - auth
+      summary: Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+      operationId: oidcCallback
+      parameters:
+        - x-go-name: Code
+          name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - x-go-name: State
+          name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session token created for the mapped user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: State, code or browser binding is missing, unknown or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: No role mapping matches the user, or a local account holds the username.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Session could not be created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+  /oidc/device:
+    post:
+      tags:
+        - auth
+      summary: Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+      operationId: oidcDeviceAuthorize
+      responses:
+        "200":
+          description: Device authorization started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceAuthorizationResponse"
+        "500":
+          description: The OIDC provider could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+  /oidc/device/token:
+    post:
+      tags:
+        - auth
+      summary: Polls an OIDC device flow (plan item 8.1, not implemented).
+      operationId: oidcDeviceToken
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceTokenRequest"
+        required: true
+      responses:
+        "200":
+          description: Session token created for the mapped user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: authorization_pending, slow_down, or the device code is unknown or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: No role mapping matches the user, or a local account holds the username.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Session could not be created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+  /oidc/login:
+    get:
+      tags:
+        - auth
+      summary: Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+      operationId: oidcLogin
+      responses:
+        "302":
+          description: Redirect to the OIDC provider.
+          headers:
+            Location:
+              schema:
+                type: string
+            Set-Cookie:
+              schema:
+                type: string
+        "404":
+          description: OIDC login is not enabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Login could not be started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
   /ping:
     get:
       tags:
@@ -2084,6 +2212,82 @@ components:
           $ref: "#/components/schemas/JournalConfig"
         admission:
           $ref: "#/components/schemas/AdmissionConfig"
+        registry_auth:
+          $ref: "#/components/schemas/RegistryAuthConfig"
+    RegistryAuthConfig:
+      type: object
+      title: RegistryAuthConfig selects how the satellite authenticates to Harbor (plan item 8.3, not read yet).
+      properties:
+        mode:
+          type: string
+          description: robot (default) or workload_identity.
+          x-go-name: Mode
+        audience:
+          type: string
+          description: JWT-SVID audience for workload_identity.
+          x-go-name: Audience
+    DeviceAuthorizationResponse:
+      type: object
+      title: DeviceAuthorizationResponse starts an OIDC device flow (RFC 8628).
+      required:
+        - device_code
+        - user_code
+        - verification_uri
+        - expires_in
+        - interval
+      properties:
+        device_code:
+          type: string
+          x-go-name: DeviceCode
+        user_code:
+          type: string
+          x-go-name: UserCode
+        verification_uri:
+          type: string
+          x-go-name: VerificationURI
+        verification_uri_complete:
+          type: string
+          x-go-name: VerificationURIComplete
+        expires_in:
+          type: integer
+          format: int64
+          description: Seconds until the device code expires.
+          x-go-name: ExpiresIn
+        interval:
+          type: integer
+          format: int64
+          description: Seconds to wait between polls.
+          x-go-name: Interval
+    DeviceTokenRequest:
+      type: object
+      required:
+        - device_code
+      properties:
+        device_code:
+          type: string
+          x-go-name: DeviceCode
+    RotatedCredentials:
+      type: object
+      title: RotatedCredentials are a successor robot's credentials (plan item 8.4, not set yet).
+      required:
+        - username
+        - password
+        - generation
+      properties:
+        username:
+          type: string
+          x-go-name: Username
+        password:
+          type: string
+          x-go-name: Password
+        expires_at:
+          type: string
+          format: date-time
+          x-go-name: ExpiresAt
+        generation:
+          type: integer
+          format: int64
+          x-go-name: Generation
     AdmissionConfig:
       type: object
       title: AdmissionConfig is the edge admission policy of the satellite proxy (plan item 7.5, not read yet).
@@ -3139,6 +3343,12 @@ components:
           format: int64
           minimum: 0
           x-go-name: StorageUsedBytes
+        credentials_generation:
+          type: integer
+          format: int64
+          minimum: 0
+          description: The robot generation the satellite uses; acks a delivered rotation (plan item 8.4, not read yet).
+          x-go-name: CredentialsGeneration
     SatelliteSyncResponse:
       type: object
       title: SatelliteSyncResponse carries Ground Control events for the satellite.
@@ -3160,6 +3370,9 @@ components:
           type: boolean
           description: Ground Control has no inventory for the reported digest; the next heartbeat sends cached_images.
           x-go-name: InventoryRequested
+        credentials:
+          $ref: "#/components/schemas/RotatedCredentials"
+          x-go-type-skip-optional-pointer: false
     SatelliteSession:
       type: object
       title: SatelliteSession is the Ground Control session a satellite authenticates with (ADR-0016).

@@ -56,6 +56,7 @@ components:
       - internal/groundcontrol/middleware
       - internal/groundcontrol/migrator
       - internal/groundcontrol/satconfig
+      - internal/groundcontrol/secrets
       - internal/groundcontrol/spiffe
       - internal/groundcontrol/sql
       - internal/groundcontrol/utils

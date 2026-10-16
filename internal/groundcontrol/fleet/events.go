@@ -41,6 +41,7 @@ func EventKinds() []EventKind {
 		EventSatelliteRevoked,
 		EventSatelliteUnrevoked,
 		EventPolicyChanged,
+		EventRobotRotated,
 	}
 }
 

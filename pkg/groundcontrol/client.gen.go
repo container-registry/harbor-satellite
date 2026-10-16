@@ -185,6 +185,7 @@ type AppConfig struct {
 	// PeerDistribution Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
 	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitempty,omitzero"`
 	RegisterSatelliteInterval string                 `json:"register_satellite_interval,omitempty,omitzero"`
+	RegistryAuth              RegistryAuthConfig     `json:"registry_auth,omitempty,omitzero"`
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty,omitzero"`
 
 	// ReplicationBandwidthBytesPerSec Bandwidth budget of state replication (plan item 6.2, not read yet).
@@ -299,6 +300,25 @@ type ConfigValue struct {
 type CreateUserRequest struct {
 	Password string `json:"password"`
 	Username string `json:"username"`
+}
+
+// DeviceAuthorizationResponse defines model for DeviceAuthorizationResponse.
+type DeviceAuthorizationResponse struct {
+	DeviceCode string `json:"device_code"`
+
+	// ExpiresIn Seconds until the device code expires.
+	ExpiresIn int64 `json:"expires_in"`
+
+	// Interval Seconds to wait between polls.
+	Interval                int64  `json:"interval"`
+	UserCode                string `json:"user_code"`
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete,omitempty,omitzero"`
+}
+
+// DeviceTokenRequest defines model for DeviceTokenRequest.
+type DeviceTokenRequest struct {
+	DeviceCode string `json:"device_code"`
 }
 
 // DirectDeliveryConfig defines model for DirectDeliveryConfig.
@@ -507,6 +527,15 @@ type RefreshCredentialsResponse struct {
 	Secret string `json:"secret"`
 }
 
+// RegistryAuthConfig defines model for RegistryAuthConfig.
+type RegistryAuthConfig struct {
+	// Audience JWT-SVID audience for workload_identity.
+	Audience string `json:"audience,omitempty,omitzero"`
+
+	// Mode robot (default) or workload_identity.
+	Mode string `json:"mode,omitempty,omitzero"`
+}
+
 // RegistryCredentials defines model for RegistryCredentials.
 type RegistryCredentials struct {
 	Password string `json:"password,omitempty,omitzero"`
@@ -535,6 +564,14 @@ type RoleBindingRequest struct {
 
 	// Role role:<name>, not a built-in role.
 	Role string `json:"role"`
+}
+
+// RotatedCredentials defines model for RotatedCredentials.
+type RotatedCredentials struct {
+	ExpiresAt  time.Time `json:"expires_at,omitempty,omitzero"`
+	Generation int64     `json:"generation"`
+	Password   string    `json:"password"`
+	Username   string    `json:"username"`
 }
 
 // SPIFFEClientConfig defines model for SPIFFEClientConfig.
@@ -640,7 +677,10 @@ type SatelliteStatusRequest struct {
 	AppliedStates []AppliedState      `json:"applied_states,omitempty,omitzero"`
 	CachedImages  []CachedImageReport `json:"cached_images,omitempty,omitzero"`
 	CPUPercent    float64             `json:"cpu_percent,omitempty,omitzero"`
-	ImageCount    int32               `json:"image_count,omitempty,omitzero"`
+
+	// CredentialsGeneration The robot generation the satellite uses; acks a delivered rotation (plan item 8.4, not read yet).
+	CredentialsGeneration int64 `json:"credentials_generation,omitempty,omitzero"`
+	ImageCount            int32 `json:"image_count,omitempty,omitzero"`
 
 	// InventoryDigest Digest of cached_images (internal/shared/inventory, plan item 4.4, not read yet). A satellite sends cached_images only when this changed or Ground Control asked with inventory_requested.
 	InventoryDigest      string        `json:"inventory_digest,omitempty,omitzero"`
@@ -675,7 +715,8 @@ type SatelliteStatusResponse struct {
 
 // SatelliteSyncResponse defines model for SatelliteSyncResponse.
 type SatelliteSyncResponse struct {
-	Events []string `json:"events"`
+	Credentials *RotatedCredentials `json:"credentials,omitempty"`
+	Events      []string            `json:"events"`
 
 	// InventoryRequested Ground Control has no inventory for the reported digest; the next heartbeat sends cached_images.
 	InventoryRequested bool              `json:"inventory_requested,omitempty,omitzero"`
@@ -791,6 +832,12 @@ type ListSpireAgentsParams struct {
 	AttestationType string `form:"attestation_type,omitempty" json:"attestation_type,omitempty,omitzero"`
 }
 
+// OidcCallbackParams defines parameters for OidcCallback.
+type OidcCallbackParams struct {
+	Code  string `form:"code" json:"code"`
+	State string `form:"state" json:"state"`
+}
+
 // CreateConfigJSONRequestBody defines body for CreateConfig for application/json ContentType.
 type CreateConfigJSONRequestBody = ConfigCreateRequest
 
@@ -832,6 +879,9 @@ type ChangeUserPasswordJSONRequestBody = ChangeUserPasswordRequest
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
+
+// OidcDeviceTokenJSONRequestBody defines body for OidcDeviceToken for application/json ContentType.
+type OidcDeviceTokenJSONRequestBody = DeviceTokenRequest
 
 // SyncSatelliteJSONRequestBody defines body for SyncSatellite for application/json ContentType.
 type SyncSatelliteJSONRequestBody = SatelliteStatusRequest
@@ -1261,6 +1311,35 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /login (the `Login` operationId).
 	Login(ctx context.Context, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OidcCallback Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+	//
+	// Corresponds with GET /oidc/callback (the `OidcCallback` operationId).
+	OidcCallback(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OidcDeviceAuthorize Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+	//
+	// Corresponds with POST /oidc/device (the `OidcDeviceAuthorize` operationId).
+	OidcDeviceAuthorize(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OidcDeviceTokenWithBody Polls an OIDC device flow (plan item 8.1, not implemented).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+	OidcDeviceTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OidcDeviceToken Polls an OIDC device flow (plan item 8.1, not implemented).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+	OidcDeviceToken(ctx context.Context, body OidcDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OidcLogin Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+	//
+	// Corresponds with GET /oidc/login (the `OidcLogin` operationId).
+	OidcLogin(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// Ping Pings the server.
 	//
@@ -2215,6 +2294,85 @@ func (c *Client) LoginWithBody(ctx context.Context, contentType string, body io.
 // Corresponds with POST /login (the `Login` operationId).
 func (c *Client) Login(ctx context.Context, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewLoginRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OidcCallback Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+//
+// Corresponds with GET /oidc/callback (the `OidcCallback` operationId).
+func (c *Client) OidcCallback(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcCallbackRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OidcDeviceAuthorize Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+//
+// Corresponds with POST /oidc/device (the `OidcDeviceAuthorize` operationId).
+func (c *Client) OidcDeviceAuthorize(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcDeviceAuthorizeRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OidcDeviceTokenWithBody Polls an OIDC device flow (plan item 8.1, not implemented).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+func (c *Client) OidcDeviceTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcDeviceTokenRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OidcDeviceToken Polls an OIDC device flow (plan item 8.1, not implemented).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+func (c *Client) OidcDeviceToken(ctx context.Context, body OidcDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcDeviceTokenRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OidcLogin Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+//
+// Corresponds with GET /oidc/login (the `OidcLogin` operationId).
+func (c *Client) OidcLogin(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcLoginRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -3861,6 +4019,158 @@ func NewLoginRequestWithBody(server string, contentType string, body io.Reader) 
 	return req, nil
 }
 
+// NewOidcCallbackRequest constructs an http.Request for the OidcCallback method
+func NewOidcCallbackRequest(server string, params *OidcCallbackParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/oidc/callback")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "code", params.Code, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewOidcDeviceAuthorizeRequest constructs an http.Request for the OidcDeviceAuthorize method
+func NewOidcDeviceAuthorizeRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/oidc/device")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewOidcDeviceTokenRequest calls the generic OidcDeviceToken builder with application/json body
+func NewOidcDeviceTokenRequest(server string, body OidcDeviceTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewOidcDeviceTokenRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewOidcDeviceTokenRequestWithBody constructs an http.Request for the OidcDeviceToken method, with any body, and a specified content type
+func NewOidcDeviceTokenRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/oidc/device/token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewOidcLoginRequest constructs an http.Request for the OidcLogin method
+func NewOidcLoginRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/oidc/login")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewPingRequest constructs an http.Request for the Ping method
 func NewPingRequest(server string) (*http.Request, error) {
 	var err error
@@ -4472,6 +4782,41 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /login (the `Login` operationId).
 	LoginWithResponse(ctx context.Context, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginHTTPResponse, error)
+
+	// OidcCallbackWithResponse Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /oidc/callback (the `OidcCallback` operationId).
+	OidcCallbackWithResponse(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*OidcCallbackHTTPResponse, error)
+
+	// OidcDeviceAuthorizeWithResponse Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /oidc/device (the `OidcDeviceAuthorize` operationId).
+	OidcDeviceAuthorizeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*OidcDeviceAuthorizeHTTPResponse, error)
+
+	// OidcDeviceTokenWithBodyWithResponse Polls an OIDC device flow (plan item 8.1, not implemented).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+	OidcDeviceTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OidcDeviceTokenHTTPResponse, error)
+
+	// OidcDeviceTokenWithResponse Polls an OIDC device flow (plan item 8.1, not implemented).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+	OidcDeviceTokenWithResponse(ctx context.Context, body OidcDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*OidcDeviceTokenHTTPResponse, error)
+
+	// OidcLoginWithResponse Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /oidc/login (the `OidcLogin` operationId).
+	OidcLoginWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*OidcLoginHTTPResponse, error)
 
 	// PingWithResponse Pings the server.
 	//
@@ -7238,6 +7583,234 @@ func (r LoginHTTPResponse) ContentType() string {
 	return ""
 }
 
+type OidcCallbackHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LoginResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r OidcCallbackHTTPResponse) GetJSON200() *LoginResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r OidcCallbackHTTPResponse) GetJSON400() *AppError {
+	return r.JSON400
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r OidcCallbackHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r OidcCallbackHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r OidcCallbackHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OidcCallbackHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OidcCallbackHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OidcCallbackHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type OidcDeviceAuthorizeHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DeviceAuthorizationResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r OidcDeviceAuthorizeHTTPResponse) GetJSON200() *DeviceAuthorizationResponse {
+	return r.JSON200
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r OidcDeviceAuthorizeHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r OidcDeviceAuthorizeHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OidcDeviceAuthorizeHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OidcDeviceAuthorizeHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OidcDeviceAuthorizeHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type OidcDeviceTokenHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LoginResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r OidcDeviceTokenHTTPResponse) GetJSON200() *LoginResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r OidcDeviceTokenHTTPResponse) GetJSON400() *AppError {
+	return r.JSON400
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r OidcDeviceTokenHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r OidcDeviceTokenHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r OidcDeviceTokenHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OidcDeviceTokenHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OidcDeviceTokenHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OidcDeviceTokenHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// OidcLoginHTTPResponse302Headers the declared response headers of an HTTP 302 response for OidcLogin
+type OidcLoginHTTPResponse302Headers struct {
+	Location  string
+	SetCookie string
+}
+
+type OidcLoginHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+	// Headers302 the parsed response headers for an HTTP 302 response
+	Headers302 *OidcLoginHTTPResponse302Headers
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r OidcLoginHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r OidcLoginHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r OidcLoginHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OidcLoginHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OidcLoginHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OidcLoginHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type PingHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -8344,6 +8917,71 @@ func (c *ClientWithResponses) LoginWithResponse(ctx context.Context, body LoginJ
 		return nil, err
 	}
 	return ParseLoginHTTPResponse(rsp)
+}
+
+// OidcCallbackWithResponse Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /oidc/callback (the `OidcCallback` operationId).
+func (c *ClientWithResponses) OidcCallbackWithResponse(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*OidcCallbackHTTPResponse, error) {
+	rsp, err := c.OidcCallback(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcCallbackHTTPResponse(rsp)
+}
+
+// OidcDeviceAuthorizeWithResponse Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /oidc/device (the `OidcDeviceAuthorize` operationId).
+func (c *ClientWithResponses) OidcDeviceAuthorizeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*OidcDeviceAuthorizeHTTPResponse, error) {
+	rsp, err := c.OidcDeviceAuthorize(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcDeviceAuthorizeHTTPResponse(rsp)
+}
+
+// OidcDeviceTokenWithBodyWithResponse Polls an OIDC device flow (plan item 8.1, not implemented).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+func (c *ClientWithResponses) OidcDeviceTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OidcDeviceTokenHTTPResponse, error) {
+	rsp, err := c.OidcDeviceTokenWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcDeviceTokenHTTPResponse(rsp)
+}
+
+// OidcDeviceTokenWithResponse Polls an OIDC device flow (plan item 8.1, not implemented).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+func (c *ClientWithResponses) OidcDeviceTokenWithResponse(ctx context.Context, body OidcDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*OidcDeviceTokenHTTPResponse, error) {
+	rsp, err := c.OidcDeviceToken(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcDeviceTokenHTTPResponse(rsp)
+}
+
+// OidcLoginWithResponse Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /oidc/login (the `OidcLogin` operationId).
+func (c *ClientWithResponses) OidcLoginWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*OidcLoginHTTPResponse, error) {
+	rsp, err := c.OidcLogin(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcLoginHTTPResponse(rsp)
 }
 
 // PingWithResponse Pings the server.
@@ -10520,6 +11158,189 @@ func ParseLoginHTTPResponse(rsp *http.Response) (*LoginHTTPResponse, error) {
 		}
 		response.JSON500 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseOidcCallbackHTTPResponse parses an HTTP response from a OidcCallbackWithResponse call
+func ParseOidcCallbackHTTPResponse(rsp *http.Response) (*OidcCallbackHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OidcCallbackHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LoginResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseOidcDeviceAuthorizeHTTPResponse parses an HTTP response from a OidcDeviceAuthorizeWithResponse call
+func ParseOidcDeviceAuthorizeHTTPResponse(rsp *http.Response) (*OidcDeviceAuthorizeHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OidcDeviceAuthorizeHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeviceAuthorizationResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseOidcDeviceTokenHTTPResponse parses an HTTP response from a OidcDeviceTokenWithResponse call
+func ParseOidcDeviceTokenHTTPResponse(rsp *http.Response) (*OidcDeviceTokenHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OidcDeviceTokenHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LoginResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseOidcLoginHTTPResponse parses an HTTP response from a OidcLoginWithResponse call
+func ParseOidcLoginHTTPResponse(rsp *http.Response) (*OidcLoginHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OidcLoginHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 302:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 302:
+		var headers OidcLoginHTTPResponse302Headers
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = value
+		}
+		if values := rsp.Header.Values("Set-Cookie"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Set-Cookie", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.SetCookie = value
+		}
+		response.Headers302 = &headers
 	}
 
 	return response, nil

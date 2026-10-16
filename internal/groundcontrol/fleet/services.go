@@ -23,6 +23,11 @@ type Deps struct {
 	// SatelliteRepository is the fleet pool's repository for registration,
 	// heartbeats and the journal; nil means Repository.
 	SatelliteRepository Repository
+	// Rotations answers pending robot rotations from the replica's cache
+	// and Sealer seals successor secrets (plan item 8.4); nil Rotations
+	// delivers none.
+	Rotations RotationSource
+	Sealer    Sealer
 }
 
 // Services is what the HTTP handlers call: each handler decodes, calls one

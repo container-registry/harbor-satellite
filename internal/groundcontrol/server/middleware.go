@@ -77,7 +77,9 @@ type AuthUser struct {
 	Role     string
 }
 
-// AuthMiddleware validates session tokens or basic auth and adds user info to context
+// AuthMiddleware validates session tokens or basic auth and adds user info to context.
+// Plan item 8.1 reads GetSessionPrincipalByToken instead, so the principal
+// carries the groups of the user's OIDC identities.
 func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var user AuthUser

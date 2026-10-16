@@ -294,6 +294,17 @@ type AppConfig struct {
 	Journal                         JournalConfig `json:"journal,omitzero"`
 	// Plan item 7.5 (Harbor 3 skeleton): accepted, not read yet.
 	Admission AdmissionConfig `json:"admission,omitzero"`
+	// Plan item 8.3 (Harbor 3 skeleton): accepted, not read yet; the
+	// satellite pulls with its robot.
+	RegistryAuth RegistryAuthConfig `json:"registry_auth,omitzero"`
+}
+
+// RegistryAuthConfig selects how the satellite authenticates to Harbor:
+// RegistryAuthRobot (default) or RegistryAuthWorkloadIdentity, which
+// exchanges a JWT-SVID for Audience into a pull token.
+type RegistryAuthConfig struct {
+	Mode     string `json:"mode,omitempty"`
+	Audience string `json:"audience,omitempty"`
 }
 
 // AdmissionConfig is the edge admission policy Ground Control delivers
@@ -320,6 +331,9 @@ type StateConfig struct {
 	// one (plan item 4.1, ADR-0016); the robot credentials then only pull
 	// from Harbor.
 	GCSession GCSession `json:"gc_session,omitzero"`
+	// CredentialsGeneration is the robot generation in RegistryCredentials;
+	// the status report sends it to ack a rotation (plan item 8.4).
+	CredentialsGeneration int64 `json:"credentials_generation,omitempty"`
 }
 
 // GCSession is a Ground Control session token and its expiry.

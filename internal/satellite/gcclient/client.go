@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
@@ -39,6 +40,17 @@ type SyncResult struct {
 	// InventoryRequested asks for cached_images with the next report,
 	// because Ground Control has no inventory for its digest (plan item 4.4).
 	InventoryRequested bool
+	// Credentials is a successor robot to switch to; nil when there is no
+	// rotation for the satellite (plan item 8.4).
+	Credentials *RotatedCredentials
+}
+
+// RotatedCredentials are a successor robot's credentials. The satellite
+// switches to them and reports Generation with its next heartbeat.
+type RotatedCredentials struct {
+	Username, Password string
+	ExpiresAt          time.Time
+	Generation         int64
 }
 
 // JournalAck is Ground Control's answer to a journal upload: its epoch for

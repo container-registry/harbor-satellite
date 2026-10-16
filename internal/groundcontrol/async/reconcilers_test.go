@@ -484,3 +484,25 @@ func TestSatelliteReconciler_UnrevokedEndsEnabled(t *testing.T) {
 	require.False(t, disabled)
 	require.Equal(t, []string{"library", fleet.SatelliteProject, "team"}, projects)
 }
+
+func TestSatelliteReconciler_RobotRotatedClearsAndRegrants(t *testing.T) {
+	pending.Plan(t, "8.4", pendingRotation)
+	p := newPlane()
+	r := p.satellites(t)
+	require.NoError(t, r.Reconcile(context.Background(), 7))
+	pushes := pushesTo(p.rec, ref("satellite", "edge-01"))
+	p.repo.Robots.BySatelliteID[7] = fleet.Robot{ID: 5, Satellite: 7, HarborID: 43}
+	grant := p.repo.Satellites.GrantsOf[7]
+	grant.HarborID = 43
+	p.repo.Satellites.GrantsOf[7] = grant
+
+	require.NoError(t, r.Handle(context.Background(),
+		event(t, 2, fleet.EventRobotRotated, fleet.AggregateSatellite, 7, fleet.RobotRotatedPayload{Name: "edge-01", Generation: 1, RobotHarborIDs: []int64{42, 43}})))
+
+	sets := p.rec.CallsTo("SetRobotAccess")
+	last := sets[len(sets)-1]
+	require.Equal(t, int64(43), last.Args[0], "the successor is granted")
+	require.Equal(t, []string{"library", fleet.SatelliteProject, "team"}, last.Args[1])
+	require.Equal(t, false, last.Args[2])
+	require.Equal(t, pushes+1, pushesTo(p.rec, ref("satellite", "edge-01")), "the cleared digest republishes the unchanged document once")
+}

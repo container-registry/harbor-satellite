@@ -182,6 +182,7 @@ type AppConfig struct {
 	// PeerDistribution Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
 	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitempty,omitzero"`
 	RegisterSatelliteInterval string                 `json:"register_satellite_interval,omitempty,omitzero"`
+	RegistryAuth              RegistryAuthConfig     `json:"registry_auth,omitempty,omitzero"`
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty,omitzero"`
 
 	// ReplicationBandwidthBytesPerSec Bandwidth budget of state replication (plan item 6.2, not read yet).
@@ -296,6 +297,25 @@ type ConfigValue struct {
 type CreateUserRequest struct {
 	Password string `json:"password"`
 	Username string `json:"username"`
+}
+
+// DeviceAuthorizationResponse defines model for DeviceAuthorizationResponse.
+type DeviceAuthorizationResponse struct {
+	DeviceCode string `json:"device_code"`
+
+	// ExpiresIn Seconds until the device code expires.
+	ExpiresIn int64 `json:"expires_in"`
+
+	// Interval Seconds to wait between polls.
+	Interval                int64  `json:"interval"`
+	UserCode                string `json:"user_code"`
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete,omitempty,omitzero"`
+}
+
+// DeviceTokenRequest defines model for DeviceTokenRequest.
+type DeviceTokenRequest struct {
+	DeviceCode string `json:"device_code"`
 }
 
 // DirectDeliveryConfig defines model for DirectDeliveryConfig.
@@ -504,6 +524,15 @@ type RefreshCredentialsResponse struct {
 	Secret string `json:"secret"`
 }
 
+// RegistryAuthConfig defines model for RegistryAuthConfig.
+type RegistryAuthConfig struct {
+	// Audience JWT-SVID audience for workload_identity.
+	Audience string `json:"audience,omitempty,omitzero"`
+
+	// Mode robot (default) or workload_identity.
+	Mode string `json:"mode,omitempty,omitzero"`
+}
+
 // RegistryCredentials defines model for RegistryCredentials.
 type RegistryCredentials struct {
 	Password string `json:"password,omitempty,omitzero"`
@@ -532,6 +561,14 @@ type RoleBindingRequest struct {
 
 	// Role role:<name>, not a built-in role.
 	Role string `json:"role"`
+}
+
+// RotatedCredentials defines model for RotatedCredentials.
+type RotatedCredentials struct {
+	ExpiresAt  time.Time `json:"expires_at,omitempty,omitzero"`
+	Generation int64     `json:"generation"`
+	Password   string    `json:"password"`
+	Username   string    `json:"username"`
 }
 
 // SPIFFEClientConfig defines model for SPIFFEClientConfig.
@@ -637,7 +674,10 @@ type SatelliteStatusRequest struct {
 	AppliedStates []AppliedState      `json:"applied_states,omitempty,omitzero"`
 	CachedImages  []CachedImageReport `json:"cached_images,omitempty,omitzero"`
 	CPUPercent    float64             `json:"cpu_percent,omitempty,omitzero"`
-	ImageCount    int32               `json:"image_count,omitempty,omitzero"`
+
+	// CredentialsGeneration The robot generation the satellite uses; acks a delivered rotation (plan item 8.4, not read yet).
+	CredentialsGeneration int64 `json:"credentials_generation,omitempty,omitzero"`
+	ImageCount            int32 `json:"image_count,omitempty,omitzero"`
 
 	// InventoryDigest Digest of cached_images (internal/shared/inventory, plan item 4.4, not read yet). A satellite sends cached_images only when this changed or Ground Control asked with inventory_requested.
 	InventoryDigest      string        `json:"inventory_digest,omitempty,omitzero"`
@@ -672,7 +712,8 @@ type SatelliteStatusResponse struct {
 
 // SatelliteSyncResponse defines model for SatelliteSyncResponse.
 type SatelliteSyncResponse struct {
-	Events []string `json:"events"`
+	Credentials *RotatedCredentials `json:"credentials,omitempty"`
+	Events      []string            `json:"events"`
 
 	// InventoryRequested Ground Control has no inventory for the reported digest; the next heartbeat sends cached_images.
 	InventoryRequested bool              `json:"inventory_requested,omitempty,omitzero"`
@@ -788,6 +829,12 @@ type ListSpireAgentsParams struct {
 	AttestationType string `form:"attestation_type,omitempty" json:"attestation_type,omitempty,omitzero"`
 }
 
+// OidcCallbackParams defines parameters for OidcCallback.
+type OidcCallbackParams struct {
+	Code  string `form:"code" json:"code"`
+	State string `form:"state" json:"state"`
+}
+
 // CreateConfigJSONRequestBody defines body for CreateConfig for application/json ContentType.
 type CreateConfigJSONRequestBody = ConfigCreateRequest
 
@@ -829,6 +876,9 @@ type ChangeUserPasswordJSONRequestBody = ChangeUserPasswordRequest
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
+
+// OidcDeviceTokenJSONRequestBody defines body for OidcDeviceToken for application/json ContentType.
+type OidcDeviceTokenJSONRequestBody = DeviceTokenRequest
 
 // SyncSatelliteJSONRequestBody defines body for SyncSatellite for application/json ContentType.
 type SyncSatelliteJSONRequestBody = SatelliteStatusRequest
@@ -967,6 +1017,18 @@ type ServerInterface interface {
 	// Login Creates a user session.
 	// (POST /login)
 	Login(w http.ResponseWriter, r *http.Request)
+	// OidcCallback Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+	// (GET /oidc/callback)
+	OidcCallback(w http.ResponseWriter, r *http.Request, params OidcCallbackParams)
+	// OidcDeviceAuthorize Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+	// (POST /oidc/device)
+	OidcDeviceAuthorize(w http.ResponseWriter, r *http.Request)
+	// OidcDeviceToken Polls an OIDC device flow (plan item 8.1, not implemented).
+	// (POST /oidc/device/token)
+	OidcDeviceToken(w http.ResponseWriter, r *http.Request)
+	// OidcLogin Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+	// (GET /oidc/login)
+	OidcLogin(w http.ResponseWriter, r *http.Request)
 	// Ping Pings the server.
 	// (GET /ping)
 	Ping(w http.ResponseWriter, r *http.Request)
@@ -1862,6 +1924,94 @@ func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request)
 	handler.ServeHTTP(w, r)
 }
 
+// OidcCallback operation middleware
+func (siw *ServerInterfaceWrapper) OidcCallback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params OidcCallbackParams
+
+	// ------------- Required query parameter "code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "code", r.URL.Query(), &params.Code, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OidcCallback(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OidcDeviceAuthorize operation middleware
+func (siw *ServerInterfaceWrapper) OidcDeviceAuthorize(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OidcDeviceAuthorize(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OidcDeviceToken operation middleware
+func (siw *ServerInterfaceWrapper) OidcDeviceToken(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OidcDeviceToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OidcLogin operation middleware
+func (siw *ServerInterfaceWrapper) OidcLogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OidcLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Ping operation middleware
 func (siw *ServerInterfaceWrapper) Ping(w http.ResponseWriter, r *http.Request) {
 
@@ -2130,6 +2280,14 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 	r.HandleFunc(options.BaseURL+"/health", wrapper.Health).Methods(http.MethodGet)
 
 	r.HandleFunc(options.BaseURL+"/login", wrapper.Login).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/oidc/callback", wrapper.OidcCallback).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/oidc/device", wrapper.OidcDeviceAuthorize).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/oidc/device/token", wrapper.OidcDeviceToken).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/oidc/login", wrapper.OidcLogin).Methods(http.MethodGet)
 
 	r.HandleFunc(options.BaseURL+"/ping", wrapper.Ping).Methods(http.MethodGet)
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/common"
+	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 	"github.com/spf13/cobra"
 )
@@ -11,12 +12,16 @@ import (
 func NewLoginCommand(runtime *common.Runtime) *cobra.Command {
 	var username string
 	var password string
+	var useOIDC bool
 	loginCmd := &cobra.Command{
 		Use:   "login",
 		Short: "Create a Ground Control session",
 		Long:  "Create a Ground Control session using GROUND_CONTROL_PASSWORD and save it in the OS user configuration directory.",
 		Args:  cobra.NoArgs,
 		PreRunE: func(_ *cobra.Command, _ []string) error {
+			if useOIDC {
+				return nil
+			}
 			if err := common.ValidateRequired("username", username); err != nil {
 				return err
 			}
@@ -25,6 +30,9 @@ func NewLoginCommand(runtime *common.Runtime) *cobra.Command {
 			return err
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if useOIDC {
+				return notimpl.Err("8.1 device flow")
+			}
 			response, err := runtime.Client().LoginWithResponse(cmd.Context(), groundcontrol.LoginRequest{
 				Username: username,
 				Password: password,
@@ -42,6 +50,6 @@ func NewLoginCommand(runtime *common.Runtime) *cobra.Command {
 		},
 	}
 	loginCmd.Flags().StringVar(&username, "username", "", "Ground Control username")
-	common.MarkRequired(loginCmd, "username")
+	loginCmd.Flags().BoolVar(&useOIDC, "oidc", false, "Log in through the OIDC device flow (plan item 8.1, not implemented)")
 	return loginCmd
 }

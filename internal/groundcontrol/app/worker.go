@@ -14,6 +14,10 @@ type WorkerDeps struct {
 	Harbor env.Harbor
 	Server env.Server
 	Config async.PublisherConfig
+	// RobotRotation and DataEncryptionKey configure the robot rotator of
+	// plan item 8.4.
+	RobotRotation     env.RobotRotation
+	DataEncryptionKey string
 }
 
 // NewWorker builds the publisher over the postgres outbox and aggregate
@@ -23,7 +27,12 @@ type WorkerDeps struct {
 // plan item 4 are async.StaleDetector (STALE_CHECK_INTERVAL),
 // postgres.PartitionMaintainer (STATUS_RETENTION_DAYS,
 // STATUS_PARTITIONS_AHEAD) and async.SessionExpirer over a
-// postgres.SessionStore (SESSION_EXPIRY_INTERVAL).
+// postgres.SessionStore (SESSION_EXPIRY_INTERVAL). With
+// ROBOT_ROTATION_ENABLED it adds async.RobotRotator over a
+// postgres.RotationStore, sealing with secrets.AESGCM from
+// DATA_ENCRYPTION_KEY (plan item 8.4). async.LoginStateExpirer over a
+// postgres.IdentityStore deletes expired OIDC login states every
+// SESSION_EXPIRY_INTERVAL (8.1).
 func NewWorker(deps WorkerDeps) (*async.Worker, error) {
 	return nil, notimpl.Err("2.4 worker composition")
 }

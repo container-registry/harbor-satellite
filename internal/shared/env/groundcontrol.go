@@ -13,11 +13,17 @@ type GroundControl struct {
 	Database       Database       `envPrefix:"DB_"`
 	Outbox         Outbox         `envPrefix:"OUTBOX_"`
 	Policy         Policy         `envPrefix:"POLICY_"`
+	OIDC           OIDC           `envPrefix:"OIDC_"`
+	RobotRotation  RobotRotation  `envPrefix:"ROBOT_ROTATION_"`
 	PasswordPolicy PasswordPolicy `envPrefix:"PASSWORD_"`
 	SPIFFE         SPIFFE         `envPrefix:"SPIFFE_"`
 	SPIRE          SPIRE          `envPrefix:"SPIRE_"`
 	TLS            TLS            `envPrefix:"TLS_"`
 	Audit          Audit          `envPrefix:"AUDIT_"`
+
+	// DataEncryptionKey seals stored secrets (base64 of 32 bytes); required
+	// only once robot rotation or webhooks are enabled (plan items 8.4, 9).
+	DataEncryptionKey string `env:"DATA_ENCRYPTION_KEY"`
 }
 
 type Database struct {
@@ -153,6 +159,45 @@ type FleetHotPath struct {
 	RateLimitAnonymous        string        `env:"RATE_LIMIT_ANONYMOUS"         envDefault:"10/1m"`
 	// RateLimitFleet: 3 per the 1s heartbeat floor of normalizeHeartbeatInterval.
 	RateLimitFleet string `env:"RATE_LIMIT_FLEET" envDefault:"3/1s"`
+}
+
+// OIDC configures operator login (plan item 8.1, ADR-0018). Parsed but not
+// used yet. RoleMap maps a provider group to admin or system_admin
+// ("group=role,..."); a user whose groups map to no role cannot log in.
+type OIDC struct {
+	Enabled              bool          `env:"ENABLED"                envDefault:"false"`
+	IssuerURL            string        `env:"ISSUER_URL"`
+	ClientID             string        `env:"CLIENT_ID"`
+	ClientSecret         string        `env:"CLIENT_SECRET"`
+	RedirectURL          string        `env:"REDIRECT_URL"`
+	Scopes               []string      `env:"SCOPES"                 envDefault:"openid,profile,email,groups"`
+	UsernameClaim        string        `env:"USERNAME_CLAIM"         envDefault:"preferred_username"`
+	GroupsClaim          string        `env:"GROUPS_CLAIM"           envDefault:"groups"`
+	DisablePasswordLogin bool          `env:"DISABLE_PASSWORD_LOGIN" envDefault:"false"`
+	LoginStateTTL        time.Duration `env:"LOGIN_STATE_TTL"        envDefault:"10m"`
+
+	RoleMap map[string]string `env:"ROLE_MAP" envKeyValSeparator:"="`
+}
+
+// Validate rejects an OIDC_ROLE_MAP role other than admin or system_admin.
+// A group whose name contains "," or "=" cannot be mapped: those separate
+// the entries.
+func (o OIDC) Validate() error {
+	for group, role := range o.RoleMap {
+		if role != "admin" && role != "system_admin" {
+			return fmt.Errorf("OIDC_ROLE_MAP %s=%s: want admin or system_admin", group, role)
+		}
+	}
+	return nil
+}
+
+// RobotRotation configures the Harbor 2.x robot rotation of plan item 8.4.
+// Parsed but not used yet.
+type RobotRotation struct {
+	Enabled      bool          `env:"ENABLED"       envDefault:"false"`
+	BeforeExpiry time.Duration `env:"BEFORE_EXPIRY" envDefault:"72h"`
+	Interval     time.Duration `env:"INTERVAL"      envDefault:"10m"`
+	CacheRefresh time.Duration `env:"CACHE_REFRESH" envDefault:"30s"`
 }
 
 type PasswordPolicy struct {

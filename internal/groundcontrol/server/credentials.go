@@ -14,6 +14,10 @@ var (
 	errTooManyAttempts    = errors.New("too many failed attempts")
 	errAccountLocked      = errors.New("account locked")
 	errInvalidCredentials = errors.New("invalid credentials")
+	// errPasswordLoginDisabled: with OIDC_DISABLE_PASSWORD_LOGIN every user
+	// except the bootstrap admin, the break-glass account, fails with it
+	// (plan item 8.2).
+	errPasswordLoginDisabled = errors.New("password login disabled")
 )
 
 // verifyUserCredentials is the one user credential check behind Login and
