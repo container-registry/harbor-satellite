@@ -14,6 +14,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -73,6 +74,16 @@ func TestMissingLocally(t *testing.T) {
 		missing, err := missingLocally(ctx, local, []Entity{entity})
 		require.NoError(t, err)
 		require.Empty(t, missing)
+	})
+
+	t.Run("tag pointing at a different digest is missing", func(t *testing.T) {
+		local := &degradedStubStore{
+			present:     map[string]bool{entityKey(entity): true},
+			localDigest: "sha256:other",
+		}
+		missing, err := missingLocally(ctx, local, []Entity{entity})
+		require.NoError(t, err)
+		require.Equal(t, []Entity{entity}, missing)
 	})
 }
 
@@ -273,6 +284,7 @@ func entityKey(entity Entity) string {
 type degradedStubStore struct {
 	mu             sync.Mutex
 	present        map[string]bool
+	localDigest    string
 	pullErr        error
 	replicateCalls int
 	deleteCalls    int
@@ -284,7 +296,11 @@ func (s *degradedStubStore) Pull(_ context.Context, artifact store.Artifact, _ s
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.present[entityKey(artifact)] {
-		return ocispec.Descriptor{}, nil
+		reported := artifact.Digest
+		if s.localDigest != "" {
+			reported = s.localDigest
+		}
+		return ocispec.Descriptor{Digest: digest.Digest(reported)}, nil
 	}
 	if s.pullErr != nil {
 		return ocispec.Descriptor{}, s.pullErr

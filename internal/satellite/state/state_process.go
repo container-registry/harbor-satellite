@@ -439,7 +439,8 @@ func missingLocally(ctx context.Context, local store.Store, entities []Entity) (
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if _, err := local.Pull(ctx, entity, store.PullResourceManifest); err != nil {
+		descriptor, err := local.Pull(ctx, entity, store.PullResourceManifest)
+		if err != nil || (entity.Digest != "" && descriptor.Digest.String() != entity.Digest) {
 			missing = append(missing, entity)
 		}
 	}
