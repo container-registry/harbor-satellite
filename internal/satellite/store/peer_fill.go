@@ -123,7 +123,10 @@ func WithHarborTimeout(ctx context.Context, timeout time.Duration) context.Conte
 
 // HarborTimeoutFrom returns the Harbor blob timeout stored on ctx, or 0.
 func HarborTimeoutFrom(ctx context.Context) time.Duration {
-	timeout, _ := ctx.Value(harborTimeoutKey{}).(time.Duration)
+	timeout, ok := ctx.Value(harborTimeoutKey{}).(time.Duration)
+	if !ok {
+		return 0
+	}
 	return timeout
 }
 
