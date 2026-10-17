@@ -55,5 +55,5 @@ const (
 )
 
 // DefaultDesiredStateFile is the bootstrap desired-state filename in the
-// satellite config directory. Used when state.json is missing.
+// satellite config directory. Used when the persisted state is empty.
 const DefaultDesiredStateFile = "desired-state.json"
