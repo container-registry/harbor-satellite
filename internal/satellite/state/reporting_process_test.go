@@ -261,3 +261,41 @@ func TestExecute_CRIReporting(t *testing.T) {
 		p.mu.Unlock()
 	})
 }
+
+func TestExecute_PostsHeartbeatToSatellitesSync(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL func(serverURL string) string
+	}{
+		{
+			name:    "url without trailing slash",
+			baseURL: func(serverURL string) string { return serverURL },
+		},
+		{
+			name:    "url with trailing slash",
+			baseURL: func(serverURL string) string { return serverURL + "/" },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotPath string
+			var gotMethod string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod = r.Method
+				gotPath = r.URL.Path
+				w.WriteHeader(http.StatusOK)
+				_, err := w.Write([]byte(`{"events":[]}`))
+				require.NoError(t, err)
+			}))
+			defer srv.Close()
+
+			cm := newReportingTestCM(t, tt.baseURL(srv.URL))
+			p := &StatusReportingProcess{name: "test", mu: &sync.Mutex{}, cm: cm}
+
+			require.NoError(t, p.Execute(testContext()))
+			require.Equal(t, http.MethodPost, gotMethod)
+			require.Equal(t, "/satellites/sync", gotPath)
+		})
+	}
+}
