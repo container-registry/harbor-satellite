@@ -31,6 +31,7 @@ type FetchAndReplicateStateProcess struct {
 	localStore          store.Store
 	remoteStore         store.Store
 	fetchRootState      func(ctx context.Context, satelliteStateURL, srcUsername, srcPassword string, useUnsecure bool, log *zerolog.Logger) (*SatelliteState, error)
+	fetchGroupState     func(ctx context.Context, groupURL, srcUsername, srcPassword string, useUnsecure bool, log *zerolog.Logger) (*StateReader, error)
 }
 
 // SetStores shares the proxy's local destination and Harbor source with state replication.
@@ -83,7 +84,7 @@ func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath, s
 			log.Warn().Err(err).Str("path", p.desiredStateFile).Msg("Corrupted bootstrap desired-state file, ignoring")
 		} else if bootstrap != nil {
 			log.Info().Str("path", p.desiredStateFile).Msg("Loaded bootstrap desired-state file")
-			p.applyPersistedState(bootstrap)
+			p.applyBootstrapState(bootstrap)
 		}
 	}
 
@@ -104,10 +105,31 @@ func (f *FetchAndReplicateStateProcess) applyPersistedState(persisted *Persisted
 	}
 }
 
+// applyBootstrapState keeps the wish list out of the applied entity list and
+// ignores its config digest. GetChanges and config reconcile treat those as
+// already done, so a bootstrap file must not set them.
+func (f *FetchAndReplicateStateProcess) applyBootstrapState(bootstrap *PersistedState) {
+	if bootstrap == nil {
+		return
+	}
+	f.stateMap = f.stateMap[:0]
+	for _, g := range bootstrap.Groups {
+		if len(g.Entities) == 0 {
+			continue
+		}
+		f.stateMap = append(f.stateMap, StateMap{
+			url:     g.URL,
+			desired: append([]Entity(nil), g.Entities...),
+		})
+	}
+}
+
 type StateMap struct {
 	url      string
 	State    StateReader
 	Entities []Entity
+	// desired is the bootstrap wish list. It is not applied state and is not written to state.json.
+	desired []Entity
 }
 
 func NewStateMap(url []string) []StateMap {
@@ -334,15 +356,45 @@ func (f *FetchAndReplicateStateProcess) peersEnabled() bool {
 
 func (f *FetchAndReplicateStateProcess) hasDegradedList() bool {
 	for _, group := range f.stateMap {
-		if len(group.Entities) > 0 {
+		if len(group.Entities) > 0 || len(group.desired) > 0 {
 			return true
 		}
 	}
 	return false
 }
 
+func (f *FetchAndReplicateStateProcess) groupEntities(index int) []Entity {
+	if len(f.stateMap[index].Entities) > 0 {
+		return f.stateMap[index].Entities
+	}
+	return f.stateMap[index].desired
+}
+
+func (f *FetchAndReplicateStateProcess) markDesiredApplied(index int, applied []Entity) {
+	if len(f.stateMap[index].desired) == 0 {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.stateMap[index].desired) == 0 {
+		return
+	}
+	f.stateMap[index].Entities = append([]Entity(nil), applied...)
+	f.stateMap[index].desired = nil
+}
+
 func (f *FetchAndReplicateStateProcess) canDegrade() bool {
 	return f.peersEnabled() && f.hasDegradedList()
+}
+
+// listFetchContext bounds a Harbor list fetch only while peer distribution is on,
+// so a dead registry can fall through to the last-known list. Peers off keeps the
+// caller context, which is how replication behaved before that fallback existed.
+func (f *FetchAndReplicateStateProcess) listFetchContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if !f.peersEnabled() {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, f.listFetchTimeout())
 }
 
 func (f *FetchAndReplicateStateProcess) listFetchTimeout() time.Duration {
@@ -395,7 +447,8 @@ func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
 	replicator, sourceStore store.Store,
 	log *zerolog.Logger,
 ) *StateFetcherResult {
-	if !f.peersEnabled() || len(f.stateMap[index].Entities) == 0 {
+	entities := f.groupEntities(index)
+	if !f.peersEnabled() || len(entities) == 0 {
 		return nil
 	}
 
@@ -407,26 +460,28 @@ func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
 		Logger()
 	groupLog.Warn().Msg("using persisted group state; skipping deletes")
 
-	missing, err := missingLocally(ctx, replicator, f.stateMap[index].Entities)
+	missing, err := missingLocally(ctx, replicator, entities)
 	if err != nil {
 		result.Error = err
 		return result
 	}
 	f.LogChanges(nil, missing, &groupLog)
 
-	if len(missing) == 0 {
-		return result
-	}
-	if err := replicator.Replicate(f.copyContext(ctx), sourceStore, missing); err != nil {
-		groupLog.Error().Err(err).Msg("Error replicating persisted state")
-		result.Error = fmt.Errorf("failed to replicate persisted entities for %s: %w", f.stateMap[index].url, err)
-		return result
-	}
-	if f.directDeliverer != nil {
-		if err := f.directDeliverer.Deliver(ctx, missing); err != nil {
-			groupLog.Warn().Err(err).Msg("Direct delivery: failed to write tarballs")
+	if len(missing) > 0 {
+		if err := replicator.Replicate(f.copyContext(ctx), sourceStore, missing); err != nil {
+			groupLog.Error().Err(err).Msg("Error replicating persisted state")
+			result.Error = fmt.Errorf("failed to replicate persisted entities for %s: %w", f.stateMap[index].url, err)
+			return result
+		}
+		if f.directDeliverer != nil {
+			deliveryCtx, cancel := context.WithTimeout(ctx, f.listFetchTimeout())
+			defer cancel()
+			if err := f.directDeliverer.Deliver(deliveryCtx, missing); err != nil {
+				groupLog.Warn().Err(err).Msg("Direct delivery: failed to write tarballs")
+			}
 		}
 	}
+	f.markDesiredApplied(index, entities)
 	return result
 }
 
@@ -439,7 +494,13 @@ func missingLocally(ctx context.Context, local store.Store, entities []Entity) (
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		descriptor, err := local.Pull(ctx, entity, store.PullResourceManifest)
+		// A registry resolves a digest before the tag. Ask by tag when one is
+		// set, and keep the original digest for the comparison and the copy.
+		lookup := entity
+		if lookup.Tag != "" {
+			lookup.Digest = ""
+		}
+		descriptor, err := local.Pull(ctx, lookup, store.PullResourceManifest)
 		if err != nil || (entity.Digest != "" && descriptor.Digest.String() != entity.Digest) {
 			missing = append(missing, entity)
 		}
@@ -618,19 +679,27 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 
 	stateFetcherLog.Info().Msgf("Processing state for %s", groupURL)
 
-	groupStateFetcher, err := getStateFetcherForInput(groupURL, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
-	if err != nil {
-		stateFetcherLog.Error().Err(err).Msg("Error processing input")
-		if fallback := f.replicatePersistedGroup(ctx, index, replicator, sourceStore, &stateFetcherLog); fallback != nil {
-			return *fallback
-		}
-		result.Error = fmt.Errorf("failed to create state fetcher for %s: %w", f.stateMap[index].url, err)
-		return result
-	}
+	fetchCtx, cancel := f.listFetchContext(ctx)
+	defer cancel()
 
-	fetchCtx, cancel := context.WithTimeout(ctx, f.listFetchTimeout())
-	newStateFetched, err := f.FetchAndProcessState(fetchCtx, groupStateFetcher, &stateFetcherLog)
-	cancel()
+	var newStateFetched *StateReader
+	var err error
+	if f.fetchGroupState != nil {
+		newStateFetched, err = f.fetchGroupState(fetchCtx, groupURL, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
+	} else {
+		var groupStateFetcher StateFetcher
+		groupStateFetcher, err = getStateFetcherForInput(groupURL, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
+		if err != nil {
+			stateFetcherLog.Error().Err(err).Msg("Error processing input")
+			if fallback := f.replicatePersistedGroup(ctx, index, replicator, sourceStore, &stateFetcherLog); fallback != nil {
+				return *fallback
+			}
+			result.Error = fmt.Errorf("failed to create state fetcher for %s: %w", f.stateMap[index].url, err)
+			return result
+		}
+
+		newStateFetched, err = f.FetchAndProcessState(fetchCtx, groupStateFetcher, &stateFetcherLog)
+	}
 	if err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error fetching state")
 		if fallback := f.replicatePersistedGroup(ctx, index, replicator, sourceStore, &stateFetcherLog); fallback != nil {
@@ -669,6 +738,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	f.mu.Lock()
 	f.stateMap[index].State = newState
 	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
+	f.stateMap[index].desired = nil
 	if f.stateFilePath != "" {
 		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
 			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
@@ -688,7 +758,7 @@ func (f *FetchAndReplicateStateProcess) fetchSatelliteRootStateTimed(
 	if satelliteStateURL == "" || srcUsername == "" || srcPassword == "" {
 		return nil, fmt.Errorf("harbor state credentials are missing")
 	}
-	fetchCtx, cancel := context.WithTimeout(ctx, f.listFetchTimeout())
+	fetchCtx, cancel := f.listFetchContext(ctx)
 	defer cancel()
 	if f.fetchRootState != nil {
 		return f.fetchRootState(fetchCtx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, log)
