@@ -72,10 +72,11 @@ The full list with defaults is in `internal/shared/env/groundcontrol.go`.
 - `cmd/groundcontrol/main.go` - signal-aware executable entrypoint
 - `internal/groundcontrol/cli/root/serve.go` - server command and lifecycle
 - `internal/groundcontrol/server` - routes, handlers, auth middleware, bootstrap, cleanup, and status APIs
-- `internal/groundcontrol/database` - sqlc-generated database access code
-- `internal/groundcontrol/sql/schema` - PostgreSQL migrations
-- `internal/groundcontrol/sql/queries` - sqlc query definitions
-- `internal/groundcontrol/migrator` - migration runner
+- `internal/groundcontrol/database` - sqlc-generated database access code; do not edit
+- `spec/groundcontrol/sql/schema` - PostgreSQL migrations, also the sqlc schema
+- `spec/groundcontrol/sql/queries` - sqlc query definitions
+- `spec/groundcontrol/sqlc.yaml` - sqlc configuration; output stays in `internal/groundcontrol/database`
+- `internal/groundcontrol/migrator` - migration runner; uses embedded migrations, or `/migrations` when that directory is present
 - `internal/groundcontrol/harbor` - Harbor API client helpers
 - `internal/groundcontrol/spiffe` - SPIFFE/SPIRE provider and server client integration
 - `internal/groundcontrol/auth` - password policy and hashing helpers

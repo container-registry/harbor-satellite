@@ -1,0 +1,10 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    # Paths are relative to this file.
+    queries: "sql/queries"
+    schema: "sql/schema"
+    gen:
+      go:
+        out: "../../internal/groundcontrol/database"
+        # sql_package: "pgx/v5"
