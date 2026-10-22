@@ -32,12 +32,6 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 		if !committed {
 			if err := tx.Rollback(); err != nil {
 				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
-				err := &AppError{
-					Message: "Error: Failed to rollback transaction",
-					Code:    http.StatusInternalServerError,
-				}
-				HandleAppError(w, err)
-				return
 			}
 		}
 	}()

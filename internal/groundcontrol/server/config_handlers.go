@@ -194,12 +194,6 @@ func (s *Server) CreateConfig(w http.ResponseWriter, r *http.Request) {
 		if !committed {
 			if err := tx.Rollback(); err != nil {
 				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
-				err := &AppError{
-					Message: "Error: Failed to rollback transaction",
-					Code:    http.StatusInternalServerError,
-				}
-				HandleAppError(w, err)
-				return
 			}
 		}
 	}()
@@ -304,12 +298,6 @@ func (s *Server) UpdateConfig(w http.ResponseWriter, r *http.Request, configName
 		if !committed {
 			if err := tx.Rollback(); err != nil {
 				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
-				err := &AppError{
-					Message: "Error: Failed to rollback transaction",
-					Code:    http.StatusInternalServerError,
-				}
-				HandleAppError(w, err)
-				return
 			}
 		}
 	}()
@@ -456,12 +444,6 @@ func (s *Server) SetSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		if !committed {
 			if err := tx.Rollback(); err != nil {
 				log.Printf("Error: Failed to rollback transaction for failed process: %v", err)
-				err := &AppError{
-					Message: "Error: Failed to rollback transaction",
-					Code:    http.StatusInternalServerError,
-				}
-				HandleAppError(w, err)
-				return
 			}
 		}
 	}()
