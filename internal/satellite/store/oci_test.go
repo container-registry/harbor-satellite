@@ -5,8 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/registry"
@@ -115,6 +119,80 @@ func TestOCIStoreDeleteRetainsSharedContentAndMissingDeleteIsIdempotent(t *testi
 	require.NoError(t, local.Delete(context.Background(), []Artifact{second}))
 	_, err = local.Pull(context.Background(), blob, PullResourceBlob)
 	require.ErrorIs(t, err, errdef.ErrNotFound)
+}
+
+func TestNewOCIStoreRemovesStaleStages(t *testing.T) {
+	root := t.TempDir()
+	stale := filepath.Join(root, ".stage", "copy-dead")
+	require.NoError(t, os.MkdirAll(stale, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(stale, "index.json"), []byte("{}"), 0o600))
+	kept := filepath.Join(root, ".stage", "notes")
+	require.NoError(t, os.WriteFile(kept, []byte("keep"), 0o600))
+
+	_, err := NewOCIStore(root)
+	require.NoError(t, err)
+	_, err = os.Stat(stale)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(kept)
+	require.NoError(t, err)
+}
+
+func TestReplicateDoesNotRefetchLayersAlreadyPresent(t *testing.T) {
+	layer := []byte("shared-base-layer")
+	layerDesc := content.NewDescriptorFromBytes("application/vnd.example.layer.v1", layer)
+	var layerFetches atomic.Int32
+	upstream := registry.New()
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v2/team/app/blobs/"+layerDesc.Digest.String() {
+			layerFetches.Add(1)
+		}
+		upstream.ServeHTTP(response, request)
+	}))
+	t.Cleanup(server.Close)
+	address := strings.TrimPrefix(server.URL, "http://")
+	repo, err := orasremote.NewRepository(address + "/team/app")
+	require.NoError(t, err)
+	repo.PlainHTTP = true
+
+	firstConfig := []byte(`{"architecture":"amd64","os":"linux"}`)
+	secondConfig := []byte(`{"architecture":"amd64","os":"linux","variant":"v2"}`)
+	pushTagged := func(tag string, configPayload []byte) {
+		t.Helper()
+		configDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageConfig, configPayload)
+		manifestPayload, marshalErr := json.Marshal(ocispec.Manifest{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ocispec.MediaTypeImageManifest,
+			Config:    configDesc,
+			Layers:    []ocispec.Descriptor{layerDesc},
+		})
+		require.NoError(t, marshalErr)
+		manifestDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageManifest, manifestPayload)
+		require.NoError(t, repo.Push(context.Background(), layerDesc, bytes.NewReader(layer)))
+		require.NoError(t, repo.Push(context.Background(), configDesc, bytes.NewReader(configPayload)))
+		require.NoError(t, repo.PushReference(context.Background(), manifestDesc, bytes.NewReader(manifestPayload), tag))
+	}
+	pushTagged("v1", firstConfig)
+
+	remote, err := NewRegistryStore(RegistryOptions{Endpoint: address, PlainHTTP: true})
+	require.NoError(t, err)
+	local, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{{Name: "team/app", Tag: "v1"}}))
+	require.Positive(t, layerFetches.Load())
+	fetchedForFirst := layerFetches.Load()
+
+	pushTagged("v2", secondConfig)
+	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{{Name: "team/app", Tag: "v2"}}))
+	require.Equal(t, fetchedForFirst, layerFetches.Load())
+
+	descriptor, err := local.Pull(context.Background(), Artifact{Name: "team/app", Tag: "v2"}, PullResourceManifest)
+	require.NoError(t, err)
+	blob, err := local.Pull(context.Background(), Artifact{Name: "team/app", Digest: layerDesc.Digest.String()}, PullResourceBlob)
+	require.NoError(t, err)
+	require.Equal(t, layerDesc.Digest, blob.Digest)
+	response, err := local.Fetch(context.Background(), Artifact{Name: "team/app", Tag: "v2"}, descriptor, PullResourceManifest, nil)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
 }
 
 func testArtifact(t *testing.T) (*RegistryStore, []byte, ocispec.Descriptor, []byte, ocispec.Descriptor) {
