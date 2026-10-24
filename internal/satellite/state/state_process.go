@@ -886,8 +886,9 @@ func (f *FetchAndReplicateStateProcess) wrapWithPeerFill(local store.Store) (sto
 	}
 
 	return store.NewPeerFillingStore(local, f.peerStores, store.PeerFillOptions{
-		Timeout: timeout,
-		Retries: retries,
+		Timeout:     timeout,
+		Retries:     retries,
+		Concurrency: cfg.Concurrency,
 	})
 }
 

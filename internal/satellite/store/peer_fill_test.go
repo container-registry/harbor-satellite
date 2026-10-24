@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 )
 
 type recordingStore struct {
+	mu           sync.Mutex
 	replicate    func(source Store, artifacts []Artifact) error
 	replicateCtx func(ctx context.Context, source Store, artifacts []Artifact) error
 	calls        int
@@ -33,16 +36,32 @@ func (r *recordingStore) Delete(context.Context, []Artifact) error {
 }
 
 func (r *recordingStore) Replicate(ctx context.Context, source Store, artifacts []Artifact) error {
+	batch := append([]Artifact(nil), artifacts...)
+	r.mu.Lock()
 	r.calls++
 	r.sources = append(r.sources, source)
-	r.batches = append(r.batches, append([]Artifact(nil), artifacts...))
-	if r.replicateCtx != nil {
-		return r.replicateCtx(ctx, source, artifacts)
+	r.batches = append(r.batches, batch)
+	replicate := r.replicate
+	replicateCtx := r.replicateCtx
+	r.mu.Unlock()
+	if replicateCtx != nil {
+		return replicateCtx(ctx, source, artifacts)
 	}
-	if r.replicate == nil {
+	if replicate == nil {
 		return nil
 	}
-	return r.replicate(source, artifacts)
+	return replicate(source, artifacts)
+}
+
+func (r *recordingStore) snapshot() (int, []Store, [][]Artifact) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	sources := append([]Store(nil), r.sources...)
+	batches := make([][]Artifact, len(r.batches))
+	for i, batch := range r.batches {
+		batches[i] = append([]Artifact(nil), batch...)
+	}
+	return r.calls, sources, batches
 }
 
 func TestPeerFillingStoreCopiesFromFirstCompletePeer(t *testing.T) {
@@ -104,9 +123,11 @@ func TestPeerFillingStoreCopiesEachImageFromThePeerThatHasIt(t *testing.T) {
 	err = filling.Replicate(context.Background(), harbor, []Artifact{appA, appB})
 
 	require.NoError(t, err)
-	require.Equal(t, []Store{peerA, peerA, peerB}, local.sources)
-	require.Equal(t, [][]Artifact{{appA}, {appB}, {appB}}, local.batches)
-	require.Equal(t, 0, harbor.calls)
+	harborCalls, _, _ := harbor.snapshot()
+	require.Equal(t, 0, harborCalls)
+	_, sources, batches := local.snapshot()
+	require.True(t, copiedFrom(sources, batches, peerA, appA.Name))
+	require.True(t, copiedFrom(sources, batches, peerB, appB.Name))
 }
 
 func TestPeerFillingStoreUsesHarborOnlyForTheImagePeersLack(t *testing.T) {
@@ -140,6 +161,130 @@ func TestPeerFillingStoreSkipsPeersWhenNoneAreEligible(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, []Store{harbor}, local.sources)
+}
+
+func TestPeerFillingStoreKeepsRacingAfterAPeerMiss(t *testing.T) {
+	failFast := &recordingStore{}
+	slow := &recordingStore{}
+	harbor := &recordingStore{}
+	local := &recordingStore{
+		replicateCtx: func(ctx context.Context, source Store, _ []Artifact) error {
+			if source == failFast {
+				return errors.New("peer miss")
+			}
+			timer := time.NewTimer(40 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timer.C:
+				return nil
+			}
+		},
+	}
+	filling, err := NewPeerFillingStore(local, func() []Store { return []Store{failFast, slow} }, PeerFillOptions{Timeout: time.Second})
+	require.NoError(t, err)
+
+	err = filling.Replicate(context.Background(), harbor, []Artifact{{Name: "demo/app", Tag: "latest"}})
+
+	require.NoError(t, err)
+	harborCalls, _, _ := harbor.snapshot()
+	require.Equal(t, 0, harborCalls)
+}
+
+func TestPeerFillingStoreCancelsSlowerPeersAfterCompleteGraph(t *testing.T) {
+	blocker := &recordingStore{}
+	fast := &recordingStore{}
+	harbor := &recordingStore{}
+	local := &recordingStore{
+		replicateCtx: func(ctx context.Context, source Store, _ []Artifact) error {
+			if source != blocker {
+				return nil
+			}
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	filling, err := NewPeerFillingStore(local, func() []Store { return []Store{blocker, fast} }, PeerFillOptions{Timeout: 5 * time.Second})
+	require.NoError(t, err)
+
+	start := time.Now()
+	err = filling.Replicate(context.Background(), harbor, []Artifact{{Name: "demo/app", Tag: "latest"}})
+
+	require.NoError(t, err)
+	require.Less(t, time.Since(start), time.Second)
+	harborCalls, _, _ := harbor.snapshot()
+	require.Equal(t, 0, harborCalls)
+}
+
+func TestPeerFillingStoreLimitsInFlightPeers(t *testing.T) {
+	peerA := &recordingStore{}
+	peerB := &recordingStore{}
+	harbor := &recordingStore{}
+	var inflight atomic.Int32
+	var maxInflight atomic.Int32
+	var attempts atomic.Int32
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+	local := &recordingStore{
+		replicateCtx: func(_ context.Context, _ Store, _ []Artifact) error {
+			current := inflight.Add(1)
+			for {
+				seen := maxInflight.Load()
+				if current <= seen || maxInflight.CompareAndSwap(seen, current) {
+					break
+				}
+			}
+			entered <- struct{}{}
+			<-release
+			inflight.Add(-1)
+			if attempts.Add(1) == 1 {
+				return errors.New("first peer missed")
+			}
+			return nil
+		},
+	}
+	filling, err := NewPeerFillingStore(local, func() []Store { return []Store{peerA, peerB} }, PeerFillOptions{Timeout: time.Second, Retries: 0, Concurrency: 1})
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- filling.Replicate(context.Background(), harbor, []Artifact{{Name: "demo/app", Tag: "latest"}})
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("first peer did not start")
+	}
+	select {
+	case <-entered:
+		t.Fatal("second peer started before the first finished")
+	case <-time.After(50 * time.Millisecond):
+	}
+	release <- struct{}{}
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("second peer did not start after the first finished")
+	}
+	require.Equal(t, int32(1), maxInflight.Load())
+	release <- struct{}{}
+
+	require.NoError(t, <-done)
+	harborCalls, _, _ := harbor.snapshot()
+	require.Equal(t, 0, harborCalls)
+	require.Equal(t, int32(1), maxInflight.Load())
+}
+
+func copiedFrom(sources []Store, batches [][]Artifact, peer Store, name string) bool {
+	for i, source := range sources {
+		if source == peer && len(batches[i]) == 1 && batches[i][0].Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func TestPeerFillingStoreRequiresLocalStore(t *testing.T) {

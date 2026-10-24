@@ -5,24 +5,28 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 )
 
-// PeerFillOptions controls how long and how often one peer is tried before the next.
+// PeerFillOptions controls the peer race for one artifact.
 // Retries is the number of extra attempts after the first try.
+// Concurrency is how many peers may copy that artifact at once.
 type PeerFillOptions struct {
-	Timeout time.Duration
-	Retries int
+	Timeout     time.Duration
+	Retries     int
+	Concurrency int
 }
 
 // PeerFillingStore copies from peer stores before the Harbor source passed to
-// Replicate. Each artifact is copied on its own, and peers are tried one at a
-// time for that artifact. Harbor is used only for an artifact no peer
-// completed. Pull, Fetch, and Delete stay on the wrapped local store.
+// Replicate. Each artifact is copied on its own. Eligible peers race, and the
+// first complete graph cancels the others. Harbor is used only for an artifact
+// no peer completed. Pull, Fetch, and Delete stay on the wrapped local store.
 type PeerFillingStore struct {
 	local Store
 	peers func() []Store
@@ -44,6 +48,9 @@ func NewPeerFillingStore(local Store, peers func() []Store, opts PeerFillOptions
 	}
 	if opts.Retries < 0 {
 		opts.Retries = 0
+	}
+	if opts.Concurrency <= 0 {
+		opts.Concurrency = config.DefaultPeerConcurrency
 	}
 	return &PeerFillingStore{local: local, peers: peers, opts: opts}, nil
 }
@@ -130,22 +137,68 @@ func HarborTimeoutFrom(ctx context.Context) time.Duration {
 	return timeout
 }
 
+type peerCopyResult struct {
+	peer Store
+	err  error
+}
+
 func (s *PeerFillingStore) replicateFromPeers(ctx context.Context, artifacts []Artifact) (bool, error) {
 	sources := s.peers()
 	if len(sources) == 0 {
 		return false, nil
 	}
 
-	var last error
+	// Cancel siblings only after a full Replicate succeeds. A peer miss is
+	// expected and must leave the other copies running.
+	raceCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	results := make(chan peerCopyResult, len(sources))
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, s.opts.Concurrency)
 	for _, peer := range sources {
-		last = replicateFromPeer(ctx, s.local, peer, artifacts, s.opts)
-		if last == nil {
-			logger.FromContext(ctx).Info().Str("peer", storeLabel(peer)).Msg("artifact replicated from peer")
-			return true, nil
-		}
-		logger.FromContext(ctx).Warn().Err(last).Str("peer", storeLabel(peer)).Msg("peer copy failed")
+		wg.Add(1)
+		go func(peer Store) {
+			defer wg.Done()
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+			case <-raceCtx.Done():
+				results <- peerCopyResult{peer: peer, err: raceCtx.Err()}
+				return
+			}
+			results <- peerCopyResult{peer: peer, err: replicateFromPeer(raceCtx, s.local, peer, artifacts, s.opts)}
+		}(peer)
 	}
-	return false, last
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	var failures []error
+	won := false
+	for result := range results {
+		if result.err == nil {
+			if !won {
+				won = true
+				cancel()
+				logger.FromContext(ctx).Info().Str("peer", storeLabel(result.peer)).Msg("artifact replicated from peer")
+			}
+			continue
+		}
+		if won && errors.Is(result.err, context.Canceled) {
+			continue
+		}
+		logger.FromContext(ctx).Warn().Err(result.err).Str("peer", storeLabel(result.peer)).Msg("peer copy failed")
+		failures = append(failures, result.err)
+	}
+	if won {
+		return true, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	return false, errors.Join(failures...)
 }
 
 func replicateFromPeer(ctx context.Context, local, peer Store, artifacts []Artifact, opts PeerFillOptions) error {
