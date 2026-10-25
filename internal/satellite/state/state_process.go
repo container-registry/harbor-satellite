@@ -3,9 +3,13 @@ package state
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/peers"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/shared/utils"
@@ -21,10 +25,13 @@ type FetchAndReplicateStateProcess struct {
 	cm                  *config.ConfigManager
 	mu                  sync.Mutex
 	stateFilePath       string
+	desiredStateFile    string
 	storeRoot           string
 	directDeliverer     *DirectDeliverer
 	localStore          store.Store
 	remoteStore         store.Store
+	fetchRootState      func(ctx context.Context, satelliteStateURL, srcUsername, srcPassword string, useUnsecure bool, log *zerolog.Logger) (*SatelliteState, error)
+	fetchGroupState     func(ctx context.Context, groupURL, srcUsername, srcPassword string, useUnsecure bool, log *zerolog.Logger) (*StateReader, error)
 }
 
 // SetStores shares the proxy's local destination and Harbor source with state replication.
@@ -47,12 +54,20 @@ type ConfigFetcherResult struct {
 	Cancelled    bool
 }
 
-func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath, storeRoot string, log *zerolog.Logger) *FetchAndReplicateStateProcess {
+func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath, storeRoot, desiredStateFile string, log *zerolog.Logger) *FetchAndReplicateStateProcess {
+	if log == nil {
+		nop := zerolog.Nop()
+		log = &nop
+	}
 	p := &FetchAndReplicateStateProcess{
-		name:          config.ReplicateStateJobName,
-		cm:            cm,
-		stateFilePath: stateFilePath,
-		storeRoot:     storeRoot,
+		name:             config.ReplicateStateJobName,
+		cm:               cm,
+		stateFilePath:    stateFilePath,
+		desiredStateFile: desiredStateFile,
+		storeRoot:        storeRoot,
+	}
+	if p.desiredStateFile == "" && stateFilePath != "" {
+		p.desiredStateFile = filepath.Join(filepath.Dir(stateFilePath), config.DefaultDesiredStateFile)
 	}
 
 	if stateFilePath != "" {
@@ -60,23 +75,61 @@ func NewFetchAndReplicateStateProcess(cm *config.ConfigManager, stateFilePath, s
 		if err != nil {
 			log.Warn().Err(err).Str("path", stateFilePath).Msg("Corrupted state file, starting fresh")
 		} else if persisted != nil {
-			p.currentConfigDigest = persisted.ConfigDigest
-			for _, g := range persisted.Groups {
-				p.stateMap = append(p.stateMap, StateMap{
-					url:      g.URL,
-					Entities: g.Entities,
-				})
-			}
+			p.applyPersistedState(persisted)
+		}
+	}
+	if len(p.stateMap) == 0 && p.desiredStateFile != "" {
+		bootstrap, err := LoadState(p.desiredStateFile)
+		if err != nil {
+			log.Warn().Err(err).Str("path", p.desiredStateFile).Msg("Corrupted bootstrap desired-state file, ignoring")
+		} else if bootstrap != nil {
+			log.Info().Str("path", p.desiredStateFile).Msg("Loaded bootstrap desired-state file")
+			p.applyBootstrapState(bootstrap)
 		}
 	}
 
 	return p
 }
 
+func (f *FetchAndReplicateStateProcess) applyPersistedState(persisted *PersistedState) {
+	if persisted == nil {
+		return
+	}
+	f.currentConfigDigest = persisted.ConfigDigest
+	f.stateMap = f.stateMap[:0]
+	for _, g := range persisted.Groups {
+		f.stateMap = append(f.stateMap, StateMap{
+			url:      g.URL,
+			Entities: g.Entities,
+		})
+	}
+}
+
+// applyBootstrapState keeps the wish list out of the applied entity list and
+// ignores its config digest. GetChanges and config reconcile treat those as
+// already done, so a bootstrap file must not set them.
+func (f *FetchAndReplicateStateProcess) applyBootstrapState(bootstrap *PersistedState) {
+	if bootstrap == nil {
+		return
+	}
+	f.stateMap = f.stateMap[:0]
+	for _, g := range bootstrap.Groups {
+		if len(g.Entities) == 0 {
+			continue
+		}
+		f.stateMap = append(f.stateMap, StateMap{
+			url:     g.URL,
+			desired: append([]Entity(nil), g.Entities...),
+		})
+	}
+}
+
 type StateMap struct {
 	url      string
 	State    StateReader
 	Entities []Entity
+	// desired is the bootstrap wish list. It is not applied state and is not written to state.json.
+	desired []Entity
 }
 
 func NewStateMap(url []string) []StateMap {
@@ -113,8 +166,12 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	}
 	log.Info().Msg(reason)
 
-	satelliteState, err := f.fetchSatelliteRootState(ctx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
+	satelliteState, err := f.fetchSatelliteRootStateTimed(ctx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
 	if err != nil {
+		if f.canDegrade() {
+			log.Warn().Err(err).Msg("degraded replication from last-known state")
+			return f.replicateDegraded(ctx, replicator, sourceStore, &log)
+		}
 		return err
 	}
 
@@ -259,12 +316,18 @@ func (f *FetchAndReplicateStateProcess) IsComplete() bool {
 }
 
 func (f *FetchAndReplicateStateProcess) CanExecute(satelliteStateURL, destination, srcURL, srcUsername, srcPassword string) (bool, string) {
+	if destination == "" {
+		return false, "missing store destination is empty"
+	}
+	if f.canDegrade() {
+		return true, fmt.Sprintf("Process %s can execute: degraded list available", f.name)
+	}
+
 	checks := []struct {
 		condition bool
 		message   string
 	}{
 		{satelliteStateURL == "", "satelliteState is empty"},
-		{destination == "", "store destination is empty"},
 		{srcUsername == "", "username is empty"},
 		{srcURL == "", "source registry is empty"},
 		{srcPassword == "", "password is empty"},
@@ -282,6 +345,167 @@ func (f *FetchAndReplicateStateProcess) CanExecute(satelliteStateURL, destinatio
 	}
 
 	return true, fmt.Sprintf("Process %s can execute: all conditions fulfilled", f.name)
+}
+
+func (f *FetchAndReplicateStateProcess) peersEnabled() bool {
+	if f.cm == nil {
+		return false
+	}
+	return f.cm.GetPeerDistributionConfig().Enabled
+}
+
+func (f *FetchAndReplicateStateProcess) hasDegradedList() bool {
+	for _, group := range f.stateMap {
+		if len(group.Entities) > 0 || len(group.desired) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *FetchAndReplicateStateProcess) groupEntities(index int) []Entity {
+	if len(f.stateMap[index].Entities) > 0 {
+		return f.stateMap[index].Entities
+	}
+	return f.stateMap[index].desired
+}
+
+func (f *FetchAndReplicateStateProcess) markDesiredApplied(index int, applied []Entity) {
+	if len(f.stateMap[index].desired) == 0 {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.stateMap[index].desired) == 0 {
+		return
+	}
+	f.stateMap[index].Entities = append([]Entity(nil), applied...)
+	f.stateMap[index].desired = nil
+}
+
+func (f *FetchAndReplicateStateProcess) canDegrade() bool {
+	return f.peersEnabled() && f.hasDegradedList()
+}
+
+// listFetchContext bounds a Harbor list fetch only while peer distribution is on,
+// so a dead registry can fall through to the last-known list. Peers off keeps the
+// caller context, which is how replication behaved before that fallback existed.
+func (f *FetchAndReplicateStateProcess) listFetchContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if !f.peersEnabled() {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, f.listFetchTimeout())
+}
+
+func (f *FetchAndReplicateStateProcess) listFetchTimeout() time.Duration {
+	timeout := 30 * time.Second
+	if parsed, err := time.ParseDuration(config.DefaultPeerTimeout); err == nil && parsed > 0 {
+		timeout = parsed
+	}
+	if f.cm == nil {
+		return timeout
+	}
+	if parsed, err := time.ParseDuration(f.cm.GetPeerDistributionConfig().Timeout); err == nil && parsed > 0 {
+		return parsed
+	}
+	return timeout
+}
+
+func (f *FetchAndReplicateStateProcess) copyContext(ctx context.Context) context.Context {
+	return store.WithHarborTimeout(ctx, f.listFetchTimeout())
+}
+
+func (f *FetchAndReplicateStateProcess) replicateDegraded(
+	ctx context.Context,
+	replicator, sourceStore store.Store,
+	log *zerolog.Logger,
+) error {
+	stateFetcherResults := make(chan StateFetcherResult, len(f.stateMap))
+	for i := range f.stateMap {
+		go func(index int) {
+			if result := f.replicatePersistedGroup(ctx, index, replicator, sourceStore, log); result != nil {
+				stateFetcherResults <- *result
+				return
+			}
+			stateFetcherResults <- StateFetcherResult{Index: index, URL: f.stateMap[index].url}
+		}(i)
+	}
+	configFetcherResult := make(chan ConfigFetcherResult, 1)
+	configFetcherResult <- ConfigFetcherResult{ConfigDigest: f.currentConfigDigest}
+	if err := f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), log); err != nil {
+		return err
+	}
+	if err := f.PersistState(); err != nil {
+		log.Warn().Err(err).Msg("Failed to persist state after degraded replication")
+	}
+	return nil
+}
+
+func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
+	ctx context.Context,
+	index int,
+	replicator, sourceStore store.Store,
+	log *zerolog.Logger,
+) *StateFetcherResult {
+	entities := f.groupEntities(index)
+	if !f.peersEnabled() || len(entities) == 0 {
+		return nil
+	}
+
+	result := &StateFetcherResult{Index: index, URL: f.stateMap[index].url}
+	groupLog := log.With().
+		Str("sub-process", "state-fetcher").
+		Str("group", f.stateMap[index].url).
+		Int("goroutine-id", index).
+		Logger()
+	groupLog.Warn().Msg("using persisted group state; skipping deletes")
+
+	missing, err := missingLocally(ctx, replicator, entities)
+	if err != nil {
+		result.Error = err
+		return result
+	}
+	f.LogChanges(nil, missing, &groupLog)
+
+	if len(missing) > 0 {
+		if err := replicator.Replicate(f.copyContext(ctx), sourceStore, missing); err != nil {
+			groupLog.Error().Err(err).Msg("Error replicating persisted state")
+			result.Error = fmt.Errorf("failed to replicate persisted entities for %s: %w", f.stateMap[index].url, err)
+			return result
+		}
+		if f.directDeliverer != nil {
+			deliveryCtx, cancel := context.WithTimeout(ctx, f.listFetchTimeout())
+			defer cancel()
+			if err := f.directDeliverer.Deliver(deliveryCtx, missing); err != nil {
+				groupLog.Warn().Err(err).Msg("Direct delivery: failed to write tarballs")
+			}
+		}
+	}
+	f.markDesiredApplied(index, entities)
+	return result
+}
+
+func missingLocally(ctx context.Context, local store.Store, entities []Entity) ([]Entity, error) {
+	if local == nil {
+		return append([]Entity(nil), entities...), nil
+	}
+	var missing []Entity
+	for _, entity := range entities {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		// A registry resolves a digest before the tag. Ask by tag when one is
+		// set, and keep the original digest for the comparison and the copy.
+		lookup := entity
+		if lookup.Tag != "" {
+			lookup.Digest = ""
+		}
+		descriptor, err := local.Pull(ctx, lookup, store.PullResourceManifest)
+		if err != nil || (entity.Digest != "" && descriptor.Digest.String() != entity.Digest) {
+			missing = append(missing, entity)
+		}
+	}
+	return missing, nil
 }
 
 func (f *FetchAndReplicateStateProcess) collectResults(
@@ -455,16 +679,32 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 
 	stateFetcherLog.Info().Msgf("Processing state for %s", groupURL)
 
-	groupStateFetcher, err := getStateFetcherForInput(groupURL, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
-	if err != nil {
-		stateFetcherLog.Error().Err(err).Msg("Error processing input")
-		result.Error = fmt.Errorf("failed to create state fetcher for %s: %w", f.stateMap[index].url, err)
-		return result
-	}
+	fetchCtx, cancel := f.listFetchContext(ctx)
+	defer cancel()
 
-	newStateFetched, err := f.FetchAndProcessState(ctx, groupStateFetcher, &stateFetcherLog)
+	var newStateFetched *StateReader
+	var err error
+	if f.fetchGroupState != nil {
+		newStateFetched, err = f.fetchGroupState(fetchCtx, groupURL, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
+	} else {
+		var groupStateFetcher StateFetcher
+		groupStateFetcher, err = getStateFetcherForInput(groupURL, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
+		if err != nil {
+			stateFetcherLog.Error().Err(err).Msg("Error processing input")
+			if fallback := f.replicatePersistedGroup(ctx, index, replicator, sourceStore, &stateFetcherLog); fallback != nil {
+				return *fallback
+			}
+			result.Error = fmt.Errorf("failed to create state fetcher for %s: %w", f.stateMap[index].url, err)
+			return result
+		}
+
+		newStateFetched, err = f.FetchAndProcessState(fetchCtx, groupStateFetcher, &stateFetcherLog)
+	}
 	if err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error fetching state")
+		if fallback := f.replicatePersistedGroup(ctx, index, replicator, sourceStore, &stateFetcherLog); fallback != nil {
+			return *fallback
+		}
 		result.Error = fmt.Errorf("failed to fetch state for %s: %w", f.stateMap[index].url, err)
 		return result
 	}
@@ -498,6 +738,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	f.mu.Lock()
 	f.stateMap[index].State = newState
 	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
+	f.stateMap[index].desired = nil
 	if f.stateFilePath != "" {
 		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
 			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
@@ -506,6 +747,23 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	f.mu.Unlock()
 
 	return result
+}
+
+func (f *FetchAndReplicateStateProcess) fetchSatelliteRootStateTimed(
+	ctx context.Context,
+	satelliteStateURL, srcUsername, srcPassword string,
+	useUnsecure bool,
+	log *zerolog.Logger,
+) (*SatelliteState, error) {
+	if satelliteStateURL == "" || srcUsername == "" || srcPassword == "" {
+		return nil, fmt.Errorf("harbor state credentials are missing")
+	}
+	fetchCtx, cancel := f.listFetchContext(ctx)
+	defer cancel()
+	if f.fetchRootState != nil {
+		return f.fetchRootState(fetchCtx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, log)
+	}
+	return f.fetchSatelliteRootState(fetchCtx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, log)
 }
 
 func (f *FetchAndReplicateStateProcess) fetchSatelliteRootState(
@@ -594,6 +852,11 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 		}
 	}
 
+	replicator, err = f.wrapWithPeerFill(replicator)
+	if err != nil {
+		return nil, nil, "", "", "", "", false, "", err
+	}
+
 	// Set up direct delivery if enabled, clear if disabled
 	dd := f.cm.GetDirectDeliveryConfig()
 	if dd.Enabled && dd.ImageDir != "" {
@@ -603,6 +866,62 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 	}
 
 	return replicator, sourceStore, sourceURL, sourceUsername, sourcePassword, destination, useUnsecure, satelliteStateURL, nil
+}
+
+// wrapWithPeerFill tries eligible peers before Harbor when peer distribution
+// is enabled. A disabled block returns the local store unchanged.
+func (f *FetchAndReplicateStateProcess) wrapWithPeerFill(local store.Store) (store.Store, error) {
+	cfg := f.cm.GetPeerDistributionConfig()
+	if !cfg.Enabled {
+		return local, nil
+	}
+
+	timeout, err := time.ParseDuration(cfg.Timeout)
+	if err != nil || timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	retries := config.DefaultPeerRetries
+	if cfg.Retries != nil {
+		retries = *cfg.Retries
+	}
+
+	return store.NewPeerFillingStore(local, f.peerStores, store.PeerFillOptions{
+		Timeout: timeout,
+		Retries: retries,
+	})
+}
+
+func (f *FetchAndReplicateStateProcess) peerStores() []store.Store {
+	eligible := peers.EligiblePeers(f.cm.GetPeerDistributionConfig())
+	out := make([]store.Store, 0, len(eligible))
+	for _, peer := range eligible {
+		plainHTTP, err := peerPlainHTTP(string(peer.URL))
+		if err != nil {
+			continue
+		}
+		peerStore, err := store.NewRegistryStore(store.RegistryOptions{
+			Endpoint:  utils.FormatRegistryURL(string(peer.URL)),
+			Username:  peer.Username,
+			Password:  peer.Password,
+			PlainHTTP: plainHTTP,
+			TLS:       peer.TLS,
+		})
+		if err != nil {
+			continue
+		}
+		out = append(out, store.LabelStore(peerStore, string(peer.URL)))
+	}
+	return out
+}
+
+// peerPlainHTTP is true only for an http peer URL. use_unsecure permits those
+// peers, but it must not turn an https peer into a plain HTTP client.
+func peerPlainHTTP(rawURL string) (bool, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false, err
+	}
+	return strings.EqualFold(parsed.Scheme, "http"), nil
 }
 
 func (f *FetchAndReplicateStateProcess) start() {

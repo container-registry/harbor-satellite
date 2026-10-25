@@ -14,15 +14,16 @@ import (
 )
 
 type Satellite struct {
-	cm             *config.ConfigManager
-	criResults     []runtime.CRIConfigResult
-	schedulers     []*scheduler.Scheduler
-	stateFilePath  string
-	storeRoot      string
-	stateProcess   *state.FetchAndReplicateStateProcess
-	eventscheduler *events.EventScheduler
-	localStore     store.Store
-	remoteStore    store.Store
+	cm               *config.ConfigManager
+	criResults       []runtime.CRIConfigResult
+	schedulers       []*scheduler.Scheduler
+	stateFilePath    string
+	storeRoot        string
+	desiredStateFile string
+	stateProcess     *state.FetchAndReplicateStateProcess
+	eventscheduler   *events.EventScheduler
+	localStore       store.Store
+	remoteStore      store.Store
 }
 
 // SetStores supplies the same local and Harbor stores used by the proxy.
@@ -31,14 +32,15 @@ func (s *Satellite) SetStores(localStore, remoteStore store.Store) {
 	s.remoteStore = remoteStore
 }
 
-func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, storeRoot string, jq *events.EventScheduler) *Satellite {
+func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, storeRoot, desiredStateFile string, jq *events.EventScheduler) *Satellite {
 	return &Satellite{
-		cm:             cm,
-		criResults:     criResults,
-		schedulers:     make([]*scheduler.Scheduler, 0),
-		stateFilePath:  stateFilePath,
-		storeRoot:      storeRoot,
-		eventscheduler: jq,
+		cm:               cm,
+		criResults:       criResults,
+		schedulers:       make([]*scheduler.Scheduler, 0),
+		stateFilePath:    stateFilePath,
+		storeRoot:        storeRoot,
+		desiredStateFile: desiredStateFile,
+		eventscheduler:   jq,
 	}
 }
 
@@ -46,7 +48,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	log.Info().Msg("Starting Satellite")
 
-	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, s.storeRoot, log)
+	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, s.storeRoot, s.desiredStateFile, log)
 	fetchAndReplicateStateProcess.SetStores(s.localStore, s.remoteStore)
 	s.stateProcess = fetchAndReplicateStateProcess
 
