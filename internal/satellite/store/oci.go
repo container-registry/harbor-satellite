@@ -155,7 +155,13 @@ func (s *OCIStore) replicateOne(ctx context.Context, source Store, sourceTarget 
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	return s.publish(ctx, staged, artifact)
+	if err = s.publish(ctx, staged, artifact); err != nil {
+		return err
+	}
+	if onWin := peerRaceOnWin(ctx); onWin != nil {
+		onWin()
+	}
+	return nil
 }
 
 type stagedArtifact struct {

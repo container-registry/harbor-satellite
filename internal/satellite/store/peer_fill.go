@@ -155,6 +155,13 @@ func (s *PeerFillingStore) replicateFromPeers(ctx context.Context, artifacts []A
 
 	results := make(chan peerCopyResult, len(sources))
 	var wg sync.WaitGroup
+	var winOnce sync.Once
+	onWin := func(peer Store) {
+		winOnce.Do(func() {
+			cancel()
+			logger.FromContext(ctx).Info().Str("peer", storeLabel(peer)).Msg("artifact replicated from peer")
+		})
+	}
 	slots := make(chan struct{}, s.opts.Concurrency)
 	for _, peer := range sources {
 		wg.Add(1)
@@ -167,7 +174,10 @@ func (s *PeerFillingStore) replicateFromPeers(ctx context.Context, artifacts []A
 				results <- peerCopyResult{peer: peer, err: raceCtx.Err()}
 				return
 			}
-			results <- peerCopyResult{peer: peer, err: replicateFromPeer(raceCtx, s.local, peer, artifacts, s.opts)}
+			results <- peerCopyResult{
+				peer: peer,
+				err:  replicateFromPeer(raceCtx, s.local, peer, artifacts, s.opts, func() { onWin(peer) }),
+			}
 		}(peer)
 	}
 	go func() {
@@ -179,11 +189,7 @@ func (s *PeerFillingStore) replicateFromPeers(ctx context.Context, artifacts []A
 	won := false
 	for result := range results {
 		if result.err == nil {
-			if !won {
-				won = true
-				cancel()
-				logger.FromContext(ctx).Info().Str("peer", storeLabel(result.peer)).Msg("artifact replicated from peer")
-			}
+			won = true
 			continue
 		}
 		if won && errors.Is(result.err, context.Canceled) {
@@ -201,14 +207,40 @@ func (s *PeerFillingStore) replicateFromPeers(ctx context.Context, artifacts []A
 	return false, errors.Join(failures...)
 }
 
-func replicateFromPeer(ctx context.Context, local, peer Store, artifacts []Artifact, opts PeerFillOptions) error {
+type peerRaceOnWinKey struct{}
+
+// WithPeerRaceOnWin registers a callback the OCI store runs after a successful
+// publish while it still holds the serving write lock. Peer races use it to
+// cancel siblings before unlock so waiters on the publish lock do not publish.
+func WithPeerRaceOnWin(ctx context.Context, onWin func()) context.Context {
+	if onWin == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, peerRaceOnWinKey{}, onWin)
+}
+
+func peerRaceOnWin(ctx context.Context) func() {
+	fn, ok := ctx.Value(peerRaceOnWinKey{}).(func())
+	if !ok {
+		return nil
+	}
+	return fn
+}
+
+func replicateFromPeer(ctx context.Context, local, peer Store, artifacts []Artifact, opts PeerFillOptions, onWin func()) error {
 	attempts := 1 + opts.Retries
 	var last error
 	for attempt := 1; attempt <= attempts; attempt++ {
 		attemptCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
+		if onWin != nil {
+			attemptCtx = WithPeerRaceOnWin(attemptCtx, onWin)
+		}
 		last = local.Replicate(attemptCtx, peer, artifacts)
 		cancel()
 		if last == nil {
+			if onWin != nil {
+				onWin()
+			}
 			return nil
 		}
 		if err := ctx.Err(); err != nil {
