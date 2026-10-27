@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"database/sql/driver"
+	"errors"
 	"log"
 	"math/big"
 	"time"
@@ -14,6 +16,8 @@ const (
 	defaultRetentionDays   = 7
 	defaultCleanupInterval = 24 * time.Hour
 )
+
+var advisoryUnlockTimeout = 10 * time.Second
 
 type CleanupConfig struct {
 	RetentionDays   int
@@ -62,7 +66,7 @@ func (s *Server) runCleanupWithLock(ctx context.Context, days int) {
 		return
 	}
 	defer func() {
-		if err := conn.Close(); err != nil {
+		if err := conn.Close(); err != nil && !errors.Is(err, sql.ErrConnDone) {
 			log.Printf("Failed to close advisory lock connection: %v", err)
 		}
 	}()
@@ -70,12 +74,19 @@ func (s *Server) runCleanupWithLock(ctx context.Context, days int) {
 	acquired, err := tryAcquireAdvisoryLock(ctx, conn, cleanupLockID)
 	if err != nil {
 		log.Printf("Failed to check advisory lock: %v", err)
+		discardConn(conn)
 		return
 	}
 	if !acquired {
 		return
 	}
-	defer releaseAdvisoryLock(context.WithoutCancel(ctx), conn, cleanupLockID)
+	defer func() {
+		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), advisoryUnlockTimeout)
+		defer cancel()
+		if !releaseAdvisoryLock(releaseCtx, conn, cleanupLockID) {
+			discardConn(conn)
+		}
+	}()
 
 	if err := s.dbQueries.DeleteOldSatelliteStatus(ctx, days); err != nil {
 		log.Printf("Status cleanup failed: %v", err)
@@ -98,14 +109,23 @@ func tryAcquireAdvisoryLock(ctx context.Context, conn *sql.Conn, lockID int) (bo
 	return acquired, nil
 }
 
-func releaseAdvisoryLock(ctx context.Context, conn *sql.Conn, lockID int) {
+func releaseAdvisoryLock(ctx context.Context, conn *sql.Conn, lockID int) bool {
 	var released bool
 	if err := conn.QueryRowContext(ctx, "SELECT pg_advisory_unlock($1)", lockID).Scan(&released); err != nil {
 		log.Printf("Failed to release advisory lock: %v", err)
-		return
+		return false
 	}
 	if !released {
 		log.Printf("Failed to release advisory lock %d: not held by this session", lockID)
+	}
+	return true
+}
+
+// discardConn closes the session instead of returning it to the pool, so
+// Postgres drops any advisory lock it may still hold.
+func discardConn(conn *sql.Conn) {
+	if err := conn.Raw(func(any) error { return driver.ErrBadConn }); !errors.Is(err, driver.ErrBadConn) {
+		log.Printf("Failed to discard advisory lock connection: %v", err)
 	}
 }
 

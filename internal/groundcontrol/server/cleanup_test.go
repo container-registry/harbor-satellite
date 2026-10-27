@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/stretchr/testify/require"
@@ -23,6 +24,11 @@ type advisoryLockBackend struct {
 	owners        map[int64]int
 	failedUnlocks int
 	onDelete      func()
+	// acquireErr is returned after pg_try_advisory_lock has taken the lock,
+	// like a reply lost on the wire.
+	acquireErr error
+	// hangUnlock makes pg_advisory_unlock wait until its context ends.
+	hangUnlock bool
 }
 
 func (b *advisoryLockBackend) Connect(context.Context) (driver.Conn, error) {
@@ -62,7 +68,7 @@ func (c *advisoryLockConn) Close() error {
 	return nil
 }
 
-func (c *advisoryLockConn) QueryContext(_ context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+func (c *advisoryLockConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	lockID, ok := args[0].Value.(int64)
 	if !ok {
 		return nil, errors.New("lock id must be an integer")
@@ -79,8 +85,17 @@ func (c *advisoryLockConn) QueryContext(_ context.Context, query string, args []
 			return &boolRows{value: false}, nil
 		}
 		b.owners[lockID] = c.id
+		if b.acquireErr != nil {
+			return nil, b.acquireErr
+		}
 		return &boolRows{value: true}, nil
 	case strings.Contains(query, "pg_advisory_unlock"):
+		if b.hangUnlock {
+			b.mu.Unlock()
+			<-ctx.Done()
+			b.mu.Lock()
+			return nil, ctx.Err()
+		}
 		if !held || owner != c.id {
 			b.failedUnlocks++
 			return &boolRows{value: false}, nil
@@ -146,4 +161,42 @@ func TestRunCleanupWithLockKeepsLockOnOneSession(t *testing.T) {
 	require.Equal(t, []bool{false, false}, otherSessionAcquired, "another instance took the cleanup lock while cleanup was running")
 	require.Zero(t, backend.failedUnlocks, "the lock was released from a session that did not hold it")
 	require.Empty(t, backend.owners)
+}
+
+func TestRunCleanupWithLockDiscardsSessionWhenAcquireFails(t *testing.T) {
+	ctx := context.Background()
+	backend := &advisoryLockBackend{owners: map[int64]int{}, acquireErr: errors.New("connection reset")}
+	db := sql.OpenDB(backend)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	s := &Server{db: db, dbQueries: database.New(db)}
+	s.runCleanupWithLock(ctx, defaultRetentionDays)
+
+	require.Empty(t, backend.owners, "a pooled session kept the cleanup lock after the acquire query failed")
+}
+
+func TestRunCleanupWithLockBoundsAndDiscardsFailedUnlock(t *testing.T) {
+	timeout := advisoryUnlockTimeout
+	advisoryUnlockTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { advisoryUnlockTimeout = timeout })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	backend := &advisoryLockBackend{owners: map[int64]int{}, hangUnlock: true}
+	backend.onDelete = cancel
+	db := sql.OpenDB(backend)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	s := &Server{db: db, dbQueries: database.New(db)}
+	done := make(chan struct{})
+	go func() {
+		s.runCleanupWithLock(ctx, defaultRetentionDays)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cleanup did not return while the unlock query hung")
+	}
+	require.Empty(t, backend.owners, "a pooled session kept the cleanup lock after the unlock failed")
 }
