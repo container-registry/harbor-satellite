@@ -1,0 +1,337 @@
+@layer components {
+  .prose-section {
+    padding: 0 var(--page-padding) 100px;
+  }
+
+  .prose {
+    max-width: 46rem;
+    margin: 0 auto;
+    font-size: var(--text-body);
+    line-height: var(--leading-relaxed);
+    color: var(--color-ink);
+
+    & h2 {
+      font-size: var(--text-heading);
+      font-weight: 300;
+      line-height: 1.2;
+      letter-spacing: var(--tracking-heading);
+      margin-top: var(--space-16);
+      margin-bottom: var(--space-6);
+    }
+
+    & h3 {
+      font-size: var(--text-subheading);
+      margin-top: var(--space-12);
+      margin-bottom: var(--space-4);
+    }
+
+    & p { margin-bottom: var(--space-5); }
+
+    & ul,
+    & ol {
+      margin-bottom: var(--space-5);
+      padding-left: var(--space-6);
+    }
+
+    & ul { list-style: disc; }
+    & ol { list-style: decimal; }
+
+    & li {
+      margin-bottom: var(--space-2);
+      line-height: var(--leading-relaxed);
+    }
+
+    & a:not(.button) {
+      color: var(--color-teal);
+      text-decoration: underline;
+    }
+
+    & strong { font-weight: var(--weight-semibold); }
+
+    & img {
+      border-radius: var(--radius-lg);
+      margin: var(--space-8) 0;
+    }
+
+    & table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--text-sm);
+      margin-block: var(--space-6) var(--space-10);
+    }
+
+    & th {
+      text-align: left;
+      font-weight: var(--weight-semibold);
+      padding: var(--space-3) var(--space-4);
+      border-block-end: 2px solid var(--color-border);
+    }
+
+    & td {
+      text-align: left;
+      padding: var(--space-3) var(--space-4);
+    }
+
+    /* SVGBob diagrams rendered by the svgbob codeblock hook: center, let the
+       SVG scale to the prose width without the img border-radius/margin defaults. */
+    & .diagram--svgbob {
+      margin: var(--space-8) 0;
+      text-align: center;
+
+      & img,
+      & svg {
+        width: 100%;
+        height: auto;
+        margin: 0;
+        border-radius: 0;
+      }
+    }
+  }
+
+  .prose--wide {
+    max-width: calc(var(--page-max-width) - 2 * var(--page-padding));
+  }
+
+  /* Docs prose modifier — wider content, full element styling */
+  .prose--docs {
+    max-width: 52rem;
+    margin-inline: 0;
+    line-height: var(--leading-docs);
+  }
+
+  /* Keep the article aligned with its breadcrumb on extra-wide screens. The
+     docs grid gains a wider middle rail there; retaining the narrower prose
+     cap would center the content within that rail and create a false gutter. */
+  @media (min-width: 1600px) {
+    .prose--docs {
+      max-width: 60rem;
+    }
+  }
+
+  .prose--docs p {
+    margin-block-end: var(--space-4);
+  }
+
+  .prose--docs ul,
+  .prose--docs ol {
+    margin-block-end: var(--space-4);
+  }
+
+  .prose--docs li {
+    margin-block-end: var(--space-1);
+    line-height: var(--leading-docs);
+  }
+
+  .prose--docs h1 {
+    font-size: var(--text-docs-title);
+    font-weight: var(--weight-semibold);
+    line-height: 1.2;
+    letter-spacing: -0.05rem;
+    margin-block-end: var(--space-6);
+  }
+
+  /* Older docs use more than one Markdown h1. The first is the page title;
+     subsequent h1s are section headings and must not compete with it. */
+  .prose--docs h1:not(:first-child) {
+    font-size: var(--text-docs-chapter);
+    font-weight: var(--weight-semibold);
+    line-height: 1.2;
+    letter-spacing: var(--tracking-heading);
+    margin-block: var(--space-8) var(--space-4);
+  }
+
+  /* Many imported manuals begin with the document title followed immediately
+     by their actual opening section as another h1. It is one opening unit, not
+     a new chapter: keep it deliberately close while retaining wide breaks for
+     later top-level sections. */
+  .prose--docs > h1:first-child + h1,
+  .prose--docs > h1:first-child + p + h1 {
+    margin-block-start: var(--space-6);
+  }
+
+  .prose--docs h2 {
+    font-size: var(--text-docs-section);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-body);
+    letter-spacing: var(--tracking-subheading);
+    margin-block-start: var(--space-6);
+    margin-block-end: var(--space-4);
+    padding-block-start: 0;
+  }
+
+  .prose--docs h3 {
+    font-size: var(--text-docs-subsection);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-body);
+    margin-block-start: var(--space-5);
+    margin-block-end: var(--space-3);
+  }
+
+  .prose--docs h4 {
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+    margin-block-start: var(--space-5);
+    margin-block-end: var(--space-3);
+  }
+
+  .prose--docs h5 {
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+    margin-block-start: var(--space-4);
+    margin-block-end: var(--space-2);
+  }
+
+  .prose--docs table {
+    width: 100%;
+    max-width: 100%;
+    border-collapse: collapse;
+    /* Preserve each column's natural minimum width. The block box becomes
+       its own horizontal scroller when a compact viewport cannot fit it. */
+    table-layout: auto;
+    display: block;
+    overflow-x: auto;
+    font-size: var(--text-sm);
+    margin-block: var(--space-6);
+  }
+
+  .prose--docs pre {
+    margin-block-start: var(--space-2);
+    margin-block-end: var(--space-4);
+    padding-block: var(--space-2);
+    padding-inline: var(--space-4);
+    font-size: var(--text-body-sm);
+    font-weight: var(--weight-regular);
+    line-height: var(--leading-docs);
+  }
+
+  .code-block {
+    position: relative;
+  }
+
+  .code-block .highlight {
+    margin: 0;
+  }
+
+  .code-block pre {
+    padding-inline-end: 3rem;
+  }
+
+  .code-block__copy {
+    position: absolute;
+    /* A one-line block (~34px) is shorter than button + inset (40px); the min()
+       collapses the inset so the button centers instead of poking out the top. */
+    inset-block-end: min(var(--space-2), calc(50% - var(--space-8) / 2));
+    inset-inline-end: var(--space-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--space-8);
+    padding: var(--space-1) var(--space-2);
+    color: color-mix(in srgb, var(--color-surface) 55%, transparent);
+    background: var(--color-code-surface);
+    border: 0;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .code-block__copy:hover,
+  .code-block__copy:focus-visible {
+    color: var(--color-surface);
+    background: color-mix(in srgb, var(--color-surface) 14%, var(--color-code-surface));
+  }
+
+  .code-block__copy svg {
+    width: var(--space-4);
+    height: var(--space-4);
+  }
+
+  .code-block__copy-success {
+    color: oklch(var(--lch-teal-300));
+    animation: code-block-copy-success 0.2s ease-out;
+  }
+
+  @keyframes code-block-copy-success {
+    from {
+      opacity: 0;
+      transform: scale(0.65) rotate(-12deg);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1) rotate(0deg);
+    }
+  }
+
+  .prose--docs thead {
+    display: table-header-group;
+  }
+
+  .prose--docs tbody {
+    display: table-row-group;
+  }
+
+  .prose--docs tr {
+    display: table-row;
+  }
+
+  .prose--docs th {
+    font-weight: var(--weight-semibold);
+    background: oklch(var(--lch-navy-100));
+    color: var(--color-ink);
+    text-align: left;
+    padding: var(--space-3) var(--space-4);
+    overflow-wrap: normal;
+    white-space: normal;
+    display: table-cell;
+  }
+
+  .prose--docs td {
+    padding: var(--space-3) var(--space-4);
+    border-block-end: 1px solid var(--color-border);
+    overflow-wrap: normal;
+    vertical-align: top;
+    display: table-cell;
+  }
+
+  .prose--docs td code,
+  .prose--docs th code {
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+
+  .prose--docs tr:nth-child(even) td {
+    background: oklch(var(--lch-gray-50));
+  }
+
+  .prose--docs blockquote {
+    background: oklch(var(--lch-gray-100));
+    border-radius: var(--radius-md);
+    padding: var(--space-4) var(--space-6);
+    margin-block: var(--space-5);
+    margin-inline: 0;
+    border: none;
+  }
+
+  .prose--docs blockquote p:last-child {
+    margin-block-end: 0;
+  }
+
+  .prose--docs img {
+    max-width: 100%;
+    border-radius: var(--radius-lg);
+    margin-block: var(--space-6);
+    display: block;
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .prose--docs hr {
+    border: none;
+    border-block-start: 1px solid var(--color-border);
+    margin-block: var(--docs-section-gap);
+  }
+}

@@ -1,0 +1,120 @@
+@layer components {
+  .hero {
+    padding: 60px var(--page-padding) 80px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 500px;
+  }
+
+  .hero__inner {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: calc(var(--page-max-width) - 2 * var(--page-padding));
+    gap: 20px;
+  }
+
+  .hero__content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 50px;
+  }
+
+  .hero__description {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    font-weight: var(--weight-regular);
+  }
+
+  .hero__actions {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .hero__cta {
+    --btn-bg: var(--color-navy);
+    --btn-color: var(--color-surface);
+    --btn-border: var(--color-navy);
+    --btn-hover-bg: var(--color-navy-hover);
+    --btn-hover-color: var(--color-surface);
+    --btn-hover-border: var(--color-navy-hover);
+
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 20px;
+    background: var(--btn-bg);
+    color: var(--btn-color);
+    border: 1px solid var(--btn-border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-regular);
+
+    @media (any-hover: hover) {
+      &:hover:not(:disabled) {
+        opacity: 1;
+        background: var(--btn-hover-bg);
+        color: var(--btn-hover-color);
+        border-color: var(--btn-hover-border);
+      }
+    }
+  }
+
+  .hero__cta img {
+    filter: invert(1);
+  }
+
+  .hero__cta:hover img {
+    filter: none;
+  }
+
+  .hero__cta--secondary {
+    --btn-bg: transparent;
+    --btn-color: var(--color-navy);
+    --btn-border: var(--color-navy);
+    --btn-hover-bg: var(--color-navy);
+    --btn-hover-color: var(--color-surface);
+    --btn-hover-border: var(--color-navy);
+  }
+
+  .hero__deploy-command {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: var(--weight-medium);
+    color: var(--color-ink);
+  }
+
+  .hero.hero--compact {
+    min-height: 0;
+    padding-block: var(--space-12);
+  }
+
+  .hero__visual {
+    flex: 0 0 auto;
+    width: 420px;
+    height: 471px;
+    background: var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .hero__visual--image {
+    background: none;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    height: 420px;
+    overflow: hidden;
+    border-radius: 16px;
+  }
+
+  .hero__visual--image img {
+    width: 100%;
+    height: auto;
+  }
+}

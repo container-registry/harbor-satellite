@@ -1,16 +1,34 @@
-<nav class="navbar">
-  <div class="navbar__container">
-    <a href="{{ "/" | relURL }}" class="navbar__logo">Harbor Satellite</a>
+{{ $links := slice
+  (dict "name" "Docs" "url" ("docs/" | relURL))
+  (dict "name" "Blog" "url" ("blog/" | relURL))
+}}
+<a href="#main-content" class="skip-link">Skip to content</a>
+<nav class="navbar" aria-label="Main" x-data="{ open: false }" @keydown.escape.window="open = false">
+  <div class="navbar__inner">
+    <a href="{{ "/" | relURL }}" class="navbar__logo navbar__wordmark">{{ partial "icons/satellite.html" }}Harbor Satellite</a>
+
     <div class="navbar__links">
-      <a href="{{ "docs/" | relURL }}" class="navbar__link">Docs</a>
-      <a href="{{ "blog/" | relURL }}" class="navbar__link">Blog</a>
-      <a href="{{ .Site.Params.githubRepo }}" class="navbar__link" target="_blank" rel="noopener">GitHub</a>
-      <a href="{{ "docs/quickstart/" | relURL }}" class="navbar__cta btn btn--primary">Get Started</a>
+      {{ range $links }}
+      <a href="{{ .url }}" class="navbar__link"{{ if hasPrefix $.RelPermalink .url }} aria-current="page"{{ end }}>{{ .name }}</a>
+      {{ end }}
     </div>
-    <button class="navbar__toggle" aria-label="Toggle navigation">
-      <span></span>
-      <span></span>
-      <span></span>
-    </button>
+
+    <div class="navbar__actions">
+      <a href="{{ .Site.Params.githubRepo }}" class="navbar__github" target="_blank" rel="noopener">{{ partial "icons/github.html" }}GitHub</a>
+      <a href="{{ "docs/quickstart/" | relURL }}" class="navbar__cta">Get Started</a>
+      <button class="navbar__burger" @click="open = !open" :aria-expanded="open.toString()" aria-label="Menu">
+        <span class="navbar__burger-line" aria-hidden="true"></span>
+        <span class="navbar__burger-line" aria-hidden="true"></span>
+        <span class="navbar__burger-line" aria-hidden="true"></span>
+      </button>
+    </div>
+  </div>
+
+  <div class="navbar__mobile" x-show="open" x-transition.opacity x-cloak>
+    {{ range $links }}
+    <a href="{{ .url }}" class="navbar__mobile-link" @click="open = false">{{ .name }}</a>
+    {{ end }}
+    <a href="{{ .Site.Params.githubRepo }}" class="navbar__mobile-link" target="_blank" rel="noopener">GitHub</a>
+    <a href="{{ "docs/quickstart/" | relURL }}" class="navbar__mobile-cta" @click="open = false">Get Started</a>
   </div>
 </nav>

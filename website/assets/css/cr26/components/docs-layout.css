@@ -1,0 +1,380 @@
+@layer components {
+  /* Documentation is a technical workspace, but it still belongs to the
+     Container Registry family: lift the warm canvas toward paper, rather than
+     switching it to a stark white product surface. */
+  .page-docs-single main,
+  .page-docs-home main {
+    background: var(--color-docs-canvas);
+  }
+
+  /* Two-column docs layout */
+  .docs-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    max-width: 104rem;
+    margin-inline: auto;
+    padding-inline: var(--space-6);
+    padding-block: var(--space-8) var(--section-gap);
+    gap: var(--space-4);
+  }
+
+  @media (min-width: 1024px) {
+    .docs-layout {
+      grid-template-columns: 16rem minmax(0, 52rem);
+      column-gap: var(--space-8);
+      row-gap: var(--space-4);
+      justify-content: start;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .docs-layout {
+      grid-template-columns: 16rem minmax(0, 52rem) minmax(13rem, 1fr);
+    }
+  }
+
+  /* A wide viewport has room for a longer technical reading measure. Let the
+     middle rail earn that room before leaving it as anonymous space after the
+     table of contents; the side navigation remains anchored in place. */
+  @media (min-width: 1600px) {
+    .docs-layout {
+      grid-template-columns: 16rem minmax(0, 60rem) minmax(13rem, 1fr);
+    }
+  }
+
+  /* Sidebar — a deliberately contained navigation surface. It becomes a
+     bottom sheet before the reading column gets uncomfortably narrow. */
+  .docs-sidebar {
+    display: none;
+    overflow-y: auto;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  @media (min-width: 1024px) {
+    .docs-sidebar {
+      display: flex;
+      position: sticky;
+      top: calc(var(--navbar-height) + var(--space-4));
+      align-self: start;
+      max-height: calc(100vh - var(--navbar-height) - var(--space-8));
+      padding: 0 var(--space-2) var(--space-4) 0;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+      scrollbar-color: var(--color-border) transparent;
+      scrollbar-width: thin;
+    }
+  }
+
+  /* Breadcrumbs establish where a reader is before the page makes its claim.
+     The current page is information, not another oversized heading. */
+  .docs-breadcrumbs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-block: 0 var(--space-2);
+    font-size: var(--text-sm);
+    line-height: var(--leading-body);
+    color: var(--color-ink-muted);
+  }
+
+  .docs-breadcrumbs a {
+    color: var(--color-ink-muted);
+    text-decoration: none;
+  }
+
+  .docs-breadcrumbs a:hover {
+    color: var(--color-ink);
+    opacity: 1;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+
+  .docs-breadcrumbs__separator {
+    color: var(--color-ash);
+    font-size: var(--text-base);
+  }
+
+  .docs-breadcrumbs__current {
+    color: var(--color-ink);
+    font-weight: var(--weight-medium);
+  }
+
+  /* Sidebar navigation — spacious density */
+  .docs-nav__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .docs-nav__link {
+    display: block;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-body-sm);
+    line-height: var(--leading-body);
+    color: var(--color-ink-muted);
+    border-radius: var(--radius-sm);
+    transition: background 0.15s ease, color 0.15s ease;
+    text-decoration: none;
+    flex: 1;
+  }
+
+  .docs-nav__link:hover {
+    background: oklch(var(--lch-gray-100));
+    color: var(--color-ink);
+  }
+
+  .docs-nav__link--active {
+    background: oklch(var(--lch-navy-100));
+    box-shadow: none;
+    color: var(--color-ink);
+    font-weight: var(--weight-semibold);
+  }
+
+  .docs-nav__link--active:hover {
+    background: oklch(var(--lch-navy-200));
+  }
+
+  .docs-nav__link--section {
+    font-weight: var(--weight-semibold);
+    color: var(--color-ink);
+    padding: var(--space-2);
+  }
+
+  .docs-nav__link--subsection {
+    font-weight: var(--weight-medium);
+    color: var(--color-ink);
+  }
+
+  .docs-nav__toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: oklch(var(--lch-gray-400));
+    transition: background 0.15s;
+    flex-shrink: 0;
+  }
+
+  .docs-nav__toggle:hover {
+    background: oklch(var(--lch-gray-100));
+  }
+
+  .docs-nav__toggle svg {
+    width: 1rem;
+    height: 1rem;
+    transition: transform 0.2s ease;
+  }
+
+  .docs-nav__chevron--open {
+    transform: rotate(90deg);
+  }
+
+  .docs-nav__children {
+    padding: var(--space-1) 0 var(--space-1) var(--space-2);
+    margin-inline-start: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .docs-nav__section > .docs-nav__children {
+    border-inline-start: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  }
+
+  .docs-nav__children .docs-nav__children {
+    border-inline-start: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+    margin-inline-start: var(--space-2);
+    padding-inline-start: var(--space-2);
+  }
+
+  /* Docs landing grid — layout only; cards use .icon-card */
+  .docs-cards {
+    max-width: var(--page-max-width);
+    margin-inline: auto;
+    padding-inline: var(--page-padding);
+    padding-block: var(--space-8);
+  }
+
+  /* Collapsed navigation trigger. Displayed below the desktop layout width. */
+  .docs-sheet-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    margin-block-end: var(--space-6);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--color-ink);
+    background: var(--color-docs-canvas);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+  }
+
+  @media (min-width: 1024px) {
+    .docs-sheet-trigger {
+      display: none;
+    }
+  }
+
+  /* A table of contents completes the reading shell on wide viewports. */
+  .docs-toc {
+    display: none;
+  }
+
+  @media (min-width: 1280px) {
+    .docs-toc {
+      display: block;
+      position: sticky;
+      top: calc(var(--navbar-height) + var(--space-8));
+      align-self: start;
+      max-height: calc(100vh - var(--navbar-height) - var(--space-12));
+      overflow-y: auto;
+      /* The reference rail needs a touch more air than the working sidebar,
+         while remaining close enough to read as part of the article shell. */
+      margin-inline-start: var(--space-3);
+      padding-inline-start: var(--space-2);
+      color: var(--color-ink-muted);
+      scrollbar-color: var(--color-border) transparent;
+      scrollbar-width: thin;
+    }
+
+    .docs-toc__title {
+      margin: 0 0 var(--space-3);
+      color: var(--color-ink);
+      font-family: var(--font-label);
+      font-size: var(--text-xs);
+      font-weight: var(--weight-medium);
+      letter-spacing: var(--tracking-caption);
+      text-transform: uppercase;
+    }
+
+    .docs-toc #TableOfContents ul {
+      display: flex;
+      flex-direction: column;
+      /* Hierarchy is expressed horizontally. A single row rhythm at every
+         depth makes parent and child headings scan as one ordered outline. */
+      gap: var(--space-1);
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .docs-toc #TableOfContents ul ul {
+      gap: var(--space-1);
+      /* One complete spacing unit per heading level: clear enough to scan,
+         restrained enough to preserve room for long technical headings. */
+      padding-inline-start: var(--space-4);
+    }
+
+    .docs-toc #TableOfContents a {
+      display: block;
+      font-size: var(--text-sm);
+      line-height: var(--leading-body);
+      color: var(--color-ink-muted);
+      text-decoration: none;
+    }
+
+    .docs-toc #TableOfContents a:hover {
+      color: var(--color-ink);
+      opacity: 1;
+    }
+  }
+
+  /* Bottom sheet backdrop */
+  .docs-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: oklch(0% 0 0 / 0.4);
+    z-index: 40;
+  }
+
+  /* Bottom sheet */
+  .docs-sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: 85vh;
+    background: var(--color-surface);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: 0 -4px 24px oklch(0% 0 0 / 0.12);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    z-index: 50;
+    padding-block-end: var(--space-8);
+  }
+
+  /* Sheet transition classes */
+  .docs-sheet--closed {
+    transform: translateY(100%);
+  }
+
+  .docs-sheet--open {
+    transform: translateY(0);
+  }
+
+  .docs-sheet--entering,
+  .docs-sheet--leaving {
+    transition: transform 300ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  /* Drag handle */
+  .docs-sheet__handle {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-3) 0;
+    cursor: grab;
+  }
+
+  .docs-sheet__pill {
+    display: block;
+    width: 36px;
+    height: 4px;
+    background: oklch(var(--lch-gray-300));
+    border-radius: var(--radius-full);
+  }
+
+  /* Close button */
+  .docs-sheet__close {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--color-ink-muted);
+    transition: background 0.15s ease;
+  }
+
+  .docs-sheet__close:hover {
+    background: oklch(var(--lch-gray-100));
+  }
+
+  /* Sheet nav container */
+  .docs-sheet__nav {
+    padding: 0 var(--space-6);
+  }
+}
+
+/* One nav tree per docs version is rendered on chart pages (they belong to no version);
+   the wrapper must not become a layout box, so it dissolves into its parent. `hidden`
+   alone would lose to `display: contents`, hence the explicit rule. */
+.docs-nav__version { display: contents; }
+.docs-nav__version[hidden] { display: none; }

@@ -1,16 +1,21 @@
 <section class="hero">
-  <div class="hero__container">
+  <div class="hero__inner">
     <div class="hero__content">
-      <span class="hero__badge">Open Source</span>
-      <h1 class="hero__title">One Registry Workflow from Cloud to Edge to Air Gap</h1>
-      <p class="hero__subtitle">Harbor Satellite runs the same image distribution process everywhere, whether that's a regional data center, a rack on a factory floor or a site with no network at all. Assign images once. Satellite delivers them however each site can receive them.</p>
+      <div class="hero__heading">
+        <span class="sat-label">Open Source, part of CNCF Harbor</span>
+        <h1 class="hero__title">One Registry Workflow from Cloud to Edge to Air Gap</h1>
+      </div>
+      <div class="hero__description">
+        <p>Harbor Satellite runs the same image distribution process everywhere, whether that's a regional data center, a rack on a factory floor or a site with no network at all.</p>
+        <p>Assign images once. Satellite delivers them however each site can receive them.</p>
+      </div>
       <div class="hero__actions">
-        <a href="{{ "docs/quickstart/" | relURL }}" class="btn btn--primary btn--lg">Get Started</a>
-        <a href="{{ .Site.Params.githubRepo }}" class="btn btn--outline btn--lg" target="_blank" rel="noopener">View on GitHub</a>
+        <a href="{{ "docs/quickstart/" | relURL }}" class="hero__cta">Get Started</a>
+        <a href="{{ .Site.Params.githubRepo }}" class="hero__cta hero__cta--secondary" target="_blank" rel="noopener">View on GitHub</a>
       </div>
     </div>
-    <div class="hero__visual">
-      <img src="{{ "images/harbor-satellite-overview.svg" | relURL }}" alt="Harbor Satellite architecture overview" width="540" height="400">
+    <div class="hero__visual hero__visual--diagram">
+      <img src="{{ "images/harbor-satellite-overview.svg" | relURL }}" alt="Harbor Satellite architecture overview" width="540" height="400" loading="eager">
     </div>
   </div>
 </section>

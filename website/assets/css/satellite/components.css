@@ -1,0 +1,480 @@
+/* Satellite-only components. Everything under css/cr26/ is vendored from
+   container-registry.com unchanged; keep site-specific rules here so a
+   re-sync of cr26/ is a plain copy. */
+@layer components {
+  [x-cloak] { display: none !important; }
+
+  .sat-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-family: var(--font-label);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-caption);
+    color: var(--color-ink-muted);
+
+    &::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: var(--radius-full);
+      background: var(--sat-label-dot, var(--color-teal));
+    }
+  }
+
+  .sat-label--orange {
+    --sat-label-dot: var(--color-orange);
+    color: inherit;
+  }
+
+  /* ---- Brand wordmark (navbar + footer) ---- */
+  .navbar__wordmark,
+  .footer__wordmark {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-subheading);
+    white-space: nowrap;
+
+    & svg { width: 28px; height: 28px; color: var(--color-teal); }
+  }
+
+  .navbar__wordmark { font-size: var(--text-xl); }
+  .footer__wordmark { font-size: var(--text-2xl); }
+
+  .navbar__link[aria-current="page"] {
+    color: var(--color-ink);
+    text-decoration: underline;
+    text-decoration-color: var(--color-teal);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 6px;
+  }
+
+  .navbar__github svg { width: 16px; height: 16px; }
+
+  .footer__columns--3 {
+    grid-template-columns: repeat(3, 1fr);
+    flex: 0 1 44rem;
+  }
+
+  .footer__copyright a { text-decoration: underline; }
+
+  /* ---- Hero ---- */
+  .hero__heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .hero__title {
+    font-size: var(--text-heading-lg);
+    font-weight: 300;
+    line-height: 1.15;
+    letter-spacing: var(--tracking-heading-lg);
+  }
+
+  .hero__visual--diagram {
+    width: 520px;
+    height: auto;
+    padding: var(--space-6);
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+
+    & img { width: 100%; height: auto; }
+  }
+
+  /* ---- Section wrapper ---- */
+  .sat-section {
+    padding: var(--section-gap) var(--page-padding);
+  }
+
+  .sat-section__inner,
+  .continuum__inner {
+    max-width: calc(var(--page-max-width) - 2 * var(--page-padding));
+    margin: 0 auto;
+  }
+
+  .sat-section__header,
+  .continuum__header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    max-width: 44rem;
+    margin-block-end: var(--space-12);
+  }
+
+  .sat-section__title,
+  .continuum__title {
+    font-size: var(--text-heading);
+    font-weight: 300;
+    line-height: 1.2;
+    letter-spacing: var(--tracking-heading);
+  }
+
+  .sat-section__subtitle,
+  .continuum__subtitle {
+    font-size: var(--text-body);
+    line-height: var(--leading-relaxed);
+    color: var(--color-ink-muted);
+  }
+
+  /* ---- Feature grid ---- */
+  .sat-features {
+    --card-grid-gap: var(--space-5);
+  }
+
+  .sat-feature {
+    --sat-feature-accent: var(--color-teal);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-8);
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+  }
+
+  .sat-feature--orange { --sat-feature-accent: var(--color-orange); }
+
+  .sat-feature__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--space-12);
+    height: var(--space-12);
+    border-radius: var(--radius-md);
+    color: var(--sat-feature-accent);
+    background: color-mix(in oklch, var(--sat-feature-accent) 14%, var(--color-surface));
+
+    & svg { width: var(--space-6); height: var(--space-6); }
+  }
+
+  .sat-feature__title {
+    font-size: var(--text-subheading);
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-subheading);
+  }
+
+  .sat-feature__desc {
+    font-size: var(--text-body-sm);
+    line-height: var(--leading-relaxed);
+    color: var(--color-ink-muted);
+  }
+
+  /* ---- Registry continuum ---- */
+  .continuum {
+    padding: var(--section-gap) var(--page-padding);
+    background: var(--color-surface);
+  }
+
+  .continuum__track {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-5);
+    align-items: start;
+    margin-block-end: var(--space-16);
+  }
+
+  /* The staircase reads as distance from the core: each stage sits lower. */
+  .continuum__stage--big { margin-block-start: var(--space-8); }
+  .continuum__stage--small { margin-block-start: var(--space-16); }
+  .continuum__stage--airgap { margin-block-start: var(--space-24); }
+
+  .continuum__label {
+    display: block;
+    margin-block-end: var(--space-3);
+    font-family: var(--font-label);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-caption);
+    text-transform: uppercase;
+    color: var(--color-ink-muted);
+  }
+
+  .continuum__card {
+    --continuum-accent: var(--color-teal);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    height: 100%;
+    padding: var(--space-6);
+    background: var(--color-canvas);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+  }
+
+  .continuum__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--space-12);
+    height: var(--space-12);
+    margin-block-end: var(--space-2);
+    border-radius: var(--radius-full);
+    color: var(--continuum-accent);
+    background: color-mix(in oklch, var(--continuum-accent) 14%, var(--color-surface));
+
+    & svg { width: var(--space-6); height: var(--space-6); }
+  }
+
+  .continuum__name {
+    font-size: var(--text-base);
+    font-weight: var(--weight-medium);
+    line-height: var(--leading-snug);
+  }
+
+  .continuum__desc {
+    font-size: var(--text-body-sm);
+    line-height: var(--leading-relaxed);
+    color: var(--color-ink-muted);
+  }
+
+  .continuum__delivery {
+    margin-block-start: auto;
+    padding-block-start: var(--space-3);
+    border-block-start: 1px dashed var(--color-border);
+    font-family: var(--font-label);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-caption);
+    text-transform: uppercase;
+    color: var(--continuum-accent);
+  }
+
+  .continuum__stage--airgap .continuum__card {
+    --continuum-accent: var(--color-orange);
+    background: var(--color-navy);
+    border-color: var(--color-navy);
+    color: var(--color-surface);
+  }
+
+  .continuum__stage--airgap .continuum__desc { color: var(--color-white-alpha-75); }
+  .continuum__stage--airgap .continuum__delivery { border-color: var(--color-white-alpha-10); }
+
+  .continuum__stage--airgap .continuum__icon {
+    color: var(--color-navy);
+    background: var(--color-orange);
+  }
+
+  /* Media break between the last connected stage and the air-gapped one. */
+  .continuum__stage--airgap .continuum__card::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: calc(-1 * var(--space-5) / 2 - 1px);
+    inset-block: calc(-1 * var(--space-6));
+    border-inline-start: 2px dashed var(--color-orange);
+  }
+
+  /* ---- Air gap panel ---- */
+  .airgap {
+    display: grid;
+    grid-template-columns: 1fr 1.1fr;
+    gap: var(--space-12);
+    align-items: center;
+    padding: var(--space-12);
+    background: var(--color-navy-deep);
+    color: var(--color-surface);
+    border-radius: var(--radius-lg);
+  }
+
+  .airgap__intro {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+  }
+
+  .airgap__intro .sat-label { color: var(--color-white-alpha-75); }
+
+  .airgap__title {
+    font-size: var(--text-heading);
+    font-weight: 300;
+    line-height: 1.2;
+    letter-spacing: var(--tracking-heading);
+  }
+
+  .airgap__text {
+    line-height: var(--leading-relaxed);
+    color: var(--color-white-alpha-75);
+  }
+
+  .airgap__claim {
+    padding-inline-start: var(--space-4);
+    border-inline-start: 3px solid var(--color-orange);
+    font-weight: var(--weight-medium);
+    line-height: var(--leading-relaxed);
+  }
+
+  .airgap__table-wrap { overflow-x: auto; }
+
+  .airgap__table {
+    width: 100%;
+    font-size: var(--text-sm);
+    line-height: var(--leading-body);
+
+    & th,
+    & td {
+      padding: var(--space-3) var(--space-4);
+      text-align: left;
+      vertical-align: top;
+      border-block-end: 1px solid var(--color-white-alpha-10);
+    }
+
+    & thead th {
+      font-family: var(--font-label);
+      font-size: var(--text-xs);
+      font-weight: var(--weight-medium);
+      letter-spacing: var(--tracking-caption);
+      text-transform: uppercase;
+      color: var(--color-orange);
+    }
+
+    & tbody th {
+      font-weight: var(--weight-medium);
+      white-space: nowrap;
+      color: var(--color-white-alpha-75);
+    }
+  }
+
+  .airgap__row--same th,
+  .airgap__row--same td {
+    border-block-end: none;
+    font-weight: var(--weight-medium);
+    color: var(--color-surface);
+    background: oklch(var(--lch-orange-500) / 0.16);
+  }
+
+  /* ---- Blog ---- */
+  .page-header--compact {
+    min-height: 0;
+    padding-block: var(--space-16) var(--space-10);
+  }
+
+  .blog-hero__link--text {
+    grid-template-columns: minmax(0, 46rem);
+  }
+
+  .blog-hero__summary,
+  .blog-card__summary {
+    line-height: var(--leading-relaxed);
+    color: var(--color-ink-muted);
+  }
+
+  .blog-card__summary {
+    font-size: var(--text-body-sm);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    overflow: hidden;
+  }
+
+  .blog-card__author {
+    margin-block-start: auto;
+    font-size: var(--text-sm);
+    color: var(--color-ink-muted);
+  }
+
+  .post-header__author-name a { text-decoration: underline; }
+
+  .post-taxonomies {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    max-width: 46rem;
+    margin: var(--space-10) auto 0;
+  }
+
+  .prose-section--page {
+    padding-block-start: var(--space-16);
+  }
+
+  /* Blog posts here are long tutorials; give them the docs table and code
+     treatment while keeping the editorial measure. */
+  .prose--post pre {
+    margin-block: var(--space-2) var(--space-5);
+    font-size: var(--text-body-sm);
+    line-height: var(--leading-docs);
+  }
+
+  .prose--post table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .prose--post td { border-block-end: 1px solid var(--color-border); }
+
+  .prose :not(pre) > code {
+    padding: 0.1em 0.35em;
+    border-radius: var(--radius-sm);
+    background: oklch(var(--lch-navy-100));
+  }
+
+  .prose .code-block pre {
+    border-radius: var(--radius-md);
+  }
+
+  /* ---- Docs shortcodes ---- */
+  .details {
+    margin-block: var(--space-5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    overflow: hidden;
+  }
+
+  .details__summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-body-sm);
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
+    list-style: none;
+
+    &::-webkit-details-marker { display: none; }
+
+    &::before {
+      content: "";
+      width: 0.45em;
+      height: 0.45em;
+      border-block-end: 2px solid currentColor;
+      border-inline-end: 2px solid currentColor;
+      transform: rotate(-45deg);
+      transition: transform 0.15s ease;
+    }
+
+    &:hover { background: oklch(var(--lch-gray-100)); }
+  }
+
+  .details[open] .details__summary::before { transform: rotate(45deg); }
+
+  .details__content {
+    padding: var(--space-4);
+    border-block-start: 1px solid var(--color-border);
+
+    & > :last-child { margin-block-end: 0; }
+  }
+
+  .mermaid {
+    margin-block: var(--space-6);
+    padding: var(--space-6);
+    text-align: center;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+  }
+
+  .docs-sidebar .docs-nav__children {
+    border-inline-start: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  }
+
+  .docs-sheet {
+    position: fixed;
+    inset-inline: 0;
+    inset-block-end: 0;
+  }
+}

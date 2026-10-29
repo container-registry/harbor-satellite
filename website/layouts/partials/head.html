@@ -2,8 +2,32 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} | {{ .Site.Title }}{{ end }}</title>
 <meta name="description" content="{{ with .Description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
-{{ $css := resources.Get "css/main.css" | minify | fingerprint }}
-<link rel="stylesheet" href="{{ $css.RelPermalink }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Source+Code+Pro:wght@400;500;600&amp;family=Space+Grotesk:wght@500&amp;display=swap">
+{{/* cr26/ is vendored from container-registry.com; resources.Get does not resolve @import, so concatenate. */}}
+{{ $css := slice
+  (resources.Get "css/cr26.css")
+  (resources.Get "css/cr26/variables.css")
+  (resources.Get "css/cr26/reset.css")
+  (resources.Get "css/cr26/base.css")
+  (resources.Get "css/cr26/components/navbar.css")
+  (resources.Get "css/cr26/components/hero.css")
+  (resources.Get "css/cr26/components/icon-card.css")
+  (resources.Get "css/cr26/components/community.css")
+  (resources.Get "css/cr26/components/footer.css")
+  (resources.Get "css/cr26/components/page-header.css")
+  (resources.Get "css/cr26/components/prose.css")
+  (resources.Get "css/cr26/components/docs-layout.css")
+  (resources.Get "css/cr26/components/shortcodes.css")
+  (resources.Get "css/cr26/components/blog-list.css")
+  (resources.Get "css/cr26/components/blog-post.css")
+  (resources.Get "css/satellite/components.css")
+  (resources.Get "css/cr26/components/typography.css")
+  (resources.Get "css/cr26/utilities.css")
+  (resources.Get "css/cr26/responsive.css")
+  (resources.Get "css/satellite/responsive.css")
+  | resources.Concat "css/site.css" | minify | fingerprint }}
+<link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.10.2/dist/cdn.min.js" integrity="sha384-gE382HiLf7oZIQO4e8O4ursZqf9JAjQQgNCRsUyUKfWBMXOiEFm89KxNkJjycgEq" crossorigin="anonymous"></script>
+<script defer src="https://unpkg.com/alpinejs@3.10.2/dist/cdn.min.js" integrity="sha384-erYUldb/TQAx1rvgXRgI9dhEtJnBmBTbttipgbYhZjxGycFW9pBg3fN7ajH7k3O2" crossorigin="anonymous"></script>

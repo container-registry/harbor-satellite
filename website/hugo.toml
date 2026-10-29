@@ -8,7 +8,7 @@ disableKinds = ["taxonomy", "term"]
     [markup.goldmark.renderer]
       unsafe = true
   [markup.highlight]
-    noClasses = false
+    noClasses = true
     style = "monokai"
 
 [params]
