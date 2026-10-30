@@ -110,7 +110,7 @@ func TestMissingLocally(t *testing.T) {
 func TestExecuteDegradedReplication(t *testing.T) {
 	entity := alpineEntity()
 
-	t.Run("harbor fetch error with peers and state.json copies missing artifacts", func(t *testing.T) {
+	t.Run("degraded miss does not copy from Harbor", func(t *testing.T) {
 		dir := t.TempDir()
 		stateFile := filepath.Join(dir, "state.json")
 		writePersistedGroup(t, stateFile, entity)
@@ -120,12 +120,11 @@ func TestExecuteDegradedReplication(t *testing.T) {
 			return nil, errors.New("harbor down")
 		}
 
-		require.NoError(t, process.Execute(logs.ctx))
+		err := process.Execute(logs.ctx)
+		require.ErrorContains(t, err, "Harbor is unreachable")
 		require.Contains(t, logs.buf.String(), "degraded replication from last-known state")
-		require.Equal(t, 1, local.replicateCalls)
+		require.Equal(t, 0, local.replicateCalls)
 		require.Equal(t, 0, local.deleteCalls)
-		require.Equal(t, []store.Artifact{entity}, local.lastReplicated)
-		require.Equal(t, 80*time.Millisecond, local.harborTimeout)
 	})
 
 	t.Run("peers off returns the fetch error", func(t *testing.T) {
@@ -168,6 +167,7 @@ func TestExecuteDegradedReplication(t *testing.T) {
 		writePersistedGroup(t, bootstrap, entity)
 		local := &degradedStubStore{pullErr: errors.New("not found")}
 		_, process := newDegradedProcess(t, dir, stateFile, bootstrap, true, local)
+		addStaticPeer(process)
 		process.fetchRootState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*SatelliteState, error) {
 			return nil, errors.New("harbor down")
 		}
@@ -188,14 +188,14 @@ func TestExecuteDegradedReplication(t *testing.T) {
 		stateFile := filepath.Join(dir, "state.json")
 		bootstrap := filepath.Join(dir, config.DefaultDesiredStateFile)
 		writePersistedGroup(t, bootstrap, entity)
-		local := &degradedStubStore{pullErr: errors.New("not found"), replicateErr: errors.New("copy failed")}
+		local := &degradedStubStore{pullErr: errors.New("not found")}
 		_, process := newDegradedProcess(t, dir, stateFile, bootstrap, true, local)
 		process.fetchRootState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*SatelliteState, error) {
 			return nil, errors.New("harbor down")
 		}
 
 		err := process.Execute(context.Background())
-		require.ErrorContains(t, err, "copy failed")
+		require.ErrorContains(t, err, "Harbor is unreachable")
 		require.Empty(t, process.stateMap[0].Entities)
 		require.Equal(t, entity, process.stateMap[0].desired[0])
 		loaded, loadErr := LoadState(stateFile)
@@ -228,6 +228,7 @@ func TestExecuteDegradedReplication(t *testing.T) {
 
 		local := &degradedStubStore{pullErr: errors.New("not found")}
 		logs, process := newDegradedProcess(t, dir, stateFile, "", true, local)
+		addStaticPeer(process)
 		process.directDeliverer = NewDirectDeliverer(t.TempDir(), "user", "pass", strings.TrimPrefix(harbor.URL, "http://"), true)
 		process.fetchRootState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*SatelliteState, error) {
 			return nil, errors.New("harbor down")
@@ -251,10 +252,20 @@ func TestExecuteDegradedReplication(t *testing.T) {
 		}
 
 		start := time.Now()
-		require.NoError(t, process.Execute(context.Background()))
+		err := process.Execute(context.Background())
+		require.ErrorContains(t, err, "Harbor is unreachable")
 		require.Less(t, time.Since(start), 2*time.Second)
-		require.Equal(t, 1, local.replicateCalls)
+		require.Equal(t, 0, local.replicateCalls)
 	})
+}
+
+func addStaticPeer(process *FetchAndReplicateStateProcess) {
+	cfg := process.cm.GetPeerDistributionConfig()
+	cfg.StaticPeers = []config.PeerDescriptor{{
+		ID:  "peer-a",
+		URL: "http://127.0.0.1:9",
+	}}
+	process.cm.With(config.SetPeerDistributionConfig(cfg))
 }
 
 func TestBootstrapLiveFetchReplicatesUnappliedArtifacts(t *testing.T) {

@@ -411,6 +411,8 @@ func (f *FetchAndReplicateStateProcess) listFetchTimeout() time.Duration {
 	return timeout
 }
 
+// copyContext marks a degraded replication. The peer store skips Harbor blob
+// copy for that tick, so a miss stays untagged.
 func (f *FetchAndReplicateStateProcess) copyContext(ctx context.Context) context.Context {
 	return store.WithHarborTimeout(ctx, f.listFetchTimeout())
 }
