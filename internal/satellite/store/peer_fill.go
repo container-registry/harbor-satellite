@@ -162,16 +162,23 @@ func (s *PeerFillingStore) replicateFromPeers(ctx context.Context, artifacts []A
 			logger.FromContext(ctx).Info().Str("peer", storeLabel(peer)).Msg("artifact replicated from peer")
 		})
 	}
-	slots := make(chan struct{}, s.opts.Concurrency)
+	// A registry tags inside Replicate. Canceling after the winner returns
+	// cannot undo that PUT, so only one registry peer copy runs at a time.
+	slots := make(chan struct{}, s.peerConcurrency())
 	for _, peer := range sources {
 		wg.Add(1)
 		go func(peer Store) {
 			defer wg.Done()
 			select {
-			case slots <- struct{}{}:
-				defer func() { <-slots }()
 			case <-raceCtx.Done():
 				results <- peerCopyResult{peer: peer, err: raceCtx.Err()}
+				return
+			case slots <- struct{}{}:
+			}
+			defer func() { <-slots }()
+			// select can take the slot even when the race is already won.
+			if err := raceCtx.Err(); err != nil {
+				results <- peerCopyResult{peer: peer, err: err}
 				return
 			}
 			results <- peerCopyResult{
@@ -217,6 +224,16 @@ func WithPeerRaceOnWin(ctx context.Context, onWin func()) context.Context {
 		return ctx
 	}
 	return context.WithValue(ctx, peerRaceOnWinKey{}, onWin)
+}
+
+// peerConcurrency is how many peers may copy one artifact at once.
+// OCI publish cancels siblings while it still holds the serving lock.
+// A registry has no such lock, so its copies stay sequential.
+func (s *PeerFillingStore) peerConcurrency() int {
+	if _, registryBacked := s.local.(*RegistryStore); registryBacked {
+		return 1
+	}
+	return s.opts.Concurrency
 }
 
 func peerRaceOnWin(ctx context.Context) func() {

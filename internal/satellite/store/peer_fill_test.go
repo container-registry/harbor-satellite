@@ -278,6 +278,18 @@ func TestPeerFillingStoreLimitsInFlightPeers(t *testing.T) {
 	require.Equal(t, int32(1), maxInflight.Load())
 }
 
+func TestPeerFillingStoreCopiesRegistryDestinationOnePeerAtATime(t *testing.T) {
+	registry, err := NewRegistryStore(RegistryOptions{Endpoint: "127.0.0.1:9", PlainHTTP: true})
+	require.NoError(t, err)
+	filling, err := NewPeerFillingStore(registry, func() []Store { return nil }, PeerFillOptions{Concurrency: 4})
+	require.NoError(t, err)
+	require.Equal(t, 1, filling.peerConcurrency())
+
+	filling, err = NewPeerFillingStore(&recordingStore{}, func() []Store { return nil }, PeerFillOptions{Concurrency: 4})
+	require.NoError(t, err)
+	require.Equal(t, 4, filling.peerConcurrency())
+}
+
 func copiedFrom(sources []Store, batches [][]Artifact, peer Store, name string) bool {
 	for i, source := range sources {
 		if source == peer && len(batches[i]) == 1 && batches[i][0].Name == name {
