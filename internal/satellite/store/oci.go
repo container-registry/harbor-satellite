@@ -176,7 +176,7 @@ func (s *OCIStore) stage(ctx context.Context, source Store, remote oras.Target, 
 	if err != nil {
 		return stagedArtifact{}, err
 	}
-	desc, err := copyIntoStage(ctx, source, remote, target, s.store, artifact)
+	desc, err := copyIntoStage(ctx, source, remote, target, s.store, dir, s.root, artifact)
 	if err != nil {
 		return stagedArtifact{}, errors.Join(err, os.RemoveAll(dir))
 	}
@@ -223,11 +223,12 @@ func (s *OCIStore) newStage() (string, *oci.Store, error) {
 	return dir, target, nil
 }
 
-func copyIntoStage(ctx context.Context, source Store, remote oras.Target, stage, present *oci.Store, artifact Artifact) (ocispec.Descriptor, error) {
-	// Blobs already in the serving store count as present. oras.Copy then
-	// leaves them out of the stage, and publish skips them again because the
-	// serving store still has them.
-	dst := stageTarget{Store: stage, present: present}
+func copyIntoStage(ctx context.Context, source Store, remote oras.Target, stage, present *oci.Store, stageRoot, presentRoot string, artifact Artifact) (ocispec.Descriptor, error) {
+	// Blobs already in the serving store are hardlinked into the stage. oras
+	// then skips the network fetch. The extra link keeps the bytes alive if
+	// another group untags the last manifest and garbage-collects that path
+	// before publish.
+	dst := &stageTarget{Store: stage, present: present, stageRoot: stageRoot, presentRoot: presentRoot}
 	if artifact.Tag == "" {
 		desc, err := source.Pull(ctx, artifact, PullResourceBlob)
 		if err != nil {
@@ -245,28 +246,103 @@ func copyIntoStage(ctx context.Context, source Store, remote oras.Target, stage,
 	return desc, nil
 }
 
-// stageTarget is the staging layout plus the serving store's existing blobs.
+// stageTarget is the staging layout plus blobs hardlinked from the serving store.
 // Exists is the only serving-store read. Push, fetch, and tag stay on the stage.
 type stageTarget struct {
 	*oci.Store
-	present *oci.Store
+	present     *oci.Store
+	presentRoot string
+	stageRoot   string
+	mu          sync.Mutex
+	// pinned records descriptors whose whole successor graph is linked into the stage.
+	pinned map[digest.Digest]struct{}
 }
 
-func (t stageTarget) Exists(ctx context.Context, target ocispec.Descriptor) (bool, error) {
-	ok, err := t.Store.Exists(ctx, target)
-	if err != nil || ok {
-		return ok, err
+func (t *stageTarget) Exists(ctx context.Context, target ocispec.Descriptor) (bool, error) {
+	inStage, err := t.Store.Exists(ctx, target)
+	if err != nil {
+		return false, err
 	}
 	if t.present == nil {
-		return false, nil
+		return inStage, nil
 	}
-	return t.present.Exists(ctx, target)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if _, ok := t.pinned[target.Digest]; ok {
+		return true, nil
+	}
+	inPresent, err := t.present.Exists(ctx, target)
+	if err != nil {
+		return false, err
+	}
+	if !inPresent {
+		return inStage, nil
+	}
+	if err := t.pin(ctx, target, map[digest.Digest]struct{}{}); err != nil {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, errdef.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// pin hardlinks target and every successor from the serving layout into the stage.
+// oras skips a node and its successors once Exists is true, so a manifest link
+// without its layers would let publish miss a blob that GC has removed.
+func (t *stageTarget) pin(ctx context.Context, target ocispec.Descriptor, seen map[digest.Digest]struct{}) error {
+	if _, ok := seen[target.Digest]; ok {
+		return nil
+	}
+	seen[target.Digest] = struct{}{}
+	if _, ok := t.pinned[target.Digest]; ok {
+		return nil
+	}
+	if _, _, err := linkBlobFile(t.presentRoot, t.stageRoot, target.Digest); err != nil {
+		return err
+	}
+	successors, err := content.Successors(ctx, t.present, target)
+	if err != nil {
+		return err
+	}
+	for _, node := range successors {
+		if err := t.pin(ctx, node, seen); err != nil {
+			return err
+		}
+	}
+	if t.pinned == nil {
+		t.pinned = make(map[digest.Digest]struct{})
+	}
+	t.pinned[target.Digest] = struct{}{}
+	return nil
+}
+
+// linkBlobFile adds a directory entry for an existing blob. The stage and the
+// serving layout share one filesystem, so the link does not copy the bytes.
+// created is false when the destination name was already present.
+func linkBlobFile(fromRoot, toRoot string, dgst digest.Digest) (dst string, created bool, err error) {
+	if err = dgst.Validate(); err != nil {
+		return "", false, fmt.Errorf("link blob %s: %w", dgst, err)
+	}
+	rel := filepath.Join(ocispec.ImageBlobsDir, dgst.Algorithm().String(), dgst.Encoded())
+	src := filepath.Join(fromRoot, rel)
+	dst = filepath.Join(toRoot, rel)
+	if err = os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		return "", false, fmt.Errorf("link blob %s: %w", dgst, err)
+	}
+	if err = os.Link(src, dst); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return dst, false, nil
+		}
+		return "", false, fmt.Errorf("link blob %s: %w", dgst, err)
+	}
+	return dst, true, nil
 }
 
 // PushReference makes the stage a reference pusher. oras.Copy uses that path
 // when the root is already present, and tags only after the manifest bytes
-// are in the stage. Layers that already exist stay in the serving store.
-func (t stageTarget) PushReference(ctx context.Context, expected ocispec.Descriptor, reader io.Reader, reference string) error {
+// are in the stage. Layers that already exist are pinned in the stage.
+func (t *stageTarget) PushReference(ctx context.Context, expected ocispec.Descriptor, reader io.Reader, reference string) error {
 	if err := t.Push(ctx, expected, reader); err != nil && !errors.Is(err, errdef.ErrAlreadyExists) {
 		return err
 	}
@@ -274,25 +350,67 @@ func (t stageTarget) PushReference(ctx context.Context, expected ocispec.Descrip
 }
 
 func (s *OCIStore) publish(ctx context.Context, staged stagedArtifact, artifact Artifact) error {
+	// Linking keeps the write lock to a metadata update. oras.Copy would read
+	// and write every new blob again while Pull and Fetch wait, and the stage
+	// would still be on disk until this returns.
+	if err := s.promote(ctx, staged.dir, staged.store, staged.desc); err != nil {
+		return fmt.Errorf("publish %s to OCI store: %w", artifact.Reference(), err)
+	}
+	if err := s.store.Tag(ctx, staged.desc, artifact.Reference()); err != nil {
+		return fmt.Errorf("tag %s in OCI store: %w", artifact.Reference(), err)
+	}
 	if artifact.Tag == "" {
-		if err := oras.CopyGraph(ctx, staged.store, s.store, staged.desc, oras.DefaultCopyGraphOptions); err != nil {
-			return fmt.Errorf("publish blob %s to OCI store: %w", staged.desc.Digest, err)
-		}
-		if err := s.store.Tag(ctx, staged.desc, artifact.Reference()); err != nil {
-			return fmt.Errorf("tag local blob %s: %w", staged.desc.Digest, err)
-		}
 		s.provenance.Store(provenanceKey(artifact.Name, staged.desc.Digest), struct{}{})
 		return nil
 	}
-	desc, err := oras.Copy(ctx, staged.store, artifact.Reference(), s.store, artifact.Reference(), oras.DefaultCopyOptions)
-	if err != nil {
-		return fmt.Errorf("publish artifact %s to OCI store: %w", artifact.Reference(), err)
-	}
-	if err := s.recordGraphProvenance(ctx, artifact.Name, desc); err != nil {
+	if err := s.recordGraphProvenance(ctx, artifact.Name, staged.desc); err != nil {
 		return err
 	}
-	logger.FromContext(ctx).Info().Str("reference", artifact.Reference()).Str("digest", desc.Digest.String()).Msg("artifact replicated to OCI store")
+	logger.FromContext(ctx).Info().Str("reference", artifact.Reference()).Str("digest", staged.desc.Digest.String()).Msg("artifact replicated to OCI store")
 	return nil
+}
+
+// promote links staged blobs into the serving layout, then Tag records the root
+// in index.json. Blobs already in the serving store stay there. A failed
+// promote removes only the links it added.
+func (s *OCIStore) promote(ctx context.Context, stageRoot string, stage *oci.Store, root ocispec.Descriptor) (err error) {
+	var created []string
+	defer func() {
+		if err == nil {
+			return
+		}
+		for _, path := range created {
+			removeErr := os.Remove(path)
+			if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				err = errors.Join(err, fmt.Errorf("remove partial blob %s: %w", path, removeErr))
+			}
+		}
+	}()
+	return walkDescriptorGraph(ctx, stage, root, func(desc ocispec.Descriptor) error {
+		exists, existsErr := s.store.Exists(ctx, desc)
+		if existsErr != nil {
+			return existsErr
+		}
+		if exists {
+			return nil
+		}
+		blobPath := filepath.Join(stageRoot, ocispec.ImageBlobsDir, desc.Digest.Algorithm().String(), desc.Digest.Encoded())
+		info, statErr := os.Stat(blobPath)
+		if statErr != nil {
+			return statErr
+		}
+		if desc.Size >= 0 && info.Size() != desc.Size {
+			return fmt.Errorf("promote blob %s: stage has %d bytes, descriptor size is %d", desc.Digest, info.Size(), desc.Size)
+		}
+		dst, linked, linkErr := linkBlobFile(stageRoot, s.root, desc.Digest)
+		if linkErr != nil {
+			return linkErr
+		}
+		if linked {
+			created = append(created, dst)
+		}
+		return nil
+	})
 }
 
 func (s *OCIStore) targetFor(Artifact) (oras.Target, error) { //nolint:unparam // shared adapter permits registry construction errors.
