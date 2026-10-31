@@ -362,6 +362,50 @@ func TestPeerFillingStoreSerializesRegistryPublishesOfOneReference(t *testing.T)
 	})
 }
 
+func TestPeerFillingStoreDropsRegistryWaitWhenContextEnds(t *testing.T) {
+	local := &tagCommitRecordingStore{}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	local.replicateCtx = func(context.Context, Store, []Artifact) error {
+		entered <- struct{}{}
+		<-release
+		return nil
+	}
+	filling, err := NewPeerFillingStore(local, func() []Store { return []Store{&recordingStore{}} }, PeerFillOptions{Timeout: time.Second, Retries: 0})
+	require.NoError(t, err)
+	artifact := []Artifact{{Name: "demo/app", Tag: "latest"}}
+	holderDone := make(chan error, 1)
+	go func() {
+		holderDone <- filling.Replicate(context.Background(), &recordingStore{}, artifact)
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("holder did not start")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	waiterDone := make(chan error, 1)
+	go func() {
+		waiterDone <- filling.Replicate(ctx, &recordingStore{}, artifact)
+	}()
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-waiterDone:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("cancelled publish waited for the holder")
+	}
+	close(release)
+	select {
+	case err := <-holderDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("holder did not finish")
+	}
+}
+
 func TestPeerFillingStoreCopiesRegistryDestinationOnePeerAtATime(t *testing.T) {
 	registry, err := NewRegistryStore(RegistryOptions{Endpoint: "127.0.0.1:9", PlainHTTP: true})
 	require.NoError(t, err)

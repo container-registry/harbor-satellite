@@ -36,7 +36,7 @@ type PeerFillingStore struct {
 	// race has its own slot channel, so two groups can publish one reference
 	// at the same time unless the races share a lock.
 	tagMu    sync.Mutex
-	tagLocks map[string]*sync.Mutex
+	tagLocks map[string]*tagLock
 }
 
 var _ Store = (*PeerFillingStore)(nil)
@@ -90,7 +90,10 @@ func (s *PeerFillingStore) Replicate(ctx context.Context, source Store, artifact
 }
 
 func (s *PeerFillingStore) replicateArtifact(ctx context.Context, source Store, artifact Artifact) error {
-	unlock := s.lockCommittedTag(artifact.Reference())
+	unlock, err := s.lockCommittedTag(ctx, artifact.Reference())
+	if err != nil {
+		return err
+	}
 	defer unlock()
 
 	one := []Artifact{artifact}
@@ -246,23 +249,94 @@ func (s *PeerFillingStore) peerConcurrency() int {
 }
 
 // lockCommittedTag lets one registry publish of a reference run at a time.
-// OCI destinations return a no-op because the serving lock already covers them.
-func (s *PeerFillingStore) lockCommittedTag(ref string) func() {
+// The wait returns when ctx ends, so a cancelled caller does not sit through
+// the holder's copy. OCI destinations return a no-op because the serving lock
+// already covers them.
+func (s *PeerFillingStore) lockCommittedTag(ctx context.Context, ref string) (func(), error) {
 	if !destinationCommitsTags(s.local) {
-		return func() {}
+		return func() {}, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	s.tagMu.Lock()
 	if s.tagLocks == nil {
-		s.tagLocks = make(map[string]*sync.Mutex)
+		s.tagLocks = make(map[string]*tagLock)
 	}
 	lock := s.tagLocks[ref]
 	if lock == nil {
-		lock = &sync.Mutex{}
+		lock = &tagLock{}
 		s.tagLocks[ref] = lock
 	}
 	s.tagMu.Unlock()
-	lock.Lock()
-	return lock.Unlock
+	if err := lock.lock(ctx); err != nil {
+		return nil, err
+	}
+	return lock.unlock, nil
+}
+
+// tagLock is an exclusive, context-cancellable lock for one reference.
+type tagLock struct {
+	mu      sync.Mutex
+	held    bool
+	waiters []chan struct{}
+}
+
+func (l *tagLock) lock(ctx context.Context) error {
+	l.mu.Lock()
+	if err := ctx.Err(); err != nil {
+		l.mu.Unlock()
+		return err
+	}
+	if !l.held {
+		l.held = true
+		l.mu.Unlock()
+		return nil
+	}
+	ch := make(chan struct{}, 1)
+	l.waiters = append(l.waiters, ch)
+	for l.held {
+		l.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			l.mu.Lock()
+			l.remove(ch)
+			l.mu.Unlock()
+			return ctx.Err()
+		case <-ch:
+			l.mu.Lock()
+			if err := ctx.Err(); err != nil {
+				l.remove(ch)
+				l.mu.Unlock()
+				return err
+			}
+		}
+	}
+	l.remove(ch)
+	l.held = true
+	l.mu.Unlock()
+	return nil
+}
+
+func (l *tagLock) unlock() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.held = false
+	for _, ch := range l.waiters {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (l *tagLock) remove(ch chan struct{}) {
+	for i, waiter := range l.waiters {
+		if waiter == ch {
+			l.waiters = append(l.waiters[:i], l.waiters[i+1:]...)
+			return
+		}
+	}
 }
 
 // tagCommitter marks a destination that commits a tag inside Replicate.
