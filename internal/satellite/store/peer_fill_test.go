@@ -278,6 +278,90 @@ func TestPeerFillingStoreLimitsInFlightPeers(t *testing.T) {
 	require.Equal(t, int32(1), maxInflight.Load())
 }
 
+type tagCommitRecordingStore struct {
+	recordingStore
+}
+
+func (*tagCommitRecordingStore) commitsTagsInReplicate() {}
+
+func TestPeerFillingStoreSerializesRegistryPublishesOfOneReference(t *testing.T) {
+	newFilling := func(local Store) *PeerFillingStore {
+		t.Helper()
+		filling, err := NewPeerFillingStore(local, func() []Store { return []Store{&recordingStore{}} }, PeerFillOptions{Timeout: time.Second, Retries: 0, Concurrency: 4})
+		require.NoError(t, err)
+		return filling
+	}
+	runPair := func(t *testing.T, filling *PeerFillingStore, local *tagCommitRecordingStore, first, second Artifact, parallel bool) int32 {
+		t.Helper()
+		var inflight, maxInflight atomic.Int32
+		entered := make(chan struct{}, 2)
+		release := make(chan struct{})
+		local.replicateCtx = func(context.Context, Store, []Artifact) error {
+			current := inflight.Add(1)
+			for {
+				seen := maxInflight.Load()
+				if current <= seen || maxInflight.CompareAndSwap(seen, current) {
+					break
+				}
+			}
+			entered <- struct{}{}
+			<-release
+			inflight.Add(-1)
+			return nil
+		}
+		errCh := make(chan error, 2)
+		go func() {
+			errCh <- filling.Replicate(context.Background(), &recordingStore{}, []Artifact{first})
+		}()
+		go func() {
+			errCh <- filling.Replicate(context.Background(), &recordingStore{}, []Artifact{second})
+		}()
+		select {
+		case <-entered:
+		case <-time.After(time.Second):
+			t.Fatal("first publish did not start")
+		}
+		if parallel {
+			select {
+			case <-entered:
+			case <-time.After(time.Second):
+				t.Fatal("second publish did not start")
+			}
+			release <- struct{}{}
+			release <- struct{}{}
+		} else {
+			select {
+			case <-entered:
+				t.Fatal("second publish of the same reference started in parallel")
+			case <-time.After(50 * time.Millisecond):
+			}
+			release <- struct{}{}
+			select {
+			case <-entered:
+			case <-time.After(time.Second):
+				t.Fatal("second publish did not start after the first finished")
+			}
+			release <- struct{}{}
+		}
+		require.NoError(t, <-errCh)
+		require.NoError(t, <-errCh)
+		return maxInflight.Load()
+	}
+
+	t.Run("same reference", func(t *testing.T) {
+		local := &tagCommitRecordingStore{}
+		filling := newFilling(local)
+		got := runPair(t, filling, local, Artifact{Name: "demo/app", Tag: "latest"}, Artifact{Name: "demo/app", Tag: "latest"}, false)
+		require.Equal(t, int32(1), got)
+	})
+	t.Run("different references", func(t *testing.T) {
+		local := &tagCommitRecordingStore{}
+		filling := newFilling(local)
+		got := runPair(t, filling, local, Artifact{Name: "demo/app", Tag: "latest"}, Artifact{Name: "demo/other", Tag: "latest"}, true)
+		require.Equal(t, int32(2), got)
+	})
+}
+
 func TestPeerFillingStoreCopiesRegistryDestinationOnePeerAtATime(t *testing.T) {
 	registry, err := NewRegistryStore(RegistryOptions{Endpoint: "127.0.0.1:9", PlainHTTP: true})
 	require.NoError(t, err)

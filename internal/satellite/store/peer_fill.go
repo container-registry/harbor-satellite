@@ -31,6 +31,12 @@ type PeerFillingStore struct {
 	local Store
 	peers func() []Store
 	opts  PeerFillOptions
+
+	// tagMu guards tagLocks. A registry tags inside Replicate, and each peer
+	// race has its own slot channel, so two groups can publish one reference
+	// at the same time unless the races share a lock.
+	tagMu    sync.Mutex
+	tagLocks map[string]*sync.Mutex
 }
 
 var _ Store = (*PeerFillingStore)(nil)
@@ -84,6 +90,9 @@ func (s *PeerFillingStore) Replicate(ctx context.Context, source Store, artifact
 }
 
 func (s *PeerFillingStore) replicateArtifact(ctx context.Context, source Store, artifact Artifact) error {
+	unlock := s.lockCommittedTag(artifact.Reference())
+	defer unlock()
+
 	one := []Artifact{artifact}
 	copied, err := s.replicateFromPeers(ctx, one)
 	if copied {
@@ -230,10 +239,44 @@ func WithPeerRaceOnWin(ctx context.Context, onWin func()) context.Context {
 // OCI publish cancels siblings while it still holds the serving lock.
 // A registry has no such lock, so its copies stay sequential.
 func (s *PeerFillingStore) peerConcurrency() int {
-	if _, registryBacked := s.local.(*RegistryStore); registryBacked {
+	if destinationCommitsTags(s.local) {
 		return 1
 	}
 	return s.opts.Concurrency
+}
+
+// lockCommittedTag lets one registry publish of a reference run at a time.
+// OCI destinations return a no-op because the serving lock already covers them.
+func (s *PeerFillingStore) lockCommittedTag(ref string) func() {
+	if !destinationCommitsTags(s.local) {
+		return func() {}
+	}
+	s.tagMu.Lock()
+	if s.tagLocks == nil {
+		s.tagLocks = make(map[string]*sync.Mutex)
+	}
+	lock := s.tagLocks[ref]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		s.tagLocks[ref] = lock
+	}
+	s.tagMu.Unlock()
+	lock.Lock()
+	return lock.Unlock
+}
+
+// tagCommitter marks a destination that commits a tag inside Replicate.
+type tagCommitter interface {
+	commitsTagsInReplicate()
+}
+
+func (*RegistryStore) commitsTagsInReplicate() {}
+
+// destinationCommitsTags reports a store whose Replicate can move a tag before
+// the caller is able to cancel the other publishers.
+func destinationCommitsTags(local Store) bool {
+	_, ok := local.(tagCommitter)
+	return ok
 }
 
 func peerRaceOnWin(ctx context.Context) func() {
