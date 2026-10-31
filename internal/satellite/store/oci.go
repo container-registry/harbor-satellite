@@ -224,7 +224,7 @@ func (s *OCIStore) newStage() (string, *oci.Store, error) {
 }
 
 func copyIntoStage(ctx context.Context, source Store, remote oras.Target, stage, present *oci.Store, stageRoot, presentRoot string, artifact Artifact) (ocispec.Descriptor, error) {
-	// Blobs already in the serving store are hardlinked into the stage. oras
+	// Blobs already in the serving store are linked into the stage. oras
 	// then skips the network fetch. The extra link keeps the bytes alive if
 	// another group untags the last manifest and garbage-collects that path
 	// before publish.
@@ -246,7 +246,7 @@ func copyIntoStage(ctx context.Context, source Store, remote oras.Target, stage,
 	return desc, nil
 }
 
-// stageTarget is the staging layout plus blobs hardlinked from the serving store.
+// stageTarget is the staging layout plus blobs linked from the serving store.
 // Exists is the only serving-store read. Push, fetch, and tag stay on the stage.
 type stageTarget struct {
 	*oci.Store
