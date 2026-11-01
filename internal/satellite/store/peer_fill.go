@@ -5,28 +5,38 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
+	"github.com/container-registry/harbor-satellite/pkg/config"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 )
 
-// PeerFillOptions controls how long and how often one peer is tried before the next.
+// PeerFillOptions controls the peer race for one artifact.
 // Retries is the number of extra attempts after the first try.
+// Concurrency is how many peers may copy that artifact at once.
 type PeerFillOptions struct {
-	Timeout time.Duration
-	Retries int
+	Timeout     time.Duration
+	Retries     int
+	Concurrency int
 }
 
 // PeerFillingStore copies from peer stores before the Harbor source passed to
-// Replicate. Each artifact is copied on its own, and peers are tried one at a
-// time for that artifact. Harbor is used only for an artifact no peer
-// completed. Pull, Fetch, and Delete stay on the wrapped local store.
+// Replicate. Each artifact is copied on its own. Eligible peers race, and the
+// first complete graph cancels the others. Harbor is used only for an artifact
+// no peer completed. Pull, Fetch, and Delete stay on the wrapped local store.
 type PeerFillingStore struct {
 	local Store
 	peers func() []Store
 	opts  PeerFillOptions
+
+	// tagMu guards tagLocks. A registry tags inside Replicate, and each peer
+	// race has its own slot channel, so two groups can publish one reference
+	// at the same time unless the races share a lock.
+	tagMu    sync.Mutex
+	tagLocks map[string]*tagLock
 }
 
 var _ Store = (*PeerFillingStore)(nil)
@@ -44,6 +54,9 @@ func NewPeerFillingStore(local Store, peers func() []Store, opts PeerFillOptions
 	}
 	if opts.Retries < 0 {
 		opts.Retries = 0
+	}
+	if opts.Concurrency <= 0 {
+		opts.Concurrency = config.DefaultPeerConcurrency
 	}
 	return &PeerFillingStore{local: local, peers: peers, opts: opts}, nil
 }
@@ -77,6 +90,12 @@ func (s *PeerFillingStore) Replicate(ctx context.Context, source Store, artifact
 }
 
 func (s *PeerFillingStore) replicateArtifact(ctx context.Context, source Store, artifact Artifact) error {
+	unlock, err := s.lockCommittedTag(ctx, artifact.Reference())
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	one := []Artifact{artifact}
 	copied, err := s.replicateFromPeers(ctx, one)
 	if copied {
@@ -130,32 +149,232 @@ func HarborTimeoutFrom(ctx context.Context) time.Duration {
 	return timeout
 }
 
+type peerCopyResult struct {
+	peer Store
+	err  error
+}
+
 func (s *PeerFillingStore) replicateFromPeers(ctx context.Context, artifacts []Artifact) (bool, error) {
 	sources := s.peers()
 	if len(sources) == 0 {
 		return false, nil
 	}
 
-	var last error
-	for _, peer := range sources {
-		last = replicateFromPeer(ctx, s.local, peer, artifacts, s.opts)
-		if last == nil {
+	// Cancel siblings only after a full Replicate succeeds. A peer miss is
+	// expected and must leave the other copies running.
+	raceCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	results := make(chan peerCopyResult, len(sources))
+	var wg sync.WaitGroup
+	var winOnce sync.Once
+	onWin := func(peer Store) {
+		winOnce.Do(func() {
+			cancel()
 			logger.FromContext(ctx).Info().Str("peer", storeLabel(peer)).Msg("artifact replicated from peer")
-			return true, nil
-		}
-		logger.FromContext(ctx).Warn().Err(last).Str("peer", storeLabel(peer)).Msg("peer copy failed")
+		})
 	}
-	return false, last
+	// A registry tags inside Replicate. Canceling after the winner returns
+	// cannot undo that PUT, so only one registry peer copy runs at a time.
+	slots := make(chan struct{}, s.peerConcurrency())
+	for _, peer := range sources {
+		wg.Add(1)
+		go func(peer Store) {
+			defer wg.Done()
+			select {
+			case <-raceCtx.Done():
+				results <- peerCopyResult{peer: peer, err: raceCtx.Err()}
+				return
+			case slots <- struct{}{}:
+			}
+			defer func() { <-slots }()
+			// select can take the slot even when the race is already won.
+			if err := raceCtx.Err(); err != nil {
+				results <- peerCopyResult{peer: peer, err: err}
+				return
+			}
+			results <- peerCopyResult{
+				peer: peer,
+				err:  replicateFromPeer(raceCtx, s.local, peer, artifacts, s.opts, func() { onWin(peer) }),
+			}
+		}(peer)
+	}
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	var failures []error
+	won := false
+	for result := range results {
+		if result.err == nil {
+			won = true
+			continue
+		}
+		if won && errors.Is(result.err, context.Canceled) {
+			continue
+		}
+		logger.FromContext(ctx).Warn().Err(result.err).Str("peer", storeLabel(result.peer)).Msg("peer copy failed")
+		failures = append(failures, result.err)
+	}
+	if won {
+		return true, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	return false, errors.Join(failures...)
 }
 
-func replicateFromPeer(ctx context.Context, local, peer Store, artifacts []Artifact, opts PeerFillOptions) error {
+type peerRaceOnWinKey struct{}
+
+// WithPeerRaceOnWin registers a callback the OCI store runs after a successful
+// publish while it still holds the serving write lock. Peer races use it to
+// cancel siblings before unlock so waiters on the publish lock do not publish.
+func WithPeerRaceOnWin(ctx context.Context, onWin func()) context.Context {
+	if onWin == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, peerRaceOnWinKey{}, onWin)
+}
+
+// peerConcurrency is how many peers may copy one artifact at once.
+// OCI publish cancels siblings while it still holds the serving lock.
+// A registry has no such lock, so its copies stay sequential.
+func (s *PeerFillingStore) peerConcurrency() int {
+	if destinationCommitsTags(s.local) {
+		return 1
+	}
+	return s.opts.Concurrency
+}
+
+// lockCommittedTag lets one registry publish of a reference run at a time.
+// The wait returns when ctx ends, so a cancelled caller does not sit through
+// the holder's copy. OCI destinations return a no-op because the serving lock
+// already covers them.
+func (s *PeerFillingStore) lockCommittedTag(ctx context.Context, ref string) (func(), error) {
+	if !destinationCommitsTags(s.local) {
+		return func() {}, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.tagMu.Lock()
+	if s.tagLocks == nil {
+		s.tagLocks = make(map[string]*tagLock)
+	}
+	lock := s.tagLocks[ref]
+	if lock == nil {
+		lock = &tagLock{}
+		s.tagLocks[ref] = lock
+	}
+	s.tagMu.Unlock()
+	if err := lock.lock(ctx); err != nil {
+		return nil, err
+	}
+	return lock.unlock, nil
+}
+
+// tagLock is an exclusive, context-cancellable lock for one reference.
+type tagLock struct {
+	mu      sync.Mutex
+	held    bool
+	waiters []chan struct{}
+}
+
+func (l *tagLock) lock(ctx context.Context) error {
+	l.mu.Lock()
+	if err := ctx.Err(); err != nil {
+		l.mu.Unlock()
+		return err
+	}
+	if !l.held {
+		l.held = true
+		l.mu.Unlock()
+		return nil
+	}
+	ch := make(chan struct{}, 1)
+	l.waiters = append(l.waiters, ch)
+	for l.held {
+		l.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			l.mu.Lock()
+			l.remove(ch)
+			l.mu.Unlock()
+			return ctx.Err()
+		case <-ch:
+			l.mu.Lock()
+			if err := ctx.Err(); err != nil {
+				l.remove(ch)
+				l.mu.Unlock()
+				return err
+			}
+		}
+	}
+	l.remove(ch)
+	l.held = true
+	l.mu.Unlock()
+	return nil
+}
+
+func (l *tagLock) unlock() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.held = false
+	for _, ch := range l.waiters {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (l *tagLock) remove(ch chan struct{}) {
+	for i, waiter := range l.waiters {
+		if waiter == ch {
+			l.waiters = append(l.waiters[:i], l.waiters[i+1:]...)
+			return
+		}
+	}
+}
+
+// tagCommitter marks a destination that commits a tag inside Replicate.
+type tagCommitter interface {
+	commitsTagsInReplicate()
+}
+
+func (*RegistryStore) commitsTagsInReplicate() {}
+
+// destinationCommitsTags reports a store whose Replicate can move a tag before
+// the caller is able to cancel the other publishers.
+func destinationCommitsTags(local Store) bool {
+	_, ok := local.(tagCommitter)
+	return ok
+}
+
+func peerRaceOnWin(ctx context.Context) func() {
+	fn, ok := ctx.Value(peerRaceOnWinKey{}).(func())
+	if !ok {
+		return nil
+	}
+	return fn
+}
+
+func replicateFromPeer(ctx context.Context, local, peer Store, artifacts []Artifact, opts PeerFillOptions, onWin func()) error {
 	attempts := 1 + opts.Retries
 	var last error
 	for attempt := 1; attempt <= attempts; attempt++ {
 		attemptCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
+		if onWin != nil {
+			attemptCtx = WithPeerRaceOnWin(attemptCtx, onWin)
+		}
 		last = local.Replicate(attemptCtx, peer, artifacts)
 		cancel()
 		if last == nil {
+			if onWin != nil {
+				onWin()
+			}
 			return nil
 		}
 		if err := ctx.Err(); err != nil {
