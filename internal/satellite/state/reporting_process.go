@@ -19,7 +19,7 @@ import (
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
-const StatusReportRoute = "/sat/sync"
+const StatusReportRoute = "satellites/sync"
 
 type StatusReportingProcess struct {
 	name           string
@@ -125,7 +125,6 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 
 	log.Info().Msgf("Received report: %v", *resp)
-	log.Info().Msgf("Secret Currently: %s", s.cm.GetStateConfig().RegistryCredentials.Password)
 
 	// Sending response events to eventscheduler
 	for _, v := range resp.Events {
@@ -211,7 +210,7 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundCon
 		return nil, fmt.Errorf("marshal status report: %w", err)
 	}
 
-	syncURL := fmt.Sprintf("%s/%s", groundControlURL, StatusReportRoute)
+	syncURL := fmt.Sprintf("%s/%s", strings.TrimRight(groundControlURL, "/"), StatusReportRoute)
 
 	client, err := s.newReportClient(ctx)
 	if err != nil {
