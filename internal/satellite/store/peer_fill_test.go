@@ -13,10 +13,11 @@ import (
 )
 
 type recordingStore struct {
-	replicate func(source Store, artifacts []Artifact) error
-	calls     int
-	sources   []Store
-	batches   [][]Artifact
+	replicate    func(source Store, artifacts []Artifact) error
+	replicateCtx func(ctx context.Context, source Store, artifacts []Artifact) error
+	calls        int
+	sources      []Store
+	batches      [][]Artifact
 }
 
 func (r *recordingStore) Pull(context.Context, Artifact, PullResource) (ocispec.Descriptor, error) {
@@ -31,10 +32,13 @@ func (r *recordingStore) Delete(context.Context, []Artifact) error {
 	return errors.New("unexpected delete")
 }
 
-func (r *recordingStore) Replicate(_ context.Context, source Store, artifacts []Artifact) error {
+func (r *recordingStore) Replicate(ctx context.Context, source Store, artifacts []Artifact) error {
 	r.calls++
 	r.sources = append(r.sources, source)
 	r.batches = append(r.batches, append([]Artifact(nil), artifacts...))
+	if r.replicateCtx != nil {
+		return r.replicateCtx(ctx, source, artifacts)
+	}
 	if r.replicate == nil {
 		return nil
 	}
@@ -141,6 +145,33 @@ func TestPeerFillingStoreSkipsPeersWhenNoneAreEligible(t *testing.T) {
 func TestPeerFillingStoreRequiresLocalStore(t *testing.T) {
 	_, err := NewPeerFillingStore(nil, nil, PeerFillOptions{})
 	require.ErrorContains(t, err, "local store")
+}
+
+func TestPeerFillingStoreBoundsHarborCopyWhenTimeoutSet(t *testing.T) {
+	harbor := &recordingStore{}
+	peer := &recordingStore{}
+	local := &recordingStore{
+		replicateCtx: func(ctx context.Context, source Store, _ []Artifact) error {
+			if source != harbor {
+				return errors.New("peer miss")
+			}
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	filling, err := NewPeerFillingStore(local, func() []Store { return []Store{peer} }, PeerFillOptions{Timeout: time.Millisecond})
+	require.NoError(t, err)
+
+	start := time.Now()
+	err = filling.Replicate(WithHarborTimeout(context.Background(), 40*time.Millisecond), harbor, []Artifact{{Name: "demo/app", Tag: "latest"}})
+	require.Error(t, err)
+	require.Less(t, time.Since(start), time.Second)
+}
+
+func TestHarborTimeoutFromEmptyContext(t *testing.T) {
+	require.Equal(t, time.Duration(0), HarborTimeoutFrom(context.Background()))
+	require.Equal(t, 30*time.Second, HarborTimeoutFrom(WithHarborTimeout(context.Background(), 30*time.Second)))
+	require.Equal(t, context.Background(), WithHarborTimeout(context.Background(), 0))
 }
 
 func TestLabelStoreNamesThePeer(t *testing.T) {

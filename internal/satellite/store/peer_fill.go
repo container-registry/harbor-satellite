@@ -97,10 +97,37 @@ func (s *PeerFillingStore) replicateArtifact(ctx context.Context, source Store, 
 	if err != nil {
 		logger.FromContext(ctx).Info().Str("reference", artifact.Reference()).Msg("filling local store from Harbor")
 	}
-	if copyErr := s.local.Replicate(ctx, source, one); copyErr != nil {
+	harborCtx := ctx
+	if timeout := HarborTimeoutFrom(ctx); timeout > 0 {
+		var cancel context.CancelFunc
+		harborCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	if copyErr := s.local.Replicate(harborCtx, source, one); copyErr != nil {
 		return fmt.Errorf("copy %s from Harbor: %w", artifact.Reference(), copyErr)
 	}
 	return nil
+}
+
+type harborTimeoutKey struct{}
+
+// WithHarborTimeout bounds the Harbor blob copy after peers miss. A live tick
+// omits this so a large image can still finish. Degraded ticks set it so a
+// dead registry cannot hang the scheduler.
+func WithHarborTimeout(ctx context.Context, timeout time.Duration) context.Context {
+	if timeout <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, harborTimeoutKey{}, timeout)
+}
+
+// HarborTimeoutFrom returns the Harbor blob timeout stored on ctx, or 0.
+func HarborTimeoutFrom(ctx context.Context) time.Duration {
+	timeout, ok := ctx.Value(harborTimeoutKey{}).(time.Duration)
+	if !ok {
+		return 0
+	}
+	return timeout
 }
 
 func (s *PeerFillingStore) replicateFromPeers(ctx context.Context, artifacts []Artifact) (bool, error) {

@@ -1,0 +1,85 @@
+/* ==============================================
+   Typography system
+
+   This file deliberately comes after component CSS. It brings page-level
+   component titles into the shared Inter hierarchy without changing the
+   semantic weight used by prices, data, and compact controls.
+   ============================================== */
+
+@layer components {
+  /* Editorial and section headings: quiet, light, and clearly separated from
+     the medium-weight UI that surrounds them. */
+  .page-header__title,
+  .blog-hero__title,
+  .chapter__title,
+  .gcr-flagship__title,
+  .proof-strip__title,
+  .career-section__title,
+  .career-cta__title,
+  .faq-section__title,
+  .partner-section__title,
+  .pricing-section__title,
+  .pricing-comparison__title,
+  .pricing-cta__title,
+  .secrets-section__title,
+  .contact-card__title,
+  .showcase__title,
+  .vending__section-title {
+    font-size: var(--text-heading);
+    font-weight: 300;
+    line-height: 1.2;
+    letter-spacing: var(--tracking-heading);
+  }
+
+  .post-header__title {
+    font-size: var(--text-heading-lg);
+    font-weight: 300;
+    line-height: 1.2;
+    letter-spacing: var(--tracking-heading-lg);
+  }
+
+  /* Cards and smaller content divisions stay distinct without turning into a
+     wall of semibold type. */
+  .icon-card__title,
+  .blog-card__title,
+  .career-value__title,
+  .pricing-card__tier,
+  .secrets-card__title,
+  .split-card__title,
+  .contact-card__column h3,
+  .vending-card__title,
+  .vending-panel__title,
+  .vending-detail__section-title,
+  .showcase__card h3 {
+    font-size: var(--text-subheading);
+    font-weight: var(--weight-medium);
+    line-height: var(--leading-body);
+    letter-spacing: var(--tracking-subheading);
+  }
+
+  /* Supporting copy should read as body text, not as oversized marketing copy. */
+  .page-header__subtitle,
+  .proof-strip__subtitle,
+  .pricing-section__subtitle,
+  .career-cta__subtitle,
+  .pricing-cta__subtitle,
+  .contact-card__text,
+  .community__subtitle {
+    font-size: var(--text-body);
+    line-height: var(--leading-relaxed);
+  }
+
+  /* Technical labels are short and deliberately different from reading copy. */
+  .search-results__section,
+  .search-filters__pill,
+  .post-header__category,
+  .vending-panel__label {
+    font-family: var(--font-label);
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-caption);
+  }
+
+  .page-docs-single article {
+    min-width: 0;
+  }
+}

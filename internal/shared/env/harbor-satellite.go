@@ -17,6 +17,7 @@ type HarborSatellite struct {
 	RegistryUsername       string     `env:"REGISTRY_USERNAME"`
 	RegistryPassword       string     `env:"REGISTRY_PASSWORD"`
 	ConfigDir              string     `env:"CONFIG_DIR"`
+	DesiredStateFile       string     `env:"DESIRED_STATE_FILE"`
 	RegistryDataDir        string     `env:"REGISTRY_DATA_DIR"`
 	ShutdownTimeout        string     `env:"SHUTDOWN_TIMEOUT"          envDefault:"30s"`
 	NoRegistryFallback     bool       `env:"NO_REGISTRY_FALLBACK"      envDefault:"false"`

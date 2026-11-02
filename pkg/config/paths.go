@@ -9,11 +9,12 @@ import (
 
 // PathConfig holds all resolved file paths for satellite storage.
 type PathConfig struct {
-	ConfigDir      string
-	ConfigFile     string
-	PrevConfigFile string
-	StoreDir       string
-	StateFile      string
+	ConfigDir        string
+	ConfigFile       string
+	PrevConfigFile   string
+	StoreDir         string
+	StateFile        string
+	DesiredStateFile string
 }
 
 // expandPath expands ~ and ~/ to the user's home directory in paths.
@@ -82,10 +83,11 @@ func ResolvePathConfig(configDir string) (*PathConfig, error) {
 	}
 
 	return &PathConfig{
-		ConfigDir:      expanded,
-		ConfigFile:     filepath.Join(expanded, "config.json"),
-		PrevConfigFile: filepath.Join(expanded, "prev_config.json"),
-		StoreDir:       filepath.Join(expanded, "oci"),
-		StateFile:      filepath.Join(expanded, "state.json"),
+		ConfigDir:        expanded,
+		ConfigFile:       filepath.Join(expanded, "config.json"),
+		PrevConfigFile:   filepath.Join(expanded, "prev_config.json"),
+		StoreDir:         filepath.Join(expanded, "oci"),
+		StateFile:        filepath.Join(expanded, "state.json"),
+		DesiredStateFile: filepath.Join(expanded, DefaultDesiredStateFile),
 	}, nil
 }

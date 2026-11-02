@@ -1,4 +1,5 @@
-<div class="callout callout--{{ .Get "type" | default "info" }}">
-  <p class="callout__title">{{ .Get "type" | default "info" }}</p>
-  {{ .Inner | markdownify }}
+{{- $type := .Get "type" | default "info" -}}
+<div class="note note--{{ $type }}">
+  <div class="note__icon"><img src="{{ printf "images/icons/ico-%s.svg" $type | relURL }}" alt=""></div>
+  <div class="note__content">{{ .Inner | markdownify }}</div>
 </div>

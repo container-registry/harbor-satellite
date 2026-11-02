@@ -154,6 +154,8 @@ func TestResolvePathConfig(t *testing.T) {
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "config.json"), pathConfig.ConfigFile)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "prev_config.json"), pathConfig.PrevConfigFile)
 			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "oci"), pathConfig.StoreDir)
+			require.Equal(t, filepath.Join(pathConfig.ConfigDir, "state.json"), pathConfig.StateFile)
+			require.Equal(t, filepath.Join(pathConfig.ConfigDir, DefaultDesiredStateFile), pathConfig.DesiredStateFile)
 		})
 	}
 }
