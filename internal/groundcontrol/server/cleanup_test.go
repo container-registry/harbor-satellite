@@ -200,3 +200,27 @@ func TestRunCleanupWithLockBoundsAndDiscardsFailedUnlock(t *testing.T) {
 	}
 	require.Empty(t, backend.owners, "a pooled session kept the cleanup lock after the unlock failed")
 }
+
+func TestRunCleanupWithLockSkipsWhenLockHeldElsewhere(t *testing.T) {
+	ctx := context.Background()
+	backend := &advisoryLockBackend{owners: map[int64]int{}}
+	deleted := false
+	backend.onDelete = func() { deleted = true }
+	db := sql.OpenDB(backend)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	holder, err := db.Conn(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, holder.Close()) })
+	var acquired bool
+	require.NoError(t, holder.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", cleanupLockID).Scan(&acquired))
+	require.True(t, acquired)
+	owner := backend.owners[cleanupLockID]
+
+	s := &Server{db: db, dbQueries: database.New(db)}
+	s.runCleanupWithLock(ctx, defaultRetentionDays)
+
+	require.False(t, deleted, "cleanup ran while another instance held the lock")
+	require.Zero(t, backend.failedUnlocks)
+	require.Equal(t, owner, backend.owners[cleanupLockID], "cleanup released a lock it did not hold")
+}
