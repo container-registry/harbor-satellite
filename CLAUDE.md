@@ -297,10 +297,10 @@ The satellite watches `config.json`. Log level, state replication interval and a
 ## CI/CD
 
 GitHub Actions workflows:
-- .github/workflows/test.yaml (PRs): unit tests + Codecov (ubuntu-latest); govulncheck, GoReleaser snapshot, satellite and GC builds (self-hosted `container-registry`); E2E main, BYO, SPIFFE (ubuntu-latest). Crash-recovery E2E is not run in CI
-- .github/workflows/lint.yaml (PRs): golangci-lint v2.12.2 binary on `container-registry` (no Docker daemon there, so it does not use `task lint-report`)
+- .github/workflows/test.yaml (PRs): unit tests + Codecov (ubuntu-latest); govulncheck, GoReleaser snapshot, satellite and GC builds, E2E main, BYO, SPIFFE (all ubuntu-latest). Crash-recovery E2E is not run in CI
+- .github/workflows/lint.yaml (PRs): golangci-lint v2.12.2 binary on ubuntu-latest, called directly rather than through `task lint-report`
 - .github/workflows/release.yaml (push to main and `v*.*.*` tags, ubuntu-latest): per-arch builds (linux amd64/arm64/ppc64le/s390x/riscv64) of the `satellite` and `ground-control` images to `${REGISTRY_ADDRESS}/${PROJECT_NAME}` from repository variables (README: registry.goharbor.io/harbor-satellite), multi-arch manifest, Cosign keyless signing; tags additionally run `task release` (GoReleaser)
-- .github/workflows/labeler.yaml (`container-registry`): auto-labels PRs (documentation for *.md, golang for *.go)
+- .github/workflows/labeler.yaml (`pull_request_target`, ubuntu-latest): auto-labels PRs (documentation for *.md, golang for *.go)
 
 Key tasks: `build`, `build-all`, `lint`, `lint-report`, `vuln`, `vuln-report`, `e2e*`, `generate:groundcontrol`, `byo-up`, `byo-down`, `publish`, `publish-and-sign`, `release`, `snapshot`, `clean`.
 

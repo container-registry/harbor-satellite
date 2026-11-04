@@ -36,7 +36,7 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   vulnerability-check:
-    runs-on: container-registry
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -70,7 +70,7 @@ jobs:
           fi
 
   test-release:
-    runs-on: container-registry
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -101,7 +101,7 @@ jobs:
         run: task snapshot
 
   build-satellite:
-    runs-on: container-registry
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -121,7 +121,7 @@ jobs:
         run: task _build:satellite
 
   build-groundcontrol:
-    runs-on: container-registry
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1

@@ -1,0 +1,14 @@
+/* ==============================================
+   CR26 — Entry Point
+   Architecture: CSS Layers, OKLCH Colors, BEM, Native Nesting
+   ============================================== */
+
+/* Layer order declaration */
+@layer reset, base, components, utilities;
+
+/*
+  Web fonts are requested from the document head in cr26/css.html. Keeping the
+  entry point free of local-only @font-face declarations makes typography
+  consistent for every visitor, rather than depending on General Sans being
+  installed on their machine.
+*/

@@ -1,0 +1,201 @@
+/* ==============================================
+   Design Tokens
+   ============================================== */
+
+:root {
+  color-scheme: light;
+
+  /* ---- Tier 1: Raw OKLCH shade scales ---- */
+
+  /* White */
+  --lch-white: 100% 0 0;
+
+  /* Warm cream (canvas background) */
+  --lch-cream: 96.5% 0.015 80;
+
+  /* Gray (navy-tinted neutrals, hue 280) */
+  --lch-gray-50:  98% 0.003 280;
+  --lch-gray-100: 96% 0.005 280;
+  --lch-gray-200: 92% 0.01 280;
+  --lch-gray-300: 85% 0.01 280;
+  --lch-gray-400: 70% 0.015 280;
+  --lch-gray-500: 55% 0.015 280;
+  --lch-gray-600: 40% 0.02 280;
+  --lch-gray-700: 30% 0.02 280;
+  --lch-gray-800: 22% 0.02 280;
+  --lch-gray-900: 15% 0.04 280;
+  --lch-gray-950: 10% 0.03 280;
+
+  /* Navy (brand dark, hue 280) */
+  --lch-navy-50:  96% 0.01 280;
+  --lch-navy-100: 92% 0.02 280;
+  --lch-navy-200: 85% 0.03 280;
+  --lch-navy-300: 70% 0.05 280;
+  --lch-navy-400: 55% 0.06 280;
+  --lch-navy-500: 40% 0.06 280;
+  --lch-navy-600: 30% 0.05 280;
+  --lch-navy-700: 25% 0.04 280;
+  --lch-navy-800: 20% 0.04 280;
+  --lch-navy-900: 18% 0.04 280;
+  --lch-navy-950: 16% 0.04 280;
+
+  /* Accent: Teal */
+  --lch-teal-300: 80% 0.08 190;
+  --lch-teal-400: 75% 0.09 190;
+  --lch-teal-500: 70% 0.1 190;
+  --lch-teal-600: 60% 0.1 190;
+  --lch-teal-700: 50% 0.09 190;
+
+  /* Accent: Orange */
+  --lch-orange-300: 75% 0.14 50;
+  --lch-orange-400: 70% 0.16 50;
+  --lch-orange-500: 65% 0.18 50;
+  --lch-orange-600: 55% 0.18 50;
+  --lch-orange-700: 45% 0.16 50;
+
+  /* Accent: Yellow */
+  --lch-yellow-300: 90% 0.13 90;
+  --lch-yellow-400: 86% 0.15 90;
+  --lch-yellow-500: 82% 0.17 90;
+  --lch-yellow-600: 72% 0.17 90;
+  --lch-yellow-700: 62% 0.15 90;
+
+  /* Accent: Red. Same hue as the .note--important callout, so a consequence
+     flagged inline reads as part of the same warning vocabulary. */
+  --lch-red-300: 75% 0.13 25;
+  --lch-red-400: 68% 0.16 25;
+  --lch-red-500: 58% 0.19 25;
+  --lch-red-600: 50% 0.19 25;
+  --lch-red-700: 42% 0.17 25;
+
+  /* ---- Tier 2: Semantic colors (light-dark ready) ---- */
+
+  --color-canvas:      light-dark(oklch(var(--lch-cream)),      oklch(var(--lch-gray-900)));
+  --color-surface:     light-dark(oklch(var(--lch-white)),       oklch(var(--lch-gray-800)));
+  /* Literal hex, not OKLCH: must byte-match the background chroma writes
+     inline on <pre> (markup.highlight.style = monokai), or the copy button
+     shows as a rectangle against it. */
+  --color-code-surface: #272822;
+  --color-ink:         light-dark(oklch(var(--lch-gray-900)),    oklch(var(--lch-gray-50)));
+  --color-ink-muted:   light-dark(oklch(var(--lch-gray-600)),    oklch(var(--lch-gray-400)));
+  --color-ash:         light-dark(oklch(var(--lch-gray-500)),    oklch(var(--lch-gray-400)));
+  --color-border:      light-dark(oklch(var(--lch-gray-200)),    oklch(var(--lch-gray-700)));
+
+  --color-navy:        oklch(var(--lch-navy-900));
+  --color-navy-deep:   oklch(var(--lch-navy-950));
+  --color-navy-hover:  oklch(var(--lch-navy-700));
+
+  --color-teal:        oklch(var(--lch-teal-500));
+  --color-orange:      oklch(var(--lch-orange-500));
+  --color-yellow:      oklch(var(--lch-yellow-500));
+  --color-danger:      oklch(var(--lch-red-600));
+
+  --color-link:        oklch(var(--lch-teal-600));
+  --color-icon-muted:  oklch(83% 0.05 260);
+  --color-surface-dim: oklch(var(--lch-gray-200) / 0.3);
+  /* A mellow parchment, deliberately yellow-leaning rather than pink cream.
+     It lowers page glare during long technical reading without becoming a
+     coloured surface. */
+  --color-docs-canvas: light-dark(#fbf6e9, color-mix(in oklch, var(--color-canvas) 65%, var(--color-surface)));
+
+  /* Footer-specific (inverted context) */
+  --color-white-alpha-10: oklch(100% 0 0 / 0.1);
+  --color-white-alpha-75: oklch(100% 0 0 / 0.75);
+  --color-white-alpha-80: oklch(100% 0 0 / 0.8);
+
+  /* Shadow */
+  --color-shadow: oklch(0% 0 0 / 0.08);
+  --color-shadow-subtle: oklch(0% 0 0 / 0.02);
+  --color-shadow-strong: oklch(0% 0 0 / 0.16);
+  --color-overlay-subtle: oklch(0% 0 0 / 0.05);
+
+  /* ---- Spacing ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+  --space-32: 8rem;
+
+  /* ---- Typography ---- */
+  /* Inter keeps longer technical pages calm and legible. Space Grotesk is the
+     openly available stand-in for the technical-label role in design.md. */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-label: "Space Grotesk", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Source Code Pro", ui-monospace, monospace;
+
+  /* Compatibility scale used by existing components. */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 2.5rem;
+  --text-4xl: 3.5rem;
+
+  /* Reading scale — use these for editorial and documentation hierarchy. */
+  --text-caption: 0.75rem;
+  --text-body-sm: 0.875rem;
+  --text-body: 1rem;
+  --text-subheading: 1.25rem;
+  --text-heading: 2rem;
+  --text-heading-lg: 3rem;
+  --text-display: 4rem;
+
+  /* Documentation has its own denser, semibold hierarchy. Keep these named
+     separately from the light-weight marketing display scale. */
+  --text-docs-title: 2.5rem;
+  --text-docs-chapter: 2rem;
+  --text-docs-section: 1.25rem;
+  --text-docs-subsection: 1.125rem;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  --leading-tight: 1.1;
+  --leading-snug: 1.3;
+  --leading-normal: 1.4;
+  --leading-relaxed: 1.6;
+  --leading-body: 1.5;
+  --leading-docs: 1.45;
+
+  --tracking-caption: 0.05em;
+  --tracking-subheading: -0.0125rem;
+  --tracking-heading: -0.04rem;
+  --tracking-heading-lg: -0.06rem;
+  --tracking-display: -0.12rem;
+
+  /* ---- Borders & Radius ---- */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* ---- Shadows ---- */
+  --shadow-sm: 0 4px 8px var(--color-shadow-subtle);
+  --shadow-md: 0 4px 16px var(--color-shadow-strong);
+
+  /* ---- Z-index ---- */
+  --z-navbar: 10;
+
+  /* ---- Layout ---- */
+  --page-max-width: 1200px;
+  --page-padding: 48px;
+  --section-gap: clamp(5rem, 7vw, 6rem);
+  --docs-section-gap: 3.5rem;
+  --navbar-height: 72px;
+
+  /* ---- Focus ring ---- */
+  --focus-ring-color: var(--color-teal);
+  --focus-ring-offset: 2px;
+  --focus-ring-width: 2px;
+}
