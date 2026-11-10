@@ -12,13 +12,33 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 )
 
-// Replaced in tests so group sync can be checked without a Harbor.
-var (
-	syncHarborProjectExists    = harbor.GetProject
-	syncCreateSatelliteProject = harbor.CreateSatelliteProject
-	syncCreateStateArtifact    = createStateArtifact
-	syncUpdateRobotProjects    = utils.UpdateRobotProjects
-)
+// groupSyncHarbor is the Harbor side of SyncGroup. Tests replace it so group
+// sync can be checked without a Harbor.
+type groupSyncHarbor interface {
+	ProjectExists(ctx context.Context, name string) (bool, error)
+	CreateSatelliteProject(ctx context.Context) (bool, error)
+	CreateStateArtifact(ctx context.Context, req GroupSyncRequest) error
+	UpdateRobotProjects(ctx context.Context, projects []string, robotID string) error
+}
+
+type harborGroupSync struct{}
+
+func (harborGroupSync) ProjectExists(ctx context.Context, name string) (bool, error) {
+	return harbor.GetProject(ctx, name)
+}
+
+func (harborGroupSync) CreateSatelliteProject(ctx context.Context) (bool, error) {
+	return harbor.CreateSatelliteProject(ctx)
+}
+
+func (harborGroupSync) CreateStateArtifact(ctx context.Context, req GroupSyncRequest) error {
+	return createStateArtifact(ctx, req)
+}
+
+func (harborGroupSync) UpdateRobotProjects(ctx context.Context, projects []string, robotID string) error {
+	_, err := utils.UpdateRobotProjects(ctx, projects, robotID)
+	return err
+}
 
 func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 	var req GroupSyncRequest
@@ -73,7 +93,7 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	satExist, err := syncHarborProjectExists(r.Context(), "satellite")
+	satExist, err := s.groupSync.ProjectExists(r.Context(), "satellite")
 	if err != nil {
 		log.Println("Error checking satellite project existence:", err)
 		err := &AppError{
@@ -85,7 +105,7 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !satExist {
-		_, err := syncCreateSatelliteProject(r.Context())
+		_, err := s.groupSync.CreateSatelliteProject(r.Context())
 		if err != nil {
 			log.Println("Error creating satellite project:", err)
 			err := &AppError{
@@ -97,7 +117,7 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err = syncCreateStateArtifact(r.Context(), req)
+	err = s.groupSync.CreateStateArtifact(r.Context(), req)
 	if err != nil {
 		log.Println("Error creating state artifact:", err)
 		HandleAppError(w, err)
@@ -106,7 +126,7 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 
 	// Harbor keeps robot edits if this transaction rolls back, so update
 	// them only after the state artifact push has succeeded.
-	if err := syncGroupRobots(r.Context(), q, satellites); err != nil {
+	if err := syncGroupRobots(r.Context(), q, s.groupSync, satellites); err != nil {
 		HandleAppError(w, err)
 		return
 	}
@@ -127,7 +147,7 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 // syncGroupRobots sets each member robot to the projects of every group that
 // satellite still belongs to. q must be the sync transaction, so it sees the
 // group row this request just wrote.
-func syncGroupRobots(ctx context.Context, q *database.Queries, satellites []database.SatelliteGroup) error {
+func syncGroupRobots(ctx context.Context, q *database.Queries, hb groupSyncHarbor, satellites []database.SatelliteGroup) error {
 	for _, satellite := range satellites {
 		robotAcc, err := q.GetRobotAccBySatelliteID(ctx, satellite.SatelliteID)
 		if err != nil {
@@ -141,7 +161,7 @@ func syncGroupRobots(ctx context.Context, q *database.Queries, satellites []data
 			return err
 		}
 
-		if _, err := syncUpdateRobotProjects(ctx, projects, robotAcc.RobotID); err != nil {
+		if err := hb.UpdateRobotProjects(ctx, projects, robotAcc.RobotID); err != nil {
 			log.Println("Error updating robot projects:", err)
 			return err
 		}

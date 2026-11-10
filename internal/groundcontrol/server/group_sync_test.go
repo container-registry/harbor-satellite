@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/robot"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
@@ -79,22 +79,8 @@ func runSyncGroup(t *testing.T, wantStatus int, artifacts []GroupArtifact, group
 	server, mock := newMockServer(t)
 	now := time.Now().UTC().Truncate(time.Second)
 
-	var steps []string
-	var got []string
-	restoreSyncHooks(t)
-	syncHarborProjectExists = func(context.Context, string) (bool, error) { return true, nil }
-	syncCreateStateArtifact = func(context.Context, GroupSyncRequest) error {
-		steps = append(steps, "state")
-		if failState {
-			return errSyncState
-		}
-		return nil
-	}
-	syncUpdateRobotProjects = func(_ context.Context, projects []string, _ string) (*robot.UpdateRobotOK, error) {
-		steps = append(steps, "robot")
-		got = append([]string(nil), projects...)
-		return &robot.UpdateRobotOK{}, nil
-	}
+	fake := &fakeGroupSync{failState: failState}
+	server.groupSync = fake
 
 	mock.ExpectBegin()
 	mock.ExpectQuery("INSERT INTO groups").
@@ -129,7 +115,7 @@ func runSyncGroup(t *testing.T, wantStatus int, artifacts []GroupArtifact, group
 
 	require.Equal(t, wantStatus, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
-	return got, steps
+	return fake.projects, fake.steps
 }
 
 func groupRows(now time.Time, group syncGroupRow) *sqlmock.Rows {
@@ -137,22 +123,31 @@ func groupRows(now time.Time, group syncGroupRow) *sqlmock.Rows {
 		AddRow(group.id, group.name, "http://harbor:8080", pq.Array(group.projects), now, now)
 }
 
-func restoreSyncHooks(t *testing.T) {
-	t.Helper()
-	projectExists := syncHarborProjectExists
-	createProject := syncCreateSatelliteProject
-	createState := syncCreateStateArtifact
-	updateRobot := syncUpdateRobotProjects
-	t.Cleanup(func() {
-		syncHarborProjectExists = projectExists
-		syncCreateSatelliteProject = createProject
-		syncCreateStateArtifact = createState
-		syncUpdateRobotProjects = updateRobot
-	})
+// fakeGroupSync records the Harbor calls SyncGroup makes.
+type fakeGroupSync struct {
+	failState bool
+	steps     []string
+	projects  []string
 }
 
-type syncStateError struct{}
+func (*fakeGroupSync) ProjectExists(context.Context, string) (bool, error) {
+	return true, nil
+}
 
-func (syncStateError) Error() string { return "state push failed" }
+func (*fakeGroupSync) CreateSatelliteProject(context.Context) (bool, error) {
+	return true, nil
+}
 
-var errSyncState = syncStateError{}
+func (f *fakeGroupSync) CreateStateArtifact(context.Context, GroupSyncRequest) error {
+	f.steps = append(f.steps, "state")
+	if f.failState {
+		return errors.New("state push failed")
+	}
+	return nil
+}
+
+func (f *fakeGroupSync) UpdateRobotProjects(_ context.Context, projects []string, _ string) error {
+	f.steps = append(f.steps, "robot")
+	f.projects = append([]string(nil), projects...)
+	return nil
+}
