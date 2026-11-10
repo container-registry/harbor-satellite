@@ -164,7 +164,7 @@ func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := assignPermissionsToRobot(r.Context(), q, req.Groups, rbt.ID); err != nil {
+	if err := assignPermissionsToRobot(r.Context(), q, s.groupSync, req.Groups, rbt.ID); err != nil {
 		log.Println("Error assigning permissions to robot:", err)
 		HandleAppError(w, err)
 		return
