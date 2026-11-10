@@ -43,6 +43,7 @@ Single components: `task _build:satellite`, `task _build:groundcontrol`. Start t
 | `task generate:groundcontrol` (`task gen:groundcontrol`) | Generate the Ground Control OpenAPI server and client code from `spec/groundcontrol/openapi.yaml` |
 | `task generate:groundcontrol-server` | Generate the server code only |
 | `task generate:groundcontrol-client` | Generate the client code only |
+| `task generate:groundcontrol-database` (`task gen:groundcontrol-database`) | Generate `internal/groundcontrol/database` from `sqlc.yaml`. Do not edit that package by hand |
 
 ## Lint Tasks
 

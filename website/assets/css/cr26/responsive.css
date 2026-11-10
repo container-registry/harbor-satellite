@@ -1,0 +1,641 @@
+/* ==============================================
+   Responsive — outside layers for full cascade
+   ============================================== */
+
+/* Tablet (≤ 1024px) */
+@media (max-width: 1024px) {
+  .card-grid--3,
+  .card-grid--4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .blog-hero__link {
+    gap: var(--space-8);
+    padding: var(--space-8) var(--space-10);
+  }
+
+  :root {
+    --page-padding: 24px;
+  }
+
+  .mega__grid {
+    grid-template-columns: var(--mega-columns-narrow);
+  }
+
+  .mega__col--spot {
+    grid-column: 1 / -1;
+    padding-inline-start: 0;
+    border-inline-start: 0;
+  }
+
+  .mega__col--spot .mega__spots {
+    flex-direction: row;
+  }
+
+  .mega__col--spot .mega__spot {
+    flex: 1;
+  }
+
+  .hero__inner {
+    flex-direction: column;
+    text-align: center;
+    gap: 40px;
+  }
+
+  .hero__content {
+    align-items: center;
+  }
+
+  .hero__actions {
+    align-items: center;
+  }
+
+  .hero__visual {
+    width: 100%;
+    max-width: 400px;
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+
+  .feature-card {
+    padding: 48px;
+    gap: 40px;
+  }
+
+  .splash--card .splash__inner {
+    padding: 48px;
+  }
+
+  .feature-card__content {
+    flex: 0 0 50%;
+  }
+
+  .feature-card__visual {
+    width: 280px;
+  }
+
+  .footer {
+    padding: 60px 32px 40px;
+  }
+
+  .footer__top {
+    flex-direction: column;
+    gap: var(--space-10);
+  }
+
+  .footer__columns {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Compare — 2 columns at tablet */
+  .compare-cards {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: none;
+  }
+
+  /* Career — 2 columns at tablet */
+  .career-values {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Secrets — feature grid at tablet */
+  .secrets-features {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Partners — logo grid at tablet */
+  .partner-logos {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* 8gcr — tablet */
+  .gcr-flagship {
+    padding: var(--space-16) var(--page-padding);
+  }
+
+  .gcr-flagship__card {
+    grid-template-columns: 1fr;
+    aspect-ratio: auto;
+  }
+
+  .page-8gcr .pricing-comparison,
+  .page-8gcr .pricing-section,
+  .page-8gcr .proof-strip,
+  .page-8gcr .faq-section,
+  .page-8gcr .pricing-cta {
+    padding-block: var(--space-20);
+  }
+
+
+  /* Product pages (features, 8gcr) — tablet */
+  .chapter {
+    padding: var(--space-8);
+    gap: var(--space-8);
+  }
+
+  .chapter__visual {
+    width: 300px;
+  }
+
+  .proof-strip__facts {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Split card — reduce padding/gap at tablet */
+  .split-card {
+    padding: var(--space-8);
+    gap: var(--space-8);
+  }
+
+  .split-card-row--3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Pricing — single column cards */
+  .pricing-cards {
+    grid-template-columns: 1fr;
+    max-width: 480px;
+    margin-inline: auto;
+  }
+
+  .pricing-cards--two {
+    max-width: 480px;
+  }
+
+  /* Vending demo — detail view stacks at tablet */
+  .vending-detail {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Mobile (≤ 768px) */
+@media (max-width: 768px) {
+  :root {
+    --page-padding: 20px;
+    --text-4xl: 2.25rem;
+    --text-3xl: 1.75rem;
+    --text-2xl: 1.25rem;
+  }
+
+  .navbar {
+    padding: 12px var(--page-padding);
+  }
+
+  .navbar__logo img {
+    height: 32px;
+  }
+
+  .navbar__links {
+    display: none;
+  }
+
+  .mega,
+  .navbar__scrim {
+    display: none;
+  }
+
+  .navbar__cta {
+    display: none;
+  }
+
+  .version-switcher {
+    display: none;
+  }
+
+  .navbar__burger {
+    display: flex;
+  }
+
+  .navbar__mobile {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--color-canvas);
+    padding: 24px var(--page-padding);
+    gap: 8px;
+    z-index: var(--z-navbar);
+  }
+
+  .hero {
+    padding: 40px var(--page-padding) 40px;
+  }
+
+  .hero__deploy-command {
+    font-size: 14px;
+  }
+
+  .hero__visual {
+    width: 100%;
+    max-width: 300px;
+    height: auto;
+    aspect-ratio: 1 / 1;
+  }
+
+  .logo-ticker {
+    justify-content: flex-start;
+    gap: 32px;
+    padding: 0 var(--page-padding);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  .logo-ticker__item {
+    width: 80px;
+    height: 28px;
+  }
+
+  .features {
+    padding: 60px var(--page-padding) 0;
+  }
+
+  .feature-card {
+    flex-direction: column;
+    padding: 32px;
+    gap: 32px;
+    position: relative;
+    top: auto;
+    box-shadow: none;
+  }
+
+  .splash--card .splash__inner {
+    padding: 32px;
+  }
+
+  .contact-card {
+    padding: 32px;
+  }
+
+  .contact-card__columns {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+
+  .feature-card__content {
+    flex: none;
+    width: 100%;
+  }
+
+  .feature-card__visual {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    order: -1;
+  }
+
+  .card-grid--2,
+  .card-grid--3,
+  .card-grid--4 {
+    grid-template-columns: 1fr;
+  }
+
+  .community {
+    padding: 80px var(--page-padding) 0;
+  }
+
+  .community__inner {
+    gap: 40px;
+  }
+
+  .community__cards {
+    --card-grid-gap: var(--space-4);
+  }
+
+  .icon-card {
+    padding: var(--space-8);
+  }
+
+  .newsletter {
+    padding: 48px var(--page-padding);
+  }
+
+  .newsletter__form {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .newsletter__input-wrap {
+    width: 100%;
+  }
+
+  .newsletter__submit {
+    width: 100%;
+  }
+
+  .footer {
+    padding: 48px var(--page-padding) 32px;
+  }
+
+  .footer__columns {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-8);
+  }
+
+  .footer__bottom {
+    flex-direction: column;
+    gap: var(--space-4);
+    text-align: center;
+  }
+
+  .footer__bottom-left {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .blog-hero__link {
+    grid-template-columns: 1fr;
+    padding: var(--space-8);
+  }
+
+  .blog-hero__image {
+    order: -1;
+  }
+
+  .page-posts-list main {
+    padding-block-start: 48px;
+  }
+
+  .post-header {
+    padding-block-start: 48px;
+  }
+
+  .page-header {
+    padding: 40px var(--page-padding) 40px;
+    min-height: auto;
+  }
+
+
+  .docs-layout {
+    padding-inline: var(--page-padding);
+    padding-block: 1rem;
+    gap: 1rem;
+  }
+
+  .docs-sidebar {
+    display: none;
+  }
+
+  .search-trigger {
+    display: none;
+  }
+
+  .search-fab {
+    display: flex;
+  }
+
+  .search-modal {
+    top: var(--space-4);
+    width: calc(100vw - 2 * var(--page-padding));
+  }
+
+  .docs-sheet-trigger svg {
+    flex-shrink: 0;
+  }
+
+  /* Docs prose — tighter spacing on mobile */
+  .prose--docs { font-size: var(--text-body); }
+
+  .prose--docs h1 {
+    margin-block-end: var(--space-4);
+  }
+
+  .prose--docs h2 {
+    margin-block-start: var(--space-10);
+    padding-block-start: var(--space-2);
+  }
+
+  .prose--docs table {
+    font-size: var(--text-xs);
+    width: 100%;
+  }
+
+  .prose--docs img {
+    margin-block: var(--space-4);
+    border-radius: var(--radius-md);
+  }
+
+  .prose--docs blockquote {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .faq-item__question {
+    padding: 20px 24px;
+    font-size: 1rem;
+  }
+
+  .faq-item__answer {
+    padding: 0 24px 20px;
+    font-size: 0.875rem;
+  }
+
+  .prose-section {
+    padding: 0 var(--page-padding) 60px;
+  }
+
+  .form-layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-8);
+  }
+
+  /* Compare — single column at mobile */
+  .compare-cards {
+    grid-template-columns: 1fr;
+    max-width: 480px;
+    margin-inline: auto;
+  }
+
+  /* Career — single column values */
+  .career-values {
+    grid-template-columns: 1fr;
+  }
+
+  .career-section {
+    padding: var(--space-10) var(--page-padding) var(--space-12);
+  }
+
+  /* Secrets — mobile */
+  .secrets-section {
+    padding: var(--space-10) var(--page-padding);
+  }
+
+  .secrets-card {
+    padding: var(--space-8);
+  }
+
+  .secrets-features {
+    grid-template-columns: 1fr;
+  }
+
+  .secrets-radios {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .secrets-result {
+    flex-direction: column;
+  }
+
+  /* Partners — mobile */
+  .partner-section {
+    padding: var(--space-10) var(--page-padding) var(--space-12);
+  }
+
+  .partner-logos {
+    grid-template-columns: 1fr;
+  }
+
+  .partner-listing {
+    padding: var(--space-10) var(--page-padding) var(--space-12);
+  }
+
+  .career-job {
+    flex-wrap: wrap;
+  }
+
+  .career-job__badges {
+    flex-wrap: wrap;
+  }
+
+  .career-cta {
+    padding: var(--space-12) var(--page-padding);
+  }
+
+  /* 8gcr — mobile */
+  .gcr-flagship {
+    padding: var(--space-12) var(--page-padding);
+  }
+
+  .gcr-flagship__visual {
+    padding: var(--space-4);
+  }
+
+  .gcr-flagship__content {
+    padding: var(--space-8) var(--space-6);
+  }
+
+  .page-8gcr .pricing-comparison,
+  .page-8gcr .pricing-section,
+  .page-8gcr .proof-strip,
+  .page-8gcr .faq-section,
+  .page-8gcr .pricing-cta {
+    padding-block: var(--space-12);
+  }
+
+
+  /* Product pages (features, 8gcr) — stack on mobile */
+  .chapters {
+    padding: var(--space-10) var(--page-padding);
+  }
+
+  .chapter,
+  .chapter--reverse {
+    flex-direction: column;
+    padding: var(--space-6);
+    gap: var(--space-6);
+  }
+
+  .chapter__visual {
+    width: 100%;
+  }
+
+  .proof-strip {
+    padding: var(--space-12) var(--page-padding);
+  }
+
+  .proof-strip__facts,
+  .proof-strip__facts--2,
+  .oss-links__list {
+    grid-template-columns: 1fr;
+  }
+
+  /* Split card — stack vertically on mobile */
+  .split-card {
+    flex-direction: column;
+    padding: var(--space-6);
+    gap: var(--space-6);
+  }
+
+  .split-card--reverse {
+    flex-direction: column;
+  }
+
+  .split-card__visual {
+    flex: none;
+    width: 100%;
+  }
+
+  .split-card-row--2,
+  .split-card-row--3 {
+    grid-template-columns: 1fr;
+  }
+
+  /* Pricing — tighter padding, stacking CTA buttons */
+  .pricing-section {
+    padding: var(--space-10) var(--page-padding) var(--space-12);
+  }
+
+  .pricing-comparison__table {
+    font-size: var(--text-sm);
+  }
+
+  .pricing-cta {
+    padding: var(--space-12) var(--page-padding);
+  }
+
+  .pricing-cta__actions {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* Vending demo — single column cards, tighter panels */
+  .vending__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vending-card,
+  .vending-panel {
+    padding: var(--space-6);
+  }
+
+  .vending-buybar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Small Mobile (≤ 480px) */
+@media (max-width: 480px) {
+  :root {
+    --text-4xl: 1.875rem;
+    --text-3xl: 1.5rem;
+  }
+
+  .feature-card {
+    padding: 24px;
+    gap: 24px;
+  }
+
+  .splash--card .splash__inner {
+    padding: 24px;
+  }
+
+  .footer__columns {
+    grid-template-columns: 1fr;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  /* Pricing — smaller price text */
+  .pricing-card__amount {
+    font-size: var(--text-3xl);
+  }
+}

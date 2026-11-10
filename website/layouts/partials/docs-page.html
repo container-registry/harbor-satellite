@@ -1,0 +1,43 @@
+<div class="docs-shell" x-data="{ sheetOpen: false }" @keydown.escape.window="sheetOpen = false">
+  <div class="docs-layout">
+    <nav class="docs-sidebar" aria-label="Documentation navigation">
+      {{ partial "docs-sidebar.html" . }}
+    </nav>
+
+    <article class="docs-article">
+      <button class="docs-sheet-trigger" type="button" @click="sheetOpen = true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+        Navigation
+      </button>
+      <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
+        {{ if not .IsSection }}
+        {{ with .Site.GetPage "section" "docs" }}<a href="{{ .RelPermalink }}">Docs</a>{{ end }}
+        <span class="docs-breadcrumbs__separator" aria-hidden="true">›</span>
+        {{ end }}
+        <span class="docs-breadcrumbs__current" aria-current="page">{{ .Title }}</span>
+      </nav>
+      <div class="prose prose--docs">
+        <h1>{{ .Title }}</h1>
+        {{ .Content }}
+      </div>
+    </article>
+
+    {{ with .TableOfContents }}
+    <aside class="docs-toc" aria-label="On this page">
+      <p class="docs-toc__title">On this page</p>
+      {{ . }}
+    </aside>
+    {{ end }}
+  </div>
+
+  <div class="docs-sheet-backdrop" x-show="sheetOpen" x-transition.opacity @click="sheetOpen = false" x-cloak></div>
+  <div class="docs-sheet docs-sheet--open" x-show="sheetOpen" x-transition.opacity x-cloak>
+    <div class="docs-sheet__handle"><span class="docs-sheet__pill"></span></div>
+    <button class="docs-sheet__close" type="button" @click="sheetOpen = false" aria-label="Close navigation">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <nav class="docs-sheet__nav" aria-label="Documentation navigation">
+      {{ partial "docs-sidebar.html" . }}
+    </nav>
+  </div>
+</div>

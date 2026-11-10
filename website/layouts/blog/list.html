@@ -1,96 +1,41 @@
+{{ define "body_classes" }}page-posts-list{{ end }}
 {{ define "main" }}
-{{ $root := . }}
-{{ $allPosts := .RegularPages.ByDate.Reverse }}
-{{ $paginator := .Paginate $allPosts }}
-<section class="hs-blog">
-  <div class="hs-blog__layout">
-    <aside class="hs-blog-sidebar" aria-label="All blog posts">
-      <p class="hs-blog-sidebar__title">All our posts</p>
-      {{ range $allPosts.GroupByDate "2006" }}
-      <div class="hs-blog-sidebar__year-group">
-        <h2 class="hs-blog-sidebar__year">{{ .Key }}</h2>
-        <ul class="hs-blog-sidebar__list">
-          {{ range .Pages }}
-          <li>
-            <a href="{{ .RelPermalink }}" class="hs-blog-sidebar__link">{{ .Title }}</a>
-          </li>
-          {{ end }}
-        </ul>
-      </div>
-      {{ end }}
-    </aside>
-
-    <div class="hs-blog-main">
-      {{ if gt (len $paginator.Pages) 0 }}
-      {{ range $paginator.Pages }}
-      {{ $authorName := "Harbor Satellite Team" }}
-      {{ $authorRole := "" }}
-      {{ $authorURL := "" }}
-      {{ $authorAvatar := "" }}
-      {{ with .Params.author }}
-      {{ $authorName = . }}
-      {{ with index $.Site.Data.authors . }}
-      {{ with .name }}{{ $authorName = . }}{{ end }}
-      {{ with .role }}{{ $authorRole = . }}{{ end }}
-      {{ with .repository }}{{ $authorURL = . }}{{ end }}
-      {{ if eq $authorURL "" }}{{ with .github }}{{ $authorURL = . }}{{ end }}{{ end }}
-      {{ with .avatar }}{{ $authorAvatar = . }}{{ end }}
-      {{ end }}
-      {{ end }}
-
-      <article class="hs-blog-entry">
-        <h2 class="hs-blog-entry__title"><a href="{{ .RelPermalink }}">{{ .Title }}</a></h2>
-        <p class="hs-blog-entry__date">{{ .Date.Format "January 2, 2006" }}</p>
-        <div class="hs-blog-entry__author">
-          {{ if ne $authorAvatar "" }}
-          <img class="hs-blog-entry__avatar-image" src="{{ $authorAvatar }}" alt="{{ $authorName }} profile photo" loading="lazy">
-          {{ else }}
-          <span class="hs-blog-entry__avatar" aria-hidden="true">{{ upper (substr $authorName 0 1) }}</span>
-          {{ end }}
-          <div>
-            {{ if ne $authorURL "" }}
-            <a class="hs-blog-entry__author-name" href="{{ $authorURL }}" target="_blank" rel="noopener">{{ $authorName }}</a>
-            {{ else }}
-            <span class="hs-blog-entry__author-name">{{ $authorName }}</span>
-            {{ end }}
-            {{ with $authorRole }}
-            <p class="hs-blog-entry__author-role">{{ . }}</p>
-            {{ end }}
-          </div>
-        </div>
-        {{ with .Params.description }}
-        <p class="hs-blog-entry__summary">{{ . }}</p>
-        {{ else }}
-        {{ with .Summary }}
-        <p class="hs-blog-entry__summary">{{ . }}</p>
-        {{ end }}
-        {{ end }}
-        {{ with .Params.tags }}
-        <p class="hs-blog-entry__tags">
-          Tags:
-          {{ range $index, $tag := . }}
-          {{ if gt $index 0 }}, {{ end }}{{ $tag }}
-          {{ end }}
-        </p>
-        {{ end }}
-        <a class="hs-blog-entry__read-more" href="{{ .RelPermalink }}">Read more</a>
-      </article>
-      {{ end }}
-
-      {{ if gt $paginator.TotalPages 1 }}
-      <nav class="hs-blog-pagination" aria-label="Blog page navigation">
-        {{ if $paginator.HasPrev }}
-        <a href="{{ $paginator.Prev.URL }}">Newer posts</a>
-        {{ end }}
-        {{ if $paginator.HasNext }}
-        <a href="{{ $paginator.Next.URL }}">Older posts</a>
-        {{ end }}
-      </nav>
-      {{ end }}
-      {{ else }}
-      <p>No posts have been published yet.</p>
-      {{ end }}
-    </div>
+{{ $posts := .RegularPages.ByDate.Reverse }}
+<div class="page-header page-header--compact">
+  <div class="page-header__inner">
+    <span class="sat-label">Blog</span>
+    <h1 class="page-header__title">{{ .Title }}</h1>
+    {{ with .Description }}<p class="page-header__subtitle">{{ . }}</p>{{ end }}
   </div>
+</div>
+
+{{ with index $posts 0 }}
+<section class="blog-hero">
+  <a class="blog-hero__link blog-hero__link--text" href="{{ .RelPermalink }}">
+    <div class="blog-hero__content">
+      <span class="blog-hero__label">Latest</span>
+      <h2 class="blog-hero__title">{{ .Title }}</h2>
+      {{ with .Description }}<p class="blog-hero__summary">{{ . }}</p>{{ end }}
+      <time class="blog-hero__date" datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "Jan 2, 2006" }} &middot; {{ (partial "author.html" .).name }}</time>
+    </div>
+  </a>
 </section>
+{{ end }}
+
+<div class="blog-grid card-grid card-grid--3">
+  {{ range after 1 $posts }}
+  {{ $author := partial "author.html" . }}
+  <a class="blog-card" href="{{ .RelPermalink }}">
+    <div class="blog-card__body">
+      <div class="blog-card__meta">
+        <time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "Jan 2, 2006" }}</time>
+        {{ range first 1 .Params.tags }}<span class="blog-card__badge">{{ . }}</span>{{ end }}
+      </div>
+      <h2 class="blog-card__title">{{ .Title }}</h2>
+      {{ with .Description }}<p class="blog-card__summary">{{ . }}</p>{{ end }}
+      <span class="blog-card__author">{{ $author.name }}</span>
+    </div>
+  </a>
+  {{ end }}
+</div>
 {{ end }}

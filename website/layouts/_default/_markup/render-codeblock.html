@@ -1,0 +1,52 @@
+{{- /*
+  Imported manuals occasionally leave a blank line immediately after a fenced
+  code-block opener. Goldmark faithfully renders that line, which produces an
+  empty highlighted row above the first command. Trim only that accidental
+  first newline; indentation and all subsequent code content remain intact.
+*/ -}}
+{{- $code := replaceRE "^\r?\n" "" .Inner -}}
+<div class="code-block" x-data="{
+  copied: false,
+  copiedState() {
+    this.copied = true;
+    setTimeout(() => this.copied = false, 2000);
+  },
+  legacyCopy(text) {
+    const clipboard = document.createElement('textarea');
+    clipboard.value = text;
+    clipboard.setAttribute('readonly', '');
+    clipboard.style.cssText = 'position:fixed;opacity:0;pointer-events:none;';
+    try {
+      document.body.appendChild(clipboard);
+      clipboard.select();
+      if (document.execCommand('copy')) this.copiedState();
+      else console.warn('Unable to copy the command to the clipboard.');
+    } catch (error) {
+      console.warn('Unable to copy the command to the clipboard.', error);
+    } finally {
+      clipboard.remove();
+    }
+  },
+  copy() {
+    const text = this.$root.querySelector('code').innerText;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => this.copiedState())
+        .catch(() => this.legacyCopy(text));
+    } else this.legacyCopy(text);
+  }
+}">
+  {{- highlight $code .Type .Options -}}
+  <button class="code-block__copy"
+          type="button"
+          @click="copy()"
+          :aria-label="copied ? 'Command copied' : 'Copy command to clipboard'">
+    <svg x-show="!copied" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+    <svg x-cloak x-show="copied" class="code-block__copy-success" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="m5 12 4 4L19 6" />
+    </svg>
+  </button>
+</div>

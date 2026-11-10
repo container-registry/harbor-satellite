@@ -1,0 +1,62 @@
+@media (max-width: 1024px) {
+  .hero__visual--diagram {
+    width: 100%;
+    max-width: 520px;
+    aspect-ratio: auto;
+  }
+
+  .continuum__track {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .continuum__stage--big,
+  .continuum__stage--small,
+  .continuum__stage--airgap {
+    margin-block-start: 0;
+  }
+
+  .continuum__stage--airgap .continuum__card::before {
+    display: none;
+  }
+
+  .airgap {
+    grid-template-columns: 1fr;
+    padding: var(--space-8);
+  }
+
+  .footer__columns--3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .navbar__github {
+    display: none;
+  }
+
+  .hero__title {
+    font-size: var(--text-3xl);
+  }
+
+  .hero__visual--diagram {
+    max-width: none;
+    aspect-ratio: auto;
+    padding: var(--space-4);
+  }
+
+  .continuum__track {
+    grid-template-columns: 1fr;
+  }
+
+  .airgap {
+    padding: var(--space-6) var(--space-5);
+  }
+
+  .airgap__table tbody th {
+    white-space: normal;
+  }
+
+  .footer__columns--3 {
+    grid-template-columns: 1fr;
+  }
+}

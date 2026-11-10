@@ -1,0 +1,323 @@
+@layer components {
+  /* Splash section — full-width colored band with content */
+  .splash {
+    padding-block: 3rem;
+  }
+
+  @media (min-width: 768px) {
+    .splash {
+      padding-block: 4rem;
+    }
+
+    .page-exoscale .splash {
+      padding-block: 100px;
+    }
+  }
+
+  .splash--grey {
+    background: oklch(var(--lch-gray-100));
+  }
+
+  .page-exoscale .splash--white {
+    background: transparent;
+  }
+
+  .splash--white {
+    background: var(--color-surface);
+  }
+
+  .splash--card .splash__inner {
+    max-width: calc(var(--page-max-width) - 2 * var(--page-padding));
+    padding: 80px;
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 -4px 20px var(--color-shadow-subtle);
+  }
+
+  .splash__inner {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    max-width: var(--page-max-width);
+    margin-inline: auto;
+    padding-inline: var(--page-padding);
+    align-items: center;
+  }
+
+  @media (min-width: 768px) {
+    .splash__inner {
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+    }
+
+    .splash__inner--reverse {
+      direction: rtl;
+    }
+
+    .splash__inner--reverse > * {
+      direction: ltr;
+    }
+  }
+
+  .splash__inner > :only-child {
+    grid-column: 1 / -1;
+  }
+
+  .splash__image {
+    width: 100%;
+    border-radius: 8px;
+  }
+
+  .splash__content h2 {
+    margin-block-end: 1rem;
+  }
+
+  /* CTA card — used in blog posts and landing pages */
+  .cta-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    padding: var(--space-6) var(--space-8);
+    background: oklch(var(--lch-navy-100));
+    border-radius: var(--radius-lg);
+    margin-block: var(--space-8);
+    max-width: var(--page-max-width);
+    margin-inline: auto;
+  }
+
+  .cta-card__image {
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+  }
+
+  .prose .cta-card__image,
+  .prose--docs .cta-card__image {
+    width: 64px;
+    margin: 0;
+    border-radius: 0;
+    display: inline;
+  }
+
+  .cta-card__content h3 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-lg);
+    color: var(--color-ink);
+  }
+
+  .cta-card__content p {
+    margin: 0 0 var(--space-4);
+    color: var(--color-ink-muted);
+  }
+
+  /* Contact card — big CTA card (Dagger partners-inspired) */
+
+  .contact-card {
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    padding: 80px;
+    box-shadow: 0 -4px 20px var(--color-shadow-subtle);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+  }
+
+  .contact-card__eyebrow {
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-teal);
+    margin: 0;
+  }
+
+  .contact-card__title {
+    font-size: var(--text-3xl);
+    font-weight: var(--weight-semibold);
+    color: var(--color-ink);
+    margin: 0;
+    line-height: var(--leading-tight);
+  }
+
+  .contact-card__text {
+    font-size: var(--text-lg);
+    line-height: var(--leading-relaxed);
+    color: var(--color-ink-muted);
+    margin: 0;
+    max-width: 640px;
+  }
+
+  .contact-card__columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-10);
+    margin-block-start: var(--space-4);
+  }
+
+  .contact-card__column h3 {
+    font-size: var(--text-xl);
+    font-weight: var(--weight-semibold);
+    color: var(--color-ink);
+    margin: 0 0 var(--space-4);
+  }
+
+  .contact-card__column ul {
+    list-style: disc;
+    padding-inline-start: var(--space-5);
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .contact-card__column li {
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+    color: var(--color-ink-muted);
+  }
+
+  .contact-card__action {
+    margin-block-start: var(--space-4);
+  }
+
+  /* Facts grid */
+  .facts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    padding-block: 2rem;
+  }
+
+  .facts-grid__item {
+    padding: 1.5rem;
+    background: oklch(var(--lch-gray-100));
+    border-radius: 12px;
+  }
+
+  .facts-grid__icon {
+    margin-block-end: 1rem;
+    color: var(--color-navy);
+  }
+
+  .facts-grid__icon svg {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .facts-grid__title {
+    font-size: var(--text-lg);
+    font-weight: 700;
+    margin-block-end: 0.5rem;
+  }
+
+  .facts-grid__content {
+    color: var(--color-ink-muted);
+    line-height: 1.6;
+  }
+
+  /* Note/callout box */
+  .note {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-md);
+    margin-block: var(--space-6);
+    border-inline-start: 4px solid;
+  }
+
+  .note--info {
+    background: oklch(0.95 0.02 230);
+    border-color: oklch(0.55 0.15 230);
+  }
+
+  .note--tip {
+    background: oklch(0.95 0.02 145);
+    border-color: oklch(0.55 0.15 145);
+  }
+
+  .note--warning {
+    background: oklch(0.95 0.05 80);
+    border-color: oklch(0.6 0.15 80);
+  }
+
+  .note--important {
+    background: oklch(0.95 0.03 25);
+    border-color: oklch(0.55 0.15 25);
+  }
+
+  .note__icon {
+    flex-shrink: 0;
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-block-start: 0.125rem;
+  }
+
+  .note__icon img {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .note__content p:last-child {
+    margin-block-end: 0;
+  }
+
+  /* Diagonal SVG separator */
+  .diagonal-separator {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* Footnotes */
+  .footnote-number {
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    vertical-align: super;
+    color: var(--color-navy);
+    cursor: default;
+  }
+
+  .footnote_item {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-3) 0;
+    font-size: var(--text-sm);
+    color: var(--color-ink-muted);
+    border-block-end: 1px solid var(--color-border);
+  }
+
+  .footnote_item:last-child {
+    border-block-end: none;
+  }
+
+  .footnote_item-number {
+    flex-shrink: 0;
+  }
+
+  .footnote_item-inner p:last-child {
+    margin-block-end: 0;
+  }
+
+  /* Embed responsive */
+  .embed-responsive {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  /* HubSpot injects the conversations iframe at the HTML default 300x150.
+     Stretch its wrapper and the iframe to fill #my-messages-container. */
+  #hubspot-conversations-inline-parent {
+    height: 100%;
+  }
+
+  #hubspot-conversations-inline-iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-style: hidden !important;
+  }
+}
