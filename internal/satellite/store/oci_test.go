@@ -260,8 +260,8 @@ func TestOCIStorePinnedBlobSurvivesDeleteBeforePublish(t *testing.T) {
 	require.NoError(t, err)
 
 	func() {
-		require.NoError(t, local.mu.lock(context.Background()))
-		defer local.mu.unlock()
+		local.mu.Lock()
+		defer local.mu.Unlock()
 		require.NoError(t, local.publish(context.Background(), staged, next))
 	}()
 	require.Equal(t, fetchedForFirst, layerFetches.Load())
