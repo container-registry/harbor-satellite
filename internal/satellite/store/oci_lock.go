@@ -5,50 +5,48 @@ import (
 	"sync"
 )
 
-// storeLock excludes writers from readers. Writer acquire returns when the
-// attempt context ends, so a peer publish can give up while Fetch still holds
-// a read lock for an open local response.
+// storeLock is a reader/writer lock with the same preference as sync.RWMutex:
+// many readers, or one writer, and a waiting writer blocks new readers so a
+// publish is not starved by a stream of pulls.
 //
-// A waiting writer blocks new readers. That keeps a publish from being starved
-// by a stream of pulls, and it matches the previous RWMutex behavior.
+// sync.RWMutex is not used. Its Lock call cannot be abandoned, and once a
+// writer is queued every later RLock waits until that writer acquires and
+// releases the lock. A peer publish has to return when its context ends while
+// Fetch still holds a read lock for an open body, and that abandoned wait must
+// not keep blocking readers.
+//
+// Waiters select on a broadcast channel. sync.Cond cannot also wait on
+// ctx.Done, so closing and replacing the channel is the condition variable.
 type storeLock struct {
 	mu      sync.Mutex
 	readers int
 	writer  bool
 	waiting int
-	waiters []chan struct{}
+	changed chan struct{}
 }
 
 func (l *storeLock) rLock() {
 	l.mu.Lock()
-	if !l.writer && l.waiting == 0 {
-		l.readers++
-		l.mu.Unlock()
-		return
-	}
-	ch := make(chan struct{}, 1)
-	l.waiters = append(l.waiters, ch)
 	for l.writer || l.waiting > 0 {
+		changed := l.changedLocked()
 		l.mu.Unlock()
-		<-ch
+		<-changed
 		l.mu.Lock()
 	}
-	l.remove(ch)
 	l.readers++
 	l.mu.Unlock()
 }
 
 func (l *storeLock) rUnlock() {
 	l.mu.Lock()
+	defer l.mu.Unlock()
 	if l.readers == 0 {
-		l.mu.Unlock()
 		panic("store lock read unlock without read lock")
 	}
 	l.readers--
 	if l.readers == 0 {
-		l.signal()
+		l.notifyLocked()
 	}
-	l.mu.Unlock()
 }
 
 func (l *storeLock) lock(ctx context.Context) error {
@@ -57,33 +55,30 @@ func (l *storeLock) lock(ctx context.Context) error {
 		l.mu.Unlock()
 		return err
 	}
-	if !l.writer && l.readers == 0 {
-		l.writer = true
-		l.mu.Unlock()
-		return nil
-	}
+	// Count this writer before it waits, so a reader that arrives now blocks
+	// behind it instead of keeping the publish queued forever.
 	l.waiting++
-	ch := make(chan struct{}, 1)
-	l.waiters = append(l.waiters, ch)
 	for l.writer || l.readers > 0 {
+		changed := l.changedLocked()
 		l.mu.Unlock()
 		select {
 		case <-ctx.Done():
 			l.mu.Lock()
-			l.abandon(ch)
+			l.waiting--
+			l.notifyLocked()
 			l.mu.Unlock()
 			return ctx.Err()
-		case <-ch:
-			l.mu.Lock()
-			if err := ctx.Err(); err != nil {
-				l.abandon(ch)
-				l.mu.Unlock()
-				return err
-			}
+		case <-changed:
+		}
+		l.mu.Lock()
+		if err := ctx.Err(); err != nil {
+			l.waiting--
+			l.notifyLocked()
+			l.mu.Unlock()
+			return err
 		}
 	}
 	l.waiting--
-	l.remove(ch)
 	l.writer = true
 	l.mu.Unlock()
 	return nil
@@ -91,37 +86,28 @@ func (l *storeLock) lock(ctx context.Context) error {
 
 func (l *storeLock) unlock() {
 	l.mu.Lock()
+	defer l.mu.Unlock()
 	if !l.writer {
-		l.mu.Unlock()
 		panic("store lock unlock without write lock")
 	}
 	l.writer = false
-	l.signal()
-	l.mu.Unlock()
+	l.notifyLocked()
 }
 
-// abandon drops a writer wait. l.mu is held by the caller.
-func (l *storeLock) abandon(ch chan struct{}) {
-	l.waiting--
-	l.remove(ch)
-	l.signal()
-}
-
-// signal wakes current waiters. l.mu is held by the caller.
-func (l *storeLock) signal() {
-	for _, ch := range l.waiters {
-		select {
-		case ch <- struct{}{}:
-		default:
-		}
+// changedLocked returns the channel the next state change will close.
+// l.mu is held by the caller.
+func (l *storeLock) changedLocked() <-chan struct{} {
+	if l.changed == nil {
+		l.changed = make(chan struct{})
 	}
+	return l.changed
 }
 
-func (l *storeLock) remove(ch chan struct{}) {
-	for i, waiter := range l.waiters {
-		if waiter == ch {
-			l.waiters = append(l.waiters[:i], l.waiters[i+1:]...)
-			return
-		}
+// notifyLocked wakes every waiter. l.mu is held by the caller.
+func (l *storeLock) notifyLocked() {
+	if l.changed == nil {
+		return
 	}
+	close(l.changed)
+	l.changed = make(chan struct{})
 }
