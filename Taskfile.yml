@@ -70,7 +70,7 @@ tasks:
       - task: _lint:vulnerability-check-report
 
   generate:groundcontrol:
-    desc: Generate Ground Control OpenAPI server, client, and database code
+    desc: Generate Ground Control OpenAPI server and client code
     aliases: [gen:groundcontrol]
     cmds:
       - task: _gen:groundcontrol

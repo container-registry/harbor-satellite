@@ -9,9 +9,9 @@ vars:
   GROUNDCONTROL_CLIENT_CONFIG: "{{.OAPI_CODEGEN_CONFIG_DIR}}/client.cfg.yaml"
   GROUNDCONTROL_CLIENT_OUTPUT_DIR: "{{.ROOT_DIR}}/pkg/groundcontrol"
   GROUNDCONTROL_CLIENT_OUTPUT: "{{.GROUNDCONTROL_CLIENT_OUTPUT_DIR}}/client.gen.go"
-  GROUNDCONTROL_SQLC_CONFIG: "{{.ROOT_DIR}}/spec/groundcontrol/sqlc.yaml"
-  GROUNDCONTROL_DB_QUERIES: "{{.ROOT_DIR}}/spec/groundcontrol/sql/queries"
-  GROUNDCONTROL_DB_SCHEMA: "{{.ROOT_DIR}}/spec/groundcontrol/sql/schema"
+  GROUNDCONTROL_SQLC_CONFIG: "{{.ROOT_DIR}}/sqlc.yaml"
+  GROUNDCONTROL_DB_QUERIES: "{{.ROOT_DIR}}/internal/groundcontrol/sql/queries"
+  GROUNDCONTROL_DB_SCHEMA: "{{.ROOT_DIR}}/internal/groundcontrol/sql/schema"
   GROUNDCONTROL_DB_OUTPUT: "{{.ROOT_DIR}}/internal/groundcontrol/database"
 
 tasks:
@@ -39,13 +39,6 @@ tasks:
       - test -x {{.BIN_DIR}}/sqlc
       - "{{.BIN_DIR}}/sqlc version | grep -qx '{{.SQLC_VERSION}}'"
 
-  groundcontrol:
-    desc: Generate Ground Control OpenAPI server, client, and database code
-    cmds:
-      - task: groundcontrol-server
-      - task: groundcontrol-client
-      - task: groundcontrol-database
-
   groundcontrol-database:
     desc: Generate Ground Control database code
     cmds:
@@ -60,6 +53,12 @@ tasks:
       - "{{.ROOT_DIR}}/Taskfile.yml"
     generates:
       - "{{.GROUNDCONTROL_DB_OUTPUT}}/*.go"
+
+  groundcontrol:
+    desc: Generate Ground Control OpenAPI server and client code
+    cmds:
+      - task: groundcontrol-server
+      - task: groundcontrol-client
 
   groundcontrol-server:
     desc: Generate Ground Control OpenAPI server code
