@@ -15,10 +15,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Each handler that rewrites robot projects from group membership must take
-// the membership lock before any other statement in its transaction. sqlmock
-// checks order, so a failed lock that is followed by anything but a rollback
-// fails the test.
+// Each handler that writes Harbor state derived from group membership must
+// take the membership lock before any other statement in its transaction.
+// sqlmock checks order, so a failed lock that is followed by anything but a
+// rollback fails the test. RegisterSatellite is missing because it asks the
+// Harbor client for the robot before it opens the transaction.
 func TestGroupMembershipHandlersLockFirst(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	membershipBody := func(t *testing.T) []byte {
@@ -49,6 +50,8 @@ func TestGroupMembershipHandlersLockFirst(t *testing.T) {
 		},
 		{
 			name: "AddSatelliteToGroup",
+			// The handler validates the satellite and group before it opens
+			// the transaction.
 			beforeTx: func(mock sqlmock.Sqlmock) {
 				mock.ExpectQuery("FROM satellites").WithArgs("sat-1").
 					WillReturnRows(sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
@@ -61,6 +64,14 @@ func TestGroupMembershipHandlersLockFirst(t *testing.T) {
 			},
 			call: func(t *testing.T, s *Server, w http.ResponseWriter) {
 				s.AddSatelliteToGroup(w, httptest.NewRequest(http.MethodPost, "/api/groups/satellite", bytes.NewReader(membershipBody(t))))
+			},
+		},
+		{
+			name: "SetSatelliteConfig",
+			call: func(t *testing.T, s *Server, w http.ResponseWriter) {
+				body, err := json.Marshal(SatelliteConfigRequest{Satellite: "sat-1", ConfigName: "default"})
+				require.NoError(t, err)
+				s.SetSatelliteConfig(w, httptest.NewRequest(http.MethodPost, "/api/configs/satellite", bytes.NewReader(body)))
 			},
 		},
 		{

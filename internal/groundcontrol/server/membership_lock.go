@@ -3,20 +3,23 @@ package server
 import (
 	"context"
 	"database/sql"
+	"log"
+	"net/http"
 )
 
-// membershipLockID keys the transaction-scoped advisory lock taken by every
-// handler that rewrites robot projects or satellite state from group
-// membership. It differs from cleanupLockID.
-const membershipLockID = 12346
-
-// lockGroupMembership waits until no other transaction is changing group
-// membership or group projects. Each of those handlers reads the satellite's
-// groups and then writes the result to Harbor, so two of them running at once
-// can each miss the other's change and the last Harbor write wins. Postgres
-// releases the lock when tx commits or rolls back. Call it before any other
-// statement in tx so the lock order is always the same.
+// lockGroupMembership takes the transaction-scoped lock held by every handler
+// that writes robot projects or satellite state derived from group membership.
+// Call it before any other statement in tx, so concurrent handlers read
+// memberships only after the previous one has committed. That holds under the
+// default READ COMMITTED isolation; a REPEATABLE READ tx would keep the
+// snapshot taken before the wait. Postgres releases the lock when tx ends.
 func lockGroupMembership(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", membershipLockID)
-	return err
+	if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock($1)", membershipLockID); err != nil {
+		log.Printf("Error taking group membership lock: %v", err)
+		return &AppError{
+			Message: "Error: Failed to lock group membership",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+	return nil
 }

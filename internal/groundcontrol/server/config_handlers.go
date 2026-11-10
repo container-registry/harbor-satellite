@@ -466,6 +466,11 @@ func (s *Server) SetSatelliteConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	if err := lockGroupMembership(r.Context(), tx); err != nil {
+		HandleAppError(w, err)
+		return
+	}
+
 	q := s.dbQueries.WithTx(tx)
 
 	sat, err := setSatelliteConfig(r.Context(), q, req.Satellite, req.ConfigName)

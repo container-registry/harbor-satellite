@@ -72,11 +72,7 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	if err := lockGroupMembership(r.Context(), tx); err != nil {
-		log.Printf("Error taking group membership lock: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Failed to lock group membership",
-			Code:    http.StatusInternalServerError,
-		})
+		HandleAppError(w, err)
 		return
 	}
 
@@ -245,11 +241,7 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 	}()
 
 	if err := lockGroupMembership(r.Context(), tx); err != nil {
-		log.Printf("Error taking group membership lock: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Failed to lock group membership",
-			Code:    http.StatusInternalServerError,
-		})
+		HandleAppError(w, err)
 		return
 	}
 

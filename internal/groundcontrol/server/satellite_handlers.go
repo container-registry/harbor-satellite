@@ -108,6 +108,10 @@ func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
+	if err := lockGroupMembership(r.Context(), tx); err != nil {
+		HandleAppError(w, err)
+		return
+	}
 
 	// Create satellite
 	satellite, err := q.CreateSatellite(r.Context(), req.Name)
@@ -1189,11 +1193,7 @@ func (s *Server) AddSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	if err := lockGroupMembership(r.Context(), tx); err != nil {
-		log.Printf("Error taking group membership lock: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Failed to lock group membership",
-			Code:    http.StatusInternalServerError,
-		})
+		HandleAppError(w, err)
 		return
 	}
 
@@ -1334,11 +1334,7 @@ func (s *Server) RemoveSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 	}()
 
 	if err := lockGroupMembership(r.Context(), tx); err != nil {
-		log.Printf("Error taking group membership lock: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Failed to lock group membership",
-			Code:    http.StatusInternalServerError,
-		})
+		HandleAppError(w, err)
 		return
 	}
 
