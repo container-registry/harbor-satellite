@@ -21,7 +21,6 @@ import (
 // rollback fails the test. RegisterSatellite is missing because it asks the
 // Harbor client for the robot before it opens the transaction.
 func TestGroupMembershipHandlersLockFirst(t *testing.T) {
-	now := time.Now().UTC().Truncate(time.Second)
 	membershipBody := func(t *testing.T) []byte {
 		t.Helper()
 		body, err := json.Marshal(SatelliteGroupRequest{Group: "edge-a", Satellite: "sat-1"})
@@ -30,9 +29,8 @@ func TestGroupMembershipHandlersLockFirst(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		beforeTx func(mock sqlmock.Sqlmock)
-		call     func(t *testing.T, s *Server, w http.ResponseWriter)
+		name string
+		call func(t *testing.T, s *Server, w http.ResponseWriter)
 	}{
 		{
 			name: "SyncGroup",
@@ -50,18 +48,6 @@ func TestGroupMembershipHandlersLockFirst(t *testing.T) {
 		},
 		{
 			name: "AddSatelliteToGroup",
-			// The handler validates the satellite and group before it opens
-			// the transaction.
-			beforeTx: func(mock sqlmock.Sqlmock) {
-				mock.ExpectQuery("FROM satellites").WithArgs("sat-1").
-					WillReturnRows(sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
-						AddRow(7, "sat-1", now, now, sql.NullTime{}, sql.NullString{}))
-				mock.ExpectQuery("FROM groups").WithArgs("edge-a").
-					WillReturnRows(sqlmock.NewRows([]string{"id", "group_name", "registry_url", "projects", "created_at", "updated_at"}).
-						AddRow(1, "edge-a", "http://harbor:8080", pq.Array([]string{"store-a"}), now, now))
-				mock.ExpectQuery("FROM satellite_groups").WithArgs(int32(7), int32(1)).
-					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-			},
 			call: func(t *testing.T, s *Server, w http.ResponseWriter) {
 				s.AddSatelliteToGroup(w, httptest.NewRequest(http.MethodPost, "/api/groups/satellite", bytes.NewReader(membershipBody(t))))
 			},
@@ -87,9 +73,6 @@ func TestGroupMembershipHandlersLockFirst(t *testing.T) {
 			server, mock := newMockServer(t)
 			server.groupSync = &fakeGroupSync{}
 
-			if tt.beforeTx != nil {
-				tt.beforeTx(mock)
-			}
 			mock.ExpectBegin()
 			mock.ExpectExec("pg_advisory_xact_lock").WithArgs(membershipLockID).
 				WillReturnError(errors.New("lock unavailable"))
@@ -102,4 +85,32 @@ func TestGroupMembershipHandlersLockFirst(t *testing.T) {
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+}
+
+// A satellite already in the group is detected under the lock, so a removal
+// that commits just before the add can't make the add look like a no-op.
+func TestAddSatelliteToGroupChecksMembershipUnderLock(t *testing.T) {
+	server, mock := newMockServer(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	mock.ExpectBegin()
+	mock.ExpectExec("pg_advisory_xact_lock").WithArgs(membershipLockID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("FROM satellites").WithArgs("sat-1").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
+			AddRow(7, "sat-1", now, now, sql.NullTime{}, sql.NullString{}))
+	mock.ExpectQuery("FROM groups").WithArgs("edge-a").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "group_name", "registry_url", "projects", "created_at", "updated_at"}).
+			AddRow(1, "edge-a", "http://harbor:8080", pq.Array([]string{"store-a"}), now, now))
+	mock.ExpectQuery("FROM satellite_groups").WithArgs(int32(7), int32(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectRollback()
+
+	body, err := json.Marshal(SatelliteGroupRequest{Group: "edge-a", Satellite: "sat-1"})
+	require.NoError(t, err)
+	rr := httptest.NewRecorder()
+	server.AddSatelliteToGroup(rr, httptest.NewRequest(http.MethodPost, "/api/groups/satellite", bytes.NewReader(body)))
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Contains(t, rr.Body.String(), "already in the group")
+	require.NoError(t, mock.ExpectationsWereMet())
 }
