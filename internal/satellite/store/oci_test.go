@@ -287,6 +287,12 @@ func TestOCIStorePinnedBlobSurvivesDeleteBeforePublish(t *testing.T) {
 	require.Equal(t, layer, payload)
 }
 
+// SetBeforePublishLockForTest runs fn after staging and before the serving
+// write lock. Tests use it to observe that an open body still blocks publish.
+func SetBeforePublishLockForTest(s *OCIStore, fn func()) {
+	s.beforePublishLock = fn
+}
+
 func testArtifact(t *testing.T) (*RegistryStore, []byte, ocispec.Descriptor, []byte, ocispec.Descriptor) {
 	t.Helper()
 	server := httptest.NewServer(registry.New())

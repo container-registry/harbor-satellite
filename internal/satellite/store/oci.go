@@ -22,10 +22,11 @@ import (
 
 // OCIStore persists content in one Satellite-owned OCI image layout.
 type OCIStore struct {
-	root       string
-	store      *oci.Store
-	mu         sync.RWMutex
-	provenance sync.Map
+	root              string
+	store             *oci.Store
+	mu                sync.RWMutex
+	provenance        sync.Map
+	beforePublishLock func()
 }
 
 // NewOCIStore opens or creates an OCI image-layout store at root.
@@ -149,6 +150,9 @@ func (s *OCIStore) replicateOne(ctx context.Context, source Store, sourceTarget 
 	}()
 	if err = ctx.Err(); err != nil {
 		return err
+	}
+	if s.beforePublishLock != nil {
+		s.beforePublishLock()
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

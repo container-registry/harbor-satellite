@@ -90,6 +90,8 @@ func TestPublishWaitsForOpenFetchBody(t *testing.T) {
 	response, err := local.Fetch(context.Background(), artifact, manifestDesc, store.PullResourceManifest, nil)
 	require.NoError(t, err)
 
+	reachedLock := make(chan struct{})
+	store.SetBeforePublishLockForTest(local, func() { close(reachedLock) })
 	filling, err := store.NewPeerFillingStore(local, func() []store.Store { return []store.Store{remote} }, store.PeerFillOptions{Timeout: 5 * time.Second})
 	require.NoError(t, err)
 	done := make(chan error, 1)
@@ -97,9 +99,14 @@ func TestPublishWaitsForOpenFetchBody(t *testing.T) {
 		done <- filling.Replicate(context.Background(), nil, []store.Artifact{artifact})
 	}()
 	select {
+	case <-reachedLock:
+	case <-time.After(5 * time.Second):
+		t.Fatal("publish did not reach the serving lock")
+	}
+	select {
 	case replicateErr := <-done:
 		t.Fatalf("publish finished while a local response body was open: %v", replicateErr)
-	case <-time.After(200 * time.Millisecond):
+	default:
 	}
 
 	require.NoError(t, response.Body.Close())
