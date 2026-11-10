@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -29,6 +31,52 @@ func TestStoreLockAbandonedWriterDoesNotBlockReaders(t *testing.T) {
 		t.Fatal("abandoned writer still blocked a new reader")
 	}
 	lock.rUnlock()
+}
+
+func TestStoreLockQueuedReaderProceedsWhenWriterCancels(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var lock storeLock
+		lock.rLock()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		writerDone := make(chan error, 1)
+		go func() {
+			writerDone <- lock.lock(ctx)
+		}()
+		synctest.Wait()
+
+		acquired := make(chan struct{})
+		go func() {
+			lock.rLock()
+			close(acquired)
+		}()
+		synctest.Wait()
+
+		cancel()
+		synctest.Wait()
+
+		select {
+		case err := <-writerDone:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("writer returned %v, want context.Canceled", err)
+			}
+		default:
+			t.Fatal("writer did not return after cancel")
+		}
+		select {
+		case <-acquired:
+		default:
+			t.Fatal("queued reader stayed blocked after the publish was canceled")
+		}
+		lock.mu.Lock()
+		readers := lock.readers
+		lock.mu.Unlock()
+		if readers != 2 {
+			t.Fatalf("readers = %d, want 2 while the original read lock is still held", readers)
+		}
+		lock.rUnlock()
+		lock.rUnlock()
+	})
 }
 
 func TestStoreLockWaitingWriterBlocksNewReaders(t *testing.T) {
