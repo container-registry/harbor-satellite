@@ -22,10 +22,11 @@ import (
 
 // OCIStore persists content in one Satellite-owned OCI image layout.
 type OCIStore struct {
-	root       string
-	store      *oci.Store
-	mu         storeLock
-	provenance sync.Map
+	root              string
+	store             *oci.Store
+	mu                sync.RWMutex
+	provenance        sync.Map
+	beforePublishLock func()
 }
 
 // NewOCIStore opens or creates an OCI image-layout store at root.
@@ -49,8 +50,8 @@ func NewOCIStore(root string) (*OCIStore, error) {
 // validation or remote access: proxy routing owns validation, and Replicate
 // fills local content from the configured Harbor store.
 func (s *OCIStore) Pull(ctx context.Context, artifact Artifact, resource PullResource) (ocispec.Descriptor, error) {
-	s.mu.rLock()
-	defer s.mu.rUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	switch resource {
 	case PullResourceManifest:
@@ -101,22 +102,21 @@ func (s *OCIStore) Pull(ctx context.Context, artifact Artifact, resource PullRes
 // Fetch opens one independent local stream. Holding the read lock until Close
 // prevents Delete and GC from removing a blob while it is being served.
 func (s *OCIStore) Fetch(ctx context.Context, _ Artifact, descriptor ocispec.Descriptor, _ PullResource, _ http.Header) (*http.Response, error) {
-	s.mu.rLock()
+	s.mu.RLock()
 	reader, err := s.store.Fetch(ctx, descriptor)
 	if err != nil {
-		s.mu.rUnlock()
+		s.mu.RUnlock()
 		return nil, err
 	}
 	if seeker, ok := reader.(io.ReadSeekCloser); ok {
-		return contentResponse(descriptor, &lockedReadSeekCloser{ReadSeekCloser: seeker, unlock: s.mu.rUnlock}), nil
+		return contentResponse(descriptor, &lockedReadSeekCloser{ReadSeekCloser: seeker, unlock: s.mu.RUnlock}), nil
 	}
-	return contentResponse(descriptor, &lockedReadCloser{ReadCloser: reader, unlock: s.mu.rUnlock}), nil
+	return contentResponse(descriptor, &lockedReadCloser{ReadCloser: reader, unlock: s.mu.RUnlock}), nil
 }
 
 // Replicate copies complete manifest graphs or standalone blobs from source.
 // The remote transfer is staged outside the serving lock, then published under
-// that lock. Publish returns when ctx is canceled instead of waiting for an
-// open local pull to finish.
+// that lock. Publish uses a read/write mutex and waits out an open local body.
 func (s *OCIStore) Replicate(ctx context.Context, source Store, artifacts []Artifact) error {
 	sourceTarget, ok := source.(storeTarget)
 	if !ok {
@@ -148,10 +148,14 @@ func (s *OCIStore) replicateOne(ctx context.Context, source Store, sourceTarget 
 	defer func() {
 		err = errors.Join(err, staged.cleanup())
 	}()
-	if err = s.mu.lock(ctx); err != nil {
+	if err = ctx.Err(); err != nil {
 		return err
 	}
-	defer s.mu.unlock()
+	if s.beforePublishLock != nil {
+		s.beforePublishLock()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err = ctx.Err(); err != nil {
 		return err
 	}
@@ -425,10 +429,11 @@ func (s *OCIStore) targetFor(Artifact) (oras.Target, error) { //nolint:unparam /
 
 // Delete removes selected roots and garbage-collects unreachable blobs.
 func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
-	if err := s.mu.lock(ctx); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	defer s.mu.unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	changed := false
 	for _, artifact := range artifacts {
 		if err := artifact.validate(); err != nil {

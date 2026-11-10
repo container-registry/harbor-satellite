@@ -83,37 +83,38 @@ func TestReciprocalReplicaCopiesFinishWithinPeerTimeout(t *testing.T) {
 	require.Equal(t, alphaDesc.Digest, gotAlpha.Digest)
 }
 
-func TestPeerAttemptReturnsWhileLocalFetchBodyIsOpen(t *testing.T) {
+func TestPublishWaitsForOpenFetchBody(t *testing.T) {
 	local, _, manifestDesc := seedLayout(t, "team/app", []byte("held-layer"))
 	_, remote, _ := seedLayout(t, "team/app", []byte("held-layer"))
 	artifact := store.Artifact{Name: "team/app", Tag: "latest"}
 	response, err := local.Fetch(context.Background(), artifact, manifestDesc, store.PullResourceManifest, nil)
 	require.NoError(t, err)
 
-	filling, err := store.NewPeerFillingStore(local, func() []store.Store { return []store.Store{remote} }, store.PeerFillOptions{Timeout: time.Second})
+	reachedLock := make(chan struct{})
+	store.SetBeforePublishLockForTest(local, func() { close(reachedLock) })
+	filling, err := store.NewPeerFillingStore(local, func() []store.Store { return []store.Store{remote} }, store.PeerFillOptions{Timeout: 5 * time.Second})
 	require.NoError(t, err)
 	done := make(chan error, 1)
 	go func() {
 		done <- filling.Replicate(context.Background(), nil, []store.Artifact{artifact})
 	}()
 	select {
-	case replicateErr := <-done:
-		require.ErrorIs(t, replicateErr, context.DeadlineExceeded)
+	case <-reachedLock:
 	case <-time.After(5 * time.Second):
-		t.Fatal("peer attempt blocked while a local response body stayed open")
+		t.Fatal("publish did not reach the serving lock")
+	}
+	select {
+	case replicateErr := <-done:
+		t.Fatalf("publish finished while a local response body was open: %v", replicateErr)
+	default:
 	}
 
 	require.NoError(t, response.Body.Close())
-	pulled := make(chan error, 1)
-	go func() {
-		_, pullErr := local.Pull(context.Background(), artifact, store.PullResourceManifest)
-		pulled <- pullErr
-	}()
 	select {
-	case pullErr := <-pulled:
-		require.NoError(t, pullErr)
-	case <-time.After(2 * time.Second):
-		t.Fatal("store lock stayed held after the timed out peer attempt")
+	case replicateErr := <-done:
+		require.NoError(t, replicateErr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("publish stayed blocked after the response body closed")
 	}
 }
 

@@ -260,8 +260,8 @@ func TestOCIStorePinnedBlobSurvivesDeleteBeforePublish(t *testing.T) {
 	require.NoError(t, err)
 
 	func() {
-		require.NoError(t, local.mu.lock(context.Background()))
-		defer local.mu.unlock()
+		local.mu.Lock()
+		defer local.mu.Unlock()
 		require.NoError(t, local.publish(context.Background(), staged, next))
 	}()
 	require.Equal(t, fetchedForFirst, layerFetches.Load())
@@ -285,6 +285,12 @@ func TestOCIStorePinnedBlobSurvivesDeleteBeforePublish(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, blobResponse.Body.Close())
 	require.Equal(t, layer, payload)
+}
+
+// SetBeforePublishLockForTest runs fn after staging and before the serving
+// write lock. Tests use it to observe that an open body still blocks publish.
+func SetBeforePublishLockForTest(s *OCIStore, fn func()) {
+	s.beforePublishLock = fn
 }
 
 func testArtifact(t *testing.T) (*RegistryStore, []byte, ocispec.Descriptor, []byte, ocispec.Descriptor) {
