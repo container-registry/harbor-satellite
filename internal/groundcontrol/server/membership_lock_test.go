@@ -1,0 +1,94 @@
+package server
+
+import (
+	"bytes"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/lib/pq"
+	"github.com/stretchr/testify/require"
+)
+
+// Each handler that rewrites robot projects from group membership must take
+// the membership lock before any other statement in its transaction. sqlmock
+// checks order, so a failed lock that is followed by anything but a rollback
+// fails the test.
+func TestGroupMembershipHandlersLockFirst(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	membershipBody := func(t *testing.T) []byte {
+		t.Helper()
+		body, err := json.Marshal(SatelliteGroupRequest{Group: "edge-a", Satellite: "sat-1"})
+		require.NoError(t, err)
+		return body
+	}
+
+	tests := []struct {
+		name     string
+		beforeTx func(mock sqlmock.Sqlmock)
+		call     func(t *testing.T, s *Server, w http.ResponseWriter)
+	}{
+		{
+			name: "SyncGroup",
+			call: func(t *testing.T, s *Server, w http.ResponseWriter) {
+				body, err := json.Marshal(GroupSyncRequest{Group: "edge-a"})
+				require.NoError(t, err)
+				s.SyncGroup(w, httptest.NewRequest(http.MethodPost, "/api/groups/sync", bytes.NewReader(body)))
+			},
+		},
+		{
+			name: "DeleteGroup",
+			call: func(_ *testing.T, s *Server, w http.ResponseWriter) {
+				s.DeleteGroup(w, httptest.NewRequest(http.MethodDelete, "/api/groups/edge-a", nil), "edge-a")
+			},
+		},
+		{
+			name: "AddSatelliteToGroup",
+			beforeTx: func(mock sqlmock.Sqlmock) {
+				mock.ExpectQuery("FROM satellites").WithArgs("sat-1").
+					WillReturnRows(sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
+						AddRow(7, "sat-1", now, now, sql.NullTime{}, sql.NullString{}))
+				mock.ExpectQuery("FROM groups").WithArgs("edge-a").
+					WillReturnRows(sqlmock.NewRows([]string{"id", "group_name", "registry_url", "projects", "created_at", "updated_at"}).
+						AddRow(1, "edge-a", "http://harbor:8080", pq.Array([]string{"store-a"}), now, now))
+				mock.ExpectQuery("FROM satellite_groups").WithArgs(int32(7), int32(1)).
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+			},
+			call: func(t *testing.T, s *Server, w http.ResponseWriter) {
+				s.AddSatelliteToGroup(w, httptest.NewRequest(http.MethodPost, "/api/groups/satellite", bytes.NewReader(membershipBody(t))))
+			},
+		},
+		{
+			name: "RemoveSatelliteFromGroup",
+			call: func(t *testing.T, s *Server, w http.ResponseWriter) {
+				s.RemoveSatelliteFromGroup(w, httptest.NewRequest(http.MethodDelete, "/api/groups/satellite", bytes.NewReader(membershipBody(t))))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server, mock := newMockServer(t)
+			server.groupSync = &fakeGroupSync{}
+
+			if tt.beforeTx != nil {
+				tt.beforeTx(mock)
+			}
+			mock.ExpectBegin()
+			mock.ExpectExec("pg_advisory_xact_lock").WithArgs(membershipLockID).
+				WillReturnError(errors.New("lock unavailable"))
+			mock.ExpectRollback()
+
+			rr := httptest.NewRecorder()
+			tt.call(t, server, rr)
+
+			require.Equal(t, http.StatusInternalServerError, rr.Code)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}

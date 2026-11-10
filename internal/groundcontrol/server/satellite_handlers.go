@@ -1188,6 +1188,15 @@ func (s *Server) AddSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	if err := lockGroupMembership(r.Context(), tx); err != nil {
+		log.Printf("Error taking group membership lock: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Failed to lock group membership",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+
 	// Add satellite to group
 	params := database.AddSatelliteToGroupParams{
 		SatelliteID: sat.ID,
@@ -1323,6 +1332,15 @@ func (s *Server) RemoveSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 			}
 		}
 	}()
+
+	if err := lockGroupMembership(r.Context(), tx); err != nil {
+		log.Printf("Error taking group membership lock: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Failed to lock group membership",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
 
 	sat, err := q.GetSatelliteByName(r.Context(), satelliteName)
 	if err != nil {

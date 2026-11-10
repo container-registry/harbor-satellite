@@ -71,6 +71,15 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	if err := lockGroupMembership(r.Context(), tx); err != nil {
+		log.Printf("Error taking group membership lock: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Failed to lock group membership",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
+
 	q := s.dbQueries.WithTx(tx)
 
 	projects := getProjectNames(req.Artifacts)
@@ -234,6 +243,15 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 			}
 		}
 	}()
+
+	if err := lockGroupMembership(r.Context(), tx); err != nil {
+		log.Printf("Error taking group membership lock: %v", err)
+		HandleAppError(w, &AppError{
+			Message: "Error: Failed to lock group membership",
+			Code:    http.StatusInternalServerError,
+		})
+		return
+	}
 
 	group, err := q.GetGroupByName(r.Context(), groupName)
 	if err != nil {
