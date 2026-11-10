@@ -1,0 +1,115 @@
+@layer components {
+  .footer {
+    background: var(--color-navy-deep);
+    color: var(--color-surface);
+    padding: 100px 100px 40px;
+  }
+
+  .footer__inner {
+    max-width: var(--page-max-width);
+    margin: 0 auto;
+  }
+
+  .footer__top {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-16);
+    margin-bottom: var(--space-16);
+  }
+
+  .footer__logo {
+    flex-shrink: 0;
+
+    & svg { height: 56px; width: 169px; }
+    & img { height: 56px; width: auto; }
+  }
+
+  .footer__columns {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--space-12);
+    flex: 1;
+  }
+
+  .footer__column-title {
+    font-size: 20px;
+    font-weight: var(--weight-regular);
+    color: var(--color-surface);
+    margin-bottom: 22px;
+  }
+
+  .footer__column-links {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .footer__column-link {
+    font-size: var(--text-base);
+    font-weight: var(--weight-regular);
+    color: var(--color-surface);
+
+    @media (any-hover: hover) {
+      &:hover {
+        opacity: 1;
+        color: var(--color-surface);
+      }
+    }
+  }
+
+  .footer__divider {
+    height: 1px;
+    background: var(--color-white-alpha-10);
+    margin-bottom: var(--space-8);
+  }
+
+  .footer__bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer__bottom-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+  }
+
+  .footer__copyright {
+    font-size: var(--text-base);
+    color: var(--color-surface);
+  }
+
+  .footer__legal-link {
+    font-size: var(--text-base);
+    color: var(--color-white-alpha-75);
+
+    @media (any-hover: hover) {
+      &:hover {
+        opacity: 1;
+        color: var(--color-white-alpha-80);
+      }
+    }
+  }
+
+  .footer__social {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .footer__social-link {
+    color: var(--color-surface);
+    display: inline-flex;
+    align-items: center;
+
+    & svg { width: 20px; height: 20px; }
+
+    @media (any-hover: hover) {
+      &:hover {
+        opacity: 1;
+        color: var(--color-surface);
+      }
+    }
+  }
+}

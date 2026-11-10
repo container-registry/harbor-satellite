@@ -6,10 +6,8 @@ on:
       - "assets/**"
 jobs:
   lint:
-    runs-on: container-registry
+    runs-on: ubuntu-latest
     env:
-      # Keep the cache inside the workspace so it is writable.
-      # /home/runner/.cache is not writable on the container-registry runner.
       GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.cache/golangci-lint
     permissions:
       contents: write
@@ -31,10 +29,6 @@ jobs:
           install-only: true
 
       - name: Run golangci-lint
-        # Call golangci-lint directly because the container-registry runner has no
-        # working Docker daemon (DOCKER_HOST points at an unreachable DinD
-        # sidecar), so task lint-report (which uses docker run) would fail.
-        # The golangci-lint binary is provided by the install step above.
         run: |
           golangci-lint run -v \
             --output.tab.path=golangci-lint.report \
