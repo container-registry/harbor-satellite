@@ -26,6 +26,7 @@ type Server struct {
 	port           int
 	db             *sql.DB
 	dbQueries      *database.Queries
+	groupSync      groupSyncHarbor
 	rateLimiter    *middleware.RateLimiter
 	spiffeProvider spiffe.Provider
 	embeddedSpire  *spiffe.EmbeddedSpireServer
@@ -99,6 +100,7 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 
 	dbQueries := database.New(db)
 	appServer.dbQueries = dbQueries
+	appServer.groupSync = harborGroupSync{}
 
 	// Initialize rate limiter: 10 requests per minute per IP for ZTR endpoint
 	rateLimiter := middleware.NewRateLimiter(10, time.Minute)

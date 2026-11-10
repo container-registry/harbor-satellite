@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,34 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/utils"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 )
+
+// groupSyncHarbor is the Harbor side of SyncGroup. Tests replace it so group
+// sync can be checked without a Harbor.
+type groupSyncHarbor interface {
+	ProjectExists(ctx context.Context, name string) (bool, error)
+	CreateSatelliteProject(ctx context.Context) (bool, error)
+	CreateStateArtifact(ctx context.Context, req GroupSyncRequest) error
+	UpdateRobotProjects(ctx context.Context, projects []string, robotID string) error
+}
+
+type harborGroupSync struct{}
+
+func (harborGroupSync) ProjectExists(ctx context.Context, name string) (bool, error) {
+	return harbor.GetProject(ctx, name)
+}
+
+func (harborGroupSync) CreateSatelliteProject(ctx context.Context) (bool, error) {
+	return harbor.CreateSatelliteProject(ctx)
+}
+
+func (harborGroupSync) CreateStateArtifact(ctx context.Context, req GroupSyncRequest) error {
+	return createStateArtifact(ctx, req)
+}
+
+func (harborGroupSync) UpdateRobotProjects(ctx context.Context, projects []string, robotID string) error {
+	_, err := utils.UpdateRobotProjects(ctx, projects, robotID)
+	return err
+}
 
 func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 	var req GroupSyncRequest
@@ -64,23 +93,7 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, satellite := range satellites {
-		robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), satellite.SatelliteID)
-		if err != nil {
-			log.Println("Error getting robot account by satellite ID:", err)
-			HandleAppError(w, err)
-			return
-		}
-
-		_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
-		if err != nil {
-			log.Println("Error updating robot projects:", err)
-			HandleAppError(w, err)
-			return
-		}
-	}
-
-	satExist, err := harbor.GetProject(r.Context(), "satellite")
+	satExist, err := s.groupSync.ProjectExists(r.Context(), "satellite")
 	if err != nil {
 		log.Println("Error checking satellite project existence:", err)
 		err := &AppError{
@@ -92,7 +105,7 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !satExist {
-		_, err := harbor.CreateSatelliteProject(r.Context())
+		_, err := s.groupSync.CreateSatelliteProject(r.Context())
 		if err != nil {
 			log.Println("Error creating satellite project:", err)
 			err := &AppError{
@@ -104,9 +117,16 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err = createStateArtifact(r.Context(), req)
+	err = s.groupSync.CreateStateArtifact(r.Context(), req)
 	if err != nil {
 		log.Println("Error creating state artifact:", err)
+		HandleAppError(w, err)
+		return
+	}
+
+	// Harbor keeps robot edits if this transaction rolls back, so update
+	// them only after the state artifact push has succeeded.
+	if err := syncGroupRobots(r.Context(), q, s.groupSync, satellites); err != nil {
 		HandleAppError(w, err)
 		return
 	}
@@ -122,6 +142,57 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+// syncGroupRobots sets each member robot to the projects of every group that
+// satellite still belongs to. q must be the sync transaction, so it sees the
+// group row this request just wrote.
+func syncGroupRobots(ctx context.Context, q *database.Queries, hb groupSyncHarbor, satellites []database.SatelliteGroup) error {
+	for _, satellite := range satellites {
+		robotAcc, err := q.GetRobotAccBySatelliteID(ctx, satellite.SatelliteID)
+		if err != nil {
+			log.Println("Error getting robot account by satellite ID:", err)
+			return err
+		}
+
+		projects, err := projectsForSatellite(ctx, q, satellite.SatelliteID)
+		if err != nil {
+			log.Println("Error listing projects for satellite:", err)
+			return err
+		}
+
+		if err := hb.UpdateRobotProjects(ctx, projects, robotAcc.RobotID); err != nil {
+			log.Println("Error updating robot projects:", err)
+			return err
+		}
+	}
+	return nil
+}
+
+// projectsForSatellite returns the Harbor projects granted by the satellite's
+// groups. A project listed by more than one group is returned once.
+func projectsForSatellite(ctx context.Context, q *database.Queries, satelliteID int32) ([]string, error) {
+	groups, err := q.SatelliteGroupList(ctx, satelliteID)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]struct{})
+	var projects []string
+	for _, membership := range groups {
+		group, err := q.GetGroupByID(ctx, membership.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		for _, project := range group.Projects {
+			if _, ok := seen[project]; ok {
+				continue
+			}
+			seen[project] = struct{}{}
+			projects = append(projects, project)
+		}
+	}
+	return projects, nil
 }
 
 func (s *Server) GetGroup(w http.ResponseWriter, r *http.Request, group string) {
