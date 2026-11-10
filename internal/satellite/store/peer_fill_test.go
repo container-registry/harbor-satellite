@@ -450,6 +450,7 @@ func TestPeerFillingStoreSkipsHarborWhenUnreachable(t *testing.T) {
 	harborCalls, _, _ := harbor.snapshot()
 	require.Equal(t, 0, harborCalls)
 	_, sources, _ := local.snapshot()
+	require.Equal(t, []Store{peer}, sources)
 	for _, source := range sources {
 		if source == harbor {
 			t.Fatal("degraded miss copied from Harbor")
