@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
@@ -114,6 +115,10 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 	insecure := s.cm.UseUnsecure()
 	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
+	stats := budget.Ensure().Snapshot()
+	req.DownloadBytesPerSecond = stats.BytesPerSecond
+	req.BytesInWindow = stats.BytesInWindow
+	req.BytesTotal = stats.BytesTotal
 
 	log.Info().Msg("Sending Status Report")
 	groundControlURL := s.cm.ResolveGroundControlURL()

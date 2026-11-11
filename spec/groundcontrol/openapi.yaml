@@ -1516,6 +1516,61 @@ components:
         peer_distribution:
           $ref: "#/components/schemas/PeerDistributionConfig"
           x-go-name: PeerDistribution
+        network:
+          $ref: "#/components/schemas/NetworkConfig"
+          x-go-name: Network
+    NetworkConfig:
+      type: object
+      title: NetworkConfig limits download speed and the transfer quota.
+      description: >
+        Disabled blocks leave replication unchanged. speed.limit is a rate such
+        as 10Mbps. quota.limit is a size such as 5GB. quota.window is sync, day,
+        or week.
+      x-go-type: config.NetworkConfig
+      x-go-type-import:
+        path: github.com/container-registry/harbor-satellite/pkg/config
+        name: config
+      properties:
+        speed:
+          $ref: "#/components/schemas/NetworkSpeedConfig"
+          x-go-name: Speed
+        quota:
+          $ref: "#/components/schemas/NetworkQuotaConfig"
+          x-go-name: Quota
+    NetworkSpeedConfig:
+      type: object
+      title: NetworkSpeedConfig is the token-bucket download cap.
+      x-go-type: config.NetworkSpeedConfig
+      x-go-type-import:
+        path: github.com/container-registry/harbor-satellite/pkg/config
+        name: config
+      properties:
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+        limit:
+          type: string
+          description: Rate such as 10Mbps or 1MB/s.
+          x-go-name: Limit
+    NetworkQuotaConfig:
+      type: object
+      title: NetworkQuotaConfig is the data cap for one window.
+      x-go-type: config.NetworkQuotaConfig
+      x-go-type-import:
+        path: github.com/container-registry/harbor-satellite/pkg/config
+        name: config
+      properties:
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+        limit:
+          type: string
+          description: Size such as 5GB.
+          x-go-name: Limit
+        window:
+          type: string
+          description: sync, day, or week.
+          x-go-name: Window
     AuditConfig:
       type: object
       title: AuditConfig controls satellite security-event audit logging.
@@ -1909,6 +1964,13 @@ components:
           $ref: "#/components/schemas/NullableInt64Value"
         ImageCount:
           $ref: "#/components/schemas/NullableInt32Value"
+        DownloadBytesPerSecond:
+          type: number
+          format: double
+        BytesInWindow:
+          $ref: "#/components/schemas/NullableInt64Value"
+        BytesTotal:
+          $ref: "#/components/schemas/NullableInt64Value"
         ReportedAt:
           type: string
           format: date-time
@@ -2410,6 +2472,20 @@ components:
           format: int64
           minimum: 0
           x-go-name: StorageUsedBytes
+        download_bytes_per_second:
+          type: number
+          format: double
+          x-go-name: DownloadBytesPerSecond
+        bytes_in_window:
+          type: integer
+          format: int64
+          minimum: 0
+          x-go-name: BytesInWindow
+        bytes_total:
+          type: integer
+          format: int64
+          minimum: 0
+          x-go-name: BytesTotal
     GroupSyncRequest:
       type: object
       title: GroupSyncRequest contains a group state artifact synchronized from
