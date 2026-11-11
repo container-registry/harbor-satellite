@@ -110,7 +110,10 @@ func (f *FetchAndReplicateStateProcess) replicateEach(ctx context.Context, group
 		f.journalReplication(ctx, group, edgejournal.ActionReplicated, a, time.Since(started), err)
 		if err != nil {
 			errs = append(errs, err)
+			continue
 		}
+		// A successful copy is the commit manifest pulls are waiting on.
+		f.commitArtifact(a)
 	}
 	return errors.Join(errs...)
 }

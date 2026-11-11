@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/ready"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -266,6 +267,42 @@ func addStaticPeer(process *FetchAndReplicateStateProcess) {
 		URL: "http://127.0.0.1:9",
 	}}
 	process.cm.With(config.SetPeerDistributionConfig(cfg))
+}
+
+func TestProcessGroupStateCommitsWatchedImage(t *testing.T) {
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "state.json")
+	bootstrap := filepath.Join(dir, config.DefaultDesiredStateFile)
+	entity := alpineEntity()
+	writePersistedGroup(t, bootstrap, entity)
+
+	local := &degradedStubStore{pullErr: errors.New("not found")}
+	_, process := newDegradedProcess(t, dir, stateFile, bootstrap, false, local)
+	process.fetchGroupState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*StateReader, error) {
+		state := &State{Artifacts: []Artifact{{
+			Name:       entity.Name,
+			Repository: entity.Repository,
+			Tags:       []string{entity.Tag},
+			Digest:     entity.Digest,
+		}}}
+		var reader StateReader = state
+		return &reader, nil
+	}
+	gate := ready.New()
+	process.SetImageGate(gate)
+
+	log := zerolog.Nop()
+	result := process.processGroupState(context.Background(), 0, "source-user", "source-password", true, local, &degradedStubStore{}, &log)
+	require.Nil(t, result.Error)
+
+	request := store.Artifact{Name: "library/alpine", Tag: "latest"}
+	require.False(t, gate.Watching(request))
+	committed, err := gate.Wait(context.Background(), request)
+	require.NoError(t, err)
+	require.True(t, committed)
+	digest, ok := gate.ExpectedDigest(request)
+	require.True(t, ok)
+	require.Equal(t, entity.Digest, digest)
 }
 
 func TestBootstrapLiveFetchReplicatesUnappliedArtifacts(t *testing.T) {

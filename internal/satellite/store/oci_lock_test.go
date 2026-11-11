@@ -149,7 +149,7 @@ func seedLayout(t *testing.T, name string, layer []byte) (*store.OCIStore, store
 
 func replicaServer(t *testing.T, local store.Store, wrap func(http.Handler) http.Handler) *httptest.Server {
 	t.Helper()
-	handler, err := image.NewPull(context.Background(), proxy.ModeReplica, local, nil)
+	handler, err := image.NewPull(context.Background(), proxy.ModeReplica, local, nil, nil)
 	require.NoError(t, err)
 	httpHandler := proxy.New(handler).Handler()
 	if wrap != nil {

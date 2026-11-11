@@ -8,6 +8,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/lane"
 	proxy "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
+	"github.com/container-registry/harbor-satellite/internal/satellite/ready"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -31,6 +32,10 @@ type PullOptions struct {
 	// Journal receives one record per manifest filled from Harbor (plan
 	// item 6.4); nil journals nothing. It must not block.
 	Journal PullThroughJournal
+	// Gate holds manifest requests for images state replication is
+	// publishing until that publish commits a complete local graph. Nil
+	// waits for nothing.
+	Gate *ready.Gate
 }
 
 // NewPullWithOptions is NewPull with the plan 5.3 pull-through options; zero
@@ -45,6 +50,7 @@ func NewPullWithOptions(lifecycleCtx context.Context, mode proxy.Mode, localStor
 		mode:         mode,
 		localStore:   localStore,
 		remoteStore:  remoteStore,
+		images:       opts.Gate,
 		prefetcher:   opts.Prefetcher,
 		recorder:     opts.Recorder,
 		journal:      opts.Journal,

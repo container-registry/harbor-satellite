@@ -62,6 +62,32 @@ func (s *OCIStore) layout() *oci.Store {
 	return s.store
 }
 
+// Ready resolves a retained manifest and requires every successor blob to be
+// present. A digest on artifact must match the tagged root.
+func (s *OCIStore) Ready(ctx context.Context, artifact Artifact) (ocispec.Descriptor, error) {
+	lookup := artifact
+	if lookup.Tag != "" {
+		lookup.Digest = ""
+	}
+	descriptor, err := s.Pull(ctx, lookup, PullResourceManifest)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	if artifact.Digest != "" && descriptor.Digest.String() != artifact.sourceIdentifier() {
+		return ocispec.Descriptor{}, errdef.ErrNotFound
+	}
+	if err := s.graphReady(ctx, descriptor); err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	return descriptor, nil
+}
+
+func (s *OCIStore) graphReady(ctx context.Context, root ocispec.Descriptor) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return descriptorGraphReady(ctx, s.store, root)
+}
+
 // Pull resolves already retained content. It deliberately performs no request
 // validation or remote access: proxy routing owns validation, and Replicate
 // fills local content from the configured Harbor store.

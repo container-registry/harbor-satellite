@@ -37,11 +37,19 @@ type TagDeleter interface {
 	DeletesSingleTags() bool
 }
 
+// ReadyChecker reports that a manifest tag resolves to the requested digest
+// and that every successor blob is present in the store.
+type ReadyChecker interface {
+	Ready(ctx context.Context, artifact Artifact) (ocispec.Descriptor, error)
+}
+
 var (
-	_ Store      = (*OCIStore)(nil)
-	_ Store      = (*RegistryStore)(nil)
-	_ TagDeleter = (*OCIStore)(nil)
-	_ TagDeleter = (*PeerFillingStore)(nil)
+	_ Store        = (*OCIStore)(nil)
+	_ Store        = (*RegistryStore)(nil)
+	_ TagDeleter   = (*OCIStore)(nil)
+	_ TagDeleter   = (*PeerFillingStore)(nil)
+	_ ReadyChecker = (*OCIStore)(nil)
+	_ ReadyChecker = (*RegistryStore)(nil)
 )
 
 // DeletesSingleTags reports whether s implements TagDeleter and says so.

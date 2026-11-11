@@ -8,6 +8,7 @@ import (
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/journal"
+	"github.com/container-registry/harbor-satellite/internal/satellite/ready"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
@@ -34,6 +35,7 @@ type Satellite struct {
 	replicationSource store.Store
 	journal           *journal.Journal
 	recorder          telemetry.Recorder
+	imageGate         *ready.Gate
 }
 
 // SetRecorder makes heartbeats and journal answers show on /metrics.
@@ -65,6 +67,11 @@ func (s *Satellite) RequireFullResync() {
 	s.fullResync = true
 }
 
+// SetImageGate shares the manifest-wait register with state replication.
+func (s *Satellite) SetImageGate(gate *ready.Gate) {
+	s.imageGate = gate
+}
+
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, storeRoot, desiredStateFile string, jq *events.EventScheduler) *Satellite {
 	return &Satellite{
 		cm:               cm,
@@ -90,6 +97,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 		fetchAndReplicateStateProcess.SetJournal(s.journal)
 		s.journalCRIResults(ctx)
 	}
+	fetchAndReplicateStateProcess.SetImageGate(s.imageGate)
 	s.stateProcess = fetchAndReplicateStateProcess
 	if s.fullResync {
 		if err := fetchAndReplicateStateProcess.ResetReplicatedEntities(); err != nil {
