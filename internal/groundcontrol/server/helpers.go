@@ -228,7 +228,16 @@ func storeRobotAccountInDB(ctx context.Context, q *database.Queries, robotName, 
 	return nil
 }
 
-func assignPermissionsToRobot(ctx context.Context, q *database.Queries, groups []string, robotID int64) error {
+// assignPermissionsToRobot gives the robot the projects of every group in
+// groups. Harbor replaces a robot's permissions on each update, so the
+// projects are collected first and written once.
+func assignPermissionsToRobot(ctx context.Context, q *database.Queries, hb groupSyncHarbor, groups []string, robotID int64) error {
+	if len(groups) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	var all []string
 	for _, groupName := range groups {
 		projects, err := q.GetProjectsOfGroup(ctx, groupName)
 		if err != nil {
@@ -246,15 +255,20 @@ func assignPermissionsToRobot(ctx context.Context, q *database.Queries, groups [
 			}
 		}
 
-		project := projects[0]
-		// give permission to the robot account for all the projects present in this group
-		_, err = utils.UpdateRobotProjects(ctx, project, strconv.FormatInt(robotID, 10))
-		if err != nil {
-			log.Printf("Error updating robot account permissions: %v", err)
-			return &AppError{
-				Message: "Error: failed to update robot account permissions",
-				Code:    http.StatusInternalServerError,
+		for _, project := range projects[0] {
+			if _, ok := seen[project]; ok {
+				continue
 			}
+			seen[project] = struct{}{}
+			all = append(all, project)
+		}
+	}
+
+	if err := hb.UpdateRobotProjects(ctx, all, strconv.FormatInt(robotID, 10)); err != nil {
+		log.Printf("Error updating robot account permissions: %v", err)
+		return &AppError{
+			Message: "Error: failed to update robot account permissions",
+			Code:    http.StatusInternalServerError,
 		}
 	}
 	return nil
