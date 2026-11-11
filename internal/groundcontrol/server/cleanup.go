@@ -10,6 +10,7 @@ import (
 
 const (
 	cleanupLockID          = 12345
+	membershipLockID       = 12346
 	defaultRetentionDays   = 7
 	defaultCleanupInterval = 24 * time.Hour
 )
