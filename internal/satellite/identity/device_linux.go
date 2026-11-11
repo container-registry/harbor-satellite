@@ -131,7 +131,7 @@ func (d *LinuxDeviceIdentity) GetBootID() (string, error) {
 func (d *LinuxDeviceIdentity) GetDiskSerial() (string, error) {
 	entries, err := os.ReadDir(d.blockDevPath)
 	if err != nil {
-		return "", fmt.Errorf("read block devices: %w", err)
+		return "", fmt.Errorf("read block devices: %w: %w", ErrComponentUnavailable, err)
 	}
 
 	for _, entry := range entries {
