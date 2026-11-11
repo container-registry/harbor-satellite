@@ -52,6 +52,29 @@ func TestOCIStoreReplicatesAndStreamsManifestGraph(t *testing.T) {
 	require.Equal(t, layer, blobPayload)
 }
 
+func TestOCIStoreDropsStagedGraphWhenDigestDiffers(t *testing.T) {
+	remote, _, manifestDesc, _, _ := testArtifact(t)
+	local, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	artifact := Artifact{Name: "team/app", Tag: "latest", Digest: manifestDesc.Digest.String()}
+	remoteTarget, err := remote.targetFor(artifact)
+	require.NoError(t, err)
+	staged, err := local.stage(context.Background(), remote, remoteTarget, artifact)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, staged.cleanup()) })
+
+	rejected := artifact
+	rejected.Digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	func() {
+		local.mu.Lock()
+		defer local.mu.Unlock()
+		err = local.publish(context.Background(), staged, rejected)
+	}()
+	require.ErrorContains(t, err, "does not match group list digest")
+	_, err = local.Pull(context.Background(), Artifact{Name: "team/app", Tag: "latest"}, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+}
+
 func TestOCIStoreStandaloneBlobReplication(t *testing.T) {
 	remote, _, _, layer, layerDesc := testArtifact(t)
 	local, err := NewOCIStore(t.TempDir())
@@ -291,6 +314,24 @@ func TestOCIStorePinnedBlobSurvivesDeleteBeforePublish(t *testing.T) {
 // write lock. Tests use it to observe that an open body still blocks publish.
 func SetBeforePublishLockForTest(s *OCIStore, fn func()) {
 	s.beforePublishLock = fn
+}
+
+func differentManifest(t *testing.T, source *RegistryStore, payload []byte) ocispec.Descriptor {
+	t.Helper()
+	var manifest ocispec.Manifest
+	require.NoError(t, json.Unmarshal(payload, &manifest))
+	manifest.Annotations = map[string]string{"org.opencontainers.image.revision": "2"}
+	body, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	desc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageManifest, body)
+
+	opts, err := source.options()
+	require.NoError(t, err)
+	repo, err := orasremote.NewRepository(normalizeRegistry(opts.Endpoint) + "/team/app")
+	require.NoError(t, err)
+	repo.PlainHTTP = opts.PlainHTTP
+	require.NoError(t, repo.PushReference(context.Background(), desc, bytes.NewReader(body), "other"))
+	return desc
 }
 
 func testArtifact(t *testing.T) (*RegistryStore, []byte, ocispec.Descriptor, []byte, ocispec.Descriptor) {

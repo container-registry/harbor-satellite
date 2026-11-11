@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/registry"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/require"
 	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/errdef"
@@ -146,6 +147,86 @@ func TestRegistryStoreFetchStreamsBeforeEOFAndCancelsWithRequest(t *testing.T) {
 	cancel()
 	_, err = io.ReadAll(response.Body)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestRegistryStoreLeavesTagUnsetWhenDigestDiffers(t *testing.T) {
+	source, _, manifestDesc, _, _ := testArtifact(t)
+	destination := plainRegistry(t)
+	// A compliant registry resolves the requested digest or returns not-found.
+	// Returning the real manifest here is what lets the group-list comparison run.
+	resolved := &resolvedDigestSource{RegistryStore: source, resolved: manifestDesc}
+	artifact := Artifact{
+		Name: "team/app", Tag: "latest",
+		Digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+	}
+
+	err := destination.Replicate(context.Background(), resolved, []Artifact{artifact})
+
+	require.ErrorContains(t, err, "does not match group list digest")
+	require.ErrorContains(t, err, artifact.Digest)
+	require.ErrorContains(t, err, manifestDesc.Digest.String())
+	_, err = destination.Pull(context.Background(), Artifact{Name: "team/app", Tag: "latest"}, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+	_, err = destination.Pull(context.Background(), Artifact{Name: "team/app", Digest: manifestDesc.Digest.String()}, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+}
+
+// resolvedDigestSource reports one descriptor from Pull. Replicate uses that
+// descriptor for the group-list comparison before copying the graph.
+type resolvedDigestSource struct {
+	*RegistryStore
+	resolved ocispec.Descriptor
+}
+
+func (s *resolvedDigestSource) Pull(context.Context, Artifact, PullResource) (ocispec.Descriptor, error) {
+	return s.resolved, nil
+}
+
+func TestRegistryStoreMovesTagOntoTheRequestedDigest(t *testing.T) {
+	source, manifestPayload, first, _, _ := testArtifact(t)
+	destination := plainRegistry(t)
+	current := Artifact{Name: "team/app", Tag: "latest", Digest: first.Digest.String()}
+	require.NoError(t, destination.Replicate(context.Background(), source, []Artifact{current}))
+
+	second := differentManifest(t, source, manifestPayload)
+	current.Digest = second.Digest.String()
+	require.NoError(t, destination.Replicate(context.Background(), source, []Artifact{current}))
+
+	got, err := destination.Pull(context.Background(), Artifact{Name: "team/app", Tag: "latest"}, PullResourceManifest)
+	require.NoError(t, err)
+	require.Equal(t, second.Digest, got.Digest)
+}
+
+func TestRegistryStoreCopiesListedDigestFromOCISourceWithStaleTag(t *testing.T) {
+	remote, manifestPayload, first, _, _ := testArtifact(t)
+	second := differentManifest(t, remote, manifestPayload)
+	local, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	// latest still points at the first root while the second is retained
+	// under another tag in the same repository.
+	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{
+		{Name: "team/app", Tag: "latest", Digest: first.Digest.String()},
+		{Name: "team/app", Tag: "other", Digest: second.Digest.String()},
+	}))
+	destination := plainRegistry(t)
+
+	artifact := Artifact{Name: "team/app", Tag: "latest", Digest: second.Digest.String()}
+	require.NoError(t, destination.Replicate(context.Background(), local, []Artifact{artifact}))
+
+	got, err := destination.Pull(context.Background(), Artifact{Name: "team/app", Tag: "latest"}, PullResourceManifest)
+	require.NoError(t, err)
+	require.Equal(t, second.Digest, got.Digest)
+}
+
+func plainRegistry(t *testing.T) *RegistryStore {
+	t.Helper()
+	server := httptest.NewServer(registry.New())
+	t.Cleanup(server.Close)
+	storage, err := NewRegistryStore(RegistryOptions{
+		Endpoint: strings.TrimPrefix(server.URL, "http://"), PlainHTTP: true,
+	})
+	require.NoError(t, err)
+	return storage
 }
 
 func TestRegistryStorePullFetchAndReplicate(t *testing.T) {

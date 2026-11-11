@@ -360,6 +360,11 @@ func (t *stageTarget) PushReference(ctx context.Context, expected ocispec.Descri
 }
 
 func (s *OCIStore) publish(ctx context.Context, staged stagedArtifact, artifact Artifact) error {
+	// The stage is the quarantine. A root the group list did not ask for is
+	// discarded here, before any blob is linked into the store that clients pull.
+	if err := rejectUnlistedDigest(staged.desc, artifact); err != nil {
+		return err
+	}
 	// Linking keeps the write lock to a metadata update. oras.Copy would read
 	// and write every new blob again while Pull and Fetch wait, and the stage
 	// would still be on disk until this returns.
