@@ -1,0 +1,68 @@
+[Unit]
+Description=Harbor Satellite (%i)
+Documentation=https://github.com/container-registry/harbor-satellite
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=harbor-satellite
+Group=harbor-satellite
+
+# config.json, state.json and the OCI layout (oci/) live here.
+# systemd creates the directory and hands it to the service user.
+StateDirectory=harbor-satellite-%i
+StateDirectoryMode=0750
+WorkingDirectory=%S/harbor-satellite-%i
+Environment=CONFIG_DIR=%S/harbor-satellite-%i
+EnvironmentFile=/etc/harbor-satellite/satellite-%i.env
+ExecStart=/opt/harbor-satellite/satellite
+
+Restart=on-failure
+RestartSec=10s
+
+# The satellite drains on SIGTERM within SHUTDOWN_TIMEOUT (30s default).
+# Give it some headroom before systemd sends SIGKILL.
+KillMode=mixed
+TimeoutStopSec=45s
+
+SyslogIdentifier=harbor-satellite-%i
+
+# Sandboxing. The service only needs to write its state directory and
+# listen on 127.0.0.1:PROXY_PORT. Every instance needs its own PROXY_PORT.
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateUsers=true
+NoNewPrivileges=true
+UMask=0027
+RemoveIPC=true
+CapabilityBoundingSet=
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+# AF_NETLINK is used to read network interfaces for the device fingerprint.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# Release binaries are built with CGO_ENABLED=0.
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount
+SystemCallErrorNumber=EPERM
+
+# LimitNOFILE=65536
+# MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target
