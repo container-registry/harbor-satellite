@@ -9,7 +9,10 @@ import (
 )
 
 func ListReplication(ctx context.Context, opts ListParams) ([]*models.ReplicationPolicy, error) {
-	client := GetClient()
+	client, err := GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("getting harbor client: %w", err)
+	}
 	response, err := client.Replication.ListReplicationPolicies(
 		ctx,
 		&replication.ListReplicationPoliciesParams{
