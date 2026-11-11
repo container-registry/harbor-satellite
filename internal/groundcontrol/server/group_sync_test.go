@@ -83,6 +83,7 @@ func runSyncGroup(t *testing.T, wantStatus int, artifacts []GroupArtifact, group
 	server.groupSync = fake
 
 	mock.ExpectBegin()
+	mock.ExpectExec("pg_advisory_xact_lock").WithArgs(membershipLockID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("INSERT INTO groups").
 		WillReturnRows(groupRows(now, groups[0]))
 	memberRows := sqlmock.NewRows([]string{"satellite_id", "group_id"}).AddRow(7, groups[0].id)
