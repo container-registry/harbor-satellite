@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -328,46 +329,14 @@ func (s *Server) Ztr(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// groups attached to satellite
-	groups, err := q.SatelliteGroupList(r.Context(), satelliteID)
-	if err != nil {
-		log.Printf("failed to list groups for satellite: %v, %v", satelliteID, err)
-		log.Println(err)
-		err := &AppError{
-			Message: "Error: Satellite Groups List Failed",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	states, err := getGroupStates(r.Context(), groups, q)
-	if err != nil {
-		log.Println("Error retrieving group states:", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Get Group By ID Failed",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
 	satellite, err := q.GetSatellite(r.Context(), satelliteID)
 	if err != nil {
 		HandleAppError(w, &AppError{Message: "satellite not found", Code: http.StatusNotFound})
 		return
 	}
 
-	configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satelliteID)
-	if err != nil {
-		log.Printf("Error: Failed to fetch Satellite config: %v", err)
-		HandleAppError(w, err)
-		return
-	}
-
 	// For sanity, create (update) the state artifact during the registration process as well.
-	err = createOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
-	if err != nil {
-		log.Println(err)
+	if err := s.publishSatelliteStateLocked(r.Context(), satellite, true); err != nil {
 		HandleAppError(w, err)
 		return
 	}
@@ -520,45 +489,17 @@ func (s *Server) SpiffeZtr(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	groups, err := q.SatelliteGroupList(r.Context(), satellite.ID)
-	if err != nil {
-		log.Printf("SPIFFE ZTR: Failed to list groups for satellite %s: %v", satelliteName, err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Satellite Groups List Failed",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
-	states, err := getGroupStates(r.Context(), groups, q)
-	if err != nil {
-		log.Printf("SPIFFE ZTR: Error retrieving group states: %v", err)
-		HandleAppError(w, &AppError{
-			Message: "Error: Get Group By ID Failed",
-			Code:    http.StatusInternalServerError,
-		})
-		return
-	}
-
 	// When Harbor is available, create state artifacts; otherwise just return credentials
 	harborCfg := env.GC.Harbor
 	skipHarborCheck := harborCfg.SkipHealthCheck
+	if err := s.publishSatelliteStateLocked(r.Context(), satellite, !skipHarborCheck); err != nil {
+		log.Printf("SPIFFE ZTR: Failed to publish state for satellite %s: %v", satelliteName, err)
+		HandleAppError(w, err)
+		return
+	}
+
 	var satelliteState string
-
 	if !skipHarborCheck {
-		configObject, err := fetchSatelliteConfig(r.Context(), s.dbQueries, satellite.ID)
-		if err != nil {
-			log.Printf("SPIFFE ZTR: Failed to fetch satellite config: %v", err)
-			HandleAppError(w, err)
-			return
-		}
-
-		err = createOrUpdateSatStateArtifact(r.Context(), satellite.Name, states, configObject.ConfigName)
-		if err != nil {
-			log.Printf("SPIFFE ZTR: Failed to create state artifact: %v", err)
-			HandleAppError(w, err)
-			return
-		}
 		satelliteState = utils.AssembleSatelliteState(satellite.Name)
 	} else {
 		// Use placeholder state URL when Harbor is not available
@@ -591,6 +532,70 @@ func (s *Server) SpiffeZtr(w http.ResponseWriter, r *http.Request) {
 		Details:      map[string]any{"flow": "spiffe_ztr"},
 	})
 	WriteJSONResponse(w, http.StatusOK, result)
+}
+
+// publishSatelliteStateLocked reads the satellite's groups and config under
+// the group membership lock and, when push is set, pushes its state artifact
+// before the lock is released. Without the lock a membership change that
+// commits while ZTR runs could be overwritten by state built from the old
+// groups.
+func (s *Server) publishSatelliteStateLocked(ctx context.Context, satellite database.Satellite, push bool) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Printf("Error starting transaction: %v", err)
+		return &AppError{
+			Message: "Error: Failed to start database transaction",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			if err := tx.Rollback(); err != nil {
+				log.Printf("Error: Failed to rollback transaction: %v", err)
+			}
+		}
+	}()
+
+	if err := lockGroupMembership(ctx, tx); err != nil {
+		return err
+	}
+	q := s.dbQueries.WithTx(tx)
+
+	groups, err := q.SatelliteGroupList(ctx, satellite.ID)
+	if err != nil {
+		log.Printf("failed to list groups for satellite %d: %v", satellite.ID, err)
+		return &AppError{
+			Message: "Error: Satellite Groups List Failed",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+
+	states, err := getGroupStates(ctx, groups, q)
+	if err != nil {
+		return err
+	}
+
+	if push {
+		configObject, err := fetchSatelliteConfig(ctx, q, satellite.ID)
+		if err != nil {
+			return err
+		}
+		if err := createOrUpdateSatStateArtifact(ctx, satellite.Name, states, configObject.ConfigName); err != nil {
+			log.Printf("Error creating state artifact for satellite %s: %v", satellite.Name, err)
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Error committing transaction: %v", err)
+		return &AppError{
+			Message: "Error: Failed to commit transaction",
+			Code:    http.StatusInternalServerError,
+		}
+	}
+	committed = true
+	return nil
 }
 
 func (s *Server) ListSatellites(w http.ResponseWriter, r *http.Request) {
