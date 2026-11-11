@@ -25,9 +25,17 @@ type Store interface {
 	Delete(ctx context.Context, artifacts []Artifact) error
 }
 
+// ReadyChecker reports that a manifest tag resolves to the requested digest
+// and that every successor blob is present in the store.
+type ReadyChecker interface {
+	Ready(ctx context.Context, artifact Artifact) (ocispec.Descriptor, error)
+}
+
 var (
-	_ Store = (*OCIStore)(nil)
-	_ Store = (*RegistryStore)(nil)
+	_ Store        = (*OCIStore)(nil)
+	_ Store        = (*RegistryStore)(nil)
+	_ ReadyChecker = (*OCIStore)(nil)
+	_ ReadyChecker = (*RegistryStore)(nil)
 )
 
 func contentResponse(descriptor ocispec.Descriptor, body io.ReadCloser) *http.Response {

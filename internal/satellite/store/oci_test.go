@@ -22,6 +22,31 @@ import (
 	orasremote "oras.land/oras-go/v2/registry/remote"
 )
 
+func TestOCIStoreReadyRequiresSuccessorBlobs(t *testing.T) {
+	remote, _, manifestDesc, _, layerDesc := testArtifact(t)
+	local, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	artifact := Artifact{Name: "team/app", Tag: "latest", Digest: manifestDesc.Digest.String()}
+
+	_, err = local.Ready(context.Background(), artifact)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{artifact}))
+
+	descriptor, err := local.Ready(context.Background(), artifact)
+	require.NoError(t, err)
+	require.Equal(t, manifestDesc, descriptor)
+
+	wrong := artifact
+	wrong.Digest = content.NewDescriptorFromBytes("application/octet-stream", []byte("other")).Digest.String()
+	_, err = local.Ready(context.Background(), wrong)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+
+	blob := filepath.Join(local.root, ocispec.ImageBlobsDir, layerDesc.Digest.Algorithm().String(), layerDesc.Digest.Encoded())
+	require.NoError(t, os.Remove(blob))
+	_, err = local.Ready(context.Background(), artifact)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+}
+
 func TestOCIStoreReplicatesAndStreamsManifestGraph(t *testing.T) {
 	remote, manifestPayload, manifestDesc, layer, layerDesc := testArtifact(t)
 	local, err := NewOCIStore(t.TempDir())

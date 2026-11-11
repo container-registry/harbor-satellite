@@ -21,6 +21,21 @@ import (
 	"oras.land/oras-go/v2/errdef"
 )
 
+func TestRegistryStoreReadyRequiresTheTaggedDigest(t *testing.T) {
+	t.Parallel()
+	remote, _, manifestDesc, _, _ := testArtifact(t)
+	artifact := Artifact{Name: "team/app", Tag: "latest", Digest: manifestDesc.Digest.String()}
+
+	descriptor, err := remote.Ready(context.Background(), artifact)
+	require.NoError(t, err)
+	require.Equal(t, manifestDesc.Digest, descriptor.Digest)
+
+	wrong := artifact
+	wrong.Digest = content.NewDescriptorFromBytes("application/octet-stream", []byte("other")).Digest.String()
+	_, err = remote.Ready(context.Background(), wrong)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+}
+
 func TestRegistryStoreFetchForwardsRangesAndConditions(t *testing.T) {
 	t.Parallel()
 	payload := []byte("0123456789")

@@ -6,6 +6,7 @@ import (
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
+	"github.com/container-registry/harbor-satellite/internal/satellite/ready"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
@@ -24,12 +25,18 @@ type Satellite struct {
 	eventscheduler   *events.EventScheduler
 	localStore       store.Store
 	remoteStore      store.Store
+	imageGate        *ready.Gate
 }
 
 // SetStores supplies the same local and Harbor stores used by the proxy.
 func (s *Satellite) SetStores(localStore, remoteStore store.Store) {
 	s.localStore = localStore
 	s.remoteStore = remoteStore
+}
+
+// SetImageGate shares the manifest-wait register with state replication.
+func (s *Satellite) SetImageGate(gate *ready.Gate) {
+	s.imageGate = gate
 }
 
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, storeRoot, desiredStateFile string, jq *events.EventScheduler) *Satellite {
@@ -50,6 +57,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, s.storeRoot, s.desiredStateFile, log)
 	fetchAndReplicateStateProcess.SetStores(s.localStore, s.remoteStore)
+	fetchAndReplicateStateProcess.SetImageGate(s.imageGate)
 	s.stateProcess = fetchAndReplicateStateProcess
 
 	// Create ZTR scheduler if not already done

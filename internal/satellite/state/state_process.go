@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/peers"
+	"github.com/container-registry/harbor-satellite/internal/satellite/ready"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/shared/utils"
@@ -30,6 +31,7 @@ type FetchAndReplicateStateProcess struct {
 	directDeliverer     *DirectDeliverer
 	localStore          store.Store
 	remoteStore         store.Store
+	images              *ready.Gate
 	fetchRootState      func(ctx context.Context, satelliteStateURL, srcUsername, srcPassword string, useUnsecure bool, log *zerolog.Logger) (*SatelliteState, error)
 	fetchGroupState     func(ctx context.Context, groupURL, srcUsername, srcPassword string, useUnsecure bool, log *zerolog.Logger) (*StateReader, error)
 }
@@ -38,6 +40,11 @@ type FetchAndReplicateStateProcess struct {
 func (f *FetchAndReplicateStateProcess) SetStores(localStore, remoteStore store.Store) {
 	f.localStore = localStore
 	f.remoteStore = remoteStore
+}
+
+// SetImageGate receives publish commits for manifest requests waiting on this process.
+func (f *FetchAndReplicateStateProcess) SetImageGate(gate *ready.Gate) {
+	f.images = gate
 }
 
 // Define result types for channels
@@ -165,6 +172,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return nil
 	}
 	log.Info().Msg(reason)
+	f.announceKnownGroups()
 
 	satelliteState, err := f.fetchSatelliteRootStateTimed(ctx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
 	if err != nil {
@@ -185,6 +193,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 	}
 
 	changed := f.updateStateMap(satelliteState.States)
+	f.announceKnownGroups()
 
 	// Persist state if groups were added, removed, or swapped
 	if f.stateFilePath != "" && changed {
@@ -237,6 +246,7 @@ func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) bool {
 			updatedStateMap = append(updatedStateMap, stateMap)
 		} else {
 			removed++
+			f.removeGroup(stateMap.url)
 		}
 	}
 
@@ -467,6 +477,7 @@ func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
 		result.Error = err
 		return result
 	}
+	f.commitPresent(entities, missing)
 	f.LogChanges(nil, missing, &groupLog)
 
 	if len(missing) > 0 {
@@ -474,6 +485,9 @@ func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
 			groupLog.Error().Err(err).Msg("Error replicating persisted state")
 			result.Error = fmt.Errorf("failed to replicate persisted entities for %s: %w", f.stateMap[index].url, err)
 			return result
+		}
+		for _, entity := range missing {
+			f.commitArtifact(entity)
 		}
 		if f.directDeliverer != nil {
 			deliveryCtx, cancel := context.WithTimeout(ctx, f.listFetchTimeout())
@@ -485,6 +499,66 @@ func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
 	}
 	f.markDesiredApplied(index, entities)
 	return result
+}
+
+func (f *FetchAndReplicateStateProcess) announceKnownGroups() {
+	if f.images == nil {
+		return
+	}
+	for index := range f.stateMap {
+		f.announceGroup(f.stateMap[index].url, f.groupEntities(index))
+	}
+}
+
+func (f *FetchAndReplicateStateProcess) announceGroup(group string, entities []Entity) {
+	if f.images == nil {
+		return
+	}
+	f.images.SetGroup(group, entities)
+}
+
+func (f *FetchAndReplicateStateProcess) removeGroup(group string) {
+	if f.images == nil {
+		return
+	}
+	f.images.RemoveGroup(group)
+}
+
+func (f *FetchAndReplicateStateProcess) commitArtifact(artifact Entity) {
+	if f.images == nil {
+		return
+	}
+	f.images.Commit(artifact)
+}
+
+// commitPresent marks images that already resolve locally so a manifest pull
+// does not wait for a copy that is not going to run.
+func (f *FetchAndReplicateStateProcess) commitPresent(entities, missing []Entity) {
+	absent := make(map[string]struct{}, len(missing))
+	for _, entity := range missing {
+		absent[entity.Reference()] = struct{}{}
+	}
+	for _, entity := range entities {
+		if _, skip := absent[entity.Reference()]; skip {
+			continue
+		}
+		f.commitArtifact(entity)
+	}
+}
+
+func appendMissing(scheduled, missing []Entity) []Entity {
+	seen := make(map[string]struct{}, len(scheduled))
+	for _, entity := range scheduled {
+		seen[entity.Reference()] = struct{}{}
+	}
+	for _, entity := range missing {
+		if _, ok := seen[entity.Reference()]; ok {
+			continue
+		}
+		seen[entity.Reference()] = struct{}{}
+		scheduled = append(scheduled, entity)
+	}
+	return scheduled
 }
 
 func missingLocally(ctx context.Context, local store.Store, entities []Entity) ([]Entity, error) {
@@ -502,7 +576,7 @@ func missingLocally(ctx context.Context, local store.Store, entities []Entity) (
 		if lookup.Tag != "" {
 			lookup.Digest = ""
 		}
-		descriptor, err := local.Pull(ctx, lookup, store.PullResourceManifest)
+		descriptor, err := store.ReadyManifest(ctx, local, lookup)
 		if err != nil || (entity.Digest != "" && descriptor.Digest.String() != entity.Digest) {
 			missing = append(missing, entity)
 		}
@@ -713,7 +787,17 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	stateFetcherLog.Info().Msgf("State fetched successfully for %s", f.stateMap[index].url)
 
 	deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, &stateFetcherLog, f.stateMap[index].Entities)
+	desired := FetchEntitiesFromState(newState)
+	f.announceGroup(f.stateMap[index].url, desired)
 	f.LogChanges(deleteEntity, replicateEntity, &stateFetcherLog)
+
+	missing, err := missingLocally(ctx, replicator, desired)
+	if err != nil {
+		result.Error = fmt.Errorf("failed to inspect local entities for %s: %w", f.stateMap[index].url, err)
+		return result
+	}
+	f.commitPresent(desired, missing)
+	replicateEntity = appendMissing(replicateEntity, missing)
 
 	if err := replicator.Delete(ctx, deleteEntity); err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
@@ -721,10 +805,15 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		return result
 	}
 
-	if err := replicator.Replicate(ctx, sourceStore, replicateEntity); err != nil {
-		stateFetcherLog.Error().Err(err).Msg("Error replicating state")
-		result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
-		return result
+	if len(replicateEntity) > 0 {
+		if err := replicator.Replicate(ctx, sourceStore, replicateEntity); err != nil {
+			stateFetcherLog.Error().Err(err).Msg("Error replicating state")
+			result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
+			return result
+		}
+		for _, entity := range replicateEntity {
+			f.commitArtifact(entity)
+		}
 	}
 
 	// Direct delivery: write tarballs to k3s/RKE2 image dir after store replication.

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	proxy "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
+	"github.com/container-registry/harbor-satellite/internal/satellite/ready"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/sync/singleflight"
@@ -27,13 +28,16 @@ type pullHandler struct {
 	mode         proxy.Mode
 	localStore   store.Store
 	remoteStore  store.Store
+	images       *ready.Gate
 	operations   singleflight.Group
 }
 
 // NewPull serves retained content from localStore and fills it from remoteStore
-// on a miss. The shared operation returns only an immutable descriptor; every
-// HTTP request opens and streams its own reader after the flight completes.
-func NewPull(lifecycleCtx context.Context, mode proxy.Mode, localStore, remoteStore store.Store) (proxy.HandlerFunc, error) {
+// on a miss. images, when set, holds manifest requests for references the state
+// job is publishing until that publish commits a complete local graph. The
+// shared operation returns only an immutable descriptor; every HTTP request
+// opens and streams its own reader after the flight completes.
+func NewPull(lifecycleCtx context.Context, mode proxy.Mode, localStore, remoteStore store.Store, images *ready.Gate) (proxy.HandlerFunc, error) {
 	if lifecycleCtx == nil {
 		return nil, errors.New("image.NewPull: lifecycle context is required")
 	}
@@ -42,6 +46,7 @@ func NewPull(lifecycleCtx context.Context, mode proxy.Mode, localStore, remoteSt
 		mode:         mode,
 		localStore:   localStore,
 		remoteStore:  remoteStore,
+		images:       images,
 	}
 	return handler.handle, nil
 }
@@ -70,6 +75,10 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	}
 
 	metadataOnly := request.Operation == proxy.CheckManifest || request.Operation == proxy.CheckBlob
+	handled, err := p.serveIfWatched(request, artifact, resource, metadataOnly)
+	if handled {
+		return err
+	}
 	key := pullKey(resource, artifact.Name, identifier)
 	if metadataOnly {
 		key += "\x00head"
@@ -80,12 +89,20 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 		if err := fillCtx.Err(); err != nil {
 			return nil, err
 		}
-		descriptor, err := p.localStore.Pull(fillCtx, artifact, resource)
+		descriptor, err := p.localDescriptor(fillCtx, artifact, resource)
 		if err == nil {
 			return descriptor, nil
 		}
 		if !errors.Is(err, errdef.ErrNotFound) {
 			return nil, err
+		}
+		// The reference may have entered the desired set after this flight
+		// started. A desired image is served only from the local store.
+		if resource == store.PullResourceManifest && p.watching(artifact) {
+			return p.waitForLocal(fillCtx, artifact, resource)
+		}
+		if resource == store.PullResourceManifest && p.known(artifact) {
+			return nil, errdef.ErrNotFound
 		}
 		if !p.mode.AllowsUpstreamPull() {
 			return nil, err
@@ -97,7 +114,7 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 		if err := p.localStore.Replicate(fillCtx, p.remoteStore, []store.Artifact{artifact}); err != nil {
 			return nil, err
 		}
-		return p.localStore.Pull(fillCtx, artifact, resource)
+		return p.localDescriptor(fillCtx, artifact, resource)
 	})
 
 	var operationResult singleflight.Result
@@ -113,6 +130,95 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	if !ok {
 		return errors.New("proxy image pull returned an invalid descriptor")
 	}
+	return p.writeResolved(request, artifact, resource, descriptor, metadataOnly)
+}
+
+// serveIfWatched blocks a manifest request for a desired image until state
+// replication commits it, then answers from the local store only.
+func (p *pullHandler) serveIfWatched(request *proxy.Request, artifact store.Artifact, resource store.PullResource, metadataOnly bool) (bool, error) {
+	if resource != store.PullResourceManifest || !p.watching(artifact) {
+		return false, nil
+	}
+	descriptor, err := p.localManifest(request.Context(), artifact)
+	if err == nil {
+		return true, p.writeResolved(request, artifact, resource, descriptor, metadataOnly)
+	}
+	if !errors.Is(err, errdef.ErrNotFound) {
+		return true, err
+	}
+	waitCtx, cancel := p.waitContext(request.Context())
+	defer cancel()
+	committed, err := p.images.Wait(waitCtx, artifact)
+	if err != nil {
+		return true, err
+	}
+	if !committed {
+		return false, nil
+	}
+	descriptor, err = p.localManifest(request.Context(), artifact)
+	if err != nil {
+		return true, mapPullError(resource, err)
+	}
+	return true, p.writeResolved(request, artifact, resource, descriptor, metadataOnly)
+}
+
+func (p *pullHandler) waitForLocal(ctx context.Context, artifact store.Artifact, resource store.PullResource) (ocispec.Descriptor, error) {
+	committed, err := p.images.Wait(ctx, artifact)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	if !committed {
+		return ocispec.Descriptor{}, errdef.ErrNotFound
+	}
+	return p.lookupLocal(ctx, artifact, resource)
+}
+
+func (p *pullHandler) watching(artifact store.Artifact) bool {
+	return p.images != nil && p.images.Watching(artifact)
+}
+
+func (p *pullHandler) known(artifact store.Artifact) bool {
+	return p.images != nil && p.images.Known(artifact)
+}
+
+func (p *pullHandler) waitContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	waitCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		select {
+		case <-p.lifecycleCtx.Done():
+			cancel()
+		case <-waitCtx.Done():
+		}
+	}()
+	return waitCtx, cancel
+}
+
+// localDescriptor is the metadata lookup. A desired manifest is ready only
+// when its whole graph is in the local store.
+func (p *pullHandler) localDescriptor(ctx context.Context, artifact store.Artifact, resource store.PullResource) (ocispec.Descriptor, error) {
+	if resource == store.PullResourceManifest && p.known(artifact) {
+		return p.lookupLocal(ctx, artifact, resource)
+	}
+	return p.localStore.Pull(ctx, artifact, resource)
+}
+
+func (p *pullHandler) lookupLocal(ctx context.Context, artifact store.Artifact, resource store.PullResource) (ocispec.Descriptor, error) {
+	if resource != store.PullResourceManifest {
+		return p.localStore.Pull(ctx, artifact, resource)
+	}
+	return p.localManifest(ctx, artifact)
+}
+
+func (p *pullHandler) localManifest(ctx context.Context, artifact store.Artifact) (ocispec.Descriptor, error) {
+	if p.images != nil {
+		if digest, ok := p.images.ExpectedDigest(artifact); ok && artifact.Digest == "" {
+			artifact.Digest = digest
+		}
+	}
+	return store.ReadyManifest(ctx, p.localStore, artifact)
+}
+
+func (p *pullHandler) writeResolved(request *proxy.Request, artifact store.Artifact, resource store.PullResource, descriptor ocispec.Descriptor, metadataOnly bool) error {
 	if metadataOnly {
 		if descriptor.Size < 0 {
 			setPullHeaders(request.ResponseHeader(), descriptor)

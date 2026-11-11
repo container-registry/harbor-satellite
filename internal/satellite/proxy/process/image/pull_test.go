@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/internal/satellite/proxy/process/image"
+	"github.com/container-registry/harbor-satellite/internal/satellite/ready"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/google/go-containerregistry/pkg/registry"
 	digest "github.com/opencontainers/go-digest"
@@ -117,6 +119,140 @@ func TestPullCoalescesCacheFillAndOpensIndependentStreams(t *testing.T) {
 	require.Equal(t, int32(0), remote.pullCalls.Load())
 	require.Equal(t, int32(1), local.replicateCalls.Load())
 	require.Equal(t, int32(requestCount), local.fetchCalls.Load())
+}
+
+func TestImageWaitBlocksUntilLocalCommit(t *testing.T) {
+	payload := []byte(`{"schemaVersion":2}`)
+	descriptor := descriptorFor(ocispec.MediaTypeImageManifest, payload)
+	var available atomic.Bool
+	local := &fakeStore{
+		pull: func(context.Context, store.Artifact, store.PullResource, int32) (ocispec.Descriptor, error) {
+			if !available.Load() {
+				return ocispec.Descriptor{}, errdef.ErrNotFound
+			}
+			return descriptor, nil
+		},
+		fetch: func(context.Context, store.Artifact, ocispec.Descriptor) (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(payload)), nil
+		},
+		replicate: func(context.Context, store.Store, []store.Artifact) error {
+			return errors.New("proxy must not replicate a desired image")
+		},
+	}
+	remote := &fakeStore{
+		pull: func(context.Context, store.Artifact, store.PullResource, int32) (ocispec.Descriptor, error) {
+			return ocispec.Descriptor{}, errors.New("proxy must not contact upstream for a desired image")
+		},
+		fetch:     func(context.Context, store.Artifact, ocispec.Descriptor) (io.ReadCloser, error) { return nil, nil },
+		replicate: func(context.Context, store.Store, []store.Artifact) error { return nil },
+	}
+	imageRef := store.Artifact{Name: "team/app", Tag: "latest", Digest: descriptor.Digest.String()}
+	gate := ready.New()
+	gate.SetGroup("edge", []store.Artifact{imageRef})
+	handler := proxy.New(newPullWithGate(t, proxy.ModeProxy, local, remote, gate)).Handler()
+
+	done := make(chan *httptest.ResponseRecorder, 2)
+	go func() {
+		done <- serve(handler, http.MethodGet, "/v2/team/app/manifests/latest", nil)
+	}()
+	go func() {
+		done <- serve(handler, http.MethodHead, "/v2/team/app/manifests/latest", nil)
+	}()
+	require.Eventually(t, func() bool { return local.pullCalls.Load() >= 2 }, time.Second, time.Millisecond)
+	available.Store(true)
+	gate.Commit(imageRef)
+
+	for range 2 {
+		response := <-done
+		require.Equal(t, http.StatusOK, response.Code)
+		require.Equal(t, descriptor.Digest.String(), response.Header().Get("Docker-Content-Digest"))
+	}
+	require.Equal(t, int32(0), remote.pullCalls.Load())
+	require.Equal(t, int32(0), local.replicateCalls.Load())
+	require.Equal(t, int32(1), local.fetchCalls.Load())
+}
+
+func TestImageWaitCancelDoesNotReportTheImageReady(t *testing.T) {
+	local := &fakeStore{
+		pull: func(context.Context, store.Artifact, store.PullResource, int32) (ocispec.Descriptor, error) {
+			return ocispec.Descriptor{}, errdef.ErrNotFound
+		},
+		fetch:     func(context.Context, store.Artifact, ocispec.Descriptor) (io.ReadCloser, error) { return nil, nil },
+		replicate: func(context.Context, store.Store, []store.Artifact) error { return nil },
+	}
+	remote := descriptorStore(descriptorFor(ocispec.MediaTypeImageManifest, []byte(`{"schemaVersion":2}`)), []byte(`{"schemaVersion":2}`))
+	gate := ready.New()
+	gate.SetGroup("edge", []store.Artifact{{Name: "team/app", Tag: "latest", Digest: "sha256:abc"}})
+	handler := proxy.New(newPullWithGate(t, proxy.ModeProxy, local, remote, gate)).Handler()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodHead, "/v2/team/app/manifests/latest", nil).WithContext(ctx)
+		handler.ServeHTTP(response, request)
+		done <- response
+	}()
+	require.Eventually(t, func() bool { return local.pullCalls.Load() >= 1 }, time.Second, time.Millisecond)
+	cancel()
+	response := <-done
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+	require.Equal(t, int32(0), remote.pullCalls.Load())
+	require.Equal(t, int32(0), local.replicateCalls.Load())
+}
+
+func TestCommittedImageWithMissingContentDoesNotFallThroughUpstream(t *testing.T) {
+	descriptor := descriptorFor(ocispec.MediaTypeImageManifest, []byte(`{"schemaVersion":2}`))
+	local := &fakeStore{
+		pull: func(context.Context, store.Artifact, store.PullResource, int32) (ocispec.Descriptor, error) {
+			return ocispec.Descriptor{}, errdef.ErrNotFound
+		},
+		fetch:     func(context.Context, store.Artifact, ocispec.Descriptor) (io.ReadCloser, error) { return nil, nil },
+		replicate: func(context.Context, store.Store, []store.Artifact) error { return nil },
+	}
+	remote := descriptorStore(descriptor, []byte(`{"schemaVersion":2}`))
+	imageRef := store.Artifact{Name: "team/app", Tag: "latest", Digest: descriptor.Digest.String()}
+	gate := ready.New()
+	gate.SetGroup("edge", []store.Artifact{imageRef})
+	gate.Commit(imageRef)
+	handler := proxy.New(newPullWithGate(t, proxy.ModeProxy, local, remote, gate)).Handler()
+
+	response := serve(handler, http.MethodGet, "/v2/team/app/manifests/latest", nil)
+
+	require.Equal(t, http.StatusNotFound, response.Code)
+	require.Contains(t, response.Body.String(), string(proxy.ErrorCodeManifestUnknown))
+	require.Equal(t, int32(0), remote.pullCalls.Load())
+	require.Equal(t, int32(0), local.replicateCalls.Load())
+}
+
+func TestImageOutsideTheDesiredSetKeepsProxyFill(t *testing.T) {
+	payload := []byte(`{"schemaVersion":2}`)
+	descriptor := descriptorFor(ocispec.MediaTypeImageManifest, payload)
+	var available atomic.Bool
+	local := &fakeStore{
+		pull: func(context.Context, store.Artifact, store.PullResource, int32) (ocispec.Descriptor, error) {
+			if !available.Load() {
+				return ocispec.Descriptor{}, errdef.ErrNotFound
+			}
+			return descriptor, nil
+		},
+		fetch: func(context.Context, store.Artifact, ocispec.Descriptor) (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(payload)), nil
+		},
+		replicate: func(context.Context, store.Store, []store.Artifact) error {
+			available.Store(true)
+			return nil
+		},
+	}
+	remote := descriptorStore(descriptor, payload)
+	gate := ready.New()
+	gate.SetGroup("edge", []store.Artifact{{Name: "library/other", Tag: "latest", Digest: "sha256:fff"}})
+	handler := proxy.New(newPullWithGate(t, proxy.ModeProxy, local, remote, gate)).Handler()
+
+	response := serve(handler, http.MethodGet, "/v2/team/app/manifests/latest", nil)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, payload, response.Body.Bytes())
+	require.Equal(t, int32(1), local.replicateCalls.Load())
 }
 
 func TestReplicaModeDoesNotContactUpstreamOnLocalMiss(t *testing.T) {
@@ -287,7 +423,7 @@ func TestReplicaHeadMissDoesNotContactUpstream(t *testing.T) {
 
 func TestNewPullRejectsNilLifecycleContext(t *testing.T) {
 	var lifecycleCtx context.Context
-	handler, err := image.NewPull(lifecycleCtx, proxy.ModeReplica, nil, nil)
+	handler, err := image.NewPull(lifecycleCtx, proxy.ModeReplica, nil, nil, nil)
 	require.Nil(t, handler)
 	require.EqualError(t, err, "image.NewPull: lifecycle context is required")
 }
@@ -422,7 +558,12 @@ func (writer *countingResponseWriter) Write(payload []byte) (int, error) {
 
 func newPull(t *testing.T, mode proxy.Mode, local, remote store.Store) proxy.HandlerFunc {
 	t.Helper()
-	handler, err := image.NewPull(context.Background(), mode, local, remote)
+	return newPullWithGate(t, mode, local, remote, nil)
+}
+
+func newPullWithGate(t *testing.T, mode proxy.Mode, local, remote store.Store, gate *ready.Gate) proxy.HandlerFunc {
+	t.Helper()
+	handler, err := image.NewPull(context.Background(), mode, local, remote, gate)
 	require.NoError(t, err)
 	return handler
 }
