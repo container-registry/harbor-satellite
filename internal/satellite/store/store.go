@@ -89,6 +89,19 @@ func (a Artifact) destinationIdentifier() string {
 	return a.sourceIdentifier()
 }
 
+// rejectUnlistedDigest reports a copied root the group list did not ask for.
+// The caller leaves that root untagged.
+func rejectUnlistedDigest(desc ocispec.Descriptor, artifact Artifact) error {
+	if artifact.Digest == "" {
+		return nil
+	}
+	listed := artifact.sourceIdentifier()
+	if desc.Digest.String() == listed {
+		return nil
+	}
+	return fmt.Errorf("copied %s digest %s does not match group list digest %s", artifact.Reference(), desc.Digest, listed)
+}
+
 // validate is used by state replication and deletion. Pull request validation
 // is deliberately owned by the proxy image process.
 func (a Artifact) validate() error {

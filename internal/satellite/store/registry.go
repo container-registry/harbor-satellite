@@ -144,7 +144,24 @@ func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts [
 			}
 			continue
 		}
-		if _, err := oras.Copy(ctx, from, artifact.sourceIdentifier(), to, artifact.destinationIdentifier(), oras.DefaultCopyOptions); err != nil {
+		// oras.Copy tags inside the transfer, so copy the graph by descriptor
+		// and tag it only after the root matches the group list. Look the root
+		// up by the listed digest: a source tag can still name an older root.
+		lookup := artifact
+		if artifact.Digest != "" {
+			lookup.Tag = ""
+		}
+		desc, err := source.Pull(ctx, lookup, PullResourceManifest)
+		if err != nil {
+			return err
+		}
+		if err := rejectUnlistedDigest(desc, artifact); err != nil {
+			return err
+		}
+		if err := oras.CopyGraph(ctx, from, to, desc, oras.DefaultCopyGraphOptions); err != nil {
+			return err
+		}
+		if err := to.Tag(ctx, desc, artifact.destinationIdentifier()); err != nil {
 			return err
 		}
 	}
