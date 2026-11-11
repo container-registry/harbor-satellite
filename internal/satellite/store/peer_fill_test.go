@@ -432,25 +432,30 @@ func TestPeerFillingStoreRequiresLocalStore(t *testing.T) {
 	require.ErrorContains(t, err, "local store")
 }
 
-func TestPeerFillingStoreBoundsHarborCopyWhenTimeoutSet(t *testing.T) {
+func TestPeerFillingStoreSkipsHarborWhenUnreachable(t *testing.T) {
 	harbor := &recordingStore{}
 	peer := &recordingStore{}
-	local := &recordingStore{
-		replicateCtx: func(ctx context.Context, source Store, _ []Artifact) error {
-			if source != harbor {
-				return errors.New("peer miss")
-			}
-			<-ctx.Done()
-			return ctx.Err()
-		},
-	}
-	filling, err := NewPeerFillingStore(local, func() []Store { return []Store{peer} }, PeerFillOptions{Timeout: time.Millisecond})
+	local := &recordingStore{replicate: func(source Store, _ []Artifact) error {
+		if source == peer {
+			return errors.New("peer miss")
+		}
+		return nil
+	}}
+	filling, err := NewPeerFillingStore(local, func() []Store { return []Store{peer} }, PeerFillOptions{Timeout: time.Second})
 	require.NoError(t, err)
 
-	start := time.Now()
-	err = filling.Replicate(WithHarborTimeout(context.Background(), 40*time.Millisecond), harbor, []Artifact{{Name: "demo/app", Tag: "latest"}})
-	require.Error(t, err)
-	require.Less(t, time.Since(start), time.Second)
+	err = filling.Replicate(WithHarborTimeout(context.Background(), time.Second), harbor, []Artifact{{Name: "demo/app", Tag: "latest"}})
+
+	require.ErrorContains(t, err, "Harbor is unreachable")
+	harborCalls, _, _ := harbor.snapshot()
+	require.Equal(t, 0, harborCalls)
+	_, sources, _ := local.snapshot()
+	require.Equal(t, []Store{peer}, sources)
+	for _, source := range sources {
+		if source == harbor {
+			t.Fatal("degraded miss copied from Harbor")
+		}
+	}
 }
 
 func TestHarborTimeoutFromEmptyContext(t *testing.T) {

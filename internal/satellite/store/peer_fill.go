@@ -104,6 +104,14 @@ func (s *PeerFillingStore) replicateArtifact(ctx context.Context, source Store, 
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
+	// A degraded tick sets this after the Harbor list fetch already failed.
+	// Starting the blob copy can still publish if the registry answers late.
+	if HarborTimeoutFrom(ctx) > 0 {
+		if err != nil {
+			return fmt.Errorf("no complete peer graph for %s while Harbor is unreachable: %w", artifact.Reference(), err)
+		}
+		return fmt.Errorf("no complete peer graph for %s while Harbor is unreachable", artifact.Reference())
+	}
 	if err != nil {
 		logger.FromContext(ctx).Warn().Err(err).Str("reference", artifact.Reference()).Msg("peer copy did not complete a graph; trying Harbor")
 	}
@@ -116,13 +124,7 @@ func (s *PeerFillingStore) replicateArtifact(ctx context.Context, source Store, 
 	if err != nil {
 		logger.FromContext(ctx).Info().Str("reference", artifact.Reference()).Msg("filling local store from Harbor")
 	}
-	harborCtx := ctx
-	if timeout := HarborTimeoutFrom(ctx); timeout > 0 {
-		var cancel context.CancelFunc
-		harborCtx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	}
-	if copyErr := s.local.Replicate(harborCtx, source, one); copyErr != nil {
+	if copyErr := s.local.Replicate(ctx, source, one); copyErr != nil {
 		return fmt.Errorf("copy %s from Harbor: %w", artifact.Reference(), copyErr)
 	}
 	return nil
@@ -130,9 +132,9 @@ func (s *PeerFillingStore) replicateArtifact(ctx context.Context, source Store, 
 
 type harborTimeoutKey struct{}
 
-// WithHarborTimeout bounds the Harbor blob copy after peers miss. A live tick
-// omits this so a large image can still finish. Degraded ticks set it so a
-// dead registry cannot hang the scheduler.
+// WithHarborTimeout marks a degraded tick. Peers may still be tried. Harbor
+// blob copy is skipped so a late registry response cannot tag the artifact.
+// A live tick omits this and keeps the Harbor copy unbounded.
 func WithHarborTimeout(ctx context.Context, timeout time.Duration) context.Context {
 	if timeout <= 0 {
 		return ctx
