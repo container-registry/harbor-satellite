@@ -1699,7 +1699,7 @@ paths:
     get:
       tags:
         - webhooks
-      summary: Lists webhook subscriptions (plan item 9.1, not implemented yet).
+      summary: Lists webhook subscriptions (plan item 9.1).
       operationId: listWebhooks
       responses:
         "200":
@@ -1733,7 +1733,7 @@ paths:
     post:
       tags:
         - webhooks
-      summary: Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+      summary: Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1).
       operationId: createWebhook
       requestBody:
         content:
@@ -1784,7 +1784,7 @@ paths:
     delete:
       tags:
         - webhooks
-      summary: Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+      summary: Deletes a webhook subscription and its checkpoint (plan item 9.1).
       operationId: deleteWebhook
       parameters:
         - x-go-name: ID

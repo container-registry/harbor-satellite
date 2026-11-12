@@ -118,7 +118,7 @@ func NewServices(deps Deps) (*Services, error) {
 		Registration: &RegistrationService{c: c},
 		Heartbeats:   &HeartbeatService{c: c, journal: journal, sink: deps.HeartbeatSink, rotations: deps.Rotations},
 		Policies:     &PolicyService{c: c},
-		Webhooks:     &WebhookService{},
+		Webhooks:     &WebhookService{c: c, repo: deps.Webhooks, sealer: deps.Sealer},
 	}, nil
 }
 

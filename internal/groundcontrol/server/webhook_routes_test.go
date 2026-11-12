@@ -29,6 +29,12 @@ func TestWebhookRoutes_SystemAdminOnly(t *testing.T) {
 		h.mustDo(e.Method, path, nil, nil, http.StatusUnauthorized)
 		h.mustDo(e.Method, path, nil, operator, http.StatusForbidden)
 		r := h.do(e.Method, path, nil, h.admin)
-		require.False(t, slices.Contains([]int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusMethodNotAllowed}, r.Status), "%s %s: %d %s", e.Method, path, r.Status, r.Body)
+		require.False(t, slices.Contains([]int{http.StatusUnauthorized, http.StatusForbidden, http.StatusMethodNotAllowed}, r.Status), "%s %s: %d %s", e.Method, path, r.Status, r.Body)
+		if r.Status == http.StatusNotFound {
+			// The handler's 404 for a missing subscription, not the router's.
+			var body AppError
+			r.decode(t, &body)
+			require.Equal(t, http.StatusNotFound, body.Code, "%s %s", e.Method, path)
+		}
 	}
 }

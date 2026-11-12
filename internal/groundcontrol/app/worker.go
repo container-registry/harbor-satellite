@@ -3,8 +3,10 @@ package app
 import (
 	"cmp"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/postgres"
@@ -13,6 +15,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/webhook"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 )
 
@@ -162,11 +165,63 @@ func NewWorker(ctx context.Context, deps WorkerDeps) (*async.Worker, func() erro
 		}
 		jobs = append(jobs, rotator)
 	}
-	worker, err := async.NewWorker(publisher, jobs...)
+	pruner, err := async.NewOutboxPruner(outbox, cmp.Or(deps.OutboxRetention, 168*time.Hour), time.Hour, 1000)
 	if err != nil {
 		return nil, nil, errors.Join(err, locker.Close())
 	}
-	return worker, locker.Close, nil
+	jobs = append(jobs, pruner)
+	closers := []func() error{locker.Close}
+	if deps.Webhook.Enabled {
+		dispatcher, closeSubs, err := newDispatcher(ctx, pool, deps)
+		if err != nil {
+			return nil, nil, errors.Join(err, locker.Close())
+		}
+		jobs = append(jobs, dispatcher)
+		closers = append(closers, closeSubs)
+	}
+	closeAll := func() error {
+		var errs []error
+		for _, c := range closers {
+			errs = append(errs, c())
+		}
+		return errors.Join(errs...)
+	}
+	worker, err := async.NewWorker(publisher, jobs...)
+	if err != nil {
+		return nil, nil, errors.Join(err, closeAll())
+	}
+	return worker, closeAll, nil
+}
+
+// newDispatcher delivers the outbox to webhook subscriptions over the
+// async pool, signing with secrets sealed by DATA_ENCRYPTION_KEY.
+func newDispatcher(ctx context.Context, pool *sql.DB, deps WorkerDeps) (*webhook.Dispatcher, func() error, error) {
+	sealer, err := NewSealer(deps.DataEncryptionKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("WEBHOOKS_ENABLED: %w", err)
+	}
+	subs, err := postgres.NewWebhookStore(pool)
+	if err != nil {
+		return nil, nil, err
+	}
+	outboxLog, err := postgres.NewOutboxLog(pool)
+	if err != nil {
+		return nil, nil, err
+	}
+	locker, err := postgres.NewSubscriptionLocker(ctx, pool)
+	if err != nil {
+		return nil, nil, err
+	}
+	w := deps.Webhook
+	cfg := webhook.DispatcherConfig{
+		BatchSize: w.BatchSize, PollInterval: w.PollInterval, BackoffBase: w.BackoffBase, BackoffMax: w.BackoffMax,
+		Timeout: w.Timeout, DisableAfter: w.DisableAfter, Source: w.Source,
+	}
+	d, err := webhook.NewDispatcher(subs, outboxLog, locker, sealer, webhook.NewHTTPSender(&http.Client{Timeout: cmp.Or(w.Timeout, 10*time.Second)}, fleet.SystemClock{}), cfg)
+	if err != nil {
+		return nil, nil, errors.Join(err, locker.Close())
+	}
+	return d, locker.Close, nil
 }
 
 // PublisherConfig maps the OUTBOX_* settings.
