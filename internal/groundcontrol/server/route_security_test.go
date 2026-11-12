@@ -139,3 +139,27 @@ func TestRouteSecurity_CredentialsDoNotCrossPlanes(t *testing.T) {
 		require.Equal(t, http.StatusUnauthorized, got.Status, "%s %s with operator credentials: %s", r.Method, r.Path, got.Body)
 	}
 }
+
+// The anonymous routes read a small JSON document; a client without
+// credentials must not make Ground Control buffer an arbitrarily large one.
+func TestRouteSecurity_AnonymousRoutesBoundTheBody(t *testing.T) {
+	h := newGCHarness(t)
+	big := strings.Repeat("A", 2*anonymousMaxBodyBytes)
+	bodies := map[string]any{
+		"/login":          LoginRequest{Username: "admin", Password: big},
+		"/satellites/ztr": ZTRRequest{Token: big},
+	}
+	for r, class := range nonAPIRoutes {
+		if class != classAnonymous || r.Method != http.MethodPost {
+			continue
+		}
+		body, ok := bodies[r.Path]
+		if !ok {
+			continue
+		}
+		got := h.do(r.Method, r.Path, body, nil)
+		require.Equal(t, http.StatusRequestEntityTooLarge, got.Status, "%s %s: %s", r.Method, r.Path, got.Body)
+	}
+	got := h.do(http.MethodPost, "/login", LoginRequest{Username: "admin", Password: harnessAdminPassword}, nil)
+	require.Equal(t, http.StatusOK, got.Status, "a normal login still fits: %s", got.Body)
+}

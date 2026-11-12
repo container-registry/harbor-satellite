@@ -11,6 +11,11 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// anonymousMaxBodyBytes bounds what a request without credentials can make
+// Ground Control read; login, ZTR and the OIDC device poll send a few hundred
+// bytes.
+const anonymousMaxBodyBytes = 64 << 10
+
 func (s *Server) RegisterRoutes() http.Handler {
 	router := mux.NewRouter()
 	router.Use(s.RequestIDMiddleware)
@@ -31,6 +36,11 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handler := next
 		cleanPath := path.Clean(r.URL.Path)
+
+		switch cleanPath {
+		case "/login", "/oidc/login", "/oidc/callback", "/oidc/device", "/oidc/device/token", "/satellites/ztr", "/satellites/spiffe-ztr":
+			r.Body = http.MaxBytesReader(w, r.Body, anonymousMaxBodyBytes)
+		}
 
 		switch cleanPath {
 		case "/login":

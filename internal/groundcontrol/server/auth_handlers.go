@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -18,8 +17,8 @@ type refreshCredentialResponse struct {
 
 func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
 		return
 	}
 
