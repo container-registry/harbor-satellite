@@ -181,3 +181,42 @@ func TestIntervalChangeToZeroDoesNotPanic(t *testing.T) {
 		require.NotPanics(t, func() { require.NoError(t, hrm.ProcessConfigChanges(changes)) }, interval)
 	}
 }
+
+// A config from Ground Control usually changes heartbeat_interval after the
+// satellite started with the default; the satellite reports the configured
+// interval on every beat, so it must also beat at that interval.
+func TestHeartbeatIntervalChangeRestartsTheStatusScheduler(t *testing.T) {
+	log := zerolog.Nop()
+	cm, path := newManager(t)
+	proc := &countingProcess{}
+	sched, err := scheduler.NewSchedulerWithInterval(cm.GetHeartbeatInterval(), proc, &log)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cancel()
+		require.NoError(t, sched.Stop(context.Background()))
+	})
+	sched.Start(ctx)
+	require.Eventually(t, func() bool { return proc.runs.Load() == 1 }, 2*time.Second, 5*time.Millisecond)
+
+	hrm := NewHotReloadManager(ctx, cm, &log, nil)
+	hrm.SetStatusReportScheduler(sched)
+	cfg := config.Config{AppConfig: config.AppConfig{LogLevel: "info", StateReplicationInterval: "@every 1h", HeartbeatInterval: "@every 20ms"}}
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, data, 0o600))
+	changes := reload(t, cm)
+	require.Len(t, changes, 1)
+	require.Equal(t, config.HeartbeatIntervalChanged, changes[0].Type)
+	require.NoError(t, hrm.ProcessConfigChanges(changes))
+
+	require.Eventually(t, func() bool { return proc.runs.Load() >= 3 }, 2*time.Second, 5*time.Millisecond,
+		"the status report scheduler still ticks at the startup interval")
+}
+
+func TestHeartbeatIntervalChangeWithoutSchedulerIsNoError(t *testing.T) {
+	log := zerolog.Nop()
+	cm, _ := newManager(t)
+	hrm := NewHotReloadManager(context.Background(), cm, &log, nil)
+	require.NoError(t, hrm.ProcessConfigChanges([]config.ConfigChange{{Type: config.HeartbeatIntervalChanged}}))
+}

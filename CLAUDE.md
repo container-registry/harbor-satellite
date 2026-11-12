@@ -135,7 +135,7 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 - internal/satellite/scheduler/: Interval scheduler (`@every <duration>` parsed into a time.Ticker, runs once immediately on start); `NewScheduler` without an interval runs its process only on `Trigger` (events such as `refresh_credentials`)
 - internal/satellite/process/: `Process` interface (Name, Execute, IsRunning, IsComplete)
 - internal/satellite/container_runtime/: CRI config management (containerd, CRI-O, Docker, Podman) and k3s/RKE2 image dir detection
-- internal/satellite/hotreload/, internal/satellite/watcher/: Config file watching and hot reload (log level, state replication interval; audit config is swapped in cmd/satellite)
+- internal/satellite/hotreload/, internal/satellite/watcher/: Config file watching and hot reload (log level, state replication and heartbeat intervals; audit config is swapped in cmd/satellite)
 - internal/satellite/identity/: Device fingerprint (machine-id, MAC, disk serial); real only on Linux default builds
 - internal/satellite/secure/: Device-bound config encryption (AES-256-GCM, Argon2id key from fingerprint)
 - internal/satellite/tls/: Client TLS config loading
@@ -326,7 +326,7 @@ goose migrations live in `internal/groundcontrol/sql/schema/` (001 to 024, no 01
 
 ### Hot Reload
 
-The satellite watches `config.json`. Log level, state replication interval and audit settings apply without restart; other changes need a restart.
+The satellite watches `config.json`. Log level, the state replication and heartbeat intervals and audit settings apply without restart; other changes need a restart.
 
 ## Testing
 

@@ -30,9 +30,10 @@ func WithEncryptor(e Encryptor) ManagerOption {
 type ConfigChangeType string
 
 const (
-	LogLevelChanged    ConfigChangeType = "log_level"
-	IntervalsChanged   ConfigChangeType = "intervals"
-	AuditConfigChanged ConfigChangeType = "audit"
+	LogLevelChanged          ConfigChangeType = "log_level"
+	IntervalsChanged         ConfigChangeType = "intervals"
+	HeartbeatIntervalChanged ConfigChangeType = "heartbeat_interval"
+	AuditConfigChanged       ConfigChangeType = "audit"
 )
 
 type ConfigChange struct {
@@ -142,6 +143,14 @@ func (cm *ConfigManager) detectChanges(oldConfig *Config, newConfig *Config) []C
 			Type:     IntervalsChanged,
 			OldValue: oldConfig.AppConfig.StateReplicationInterval,
 			NewValue: newConfig.AppConfig.StateReplicationInterval,
+		})
+	}
+
+	if oldConfig.AppConfig.HeartbeatInterval != newConfig.AppConfig.HeartbeatInterval {
+		changes = append(changes, ConfigChange{
+			Type:     HeartbeatIntervalChanged,
+			OldValue: oldConfig.AppConfig.HeartbeatInterval,
+			NewValue: newConfig.AppConfig.HeartbeatInterval,
 		})
 	}
 

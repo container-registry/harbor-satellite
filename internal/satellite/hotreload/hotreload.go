@@ -15,6 +15,7 @@ type HotReloadManager struct {
 	log                       *zerolog.Logger
 	ctx                       context.Context
 	stateReplicationScheduler *scheduler.Scheduler
+	statusReportScheduler     *scheduler.Scheduler
 	changeCallbacks           map[config.ConfigChangeType][]config.ConfigChangeCallback
 	callbackMu                sync.RWMutex
 }
@@ -40,6 +41,7 @@ func NewHotReloadManager(
 
 func (hrm *HotReloadManager) registerCallbacks() {
 	hrm.registerChangeCallback(config.IntervalsChanged, hrm.handleIntervalsChange)
+	hrm.registerChangeCallback(config.HeartbeatIntervalChanged, hrm.handleHeartbeatIntervalChange)
 	hrm.registerChangeCallback(config.LogLevelChanged, hrm.handleLogLevelChange)
 }
 
@@ -91,6 +93,20 @@ func (hrm *HotReloadManager) handleIntervalsChange(change config.ConfigChange) e
 	return nil
 }
 
+func (hrm *HotReloadManager) handleHeartbeatIntervalChange(change config.ConfigChange) error {
+	hrm.log.Info().
+		Interface("old_value", change.OldValue).
+		Interface("new_value", change.NewValue).
+		Msg("Handling heartbeat interval change")
+
+	if hrm.statusReportScheduler != nil {
+		if err := hrm.statusReportScheduler.ResetIntervalFromExpr(hrm.cm.GetHeartbeatInterval()); err != nil {
+			return fmt.Errorf("unable to restart status report scheduler: %w", err)
+		}
+	}
+	return nil
+}
+
 func (hrm *HotReloadManager) handleLogLevelChange(change config.ConfigChange) error {
 	hrm.log.Info().
 		Str("type", string(change.Type)).
@@ -118,6 +134,10 @@ func (hrm *HotReloadManager) handleLogLevelChange(change config.ConfigChange) er
 
 func (hrm *HotReloadManager) SetStateReplicationScheduler(stateReplicationScheduler *scheduler.Scheduler) {
 	hrm.stateReplicationScheduler = stateReplicationScheduler
+}
+
+func (hrm *HotReloadManager) SetStatusReportScheduler(statusReportScheduler *scheduler.Scheduler) {
+	hrm.statusReportScheduler = statusReportScheduler
 }
 
 func (hrm *HotReloadManager) ProcessConfigChanges(changes []config.ConfigChange) error {

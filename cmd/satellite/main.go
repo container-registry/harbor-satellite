@@ -626,8 +626,11 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	}
 
 	for _, s := range s.GetSchedulers() {
-		if s.Name() == config.ReplicateStateJobName {
+		switch s.Name() {
+		case config.ReplicateStateJobName:
 			hotReloadManager.SetStateReplicationScheduler(s)
+		case config.StatusReportJobName:
+			hotReloadManager.SetStatusReportScheduler(s)
 		}
 	}
 

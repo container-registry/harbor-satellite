@@ -77,7 +77,7 @@ Ground Control validates a config document against the same rules before it stor
 | `use_unsecure` | `false` | See `--use-unsecure`. |
 | `state_replication_interval` | `@every 00h00m30s` | How often the satellite checks its state artifacts. Applied without restart. |
 | `register_satellite_interval` | `@every 00h00m05s` | Retry interval of registration. |
-| `heartbeat_interval` | `@every 00h00m30s` | Heartbeat interval. Ground Control marks a satellite stale after three intervals without one. |
+| `heartbeat_interval` | `@every 00h00m30s` | Heartbeat interval. Ground Control marks a satellite stale after three intervals without one. Applied without restart. |
 | `metrics.collect_cpu`, `collect_memory`, `collect_storage` | `false` | Include these readings in the heartbeat. |
 | `bring_own_registry`, `local_registry.url`, `.username`, `.password` | | BYO registry, also set by the flags. |
 | `tls.cert_file`, `key_file`, `ca_file`, `skip_verify` | | Client TLS toward Harbor, Ground Control and the BYO registry. |
