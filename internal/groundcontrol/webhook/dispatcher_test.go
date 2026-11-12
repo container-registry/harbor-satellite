@@ -6,7 +6,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/webhook"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,7 +37,6 @@ func (p *plane) runOnce(t *testing.T) int {
 }
 
 func TestDispatcher_DeliversInOrderAndAdvancesCheckpoint(t *testing.T) {
-	pending.Plan(t, "9.1", pendingWebhooks)
 	p := newPlane(entry(10, 3, fleet.EventGroupChanged), entry(11, 1, fleet.EventGroupChanged), entry(11, 2, fleet.EventConfigChanged))
 
 	require.Equal(t, 3, p.runOnce(t))
@@ -49,7 +47,6 @@ func TestDispatcher_DeliversInOrderAndAdvancesCheckpoint(t *testing.T) {
 }
 
 func TestDispatcher_RetriesWithoutSkipping(t *testing.T) {
-	pending.Plan(t, "9.1", pendingWebhooks)
 	p := newPlane(entry(10, 1, fleet.EventGroupChanged), entry(10, 2, fleet.EventGroupChanged), entry(10, 3, fleet.EventGroupChanged))
 	p.sender.fail["2"] = true
 
@@ -62,7 +59,6 @@ func TestDispatcher_RetriesWithoutSkipping(t *testing.T) {
 }
 
 func TestDispatcher_FilteredKindsAdvanceWithoutSend(t *testing.T) {
-	pending.Plan(t, "9.1", pendingWebhooks)
 	p := newPlane(entry(10, 1, fleet.EventGroupChanged), entry(10, 2, fleet.EventEdgeReplicated), entry(10, 3, fleet.EventGroupChanged), entry(10, 4, fleet.EventEdgeReplicated))
 	p.subs.due[0].EventTypes = []fleet.EventKind{fleet.EventGroupChanged}
 
@@ -73,7 +69,6 @@ func TestDispatcher_FilteredKindsAdvanceWithoutSend(t *testing.T) {
 }
 
 func TestDispatcher_SkipsSubscriptionLockedElsewhere(t *testing.T) {
-	pending.Plan(t, "9.1", pendingWebhooks)
 	p := newPlane(entry(10, 1, fleet.EventGroupChanged))
 	p.locks.held[1] = true
 
@@ -84,7 +79,6 @@ func TestDispatcher_SkipsSubscriptionLockedElsewhere(t *testing.T) {
 }
 
 func TestDispatcher_DisablesAfterContinuousFailure(t *testing.T) {
-	pending.Plan(t, "9.1", pendingWebhooks)
 	p := newPlane(entry(10, 1, fleet.EventGroupChanged))
 	p.sender.always = 503
 	p.subs.disable = true
