@@ -32,10 +32,13 @@ And you are running into problems like:
 |---|---|
 | **Desired-state replication** | Define groups of artifacts centrally and assign them to sites. Each satellite pulls exactly its assigned artifacts from Harbor and keeps them in sync. |
 | **Local copies that survive outages** | Replicated artifacts persist on local disk. When Harbor or Ground Control is unreachable, existing content stays and sync resumes when the link returns. |
-| **Fleet visibility** | Satellites send periodic heartbeats with sync status and optional CPU, memory and storage metrics. Ground Control lists active and stale satellites. |
+| **Fleet visibility** | Satellites send periodic heartbeats with the state they applied and optional CPU, memory and storage metrics. Ground Control tracks each satellite as pending, online, stale or revoked and reports whether it has converged. |
 | **Zero-touch onboarding** | Register with a one-time token, or with a SPIFFE/SPIRE identity over mTLS (join token, X.509 PoP, or SSH PoP attestation). Ground Control provisions a Harbor robot account per satellite. |
 | **Audit logging** | Security-relevant events from Ground Control and satellites to syslog or OpenTelemetry. See the [audit logging guide](docs/guides/audit-logging.md). |
-| **Runtime integration** | With a BYO registry, the satellite configures containerd, CRI-O, Podman, or Docker to use it as a mirror with upstream fallback. |
+| **Access control** | Built-in roles or a Casbin policy with scoped rules, OIDC operator login, satellite sessions, revocation, and Harbor robot rotation before expiry. |
+| **Edge admission** | A policy delivered with the satellite config decides which repositories and references the local proxy serves. |
+| **Observability** | Satellite `/healthz` and Prometheus `/metrics`; Ground Control `/health` with Harbor reachability; signed CloudEvents webhooks for fleet events. |
+| **Runtime integration** | The satellite configures containerd, CRI-O, Podman, or Docker to pull through it, with the upstream registry as fallback. |
 | **Small footprint** | Single binary, unattended operation. Linux builds for amd64, arm64 and more; container images for amd64, arm64, ppc64le, s390x and riscv64. |
 | **API and CLI** | Ground Control has an OpenAPI 3 spec ([`spec/`](spec/)) and a `groundcontrol` CLI. |
 
@@ -67,7 +70,7 @@ And you are running into problems like:
 | **Local OCI store** (default) | Artifacts are written to an OCI image layout on disk (`<config-dir>/oci`, managed with ORAS). Local workloads pull them through the satellite's pull-only OCI endpoint on `127.0.0.1:8585` (`--proxy-port`). | Available |
 | **BYO registry** | The satellite replicates into a registry you run at the site (for example `registry:2`). Workloads pull from it, and container runtimes can be configured to mirror through it. | Available |
 | **Direct delivery** | For k3s and RKE2, the satellite writes image tarballs into the node's image import directory. | Experimental |
-| **Transparent proxy** | The satellite serves pulls on loopback from its local store and, in `proxy` mode (default), fills a miss from Harbor; `--proxy-mode replica` serves only replicated content ([ADR-0009](docs/decisions/0009-transparent-oci-registry-proxy.md)). Policy enforcement is not implemented yet. | Available (pull only, no policy) |
+| **Transparent proxy** | The satellite serves pulls on loopback from its local store and, in `proxy` mode (default), fills a miss from Harbor; `--proxy-mode replica` serves only replicated content ([ADR-0009](docs/decisions/0009-transparent-oci-registry-proxy.md)). An edge admission policy can restrict what it serves. | Available (pull only) |
 
 ## Getting Started
 
@@ -82,7 +85,7 @@ Pick the path that matches where you are:
 |---|---|
 | Try it locally, dev or test | [Token-based quickstart](examples/deploy/no-spiffe/quickstart.md) |
 | Production with zero-trust identity | [SPIFFE/SPIRE quickstarts](examples/deploy/README.md) |
-| Install binaries, containers, Helm | [Installation docs](https://satellite.container-registry.com/docs/installation/) |
+| Install binaries, containers, Helm | [Installation](docs/installation.md) |
 | Run Ground Control | [Ground Control guide](docs/guides/groundcontrol.md) |
 | Reference setup on k3s | [k3s reference architecture](docs/guides/k3s-reference-architecture.md) |
 
@@ -142,7 +145,7 @@ satellite \
   --token "<your-token>"
 ```
 
-Every flag has an environment variable equivalent (`GROUND_CONTROL_URL`, `HARBOR_REGISTRY_URL`, `TOKEN`, ...), except `--mirrors`, `--json-logging` and `--fallback-only`.
+Every flag has an environment variable equivalent (`GROUND_CONTROL_URL`, `HARBOR_REGISTRY_URL`, `TOKEN`, ...), except `--mirrors`, `--json-logging` and `--fallback-only`. All of them are in the [satellite configuration reference](docs/reference/satellite.md).
 
 ### OCI Store Directory
 
@@ -168,11 +171,10 @@ task byo-down  # stop and cleanup
 
 ### Container Runtime Configuration
 
-In BYO mode the satellite can point local runtimes at the site registry as a mirror, with fallback to upstream. Without BYO these options print a warning and change nothing.
+The satellite can point local runtimes at its OCI proxy (`127.0.0.1:<proxy-port>`) as a mirror, with fallback to upstream. With `--fallback-only` no proxy runs, and the mirror endpoint is the BYO registry.
 
 ```bash
-satellite ... --byo-registry --registry-url http://127.0.0.1:5000 \
-  --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
+satellite ... --mirrors=containerd:docker.io,quay.io --mirrors=podman:docker.io
 ```
 
 | Runtime | Config location | Notes |
@@ -199,7 +201,7 @@ _Example: IoT devices at a site with limited connectivity need to run containeri
 ![Use Case #1](docs/images/satellite_use_case_1.svg)
 <p align="center"><em>Use case #1</em></p>
 
-### Pattern 2: Replicate to a local Spegel registry (in progress)
+### Pattern 2: Replicate to a local Spegel registry (planned)
 
 The satellite sends pull instructions to [Spegel](https://github.com/spegel-org/spegel) instances running on each node of a Kubernetes cluster. One node pulls from the remote registry and shares the image peer-to-peer with the other nodes, so each node does not pull individually. Network boundaries are the same as in Pattern 1.
 
@@ -208,9 +210,9 @@ _Example: a larger edge site where a single local registry cannot keep up with d
 ![Use Case #2](docs/images/satellite_use_case_2.svg)
 <p align="center"><em>Use case #2</em></p>
 
-### Pattern 3: Proxy through the local store (in progress)
+### Pattern 3: Proxy through the local store (implemented)
 
-The satellite acts as a transparent, pull-only OCI registry proxy on loopback. It serves content from its local OCI layout and, in `proxy` mode, fetches a miss from Harbor and keeps it ([ADR-0009](docs/decisions/0009-transparent-oci-registry-proxy.md)). Policy enforcement at the edge is planned and not implemented yet.
+The satellite acts as a transparent, pull-only OCI registry proxy on loopback. It serves content from its local OCI layout and, in `proxy` mode, fetches a miss from Harbor and keeps it ([ADR-0009](docs/decisions/0009-transparent-oci-registry-proxy.md)). An edge admission policy delivered with the config can restrict what it serves.
 
 _Example: the central side cannot produce a list of images for a site ahead of time. The satellite forwards requests upstream and keeps the results, so images stay available without a pre-compiled list._
 
@@ -228,29 +230,28 @@ Harbor Satellite keeps Harbor as the central source of truth and puts only what 
 
 ## Security
 
-- Satellites authenticate to Ground Control with a single-use token or a SPIFFE X.509 SVID over mTLS. The heartbeat endpoint requires either the SVID or the satellite's robot credentials.
-- Ground Control provisions a Harbor robot account per satellite. Robot accounts expire after `ROBOT_DURATION_DAYS` (default 30).
-- Ground Control uses Argon2id password hashing, account lockout, and rate limiting on login and registration endpoints.
+- Satellites register with a single-use token or a SPIFFE X.509 SVID over mTLS, then authenticate with a satellite session or the SVID. Operators can revoke a satellite.
+- Ground Control provisions a Harbor robot account per satellite, limited to the projects of its groups. Robot accounts expire after `ROBOT_DURATION_DAYS` (default 30) and can be rotated before expiry.
+- Ground Control uses Argon2id password hashing, account lockout, per-IP failure limits, OIDC login, and built-in roles or a Casbin policy.
 - Satellite config at rest can be encrypted with AES-256-GCM, bound to the device fingerprint (`app_config.encrypt_config`, Linux only, off by default).
 - Container images are signed with Cosign; release archives ship with SBOMs.
 
-Design details: [ADR-0004 Ground Control authentication](docs/decisions/0004-groundcontrol-authentication.md), [ADR-0005 SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md).
+Details: [security model](docs/security.md), [ADR-0005 SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md), [ADR-0016 satellite sessions](docs/decisions/0016-satellite-session-authentication.md), [ADR-0018 OIDC and robot rotation](docs/decisions/0018-operator-identity-oidc.md).
 
 ## Status and Roadmap
 
-Harbor Satellite is in active development. Implemented today: Ground Control with API and CLI, token and SPIFFE registration, desired-state replication into a local OCI store or BYO registry, status reporting, audit logging, runtime mirror configuration (BYO), and experimental direct delivery for k3s/RKE2.
+Implemented: Ground Control with API and CLI, token and SPIFFE registration, satellite sessions and lifecycle, desired-state replication into a local OCI store or BYO registry, the loopback OCI proxy with pull-through and edge admission, peer distribution, the transactional outbox and async worker, Casbin policy, OIDC login, robot rotation, webhooks, audit logging, runtime mirror configuration, and experimental direct delivery for k3s/RKE2.
 
-In progress:
-
-- Transparent OCI registry proxy (Pattern 3, [ADR-0009](docs/decisions/0009-transparent-oci-registry-proxy.md)), which will let workloads pull from the satellite without a BYO registry
-- Spegel-based distribution (Pattern 2)
+Planned: Ground Control ingest of the edge journal, a Prometheus endpoint for Ground Control, keyless pulls through Harbor 3 workload identity federation, groups that follow pushed tags, and Spegel-based distribution (Pattern 2). Current limitations are listed in the [changelog](CHANGELOG.md#known-limitations).
 
 Compatibility with every container registry and edge device cannot be guaranteed. If you are evaluating Harbor Satellite for your environment, [reach out](https://container-registry.com/contact/).
 
 ## Documentation
 
-- [Project website](https://satellite.container-registry.com/): [overview](https://satellite.container-registry.com/docs/overview/), [architecture](https://satellite.container-registry.com/docs/architecture/), [installation](https://satellite.container-registry.com/docs/installation/)
-- [Guides](docs/guides/): Ground Control, audit logging, k3s reference architecture
+- [Documentation index](docs/README.md): installation, architecture, security model, configuration and API reference, operations
+- [Project website](https://satellite.container-registry.com/)
+- [Guides](docs/guides/): Ground Control, audit logging, keyless pulls and robot rotation, k3s reference architecture
+- [Changelog](CHANGELOG.md)
 - [Architecture decision records](docs/decisions/)
 - [Contributing](CONTRIBUTING.md) and [Taskfile reference](taskfiles/README.md)
 - Website source: [`website/`](website/README.md)
