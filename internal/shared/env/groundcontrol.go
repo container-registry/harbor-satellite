@@ -36,8 +36,9 @@ type Database struct {
 	// SSLMode defaults to require (G5); local compose stacks set disable.
 	SSLMode     string `env:"SSLMODE"     envDefault:"require"`
 	SSLRootCert string `env:"SSLROOTCERT"`
-	// Not used yet (plan 3.2): the API pool opens URL_API or the single DSN;
-	// fleet and async open their own pool only when their URL is set.
+	// The API pool opens URL_API or the single DSN (plan 3.2); fleet and
+	// async open their own pool when their URL or pool settings are set,
+	// and share the API pool otherwise.
 	URLAPI   string `env:"URL_API"`
 	URLFleet string `env:"URL_FLEET"`
 	URLAsync string `env:"URL_ASYNC"`
@@ -64,9 +65,9 @@ type Harbor struct {
 	Password          string `env:"HARBOR_PASSWORD"`
 	SkipHealthCheck   bool   `env:"SKIP_HARBOR_HEALTH_CHECK"`
 	RobotDurationDays string `env:"ROBOT_DURATION_DAYS"      envDefault:"30"`
-	// Plan item 2 skeleton, parsed but not used yet: requests per second
-	// the async plane sends to Harbor, and how often GC pings Harbor for
-	// /health.
+	// RateLimit is the requests per second each worker sends to Harbor;
+	// ProbeInterval is how often GC pings Harbor for /health, which reports
+	// it degraded after three intervals without contact.
 	RateLimit     float64       `env:"HARBOR_RATE_LIMIT"     envDefault:"20"`
 	ProbeInterval time.Duration `env:"HARBOR_PROBE_INTERVAL" envDefault:"30s"`
 }
@@ -79,8 +80,7 @@ func (h Harbor) RobotDurationDaysValue() int64 {
 	return days
 }
 
-// Outbox tunes the publisher of the async plane (plan item 2.3); parsed but
-// not used yet.
+// Outbox tunes the publisher of the async plane (plan item 2.3).
 type Outbox struct {
 	BatchSize    int           `env:"BATCH_SIZE"    envDefault:"100"`
 	PollInterval time.Duration `env:"POLL_INTERVAL" envDefault:"1s"`
@@ -94,8 +94,7 @@ type Outbox struct {
 	Retention time.Duration `env:"RETENTION" envDefault:"168h"`
 }
 
-// Webhook configures webhook delivery (plan item 9.1, ADR-0019). Parsed
-// but not used yet.
+// Webhook configures webhook delivery (plan item 9.1, ADR-0019).
 type Webhook struct {
 	Enabled      bool          `env:"WEBHOOKS_ENABLED"      envDefault:"false"`
 	BatchSize    int           `env:"WEBHOOK_BATCH_SIZE"    envDefault:"100"`
@@ -138,8 +137,7 @@ type Server struct {
 	SessionDuration time.Duration `env:"SESSION_DURATION" envDefault:"24h"`
 	LockoutDuration time.Duration `env:"LOCKOUT_DURATION" envDefault:"5m"`
 	// StaleThreshold is how long a satellite without an @every heartbeat
-	// interval may stay silent before it is stale (plan item 4.3, A8);
-	// parsed but not used yet.
+	// interval may stay silent before it is stale (plan item 4.3, A8).
 	StaleThreshold time.Duration `env:"STALE_THRESHOLD" envDefault:"15m"`
 	// Failed authentications (login and Basic auth, any username) per client
 	// IP within AuthFailureWindow before 429; 0 disables the limit.
@@ -166,9 +164,8 @@ type Server struct {
 
 // FleetHotPath configures plan item 4 (ADR-0016): satellite sessions, the
 // heartbeat buffer, the lifecycle jobs, status partitions and the split
-// rate limits. Parsed but not used yet, except that RATE_LIMIT_SPLIT
-// builds the split limiters, which answer 501 until 4.6. The rates are strings ("<requests>/<duration>")
-// because env cannot import the middleware that parses them.
+// rate limits. The rates are strings ("<requests>/<duration>") because env
+// cannot import the middleware that parses them.
 type FleetHotPath struct {
 	SatelliteSessionTTL       time.Duration `env:"SATELLITE_SESSION_TTL"        envDefault:"720h"`
 	SatelliteSessionCacheTTL  time.Duration `env:"SATELLITE_SESSION_CACHE_TTL"  envDefault:"30s"`
@@ -192,8 +189,7 @@ type FleetHotPath struct {
 	RateLimitFleet string `env:"RATE_LIMIT_FLEET" envDefault:"3/1s"`
 }
 
-// OIDC configures operator login (plan item 8.1, ADR-0018). Parsed but not
-// used yet. RoleMap maps a provider group to admin or system_admin
+// OIDC configures operator login (plan item 8.1, ADR-0018). RoleMap maps a provider group to admin or system_admin
 // ("group=role,..."); a user whose groups map to no role cannot log in.
 type OIDC struct {
 	Enabled              bool          `env:"ENABLED"                envDefault:"false"`
@@ -223,7 +219,6 @@ func (o OIDC) Validate() error {
 }
 
 // RobotRotation configures the Harbor 2.x robot rotation of plan item 8.4.
-// Parsed but not used yet.
 type RobotRotation struct {
 	Enabled      bool          `env:"ENABLED"       envDefault:"false"`
 	BeforeExpiry time.Duration `env:"BEFORE_EXPIRY" envDefault:"72h"`
