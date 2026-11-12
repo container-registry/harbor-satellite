@@ -365,7 +365,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		localStore    store.Store
 		remoteStore   store.Store
 	)
-	localStore, remoteStore, err = proxyStores(cm, pathConfig.StoreDir)
+	localStore, remoteStore, indexRecovered, err := proxyStores(cm, pathConfig.StoreDir)
 	if err != nil {
 		return fmt.Errorf("initialize proxy stores: %w", err)
 	}
@@ -503,6 +503,9 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	eventScheduler := events.NewEventScheduler(log)
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir, pathConfig.DesiredStateFile, eventScheduler)
 	s.SetStores(localStore, remoteStore)
+	if indexRecovered {
+		s.RequireFullResync()
+	}
 
 	err = s.Run(ctx)
 	if err != nil {
@@ -666,12 +669,14 @@ func resolveLocalRegistryEndpoint(proxyMode proxyhandler.Mode, proxyPort int) st
 	return net.JoinHostPort("127.0.0.1", strconv.Itoa(proxyPort))
 }
 
-func proxyStores(cm *config.ConfigManager, storeRoot string) (store.Store, store.Store, error) {
+// proxyStores reports whether the OCI layout's index was unreadable and moved
+// aside, in which case state replication has to start over.
+func proxyStores(cm *config.ConfigManager, storeRoot string) (local, remote store.Store, indexRecovered bool, err error) {
 	remoteStore, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
 		return store.ResolveSourceRegistry(cm)
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("initialize Harbor registry store: %w", err)
+		return nil, nil, false, fmt.Errorf("initialize Harbor registry store: %w", err)
 	}
 
 	if cm.GetOwnRegistry() {
@@ -686,14 +691,17 @@ func proxyStores(cm *config.ConfigManager, storeRoot string) (store.Store, store
 			}, nil
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("initialize BYO registry store: %w", err)
+			return nil, nil, false, fmt.Errorf("initialize BYO registry store: %w", err)
 		}
-		return localStore, remoteStore, nil
+		return localStore, remoteStore, false, nil
 	}
 
-	localStore, err := store.NewOCIStore(storeRoot)
+	localStore, report, err := store.OpenOCIStore(storeRoot, store.OCIStoreOptions{AtomicIndex: true, RecoverIndex: true})
 	if err != nil {
-		return nil, nil, fmt.Errorf("initialize OCI layout store: %w", err)
+		return nil, nil, false, fmt.Errorf("initialize OCI layout store: %w", err)
 	}
-	return localStore, remoteStore, nil
+	if report.IndexRecovered {
+		fmt.Printf("WARNING: unreadable OCI index moved to %s; replicating every group again\n", report.QuarantinedPath)
+	}
+	return localStore, remoteStore, report.IndexRecovered, nil
 }

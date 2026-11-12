@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/google/go-containerregistry/pkg/registry"
 	digest "github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
@@ -91,7 +90,6 @@ func readIndex(t *testing.T, root string) ocispec.Index {
 }
 
 func TestOpenOCIStore_RecoversTornIndex(t *testing.T) {
-	pending.Plan(t, "5.1", "a torn index.json stops the satellite from starting")
 	ctx := edgeContext(t)
 	address, source := edgeUpstream(t, nil)
 	pushEdgeImage(t, address, "team/app", "v1", []byte("layer"))
@@ -120,7 +118,6 @@ func TestOpenOCIStore_RecoversTornIndex(t *testing.T) {
 }
 
 func TestWriteIndexAtomic_KeepsOldIndexOnFailure(t *testing.T) {
-	pending.Plan(t, "5.1", "oras-go writes index.json in place")
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory permissions")
 	}
@@ -145,7 +142,6 @@ func TestWriteIndexAtomic_KeepsOldIndexOnFailure(t *testing.T) {
 }
 
 func TestOCIStore_AtomicIndexAfterMutations(t *testing.T) {
-	pending.Plan(t, "5.1", "oras-go writes index.json in place")
 	ctx := edgeContext(t)
 	address, source := edgeUpstream(t, nil)
 	pushEdgeImage(t, address, "team/app", "v1", []byte("layer one"))
@@ -174,7 +170,6 @@ func TestOCIStore_AtomicIndexAfterMutations(t *testing.T) {
 }
 
 func TestOCIStore_FetchDoesNotBlockTag(t *testing.T) {
-	pending.Plan(t, "5.1", "Fetch holds the store-wide read lock until the body is closed")
 	ctx := edgeContext(t)
 	address, source := edgeUpstream(t, nil)
 	_, layers := pushEdgeImage(t, address, "team/served", "v1", []byte("served layer"))

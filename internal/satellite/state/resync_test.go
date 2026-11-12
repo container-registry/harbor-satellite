@@ -4,13 +4,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
 func TestResetReplicatedEntities_ForcesFullReplication(t *testing.T) {
-	pending.Plan(t, "5.1", "nothing resyncs the state after the OCI index is recovered")
 	path := filepath.Join(t.TempDir(), "state.json")
 	groups := []StateMap{
 		{url: "http://registry.example.com/group1", Entities: []Entity{{Name: "alpine", Repository: "library", Tag: "latest", Digest: "sha256:abc"}}},
