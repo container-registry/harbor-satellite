@@ -284,7 +284,6 @@ func TestNewEdgeEvent_MapsRecords(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			pending.Plan(t, "9.4", "journal records are not mapped to edge events")
 			record := journalRecord(t, 5, tc.typ, tc.payload)
 
 			event, err := fleet.NewEdgeEvent(satelliteName, journalEpoch, record)
@@ -303,7 +302,6 @@ func TestNewEdgeEvent_MapsRecords(t *testing.T) {
 
 // A127: records dropped under backpressure arrive as one counted record.
 func TestNewEdgeEvent_DroppedRecordsAreAGap(t *testing.T) {
-	pending.Plan(t, "9.4", "journal records are not mapped to edge events")
 	record := journalRecord(t, 9, edgejournal.RecordDropped, edgejournal.Dropped{SchemaVersion: edgejournal.SchemaVersion, Count: 8})
 
 	event, err := fleet.NewEdgeEvent(satelliteName, journalEpoch, record)
@@ -325,7 +323,6 @@ func TestNewEdgeEvent_RejectsMalformedRecords(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			pending.Plan(t, "9.4", "journal records are not mapped to edge events")
 			_, err := fleet.NewEdgeEvent(satelliteName, journalEpoch, tc.record)
 			require.ErrorIs(t, err, fleet.ErrInvalid)
 		})

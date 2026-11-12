@@ -123,7 +123,56 @@ type EdgeJournalGapPayload struct {
 // schema versions only add fields. An unknown type or action, or a payload
 // that is not its type's JSON object, is ErrInvalid.
 func NewEdgeEvent(name string, epoch int64, record JournalRecord) (EdgeEvent, error) {
-	return EdgeEvent{}, notimpl.Err("9.4 edge event mapping")
+	bad := func(format string, args ...any) (EdgeEvent, error) {
+		return EdgeEvent{}, fmt.Errorf("%w: journal record %d: %s", ErrInvalid, record.Seq, fmt.Sprintf(format, args...))
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(record.Payload, &fields); err != nil || fields == nil {
+		return bad("payload is not a JSON object")
+	}
+	var kind EventKind
+	switch record.Type {
+	case edgejournal.RecordReplication:
+		var r edgejournal.Replication
+		if err := json.Unmarshal(record.Payload, &r); err != nil {
+			return bad("replication payload: %v", err)
+		}
+		switch {
+		case r.Action != edgejournal.ActionReplicated && r.Action != edgejournal.ActionDeleted:
+			return bad("replication action %q", r.Action)
+		case r.Error != "":
+			kind = EventEdgeArtifactFailed
+		case r.Action == edgejournal.ActionDeleted:
+			kind = EventEdgeDeleted
+		default:
+			kind = EventEdgeReplicated
+		}
+	case edgejournal.RecordCRI:
+		var c edgejournal.CRI
+		if err := json.Unmarshal(record.Payload, &c); err != nil {
+			return bad("cri payload: %v", err)
+		}
+		kind = EventEdgeCRIConfigured
+	case edgejournal.RecordPullThrough:
+		var p edgejournal.PullThrough
+		if err := json.Unmarshal(record.Payload, &p); err != nil {
+			return bad("pull_through payload: %v", err)
+		}
+		kind = EventEdgePullThrough
+	case edgejournal.RecordDropped:
+		var d edgejournal.Dropped
+		if err := json.Unmarshal(record.Payload, &d); err != nil || d.Count < 0 {
+			return bad("dropped payload")
+		}
+		return EdgeEvent{Kind: EventEdgeJournalGap, Payload: EdgeJournalGapPayload{
+			Name: name, Epoch: epoch, From: record.Seq, Through: record.Seq, Cause: GapDropped, Dropped: d.Count,
+		}}, nil
+	default:
+		return bad("unknown record type %q", record.Type)
+	}
+	// Unknown fields pass through: schema versions only add fields.
+	fields["name"], fields["epoch"], fields["seq"], fields["recorded_at"] = name, epoch, record.Seq, record.RecordedAt
+	return EdgeEvent{Kind: kind, Payload: fields}, nil
 }
 
 // JournalRepo keeps one journal cursor per satellite (plan item 6.5).
