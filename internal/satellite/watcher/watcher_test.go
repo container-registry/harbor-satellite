@@ -85,3 +85,38 @@ func TestWriteDuringABusyConsumerIsNotLost(t *testing.T) {
 
 	requireEvent(t, w.events, "writes made while nobody was reading were dropped")
 }
+
+func drain(events <-chan struct{}) {
+	for {
+		select {
+		case <-events:
+		case <-time.After(300 * time.Millisecond):
+			return
+		}
+	}
+}
+
+// Editors and config management tools replace a file by renaming a new one
+// over it. The watcher has to keep reporting changes after that.
+func TestAtomicReplaceKeepsNotifying(t *testing.T) {
+	w := startWatch(t, make(chan struct{}, 1))
+	for range 2 {
+		tmp := w.path + ".tmp"
+		require.NoError(t, os.WriteFile(tmp, []byte(`{"app_config":{"log_level":"debug"}}`), 0o600))
+		require.NoError(t, os.Rename(tmp, w.path))
+		requireEvent(t, w.events, "no notification after renaming a new config over the file")
+		drain(w.events)
+	}
+	require.NoError(t, os.WriteFile(w.path, []byte(`{"app_config":{}}`), 0o600))
+	requireEvent(t, w.events, "no notification for a write after the file was replaced")
+}
+
+func TestOtherFilesInTheDirectoryDoNotNotify(t *testing.T) {
+	w := startWatch(t, make(chan struct{}, 1))
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(w.path), "state.json"), []byte(`{}`), 0o600))
+	select {
+	case <-w.events:
+		t.Fatal("a write to state.json reported a config change")
+	case <-time.After(500 * time.Millisecond):
+	}
+}

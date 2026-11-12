@@ -3,6 +3,7 @@ package watcher
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog"
@@ -22,7 +23,10 @@ func WatchChanges(ctx context.Context, log zerolog.Logger, path string, eventCha
 		log.Info().Msg("Stopped watching config file")
 	}()
 
-	if err := watcher.Add(path); err != nil {
+	// Watching the file itself loses the watch when an editor or a tool
+	// renames a new file over it; the directory watch survives that.
+	file := filepath.Clean(path)
+	if err := watcher.Add(filepath.Dir(file)); err != nil {
 		log.Error().Err(err).Str("path", path).Msg("Failed to add path to watcher")
 		return fmt.Errorf("failed to add watch on path %s: %w", path, err)
 	}
@@ -47,7 +51,10 @@ func WatchChanges(ctx context.Context, log zerolog.Logger, path string, eventCha
 				return nil
 			}
 			log.Debug().Str("event", event.String()).Msg("Received fsnotify event")
-			if event.Op&fsnotify.Write == fsnotify.Write {
+			if filepath.Clean(event.Name) != file {
+				continue
+			}
+			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
 				log.Info().Str("file", event.Name).Msg("File modified")
 				out = eventChan
 			}
