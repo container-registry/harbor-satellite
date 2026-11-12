@@ -17,7 +17,7 @@ Hugo site for satellite.container-registry.com, styled with the cr26 design syst
 `tools/importdocs/manifest.json` maps each source file to its page, title, weight and aliases. The importer reads the files from a git ref, removes the first heading (the layout renders the title), rewrites relative links to site URLs or to GitHub for files that are not imported, copies referenced images to `static/images/docs/`, and fails on a link to a file that does not exist in the ref. `rewrites` replaces dead external URLs until the sources are fixed.
 
 ```bash
-go -C website/tools run ./importdocs -ref origin/harbor3/1.0-docs
+go -C website/tools run ./importdocs -ref origin/harbor3/1.0-readiness
 ```
 
 GitHub links and the "Edit this page" link point at `main` (`-github-ref`).

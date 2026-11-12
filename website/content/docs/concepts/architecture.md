@@ -101,7 +101,7 @@ The proxy on `127.0.0.1:<proxy-port>` serves pulls from the store. Its handler c
 
 The satellite records every replicated or deleted artifact, CRI result and pull-through fill in a durable journal under `<config-dir>/journal`. Writes are group committed, and a full journal drops records and counts them instead of blocking replication. Heartbeats upload journal batches, and Ground Control's acknowledgement lets the satellite delete them.
 
-Ground Control does not ingest the journal in this release. See [Known Limitations](/docs/changelog/#known-limitations).
+Ground Control keeps one cursor per satellite and turns each accepted record into a log-only `Edge*` event in the outbox, once, so webhooks see fleet events. A journal problem never fails the heartbeat: a malformed upload is answered with an error in the journal ack, and when ingesting fails the answer carries no journal ack, so the satellite resends the batch.
 
 ## Identity
 

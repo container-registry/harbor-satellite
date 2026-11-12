@@ -58,6 +58,7 @@ Every connection sets `application_name` to `groundcontrol-api`, `groundcontrol-
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `8080` | Listen port. |
+| `METRICS_ADDR` | `:9464` | Address of the Prometheus `/metrics` listener of `serve`, separate from `PORT`. Empty disables it; a port in use stops startup. See [Monitoring](/docs/operations/monitoring/#ground-control-metrics). |
 | `ADMIN_PASSWORD` | | Creates the `admin` system administrator on first start. Required then, and must pass the password policy. |
 | `SESSION_DURATION` | `24h` | Lifetime of an operator session from `/login` or OIDC. |
 | `LOCKOUT_DURATION` | `5m` | Lockout after 5 failed logins for one username, through `/login` or Basic auth. |
@@ -74,11 +75,13 @@ Every connection sets `application_name` to `groundcontrol-api`, `groundcontrol-
 
 | Variable | Default | Description |
 |---|---|---|
-| `RATE_LIMIT_SPLIT` | `false` | Off: one limiter of 10 requests per minute per client IP is shared by `/login`, `/satellites/ztr`, `/satellites/spiffe-ztr`, `/satellites/sync` and `/satellites/refresh`. On: anonymous routes are limited per client IP and satellite routes per authenticated satellite. |
+| `RATE_LIMIT_SPLIT` | `true` | On: anonymous routes are limited per client IP, satellite routes per authenticated satellite, and `/login` only by `AUTH_FAILURE_LIMIT` and the account lockout. Off: one limiter of 10 requests per minute per client IP is shared by `/login`, `/satellites/ztr`, `/satellites/spiffe-ztr`, `/satellites/sync` and `/satellites/refresh`. |
 | `RATE_LIMIT_ANONYMOUS` | `10/1m` | With the split: requests per client IP on ZTR and the OIDC routes, as `<requests>/<duration>`. |
 | `RATE_LIMIT_FLEET` | `3/1s` | With the split: requests per satellite on sync and refresh. |
 
-Without the split, satellites that share one source address, behind NAT or behind a reverse proxy, share 10 requests per minute. A fleet of more than a few satellites needs `RATE_LIMIT_SPLIT=true`. The shared limiter always keys on the TCP peer address. The split limiters and the failure limit use `X-Forwarded-For` or `X-Real-IP` when `AUDIT_TRUST_FORWARDED_HEADERS=true`; enable it only behind a proxy that sets those headers.
+`RATE_LIMIT_FLEET` is counted per satellite, so its size does not depend on the fleet size or on how many satellites share a source address. Each satellite may burst 3 requests and then 3 per second: a heartbeat at the shortest interval Ground Control accepts (`@every 1s`), the refresh that follows a `refresh_credentials` event, and one retry. With the default 30s heartbeat a satellite uses about 1/90 of it. ZTR stays per client IP: a site that registers many satellites at once from one address gets 10 per minute, and each satellite's ZTR scheduler retries.
+
+With `RATE_LIMIT_SPLIT=false`, satellites that share one source address, behind NAT or behind a reverse proxy, share 10 requests per minute. The shared limiter always keys on the TCP peer address. The split limiters and the failure limit use the `X-Forwarded-For` entry `AUDIT_TRUSTED_PROXY_HOPS` (default `1`) from the right, then `X-Real-IP`, when `AUDIT_TRUST_FORWARDED_HEADERS=true`; enable it only behind a proxy that appends to those headers, and set the hops to the number of such proxies.
 
 ## Satellite Sessions and Fleet Jobs
 
@@ -96,7 +99,9 @@ Without the split, satellites that share one source address, behind NAT or behin
 | `SESSION_EXPIRY_INTERVAL` | `1h` | How often the worker deletes expired satellite sessions and OIDC login states. |
 | `STATUS_RETENTION_DAYS` | `7` | Daily `satellite_status` partitions older than this are dropped. |
 | `STATUS_PARTITIONS_AHEAD` | `3` | Partitions created ahead of time. |
-| `SYNC_MAX_BODY_BYTES` | `4194304` | Parsed, not enforced in this release. |
+| `SYNC_MAX_BODY_BYTES` | `4194304` | Largest `POST /satellites/sync` body, journal upload included; a larger one is answered `413`. 0 disables the limit. |
+| `GROUP_SYNC_MAX_BODY_BYTES` | `16777216` | Largest `POST /api/groups/sync` body, the group's whole artifact list; a larger one is answered `413`. 16 MiB holds 10000 artifacts with five 128-character tags and a 255-character repository each (about 10.3 MB). 0 disables the limit. |
+| `API_MAX_BODY_BYTES` | `1048576` | Largest body of every other `/api` request (configs, users, policies, role bindings, webhooks, satellites); a larger one is answered `413`. Those documents are a few KiB. 0 disables the limit. |
 
 ## Async Plane
 
@@ -171,10 +176,19 @@ The browser flow sets a `Secure` cookie, so Ground Control must be served over H
 
 ## Audit
 
-`AUDIT_LOG_ENABLED`, `AUDIT_SYSLOG_*`, `AUDIT_OTEL_ENDPOINT` and `AUDIT_TRUST_FORWARDED_HEADERS` are described in [Audit Logging](/docs/guides/audit-logging/).
+`AUDIT_LOG_ENABLED`, `AUDIT_SYSLOG_*`, `AUDIT_OTEL_ENDPOINT`, `AUDIT_TRUST_FORWARDED_HEADERS` and `AUDIT_TRUSTED_PROXY_HOPS` are described in [Audit Logging](/docs/guides/audit-logging/).
 
 ## CLI Client
 
-The same executable is the administration client. Flags: `--server` (default `https://localhost:8080/`), `--token`, `--timeout` (`30s`), `--insecure`, `--config`. Environment variables use the `GROUND_CONTROL_` prefix (`GROUND_CONTROL_URL`, `GROUND_CONTROL_TOKEN`). Passwords are read only from `GROUND_CONTROL_PASSWORD`, `GROUND_CONTROL_USER_PASSWORD`, `GROUND_CONTROL_CURRENT_PASSWORD` and `GROUND_CONTROL_NEW_PASSWORD`.
+The same executable is the administration client. Flags: `--server` (default `https://localhost:8080/`), `--token`, `--timeout` (`30s`), `--insecure`, `--config`. Environment variables use the `GROUND_CONTROL_` prefix (`GROUND_CONTROL_URL`, `GROUND_CONTROL_TOKEN`). Passwords are read only from `GROUND_CONTROL_PASSWORD`, `GROUND_CONTROL_USER_PASSWORD`, `GROUND_CONTROL_CURRENT_PASSWORD` and `GROUND_CONTROL_NEW_PASSWORD`, the webhook secret only from `GROUND_CONTROL_WEBHOOK_SECRET`.
 
-The CLI covers satellites, groups, configs, users, SPIRE and sessions. Revocation, lifecycle, policies, role bindings, webhooks and the outbox are API only in this release.
+The CLI covers satellites, groups, configs, users, SPIRE and sessions, and the operator routes of 1.0:
+
+| Command | Route |
+|---|---|
+| `revoke satellite --name <n>`, `unrevoke satellite --name <n>` | `POST /api/satellites/{satellite}/revoke`, `/unrevoke` |
+| `get satellite-lifecycle --satellite <n>` | `GET /api/satellites/{satellite}/lifecycle` |
+| `get policies`, `create policy --subject --effect [--scope --resource-type --action]`, `delete policy --id` | `/api/policies` |
+| `get role-bindings`, `create role-binding --principal --role`, `delete role-binding --id` | `/api/role-bindings` |
+| `get webhooks`, `create webhook --url [--event-type ...]`, `delete webhook --id` | `/api/webhooks`; the signing secret comes from `GROUND_CONTROL_WEBHOOK_SECRET`. Delivery state (`enabled`, `consecutive_failures`, `last_error`, `disabled_reason`) is part of `get webhooks`; there is no per-delivery route. |
+| `get outbox-events [--state pending\|failed] [--limit n]` | `GET /api/ops/outbox` |

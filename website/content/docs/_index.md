@@ -12,12 +12,14 @@ aliases:
 - [Installation](/docs/get-started/installation/): release artifacts, Ground Control with Helm, containers or binaries, satellites with containers or systemd
 - [Token quickstart](/docs/get-started/quickstart/token/): Ground Control and a satellite on one machine
 - [SPIFFE/SPIRE quickstarts](/docs/get-started/quickstart/spiffe/): join token, X.509 PoP and SSH PoP attestation
+- [SPIFFE end-to-end walkthrough](/docs/get-started/quickstart/end-to-end/): Harbor, SPIRE with X.509 PoP, Ground Control and a satellite, step by step
 - [k3s reference architecture](/docs/guides/k3s-reference-architecture/)
 
 ## Concepts
 
 - [Architecture](/docs/concepts/architecture/): desired state, the outbox and async plane, hot and cold paths, lifecycle, journal
 - [Security model](/docs/concepts/security/): trust boundaries, secrets, identity, authorization, hardening
+- [Security policy](/docs/concepts/security-policy/): reporting vulnerabilities, supported versions, disclosure
 
 ## Reference
 

@@ -61,7 +61,25 @@ helm install groundcontrol ./examples/deploy/helm/groundcontrol \
   --set database.sslMode=verify-full
 ```
 
-`database.sslMode` empty means `disable` for the internal PostgreSQL and `require` for an external one. The chart has values for Harbor, the database, SPIFFE, the robot lifetime and the service only, and no `extraEnv`. Other variables, such as `RATE_LIMIT_SPLIT` or `ROBOT_ROTATION_ENABLED`, need a change to the chart's ConfigMap template or a patch of the deployment.
+`database.sslMode` empty means `disable` for the internal PostgreSQL and `require` for an external one. An external server must run PostgreSQL 19 or later; Ground Control refuses older ones at startup. The internal PostgreSQL runs `postgres:19rc1` (`postgresql.image.tag`) and is meant for evaluation; production uses 19.0 or later. Its volume is mounted at `/var/lib/postgresql`, because images of 18 and later keep their data in `/var/lib/postgresql/<major>/docker`.
+
+The chart has values for Harbor, the database, SPIFFE, the robot lifetime and the service. Set any other variable from the [configuration reference](/docs/reference/ground-control/) with `extraEnv` (Kubernetes `EnvVar` entries, so secrets can come from `valueFrom`) or `extraEnvFrom` (whole ConfigMaps or Secrets). `extraEnv` wins over the chart's own ConfigMap and Secret:
+
+```yaml
+extraEnv:
+  - name: ROBOT_ROTATION_ENABLED
+    value: "true"
+  - name: DATA_ENCRYPTION_KEY
+    valueFrom:
+      secretKeyRef:
+        name: ground-control-keys
+        key: data-encryption-key
+extraEnvFrom:
+  - secretRef:
+      name: ground-control-oidc
+```
+
+The chart's Service exposes the API port only. Ground Control's `/metrics` listens on `METRICS_ADDR` (`:9464`) inside the pod; scrape it through the pod or add your own Service.
 
 ### Container
 
@@ -92,7 +110,7 @@ At minimum:
 
 - HTTPS: `TLS_CERT_FILE`/`TLS_KEY_FILE`, or a TLS-terminating proxy, see [TLS](/docs/operations/tls/).
 - `DB_SSLMODE=verify-full` and `DB_SSLROOTCERT` for a remote database.
-- `RATE_LIMIT_SPLIT=true`.
+- `RATE_LIMIT_SPLIT=true` (the default) and, behind a proxy, `AUDIT_TRUST_FORWARDED_HEADERS=true`.
 - `ROBOT_ROTATION_ENABLED=true` with `DATA_ENCRYPTION_KEY`.
 - A readiness probe on `GET /health` and a liveness probe on `GET /ping`.
 

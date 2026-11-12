@@ -52,7 +52,7 @@ Every event carries eight **always-present** fields. The remaining nine are
 | `outcome`       | yes | `success` or `failure`. |
 | `actor`         | no  | Username, satellite name, GC URL, or SPIFFE ID. Omitted when unknown (e.g., invalid token). |
 | `actor_type`    | no  | Kind of principal: `user`, `robot`, `satellite`, `anonymous`, `system`. |
-| `source_ip`     | no  | Client IP on Ground Control: the TCP `RemoteAddr` by default, or the first `X-Forwarded-For` hop only when `AUDIT_TRUST_FORWARDED_HEADERS=true`. Absent for outbound calls from the satellite. |
+| `source_ip`     | no  | Client IP on Ground Control: the TCP `RemoteAddr` by default, or, only when `AUDIT_TRUST_FORWARDED_HEADERS=true`, the `X-Forwarded-For` entry `AUDIT_TRUSTED_PROXY_HOPS` from the right. Absent for outbound calls from the satellite. |
 | `user_agent`    | no  | Client `User-Agent` on HTTP-originated events. |
 | `request_id`    | no  | Correlation ID shared by every audit event from one Ground Control request. Reuses an inbound `X-Request-ID` header when present, otherwise Ground Control generates one. Absent on satellite-side and background events. |
 | `satellite_id`  | no  | The satellite a satellite-scoped event relates to. |
@@ -182,6 +182,7 @@ AUDIT_SYSLOG_FILE_MAX_AGE_DAYS=30
 AUDIT_SYSLOG_FILE_COMPRESS=true
 AUDIT_OTEL_ENDPOINT=http://otel-collector:4318
 AUDIT_TRUST_FORWARDED_HEADERS=false
+AUDIT_TRUSTED_PROXY_HOPS=1
 ```
 
 A non-empty `AUDIT_OTEL_ENDPOINT` enables the OpenTelemetry (OTLP/HTTP)
@@ -198,8 +199,17 @@ only the variables for that target are read.
 `AUDIT_TRUST_FORWARDED_HEADERS=false` (default) is the secure setting: the
 audit `source_ip` is taken from the TCP `RemoteAddr` and cannot be forged by
 clients. Set this to `true` only when GC sits behind a trusted reverse proxy
-that you control; then the first entry of `X-Forwarded-For` (falling back to
-`X-Real-IP`) is used.
+that you control. Each proxy appends the address it received the request
+from to `X-Forwarded-For`, so only the rightmost entries were written by your
+proxies; anything to their left came from the client and can be forged.
+Ground Control therefore takes the entry `AUDIT_TRUSTED_PROXY_HOPS` (default
+`1`, at least `1`) from the right: `1` for a single ingress, `2` for a CDN or
+load balancer in front of an ingress, and so on. Several `X-Forwarded-For`
+header lines are read as one list. With fewer entries than hops the leftmost
+entry is used. Without `X-Forwarded-For` it falls back to `X-Real-IP`, which
+your proxy must then overwrite, and then to `RemoteAddr`. The same address
+keys the per-IP failure limit and, with `RATE_LIMIT_SPLIT=true`, the
+anonymous rate limit.
 
 For `target: file`, the rotation values must be non-negative
 (`AUDIT_SYSLOG_FILE_MAX_SIZE_MB >= 1`, `AUDIT_SYSLOG_FILE_MAX_BACKUPS >= 0`,

@@ -17,10 +17,12 @@ Start with the satellite's `/healthz` (`curl -s 127.0.0.1:8586/healthz` on the h
 | Exits with `bootstrap system admin` | `ADMIN_PASSWORD` unset or not matching the password policy on first start. | Set a password that passes the `PASSWORD_*` policy. |
 | Exits with `POLICY_ENGINE "..."` or `OIDC_ROLE_MAP ...` | Invalid value. | Fix the variable named in the message. |
 | Exits with `build fleet services: ...` and an OIDC error | `OIDC_ENABLED=true` and the issuer cannot be discovered. | Check `OIDC_ISSUER_URL` and network access to the provider. |
-| Exits with `ROBOT_ROTATION_ENABLED needs DATA_ENCRYPTION_KEY` | Rotation or webhooks without a key. | Set `DATA_ENCRYPTION_KEY` to base64 of 32 bytes. |
+| Exits with `ROBOT_ROTATION_ENABLED: ... DATA_ENCRYPTION_KEY is not set` or the same with `WEBHOOKS_ENABLED` | Rotation or webhooks without a key. | Set `DATA_ENCRYPTION_KEY` to base64 of 32 bytes. |
+| `/health` answers `503` with a component `"detail":"stopped"` | A background job of `serve`, such as the embedded async worker, returned. The log line `<job> stopped: <error>` names the cause. | Fix the cause and restart the process; a stopped job does not restart by itself. |
 | `/health` answers `degraded` | No contact with Harbor for three `HARBOR_PROBE_INTERVAL`s. Writes are stored and queued. | Check `HARBOR_URL`, credentials and the network. The outbox drains once Harbor answers. |
 | Group or config changes do not reach satellites | No worker is running, or events fail. | Run `serve` with the default `--worker=embedded` or a `groundcontrol worker`. Check `GET /api/ops/outbox?state=failed`. |
-| `429` on `/login`, ZTR or heartbeats | The shared limiter: 10 requests per minute per source address. Satellites behind NAT or a proxy share it. | Set `RATE_LIMIT_SPLIT=true`. |
+| `429` on ZTR | `RATE_LIMIT_ANONYMOUS` (10/1m per client IP). Behind a proxy without `AUDIT_TRUST_FORWARDED_HEADERS=true`, every client has the proxy address. | Trust the proxy headers, or raise `RATE_LIMIT_ANONYMOUS` for a mass rollout from one site. |
+| `429` on heartbeats or refresh | `RATE_LIMIT_FLEET` (3/1s per satellite), or with `RATE_LIMIT_SPLIT=false` the shared limiter of 10 requests per minute per source address. | Set `RATE_LIMIT_SPLIT=true`; raise `RATE_LIMIT_FLEET` only for clients that send more than one heartbeat per second. |
 | `429` before the password is checked | More than `AUTH_FAILURE_LIMIT` failed authentications from one IP. | Wait for `AUTH_FAILURE_WINDOW`, fix the client's credentials. |
 | `401` for a correct password | The account is locked for `LOCKOUT_DURATION` after 5 failures, or `OIDC_DISABLE_PASSWORD_LOGIN=true`. | Wait, or log in through OIDC. |
 | `409` on `PATCH /api/configs/{config}` | Another update changed the config at the same time. | Read the config again and repeat the patch. |

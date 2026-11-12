@@ -14,4 +14,4 @@ release:
     - title: Access control
       text: OIDC operator login, Casbin policy with scoped rules, and edge admission at every site.
     - title: Observability
-      text: Satellite /healthz and Prometheus /metrics, Harbor reachability in /health, signed CloudEvents webhooks.
+      text: Prometheus /metrics on satellites and Ground Control, Harbor reachability in /health, signed CloudEvents webhooks.

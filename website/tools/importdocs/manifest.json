@@ -13,12 +13,13 @@
     {"source": "examples/deploy/spiffe/join-token/README.md", "workdir": true, "target": "get-started/quickstart/spiffe/join-token.md", "weight": 1},
     {"source": "examples/deploy/spiffe/x509pop/README.md", "workdir": true, "target": "get-started/quickstart/spiffe/x509pop.md", "weight": 2},
     {"source": "examples/deploy/spiffe/sshpop/README.md", "workdir": true, "target": "get-started/quickstart/spiffe/sshpop.md", "weight": 3},
-    {"source": "docs/guides/spiffe-end-to-end.md", "ref": "HEAD", "target": "get-started/quickstart/end-to-end.md", "title": "End-to-End Walkthrough with SPIFFE", "weight": 3, "description": "Harbor, SPIRE and Ground Control with Docker Compose in the cloud, a satellite as a native binary at the edge, attested with X.509 proof of possession.", "aliases": ["/docs/quickstart/"]},
+    {"source": "docs/guides/spiffe-end-to-end.md", "target": "get-started/quickstart/end-to-end.md", "title": "End-to-End Walkthrough with SPIFFE", "weight": 3, "description": "Harbor, SPIRE and Ground Control with Docker Compose in the cloud, a satellite as a native binary at the edge, attested with X.509 proof of possession.", "aliases": ["/docs/quickstart/"]},
 
     {"target": "concepts/_index.md", "title": "Concepts", "weight": 20,
      "description": "How Ground Control, satellites and Harbor work together, and what each component trusts."},
     {"source": "docs/architecture.md", "target": "concepts/architecture.md", "weight": 1, "aliases": ["/docs/architecture/"]},
     {"source": "docs/security.md", "target": "concepts/security.md", "weight": 2},
+    {"source": "SECURITY.md", "target": "concepts/security-policy.md", "title": "Security Policy", "weight": 3, "description": "How to report a vulnerability, which versions get fixes, and how disclosure works."},
 
     {"target": "reference/_index.md", "title": "Reference", "weight": 30,
      "description": "Satellite and Ground Control configuration, and every Ground Control API route."},

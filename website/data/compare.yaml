@@ -78,7 +78,7 @@ limits:
       text: Satellites pull with per-satellite robot accounts, rotated when you enable rotation. Workload identity federation needs a token exchange Harbor 3 has not released.
     - title: Groups do not follow pushed tags yet
       text: Harbor has no registry event feed for Ground Control yet, so groups change through the API.
-    - title: No Prometheus endpoint on Ground Control
-      text: Ground Control exposes /health and the fleet API. Satellites have Prometheus /metrics.
+    - title: Ground Control needs PostgreSQL 19
+      text: Ground Control refuses PostgreSQL older than 19.0 at startup. A managed database service has to offer 19 before it can host Ground Control.
   link_text: All known limitations
   link_url: /docs/changelog/#known-limitations

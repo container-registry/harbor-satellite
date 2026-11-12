@@ -1,11 +1,11 @@
 ---
 title: "Security Model"
 weight: 2
-description: "This page describes what each component trusts, which secrets exist and where they are kept. Report vulnerabilities privately to the maintainers, not in public issues."
+description: "This page describes what each component trusts, which secrets exist and where they are kept."
 source: "docs/security.md"
 ---
 
-This page describes what each component trusts, which secrets exist and where they are kept. Report vulnerabilities privately to the maintainers, not in public issues.
+This page describes what each component trusts, which secrets exist and where they are kept. Report vulnerabilities privately through [GitHub security advisories](https://github.com/container-registry/harbor-satellite/security/advisories/new), not in public issues; supported versions and the disclosure process are in [SECURITY.md](/docs/concepts/security-policy/).
 
 ## Trust Boundaries
 
@@ -52,7 +52,7 @@ With OIDC, `OIDC_ROLE_MAP` maps provider groups to `admin` or `system_admin`, an
 
 ## Audit
 
-Both components can write security events (logins, registrations, configuration changes, credential refreshes) to syslog or OpenTelemetry. See [Audit Logging](/docs/guides/audit-logging/). Set `AUDIT_TRUST_FORWARDED_HEADERS=true` only behind a proxy that sets `X-Forwarded-For`, otherwise clients choose their recorded source address.
+Both components can write security events (logins, registrations, configuration changes, credential refreshes) to syslog or OpenTelemetry. See [Audit Logging](/docs/guides/audit-logging/). Set `AUDIT_TRUST_FORWARDED_HEADERS=true` only behind a proxy that appends to `X-Forwarded-For`, otherwise clients choose their recorded source address; set `AUDIT_TRUSTED_PROXY_HOPS` to the number of such proxies.
 
 ## Supply Chain
 
@@ -62,7 +62,7 @@ Release container images are signed with Cosign (keyless). Release archives carr
 
 - Serve Ground Control over HTTPS, and set `USE_UNSECURE=false` on every satellite.
 - Use `DB_SSLMODE=verify-full` with `DB_SSLROOTCERT` for a database on another host.
-- Set `RATE_LIMIT_SPLIT=true`.
+- Keep `RATE_LIMIT_SPLIT=true` (the default).
 - Rotate `ADMIN_PASSWORD` after the first start, and prefer OIDC for operators.
 - Enable `ROBOT_ROTATION_ENABLED` with a `DATA_ENCRYPTION_KEY` kept in a secret store.
 - Keep `TELEMETRY_ADDR` on loopback unless a scraper needs it, and restrict that port at the network.

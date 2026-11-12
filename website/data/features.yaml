@@ -190,10 +190,12 @@ chapters:
   - id: observability
     label: Observability
     title: Know Which Site Holds What
-    lead: Satellites send heartbeats with the state they applied. Ground Control tracks each one as pending, online, stale or revoked and reports whether it has converged. Satellites expose health and Prometheus metrics, and fleet events go out as signed webhooks.
+    lead: Satellites send heartbeats with the state they applied. Ground Control tracks each one as pending, online, stale or revoked and reports whether it has converged. Satellites and Ground Control expose Prometheus metrics, and fleet events go out as signed webhooks.
     points:
       - title: Satellite /healthz and /metrics
-        text: Proxy pulls, pull-through fills, replication bytes and duration, and index lock waits, on 127.0.0.1:8586 by default.
+        text: Proxy pulls, pull-through fills, replication bytes and duration, index lock waits, and the satellite's own view of each heartbeat and journal upload, on 127.0.0.1:8586 by default.
+      - title: Ground Control /metrics
+        text: HTTP requests by route, heartbeats and the heartbeat buffer, pending and failed outbox events, and database pools per plane, on METRICS_ADDR (:9464 by default).
       - title: Signed CloudEvents webhooks
         text: Every outbox event can be delivered to HTTPS receivers, signed with HMAC-SHA256, at least once and in order per subscription.
       - title: Audit logging
@@ -207,6 +209,9 @@ chapters:
       satellite_replication_bytes_total
       satellite_replication_duration_seconds
       satellite_store_lock_wait_seconds
+      satellite_heartbeats_total{code}
+      groundcontrol_heartbeats_total
+      groundcontrol_outbox_events
 
       GET /api/satellites/store-0042/lifecycle
         state, applied and published digests, converged
