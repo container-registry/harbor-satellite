@@ -102,12 +102,12 @@ func (r *RobotRotator) RunOnce(ctx context.Context) (staged, promoted int, err e
 	}
 	var errs []error
 	for _, rot := range acked {
-		ok, err := r.locked(ctx, rot.Satellite, func() error { return r.promote(ctx, rot) })
-		if errors.Is(err, fleet.ErrRegistryUnavailable) {
+		ok, lockErr := r.locked(ctx, rot.Satellite, func() error { return r.promote(ctx, rot) })
+		if errors.Is(lockErr, fleet.ErrRegistryUnavailable) {
 			continue
 		}
-		if err != nil {
-			errs = append(errs, err)
+		if lockErr != nil {
+			errs = append(errs, lockErr)
 			continue
 		}
 		if ok {
@@ -120,12 +120,12 @@ func (r *RobotRotator) RunOnce(ctx context.Context) (staged, promoted int, err e
 		return 0, promoted, errors.Join(append(errs, fmt.Errorf("list expiring robots: %w", err))...)
 	}
 	for _, robot := range expiring {
-		ok, err := r.locked(ctx, robot.Satellite, func() error { return r.stage(ctx, robot) })
-		if errors.Is(err, fleet.ErrRegistryUnavailable) {
+		ok, lockErr := r.locked(ctx, robot.Satellite, func() error { return r.stage(ctx, robot) })
+		if errors.Is(lockErr, fleet.ErrRegistryUnavailable) {
 			continue
 		}
-		if err != nil {
-			errs = append(errs, err)
+		if lockErr != nil {
+			errs = append(errs, lockErr)
 			continue
 		}
 		if ok {

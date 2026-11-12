@@ -42,10 +42,10 @@ func (s *ConfigService) Create(ctx context.Context, cmd CreateConfigCmd) (Config
 	}
 	var stored Config
 	err = s.c.inTx(ctx, func(tx Tx) error {
-		var err error
-		stored, err = tx.Configs().Create(ctx, Config{Name: cmd.Name, RegistryURL: s.c.settings.RegistryURL, Document: cmd.Document})
-		if err != nil {
-			return fmt.Errorf("create config %s: %w", cmd.Name, err)
+		var createErr error
+		stored, createErr = tx.Configs().Create(ctx, Config{Name: cmd.Name, RegistryURL: s.c.settings.RegistryURL, Document: cmd.Document})
+		if createErr != nil {
+			return fmt.Errorf("create config %s: %w", cmd.Name, createErr)
 		}
 		return tx.Events().Append(ctx, configEvent(EventConfigChanged, stored))
 	})

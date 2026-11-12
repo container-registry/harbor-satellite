@@ -361,11 +361,11 @@ func TestJournal_SurvivesKill9(t *testing.T) {
 		if exited {
 			return
 		}
-		if err := child.Process.Kill(); err != nil {
-			t.Logf("kill child: %v", err)
+		if killErr := child.Process.Kill(); killErr != nil {
+			t.Logf("kill child: %v", killErr)
 		}
-		if err := child.Wait(); err != nil {
-			t.Logf("child: %v", err)
+		if waitErr := child.Wait(); waitErr != nil {
+			t.Logf("child: %v", waitErr)
 		}
 	})
 	lines := make(chan string)
@@ -389,8 +389,8 @@ func TestJournal_SurvivesKill9(t *testing.T) {
 			if !ok {
 				t.Fatalf("the child exited after %d records: %s", len(printed), stderr.String())
 			}
-			seq, err := strconv.ParseInt(strings.TrimSpace(line), 10, 64)
-			require.NoError(t, err)
+			seq, parseErr := strconv.ParseInt(strings.TrimSpace(line), 10, 64)
+			require.NoError(t, parseErr)
 			printed = append(printed, seq)
 		case <-timeout:
 			t.Fatalf("the child appended only %d records in 30s: %s", len(printed), stderr.String())

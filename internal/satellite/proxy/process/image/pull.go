@@ -65,7 +65,7 @@ func (p *pullHandler) handle(request *proxy.Request) (err error) {
 	if p.mode.AllowsUpstreamPull() && p.remoteStore == nil {
 		return errors.New("proxy mode requires a remote store")
 	}
-	if err := request.Context().Err(); err != nil {
+	if err = request.Context().Err(); err != nil {
 		return err
 	}
 
@@ -80,33 +80,33 @@ func (p *pullHandler) handle(request *proxy.Request) (err error) {
 	resultChannel := p.operations.DoChan(key, func() (any, error) {
 		fillCtx, cancel := context.WithTimeout(p.lifecycleCtx, pullFillTimeout)
 		defer cancel()
-		if err := fillCtx.Err(); err != nil {
-			return nil, err
+		if ctxErr := fillCtx.Err(); ctxErr != nil {
+			return nil, ctxErr
 		}
-		descriptor, err := p.localStore.Pull(fillCtx, artifact, resource)
-		if err == nil {
+		descriptor, fillErr := p.localStore.Pull(fillCtx, artifact, resource)
+		if fillErr == nil {
 			return descriptor, nil
 		}
-		if !errors.Is(err, errdef.ErrNotFound) {
-			return nil, err
+		if !errors.Is(fillErr, errdef.ErrNotFound) {
+			return nil, fillErr
 		}
 		if !p.mode.AllowsUpstreamPull() {
-			return nil, err
+			return nil, fillErr
 		}
 		if metadataOnly {
 			return p.remoteStore.Pull(fillCtx, artifact, resource)
 		}
 
 		started := time.Now()
-		if err := p.localStore.Replicate(fillCtx, p.remoteStore, []store.Artifact{artifact}); err != nil {
+		if fillErr = p.localStore.Replicate(fillCtx, p.remoteStore, []store.Artifact{artifact}); fillErr != nil {
 			p.recorder.CountPullThroughFill("error")
-			p.journalFill(resource, artifact, identifier, ocispec.Descriptor{}, started, err)
-			return nil, err
+			p.journalFill(resource, artifact, identifier, ocispec.Descriptor{}, started, fillErr)
+			return nil, fillErr
 		}
 		p.recorder.CountPullThroughFill("ok")
-		descriptor, err = p.localStore.Pull(fillCtx, artifact, resource)
-		p.journalFill(resource, artifact, identifier, descriptor, started, err)
-		return descriptor, err
+		descriptor, fillErr = p.localStore.Pull(fillCtx, artifact, resource)
+		p.journalFill(resource, artifact, identifier, descriptor, started, fillErr)
+		return descriptor, fillErr
 	})
 
 	var operationResult singleflight.Result

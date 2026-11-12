@@ -62,9 +62,9 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if robotAcc.RobotExpiry.Valid {
-		duration, err := time.ParseDuration(strings.TrimPrefix(normalizedInterval, "@every "))
-		if err != nil {
-			log.Printf("Invalid heartbeat interval %q: %v", req.StateReportInterval, err)
+		duration, intervalErr := time.ParseDuration(strings.TrimPrefix(normalizedInterval, "@every "))
+		if intervalErr != nil {
+			log.Printf("Invalid heartbeat interval %q: %v", req.StateReportInterval, intervalErr)
 			HandleAppError(w, &AppError{Message: "invalid heartbeat interval format", Code: http.StatusBadRequest})
 			return
 		}
@@ -86,19 +86,19 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 			sizes[i] = img.SizeBytes
 		}
 
-		err := s.fleet().BatchInsertArtifacts(r.Context(), database.BatchInsertArtifactsParams{
+		artifactErr := s.fleet().BatchInsertArtifacts(r.Context(), database.BatchInsertArtifactsParams{
 			Refs:  refs,
 			Sizes: sizes,
 		})
-		if err != nil {
-			log.Printf("Failed to batch insert artifacts: %v", err)
+		if artifactErr != nil {
+			log.Printf("Failed to batch insert artifacts: %v", artifactErr)
 			HandleAppError(w, &AppError{Message: "failed to save artifacts", Code: http.StatusInternalServerError})
 			return
 		}
 
-		artifacts, err := s.fleet().GetArtifactIDsByReferences(r.Context(), refs)
-		if err != nil {
-			log.Printf("Failed to resolve artifact IDs: %v", err)
+		artifacts, artifactErr := s.fleet().GetArtifactIDsByReferences(r.Context(), refs)
+		if artifactErr != nil {
+			log.Printf("Failed to resolve artifact IDs: %v", artifactErr)
 			HandleAppError(w, &AppError{Message: "failed to resolve artifact IDs", Code: http.StatusInternalServerError})
 			return
 		}

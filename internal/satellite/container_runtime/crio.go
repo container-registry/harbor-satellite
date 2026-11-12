@@ -33,7 +33,7 @@ func setCrioConfig(upstreamRegistries []string, proxyEndpoint string) (string, e
 	}
 
 	// viper fails to recognise .conf file extension, so copy into a temporary .toml file
-	if err := copyFile(registriesConfigPath, tempRegistriesConfigPath); err != nil {
+	if err = copyFile(registriesConfigPath, tempRegistriesConfigPath); err != nil {
 		return bkPath, fmt.Errorf("failed to copy registries.conf file to temporary .toml file: %w", err)
 	}
 
@@ -41,15 +41,15 @@ func setCrioConfig(upstreamRegistries []string, proxyEndpoint string) (string, e
 	v.SetConfigFile(tempRegistriesConfigPath)
 	v.SetConfigType("toml")
 
-	if err := v.ReadInConfig(); err != nil {
+	if readErr := v.ReadInConfig(); readErr != nil {
 		var notFound viper.ConfigFileNotFoundError
-		if !errors.As(err, &notFound) {
-			return bkPath, fmt.Errorf("failed to read registries.conf: %w", err)
+		if !errors.As(readErr, &notFound) {
+			return bkPath, fmt.Errorf("failed to read registries.conf: %w", readErr)
 		}
 	}
 
 	var cfg RegistriesConf
-	if err := v.Unmarshal(&cfg); err != nil {
+	if err = v.Unmarshal(&cfg); err != nil {
 		return bkPath, fmt.Errorf("failed to unmarshal registries.conf: %w", err)
 	}
 
@@ -82,7 +82,7 @@ func setCrioConfig(upstreamRegistries []string, proxyEndpoint string) (string, e
 	}
 	v.Set("registry", tables)
 
-	if err := v.WriteConfigAs(tempRegistriesConfigPath); err != nil {
+	if err = v.WriteConfigAs(tempRegistriesConfigPath); err != nil {
 		return bkPath, fmt.Errorf("failed to write registries.conf: %w", err)
 	}
 

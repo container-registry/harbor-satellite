@@ -125,7 +125,7 @@ func (j *Journal) load() error {
 	}
 	if !ok {
 		epoch = time.Now().UnixMilli()
-		if err := writeEpoch(j.opts.Dir, epoch); err != nil {
+		if err = writeEpoch(j.opts.Dir, epoch); err != nil {
 			return err
 		}
 	}

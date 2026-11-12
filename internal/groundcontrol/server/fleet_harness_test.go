@@ -79,11 +79,11 @@ func drainOutbox(t testing.TB, db *dbtest.DB, stub *harbortest.Stub) {
 		if !(pingReachability{registry}).Reachable() {
 			return
 		}
-		if _, err := publisher.RunOnce(ctx); err != nil {
-			t.Logf("drain outbox: %v", err)
+		if _, drainErr := publisher.RunOnce(ctx); drainErr != nil {
+			t.Logf("drain outbox: %v", drainErr)
 		}
-		pending, err := outbox.PendingCount(ctx)
-		require.NoError(t, err)
+		pending, countErr := outbox.PendingCount(ctx)
+		require.NoError(t, countErr)
 		if pending == 0 {
 			return
 		}
@@ -146,8 +146,8 @@ func (h *hotPath) factory(_ context.Context, pools *dbpool.Pools, _ *spiffe.Serv
 	}
 	var rotationSource fleet.RotationSource
 	if env.GC.RobotRotation.Enabled {
-		if err := h.composeRotation(pools); err != nil {
-			return nil, err
+		if composeErr := h.composeRotation(pools); composeErr != nil {
+			return nil, composeErr
 		}
 		rotationSource = h.rotations
 	}

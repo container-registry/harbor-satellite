@@ -70,8 +70,8 @@ func TestModelsParse(t *testing.T) {
 	enforcer, err := casbinlib.NewEnforcer(edge)
 	require.NoError(t, err)
 	for _, line := range [][]string{{"*", "*", "*", "*", "allow"}, {"*", "library/blocked", "*", "*", "deny"}, {"*", "library/alpine", "3.1*", "pull_manifest", "deny"}} {
-		_, err := enforcer.AddPolicy(line)
-		require.NoError(t, err)
+		_, addErr := enforcer.AddPolicy(line)
+		require.NoError(t, addErr)
 	}
 	for _, tc := range []struct {
 		repo, ref, act string
@@ -82,8 +82,8 @@ func TestModelsParse(t *testing.T) {
 		{"library/alpine", "3.19", "pull_manifest", false},
 		{"library/alpine", "*", "pull_blob", true},
 	} {
-		got, err := enforcer.Enforce("", tc.repo, tc.ref, tc.act)
-		require.NoError(t, err)
+		got, enforceErr := enforcer.Enforce("", tc.repo, tc.ref, tc.act)
+		require.NoError(t, enforceErr)
 		require.Equal(t, tc.want, got, "%+v", tc)
 	}
 

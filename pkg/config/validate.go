@@ -104,7 +104,7 @@ func ValidateAppConfig(app AppConfig) (warnings []string, err error) {
 		return nil, fmt.Errorf("encode app_config: %w", err)
 	}
 	cfg := &Config{}
-	if err := json.Unmarshal(raw, &cfg.AppConfig); err != nil {
+	if err = json.Unmarshal(raw, &cfg.AppConfig); err != nil {
 		return nil, fmt.Errorf("copy app_config: %w", err)
 	}
 	warnings = validateAndEnforceLogLevel(cfg)

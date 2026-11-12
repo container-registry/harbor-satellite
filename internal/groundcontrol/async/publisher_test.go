@@ -225,8 +225,8 @@ func TestPublisher_ConvergesAfterALongOutage(t *testing.T) {
 	require.NoError(t, err)
 
 	for range 10 {
-		_, err := p.RunOnce(context.Background())
-		require.NoError(t, err)
+		_, runErr := p.RunOnce(context.Background())
+		require.NoError(t, runErr)
 		store.expire()
 	}
 	require.Empty(t, store.failures, "an unreachable registry is no attempt")

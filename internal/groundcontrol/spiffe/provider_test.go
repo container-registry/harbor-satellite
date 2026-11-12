@@ -176,8 +176,8 @@ func TestSidecarProviderAndSource(t *testing.T) {
 
 	agent.Rotate(ca.SVID(t, "/gc/rotated"))
 	require.Eventually(t, func() bool {
-		id, err := src.GetSPIFFEID()
-		return err == nil && id.Path() == "/gc/rotated"
+		id, idErr := src.GetSPIFFEID()
+		return idErr == nil && id.Path() == "/gc/rotated"
 	}, 5*time.Second, 20*time.Millisecond, "the source follows SVID rotation")
 
 	require.NoError(t, src.Close())

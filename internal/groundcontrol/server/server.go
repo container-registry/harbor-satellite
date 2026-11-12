@@ -206,13 +206,13 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 	appServer.trustedProxyHops = cfg.Audit.TrustedProxyHops
 	appServer.policyEngine = cfg.Policy.Engine
 	appServer.disablePasswordLogin = cfg.OIDC.DisablePasswordLogin
-	if err := cfg.Policy.Validate(); err != nil {
+	if err = cfg.Policy.Validate(); err != nil {
 		return result, err
 	}
 	if cfg.Audit.TrustedProxyHops < 1 {
 		return result, fmt.Errorf("AUDIT_TRUSTED_PROXY_HOPS %d: must be at least 1", cfg.Audit.TrustedProxyHops)
 	}
-	if err := cfg.OIDC.Validate(); err != nil {
+	if err = cfg.OIDC.Validate(); err != nil {
 		return result, err
 	}
 	if appServer.policyEngine == env.PolicyEngineCasbin && appServer.policy == nil {
@@ -238,13 +238,13 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 	appServer.rateLimiter = rateLimiter
 	appServer.FailureLimiter = middleware.NewFailureLimiter(cfg.Server.AuthFailureLimit, cfg.Server.AuthFailureWindow)
 	if cfg.Server.RateLimitSplit {
-		anonymous, err := middleware.ParseRate(cfg.Server.RateLimitAnonymous)
-		if err != nil {
-			return result, fmt.Errorf("RATE_LIMIT_ANONYMOUS: %w", err)
+		anonymous, rateErr := middleware.ParseRate(cfg.Server.RateLimitAnonymous)
+		if rateErr != nil {
+			return result, fmt.Errorf("RATE_LIMIT_ANONYMOUS: %w", rateErr)
 		}
-		fleetRate, err := middleware.ParseRate(cfg.Server.RateLimitFleet)
-		if err != nil {
-			return result, fmt.Errorf("RATE_LIMIT_FLEET: %w", err)
+		fleetRate, rateErr := middleware.ParseRate(cfg.Server.RateLimitFleet)
+		if rateErr != nil {
+			return result, fmt.Errorf("RATE_LIMIT_FLEET: %w", rateErr)
 		}
 		appServer.AnonymousLimiter = middleware.NewLimiter[netip.Addr](anonymous)
 		appServer.FleetLimiter = middleware.NewLimiter[fleet.SatelliteID](fleetRate)

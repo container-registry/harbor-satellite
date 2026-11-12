@@ -218,8 +218,8 @@ func TestAppendGroupMemberEvents_OneStatementForAllMembers(t *testing.T) {
 	group, err := q.CreateGroup(ctx, database.CreateGroupParams{GroupName: "g1", RegistryUrl: "http://harbor.example", Projects: []string{"library"}})
 	require.NoError(t, err)
 	for i := range 25 {
-		sat, err := q.CreateSatellite(ctx, fmt.Sprintf("edge-%02d", i))
-		require.NoError(t, err)
+		sat, satErr := q.CreateSatellite(ctx, fmt.Sprintf("edge-%02d", i))
+		require.NoError(t, satErr)
 		require.NoError(t, q.AddSatelliteToGroup(ctx, database.AddSatelliteToGroupParams{SatelliteID: sat.ID, GroupID: group.ID}))
 	}
 	_, err = q.CreateSatellite(ctx, "not-a-member")

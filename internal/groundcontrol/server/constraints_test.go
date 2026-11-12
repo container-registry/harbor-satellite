@@ -99,8 +99,8 @@ func TestUpdateConfig_ConcurrentPatchOneGets409(t *testing.T) {
 	hold, err := h.db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := hold.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			t.Errorf("roll back the lock: %v", err)
+		if rbErr := hold.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			t.Errorf("roll back the lock: %v", rbErr)
 		}
 	})
 	_, err = hold.ExecContext(ctx, "SELECT id FROM configs WHERE config_name = 'edge-config' FOR UPDATE")

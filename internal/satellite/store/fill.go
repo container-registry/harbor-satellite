@@ -51,7 +51,7 @@ func (s *OCIStore) FillManifest(ctx context.Context, source Store, artifact Arti
 	if desc.Size > maxManifestBytes {
 		return ocispec.Descriptor{}, nil, fmt.Errorf("manifest %s is %d bytes, more than %d", desc.Digest, desc.Size, maxManifestBytes)
 	}
-	if payload, err := content.FetchAll(ctx, s.layout(), desc); err == nil {
+	if payload, fetchErr := content.FetchAll(ctx, s.layout(), desc); fetchErr == nil {
 		return desc, payload, nil
 	}
 	response, err := source.Fetch(ctx, artifact, desc, PullResourceManifest, nil)

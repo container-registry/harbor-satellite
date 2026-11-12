@@ -103,15 +103,15 @@ func (s *RegistrationService) ZeroTouch(ctx context.Context, token string) (res 
 		if s.c.sessions == nil {
 			return nil
 		}
-		grant, err := s.c.sessions.Issue(ctx, id)
-		if err != nil {
-			return fmt.Errorf("issue session: %w", err)
+		grant, issueErr := s.c.sessions.Issue(ctx, id)
+		if issueErr != nil {
+			return fmt.Errorf("issue session: %w", issueErr)
 		}
 		issued, session = true, &grant
 		return nil
 	}, func(tx Tx) error {
-		if err := tx.Tokens().Consume(ctx, token); err != nil {
-			return fmt.Errorf("consume registration token: %w", err)
+		if consumeErr := tx.Tokens().Consume(ctx, token); consumeErr != nil {
+			return fmt.Errorf("consume registration token: %w", consumeErr)
 		}
 		return nil
 	})
@@ -151,13 +151,13 @@ func (s *RegistrationService) rotate(ctx context.Context, sat Satellite, beforeT
 		creds.Name = robot.Name
 	}
 	if beforeTx != nil {
-		if err := beforeTx(ctx); err != nil {
+		if err = beforeTx(ctx); err != nil {
 			return ZTRResult{}, err
 		}
 	}
 	err = repo.WithTx(ctx, func(tx Tx) error {
-		if err := tx.Robots().Update(ctx, robot); err != nil {
-			return fmt.Errorf("store robot secret hash: %w", err)
+		if updateErr := tx.Robots().Update(ctx, robot); updateErr != nil {
+			return fmt.Errorf("store robot secret hash: %w", updateErr)
 		}
 		if also != nil {
 			return also(tx)
@@ -205,11 +205,11 @@ func (s *RegistrationService) SPIFFEZeroTouch(ctx context.Context, satelliteName
 	sat, err := repo.Autocommit().Satellites().GetByName(ctx, satelliteName)
 	if errors.Is(err, ErrNotFound) {
 		err = repo.WithTx(ctx, func(tx Tx) error {
-			sat, err := s.createSPIFFESatellite(ctx, tx, satelliteName, "", nil)
-			if err != nil || spiffeID == "" {
-				return err
+			created, createErr := s.createSPIFFESatellite(ctx, tx, satelliteName, "", nil)
+			if createErr != nil || spiffeID == "" {
+				return createErr
 			}
-			return tx.Satellites().SetIdentity(ctx, sat.ID, spiffeID, nil)
+			return tx.Satellites().SetIdentity(ctx, created.ID, spiffeID, nil)
 		})
 		if err != nil {
 			return ZTRResult{}, err
@@ -339,12 +339,12 @@ func (s *RegistrationService) RegisterSPIFFE(ctx context.Context, cmd RegisterSP
 	}
 	reg.EntryID = entryID
 	err = s.c.repo.WithTx(ctx, func(tx Tx) error {
-		sat, err := tx.Satellites().GetByName(ctx, cmd.Name)
-		if errors.Is(err, ErrNotFound) {
-			sat, err = s.createSPIFFESatellite(ctx, tx, cmd.Name, cmd.ConfigName, cmd.Groups)
+		sat, lookupErr := tx.Satellites().GetByName(ctx, cmd.Name)
+		if errors.Is(lookupErr, ErrNotFound) {
+			sat, lookupErr = s.createSPIFFESatellite(ctx, tx, cmd.Name, cmd.ConfigName, cmd.Groups)
 		}
-		if err != nil {
-			return err
+		if lookupErr != nil {
+			return lookupErr
 		}
 		return tx.Satellites().SetIdentity(ctx, sat.ID, reg.SPIFFEID, []string{entryID})
 	})

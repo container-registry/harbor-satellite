@@ -150,18 +150,18 @@ func NewWorker(ctx context.Context, deps WorkerDeps) (*async.Worker, func() erro
 	}
 	jobs := []async.Job{probe, stale, partitions, expirer, loginStates}
 	if deps.RobotRotation.Enabled {
-		sealer, err := NewSealer(deps.DataEncryptionKey)
-		if err != nil {
-			return nil, nil, errors.Join(fmt.Errorf("ROBOT_ROTATION_ENABLED: %w", err), locker.Close())
+		sealer, rotationErr := NewSealer(deps.DataEncryptionKey)
+		if rotationErr != nil {
+			return nil, nil, errors.Join(fmt.Errorf("ROBOT_ROTATION_ENABLED: %w", rotationErr), locker.Close())
 		}
-		store, err := postgres.NewRotationStore(pool)
-		if err != nil {
-			return nil, nil, errors.Join(err, locker.Close())
+		store, rotationErr := postgres.NewRotationStore(pool)
+		if rotationErr != nil {
+			return nil, nil, errors.Join(rotationErr, locker.Close())
 		}
-		rotator, err := async.NewRobotRotator(store, repo, registry, locker, sealer, fleet.SystemClock{}, settings.RobotDuration,
+		rotator, rotationErr := async.NewRobotRotator(store, repo, registry, locker, sealer, fleet.SystemClock{}, settings.RobotDuration,
 			cmp.Or(deps.RobotRotation.BeforeExpiry, 72*time.Hour), cmp.Or(deps.RobotRotation.Interval, 10*time.Minute))
-		if err != nil {
-			return nil, nil, errors.Join(err, locker.Close())
+		if rotationErr != nil {
+			return nil, nil, errors.Join(rotationErr, locker.Close())
 		}
 		jobs = append(jobs, rotator)
 	}
@@ -172,9 +172,9 @@ func NewWorker(ctx context.Context, deps WorkerDeps) (*async.Worker, func() erro
 	jobs = append(jobs, pruner)
 	closers := []func() error{locker.Close}
 	if deps.Webhook.Enabled {
-		dispatcher, closeSubs, err := newDispatcher(ctx, pool, deps)
-		if err != nil {
-			return nil, nil, errors.Join(err, locker.Close())
+		dispatcher, closeSubs, webhookErr := newDispatcher(ctx, pool, deps)
+		if webhookErr != nil {
+			return nil, nil, errors.Join(webhookErr, locker.Close())
 		}
 		jobs = append(jobs, dispatcher)
 		closers = append(closers, closeSubs)

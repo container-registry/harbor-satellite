@@ -110,8 +110,8 @@ func WriteFile(path string, data []byte) error {
 		return fmt.Errorf("error creating file: %w", err)
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
-			log.Printf("error closing file: %v", err)
+		if closeErr := file.Close(); closeErr != nil {
+			log.Printf("error closing file: %v", closeErr)
 		}
 	}()
 

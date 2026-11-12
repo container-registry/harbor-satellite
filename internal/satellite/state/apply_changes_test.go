@@ -83,11 +83,11 @@ func TestApplyGroupChanges_SharedLayerNotRefetched(t *testing.T) {
 		configPayload := []byte(`{"architecture":"amd64","os":"linux","tag":"` + tag + `"}`)
 		configDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageConfig, configPayload)
 		require.NoError(t, repo.Push(ctx, configDesc, bytes.NewReader(configPayload)))
-		manifest, err := json.Marshal(ocispec.Manifest{
+		manifest, marshalErr := json.Marshal(ocispec.Manifest{
 			Versioned: specs.Versioned{SchemaVersion: 2}, MediaType: ocispec.MediaTypeImageManifest,
 			Config: configDesc, Layers: []ocispec.Descriptor{sharedDesc},
 		})
-		require.NoError(t, err)
+		require.NoError(t, marshalErr)
 		desc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageManifest, manifest)
 		require.NoError(t, repo.PushReference(ctx, desc, bytes.NewReader(manifest), tag))
 		return desc

@@ -125,9 +125,9 @@ func TestReplication_BandwidthCapStaysUnderCap(t *testing.T) {
 	shared, err := store.NewRegistryStore(source)
 	require.NoError(t, err)
 	replicationSource, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
-		opts, err := store.ResolveSourceRegistry(sat.cm)
+		opts, resolveErr := store.ResolveSourceRegistry(sat.cm)
 		opts.BandwidthBytesPerSec = 64 << 10
-		return opts, err
+		return opts, resolveErr
 	})
 	require.NoError(t, err)
 	sat.process.SetStores(local, shared)
@@ -311,8 +311,8 @@ func journalReport(t *testing.T, gcURL string, batch, n int) (*StatusReportingPr
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, j.Close()) })
 	for range n {
-		_, err := j.Append(context.Background(), journal.Record{Type: edgejournal.RecordCRI, RecordedAt: time.Now(), Payload: json.RawMessage(`{"schema_version":"1"}`)})
-		require.NoError(t, err)
+		_, appendErr := j.Append(context.Background(), journal.Record{Type: edgejournal.RecordCRI, RecordedAt: time.Now(), Payload: json.RawMessage(`{"schema_version":"1"}`)})
+		require.NoError(t, appendErr)
 	}
 	dir := t.TempDir()
 	cm, err := config.NewConfigManager(filepath.Join(dir, "config.json"), filepath.Join(dir, "prev.json"), "token", gcURL, false, &config.Config{

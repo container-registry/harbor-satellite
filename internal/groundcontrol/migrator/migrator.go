@@ -98,8 +98,8 @@ func DoMigrations(ctx context.Context) error {
 		return err
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			log.Printf("error closing DB: %v", err)
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("error closing DB: %v", closeErr)
 		}
 	}()
 
@@ -109,7 +109,7 @@ func DoMigrations(ctx context.Context) error {
 		return err
 	}
 
-	if err := CheckServer(ctx, db); err != nil {
+	if err = CheckServer(ctx, db); err != nil {
 		return err
 	}
 

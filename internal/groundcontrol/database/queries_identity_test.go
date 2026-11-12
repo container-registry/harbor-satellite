@@ -162,14 +162,14 @@ func TestRobotRotations_SQLContract(t *testing.T) {
 	require.NoError(t, err)
 	expiring := func() []database.ListRobotsExpiringBeforeRow {
 		t.Helper()
-		rows, err := q.ListRobotsExpiringBefore(ctx, database.ListRobotsExpiringBeforeParams{Before: identityNow.Add(72 * time.Hour), Now: identityNow, RowLimit: 10})
-		require.NoError(t, err)
+		rows, listErr := q.ListRobotsExpiringBefore(ctx, database.ListRobotsExpiringBeforeParams{Before: identityNow.Add(72 * time.Hour), Now: identityNow, RowLimit: 10})
+		require.NoError(t, listErr)
 		return rows
 	}
 	harborIDs := func() []int64 {
 		t.Helper()
-		ids, err := q.ListRobotHarborIDsOfSatellite(ctx, sat.ID)
-		require.NoError(t, err)
+		ids, listErr := q.ListRobotHarborIDsOfSatellite(ctx, sat.ID)
+		require.NoError(t, listErr)
 		return ids
 	}
 	stage := func(generation, harborID int64) (int64, error) {

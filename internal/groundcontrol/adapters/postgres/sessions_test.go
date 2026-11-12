@@ -101,8 +101,8 @@ func TestSessionStore_ReplaceAndDeleteWinOverAConcurrentRenewal(t *testing.T) {
 			done := make(chan error, 1)
 			go func() { done <- wipe(store, id) }()
 			select {
-			case err := <-done:
-				t.Fatalf("%s did not wait for the open renewal: %v", name, err)
+			case doneErr := <-done:
+				t.Fatalf("%s did not wait for the open renewal: %v", name, doneErr)
 			case <-time.After(200 * time.Millisecond):
 			}
 			require.NoError(t, tx.Commit())

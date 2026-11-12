@@ -159,8 +159,8 @@ func TestPublisher_KillMidBatchConverges(t *testing.T) {
 	killed, kill := context.WithCancel(context.Background())
 	defer kill()
 	newDeps := func(h async.Handler) async.PublisherDeps {
-		locker, err := postgres.NewAggregateLocker(context.Background(), db.DB)
-		require.NoError(t, err)
+		locker, lockerErr := postgres.NewAggregateLocker(context.Background(), db.DB)
+		require.NoError(t, lockerErr)
 		t.Cleanup(func() { _ = locker.Close() })
 		return async.PublisherDeps{Store: store, Handler: h, Locker: locker, Registry: reachable{}}
 	}
@@ -174,8 +174,8 @@ func TestPublisher_KillMidBatchConverges(t *testing.T) {
 		return nil
 	})), cfg)
 	require.NoError(t, err)
-	if _, err := first.RunOnce(killed); err != nil {
-		require.ErrorIs(t, err, context.Canceled)
+	if _, runErr := first.RunOnce(killed); runErr != nil {
+		require.ErrorIs(t, runErr, context.Canceled)
 	}
 
 	second, err := async.NewPublisher(newDeps(async.HandlerFunc(func(_ context.Context, e async.OutboxEvent) error {
@@ -224,15 +224,15 @@ func TestOutboxStore_ReleaseAndRearm(t *testing.T) {
 	past := -time.Second
 
 	for range 3 {
-		claimed, err := store.Claim(ctx, 1, 2, past)
-		require.NoError(t, err)
+		claimed, claimErr := store.Claim(ctx, 1, 2, past)
+		require.NoError(t, claimErr)
 		require.Len(t, claimed, 1)
 		require.Equal(t, ids[0], claimed[0].ID)
 		require.NoError(t, store.Release(ctx, ids[0], "registry unavailable", past))
 	}
 	for range 2 {
-		_, err := store.Claim(ctx, 10, 2, past)
-		require.NoError(t, err)
+		_, claimErr := store.Claim(ctx, 10, 2, past)
+		require.NoError(t, claimErr)
 	}
 	stuck, err := store.Stuck(ctx, 2, 10)
 	require.NoError(t, err)
@@ -253,8 +253,8 @@ func TestOutboxSink_FansOutToGroupMembersAndKeepsLogOnlyDone(t *testing.T) {
 	group, err := q.CreateGroup(ctx, database.CreateGroupParams{GroupName: "g1", RegistryUrl: "http://harbor.example", Projects: []string{"library"}})
 	require.NoError(t, err)
 	for _, name := range []string{"edge-01", "edge-02"} {
-		sat, err := q.CreateSatellite(ctx, name)
-		require.NoError(t, err)
+		sat, satErr := q.CreateSatellite(ctx, name)
+		require.NoError(t, satErr)
 		require.NoError(t, q.AddSatelliteToGroup(ctx, database.AddSatelliteToGroupParams{SatelliteID: sat.ID, GroupID: group.ID}))
 	}
 	tx, err := db.BeginTx(ctx, nil)

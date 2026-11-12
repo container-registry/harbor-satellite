@@ -80,12 +80,12 @@ func NewEmpty(t testing.TB) *DB {
 	t.Cleanup(func() { _ = admin.Close() })
 
 	name := "gctest_" + randomSuffix(t)
-	if _, err := admin.ExecContext(ctx, "CREATE DATABASE "+pq.QuoteIdentifier(name)); err != nil {
+	if _, err = admin.ExecContext(ctx, "CREATE DATABASE "+pq.QuoteIdentifier(name)); err != nil {
 		t.Fatalf("create database %s: %v", name, err)
 	}
 	t.Cleanup(func() {
-		if _, err := admin.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+pq.QuoteIdentifier(name)+" WITH (FORCE)"); err != nil {
-			t.Errorf("drop database %s: %v", name, err)
+		if _, dropErr := admin.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+pq.QuoteIdentifier(name)+" WITH (FORCE)"); dropErr != nil {
+			t.Errorf("drop database %s: %v", name, dropErr)
 		}
 	})
 

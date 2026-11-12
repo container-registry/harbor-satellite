@@ -55,8 +55,8 @@ func TestSatelliteJournal_SQLContract(t *testing.T) {
 	const epoch, reinstalled int64 = 7, 8
 	open := func(epoch int64) database.OpenJournalCursorRow {
 		t.Helper()
-		c, err := q.OpenJournalCursor(ctx, database.OpenJournalCursorParams{SatelliteID: sat.ID, Epoch: epoch})
-		require.NoError(t, err)
+		c, openErr := q.OpenJournalCursor(ctx, database.OpenJournalCursorParams{SatelliteID: sat.ID, Epoch: epoch})
+		require.NoError(t, openErr)
 		return c
 	}
 	cursor := func(epoch, acked int64) database.OpenJournalCursorRow {
@@ -67,8 +67,8 @@ func TestSatelliteJournal_SQLContract(t *testing.T) {
 	}
 	advance := func(epoch, acked int64, events json.RawMessage) database.AdvanceJournalCursorRow {
 		t.Helper()
-		r, err := q.AdvanceJournalCursor(ctx, database.AdvanceJournalCursorParams{SatelliteID: sat.ID, Epoch: epoch, AckedSeq: acked, Events: events})
-		require.NoError(t, err)
+		r, advanceErr := q.AdvanceJournalCursor(ctx, database.AdvanceJournalCursorParams{SatelliteID: sat.ID, Epoch: epoch, AckedSeq: acked, Events: events})
+		require.NoError(t, advanceErr)
 		return r
 	}
 	moved := func(events int64) database.AdvanceJournalCursorRow {
@@ -106,8 +106,8 @@ func TestSatelliteJournal_SQLContract(t *testing.T) {
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			t.Error(err)
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			t.Error(rbErr)
 		}
 	})
 	c, err := q.WithTx(tx).OpenJournalCursor(ctx, database.OpenJournalCursorParams{SatelliteID: sat.ID, Epoch: epoch})
@@ -137,8 +137,8 @@ func TestOpenJournalCursor_ConcurrentCreateReturnsTheRow(t *testing.T) {
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			t.Error(err)
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			t.Error(rbErr)
 		}
 	})
 	_, err = q.WithTx(tx).OpenJournalCursor(ctx, database.OpenJournalCursorParams{SatelliteID: sat.ID, Epoch: 200})
@@ -175,8 +175,8 @@ func TestOpenJournalCursor_FreshSeesTheLatestCommittedEpoch(t *testing.T) {
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			t.Error(err)
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			t.Error(rbErr)
 		}
 	})
 	reset, err := q.WithTx(tx).OpenJournalCursor(ctx, database.OpenJournalCursorParams{SatelliteID: sat.ID, Epoch: 300})

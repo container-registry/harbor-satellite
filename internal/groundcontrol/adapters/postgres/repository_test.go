@@ -60,17 +60,17 @@ func TestRepository_RobotGrantsInOneStatement(t *testing.T) {
 	tx := repo.Autocommit()
 	groups := map[string]fleet.GroupID{}
 	for name, projects := range map[string][]string{"g1": {"library"}, "g2": {"library", "team"}} {
-		g, err := tx.Groups().Upsert(ctx, fleet.Group{Name: name, RegistryURL: "http://harbor.example", Projects: projects})
-		require.NoError(t, err)
+		g, upsertErr := tx.Groups().Upsert(ctx, fleet.Group{Name: name, RegistryURL: "http://harbor.example", Projects: projects})
+		require.NoError(t, upsertErr)
 		groups[name] = g.ID
 	}
 	var ids []fleet.SatelliteID
 	for i, member := range [][]string{{"g1", "g2"}, {"g1"}, {}} {
-		sat, err := tx.Satellites().Create(ctx, fmt.Sprintf("edge-%02d", i))
-		require.NoError(t, err)
+		sat, createErr := tx.Satellites().Create(ctx, fmt.Sprintf("edge-%02d", i))
+		require.NoError(t, createErr)
 		ids = append(ids, sat.ID)
-		_, err = tx.Robots().Add(ctx, fleet.Robot{Satellite: sat.ID, Name: fmt.Sprintf("robot$edge-%02d", i), HarborID: int64(100 + i), SecretHash: "hash"})
-		require.NoError(t, err)
+		_, createErr = tx.Robots().Add(ctx, fleet.Robot{Satellite: sat.ID, Name: fmt.Sprintf("robot$edge-%02d", i), HarborID: int64(100 + i), SecretHash: "hash"})
+		require.NoError(t, createErr)
 		for _, g := range member {
 			require.NoError(t, tx.Groups().AddMember(ctx, groups[g], sat.ID))
 		}

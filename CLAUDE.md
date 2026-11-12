@@ -84,7 +84,7 @@ task lint-report   # writes golangci-lint.report
 task vuln          # govulncheck in a pinned Docker image
 ```
 
-Single config `.golangci.yaml` (golangci-lint v2, CI pins v2.12.2) with `default: none`, 51 enabled linters and the gofmt, gofumpt and goimports formatters. Notable enabled linters: gosec, errcheck (check-blank, type assertions), errorlint, depguard (bans io/ioutil), govet (all analyzers except fieldalignment and shadow), interfacebloat (max 10 methods), nakedret (no naked returns at all), tagalign, nolintlint (requires explanation). `cyclop`, `funlen`, `wrapcheck` and others have settings in the file but are not enabled; `gochecknoglobals` and `gochecknoinits` are not enabled either.
+Single config `.golangci.yaml` (golangci-lint v2, CI pins v2.12.2) with `default: none`, 51 enabled linters and the gofmt, gofumpt and goimports formatters. Notable enabled linters: gosec, errcheck (check-blank, type assertions), errorlint, depguard (bans io/ioutil), govet (all analyzers except fieldalignment), interfacebloat (max 10 methods), nakedret (no naked returns at all), tagalign, nolintlint (requires explanation). `cyclop`, `funlen`, `wrapcheck` and others have settings in the file but are not enabled; `gochecknoglobals` and `gochecknoinits` are not enabled either.
 
 ### Running Locally
 

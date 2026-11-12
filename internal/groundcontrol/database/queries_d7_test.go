@@ -19,8 +19,8 @@ func TestClaimToken_SQLContract(t *testing.T) {
 	require.NoError(t, err)
 	addToken := func(token string, expiresAt time.Time) {
 		t.Helper()
-		_, err := q.AddToken(ctx, database.AddTokenParams{SatelliteID: sat.ID, Token: token, ExpiresAt: expiresAt})
-		require.NoError(t, err)
+		_, addErr := q.AddToken(ctx, database.AddTokenParams{SatelliteID: sat.ID, Token: token, ExpiresAt: expiresAt})
+		require.NoError(t, addErr)
 	}
 	claim := func(token string) (int32, error) {
 		return q.ClaimToken(ctx, database.ClaimTokenParams{Token: token, Now: time.Now()})

@@ -99,8 +99,8 @@ func TestSPIFFEZTR_RobotGetsProjectsOfExistingGroups(t *testing.T) {
 	sat, err := h.app.dbQueries.CreateSatellite(ctx, "spiffe-01")
 	require.NoError(t, err)
 	for _, name := range []string{"group-a", "group-b"} {
-		grp, err := h.app.dbQueries.GetGroupByName(ctx, name)
-		require.NoError(t, err)
+		grp, groupErr := h.app.dbQueries.GetGroupByName(ctx, name)
+		require.NoError(t, groupErr)
 		require.NoError(t, h.app.dbQueries.AddSatelliteToGroup(ctx, database.AddSatelliteToGroupParams{SatelliteID: sat.ID, GroupID: grp.ID}))
 	}
 

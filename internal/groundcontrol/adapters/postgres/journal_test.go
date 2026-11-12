@@ -28,8 +28,8 @@ func TestRepository_JournalIngestTakesFourStatementsAndEmitsOnce(t *testing.T) {
 
 	used := db.MeasureStatements(t, func() {
 		require.NoError(t, repo.WithTx(ctx, func(tx fleet.Tx) error {
-			cursor, err := tx.Journal().OpenCursor(ctx, id, 1)
-			require.NoError(t, err)
+			cursor, cursorErr := tx.Journal().OpenCursor(ctx, id, 1)
+			require.NoError(t, cursorErr)
 			require.Equal(t, fleet.JournalCursor{Epoch: 1, Fresh: true}, cursor)
 			return tx.Journal().Advance(ctx, id, 1, 2, events)
 		}))

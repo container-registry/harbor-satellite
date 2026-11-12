@@ -103,8 +103,8 @@ func TestReadOutboxAfter_XidGuardHidesInFlight(t *testing.T) {
 	ta, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	defer func() {
-		if err := ta.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			t.Error(err)
+		if rbErr := ta.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			t.Error(rbErr)
 		}
 	}()
 	aID := appendLogOnly(t, ctx, q.WithTx(ta))
@@ -169,8 +169,8 @@ func TestCreateWebhookSubscription_StartsAtCurrentXmin(t *testing.T) {
 	held, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	defer func() {
-		if err := held.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			t.Error(err)
+		if rbErr := held.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			t.Error(rbErr)
 		}
 	}()
 	heldID := appendLogOnly(t, ctx, q.WithTx(held))
@@ -263,8 +263,8 @@ func TestPruneDoneOutboxEvents_KeepsRowsAboveLowestEnabledCheckpoint(t *testing.
 	require.NoError(t, err)
 	remaining := func() []int64 {
 		t.Helper()
-		rows, err := db.QueryContext(ctx, "SELECT id FROM event_outbox ORDER BY id")
-		require.NoError(t, err)
+		rows, queryErr := db.QueryContext(ctx, "SELECT id FROM event_outbox ORDER BY id")
+		require.NoError(t, queryErr)
 		defer rows.Close()
 		var out []int64
 		for rows.Next() {
@@ -277,8 +277,8 @@ func TestPruneDoneOutboxEvents_KeepsRowsAboveLowestEnabledCheckpoint(t *testing.
 	}
 	prune := func() int64 {
 		t.Helper()
-		n, err := q.PruneDoneOutboxEvents(ctx, database.PruneDoneOutboxEventsParams{RetentionMs: time.Hour.Milliseconds(), MaxRows: 100})
-		require.NoError(t, err)
+		n, pruneErr := q.PruneDoneOutboxEvents(ctx, database.PruneDoneOutboxEventsParams{RetentionMs: time.Hour.Milliseconds(), MaxRows: 100})
+		require.NoError(t, pruneErr)
 		return n
 	}
 

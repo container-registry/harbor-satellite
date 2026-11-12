@@ -136,12 +136,12 @@ func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts [
 			return err
 		}
 		if artifact.Tag == "" {
-			desc, err := source.Pull(ctx, artifact, PullResourceBlob)
-			if err != nil {
-				return err
+			desc, blobErr := source.Pull(ctx, artifact, PullResourceBlob)
+			if blobErr != nil {
+				return blobErr
 			}
-			if err := oras.CopyGraph(ctx, from, to, desc, oras.DefaultCopyGraphOptions); err != nil {
-				return err
+			if blobErr = oras.CopyGraph(ctx, from, to, desc, oras.DefaultCopyGraphOptions); blobErr != nil {
+				return blobErr
 			}
 			continue
 		}

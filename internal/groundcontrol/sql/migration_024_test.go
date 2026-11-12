@@ -39,8 +39,8 @@ func TestMigration024_StatusPartitionsUpAndDown(t *testing.T) {
 	require.Equal(t, "r", relationKind(t, db.DB, "satellite_status"))
 	insert := func(satellite int32) database.SatelliteStatus {
 		t.Helper()
-		row, err := q.InsertSatelliteStatus(ctx, database.InsertSatelliteStatusParams{SatelliteID: satellite, Activity: "idle", ReportedAt: time.Now().UTC()})
-		require.NoError(t, err)
+		row, insertErr := q.InsertSatelliteStatus(ctx, database.InsertSatelliteStatusParams{SatelliteID: satellite, Activity: "idle", ReportedAt: time.Now().UTC()})
+		require.NoError(t, insertErr)
 		return row
 	}
 	kept, err := q.CreateSatellite(ctx, "kept")

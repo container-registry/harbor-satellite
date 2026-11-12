@@ -24,8 +24,8 @@ func TestLifecycle_PendingOnlineStaleOnlineRevokedPending(t *testing.T) {
 	id := fleet.SatelliteID(sat.ID)
 	flush := func(seen time.Time) {
 		t.Helper()
-		store, err := postgres.NewHeartbeatStore(db.DB, fleettest.Clock{T: seen})
-		require.NoError(t, err)
+		store, storeErr := postgres.NewHeartbeatStore(db.DB, fleettest.Clock{T: seen})
+		require.NoError(t, storeErr)
 		require.NoError(t, store.Flush(ctx, heartbeat.Batch{
 			Latest:  []fleet.Heartbeat{{Satellite: id, SeenAt: seen, Interval: "@every 00h00m30s"}},
 			Samples: []fleet.StatusSample{{Satellite: id, Activity: "idle", ReportedAt: seen}},
@@ -34,8 +34,8 @@ func TestLifecycle_PendingOnlineStaleOnlineRevokedPending(t *testing.T) {
 	markStale := func(now time.Time) {
 		t.Helper()
 		require.NoError(t, repo.WithTx(ctx, func(tx fleet.Tx) error {
-			_, err := tx.Views().MarkStale(ctx, now, 15*time.Minute, 10*time.Second)
-			return err
+			_, markErr := tx.Views().MarkStale(ctx, now, 15*time.Minute, 10*time.Second)
+			return markErr
 		}))
 	}
 

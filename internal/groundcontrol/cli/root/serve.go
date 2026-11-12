@@ -76,21 +76,21 @@ func newServeCommand(deps serveDependencies) *cobra.Command {
 }
 
 func runServe(ctx context.Context, out io.Writer, deps serveDependencies, embedded bool) (err error) {
-	if err := ctx.Err(); err != nil {
+	if err = ctx.Err(); err != nil {
 		return err
 	}
-	if err := deps.loadEnvironment(); err != nil {
+	if err = deps.loadEnvironment(); err != nil {
 		return fmt.Errorf("failed to load environment: %w", err)
 	}
 	if deps.checkHealth != nil {
-		if err := deps.checkHealth(ctx); err != nil {
-			_, _ = fmt.Fprintf(out, "Harbor is not reachable yet (%v); starting anyway, /health reports it degraded\n", err)
+		if healthErr := deps.checkHealth(ctx); healthErr != nil {
+			_, _ = fmt.Fprintf(out, "Harbor is not reachable yet (%v); starting anyway, /health reports it degraded\n", healthErr)
 		}
-		if err := ctx.Err(); err != nil {
+		if err = ctx.Err(); err != nil {
 			return err
 		}
 	}
-	if err := deps.migrate(ctx); err != nil {
+	if err = deps.migrate(ctx); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 	result, err := deps.newServer(ctx)

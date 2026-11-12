@@ -87,9 +87,9 @@ func TestExecute_RetaggedImageStaysPullable(t *testing.T) {
 		failures []string
 	)
 	recordPull := func(stage string) {
-		if _, err := ociStore.Pull(ctx, tagged, store.PullResourceManifest); err != nil {
+		if _, pullErr := ociStore.Pull(ctx, tagged, store.PullResourceManifest); pullErr != nil {
 			mu.Lock()
-			failures = append(failures, stage+": "+err.Error())
+			failures = append(failures, stage+": "+pullErr.Error())
 			mu.Unlock()
 		}
 	}

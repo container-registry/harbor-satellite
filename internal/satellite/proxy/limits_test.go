@@ -99,8 +99,8 @@ func TestLimitListener_CapsConnections(t *testing.T) {
 	accepted := make(chan net.Conn, 2)
 	go func() {
 		for {
-			conn, err := limited.Accept()
-			if err != nil {
+			conn, acceptErr := limited.Accept()
+			if acceptErr != nil {
 				return
 			}
 			accepted <- conn

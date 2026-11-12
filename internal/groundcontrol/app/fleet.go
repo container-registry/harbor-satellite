@@ -180,16 +180,16 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 	var rotations *async.RotationCache
 	var rotationSource fleet.RotationSource
 	if deps.RobotRotation.Enabled {
-		sealer, err := NewSealer(deps.DataEncryptionKey)
-		if err != nil {
-			return nil, fmt.Errorf("ROBOT_ROTATION_ENABLED: %w", err)
+		sealer, rotationErr := NewSealer(deps.DataEncryptionKey)
+		if rotationErr != nil {
+			return nil, fmt.Errorf("ROBOT_ROTATION_ENABLED: %w", rotationErr)
 		}
-		store, err := postgres.NewRotationStore(fleetPool(deps.Pools))
-		if err != nil {
-			return nil, err
+		store, rotationErr := postgres.NewRotationStore(fleetPool(deps.Pools))
+		if rotationErr != nil {
+			return nil, rotationErr
 		}
-		if rotations, err = async.NewRotationCache(store, sealer, cmp.Or(deps.RobotRotation.CacheRefresh, 30*time.Second)); err != nil {
-			return nil, err
+		if rotations, rotationErr = async.NewRotationCache(store, sealer, cmp.Or(deps.RobotRotation.CacheRefresh, 30*time.Second)); rotationErr != nil {
+			return nil, rotationErr
 		}
 		rotationSource = rotations
 	}

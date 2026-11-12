@@ -89,7 +89,7 @@ func (s *SessionStore) AddIfNone(ctx context.Context, satellite fleet.SatelliteI
 		}
 	}()
 	q := s.q.WithTx(tx)
-	if err := q.LockSatelliteSessions(ctx, database.LockSatelliteSessionsParams{Namespace: advisorylock.SatelliteSessions, SatelliteID: int32(satellite)}); err != nil {
+	if err = q.LockSatelliteSessions(ctx, database.LockSatelliteSessionsParams{Namespace: advisorylock.SatelliteSessions, SatelliteID: int32(satellite)}); err != nil {
 		return false, mapError(err)
 	}
 	n, err := q.IssueFirstSatelliteSession(ctx, database.IssueFirstSatelliteSessionParams{

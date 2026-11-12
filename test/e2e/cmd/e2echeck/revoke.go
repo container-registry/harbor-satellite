@@ -53,7 +53,7 @@ func revoke(ctx context.Context, g *gcClient, satellite, container string, inter
 		return err
 	}
 	fmt.Printf("PASS: GC answered the heartbeat of revoked satellite %s with 403 (%q)\n", satellite, revokedMessage)
-	if err := probeSync(ctx, g, container); err != nil {
+	if err = probeSync(ctx, g, container); err != nil {
 		return err
 	}
 	l, err := g.lifecycle(ctx, satellite)
@@ -65,13 +65,13 @@ func revoke(ctx context.Context, g *gcClient, satellite, container string, inter
 	}
 	fmt.Printf("PASS: satellite %s stays revoked after its heartbeat\n", satellite)
 
-	if err := lifecycleOp(ctx, g, path+"/unrevoke", "pending"); err != nil {
+	if err = lifecycleOp(ctx, g, path+"/unrevoke", "pending"); err != nil {
 		return err
 	}
 	err = poll(ctx, interval, "the unrevoked satellite to come online", func() (bool, error) {
-		l, err := g.lifecycle(ctx, satellite)
-		if err != nil {
-			return false, err
+		l, lifecycleErr := g.lifecycle(ctx, satellite)
+		if lifecycleErr != nil {
+			return false, lifecycleErr
 		}
 		return l.State == "online", fmt.Errorf("state is %s", l.State)
 	})

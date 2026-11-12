@@ -87,7 +87,7 @@ func (s *RefreshCredentialProcess) newClient(ctx context.Context) (*gcclient.Cli
 		err        error
 	)
 	if s.spiffeClient != nil {
-		if err := s.spiffeClient.Connect(ctx); err != nil {
+		if err = s.spiffeClient.Connect(ctx); err != nil {
 			return nil, fmt.Errorf("connect to SPIRE agent: %w", err)
 		}
 		if httpClient, err = s.spiffeClient.CreateHTTPClient(); err != nil {

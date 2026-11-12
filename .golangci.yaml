@@ -137,9 +137,6 @@ linters:
     govet:
       disable:
         - fieldalignment
-        # 63 findings, all shadowed err, in 20 files including the Phase 0
-        # handlers and state_process.go; fixed separately.
-        - shadow
       enable-all: true
     inamedparam:
       skip-single-param: true

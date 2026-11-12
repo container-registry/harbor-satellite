@@ -223,8 +223,8 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) (err error)
 
 	// Persist state if groups were added, removed, or swapped
 	if f.stateFilePath != "" && changed {
-		if err := f.saveState(); err != nil {
-			log.Warn().Err(err).Msg("Failed to persist state after group changes")
+		if saveErr := f.saveState(); saveErr != nil {
+			log.Warn().Err(saveErr).Msg("Failed to persist state after group changes")
 		}
 	}
 
@@ -897,7 +897,7 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 
 	// State URLs use the same Harbor override as the image source.
 	if override := f.cm.GetHarborRegistryURL(); override != "" {
-		if replaced, err := config.ReplaceURLHost(satelliteStateURL, override); err == nil {
+		if replaced, overrideErr := config.ReplaceURLHost(satelliteStateURL, override); overrideErr == nil {
 			satelliteStateURL = replaced
 		}
 	}

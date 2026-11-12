@@ -86,14 +86,14 @@ func TestPolicyVersion_BumpIsMonotonic(t *testing.T) {
 	errs := make(chan error, writers)
 	for i := range writers {
 		wg.Go(func() {
-			tx, err := db.BeginTx(ctx, nil)
-			if err != nil {
-				errs <- err
+			tx, txErr := db.BeginTx(ctx, nil)
+			if txErr != nil {
+				errs <- txErr
 				return
 			}
-			got, err := q.WithTx(tx).BumpPolicyVersion(ctx)
-			if err != nil {
-				errs <- errors.Join(err, tx.Rollback())
+			got, txErr := q.WithTx(tx).BumpPolicyVersion(ctx)
+			if txErr != nil {
+				errs <- errors.Join(txErr, tx.Rollback())
 				return
 			}
 			versions[i] = got
@@ -124,8 +124,8 @@ func TestPolicySnapshot_RepeatableReadIsConsistent(t *testing.T) {
 	reader, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	require.NoError(t, err)
 	defer func() {
-		if err := reader.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			t.Error(err)
+		if rbErr := reader.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			t.Error(rbErr)
 		}
 	}()
 	version, err := q.WithTx(reader).GetPolicyVersion(ctx)

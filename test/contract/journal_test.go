@@ -166,13 +166,13 @@ func TestSatelliteJournalReachesGroundControl(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, j.Close()) })
 	const records = 5
 	for i := range records {
-		payload, err := json.Marshal(edgejournal.Replication{
+		payload, marshalErr := json.Marshal(edgejournal.Replication{
 			SchemaVersion: edgejournal.SchemaVersion, CycleID: "c-1", Action: edgejournal.ActionReplicated, Group: "edge-group",
 			Repository: "library/alpine", Tag: fmt.Sprintf("3.%d", i), Digest: "sha256:aaa", Bytes: 1024,
 		})
-		require.NoError(t, err)
-		_, err = j.Append(ctx, journal.Record{Type: edgejournal.RecordReplication, RecordedAt: time.Now().UTC(), Payload: payload})
-		require.NoError(t, err)
+		require.NoError(t, marshalErr)
+		_, marshalErr = j.Append(ctx, journal.Record{Type: edgejournal.RecordReplication, RecordedAt: time.Now().UTC(), Payload: payload})
+		require.NoError(t, marshalErr)
 	}
 	log := zerolog.Nop()
 	reporter := state.NewStatusReportingProcess(cm, events.NewEventScheduler(&log))

@@ -213,7 +213,7 @@ func (s *OCIStore) reloadLocked(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := WriteIndexAtomic(s.root, index); err != nil {
+	if err = WriteIndexAtomic(s.root, index); err != nil {
 		return err
 	}
 	reopened, err := openLayout(s.root, s.opts.AtomicIndex)

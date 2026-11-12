@@ -45,22 +45,22 @@ func (s *SatelliteService) Register(ctx context.Context, cmd RegisterSatelliteCm
 	}
 	expires := s.c.clock.Now().Add(s.c.settings.tokenTTL())
 	err = s.c.inTx(ctx, func(tx Tx) error {
-		sat, err := tx.Satellites().Create(ctx, cmd.Name)
-		if err != nil {
-			return fmt.Errorf("create satellite %s: %w", cmd.Name, err)
+		sat, txErr := tx.Satellites().Create(ctx, cmd.Name)
+		if txErr != nil {
+			return fmt.Errorf("create satellite %s: %w", cmd.Name, txErr)
 		}
-		if err := addToGroups(ctx, tx, sat.ID, cmd.Groups); err != nil {
-			return err
+		if txErr = addToGroups(ctx, tx, sat.ID, cmd.Groups); txErr != nil {
+			return txErr
 		}
-		cfg, err := tx.Configs().GetByName(ctx, cmd.ConfigName)
-		if err != nil {
-			return fmt.Errorf("config %s: %w", cmd.ConfigName, err)
+		cfg, txErr := tx.Configs().GetByName(ctx, cmd.ConfigName)
+		if txErr != nil {
+			return fmt.Errorf("config %s: %w", cmd.ConfigName, txErr)
 		}
-		if err := tx.Satellites().SetConfig(ctx, sat.ID, cfg.ID); err != nil {
-			return fmt.Errorf("assign config %s: %w", cmd.ConfigName, err)
+		if txErr = tx.Satellites().SetConfig(ctx, sat.ID, cfg.ID); txErr != nil {
+			return fmt.Errorf("assign config %s: %w", cmd.ConfigName, txErr)
 		}
-		if err := tx.Tokens().Add(ctx, sat.ID, token, expires); err != nil {
-			return fmt.Errorf("store registration token: %w", err)
+		if txErr = tx.Tokens().Add(ctx, sat.ID, token, expires); txErr != nil {
+			return fmt.Errorf("store registration token: %w", txErr)
 		}
 		return tx.Events().Append(ctx, satelliteEvent(EventSatelliteCreated, sat))
 	})
@@ -106,22 +106,22 @@ func (s *SatelliteService) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.authorizeSatellite(ctx, ActionDelete, name); err != nil {
+	if err = s.authorizeSatellite(ctx, ActionDelete, name); err != nil {
 		return err
 	}
 	var id SatelliteID
 	err = s.c.inTx(ctx, func(tx Tx) error {
-		sat, err := tx.Satellites().GetByName(ctx, name)
-		if err != nil {
-			return fmt.Errorf("satellite %s: %w", name, err)
+		sat, txErr := tx.Satellites().GetByName(ctx, name)
+		if txErr != nil {
+			return fmt.Errorf("satellite %s: %w", name, txErr)
 		}
 		id = sat.ID
-		robots, err := tx.Robots().HarborIDs(ctx, sat.ID)
-		if err != nil {
-			return fmt.Errorf("robots of satellite %s: %w", name, err)
+		robots, txErr := tx.Robots().HarborIDs(ctx, sat.ID)
+		if txErr != nil {
+			return fmt.Errorf("robots of satellite %s: %w", name, txErr)
 		}
-		if err := tx.Satellites().Delete(ctx, sat.ID); err != nil {
-			return fmt.Errorf("delete satellite %s: %w", name, err)
+		if txErr = tx.Satellites().Delete(ctx, sat.ID); txErr != nil {
+			return fmt.Errorf("delete satellite %s: %w", name, txErr)
 		}
 		if robots == nil {
 			robots = []int64{}
@@ -213,7 +213,7 @@ func (s *SatelliteService) transition(ctx context.Context, action Action, name s
 			return fmt.Errorf("satellite %s: %w", name, err)
 		}
 		if event != nil {
-			if err := tx.Events().Append(ctx, *event); err != nil {
+			if err = tx.Events().Append(ctx, *event); err != nil {
 				return err
 			}
 		}

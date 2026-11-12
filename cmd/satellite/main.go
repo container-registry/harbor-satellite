@@ -192,7 +192,7 @@ func main() {
 	if opts.DesiredStateFile != "" {
 		desiredStateFile := opts.DesiredStateFile
 		if !filepath.IsAbs(desiredStateFile) {
-			if abs, err := filepath.Abs(desiredStateFile); err == nil {
+			if abs, absErr := filepath.Abs(desiredStateFile); absErr == nil {
 				desiredStateFile = abs
 			}
 		}
@@ -429,8 +429,8 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		return fmt.Errorf("open edge journal: %w", err)
 	}
 	defer func() {
-		if err := edgeJournal.Close(); err != nil {
-			fmt.Printf("warning: close edge journal: %v\n", err)
+		if closeErr := edgeJournal.Close(); closeErr != nil {
+			fmt.Printf("warning: close edge journal: %v\n", closeErr)
 		}
 	}()
 	pullOptions.Journal = edgeJournal
@@ -461,11 +461,11 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	if checker, ok := localStore.(interface {
 		Check(ctx context.Context) error
 	}); ok {
-		if err := telemetryServer.AddCheck("store", checker.Check); err != nil {
+		if err = telemetryServer.AddCheck("store", checker.Check); err != nil {
 			return err
 		}
 	}
-	if err := telemetryServer.AddCheck("proxy", func(checkCtx context.Context) error {
+	if err = telemetryServer.AddCheck("proxy", func(checkCtx context.Context) error {
 		conn, dialErr := (&net.Dialer{Timeout: time.Second}).DialContext(checkCtx, "tcp", proxyAddress)
 		if dialErr != nil {
 			return fmt.Errorf("OCI proxy: %w", dialErr)
@@ -474,17 +474,17 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	}); err != nil {
 		return err
 	}
-	if err := serveTelemetry(ctx, wg, telemetryServer, opts.TelemetryAddr); err != nil {
+	if err = serveTelemetry(ctx, wg, telemetryServer, opts.TelemetryAddr); err != nil {
 		return err
 	}
 	defer proxyServer.Close()
 
 	wg.Go(func() error {
-		err := proxyServer.Serve(proxyListener)
-		if err == nil || errors.Is(err, http.ErrServerClosed) {
+		serveErr := proxyServer.Serve(proxyListener)
+		if serveErr == nil || errors.Is(serveErr, http.ErrServerClosed) {
 			return nil
 		}
-		return fmt.Errorf("serve OCI proxy: %w", err)
+		return fmt.Errorf("serve OCI proxy: %w", serveErr)
 	})
 
 	// Resolve local registry endpoint for CRI mirror config
@@ -504,7 +504,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		if imageDir == "" {
 			return fmt.Errorf("--direct-delivery enabled but no k3s/RKE2 image directory found; use --image-dir to specify one")
 		}
-		if err := os.MkdirAll(imageDir, 0o755); err != nil {
+		if err = os.MkdirAll(imageDir, 0o755); err != nil {
 			return fmt.Errorf("create image directory %s: %w", imageDir, err)
 		}
 		cm.With(config.SetDirectDelivery(config.DirectDeliveryConfig{
@@ -543,7 +543,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	}
 
 	// Write the config to disk, in case any defaults were enforced at runtime
-	if err := cm.WriteConfig(); err != nil {
+	if err = cm.WriteConfig(); err != nil {
 		log.Error().Err(err).Msg("Error writing config to disk")
 		return err
 	}
@@ -570,9 +570,9 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 				return nil
 			case <-eventChan:
 				log.Info().Msg("Event chan event received")
-				changes, warnings, err := cm.ReloadConfig()
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to reload configuration")
+				changes, warnings, reloadErr := cm.ReloadConfig()
+				if reloadErr != nil {
+					log.Error().Err(reloadErr).Msg("Failed to reload configuration")
 				} else {
 					if len(warnings) > 0 {
 						for _, warning := range warnings {
@@ -589,8 +589,8 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 						// event is emitted before the swap so the disable action is
 						// still captured.
 						currentAuditCfg = reconfigureAuditOnReload(audit, currentAuditCfg, cm.GetAuditConfig(), changedKeys, log)
-						if err := hotReloadManager.ProcessConfigChanges(changes); err != nil {
-							log.Error().Err(err).Msg("Error processing configuration changes")
+						if processErr := hotReloadManager.ProcessConfigChanges(changes); processErr != nil {
+							log.Error().Err(processErr).Msg("Error processing configuration changes")
 						}
 					}
 				}
@@ -604,9 +604,9 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	s.SetJournal(edgeJournal)
 	s.SetRecorder(recorder)
 	replicationSource, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
-		options, err := store.ResolveSourceRegistry(cm)
+		options, resolveErr := store.ResolveSourceRegistry(cm)
 		options.BandwidthBytesPerSec = cm.GetReplicationBandwidth()
-		return options, err
+		return options, resolveErr
 	})
 	if err != nil {
 		return fmt.Errorf("initialize replication source: %w", err)
@@ -852,7 +852,7 @@ func proxyStores(cm *config.ConfigManager, storeRoot string, ociOpts store.OCISt
 	}
 
 	if cm.GetOwnRegistry() {
-		localStore, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
+		localStore, byoErr := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
 			credentials := cm.GetRemoteRegistryCredentials()
 			return store.RegistryOptions{
 				Endpoint:  utils.FormatRegistryURL(string(credentials.URL)),
@@ -862,8 +862,8 @@ func proxyStores(cm *config.ConfigManager, storeRoot string, ociOpts store.OCISt
 				TLS:       cm.GetTLSConfig(),
 			}, nil
 		})
-		if err != nil {
-			return nil, nil, false, fmt.Errorf("initialize BYO registry store: %w", err)
+		if byoErr != nil {
+			return nil, nil, false, fmt.Errorf("initialize BYO registry store: %w", byoErr)
 		}
 		return localStore, remoteStore, false, nil
 	}

@@ -149,11 +149,11 @@ func streamingProxy(t *testing.T, upstream *streamingUpstream, prefetch bool) (s
 	require.NoError(t, err)
 	opts := image.PullOptions{Streaming: true}
 	if prefetch {
-		prefetchLane, err := lane.New("prefetch", lane.Options{Concurrency: 2, QueueSize: 16})
-		require.NoError(t, err)
+		prefetchLane, laneErr := lane.New("prefetch", lane.Options{Concurrency: 2, QueueSize: 16})
+		require.NoError(t, laneErr)
 		t.Cleanup(func() { _ = prefetchLane.Close(context.Background()) })
-		opts.Prefetcher, err = image.NewLanePrefetcher(prefetchLane, local, upstream.remote)
-		require.NoError(t, err)
+		opts.Prefetcher, laneErr = image.NewLanePrefetcher(prefetchLane, local, upstream.remote)
+		require.NoError(t, laneErr)
 	}
 	handler, err := image.NewPullWithOptions(ctx, proxy.ModeProxy, local, upstream.remote, opts)
 	require.NoError(t, err)
@@ -234,8 +234,8 @@ func TestPullThrough_TagsOnlyCompleteGraph(t *testing.T) {
 
 	upstream.releaseHeld()
 	require.Eventually(t, func() bool {
-		_, err := local.Pull(context.Background(), tagged, store.PullResourceManifest)
-		return err == nil
+		_, pullErr := local.Pull(context.Background(), tagged, store.PullResourceManifest)
+		return pullErr == nil
 	}, 10*time.Second, 20*time.Millisecond)
 	_, err = local.Pull(context.Background(), store.Artifact{Name: "team/app", Digest: layers[0].Digest.String()}, store.PullResourceBlob)
 	require.NoError(t, err)

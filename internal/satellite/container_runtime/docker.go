@@ -50,11 +50,11 @@ func setDockerdConfig(mirrors []string, proxyEndpoint string) (string, error) {
 	v.SetConfigFile(dockerConfigPath)
 	v.SetConfigType("json")
 
-	if err := ensureDockerConfigFileExists(dockerConfigPath); err != nil {
+	if err = ensureDockerConfigFileExists(dockerConfigPath); err != nil {
 		return backupPath, fmt.Errorf("failed to create default docker config: %w", err)
 	}
 
-	if err := v.ReadInConfig(); err != nil {
+	if err = v.ReadInConfig(); err != nil {
 		return backupPath, fmt.Errorf("failed to read docker config: %w", err)
 	}
 	currentMirrors := v.GetStringSlice("registry-mirrors")
@@ -64,7 +64,7 @@ func setDockerdConfig(mirrors []string, proxyEndpoint string) (string, error) {
 		v.Set("registry-mirrors", currentMirrors)
 	}
 
-	if err := v.WriteConfigAs(dockerConfigPath); err != nil {
+	if err = v.WriteConfigAs(dockerConfigPath); err != nil {
 		return backupPath, fmt.Errorf("failed to write docker config: %w", err)
 	}
 

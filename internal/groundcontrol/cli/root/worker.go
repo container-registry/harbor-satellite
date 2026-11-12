@@ -23,10 +23,10 @@ func WorkerCommand() *cobra.Command {
 		PersistentPreRunE: func(_ *cobra.Command, _ []string) error { return nil },
 		RunE: func(cmd *cobra.Command, _ []string) (err error) {
 			ctx := cmd.Context()
-			if err := env.LoadGC(); err != nil {
+			if err = env.LoadGC(); err != nil {
 				return fmt.Errorf("failed to load environment: %w", err)
 			}
-			if err := migrator.DoMigrations(ctx); err != nil {
+			if err = migrator.DoMigrations(ctx); err != nil {
 				return fmt.Errorf("failed to run migrations: %w", err)
 			}
 			cfg, err := dbpool.ConfigFromEnv(env.GC.Database)

@@ -132,9 +132,9 @@ func (r *SatelliteReconciler) Reconcile(ctx context.Context, id fleet.SatelliteI
 	state := fleet.DesiredState{Satellite: id}
 	var projects []string
 	for _, g := range groups {
-		ref, err := p.settings.GroupStateRef(g.Name)
-		if err != nil {
-			return err
+		ref, refErr := p.settings.GroupStateRef(g.Name)
+		if refErr != nil {
+			return refErr
 		}
 		state.GroupStates = append(state.GroupStates, ref)
 		projects = append(projects, g.Projects...)
@@ -190,7 +190,7 @@ func (r *SatelliteReconciler) robot(ctx context.Context, sat fleet.Satellite, pr
 	if !errors.Is(err, fleet.ErrNotFound) {
 		return fleet.Robot{}, fmt.Errorf("robot of satellite %s: %w", sat.Name, err)
 	}
-	if err := p.ensureProject(ctx); err != nil {
+	if err = p.ensureProject(ctx); err != nil {
 		return fleet.Robot{}, err
 	}
 	name := fleet.RobotName(sat.ID, sat.Name)
@@ -385,18 +385,18 @@ func (h *TombstoneHandler) satellite(ctx context.Context, agg fleet.Aggregate, p
 	live, err := h.repo.Autocommit().Satellites().GetByName(ctx, p.Name)
 	switch {
 	case err == nil && int64(live.ID) != agg.ID:
-		if err := h.desired.ClearPublished(ctx, fleet.Aggregate{Type: fleet.AggregateSatellite, ID: int64(live.ID)}); err != nil {
-			return err
+		if clearErr := h.desired.ClearPublished(ctx, fleet.Aggregate{Type: fleet.AggregateSatellite, ID: int64(live.ID)}); clearErr != nil {
+			return clearErr
 		}
 	case err == nil || errors.Is(err, fleet.ErrNotFound):
 		if p.StateRef != (fleet.ArtifactRef{}) {
-			if err := gone(h.registry.DeleteState(ctx, p.StateRef)); err != nil {
-				return fmt.Errorf("delete state of %s: %w", p.Name, err)
+			if deleteErr := gone(h.registry.DeleteState(ctx, p.StateRef)); deleteErr != nil {
+				return fmt.Errorf("delete state of %s: %w", p.Name, deleteErr)
 			}
 		}
 		if p.SPIFFEID != "" && h.identity != nil {
-			if err := h.identity.DeleteEntriesFor(ctx, p.SPIFFEID); err != nil {
-				return fmt.Errorf("delete SPIRE entries of %s: %w", p.Name, err)
+			if deleteErr := h.identity.DeleteEntriesFor(ctx, p.SPIFFEID); deleteErr != nil {
+				return fmt.Errorf("delete SPIRE entries of %s: %w", p.Name, deleteErr)
 			}
 		}
 	default:
@@ -407,9 +407,9 @@ func (h *TombstoneHandler) satellite(ctx context.Context, agg fleet.Aggregate, p
 
 func (h *TombstoneHandler) group(ctx context.Context, agg fleet.Aggregate, p fleet.GroupDeletedPayload) error {
 	live, err := h.repo.Autocommit().Groups().GetByName(ctx, p.Name)
-	if err := h.stateOfName(ctx, live.ID != 0 && int64(live.ID) != agg.ID, err,
-		fleet.Aggregate{Type: fleet.AggregateGroup, ID: int64(live.ID)}, p.StateRef); err != nil {
-		return fmt.Errorf("group %s: %w", p.Name, err)
+	if stateErr := h.stateOfName(ctx, live.ID != 0 && int64(live.ID) != agg.ID, err,
+		fleet.Aggregate{Type: fleet.AggregateGroup, ID: int64(live.ID)}, p.StateRef); stateErr != nil {
+		return fmt.Errorf("group %s: %w", p.Name, stateErr)
 	}
 	if err := gone(h.desired.Delete(ctx, agg)); err != nil {
 		return err
@@ -437,9 +437,9 @@ func (h *TombstoneHandler) group(ctx context.Context, agg fleet.Aggregate, p fle
 
 func (h *TombstoneHandler) config(ctx context.Context, agg fleet.Aggregate, p fleet.ConfigDeletedPayload) error {
 	live, err := h.repo.Autocommit().Configs().GetByName(ctx, p.Name)
-	if err := h.stateOfName(ctx, live.ID != 0 && int64(live.ID) != agg.ID, err,
-		fleet.Aggregate{Type: fleet.AggregateConfig, ID: int64(live.ID)}, p.StateRef); err != nil {
-		return fmt.Errorf("config %s: %w", p.Name, err)
+	if stateErr := h.stateOfName(ctx, live.ID != 0 && int64(live.ID) != agg.ID, err,
+		fleet.Aggregate{Type: fleet.AggregateConfig, ID: int64(live.ID)}, p.StateRef); stateErr != nil {
+		return fmt.Errorf("config %s: %w", p.Name, stateErr)
 	}
 	return gone(h.desired.Delete(ctx, agg))
 }

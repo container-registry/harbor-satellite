@@ -47,8 +47,8 @@ func TestPartitionMaintainer_MovesDefaultRowsAndDropsByRetention(t *testing.T) {
 	sat, err := database.New(db.DB).CreateSatellite(ctx, "edge-01")
 	require.NoError(t, err)
 	for _, at := range []time.Time{hotNow.Add(-30 * 24 * time.Hour), hotNow} {
-		_, err := db.ExecContext(ctx, "INSERT INTO satellite_status (satellite_id, activity, reported_at, created_at) VALUES ($1, 'idle', $2, $2)", sat.ID, at)
-		require.NoError(t, err)
+		_, insertErr := db.ExecContext(ctx, "INSERT INTO satellite_status (satellite_id, activity, reported_at, created_at) VALUES ($1, 'idle', $2, $2)", sat.ID, at)
+		require.NoError(t, insertErr)
 	}
 	m, err := postgres.NewPartitionMaintainer(db.DB, fleettest.Clock{T: hotNow}, 7, 1)
 	require.NoError(t, err)
