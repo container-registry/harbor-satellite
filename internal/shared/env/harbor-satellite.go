@@ -30,11 +30,10 @@ type HarborSatellite struct {
 	TelemetryAddr          string           `env:"TELEMETRY_ADDR"`
 	StoreGCGrace           time.Duration    `env:"STORE_GC_GRACE"            envDefault:"10m"`
 
-	ProxyMaxConnections int           `env:"PROXY_MAX_CONNECTIONS" envDefault:"0"`
-	ProxyWriteTimeout   time.Duration `env:"PROXY_WRITE_TIMEOUT"   envDefault:"60s"`
-	// Plan item 5.3, parsed only: cmd/satellite does not read them yet.
-	ProxyStreaming           bool `env:"PROXY_STREAMING"            envDefault:"false"`
-	ProxyPrefetchConcurrency int  `env:"PROXY_PREFETCH_CONCURRENCY" envDefault:"2"`
+	ProxyMaxConnections      int           `env:"PROXY_MAX_CONNECTIONS"      envDefault:"0"`
+	ProxyWriteTimeout        time.Duration `env:"PROXY_WRITE_TIMEOUT"        envDefault:"60s"`
+	ProxyStreaming           bool          `env:"PROXY_STREAMING"            envDefault:"false"`
+	ProxyPrefetchConcurrency int           `env:"PROXY_PREFETCH_CONCURRENCY" envDefault:"2"`
 }
 
 func (h HarborSatellite) ApplyDefaults() HarborSatellite {

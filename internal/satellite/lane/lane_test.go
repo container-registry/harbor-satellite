@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/lane"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +24,6 @@ func newLane(t *testing.T, opts lane.Options) *lane.Lane {
 }
 
 func TestLane_BoundsConcurrency(t *testing.T) {
-	pending.Plan(t, "5.3", "prefetch has no bounded lane")
 	l := newLane(t, lane.Options{Concurrency: 2, QueueSize: 10})
 	var running, peak atomic.Int32
 	var done sync.WaitGroup
@@ -56,7 +54,6 @@ func TestLane_BoundsConcurrency(t *testing.T) {
 }
 
 func TestLane_SubmitFullReturnsErrLaneFull(t *testing.T) {
-	pending.Plan(t, "5.3", "prefetch has no bounded lane")
 	l := newLane(t, lane.Options{Concurrency: 1, QueueSize: 1})
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) })
@@ -77,7 +74,6 @@ func TestLane_SubmitFullReturnsErrLaneFull(t *testing.T) {
 }
 
 func TestLane_CloseWaitsForJobs(t *testing.T) {
-	pending.Plan(t, "5.3", "prefetch has no bounded lane")
 	l, err := lane.New("test", lane.Options{Concurrency: 1, QueueSize: 2})
 	require.NoError(t, err)
 	var finished atomic.Int32

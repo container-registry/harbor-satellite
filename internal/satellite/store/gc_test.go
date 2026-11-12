@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	digest "github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/require"
 )
@@ -29,15 +28,21 @@ func replicateAndUntag(t *testing.T, s *OCIStore) []digest.Digest {
 	return []digest.Digest{manifest.Digest, layers[0].Digest}
 }
 
+// The fill writes untagged content into the serving layout through the
+// streaming path (5.3): the manifest, then a streamed layer, and the graph is
+// completed and tagged last. Replicate stages its copy outside the layout,
+// so only this path can lose content to a collection mid-fill.
 func TestCollectGarbage_KeepsInFlightCopy(t *testing.T) {
-	pending.Plan(t, "5.2", "oras GC roots are tags only and delete the layers of a copy in flight")
 	ctx := edgeContext(t)
 	held := []byte("layer held upstream")
 	heldDigest := digest.FromBytes(held)
 	release := make(chan struct{})
+	heldRequested := make(chan struct{})
+	var requestedOnce sync.Once
 	address, source := edgeUpstream(t, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/blobs/"+heldDigest.String()) {
+				requestedOnce.Do(func() { close(heldRequested) })
 				select {
 				case <-release:
 				case <-r.Context().Done():
@@ -55,23 +60,42 @@ func TestCollectGarbage_KeepsInFlightCopy(t *testing.T) {
 	leases := NewFillLeases()
 	s, _, err := OpenOCIStore(root, OCIStoreOptions{AtomicIndex: true, FillLeases: leases})
 	require.NoError(t, err)
+	artifact := Artifact{Name: "team/app", Tag: "v1"}
 
-	replicated := make(chan error, 1)
-	go func() { replicated <- s.Replicate(ctx, source, []Artifact{{Name: "team/app", Tag: "v1"}}) }()
+	manifest, _, err := s.FillManifest(ctx, source, artifact)
+	require.NoError(t, err)
+	first := Artifact{Name: "team/app", Digest: layers[0].Digest.String()}
+	firstDesc, err := source.Pull(ctx, first, PullResourceBlob)
+	require.NoError(t, err)
+	streamed, err := s.StreamBlob(ctx, source, first, firstDesc)
+	require.NoError(t, err)
+	_, err = io.Copy(io.Discard, streamed.Body)
+	require.NoError(t, err)
+	require.NoError(t, streamed.Body.Close())
 	copied := edgeBlobPath(root, layers[0].Digest)
-	require.Eventually(t, func() bool { _, err := os.Stat(copied); return err == nil }, 10*time.Second, 10*time.Millisecond)
+	require.FileExists(t, copied)
+
+	completed := make(chan error, 1)
+	go func() { completed <- s.CompleteGraph(ctx, source, artifact, manifest) }()
+	select {
+	case <-heldRequested:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the graph completion never asked for the held layer")
+	}
 
 	stats, err := s.CollectGarbage(ctx, GCOptions{Grace: 0, Roots: []GCRoots{leases}})
 	require.NoError(t, err)
 	require.Positive(t, stats.Leased)
 	require.FileExists(t, copied)
+	require.FileExists(t, edgeBlobPath(root, manifest.Digest))
 
 	releaseHeld()
-	require.NoError(t, <-replicated)
-	blob := Artifact{Name: "team/app", Digest: layers[0].Digest.String()}
-	desc, err := s.Pull(ctx, blob, PullResourceBlob)
+	require.NoError(t, <-completed)
+	_, err = s.Pull(ctx, artifact, PullResourceManifest)
+	require.NoError(t, err, "the tag exists once the graph is complete")
+	desc, err := s.Pull(ctx, first, PullResourceBlob)
 	require.NoError(t, err)
-	response, err := s.Fetch(ctx, blob, desc, PullResourceBlob, nil)
+	response, err := s.Fetch(ctx, first, desc, PullResourceBlob, nil)
 	require.NoError(t, err)
 	payload, err := io.ReadAll(response.Body)
 	require.NoError(t, err)
