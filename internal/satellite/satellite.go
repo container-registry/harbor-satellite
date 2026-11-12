@@ -11,6 +11,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -32,6 +33,12 @@ type Satellite struct {
 	// copies from (plan item 6.2); nil uses remoteStore.
 	replicationSource store.Store
 	journal           *journal.Journal
+	recorder          telemetry.Recorder
+}
+
+// SetRecorder makes heartbeats and journal answers show on /metrics.
+func (s *Satellite) SetRecorder(rec telemetry.Recorder) {
+	s.recorder = rec
 }
 
 // SetReplicationSource gives replication a Harbor store of its own, so its
@@ -142,6 +149,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 	// Create status report scheduler with pending CRI results
 	statusReportProcess := state.NewStatusReportingProcess(s.cm, s.eventscheduler)
 	statusReportProcess.SetRunSummarySource(fetchAndReplicateStateProcess)
+	statusReportProcess.SetRecorder(s.recorder)
 	if s.journal != nil {
 		statusReportProcess.SetJournal(s.journal)
 	}

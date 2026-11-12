@@ -6,6 +6,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
 	"github.com/container-registry/harbor-satellite/internal/satellite/journal"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 )
@@ -96,20 +97,21 @@ func (u *journalUploader) next(uploadBatch int) (*groundcontrol.JournalUpload, e
 	return upload, nil
 }
 
-// answer applies Ground Control's answer to upload; nil means it ignores
-// journals.
-func (u *journalUploader) answer(upload groundcontrol.JournalUpload, ack *gcclient.JournalAck) error {
+// answer applies Ground Control's answer to upload and returns its outcome
+// (telemetry.JournalAccepted, JournalRejected or JournalDropped); nil means
+// it ignores journals and gives no outcome.
+func (u *journalUploader) answer(upload groundcontrol.JournalUpload, ack *gcclient.JournalAck) (string, error) {
 	if ack == nil {
-		return nil
+		return "", nil
 	}
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if u.j == nil {
-		return nil
+		return "", nil
 	}
 	u.answered = true
 	if err := u.j.Ack(ack.Epoch, ack.AckedSeq); err != nil {
-		return err
+		return "", err
 	}
 	if ack.Error == "" {
 		u.rejected = 0
@@ -117,10 +119,10 @@ func (u *journalUploader) answer(upload groundcontrol.JournalUpload, ack *gcclie
 		if ack.Epoch == upload.Epoch {
 			u.reportedFloor = max(upload.AfterSeq, ack.AckedSeq)
 		}
-		return nil
+		return telemetry.JournalAccepted, nil
 	}
 	if len(upload.Records) == 0 {
-		return errors.New("journal upload rejected: " + ack.Error)
+		return telemetry.JournalRejected, errors.New("journal upload rejected: " + ack.Error)
 	}
 	first, last := upload.Records[0].Seq, upload.Records[len(upload.Records)-1].Seq
 	if u.rejected > 0 && first == u.rejectedFirst && last == u.rejectedLast && upload.AfterSeq == u.rejectedAfterSeq {
@@ -129,11 +131,11 @@ func (u *journalUploader) answer(upload groundcontrol.JournalUpload, ack *gcclie
 		u.rejected, u.rejectedFirst, u.rejectedLast, u.rejectedAfterSeq = 1, first, last, upload.AfterSeq
 	}
 	if u.rejected < maxRejections {
-		return errors.New("journal upload rejected: " + ack.Error)
+		return telemetry.JournalRejected, errors.New("journal upload rejected: " + ack.Error)
 	}
 	u.rejected = 0
 	if err := u.j.Drop(last); err != nil {
-		return err
+		return telemetry.JournalRejected, err
 	}
-	return errors.New("journal batch dropped after repeated rejection: " + ack.Error)
+	return telemetry.JournalDropped, errors.New("journal batch dropped after repeated rejection: " + ack.Error)
 }

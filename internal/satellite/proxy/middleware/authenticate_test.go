@@ -70,6 +70,8 @@ func (r *recorder) ObservePull(resource, outcome string, _ time.Duration) {
 func (r *recorder) CountPullThroughFill(string)                     {}
 func (r *recorder) ObserveReplication(int64, time.Duration, string) {}
 func (r *recorder) ObserveStoreLockWait(string, time.Duration)      {}
+func (r *recorder) CountHeartbeat(string)                           {}
+func (r *recorder) ObserveJournalAck(string, int64)                 {}
 
 func TestMetrics_RecordsPullOutcome(t *testing.T) {
 	rec := &recorder{}

@@ -20,6 +20,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/journal"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry/telemetrytest"
 	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
@@ -338,6 +340,8 @@ func executeTimes(t *testing.T, p *StatusReportingProcess, n int) {
 func TestStatusReport_UploadsJournalAndAcks(t *testing.T) {
 	url, uploads := journalGC(t, ackAll)
 	p, j := journalReport(t, url, 2, 3)
+	spy := &telemetrytest.Spy{}
+	p.SetRecorder(spy)
 
 	executeTimes(t, p, 3)
 
@@ -348,6 +352,12 @@ func TestStatusReport_UploadsJournalAndAcks(t *testing.T) {
 		{},
 	}, uploads(), "one record until Ground Control has answered a journal, then upload_batch, then nothing")
 	require.EqualValues(t, 3, j.Acked())
+	got := spy.Snapshot()
+	require.Equal(t, []string{"200", "200", "200"}, got.Heartbeats)
+	require.Equal(t, []telemetrytest.JournalAck{
+		{Outcome: telemetry.JournalAccepted, AckedSeq: 1},
+		{Outcome: telemetry.JournalAccepted, AckedSeq: 3},
+	}, got.JournalAcks, "a heartbeat without a journal has no ack to count")
 }
 
 func TestStatusReport_SendsOneRecordWhileGroundControlIgnoresTheJournal(t *testing.T) {
@@ -405,14 +415,42 @@ func TestStatusReport_DropsABatchRejectedThreeTimes(t *testing.T) {
 		return ackAll(u)
 	})
 	p, j := journalReport(t, url, 1, 2)
+	spy := &telemetrytest.Spy{}
+	p.SetRecorder(spy)
 
 	executeTimes(t, p, 4)
+	require.Equal(t, []telemetrytest.JournalAck{
+		{Outcome: telemetry.JournalRejected},
+		{Outcome: telemetry.JournalRejected},
+		{Outcome: telemetry.JournalDropped},
+		{Outcome: telemetry.JournalAccepted, AckedSeq: 2},
+	}, spy.Snapshot().JournalAcks)
 
 	e := j.Epoch()
 	rejected := seenUpload{epoch: e, after: 0, seqs: []int64{1}}
 	require.Equal(t, []seenUpload{rejected, rejected, rejected, {epoch: e, after: 1, seqs: []int64{2}}}, uploads(),
 		"after the third rejection the floor rises past the batch")
 	require.EqualValues(t, 2, j.Acked())
+}
+
+func TestStatusReport_CountsRefusedAndUnansweredHeartbeats(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, err := w.Write([]byte(`{"code":403,"message":"satellite is revoked"}`))
+		require.NoError(t, err)
+	}))
+	p, _ := journalReport(t, srv.URL, 1, 1)
+	spy := &telemetrytest.Spy{}
+	p.SetRecorder(spy)
+
+	require.Error(t, p.Execute(testContext()))
+	srv.Close()
+	require.Error(t, p.Execute(testContext()))
+
+	got := spy.Snapshot()
+	require.Equal(t, []string{"403", telemetry.HeartbeatTransportError}, got.Heartbeats)
+	require.Empty(t, got.JournalAcks)
 }
 
 // idleProcess is an event process that returns at once.

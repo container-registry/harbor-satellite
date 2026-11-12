@@ -2,8 +2,10 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +13,7 @@ import (
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/shared/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/utils"
@@ -29,6 +32,7 @@ type StatusReportingProcess struct {
 	runSummary     RunSummarySource
 	upload         journalUploader
 	inventory      inventoryState
+	recorder       telemetry.Recorder
 }
 
 func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *events.EventScheduler) *StatusReportingProcess {
@@ -37,6 +41,7 @@ func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *events.
 		mu:             &sync.Mutex{},
 		cm:             cm,
 		eventScheduler: eventScheduler,
+		recorder:       telemetry.Nop{},
 	}
 
 	if cm.IsSPIFFEEnabled() {
@@ -52,6 +57,17 @@ func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *events.
 	}
 
 	return p
+}
+
+// SetRecorder makes every heartbeat and journal answer show on /metrics,
+// so the satellite's own view of its heartbeats can be checked.
+func (s *StatusReportingProcess) SetRecorder(rec telemetry.Recorder) {
+	if rec == nil {
+		rec = telemetry.Nop{}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.recorder = rec
 }
 
 // SetPendingCRIResults stores CRI config results to be sent in the first heartbeat.
@@ -128,11 +144,19 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 
 	log.Debug().Str("ground_control_url", s.cm.ResolveGroundControlURL()).Msg("Sending status report")
+	s.mu.Lock()
+	recorder := s.recorder
+	s.mu.Unlock()
+	if recorder == nil {
+		recorder = telemetry.Nop{}
+	}
 	resp, err := s.sendStatusReport(ctx, report)
 	if err != nil {
+		recorder.CountHeartbeat(heartbeatCode(err))
 		log.Error().Err(err).Msg("Failed to send status report")
 		return err
 	}
+	recorder.CountHeartbeat(strconv.Itoa(http.StatusOK))
 	s.mu.Lock()
 	s.inventory.answered(report, digest, resp.InventoryRequested)
 	s.mu.Unlock()
@@ -150,7 +174,11 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 		}
 	}
 	if batch != nil {
-		if err := s.upload.answer(*batch, resp.Journal); err != nil {
+		outcome, err := s.upload.answer(*batch, resp.Journal)
+		if outcome != "" {
+			recorder.ObserveJournalAck(outcome, resp.Journal.AckedSeq)
+		}
+		if err != nil {
 			log.Warn().Err(err).Msg("Failed to apply the journal answer")
 		}
 	}
@@ -171,6 +199,24 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 
 	log.Info().Str("satellite", satelliteName).Msg("Status report sent successfully")
 	return nil
+}
+
+// heartbeatCode is the HTTP status Ground Control refused the heartbeat
+// with, or telemetry.HeartbeatTransportError when it never answered.
+func heartbeatCode(err error) string {
+	var statusErr *gcclient.StatusError
+	switch {
+	case errors.As(err, &statusErr):
+		return strconv.Itoa(statusErr.StatusCode)
+	case errors.Is(err, gcclient.ErrUnauthorized):
+		return strconv.Itoa(http.StatusUnauthorized)
+	case errors.Is(err, gcclient.ErrForbidden):
+		return strconv.Itoa(http.StatusForbidden)
+	case errors.Is(err, gcclient.ErrRateLimited):
+		return strconv.Itoa(http.StatusTooManyRequests)
+	default:
+		return telemetry.HeartbeatTransportError
+	}
 }
 
 // formatCRIActivity formats CRI config results into a structured string for the Activity field.

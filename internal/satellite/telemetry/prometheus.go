@@ -16,6 +16,9 @@ type promRecorder struct {
 	replicationBytes    *prometheus.CounterVec
 	replicationDuration *prometheus.HistogramVec
 	storeLockWait       *prometheus.HistogramVec
+	heartbeats          *prometheus.CounterVec
+	journalAcks         *prometheus.CounterVec
+	journalAckedSeq     prometheus.Gauge
 }
 
 var _ Recorder = (*promRecorder)(nil)
@@ -45,11 +48,23 @@ func newPromRecorder() *promRecorder {
 			Help:    "Time spent waiting for the local store's index lock, by operation.",
 			Buckets: latencyBuckets,
 		}, []string{"operation"}),
+		heartbeats: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: MetricHeartbeats,
+			Help: "Heartbeats sent to Ground Control, by HTTP status of the answer, or error without a readable answer.",
+		}, []string{"code"}),
+		journalAcks: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: MetricJournalAcks,
+			Help: "Ground Control answers to journal uploads, by outcome (accepted, rejected, dropped).",
+		}, []string{"outcome"}),
+		journalAckedSeq: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: MetricJournalAckedSeq,
+			Help: "The journal seq Ground Control last acknowledged holding.",
+		}),
 	}
 }
 
 func (r *promRecorder) register(reg prometheus.Registerer) error {
-	for _, c := range []prometheus.Collector{r.pullDuration, r.pullThroughFills, r.replicationBytes, r.replicationDuration, r.storeLockWait} {
+	for _, c := range []prometheus.Collector{r.pullDuration, r.pullThroughFills, r.replicationBytes, r.replicationDuration, r.storeLockWait, r.heartbeats, r.journalAcks, r.journalAckedSeq} {
 		if err := reg.Register(c); err != nil {
 			return err
 		}
@@ -72,4 +87,13 @@ func (r *promRecorder) ObserveReplication(bytes int64, d time.Duration, outcome 
 
 func (r *promRecorder) ObserveStoreLockWait(operation string, d time.Duration) {
 	r.storeLockWait.WithLabelValues(operation).Observe(d.Seconds())
+}
+
+func (r *promRecorder) CountHeartbeat(code string) {
+	r.heartbeats.WithLabelValues(code).Inc()
+}
+
+func (r *promRecorder) ObserveJournalAck(outcome string, ackedSeq int64) {
+	r.journalAcks.WithLabelValues(outcome).Inc()
+	r.journalAckedSeq.Set(float64(ackedSeq))
 }

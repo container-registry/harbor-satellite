@@ -139,7 +139,7 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 - internal/satellite/identity/: Device fingerprint (machine-id, MAC, disk serial); real only on Linux default builds
 - internal/satellite/secure/: Device-bound config encryption (AES-256-GCM, Argon2id key from fingerprint)
 - internal/satellite/tls/: Client TLS config loading
-- internal/satellite/telemetry/: `/healthz` (checks `store`, `proxy`) and Prometheus `/metrics` on `TELEMETRY_ADDR`, private registry, `Recorder` passed to the OCI store and the pull handler
+- internal/satellite/telemetry/: `/healthz` (checks `store`, `proxy`) and Prometheus `/metrics` on `TELEMETRY_ADDR`, private registry, `Recorder` passed to the OCI store, the pull handler and the status report (heartbeats by HTTP code, journal acks)
 - internal/satellite/journal/: durable edge journal (segments in `<config dir>/journal`, group commit, non-blocking `TryAppend`, epochs, floor); `state` uploads it with the heartbeat (ADR-0015)
 - internal/satellite/lane/: bounded background lane (prefetch of streaming pull-through, `ThrottledTransport` for the replication bandwidth cap)
 - internal/satellite/admission/: edge admission evaluator and proxy middleware over `internal/shared/policybundle`, mode and bundle from `app_config.admission`

@@ -602,6 +602,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir, pathConfig.DesiredStateFile, eventScheduler)
 	s.SetStores(localStore, remoteStore)
 	s.SetJournal(edgeJournal)
+	s.SetRecorder(recorder)
 	replicationSource, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
 		options, err := store.ResolveSourceRegistry(cm)
 		options.BandwidthBytesPerSec = cm.GetReplicationBandwidth()

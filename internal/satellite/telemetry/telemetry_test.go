@@ -95,14 +95,20 @@ func TestServer_MetricsExposeEveryRecorderSeries(t *testing.T) {
 	rec.CountPullThroughFill("ok")
 	rec.ObserveReplication(1024, time.Second, "ok")
 	rec.ObserveStoreLockWait("publish", time.Microsecond)
+	rec.CountHeartbeat("200")
+	rec.ObserveJournalAck(telemetry.JournalAccepted, 7)
 
 	status, body := get(t, base+"/metrics")
 	require.Equal(t, http.StatusOK, status)
 	for _, name := range []string{
 		telemetry.MetricPullDuration, telemetry.MetricPullThroughFills, telemetry.MetricReplicationBytes,
-		telemetry.MetricReplicationDuration, telemetry.MetricStoreLockWait, "go_goroutines",
+		telemetry.MetricReplicationDuration, telemetry.MetricStoreLockWait, telemetry.MetricHeartbeats,
+		telemetry.MetricJournalAcks, telemetry.MetricJournalAckedSeq, "go_goroutines",
 	} {
 		require.Contains(t, body, name)
 	}
 	require.Contains(t, body, telemetry.MetricReplicationBytes+`{outcome="ok"} 1024`)
+	require.Contains(t, body, telemetry.MetricHeartbeats+`{code="200"} 1`)
+	require.Contains(t, body, telemetry.MetricJournalAcks+`{outcome="accepted"} 1`)
+	require.Contains(t, body, telemetry.MetricJournalAckedSeq+` 7`)
 }

@@ -24,6 +24,9 @@ Each satellite serves both on `TELEMETRY_ADDR` (default `127.0.0.1:8586`), separ
 | `satellite_replication_bytes_total` | counter | `outcome` (`ok`, `error`) | Bytes replicated into the local OCI layout. |
 | `satellite_replication_duration_seconds` | histogram | `outcome` (`ok`, `error`) | One artifact replication into the local OCI layout. |
 | `satellite_store_lock_wait_seconds` | histogram | `operation` (`publish`, `untag`, `collect`) | Wait for the exclusive index lock of the OCI layout. Readers hold it shared, so long waits mean writes queue behind pulls. |
+| `satellite_heartbeats_total` | counter | `code` (HTTP status of Ground Control's answer, or `error` without a readable answer) | Heartbeats to `POST /satellites/sync`. `200` is the only success. |
+| `satellite_journal_acks_total` | counter | `outcome` (`accepted`, `rejected`, `dropped`) | Ground Control's answers to journal uploads. `dropped` is the third rejection of one batch, after which the satellite skips it. |
+| `satellite_journal_acked_seq` | gauge | | The journal seq Ground Control last acknowledged holding. |
 
 The Go runtime (`go_*`) and process (`process_*`) collectors are included. The replication and lock metrics come from the OCI layout store; with a BYO registry they stay empty.
 
@@ -33,6 +36,8 @@ Suggested alerts:
 - `rate(satellite_proxy_pull_duration_seconds_count{outcome="error"}[5m]) > 0`.
 - `histogram_quantile(0.99, rate(satellite_store_lock_wait_seconds_bucket[5m])) > 1`: replication and garbage collection queue behind the index lock.
 - `rate(satellite_proxy_pull_through_fills_total{outcome="error"}[10m]) > 0`: the satellite cannot reach Harbor for misses.
+- `increase(satellite_heartbeats_total{code!="200"}[10m]) > 0`: Ground Control refuses or does not answer heartbeats.
+- `increase(satellite_journal_acks_total{outcome="dropped"}[1h]) > 0`: journal records were lost.
 
 ## Ground Control: `/metrics`
 
