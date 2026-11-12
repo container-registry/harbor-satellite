@@ -129,14 +129,14 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 - internal/satellite/proxy/: Pull-only OCI Distribution proxy (ADR-0009): request parser and validation, handler chain, `proxy`/`replica` modes; `proxy/process/image/` is the pull handler
 - internal/satellite/peers/: `EligiblePeers` builds the peer allow-list from `peer_distribution` (merges static_peers and gc_peers, applies the group filter). No caller outside tests yet; nothing dials peers
 - internal/satellite/events/: Event scheduler for GC-triggered one-shot jobs (currently only `refresh_credentials`)
-- internal/satellite/scheduler/: Interval scheduler (`@every <duration>` parsed into a time.Ticker, runs once immediately on start)
+- internal/satellite/scheduler/: Interval scheduler (`@every <duration>` parsed into a time.Ticker, runs once immediately on start); `NewScheduler` without an interval runs its process only on `Trigger` (events such as `refresh_credentials`)
 - internal/satellite/process/: `Process` interface (Name, Execute, IsRunning, IsComplete)
 - internal/satellite/container_runtime/: CRI config management (containerd, CRI-O, Docker, Podman) and k3s/RKE2 image dir detection
 - internal/satellite/hotreload/, internal/satellite/watcher/: Config file watching and hot reload (log level, state replication interval; audit config is swapped in cmd/satellite)
 - internal/satellite/identity/: Device fingerprint (machine-id, MAC, disk serial); real only on Linux default builds
 - internal/satellite/secure/: Device-bound config encryption (AES-256-GCM, Argon2id key from fingerprint)
 - internal/satellite/tls/: Client TLS config loading
-- internal/satellite/gcclient/: the only satellite→GC client (D1). Token ZTR, SPIFFE ZTR and sync go through the generated pkg/groundcontrol client, so paths come from the spec and a trailing slash or path prefix in `ground_control_url` works. It refuses an `http://` base URL unless use_unsecure, maps 401/403/429 to `ErrUnauthorized`/`ErrForbidden`/`ErrRateLimited` and keeps only GC's error message, never the raw body. `Credentials`: `RobotBasic` (read per request), `NoCredentials`, `SessionBearer`
+- internal/satellite/gcclient/: the only satellite→GC client (D1). Token ZTR, SPIFFE ZTR, sync and credential refresh go through the generated pkg/groundcontrol client, so paths come from the spec and a trailing slash or path prefix in `ground_control_url` works. It refuses an `http://` base URL unless use_unsecure, maps 401/403/429 to `ErrUnauthorized`/`ErrForbidden`/`ErrRateLimited` and keeps only GC's error message, never the raw body. `Credentials`: `RobotBasic` (read per request), `NoCredentials`, `SessionBearer`
 
 ### Shared Packages
 
@@ -234,7 +234,7 @@ Ground Control CLI (`groundcontrol`): flags `--server` (default https://localhos
 
 **Ground Control API Routes** (spec/groundcontrol/openapi.yaml, security wrapping in internal/groundcontrol/server/routes.go):
 - Public: `GET /ping`, `GET /health`, `POST /login` (rate limited), `POST /satellites/ztr` (rate limited), `GET /satellites/spiffe-ztr` (SPIFFE required, rate limited)
-- Satellite-authenticated: `POST /satellites/sync` (SPIFFE SVID or robot Basic auth, rate limited); `POST /satellites/refresh` sits behind the same chain and answers 501 until D2 lands
+- Satellite-authenticated: `POST /satellites/sync` and `POST /satellites/refresh` (SPIFFE SVID or robot Basic auth, rate limited). Refresh rotates the robot secret in Harbor and returns it; an expired robot gets 401 and needs a new ZTR
 - Protected (under `/api`): groups, configs, satellites, users, logout
 - System admin only: user create/delete and admin password reset, group delete, `/api/spire/*`, `POST /api/satellites/register` (SPIFFE registration), `/api/ops/*` (`GET /api/ops/outbox` answers 501 until plan item 2.3)
 - Background cleanup job: every 24h under a PostgreSQL advisory lock, deletes status records older than 7 days and orphaned artifacts
@@ -400,7 +400,6 @@ This is core functionality; changes require careful review.
 Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNotImplemented` and no production path calls them yet; their behaviour is specified by `pending.Plan` tests.
 
 - internal/shared/notimpl/: `ErrNotImplemented` and `Err(item)`, returned by every skeleton stub
-- D2: `POST /satellites/refresh` is routed behind satellite auth and answers 501 (`server/satellite_refresh.go`, `server/notimplemented.go`); `scheduler.NewScheduler` (no interval, used for the `refresh_credentials` event) still runs its process on Start; the fix makes it run only on Trigger
 - D3: `server.satelliteAuthChain` is the seam for the satellite auth order; it keeps today's order (SPIFFE middleware inner), the fix swaps it
 - internal/shared/logger/logtest/: D4 test helper, `Capture(t)` routes the context-carried zerolog logger into a buffer at every level; the D4 acceptance tests in `state` and `events` use it
 - test/arch/: repository-wide tests; `TestNoSecretsInLogArguments` (D4) parses every non-test file in cmd, internal and pkg for log arguments named like a password, secret or token

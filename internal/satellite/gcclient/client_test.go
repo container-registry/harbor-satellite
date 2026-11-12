@@ -12,7 +12,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
 	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -239,7 +238,6 @@ func TestNew_RequiresHTTPSUnlessInsecure(t *testing.T) {
 }
 
 func TestClientRefreshCredentials_PostsToSatellitesRefresh(t *testing.T) {
-	pending.Plan(t, "D2", "the credential refresh goes to /sat/refresh outside the generated client")
 	gc := newFakeGC(t, http.StatusOK, map[string]string{"secret": "n3w"})
 	c := newClient(t, gc.server.URL)
 

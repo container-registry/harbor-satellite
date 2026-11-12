@@ -2,15 +2,12 @@ package events
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
-	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/shared/spiffe"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
@@ -25,10 +22,6 @@ type RefreshCredentialProcess struct {
 	spiffeClient *spiffe.Client
 
 	mu sync.RWMutex
-}
-
-type RefreshEndpointResponse struct {
-	Secret string `json:"secret"`
 }
 
 func NewRefreshCredentialsEvent(cm *config.ConfigManager, log *zerolog.Logger) (*scheduler.Scheduler, error) {
@@ -68,99 +61,53 @@ func (s *RefreshCredentialProcess) Execute(ctx context.Context) error {
 		return fmt.Errorf("config manager not found")
 	}
 
-	resp, err := s.sendRequest(ctx)
+	client, err := s.newClient(ctx)
 	if err != nil {
-		return fmt.Errorf("error sending refresh request: %w", err)
+		return err
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.FromContext(ctx).Warn().Err(err).Msg("error closing response body")
-		}
-	}()
-
-	body, err := io.ReadAll(resp.Body)
+	res, err := client.RefreshCredentials(ctx)
 	if err != nil {
-		return fmt.Errorf("read response body: %w", err)
+		return err
 	}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("refresh endpoint returned %s: %s", resp.Status, string(body))
+	s.cm.With(config.SetStateAuth(s.cm.GetSourceRegistryUsername(), res.Secret, config.URL(s.cm.GetSourceRegistryURL())))
+	if err := s.cm.WriteConfig(); err != nil {
+		return fmt.Errorf("persist refreshed credentials: %w", err)
 	}
-
-	s.log.Info().
-		Str("status", resp.Status).
-		Str("body", string(body)).
-		Msg("Refresh endpoint response")
-
-	var respBody RefreshEndpointResponse
-	if err := json.Unmarshal(body, &respBody); err != nil {
-		return fmt.Errorf("failed to decode body: %w", err)
-	}
-
-	if respBody.Secret != "" {
-		s.cm.With(config.SetStateAuth(s.cm.GetSourceRegistryUsername(), respBody.Secret, config.URL(s.cm.GetSourceRegistryURL())))
-		if err := s.cm.WriteConfig(); err != nil {
-			return fmt.Errorf("persist refreshed credentials: %w", err)
-		}
-	}
-
+	s.log.Info().Msg("Refreshed the registry robot secret")
 	return nil
 }
 
-func (s *RefreshCredentialProcess) sendRequest(ctx context.Context) (*http.Response, error) {
-	gcURL := s.cm.ResolveGroundControlURL()
-	reqURL := fmt.Sprintf("%s/sat/refresh", gcURL)
-
-	var client *http.Client
+// newClient authenticates with the SVID when SPIFFE is on, otherwise with
+// the robot account whose secret is being rotated.
+func (s *RefreshCredentialProcess) newClient(ctx context.Context) (*gcclient.Client, error) {
+	var (
+		httpClient *http.Client
+		creds      gcclient.Credentials
+		err        error
+	)
 	if s.spiffeClient != nil {
 		if err := s.spiffeClient.Connect(ctx); err != nil {
 			return nil, fmt.Errorf("connect to SPIRE agent: %w", err)
 		}
-		httpClient, err := s.spiffeClient.CreateHTTPClient()
-		client = httpClient
-		if err != nil {
+		if httpClient, err = s.spiffeClient.CreateHTTPClient(); err != nil {
 			return nil, fmt.Errorf("create SPIFFE HTTP client: %w", err)
 		}
+		creds = gcclient.NoCredentials{}
 	} else {
-		httpClient, err := createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure())
-		if err != nil {
+		if httpClient, err = createHTTPClient(s.cm.GetTLSConfig(), s.cm.UseUnsecure()); err != nil {
 			return nil, fmt.Errorf("create HTTP client: %w", err)
 		}
-
-		client = httpClient
+		creds = gcclient.RobotBasic(func() (string, string) {
+			return s.cm.GetSourceRegistryUsername(), s.cm.GetSourceRegistryPassword()
+		})
 	}
-
-	httpReq, err := s.createRequest(ctx, reqURL)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("send request: %w", err)
-	}
-
-	return resp, nil
-}
-
-func (s *RefreshCredentialProcess) createRequest(ctx context.Context, reqURL string) (*http.Request, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	if s.spiffeClient == nil {
-		if !s.cm.UseUnsecure() && !strings.HasPrefix(reqURL, "https://") {
-			return nil, fmt.Errorf("insecure connection: sync URL %q must use HTTPS when use_unsecure is false", reqURL)
-		}
-
-		username := s.cm.GetSourceRegistryUsername()
-		password := s.cm.GetSourceRegistryPassword()
-		httpReq.SetBasicAuth(username, password)
-	}
-
-	return httpReq, nil
+	return gcclient.New(gcclient.Options{
+		BaseURL:       s.cm.ResolveGroundControlURL(),
+		HTTPClient:    httpClient,
+		Credentials:   creds,
+		AllowInsecure: s.cm.UseUnsecure(),
+	})
 }
 
 func (s *RefreshCredentialProcess) Name() string {

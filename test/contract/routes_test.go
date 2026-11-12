@@ -15,7 +15,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
 	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/gorilla/mux"
 	"github.com/rs/zerolog"
@@ -25,21 +24,16 @@ import (
 // satelliteCall is a request the satellite sends to Ground Control. Path is
 // what arrives at the server when the satellite's base URL has no path.
 type satelliteCall struct {
-	name     string
-	method   string
-	path     string
-	planItem string
-	summary  string
+	name   string
+	method string
+	path   string
 }
 
 var satelliteCalls = []satelliteCall{
 	{name: "token ZTR", method: http.MethodPost, path: "/satellites/ztr"},
 	{name: "SPIFFE ZTR", method: http.MethodGet, path: "/satellites/spiffe-ztr"},
 	{name: "heartbeat", method: http.MethodPost, path: "/satellites/sync"},
-	{
-		name: "credential refresh", method: http.MethodPost, path: "/sat/refresh",
-		planItem: "D2", summary: "GC has no route for the credential refresh the satellite posts to /sat/refresh",
-	},
+	{name: "credential refresh", method: http.MethodPost, path: "/satellites/refresh"},
 }
 
 // gcRouter is Ground Control's generated router on a mux configured like
@@ -67,9 +61,6 @@ func TestGroundControlServesEverySatelliteCall(t *testing.T) {
 
 	for _, call := range satelliteCalls {
 		t.Run(call.name, func(t *testing.T) {
-			if call.planItem != "" {
-				pending.Plan(t, call.planItem, call.summary)
-			}
 			req, err := http.NewRequestWithContext(context.Background(), call.method, gc.URL+call.path, nil)
 			require.NoError(t, err)
 			resp, err := client.Do(req)
@@ -118,6 +109,7 @@ func TestSatelliteCallsMatchTable(t *testing.T) {
 		runCtx, cancel := context.WithCancel(ctx)
 		mark := rec.count()
 		sched.Start(runCtx)
+		sched.Trigger()
 		require.Eventually(t, func() bool { return rec.count() > mark }, 10*time.Second, 10*time.Millisecond)
 		cancel()
 		require.NoError(t, sched.Stop(context.Background()))
