@@ -9,12 +9,10 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
 func TestIdentityStore_NeverAdoptsLocalAccount(t *testing.T) {
-	pending.Plan(t, "8.1", "the postgres identity store is a stub; there is no OIDC login")
 	db := dbtest.New(t)
 	ctx := context.Background()
 	_, err := database.New(db.DB).CreateUser(ctx, database.CreateUserParams{Username: "bob", PasswordHash: "local-hash", Role: "admin"})
