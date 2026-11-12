@@ -36,6 +36,9 @@ func (c *composition) jobs(ctx context.Context, embedded bool) ([]job, error) {
 		return nil, errors.New("the fleet was not composed")
 	}
 	jobs := []job{{name: c.fleet.Probe.Name(), run: c.fleet.Probe.Run}}
+	if c.fleet.Flusher != nil {
+		jobs = append(jobs, job{name: c.fleet.Flusher.Name(), run: c.fleet.Flusher.Run})
+	}
 	if !embedded {
 		return jobs, nil
 	}

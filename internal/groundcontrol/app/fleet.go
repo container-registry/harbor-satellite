@@ -6,6 +6,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"fmt"
@@ -94,8 +95,8 @@ func (l operatorLogin) Start(ctx context.Context) (redirectURL, binding string, 
 // with satconfig.Validator. With POLICY_ENGINE=casbin, casbin.New loads
 // the repository's policies and the services and the server share it.
 //
-// The plan item 4, 7, 8.1 and 8.4 parts (sessions, heartbeat buffer and
-// flusher, policy, rotations, login) stay nil until those items land.
+// The plan item 7, 8.1 and 8.4 parts (policy, rotations, login) stay nil
+// until those items land.
 func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if deps.Pools == nil || deps.Pools.API == nil {
 		return nil, fmt.Errorf("%w: the fleet needs database pools", fleet.ErrInvalid)
@@ -118,12 +119,38 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 			return nil, err
 		}
 	}
+	hot := withHotPathDefaults(deps.Server.FleetHotPath)
+	sessionStore, err := postgres.NewSessionStore(fleetPool(deps.Pools))
+	if err != nil {
+		return nil, err
+	}
+	sessions, err := authn.NewSessions(sessionStore, fleet.SystemClock{}, authn.SessionConfig{
+		TTL: hot.SatelliteSessionTTL, CacheTTL: hot.SatelliteSessionCacheTTL, CacheSize: hot.SatelliteSessionCacheSize,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("satellite sessions: %w", err)
+	}
+	beatCfg := HeartbeatConfig(hot)
+	buffer, err := heartbeat.NewBuffer(beatCfg)
+	if err != nil {
+		return nil, err
+	}
+	beatStore, err := postgres.NewHeartbeatStore(fleetPool(deps.Pools), fleet.SystemClock{})
+	if err != nil {
+		return nil, err
+	}
+	flusher, err := heartbeat.NewFlusher(buffer, beatStore, beatCfg)
+	if err != nil {
+		return nil, err
+	}
 	services, err := fleet.NewServices(fleet.Deps{
 		Repository:          repo,
 		SatelliteRepository: fleetRepo,
 		Registry:            registry,
 		Identity:            identity,
 		Settings:            Settings(deps.Harbor, deps.Server, deps.Webhook),
+		Sessions:            sessions,
+		HeartbeatSink:       buffer,
 	})
 	if err != nil {
 		return nil, err
@@ -136,7 +163,45 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Fleet{Services: services, Probe: probe}, nil
+	return &Fleet{Services: services, Probe: probe, Sessions: sessions, HeartbeatBuffer: buffer, Flusher: flusher}, nil
+}
+
+// withHotPathDefaults fills the plan item 4 settings a caller left zero
+// with the env defaults, so a composition without the environment works.
+func withHotPathDefaults(h env.FleetHotPath) env.FleetHotPath {
+	def := func(v *time.Duration, d time.Duration) {
+		if *v <= 0 {
+			*v = d
+		}
+	}
+	defInt := func(v *int, d int) {
+		if *v <= 0 {
+			*v = d
+		}
+	}
+	def(&h.SatelliteSessionTTL, 720*time.Hour)
+	def(&h.SatelliteSessionCacheTTL, 30*time.Second)
+	defInt(&h.SatelliteSessionCacheSize, 10000)
+	def(&h.HeartbeatFlushInterval, 5*time.Second)
+	defInt(&h.HeartbeatBufferMax, 10000)
+	defInt(&h.HeartbeatMaxFlushFailures, 3)
+	def(&h.StaleCheckInterval, time.Minute)
+	def(&h.SessionExpiryInterval, time.Hour)
+	defInt(&h.StatusRetentionDays, 7)
+	if h.StatusPartitionsAhead < 0 {
+		h.StatusPartitionsAhead = 3
+	}
+	return h
+}
+
+// HeartbeatConfig maps HEARTBEAT_* to the buffer and flusher settings.
+func HeartbeatConfig(h env.FleetHotPath) heartbeat.Config {
+	return heartbeat.Config{
+		FlushInterval:     h.HeartbeatFlushInterval,
+		MaxPending:        h.HeartbeatBufferMax,
+		MaxFlushFailures:  h.HeartbeatMaxFlushFailures,
+		FinalFlushTimeout: 10 * time.Second,
+	}
 }
 
 func fleetPool(p *dbpool.Pools) *sql.DB {
@@ -217,7 +282,7 @@ func Settings(h env.Harbor, srv env.Server, webhooks env.Webhook) fleet.Settings
 		RegistryURL:            h.URL,
 		RobotDuration:          time.Duration(h.RobotDurationDaysValue()) * 24 * time.Hour,
 		TokenTTL:               fleet.DefaultTokenTTL,
-		StaleThreshold:         srv.StaleThreshold,
+		StaleThreshold:         cmp.Or(srv.StaleThreshold, 15*time.Minute),
 		HeartbeatFlushInterval: srv.HeartbeatFlushInterval,
 		WebhooksEnabled:        webhooks.Enabled,
 	}
