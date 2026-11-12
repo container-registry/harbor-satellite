@@ -1,10 +1,7 @@
 package server
 
 import (
-	"database/sql"
 	"encoding/json"
-	"errors"
-	"log"
 	"net/http"
 	"time"
 
@@ -39,59 +36,19 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if account is locked
-	attempts, err := s.dbQueries.GetLoginAttempts(r.Context(), req.Username)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if err == nil && attempts.LockedUntil.Valid && attempts.LockedUntil.Time.After(time.Now()) {
-		s.auditEvent(r, auditlog.AuditEvent{
-			Operation:    auditlog.OpLogin,
-			ResourceType: auditlog.ResSession,
-			Outcome:      auditlog.OutcomeFailure,
-			Actor:        req.Username,
-			ActorType:    auditlog.ActorUser,
-			Reason:       auditlog.ReasonAccountLocked,
-		})
-		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
-		return
-	}
-
-	// Get user
-	user, err := s.dbQueries.GetUserByUsername(r.Context(), req.Username)
+	user, err := s.verifyUserCredentials(r.Context(), s.clientAddr(r), req.Username, req.Password)
 	if err != nil {
-		s.recordFailedAttempt(r, req.Username)
 		s.auditEvent(r, auditlog.AuditEvent{
 			Operation:    auditlog.OpLogin,
 			ResourceType: auditlog.ResSession,
 			Outcome:      auditlog.OutcomeFailure,
 			Actor:        req.Username,
 			ActorType:    auditlog.ActorUser,
-			Reason:       auditlog.ReasonUnknownUser,
+			Reason:       credentialFailureReason(err),
 		})
-		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
+		writeCredentialError(w, err)
 		return
 	}
-
-	// Verify password
-	valid := auth.VerifyPassword(req.Password, user.PasswordHash)
-	if !valid {
-		s.recordFailedAttempt(r, req.Username)
-		s.auditEvent(r, auditlog.AuditEvent{
-			Operation:    auditlog.OpLogin,
-			ResourceType: auditlog.ResSession,
-			Outcome:      auditlog.OutcomeFailure,
-			Actor:        req.Username,
-			ActorType:    auditlog.ActorUser,
-			Reason:       auditlog.ReasonBadPassword,
-		})
-		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
-		return
-	}
-
-	_ = s.dbQueries.ResetLoginAttempts(r.Context(), req.Username) //nolint:errcheck // Reset failed attempts on success (ignore errors)
 
 	// Generate session token
 	token, err := auth.GenerateSessionToken()
@@ -138,21 +95,4 @@ func (s *Server) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) recordFailedAttempt(r *http.Request, username string) {
-	attempts, err := s.dbQueries.UpsertLoginAttempt(r.Context(), username)
-	if err != nil {
-		return
-	}
-
-	if attempts.FailedCount >= maxFailedAttempts {
-		lockUntil := time.Now().Add(s.lockoutDuration)
-		if err := s.dbQueries.LockAccount(r.Context(), database.LockAccountParams{
-			Username:    username,
-			LockedUntil: sql.NullTime{Time: lockUntil, Valid: true},
-		}); err != nil {
-			log.Printf("Failed to lock account %s: %v", username, err)
-		}
-	}
 }

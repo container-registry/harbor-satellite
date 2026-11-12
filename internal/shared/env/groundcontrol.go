@@ -142,7 +142,8 @@ type Server struct {
 	// interval may stay silent before it is stale (plan item 4.3, A8);
 	// parsed but not used yet.
 	StaleThreshold time.Duration `env:"STALE_THRESHOLD" envDefault:"15m"`
-	// D6 skeleton: the FailureLimiter is built from these but never blocks yet.
+	// Failed authentications (login and Basic auth, any username) per client
+	// IP within AuthFailureWindow before 429; 0 disables the limit.
 	AuthFailureLimit  int           `env:"AUTH_FAILURE_LIMIT"  envDefault:"20"`
 	AuthFailureWindow time.Duration `env:"AUTH_FAILURE_WINDOW" envDefault:"1m"`
 

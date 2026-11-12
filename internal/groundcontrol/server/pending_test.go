@@ -82,7 +82,6 @@ func TestRobotPermissionsAreTheUnionOfAllGroups(t *testing.T) {
 }
 
 func TestBasicAuthLocksAccountAfterFailedAttempts(t *testing.T) {
-	pending.Plan(t, "D6", "/api Basic auth neither records failed attempts nor honours the lockout")
 	h := newGCHarness(t)
 
 	for i := range 6 {

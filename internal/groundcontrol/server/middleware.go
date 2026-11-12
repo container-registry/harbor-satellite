@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
@@ -98,21 +97,29 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// Try Basic auth if Bearer didn't work
+		// Basic auth goes through the same check as /login, so its failures
+		// count toward the lockout and the per-IP failure limit.
 		if !authenticated {
 			if username, password, ok := extractBasicAuth(r); ok {
-				dbUser, err := s.dbQueries.GetUserByUsername(r.Context(), username)
-				if err == nil {
-					valid := auth.VerifyPassword(password, dbUser.PasswordHash)
-					if valid {
-						user = AuthUser{
-							ID:       dbUser.ID,
-							Username: dbUser.Username,
-							Role:     dbUser.Role,
-						}
-						authenticated = true
-					}
+				dbUser, err := s.verifyUserCredentials(r.Context(), s.clientAddr(r), username, password)
+				if err != nil {
+					s.auditEvent(r, auditlog.AuditEvent{
+						Operation:    auditlog.OpAuth,
+						ResourceType: auditlog.ResUser,
+						Outcome:      auditlog.OutcomeFailure,
+						Actor:        username,
+						ActorType:    auditlog.ActorUser,
+						Reason:       credentialFailureReason(err),
+					})
+					writeCredentialError(w, err)
+					return
 				}
+				user = AuthUser{
+					ID:       dbUser.ID,
+					Username: dbUser.Username,
+					Role:     dbUser.Role,
+				}
+				authenticated = true
 			}
 		}
 

@@ -58,7 +58,7 @@ Key groups include:
 - PostgreSQL access: `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`
 - Bootstrap: `ADMIN_PASSWORD` (required on first start)
 - Server settings: `PORT` (default `8080`), `SESSION_DURATION` (default `24h`), `LOCKOUT_DURATION` (default `5m`), `STALE_THRESHOLD` (default `15m`, not read yet)
-- Failed authentication limit per client IP (login and Basic auth, any username): `AUTH_FAILURE_LIMIT` (default `20`) failures within `AUTH_FAILURE_WINDOW` (default `1m`) before 429; parsed but not enforced yet
+- Failed authentication limit per client IP (login and Basic auth, any username): `AUTH_FAILURE_LIMIT` (default `20`) failures within `AUTH_FAILURE_WINDOW` (default `1m`) before 429, `0` disables it. Independently, 5 failed attempts for one username, through `/login` or Basic auth, lock that account for `LOCKOUT_DURATION`
 - Fleet hot path (plan item 4, ADR-0016; parsed but not used yet, except that `RATE_LIMIT_SPLIT=true` builds the split limiters, which answer 501 until 4.6, so leave it off): `SATELLITE_SESSION_TTL` (`720h`), `SATELLITE_SESSION_CACHE_TTL` (`30s`, at most `5m`), `SATELLITE_SESSION_CACHE_SIZE` (`10000`), `SATELLITE_ROBOT_AUTH` (`true`), `HEARTBEAT_FLUSH_INTERVAL` (`5s`), `HEARTBEAT_BUFFER_MAX` (`10000`), `HEARTBEAT_MAX_FLUSH_FAILURES` (`3`), `STALE_CHECK_INTERVAL` (`1m`), `SESSION_EXPIRY_INTERVAL` (`1h`), `STATUS_RETENTION_DAYS` (`7`), `STATUS_PARTITIONS_AHEAD` (`3`), `RATE_LIMIT_SPLIT` (`false`), `RATE_LIMIT_ANONYMOUS` (`10/1m`), `RATE_LIMIT_FLEET` (`3/1s`)
 - Harbor robot accounts: `ROBOT_DURATION_DAYS` (default `30`)
 - Password policy: `PASSWORD_MIN_LENGTH`, `PASSWORD_MAX_LENGTH`, `PASSWORD_REQUIRE_UPPERCASE`, `PASSWORD_REQUIRE_LOWERCASE`, `PASSWORD_REQUIRE_NUMBER`, `PASSWORD_REQUIRE_SPECIAL`
