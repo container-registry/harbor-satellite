@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	digest "github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -35,6 +36,9 @@ type OCIStoreOptions struct {
 	// GCGrace is the grace period Delete passes to CollectGarbage. Zero
 	// collects unreferenced content at once.
 	GCGrace time.Duration
+	// Recorder receives replication bytes and duration and index lock waits;
+	// nil records nothing.
+	Recorder telemetry.Recorder
 }
 
 type OpenReport struct {
@@ -198,4 +202,19 @@ func (s *OCIStore) persistIndexLocked(ctx context.Context) error {
 		return err
 	}
 	return WriteIndexAtomic(s.root, index)
+}
+
+// Check reports whether the layout's metadata files are readable; it backs
+// the satellite's /healthz.
+func (s *OCIStore) Check(_ context.Context) error {
+	for _, name := range []string{ocispec.ImageLayoutFile, ocispec.ImageIndexFile} {
+		f, err := os.Open(filepath.Join(s.root, name))
+		if err != nil {
+			return fmt.Errorf("OCI layout: %w", err)
+		}
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("OCI layout: %w", err)
+		}
+	}
+	return nil
 }

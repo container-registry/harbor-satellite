@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry/telemetrytest"
 	digest "github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/require"
 )
@@ -242,4 +243,24 @@ func TestDelete_KeepsContentInGraceUntilCollector(t *testing.T) {
 	_, err = s.Pull(ctx, Artifact{Name: "team/app", Digest: manifest.Digest.String()}, PullResourceManifest)
 	require.Error(t, err)
 	require.FileExists(t, edgeBlobPath(root, manifest.Digest))
+}
+
+func TestOCIStore_RecordsReplicationAndLockWaits(t *testing.T) {
+	spy := &telemetrytest.Spy{}
+	s, _, err := OpenOCIStore(t.TempDir(), OCIStoreOptions{AtomicIndex: true, Recorder: spy})
+	require.NoError(t, err)
+	ctx := edgeContext(t)
+	address, source := edgeUpstream(t, nil)
+	layer := []byte("measured layer")
+	pushEdgeImage(t, address, "team/app", "v1", layer)
+	artifact := Artifact{Name: "team/app", Tag: "v1"}
+
+	require.NoError(t, s.Replicate(ctx, source, []Artifact{artifact}))
+	require.NoError(t, s.Delete(ctx, []Artifact{artifact}))
+
+	got := spy.Snapshot()
+	require.Len(t, got.Replications, 1)
+	require.Equal(t, "ok", got.Replications[0].Outcome)
+	require.Greater(t, got.Replications[0].Bytes, int64(len(layer)), "manifest, config and layer were added")
+	require.Equal(t, []string{"publish", "untag", "collect"}, got.LockWaits)
 }

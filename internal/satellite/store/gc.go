@@ -55,8 +55,8 @@ func (s *OCIStore) CollectGarbage(ctx context.Context, opts GCOptions) (GCStats,
 		}
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockIndex("collect")
+	defer unlock()
 	reachable, err := s.markLocked(ctx)
 	if err != nil {
 		return stats, fmt.Errorf("mark tagged graphs: %w", err)

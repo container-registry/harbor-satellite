@@ -9,6 +9,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/lane"
 	proxy "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -24,6 +25,9 @@ type PullOptions struct {
 	// whole-graph fill before the first byte.
 	Streaming  bool
 	Prefetcher Prefetcher
+	// Recorder receives pull durations and pull-through fills; nil records
+	// nothing.
+	Recorder telemetry.Recorder
 }
 
 // NewPullWithOptions is NewPull with the plan 5.3 pull-through options; zero
@@ -39,6 +43,10 @@ func NewPullWithOptions(lifecycleCtx context.Context, mode proxy.Mode, localStor
 		localStore:   localStore,
 		remoteStore:  remoteStore,
 		prefetcher:   opts.Prefetcher,
+		recorder:     opts.Recorder,
+	}
+	if handler.recorder == nil {
+		handler.recorder = telemetry.Nop{}
 	}
 	if opts.Streaming {
 		filler, ok := localStore.(store.Filler)

@@ -56,8 +56,10 @@ func (p *pullHandler) streamManifest(request *proxy.Request, artifact store.Arti
 		defer cancel()
 		descriptor, payload, err := p.filler.FillManifest(fillCtx, p.remoteStore, artifact)
 		if err != nil {
+			p.recorder.CountPullThroughFill("error")
 			return nil, err
 		}
+		p.recorder.CountPullThroughFill("ok")
 		if p.prefetcher != nil {
 			if err := p.prefetcher.Prefetch(p.lifecycleCtx, artifact, descriptor); err != nil {
 				logger.FromContext(p.lifecycleCtx).Warn().Err(err).Str("reference", artifact.Reference()).
@@ -93,8 +95,10 @@ func (p *pullHandler) streamBlob(request *proxy.Request, artifact store.Artifact
 		return p.fillWholeBlob(request, artifact)
 	}
 	if err != nil {
+		p.recorder.CountPullThroughFill("error")
 		return mapPullError(store.PullResourceBlob, err)
 	}
+	p.recorder.CountPullThroughFill("ok")
 	if response.StatusCode != http.StatusOK {
 		_ = response.Body.Close()
 		return errors.New("proxy image pull: blob stream did not answer 200")

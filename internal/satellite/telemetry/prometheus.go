@@ -24,7 +24,7 @@ func newPromRecorder() *promRecorder {
 	return &promRecorder{
 		pullDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    MetricPullDuration,
-			Help:    "Duration of proxy pulls until the response starts, by resource and outcome.",
+			Help:    "Duration of proxy pull requests including the body transfer, by resource and outcome.",
 			Buckets: latencyBuckets,
 		}, []string{"resource", "outcome"}),
 		pullThroughFills: prometheus.NewCounterVec(prometheus.CounterOpts{

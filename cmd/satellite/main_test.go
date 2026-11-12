@@ -16,6 +16,7 @@ import (
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/rs/zerolog"
@@ -397,4 +398,29 @@ func TestStreamingPullOptions(t *testing.T) {
 	require.NoError(t, err)
 	closeBYO()
 	require.False(t, byo.Streaming, "a registry as local store cannot stream-fill")
+}
+
+func TestServeTelemetryAnswersHealthz(t *testing.T) {
+	server, err := telemetry.NewServer(telemetry.ServerOptions{})
+	require.NoError(t, err)
+	require.NoError(t, server.AddCheck("store", func(context.Context) error { return nil }))
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := probe.Addr().String()
+	require.NoError(t, probe.Close())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	wg, wgCtx := errgroup.WithContext(ctx)
+	require.NoError(t, serveTelemetry(wgCtx, wg, server, addr))
+	require.Error(t, serveTelemetry(wgCtx, wg, server, addr), "a taken telemetry port must fail startup")
+	require.NoError(t, serveTelemetry(wgCtx, wg, server, ""), "an empty address disables telemetry")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+"/healthz", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	cancel()
+	require.NoError(t, wg.Wait())
 }

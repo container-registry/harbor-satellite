@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -155,6 +156,15 @@ func (s *OCIStore) replicateOne(ctx context.Context, source Store, sourceTarget 
 	if err = artifact.validate(); err != nil {
 		return err
 	}
+	started := time.Now()
+	var published int64
+	defer func() {
+		outcome := "ok"
+		if err != nil {
+			outcome = "error"
+		}
+		s.recorder().ObserveReplication(published, time.Since(started), outcome)
+	}()
 	remote, err := sourceTarget.targetFor(artifact)
 	if err != nil {
 		return err
@@ -172,12 +182,12 @@ func (s *OCIStore) replicateOne(ctx context.Context, source Store, sourceTarget 
 	if s.beforePublishLock != nil {
 		s.beforePublishLock()
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockIndex("publish")
+	defer unlock()
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	if err = s.publish(ctx, staged, artifact); err != nil {
+	if published, err = s.publish(ctx, staged, artifact); err != nil {
 		return err
 	}
 	if onWin := peerRaceOnWin(ctx); onWin != nil {
@@ -398,39 +408,42 @@ func (t *stageTarget) PushReference(ctx context.Context, expected ocispec.Descri
 	return t.Tag(ctx, expected, reference)
 }
 
-func (s *OCIStore) publish(ctx context.Context, staged stagedArtifact, artifact Artifact) error {
+// publish returns the bytes it linked into the layout, which are the bytes
+// this replication added.
+func (s *OCIStore) publish(ctx context.Context, staged stagedArtifact, artifact Artifact) (int64, error) {
 	// The stage is the quarantine. A root the group list did not ask for is
 	// discarded here, before any blob is linked into the store that clients pull.
 	if err := rejectUnlistedDigest(staged.desc, artifact); err != nil {
-		return err
+		return 0, err
 	}
 	// Linking keeps the write lock to a metadata update. oras.Copy would read
 	// and write every new blob again while Pull and Fetch wait, and the stage
 	// would still be on disk until this returns.
-	if err := s.promote(ctx, staged.dir, staged.store, staged.desc); err != nil {
-		return fmt.Errorf("publish %s to OCI store: %w", artifact.Reference(), err)
+	linked, err := s.promote(ctx, staged.dir, staged.store, staged.desc)
+	if err != nil {
+		return 0, fmt.Errorf("publish %s to OCI store: %w", artifact.Reference(), err)
 	}
 	if err := s.store.Tag(ctx, staged.desc, artifact.Reference()); err != nil {
-		return fmt.Errorf("tag %s in OCI store: %w", artifact.Reference(), err)
+		return 0, fmt.Errorf("tag %s in OCI store: %w", artifact.Reference(), err)
 	}
 	if err := s.persistIndexLocked(ctx); err != nil {
-		return fmt.Errorf("persist index after tagging %s: %w", artifact.Reference(), err)
+		return 0, fmt.Errorf("persist index after tagging %s: %w", artifact.Reference(), err)
 	}
 	if artifact.Tag == "" {
 		s.provenance.Store(provenanceKey(artifact.Name, staged.desc.Digest), struct{}{})
-		return nil
+		return linked, nil
 	}
 	if err := s.recordGraphProvenance(ctx, artifact.Name, staged.desc); err != nil {
-		return err
+		return 0, err
 	}
 	logger.FromContext(ctx).Info().Str("reference", artifact.Reference()).Str("digest", staged.desc.Digest.String()).Msg("artifact replicated to OCI store")
-	return nil
+	return linked, nil
 }
 
 // promote links staged blobs into the serving layout, then Tag records the root
 // in index.json. Blobs already in the serving store stay there. A failed
 // promote removes only the links it added.
-func (s *OCIStore) promote(ctx context.Context, stageRoot string, stage *oci.Store, root ocispec.Descriptor) (err error) {
+func (s *OCIStore) promote(ctx context.Context, stageRoot string, stage *oci.Store, root ocispec.Descriptor) (linkedBytes int64, err error) {
 	var created []string
 	defer func() {
 		if err == nil {
@@ -443,7 +456,7 @@ func (s *OCIStore) promote(ctx context.Context, stageRoot string, stage *oci.Sto
 			}
 		}
 	}()
-	return walkDescriptorGraph(ctx, stage, root, func(desc ocispec.Descriptor) error {
+	err = walkDescriptorGraph(ctx, stage, root, func(desc ocispec.Descriptor) error {
 		exists, existsErr := s.store.Exists(ctx, desc)
 		if existsErr != nil {
 			return existsErr
@@ -465,13 +478,30 @@ func (s *OCIStore) promote(ctx context.Context, stageRoot string, stage *oci.Sto
 		}
 		if linked {
 			created = append(created, dst)
+			linkedBytes += info.Size()
 		}
 		return nil
 	})
+	return linkedBytes, err
 }
 
 func (s *OCIStore) targetFor(Artifact) (oras.Target, error) { //nolint:unparam // shared adapter permits registry construction errors.
-	return s.store, nil
+	return s.layout(), nil
+}
+
+// lockIndex takes the exclusive index lock and reports how long it waited.
+func (s *OCIStore) lockIndex(operation string) (unlock func()) {
+	started := time.Now()
+	s.mu.Lock()
+	s.recorder().ObserveStoreLockWait(operation, time.Since(started))
+	return s.mu.Unlock
+}
+
+func (s *OCIStore) recorder() telemetry.Recorder {
+	if s.opts.Recorder == nil {
+		return telemetry.Nop{}
+	}
+	return s.opts.Recorder
 }
 
 // Delete untags the selected roots and collects what nothing references any
@@ -497,8 +527,8 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 }
 
 func (s *OCIStore) untag(ctx context.Context, artifacts []Artifact) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockIndex("untag")
+	defer unlock()
 	for _, artifact := range artifacts {
 		if err := artifact.validate(); err != nil {
 			return err
