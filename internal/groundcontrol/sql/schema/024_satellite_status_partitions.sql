@@ -1,5 +1,4 @@
--- Plan item 4.5. Not applied: neither goose nor sqlc reads sql/pending.
--- satellite_status becomes range-partitioned by created_at, so retention
+-- Plan item 4.5: satellite_status becomes range-partitioned by created_at, so retention
 -- drops a day's partition instead of deleting rows. PartitionMaintainer
 -- creates the daily partitions; until it has, rows land in the default one.
 
