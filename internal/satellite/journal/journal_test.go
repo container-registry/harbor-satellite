@@ -413,3 +413,27 @@ func TestJournal_SurvivesKill9(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, len(records)+1, next)
 }
+
+// A batch that fails after some of its records reached a segment (here the
+// next segment cannot be created) must not hand those seqs out again: the
+// upload would carry two records with one seq.
+func TestJournal_FailedWriteNeverReusesASeq(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the directory permissions this test relies on")
+	}
+	dir := t.TempDir()
+	j := openJournal(t, journal.Options{Dir: dir, MaxSegmentBytes: 300})
+	appendEach(t, j, 1)
+
+	require.NoError(t, os.Chmod(dir, 0o500))
+	_, err := j.Append(context.Background(), replication(2), replication(3))
+	require.NoError(t, os.Chmod(dir, 0o700))
+	require.Error(t, err, "the second record needs a new segment")
+
+	_, err = j.Append(context.Background(), replication(4))
+	require.NoError(t, err)
+
+	got := readAll(t, j, 0)
+	require.IsIncreasing(t, got, "seqs are unique and ordered: %v", got)
+	require.Equal(t, got[len(got)-1], j.LastSeq())
+}

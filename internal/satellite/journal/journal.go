@@ -477,15 +477,33 @@ func (j *Journal) write(batch []pendingAppend) ([]int64, error) {
 	if err == nil && j.active != nil {
 		err = j.active.Sync()
 	}
-	j.files.Unlock()
 	if err != nil {
-		return results, err
+		err = errors.Join(err, j.cutTornTail())
 	}
+	j.files.Unlock()
 
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	// Records written before a failure stay on disk, so their seqs are
+	// taken even when the batch fails.
 	j.lastSeq = last
+	if err != nil {
+		return results, err
+	}
 	return results, j.enforceCapLocked()
+}
+
+// cutTornTail truncates the active segment to its last complete frame after
+// a failed write, so later frames are not hidden behind a partial one.
+// j.files is held.
+func (j *Journal) cutTornTail() error {
+	if j.active == nil || len(j.segments) == 0 {
+		return nil
+	}
+	if err := j.active.Truncate(j.segments[len(j.segments)-1].size); err != nil {
+		return fmt.Errorf("truncate torn journal frame: %w", err)
+	}
+	return nil
 }
 
 func (j *Journal) writeRecord(r Record) error {
