@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/inventory"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -13,7 +12,6 @@ import (
 //	printf 'harbor.example/library/alpine:3.20\t3145728\nharbor.example/library/busybox:1.36\t1048576\n' | shasum -a 256
 //	printf '' | shasum -a 256
 func TestDigest_OrderIndependentAndGolden(t *testing.T) {
-	pending.Plan(t, "4.4", "the inventory digest is a stub; satellites send their full image list on every heartbeat")
 	alpine := inventory.Item{Reference: "harbor.example/library/alpine:3.20", SizeBytes: 3 << 20}
 	busybox := inventory.Item{Reference: "harbor.example/library/busybox:1.36", SizeBytes: 1 << 20}
 	const golden = "sha256:eaa77371712eb7ca6f654a7c30aa0f7bae15a671527ae76f83ade521ba85e1b1"
