@@ -5,11 +5,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/authn"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingOIDC = "operators log in with local passwords only; there is no OIDC"
 
 var oidcCfg = authn.OIDCConfig{
 	Enabled:       true,
@@ -33,8 +30,6 @@ func TestMapPrincipal_GroupsAndRoleMap(t *testing.T) {
 		"the highest role wins": {groups: []string{"edge-ops", "platform", "other"}, role: "system_admin"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			pending.Plan(t, "8.1", pendingOIDC)
-
 			principal, role, err := authn.MapPrincipal(claims("alice", tc.groups...), oidcCfg)
 
 			require.NoError(t, err)
@@ -51,7 +46,6 @@ func TestMapPrincipal_GroupsAndRoleMap(t *testing.T) {
 }
 
 func TestMapPrincipal_UnmappedIsForbidden(t *testing.T) {
-	pending.Plan(t, "8.1", pendingOIDC)
 	for _, groups := range [][]string{nil, {"other"}} {
 		_, _, err := authn.MapPrincipal(claims("alice", groups...), oidcCfg)
 		require.ErrorIs(t, err, fleet.ErrForbidden, "%v", groups)
@@ -59,7 +53,6 @@ func TestMapPrincipal_UnmappedIsForbidden(t *testing.T) {
 }
 
 func TestMapPrincipal_ReservedAdminIsForbidden(t *testing.T) {
-	pending.Plan(t, "8.1", pendingOIDC)
 	_, _, err := authn.MapPrincipal(claims("admin", "platform"), oidcCfg)
 	require.ErrorIs(t, err, fleet.ErrForbidden, "OIDC never reaches the bootstrap admin")
 }
