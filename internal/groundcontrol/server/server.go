@@ -192,7 +192,7 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 		return result, err
 	}
 	if appServer.policyEngine == env.PolicyEngineCasbin && appServer.policy == nil {
-		return result, fmt.Errorf("POLICY_ENGINE=%s needs a policy (WithPolicy), which serve does not pass yet", env.PolicyEngineCasbin)
+		return result, fmt.Errorf("POLICY_ENGINE=%s needs a policy (WithPolicy)", env.PolicyEngineCasbin)
 	}
 
 	poolConfig, err := dbpool.ConfigFromEnv(cfg.Database)

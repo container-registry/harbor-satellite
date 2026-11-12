@@ -12,7 +12,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
 )
@@ -39,7 +38,6 @@ func casbinPolicy(t *testing.T, rules []fleet.PolicyRule, bindings []fleet.RoleB
 // /api route: system_admin everything, admin everything requiresSystemAdmin
 // does not reserve.
 func TestPolicyEquivalence_RouteByRole(t *testing.T) {
-	pending.Plan(t, "7.2", "the Casbin policy is a stub")
 	p := casbinPolicy(t, nil, nil)
 
 	for _, r := range apiRoutes(t) {
@@ -74,7 +72,6 @@ func forbiddenRoutes(t *testing.T, h *gcHarness, admin authFunc) map[string]bool
 }
 
 func TestPolicyMiddleware_CasbinMatchesBuiltin(t *testing.T) {
-	pending.Plan(t, "7.2", "the policy route check is a stub")
 	operator := basicAuth("operator", "Operat0rPass")
 	harness := func(opts ...Option) *gcHarness {
 		h := newGCHarness(t, opts...)
@@ -111,7 +108,6 @@ func scopedRouter(s *Server, who fleet.Principal) http.Handler {
 // A group admin's scoped rules open the satellite, group and config routes
 // and nothing else, even with a scoped wildcard rule stored.
 func TestScopedAdmin_CannotReachNonScopedRoutes(t *testing.T) {
-	pending.Plan(t, "7.3", "the Casbin policy and the policy route check are stubs")
 	p := casbinPolicy(t, []fleet.PolicyRule{
 		{ID: 1, Subject: "role:group-admin:A", Scope: "group:A", Type: "group", Action: "*", Effect: "allow"},
 		{ID: 2, Subject: "role:group-admin:A", Scope: "group:A", Type: "satellite", Action: "*", Effect: "allow"},

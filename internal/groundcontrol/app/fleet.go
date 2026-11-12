@@ -95,8 +95,8 @@ func (l operatorLogin) Start(ctx context.Context) (redirectURL, binding string, 
 // with satconfig.Validator. With POLICY_ENGINE=casbin, casbin.New loads
 // the repository's policies and the services and the server share it.
 //
-// The plan item 7, 8.1 and 8.4 parts (policy, rotations, login) stay nil
-// until those items land.
+// The plan item 8.1 and 8.4 parts (rotations, login) stay nil until those
+// items land.
 func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if deps.Pools == nil || deps.Pools.API == nil {
 		return nil, fmt.Errorf("%w: the fleet needs database pools", fleet.ErrInvalid)
@@ -143,7 +143,22 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if err != nil {
 		return nil, err
 	}
+	var policy *casbin.Policy
+	var servicePolicy fleet.Policy
+	if deps.Policy.Engine == env.PolicyEngineCasbin {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		poll := deps.Policy.PollInterval
+		if poll <= 0 {
+			poll = 10 * time.Second
+		}
+		if policy, err = casbin.New(ctx, repo.Autocommit().Policies(), poll); err != nil {
+			return nil, fmt.Errorf("load the casbin policy: %w", err)
+		}
+		servicePolicy = policy
+	}
 	services, err := fleet.NewServices(fleet.Deps{
+		Policy:              servicePolicy,
 		Repository:          repo,
 		SatelliteRepository: fleetRepo,
 		Registry:            registry,
@@ -163,7 +178,7 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Fleet{Services: services, Probe: probe, Sessions: sessions, HeartbeatBuffer: buffer, Flusher: flusher}, nil
+	return &Fleet{Services: services, Probe: probe, Sessions: sessions, HeartbeatBuffer: buffer, Flusher: flusher, Policy: policy}, nil
 }
 
 // withHotPathDefaults fills the plan item 4 settings a caller left zero
