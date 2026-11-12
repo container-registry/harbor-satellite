@@ -1,6 +1,12 @@
 package webhook
 
-import "time"
+import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"strconv"
+	"time"
+)
 
 const (
 	// SignatureHeader is "sha256=<hex>" of HMAC-SHA256 over the Unix
@@ -9,4 +15,10 @@ const (
 	TimestampHeader = "X-Ground-Control-Timestamp"
 )
 
-func Sign(secret []byte, timestamp time.Time, body []byte) string { return "" }
+func Sign(secret []byte, timestamp time.Time, body []byte) string {
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte(strconv.FormatInt(timestamp.Unix(), 10)))
+	mac.Write([]byte{'.'})
+	mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+}

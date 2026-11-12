@@ -6,11 +6,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/webhook"
 	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingWebhooks = "Ground Control delivers no events; there are no webhooks"
 
 func TestEventType_Naming(t *testing.T) {
 	require.Equal(t, "io.harborsatellite.groundcontrol.GroupChanged", webhook.EventType(fleet.EventGroupChanged))
@@ -20,8 +17,6 @@ func TestEventType_Naming(t *testing.T) {
 }
 
 func TestNewCloudEvent_Envelope(t *testing.T) {
-	pending.Plan(t, "9.1", pendingWebhooks)
-
 	ev, err := webhook.NewCloudEvent(entry(900, 42, fleet.EventGroupChanged), "urn:test")
 
 	require.NoError(t, err)

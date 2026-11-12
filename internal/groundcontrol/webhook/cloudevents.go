@@ -2,11 +2,13 @@ package webhook
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 )
 
 const (
@@ -46,5 +48,25 @@ type CloudEvent struct {
 // EventType, subject "<aggregate type>/<aggregate id>", the entry's time,
 // application/json data and SchemaBaseURL + kind + ".json" as dataschema.
 func NewCloudEvent(entry LogEntry, source string) (CloudEvent, error) {
-	return CloudEvent{}, notimpl.Err("9.1 CloudEvent envelope")
+	if source == "" {
+		return CloudEvent{}, errors.New("a CloudEvent needs a source")
+	}
+	data := entry.Payload
+	if len(data) == 0 {
+		data = json.RawMessage("{}")
+	}
+	if !json.Valid(data) {
+		return CloudEvent{}, fmt.Errorf("outbox event %d has a payload that is not JSON", entry.Position.ID)
+	}
+	return CloudEvent{
+		SpecVersion:     "1.0",
+		ID:              strconv.FormatInt(entry.Position.ID, 10),
+		Source:          source,
+		Type:            EventType(entry.Kind),
+		Subject:         string(entry.Aggregate.Type) + "/" + strconv.FormatInt(entry.Aggregate.ID, 10),
+		Time:            entry.CreatedAt,
+		DataContentType: "application/json",
+		DataSchema:      SchemaBaseURL + string(entry.Kind) + ".json",
+		Data:            data,
+	}, nil
 }

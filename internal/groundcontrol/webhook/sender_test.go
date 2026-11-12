@@ -13,7 +13,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/webhook"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +27,6 @@ func cloudEvent() webhook.CloudEvent {
 }
 
 func TestHTTPSender_RefusesRedirects(t *testing.T) {
-	pending.Plan(t, "9.1", pendingWebhooks)
 	var reached atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached.Add(1) }))
 	t.Cleanup(target.Close)
@@ -43,7 +41,6 @@ func TestHTTPSender_RefusesRedirects(t *testing.T) {
 }
 
 func TestHTTPSender_RequiresHTTPSForNonLoopback(t *testing.T) {
-	pending.Plan(t, "9.1", pendingWebhooks)
 	receiver := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	t.Cleanup(receiver.Close)
 
@@ -55,7 +52,6 @@ func TestHTTPSender_RequiresHTTPSForNonLoopback(t *testing.T) {
 }
 
 func TestHTTPSender_RefusesLinkLocal(t *testing.T) {
-	pending.Plan(t, "9.1", pendingWebhooks)
 	for _, url := range []string{"https://169.254.169.254/latest/meta-data", "https://[fe80::1]/events"} {
 		_, err := newSender().Send(context.Background(), url, secret, cloudEvent())
 		require.ErrorIs(t, err, webhook.ErrBlockedAddress, url)
@@ -63,7 +59,6 @@ func TestHTTPSender_RefusesLinkLocal(t *testing.T) {
 }
 
 func TestHTTPSender_SetsSignatureHeaders(t *testing.T) {
-	pending.Plan(t, "9.1", pendingWebhooks)
 	var header http.Header
 	var body []byte
 	receiver := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
