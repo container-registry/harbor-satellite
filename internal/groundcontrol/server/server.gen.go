@@ -4,6 +4,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 // Defines values for HealthResponseStatus.
 const (
+	Degraded  HealthResponseStatus = "degraded"
 	Healthy   HealthResponseStatus = "healthy"
 	Unhealthy HealthResponseStatus = "unhealthy"
 )
@@ -24,9 +26,29 @@ const (
 // Valid indicates whether the value is a known member of the HealthResponseStatus enum.
 func (e HealthResponseStatus) Valid() bool {
 	switch e {
+	case Degraded:
+		return true
 	case Healthy:
 		return true
 	case Unhealthy:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyRuleRequestEffect.
+const (
+	Allow PolicyRuleRequestEffect = "allow"
+	Deny  PolicyRuleRequestEffect = "deny"
+)
+
+// Valid indicates whether the value is a known member of the PolicyRuleRequestEffect enum.
+func (e PolicyRuleRequestEffect) Valid() bool {
+	switch e {
+	case Allow:
+		return true
+	case Deny:
 		return true
 	default:
 		return false
@@ -112,6 +134,23 @@ type ActiveSatelliteResponse struct {
 	UpdatedAt         time.Time           `json:"UpdatedAt,omitempty,omitzero"`
 }
 
+// AdmissionBundle defines model for AdmissionBundle.
+type AdmissionBundle struct {
+	// ModelVersion The admission model the lines are written for, edge-admission/v1.
+	ModelVersion string `json:"model_version"`
+
+	// Policies One line per entry, [subject, repository, reference, operation, allow|deny].
+	Policies [][]string `json:"policies"`
+}
+
+// AdmissionConfig defines model for AdmissionConfig.
+type AdmissionConfig struct {
+	Bundle AdmissionBundle `json:"bundle,omitempty,omitzero"`
+
+	// Mode off (default), audit or enforce.
+	Mode string `json:"mode,omitempty,omitzero"`
+}
+
 // AgentInfoResponse defines model for AgentInfoResponse.
 type AgentInfoResponse struct {
 	AttestationType string     `json:"attestation_type"`
@@ -127,6 +166,7 @@ type AgentListResponse struct {
 
 // AppConfig defines model for AppConfig.
 type AppConfig struct {
+	Admission         AdmissionConfig      `json:"admission,omitempty,omitzero"`
 	Audit             AuditConfig          `json:"audit,omitempty,omitzero"`
 	BringOwnRegistry  bool                 `json:"bring_own_registry,omitempty,omitzero"`
 	DirectDelivery    DirectDeliveryConfig `json:"direct_delivery,omitempty,omitzero"`
@@ -134,6 +174,7 @@ type AppConfig struct {
 	GroundControlURL  string               `json:"ground_control_url,omitempty,omitzero"`
 	HarborRegistryURL string               `json:"harbor_registry_url,omitempty,omitzero"`
 	HeartbeatInterval string               `json:"heartbeat_interval,omitempty,omitzero"`
+	Journal           JournalConfig        `json:"journal,omitempty,omitzero"`
 	LocalRegistry     RegistryCredentials  `json:"local_registry,omitempty,omitzero"`
 	LogLevel          string               `json:"log_level,omitempty,omitzero"`
 	Metrics           MetricsConfig        `json:"metrics,omitempty,omitzero"`
@@ -141,17 +182,30 @@ type AppConfig struct {
 	// PeerDistribution Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
 	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitempty,omitzero"`
 	RegisterSatelliteInterval string                 `json:"register_satellite_interval,omitempty,omitzero"`
+	RegistryAuth              RegistryAuthConfig     `json:"registry_auth,omitempty,omitzero"`
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty,omitzero"`
-	Spiffe                    SPIFFEClientConfig     `json:"spiffe,omitempty,omitzero"`
-	StateReplicationInterval  string                 `json:"state_replication_interval,omitempty,omitzero"`
-	Tls                       TLSConfig              `json:"tls,omitempty,omitzero"`
-	UseUnsecure               bool                   `json:"use_unsecure,omitempty,omitzero"`
+
+	// ReplicationBandwidthBytesPerSec Bandwidth budget of state replication (plan item 6.2, not read yet).
+	ReplicationBandwidthBytesPerSec int64 `json:"replication_bandwidth_bytes_per_sec,omitempty,omitzero"`
+
+	// ReplicationConcurrency Group states replicated at once; 0 replicates every group at once as today (plan item 6.2, not read yet).
+	ReplicationConcurrency   int                `json:"replication_concurrency,omitempty,omitzero"`
+	Spiffe                   SPIFFEClientConfig `json:"spiffe,omitempty,omitzero"`
+	StateReplicationInterval string             `json:"state_replication_interval,omitempty,omitzero"`
+	Tls                      TLSConfig          `json:"tls,omitempty,omitzero"`
+	UseUnsecure              bool               `json:"use_unsecure,omitempty,omitzero"`
 }
 
 // AppError defines model for AppError.
 type AppError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+}
+
+// AppliedState defines model for AppliedState.
+type AppliedState struct {
+	Digest string `json:"digest"`
+	Ref    string `json:"ref"`
 }
 
 // AuditConfig defines model for AuditConfig.
@@ -186,6 +240,18 @@ type ChangeUserPasswordRequest struct {
 	NewPassword string `json:"new_password"`
 }
 
+// ComponentHealth defines model for ComponentHealth.
+type ComponentHealth struct {
+	// Detail A fixed phrase such as "no contact since startup"; never a URL or error text, because /health is public.
+	Detail string `json:"detail,omitempty,omitzero"`
+
+	// LastContact Last successful contact.
+	LastContact time.Time `json:"last_contact,omitempty,omitzero"`
+
+	// Status healthy, degraded or unhealthy.
+	Status string `json:"status"`
+}
+
 // ConfigCreateRequest defines model for ConfigCreateRequest.
 type ConfigCreateRequest struct {
 	Config     ConfigValue `json:"config,omitempty,omitzero"`
@@ -209,6 +275,16 @@ type ConfigResponse struct {
 	ID          int32       `json:"ID,omitempty,omitzero"`
 	RegistryURL string      `json:"RegistryUrl,omitempty,omitzero"`
 	UpdatedAt   time.Time   `json:"UpdatedAt,omitempty,omitzero"`
+
+	// Warnings Validation warnings of a create or update (plan item 7.4); omitted when empty.
+	Warnings []string `json:"warnings,omitempty,omitzero"`
+}
+
+// ConfigValidationError defines model for ConfigValidationError.
+type ConfigValidationError struct {
+	Code     int      `json:"code"`
+	Message  string   `json:"message"`
+	Warnings []string `json:"warnings,omitempty,omitzero"`
 }
 
 // ConfigValue defines model for ConfigValue.
@@ -221,6 +297,25 @@ type ConfigValue struct {
 type CreateUserRequest struct {
 	Password string `json:"password"`
 	Username string `json:"username"`
+}
+
+// DeviceAuthorizationResponse defines model for DeviceAuthorizationResponse.
+type DeviceAuthorizationResponse struct {
+	DeviceCode string `json:"device_code"`
+
+	// ExpiresIn Seconds until the device code expires.
+	ExpiresIn int64 `json:"expires_in"`
+
+	// Interval Seconds to wait between polls.
+	Interval                int64  `json:"interval"`
+	UserCode                string `json:"user_code"`
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete,omitempty,omitzero"`
+}
+
+// DeviceTokenRequest defines model for DeviceTokenRequest.
+type DeviceTokenRequest struct {
+	DeviceCode string `json:"device_code"`
 }
 
 // DirectDeliveryConfig defines model for DirectDeliveryConfig.
@@ -269,11 +364,52 @@ type GroupSyncRequest struct {
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
-	Status HealthResponseStatus `json:"status,omitempty,omitzero"`
+	// Components Health per dependency, such as harbor. Omitted when there is nothing to report.
+	Components map[string]ComponentHealth `json:"components,omitempty,omitzero"`
+	Status     HealthResponseStatus       `json:"status,omitempty,omitzero"`
 }
 
 // HealthResponseStatus defines model for HealthResponse.Status.
 type HealthResponseStatus string
+
+// JournalAck defines model for JournalAck.
+type JournalAck struct {
+	// AckedSeq The seq Ground Control holds the epoch up to; the satellite deletes records up to it.
+	AckedSeq int64 `json:"acked_seq"`
+
+	// Epoch Ground Control's epoch for the satellite. A satellite whose epoch is older continues as epoch + 1.
+	Epoch int64 `json:"epoch"`
+
+	// Error Why the upload was rejected. The ack does not advance; the heartbeat itself is accepted.
+	Error string `json:"error,omitempty,omitzero"`
+}
+
+// JournalConfig defines model for JournalConfig.
+type JournalConfig struct {
+	MaxSegmentBytes int64 `json:"max_segment_bytes,omitempty,omitzero"`
+	MaxTotalBytes   int64 `json:"max_total_bytes,omitempty,omitzero"`
+	UploadBatch     int   `json:"upload_batch,omitempty,omitzero"`
+}
+
+// JournalRecord defines model for JournalRecord.
+type JournalRecord struct {
+	Payload    json.RawMessage `json:"payload"`
+	RecordedAt time.Time       `json:"recorded_at"`
+	Seq        int64           `json:"seq"`
+
+	// Type replication, cri or pull_through; the payload is the record type's internal/shared/edgejournal payload.
+	Type string `json:"type"`
+}
+
+// JournalUpload defines model for JournalUpload.
+type JournalUpload struct {
+	// AfterSeq The satellite's floor: it holds nothing at or below this seq for Ground Control any more. A floor above Ground Control's cursor is recorded as an EdgeJournalGap event.
+	AfterSeq int64 `json:"after_seq"`
+
+	// Epoch Identifies the satellite's journal. Epochs are time-ordered: a newer one resets Ground Control's cursor, an older one is answered with Ground Control's epoch.
+	Epoch   int64           `json:"epoch"`
+	Records []JournalRecord `json:"records"`
+}
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
@@ -329,11 +465,66 @@ type OTelAuditConfig struct {
 	Endpoint string `json:"endpoint,omitempty,omitzero"`
 }
 
+// OutboxEventResponse defines model for OutboxEventResponse.
+type OutboxEventResponse struct {
+	AggregateID   int64     `json:"aggregate_id"`
+	AggregateType string    `json:"aggregate_type"`
+	Attempts      int32     `json:"attempts"`
+	CreatedAt     time.Time `json:"created_at"`
+	ID            int64     `json:"id"`
+	Kind          string    `json:"kind"`
+	LastError     string    `json:"last_error,omitempty,omitzero"`
+	NextAttemptAt time.Time `json:"next_attempt_at,omitempty,omitzero"`
+}
+
 // PeerDescriptor defines model for PeerDescriptor.
 type PeerDescriptor = config.PeerDescriptor
 
 // PeerDistributionConfig Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
 type PeerDistributionConfig = config.PeerDistributionConfig
+
+// PolicyRule defines model for PolicyRule.
+type PolicyRule struct {
+	Action       string `json:"action"`
+	Effect       string `json:"effect"`
+	ID           int64  `json:"id"`
+	ResourceType string `json:"resource_type"`
+	Scope        string `json:"scope"`
+	Subject      string `json:"subject"`
+}
+
+// PolicyRuleRequest defines model for PolicyRuleRequest.
+type PolicyRuleRequest struct {
+	// Action An action or "*" (the default).
+	Action string                  `json:"action,omitempty,omitzero"`
+	Effect PolicyRuleRequestEffect `json:"effect"`
+
+	// ResourceType A resource type or "*" (the default).
+	ResourceType string `json:"resource_type,omitempty,omitzero"`
+
+	// Scope "*" (the default) or <satellite|group|config>:<name>.
+	Scope string `json:"scope,omitempty,omitzero"`
+
+	// Subject user:<name>, role:<role> or oidc:<group>.
+	Subject string `json:"subject"`
+}
+
+// PolicyRuleRequestEffect defines model for PolicyRuleRequest.Effect.
+type PolicyRuleRequestEffect string
+
+// RefreshCredentialsResponse defines model for RefreshCredentialsResponse.
+type RefreshCredentialsResponse struct {
+	Secret string `json:"secret"`
+}
+
+// RegistryAuthConfig defines model for RegistryAuthConfig.
+type RegistryAuthConfig struct {
+	// Audience JWT-SVID audience for workload_identity.
+	Audience string `json:"audience,omitempty,omitzero"`
+
+	// Mode robot (default) or workload_identity.
+	Mode string `json:"mode,omitempty,omitzero"`
+}
 
 // RegistryCredentials defines model for RegistryCredentials.
 type RegistryCredentials struct {
@@ -347,6 +538,30 @@ type RegistryFallbackConfig struct {
 	Enabled    bool     `json:"enabled,omitempty,omitzero"`
 	Registries []string `json:"registries,omitempty,omitzero"`
 	Runtimes   []string `json:"runtimes,omitempty,omitzero"`
+}
+
+// RoleBinding defines model for RoleBinding.
+type RoleBinding struct {
+	ID        int64  `json:"id"`
+	Principal string `json:"principal"`
+	Role      string `json:"role"`
+}
+
+// RoleBindingRequest defines model for RoleBindingRequest.
+type RoleBindingRequest struct {
+	// Principal user:<name> or oidc:<group>.
+	Principal string `json:"principal"`
+
+	// Role role:<name>, not a built-in role.
+	Role string `json:"role"`
+}
+
+// RotatedCredentials defines model for RotatedCredentials.
+type RotatedCredentials struct {
+	ExpiresAt  time.Time `json:"expires_at,omitempty,omitzero"`
+	Generation int64     `json:"generation"`
+	Password   string    `json:"password"`
+	Username   string    `json:"username"`
 }
 
 // SPIFFEClientConfig defines model for SPIFFEClientConfig.
@@ -402,6 +617,26 @@ type SatelliteGroupRequest struct {
 	Satellite string `json:"satellite"`
 }
 
+// SatelliteLifecycleResponse defines model for SatelliteLifecycleResponse.
+type SatelliteLifecycleResponse struct {
+	AppliedConfigDigest     string             `json:"applied_config_digest,omitempty,omitzero"`
+	AppliedStateDigest      string             `json:"applied_state_digest,omitempty,omitzero"`
+	AppliedStates           []StateConvergence `json:"applied_states,omitempty,omitzero"`
+	Converged               bool               `json:"converged"`
+	DesiredVersion          int64              `json:"desired_version,omitempty,omitzero"`
+	LastReplicationError    string             `json:"last_replication_error,omitempty,omitzero"`
+	LastSeen                time.Time          `json:"last_seen,omitempty,omitzero"`
+	Name                    string             `json:"name"`
+	PublishError            string             `json:"publish_error,omitempty,omitzero"`
+	PublishedArtifactDigest string             `json:"published_artifact_digest,omitempty,omitzero"`
+	RenderedDigest          string             `json:"rendered_digest,omitempty,omitzero"`
+	RevokedAt               time.Time          `json:"revoked_at,omitempty,omitzero"`
+
+	// State pending, online, stale or revoked
+	State     string    `json:"state"`
+	UpdatedAt time.Time `json:"updated_at,omitempty,omitzero"`
+}
+
 // SatelliteResponse defines model for SatelliteResponse.
 type SatelliteResponse struct {
 	CreatedAt         time.Time           `json:"CreatedAt,omitempty,omitzero"`
@@ -412,6 +647,12 @@ type SatelliteResponse struct {
 	UpdatedAt         time.Time           `json:"UpdatedAt,omitempty,omitzero"`
 }
 
+// SatelliteSession defines model for SatelliteSession.
+type SatelliteSession struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	Token     string    `json:"token"`
+}
+
 // SatelliteStateArtifact defines model for SatelliteStateArtifact.
 type SatelliteStateArtifact struct {
 	Config string   `json:"config,omitempty,omitzero"`
@@ -420,18 +661,29 @@ type SatelliteStateArtifact struct {
 
 // SatelliteStatusRequest defines model for SatelliteStatusRequest.
 type SatelliteStatusRequest struct {
-	Activity            string              `json:"activity,omitempty,omitzero"`
-	CachedImages        []CachedImageReport `json:"cached_images,omitempty,omitzero"`
-	CPUPercent          float64             `json:"cpu_percent,omitempty,omitzero"`
-	ImageCount          int32               `json:"image_count,omitempty,omitzero"`
-	LastSyncDurationMs  int64               `json:"last_sync_duration_ms,omitempty,omitzero"`
-	LatestConfigDigest  string              `json:"latest_config_digest,omitempty,omitzero"`
-	LatestStateDigest   string              `json:"latest_state_digest,omitempty,omitzero"`
-	MemoryUsedBytes     int64               `json:"memory_used_bytes,omitempty,omitzero"`
-	Name                string              `json:"name,omitempty,omitzero"`
-	RequestCreatedTime  time.Time           `json:"request_created_time,omitempty,omitzero"`
-	StateReportInterval string              `json:"state_report_interval,omitempty,omitzero"`
-	StorageUsedBytes    int64               `json:"storage_used_bytes,omitempty,omitzero"`
+	Activity string `json:"activity,omitempty,omitzero"`
+
+	// AppliedStates The group states the last replication run applied, by reference as listed in the satellite state (plan item 6.6, not read yet).
+	AppliedStates []AppliedState      `json:"applied_states,omitempty,omitzero"`
+	CachedImages  []CachedImageReport `json:"cached_images,omitempty,omitzero"`
+	CPUPercent    float64             `json:"cpu_percent,omitempty,omitzero"`
+
+	// CredentialsGeneration The robot generation the satellite uses; acks a delivered rotation (plan item 8.4, not read yet).
+	CredentialsGeneration int64 `json:"credentials_generation,omitempty,omitzero"`
+	ImageCount            int32 `json:"image_count,omitempty,omitzero"`
+
+	// InventoryDigest Digest of cached_images (internal/shared/inventory, plan item 4.4, not read yet). A satellite sends cached_images only when this changed or Ground Control asked with inventory_requested.
+	InventoryDigest      string        `json:"inventory_digest,omitempty,omitzero"`
+	Journal              JournalUpload `json:"journal,omitempty,omitzero"`
+	LastReplicationError string        `json:"last_replication_error,omitempty,omitzero"`
+	LastSyncDurationMs   int64         `json:"last_sync_duration_ms,omitempty,omitzero"`
+	LatestConfigDigest   string        `json:"latest_config_digest,omitempty,omitzero"`
+	LatestStateDigest    string        `json:"latest_state_digest,omitempty,omitzero"`
+	MemoryUsedBytes      int64         `json:"memory_used_bytes,omitempty,omitzero"`
+	Name                 string        `json:"name,omitempty,omitzero"`
+	RequestCreatedTime   time.Time     `json:"request_created_time,omitempty,omitzero"`
+	StateReportInterval  string        `json:"state_report_interval,omitempty,omitzero"`
+	StorageUsedBytes     int64         `json:"storage_used_bytes,omitempty,omitzero"`
 }
 
 // SatelliteStatusResponse defines model for SatelliteStatusResponse.
@@ -451,6 +703,17 @@ type SatelliteStatusResponse struct {
 	StorageUsedBytes   NullableInt64Value  `json:"StorageUsedBytes,omitempty,omitzero"`
 }
 
+// SatelliteSyncResponse defines model for SatelliteSyncResponse.
+type SatelliteSyncResponse struct {
+	Credentials *RotatedCredentials `json:"credentials,omitempty"`
+	Events      []string            `json:"events"`
+
+	// InventoryRequested Ground Control has no inventory for the reported digest; the next heartbeat sends cached_images.
+	InventoryRequested bool              `json:"inventory_requested,omitempty,omitzero"`
+	Journal            *JournalAck       `json:"journal,omitempty"`
+	Session            *SatelliteSession `json:"session,omitempty"`
+}
+
 // StaleSatelliteResponse defines model for StaleSatelliteResponse.
 type StaleSatelliteResponse struct {
 	CreatedAt         time.Time           `json:"CreatedAt,omitempty,omitzero"`
@@ -464,14 +727,25 @@ type StaleSatelliteResponse struct {
 
 // StateConfigResponse defines model for StateConfigResponse.
 type StateConfigResponse struct {
-	Auth  RegistryCredentials `json:"auth"`
-	State string              `json:"state"`
+	Auth    RegistryCredentials `json:"auth"`
+	Session *SatelliteSession   `json:"session,omitempty"`
+	State   string              `json:"state"`
 }
 
 // StateConfigValue defines model for StateConfigValue.
 type StateConfigValue struct {
 	Auth  RegistryCredentials `json:"auth,omitempty,omitzero"`
 	State string              `json:"state,omitempty,omitzero"`
+}
+
+// StateConvergence defines model for StateConvergence.
+type StateConvergence struct {
+	// Digest Applied digest the satellite reported.
+	Digest string `json:"digest,omitempty,omitzero"`
+
+	// PublishedDigest Artifact digest GC published last.
+	PublishedDigest string `json:"published_digest,omitempty,omitzero"`
+	Ref             string `json:"ref"`
 }
 
 // SyslogAuditConfig defines model for SyslogAuditConfig.
@@ -528,15 +802,54 @@ type UserResponse struct {
 	Username  string    `json:"username"`
 }
 
+// WebhookSubscription defines model for WebhookSubscription.
+type WebhookSubscription struct {
+	ConsecutiveFailures int32     `json:"consecutive_failures"`
+	CreatedAt           time.Time `json:"created_at"`
+	DisabledReason      string    `json:"disabled_reason,omitempty,omitzero"`
+	Enabled             bool      `json:"enabled"`
+	EventTypes          []string  `json:"event_types"`
+	ID                  int32     `json:"id"`
+	LastError           string    `json:"last_error,omitempty,omitzero"`
+	URL                 string    `json:"url"`
+}
+
+// WebhookSubscriptionRequest defines model for WebhookSubscriptionRequest.
+type WebhookSubscriptionRequest struct {
+	// EventTypes Event kinds to deliver; empty delivers every kind.
+	EventTypes []string `json:"event_types,omitempty,omitzero"`
+
+	// Secret HMAC-SHA256 key of the X-Ground-Control-Signature-256 header.
+	Secret string `json:"secret,omitempty,omitzero"`
+
+	// URL https, or http for a loopback host.
+	URL string `json:"url"`
+}
+
 // ZTRRequest defines model for ZTRRequest.
 type ZTRRequest struct {
 	Token string `json:"token"`
+}
+
+// ListOutboxEventsParams defines parameters for ListOutboxEvents.
+type ListOutboxEventsParams struct {
+	// State pending lists every event that is not done; failed only those that reached the maximum attempts. Default pending.
+	State string `form:"state,omitempty" json:"state,omitempty,omitzero"`
+
+	// Limit Maximum number of events returned.
+	Limit int32 `form:"limit,omitempty" json:"limit,omitempty,omitzero"`
 }
 
 // ListSpireAgentsParams defines parameters for ListSpireAgents.
 type ListSpireAgentsParams struct {
 	// AttestationType Filters agents by attestation type.
 	AttestationType string `form:"attestation_type,omitempty" json:"attestation_type,omitempty,omitzero"`
+}
+
+// OidcCallbackParams defines parameters for OidcCallback.
+type OidcCallbackParams struct {
+	Code  string `form:"code" json:"code"`
+	State string `form:"state" json:"state"`
 }
 
 // CreateConfigJSONRequestBody defines body for CreateConfig for application/json ContentType.
@@ -557,6 +870,12 @@ type AddSatelliteToGroupJSONRequestBody = SatelliteGroupRequest
 // SyncGroupJSONRequestBody defines body for SyncGroup for application/json ContentType.
 type SyncGroupJSONRequestBody = GroupSyncRequest
 
+// CreatePolicyRuleJSONRequestBody defines body for CreatePolicyRule for application/json ContentType.
+type CreatePolicyRuleJSONRequestBody = PolicyRuleRequest
+
+// CreateRoleBindingJSONRequestBody defines body for CreateRoleBinding for application/json ContentType.
+type CreateRoleBindingJSONRequestBody = RoleBindingRequest
+
 // RegisterSatelliteJSONRequestBody defines body for RegisterSatellite for application/json ContentType.
 type RegisterSatelliteJSONRequestBody = TokenSatelliteRegistrationRequest
 
@@ -572,8 +891,14 @@ type ChangeOwnPasswordJSONRequestBody = ChangePasswordRequest
 // ChangeUserPasswordJSONRequestBody defines body for ChangeUserPassword for application/json ContentType.
 type ChangeUserPasswordJSONRequestBody = ChangeUserPasswordRequest
 
+// CreateWebhookJSONRequestBody defines body for CreateWebhook for application/json ContentType.
+type CreateWebhookJSONRequestBody = WebhookSubscriptionRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
+
+// OidcDeviceTokenJSONRequestBody defines body for OidcDeviceToken for application/json ContentType.
+type OidcDeviceTokenJSONRequestBody = DeviceTokenRequest
 
 // SyncSatelliteJSONRequestBody defines body for SyncSatellite for application/json ContentType.
 type SyncSatelliteJSONRequestBody = SatelliteStatusRequest
@@ -625,6 +950,27 @@ type ServerInterface interface {
 	// Logout Deletes the current user session.
 	// (POST /api/logout)
 	Logout(w http.ResponseWriter, r *http.Request)
+	// ListOutboxEvents Lists outbox events that are not done yet.
+	// (GET /api/ops/outbox)
+	ListOutboxEvents(w http.ResponseWriter, r *http.Request, params ListOutboxEventsParams)
+	// ListPolicyRules Lists the stored policy rules (plan item 7.3, not implemented yet).
+	// (GET /api/policies)
+	ListPolicyRules(w http.ResponseWriter, r *http.Request)
+	// CreatePolicyRule Stores a policy rule (plan item 7.3, not implemented yet).
+	// (POST /api/policies)
+	CreatePolicyRule(w http.ResponseWriter, r *http.Request)
+	// DeletePolicyRule Deletes a stored policy rule (plan item 7.3, not implemented yet).
+	// (DELETE /api/policies/{id})
+	DeletePolicyRule(w http.ResponseWriter, r *http.Request, id int64)
+	// ListRoleBindings Lists the stored role bindings (plan item 7.3, not implemented yet).
+	// (GET /api/role-bindings)
+	ListRoleBindings(w http.ResponseWriter, r *http.Request)
+	// CreateRoleBinding Gives a principal an additional role (plan item 7.3, not implemented yet).
+	// (POST /api/role-bindings)
+	CreateRoleBinding(w http.ResponseWriter, r *http.Request)
+	// DeleteRoleBinding Deletes a stored role binding (plan item 7.3, not implemented yet).
+	// (DELETE /api/role-bindings/{id})
+	DeleteRoleBinding(w http.ResponseWriter, r *http.Request, id int64)
 	// ListSatellites Lists satellites.
 	// (GET /api/satellites)
 	ListSatellites(w http.ResponseWriter, r *http.Request)
@@ -649,9 +995,18 @@ type ServerInterface interface {
 	// GetCachedImages Lists the latest cached images reported by a satellite.
 	// (GET /api/satellites/{satellite}/images)
 	GetCachedImages(w http.ResponseWriter, r *http.Request, satellite string)
+	// GetSatelliteLifecycle Gets a satellite's lifecycle state and convergence (ADR-0006, plan item 4.3).
+	// (GET /api/satellites/{satellite}/lifecycle)
+	GetSatelliteLifecycle(w http.ResponseWriter, r *http.Request, satellite string)
+	// RevokeSatellite Revokes a satellite; sync and ZTR answer 403 until it is unrevoked.
+	// (POST /api/satellites/{satellite}/revoke)
+	RevokeSatellite(w http.ResponseWriter, r *http.Request, satellite string)
 	// GetSatelliteStatus Gets the latest satellite status report.
 	// (GET /api/satellites/{satellite}/status)
 	GetSatelliteStatus(w http.ResponseWriter, r *http.Request, satellite string)
+	// UnrevokeSatellite Returns a revoked satellite to pending; it goes online with its next heartbeat.
+	// (POST /api/satellites/{satellite}/unrevoke)
+	UnrevokeSatellite(w http.ResponseWriter, r *http.Request, satellite string)
 	// ListSpireAgents Lists attested SPIRE agents.
 	// (GET /api/spire/agents)
 	ListSpireAgents(w http.ResponseWriter, r *http.Request, params ListSpireAgentsParams)
@@ -676,15 +1031,39 @@ type ServerInterface interface {
 	// ChangeUserPassword Resets a user's password.
 	// (PATCH /api/users/{username}/password)
 	ChangeUserPassword(w http.ResponseWriter, r *http.Request, username string)
-	// Health Checks database connectivity.
+	// ListWebhooks Lists webhook subscriptions (plan item 9.1, not implemented yet).
+	// (GET /api/webhooks)
+	ListWebhooks(w http.ResponseWriter, r *http.Request)
+	// CreateWebhook Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+	// (POST /api/webhooks)
+	CreateWebhook(w http.ResponseWriter, r *http.Request)
+	// DeleteWebhook Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+	// (DELETE /api/webhooks/{id})
+	DeleteWebhook(w http.ResponseWriter, r *http.Request, id int32)
+	// Health Checks database connectivity and reports Harbor reachability.
 	// (GET /health)
 	Health(w http.ResponseWriter, r *http.Request)
 	// Login Creates a user session.
 	// (POST /login)
 	Login(w http.ResponseWriter, r *http.Request)
+	// OidcCallback Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+	// (GET /oidc/callback)
+	OidcCallback(w http.ResponseWriter, r *http.Request, params OidcCallbackParams)
+	// OidcDeviceAuthorize Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+	// (POST /oidc/device)
+	OidcDeviceAuthorize(w http.ResponseWriter, r *http.Request)
+	// OidcDeviceToken Polls an OIDC device flow (plan item 8.1, not implemented).
+	// (POST /oidc/device/token)
+	OidcDeviceToken(w http.ResponseWriter, r *http.Request)
+	// OidcLogin Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+	// (GET /oidc/login)
+	OidcLogin(w http.ResponseWriter, r *http.Request)
 	// Ping Pings the server.
 	// (GET /ping)
 	Ping(w http.ResponseWriter, r *http.Request)
+	// RefreshSatelliteCredentials Rotates the satellite's Harbor robot secret.
+	// (POST /satellites/refresh)
+	RefreshSatelliteCredentials(w http.ResponseWriter, r *http.Request)
 	// SpiffeZtr Performs SPIFFE-based zero-touch registration.
 	// (GET /satellites/spiffe-ztr)
 	SpiffeZtr(w http.ResponseWriter, r *http.Request)
@@ -973,6 +1352,160 @@ func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request
 	handler.ServeHTTP(w, r)
 }
 
+// ListOutboxEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListOutboxEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListOutboxEventsParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOutboxEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPolicyRules operation middleware
+func (siw *ServerInterfaceWrapper) ListPolicyRules(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPolicyRules(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePolicyRule operation middleware
+func (siw *ServerInterfaceWrapper) CreatePolicyRule(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePolicyRule(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePolicyRule operation middleware
+func (siw *ServerInterfaceWrapper) DeletePolicyRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", mux.Vars(r)["id"], &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePolicyRule(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRoleBindings operation middleware
+func (siw *ServerInterfaceWrapper) ListRoleBindings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRoleBindings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRoleBinding operation middleware
+func (siw *ServerInterfaceWrapper) CreateRoleBinding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRoleBinding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteRoleBinding operation middleware
+func (siw *ServerInterfaceWrapper) DeleteRoleBinding(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", mux.Vars(r)["id"], &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteRoleBinding(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListSatellites operation middleware
 func (siw *ServerInterfaceWrapper) ListSatellites(w http.ResponseWriter, r *http.Request) {
 
@@ -1121,6 +1654,58 @@ func (siw *ServerInterfaceWrapper) GetCachedImages(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetSatelliteLifecycle operation middleware
+func (siw *ServerInterfaceWrapper) GetSatelliteLifecycle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "satellite" -------------
+	var satellite string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "satellite", mux.Vars(r)["satellite"], &satellite, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "satellite", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSatelliteLifecycle(w, r, satellite)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeSatellite operation middleware
+func (siw *ServerInterfaceWrapper) RevokeSatellite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "satellite" -------------
+	var satellite string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "satellite", mux.Vars(r)["satellite"], &satellite, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "satellite", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeSatellite(w, r, satellite)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetSatelliteStatus operation middleware
 func (siw *ServerInterfaceWrapper) GetSatelliteStatus(w http.ResponseWriter, r *http.Request) {
 
@@ -1138,6 +1723,32 @@ func (siw *ServerInterfaceWrapper) GetSatelliteStatus(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetSatelliteStatus(w, r, satellite)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnrevokeSatellite operation middleware
+func (siw *ServerInterfaceWrapper) UnrevokeSatellite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "satellite" -------------
+	var satellite string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "satellite", mux.Vars(r)["satellite"], &satellite, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "satellite", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnrevokeSatellite(w, r, satellite)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1314,6 +1925,60 @@ func (siw *ServerInterfaceWrapper) ChangeUserPassword(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// ListWebhooks operation middleware
+func (siw *ServerInterfaceWrapper) ListWebhooks(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWebhooks(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWebhook operation middleware
+func (siw *ServerInterfaceWrapper) CreateWebhook(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWebhook(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteWebhook operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWebhook(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", mux.Vars(r)["id"], &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWebhook(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Health operation middleware
 func (siw *ServerInterfaceWrapper) Health(w http.ResponseWriter, r *http.Request) {
 
@@ -1342,11 +2007,113 @@ func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request)
 	handler.ServeHTTP(w, r)
 }
 
+// OidcCallback operation middleware
+func (siw *ServerInterfaceWrapper) OidcCallback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params OidcCallbackParams
+
+	// ------------- Required query parameter "code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "code", r.URL.Query(), &params.Code, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OidcCallback(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OidcDeviceAuthorize operation middleware
+func (siw *ServerInterfaceWrapper) OidcDeviceAuthorize(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OidcDeviceAuthorize(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OidcDeviceToken operation middleware
+func (siw *ServerInterfaceWrapper) OidcDeviceToken(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OidcDeviceToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OidcLogin operation middleware
+func (siw *ServerInterfaceWrapper) OidcLogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OidcLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Ping operation middleware
 func (siw *ServerInterfaceWrapper) Ping(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Ping(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RefreshSatelliteCredentials operation middleware
+func (siw *ServerInterfaceWrapper) RefreshSatelliteCredentials(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RefreshSatelliteCredentials(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1539,6 +2306,20 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 
 	r.HandleFunc(options.BaseURL+"/api/logout", wrapper.Logout).Methods(http.MethodPost)
 
+	r.HandleFunc(options.BaseURL+"/api/ops/outbox", wrapper.ListOutboxEvents).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/api/policies", wrapper.ListPolicyRules).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/api/policies", wrapper.CreatePolicyRule).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/api/policies/{id}", wrapper.DeletePolicyRule).Methods(http.MethodDelete)
+
+	r.HandleFunc(options.BaseURL+"/api/role-bindings", wrapper.ListRoleBindings).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/api/role-bindings", wrapper.CreateRoleBinding).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/api/role-bindings/{id}", wrapper.DeleteRoleBinding).Methods(http.MethodDelete)
+
 	r.HandleFunc(options.BaseURL+"/api/satellites", wrapper.ListSatellites).Methods(http.MethodGet)
 
 	r.HandleFunc(options.BaseURL+"/api/satellites", wrapper.RegisterSatellite).Methods(http.MethodPost)
@@ -1555,7 +2336,13 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 
 	r.HandleFunc(options.BaseURL+"/api/satellites/{satellite}/images", wrapper.GetCachedImages).Methods(http.MethodGet)
 
+	r.HandleFunc(options.BaseURL+"/api/satellites/{satellite}/lifecycle", wrapper.GetSatelliteLifecycle).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/api/satellites/{satellite}/revoke", wrapper.RevokeSatellite).Methods(http.MethodPost)
+
 	r.HandleFunc(options.BaseURL+"/api/satellites/{satellite}/status", wrapper.GetSatelliteStatus).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/api/satellites/{satellite}/unrevoke", wrapper.UnrevokeSatellite).Methods(http.MethodPost)
 
 	r.HandleFunc(options.BaseURL+"/api/spire/agents", wrapper.ListSpireAgents).Methods(http.MethodGet)
 
@@ -1573,11 +2360,27 @@ func HandlerWithOptions(si ServerInterface, options GorillaServerOptions) http.H
 
 	r.HandleFunc(options.BaseURL+"/api/users/{username}/password", wrapper.ChangeUserPassword).Methods(http.MethodPatch)
 
+	r.HandleFunc(options.BaseURL+"/api/webhooks", wrapper.ListWebhooks).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/api/webhooks", wrapper.CreateWebhook).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/api/webhooks/{id}", wrapper.DeleteWebhook).Methods(http.MethodDelete)
+
 	r.HandleFunc(options.BaseURL+"/health", wrapper.Health).Methods(http.MethodGet)
 
 	r.HandleFunc(options.BaseURL+"/login", wrapper.Login).Methods(http.MethodPost)
 
+	r.HandleFunc(options.BaseURL+"/oidc/callback", wrapper.OidcCallback).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/oidc/device", wrapper.OidcDeviceAuthorize).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/oidc/device/token", wrapper.OidcDeviceToken).Methods(http.MethodPost)
+
+	r.HandleFunc(options.BaseURL+"/oidc/login", wrapper.OidcLogin).Methods(http.MethodGet)
+
 	r.HandleFunc(options.BaseURL+"/ping", wrapper.Ping).Methods(http.MethodGet)
+
+	r.HandleFunc(options.BaseURL+"/satellites/refresh", wrapper.RefreshSatelliteCredentials).Methods(http.MethodPost)
 
 	r.HandleFunc(options.BaseURL+"/satellites/spiffe-ztr", wrapper.SpiffeZtr).Methods(http.MethodGet)
 

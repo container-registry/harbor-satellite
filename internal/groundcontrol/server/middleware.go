@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
 	auditlog "github.com/container-registry/harbor-satellite/internal/shared/logger"
@@ -76,7 +77,9 @@ type AuthUser struct {
 	Role     string
 }
 
-// AuthMiddleware validates session tokens or basic auth and adds user info to context
+// AuthMiddleware validates session tokens or basic auth and adds user info to context.
+// Plan item 8.1 reads GetSessionPrincipalByToken instead, so the principal
+// carries the groups of the user's OIDC identities.
 func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var user AuthUser
@@ -119,6 +122,10 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, user)
+		ctx = fleet.ContextWithPrincipal(ctx, fleet.Principal{
+			Subject: fleet.SubjectUser + user.Username,
+			Roles:   []string{fleet.SubjectRole + user.Role},
+		})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

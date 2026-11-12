@@ -6,9 +6,11 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
+	"github.com/container-registry/harbor-satellite/internal/shared/logger/logtest"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
 )
@@ -298,4 +300,22 @@ func TestExecute_PostsHeartbeatToSatellitesSync(t *testing.T) {
 			require.Equal(t, "/satellites/sync", gotPath)
 		})
 	}
+}
+
+func TestExecute_StatusReportDoesNotLogRegistrySecret(t *testing.T) {
+	const secret = "d4-status-report-robot-secret"
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writeJSON(t, w, StatusReportResponse{})
+	}))
+	defer srv.Close()
+
+	cm := newReportingTestCM(t, srv.URL)
+	cm.With(config.SetStateAuth("robot$test-sat", secret, "http://registry"))
+	ctx, _, logs := logtest.Capture(t)
+
+	require.NoError(t, NewStatusReportingProcess(cm, nil).Execute(ctx))
+	require.EqualValues(t, 1, requests.Load())
+	require.NotContains(t, logs.String(), secret)
 }

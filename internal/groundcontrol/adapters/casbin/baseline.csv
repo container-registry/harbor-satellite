@@ -1,0 +1,9 @@
+p, role:system_admin, *, *, *, allow
+p, role:admin, *, satellite, *, allow
+p, role:admin, *, group, *, allow
+p, role:admin, *, group, delete, deny
+p, role:admin, *, config, *, allow
+p, role:admin, *, user, list, allow
+p, role:admin, *, user, read, allow
+p, role:admin, *, user, change_password, allow
+p, role:admin, *, session, logout, allow

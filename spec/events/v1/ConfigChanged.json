@@ -1,0 +1,16 @@
+{
+  "$id": "https://satellite.container-registry.com/schemas/events/v1/ConfigChanged.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "data of the io.harborsatellite.groundcontrol.ConfigChanged event (ConfigChanged); v1 changes are additive only",
+  "properties": {
+    "name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "title": "ConfigChanged",
+  "type": "object"
+}

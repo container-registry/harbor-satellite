@@ -21,6 +21,7 @@ import (
 
 // Defines values for HealthResponseStatus.
 const (
+	Degraded  HealthResponseStatus = "degraded"
 	Healthy   HealthResponseStatus = "healthy"
 	Unhealthy HealthResponseStatus = "unhealthy"
 )
@@ -28,9 +29,29 @@ const (
 // Valid indicates whether the value is a known member of the HealthResponseStatus enum.
 func (e HealthResponseStatus) Valid() bool {
 	switch e {
+	case Degraded:
+		return true
 	case Healthy:
 		return true
 	case Unhealthy:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PolicyRuleRequestEffect.
+const (
+	Allow PolicyRuleRequestEffect = "allow"
+	Deny  PolicyRuleRequestEffect = "deny"
+)
+
+// Valid indicates whether the value is a known member of the PolicyRuleRequestEffect enum.
+func (e PolicyRuleRequestEffect) Valid() bool {
+	switch e {
+	case Allow:
+		return true
+	case Deny:
 		return true
 	default:
 		return false
@@ -116,6 +137,23 @@ type ActiveSatelliteResponse struct {
 	UpdatedAt         time.Time           `json:"UpdatedAt,omitempty,omitzero"`
 }
 
+// AdmissionBundle defines model for AdmissionBundle.
+type AdmissionBundle struct {
+	// ModelVersion The admission model the lines are written for, edge-admission/v1.
+	ModelVersion string `json:"model_version"`
+
+	// Policies One line per entry, [subject, repository, reference, operation, allow|deny].
+	Policies [][]string `json:"policies"`
+}
+
+// AdmissionConfig defines model for AdmissionConfig.
+type AdmissionConfig struct {
+	Bundle AdmissionBundle `json:"bundle,omitempty,omitzero"`
+
+	// Mode off (default), audit or enforce.
+	Mode string `json:"mode,omitempty,omitzero"`
+}
+
 // AgentInfoResponse defines model for AgentInfoResponse.
 type AgentInfoResponse struct {
 	AttestationType string     `json:"attestation_type"`
@@ -131,6 +169,7 @@ type AgentListResponse struct {
 
 // AppConfig defines model for AppConfig.
 type AppConfig struct {
+	Admission         AdmissionConfig      `json:"admission,omitempty,omitzero"`
 	Audit             AuditConfig          `json:"audit,omitempty,omitzero"`
 	BringOwnRegistry  bool                 `json:"bring_own_registry,omitempty,omitzero"`
 	DirectDelivery    DirectDeliveryConfig `json:"direct_delivery,omitempty,omitzero"`
@@ -138,6 +177,7 @@ type AppConfig struct {
 	GroundControlURL  string               `json:"ground_control_url,omitempty,omitzero"`
 	HarborRegistryURL string               `json:"harbor_registry_url,omitempty,omitzero"`
 	HeartbeatInterval string               `json:"heartbeat_interval,omitempty,omitzero"`
+	Journal           JournalConfig        `json:"journal,omitempty,omitzero"`
 	LocalRegistry     RegistryCredentials  `json:"local_registry,omitempty,omitzero"`
 	LogLevel          string               `json:"log_level,omitempty,omitzero"`
 	Metrics           MetricsConfig        `json:"metrics,omitempty,omitzero"`
@@ -145,17 +185,30 @@ type AppConfig struct {
 	// PeerDistribution Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
 	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitempty,omitzero"`
 	RegisterSatelliteInterval string                 `json:"register_satellite_interval,omitempty,omitzero"`
+	RegistryAuth              RegistryAuthConfig     `json:"registry_auth,omitempty,omitzero"`
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty,omitzero"`
-	Spiffe                    SPIFFEClientConfig     `json:"spiffe,omitempty,omitzero"`
-	StateReplicationInterval  string                 `json:"state_replication_interval,omitempty,omitzero"`
-	Tls                       TLSConfig              `json:"tls,omitempty,omitzero"`
-	UseUnsecure               bool                   `json:"use_unsecure,omitempty,omitzero"`
+
+	// ReplicationBandwidthBytesPerSec Bandwidth budget of state replication (plan item 6.2, not read yet).
+	ReplicationBandwidthBytesPerSec int64 `json:"replication_bandwidth_bytes_per_sec,omitempty,omitzero"`
+
+	// ReplicationConcurrency Group states replicated at once; 0 replicates every group at once as today (plan item 6.2, not read yet).
+	ReplicationConcurrency   int                `json:"replication_concurrency,omitempty,omitzero"`
+	Spiffe                   SPIFFEClientConfig `json:"spiffe,omitempty,omitzero"`
+	StateReplicationInterval string             `json:"state_replication_interval,omitempty,omitzero"`
+	Tls                      TLSConfig          `json:"tls,omitempty,omitzero"`
+	UseUnsecure              bool               `json:"use_unsecure,omitempty,omitzero"`
 }
 
 // AppError defines model for AppError.
 type AppError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+}
+
+// AppliedState defines model for AppliedState.
+type AppliedState struct {
+	Digest string `json:"digest"`
+	Ref    string `json:"ref"`
 }
 
 // AuditConfig defines model for AuditConfig.
@@ -190,6 +243,18 @@ type ChangeUserPasswordRequest struct {
 	NewPassword string `json:"new_password"`
 }
 
+// ComponentHealth defines model for ComponentHealth.
+type ComponentHealth struct {
+	// Detail A fixed phrase such as "no contact since startup"; never a URL or error text, because /health is public.
+	Detail string `json:"detail,omitempty,omitzero"`
+
+	// LastContact Last successful contact.
+	LastContact time.Time `json:"last_contact,omitempty,omitzero"`
+
+	// Status healthy, degraded or unhealthy.
+	Status string `json:"status"`
+}
+
 // ConfigCreateRequest defines model for ConfigCreateRequest.
 type ConfigCreateRequest struct {
 	Config     ConfigValue `json:"config,omitempty,omitzero"`
@@ -213,6 +278,16 @@ type ConfigResponse struct {
 	ID          int32       `json:"ID,omitempty,omitzero"`
 	RegistryURL string      `json:"RegistryUrl,omitempty,omitzero"`
 	UpdatedAt   time.Time   `json:"UpdatedAt,omitempty,omitzero"`
+
+	// Warnings Validation warnings of a create or update (plan item 7.4); omitted when empty.
+	Warnings []string `json:"warnings,omitempty,omitzero"`
+}
+
+// ConfigValidationError defines model for ConfigValidationError.
+type ConfigValidationError struct {
+	Code     int      `json:"code"`
+	Message  string   `json:"message"`
+	Warnings []string `json:"warnings,omitempty,omitzero"`
 }
 
 // ConfigValue defines model for ConfigValue.
@@ -225,6 +300,25 @@ type ConfigValue struct {
 type CreateUserRequest struct {
 	Password string `json:"password"`
 	Username string `json:"username"`
+}
+
+// DeviceAuthorizationResponse defines model for DeviceAuthorizationResponse.
+type DeviceAuthorizationResponse struct {
+	DeviceCode string `json:"device_code"`
+
+	// ExpiresIn Seconds until the device code expires.
+	ExpiresIn int64 `json:"expires_in"`
+
+	// Interval Seconds to wait between polls.
+	Interval                int64  `json:"interval"`
+	UserCode                string `json:"user_code"`
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete,omitempty,omitzero"`
+}
+
+// DeviceTokenRequest defines model for DeviceTokenRequest.
+type DeviceTokenRequest struct {
+	DeviceCode string `json:"device_code"`
 }
 
 // DirectDeliveryConfig defines model for DirectDeliveryConfig.
@@ -273,11 +367,52 @@ type GroupSyncRequest struct {
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
-	Status HealthResponseStatus `json:"status,omitempty,omitzero"`
+	// Components Health per dependency, such as harbor. Omitted when there is nothing to report.
+	Components map[string]ComponentHealth `json:"components,omitempty,omitzero"`
+	Status     HealthResponseStatus       `json:"status,omitempty,omitzero"`
 }
 
 // HealthResponseStatus defines model for HealthResponse.Status.
 type HealthResponseStatus string
+
+// JournalAck defines model for JournalAck.
+type JournalAck struct {
+	// AckedSeq The seq Ground Control holds the epoch up to; the satellite deletes records up to it.
+	AckedSeq int64 `json:"acked_seq"`
+
+	// Epoch Ground Control's epoch for the satellite. A satellite whose epoch is older continues as epoch + 1.
+	Epoch int64 `json:"epoch"`
+
+	// Error Why the upload was rejected. The ack does not advance; the heartbeat itself is accepted.
+	Error string `json:"error,omitempty,omitzero"`
+}
+
+// JournalConfig defines model for JournalConfig.
+type JournalConfig struct {
+	MaxSegmentBytes int64 `json:"max_segment_bytes,omitempty,omitzero"`
+	MaxTotalBytes   int64 `json:"max_total_bytes,omitempty,omitzero"`
+	UploadBatch     int   `json:"upload_batch,omitempty,omitzero"`
+}
+
+// JournalRecord defines model for JournalRecord.
+type JournalRecord struct {
+	Payload    json.RawMessage `json:"payload"`
+	RecordedAt time.Time       `json:"recorded_at"`
+	Seq        int64           `json:"seq"`
+
+	// Type replication, cri or pull_through; the payload is the record type's internal/shared/edgejournal payload.
+	Type string `json:"type"`
+}
+
+// JournalUpload defines model for JournalUpload.
+type JournalUpload struct {
+	// AfterSeq The satellite's floor: it holds nothing at or below this seq for Ground Control any more. A floor above Ground Control's cursor is recorded as an EdgeJournalGap event.
+	AfterSeq int64 `json:"after_seq"`
+
+	// Epoch Identifies the satellite's journal. Epochs are time-ordered: a newer one resets Ground Control's cursor, an older one is answered with Ground Control's epoch.
+	Epoch   int64           `json:"epoch"`
+	Records []JournalRecord `json:"records"`
+}
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
@@ -333,11 +468,66 @@ type OTelAuditConfig struct {
 	Endpoint string `json:"endpoint,omitempty,omitzero"`
 }
 
+// OutboxEventResponse defines model for OutboxEventResponse.
+type OutboxEventResponse struct {
+	AggregateID   int64     `json:"aggregate_id"`
+	AggregateType string    `json:"aggregate_type"`
+	Attempts      int32     `json:"attempts"`
+	CreatedAt     time.Time `json:"created_at"`
+	ID            int64     `json:"id"`
+	Kind          string    `json:"kind"`
+	LastError     string    `json:"last_error,omitempty,omitzero"`
+	NextAttemptAt time.Time `json:"next_attempt_at,omitempty,omitzero"`
+}
+
 // PeerDescriptor defines model for PeerDescriptor.
 type PeerDescriptor = config.PeerDescriptor
 
 // PeerDistributionConfig Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
 type PeerDistributionConfig = config.PeerDistributionConfig
+
+// PolicyRule defines model for PolicyRule.
+type PolicyRule struct {
+	Action       string `json:"action"`
+	Effect       string `json:"effect"`
+	ID           int64  `json:"id"`
+	ResourceType string `json:"resource_type"`
+	Scope        string `json:"scope"`
+	Subject      string `json:"subject"`
+}
+
+// PolicyRuleRequest defines model for PolicyRuleRequest.
+type PolicyRuleRequest struct {
+	// Action An action or "*" (the default).
+	Action string                  `json:"action,omitempty,omitzero"`
+	Effect PolicyRuleRequestEffect `json:"effect"`
+
+	// ResourceType A resource type or "*" (the default).
+	ResourceType string `json:"resource_type,omitempty,omitzero"`
+
+	// Scope "*" (the default) or <satellite|group|config>:<name>.
+	Scope string `json:"scope,omitempty,omitzero"`
+
+	// Subject user:<name>, role:<role> or oidc:<group>.
+	Subject string `json:"subject"`
+}
+
+// PolicyRuleRequestEffect defines model for PolicyRuleRequest.Effect.
+type PolicyRuleRequestEffect string
+
+// RefreshCredentialsResponse defines model for RefreshCredentialsResponse.
+type RefreshCredentialsResponse struct {
+	Secret string `json:"secret"`
+}
+
+// RegistryAuthConfig defines model for RegistryAuthConfig.
+type RegistryAuthConfig struct {
+	// Audience JWT-SVID audience for workload_identity.
+	Audience string `json:"audience,omitempty,omitzero"`
+
+	// Mode robot (default) or workload_identity.
+	Mode string `json:"mode,omitempty,omitzero"`
+}
 
 // RegistryCredentials defines model for RegistryCredentials.
 type RegistryCredentials struct {
@@ -351,6 +541,30 @@ type RegistryFallbackConfig struct {
 	Enabled    bool     `json:"enabled,omitempty,omitzero"`
 	Registries []string `json:"registries,omitempty,omitzero"`
 	Runtimes   []string `json:"runtimes,omitempty,omitzero"`
+}
+
+// RoleBinding defines model for RoleBinding.
+type RoleBinding struct {
+	ID        int64  `json:"id"`
+	Principal string `json:"principal"`
+	Role      string `json:"role"`
+}
+
+// RoleBindingRequest defines model for RoleBindingRequest.
+type RoleBindingRequest struct {
+	// Principal user:<name> or oidc:<group>.
+	Principal string `json:"principal"`
+
+	// Role role:<name>, not a built-in role.
+	Role string `json:"role"`
+}
+
+// RotatedCredentials defines model for RotatedCredentials.
+type RotatedCredentials struct {
+	ExpiresAt  time.Time `json:"expires_at,omitempty,omitzero"`
+	Generation int64     `json:"generation"`
+	Password   string    `json:"password"`
+	Username   string    `json:"username"`
 }
 
 // SPIFFEClientConfig defines model for SPIFFEClientConfig.
@@ -406,6 +620,26 @@ type SatelliteGroupRequest struct {
 	Satellite string `json:"satellite"`
 }
 
+// SatelliteLifecycleResponse defines model for SatelliteLifecycleResponse.
+type SatelliteLifecycleResponse struct {
+	AppliedConfigDigest     string             `json:"applied_config_digest,omitempty,omitzero"`
+	AppliedStateDigest      string             `json:"applied_state_digest,omitempty,omitzero"`
+	AppliedStates           []StateConvergence `json:"applied_states,omitempty,omitzero"`
+	Converged               bool               `json:"converged"`
+	DesiredVersion          int64              `json:"desired_version,omitempty,omitzero"`
+	LastReplicationError    string             `json:"last_replication_error,omitempty,omitzero"`
+	LastSeen                time.Time          `json:"last_seen,omitempty,omitzero"`
+	Name                    string             `json:"name"`
+	PublishError            string             `json:"publish_error,omitempty,omitzero"`
+	PublishedArtifactDigest string             `json:"published_artifact_digest,omitempty,omitzero"`
+	RenderedDigest          string             `json:"rendered_digest,omitempty,omitzero"`
+	RevokedAt               time.Time          `json:"revoked_at,omitempty,omitzero"`
+
+	// State pending, online, stale or revoked
+	State     string    `json:"state"`
+	UpdatedAt time.Time `json:"updated_at,omitempty,omitzero"`
+}
+
 // SatelliteResponse defines model for SatelliteResponse.
 type SatelliteResponse struct {
 	CreatedAt         time.Time           `json:"CreatedAt,omitempty,omitzero"`
@@ -416,6 +650,12 @@ type SatelliteResponse struct {
 	UpdatedAt         time.Time           `json:"UpdatedAt,omitempty,omitzero"`
 }
 
+// SatelliteSession defines model for SatelliteSession.
+type SatelliteSession struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	Token     string    `json:"token"`
+}
+
 // SatelliteStateArtifact defines model for SatelliteStateArtifact.
 type SatelliteStateArtifact struct {
 	Config string   `json:"config,omitempty,omitzero"`
@@ -424,18 +664,29 @@ type SatelliteStateArtifact struct {
 
 // SatelliteStatusRequest defines model for SatelliteStatusRequest.
 type SatelliteStatusRequest struct {
-	Activity            string              `json:"activity,omitempty,omitzero"`
-	CachedImages        []CachedImageReport `json:"cached_images,omitempty,omitzero"`
-	CPUPercent          float64             `json:"cpu_percent,omitempty,omitzero"`
-	ImageCount          int32               `json:"image_count,omitempty,omitzero"`
-	LastSyncDurationMs  int64               `json:"last_sync_duration_ms,omitempty,omitzero"`
-	LatestConfigDigest  string              `json:"latest_config_digest,omitempty,omitzero"`
-	LatestStateDigest   string              `json:"latest_state_digest,omitempty,omitzero"`
-	MemoryUsedBytes     int64               `json:"memory_used_bytes,omitempty,omitzero"`
-	Name                string              `json:"name,omitempty,omitzero"`
-	RequestCreatedTime  time.Time           `json:"request_created_time,omitempty,omitzero"`
-	StateReportInterval string              `json:"state_report_interval,omitempty,omitzero"`
-	StorageUsedBytes    int64               `json:"storage_used_bytes,omitempty,omitzero"`
+	Activity string `json:"activity,omitempty,omitzero"`
+
+	// AppliedStates The group states the last replication run applied, by reference as listed in the satellite state (plan item 6.6, not read yet).
+	AppliedStates []AppliedState      `json:"applied_states,omitempty,omitzero"`
+	CachedImages  []CachedImageReport `json:"cached_images,omitempty,omitzero"`
+	CPUPercent    float64             `json:"cpu_percent,omitempty,omitzero"`
+
+	// CredentialsGeneration The robot generation the satellite uses; acks a delivered rotation (plan item 8.4, not read yet).
+	CredentialsGeneration int64 `json:"credentials_generation,omitempty,omitzero"`
+	ImageCount            int32 `json:"image_count,omitempty,omitzero"`
+
+	// InventoryDigest Digest of cached_images (internal/shared/inventory, plan item 4.4, not read yet). A satellite sends cached_images only when this changed or Ground Control asked with inventory_requested.
+	InventoryDigest      string        `json:"inventory_digest,omitempty,omitzero"`
+	Journal              JournalUpload `json:"journal,omitempty,omitzero"`
+	LastReplicationError string        `json:"last_replication_error,omitempty,omitzero"`
+	LastSyncDurationMs   int64         `json:"last_sync_duration_ms,omitempty,omitzero"`
+	LatestConfigDigest   string        `json:"latest_config_digest,omitempty,omitzero"`
+	LatestStateDigest    string        `json:"latest_state_digest,omitempty,omitzero"`
+	MemoryUsedBytes      int64         `json:"memory_used_bytes,omitempty,omitzero"`
+	Name                 string        `json:"name,omitempty,omitzero"`
+	RequestCreatedTime   time.Time     `json:"request_created_time,omitempty,omitzero"`
+	StateReportInterval  string        `json:"state_report_interval,omitempty,omitzero"`
+	StorageUsedBytes     int64         `json:"storage_used_bytes,omitempty,omitzero"`
 }
 
 // SatelliteStatusResponse defines model for SatelliteStatusResponse.
@@ -455,6 +706,17 @@ type SatelliteStatusResponse struct {
 	StorageUsedBytes   NullableInt64Value  `json:"StorageUsedBytes,omitempty,omitzero"`
 }
 
+// SatelliteSyncResponse defines model for SatelliteSyncResponse.
+type SatelliteSyncResponse struct {
+	Credentials *RotatedCredentials `json:"credentials,omitempty"`
+	Events      []string            `json:"events"`
+
+	// InventoryRequested Ground Control has no inventory for the reported digest; the next heartbeat sends cached_images.
+	InventoryRequested bool              `json:"inventory_requested,omitempty,omitzero"`
+	Journal            *JournalAck       `json:"journal,omitempty"`
+	Session            *SatelliteSession `json:"session,omitempty"`
+}
+
 // StaleSatelliteResponse defines model for StaleSatelliteResponse.
 type StaleSatelliteResponse struct {
 	CreatedAt         time.Time           `json:"CreatedAt,omitempty,omitzero"`
@@ -468,14 +730,25 @@ type StaleSatelliteResponse struct {
 
 // StateConfigResponse defines model for StateConfigResponse.
 type StateConfigResponse struct {
-	Auth  RegistryCredentials `json:"auth"`
-	State string              `json:"state"`
+	Auth    RegistryCredentials `json:"auth"`
+	Session *SatelliteSession   `json:"session,omitempty"`
+	State   string              `json:"state"`
 }
 
 // StateConfigValue defines model for StateConfigValue.
 type StateConfigValue struct {
 	Auth  RegistryCredentials `json:"auth,omitempty,omitzero"`
 	State string              `json:"state,omitempty,omitzero"`
+}
+
+// StateConvergence defines model for StateConvergence.
+type StateConvergence struct {
+	// Digest Applied digest the satellite reported.
+	Digest string `json:"digest,omitempty,omitzero"`
+
+	// PublishedDigest Artifact digest GC published last.
+	PublishedDigest string `json:"published_digest,omitempty,omitzero"`
+	Ref             string `json:"ref"`
 }
 
 // SyslogAuditConfig defines model for SyslogAuditConfig.
@@ -532,15 +805,54 @@ type UserResponse struct {
 	Username  string    `json:"username"`
 }
 
+// WebhookSubscription defines model for WebhookSubscription.
+type WebhookSubscription struct {
+	ConsecutiveFailures int32     `json:"consecutive_failures"`
+	CreatedAt           time.Time `json:"created_at"`
+	DisabledReason      string    `json:"disabled_reason,omitempty,omitzero"`
+	Enabled             bool      `json:"enabled"`
+	EventTypes          []string  `json:"event_types"`
+	ID                  int32     `json:"id"`
+	LastError           string    `json:"last_error,omitempty,omitzero"`
+	URL                 string    `json:"url"`
+}
+
+// WebhookSubscriptionRequest defines model for WebhookSubscriptionRequest.
+type WebhookSubscriptionRequest struct {
+	// EventTypes Event kinds to deliver; empty delivers every kind.
+	EventTypes []string `json:"event_types,omitempty,omitzero"`
+
+	// Secret HMAC-SHA256 key of the X-Ground-Control-Signature-256 header.
+	Secret string `json:"secret,omitempty,omitzero"`
+
+	// URL https, or http for a loopback host.
+	URL string `json:"url"`
+}
+
 // ZTRRequest defines model for ZTRRequest.
 type ZTRRequest struct {
 	Token string `json:"token"`
+}
+
+// ListOutboxEventsParams defines parameters for ListOutboxEvents.
+type ListOutboxEventsParams struct {
+	// State pending lists every event that is not done; failed only those that reached the maximum attempts. Default pending.
+	State string `form:"state,omitempty" json:"state,omitempty,omitzero"`
+
+	// Limit Maximum number of events returned.
+	Limit int32 `form:"limit,omitempty" json:"limit,omitempty,omitzero"`
 }
 
 // ListSpireAgentsParams defines parameters for ListSpireAgents.
 type ListSpireAgentsParams struct {
 	// AttestationType Filters agents by attestation type.
 	AttestationType string `form:"attestation_type,omitempty" json:"attestation_type,omitempty,omitzero"`
+}
+
+// OidcCallbackParams defines parameters for OidcCallback.
+type OidcCallbackParams struct {
+	Code  string `form:"code" json:"code"`
+	State string `form:"state" json:"state"`
 }
 
 // CreateConfigJSONRequestBody defines body for CreateConfig for application/json ContentType.
@@ -561,6 +873,12 @@ type AddSatelliteToGroupJSONRequestBody = SatelliteGroupRequest
 // SyncGroupJSONRequestBody defines body for SyncGroup for application/json ContentType.
 type SyncGroupJSONRequestBody = GroupSyncRequest
 
+// CreatePolicyRuleJSONRequestBody defines body for CreatePolicyRule for application/json ContentType.
+type CreatePolicyRuleJSONRequestBody = PolicyRuleRequest
+
+// CreateRoleBindingJSONRequestBody defines body for CreateRoleBinding for application/json ContentType.
+type CreateRoleBindingJSONRequestBody = RoleBindingRequest
+
 // RegisterSatelliteJSONRequestBody defines body for RegisterSatellite for application/json ContentType.
 type RegisterSatelliteJSONRequestBody = TokenSatelliteRegistrationRequest
 
@@ -576,8 +894,14 @@ type ChangeOwnPasswordJSONRequestBody = ChangePasswordRequest
 // ChangeUserPasswordJSONRequestBody defines body for ChangeUserPassword for application/json ContentType.
 type ChangeUserPasswordJSONRequestBody = ChangeUserPasswordRequest
 
+// CreateWebhookJSONRequestBody defines body for CreateWebhook for application/json ContentType.
+type CreateWebhookJSONRequestBody = WebhookSubscriptionRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
+
+// OidcDeviceTokenJSONRequestBody defines body for OidcDeviceToken for application/json ContentType.
+type OidcDeviceTokenJSONRequestBody = DeviceTokenRequest
 
 // SyncSatelliteJSONRequestBody defines body for SyncSatellite for application/json ContentType.
 type SyncSatelliteJSONRequestBody = SatelliteStatusRequest
@@ -783,6 +1107,67 @@ type ClientInterface interface {
 	// Corresponds with POST /api/logout (the `Logout` operationId).
 	Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListOutboxEvents Lists outbox events that are not done yet.
+	//
+	// Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
+	ListOutboxEvents(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPolicyRules Lists the stored policy rules (plan item 7.3, not implemented yet).
+	//
+	// Corresponds with GET /api/policies (the `ListPolicyRules` operationId).
+	ListPolicyRules(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreatePolicyRuleWithBody Stores a policy rule (plan item 7.3, not implemented yet).
+	//
+	// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+	CreatePolicyRuleWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreatePolicyRule Stores a policy rule (plan item 7.3, not implemented yet).
+	//
+	// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+	CreatePolicyRule(ctx context.Context, body CreatePolicyRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeletePolicyRule Deletes a stored policy rule (plan item 7.3, not implemented yet).
+	//
+	// Corresponds with DELETE /api/policies/{id} (the `DeletePolicyRule` operationId).
+	DeletePolicyRule(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListRoleBindings Lists the stored role bindings (plan item 7.3, not implemented yet).
+	//
+	// Corresponds with GET /api/role-bindings (the `ListRoleBindings` operationId).
+	ListRoleBindings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateRoleBindingWithBody Gives a principal an additional role (plan item 7.3, not implemented yet).
+	//
+	// Built-in roles come from the user's role and cannot be bound here.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+	CreateRoleBindingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateRoleBinding Gives a principal an additional role (plan item 7.3, not implemented yet).
+	//
+	// Built-in roles come from the user's role and cannot be bound here.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+	CreateRoleBinding(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteRoleBinding Deletes a stored role binding (plan item 7.3, not implemented yet).
+	//
+	// Corresponds with DELETE /api/role-bindings/{id} (the `DeleteRoleBinding` operationId).
+	DeleteRoleBinding(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSatellites Lists satellites.
 	//
 	// Corresponds with GET /api/satellites (the `ListSatellites` operationId).
@@ -841,10 +1226,25 @@ type ClientInterface interface {
 	// Corresponds with GET /api/satellites/{satellite}/images (the `GetCachedImages` operationId).
 	GetCachedImages(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetSatelliteLifecycle Gets a satellite's lifecycle state and convergence (ADR-0006, plan item 4.3).
+	//
+	// Corresponds with GET /api/satellites/{satellite}/lifecycle (the `GetSatelliteLifecycle` operationId).
+	GetSatelliteLifecycle(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeSatellite Revokes a satellite; sync and ZTR answer 403 until it is unrevoked.
+	//
+	// Corresponds with POST /api/satellites/{satellite}/revoke (the `RevokeSatellite` operationId).
+	RevokeSatellite(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetSatelliteStatus Gets the latest satellite status report.
 	//
 	// Corresponds with GET /api/satellites/{satellite}/status (the `GetSatelliteStatus` operationId).
 	GetSatelliteStatus(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UnrevokeSatellite Returns a revoked satellite to pending; it goes online with its next heartbeat.
+	//
+	// Corresponds with POST /api/satellites/{satellite}/unrevoke (the `UnrevokeSatellite` operationId).
+	UnrevokeSatellite(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSpireAgents Lists attested SPIRE agents.
 	//
@@ -913,7 +1313,31 @@ type ClientInterface interface {
 	// Corresponds with PATCH /api/users/{username}/password (the `ChangeUserPassword` operationId).
 	ChangeUserPassword(ctx context.Context, username string, body ChangeUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// Health Checks database connectivity.
+	// ListWebhooks Lists webhook subscriptions (plan item 9.1, not implemented yet).
+	//
+	// Corresponds with GET /api/webhooks (the `ListWebhooks` operationId).
+	ListWebhooks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateWebhookWithBody Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/webhooks (the `CreateWebhook` operationId).
+	CreateWebhookWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateWebhook Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/webhooks (the `CreateWebhook` operationId).
+	CreateWebhook(ctx context.Context, body CreateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteWebhook Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+	//
+	// Corresponds with DELETE /api/webhooks/{id} (the `DeleteWebhook` operationId).
+	DeleteWebhook(ctx context.Context, id int32, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// Health Checks database connectivity and reports Harbor reachability.
 	//
 	// Corresponds with GET /health (the `Health` operationId).
 	Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -932,10 +1356,44 @@ type ClientInterface interface {
 	// Corresponds with POST /login (the `Login` operationId).
 	Login(ctx context.Context, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// OidcCallback Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+	//
+	// Corresponds with GET /oidc/callback (the `OidcCallback` operationId).
+	OidcCallback(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OidcDeviceAuthorize Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+	//
+	// Corresponds with POST /oidc/device (the `OidcDeviceAuthorize` operationId).
+	OidcDeviceAuthorize(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OidcDeviceTokenWithBody Polls an OIDC device flow (plan item 8.1, not implemented).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+	OidcDeviceTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OidcDeviceToken Polls an OIDC device flow (plan item 8.1, not implemented).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+	OidcDeviceToken(ctx context.Context, body OidcDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// OidcLogin Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+	//
+	// Corresponds with GET /oidc/login (the `OidcLogin` operationId).
+	OidcLogin(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// Ping Pings the server.
 	//
 	// Corresponds with GET /ping (the `Ping` operationId).
 	Ping(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RefreshSatelliteCredentials Rotates the satellite's Harbor robot secret.
+	//
+	// Corresponds with POST /satellites/refresh (the `RefreshSatelliteCredentials` operationId).
+	RefreshSatelliteCredentials(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SpiffeZtr Performs SPIFFE-based zero-touch registration.
 	//
@@ -1295,6 +1753,157 @@ func (c *Client) Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*ht
 	return c.Client.Do(req)
 }
 
+// ListOutboxEvents Lists outbox events that are not done yet.
+//
+// Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
+func (c *Client) ListOutboxEvents(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListOutboxEventsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListPolicyRules Lists the stored policy rules (plan item 7.3, not implemented yet).
+//
+// Corresponds with GET /api/policies (the `ListPolicyRules` operationId).
+func (c *Client) ListPolicyRules(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPolicyRulesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreatePolicyRuleWithBody Stores a policy rule (plan item 7.3, not implemented yet).
+//
+// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+func (c *Client) CreatePolicyRuleWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreatePolicyRuleRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreatePolicyRule Stores a policy rule (plan item 7.3, not implemented yet).
+//
+// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+func (c *Client) CreatePolicyRule(ctx context.Context, body CreatePolicyRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreatePolicyRuleRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeletePolicyRule Deletes a stored policy rule (plan item 7.3, not implemented yet).
+//
+// Corresponds with DELETE /api/policies/{id} (the `DeletePolicyRule` operationId).
+func (c *Client) DeletePolicyRule(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeletePolicyRuleRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListRoleBindings Lists the stored role bindings (plan item 7.3, not implemented yet).
+//
+// Corresponds with GET /api/role-bindings (the `ListRoleBindings` operationId).
+func (c *Client) ListRoleBindings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListRoleBindingsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateRoleBindingWithBody Gives a principal an additional role (plan item 7.3, not implemented yet).
+//
+// Built-in roles come from the user's role and cannot be bound here.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+func (c *Client) CreateRoleBindingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateRoleBindingRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateRoleBinding Gives a principal an additional role (plan item 7.3, not implemented yet).
+//
+// Built-in roles come from the user's role and cannot be bound here.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+func (c *Client) CreateRoleBinding(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateRoleBindingRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteRoleBinding Deletes a stored role binding (plan item 7.3, not implemented yet).
+//
+// Corresponds with DELETE /api/role-bindings/{id} (the `DeleteRoleBinding` operationId).
+func (c *Client) DeleteRoleBinding(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteRoleBindingRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListSatellites Lists satellites.
 //
 // Corresponds with GET /api/satellites (the `ListSatellites` operationId).
@@ -1453,11 +2062,56 @@ func (c *Client) GetCachedImages(ctx context.Context, satellite string, reqEdito
 	return c.Client.Do(req)
 }
 
+// GetSatelliteLifecycle Gets a satellite's lifecycle state and convergence (ADR-0006, plan item 4.3).
+//
+// Corresponds with GET /api/satellites/{satellite}/lifecycle (the `GetSatelliteLifecycle` operationId).
+func (c *Client) GetSatelliteLifecycle(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSatelliteLifecycleRequest(c.Server, satellite)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeSatellite Revokes a satellite; sync and ZTR answer 403 until it is unrevoked.
+//
+// Corresponds with POST /api/satellites/{satellite}/revoke (the `RevokeSatellite` operationId).
+func (c *Client) RevokeSatellite(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeSatelliteRequest(c.Server, satellite)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetSatelliteStatus Gets the latest satellite status report.
 //
 // Corresponds with GET /api/satellites/{satellite}/status (the `GetSatelliteStatus` operationId).
 func (c *Client) GetSatelliteStatus(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetSatelliteStatusRequest(c.Server, satellite)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UnrevokeSatellite Returns a revoked satellite to pending; it goes online with its next heartbeat.
+//
+// Corresponds with POST /api/satellites/{satellite}/unrevoke (the `UnrevokeSatellite` operationId).
+func (c *Client) UnrevokeSatellite(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnrevokeSatelliteRequest(c.Server, satellite)
 	if err != nil {
 		return nil, err
 	}
@@ -1645,7 +2299,71 @@ func (c *Client) ChangeUserPassword(ctx context.Context, username string, body C
 	return c.Client.Do(req)
 }
 
-// Health Checks database connectivity.
+// ListWebhooks Lists webhook subscriptions (plan item 9.1, not implemented yet).
+//
+// Corresponds with GET /api/webhooks (the `ListWebhooks` operationId).
+func (c *Client) ListWebhooks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListWebhooksRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateWebhookWithBody Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/webhooks (the `CreateWebhook` operationId).
+func (c *Client) CreateWebhookWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateWebhookRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateWebhook Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/webhooks (the `CreateWebhook` operationId).
+func (c *Client) CreateWebhook(ctx context.Context, body CreateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateWebhookRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteWebhook Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+//
+// Corresponds with DELETE /api/webhooks/{id} (the `DeleteWebhook` operationId).
+func (c *Client) DeleteWebhook(ctx context.Context, id int32, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteWebhookRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// Health Checks database connectivity and reports Harbor reachability.
 //
 // Corresponds with GET /health (the `Health` operationId).
 func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1694,11 +2412,105 @@ func (c *Client) Login(ctx context.Context, body LoginJSONRequestBody, reqEditor
 	return c.Client.Do(req)
 }
 
+// OidcCallback Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+//
+// Corresponds with GET /oidc/callback (the `OidcCallback` operationId).
+func (c *Client) OidcCallback(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcCallbackRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OidcDeviceAuthorize Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+//
+// Corresponds with POST /oidc/device (the `OidcDeviceAuthorize` operationId).
+func (c *Client) OidcDeviceAuthorize(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcDeviceAuthorizeRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OidcDeviceTokenWithBody Polls an OIDC device flow (plan item 8.1, not implemented).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+func (c *Client) OidcDeviceTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcDeviceTokenRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OidcDeviceToken Polls an OIDC device flow (plan item 8.1, not implemented).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+func (c *Client) OidcDeviceToken(ctx context.Context, body OidcDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcDeviceTokenRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// OidcLogin Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+//
+// Corresponds with GET /oidc/login (the `OidcLogin` operationId).
+func (c *Client) OidcLogin(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewOidcLoginRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // Ping Pings the server.
 //
 // Corresponds with GET /ping (the `Ping` operationId).
 func (c *Client) Ping(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPingRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RefreshSatelliteCredentials Rotates the satellite's Harbor robot secret.
+//
+// Corresponds with POST /satellites/refresh (the `RefreshSatelliteCredentials` operationId).
+func (c *Client) RefreshSatelliteCredentials(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRefreshSatelliteCredentialsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -2290,6 +3102,266 @@ func NewLogoutRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewListOutboxEventsRequest constructs an http.Request for the ListOutboxEvents method
+func NewListOutboxEventsRequest(server string, params *ListOutboxEventsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/ops/outbox")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListPolicyRulesRequest constructs an http.Request for the ListPolicyRules method
+func NewListPolicyRulesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/policies")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreatePolicyRuleRequest calls the generic CreatePolicyRule builder with application/json body
+func NewCreatePolicyRuleRequest(server string, body CreatePolicyRuleJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreatePolicyRuleRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreatePolicyRuleRequestWithBody constructs an http.Request for the CreatePolicyRule method, with any body, and a specified content type
+func NewCreatePolicyRuleRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/policies")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeletePolicyRuleRequest constructs an http.Request for the DeletePolicyRule method
+func NewDeletePolicyRuleRequest(server string, id int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/policies/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListRoleBindingsRequest constructs an http.Request for the ListRoleBindings method
+func NewListRoleBindingsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/role-bindings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateRoleBindingRequest calls the generic CreateRoleBinding builder with application/json body
+func NewCreateRoleBindingRequest(server string, body CreateRoleBindingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateRoleBindingRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateRoleBindingRequestWithBody constructs an http.Request for the CreateRoleBinding method, with any body, and a specified content type
+func NewCreateRoleBindingRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/role-bindings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteRoleBindingRequest constructs an http.Request for the DeleteRoleBinding method
+func NewDeleteRoleBindingRequest(server string, id int64) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int64"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/role-bindings/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListSatellitesRequest constructs an http.Request for the ListSatellites method
 func NewListSatellitesRequest(server string) (*http.Request, error) {
 	var err error
@@ -2553,6 +3625,74 @@ func NewGetCachedImagesRequest(server string, satellite string) (*http.Request, 
 	return req, nil
 }
 
+// NewGetSatelliteLifecycleRequest constructs an http.Request for the GetSatelliteLifecycle method
+func NewGetSatelliteLifecycleRequest(server string, satellite string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "satellite", satellite, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/satellites/%s/lifecycle", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRevokeSatelliteRequest constructs an http.Request for the RevokeSatellite method
+func NewRevokeSatelliteRequest(server string, satellite string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "satellite", satellite, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/satellites/%s/revoke", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetSatelliteStatusRequest constructs an http.Request for the GetSatelliteStatus method
 func NewGetSatelliteStatusRequest(server string, satellite string) (*http.Request, error) {
 	var err error
@@ -2580,6 +3720,40 @@ func NewGetSatelliteStatusRequest(server string, satellite string) (*http.Reques
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUnrevokeSatelliteRequest constructs an http.Request for the UnrevokeSatellite method
+func NewUnrevokeSatelliteRequest(server string, satellite string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "satellite", satellite, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/satellites/%s/unrevoke", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -2886,6 +4060,107 @@ func NewChangeUserPasswordRequestWithBody(server string, username string, conten
 	return req, nil
 }
 
+// NewListWebhooksRequest constructs an http.Request for the ListWebhooks method
+func NewListWebhooksRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/webhooks")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateWebhookRequest calls the generic CreateWebhook builder with application/json body
+func NewCreateWebhookRequest(server string, body CreateWebhookJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateWebhookRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateWebhookRequestWithBody constructs an http.Request for the CreateWebhook method, with any body, and a specified content type
+func NewCreateWebhookRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/webhooks")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteWebhookRequest constructs an http.Request for the DeleteWebhook method
+func NewDeleteWebhookRequest(server string, id int32) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: "int32"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/webhooks/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewHealthRequest constructs an http.Request for the Health method
 func NewHealthRequest(server string) (*http.Request, error) {
 	var err error
@@ -2953,6 +4228,158 @@ func NewLoginRequestWithBody(server string, contentType string, body io.Reader) 
 	return req, nil
 }
 
+// NewOidcCallbackRequest constructs an http.Request for the OidcCallback method
+func NewOidcCallbackRequest(server string, params *OidcCallbackParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/oidc/callback")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "code", params.Code, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "state", params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewOidcDeviceAuthorizeRequest constructs an http.Request for the OidcDeviceAuthorize method
+func NewOidcDeviceAuthorizeRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/oidc/device")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewOidcDeviceTokenRequest calls the generic OidcDeviceToken builder with application/json body
+func NewOidcDeviceTokenRequest(server string, body OidcDeviceTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewOidcDeviceTokenRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewOidcDeviceTokenRequestWithBody constructs an http.Request for the OidcDeviceToken method, with any body, and a specified content type
+func NewOidcDeviceTokenRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/oidc/device/token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewOidcLoginRequest constructs an http.Request for the OidcLogin method
+func NewOidcLoginRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/oidc/login")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewPingRequest constructs an http.Request for the Ping method
 func NewPingRequest(server string) (*http.Request, error) {
 	var err error
@@ -2973,6 +4400,33 @@ func NewPingRequest(server string) (*http.Request, error) {
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRefreshSatelliteCredentialsRequest constructs an http.Request for the RefreshSatelliteCredentials method
+func NewRefreshSatelliteCredentialsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/satellites/refresh")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3271,6 +4725,77 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/logout (the `Logout` operationId).
 	LogoutWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*LogoutHTTPResponse, error)
 
+	// ListOutboxEventsWithResponse Lists outbox events that are not done yet.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
+	ListOutboxEventsWithResponse(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*ListOutboxEventsHTTPResponse, error)
+
+	// ListPolicyRulesWithResponse Lists the stored policy rules (plan item 7.3, not implemented yet).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/policies (the `ListPolicyRules` operationId).
+	ListPolicyRulesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPolicyRulesHTTPResponse, error)
+
+	// CreatePolicyRuleWithBodyWithResponse Stores a policy rule (plan item 7.3, not implemented yet).
+	//
+	// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+	CreatePolicyRuleWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreatePolicyRuleHTTPResponse, error)
+
+	// CreatePolicyRuleWithResponse Stores a policy rule (plan item 7.3, not implemented yet).
+	//
+	// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+	CreatePolicyRuleWithResponse(ctx context.Context, body CreatePolicyRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreatePolicyRuleHTTPResponse, error)
+
+	// DeletePolicyRuleWithResponse Deletes a stored policy rule (plan item 7.3, not implemented yet).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/policies/{id} (the `DeletePolicyRule` operationId).
+	DeletePolicyRuleWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*DeletePolicyRuleHTTPResponse, error)
+
+	// ListRoleBindingsWithResponse Lists the stored role bindings (plan item 7.3, not implemented yet).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/role-bindings (the `ListRoleBindings` operationId).
+	ListRoleBindingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListRoleBindingsHTTPResponse, error)
+
+	// CreateRoleBindingWithBodyWithResponse Gives a principal an additional role (plan item 7.3, not implemented yet).
+	//
+	// Built-in roles come from the user's role and cannot be bound here.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+	CreateRoleBindingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateRoleBindingHTTPResponse, error)
+
+	// CreateRoleBindingWithResponse Gives a principal an additional role (plan item 7.3, not implemented yet).
+	//
+	// Built-in roles come from the user's role and cannot be bound here.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+	CreateRoleBindingWithResponse(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRoleBindingHTTPResponse, error)
+
+	// DeleteRoleBindingWithResponse Deletes a stored role binding (plan item 7.3, not implemented yet).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/role-bindings/{id} (the `DeleteRoleBinding` operationId).
+	DeleteRoleBindingWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*DeleteRoleBindingHTTPResponse, error)
+
 	// ListSatellitesWithResponse Lists satellites.
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -3341,12 +4866,33 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/satellites/{satellite}/images (the `GetCachedImages` operationId).
 	GetCachedImagesWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*GetCachedImagesHTTPResponse, error)
 
+	// GetSatelliteLifecycleWithResponse Gets a satellite's lifecycle state and convergence (ADR-0006, plan item 4.3).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/satellites/{satellite}/lifecycle (the `GetSatelliteLifecycle` operationId).
+	GetSatelliteLifecycleWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*GetSatelliteLifecycleHTTPResponse, error)
+
+	// RevokeSatelliteWithResponse Revokes a satellite; sync and ZTR answer 403 until it is unrevoked.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/satellites/{satellite}/revoke (the `RevokeSatellite` operationId).
+	RevokeSatelliteWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*RevokeSatelliteHTTPResponse, error)
+
 	// GetSatelliteStatusWithResponse Gets the latest satellite status report.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/satellites/{satellite}/status (the `GetSatelliteStatus` operationId).
 	GetSatelliteStatusWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*GetSatelliteStatusHTTPResponse, error)
+
+	// UnrevokeSatelliteWithResponse Returns a revoked satellite to pending; it goes online with its next heartbeat.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/satellites/{satellite}/unrevoke (the `UnrevokeSatellite` operationId).
+	UnrevokeSatelliteWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*UnrevokeSatelliteHTTPResponse, error)
 
 	// ListSpireAgentsWithResponse Lists attested SPIRE agents.
 	//
@@ -3425,7 +4971,35 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /api/users/{username}/password (the `ChangeUserPassword` operationId).
 	ChangeUserPasswordWithResponse(ctx context.Context, username string, body ChangeUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeUserPasswordHTTPResponse, error)
 
-	// HealthWithResponse Checks database connectivity.
+	// ListWebhooksWithResponse Lists webhook subscriptions (plan item 9.1, not implemented yet).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/webhooks (the `ListWebhooks` operationId).
+	ListWebhooksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListWebhooksHTTPResponse, error)
+
+	// CreateWebhookWithBodyWithResponse Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/webhooks (the `CreateWebhook` operationId).
+	CreateWebhookWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWebhookHTTPResponse, error)
+
+	// CreateWebhookWithResponse Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/webhooks (the `CreateWebhook` operationId).
+	CreateWebhookWithResponse(ctx context.Context, body CreateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWebhookHTTPResponse, error)
+
+	// DeleteWebhookWithResponse Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/webhooks/{id} (the `DeleteWebhook` operationId).
+	DeleteWebhookWithResponse(ctx context.Context, id int32, reqEditors ...RequestEditorFn) (*DeleteWebhookHTTPResponse, error)
+
+	// HealthWithResponse Checks database connectivity and reports Harbor reachability.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -3446,12 +5020,54 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /login (the `Login` operationId).
 	LoginWithResponse(ctx context.Context, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginHTTPResponse, error)
 
+	// OidcCallbackWithResponse Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /oidc/callback (the `OidcCallback` operationId).
+	OidcCallbackWithResponse(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*OidcCallbackHTTPResponse, error)
+
+	// OidcDeviceAuthorizeWithResponse Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /oidc/device (the `OidcDeviceAuthorize` operationId).
+	OidcDeviceAuthorizeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*OidcDeviceAuthorizeHTTPResponse, error)
+
+	// OidcDeviceTokenWithBodyWithResponse Polls an OIDC device flow (plan item 8.1, not implemented).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+	OidcDeviceTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OidcDeviceTokenHTTPResponse, error)
+
+	// OidcDeviceTokenWithResponse Polls an OIDC device flow (plan item 8.1, not implemented).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+	OidcDeviceTokenWithResponse(ctx context.Context, body OidcDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*OidcDeviceTokenHTTPResponse, error)
+
+	// OidcLoginWithResponse Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /oidc/login (the `OidcLogin` operationId).
+	OidcLoginWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*OidcLoginHTTPResponse, error)
+
 	// PingWithResponse Pings the server.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /ping (the `Ping` operationId).
 	PingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PingHTTPResponse, error)
+
+	// RefreshSatelliteCredentialsWithResponse Rotates the satellite's Harbor robot secret.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /satellites/refresh (the `RefreshSatelliteCredentials` operationId).
+	RefreshSatelliteCredentialsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*RefreshSatelliteCredentialsHTTPResponse, error)
 
 	// SpiffeZtrWithResponse Performs SPIFFE-based zero-touch registration.
 	//
@@ -3547,14 +5163,23 @@ func (r ListConfigsHTTPResponse) ContentType() string {
 type CreateConfigHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ConfigResponse
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *AppError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *AppError
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *AppError
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ConfigValidationError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateConfigHTTPResponse) GetJSON201() *ConfigResponse {
+	return r.JSON201
 }
 
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
@@ -3570,6 +5195,11 @@ func (r CreateConfigHTTPResponse) GetJSON401() *AppError {
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
 func (r CreateConfigHTTPResponse) GetJSON409() *AppError {
 	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateConfigHTTPResponse) GetJSON422() *ConfigValidationError {
+	return r.JSON422
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -3803,6 +5433,10 @@ type UpdateConfigHTTPResponse struct {
 	JSON401 *AppError
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *AppError
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *AppError
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *ConfigValidationError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -3825,6 +5459,16 @@ func (r UpdateConfigHTTPResponse) GetJSON401() *AppError {
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
 func (r UpdateConfigHTTPResponse) GetJSON404() *AppError {
 	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r UpdateConfigHTTPResponse) GetJSON409() *AppError {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r UpdateConfigHTTPResponse) GetJSON422() *ConfigValidationError {
+	return r.JSON422
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -4350,6 +5994,468 @@ func (r LogoutHTTPResponse) ContentType() string {
 	return ""
 }
 
+type ListOutboxEventsHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]OutboxEventResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *AppError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListOutboxEventsHTTPResponse) GetJSON200() *[]OutboxEventResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListOutboxEventsHTTPResponse) GetJSON400() *AppError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListOutboxEventsHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListOutboxEventsHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r ListOutboxEventsHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListOutboxEventsHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListOutboxEventsHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListOutboxEventsHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListPolicyRulesHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]PolicyRule
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListPolicyRulesHTTPResponse) GetJSON200() *[]PolicyRule {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListPolicyRulesHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListPolicyRulesHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListPolicyRulesHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListPolicyRulesHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPolicyRulesHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPolicyRulesHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListPolicyRulesHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreatePolicyRuleHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *PolicyRule
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *AppError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON201() *PolicyRule {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON400() *AppError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON409() *AppError {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreatePolicyRuleHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreatePolicyRuleHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreatePolicyRuleHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreatePolicyRuleHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeletePolicyRuleHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeletePolicyRuleHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeletePolicyRuleHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeletePolicyRuleHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeletePolicyRuleHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeletePolicyRuleHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeletePolicyRuleHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeletePolicyRuleHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeletePolicyRuleHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListRoleBindingsHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]RoleBinding
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListRoleBindingsHTTPResponse) GetJSON200() *[]RoleBinding {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListRoleBindingsHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListRoleBindingsHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListRoleBindingsHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListRoleBindingsHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListRoleBindingsHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListRoleBindingsHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListRoleBindingsHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateRoleBindingHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *RoleBinding
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *AppError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON201() *RoleBinding {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON400() *AppError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON409() *AppError {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateRoleBindingHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateRoleBindingHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateRoleBindingHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateRoleBindingHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteRoleBindingHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteRoleBindingHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteRoleBindingHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteRoleBindingHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteRoleBindingHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteRoleBindingHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteRoleBindingHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteRoleBindingHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteRoleBindingHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListSatellitesHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4839,6 +6945,130 @@ func (r GetCachedImagesHTTPResponse) ContentType() string {
 	return ""
 }
 
+type GetSatelliteLifecycleHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SatelliteLifecycleResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSatelliteLifecycleHTTPResponse) GetJSON200() *SatelliteLifecycleResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetSatelliteLifecycleHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSatelliteLifecycleHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetSatelliteLifecycleHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSatelliteLifecycleHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSatelliteLifecycleHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSatelliteLifecycleHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSatelliteLifecycleHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RevokeSatelliteHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SatelliteLifecycleResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RevokeSatelliteHTTPResponse) GetJSON200() *SatelliteLifecycleResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RevokeSatelliteHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RevokeSatelliteHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r RevokeSatelliteHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeSatelliteHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeSatelliteHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeSatelliteHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeSatelliteHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetSatelliteStatusHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4895,6 +7125,68 @@ func (r GetSatelliteStatusHTTPResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetSatelliteStatusHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UnrevokeSatelliteHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SatelliteLifecycleResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UnrevokeSatelliteHTTPResponse) GetJSON200() *SatelliteLifecycleResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UnrevokeSatelliteHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UnrevokeSatelliteHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r UnrevokeSatelliteHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r UnrevokeSatelliteHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UnrevokeSatelliteHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnrevokeSatelliteHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UnrevokeSatelliteHTTPResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -5411,6 +7703,206 @@ func (r ChangeUserPasswordHTTPResponse) ContentType() string {
 	return ""
 }
 
+type ListWebhooksHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]WebhookSubscription
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListWebhooksHTTPResponse) GetJSON200() *[]WebhookSubscription {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListWebhooksHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListWebhooksHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListWebhooksHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListWebhooksHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListWebhooksHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListWebhooksHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListWebhooksHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateWebhookHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *WebhookSubscription
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *AppError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateWebhookHTTPResponse) GetJSON201() *WebhookSubscription {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateWebhookHTTPResponse) GetJSON400() *AppError {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateWebhookHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateWebhookHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateWebhookHTTPResponse) GetJSON409() *AppError {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateWebhookHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateWebhookHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateWebhookHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateWebhookHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateWebhookHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteWebhookHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteWebhookHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteWebhookHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteWebhookHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteWebhookHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteWebhookHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteWebhookHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteWebhookHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteWebhookHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type HealthHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5528,6 +8020,234 @@ func (r LoginHTTPResponse) ContentType() string {
 	return ""
 }
 
+type OidcCallbackHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LoginResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r OidcCallbackHTTPResponse) GetJSON200() *LoginResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r OidcCallbackHTTPResponse) GetJSON400() *AppError {
+	return r.JSON400
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r OidcCallbackHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r OidcCallbackHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r OidcCallbackHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OidcCallbackHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OidcCallbackHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OidcCallbackHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type OidcDeviceAuthorizeHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DeviceAuthorizationResponse
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r OidcDeviceAuthorizeHTTPResponse) GetJSON200() *DeviceAuthorizationResponse {
+	return r.JSON200
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r OidcDeviceAuthorizeHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r OidcDeviceAuthorizeHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OidcDeviceAuthorizeHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OidcDeviceAuthorizeHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OidcDeviceAuthorizeHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type OidcDeviceTokenHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *LoginResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r OidcDeviceTokenHTTPResponse) GetJSON200() *LoginResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r OidcDeviceTokenHTTPResponse) GetJSON400() *AppError {
+	return r.JSON400
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r OidcDeviceTokenHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r OidcDeviceTokenHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r OidcDeviceTokenHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OidcDeviceTokenHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OidcDeviceTokenHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OidcDeviceTokenHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// OidcLoginHTTPResponse302Headers the declared response headers of an HTTP 302 response for OidcLogin
+type OidcLoginHTTPResponse302Headers struct {
+	Location  string
+	SetCookie string
+}
+
+type OidcLoginHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+	// Headers302 the parsed response headers for an HTTP 302 response
+	Headers302 *OidcLoginHTTPResponse302Headers
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r OidcLoginHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r OidcLoginHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r OidcLoginHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r OidcLoginHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r OidcLoginHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r OidcLoginHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type PingHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5562,6 +8282,80 @@ func (r PingHTTPResponse) ContentType() string {
 	return ""
 }
 
+type RefreshSatelliteCredentialsHTTPResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RefreshCredentialsResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *AppError
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RefreshSatelliteCredentialsHTTPResponse) GetJSON200() *RefreshCredentialsResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RefreshSatelliteCredentialsHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r RefreshSatelliteCredentialsHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r RefreshSatelliteCredentialsHTTPResponse) GetJSON429() *AppError {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r RefreshSatelliteCredentialsHTTPResponse) GetJSON500() *AppError {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r RefreshSatelliteCredentialsHTTPResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RefreshSatelliteCredentialsHTTPResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RefreshSatelliteCredentialsHTTPResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RefreshSatelliteCredentialsHTTPResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SpiffeZtrHTTPResponse503Headers the declared response headers of an HTTP 503 response for SpiffeZtr
+type SpiffeZtrHTTPResponse503Headers struct {
+	RetryAfter int
+}
+
 type SpiffeZtrHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5575,6 +8369,10 @@ type SpiffeZtrHTTPResponse struct {
 	JSON429 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *AppError
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *SpiffeZtrHTTPResponse503Headers
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -5600,6 +8398,11 @@ func (r SpiffeZtrHTTPResponse) GetJSON429() *AppError {
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
 func (r SpiffeZtrHTTPResponse) GetJSON500() *AppError {
 	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r SpiffeZtrHTTPResponse) GetJSON503() *AppError {
+	return r.JSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -5634,12 +8437,25 @@ func (r SpiffeZtrHTTPResponse) ContentType() string {
 type SyncSatelliteHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SatelliteSyncResponse
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *AppError
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *AppError
 	// JSON403 the response for an HTTP 403 `application/json` response
 	JSON403 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SyncSatelliteHTTPResponse) GetJSON200() *SatelliteSyncResponse {
+	return r.JSON200
 }
 
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
@@ -5647,9 +8463,24 @@ func (r SyncSatelliteHTTPResponse) GetJSON400() *AppError {
 	return r.JSON400
 }
 
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r SyncSatelliteHTTPResponse) GetJSON401() *AppError {
+	return r.JSON401
+}
+
 // GetJSON403 returns the response for an HTTP 403 `application/json` response
 func (r SyncSatelliteHTTPResponse) GetJSON403() *AppError {
 	return r.JSON403
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r SyncSatelliteHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r SyncSatelliteHTTPResponse) GetJSON429() *AppError {
+	return r.JSON429
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -5686,6 +8517,11 @@ func (r SyncSatelliteHTTPResponse) ContentType() string {
 	return ""
 }
 
+// ZtrHTTPResponse503Headers the declared response headers of an HTTP 503 response for Ztr
+type ZtrHTTPResponse503Headers struct {
+	RetryAfter int
+}
+
 type ZtrHTTPResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5701,6 +8537,10 @@ type ZtrHTTPResponse struct {
 	JSON429 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *AppError
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *ZtrHTTPResponse503Headers
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -5731,6 +8571,11 @@ func (r ZtrHTTPResponse) GetJSON429() *AppError {
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
 func (r ZtrHTTPResponse) GetJSON500() *AppError {
 	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ZtrHTTPResponse) GetJSON503() *AppError {
+	return r.JSON503
 }
 
 // GetBody returns the raw response body bytes
@@ -6022,6 +8867,131 @@ func (c *ClientWithResponses) LogoutWithResponse(ctx context.Context, reqEditors
 	return ParseLogoutHTTPResponse(rsp)
 }
 
+// ListOutboxEventsWithResponse Lists outbox events that are not done yet.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
+func (c *ClientWithResponses) ListOutboxEventsWithResponse(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*ListOutboxEventsHTTPResponse, error) {
+	rsp, err := c.ListOutboxEvents(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListOutboxEventsHTTPResponse(rsp)
+}
+
+// ListPolicyRulesWithResponse Lists the stored policy rules (plan item 7.3, not implemented yet).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/policies (the `ListPolicyRules` operationId).
+func (c *ClientWithResponses) ListPolicyRulesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPolicyRulesHTTPResponse, error) {
+	rsp, err := c.ListPolicyRules(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPolicyRulesHTTPResponse(rsp)
+}
+
+// CreatePolicyRuleWithBodyWithResponse Stores a policy rule (plan item 7.3, not implemented yet).
+//
+// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+func (c *ClientWithResponses) CreatePolicyRuleWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreatePolicyRuleHTTPResponse, error) {
+	rsp, err := c.CreatePolicyRuleWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreatePolicyRuleHTTPResponse(rsp)
+}
+
+// CreatePolicyRuleWithResponse Stores a policy rule (plan item 7.3, not implemented yet).
+//
+// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
+func (c *ClientWithResponses) CreatePolicyRuleWithResponse(ctx context.Context, body CreatePolicyRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreatePolicyRuleHTTPResponse, error) {
+	rsp, err := c.CreatePolicyRule(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreatePolicyRuleHTTPResponse(rsp)
+}
+
+// DeletePolicyRuleWithResponse Deletes a stored policy rule (plan item 7.3, not implemented yet).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/policies/{id} (the `DeletePolicyRule` operationId).
+func (c *ClientWithResponses) DeletePolicyRuleWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*DeletePolicyRuleHTTPResponse, error) {
+	rsp, err := c.DeletePolicyRule(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeletePolicyRuleHTTPResponse(rsp)
+}
+
+// ListRoleBindingsWithResponse Lists the stored role bindings (plan item 7.3, not implemented yet).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/role-bindings (the `ListRoleBindings` operationId).
+func (c *ClientWithResponses) ListRoleBindingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListRoleBindingsHTTPResponse, error) {
+	rsp, err := c.ListRoleBindings(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListRoleBindingsHTTPResponse(rsp)
+}
+
+// CreateRoleBindingWithBodyWithResponse Gives a principal an additional role (plan item 7.3, not implemented yet).
+//
+// Built-in roles come from the user's role and cannot be bound here.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+func (c *ClientWithResponses) CreateRoleBindingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateRoleBindingHTTPResponse, error) {
+	rsp, err := c.CreateRoleBindingWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateRoleBindingHTTPResponse(rsp)
+}
+
+// CreateRoleBindingWithResponse Gives a principal an additional role (plan item 7.3, not implemented yet).
+//
+// Built-in roles come from the user's role and cannot be bound here.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
+func (c *ClientWithResponses) CreateRoleBindingWithResponse(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRoleBindingHTTPResponse, error) {
+	rsp, err := c.CreateRoleBinding(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateRoleBindingHTTPResponse(rsp)
+}
+
+// DeleteRoleBindingWithResponse Deletes a stored role binding (plan item 7.3, not implemented yet).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/role-bindings/{id} (the `DeleteRoleBinding` operationId).
+func (c *ClientWithResponses) DeleteRoleBindingWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*DeleteRoleBindingHTTPResponse, error) {
+	rsp, err := c.DeleteRoleBinding(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteRoleBindingHTTPResponse(rsp)
+}
+
 // ListSatellitesWithResponse Lists satellites.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6152,6 +9122,32 @@ func (c *ClientWithResponses) GetCachedImagesWithResponse(ctx context.Context, s
 	return ParseGetCachedImagesHTTPResponse(rsp)
 }
 
+// GetSatelliteLifecycleWithResponse Gets a satellite's lifecycle state and convergence (ADR-0006, plan item 4.3).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/satellites/{satellite}/lifecycle (the `GetSatelliteLifecycle` operationId).
+func (c *ClientWithResponses) GetSatelliteLifecycleWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*GetSatelliteLifecycleHTTPResponse, error) {
+	rsp, err := c.GetSatelliteLifecycle(ctx, satellite, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSatelliteLifecycleHTTPResponse(rsp)
+}
+
+// RevokeSatelliteWithResponse Revokes a satellite; sync and ZTR answer 403 until it is unrevoked.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/satellites/{satellite}/revoke (the `RevokeSatellite` operationId).
+func (c *ClientWithResponses) RevokeSatelliteWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*RevokeSatelliteHTTPResponse, error) {
+	rsp, err := c.RevokeSatellite(ctx, satellite, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeSatelliteHTTPResponse(rsp)
+}
+
 // GetSatelliteStatusWithResponse Gets the latest satellite status report.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6163,6 +9159,19 @@ func (c *ClientWithResponses) GetSatelliteStatusWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseGetSatelliteStatusHTTPResponse(rsp)
+}
+
+// UnrevokeSatelliteWithResponse Returns a revoked satellite to pending; it goes online with its next heartbeat.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/satellites/{satellite}/unrevoke (the `UnrevokeSatellite` operationId).
+func (c *ClientWithResponses) UnrevokeSatelliteWithResponse(ctx context.Context, satellite string, reqEditors ...RequestEditorFn) (*UnrevokeSatelliteHTTPResponse, error) {
+	rsp, err := c.UnrevokeSatellite(ctx, satellite, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnrevokeSatelliteHTTPResponse(rsp)
 }
 
 // ListSpireAgentsWithResponse Lists attested SPIRE agents.
@@ -6308,7 +9317,59 @@ func (c *ClientWithResponses) ChangeUserPasswordWithResponse(ctx context.Context
 	return ParseChangeUserPasswordHTTPResponse(rsp)
 }
 
-// HealthWithResponse Checks database connectivity.
+// ListWebhooksWithResponse Lists webhook subscriptions (plan item 9.1, not implemented yet).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/webhooks (the `ListWebhooks` operationId).
+func (c *ClientWithResponses) ListWebhooksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListWebhooksHTTPResponse, error) {
+	rsp, err := c.ListWebhooks(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListWebhooksHTTPResponse(rsp)
+}
+
+// CreateWebhookWithBodyWithResponse Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/webhooks (the `CreateWebhook` operationId).
+func (c *ClientWithResponses) CreateWebhookWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWebhookHTTPResponse, error) {
+	rsp, err := c.CreateWebhookWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateWebhookHTTPResponse(rsp)
+}
+
+// CreateWebhookWithResponse Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/webhooks (the `CreateWebhook` operationId).
+func (c *ClientWithResponses) CreateWebhookWithResponse(ctx context.Context, body CreateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWebhookHTTPResponse, error) {
+	rsp, err := c.CreateWebhook(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateWebhookHTTPResponse(rsp)
+}
+
+// DeleteWebhookWithResponse Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/webhooks/{id} (the `DeleteWebhook` operationId).
+func (c *ClientWithResponses) DeleteWebhookWithResponse(ctx context.Context, id int32, reqEditors ...RequestEditorFn) (*DeleteWebhookHTTPResponse, error) {
+	rsp, err := c.DeleteWebhook(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteWebhookHTTPResponse(rsp)
+}
+
+// HealthWithResponse Checks database connectivity and reports Harbor reachability.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -6347,6 +9408,71 @@ func (c *ClientWithResponses) LoginWithResponse(ctx context.Context, body LoginJ
 	return ParseLoginHTTPResponse(rsp)
 }
 
+// OidcCallbackWithResponse Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /oidc/callback (the `OidcCallback` operationId).
+func (c *ClientWithResponses) OidcCallbackWithResponse(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*OidcCallbackHTTPResponse, error) {
+	rsp, err := c.OidcCallback(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcCallbackHTTPResponse(rsp)
+}
+
+// OidcDeviceAuthorizeWithResponse Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /oidc/device (the `OidcDeviceAuthorize` operationId).
+func (c *ClientWithResponses) OidcDeviceAuthorizeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*OidcDeviceAuthorizeHTTPResponse, error) {
+	rsp, err := c.OidcDeviceAuthorize(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcDeviceAuthorizeHTTPResponse(rsp)
+}
+
+// OidcDeviceTokenWithBodyWithResponse Polls an OIDC device flow (plan item 8.1, not implemented).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+func (c *ClientWithResponses) OidcDeviceTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OidcDeviceTokenHTTPResponse, error) {
+	rsp, err := c.OidcDeviceTokenWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcDeviceTokenHTTPResponse(rsp)
+}
+
+// OidcDeviceTokenWithResponse Polls an OIDC device flow (plan item 8.1, not implemented).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
+func (c *ClientWithResponses) OidcDeviceTokenWithResponse(ctx context.Context, body OidcDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*OidcDeviceTokenHTTPResponse, error) {
+	rsp, err := c.OidcDeviceToken(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcDeviceTokenHTTPResponse(rsp)
+}
+
+// OidcLoginWithResponse Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /oidc/login (the `OidcLogin` operationId).
+func (c *ClientWithResponses) OidcLoginWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*OidcLoginHTTPResponse, error) {
+	rsp, err := c.OidcLogin(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseOidcLoginHTTPResponse(rsp)
+}
+
 // PingWithResponse Pings the server.
 //
 // Returns a wrapper object for the known response body format(s).
@@ -6358,6 +9484,19 @@ func (c *ClientWithResponses) PingWithResponse(ctx context.Context, reqEditors .
 		return nil, err
 	}
 	return ParsePingHTTPResponse(rsp)
+}
+
+// RefreshSatelliteCredentialsWithResponse Rotates the satellite's Harbor robot secret.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /satellites/refresh (the `RefreshSatelliteCredentials` operationId).
+func (c *ClientWithResponses) RefreshSatelliteCredentialsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*RefreshSatelliteCredentialsHTTPResponse, error) {
+	rsp, err := c.RefreshSatelliteCredentials(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRefreshSatelliteCredentialsHTTPResponse(rsp)
 }
 
 // SpiffeZtrWithResponse Performs SPIFFE-based zero-touch registration.
@@ -6479,8 +9618,12 @@ func ParseCreateConfigHTTPResponse(rsp *http.Response) (*CreateConfigHTTPRespons
 	}
 
 	switch {
-	case rsp.StatusCode == 201:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ConfigResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest AppError
@@ -6502,6 +9645,13 @@ func ParseCreateConfigHTTPResponse(rsp *http.Response) (*CreateConfigHTTPRespons
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ConfigValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
@@ -6697,6 +9847,20 @@ func ParseUpdateConfigHTTPResponse(rsp *http.Response) (*UpdateConfigHTTPRespons
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest ConfigValidationError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
@@ -7082,6 +10246,369 @@ func ParseLogoutHTTPResponse(rsp *http.Response) (*LogoutHTTPResponse, error) {
 	return response, nil
 }
 
+// ParseListOutboxEventsHTTPResponse parses an HTTP response from a ListOutboxEventsWithResponse call
+func ParseListOutboxEventsHTTPResponse(rsp *http.Response) (*ListOutboxEventsHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListOutboxEventsHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []OutboxEventResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPolicyRulesHTTPResponse parses an HTTP response from a ListPolicyRulesWithResponse call
+func ParseListPolicyRulesHTTPResponse(rsp *http.Response) (*ListPolicyRulesHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPolicyRulesHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []PolicyRule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreatePolicyRuleHTTPResponse parses an HTTP response from a CreatePolicyRuleWithResponse call
+func ParseCreatePolicyRuleHTTPResponse(rsp *http.Response) (*CreatePolicyRuleHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreatePolicyRuleHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest PolicyRule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeletePolicyRuleHTTPResponse parses an HTTP response from a DeletePolicyRuleWithResponse call
+func ParseDeletePolicyRuleHTTPResponse(rsp *http.Response) (*DeletePolicyRuleHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeletePolicyRuleHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListRoleBindingsHTTPResponse parses an HTTP response from a ListRoleBindingsWithResponse call
+func ParseListRoleBindingsHTTPResponse(rsp *http.Response) (*ListRoleBindingsHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListRoleBindingsHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []RoleBinding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateRoleBindingHTTPResponse parses an HTTP response from a CreateRoleBindingWithResponse call
+func ParseCreateRoleBindingHTTPResponse(rsp *http.Response) (*CreateRoleBindingHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateRoleBindingHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest RoleBinding
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteRoleBindingHTTPResponse parses an HTTP response from a DeleteRoleBindingWithResponse call
+func ParseDeleteRoleBindingHTTPResponse(rsp *http.Response) (*DeleteRoleBindingHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteRoleBindingHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListSatellitesHTTPResponse parses an HTTP response from a ListSatellitesWithResponse call
 func ParseListSatellitesHTTPResponse(rsp *http.Response) (*ListSatellitesHTTPResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7451,6 +10978,100 @@ func ParseGetCachedImagesHTTPResponse(rsp *http.Response) (*GetCachedImagesHTTPR
 	return response, nil
 }
 
+// ParseGetSatelliteLifecycleHTTPResponse parses an HTTP response from a GetSatelliteLifecycleWithResponse call
+func ParseGetSatelliteLifecycleHTTPResponse(rsp *http.Response) (*GetSatelliteLifecycleHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSatelliteLifecycleHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SatelliteLifecycleResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeSatelliteHTTPResponse parses an HTTP response from a RevokeSatelliteWithResponse call
+func ParseRevokeSatelliteHTTPResponse(rsp *http.Response) (*RevokeSatelliteHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeSatelliteHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SatelliteLifecycleResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetSatelliteStatusHTTPResponse parses an HTTP response from a GetSatelliteStatusWithResponse call
 func ParseGetSatelliteStatusHTTPResponse(rsp *http.Response) (*GetSatelliteStatusHTTPResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7467,6 +11088,53 @@ func ParseGetSatelliteStatusHTTPResponse(rsp *http.Response) (*GetSatelliteStatu
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest SatelliteStatusResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUnrevokeSatelliteHTTPResponse parses an HTTP response from a UnrevokeSatelliteWithResponse call
+func ParseUnrevokeSatelliteHTTPResponse(rsp *http.Response) (*UnrevokeSatelliteHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnrevokeSatelliteHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SatelliteLifecycleResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -7897,6 +11565,164 @@ func ParseChangeUserPasswordHTTPResponse(rsp *http.Response) (*ChangeUserPasswor
 	return response, nil
 }
 
+// ParseListWebhooksHTTPResponse parses an HTTP response from a ListWebhooksWithResponse call
+func ParseListWebhooksHTTPResponse(rsp *http.Response) (*ListWebhooksHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListWebhooksHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []WebhookSubscription
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateWebhookHTTPResponse parses an HTTP response from a CreateWebhookWithResponse call
+func ParseCreateWebhookHTTPResponse(rsp *http.Response) (*CreateWebhookHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateWebhookHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest WebhookSubscription
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteWebhookHTTPResponse parses an HTTP response from a DeleteWebhookWithResponse call
+func ParseDeleteWebhookHTTPResponse(rsp *http.Response) (*DeleteWebhookHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteWebhookHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseHealthHTTPResponse parses an HTTP response from a HealthWithResponse call
 func ParseHealthHTTPResponse(rsp *http.Response) (*HealthHTTPResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7984,6 +11810,189 @@ func ParseLoginHTTPResponse(rsp *http.Response) (*LoginHTTPResponse, error) {
 	return response, nil
 }
 
+// ParseOidcCallbackHTTPResponse parses an HTTP response from a OidcCallbackWithResponse call
+func ParseOidcCallbackHTTPResponse(rsp *http.Response) (*OidcCallbackHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OidcCallbackHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LoginResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseOidcDeviceAuthorizeHTTPResponse parses an HTTP response from a OidcDeviceAuthorizeWithResponse call
+func ParseOidcDeviceAuthorizeHTTPResponse(rsp *http.Response) (*OidcDeviceAuthorizeHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OidcDeviceAuthorizeHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeviceAuthorizationResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseOidcDeviceTokenHTTPResponse parses an HTTP response from a OidcDeviceTokenWithResponse call
+func ParseOidcDeviceTokenHTTPResponse(rsp *http.Response) (*OidcDeviceTokenHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OidcDeviceTokenHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LoginResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseOidcLoginHTTPResponse parses an HTTP response from a OidcLoginWithResponse call
+func ParseOidcLoginHTTPResponse(rsp *http.Response) (*OidcLoginHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &OidcLoginHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 302:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 302:
+		var headers OidcLoginHTTPResponse302Headers
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = value
+		}
+		if values := rsp.Header.Values("Set-Cookie"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Set-Cookie", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.SetCookie = value
+		}
+		response.Headers302 = &headers
+	}
+
+	return response, nil
+}
+
 // ParsePingHTTPResponse parses an HTTP response from a PingWithResponse call
 func ParsePingHTTPResponse(rsp *http.Response) (*PingHTTPResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7995,6 +12004,60 @@ func ParsePingHTTPResponse(rsp *http.Response) (*PingHTTPResponse, error) {
 	response := &PingHTTPResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseRefreshSatelliteCredentialsHTTPResponse parses an HTTP response from a RefreshSatelliteCredentialsWithResponse call
+func ParseRefreshSatelliteCredentialsHTTPResponse(rsp *http.Response) (*RefreshSatelliteCredentialsHTTPResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RefreshSatelliteCredentialsHTTPResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RefreshCredentialsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
 	}
 
 	return response, nil
@@ -8049,6 +12112,26 @@ func ParseSpiffeZtrHTTPResponse(rsp *http.Response) (*SpiffeZtrHTTPResponse, err
 		}
 		response.JSON500 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 503:
+		var headers SpiffeZtrHTTPResponse503Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = value
+		}
+		response.Headers503 = &headers
 	}
 
 	return response, nil
@@ -8068,8 +12151,12 @@ func ParseSyncSatelliteHTTPResponse(rsp *http.Response) (*SyncSatelliteHTTPRespo
 	}
 
 	switch {
-	case rsp.StatusCode == 200:
-		break // No content-type
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SatelliteSyncResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest AppError
@@ -8078,12 +12165,33 @@ func ParseSyncSatelliteHTTPResponse(rsp *http.Response) (*SyncSatelliteHTTPRespo
 		}
 		response.JSON400 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
 		var dest AppError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
@@ -8153,6 +12261,26 @@ func ParseZtrHTTPResponse(rsp *http.Response) (*ZtrHTTPResponse, error) {
 		}
 		response.JSON500 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 503:
+		var headers ZtrHTTPResponse503Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = value
+		}
+		response.Headers503 = &headers
 	}
 
 	return response, nil

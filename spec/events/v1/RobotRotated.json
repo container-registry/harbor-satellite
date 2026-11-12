@@ -1,0 +1,27 @@
+{
+  "$id": "https://satellite.container-registry.com/schemas/events/v1/RobotRotated.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "data of the io.harborsatellite.groundcontrol.RobotRotated event (RobotRotated); v1 changes are additive only",
+  "properties": {
+    "generation": {
+      "type": "integer"
+    },
+    "name": {
+      "type": "string"
+    },
+    "robot_harbor_ids": {
+      "items": {
+        "type": "integer"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "generation",
+    "robot_harbor_ids"
+  ],
+  "title": "RobotRotated",
+  "type": "object"
+}

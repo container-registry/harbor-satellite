@@ -1,0 +1,20 @@
+{
+  "body": [
+    {
+      "CreatedAt": "\u003ctimestamp\u003e",
+      "HeartbeatInterval": {
+        "String": "",
+        "Valid": false
+      },
+      "ID": "\u003cid\u003e",
+      "LastSeen": {
+        "Time": "\u003ctimestamp\u003e",
+        "Valid": false
+      },
+      "Name": "edge-01",
+      "UpdatedAt": "\u003ctimestamp\u003e"
+    }
+  ],
+  "request": "GET /api/satellites",
+  "status": 200
+}

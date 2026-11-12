@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 404,
+    "message": "User not found"
+  },
+  "request": "GET /api/users/nobody",
+  "status": 404
+}

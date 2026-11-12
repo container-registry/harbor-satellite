@@ -1,0 +1,5 @@
+{
+  "body": null,
+  "request": "GET /api/satellites/stale",
+  "status": 200
+}

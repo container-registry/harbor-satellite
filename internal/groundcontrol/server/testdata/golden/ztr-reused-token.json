@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 400,
+    "message": "Error: Invalid Token"
+  },
+  "request": "POST /satellites/ztr",
+  "status": 400
+}

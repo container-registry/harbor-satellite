@@ -1,0 +1,5 @@
+{
+  "body": "",
+  "request": "POST /api/configs",
+  "status": 201
+}

@@ -30,8 +30,9 @@ func fakeEmbeddedSpire(t *testing.T, ready bool) (*EmbeddedSpireServer, string) 
 	stopped := filepath.Join(dir, "stopped")
 	t.Setenv("FAKE_SPIRE_SOCKET", server.socketPath)
 	t.Setenv("FAKE_SPIRE_STOPPED", stopped)
+	t.Setenv("FAKE_SPIRE_TRAPPED", filepath.Join(dir, "trapped"))
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	script := "#!/bin/sh\ntrap 'printf stopped > \"$FAKE_SPIRE_STOPPED\"; exit 0' TERM\n"
+	script := "#!/bin/sh\ntrap 'printf stopped > \"$FAKE_SPIRE_STOPPED\"; exit 0' TERM\ntouch \"$FAKE_SPIRE_TRAPPED\"\n"
 	if ready {
 		script += "touch \"$FAKE_SPIRE_SOCKET\"\n"
 	}
@@ -61,10 +62,22 @@ func TestEmbeddedSpireSurvivesStartupContextCancellation(t *testing.T) {
 
 func TestEmbeddedSpireCanceledStartupStopsProcess(t *testing.T) {
 	server, stopped := fakeEmbeddedSpire(t, false)
-	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// A SIGTERM that lands before the shell installs its trap kills it
+	// without writing the marker, so cancel only once the trap is in place.
+	trapped := filepath.Join(filepath.Dir(stopped), "trapped")
+	go func() {
+		defer cancel()
+		for range 1000 {
+			if _, err := os.Stat(trapped); err == nil {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
 
-	require.ErrorIs(t, server.Start(ctx), context.DeadlineExceeded)
+	require.ErrorIs(t, server.Start(ctx), context.Canceled)
 	require.FileExists(t, stopped, "startup failure must gracefully stop the subprocess")
 	require.True(t, errors.Is(server.cmd.Process.Signal(syscall.Signal(0)), os.ErrProcessDone))
 }

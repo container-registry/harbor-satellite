@@ -3,7 +3,9 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/shared/policybundle"
 	"github.com/rs/zerolog"
 )
 
@@ -285,11 +287,59 @@ type AppConfig struct {
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
 	Audit                     AuditConfig            `json:"audit,omitempty"`
 	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitzero"`
+	// Plan items 6.2 and 6.4 (Harbor 3 skeleton): accepted, not read yet. A
+	// ReplicationConcurrency of 0 replicates every group at once, as today.
+	ReplicationConcurrency          int           `json:"replication_concurrency,omitempty"`
+	ReplicationBandwidthBytesPerSec int64         `json:"replication_bandwidth_bytes_per_sec,omitempty"`
+	Journal                         JournalConfig `json:"journal,omitzero"`
+	// Plan item 7.5 (Harbor 3 skeleton): accepted, not read yet.
+	Admission AdmissionConfig `json:"admission,omitzero"`
+	// Plan item 8.3 (Harbor 3 skeleton): accepted, not read yet; the
+	// satellite pulls with its robot.
+	RegistryAuth RegistryAuthConfig `json:"registry_auth,omitzero"`
+}
+
+// RegistryAuthConfig selects how the satellite authenticates to Harbor:
+// RegistryAuthRobot (default) or RegistryAuthWorkloadIdentity, which
+// exchanges a JWT-SVID for Audience into a pull token.
+type RegistryAuthConfig struct {
+	Mode     string `json:"mode,omitempty"`
+	Audience string `json:"audience,omitempty"`
+}
+
+// AdmissionConfig is the edge admission policy Ground Control delivers
+// with the config state artifact; the proxy evaluates Bundle in Mode
+// (policybundle.ParseMode, "" is off).
+type AdmissionConfig struct {
+	Mode   string               `json:"mode,omitempty"`
+	Bundle *policybundle.Bundle `json:"bundle,omitempty"`
+}
+
+// JournalConfig sizes the edge journal (internal/satellite/journal). Zero
+// fields take the Default* values of constants.go.
+type JournalConfig struct {
+	MaxSegmentBytes int64 `json:"max_segment_bytes,omitempty"`
+	MaxTotalBytes   int64 `json:"max_total_bytes,omitempty"`
+	// UploadBatch is how many records one heartbeat carries.
+	UploadBatch int `json:"upload_batch,omitempty"`
 }
 
 type StateConfig struct {
 	RegistryCredentials RegistryCredentials `json:"auth,omitempty"`
 	StateURL            string              `json:"state,omitempty"`
+	// GCSession authenticates the satellite to Ground Control once it has
+	// one (plan item 4.1, ADR-0016); the robot credentials then only pull
+	// from Harbor.
+	GCSession GCSession `json:"gc_session,omitzero"`
+	// CredentialsGeneration is the robot generation in RegistryCredentials;
+	// the status report sends it to ack a rotation (plan item 8.4).
+	CredentialsGeneration int64 `json:"credentials_generation,omitempty"`
+}
+
+// GCSession is a Ground Control session token and its expiry.
+type GCSession struct {
+	Token     string    `json:"token,omitempty"`
+	ExpiresAt time.Time `json:"expires_at,omitzero"`
 }
 
 type Config struct {

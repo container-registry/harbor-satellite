@@ -26,6 +26,33 @@ type Config struct {
 	UpdatedAt   time.Time
 }
 
+type DesiredState struct {
+	AggregateType           string
+	AggregateID             int64
+	Version                 int64
+	Document                json.RawMessage
+	RenderedDigest          string
+	PublishedDigest         sql.NullString
+	PublishedArtifactDigest sql.NullString
+	PublishedAt             sql.NullTime
+	LastError               sql.NullString
+	UpdatedAt               time.Time
+}
+
+type EventOutbox struct {
+	ID            int64
+	Xid           interface{}
+	Kind          string
+	AggregateType string
+	AggregateID   int64
+	Payload       json.RawMessage
+	CreatedAt     time.Time
+	Attempts      int32
+	NextAttemptAt time.Time
+	LastError     sql.NullString
+	DoneAt        sql.NullTime
+}
+
 type Group struct {
 	ID          int32
 	GroupName   string
@@ -35,12 +62,51 @@ type Group struct {
 	UpdatedAt   time.Time
 }
 
+type GroupArtifact struct {
+	GroupID   int32
+	Artifacts json.RawMessage
+	UpdatedAt time.Time
+}
+
 type LoginAttempt struct {
 	ID          int32
 	Username    string
 	FailedCount int32
 	LockedUntil sql.NullTime
 	LastAttempt time.Time
+}
+
+type OidcLoginState struct {
+	State        string
+	CodeVerifier string
+	Nonce        string
+	BindingHash  []byte
+	ExpiresAt    time.Time
+}
+
+type PolicyRoleBinding struct {
+	ID        int64
+	Principal string
+	Role      string
+	CreatedAt time.Time
+	CreatedBy sql.NullString
+}
+
+type PolicyRule struct {
+	ID           int64
+	Subject      string
+	Scope        string
+	ResourceType string
+	Action       string
+	Effect       string
+	CreatedAt    time.Time
+	CreatedBy    sql.NullString
+}
+
+type PolicyVersion struct {
+	Singleton bool
+	Version   int64
+	UpdatedAt time.Time
 }
 
 type RobotAccount struct {
@@ -52,6 +118,19 @@ type RobotAccount struct {
 	RobotExpiry     sql.NullTime
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+}
+
+type RobotRotation struct {
+	SatelliteID      int32
+	Generation       int64
+	RobotName        string
+	RobotHarborID    int64
+	SecretCiphertext []byte
+	SecretHash       string
+	ExpiresAt        sql.NullTime
+	CreatedAt        time.Time
+	AckedAt          sql.NullTime
+	PromotedAt       sql.NullTime
 }
 
 type Satellite struct {
@@ -71,6 +150,27 @@ type SatelliteConfig struct {
 type SatelliteGroup struct {
 	SatelliteID int32
 	GroupID     int32
+}
+
+type SatelliteIdentity struct {
+	SatelliteID   int32
+	SpiffeID      string
+	SpireEntryIds []string
+}
+
+type SatelliteJournalCursor struct {
+	SatelliteID int32
+	Epoch       int64
+	AckedSeq    int64
+}
+
+type SatelliteSession struct {
+	ID          int64
+	SatelliteID int32
+	TokenHash   []byte
+	RenewedFrom sql.NullInt64
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
 }
 
 type SatelliteStatus struct {
@@ -96,6 +196,24 @@ type SatelliteToken struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	ExpiresAt   time.Time
+	ConsumedAt  sql.NullTime
+}
+
+type SatelliteView struct {
+	SatelliteID          int32
+	State                string
+	LastSeen             sql.NullTime
+	HeartbeatInterval    sql.NullString
+	LastActivity         sql.NullString
+	LastReportedAt       sql.NullTime
+	AppliedStateDigest   sql.NullString
+	AppliedConfigDigest  sql.NullString
+	AppliedStates        json.RawMessage
+	InventoryDigest      sql.NullString
+	InventoryArtifactIds []int32
+	LastReplicationError sql.NullString
+	RevokedAt            sql.NullTime
+	UpdatedAt            time.Time
 }
 
 type Session struct {
@@ -113,4 +231,38 @@ type User struct {
 	Role         string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+type UserIdentity struct {
+	ID          int64
+	UserID      int32
+	Issuer      string
+	Subject     string
+	Email       sql.NullString
+	Groups      []string
+	LastLoginAt sql.NullTime
+	CreatedAt   time.Time
+}
+
+type WebhookCheckpoint struct {
+	SubscriptionID int32
+	LastXid        interface{}
+	LastID         int64
+	Attempts       int32
+	FailingSince   sql.NullTime
+	NextAttemptAt  time.Time
+	LastStatus     sql.NullInt32
+	LastError      sql.NullString
+	UpdatedAt      time.Time
+}
+
+type WebhookSubscription struct {
+	ID               int32
+	Url              string
+	SecretCiphertext []byte
+	EventTypes       []string
+	Enabled          bool
+	DisabledReason   sql.NullString
+	CreatedAt        time.Time
+	CreatedBy        sql.NullString
 }
