@@ -29,17 +29,14 @@ func outcome(err error) string {
 		return "ok"
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return "canceled"
-	case errors.As(err, &dist):
-		switch dist.Code {
-		case proxy.ErrorCodeBlobUnknown, proxy.ErrorCodeManifestUnknown:
-			return "not_found"
-		case proxy.ErrorCodeDenied:
-			return "denied"
-		case proxy.ErrorCodeUnauthorized:
-			return "unauthorized"
-		default:
-			return "error"
-		}
+	case !errors.As(err, &dist):
+		return "error"
+	case dist.Code == proxy.ErrorCodeBlobUnknown, dist.Code == proxy.ErrorCodeManifestUnknown:
+		return "not_found"
+	case dist.Code == proxy.ErrorCodeDenied:
+		return "denied"
+	case dist.Code == proxy.ErrorCodeUnauthorized:
+		return "unauthorized"
 	default:
 		return "error"
 	}
