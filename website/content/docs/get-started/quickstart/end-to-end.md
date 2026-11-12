@@ -1,6 +1,10 @@
 ---
-title: "Quickstart"
-weight: 4
+title: "End-to-End Walkthrough with SPIFFE"
+weight: 3
+description: "Harbor, SPIRE and Ground Control with Docker Compose in the cloud, a satellite as a native binary at the edge, attested with X.509 proof of possession."
+source: "docs/guides/spiffe-end-to-end.md"
+aliases:
+  - "/docs/quickstart/"
 ---
 
 This guide walks you through deploying Harbor Satellite end-to-end with SPIFFE/SPIRE zero-trust identity. By the end, you will have:
@@ -333,6 +337,7 @@ services:
       - DB_DATABASE=harbor_satellite
       - DB_USERNAME=harbor
       - DB_PASSWORD=harbor
+      - DB_SSLMODE=disable
       - PORT=8080
       - HARBOR_URL=${HARBOR_URL:-http://host.docker.internal:8080}
       - HARBOR_USERNAME=${HARBOR_USERNAME:-admin}
@@ -665,7 +670,7 @@ rm satellite.tar.gz
 
 ### 4.2 Run the satellite
 
-Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname and `<HARBOR_HOST>` with the Harbor address as reachable from the edge device. `--harbor-registry-url` is required: Ground Control returns its own `HARBOR_URL` (`host.docker.internal` in this setup), which the edge device cannot resolve. `--use-unsecure` allows plain HTTP to Harbor; drop it if Harbor serves HTTPS:
+Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname and `<HARBOR_HOST>` with the Harbor address as reachable from the edge device. `--harbor-registry-url` is required: Ground Control returns its own `HARBOR_URL` (`host.docker.internal` in this setup), which the edge device cannot resolve. `--use-unsecure` allows plain HTTP to Harbor and Ground Control; drop it if both serve HTTPS:
 
 ```bash
 ./satellite \
@@ -730,7 +735,7 @@ Here is what happened end to end:
 10. **Ground Control** verified the SVID, created robot credentials, returned the state URL
 11. **Satellite** used the robot credentials to pull its state from Harbor
 12. **Satellite** saw `nginx:alpine` in its desired state and copied its OCI graph into the local layout
-13. **Satellite** keeps the content on disk and sends heartbeats to Ground Control. The layout is not a registry endpoint; to hand images to a container runtime, use BYO registry mode or direct delivery (see [Installation](installation.md#delivering-images-to-workloads))
+13. **Satellite** keeps the content on disk, serves it on `127.0.0.1:8585` through its pull-only OCI proxy, and sends heartbeats to Ground Control (see [OCI Proxy](/docs/reference/satellite/#oci-proxy))
 
 No runtime tokens were used. The only secrets transported to the edge were the X.509 agent certificate and key (Step 2.2), which can be pre-provisioned during device setup. After attestation, all credentials are handled automatically via SPIRE SVIDs and mTLS.
 
@@ -756,6 +761,6 @@ rm -rf certs
 
 ## Next Steps
 
-- Read the [Architecture](architecture.md) doc for the full flow details
-- Try [SSH PoP attestation](https://github.com/container-registry/harbor-satellite/tree/main/examples/deploy/spiffe/sshpop) for SSH certificate-based environments
-- Try [join token attestation](https://github.com/container-registry/harbor-satellite/tree/main/examples/deploy/spiffe/join-token) for simpler development setups
+- Read the [Architecture](/docs/concepts/architecture/) doc for the full flow details
+- Try [SSH PoP attestation](/docs/get-started/quickstart/spiffe/sshpop/) for SSH certificate-based environments
+- Try [join token attestation](/docs/get-started/quickstart/spiffe/join-token/) for simpler development setups

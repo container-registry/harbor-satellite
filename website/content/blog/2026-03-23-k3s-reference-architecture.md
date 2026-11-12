@@ -14,10 +14,11 @@ tags:
 
 > **Architecture update:** This article documents the March 2026 implementation.
 > Since v0.0.5, ADR-0009 replaced the embedded Zot registry with ORAS OCI layout storage,
-> so the satellite no longer listens on port `5050`. Method 1 (network mirror to
-> `127.0.0.1:5050`) and every `5050` check below do not work against current releases;
-> mirroring now needs BYO registry mode. Method 2 (Direct Delivery) still works. See
-> [Delivering Images to Workloads](/docs/installation/#delivering-images-to-workloads)
+> so the satellite no longer listens on port `5050`. In 1.0 the satellite serves pulls
+> through its OCI proxy on `127.0.0.1:8585` and can point the local container runtime at it.
+> The proxy listens on loopback only, so a mirror shared by other nodes (Method 1) needs a
+> BYO registry. Method 2 (Direct Delivery) still works. See [OCI Proxy](/docs/reference/satellite/#oci-proxy) and
+> [Container Runtime Integration](/docs/reference/satellite/#container-runtime-integration)
 > for the current options.
 
 Deploying Kubernetes at the edge introduces architectural challenges not seen in centralized datacenters. Edge nodes often run with intermittent, low-bandwidth, or metered connectivity. At scale, relying on a centralized registry over WAN becomes a fragile single point of failure.

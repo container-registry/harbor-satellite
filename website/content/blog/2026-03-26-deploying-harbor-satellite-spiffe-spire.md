@@ -16,8 +16,9 @@ This is a practical walkthrough to deploy Harbor Satellite with SPIFFE/SPIRE and
 > **Architecture update:** This walkthrough documents the March 2026 implementation.
 > Since v0.0.5, ADR-0009 replaced the embedded Zot registry with ORAS OCI layout storage,
 > so the satellite no longer serves images on `localhost:5050`. Steps 1 to 5 still set up
-> and sync the satellite; the `5050` checks and the air-gap pull test need a BYO registry
-> now. See [Delivering Images to Workloads](/docs/installation/#delivering-images-to-workloads).
+> and sync the satellite. In 1.0 the `5050` checks and the air-gap pull test go through the
+> satellite's OCI proxy on `127.0.0.1:8585` instead. See
+> [OCI Proxy](/docs/reference/satellite/#oci-proxy).
 
 ## What you will achieve
 

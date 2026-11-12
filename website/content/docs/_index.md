@@ -1,61 +1,49 @@
 ---
-title: "Harbor Satellite"
+title: "Documentation"
 weight: 1
+description: "Harbor Satellite 1.0 documentation: installation, quickstarts, architecture, security model, configuration and API reference, operations and design records."
+source: "docs/README.md"
+aliases:
+  - "/docs/overview/"
 ---
 
-Harbor Satellite extends [Harbor](https://goharbor.io) container registry to edge computing environments. It automatically synchronizes OCI content from your central Harbor instance into a persistent local OCI layout or an external registry, with zero-trust identity, fleet management, and automatic credential rotation.
+## Get Started
 
-## What is Harbor Satellite?
+- [Installation](/docs/get-started/installation/): release artifacts, Ground Control with Helm, containers or binaries, satellites with containers or systemd
+- [Token quickstart](/docs/get-started/quickstart/token/): Ground Control and a satellite on one machine
+- [SPIFFE/SPIRE quickstarts](/docs/get-started/quickstart/spiffe/): join token, X.509 PoP and SSH PoP attestation
+- [k3s reference architecture](/docs/guides/k3s-reference-architecture/)
 
-Harbor Satellite is a registry fleet management and artifact distribution system. It has three components:
+## Concepts
 
-- **Harbor** - Your central container registry in the cloud, holding all your images
-- **Ground Control** - A management service that handles device onboarding, identity, and decides which images go to which edge locations
-- **Satellite** - A lightweight binary that runs at each edge location and automatically copies the OCI content it needs into a local ORAS OCI layout or a BYO registry
+- [Architecture](/docs/concepts/architecture/): desired state, the outbox and async plane, hot and cold paths, lifecycle, journal
+- [Security model](/docs/concepts/security/): trust boundaries, secrets, identity, authorization, hardening
 
-Together, these components let you manage container images across hundreds of edge locations from a single control plane.
+## Reference
 
-## Why Harbor Satellite?
+- [Satellite configuration](/docs/reference/satellite/): flags, environment variables, `config.json`
+- [Ground Control configuration](/docs/reference/ground-control/): environment variables, processes, CLI
+- [Ground Control API](/docs/reference/api/): every route and its authentication; the contract is [`spec/groundcontrol/openapi.yaml`](https://github.com/container-registry/harbor-satellite/blob/main/spec/groundcontrol/openapi.yaml)
+- [Event catalog](https://github.com/container-registry/harbor-satellite/tree/main/spec/events/v1): JSON Schema per webhook event kind
 
-Running containers at the edge creates three problems:
+## Operations
 
-**Reliability** - Edge locations have unreliable network connections. Satellite prepositions content in persistent local storage and resumes reconciliation when connectivity returns. BYO registry mode or experimental k3s/RKE2 direct delivery can make that content available to workloads today; transparent proxy serving is tracked in ADR-0009.
+- [Upgrading](/docs/operations/upgrading/), including the 1.0 upgrade notes
+- [Database](/docs/operations/database/): PostgreSQL versions, TLS, pools and roles, retention
+- [Backup and restore](/docs/operations/backup-and-restore/)
+- [TLS](/docs/operations/tls/)
+- [Monitoring](/docs/operations/monitoring/): satellite `/healthz` and `/metrics`, Ground Control `/health`
+- [Troubleshooting](/docs/operations/troubleshooting/)
 
-**Security** - Traditional approaches require shipping registry credentials to every edge device. Harbor Satellite uses [SPIFFE/SPIRE](https://spiffe.io) for zero-trust identity. After a one-time bootstrap (join token, X.509 certificate or SSH host certificate), satellites get short-lived X.509 identities that SPIRE rotates automatically. Registry credentials (Harbor robot accounts - service accounts with scoped pull permissions) are created by Ground Control and delivered over mTLS (mutual TLS).
+## Guides
 
-**Fleet Management** - When you have dozens or hundreds of edge locations, manually managing which images go where becomes impossible. Ground Control lets you create groups of images and assign them to satellites. Change a group, and every satellite in that group automatically gets the update.
+- [Ground Control](/docs/guides/groundcontrol/)
+- [Audit logging](/docs/guides/audit-logging/)
+- [Keyless pulls and robot rotation](/docs/guides/keyless-pulls/)
+- [Ground Control as a Harbor 3 extension](/docs/guides/harbor3-extension/)
+- [Ground Control command migration](/docs/guides/groundcontrol-command-migration/)
 
-## Components
+## Design
 
-### Harbor (Central Registry)
-
-Your existing Harbor instance in the cloud. Harbor Satellite does not replace Harbor - it extends it. All your images, projects, and access controls stay in Harbor.
-
-### Ground Control (Management Plane)
-
-Runs alongside Harbor in the cloud. Ground Control:
-
-- Onboards satellites using SPIFFE/SPIRE identity
-- Creates robot account credentials in Harbor on behalf of satellites and refreshes their secrets
-- Manages groups (collections of images) and assigns them to satellites
-- Stores satellite state and config as OCI artifacts in Harbor
-- Receives heartbeats and status reports from satellites
-
-### Satellite (Edge Store)
-
-Runs at each edge location. A single binary that:
-
-- Connects to a local SPIRE agent to get its identity (X.509 SVID - a cryptographic identity document)
-- Registers with Ground Control over mTLS (mutual TLS - both sides verify each other's identity)
-- Receives robot account credentials for pulling from Harbor
-- Periodically fetches its desired state (which images to have)
-- Replicates OCI content from Harbor into a local ORAS OCI layout by default
-- Preserves remote-to-remote replication to an external registry in BYO mode
-- Optionally configures local container runtimes (containerd, Docker, CRI-O, Podman) to mirror through a BYO registry, or writes image tarballs into the k3s/RKE2 auto-import directory (experimental direct delivery)
-
-## Next Steps
-
-- [Overview](overview.md) - Deployment models, supported platforms, and how to choose the right setup
-- [Installation](installation.md) - Install Ground Control and Satellite (binary, Docker Compose, Helm)
-- [Architecture](architecture.md) - Understand the full flow of how these components work together
-- [Quickstart](quickstart.md) - Get Harbor Satellite running end-to-end with SPIFFE
+- [Architecture decision records](/docs/decisions/)
+- [Changelog](/docs/changelog/)

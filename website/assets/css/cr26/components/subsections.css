@@ -1,0 +1,119 @@
+@layer components {
+  /* "In this section" navigation list -- used on docs section landing pages
+     (see layouts/shortcodes/subsections.html). Each child page is its own
+     rounded card with a soft shadow, not a row in a shared divider list --
+     it reads as a small set of destinations to pick from, not a table. */
+  .subsections {
+    margin-block: var(--space-6) var(--space-8);
+  }
+
+  /* .subsections beats the prose ".prose ul/li" rules on specificity, so the
+     cards keep no markers even inside article prose. */
+  .subsections .subsections__list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .subsections .subsections__item {
+    margin: 0;
+    list-style: none;
+  }
+
+  .subsections .subsections__item .subsections__link {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    color: var(--color-ink);
+    text-decoration: none;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+    &:hover {
+      opacity: 1;
+      border-color: var(--color-teal);
+      box-shadow: var(--shadow-md);
+    }
+  }
+
+  .subsections__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    flex: 1;
+    min-width: 0;
+  }
+
+  .subsections__title {
+    font-weight: var(--weight-semibold);
+    color: var(--color-ink);
+    font-size: var(--text-lg);
+  }
+
+  .subsections__desc {
+    font-size: var(--text-sm);
+    color: var(--color-ink-muted);
+  }
+
+  .subsections__arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: var(--space-5);
+    height: var(--space-5);
+    color: var(--color-teal);
+
+    & svg {
+      width: 100%;
+      height: 100%;
+    }
+  }
+
+  /* Descendants of a card. The card is the destination you pick; everything below it
+     is listed as a plain indented tree, because nesting cards inside cards turns a
+     table of contents into a wall of boxes. The rule is repeated for the nested case
+     so depth 3 and beyond keep the same treatment. */
+  .subsections .subsections__children {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: var(--space-2) 0 0;
+    padding-inline-start: var(--space-5);
+    list-style: none;
+    border-inline-start: 1px solid var(--color-border);
+  }
+
+  .subsections .subsections__children .subsections__children {
+    margin-block-start: var(--space-1);
+  }
+
+  .subsections .subsections__child-item {
+    margin: 0;
+    list-style: none;
+  }
+
+  /* Three classes on purpose, like .subsections__link above: prose.css nests
+     `& a:not(.button)` inside .prose, which resolves to .prose a:not(.button) at
+     specificity 0,2,1 and would otherwise paint these entries link-teal. Same
+     layer, so specificity is what decides. */
+  .subsections .subsections__children .subsections__child {
+    display: block;
+    padding-block: var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--color-ink-muted);
+    text-decoration: none;
+
+    &:hover {
+      opacity: 1;
+      color: var(--color-teal);
+    }
+  }
+}

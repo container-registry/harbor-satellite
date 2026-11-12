@@ -1,11 +1,27 @@
 {{ $current := . }}
-{{ with .Site.GetPage "section" "docs" }}
+{{ with site.GetPage "/docs" }}
+{{ $home := . }}
 <div class="docs-nav__section">
   <a href="{{ .RelPermalink }}" class="docs-nav__link docs-nav__link--section{{ if eq $current.RelPermalink .RelPermalink }} docs-nav__link--active{{ end }}">{{ .Title }}</a>
-  <div class="docs-nav__children">
-    {{ range .Pages.ByWeight }}
-    <a href="{{ .RelPermalink }}" class="docs-nav__link{{ if eq $current.RelPermalink .RelPermalink }} docs-nav__link--active{{ end }}"{{ if eq $current.RelPermalink .RelPermalink }} aria-current="page"{{ end }}>{{ .Title }}</a>
-    {{ end }}
-  </div>
 </div>
+{{ range .Pages.ByWeight }}
+  {{ $exact := eq .RelPermalink $current.RelPermalink }}
+  {{ if .IsSection }}
+  <div class="docs-nav__section" x-data="{ expanded: {{ or (.IsAncestor $current) $exact }} }">
+    <div class="docs-nav__header">
+      <a href="{{ .RelPermalink }}" class="docs-nav__link docs-nav__link--section{{ if $exact }} docs-nav__link--active{{ end }}"{{ if $exact }} aria-current="page"{{ end }}>{{ .Title }}</a>
+      <button class="docs-nav__toggle" type="button" @click="expanded = !expanded" :aria-expanded="expanded.toString()" aria-label="Toggle {{ .Title }}">
+        <svg class="docs-nav__chevron" :class="expanded && 'docs-nav__chevron--open'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+    </div>
+    <div class="docs-nav__children" x-show="expanded" x-collapse>
+      {{ range .Pages.ByWeight }}{{ partial "docs/sidebar-node.html" (dict "node" . "current" $current) }}{{ end }}
+    </div>
+  </div>
+  {{ else }}
+  <div class="docs-nav__section">
+    <a href="{{ .RelPermalink }}" class="docs-nav__link docs-nav__link--section{{ if $exact }} docs-nav__link--active{{ end }}"{{ if $exact }} aria-current="page"{{ end }}>{{ .Title }}</a>
+  </div>
+  {{ end }}
+{{ end }}
 {{ end }}

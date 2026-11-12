@@ -1,0 +1,35 @@
+{{- /* Vendored from container-registry.com docs/sidebar-node.html. Context: dict { node, current }. */ -}}
+{{- $node := .node -}}
+{{- $current := .current -}}
+{{- $exact := eq $node.RelPermalink $current.RelPermalink -}}
+{{- if $node.IsSection }}
+<div class="docs-nav__subsection" x-data="{ open: {{ or ($node.IsAncestor $current) $exact }} }">
+  <div class="docs-nav__header">
+    <a href="{{ $node.RelPermalink }}"
+       class="docs-nav__link docs-nav__link--subsection{{ if $exact }} docs-nav__link--active{{ end }}"
+       {{ if $exact }}x-init="$nextTick(() => $el.scrollIntoView({ block: 'nearest', behavior: 'instant' }))"{{ end }}>
+      {{ $node.Title }}
+    </a>
+    <button class="docs-nav__toggle"
+            @click="open = !open"
+            :aria-expanded="open.toString()"
+            aria-label="Toggle {{ $node.Title }}">
+      <svg class="docs-nav__chevron" :class="open && 'docs-nav__chevron--open'"
+           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="m9 18 6-6-6-6"/>
+      </svg>
+    </button>
+  </div>
+  <div class="docs-nav__children" x-show="open" x-collapse>
+    {{- range $node.Pages.ByWeight }}
+    {{ partial "docs/sidebar-node.html" (dict "node" . "current" $current) }}
+    {{- end }}
+  </div>
+</div>
+{{- else }}
+<a href="{{ $node.RelPermalink }}"
+   class="docs-nav__link{{ if $exact }} docs-nav__link--active{{ end }}"
+   {{ if $exact }}x-init="$nextTick(() => $el.scrollIntoView({ block: 'nearest', behavior: 'instant' }))"{{ end }}>
+  {{ $node.Title }}
+</a>
+{{- end }}

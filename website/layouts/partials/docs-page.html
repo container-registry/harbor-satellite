@@ -10,16 +10,21 @@
         Navigation
       </button>
       <nav class="docs-breadcrumbs" aria-label="Breadcrumb">
-        {{ if not .IsSection }}
-        {{ with .Site.GetPage "section" "docs" }}<a href="{{ .RelPermalink }}">Docs</a>{{ end }}
+        {{ range .Ancestors.Reverse }}{{ if hasPrefix .RelPermalink "/docs/" }}
+        <a href="{{ .RelPermalink }}">{{ if eq .RelPermalink "/docs/" }}Docs{{ else }}{{ .Title }}{{ end }}</a>
         <span class="docs-breadcrumbs__separator" aria-hidden="true">›</span>
-        {{ end }}
+        {{ end }}{{ end }}
         <span class="docs-breadcrumbs__current" aria-current="page">{{ .Title }}</span>
       </nav>
       <div class="prose prose--docs">
         <h1>{{ .Title }}</h1>
+        {{ with .Params.status }}<p class="docs-status">Status: <strong>{{ . }}</strong>{{ with $.Params.date }} &middot; {{ . }}{{ end }}</p>{{ end }}
         {{ .Content }}
+        {{ if and .IsSection (ne .RelPermalink "/docs/") }}{{ partial "docs/subsections.html" . }}{{ end }}
       </div>
+      {{ with .Params.source }}
+      <p class="docs-source"><a href="{{ site.Params.githubRepo }}/blob/main/{{ . }}" target="_blank" rel="noopener">Edit this page on GitHub</a></p>
+      {{ end }}
     </article>
 
     {{ with .TableOfContents }}

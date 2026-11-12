@@ -1,0 +1,12 @@
+{{- /* Vendored from container-registry.com docs/subsection-children.html. Context: a section page. */ -}}
+{{- $children := .Pages.ByWeight -}}
+{{- with $children }}
+<ul class="subsections__children">
+  {{- range . }}
+  <li class="subsections__child-item">
+    <a class="subsections__child" href="{{ .RelPermalink }}">{{ .Title }}</a>
+    {{- if .IsSection }}{{ partial "docs/subsection-children.html" . }}{{ end }}
+  </li>
+  {{- end }}
+</ul>
+{{- end -}}

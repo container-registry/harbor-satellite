@@ -1,0 +1,18 @@
+{{- with .Pages.ByWeight }}
+<nav class="subsections" aria-label="In this section">
+  <ul class="subsections__list">
+    {{- range . }}
+    <li class="subsections__item">
+      <a class="subsections__link" href="{{ .RelPermalink }}">
+        <span class="subsections__body">
+          <span class="subsections__title">{{ .Title }}</span>
+          {{- with .Description }}<span class="subsections__desc">{{ . }}</span>{{ end }}
+        </span>
+        <span class="subsections__arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></span>
+      </a>
+      {{- if .IsSection }}{{ partial "docs/subsection-children.html" . }}{{ end }}
+    </li>
+    {{- end }}
+  </ul>
+</nav>
+{{- end -}}
