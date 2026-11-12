@@ -2,6 +2,7 @@ package async
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 
@@ -44,7 +45,7 @@ func (f *RegistryFollower) Run(ctx context.Context) error {
 		}
 		return nil
 	})
-	if ctx.Err() != nil {
+	if errors.Is(err, context.Canceled) {
 		return nil
 	}
 	return err
