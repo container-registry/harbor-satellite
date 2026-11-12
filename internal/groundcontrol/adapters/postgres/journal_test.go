@@ -8,14 +8,12 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
 // A journaled heartbeat's ingest costs BEGIN, OpenJournalCursor,
 // AdvanceJournalCursor and COMMIT (A99).
 func TestRepository_JournalIngestTakesFourStatementsAndEmitsOnce(t *testing.T) {
-	pending.Plan(t, "6.5", "the postgres journal repository is a stub")
 	db := dbtest.New(t)
 	ctx := context.Background()
 	sat, err := database.New(db.DB).CreateSatellite(ctx, "edge-01")

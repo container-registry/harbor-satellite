@@ -16,11 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	pendingHotPath   = "the satellite session path answers 501; every beat verifies the robot secret in 8 statements"
-	pendingInventory = "every heartbeat rewrites the cached images"
-)
-
 // manualClock is moved by the test instead of sleeping.
 type manualClock struct {
 	mu sync.Mutex
@@ -155,7 +150,6 @@ func TestSync_RobotBasicBeatGetsSessionOnce(t *testing.T) {
 }
 
 func TestSync_MalformedJournalAnswers200WithJournalError(t *testing.T) {
-	pending.Plan(t, "6.5", pendingHotPath)
 	h := newHotPathHarness(t)
 	h.edgeSetup()
 	_, token := h.onboardWithSession("edge-01")
@@ -232,7 +226,6 @@ func TestBudgetHeartbeat_AtMostOneStatementPerBeat(t *testing.T) {
 }
 
 func TestBudgetHeartbeat_JournaledBeatCostsAtMostFour(t *testing.T) {
-	pending.Plan(t, "6.5", pendingHotPath)
 	splitLimits(t, "100/1m", "100/1s")
 	h := newHotPathHarness(t)
 	h.edgeSetup()
@@ -256,7 +249,8 @@ func TestBudgetHeartbeat_JournaledBeatCostsAtMostFour(t *testing.T) {
 }
 
 func TestBudgetHeartbeat_JournaledRenewingBeatCostsAtMostFive(t *testing.T) {
-	pending.Plan(t, "6.5", "the renewal half of 4.1 is in; the journaled beat needs JournalService.Ingest (6.5)")
+	pending.Plan(t, "6.5", "measures 6: the clock advance expires the session cache, so GetSatelliteAuthByTokenHash adds to "+
+		"BEGIN, OpenJournalCursor, AdvanceJournalCursor, COMMIT and RenewSatelliteSession; ADR-0015 and ADR-0016 budget 5")
 	splitLimits(t, "100/1m", "100/1s")
 	h := newHotPathHarness(t)
 	h.edgeSetup()

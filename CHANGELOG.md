@@ -39,6 +39,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - Ground Control: OIDC operator login (browser and device flow, `groundcontrol auth login --oidc`), group to role mapping, password login limited to the bootstrap admin.
 - Ground Control: Harbor robot rotation before expiry, delivered with heartbeats (`ROBOT_ROTATION_ENABLED`).
 - Ground Control: signed CloudEvents webhooks with an event catalog in `spec/events/v1` (`WEBHOOKS_ENABLED`).
+- Ground Control: edge journal ingest. Heartbeats acknowledge journal uploads, and accepted records become log-only `Edge*` outbox events, once per record.
 - Ground Control: one `groundcontrol` executable for server and client.
 
 ### Fixed
@@ -60,7 +61,6 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 
 ### Known Limitations
 
-- Ground Control does not ingest the edge journal yet. A heartbeat that carries a journal upload is answered with `500`, and the satellite sends one as soon as its journal has records, so heartbeats from satellites that replicated something fail until journal ingest lands.
 - Ground Control has no Prometheus endpoint.
 - PostgreSQL 19 is the decided minimum (ADR-0020), but the version is not checked yet, and tests run on PostgreSQL 17.
 - Keyless pulls through Harbor 3 workload identity federation are not available; `registry_auth.mode: workload_identity` is refused.

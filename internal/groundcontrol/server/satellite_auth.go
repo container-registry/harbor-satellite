@@ -168,6 +168,9 @@ func (s *Server) syncWithAuth(w http.ResponseWriter, r *http.Request) {
 		handleFleetError(w, err, nil)
 		return
 	}
+	if res.JournalErr != nil {
+		log.Printf("heartbeat of %s answered without a journal ack: %v", auth.SatelliteName, res.JournalErr)
+	}
 	WriteJSONResponse(w, http.StatusOK, syncResponse(res))
 }
 

@@ -125,7 +125,7 @@ System admin. Available with `WEBHOOKS_ENABLED=true`.
 
 Each delivery is a `POST` of a CloudEvents 1.0 JSON document (`application/cloudevents+json`) with headers `X-Ground-Control-Timestamp` (Unix seconds), `X-Ground-Control-Signature-256` (`sha256=` and the hex HMAC-SHA256 of `<timestamp>.<body>` with the subscription secret) and `Idempotency-Key` (the event ID). Delivery is at least once and in order per subscription. The event `type` is `io.harborsatellite.groundcontrol.<Kind>`. Payload schemas per kind are in [`spec/events/v1`](../../spec/events/v1).
 
-Kinds emitted by Ground Control: `SatelliteCreated`, `SatelliteChanged`, `SatelliteDeleted`, `SatelliteStale`, `SatelliteRevoked`, `SatelliteUnrevoked`, `GroupChanged`, `GroupDeleted`, `ConfigChanged`, `ConfigDeleted`, `AssignmentChanged`, `PolicyChanged`, `RobotRotated`. The `Edge*` kinds in the catalog are reserved for journal records, which this release does not ingest yet.
+Kinds emitted by Ground Control: `SatelliteCreated`, `SatelliteChanged`, `SatelliteDeleted`, `SatelliteStale`, `SatelliteRevoked`, `SatelliteUnrevoked`, `GroupChanged`, `GroupDeleted`, `ConfigChanged`, `ConfigDeleted`, `AssignmentChanged`, `PolicyChanged`, `RobotRotated`. The `Edge*` kinds (`EdgeReplicated`, `EdgeDeleted`, `EdgeArtifactFailed`, `EdgePullThrough`, `EdgeCRIConfigured`, `EdgeJournalGap`) come from satellite journal records and are log-only.
 
 ## Operations and SPIRE
 

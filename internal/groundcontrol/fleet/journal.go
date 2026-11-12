@@ -1,13 +1,13 @@
 package fleet
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 )
 
 // MaxJournalRecords bounds one upload, as the sync contract does.
@@ -123,23 +123,35 @@ type EdgeJournalGapPayload struct {
 // schema versions only add fields. An unknown type or action, or a payload
 // that is not its type's JSON object, is ErrInvalid.
 func NewEdgeEvent(name string, epoch int64, record JournalRecord) (EdgeEvent, error) {
-	bad := func(format string, args ...any) (EdgeEvent, error) {
-		return EdgeEvent{}, fmt.Errorf("%w: journal record %d: %s", ErrInvalid, record.Seq, fmt.Sprintf(format, args...))
+	event, reason := mapRecord(name, epoch, record)
+	if reason != "" {
+		return EdgeEvent{}, fmt.Errorf("%w: journal record %d: %s", ErrInvalid, record.Seq, reason)
+	}
+	return event, nil
+}
+
+// mapRecord is NewEdgeEvent with the reason it rejects a record instead of
+// an error, so Ingest can put the reason into a gap's cause.
+func mapRecord(name string, epoch int64, record JournalRecord) (EdgeEvent, string) {
+	// PostgreSQL's jsonb refuses \u0000, and an outbox insert that fails
+	// would fail the whole upload again on every retry.
+	if bytes.Contains(record.Payload, []byte(`\u0000`)) {
+		return EdgeEvent{}, "payload holds a NUL character"
 	}
 	var fields map[string]any
 	if err := json.Unmarshal(record.Payload, &fields); err != nil || fields == nil {
-		return bad("payload is not a JSON object")
+		return EdgeEvent{}, "payload is not a JSON object"
 	}
 	var kind EventKind
 	switch record.Type {
 	case edgejournal.RecordReplication:
 		var r edgejournal.Replication
 		if err := json.Unmarshal(record.Payload, &r); err != nil {
-			return bad("replication payload: %v", err)
+			return EdgeEvent{}, fmt.Sprintf("replication payload: %v", err)
 		}
 		switch {
 		case r.Action != edgejournal.ActionReplicated && r.Action != edgejournal.ActionDeleted:
-			return bad("replication action %q", r.Action)
+			return EdgeEvent{}, fmt.Sprintf("replication action %q", r.Action)
 		case r.Error != "":
 			kind = EventEdgeArtifactFailed
 		case r.Action == edgejournal.ActionDeleted:
@@ -150,29 +162,38 @@ func NewEdgeEvent(name string, epoch int64, record JournalRecord) (EdgeEvent, er
 	case edgejournal.RecordCRI:
 		var c edgejournal.CRI
 		if err := json.Unmarshal(record.Payload, &c); err != nil {
-			return bad("cri payload: %v", err)
+			return EdgeEvent{}, fmt.Sprintf("cri payload: %v", err)
 		}
 		kind = EventEdgeCRIConfigured
 	case edgejournal.RecordPullThrough:
 		var p edgejournal.PullThrough
 		if err := json.Unmarshal(record.Payload, &p); err != nil {
-			return bad("pull_through payload: %v", err)
+			return EdgeEvent{}, fmt.Sprintf("pull_through payload: %v", err)
 		}
 		kind = EventEdgePullThrough
 	case edgejournal.RecordDropped:
 		var d edgejournal.Dropped
 		if err := json.Unmarshal(record.Payload, &d); err != nil || d.Count < 0 {
-			return bad("dropped payload")
+			return EdgeEvent{}, "dropped payload"
 		}
 		return EdgeEvent{Kind: EventEdgeJournalGap, Payload: EdgeJournalGapPayload{
 			Name: name, Epoch: epoch, From: record.Seq, Through: record.Seq, Cause: GapDropped, Dropped: d.Count,
-		}}, nil
+		}}, ""
 	default:
-		return bad("unknown record type %q", record.Type)
+		return EdgeEvent{}, fmt.Sprintf("unknown record type %q", record.Type)
 	}
 	// Unknown fields pass through: schema versions only add fields.
 	fields["name"], fields["epoch"], fields["seq"], fields["recorded_at"] = name, epoch, record.Seq, record.RecordedAt
-	return EdgeEvent{Kind: kind, Payload: fields}, nil
+	return EdgeEvent{Kind: kind, Payload: fields}, ""
+}
+
+// EdgeKinds are the kinds of edge events, the only ones JournalRepo.Advance
+// appends.
+func EdgeKinds() []EventKind {
+	return []EventKind{
+		EventEdgeReplicated, EventEdgeDeleted, EventEdgeArtifactFailed,
+		EventEdgePullThrough, EventEdgeCRIConfigured, EventEdgeJournalGap,
+	}
 }
 
 // JournalRepo keeps one journal cursor per satellite (plan item 6.5).
@@ -236,5 +257,77 @@ func NewJournalService(repo Repository) (*JournalService, error) {
 // failure of the repository is returned as an error; the heartbeat then
 // answers without a journal object.
 func (s *JournalService) Ingest(ctx context.Context, satellite SatelliteID, name string, upload JournalUpload) (JournalAck, error) {
-	return JournalAck{}, notimpl.Err("6.5 journal ingest")
+	if reason := envelopeProblem(upload); reason != "" {
+		return JournalAck{Epoch: upload.Epoch, AckedSeq: upload.AfterSeq, Error: reason}, nil
+	}
+	var ack JournalAck
+	err := s.repo.WithTx(ctx, func(tx Tx) error {
+		cursor, err := tx.Journal().OpenCursor(ctx, satellite, upload.Epoch)
+		if err != nil {
+			return fmt.Errorf("open journal cursor: %w", err)
+		}
+		if cursor.Epoch > upload.Epoch {
+			ack = JournalAck{Epoch: cursor.Epoch}
+			return nil
+		}
+		base := max(cursor.AckedSeq, upload.AfterSeq)
+		acked := base
+		if n := len(upload.Records); n > 0 {
+			acked = max(base, upload.Records[n-1].Seq)
+		}
+		ack = JournalAck{Epoch: cursor.Epoch, AckedSeq: acked}
+		if acked == cursor.AckedSeq {
+			return nil
+		}
+		events := make([]EdgeEvent, 0, len(upload.Records)+1)
+		if base > cursor.AckedSeq {
+			cause := GapCursorBehind
+			if cursor.Fresh {
+				cause = GapNewEpoch
+			}
+			events = append(events, gapEvent(name, cursor.Epoch, cursor.AckedSeq+1, base, cause))
+		}
+		for _, record := range upload.Records {
+			if record.Seq <= base {
+				continue
+			}
+			event, reason := mapRecord(name, cursor.Epoch, record)
+			if reason != "" {
+				event = gapEvent(name, cursor.Epoch, record.Seq, record.Seq, GapRejectedPrefix+reason)
+			}
+			events = append(events, event)
+		}
+		if err := tx.Journal().Advance(ctx, satellite, cursor.Epoch, acked, events); err != nil {
+			return fmt.Errorf("advance journal cursor: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return JournalAck{}, fmt.Errorf("journal of satellite %s: %w", name, err)
+	}
+	return ack, nil
+}
+
+func gapEvent(name string, epoch, from, through int64, cause string) EdgeEvent {
+	return EdgeEvent{Kind: EventEdgeJournalGap, Payload: EdgeJournalGapPayload{
+		Name: name, Epoch: epoch, From: from, Through: through, Cause: cause,
+	}}
+}
+
+// envelopeProblem says what makes an upload malformed, or "".
+func envelopeProblem(upload JournalUpload) string {
+	switch {
+	case upload.Epoch < 1:
+		return fmt.Sprintf("journal epoch %d is below 1", upload.Epoch)
+	case upload.AfterSeq < 0:
+		return fmt.Sprintf("journal after_seq %d is negative", upload.AfterSeq)
+	case len(upload.Records) > MaxJournalRecords:
+		return fmt.Sprintf("journal upload has %d records, at most %d", len(upload.Records), MaxJournalRecords)
+	}
+	for i, record := range upload.Records {
+		if want := upload.AfterSeq + int64(i) + 1; record.Seq != want {
+			return fmt.Sprintf("journal record %d has seq %d, want %d: records run on from after_seq one by one", i, record.Seq, want)
+		}
+	}
+	return ""
 }

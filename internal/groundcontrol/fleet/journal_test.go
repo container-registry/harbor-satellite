@@ -10,14 +10,12 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
 const (
-	pendingJournal       = "journal ingest is a stub; the sync handler ignores uploaded journals"
-	journalEpoch   int64 = 1760529600000
-	satelliteName        = "edge-01"
+	journalEpoch  int64 = 1760529600000
+	satelliteName       = "edge-01"
 )
 
 func journalRecord(t *testing.T, seq int64, typ edgejournal.RecordType, payload any) fleet.JournalRecord {
@@ -104,7 +102,6 @@ func TestJournalService_Ingest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			pending.Plan(t, "6.5", pendingJournal)
 			w := newWorld()
 			cursor := tc.cursor
 			cursor.Epoch = journalEpoch
@@ -143,7 +140,6 @@ func TestJournalService_Ingest(t *testing.T) {
 // A128: a record Ground Control cannot map is acked and reported, so one
 // record from a newer satellite never blocks the journal.
 func TestJournalService_IngestReportsARecordItCannotMapAsAGap(t *testing.T) {
-	pending.Plan(t, "6.5", pendingJournal)
 	w := newWorld()
 	w.repo.Journal.Cursor = fleet.JournalCursor{Epoch: journalEpoch}
 	records := replicated(t, 1, 2, 3)
@@ -164,6 +160,26 @@ func TestJournalService_IngestReportsARecordItCannotMapAsAGap(t *testing.T) {
 	require.EqualValues(t, 3, seqOf(t, events[2]))
 }
 
+// PostgreSQL's jsonb refuses \u0000; passed through, one such record would
+// fail the outbox insert of every retry and wedge the journal.
+func TestJournalService_IngestReportsANULPayloadAsAGap(t *testing.T) {
+	w := newWorld()
+	w.repo.Journal.Cursor = fleet.JournalCursor{Epoch: journalEpoch}
+	records := replicated(t, 1)
+	records[0].Payload = json.RawMessage(`{"schema_version":"1","action":"replicated","group":"g\u0000","repository":"r","digest":"sha256:aaa"}`)
+
+	ack, err := newJournalService(t, w).Ingest(context.Background(), 7, satelliteName,
+		fleet.JournalUpload{Epoch: journalEpoch, Records: records})
+
+	require.NoError(t, err)
+	require.Equal(t, fleet.JournalAck{Epoch: journalEpoch, AckedSeq: 1}, ack)
+	events := w.repo.Journal.Advanced()
+	require.Len(t, events, 1)
+	gap := gapPayload(t, events[0])
+	require.Equal(t, int64(1), gap.From)
+	require.True(t, strings.HasPrefix(gap.Cause, fleet.GapRejectedPrefix), gap.Cause)
+}
+
 // Epochs are time-ordered (A78): a delayed upload of a journal the
 // satellite has replaced emits nothing and learns the newer epoch.
 func TestJournalService_IngestAnswersAnOlderEpochWithTheCursors(t *testing.T) {
@@ -172,7 +188,6 @@ func TestJournalService_IngestAnswersAnOlderEpochWithTheCursors(t *testing.T) {
 		"fresh newer epoch":     {Epoch: journalEpoch + 60_000, AckedSeq: 0},
 	} {
 		t.Run(name, func(t *testing.T) {
-			pending.Plan(t, "6.5", pendingJournal)
 			w := newWorld()
 			w.repo.Journal.Cursor = stored
 
@@ -221,7 +236,6 @@ func TestJournalService_IngestRejectsAMalformedEnvelope(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			pending.Plan(t, "6.5", pendingJournal)
 			w := newWorld()
 			upload := tc.upload(t)
 
@@ -236,7 +250,6 @@ func TestJournalService_IngestRejectsAMalformedEnvelope(t *testing.T) {
 }
 
 func TestJournalService_IngestRollsBackWhenAdvanceFails(t *testing.T) {
-	pending.Plan(t, "6.5", pendingJournal)
 	w := newWorld()
 	w.repo.Journal.Cursor = fleet.JournalCursor{Epoch: journalEpoch}
 	boom := errors.New("insert failed")
@@ -251,7 +264,6 @@ func TestJournalService_IngestRollsBackWhenAdvanceFails(t *testing.T) {
 }
 
 func TestNewJournalService_NeedsARepository(t *testing.T) {
-	pending.Plan(t, "6.5", pendingJournal)
 	_, err := fleet.NewJournalService(nil)
 	require.ErrorIs(t, err, fleet.ErrInvalid)
 }

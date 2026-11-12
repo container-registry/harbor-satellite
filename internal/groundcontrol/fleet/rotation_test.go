@@ -2,6 +2,7 @@ package fleet_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -107,4 +108,37 @@ func TestSatelliteService_DeleteTombstoneIncludesUnpromotedSuccessor(t *testing.
 	payload, ok := events[0].Payload.(fleet.SatelliteDeletedPayload)
 	require.True(t, ok, "%T", events[0].Payload)
 	require.Equal(t, []int64{42, 43}, payload.RobotHarborIDs)
+}
+
+// A journal the repository cannot ingest never fails the beat: the
+// renewed session, the pending rotation and the events still arrive, and
+// the answer carries no journal object, so the satellite resends the batch
+// instead of counting a rejection.
+func TestHeartbeatService_JournalFailureKeepsTheRestOfTheBeat(t *testing.T) {
+	for _, method := range []string{"Journal.OpenCursor", "Journal.Advance"} {
+		t.Run(method, func(t *testing.T) {
+			w := newWorld()
+			w.repo.Journal.Cursor = fleet.JournalCursor{Epoch: journalEpoch}
+			boom := errors.New("database down")
+			w.rec.FailOn(method, boom)
+			w.sessions.Renewed = true
+			w.sessions.Grant = fleet.SessionGrant{Token: "hss_next", ExpiresAt: now.Add(720 * time.Hour)}
+			auth := sessionAuth()
+			auth.RobotExpiresAt = now.Add(50 * time.Second)
+			cmd := plainBeat(auth)
+			cmd.CredentialsGeneration = 1
+			cmd.Journal = &fleet.JournalUpload{Epoch: journalEpoch, Records: replicated(t, 1, 2)}
+
+			res, err := w.rotatingServices(t).Heartbeats.Beat(context.Background(), cmd)
+
+			require.NoError(t, err)
+			require.Nil(t, res.Journal, "no ack error, which the satellite would count as a rejection")
+			require.ErrorIs(t, res.JournalErr, boom)
+			require.Len(t, w.beats.Beats(), 1)
+			require.NotNil(t, res.Session)
+			require.Equal(t, "hss_next", res.Session.Token)
+			require.NotNil(t, res.Credentials)
+			require.Equal(t, []string{"refresh_credentials"}, res.Events)
+		})
+	}
 }

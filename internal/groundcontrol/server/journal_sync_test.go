@@ -40,7 +40,6 @@ func (h *gcHarness) edgeEvents() int {
 }
 
 func TestSync_IngestsJournalOnceAndAcks(t *testing.T) {
-	pending.Plan(t, "6.5", "the sync handler ignores the uploaded journal")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.syncGroup("edge-group", "library/alpine")
@@ -75,7 +74,6 @@ func TestSync_IngestsJournalOnceAndAcks(t *testing.T) {
 // A125: a malformed journal is answered in the response and never fails
 // the heartbeat.
 func TestSync_MalformedJournalKeepsTheHeartbeat(t *testing.T) {
-	pending.Plan(t, "6.5", "the sync handler ignores the uploaded journal")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.syncGroup("edge-group", "library/alpine")
@@ -114,4 +112,34 @@ func TestSync_RejectsAnOversizedBody(t *testing.T) {
 	big := heartbeatRequest("edge-01")
 	big.Activity = strings.Repeat("x", 8192)
 	h.mustDo(http.MethodPost, "/satellites/sync", big, auth, http.StatusRequestEntityTooLarge)
+}
+
+// A record PostgreSQL's jsonb cannot store is acked as a gap instead of
+// failing the outbox insert of every retry.
+func TestSync_NULPayloadIsAckedAsAGap(t *testing.T) {
+	h := newGCHarness(t)
+	h.createConfig("edge-config")
+	h.syncGroup("edge-group", "library/alpine")
+	creds := h.onboard("edge-01", "edge-config", "edge-group")
+	beat := heartbeatRequest("edge-01")
+	records := replicationRecords(t, 1, 2)
+	records[0].Payload = json.RawMessage(`{"schema_version":"1","action":"replicated","group":"g\u0000","repository":"r","digest":"sha256:aaa"}`)
+	beat.Journal = JournalUpload{Epoch: journalEpoch, Records: records}
+
+	var resp SatelliteSyncResponse
+	h.mustDo(http.MethodPost, "/satellites/sync", beat, basicAuth(creds.Username, creds.Password), http.StatusOK).decode(t, &resp)
+
+	require.NotNil(t, resp.Journal)
+	require.Equal(t, JournalAck{Epoch: journalEpoch, AckedSeq: 2}, *resp.Journal)
+	var kinds []string
+	rows, err := h.db.QueryContext(context.Background(), "SELECT kind FROM event_outbox WHERE aggregate_type = 'edge' ORDER BY id")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, rows.Close()) }()
+	for rows.Next() {
+		var kind string
+		require.NoError(t, rows.Scan(&kind))
+		kinds = append(kinds, kind)
+	}
+	require.NoError(t, rows.Err())
+	require.Equal(t, []string{"EdgeJournalGap", "EdgeReplicated"}, kinds)
 }

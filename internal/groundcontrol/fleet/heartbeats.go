@@ -2,7 +2,6 @@ package fleet
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -67,8 +66,13 @@ type HeartbeatCmd struct {
 type HeartbeatResult struct {
 	Events             []string // "refresh_credentials"
 	InventoryRequested bool
-	Journal            *JournalAck // set whenever cmd.Journal is set, error included
-	Session            *SessionGrant
+	// Journal answers cmd.Journal, with Error for a malformed upload. It
+	// is nil when the satellite sent none or when ingesting failed.
+	Journal *JournalAck
+	// JournalErr is why ingesting cmd.Journal failed, for the caller to
+	// log; the beat itself still succeeds.
+	JournalErr error
+	Session    *SessionGrant
 	// Credentials is a pending rotation, delivered only to session and SVID
 	// beats whose CredentialsGeneration is older (plan item 8.4): a robot
 	// Basic satellite would switch to a robot Ground Control does not yet
@@ -91,9 +95,11 @@ type HeartbeatService struct {
 // The interval is recorded normalized ("@every HHhMMmSSs"), the only form
 // MarkStaleSatellites reads.
 // It records the heartbeat in the sink first and only then calls
-// JournalService.Ingest, so a malformed journal never makes a satellite
-// stale: an ErrInvalid from Ingest becomes Journal with Error set, the
-// cursor unchanged, and the heartbeat still answers 200.
+// JournalService.Ingest, so a journal never makes a satellite stale nor
+// fails the beat: a malformed upload is answered in Journal with Error set
+// and the cursor unchanged, and a failing repository leaves Journal nil
+// and sets JournalErr. Either way the session renewal, a pending rotation
+// and the events still reach the satellite.
 //
 // Statements:
 //   - none for a plain beat (cached auth, buffered write);
@@ -156,14 +162,15 @@ func (s *HeartbeatService) Beat(ctx context.Context, cmd HeartbeatCmd) (Heartbea
 	}
 
 	if cmd.Journal != nil {
-		ack, err := s.journal.Ingest(ctx, auth.Satellite, auth.SatelliteName, *cmd.Journal)
-		switch {
-		case errors.Is(err, ErrInvalid):
-			ack = JournalAck{Epoch: cmd.Journal.Epoch, Error: err.Error()}
-		case err != nil:
-			return HeartbeatResult{}, err
+		// Ingest answers a malformed upload in the ack. Its errors get no
+		// journal object rather than an ack error: the satellite drops a
+		// batch after three rejections, and a database outage must not
+		// cost it records (ADR-0015).
+		if ack, err := s.journal.Ingest(ctx, auth.Satellite, auth.SatelliteName, *cmd.Journal); err != nil {
+			res.JournalErr = err
+		} else {
+			res.Journal = &ack
 		}
-		res.Journal = &ack
 	}
 
 	if err := s.session(ctx, auth, &res); err != nil {

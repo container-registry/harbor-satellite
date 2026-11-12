@@ -3609,7 +3609,7 @@ components:
           x-go-name: Digest
     JournalUpload:
       type: object
-      title: JournalUpload carries edge journal records above the satellite's floor (plan item 6.5, not read yet).
+      title: JournalUpload carries edge journal records above the satellite's floor (plan item 6.5).
       required:
         - epoch
         - after_seq
@@ -3641,7 +3641,7 @@ components:
           x-go-name: Records
     JournalAck:
       type: object
-      title: JournalAck answers a journal upload; present whenever the request carried one.
+      title: JournalAck answers a journal upload; present whenever the request carried one, unless Ground Control failed to ingest it, and then the satellite resends the batch.
       required:
         - epoch
         - acked_seq

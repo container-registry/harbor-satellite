@@ -8,7 +8,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/shared/inventory"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -187,7 +186,6 @@ func TestHeartbeatService_RobotBeatWithoutSessionGetsOneOnce(t *testing.T) {
 }
 
 func TestHeartbeatService_JournalForwardsUploadAndReturnsAck(t *testing.T) {
-	pending.Plan(t, "6.5", pendingJournal)
 	w := newWorld()
 	w.repo.Journal.Cursor = fleet.JournalCursor{Epoch: journalEpoch}
 	cmd := plainBeat(sessionAuth())
@@ -203,7 +201,6 @@ func TestHeartbeatService_JournalForwardsUploadAndReturnsAck(t *testing.T) {
 }
 
 func TestHeartbeatService_MalformedJournalRecordsBeatAndReturnsAckError(t *testing.T) {
-	pending.Plan(t, "6.5", pendingJournal)
 	w := newWorld()
 	cmd := plainBeat(sessionAuth())
 	cmd.Journal = &fleet.JournalUpload{Epoch: 0, Records: replicated(t, 1)}
