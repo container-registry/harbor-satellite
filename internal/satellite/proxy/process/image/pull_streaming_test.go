@@ -19,7 +19,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/proxy/process/image"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/google/go-containerregistry/pkg/registry"
 	digest "github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
@@ -179,7 +178,6 @@ func getThroughProxy(url string) (int, []byte, error) {
 }
 
 func TestPullThrough_ManifestReturnsWhileLayerBlocked(t *testing.T) {
-	pending.Plan(t, "5.3", "a manifest miss copies the whole graph before the first byte")
 	upstream := newStreamingUpstream(t)
 	held := []byte("layer the upstream holds back")
 	upstream.hold(digest.FromBytes(held))
@@ -207,7 +205,6 @@ func TestPullThrough_ManifestReturnsWhileLayerBlocked(t *testing.T) {
 }
 
 func TestPullThrough_BlobCommitsOnlyVerified(t *testing.T) {
-	pending.Plan(t, "5.3", "blob misses are not streamed")
 	upstream := newStreamingUpstream(t)
 	layer := []byte("layer the upstream corrupts in transit")
 	_, layers := upstream.push(t, "team/app", layer)
@@ -222,7 +219,6 @@ func TestPullThrough_BlobCommitsOnlyVerified(t *testing.T) {
 }
 
 func TestPullThrough_TagsOnlyCompleteGraph(t *testing.T) {
-	pending.Plan(t, "5.3", "a manifest miss copies the whole graph before the first byte")
 	upstream := newStreamingUpstream(t)
 	held := []byte("layer the upstream holds back")
 	upstream.hold(digest.FromBytes(held))
@@ -246,7 +242,6 @@ func TestPullThrough_TagsOnlyCompleteGraph(t *testing.T) {
 }
 
 func TestPullThrough_DedupesFillsPerDigest(t *testing.T) {
-	pending.Plan(t, "5.3", "fills are deduplicated per repository and reference, not per digest (pull.go:73)")
 	upstream := newStreamingUpstream(t)
 	shared := []byte("layer shared by two repositories")
 	sharedDigest := digest.FromBytes(shared)

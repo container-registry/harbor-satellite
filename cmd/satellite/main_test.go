@@ -371,3 +371,30 @@ func TestMirrorFlags(t *testing.T) {
 		require.Equal(t, "[]", m.String())
 	})
 }
+
+func TestStreamingPullOptions(t *testing.T) {
+	cm := newTestConfigManager(t, &config.Config{AppConfig: config.AppConfig{HarborRegistryURL: "http://harbor.example.com", UseUnsecure: true}})
+	local, remote, _, err := proxyStores(cm, t.TempDir(), store.OCIStoreOptions{AtomicIndex: true})
+	require.NoError(t, err)
+
+	off, closeOff, err := streamingPullOptions(SatelliteOptions{ProxyMode: proxy.ModeProxy}, local, remote)
+	require.NoError(t, err)
+	closeOff()
+	require.False(t, off.Streaming)
+
+	replica, closeReplica, err := streamingPullOptions(SatelliteOptions{ProxyMode: proxy.ModeReplica, ProxyStreaming: true, ProxyPrefetchWorkers: 2}, local, remote)
+	require.NoError(t, err)
+	closeReplica()
+	require.False(t, replica.Streaming, "replica mode never fills from upstream")
+
+	on, closeOn, err := streamingPullOptions(SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyStreaming: true, ProxyPrefetchWorkers: 2}, local, remote)
+	require.NoError(t, err)
+	t.Cleanup(closeOn)
+	require.True(t, on.Streaming)
+	require.NotNil(t, on.Prefetcher)
+
+	byo, closeBYO, err := streamingPullOptions(SatelliteOptions{ProxyMode: proxy.ModeProxy, ProxyStreaming: true, ProxyPrefetchWorkers: 2}, remote, remote)
+	require.NoError(t, err)
+	closeBYO()
+	require.False(t, byo.Streaming, "a registry as local store cannot stream-fill")
+}

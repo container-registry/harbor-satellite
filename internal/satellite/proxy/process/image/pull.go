@@ -28,22 +28,15 @@ type pullHandler struct {
 	localStore   store.Store
 	remoteStore  store.Store
 	operations   singleflight.Group
+	filler       store.Filler
+	prefetcher   Prefetcher
 }
 
 // NewPull serves retained content from localStore and fills it from remoteStore
 // on a miss. The shared operation returns only an immutable descriptor; every
 // HTTP request opens and streams its own reader after the flight completes.
 func NewPull(lifecycleCtx context.Context, mode proxy.Mode, localStore, remoteStore store.Store) (proxy.HandlerFunc, error) {
-	if lifecycleCtx == nil {
-		return nil, errors.New("image.NewPull: lifecycle context is required")
-	}
-	handler := &pullHandler{
-		lifecycleCtx: lifecycleCtx,
-		mode:         mode,
-		localStore:   localStore,
-		remoteStore:  remoteStore,
-	}
-	return handler.handle, nil
+	return NewPullWithOptions(lifecycleCtx, mode, localStore, remoteStore, PullOptions{})
 }
 
 func (p *pullHandler) handle(request *proxy.Request) error {
@@ -70,6 +63,9 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	}
 
 	metadataOnly := request.Operation == proxy.CheckManifest || request.Operation == proxy.CheckBlob
+	if p.filler != nil && p.mode.AllowsUpstreamPull() && !metadataOnly {
+		return p.handleStreaming(request, artifact, resource, identifier)
+	}
 	key := pullKey(resource, artifact.Name, identifier)
 	if metadataOnly {
 		key += "\x00head"

@@ -19,6 +19,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
 	"github.com/container-registry/harbor-satellite/internal/satellite/identity"
+	"github.com/container-registry/harbor-satellite/internal/satellite/lane"
 	proxyhandler "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	proxymw "github.com/container-registry/harbor-satellite/internal/satellite/proxy/middleware"
 	proxyimage "github.com/container-registry/harbor-satellite/internal/satellite/proxy/process/image"
@@ -77,6 +78,8 @@ type SatelliteOptions struct {
 	StoreGCGrace           time.Duration
 	ProxyWriteTimeout      time.Duration
 	ProxyMaxConnections    int
+	ProxyStreaming         bool
+	ProxyPrefetchWorkers   int
 }
 
 func main() {
@@ -108,6 +111,8 @@ func main() {
 		StoreGCGrace:           envCfg.StoreGCGrace,
 		ProxyWriteTimeout:      envCfg.ProxyWriteTimeout,
 		ProxyMaxConnections:    envCfg.ProxyMaxConnections,
+		ProxyStreaming:         envCfg.ProxyStreaming,
+		ProxyPrefetchWorkers:   envCfg.ProxyPrefetchConcurrency,
 	}
 	_, opts.ProxyModeExplicit = os.LookupEnv("PROXY_MODE")
 	shutdownTimeout := envCfg.ShutdownTimeout
@@ -137,6 +142,8 @@ func main() {
 	flag.IntVar(&opts.ProxyPort, "proxy-port", opts.ProxyPort, "Local OCI registry proxy port")
 	flag.DurationVar(&opts.ProxyWriteTimeout, "proxy-write-timeout", opts.ProxyWriteTimeout, "Per-write deadline for OCI proxy responses; a client that accepts no data for this long is cut off (0 disables)")
 	flag.IntVar(&opts.ProxyMaxConnections, "proxy-max-connections", opts.ProxyMaxConnections, "Maximum concurrent OCI proxy connections (0 is unlimited)")
+	flag.BoolVar(&opts.ProxyStreaming, "proxy-streaming", opts.ProxyStreaming, "Answer a proxy-mode manifest miss once the manifest is stored and stream blob misses (ADR-0013); off fills the whole graph first")
+	flag.IntVar(&opts.ProxyPrefetchWorkers, "proxy-prefetch-concurrency", opts.ProxyPrefetchWorkers, "Concurrent background graph completions for streaming pull-through")
 	flag.DurationVar(&opts.StoreGCGrace, "store-gc-grace", opts.StoreGCGrace, "How long unreferenced local OCI content is kept before garbage collection; 0 deletes it at once")
 
 	flag.Parse()
@@ -234,6 +241,9 @@ func validateSatelliteOptions(opts SatelliteOptions) error {
 	}
 	if opts.ProxyMaxConnections < 0 {
 		return fmt.Errorf("--proxy-max-connections must not be negative, got %d", opts.ProxyMaxConnections)
+	}
+	if opts.ProxyStreaming && opts.ProxyPrefetchWorkers < 1 {
+		return fmt.Errorf("--proxy-prefetch-concurrency must be at least 1 with --proxy-streaming, got %d", opts.ProxyPrefetchWorkers)
 	}
 	if opts.StoreGCGrace < 0 {
 		return fmt.Errorf("--store-gc-grace must not be negative, got %s", opts.StoreGCGrace)
@@ -396,7 +406,12 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 
 	proxyLifecycleCtx, cancelProxy := context.WithCancel(context.Background())
 	defer cancelProxy()
-	pullHandler, err := proxyimage.NewPull(proxyLifecycleCtx, opts.ProxyMode, localStore, remoteStore)
+	pullOptions, closePrefetch, err := streamingPullOptions(opts, localStore, remoteStore)
+	if err != nil {
+		return fmt.Errorf("initialize streaming pull-through: %w", err)
+	}
+	defer closePrefetch()
+	pullHandler, err := proxyimage.NewPullWithOptions(proxyLifecycleCtx, opts.ProxyMode, localStore, remoteStore, pullOptions)
 	if err != nil {
 		return fmt.Errorf("initialize OCI proxy pull handler: %w", err)
 	}
@@ -698,6 +713,38 @@ func fallbackRegistryEndpoint(cm *config.ConfigManager) string {
 		return ""
 	}
 	return cm.GetLocalRegistryURL()
+}
+
+// prefetchQueueSize bounds manifests waiting for graph completion; beyond it
+// a prefetch is dropped and the next pull of that manifest asks again.
+const prefetchQueueSize = 256
+
+// streamingPullOptions builds the 5.3 pull-through options. Streaming needs
+// the OCI layout as the local store; with a BYO registry it stays off.
+func streamingPullOptions(opts SatelliteOptions, localStore, remoteStore store.Store) (proxyimage.PullOptions, func(), error) {
+	noop := func() {}
+	if !opts.ProxyStreaming || !opts.ProxyMode.AllowsUpstreamPull() {
+		return proxyimage.PullOptions{}, noop, nil
+	}
+	if _, ok := localStore.(store.Filler); !ok {
+		fmt.Printf("WARNING: --proxy-streaming needs the local OCI layout; %T keeps the whole-graph fill\n", localStore)
+		return proxyimage.PullOptions{}, noop, nil
+	}
+	prefetchLane, err := lane.New("prefetch", lane.Options{Concurrency: opts.ProxyPrefetchWorkers, QueueSize: prefetchQueueSize})
+	if err != nil {
+		return proxyimage.PullOptions{}, noop, err
+	}
+	closeLane := func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = prefetchLane.Close(closeCtx)
+	}
+	prefetcher, err := proxyimage.NewLanePrefetcher(prefetchLane, localStore, remoteStore)
+	if err != nil {
+		closeLane()
+		return proxyimage.PullOptions{}, noop, err
+	}
+	return proxyimage.PullOptions{Streaming: true, Prefetcher: prefetcher}, closeLane, nil
 }
 
 func resolveLocalRegistryEndpoint(proxyMode proxyhandler.Mode, proxyPort int) string {

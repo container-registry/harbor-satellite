@@ -43,6 +43,9 @@ type OCIStore struct {
 
 	gcMu              sync.Mutex
 	unreferencedSince map[digest.Digest]time.Time
+
+	streamsMu sync.Mutex
+	streams   map[digest.Digest]chan struct{}
 }
 
 // NewOCIStore opens or creates an OCI image-layout store at root.
