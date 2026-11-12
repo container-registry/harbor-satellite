@@ -156,3 +156,17 @@ func (s *GroupService) membership(ctx context.Context, cmd MembershipCmd, change
 		return tx.Events().Append(ctx, satelliteEvent(EventAssignmentChanged, sat))
 	})
 }
+
+// HasMember reports whether the satellite is in the group.
+func (s *GroupService) HasMember(ctx context.Context, cmd MembershipCmd) (bool, error) {
+	read := s.c.read()
+	sat, err := read.Satellites().GetByName(ctx, cmd.Satellite)
+	if err != nil {
+		return false, fmt.Errorf("satellite %s: %w", cmd.Satellite, err)
+	}
+	groups, err := read.Satellites().Groups(ctx, sat.ID)
+	if err != nil {
+		return false, fmt.Errorf("groups of satellite %s: %w", cmd.Satellite, err)
+	}
+	return slices.ContainsFunc(groups, func(g Group) bool { return g.Name == cmd.Group }), nil
+}

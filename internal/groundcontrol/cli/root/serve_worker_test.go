@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,7 +36,6 @@ func TestServeWorkerFlag_RejectsUnknown(t *testing.T) {
 }
 
 func TestServe_StartsWithHarborUnreachable(t *testing.T) {
-	pending.Plan(t, "2.6", "serve refuses to start while Harbor is unreachable")
 	reachedServer := errors.New("reached the server")
 	deps := serveDependencies{
 		loadEnvironment: func() error { return nil },

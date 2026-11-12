@@ -6,18 +6,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harborhealth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/migrator"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 	"github.com/spf13/cobra"
 )
 
 // Values of serve --worker: where the outbox publisher runs (plan item
-// 2.4). The target default is embedded; the skeleton keeps off.
+// 2.4). Embedded is the default; off leaves it to `groundcontrol worker`.
 const (
 	WorkerOff      = "off"
 	WorkerEmbedded = "embedded"
@@ -25,19 +25,32 @@ const (
 
 type serveDependencies struct {
 	loadEnvironment func() error
-	checkHealth     func(context.Context) error
-	migrate         func(context.Context) error
-	newServer       func(context.Context) (*server.ServerResult, error)
+	// checkHealth only logs: Ground Control starts while Harbor is
+	// unreachable and /health reports it degraded (plan item 2.6).
+	checkHealth func(context.Context) error
+	migrate     func(context.Context) error
+	newServer   func(context.Context) (*server.ServerResult, error)
+	// jobs are run beside the HTTP server until it stops: the registry
+	// probe always, the async plane worker with --worker=embedded.
+	jobs func(ctx context.Context, embedded bool) ([]job, error)
+}
+
+// job is a background part of the serve process.
+type job struct {
+	name string
+	run  func(ctx context.Context) error
 }
 
 func ServeCommand() *cobra.Command {
+	var composed composition
 	return newServeCommand(serveDependencies{
 		loadEnvironment: env.LoadGC,
 		checkHealth:     harborhealth.CheckHealth,
 		migrate:         migrator.DoMigrations,
 		newServer: func(ctx context.Context) (*server.ServerResult, error) {
-			return server.NewServer(ctx)
+			return server.NewServer(ctx, server.WithFleetFactory(composed.fleetFactory))
 		},
+		jobs: composed.jobs,
 	})
 }
 
@@ -51,28 +64,31 @@ func newServeCommand(deps serveDependencies) *cobra.Command {
 		PersistentPreRunE: func(_ *cobra.Command, _ []string) error { return nil },
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			switch worker {
-			case WorkerOff:
-			case WorkerEmbedded:
-				return notimpl.Err("2.4 embedded worker")
+			case WorkerOff, WorkerEmbedded:
 			default:
 				return fmt.Errorf("invalid --worker %q: want %s or %s", worker, WorkerOff, WorkerEmbedded)
 			}
-			return runServe(cmd.Context(), cmd.OutOrStdout(), deps)
+			return runServe(cmd.Context(), cmd.OutOrStdout(), deps, worker == WorkerEmbedded)
 		},
 	}
-	cmd.Flags().StringVar(&worker, "worker", WorkerOff, "where the outbox publisher runs: "+WorkerOff+" or "+WorkerEmbedded)
+	cmd.Flags().StringVar(&worker, "worker", WorkerEmbedded, "where the outbox publisher runs: "+WorkerOff+" or "+WorkerEmbedded)
 	return cmd
 }
 
-func runServe(ctx context.Context, out io.Writer, deps serveDependencies) (err error) {
+func runServe(ctx context.Context, out io.Writer, deps serveDependencies, embedded bool) (err error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if err := deps.loadEnvironment(); err != nil {
 		return fmt.Errorf("failed to load environment: %w", err)
 	}
-	if err := deps.checkHealth(ctx); err != nil {
-		return fmt.Errorf("health check failed: %w", err)
+	if deps.checkHealth != nil {
+		if err := deps.checkHealth(ctx); err != nil {
+			_, _ = fmt.Fprintf(out, "Harbor is not reachable yet (%v); starting anyway, /health reports it degraded\n", err)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 	}
 	if err := deps.migrate(ctx); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
@@ -82,6 +98,26 @@ func runServe(ctx context.Context, out io.Writer, deps serveDependencies) (err e
 		return fmt.Errorf("failed to create server: %w", err)
 	}
 	defer func() { err = errors.Join(err, result.Close()) }()
+
+	var jobs []job
+	if deps.jobs != nil {
+		if jobs, err = deps.jobs(ctx, embedded); err != nil {
+			return fmt.Errorf("start background jobs: %w", err)
+		}
+	}
+	jobCtx, stopJobs := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+	for _, j := range jobs {
+		wg.Go(func() {
+			if err := j.run(jobCtx); err != nil {
+				_, _ = fmt.Fprintf(out, "%s stopped: %v\n", j.name, err)
+			}
+		})
+	}
+	defer func() {
+		stopJobs()
+		wg.Wait()
+	}()
 
 	return serveHTTP(ctx, out, result, 5*time.Second)
 }

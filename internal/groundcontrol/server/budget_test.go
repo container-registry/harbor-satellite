@@ -97,7 +97,7 @@ func TestBudgetZTR(t *testing.T) {
 
 	got := h.measure(func() { h.ztr(token) })
 
-	requireWithinBudget(t, "ZTR", got, budget{Statements: 9, HarborAPI: 2, Registry: 10})
+	requireWithinBudget(t, "ZTR", got, budget{Statements: 7, HarborAPI: 2, Registry: 0})
 }
 
 func TestBudgetSyncGroup(t *testing.T) {
@@ -106,11 +106,10 @@ func TestBudgetSyncGroup(t *testing.T) {
 		members int
 		limit   budget
 	}{
-		// The membership lock transaction (#702) and reading every member's
-		// other groups for the robot project union (#696) cost 3 statements
-		// per member until plan item 2.5 moves the robot update off the request.
-		{name: "1 member", members: 1, limit: budget{Statements: 9, HarborAPI: 3, Registry: 19}},
-		{name: "100 members", members: 100, limit: budget{Statements: 306, HarborAPI: 201, Registry: 19}},
+		// Plan item 2.5: one transaction with the group and its GroupChanged
+		// event; the reconcilers update the members' robots.
+		{name: "1 member", members: 1, limit: budget{Statements: 6, HarborAPI: 0, Registry: 0}},
+		{name: "100 members", members: 100, limit: budget{Statements: 6, HarborAPI: 0, Registry: 0}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newGCHarness(t)
@@ -132,7 +131,9 @@ func TestBudgetUpdateConfig(t *testing.T) {
 		h.mustDo(http.MethodPatch, "/api/configs/edge-config", map[string]any{"app_config": map[string]any{"log_level": "debug"}}, h.admin, http.StatusOK)
 	})
 
-	requireWithinBudget(t, "UpdateConfig", got, budget{Statements: 5, HarborAPI: 1, Registry: 19})
+	// The ConfigChanged event is one INSERT in the update's transaction;
+	// the config push it replaces leaves the request (plan item 2.5).
+	requireWithinBudget(t, "UpdateConfig", got, budget{Statements: 6, HarborAPI: 0, Registry: 0})
 }
 
 // seedGroupMembers adds n satellites with robot accounts to a group directly

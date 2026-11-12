@@ -60,14 +60,15 @@ func (s *ConfigService) Update(ctx context.Context, cmd UpdateConfigCmd) (Config
 		return ConfigWriteResult{}, fmt.Errorf("%w: config name %q", ErrInvalid, cmd.Name)
 	}
 	var (
-		stored   Config
-		warnings []string
+		stored, previous Config
+		warnings         []string
 	)
 	err := s.c.inTx(ctx, func(tx Tx) error {
 		existing, err := tx.Configs().GetByName(ctx, cmd.Name)
 		if err != nil {
 			return fmt.Errorf("config %s: %w", cmd.Name, err)
 		}
+		previous = existing
 		merged, err := jsonpatch.MergePatch(existing.Document, cmd.Patch)
 		if err != nil {
 			return fmt.Errorf("%w: apply merge patch: %w", ErrInvalid, err)
@@ -85,7 +86,7 @@ func (s *ConfigService) Update(ctx context.Context, cmd UpdateConfigCmd) (Config
 	if err != nil {
 		return ConfigWriteResult{}, err
 	}
-	return ConfigWriteResult{Config: stored, Warnings: warnings}, nil
+	return ConfigWriteResult{Config: stored, Warnings: warnings, Previous: previous}, nil
 }
 
 func (s *ConfigService) validate(ctx context.Context, doc json.RawMessage) ([]string, error) {

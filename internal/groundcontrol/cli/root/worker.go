@@ -1,22 +1,49 @@
 package root
 
 import (
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
+	"errors"
+	"fmt"
+
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/migrator"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/spf13/cobra"
 )
 
 // WorkerCommand runs the async plane without the HTTP server (plan item
-// 2.4). Hidden until it works.
+// 2.4); several workers may run against one database.
 func WorkerCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:    "worker",
-		Short:  "Run the Ground Control outbox publisher without the API server",
-		Args:   cobra.NoArgs,
+		Use:   "worker",
+		Short: "Run the Ground Control outbox publisher without the API server",
+		Args:  cobra.NoArgs,
+		// Hidden from the client-oriented help; it is a server process.
 		Hidden: true,
 		// Like serve, the worker needs no administration client.
 		PersistentPreRunE: func(_ *cobra.Command, _ []string) error { return nil },
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return notimpl.Err("2.4 standalone worker")
+		RunE: func(cmd *cobra.Command, _ []string) (err error) {
+			ctx := cmd.Context()
+			if err := env.LoadGC(); err != nil {
+				return fmt.Errorf("failed to load environment: %w", err)
+			}
+			if err := migrator.DoMigrations(ctx); err != nil {
+				return fmt.Errorf("failed to run migrations: %w", err)
+			}
+			cfg, err := dbpool.ConfigFromEnv(env.GC.Database)
+			if err != nil {
+				return fmt.Errorf("database settings: %w", err)
+			}
+			pools, err := dbpool.Open(ctx, cfg)
+			if err != nil {
+				return fmt.Errorf("open database: %w", err)
+			}
+			defer func() { err = errors.Join(err, pools.Close()) }()
+			w, closeWorker, err := newWorker(ctx, pools, nil)
+			if err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Ground Control worker running")
+			return errors.Join(w.Run(ctx), closeWorker())
 		},
 	}
 }

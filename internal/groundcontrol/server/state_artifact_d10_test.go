@@ -18,6 +18,7 @@ import (
 func requireEmptyStatePublished(t *testing.T, h *gcHarness, mark int, config string) {
 	t.Helper()
 	const repository = "satellite/satellite-state/edge-01/state"
+	h.drainOutbox()
 	pushed := false
 	for _, call := range h.harbor.CallsSince(mark) {
 		if call.Route == harbortest.RoutePutManifest && strings.HasPrefix(call.Path, "/v2/"+repository+"/manifests/") {
