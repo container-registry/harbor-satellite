@@ -19,11 +19,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/journal"
 	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingJournal = "the edge journal is a stub"
 
 // killChildDir makes the test binary act as the process TestJournal_SurvivesKill9 kills.
 const killChildDir = "JOURNAL_TEST_KILL_CHILD_DIR"
@@ -133,7 +130,6 @@ func segmentBytes(t *testing.T, dir string) int64 {
 }
 
 func TestJournal_AppendAssignsMonotonicSeq(t *testing.T) {
-	pending.Plan(t, "6.4", pendingJournal)
 	ctx := context.Background()
 	dir := t.TempDir()
 	j := openJournal(t, journal.Options{Dir: dir})
@@ -165,7 +161,6 @@ func TestJournal_AppendAssignsMonotonicSeq(t *testing.T) {
 }
 
 func TestJournal_ConcurrentAppends(t *testing.T) {
-	pending.Plan(t, "6.4", pendingJournal)
 	j := openJournal(t, journal.Options{Dir: t.TempDir(), SyncInterval: 5 * time.Millisecond})
 	const writers, each = 8, 25
 	var wg sync.WaitGroup
@@ -191,7 +186,6 @@ func TestJournal_ConcurrentAppends(t *testing.T) {
 }
 
 func TestJournal_EpochIsTheCreationTime(t *testing.T) {
-	pending.Plan(t, "6.4", pendingJournal)
 	dir := t.TempDir()
 	before := time.Now().UnixMilli()
 	first := openJournal(t, journal.Options{Dir: dir})
@@ -209,7 +203,6 @@ func TestJournal_EpochIsTheCreationTime(t *testing.T) {
 // Ground Control's cursor holds a newer epoch of this satellite, as after
 // a reinstall whose clock was behind: the journal continues above it.
 func TestJournal_AckWithANewerEpochContinuesAboveIt(t *testing.T) {
-	pending.Plan(t, "6.4", pendingJournal)
 	j := openJournal(t, journal.Options{Dir: t.TempDir()})
 	appendEach(t, j, 3)
 	gcEpoch := j.Epoch() + 60_000
@@ -224,7 +217,6 @@ func TestJournal_AckWithANewerEpochContinuesAboveIt(t *testing.T) {
 // snapshot: the journal draws a newer epoch so its seqs are not taken for
 // ones Ground Control already holds.
 func TestJournal_AckAboveTheLastSeqStartsANewEpoch(t *testing.T) {
-	pending.Plan(t, "6.4", pendingJournal)
 	j := openJournal(t, journal.Options{Dir: t.TempDir()})
 	appendEach(t, j, 3)
 	epoch := j.Epoch()
@@ -236,7 +228,6 @@ func TestJournal_AckAboveTheLastSeqStartsANewEpoch(t *testing.T) {
 }
 
 func TestJournal_TornTailIsTruncated(t *testing.T) {
-	pending.Plan(t, "6.4", pendingJournal)
 	dir := t.TempDir()
 	j := openJournal(t, journal.Options{Dir: dir})
 	appendEach(t, j, 3)
@@ -260,7 +251,6 @@ func TestJournal_TornTailIsTruncated(t *testing.T) {
 }
 
 func TestJournal_AckDeletesSegments(t *testing.T) {
-	pending.Plan(t, "6.4", pendingJournal)
 	dir := t.TempDir()
 	opts := journal.Options{Dir: dir, MaxSegmentBytes: 512}
 	j := openJournal(t, opts)
@@ -284,7 +274,6 @@ func TestJournal_AckDeletesSegments(t *testing.T) {
 }
 
 func TestJournal_TotalCapRaisesTheFloor(t *testing.T) {
-	pending.Plan(t, "6.4", pendingJournal)
 	dir := t.TempDir()
 	opts := journal.Options{Dir: dir, MaxSegmentBytes: 512, MaxTotalBytes: 2048}
 	j := openJournal(t, opts)
@@ -298,7 +287,6 @@ func TestJournal_TotalCapRaisesTheFloor(t *testing.T) {
 }
 
 func TestJournal_TryAppendNeverBlocksAndCountsDrops(t *testing.T) {
-	pending.Plan(t, "6.4", pendingJournal)
 	j := openJournal(t, journal.Options{Dir: t.TempDir(), QueueSize: 2, SyncInterval: 200 * time.Millisecond})
 
 	start := time.Now()
@@ -332,7 +320,6 @@ func TestJournal_FloorNeverDecreasesAcrossAnEpochMove(t *testing.T) {
 		"ack above the last seq":     func(j *journal.Journal) error { return j.Ack(j.Epoch(), 500) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			pending.Plan(t, "6.4", pendingJournal)
 			j := openJournal(t, journal.Options{Dir: t.TempDir()})
 			appendEach(t, j, 300)
 			require.NoError(t, j.Ack(j.Epoch(), 250))
@@ -348,7 +335,6 @@ func TestJournal_FloorNeverDecreasesAcrossAnEpochMove(t *testing.T) {
 }
 
 func TestJournal_DropRaisesTheFloor(t *testing.T) {
-	pending.Plan(t, "6.4", pendingJournal)
 	j := openJournal(t, journal.Options{Dir: t.TempDir()})
 	appendEach(t, j, 5)
 
@@ -360,7 +346,6 @@ func TestJournal_DropRaisesTheFloor(t *testing.T) {
 }
 
 func TestJournal_SurvivesKill9(t *testing.T) {
-	pending.Plan(t, "6.4", pendingJournal)
 	dir := t.TempDir()
 	child := exec.Command(os.Args[0])
 	child.Env = append(os.Environ(), killChildDir+"="+dir)
@@ -401,7 +386,9 @@ func TestJournal_SurvivesKill9(t *testing.T) {
 	for len(printed) < killAfter {
 		select {
 		case line, ok := <-lines:
-			require.True(t, ok, "the child exited after %d records: %s", len(printed), stderr.String())
+			if !ok {
+				t.Fatalf("the child exited after %d records: %s", len(printed), stderr.String())
+			}
 			seq, err := strconv.ParseInt(strings.TrimSpace(line), 10, 64)
 			require.NoError(t, err)
 			printed = append(printed, seq)
