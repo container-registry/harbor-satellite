@@ -7,6 +7,7 @@ version: "3"
 # EXT_ENDPOINT. The e2e containers, Harbor projects, robots and state
 # artifacts then carry the hs-e2e- prefix, and cleanup removes only those.
 # E2E_GC_HOST_PORT (default 9180) sets the Ground Control host port.
+# E2E_HARBOR_HOST_PORT (default 8080) sets the bundled Harbor's host port.
 vars:
   E2E_DIR: "{{.ROOT_DIR}}/test/e2e/docker"
   HARBOR_ADMIN_USER: admin
@@ -14,7 +15,8 @@ vars:
   HARBOR_EXTERNAL: '{{env "HARBOR_EXTERNAL"}}'
   HARBOR_NETWORK: '{{env "HARBOR_NETWORK"}}'
   E2E_PREFIX: '{{if .HARBOR_EXTERNAL}}hs-e2e-{{end}}'
-  HARBOR_URL: '{{if .HARBOR_EXTERNAL}}{{env "HARBOR_HOST_URL"}}{{else}}http://localhost:8080{{end}}'
+  HARBOR_HOST_PORT: '{{env "E2E_HARBOR_HOST_PORT" | default "8080"}}'
+  HARBOR_URL: '{{if .HARBOR_EXTERNAL}}{{env "HARBOR_HOST_URL"}}{{else}}http://localhost:{{.HARBOR_HOST_PORT}}{{end}}'
   HARBOR_INTERNAL_URL: '{{if .HARBOR_EXTERNAL}}{{env "HARBOR_INTERNAL_URL" | default "http://core:8080"}}{{else}}http://core:8080{{end}}'
   HARBOR_INTERNAL_HOST: '{{.HARBOR_INTERNAL_URL | trimPrefix "http://" | trimPrefix "https://"}}'
   HARBOR_API: "{{.HARBOR_URL}}/api/v2.0"
@@ -25,7 +27,7 @@ vars:
   GC_INTERNAL_URL: "http://{{.E2E_PREFIX}}gc:8080"
   E2E_NETWORK: '{{if .HARBOR_EXTERNAL}}hs-e2e{{else}}harbor-e2e{{end}}'
   SATELLITE_NETWORKS: '--network {{.E2E_NETWORK}}{{if .HARBOR_EXTERNAL}} --network {{.HARBOR_NETWORK}}{{end}}'
-  COMPOSE: '{{if .HARBOR_EXTERNAL}}HARBOR_NETWORK={{.HARBOR_NETWORK}} HARBOR_INTERNAL_URL={{.HARBOR_INTERNAL_URL}} E2E_GC_HOST_PORT={{.GC_HOST_PORT}} docker compose -p hs-e2e -f test/e2e/docker/docker-compose.yml -f test/e2e/docker/docker-compose.external.yml{{else}}docker compose -f test/e2e/docker/docker-compose.yml{{end}}'
+  COMPOSE: '{{if .HARBOR_EXTERNAL}}HARBOR_NETWORK={{.HARBOR_NETWORK}} HARBOR_INTERNAL_URL={{.HARBOR_INTERNAL_URL}} E2E_GC_HOST_PORT={{.GC_HOST_PORT}} docker compose -p hs-e2e -f test/e2e/docker/docker-compose.yml -f test/e2e/docker/docker-compose.external.yml{{else}}E2E_HARBOR_HOST_PORT={{.HARBOR_HOST_PORT}} docker compose -f test/e2e/docker/docker-compose.yml{{end}}'
   COMPOSE_SERVICES: '{{if .HARBOR_EXTERNAL}}postgres gc{{end}}'
   SATELLITE_CONTAINER: "{{.E2E_PREFIX}}satellite"
   SATELLITE_BYO_CONTAINER: "{{.E2E_PREFIX}}satellite-byo"
@@ -444,15 +446,15 @@ tasks:
         '
         {{else}}
         echo "Pushing image to Harbor..."
-        docker tag alpine:latest localhost:8080/{{.PROJECT}}/alpine:latest
+        docker tag alpine:latest localhost:{{.HARBOR_HOST_PORT}}/{{.PROJECT}}/alpine:latest
 
         # Try docker login/push (Docker), fallback to podman flags (Podman)
-        if docker login localhost:8080 -u admin -p Harbor12345 2>/dev/null; then
-          docker push localhost:8080/{{.PROJECT}}/alpine:latest 2>/dev/null || \
-          docker push localhost:8080/{{.PROJECT}}/alpine:latest --tls-verify=false
+        if docker login localhost:{{.HARBOR_HOST_PORT}} -u admin -p Harbor12345 2>/dev/null; then
+          docker push localhost:{{.HARBOR_HOST_PORT}}/{{.PROJECT}}/alpine:latest 2>/dev/null || \
+          docker push localhost:{{.HARBOR_HOST_PORT}}/{{.PROJECT}}/alpine:latest --tls-verify=false
         else
-          docker login localhost:8080 -u admin -p Harbor12345 --tls-verify=false
-          docker push localhost:8080/{{.PROJECT}}/alpine:latest --tls-verify=false
+          docker login localhost:{{.HARBOR_HOST_PORT}} -u admin -p Harbor12345 --tls-verify=false
+          docker push localhost:{{.HARBOR_HOST_PORT}}/{{.PROJECT}}/alpine:latest --tls-verify=false
         fi
         {{end}}
 
