@@ -10,7 +10,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/authn"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/authn/authntest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,7 +43,6 @@ func (w *oidcWorld) started(t *testing.T) (state, binding string) {
 }
 
 func TestOIDCLogin_StartUsesPKCENonceAndBinding(t *testing.T) {
-	pending.Plan(t, "8.1", pendingOIDC)
 	w := newOIDCWorld(t)
 
 	state, binding := w.started(t)
@@ -67,7 +65,6 @@ func TestOIDCLogin_StartUsesPKCENonceAndBinding(t *testing.T) {
 }
 
 func TestOIDCLogin_CallbackNeedsTheBrowserBinding(t *testing.T) {
-	pending.Plan(t, "8.1", pendingOIDC)
 	w := newOIDCWorld(t)
 	w.provider.Answer = claims("alice", "edge-ops")
 	state, _ := w.started(t)
@@ -82,7 +79,6 @@ func TestOIDCLogin_CallbackNeedsTheBrowserBinding(t *testing.T) {
 }
 
 func TestOIDCLogin_CallbackUpsertsMappedUser(t *testing.T) {
-	pending.Plan(t, "8.1", pendingOIDC)
 	w := newOIDCWorld(t)
 	w.provider.Answer = claims("alice", "edge-ops")
 	state, binding := w.started(t)
@@ -105,7 +101,6 @@ func TestOIDCLogin_CallbackUpsertsMappedUser(t *testing.T) {
 }
 
 func TestOIDCLogin_CallbackNeverAdoptsLocalAccount(t *testing.T) {
-	pending.Plan(t, "8.1", pendingOIDC)
 	w := newOIDCWorld(t)
 	w.identities.LocalUsers["bob"] = true
 	w.provider.Answer = claims("bob", "platform")
@@ -117,7 +112,6 @@ func TestOIDCLogin_CallbackNeverAdoptsLocalAccount(t *testing.T) {
 }
 
 func TestOIDCLogin_CallbackUnmappedCreatesNoRow(t *testing.T) {
-	pending.Plan(t, "8.1", pendingOIDC)
 	w := newOIDCWorld(t)
 	w.provider.Answer = claims("carol", "unmapped")
 	state, binding := w.started(t)
@@ -129,7 +123,6 @@ func TestOIDCLogin_CallbackUnmappedCreatesNoRow(t *testing.T) {
 }
 
 func TestOIDCLogin_DevicePendingThenPrincipal(t *testing.T) {
-	pending.Plan(t, "8.1", pendingOIDC)
 	w := newOIDCWorld(t)
 	w.provider.Device = fleet.DeviceAuthorization{DeviceCode: "dev", UserCode: "ABCD-EFGH", VerificationURI: "https://idp.example/device", ExpiresIn: 10 * time.Minute, Interval: 5 * time.Second}
 	w.provider.PollAnswers = []error{fleet.ErrAuthorizationPending, fleet.ErrSlowDown}
