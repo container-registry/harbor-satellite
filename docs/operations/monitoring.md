@@ -41,7 +41,7 @@ Ground Control has no Prometheus endpoint in this release.
 | Endpoint | Use |
 |---|---|
 | `GET /ping` | Liveness probe. |
-| `GET /health` | Readiness probe. `503` when the database does not answer. `200` with `"status":"degraded"` and `components.harbor` when Harbor has been unreachable for three `HARBOR_PROBE_INTERVAL`s. |
+| `GET /health` | Readiness probe. `503` when the database does not answer, or when a background job of `serve` stopped (with `--worker=embedded` the async worker; also the registry probe, heartbeat flusher, rotation cache and policy watcher): the job appears in `components` as `{"status":"unhealthy","detail":"stopped"}` until the process restarts, and the log says `<job> stopped: <error>; /health reports unhealthy`. `200` with `"status":"degraded"` and `components.harbor` when Harbor has been unreachable for three `HARBOR_PROBE_INTERVAL`s. |
 | `GET /api/satellites/stale` | Satellites without a heartbeat for three heartbeat intervals. Needs a running worker. |
 | `GET /api/satellites/{satellite}/lifecycle` | Whether a satellite applied what Ground Control published (`converged`), and its last replication error. |
 | `GET /api/ops/outbox?state=failed` | Harbor changes that did not go through. |

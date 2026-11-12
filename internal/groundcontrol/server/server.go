@@ -103,6 +103,9 @@ type Server struct {
 	// disablePasswordLogin (OIDC_DISABLE_PASSWORD_LOGIN) leaves password
 	// login to the bootstrap admin only (plan item 8.2).
 	disablePasswordLogin bool
+	// stopped makes /health unhealthy once a background job of serve
+	// returned (JobStopped).
+	stopped stoppedJobs
 }
 
 // HarborContact reports the last successful contact with Harbor; the

@@ -364,7 +364,7 @@ type GroupSyncRequest struct {
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
-	// Components Health per dependency, such as harbor. Omitted when there is nothing to report.
+	// Components Health per dependency, such as harbor, and per stopped background job. Omitted when there is nothing to report.
 	Components map[string]ComponentHealth `json:"components,omitempty,omitzero"`
 	Status     HealthResponseStatus       `json:"status,omitempty,omitzero"`
 }
@@ -1040,7 +1040,7 @@ type ServerInterface interface {
 	// DeleteWebhook Deletes a webhook subscription and its checkpoint (plan item 9.1).
 	// (DELETE /api/webhooks/{id})
 	DeleteWebhook(w http.ResponseWriter, r *http.Request, id int32)
-	// Health Checks database connectivity and reports Harbor reachability.
+	// Health Checks database connectivity, background jobs and Harbor reachability.
 	// (GET /health)
 	Health(w http.ResponseWriter, r *http.Request)
 	// Login Creates a user session.

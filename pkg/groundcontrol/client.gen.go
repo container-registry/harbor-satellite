@@ -367,7 +367,7 @@ type GroupSyncRequest struct {
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
-	// Components Health per dependency, such as harbor. Omitted when there is nothing to report.
+	// Components Health per dependency, such as harbor, and per stopped background job. Omitted when there is nothing to report.
 	Components map[string]ComponentHealth `json:"components,omitempty,omitzero"`
 	Status     HealthResponseStatus       `json:"status,omitempty,omitzero"`
 }
@@ -1337,7 +1337,7 @@ type ClientInterface interface {
 	// Corresponds with DELETE /api/webhooks/{id} (the `DeleteWebhook` operationId).
 	DeleteWebhook(ctx context.Context, id int32, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// Health Checks database connectivity and reports Harbor reachability.
+	// Health Checks database connectivity, background jobs and Harbor reachability.
 	//
 	// Corresponds with GET /health (the `Health` operationId).
 	Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2363,7 +2363,7 @@ func (c *Client) DeleteWebhook(ctx context.Context, id int32, reqEditors ...Requ
 	return c.Client.Do(req)
 }
 
-// Health Checks database connectivity and reports Harbor reachability.
+// Health Checks database connectivity, background jobs and Harbor reachability.
 //
 // Corresponds with GET /health (the `Health` operationId).
 func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4999,7 +4999,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /api/webhooks/{id} (the `DeleteWebhook` operationId).
 	DeleteWebhookWithResponse(ctx context.Context, id int32, reqEditors ...RequestEditorFn) (*DeleteWebhookHTTPResponse, error)
 
-	// HealthWithResponse Checks database connectivity and reports Harbor reachability.
+	// HealthWithResponse Checks database connectivity, background jobs and Harbor reachability.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -9467,7 +9467,7 @@ func (c *ClientWithResponses) DeleteWebhookWithResponse(ctx context.Context, id 
 	return ParseDeleteWebhookHTTPResponse(rsp)
 }
 
-// HealthWithResponse Checks database connectivity and reports Harbor reachability.
+// HealthWithResponse Checks database connectivity, background jobs and Harbor reachability.
 //
 // Returns a wrapper object for the known response body format(s).
 //

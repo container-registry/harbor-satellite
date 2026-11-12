@@ -109,9 +109,14 @@ func runServe(ctx context.Context, out io.Writer, deps serveDependencies, embedd
 	var wg sync.WaitGroup
 	for _, j := range jobs {
 		wg.Go(func() {
-			if err := j.run(jobCtx); err != nil {
-				_, _ = fmt.Fprintf(out, "%s stopped: %v\n", j.name, err)
+			err := j.run(jobCtx)
+			if jobCtx.Err() != nil {
+				return
 			}
+			// Jobs return only when they cannot go on (ADR-0014), so the
+			// replica keeps serving but must leave the load balancer.
+			_, _ = fmt.Fprintf(out, "%s stopped: %v; /health reports unhealthy\n", j.name, err)
+			result.AppServer.JobStopped(j.name)
 		})
 	}
 	defer func() {

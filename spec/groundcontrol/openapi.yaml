@@ -1926,7 +1926,7 @@ paths:
     get:
       tags:
         - health
-      summary: Checks database connectivity and reports Harbor reachability.
+      summary: Checks database connectivity, background jobs and Harbor reachability.
       operationId: health
       responses:
         "200":
@@ -1936,7 +1936,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
         "503":
-          description: Database connection is unavailable.
+          description: >
+            Database connection is unavailable, or a background job of serve
+            (such as the embedded async worker) stopped; that job is a
+            component with status unhealthy and detail "stopped".
           content:
             application/json:
               schema:
@@ -2840,7 +2843,7 @@ components:
           x-go-name: Status
         components:
           type: object
-          description: Health per dependency, such as harbor. Omitted when there is nothing to report.
+          description: Health per dependency, such as harbor, and per stopped background job. Omitted when there is nothing to report.
           additionalProperties:
             $ref: "#/components/schemas/ComponentHealth"
           x-go-name: Components
