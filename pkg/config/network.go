@@ -122,3 +122,15 @@ func scaleQuantity(value float64, prefix string, bits bool) (int64, error) {
 	}
 	return int64(scaled), nil
 }
+
+// RetainNetwork keeps the local speed cap when a fetched config omitted the
+// block. Ground Control does not publish network yet, so an update would
+// otherwise clear the cap on the next reconcile.
+func RetainNetwork(remote *Config, local NetworkConfig) {
+	if remote == nil {
+		return
+	}
+	if remote.AppConfig.Network == (NetworkConfig{}) {
+		remote.AppConfig.Network = local
+	}
+}

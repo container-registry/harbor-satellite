@@ -17,8 +17,19 @@ func TestParseNetworkQuantities(t *testing.T) {
 
 	_, err = ParseByteRate("5GB")
 	require.Error(t, err)
-	_, err = ParseByteRate("9223372036854775808")
+	_, err = ParseByteRate("9223372036854775808B/s")
 	require.Error(t, err)
+}
+
+func TestRetainNetworkKeepsTheLocalCapWhenRemoteOmitsIt(t *testing.T) {
+	local := NetworkConfig{Speed: NetworkSpeedConfig{Enabled: true, Limit: "10Mbps"}}
+	remote := &Config{}
+	RetainNetwork(remote, local)
+	require.Equal(t, local, remote.AppConfig.Network)
+
+	remote.AppConfig.Network = NetworkConfig{Speed: NetworkSpeedConfig{Enabled: true, Limit: "1Mbps"}}
+	RetainNetwork(remote, local)
+	require.Equal(t, "1Mbps", remote.AppConfig.Network.Speed.Limit)
 }
 
 func TestValidateNetworkConfig(t *testing.T) {

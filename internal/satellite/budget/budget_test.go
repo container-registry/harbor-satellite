@@ -29,7 +29,7 @@ func TestWrapCountsBytesAndStopsWhenCanceled(t *testing.T) {
 	account := New()
 	account.SetPolicy(Policy{Speed: Speed{Enabled: true, BytesPerSecond: 1}})
 	payload := bytes.Repeat([]byte("x"), 8)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	body := account.WrapContext(ctx, io.NopCloser(bytes.NewReader(payload)))
 
@@ -38,10 +38,40 @@ func TestWrapCountsBytesAndStopsWhenCanceled(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, n)
 
+	cancel()
 	_, err = body.Read(buf)
-	require.ErrorContains(t, err, "context deadline")
+	require.ErrorContains(t, err, "context canceled")
 	require.NoError(t, body.Close())
 	require.Equal(t, int64(1), account.Snapshot().BytesTotal)
+}
+
+type shortReader struct {
+	r io.Reader
+}
+
+func (s shortReader) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	return s.r.Read(p[:1])
+}
+
+func TestShortReadDoesNotSpendTheWholeBurst(t *testing.T) {
+	account := New()
+	account.SetPolicy(Policy{Speed: Speed{Enabled: true, BytesPerSecond: 1000}})
+	payload := bytes.Repeat([]byte("x"), 4)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	body := account.WrapContext(ctx, io.NopCloser(shortReader{r: bytes.NewReader(payload)}))
+
+	buf := make([]byte, 1000)
+	for range 3 {
+		n, err := body.Read(buf)
+		require.NoError(t, err)
+		require.Equal(t, 1, n)
+	}
+	require.NoError(t, body.Close())
+	require.Equal(t, int64(3), account.Snapshot().BytesTotal)
 }
 
 func TestPolicyFromDiagramQuantities(t *testing.T) {
