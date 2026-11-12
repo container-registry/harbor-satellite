@@ -6,9 +6,12 @@
 package policybundle
 
 import (
+	"crypto/sha256"
 	_ "embed"
-
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"slices"
 )
 
 // ModelVersion names Model. A satellite refuses a bundle written for a
@@ -48,7 +51,14 @@ type Bundle struct {
 // ParseMode parses an admission mode; "" is ModeOff, anything unknown an
 // error.
 func ParseMode(s string) (Mode, error) {
-	return ModeOff, notimpl.Err("7.5 admission mode")
+	switch Mode(s) {
+	case "", ModeOff:
+		return ModeOff, nil
+	case ModeAudit, ModeEnforce:
+		return Mode(s), nil
+	default:
+		return ModeOff, fmt.Errorf("admission mode %q: want off, audit or enforce", s)
+	}
 }
 
 // Digest is "sha256:<hex>" of the bundle's canonical JSON with the policy
@@ -56,5 +66,14 @@ func ParseMode(s string) (Mode, error) {
 // proxy rebuilds its evaluator and drops its decision cache when it
 // changes.
 func (b Bundle) Digest() string {
-	return ""
+	lines := make([][]string, len(b.Policies))
+	copy(lines, b.Policies)
+	slices.SortFunc(lines, slices.Compare)
+	data, err := json.Marshal(Bundle{ModelVersion: b.ModelVersion, Policies: lines})
+	if err != nil {
+		// A struct of strings always marshals.
+		panic(err)
+	}
+	sum := sha256.Sum256(data)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
