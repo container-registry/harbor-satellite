@@ -18,6 +18,8 @@ type Gate struct {
 	mu        sync.Mutex
 	groups    map[string]map[string]struct{}
 	refs      map[string]*refState
+	blobs     map[string]map[string]struct{}
+	blobUsers map[string]int
 	published bool
 	ready     chan struct{}
 }
@@ -90,6 +92,7 @@ func (g *Gate) SetGroup(group string, artifacts []store.Artifact) {
 	previous := g.groups[group]
 	if len(next) == 0 {
 		delete(g.groups, group)
+		g.replaceBlobsLocked(group, nil)
 	} else {
 		keys := make(map[string]struct{}, len(next))
 		for key, digest := range next {
@@ -144,6 +147,62 @@ func (g *Gate) Commit(artifact store.Artifact) {
 		}
 		state.close()
 	}
+}
+
+// SetBlobs replaces the successor digests group expects in the local store.
+// A pull for one of those digests stays local while the blob is absent.
+// An empty list clears the group. A digest another group still lists stays watched.
+func (g *Gate) SetBlobs(group string, digests []string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.replaceBlobsLocked(group, digests)
+}
+
+// WatchesBlob reports whether digest belongs to a desired image's graph.
+func (g *Gate) WatchesBlob(digest string) bool {
+	if digest == "" {
+		return false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.blobUsers[digest] > 0
+}
+
+func (g *Gate) replaceBlobsLocked(group string, digests []string) {
+	if g.blobs == nil && len(digests) == 0 {
+		return
+	}
+	if g.blobs == nil {
+		g.blobs = make(map[string]map[string]struct{})
+	}
+	if g.blobUsers == nil {
+		g.blobUsers = make(map[string]int)
+	}
+	for digest := range g.blobs[group] {
+		g.blobUsers[digest]--
+		if g.blobUsers[digest] <= 0 {
+			delete(g.blobUsers, digest)
+		}
+	}
+	delete(g.blobs, group)
+	if len(digests) == 0 {
+		return
+	}
+	next := make(map[string]struct{}, len(digests))
+	for _, digest := range digests {
+		if digest == "" {
+			continue
+		}
+		if _, ok := next[digest]; ok {
+			continue
+		}
+		next[digest] = struct{}{}
+		g.blobUsers[digest]++
+	}
+	if len(next) == 0 {
+		return
+	}
+	g.blobs[group] = next
 }
 
 // Known reports whether artifact is in the current set, committed or not.

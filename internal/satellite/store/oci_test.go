@@ -18,9 +18,44 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/require"
 	"oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/content/oci"
 	"oras.land/oras-go/v2/errdef"
 	orasremote "oras.land/oras-go/v2/registry/remote"
 )
+
+func TestGraphDigestsListsALayerThatIsNotLocal(t *testing.T) {
+	root := t.TempDir()
+	layer := []byte("satellite-layer")
+	layerDesc := content.NewDescriptorFromBytes("application/vnd.example.layer.v1", layer)
+	configPayload := []byte(`{"architecture":"amd64","os":"linux"}`)
+	configDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageConfig, configPayload)
+	manifestPayload, err := json.Marshal(ocispec.Manifest{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: ocispec.MediaTypeImageManifest,
+		Config:    configDesc,
+		Layers:    []ocispec.Descriptor{layerDesc},
+	})
+	require.NoError(t, err)
+	manifestDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageManifest, manifestPayload)
+	layout, err := oci.New(root)
+	require.NoError(t, err)
+	require.NoError(t, layout.Push(context.Background(), manifestDesc, bytes.NewReader(manifestPayload)))
+	require.NoError(t, layout.Tag(context.Background(), manifestDesc, "library/alpine:latest"))
+	local, err := NewOCIStore(root)
+	require.NoError(t, err)
+
+	digests, err := GraphDigests(context.Background(), local, Artifact{
+		Repository: "library",
+		Name:       "alpine",
+		Tag:        "latest",
+		Digest:     manifestDesc.Digest.String(),
+	})
+
+	require.NoError(t, err)
+	require.Contains(t, digests, manifestDesc.Digest.String())
+	require.Contains(t, digests, configDesc.Digest.String())
+	require.Contains(t, digests, layerDesc.Digest.String())
+}
 
 func TestOCIStoreReadyRequiresSuccessorBlobs(t *testing.T) {
 	remote, _, manifestDesc, _, layerDesc := testArtifact(t)

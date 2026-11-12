@@ -151,3 +151,23 @@ func TestGateKeepsASharedReferenceWhenOneGroupDropsIt(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ready)
 }
+
+func TestGateBlobMembershipFollowsTheGroup(t *testing.T) {
+	t.Parallel()
+	gate := New()
+	shared := "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	onlyEast := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	gate.SetBlobs("east", []string{shared, onlyEast, shared, ""})
+	gate.SetBlobs("west", []string{shared})
+
+	require.True(t, gate.WatchesBlob(shared))
+	require.True(t, gate.WatchesBlob(onlyEast))
+	require.False(t, gate.WatchesBlob(""))
+
+	gate.RemoveGroup("east")
+	require.True(t, gate.WatchesBlob(shared))
+	require.False(t, gate.WatchesBlob(onlyEast))
+
+	gate.SetBlobs("west", nil)
+	require.False(t, gate.WatchesBlob(shared))
+}
