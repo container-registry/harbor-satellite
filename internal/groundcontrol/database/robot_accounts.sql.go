@@ -182,7 +182,7 @@ func (q *Queries) ListRobotAccounts(ctx context.Context) ([]RobotAccount, error)
 	return items, nil
 }
 
-const updateRobotAccount = `-- name: UpdateRobotAccount :exec
+const updateRobotAccount = `-- name: UpdateRobotAccount :execrows
 UPDATE robot_accounts
 SET robot_name = $2,
     robot_secret_hash = $3,
@@ -200,13 +200,16 @@ type UpdateRobotAccountParams struct {
 	RobotExpiry     sql.NullTime
 }
 
-func (q *Queries) UpdateRobotAccount(ctx context.Context, arg UpdateRobotAccountParams) error {
-	_, err := q.db.ExecContext(ctx, updateRobotAccount,
+func (q *Queries) UpdateRobotAccount(ctx context.Context, arg UpdateRobotAccountParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateRobotAccount,
 		arg.ID,
 		arg.RobotName,
 		arg.RobotSecretHash,
 		arg.RobotID,
 		arg.RobotExpiry,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

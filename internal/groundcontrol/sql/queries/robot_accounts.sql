@@ -35,7 +35,7 @@ SELECT * FROM robot_accounts;
 DELETE FROM robot_accounts
 WHERE id = $1;
 
--- name: UpdateRobotAccount :exec
+-- name: UpdateRobotAccount :execrows
 UPDATE robot_accounts
 SET robot_name = $2,
     robot_secret_hash = $3,

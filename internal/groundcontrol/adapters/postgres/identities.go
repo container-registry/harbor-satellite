@@ -12,6 +12,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/authn"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
+	"github.com/lib/pq"
 )
 
 var (
@@ -21,10 +22,11 @@ var (
 
 // IdentityStore runs UpsertOIDCUser, InsertOIDCLoginState,
 // TakeOIDCLoginState and DeleteExpiredOIDCLoginStates (plan item 8.1).
-// UpsertOIDCUser answering no row is retried once, because a concurrent
-// first login of the same identity is invisible to the statement's
-// snapshot; no row again means a local account holds the username:
-// fleet.ErrForbidden.
+// UpsertOIDCUser is retried once when it answers no row or the identity's
+// unique violation, because a concurrent first login of the same identity
+// is invisible to the statement's snapshot (the violation when the two
+// claims carry different usernames); no row again means a local account
+// holds the username: fleet.ErrForbidden.
 type IdentityStore struct{ q *database.Queries }
 
 func NewIdentityStore(db *sql.DB) (*IdentityStore, error) {
@@ -43,16 +45,28 @@ func (s *IdentityStore) Upsert(ctx context.Context, claims authn.Claims, role st
 		Groups: groups, Email: sql.NullString{String: claims.Email, Valid: claims.Email != ""}, Now: time.Now(),
 		Role: role, Issuer: claims.Issuer, Subject: claims.Subject, Username: claims.Username,
 	}
+	var err error
 	for range 2 {
-		id, err := s.q.UpsertOIDCUser(ctx, params)
-		if err == nil {
+		var id int32
+		if id, err = s.q.UpsertOIDCUser(ctx, params); err == nil {
 			return id, nil
 		}
-		if !errors.Is(err, sql.ErrNoRows) {
+		if !errors.Is(err, sql.ErrNoRows) && !identityLinkedConcurrently(err) {
 			return 0, mapError(err)
 		}
 	}
-	return 0, fmt.Errorf("%w: the username %q belongs to a local account", fleet.ErrForbidden, claims.Username)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("%w: the username %q belongs to a local account", fleet.ErrForbidden, claims.Username)
+	}
+	return 0, mapError(err)
+}
+
+// identityLinkedConcurrently reports the unique violation of
+// user_identities (issuer, subject): another login linked the identity
+// after this statement's snapshot.
+func identityLinkedConcurrently(err error) bool {
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code == "23505" && pqErr.Constraint == "user_identities_issuer_subject_key"
 }
 
 func (s *IdentityStore) SaveLoginState(ctx context.Context, state authn.LoginState) error {

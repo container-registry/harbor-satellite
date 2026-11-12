@@ -15,7 +15,9 @@ import (
 // reads the token with GetTokenByValue to tell them apart: missing is
 // ErrTokenInvalid, claimed fmt.Errorf("%w: already consumed",
 // ErrTokenInvalid) so the audit log keeps the reason while the response
-// stays 400, expired ErrTokenExpired. This is the only place that
+// stays 400, expired ErrTokenExpired. A token neither consumed nor expired
+// was claimed and unclaimed by a concurrent registration between the two
+// statements, so it is ErrTokenInvalid too. This is the only place that
 // classifies tokens once plan item 1.4 deletes server.claimZTRToken.
 type tokenRepo struct{ q *database.Queries }
 
@@ -40,6 +42,8 @@ func (r tokenRepo) Claim(ctx context.Context, token string, now time.Time) (flee
 		return 0, mapError(err)
 	case row.ConsumedAt.Valid:
 		return 0, fmt.Errorf("%w: already consumed", fleet.ErrTokenInvalid)
+	case row.ExpiresAt.After(now):
+		return 0, fmt.Errorf("%w: claimed by a concurrent registration", fleet.ErrTokenInvalid)
 	default:
 		return 0, fleet.ErrTokenExpired
 	}

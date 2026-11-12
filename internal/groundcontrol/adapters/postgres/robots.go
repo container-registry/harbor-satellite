@@ -64,11 +64,20 @@ func (r robotRepo) ByName(ctx context.Context, name string) (fleet.Robot, error)
 	return toRobot(row)
 }
 
+// Update is fleet.ErrNotFound when the robot is gone, e.g. its satellite
+// was deleted after the caller read it.
 func (r robotRepo) Update(ctx context.Context, robot fleet.Robot) error {
-	return mapError(r.q.UpdateRobotAccount(ctx, database.UpdateRobotAccountParams{
+	n, err := r.q.UpdateRobotAccount(ctx, database.UpdateRobotAccountParams{
 		ID: int32(robot.ID), RobotName: robot.Name, RobotSecretHash: robot.SecretHash,
 		RobotID: strconv.FormatInt(robot.HarborID, 10), RobotExpiry: expiry(robot),
-	}))
+	})
+	if err != nil {
+		return mapError(err)
+	}
+	if n == 0 {
+		return fmt.Errorf("robot %d: %w", robot.ID, fleet.ErrNotFound)
+	}
+	return nil
 }
 
 func (r robotRepo) Delete(ctx context.Context, id fleet.RobotID) error {

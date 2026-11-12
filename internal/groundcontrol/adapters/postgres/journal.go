@@ -2,7 +2,9 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -16,8 +18,14 @@ import (
 // (fleet.ErrInvalid otherwise); a result with moved 0 is fleet.ErrConflict.
 type journalRepo struct{ q *database.Queries }
 
+// OpenCursor runs OpenJournalCursor again when it answers no row: a
+// concurrent upload created the cursor after the first run's snapshot.
 func (r journalRepo) OpenCursor(ctx context.Context, satellite fleet.SatelliteID, epoch int64) (fleet.JournalCursor, error) {
-	row, err := r.q.OpenJournalCursor(ctx, database.OpenJournalCursorParams{SatelliteID: int32(satellite), Epoch: epoch})
+	params := database.OpenJournalCursorParams{SatelliteID: int32(satellite), Epoch: epoch}
+	row, err := r.q.OpenJournalCursor(ctx, params)
+	if errors.Is(err, sql.ErrNoRows) {
+		row, err = r.q.OpenJournalCursor(ctx, params)
+	}
 	if err != nil {
 		return fleet.JournalCursor{}, mapError(err)
 	}

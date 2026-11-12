@@ -71,6 +71,7 @@ SET epoch = GREATEST(satellite_journal_cursor.epoch, EXCLUDED.epoch),
         WHEN EXCLUDED.epoch > satellite_journal_cursor.epoch THEN 0
         ELSE satellite_journal_cursor.acked_seq
     END
+WHERE EXISTS (SELECT 1 FROM prior)
 RETURNING epoch, acked_seq,
     NOT EXISTS (SELECT 1 FROM prior WHERE prior.epoch >= $2::BIGINT) AS fresh
 `
@@ -90,11 +91,14 @@ type OpenJournalCursorRow struct {
 // epoch with acked_seq 0 (a reinstalled satellite), and whether it did
 // either (fresh). Epochs are time-ordered: an older epoch leaves the cursor,
 // so a delayed upload of a replaced journal cannot move it back. The
-// statement always returns the row and locks it until the transaction ends,
-// so two uploads of one satellite run one after the other. prior reads the
+// statement always locks the row until the transaction ends, so two
+// uploads of one satellite run one after the other. prior reads the
 // cursor under that lock, so it sees the latest committed epoch; the INSERT
 // reads prior first, because a row this statement has updated is no longer
-// visible to it.
+// visible to it. A cursor another upload created after this statement's
+// snapshot is invisible to prior, so fresh cannot be told: the update is
+// skipped and no row returned, the row stays locked, and the adapter runs
+// the statement again, whose snapshot sees that cursor.
 func (q *Queries) OpenJournalCursor(ctx context.Context, arg OpenJournalCursorParams) (OpenJournalCursorRow, error) {
 	row := q.db.QueryRowContext(ctx, openJournalCursor, arg.SatelliteID, arg.Epoch)
 	var i OpenJournalCursorRow

@@ -253,7 +253,8 @@ func NewJournalService(repo Repository) (*JournalService, error) {
 //
 // Records at or below the cursor are duplicates and emit nothing; with
 // nothing to append there is no Advance. A journaled heartbeat therefore
-// costs at most four statements: BEGIN, OpenCursor, Advance, COMMIT. A
+// costs at most four statements: BEGIN, OpenCursor, Advance, COMMIT, plus
+// a second OpenJournalCursor when it raced a concurrent first upload. A
 // failure of the repository is returned as an error; the heartbeat then
 // answers without a journal object.
 func (s *JournalService) Ingest(ctx context.Context, satellite SatelliteID, name string, upload JournalUpload) (JournalAck, error) {

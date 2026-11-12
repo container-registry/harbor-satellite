@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -126,9 +127,11 @@ func TestSatelliteJournal_SQLContract(t *testing.T) {
 	require.Zero(t, left, "deleting the satellite deletes its cursor")
 }
 
-// Two first uploads of one satellite race to create its cursor; the one
-// that waits must still get the row (review MINOR 1).
-func TestOpenJournalCursor_ConcurrentCreateReturnsTheRow(t *testing.T) {
+// Two first uploads of one satellite race to create its cursor. The one
+// that waits cannot read the epoch the other created, so it gets no row
+// and the cursor stays locked for it; running the statement again returns
+// the row, not fresh (review MINOR 1).
+func TestOpenJournalCursor_ConcurrentCreateReturnsTheRowOnTheRerun(t *testing.T) {
 	db := dbtest.New(t)
 	q := database.New(db.DB)
 	ctx := context.Background()
@@ -150,7 +153,13 @@ func TestOpenJournalCursor_ConcurrentCreateReturnsTheRow(t *testing.T) {
 	}
 	waiting := make(chan result, 1)
 	go func() {
-		row, err := q.OpenJournalCursor(ctx, database.OpenJournalCursorParams{SatelliteID: sat.ID, Epoch: 100})
+		params := database.OpenJournalCursorParams{SatelliteID: sat.ID, Epoch: 100}
+		_, err := q.OpenJournalCursor(ctx, params)
+		if !errors.Is(err, sql.ErrNoRows) {
+			waiting <- result{err: fmt.Errorf("first run: want no row, got %w", err)}
+			return
+		}
+		row, err := q.OpenJournalCursor(ctx, params)
 		waiting <- result{row, err}
 	}()
 	time.Sleep(200 * time.Millisecond)
@@ -158,8 +167,7 @@ func TestOpenJournalCursor_ConcurrentCreateReturnsTheRow(t *testing.T) {
 
 	got := <-waiting
 	require.NoError(t, got.err)
-	require.Equal(t, int64(200), got.row.Epoch)
-	require.Zero(t, got.row.AckedSeq)
+	require.Equal(t, database.OpenJournalCursorRow{Epoch: 200}, got.row)
 }
 
 // fresh must be judged against the epoch committed while the upload waited
