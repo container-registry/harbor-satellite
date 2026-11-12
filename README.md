@@ -242,9 +242,9 @@ Details: [security model](docs/security.md), [ADR-0005 SPIFFE identity and secur
 
 ## Status and Roadmap
 
-Implemented: Ground Control with API and CLI, token and SPIFFE registration, satellite sessions and lifecycle, desired-state replication into a local OCI store or BYO registry, the loopback OCI proxy with pull-through and edge admission, peer distribution, the transactional outbox and async worker, Casbin policy, OIDC login, robot rotation, webhooks, audit logging, runtime mirror configuration, and experimental direct delivery for k3s/RKE2.
+Implemented: Ground Control with API and CLI, token and SPIFFE registration, satellite sessions and lifecycle, desired-state replication into a local OCI store or BYO registry, the loopback OCI proxy with pull-through and edge admission, peer distribution, the transactional outbox and async worker, edge journal upload and ingest, Prometheus metrics on both components, Casbin policy, OIDC login, robot rotation, webhooks, audit logging, runtime mirror configuration, and experimental direct delivery for k3s/RKE2.
 
-Planned: Ground Control ingest of the edge journal, a Prometheus endpoint for Ground Control, keyless pulls through Harbor 3 workload identity federation, groups that follow pushed tags, and Spegel-based distribution (Pattern 2). Current limitations are listed in the [changelog](CHANGELOG.md#known-limitations).
+Planned: keyless pulls through Harbor 3 workload identity federation, groups that follow pushed tags, and Spegel-based distribution (Pattern 2). Current limitations are listed in the [changelog](CHANGELOG.md#known-limitations).
 
 Compatibility with every container registry and edge device cannot be guaranteed. If you are evaluating Harbor Satellite for your environment, [reach out](https://container-registry.com/contact/).
 
