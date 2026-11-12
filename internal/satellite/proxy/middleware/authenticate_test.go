@@ -10,11 +10,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/internal/satellite/proxy/middleware"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingEdge = "the proxy runs without middleware; it listens on loopback only"
 
 type denyAll struct{ calls int }
 
@@ -38,7 +35,6 @@ func serve(t *testing.T, mw proxy.MiddlewareFunc, remoteAddr string) (*httptest.
 }
 
 func TestAuthenticate_RejectsUnauthenticatedPeer(t *testing.T) {
-	pending.Plan(t, "9.3", pendingEdge)
 	v := &denyAll{}
 
 	rec, reached := serve(t, middleware.Authenticate(v), "10.0.0.5:4242")
@@ -56,7 +52,6 @@ func TestAuthenticate_RejectsUnauthenticatedPeer(t *testing.T) {
 }
 
 func TestAuthenticate_AdmitsLoopback(t *testing.T) {
-	pending.Plan(t, "9.3", pendingEdge)
 	v := &denyAll{}
 	for _, addr := range []string{"127.0.0.1:4242", "[::1]:4242"} {
 		_, reached := serve(t, middleware.Authenticate(v), addr)
@@ -77,7 +72,6 @@ func (r *recorder) ObserveReplication(int64, time.Duration, string) {}
 func (r *recorder) ObserveStoreLockWait(string, time.Duration)      {}
 
 func TestMetrics_RecordsPullOutcome(t *testing.T) {
-	pending.Plan(t, "9.3", pendingEdge)
 	rec := &recorder{}
 
 	_, reached := serve(t, middleware.Metrics(rec), "127.0.0.1:4242")
