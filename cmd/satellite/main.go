@@ -25,6 +25,7 @@ import (
 	proxyimage "github.com/container-registry/harbor-satellite/internal/satellite/proxy/process/image"
 	"github.com/container-registry/harbor-satellite/internal/satellite/secure"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
 	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
@@ -80,6 +81,7 @@ type SatelliteOptions struct {
 	ProxyMaxConnections    int
 	ProxyStreaming         bool
 	ProxyPrefetchWorkers   int
+	TelemetryAddr          string
 }
 
 func main() {
@@ -113,6 +115,7 @@ func main() {
 		ProxyMaxConnections:    envCfg.ProxyMaxConnections,
 		ProxyStreaming:         envCfg.ProxyStreaming,
 		ProxyPrefetchWorkers:   envCfg.ProxyPrefetchConcurrency,
+		TelemetryAddr:          envCfg.TelemetryAddr,
 	}
 	_, opts.ProxyModeExplicit = os.LookupEnv("PROXY_MODE")
 	shutdownTimeout := envCfg.ShutdownTimeout
@@ -142,6 +145,7 @@ func main() {
 	flag.IntVar(&opts.ProxyPort, "proxy-port", opts.ProxyPort, "Local OCI registry proxy port")
 	flag.DurationVar(&opts.ProxyWriteTimeout, "proxy-write-timeout", opts.ProxyWriteTimeout, "Per-write deadline for OCI proxy responses; a client that accepts no data for this long is cut off (0 disables)")
 	flag.IntVar(&opts.ProxyMaxConnections, "proxy-max-connections", opts.ProxyMaxConnections, "Maximum concurrent OCI proxy connections (0 is unlimited)")
+	flag.StringVar(&opts.TelemetryAddr, "telemetry-addr", opts.TelemetryAddr, "Address for /healthz and /metrics, separate from the OCI proxy (empty disables)")
 	flag.BoolVar(&opts.ProxyStreaming, "proxy-streaming", opts.ProxyStreaming, "Answer a proxy-mode manifest miss once the manifest is stored and stream blob misses (ADR-0013); off fills the whole graph first")
 	flag.IntVar(&opts.ProxyPrefetchWorkers, "proxy-prefetch-concurrency", opts.ProxyPrefetchWorkers, "Concurrent background graph completions for streaming pull-through")
 	flag.DurationVar(&opts.StoreGCGrace, "store-gc-grace", opts.StoreGCGrace, "How long unreferenced local OCI content is kept before garbage collection; 0 deletes it at once")
@@ -393,12 +397,18 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		localStore    store.Store
 		remoteStore   store.Store
 	)
+	telemetryServer, err := telemetry.NewServer(telemetry.ServerOptions{Addr: opts.TelemetryAddr})
+	if err != nil {
+		return fmt.Errorf("initialize telemetry: %w", err)
+	}
+	recorder := telemetryServer.Recorder()
 	fillLeases := store.NewFillLeases()
 	localStore, remoteStore, indexRecovered, err := proxyStores(cm, pathConfig.StoreDir, store.OCIStoreOptions{
 		AtomicIndex:  true,
 		RecoverIndex: true,
 		FillLeases:   fillLeases,
 		GCGrace:      opts.StoreGCGrace,
+		Recorder:     recorder,
 	})
 	if err != nil {
 		return fmt.Errorf("initialize proxy stores: %w", err)
@@ -411,6 +421,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		return fmt.Errorf("initialize streaming pull-through: %w", err)
 	}
 	defer closePrefetch()
+	pullOptions.Recorder = recorder
 	pullHandler, err := proxyimage.NewPullWithOptions(proxyLifecycleCtx, opts.ProxyMode, localStore, remoteStore, pullOptions)
 	if err != nil {
 		return fmt.Errorf("initialize OCI proxy pull handler: %w", err)
@@ -432,6 +443,25 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		return fmt.Errorf("listen for OCI proxy on %s: %w", proxyAddress, err)
 	}
 	proxyListener = proxyhandler.LimitListener(proxyListener, opts.ProxyMaxConnections)
+	if checker, ok := localStore.(interface {
+		Check(ctx context.Context) error
+	}); ok {
+		if err := telemetryServer.AddCheck("store", checker.Check); err != nil {
+			return err
+		}
+	}
+	if err := telemetryServer.AddCheck("proxy", func(checkCtx context.Context) error {
+		conn, dialErr := (&net.Dialer{Timeout: time.Second}).DialContext(checkCtx, "tcp", proxyAddress)
+		if dialErr != nil {
+			return fmt.Errorf("OCI proxy: %w", dialErr)
+		}
+		return conn.Close()
+	}); err != nil {
+		return err
+	}
+	if err := serveTelemetry(ctx, wg, telemetryServer, opts.TelemetryAddr); err != nil {
+		return err
+	}
 	defer proxyServer.Close()
 
 	wg.Go(func() error {
@@ -713,6 +743,25 @@ func fallbackRegistryEndpoint(cm *config.ConfigManager) string {
 		return ""
 	}
 	return cm.GetLocalRegistryURL()
+}
+
+// serveTelemetry listens before the satellite starts, so a taken port fails
+// startup instead of silently dropping /healthz.
+func serveTelemetry(ctx context.Context, wg *errgroup.Group, server *telemetry.Server, addr string) error {
+	if strings.TrimSpace(addr) == "" {
+		return nil
+	}
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listen for telemetry on %s: %w", addr, err)
+	}
+	wg.Go(func() error {
+		if err := server.Serve(ctx, listener); err != nil {
+			return fmt.Errorf("serve telemetry: %w", err)
+		}
+		return nil
+	})
+	return nil
 }
 
 // prefetchQueueSize bounds manifests waiting for graph completion; beyond it

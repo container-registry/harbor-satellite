@@ -12,6 +12,7 @@ import (
 
 	proxy "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/sync/singleflight"
 	"oras.land/oras-go/v2/errdef"
@@ -30,6 +31,7 @@ type pullHandler struct {
 	operations   singleflight.Group
 	filler       store.Filler
 	prefetcher   Prefetcher
+	recorder     telemetry.Recorder
 }
 
 // NewPull serves retained content from localStore and fills it from remoteStore
@@ -39,7 +41,7 @@ func NewPull(lifecycleCtx context.Context, mode proxy.Mode, localStore, remoteSt
 	return NewPullWithOptions(lifecycleCtx, mode, localStore, remoteStore, PullOptions{})
 }
 
-func (p *pullHandler) handle(request *proxy.Request) error {
+func (p *pullHandler) handle(request *proxy.Request) (err error) {
 	request.ResponseHeader().Set("Docker-Distribution-API-Version", distributionAPIVersion)
 	if request.Operation == proxy.CheckRegistry {
 		return request.Write(http.StatusOK, nil)
@@ -49,6 +51,10 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	if err != nil {
 		return err
 	}
+	started := time.Now()
+	defer func() {
+		p.recorder.ObservePull(resourceLabel(resource), pullOutcome(err), time.Since(started))
+	}()
 	if !p.mode.Valid() {
 		return errors.New("proxy image pull mode is invalid")
 	}
@@ -91,8 +97,10 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 		}
 
 		if err := p.localStore.Replicate(fillCtx, p.remoteStore, []store.Artifact{artifact}); err != nil {
+			p.recorder.CountPullThroughFill("error")
 			return nil, err
 		}
+		p.recorder.CountPullThroughFill("ok")
 		return p.localStore.Pull(fillCtx, artifact, resource)
 	})
 
@@ -164,6 +172,27 @@ func pullArtifactFor(request *proxy.Request) (
 		)
 	}
 	return store.Artifact{}, 0, "", errors.New("proxy image pull operation is invalid")
+}
+
+func resourceLabel(resource store.PullResource) string {
+	if resource == store.PullResourceBlob {
+		return "blob"
+	}
+	return "manifest"
+}
+
+func pullOutcome(err error) string {
+	var distributionErr *proxy.DistributionError
+	switch {
+	case err == nil:
+		return "ok"
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return "canceled"
+	case errors.As(err, &distributionErr) && (distributionErr.Code == proxy.ErrorCodeBlobUnknown || distributionErr.Code == proxy.ErrorCodeManifestUnknown):
+		return "not_found"
+	default:
+		return "error"
+	}
 }
 
 func pullKey(resource store.PullResource, repository, identifier string) string {

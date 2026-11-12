@@ -75,3 +75,34 @@ func TestServer_HealthzFailsWhenCheckFails(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, status)
 	require.Contains(t, body, "state")
 }
+
+func TestServer_AddCheckAfterStart(t *testing.T) {
+	srv, base := serve(t, telemetry.ServerOptions{})
+	status, _ := get(t, base+"/healthz")
+	require.Equal(t, http.StatusOK, status)
+
+	require.NoError(t, srv.AddCheck("proxy", func(context.Context) error { return errors.New("proxy not listening") }))
+	status, body := get(t, base+"/healthz")
+	require.Equal(t, http.StatusServiceUnavailable, status)
+	require.Contains(t, body, "proxy not listening")
+	require.Error(t, srv.AddCheck("", func(context.Context) error { return nil }))
+}
+
+func TestServer_MetricsExposeEveryRecorderSeries(t *testing.T) {
+	srv, base := serve(t, telemetry.ServerOptions{})
+	rec := srv.Recorder()
+	rec.ObservePull("blob", "ok", time.Millisecond)
+	rec.CountPullThroughFill("ok")
+	rec.ObserveReplication(1024, time.Second, "ok")
+	rec.ObserveStoreLockWait("publish", time.Microsecond)
+
+	status, body := get(t, base+"/metrics")
+	require.Equal(t, http.StatusOK, status)
+	for _, name := range []string{
+		telemetry.MetricPullDuration, telemetry.MetricPullThroughFills, telemetry.MetricReplicationBytes,
+		telemetry.MetricReplicationDuration, telemetry.MetricStoreLockWait, "go_goroutines",
+	} {
+		require.Contains(t, body, name)
+	}
+	require.Contains(t, body, telemetry.MetricReplicationBytes+`{outcome="ok"} 1024`)
+}

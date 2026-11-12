@@ -27,7 +27,7 @@ type HarborSatellite struct {
 	ImageDir               string           `env:"IMAGE_DIR"`
 	ProxyMode              config.ProxyMode `env:"PROXY_MODE"                envDefault:"proxy"`
 	ProxyPort              int              `env:"PROXY_PORT"                envDefault:"8585"`
-	TelemetryAddr          string           `env:"TELEMETRY_ADDR"`
+	TelemetryAddr          string           `env:"TELEMETRY_ADDR"            envDefault:"127.0.0.1:8586"`
 	StoreGCGrace           time.Duration    `env:"STORE_GC_GRACE"            envDefault:"10m"`
 
 	ProxyMaxConnections      int           `env:"PROXY_MAX_CONNECTIONS"      envDefault:"0"`

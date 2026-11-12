@@ -31,9 +31,22 @@ type ServerOptions struct {
 }
 
 type Server struct {
+	checksMu sync.RWMutex
 	checks   map[string]HealthCheck
 	registry *prometheus.Registry
 	recorder *promRecorder
+}
+
+// AddCheck registers a check after construction, for dependencies that only
+// exist once the recorder is already in use; it replaces one with that name.
+func (s *Server) AddCheck(name string, check HealthCheck) error {
+	if name == "" || check == nil {
+		return errors.New("telemetry: a health check needs a name and a function")
+	}
+	s.checksMu.Lock()
+	defer s.checksMu.Unlock()
+	s.checks[name] = check
+	return nil
 }
 
 func NewServer(opts ServerOptions) (*Server, error) {
@@ -102,8 +115,14 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), checkTimeout)
 	defer cancel()
 
-	names := make([]string, 0, len(s.checks))
-	for name := range s.checks {
+	s.checksMu.RLock()
+	checks := make(map[string]HealthCheck, len(s.checks))
+	for name, check := range s.checks {
+		checks[name] = check
+	}
+	s.checksMu.RUnlock()
+	names := make([]string, 0, len(checks))
+	for name := range checks {
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -112,7 +131,7 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	var wg sync.WaitGroup
 	for i, name := range names {
 		wg.Go(func() {
-			if err := s.checks[name](ctx); err != nil {
+			if err := checks[name](ctx); err != nil {
 				results[i] = err.Error()
 				return
 			}
