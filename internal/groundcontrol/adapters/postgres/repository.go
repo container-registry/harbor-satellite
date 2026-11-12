@@ -75,5 +75,5 @@ func (t tx) Events() fleet.EventSink {
 
 func (t tx) Journal() fleet.JournalRepo { return journalRepo{q: t.q} }
 
-func (tx) Views() fleet.ViewRepo      { return viewRepo{} }
+func (t tx) Views() fleet.ViewRepo    { return viewRepo{q: t.q} }
 func (tx) Policies() fleet.PolicyRepo { return policyRepo{} }

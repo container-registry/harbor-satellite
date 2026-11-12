@@ -11,12 +11,10 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/heartbeat"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
 func TestLifecycle_PendingOnlineStaleOnlineRevokedPending(t *testing.T) {
-	pending.Plan(t, "4.3", pendingViews)
 	db := dbtest.New(t)
 	ctx := context.Background()
 	repo, err := postgres.NewRepository(db.DB)
@@ -64,7 +62,6 @@ func TestLifecycle_PendingOnlineStaleOnlineRevokedPending(t *testing.T) {
 }
 
 func TestSatelliteRepo_SetIdentityAndGetFillsSPIFFEID(t *testing.T) {
-	pending.Plan(t, "4.3", "satellite_identities is not read or written")
 	db := dbtest.New(t)
 	ctx := context.Background()
 	repo, err := postgres.NewRepository(db.DB)
@@ -93,7 +90,6 @@ func TestSatelliteRepo_SetIdentityAndGetFillsSPIFFEID(t *testing.T) {
 }
 
 func TestDeleteOrphanedArtifacts_KeepsViewInventory(t *testing.T) {
-	pending.Plan(t, "4.4", "DeleteOrphanedArtifacts reads only satellite_status.artifact_ids")
 	db := dbtest.New(t)
 	ctx := context.Background()
 	q := database.New(db.DB)
