@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,7 +28,6 @@ func TestSessionBearer_ReadsTokenPerRequest(t *testing.T) {
 }
 
 func TestClient_SyncDecodesSessionAndInventoryRequested(t *testing.T) {
-	pending.Plan(t, "4.1", "Ground Control issues no sessions; the satellite authenticates every beat with its robot")
 	expires := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
 	session := map[string]any{"token": "hss_renewed", "expires_at": expires.Format(time.RFC3339)}
 

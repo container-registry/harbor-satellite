@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/inventory"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/registry"
@@ -43,7 +42,6 @@ func byoReportingCM(t *testing.T, gcURL string) *config.ConfigManager {
 }
 
 func TestStatusReport_SendsInventoryOnlyWhenChangedOrRequested(t *testing.T) {
-	pending.Plan(t, "4.4", "every heartbeat sends the full cached image list")
 	var (
 		mu        sync.Mutex
 		received  []map[string]json.RawMessage

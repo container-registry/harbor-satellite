@@ -9,12 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingSession = "Ground Control issues no sessions; the satellite authenticates every beat with its robot"
 
 var sessionExpiry = time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
 
@@ -23,7 +20,6 @@ func sessionJSON(token string) map[string]any {
 }
 
 func TestRegistration_StoresGCSession(t *testing.T) {
-	pending.Plan(t, "4.1", pendingSession)
 	gc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
@@ -47,7 +43,6 @@ func TestRegistration_StoresGCSession(t *testing.T) {
 }
 
 func TestStatusReport_UsesRenewedSession(t *testing.T) {
-	pending.Plan(t, "4.1", pendingSession)
 	var (
 		mu    sync.Mutex
 		auths []string
