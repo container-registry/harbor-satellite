@@ -303,7 +303,7 @@ CRI configs make the runtime pull through the satellite with the upstream as fal
 
 ### Database Migrations
 
-goose migrations live in `internal/groundcontrol/sql/schema/` (001 to 023, no 014) and run automatically on GC startup. The Dockerfile copies them to `/migrations`.
+goose migrations live in `internal/groundcontrol/sql/schema/` (001 to 023, no 014) and run automatically on GC startup, after a check that refuses PostgreSQL below 19 and `wal_level=minimal` (ADR-0020, `migrator/server.go`). The Dockerfile copies them to `/migrations`.
 
 ### Hot Reload
 
@@ -315,7 +315,7 @@ The satellite watches `config.json`. Log level, state replication interval and a
 - E2E tests are Taskfile-driven flows (taskfiles/e2e.yml), not Go tests; `verify` pulls one image through the proxy (`verify-proxy-pull`) and waits for two heartbeats with `go run ./test/e2e/cmd/verify-heartbeat`. `HARBOR_EXTERNAL=1 HARBOR_NETWORK=<net> HARBOR_HOST_URL=<url>` runs them against a running Harbor
 - E2E compose stacks: `test/e2e/docker/docker-compose.yml`, `test/e2e/docker/docker-compose.spiffe.yml`
 - Test configs in test/e2e/testconfig/, fixtures in test/e2e/testdata/
-- GC handler tests use go-sqlmock. Integration tests in the same packages run against real Postgres when `TEST_DATABASE_URL` is set and skip otherwise; `task test:integration` starts `test/integration/docker-compose.yml` (postgres:17 with pg_stat_statements, host port `TEST_PG_PORT`, default 55434) and sets it
+- GC handler tests use go-sqlmock. Integration tests in the same packages run against real Postgres when `TEST_DATABASE_URL` is set and skip otherwise; `task test:integration` starts `test/integration/docker-compose.yml` (postgres:19rc1 with pg_stat_statements, host port `TEST_PG_PORT`, default 55434) and sets it
 - `internal/shared/logger/logtest.Capture(t)` routes the context-carried zerolog logger into a buffer at every level; tests use it to assert secrets never reach the log
 - test/arch/: repository-wide tests. `TestNoSecretsInLogArguments` (D4) parses every non-test file in cmd, internal and pkg and fails on a log argument named like a password, secret or token, or a logged response body; never log a GC or Harbor response body
 - `internal/groundcontrol/dbtest`: a fresh database per test with all goose migrations, plus pg_stat_statements counts per test database. `internal/groundcontrol/harbortest`: in-process Harbor API and registry stub that records every call and can fail, go down or hold requests

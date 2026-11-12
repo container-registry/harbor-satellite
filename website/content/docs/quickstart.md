@@ -255,14 +255,14 @@ Create `docker-compose.yml` in the `gc/` directory:
 ```yaml
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:19rc1-alpine
     container_name: harbor-satellite-postgres
     environment:
       POSTGRES_USER: harbor
       POSTGRES_PASSWORD: harbor
       POSTGRES_DB: harbor_satellite
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "harbor", "-d", "harbor_satellite"]
       interval: 5s
