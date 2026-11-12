@@ -1,6 +1,6 @@
 # Security Model
 
-This page describes what each component trusts, which secrets exist and where they are kept. Report vulnerabilities privately to the maintainers, not in public issues.
+This page describes what each component trusts, which secrets exist and where they are kept. Report vulnerabilities privately through [GitHub security advisories](https://github.com/container-registry/harbor-satellite/security/advisories/new), not in public issues; supported versions and the disclosure process are in [SECURITY.md](../SECURITY.md).
 
 ## Trust Boundaries
 

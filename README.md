@@ -236,6 +236,8 @@ Harbor Satellite keeps Harbor as the central source of truth and puts only what 
 - Satellite config at rest can be encrypted with AES-256-GCM, bound to the device fingerprint (`app_config.encrypt_config`, Linux only, off by default).
 - Container images are signed with Cosign; release archives ship with SBOMs.
 
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), through [GitHub security advisories](https://github.com/container-registry/harbor-satellite/security/advisories/new).
+
 Details: [security model](docs/security.md), [ADR-0005 SPIFFE identity and security](docs/decisions/0005-spiffe-identity-and-security.md), [ADR-0016 satellite sessions](docs/decisions/0016-satellite-session-authentication.md), [ADR-0018 OIDC and robot rotation](docs/decisions/0018-operator-identity-oidc.md).
 
 ## Status and Roadmap

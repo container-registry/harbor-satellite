@@ -11,6 +11,7 @@
 
 - [Architecture](architecture.md): desired state, the outbox and async plane, hot and cold paths, lifecycle, journal
 - [Security model](security.md): trust boundaries, secrets, identity, authorization, hardening
+- [Security policy](../SECURITY.md): reporting vulnerabilities, supported versions, disclosure
 
 ## Reference
 
