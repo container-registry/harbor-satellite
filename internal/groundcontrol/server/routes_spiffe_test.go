@@ -15,7 +15,6 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	groundcontrolmiddleware "github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,7 +61,6 @@ func serveSatelliteAuthChain(s *Server, req *http.Request) (int, string) {
 }
 
 func TestSatelliteAuthChain_SVIDOnly(t *testing.T) {
-	pending.Plan(t, "D3", "SatelliteAuthMiddleware runs before spiffe.AuthMiddleware, so a satellite with only an SVID gets 401")
 	for _, path := range satelliteAuthPaths {
 		t.Run(path, func(t *testing.T) {
 			s, mock := newSatelliteAuthServer(t)
@@ -77,7 +75,6 @@ func TestSatelliteAuthChain_SVIDOnly(t *testing.T) {
 }
 
 func TestSatelliteAuthChain_SVIDWinsOverInvalidRobot(t *testing.T) {
-	pending.Plan(t, "D3", "with an SVID and robot Basic auth, the robot is checked first and its failure rejects the SVID")
 	for _, path := range satelliteAuthPaths {
 		t.Run(path, func(t *testing.T) {
 			s, mock := newSatelliteAuthServer(t)

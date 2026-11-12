@@ -45,7 +45,6 @@ func TestRefreshRotatesRobotSecret(t *testing.T) {
 }
 
 func TestSyncAcceptsSPIFFEIdentityWithoutBasicAuth(t *testing.T) {
-	pending.Plan(t, "D3", "SatelliteAuthMiddleware runs before spiffe.AuthMiddleware, so SPIFFE-only satellites get 401 on sync")
 	if !spiffeBuild {
 		t.Skip("SPIFFE is compiled out")
 	}
