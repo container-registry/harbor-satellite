@@ -6,7 +6,7 @@ info:
     bootstrap flows. JSON schemas describe the public transport contract and
     are intentionally independent of the Ground Control database schema.
   title: Ground Control
-  version: 0.1.0
+  version: 1.0.0
 paths:
   /api/configs:
     get:
@@ -85,8 +85,8 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "422":
           description: >
-            The configuration fails validation (plan item 7.4, not checked
-            yet); nothing is stored.
+            The configuration fails the satellite's app_config validation;
+            nothing is stored.
           content:
             application/json:
               schema:
@@ -287,8 +287,8 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "422":
           description: >
-            The configuration fails validation (plan item 7.4, not checked
-            yet); nothing is stored.
+            The configuration fails the satellite's app_config validation;
+            nothing is stored.
           content:
             application/json:
               schema:
