@@ -61,6 +61,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - A satellite session renewed during re-registration stayed valid for a full TTL.
 - A journal batch that failed partway reused sequence numbers on the next flush.
 - `groundcontrol worker` exited 0 when one job stopped early; it now fails.
+- The satellite logged `invalid schedule provided for heartbeat_interval` (and the other two intervals) when the setting was simply absent. An absent interval now takes its default silently; an invalid one is still reported, with the rejected value.
 - The OpenAPI spec did not list the `403` that `POST /satellites/ztr` and `GET /satellites/spiffe-ztr` answer for a revoked satellite, so generated clients had no type for it.
 - `groundcontrol serve` kept answering `/health` healthy after a background job, such as the embedded async worker, stopped; `/health` now answers `503` with that job as an unhealthy component.
 - Ground Control without `HARBOR_URL` failed with an error that did not name the variable.

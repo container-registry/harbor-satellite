@@ -295,23 +295,35 @@ func validateBringOwnRegistry(config *Config) ([]string, error) {
 // validateAndEnforceCronSchedules validates and defaults cron schedules.
 func validateAndEnforceCronSchedules(config *Config) []string {
 	var warnings []string
-
-	if !isValidCronExpression(config.AppConfig.StateReplicationInterval) {
-		config.AppConfig.StateReplicationInterval = DefaultFetchAndReplicateCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for state_replication_interval, using default schedule %s", DefaultFetchAndReplicateCronExpr))
+	for _, s := range []struct {
+		field, def string
+		value      *string
+	}{
+		{"state_replication_interval", DefaultFetchAndReplicateCronExpr, &config.AppConfig.StateReplicationInterval},
+		{"register_satellite_interval", DefaultZTRCronExpr, &config.AppConfig.RegisterSatelliteInterval},
+		{"heartbeat_interval", DefaultHeartbeatCronExpr, &config.AppConfig.HeartbeatInterval},
+	} {
+		if w := enforceSchedule(s.field, s.value, s.def); w != "" {
+			warnings = append(warnings, w)
+		}
 	}
-
-	if !isValidCronExpression(config.AppConfig.RegisterSatelliteInterval) {
-		config.AppConfig.RegisterSatelliteInterval = DefaultZTRCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for register_satellite_interval, using default schedule %s", DefaultZTRCronExpr))
-	}
-
-	if !isValidCronExpression(config.AppConfig.HeartbeatInterval) {
-		config.AppConfig.HeartbeatInterval = DefaultHeartbeatCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for heartbeat_interval, using default schedule %s", DefaultHeartbeatCronExpr))
-	}
-
 	return warnings
+}
+
+// enforceSchedule sets an absent schedule to def without a warning, since
+// leaving it out is how a config asks for the default; an invalid one is
+// replaced with a warning that quotes it.
+func enforceSchedule(field string, value *string, def string) string {
+	if *value == "" {
+		*value = def
+		return ""
+	}
+	if isValidCronExpression(*value) {
+		return ""
+	}
+	invalid := *value
+	*value = def
+	return fmt.Sprintf("invalid schedule %q provided for %s, using default schedule %s", invalid, field, def)
 }
 
 // validateAndEnforcePeerDistribution defaults and checks the opt-in peer block.

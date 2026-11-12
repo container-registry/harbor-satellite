@@ -40,13 +40,13 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 			config:         nil,
 			expectError:    false,
 			expectedErrMsg: "nil config",
-			expectWarnings: true,
+			expectWarnings: false,
 		},
 		{
 			name:           "empty config - defaults applied",
 			config:         &Config{},
 			expectError:    false,
-			expectWarnings: true,
+			expectWarnings: false,
 			expectedConfig: &Config{
 				AppConfig: AppConfig{
 					GroundControlURL:          URL(DefaultGroundControlURL),
@@ -178,17 +178,16 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 			},
 		},
 		{
-			name: "empty cron expression defaults",
+			name: "absent schedules default without a warning",
 			config: &Config{
 				AppConfig: AppConfig{
-					GroundControlURL:          URL("https://example.com"),
 					StateReplicationInterval:  "",
 					RegisterSatelliteInterval: "",
 					HeartbeatInterval:         "",
 				},
 			},
 			expectError:    false,
-			expectWarnings: true,
+			expectWarnings: false,
 			expectedConfig: &Config{
 				AppConfig: AppConfig{
 					StateReplicationInterval:  DefaultFetchAndReplicateCronExpr,
@@ -1224,4 +1223,15 @@ func TestValidateAppConfig_RegistryAuthMode(t *testing.T) {
 		}
 		require.ErrorContains(t, err, wantErr, "%q", mode)
 	}
+}
+
+func TestValidateAndEnforceCronSchedules_WarnsOnlyForInvalidValues(t *testing.T) {
+	cfg := &Config{AppConfig: AppConfig{HeartbeatInterval: "every minute", StateReplicationInterval: "@every 00h00m10s"}}
+
+	warnings := validateAndEnforceCronSchedules(cfg)
+
+	require.Equal(t, []string{`invalid schedule "every minute" provided for heartbeat_interval, using default schedule ` + DefaultHeartbeatCronExpr}, warnings)
+	require.Equal(t, DefaultHeartbeatCronExpr, cfg.AppConfig.HeartbeatInterval)
+	require.Equal(t, "@every 00h00m10s", cfg.AppConfig.StateReplicationInterval)
+	require.Equal(t, DefaultZTRCronExpr, cfg.AppConfig.RegisterSatelliteInterval, "absent: defaulted, no warning")
 }

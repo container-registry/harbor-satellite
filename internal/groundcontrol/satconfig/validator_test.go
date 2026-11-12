@@ -22,7 +22,7 @@ func TestValidator_DelegatesToPkgConfig(t *testing.T) {
 		"valid":             {doc: `{"app_config":{"log_level":"info","state_replication_interval":"@every 00h00m30s","register_satellite_interval":"@every 00h00m05s","heartbeat_interval":"@every 00h00m30s"}}`},
 		"warning":           {doc: `{"app_config":{"log_level":"loud","state_replication_interval":"@every 00h00m30s","register_satellite_interval":"@every 00h00m05s","heartbeat_interval":"@every 00h00m30s"}}`, warns: true},
 		"error":             {doc: `{"app_config":{"bring_own_registry":true}}`, errSubstring: "custom registry URL is required"},
-		"no ground control": {doc: `{"app_config":{"state_replication_interval":"@every 00h00m30s"},"state_config":{}}`, warns: true},
+		"no ground control": {doc: `{"app_config":{"state_replication_interval":"@every 00h00m30s"},"state_config":{}}`},
 	} {
 		var cfg config.Config
 		require.NoError(t, json.Unmarshal([]byte(tc.doc), &cfg), name)
