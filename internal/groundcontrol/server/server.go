@@ -177,7 +177,11 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 		return result, fmt.Errorf("POLICY_ENGINE=%s needs a policy (WithPolicy), which serve does not pass yet", env.PolicyEngineCasbin)
 	}
 
-	db, err := sql.Open("postgres", cfg.Database.URL())
+	dsn, err := cfg.Database.ConnectionURL()
+	if err != nil {
+		return result, fmt.Errorf("database settings: %w", err)
+	}
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return result, fmt.Errorf("open database: %w", err)
 	}

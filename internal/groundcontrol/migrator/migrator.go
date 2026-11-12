@@ -78,7 +78,11 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 func DoMigrations(ctx context.Context) error {
 	cfg := env.GC.Database
 
-	db, err := sql.Open("postgres", cfg.URL())
+	dsn, err := cfg.ConnectionURL()
+	if err != nil {
+		return err
+	}
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		log.Println("failed to open DB connection")
 		return err
