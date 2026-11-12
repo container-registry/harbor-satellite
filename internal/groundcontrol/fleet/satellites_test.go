@@ -12,7 +12,6 @@ import (
 
 // Plan item 2.5: a request is one transaction plus its events; the async
 // plane does the registry work.
-const pendingServices = "fleet services are stubs; handlers call Harbor in the request"
 
 // seedRegistration is a config and two groups.
 func seedRegistration(w *world) {

@@ -6,8 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"time"
-
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 )
 
 type SatelliteService struct{ c *core }
@@ -33,6 +31,13 @@ func (s *SatelliteService) Register(ctx context.Context, cmd RegisterSatelliteCm
 	}
 	if !ValidName(cmd.ConfigName) {
 		return RegistrationToken{}, fmt.Errorf("%w: config name %q", ErrInvalid, cmd.ConfigName)
+	}
+	checks := []check{{ActionRegister, satelliteResource(cmd.Name, cmd.Groups)}}
+	for _, g := range cmd.Groups {
+		checks = append(checks, check{ActionAddMember, Resource{Type: ResourceGroup, ID: g}})
+	}
+	if err := s.c.authorizeAll(ctx, checks...); err != nil {
+		return RegistrationToken{}, err
 	}
 	token, err := newToken()
 	if err != nil {
@@ -101,6 +106,9 @@ func (s *SatelliteService) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
+	if err := s.authorizeSatellite(ctx, ActionDelete, name); err != nil {
+		return err
+	}
 	var id SatelliteID
 	err = s.c.inTx(ctx, func(tx Tx) error {
 		sat, err := tx.Satellites().GetByName(ctx, name)
@@ -136,15 +144,22 @@ func (s *SatelliteService) Delete(ctx context.Context, name string) error {
 }
 
 func (s *SatelliteService) Get(ctx context.Context, name string) (Satellite, error) {
-	sat, err := s.c.read().Satellites().GetByName(ctx, name)
+	sat, groups, err := s.c.satelliteScope(ctx, s.c.read(), name)
 	if err != nil {
-		return Satellite{}, fmt.Errorf("satellite %s: %w", name, err)
+		return Satellite{}, err
+	}
+	if err := s.c.authorize(ctx, ActionRead, satelliteResource(name, groups)); err != nil {
+		return Satellite{}, err
 	}
 	return sat, nil
 }
 
 func (s *SatelliteService) List(ctx context.Context) ([]Satellite, error) {
-	return s.c.read().Satellites().List(ctx)
+	sats, err := s.c.read().Satellites().List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.c.readableSatellites(ctx, sats)
 }
 
 // Revoke runs one transaction: Views().Revoke, then SatelliteRevoked only
@@ -152,26 +167,112 @@ func (s *SatelliteService) List(ctx context.Context) ([]Satellite, error) {
 // authenticates and gets 403, and ADR-0006's re-enable needs no new
 // onboarding.
 func (s *SatelliteService) Revoke(ctx context.Context, name string) (SatelliteView, error) {
-	return SatelliteView{}, notimpl.Err("4.3 revoke satellite")
+	return s.transition(ctx, ActionRevoke, name, func(tx Tx, sat Satellite, now time.Time) (*Event, error) {
+		previous, err := tx.Views().Revoke(ctx, sat.ID, now)
+		if err != nil || previous == StateRevoked {
+			return nil, err
+		}
+		return &Event{
+			Kind:      EventSatelliteRevoked,
+			Aggregate: Aggregate{Type: AggregateSatellite, ID: int64(sat.ID)},
+			Payload:   SatelliteLifecyclePayload{Name: sat.Name, State: StateRevoked, PreviousState: previous, LastSeen: sat.LastSeen},
+		}, nil
+	})
 }
 
 // Unrevoke returns a revoked satellite to pending and appends
 // SatelliteUnrevoked; a satellite that is not revoked is left alone.
 func (s *SatelliteService) Unrevoke(ctx context.Context, name string) (SatelliteView, error) {
-	return SatelliteView{}, notimpl.Err("4.3 unrevoke satellite")
+	return s.transition(ctx, ActionUnrevoke, name, func(tx Tx, sat Satellite, now time.Time) (*Event, error) {
+		changed, err := tx.Views().Unrevoke(ctx, sat.ID, now)
+		if err != nil || !changed {
+			return nil, err
+		}
+		return &Event{
+			Kind:      EventSatelliteUnrevoked,
+			Aggregate: Aggregate{Type: AggregateSatellite, ID: int64(sat.ID)},
+			Payload:   SatelliteLifecyclePayload{Name: sat.Name, State: StatePending, PreviousState: StateRevoked, LastSeen: sat.LastSeen},
+		}, nil
+	})
+}
+
+// transition runs change on the named satellite in one transaction,
+// appends the event it returns and answers the view after the change.
+func (s *SatelliteService) transition(ctx context.Context, action Action, name string, change func(Tx, Satellite, time.Time) (*Event, error)) (SatelliteView, error) {
+	if err := s.authorizeSatellite(ctx, action, name); err != nil {
+		return SatelliteView{}, err
+	}
+	var view SatelliteView
+	err := s.c.inTx(ctx, func(tx Tx) error {
+		sat, err := tx.Satellites().GetByName(ctx, name)
+		if err != nil {
+			return fmt.Errorf("satellite %s: %w", name, err)
+		}
+		event, err := change(tx, sat, s.c.clock.Now())
+		if err != nil {
+			return fmt.Errorf("satellite %s: %w", name, err)
+		}
+		if event != nil {
+			if err := tx.Events().Append(ctx, *event); err != nil {
+				return err
+			}
+		}
+		view, err = tx.Views().Get(ctx, sat.ID)
+		return err
+	})
+	if err != nil {
+		return SatelliteView{}, err
+	}
+	return s.withRefs(view), nil
 }
 
 // View is the satellite's lifecycle and convergence; it fills the
 // PublishedGroups refs from Settings.GroupStateRef.
 func (s *SatelliteService) View(ctx context.Context, name string) (SatelliteView, error) {
-	return SatelliteView{}, notimpl.Err("4.3 satellite view")
+	if err := s.authorizeSatellite(ctx, ActionRead, name); err != nil {
+		return SatelliteView{}, err
+	}
+	view, err := s.c.read().Views().GetByName(ctx, name)
+	if err != nil {
+		return SatelliteView{}, fmt.Errorf("satellite %s: %w", name, err)
+	}
+	return s.withRefs(view), nil
 }
 
 func (s *SatelliteService) ListByState(ctx context.Context, state LifecycleState) ([]SatelliteView, error) {
-	return nil, notimpl.Err("4.3 list satellites by state")
+	switch state {
+	case StatePending, StateOnline, StateStale, StateRevoked:
+	default:
+		return nil, fmt.Errorf("%w: lifecycle state %q", ErrInvalid, state)
+	}
+	views, err := s.c.read().Views().ListByState(ctx, state)
+	if err != nil {
+		return nil, err
+	}
+	for i := range views {
+		views[i] = s.withRefs(views[i])
+	}
+	return s.readable(ctx, views)
 }
 
 // Inventory is the satellite's last reported inventory (plan item 4.4).
 func (s *SatelliteService) Inventory(ctx context.Context, name string) ([]InventoryItem, error) {
-	return nil, notimpl.Err("4.4 satellite inventory")
+	if err := s.authorizeSatellite(ctx, ActionRead, name); err != nil {
+		return nil, err
+	}
+	tx := s.c.read()
+	sat, err := tx.Satellites().GetByName(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("satellite %s: %w", name, err)
+	}
+	return tx.Views().Inventory(ctx, sat.ID)
+}
+
+func (s *SatelliteService) withRefs(view SatelliteView) SatelliteView {
+	for i, g := range view.PublishedGroups {
+		if ref, err := s.c.settings.GroupStateRef(g.Group); err == nil {
+			view.PublishedGroups[i].Ref = ref.String()
+		}
+	}
+	return view
 }

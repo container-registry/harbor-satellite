@@ -76,30 +76,57 @@ func (s *RegistrationService) ZeroTouch(ctx context.Context, token string) (res 
 	if err != nil {
 		return ZTRResult{}, err
 	}
+	var issued bool
 	defer func() {
 		if err == nil {
 			return
 		}
-		if uerr := repo.Autocommit().Tokens().Unclaim(context.WithoutCancel(ctx), token); uerr != nil {
+		cleanup := context.WithoutCancel(ctx)
+		if uerr := repo.Autocommit().Tokens().Unclaim(cleanup, token); uerr != nil {
 			err = errors.Join(err, fmt.Errorf("unclaim registration token: %w", uerr))
 		}
+		if issued {
+			if ierr := s.c.sessions.Invalidate(cleanup, id); ierr != nil {
+				err = errors.Join(err, fmt.Errorf("invalidate session: %w", ierr))
+			}
+		}
 	}()
-	sat, err := repo.Autocommit().Satellites().Get(ctx, id)
+	view, err := repo.Autocommit().Views().Get(ctx, id)
 	if err != nil {
 		return ZTRResult{}, fmt.Errorf("satellite of registration token: %w", err)
 	}
-	return s.rotate(ctx, sat, func(tx Tx) error {
+	if view.State == StateRevoked {
+		return ZTRResult{}, fmt.Errorf("satellite %s: %w", view.Satellite.Name, ErrRevoked)
+	}
+	var session *SessionGrant
+	res, err = s.rotate(ctx, view.Satellite, func(ctx context.Context) error {
+		if s.c.sessions == nil {
+			return nil
+		}
+		grant, err := s.c.sessions.Issue(ctx, id)
+		if err != nil {
+			return fmt.Errorf("issue session: %w", err)
+		}
+		issued, session = true, &grant
+		return nil
+	}, func(tx Tx) error {
 		if err := tx.Tokens().Consume(ctx, token); err != nil {
 			return fmt.Errorf("consume registration token: %w", err)
 		}
 		return nil
 	})
+	if err != nil {
+		return ZTRResult{}, err
+	}
+	res.Session = session
+	return res, nil
 }
 
 // rotate gives the satellite's robot a fresh secret and stores its hash,
-// with also run in that transaction. A satellite whose robot the async
-// plane has not created yet is ErrNotProvisioned.
-func (s *RegistrationService) rotate(ctx context.Context, sat Satellite, also func(Tx) error) (ZTRResult, error) {
+// with also run in that transaction. beforeTx runs after the rotation and
+// before the transaction opens. A satellite whose robot the async plane has not created yet is
+// ErrNotProvisioned.
+func (s *RegistrationService) rotate(ctx context.Context, sat Satellite, beforeTx func(context.Context) error, also func(Tx) error) (ZTRResult, error) {
 	repo := s.c.fleetRepo
 	robot, err := repo.Autocommit().Robots().BySatellite(ctx, sat.ID)
 	if errors.Is(err, ErrNotFound) {
@@ -123,6 +150,11 @@ func (s *RegistrationService) rotate(ctx context.Context, sat Satellite, also fu
 	if creds.Name == "" {
 		creds.Name = robot.Name
 	}
+	if beforeTx != nil {
+		if err := beforeTx(ctx); err != nil {
+			return ZTRResult{}, err
+		}
+	}
 	err = repo.WithTx(ctx, func(tx Tx) error {
 		if err := tx.Robots().Update(ctx, robot); err != nil {
 			return fmt.Errorf("store robot secret hash: %w", err)
@@ -142,6 +174,26 @@ func (s *RegistrationService) rotate(ctx context.Context, sat Satellite, also fu
 	return ZTRResult{SatelliteName: sat.Name, StateURL: stateRef.String(), RegistryURL: s.c.settings.RegistryURL, Credentials: creds}, nil
 }
 
+type spiffeIDKey struct{}
+
+// ContextWithSPIFFEID carries the SPIFFE ID of the presented SVID to
+// SPIFFEZeroTouch.
+func ContextWithSPIFFEID(ctx context.Context, spiffeID string) context.Context {
+	return context.WithValue(ctx, spiffeIDKey{}, spiffeID)
+}
+
+// svidOf is the SVID's SPIFFE ID from ctx, or the default-region ID of the
+// workload identity provider's trust domain.
+func (s *RegistrationService) svidOf(ctx context.Context, satelliteName string) string {
+	if id, ok := ctx.Value(spiffeIDKey{}).(string); ok && id != "" {
+		return id
+	}
+	if s.c.identity == nil {
+		return ""
+	}
+	return fmt.Sprintf("spiffe://%s/satellite/region/default/%s", s.c.identity.TrustDomain(), satelliteName)
+}
+
 // SPIFFEZeroTouch registers a satellite that presented an SVID, creating
 // it with DefaultConfigName when it is unknown. A revoked satellite is
 // ErrRevoked. It stores the SVID's SPIFFE ID with SetIdentity and issues
@@ -149,11 +201,15 @@ func (s *RegistrationService) rotate(ctx context.Context, sat Satellite, also fu
 // has no robot until the async plane made one: ErrNotProvisioned.
 func (s *RegistrationService) SPIFFEZeroTouch(ctx context.Context, satelliteName string) (ZTRResult, error) {
 	repo := s.c.fleetRepo
+	spiffeID := s.svidOf(ctx, satelliteName)
 	sat, err := repo.Autocommit().Satellites().GetByName(ctx, satelliteName)
 	if errors.Is(err, ErrNotFound) {
 		err = repo.WithTx(ctx, func(tx Tx) error {
-			_, err := s.createSPIFFESatellite(ctx, tx, satelliteName, "", nil)
-			return err
+			sat, err := s.createSPIFFESatellite(ctx, tx, satelliteName, "", nil)
+			if err != nil || spiffeID == "" {
+				return err
+			}
+			return tx.Satellites().SetIdentity(ctx, sat.ID, spiffeID, nil)
 		})
 		if err != nil {
 			return ZTRResult{}, err
@@ -163,7 +219,18 @@ func (s *RegistrationService) SPIFFEZeroTouch(ctx context.Context, satelliteName
 	if err != nil {
 		return ZTRResult{}, fmt.Errorf("satellite %s: %w", satelliteName, err)
 	}
-	res, err := s.rotate(ctx, sat, nil)
+	view, err := repo.Autocommit().Views().Get(ctx, sat.ID)
+	if err != nil {
+		return ZTRResult{}, fmt.Errorf("satellite %s: %w", satelliteName, err)
+	}
+	if view.State == StateRevoked {
+		return ZTRResult{}, fmt.Errorf("satellite %s: %w", satelliteName, ErrRevoked)
+	}
+	var also func(Tx) error
+	if spiffeID != "" && spiffeID != sat.SPIFFEID {
+		also = func(tx Tx) error { return tx.Satellites().SetIdentity(ctx, sat.ID, spiffeID, nil) }
+	}
+	res, err := s.rotate(ctx, sat, nil, also)
 	if errors.Is(err, ErrNotProvisioned) {
 		// A satellite created before the async plane has no robot and no
 		// event that would make one; this asks the reconciler for it.
@@ -296,7 +363,7 @@ func (s *RegistrationService) RefreshCredentials(ctx context.Context, satelliteN
 	if err != nil {
 		return RobotCredentials{}, fmt.Errorf("satellite %s: %w", satelliteName, err)
 	}
-	res, err := s.rotate(ctx, sat, nil)
+	res, err := s.rotate(ctx, sat, nil, nil)
 	if err != nil {
 		return RobotCredentials{}, err
 	}

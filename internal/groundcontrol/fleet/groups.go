@@ -26,6 +26,9 @@ func (s *GroupService) Sync(ctx context.Context, cmd SyncGroupCmd) (Group, error
 	if !ValidName(cmd.Name) {
 		return Group{}, fmt.Errorf("%w: group name %q", ErrInvalid, cmd.Name)
 	}
+	if err := s.c.authorize(ctx, ActionSync, Resource{Type: ResourceGroup, ID: cmd.Name}); err != nil {
+		return Group{}, err
+	}
 	group := Group{Name: cmd.Name, RegistryURL: s.c.settings.RegistryURL, Projects: ArtifactProjects(cmd.Artifacts), Artifacts: cmd.Artifacts}
 	var stored Group
 	err := s.c.inTx(ctx, func(tx Tx) error {
@@ -68,6 +71,9 @@ func (s *GroupService) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
+	if err := s.c.authorize(ctx, ActionDelete, Resource{Type: ResourceGroup, ID: name}); err != nil {
+		return err
+	}
 	return s.c.inTx(ctx, func(tx Tx) error {
 		group, err := tx.Groups().GetByName(ctx, name)
 		if err != nil {
@@ -92,6 +98,9 @@ func (s *GroupService) Delete(ctx context.Context, name string) error {
 }
 
 func (s *GroupService) Get(ctx context.Context, name string) (Group, error) {
+	if err := s.c.authorize(ctx, ActionRead, Resource{Type: ResourceGroup, ID: name}); err != nil {
+		return Group{}, err
+	}
 	group, err := s.c.read().Groups().GetByName(ctx, name)
 	if err != nil {
 		return Group{}, fmt.Errorf("group %s: %w", name, err)
@@ -100,10 +109,17 @@ func (s *GroupService) Get(ctx context.Context, name string) (Group, error) {
 }
 
 func (s *GroupService) List(ctx context.Context) ([]Group, error) {
-	return s.c.read().Groups().List(ctx)
+	groups, err := s.c.read().Groups().List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return filterAllowed(ctx, s.c, ResourceGroup, groups, func(g Group) Resource { return Resource{Type: ResourceGroup, ID: g.Name} })
 }
 
 func (s *GroupService) Members(ctx context.Context, name string) ([]Satellite, error) {
+	if err := s.c.authorize(ctx, ActionRead, Resource{Type: ResourceGroup, ID: name}); err != nil {
+		return nil, err
+	}
 	read := s.c.read()
 	group, err := read.Groups().GetByName(ctx, name)
 	if err != nil {
@@ -129,18 +145,21 @@ func (s *GroupService) Members(ctx context.Context, name string) ([]Satellite, e
 // projects from all of the satellite's groups and republishes its state,
 // a state without groups after the last one (D10).
 func (s *GroupService) AddSatellite(ctx context.Context, cmd MembershipCmd) error {
-	return s.membership(ctx, cmd, func(tx Tx, group GroupID, sat SatelliteID) error {
+	return s.membership(ctx, ActionAddMember, cmd, func(tx Tx, group GroupID, sat SatelliteID) error {
 		return tx.Groups().AddMember(ctx, group, sat)
 	})
 }
 
 func (s *GroupService) RemoveSatellite(ctx context.Context, cmd MembershipCmd) error {
-	return s.membership(ctx, cmd, func(tx Tx, group GroupID, sat SatelliteID) error {
+	return s.membership(ctx, ActionRemoveMember, cmd, func(tx Tx, group GroupID, sat SatelliteID) error {
 		return tx.Groups().RemoveMember(ctx, group, sat)
 	})
 }
 
-func (s *GroupService) membership(ctx context.Context, cmd MembershipCmd, change func(Tx, GroupID, SatelliteID) error) error {
+func (s *GroupService) membership(ctx context.Context, action Action, cmd MembershipCmd, change func(Tx, GroupID, SatelliteID) error) error {
+	if err := s.c.authorize(ctx, action, Resource{Type: ResourceGroup, ID: cmd.Group}); err != nil {
+		return err
+	}
 	return s.c.inTx(ctx, func(tx Tx) error {
 		sat, err := tx.Satellites().GetByName(ctx, cmd.Satellite)
 		if err != nil {
@@ -159,6 +178,9 @@ func (s *GroupService) membership(ctx context.Context, cmd MembershipCmd, change
 
 // HasMember reports whether the satellite is in the group.
 func (s *GroupService) HasMember(ctx context.Context, cmd MembershipCmd) (bool, error) {
+	if err := s.c.authorize(ctx, ActionRead, Resource{Type: ResourceGroup, ID: cmd.Group}); err != nil {
+		return false, err
+	}
 	read := s.c.read()
 	sat, err := read.Satellites().GetByName(ctx, cmd.Satellite)
 	if err != nil {

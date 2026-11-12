@@ -17,6 +17,7 @@ func seedZTR(w *world) {
 	w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01"}}
 	w.repo.Robots.BySatelliteID = map[fleet.SatelliteID]fleet.Robot{7: {ID: 5, Satellite: 7, Name: "robot$edge-01", HarborID: 42}}
 	w.registry.Credentials = fleet.RobotCredentials{HarborID: 42, Name: "robot$edge-01", Secret: "fresh", ExpiresAt: now.Add(30 * 24 * time.Hour)}
+	w.repo.Views.ByID = map[fleet.SatelliteID]fleet.SatelliteView{7: {Satellite: fleet.Satellite{ID: 7, Name: "edge-01"}, State: fleet.StatePending}}
 }
 
 func TestRegistrationService_ZeroTouch(t *testing.T) {
