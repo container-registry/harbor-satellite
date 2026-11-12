@@ -191,18 +191,22 @@ func (m *meteredBody) Read(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-	// The limiter and the read size come from one snapshot. A config reload
-	// between them would wait for the new rate and still read the old size.
+	if err := m.ctx.Err(); err != nil {
+		return 0, err
+	}
+	// The limiter and the maximum read come from one snapshot. The body often
+	// returns fewer bytes than the caller asked for, so the wait uses the
+	// count that arrived.
 	limiter, n := m.budget.prepareRead(len(p))
 	if n < len(p) {
 		p = p[:n]
 	}
-	if limiter != nil {
-		if err := limiter.WaitN(m.ctx, len(p)); err != nil {
-			return 0, err
+	read, err := m.body.Read(p)
+	if read > 0 && limiter != nil {
+		if waitErr := limiter.WaitN(m.ctx, read); waitErr != nil {
+			err = waitErr
 		}
 	}
-	read, err := m.body.Read(p)
 	if read > 0 && m.count {
 		m.budget.record(int64(read))
 	}
