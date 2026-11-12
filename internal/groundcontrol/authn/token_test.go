@@ -8,14 +8,10 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/authn"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
-const pendingSessions = "Ground Control issues no satellite sessions; every beat verifies the robot secret"
-
 func TestNewSessionToken_FormatAndHash(t *testing.T) {
-	pending.Plan(t, "4.1", pendingSessions)
 	token, hash, err := authn.NewSessionToken()
 
 	require.NoError(t, err)
@@ -34,7 +30,6 @@ func TestNewSessionToken_FormatAndHash(t *testing.T) {
 }
 
 func TestHashSessionToken_RejectsForeignTokens(t *testing.T) {
-	pending.Plan(t, "4.1", pendingSessions)
 	valid, _, err := authn.NewSessionToken()
 	require.NoError(t, err)
 	for name, token := range map[string]string{

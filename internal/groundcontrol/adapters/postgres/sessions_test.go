@@ -10,16 +10,12 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingSessions = "the postgres session store is a stub; Ground Control issues no satellite sessions"
 
 var hotNow = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 
 func TestSessionStore_FindByHashAndName(t *testing.T) {
-	pending.Plan(t, "4.1", pendingSessions)
 	db := dbtest.New(t)
 	ctx := context.Background()
 	sat, err := database.New(db.DB).CreateSatellite(ctx, "edge-01")
