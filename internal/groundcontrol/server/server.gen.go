@@ -1046,16 +1046,16 @@ type ServerInterface interface {
 	// Login Creates a user session.
 	// (POST /login)
 	Login(w http.ResponseWriter, r *http.Request)
-	// OidcCallback Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+	// OidcCallback Completes an OIDC login in the browser that started it (plan item 8.1).
 	// (GET /oidc/callback)
 	OidcCallback(w http.ResponseWriter, r *http.Request, params OidcCallbackParams)
-	// OidcDeviceAuthorize Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+	// OidcDeviceAuthorize Starts an OIDC device flow for the CLI (plan item 8.1).
 	// (POST /oidc/device)
 	OidcDeviceAuthorize(w http.ResponseWriter, r *http.Request)
-	// OidcDeviceToken Polls an OIDC device flow (plan item 8.1, not implemented).
+	// OidcDeviceToken Polls an OIDC device flow (plan item 8.1).
 	// (POST /oidc/device/token)
 	OidcDeviceToken(w http.ResponseWriter, r *http.Request)
-	// OidcLogin Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+	// OidcLogin Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1).
 	// (GET /oidc/login)
 	OidcLogin(w http.ResponseWriter, r *http.Request)
 	// Ping Pings the server.

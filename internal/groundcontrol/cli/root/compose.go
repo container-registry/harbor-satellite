@@ -23,7 +23,7 @@ type composition struct {
 func (c *composition) fleetFactory(_ context.Context, pools *dbpool.Pools, spire *spiffe.ServerClient) ([]server.Option, error) {
 	f, err := app.NewFleet(app.FleetDeps{
 		Pools: pools, Harbor: env.GC.Harbor, Server: env.GC.Server, Webhook: env.GC.Webhook, SPIRE: spire, Policy: env.GC.Policy,
-		RobotRotation: env.GC.RobotRotation, DataEncryptionKey: env.GC.DataEncryptionKey,
+		RobotRotation: env.GC.RobotRotation, DataEncryptionKey: env.GC.DataEncryptionKey, OIDC: env.GC.OIDC,
 	})
 	if err != nil {
 		return nil, err

@@ -137,7 +137,15 @@ func NewWorker(ctx context.Context, deps WorkerDeps) (*async.Worker, func() erro
 	if err != nil {
 		return nil, nil, errors.Join(err, locker.Close())
 	}
-	jobs := []async.Job{probe, stale, partitions, expirer}
+	identities, err := postgres.NewIdentityStore(deps.Pools.API)
+	if err != nil {
+		return nil, nil, errors.Join(err, locker.Close())
+	}
+	loginStates, err := async.NewLoginStateExpirer(identities, fleet.SystemClock{}, hot.SessionExpiryInterval)
+	if err != nil {
+		return nil, nil, errors.Join(err, locker.Close())
+	}
+	jobs := []async.Job{probe, stale, partitions, expirer, loginStates}
 	if deps.RobotRotation.Enabled {
 		sealer, err := NewSealer(deps.DataEncryptionKey)
 		if err != nil {

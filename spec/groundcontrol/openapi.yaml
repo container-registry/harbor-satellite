@@ -1891,7 +1891,7 @@ paths:
     get:
       tags:
         - auth
-      summary: Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+      summary: Completes an OIDC login in the browser that started it (plan item 8.1).
       operationId: oidcCallback
       parameters:
         - x-go-name: Code
@@ -1935,7 +1935,7 @@ paths:
     post:
       tags:
         - auth
-      summary: Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+      summary: Starts an OIDC device flow for the CLI (plan item 8.1).
       operationId: oidcDeviceAuthorize
       responses:
         "200":
@@ -1954,7 +1954,7 @@ paths:
     post:
       tags:
         - auth
-      summary: Polls an OIDC device flow (plan item 8.1, not implemented).
+      summary: Polls an OIDC device flow (plan item 8.1).
       operationId: oidcDeviceToken
       requestBody:
         content:
@@ -1991,7 +1991,7 @@ paths:
     get:
       tags:
         - auth
-      summary: Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+      summary: Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1).
       operationId: oidcLogin
       responses:
         "302":

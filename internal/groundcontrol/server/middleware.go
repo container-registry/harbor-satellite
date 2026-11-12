@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
@@ -82,17 +83,19 @@ type AuthUser struct {
 func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var user AuthUser
+		var groups []string
 		var authenticated bool
 
 		// Try Bearer token first
 		if token := extractBearerToken(r); token != "" {
-			session, err := s.dbQueries.GetSessionByToken(r.Context(), token)
+			session, err := s.dbQueries.GetSessionPrincipalByToken(r.Context(), database.GetSessionPrincipalByTokenParams{Token: token, Now: time.Now()})
 			if err == nil {
 				user = AuthUser{
 					ID:       session.UserID,
 					Username: session.Username,
 					Role:     session.Role,
 				}
+				groups = session.Groups
 				authenticated = true
 			}
 		}
@@ -129,10 +132,14 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, user)
-		ctx = fleet.ContextWithPrincipal(ctx, fleet.Principal{
+		principal := fleet.Principal{
 			Subject: fleet.SubjectUser + user.Username,
 			Roles:   []string{fleet.SubjectRole + user.Role},
-		})
+		}
+		for _, g := range groups {
+			principal.Groups = append(principal.Groups, fleet.SubjectOIDC+g)
+		}
+		ctx = fleet.ContextWithPrincipal(ctx, principal)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -7,11 +7,8 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingOIDC = "operators log in with local passwords only; the /oidc routes answer 501"
 
 // fakeOperatorLogin answers Callback with principal or err and records the
 // binding it was given.
@@ -76,9 +73,10 @@ func TestOIDCRoutes_LimitedPerClientIPUnderSplit(t *testing.T) {
 }
 
 func TestOIDCCallback_IssuesSessionForMappedGroup(t *testing.T) {
-	pending.Plan(t, "8.1", pendingOIDC)
 	login := &fakeOperatorLogin{principal: fleet.Principal{Subject: "user:alice", Roles: []string{"role:admin"}, Groups: []string{"oidc:edge-ops"}}}
 	h := newGCHarness(t, WithOperatorLogin(login))
+	// authn.OIDCLogin stores the user before it answers; the fake does not.
+	h.mustDo(http.MethodPost, "/api/users", CreateUserRequest{Username: "alice", Password: "Al1cePassword"}, h.admin, http.StatusCreated)
 
 	r := h.oidcCallback("browser-binding")
 
@@ -91,7 +89,6 @@ func TestOIDCCallback_IssuesSessionForMappedGroup(t *testing.T) {
 }
 
 func TestOIDCCallback_UnmappedUserGets403(t *testing.T) {
-	pending.Plan(t, "8.1", pendingOIDC)
 	h := newGCHarness(t, WithOperatorLogin(&fakeOperatorLogin{err: fleet.ErrForbidden}))
 
 	r := h.oidcCallback("browser-binding")
