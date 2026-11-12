@@ -55,6 +55,10 @@ type FleetDeps struct {
 	SPIRE *spiffe.ServerClient
 	// Policy selects the /api route check (POLICY_ENGINE).
 	Policy env.Policy
+	// RobotRotation and DataEncryptionKey enable the rotation cache that
+	// delivers successor robots with heartbeats (plan item 8.4).
+	RobotRotation     env.RobotRotation
+	DataEncryptionKey string
 }
 
 // Fleet is what a serve process runs: the services behind the handlers,
@@ -95,8 +99,9 @@ func (l operatorLogin) Start(ctx context.Context) (redirectURL, binding string, 
 // with satconfig.Validator. With POLICY_ENGINE=casbin, casbin.New loads
 // the repository's policies and the services and the server share it.
 //
-// The plan item 8.1 and 8.4 parts (rotations, login) stay nil until those
-// items land.
+// With ROBOT_ROTATION_ENABLED the heartbeat delivers pending rotations
+// from a RotationCache on Pools.Fleet. The 8.1 login stays nil until that
+// item lands.
 func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if deps.Pools == nil || deps.Pools.API == nil {
 		return nil, fmt.Errorf("%w: the fleet needs database pools", fleet.ErrInvalid)
@@ -157,8 +162,25 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 		}
 		servicePolicy = policy
 	}
+	var rotations *async.RotationCache
+	var rotationSource fleet.RotationSource
+	if deps.RobotRotation.Enabled {
+		sealer, err := NewSealer(deps.DataEncryptionKey)
+		if err != nil {
+			return nil, err
+		}
+		store, err := postgres.NewRotationStore(fleetPool(deps.Pools))
+		if err != nil {
+			return nil, err
+		}
+		if rotations, err = async.NewRotationCache(store, sealer, cmp.Or(deps.RobotRotation.CacheRefresh, 30*time.Second)); err != nil {
+			return nil, err
+		}
+		rotationSource = rotations
+	}
 	services, err := fleet.NewServices(fleet.Deps{
 		Policy:              servicePolicy,
+		Rotations:           rotationSource,
 		Repository:          repo,
 		SatelliteRepository: fleetRepo,
 		Registry:            registry,
@@ -179,7 +201,7 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Fleet{Services: services, Probe: probe, Sessions: sessions, HeartbeatBuffer: buffer, Flusher: flusher, Policy: policy}, nil
+	return &Fleet{Services: services, Probe: probe, Sessions: sessions, HeartbeatBuffer: buffer, Flusher: flusher, Policy: policy, Rotations: rotations}, nil
 }
 
 // withHotPathDefaults fills the plan item 4 settings a caller left zero
@@ -208,6 +230,19 @@ func withHotPathDefaults(h env.FleetHotPath) env.FleetHotPath {
 		h.StatusPartitionsAhead = 3
 	}
 	return h
+}
+
+// NewSealer seals stored secrets with DATA_ENCRYPTION_KEY, which robot
+// rotation requires.
+func NewSealer(key string) (*secrets.AESGCM, error) {
+	if key == "" {
+		return nil, fmt.Errorf("%w: ROBOT_ROTATION_ENABLED needs DATA_ENCRYPTION_KEY", fleet.ErrInvalid)
+	}
+	raw, err := secrets.ParseKey(key)
+	if err != nil {
+		return nil, err
+	}
+	return secrets.NewAESGCM(raw)
 }
 
 // HeartbeatConfig maps HEARTBEAT_* to the buffer and flusher settings.
