@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-16
 deciders: [Harbor Satellite Development Team]
 informed: [Harbor Satellite Developers]
@@ -57,17 +57,17 @@ Plan item 9 (extension points) found these limits at `508b0d6`:
 
 ## Implementation Status
 
-| Part                                                                                                                                                                                                                     | Status                                                                    |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| ADR                                                                                                                                                                                                                      | proposed                                                                  |
-| Migration `022_webhooks.sql`, webhook and outbox-log queries                                                                                                                                                             | done, SQL contract tests                                                  |
-| `internal/groundcontrol/webhook` (CloudEvents, signer, sender, dispatcher), `fleet.WebhookService`, postgres `WebhookRepo`, `WebhookStore`, `OutboxLog`, `SubscriptionLocker`, `OutboxStore.Prune`, `async.OutboxPruner` | skeleton, pending tests; `EventType` written                              |
-| `/api/webhooks` routes                                                                                                                                                                                                   | in the spec and `PolicyRoutes`, system admin only; handlers answer 501    |
-| `spec/events/v1`, `fleet.EventPayloads`                                                                                                                                                                                  | done, contract tests                                                      |
-| Delivery-lag metric                                                                                                                                                                                                      | not started (9.1)                                                         |
-| `fleet.RegistryEventSource`                                                                                                                                                                                              | port and fake only                                                        |
-| `internal/satellite/proxy/middleware`                                                                                                                                                                                    | `Stack` done and wired with nil slots; `Authenticate` and `Metrics` stubs |
-| Outbox on PostgreSQL 19 (decision 6): WAL reader, LISTEN/NOTIFY, partitioning, timeout defaults                                                                                                                          | not started                                                               |
+| Part | Status |
+|---|---|
+| ADR | accepted |
+| Migration `022_webhooks.sql`, webhook and outbox-log queries | implemented, SQL contract tests |
+| `internal/groundcontrol/webhook` (CloudEvents, signer, sender, dispatcher), `fleet.WebhookService`, postgres `WebhookRepo`, `WebhookStore`, `OutboxLog`, `SubscriptionLocker`, `async.OutboxPruner` | implemented; delivery with `WEBHOOKS_ENABLED` |
+| `/api/webhooks` routes | implemented, system admin only |
+| `spec/events/v1`, `fleet.EventPayloads` | implemented, contract tests; the `dataschema` URLs under `satellite.container-registry.com/schemas/events/v1/` are not published yet |
+| Delivery-lag metric | not started |
+| `fleet.RegistryEventSource`, `fleet.GroupService.FollowPush`, `async.RegistryFollower` (9.5) | port, service and job implemented; no adapter, and neither `serve` nor `worker` runs a follower |
+| `internal/satellite/proxy/middleware` | `Stack` and `Authenticate` composed in `cmd/satellite` (non-loopback clients are rejected, no verifier yet); `Metrics` written, not composed because the pull handler records its own metrics |
+| Outbox on PostgreSQL 19 (decision 6): WAL reader, LISTEN/NOTIFY, partitioning, timeout defaults | not started |
 
 ## Validation
 

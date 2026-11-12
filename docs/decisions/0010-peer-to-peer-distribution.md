@@ -6,6 +6,19 @@ informed: [Harbor Satellite Developers]
 ---
 # Copy OCI artifacts between trusted Satellites on an isolated network
 
+## Implementation Status
+
+| Part | Status |
+|---|---|
+| ADR | proposed |
+| `app_config.peer_distribution` block, validation and defaults (#674) | implemented |
+| Peer roster `peers.EligiblePeers` with the group filter (#676) | implemented |
+| Peer-first replication, first complete graph wins (#684, #697), staging outside the serving lock (#694) | implemented in `store.PeerFillingStore` |
+| Degraded replication from the last known state while Harbor is unreachable (#687, #701) | implemented |
+| Ground Control filling `gc_peers` | not implemented; both peer lists come from the config document |
+| Peers serving from the satellite proxy | not possible: the proxy listens on loopback only (gate G7); a peer URL is a registry endpoint such as a BYO registry |
+| Content-aware policy on a peer graph | not implemented |
+
 ## Context
 
 Satellite retains desired-state content in an ORAS OCI image layout

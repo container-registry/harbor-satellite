@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-15
 deciders: [Harbor Satellite Development Team]
 informed: [Harbor Satellite Developers]
@@ -105,14 +105,16 @@ Both paths can exist, for different consumers:
 
 | Part | Status |
 |---|---|
-| ADR | proposed |
-| `internal/shared/edgejournal` | done (vocabulary) |
-| `internal/satellite/journal` (6.4) | done; replication results per artifact, CRI results and pull-through manifest fills are journaled, the journal lives in `<config dir>/journal` |
-| Migration `018_satellite_journal_cursor.sql`, queries `OpenJournalCursor`, `AdvanceJournalCursor` (6.5) | done, `TestSatelliteJournal_SQLContract`, `TestOpenJournalCursor_ConcurrentCreateReturnsTheRow`, `TestOpenJournalCursor_FreshSeesTheLatestCommittedEpoch` |
-| Sync contract `journal` (request and response), `applied_states`, `last_replication_error`, 413 (6.5, 6.6) | satellite sends and applies them; Ground Control side: see below |
-| `fleet.JournalService`, `fleet.JournalRepo` and its postgres adapter (6.5), `fleet.NewEdgeEvent` and the edge kinds (9.4) | skeleton, pending tests; kinds declared log-only |
-| `state.StateArtifactChanged` (6.1), `RegistryOptions.BandwidthBytesPerSec`, `SetReplicationSource`, `lane.ThrottledTransport` and the `replication_*` keys (6.2), `state.RunSummary` (6.6), `Scheduler.TryTrigger` and `EventScheduler.Stop` (6.7) | done |
-| Retry transport with TLS (6.3) | done |
+| ADR | accepted |
+| `internal/shared/edgejournal` | implemented (vocabulary) |
+| `internal/satellite/journal` (6.4) | implemented; replication results per artifact, CRI results and pull-through manifest fills are journaled in `<config dir>/journal` |
+| Migration `018_satellite_journal_cursor.sql`, queries `OpenJournalCursor`, `AdvanceJournalCursor` (6.5) | implemented, SQL contract tests |
+| Sync contract `journal` (request and response), `applied_states`, `last_replication_error` (6.5, 6.6) | the satellite sends them and applies the answer; `applied_states` and `last_replication_error` reach the read model |
+| `fleet.JournalService.Ingest` and the postgres `JournalRepo` (6.5) | not implemented: `Ingest` returns `notimpl`, which the heartbeat answers with 500, so a satellite with journal records cannot heartbeat (`TestSync_MalformedJournalAnswers200WithJournalError`, `TestSync_IngestsJournalOnceAndAcks` pending) |
+| `SYNC_MAX_BODY_BYTES` and the 413 | parsed, not enforced |
+| `fleet.NewEdgeEvent` and the edge kinds (9.4) | declared, log-only; not emitted until ingest lands |
+| `state.StateArtifactChanged` (6.1), `RegistryOptions.BandwidthBytesPerSec`, `SetReplicationSource`, `lane.ThrottledTransport` and the `replication_*` keys (6.2), `state.RunSummary` (6.6), `Scheduler.TryTrigger` and `EventScheduler.Stop` (6.7) | implemented |
+| Retry transport with TLS (6.3) | implemented |
 
 ## Validation
 

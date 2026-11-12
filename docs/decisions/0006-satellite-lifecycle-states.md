@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2025-07-07
 deciders: [Harbor-Satellite Development Team]
 consulted: [Harbor-Satellite Users, Architects]
@@ -10,7 +10,7 @@ informed: [Harbor-Satellite Developers, Operators]
 
 Tracks: [#268](https://github.com/container-registry/harbor-satellite/issues/268)
 
-Implementation: [ADR-0016](0016-satellite-session-authentication.md) (plan item 4.3) holds the states in `satellite_view`.
+Implementation: [ADR-0016](0016-satellite-session-authentication.md) (plan item 4.3). The states `pending`, `online`, `stale` and `revoked` live in `satellite_view.state`, not in a `satellites.status` column; there is no `deleted` flag, a deleted satellite leaves a tombstone event. The worker's stale detector marks satellites stale, `POST /api/satellites/{satellite}/revoke` and `/unrevoke` change the state, and a revoked satellite gets 403 on sync and ZTR.
 
 ## Context and Problem Statement
 

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-15
 deciders: [Harbor Satellite Development Team]
 informed: [Harbor Satellite Developers]
@@ -53,14 +53,14 @@ Ground Control (GC) keeps the fleet in PostgreSQL, but every admin write also ca
 
 | Part | Status |
 |---|---|
-| ADR | proposed |
-| `event_outbox`, `group_artifacts`, `desired_state` (migration 017) and their queries, aggregate lock queries | done, SQL contract tests |
-| `internal/groundcontrol/advisorylock` (lock keys) | done; the cleanup takes its ID from it |
-| `async` publisher, router, reconcilers, tombstones, worker, registry probe and rate limit (2.3, 2.4) | done |
-| `adapters/postgres` `OutboxStore`, `OutboxSink`, `DesiredStateStore`, `AggregateLocker` | done (`Prune` waits for plan item 9.1) |
-| fleet services as one transaction plus events (2.5) | done; the handlers call them |
-| `serve --worker` (default `embedded`), hidden `groundcontrol worker` | done |
-| `GET /api/ops/outbox`, ZTR 503, `/health` `degraded` in the spec (2.5, 2.6) | done; the startup Harbor check only logs |
+| ADR | accepted |
+| `event_outbox`, `group_artifacts`, `desired_state` (migration 017), their queries and the aggregate lock queries | implemented, SQL contract tests |
+| `internal/groundcontrol/advisorylock` (lock keys) | implemented; the cleanup takes its ID from it |
+| `async` publisher, router, reconcilers, tombstones, worker, registry probe and rate limit (2.3, 2.4) | implemented |
+| `adapters/postgres` `OutboxStore`, `OutboxSink`, `DesiredStateStore`, `AggregateLocker` | implemented; `OutboxStore.Prune` runs in `async.OutboxPruner` in every worker (`OUTBOX_RETENTION`) |
+| Fleet services as one transaction plus events (2.5) | implemented; the handlers call them |
+| `serve --worker` (default `embedded`), hidden `groundcontrol worker` | implemented; a standalone worker gets no SPIRE client, so its tombstones leave SPIRE entries |
+| `GET /api/ops/outbox`, ZTR 503, `/health` `degraded` (2.5, 2.6) | implemented; the startup Harbor check only logs |
 | `OUTBOX_*`, `HARBOR_RATE_LIMIT`, `HARBOR_PROBE_INTERVAL` | used by the worker and the probe |
 
 ## Validation

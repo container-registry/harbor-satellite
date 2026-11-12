@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-16
 deciders: [Harbor Satellite Development Team]
 informed: [Harbor Satellite Developers]
@@ -56,12 +56,13 @@ Plan item 4 (fleet hot path) found these limits at `508b0d6`:
 
 | Part | Status |
 |---|---|
-| ADR | proposed |
-| Migration `019_satellite_sessions_and_view.sql` and its queries | done, SQL contract tests |
-| `authn`, `heartbeat`, `fleet.HeartbeatService`, lifecycle services, stale detector, session expirer, postgres adapters | skeleton, pending tests |
-| Sync and ZTR contract (`session`, `inventory_requested`, `inventory_digest`), lifecycle routes | in the spec; the routes answer 501 |
-| Split limiters (`RATE_LIMIT_SPLIT`) | `ParseRate` done; `Limiter` and `LimitBy` stubs answer 501, so the flag stays off until 4.6 |
-| `satellite_status` partitions | pending SQL, maintainer stub |
+| ADR | accepted |
+| Migration `019_satellite_sessions_and_view.sql` and its queries | implemented, SQL contract tests |
+| `authn.Sessions`, `heartbeat.Buffer` and `Flusher`, `fleet.HeartbeatService`, lifecycle services, `async.StaleDetector`, `SessionExpirer`, postgres adapters | implemented and composed by `serve` (sessions, buffer, flusher) and the worker (stale detector, session expiry) |
+| Sync and ZTR contract (`session`, `inventory_requested`, `inventory_digest`), lifecycle, revoke and unrevoke routes | implemented |
+| Split limiters (`RATE_LIMIT_SPLIT`) | implemented; off by default, which keeps the shared 10/min per IP limiter |
+| `satellite_status` partitions (migration 024, `PartitionMaintainer`) | implemented |
+| Fleet load test (`task test:load`) | implemented |
 
 ## Validation
 
