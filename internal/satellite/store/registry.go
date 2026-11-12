@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/lane"
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -250,7 +251,7 @@ func newRegistryAuthClient(options RegistryOptions) (*auth.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client, err := registryHTTPClient(options.TLS)
+	client, err := registryHTTPClientWithCap(options.TLS, options.BandwidthBytesPerSec)
 	if err != nil {
 		return nil, err
 	}
@@ -280,22 +281,31 @@ func registryHost(reference string) (string, error) {
 }
 
 func registryHTTPClient(cfg config.TLSConfig) (*http.Client, error) {
-	if cfg.CertFile == "" && cfg.KeyFile == "" && cfg.CAFile == "" && !cfg.SkipVerify {
+	return registryHTTPClientWithCap(cfg, 0)
+}
+
+// registryHTTPClientWithCap builds retry(throttle(TLS transport)), so
+// retries keep working with TLS settings and spend the bandwidth budget.
+func registryHTTPClientWithCap(cfg config.TLSConfig, bytesPerSec int64) (*http.Client, error) {
+	customTLS := cfg.CertFile != "" || cfg.KeyFile != "" || cfg.CAFile != "" || cfg.SkipVerify
+	if !customTLS && bytesPerSec <= 0 {
 		return retry.DefaultClient, nil
 	}
-	tlsConfig, err := satTLS.LoadClientTLSConfig(&satTLS.Config{
-		CertFile: cfg.CertFile, KeyFile: cfg.KeyFile, CAFile: cfg.CAFile, SkipVerify: cfg.SkipVerify, MinVersion: tls.VersionTLS12,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("load registry TLS config: %w", err)
+	base := http.DefaultTransport
+	if customTLS {
+		tlsConfig, err := satTLS.LoadClientTLSConfig(&satTLS.Config{
+			CertFile: cfg.CertFile, KeyFile: cfg.KeyFile, CAFile: cfg.CAFile, SkipVerify: cfg.SkipVerify, MinVersion: tls.VersionTLS12,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("load registry TLS config: %w", err)
+		}
+		defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			return nil, errors.New("default HTTP transport is not an *http.Transport")
+		}
+		transport := defaultTransport.Clone()
+		transport.TLSClientConfig = tlsConfig
+		base = transport
 	}
-	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
-	if !ok {
-		return nil, errors.New("default HTTP transport is not an *http.Transport")
-	}
-	transport := defaultTransport.Clone()
-	transport.TLSClientConfig = tlsConfig
-	client := *retry.DefaultClient
-	client.Transport = transport
-	return &client, nil
+	return &http.Client{Transport: retry.NewTransport(lane.ThrottledTransport(base, bytesPerSec))}, nil
 }
