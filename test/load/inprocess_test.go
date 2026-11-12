@@ -61,7 +61,9 @@ func inProcessGC(t *testing.T) (string, string) {
 	done := make(chan struct{}, 3)
 	for _, run := range []func(context.Context) error{worker.Run, fleet.Flusher.Run, fleet.Probe.Run} {
 		go func() {
-			_ = run(ctx)
+			if err := run(ctx); err != nil {
+				t.Errorf("Ground Control job: %v", err)
+			}
 			done <- struct{}{}
 		}()
 	}
