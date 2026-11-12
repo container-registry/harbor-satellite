@@ -2,10 +2,16 @@ package async
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
+	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
 )
 
 // PendingRotation is a staged rotation the satellite has not acked yet.
@@ -40,28 +46,186 @@ type RotationStore interface {
 //     deleted), then promotes.
 //
 // ErrRegistryUnavailable skips without failing.
-type RobotRotator struct{}
+type RobotRotator struct {
+	store         RotationStore
+	repo          fleet.Repository
+	registry      fleet.Registry
+	locker        AggregateLocker
+	sealer        fleet.Sealer
+	clock         fleet.Clock
+	robotDuration time.Duration
+	rotateBefore  time.Duration
+	interval      time.Duration
+}
 
 var _ Job = (*RobotRotator)(nil)
 
-func NewRobotRotator(store RotationStore, registry fleet.Registry, locker AggregateLocker, sealer fleet.Sealer, clock fleet.Clock, rotateBefore, interval time.Duration) (*RobotRotator, error) {
-	return nil, notimpl.Err("8.4 robot rotator")
+// rotationBatch bounds the robots one RunOnce stages or promotes.
+const rotationBatch = 100
+
+func NewRobotRotator(store RotationStore, repo fleet.Repository, registry fleet.Registry, locker AggregateLocker, sealer fleet.Sealer, clock fleet.Clock, robotDuration, rotateBefore, interval time.Duration) (*RobotRotator, error) {
+	if store == nil || repo == nil || registry == nil || locker == nil || sealer == nil {
+		return nil, fmt.Errorf("%w: the robot rotator needs a store, a repository, a registry, a locker and a sealer", fleet.ErrInvalid)
+	}
+	if robotDuration <= 0 || rotateBefore <= 0 || interval <= 0 {
+		return nil, fmt.Errorf("%w: the robot rotator needs positive durations", fleet.ErrInvalid)
+	}
+	if clock == nil {
+		clock = fleet.SystemClock{}
+	}
+	return &RobotRotator{
+		store: store, repo: repo, registry: registry, locker: locker, sealer: sealer, clock: clock,
+		robotDuration: robotDuration, rotateBefore: rotateBefore, interval: interval,
+	}, nil
 }
 
 func (r *RobotRotator) Name() string { return "robot-rotator" }
 
 // Run calls RunOnce every interval until ctx ends.
 func (r *RobotRotator) Run(ctx context.Context) error {
-	return notimpl.Err("8.4 robot rotator run")
+	every(ctx, r.interval, func(ctx context.Context) {
+		staged, promoted, err := r.RunOnce(ctx)
+		switch {
+		case err != nil && ctx.Err() == nil:
+			log.Printf("robot rotator: %v", err)
+		case staged+promoted > 0:
+			log.Printf("robot rotator: %d staged, %d promoted", staged, promoted)
+		}
+	})
+	return nil
 }
 
 func (r *RobotRotator) RunOnce(ctx context.Context) (staged, promoted int, err error) {
-	return 0, 0, notimpl.Err("8.4 robot rotator run once")
+	acked, err := r.store.Acked(ctx, rotationBatch)
+	if err != nil {
+		return 0, 0, fmt.Errorf("list acked rotations: %w", err)
+	}
+	var errs []error
+	for _, rot := range acked {
+		ok, err := r.locked(ctx, rot.Satellite, func() error { return r.promote(ctx, rot) })
+		if errors.Is(err, fleet.ErrRegistryUnavailable) {
+			continue
+		}
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if ok {
+			promoted++
+		}
+	}
+	now := r.clock.Now()
+	expiring, err := r.store.ExpiringBefore(ctx, now, now.Add(r.rotateBefore), rotationBatch)
+	if err != nil {
+		return 0, promoted, errors.Join(append(errs, fmt.Errorf("list expiring robots: %w", err))...)
+	}
+	for _, robot := range expiring {
+		ok, err := r.locked(ctx, robot.Satellite, func() error { return r.stage(ctx, robot) })
+		if errors.Is(err, fleet.ErrRegistryUnavailable) {
+			continue
+		}
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if ok {
+			staged++
+		}
+	}
+	return staged, promoted, errors.Join(errs...)
+}
+
+// locked runs fn under the satellite's aggregate lock; ok is false while
+// another worker holds it.
+func (r *RobotRotator) locked(ctx context.Context, sat fleet.SatelliteID, fn func() error) (bool, error) {
+	unlock, ok, err := r.locker.TryLock(ctx, fleet.Aggregate{Type: fleet.AggregateSatellite, ID: int64(sat)})
+	if err != nil || !ok {
+		return false, err
+	}
+	defer unlock()
+	return true, fn()
+}
+
+func (r *RobotRotator) stage(ctx context.Context, robot fleet.Robot) error {
+	read := r.repo.Autocommit()
+	sat, err := read.Satellites().Get(ctx, robot.Satellite)
+	if err != nil {
+		return fmt.Errorf("satellite %d: %w", robot.Satellite, err)
+	}
+	grants, err := read.Satellites().RobotGrants(ctx, []fleet.SatelliteID{sat.ID})
+	if err != nil {
+		return fmt.Errorf("projects of satellite %s: %w", sat.Name, err)
+	}
+	var projects []string
+	for _, g := range grants {
+		projects = append(projects, g.Projects...)
+	}
+	generation := currentGeneration(robot.Name, sat.ID) + 1
+	name := fleet.SuccessorRobotName(sat.ID, sat.Name, generation)
+	creds, err := r.registry.CreateRobot(ctx, fleet.RobotSpec{Name: name, Projects: fleet.RobotProjects(projects), Duration: r.robotDuration})
+	if errors.Is(err, fleet.ErrAlreadyExists) {
+		// A crash between create and Stage lost the secret: adopt the
+		// robot and replace it.
+		var found fleet.RobotCredentials
+		if found, err = r.registry.FindRobot(ctx, name); err == nil {
+			creds, err = r.registry.RotateRobotSecret(ctx, found.HarborID)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("successor robot %s: %w", name, err)
+	}
+	sealed, err := r.sealer.Seal([]byte(creds.Secret))
+	if err != nil {
+		return fmt.Errorf("seal successor secret: %w", err)
+	}
+	hash, err := crypto.HashSecret(creds.Secret)
+	if err != nil {
+		return fmt.Errorf("hash successor secret: %w", err)
+	}
+	if creds.Name == "" {
+		creds.Name = name
+	}
+	creds.Secret = ""
+	if _, err := r.store.Stage(ctx, fleet.RobotRotation{Satellite: sat.ID, Generation: generation, Successor: creds, Previous: robot}, sealed, hash); err != nil {
+		return fmt.Errorf("stage rotation of %s: %w", sat.Name, err)
+	}
+	return nil
+}
+
+func (r *RobotRotator) promote(ctx context.Context, rot fleet.RobotRotation) error {
+	if err := r.registry.DeleteRobot(ctx, rot.Previous.HarborID); err != nil && !errors.Is(err, fleet.ErrNotFound) {
+		return fmt.Errorf("delete previous robot %d: %w", rot.Previous.HarborID, err)
+	}
+	if err := r.store.Promote(ctx, rot); err != nil {
+		return fmt.Errorf("promote rotation of satellite %d: %w", rot.Satellite, err)
+	}
+	return nil
+}
+
+// currentGeneration reads the generation from a successor robot's name
+// (fleet.SuccessorRobotName); the robot a satellite was created with is 0.
+func currentGeneration(robotName string, sat fleet.SatelliteID) int64 {
+	marker := "-" + strconv.FormatInt(int64(sat), 10) + "-g"
+	i := strings.LastIndex(robotName, marker)
+	if i < 0 {
+		return 0
+	}
+	n, err := strconv.ParseInt(robotName[i+len(marker):], 10, 64)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
 }
 
 // RotationCache refreshes pending rotations every interval in each serve
 // process, so a heartbeat finds its rotation without a statement.
-type RotationCache struct{}
+type RotationCache struct {
+	store    RotationStore
+	sealer   fleet.Sealer
+	interval time.Duration
+	mu       sync.RWMutex
+	pending  map[fleet.SatelliteID]fleet.RotatedCredentials
+}
 
 var (
 	_ fleet.RotationSource = (*RotationCache)(nil)
@@ -69,15 +233,49 @@ var (
 )
 
 func NewRotationCache(store RotationStore, sealer fleet.Sealer, interval time.Duration) (*RotationCache, error) {
-	return nil, notimpl.Err("8.4 rotation cache")
+	if store == nil || sealer == nil || interval <= 0 {
+		return nil, fmt.Errorf("%w: the rotation cache needs a store, a sealer and a positive interval", fleet.ErrInvalid)
+	}
+	return &RotationCache{store: store, sealer: sealer, interval: interval, pending: map[fleet.SatelliteID]fleet.RotatedCredentials{}}, nil
 }
 
 func (c *RotationCache) Name() string { return "rotation-cache" }
 
 func (c *RotationCache) Run(ctx context.Context) error {
-	return notimpl.Err("8.4 rotation cache run")
+	every(ctx, c.interval, func(ctx context.Context) {
+		if err := c.Refresh(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("rotation cache: %v", err)
+		}
+	})
+	return nil
+}
+
+// Refresh replaces the cache; a rotation whose secret does not open is
+// left out, so it is never delivered.
+func (c *RotationCache) Refresh(ctx context.Context) error {
+	rows, err := c.store.Pending(ctx)
+	if err != nil {
+		return err
+	}
+	next := make(map[fleet.SatelliteID]fleet.RotatedCredentials, len(rows))
+	var errs []error
+	for _, p := range rows {
+		secret, err := c.sealer.Open(p.SealedSecret)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("satellite %d generation %d: %w", p.Satellite, p.Generation, err))
+			continue
+		}
+		next[p.Satellite] = fleet.RotatedCredentials{Username: p.Username, Password: string(secret), ExpiresAt: p.ExpiresAt, Generation: p.Generation}
+	}
+	c.mu.Lock()
+	c.pending = next
+	c.mu.Unlock()
+	return errors.Join(errs...)
 }
 
 func (c *RotationCache) Pending(satellite fleet.SatelliteID) (fleet.RotatedCredentials, bool) {
-	return fleet.RotatedCredentials{}, false
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	creds, ok := c.pending[satellite]
+	return creds, ok
 }

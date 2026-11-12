@@ -8,11 +8,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingRotation = "robots are not rotated; the satellite refreshes its secret in the request (D2)"
 
 var rotationNow = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 
@@ -70,7 +67,7 @@ func (sealer) Open(ciphertext []byte) ([]byte, error) {
 
 func newRotator(t *testing.T, p *plane, store *rotationStore) *async.RobotRotator {
 	t.Helper()
-	r, err := async.NewRobotRotator(store, p.registry, newFakeLocker(), sealer{}, fleettest.Clock{T: rotationNow}, 72*time.Hour, time.Minute)
+	r, err := async.NewRobotRotator(store, p.repo, p.registry, newFakeLocker(), sealer{}, fleettest.Clock{T: rotationNow}, 30*24*time.Hour, 72*time.Hour, time.Minute)
 	require.NoError(t, err)
 	return r
 }
@@ -81,7 +78,6 @@ func expiringEdge01() fleet.Robot {
 }
 
 func TestRobotRotator_StagesSuccessorBeforeExpiry(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	p := newPlane()
 	p.registry.Credentials = fleet.RobotCredentials{HarborID: 43, Name: "robot$edge-01-7-g1", Secret: "successor", ExpiresAt: rotationNow.Add(30 * 24 * time.Hour)}
 	store := &rotationStore{rec: p.rec, expiring: []fleet.Robot{expiringEdge01()}}
@@ -108,7 +104,6 @@ func TestRobotRotator_StagesSuccessorBeforeExpiry(t *testing.T) {
 // A crash between CreateRobot and Stage left the successor in Harbor with
 // its secret lost: the retry adopts it and replaces the secret.
 func TestRobotRotator_CrashBeforeStageAdoptsSuccessor(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	p := newPlane()
 	name := fleet.SuccessorRobotName(7, "edge-01", 1)
 	p.registry.FailOn("CreateRobot", fleet.ErrAlreadyExists)
@@ -134,7 +129,6 @@ func ackedEdge01() fleet.RobotRotation {
 }
 
 func TestRobotRotator_PromoteDeletesOldThenPromotes(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	p := newPlane()
 	store := &rotationStore{rec: p.rec, acked: []fleet.RobotRotation{ackedEdge01()}}
 
@@ -158,7 +152,6 @@ func TestRobotRotator_PromoteDeletesOldThenPromotes(t *testing.T) {
 }
 
 func TestRobotRotator_DeletedOldRobotStillPromotes(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	p := newPlane()
 	p.registry.FailOn("DeleteRobot", fleet.ErrNotFound)
 	store := &rotationStore{rec: p.rec, acked: []fleet.RobotRotation{ackedEdge01()}}
@@ -171,7 +164,6 @@ func TestRobotRotator_DeletedOldRobotStillPromotes(t *testing.T) {
 }
 
 func TestRobotRotator_RegistryDownSkips(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	p := newPlane()
 	p.registry.FailOn("CreateRobot", fleet.ErrRegistryUnavailable)
 	p.registry.FailOn("DeleteRobot", fleet.ErrRegistryUnavailable)
@@ -187,7 +179,6 @@ func TestRobotRotator_RegistryDownSkips(t *testing.T) {
 }
 
 func TestRotationCache_ServesWithoutStatements(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	p := newPlane()
 	store := &rotationStore{rec: p.rec, pending: []async.PendingRotation{{
 		Satellite: 7, Generation: 2, Username: "robot$edge-01-7-g2", SealedSecret: []byte("sealed:successor"), ExpiresAt: rotationNow.Add(time.Hour),
