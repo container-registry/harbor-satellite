@@ -128,7 +128,7 @@ type RegistryOptions struct {
 	PlainHTTP  bool
 	TLS        config.TLSConfig
 	// BandwidthBytesPerSec caps the bytes the store moves per second, shared
-	// by all its requests; zero is no cap (plan item 6.2, not read yet).
+	// by all its requests; zero is no cap (plan item 6.2).
 	// The store builds its client as retry(throttle(TLS transport)) with
 	// lane.ThrottledTransport, so the TLS settings stay and retries spend
 	// the budget too.

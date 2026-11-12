@@ -11,12 +11,10 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/lane"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
 func TestThrottledTransport_StaysUnderCap(t *testing.T) {
-	pending.Plan(t, "6.2", "replication has no bandwidth budget")
 	const capBytes = 64 << 10
 	body := bytes.Repeat([]byte("x"), 2*capBytes)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -43,7 +41,6 @@ func TestThrottledTransport_StaysUnderCap(t *testing.T) {
 
 // A per-request bucket would let parallel requests multiply the cap.
 func TestThrottledTransport_CapIsSharedAcrossRequests(t *testing.T) {
-	pending.Plan(t, "6.2", "replication has no bandwidth budget")
 	const capBytes = 64 << 10
 	body := bytes.Repeat([]byte("x"), capBytes)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

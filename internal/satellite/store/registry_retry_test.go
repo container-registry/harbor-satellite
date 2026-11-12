@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/stretchr/testify/require"
@@ -20,7 +19,6 @@ import (
 )
 
 func TestRegistryHTTPClient_TLSKeepsRetries(t *testing.T) {
-	pending.Plan(t, "6.3", "a TLS setting replaces the retrying transport with a plain one")
 	var requests atomic.Int32
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if requests.Add(1) == 1 {
@@ -46,7 +44,6 @@ func TestRegistryHTTPClient_TLSKeepsRetries(t *testing.T) {
 // The replication source sets BandwidthBytesPerSec on Harbor options that
 // may carry TLS settings: the cap must not lose them, nor the retries.
 func TestRegistryStore_BandwidthCapKeepsTLSAndRetries(t *testing.T) {
-	pending.Plan(t, "6.2", "RegistryOptions.BandwidthBytesPerSec is not read")
 	ctx := context.Background()
 	handler := registry.New()
 	var blobGets atomic.Int32
