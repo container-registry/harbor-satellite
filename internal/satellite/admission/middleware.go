@@ -81,13 +81,11 @@ func (a *admitter) evaluator(b policybundle.Bundle) (*Evaluator, error) {
 
 func request(r *proxy.Request) Request {
 	req := Request{Repository: r.Repository, Action: r.Operation.String(), Reference: "*"}
-	switch r.Operation {
-	case proxy.PullManifest, proxy.CheckManifest, proxy.PushManifest, proxy.DeleteManifest:
+	if r.Resource() == proxy.ResourceManifest {
 		req.Reference = r.Reference
 		if req.Reference == "" {
 			req.Reference = r.Digest.String()
 		}
-	default:
 	}
 	if peer, ok := middleware.PeerFromContext(r.Context()); ok {
 		req.Subject = peer.ID
