@@ -1,0 +1,11 @@
+{{/* Context: dict { title, text } */}}
+<section class="pricing-cta">
+  <div class="pricing-cta__inner">
+    <h2 class="pricing-cta__title">{{ .title }}</h2>
+    <p class="pricing-cta__subtitle">{{ .text }}</p>
+    <div class="pricing-cta__actions">
+      <a href="{{ "docs/get-started/" | relURL }}" class="button pricing-cta__button--light">Get Started</a>
+      <a href="{{ site.Params.contactURL }}" class="button pricing-cta__button--outline" target="_blank" rel="noopener">Talk to the Maintainers</a>
+    </div>
+  </div>
+</section>

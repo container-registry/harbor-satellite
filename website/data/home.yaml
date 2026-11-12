@@ -1,0 +1,17 @@
+# From CHANGELOG 1.0.0 "Added".
+release:
+  title: What 1.0 Brings
+  subtitle: The first release with a stable configuration, API and on-disk format.
+  facts:
+    - title: Local pull endpoint
+      text: Pull-only OCI proxy on 127.0.0.1:8585 in proxy and replica modes, with streaming pull-through.
+    - title: Crash-safe edge store
+      text: Atomic index writes, torn-index recovery and garbage collection that respects open readers.
+    - title: Control plane that tolerates Harbor outages
+      text: Transactional outbox, level-triggered reconcilers and a worker you can scale separately.
+    - title: Fleet lifecycle
+      text: Satellite sessions, pending, online, stale and revoked states, revocation and convergence reporting.
+    - title: Access control
+      text: OIDC operator login, Casbin policy with scoped rules, and edge admission at every site.
+    - title: Observability
+      text: Satellite /healthz and Prometheus /metrics, Harbor reachability in /health, signed CloudEvents webhooks.

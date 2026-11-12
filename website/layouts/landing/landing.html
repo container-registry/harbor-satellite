@@ -3,5 +3,7 @@
   {{- partial "hero.html" . -}}
   {{- partial "continuum.html" . -}}
   {{- partial "features.html" . -}}
+  {{- with hugo.Data.home.release }}{{ partial "proof-strip.html" . }}{{ end -}}
   {{- partial "community.html" . -}}
+  {{- partial "support-cta.html" (dict "title" "Running Containers Where the Cloud Is Far Away?" "text" "Start with the quickstart against your own Harbor, or talk to the maintainers about commercial support for your fleet.") -}}
 {{ end }}

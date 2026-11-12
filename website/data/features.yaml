@@ -1,0 +1,225 @@
+# Every claim here is backed by a page under content/docs (imported from docs/).
+hero:
+  title: Everything a Site Needs to Run Containers Without the Cloud
+  description: Harbor Satellite 1.0 replicates exactly the artifacts each site is assigned, serves them to the local container runtime, and reports back what is present where. Ground Control manages the fleet next to your Harbor.
+  note:
+    - Apache 2.0
+    - Single satellite binary
+    - Harbor 2.x as the source of truth
+
+chapters:
+  - id: replication
+    label: Desired-State Replication
+    title: Assign Artifacts Once, Every Site Converges
+    lead: Groups list artifacts by repository, tag and digest. Assign groups and a config to a satellite, and Ground Control publishes its desired state to Harbor as OCI artifacts. The satellite pulls from Harbor directly with its own robot account; Ground Control never carries artifact data.
+    points:
+      - title: Only what changed
+        text: Each tick resolves the satellite state and every group state with one HEAD and fetches only the ones whose digest changed.
+      - title: No missing tags during an update
+        text: A changed group is replicated first and deleted afterwards, and a delete removes a tag only while it still points at the old digest.
+      - title: Bounded on thin links
+        text: replication_concurrency limits the groups replicating at once, and replication_bandwidth_bytes_per_sec caps replication downloads.
+    link_text: How desired state works
+    link_url: /docs/concepts/architecture/#desired-state
+    snippet_lang: bash
+    snippet: |
+      curl -X POST https://gc.example.com/api/groups/sync \
+        -H "Authorization: Bearer ${AUTH_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d '{
+          "group": "stores-eu",
+          "artifacts": [{
+            "repository": "shop/pos",
+            "tag": ["2.4.1"],
+            "type": "docker",
+            "digest": "sha256:...",
+            "deleted": false
+          }]
+        }'
+
+  - id: proxy
+    label: Local Pull Endpoint
+    title: The Container Runtime Pulls From the Satellite
+    lead: Every satellite serves a pull-only OCI Distribution endpoint on 127.0.0.1:8585, backed by its local OCI layout or a BYO registry. It configures containerd, CRI-O, Podman or Docker to use it as a mirror, with the upstream registry as fallback.
+    points:
+      - title: proxy or replica mode
+        text: In proxy mode a local miss is filled from Harbor and kept. In replica mode only replicated content is served and Harbor is never contacted.
+      - title: Streaming pull-through
+        text: With PROXY_STREAMING, a manifest miss is answered once the manifest is stored and blobs stream while they are written.
+      - title: Runtime config you can audit
+        text: Each runtime file is backed up before it is changed, and the result is reported in the next heartbeat.
+    link_text: OCI proxy reference
+    link_url: /docs/reference/satellite/#oci-proxy
+    snippet_lang: bash
+    snippet: |
+      satellite \
+        --ground-control-url https://gc.example.com \
+        --harbor-registry-url https://harbor.example.com \
+        --token "${TOKEN}" \
+        --proxy-mode replica \
+        --mirrors=containerd:docker.io,quay.io
+
+      # containerd now resolves docker.io and quay.io
+      # through 127.0.0.1:8585, upstream as fallback
+
+  - id: offline
+    label: Disconnected and Isolated Sites
+    title: Keeps Serving When the Link Is Down
+    lead: Replicated artifacts persist on local disk. When Harbor or Ground Control is unreachable, existing content stays available and replication resumes when the link returns. On an isolated network, satellites copy artifacts from each other.
+    points:
+      - title: Peer distribution
+        text: With peer_distribution enabled, replication tries other satellites' registries before Harbor. Eligible peers race and the first complete graph wins.
+      - title: Degraded replication
+        text: When Harbor's state list cannot be fetched, the satellite replicates its last known list from peers.
+      - title: Bootstrap without Ground Control
+        text: A new satellite can start from a desired-state file (DESIRED_STATE_FILE), read while its replicated state is empty.
+    link_text: Peer distribution reference
+    link_url: /docs/reference/satellite/#peer-distribution
+    snippet_lang: json
+    snippet: |
+      "peer_distribution": {
+        "enabled": true,
+        "local_groups": ["edge-site-a"],
+        "static_peers": [{
+          "id": "satellite-a",
+          "url": "https://satellite-a.example:5000",
+          "groups": ["edge-site-a"]
+        }],
+        "reachout_sats": "group",
+        "timeout": "30s",
+        "retries": 1,
+        "concurrency": 4
+      }
+
+  - id: store
+    label: Crash-Safe Edge Store
+    title: A Power Cut Does Not Break the Site
+    lead: Edge hardware loses power and disks fill up. The satellite's OCI layout is built for that, and replication never blocks local pulls for the length of a copy.
+    points:
+      - title: Atomic index
+        text: Writes to index.json are atomic. An unreadable index is quarantined at startup and every group is replicated again.
+      - title: Staged publishing
+        text: Replication stages copies outside the layout and publishes a complete graph under the exclusive index lock.
+      - title: Safe garbage collection
+        text: Unreferenced content is deleted only after STORE_GC_GRACE (10 minutes by default) and never while a reader holds it.
+    link_text: Hot path and cold path
+    link_url: /docs/concepts/architecture/#hot-path-and-cold-path
+    snippet_lang: text
+    snippet: |
+      <config-dir>/
+        config.json        credentials and app_config
+        state.json         replicated group state, atomic write
+        desired-state.json optional bootstrap state
+        journal/           replication, CRI and fill records
+        oci/               OCI image layout of the local store
+
+  - id: identity
+    label: Satellite Identity
+    title: Zero-Touch Onboarding, Credentials That Expire
+    lead: A satellite registers with a one-time token or with a SPIFFE X.509 SVID over mTLS. Ground Control provisions a Harbor robot account per satellite, limited to the projects of its groups.
+    points:
+      - title: Three SPIFFE attestation methods
+        text: Join token, X.509 proof of possession and SSH proof of possession.
+      - title: Robot rotation before expiry
+        text: With ROBOT_ROTATION_ENABLED, a successor robot is delivered with a heartbeat and the old one is deleted only after the satellite confirmed it, so pulls never break.
+      - title: Revocation
+        text: Revoking a satellite disables its robot in Harbor and makes sync and registration answer 403.
+    link_text: Security model
+    link_url: /docs/concepts/security/
+    snippet_lang: bash
+    snippet: |
+      # Ground Control
+      ROBOT_ROTATION_ENABLED=true
+      ROBOT_ROTATION_BEFORE_EXPIRY=72h
+      DATA_ENCRYPTION_KEY=$(openssl rand -base64 32)
+
+      # revoke a lost device
+      curl -X POST -H "Authorization: Bearer ${AUTH_TOKEN}" \
+        https://gc.example.com/api/satellites/store-0042/revoke
+
+  - id: access
+    label: Access Control and Policy
+    title: Decide Who Changes What, and What Each Site Serves
+    lead: Operators sign in with OIDC or a password session. Authorization is the built-in role check or a Casbin policy whose rules can be scoped to one satellite, group or config. At the edge, an admission policy delivered with the config decides which repositories and references the proxy serves.
+    points:
+      - title: OIDC with group mapping
+        text: Browser and device flow, OIDC_ROLE_MAP maps provider groups to roles, and password login can be limited to the bootstrap admin as a break-glass account.
+      - title: Scoped rules and deny
+        text: Rules name a user, role or OIDC group, a scope such as group:stores-eu, and allow or deny.
+      - title: Edge admission
+        text: audit mode logs denials and serves the request, enforce mode answers DENIED.
+    link_text: Edge admission reference
+    link_url: /docs/reference/satellite/#edge-admission
+    snippet_lang: json
+    snippet: |
+      "admission": {
+        "mode": "enforce",
+        "bundle": {
+          "model_version": "edge-admission/v1",
+          "policies": [
+            ["*", "shop/*",      "*", "*", "allow"],
+            ["*", "shop/debug",  "*", "*", "deny"]
+          ]
+        }
+      }
+
+  - id: groundcontrol
+    label: Ground Control
+    title: A Control Plane That Survives a Harbor Outage
+    lead: An admin request is one PostgreSQL transaction that changes the fleet tables and appends an event to an outbox. It does not call Harbor, so writes succeed while Harbor is down, and the async worker reconciles Harbor when it is back.
+    points:
+      - title: Level-triggered reconcilers
+        text: Duplicate, reordered and replayed events converge, and an unchanged aggregate costs no Harbor call.
+      - title: Scale the worker separately
+        text: The worker runs inside groundcontrol serve by default or as separate groundcontrol worker processes that share the queue.
+      - title: Hot path kept apart
+        text: Heartbeats are authenticated from a session cache and written in batches, on their own database pool.
+    link_text: Synchronous core and async plane
+    link_url: /docs/concepts/architecture/#ground-control-synchronous-core-and-async-plane
+    snippet_lang: json
+    snippet: |
+      GET /health
+
+      {"status": "degraded",
+       "components": {
+         "harbor": {
+           "status": "degraded",
+           "detail": "no recent contact",
+           "last_contact": "2026-11-12T09:14:03Z"}}}
+
+  - id: observability
+    label: Observability
+    title: Know Which Site Holds What
+    lead: Satellites send heartbeats with the state they applied. Ground Control tracks each one as pending, online, stale or revoked and reports whether it has converged. Satellites expose health and Prometheus metrics, and fleet events go out as signed webhooks.
+    points:
+      - title: Satellite /healthz and /metrics
+        text: Proxy pulls, pull-through fills, replication bytes and duration, and index lock waits, on 127.0.0.1:8586 by default.
+      - title: Signed CloudEvents webhooks
+        text: Every outbox event can be delivered to HTTPS receivers, signed with HMAC-SHA256, at least once and in order per subscription.
+      - title: Audit logging
+        text: Logins, registrations, configuration changes and credential refreshes to syslog or OpenTelemetry, from both components.
+    link_text: Monitoring guide
+    link_url: /docs/operations/monitoring/
+    snippet_lang: text
+    snippet: |
+      satellite_proxy_pull_duration_seconds
+      satellite_proxy_pull_through_fills_total
+      satellite_replication_bytes_total
+      satellite_replication_duration_seconds
+      satellite_store_lock_wait_seconds
+
+      GET /api/satellites/store-0042/lifecycle
+        state, applied and published digests, converged
+
+proof:
+  title: Release Engineering You Can Verify
+  subtitle: What ships with every release, from the installation and security docs.
+  facts:
+    - title: Signed images
+      text: Container images are signed with Cosign keyless signing. Verify them with cosign verify before you deploy.
+    - title: SBOMs and checksums
+      text: Release archives carry SBOMs and a checksums.txt. Packages come as deb, rpm, apk and archlinux.
+    - title: Multi-architecture
+      text: Container images for linux amd64, arm64, ppc64le, s390x and riscv64.
+    - title: No secrets in logs
+      text: A repository-wide test fails the build on a log argument named like a password, secret or token.

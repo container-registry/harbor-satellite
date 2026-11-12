@@ -1,0 +1,71 @@
+{{ define "body_classes" }}page-compare{{ end }}
+{{ define "main" }}
+{{ $d := hugo.Data.compare }}
+{{ with $d.hero }}{{ partial "page-hero.html" (dict "page" $ "title" .title "subtitle" .description) }}{{ end }}
+
+{{ with $d.options }}
+<section class="pricing-section">
+  <div class="pricing-section__inner">
+    <h2 class="pricing-section__title">{{ .title }}</h2>
+    <p class="pricing-section__subtitle">{{ .subtitle }}</p>
+    <div class="pricing-cards">
+      {{ range .items }}
+      <div class="pricing-card{{ if .featured }} pricing-card--featured{{ else }} sat-card--neutral{{ end }}">
+        <div class="pricing-card__header">
+          <h3 class="pricing-card__tier">{{ .name }}</h3>
+          <p class="pricing-card__sub">{{ .sub }}</p>
+        </div>
+        <ul class="pricing-card__features">
+          {{ range .points }}<li>{{ . }}</li>{{ end }}
+        </ul>
+      </div>
+      {{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ with $d.table }}
+<section class="pricing-comparison compare-comparison">
+  <div class="pricing-comparison__inner">
+    <h2 class="pricing-comparison__title">{{ .title }}</h2>
+    <div class="pricing-comparison__scroll">
+      <table class="pricing-comparison__table">
+        <thead>
+          <tr><th scope="col">Capability</th>{{ range .columns }}<th scope="col">{{ . }}</th>{{ end }}</tr>
+        </thead>
+        <tbody>
+          {{ range .groups }}
+          <tr class="pricing-comparison__group-row"><td colspan="4">{{ .name }}</td></tr>
+          {{ range .rows }}
+          <tr><th scope="row">{{ .capability }}</th><td>{{ .a }}</td><td>{{ .b }}</td><td>{{ .c }}</td></tr>
+          {{ end }}
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ with $d.limits }}
+<section class="pricing-section">
+  <div class="pricing-section__inner">
+    <h2 class="pricing-section__title">{{ .title }}</h2>
+    <p class="pricing-section__subtitle">{{ .subtitle }} <a href="{{ .link_url }}" class="link">{{ .link_text }} &rarr;</a></p>
+    <div class="split-card-row split-card-row--2">
+      {{ range .items }}
+      <article class="split-card split-card--text-only">
+        <div class="split-card__content">
+          <h3 class="split-card__title">{{ .title }}</h3>
+          <p class="split-card__text">{{ .text }}</p>
+        </div>
+      </article>
+      {{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ partial "support-cta.html" (dict "title" "Try It on One Machine" "text" "The token quickstart runs Ground Control and a satellite side by side, against your own Harbor.") }}
+{{ end }}

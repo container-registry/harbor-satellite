@@ -24,8 +24,8 @@
     padding: var(--space-8);
   }
 
-  .footer__columns--3 {
-    grid-template-columns: repeat(3, 1fr);
+  .footer__columns--4 {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
@@ -56,7 +56,14 @@
     white-space: normal;
   }
 
-  .footer__columns--3 {
+  .footer__columns--4 {
     grid-template-columns: 1fr;
+  }
+}
+
+@layer components {
+  @media (max-width: 767px) {
+    .sat-checklist { flex-basis: auto; width: 100%; }
+    .chapter__visual--snippet { padding: var(--space-4); }
   }
 }

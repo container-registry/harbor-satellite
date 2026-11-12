@@ -1,27 +1,33 @@
 {{ $repo := .Site.Params.githubRepo }}
 {{ $columns := slice
+  (dict "title" "Product" "links" (slice
+    (dict "name" "Features" "url" ("features/" | relURL))
+    (dict "name" "Use Cases" "url" ("use-cases/" | relURL))
+    (dict "name" "Architecture" "url" ("architecture/" | relURL))
+    (dict "name" "Compare" "url" ("compare/" | relURL))
+    (dict "name" "Commercial Support" "url" ("support/" | relURL))))
   (dict "title" "Documentation" "links" (slice
-    (dict "name" "Introduction" "url" ("docs/" | relURL))
-    (dict "name" "Overview" "url" ("docs/overview/" | relURL))
-    (dict "name" "Installation" "url" ("docs/installation/" | relURL))
-    (dict "name" "Quickstart" "url" ("docs/quickstart/" | relURL))
-    (dict "name" "Architecture" "url" ("docs/architecture/" | relURL))
+    (dict "name" "Get Started" "url" ("docs/get-started/" | relURL))
+    (dict "name" "Concepts" "url" ("docs/concepts/" | relURL))
+    (dict "name" "Reference" "url" ("docs/reference/" | relURL))
+    (dict "name" "Operations" "url" ("docs/operations/" | relURL))
+    (dict "name" "Changelog" "url" ("docs/changelog/" | relURL))
     (dict "name" "Blog" "url" ("blog/" | relURL))))
   (dict "title" "Community" "links" (slice
-    (dict "name" "CNCF Slack" "url" "https://cloud-native.slack.com/channels/harbor-satellite" "external" true)
+    (dict "name" "CNCF Slack" "url" "https://cloud-native.slack.com/archives/C06NE6EJBU1" "external" true)
     (dict "name" "GitHub" "url" $repo "external" true)
     (dict "name" "Harbor Community" "url" "https://goharbor.io/community/" "external" true)))
   (dict "title" "Project" "links" (slice
     (dict "name" "License" "url" (printf "%s/blob/main/LICENSE" $repo) "external" true)
     (dict "name" "Harbor" "url" "https://goharbor.io" "external" true)
     (dict "name" "CNCF" "url" "https://www.cncf.io/" "external" true)
-    (dict "name" "Container Registry" "url" "https://container-registry.com/" "external" true)))
+    (dict "name" "8gears Container Registry" "url" "https://container-registry.com/" "external" true)))
 }}
 <footer class="footer">
   <div class="footer__inner">
     <div class="footer__top">
       <a href="{{ "/" | relURL }}" class="footer__logo footer__wordmark">{{ partial "icons/satellite.html" }}Harbor Satellite</a>
-      <div class="footer__columns footer__columns--3">
+      <div class="footer__columns footer__columns--4">
         {{ range $columns }}
         <div class="footer__column">
           <p class="footer__column-title">{{ .title }}</p>

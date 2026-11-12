@@ -1,0 +1,75 @@
+# Site types come from README "Is This For You?"; each answer names a documented capability.
+hero:
+  title: Built for Containers Outside the Data Center
+  description: Platform teams use Harbor Satellite where a central registry is too far away, too expensive to reach, or not reachable at all.
+
+problems:
+  title: Problems It Solves
+  subtitle: If any of these sound familiar, Harbor Satellite is built for your fleet.
+  items:
+    - title: Pods fail when the registry is unreachable
+      text: The satellite serves pulls from local disk through its loopback OCI proxy, so a WAN outage does not stop scheduling for content that is already on site.
+    - title: The same image crosses the WAN once per node
+      text: Each site replicates an artifact once into its local store. Peer distribution lets satellites copy from each other before going to Harbor.
+    - title: No view of what runs where
+      text: Heartbeats report the state each satellite applied, and Ground Control reports whether it has converged with what was published.
+    - title: A full registry per site is too much to run
+      text: A satellite is a single binary with an OCI layout on disk. Harbor stays the only full registry.
+    - title: Devices need registry access without hand-managed credentials
+      text: Zero-touch registration with a one-time token or SPIFFE identity, and a robot account per satellite that Ground Control can rotate before it expires.
+
+cases:
+  - id: retail
+    label: Retail, Branches, Factories, Warehouses
+    title: A Small Cluster at Every Site
+    text: Each store or plant runs the same set of applications with site-specific variations. Group artifacts by role, assign groups to satellites, and roll out a new version by changing a group once.
+    points:
+      - Groups and configs assigned per satellite, changed centrally
+      - Local pulls through the satellite with upstream fallback for containerd, CRI-O, Podman and Docker
+      - Experimental direct delivery of image tarballs into k3s and RKE2
+    link_text: k3s reference architecture
+    link_url: /docs/guides/k3s-reference-architecture/
+
+  - id: mobile
+    label: Ships, Trains, Vehicles, Remote Sites
+    title: Connectivity Comes and Goes
+    text: Content is prepositioned while the link is up and stays on local disk when it drops. Replication resumes when the site reconnects, and in replica mode the proxy never contacts Harbor on a miss.
+    points:
+      - Persistent OCI layout with atomic index writes and recovery from a torn index
+      - Bandwidth cap and concurrency limit for replication on metered links
+      - State artifacts fetched only when their digest changed
+    link_text: Satellite configuration
+    link_url: /docs/reference/satellite/#app_config-keys
+
+  - id: telco
+    label: Telco Cell Sites and Far Edge
+    title: Many Locations, One Control Plane
+    text: Ground Control keeps heartbeats off the admin path and Harbor calls off both. The async worker can run as separate processes, and a group change fans out as one reconcile per member satellite.
+    points:
+      - Lifecycle states pending, online, stale and revoked for every satellite
+      - Per-satellite and per-IP rate limits
+      - Signed CloudEvents webhooks for SatelliteStale, SatelliteRevoked and other fleet events
+    link_text: Ground Control architecture
+    link_url: /docs/concepts/architecture/
+
+  - id: isolated
+    label: Isolated and Restricted Networks
+    title: Sites With Restricted Ingress and Egress
+    text: On an isolated network, satellites copy artifacts from each other's registries before they try Harbor. A satellite that cannot fetch Harbor's state list replicates its last known list from peers, and a new satellite can start from a bootstrap desired-state file.
+    points:
+      - Peer distribution with static peers, group filters, retries and timeouts
+      - Edge admission policy that limits what the local proxy serves
+      - Config at rest encrypted with a device-bound key on Linux (opt-in)
+    link_text: Peer distribution
+    link_url: /docs/reference/satellite/#peer-distribution
+
+  - id: regions
+    label: Multi-Region
+    title: Images Close to Workloads
+    text: Keep Harbor as the single source of truth and put a satellite next to each regional cluster. The cluster pulls from the satellite on its node, and Ground Control shows which region holds which digest.
+    points:
+      - BYO registry mode to replicate into a registry you already run in the region
+      - Pull-through in proxy mode for images nobody listed ahead of time
+      - Prometheus metrics for pulls, fills and replication on every satellite
+    link_text: Monitoring
+    link_url: /docs/operations/monitoring/

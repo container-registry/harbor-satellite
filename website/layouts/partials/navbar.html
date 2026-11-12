@@ -1,6 +1,11 @@
 {{ $links := slice
+  (dict "name" "Features" "url" ("features/" | relURL))
+  (dict "name" "Use Cases" "url" ("use-cases/" | relURL))
+  (dict "name" "Architecture" "url" ("architecture/" | relURL))
+  (dict "name" "Compare" "url" ("compare/" | relURL))
   (dict "name" "Docs" "url" ("docs/" | relURL))
   (dict "name" "Blog" "url" ("blog/" | relURL))
+  (dict "name" "Support" "url" ("support/" | relURL))
 }}
 <a href="#main-content" class="skip-link">Skip to content</a>
 <nav class="navbar" aria-label="Main" x-data="{ open: false }" @keydown.escape.window="open = false">
@@ -15,7 +20,7 @@
 
     <div class="navbar__actions">
       <a href="{{ .Site.Params.githubRepo }}" class="navbar__github" target="_blank" rel="noopener">{{ partial "icons/github.html" }}GitHub</a>
-      <a href="{{ "docs/quickstart/" | relURL }}" class="navbar__cta">Get Started</a>
+      <a href="{{ "docs/get-started/" | relURL }}" class="navbar__cta">Get Started</a>
       <button class="navbar__burger" @click="open = !open" :aria-expanded="open.toString()" aria-label="Menu">
         <span class="navbar__burger-line" aria-hidden="true"></span>
         <span class="navbar__burger-line" aria-hidden="true"></span>
@@ -29,6 +34,6 @@
     <a href="{{ .url }}" class="navbar__mobile-link" @click="open = false">{{ .name }}</a>
     {{ end }}
     <a href="{{ .Site.Params.githubRepo }}" class="navbar__mobile-link" target="_blank" rel="noopener">GitHub</a>
-    <a href="{{ "docs/quickstart/" | relURL }}" class="navbar__mobile-cta" @click="open = false">Get Started</a>
+    <a href="{{ "docs/get-started/" | relURL }}" class="navbar__mobile-cta" @click="open = false">Get Started</a>
   </div>
 </nav>

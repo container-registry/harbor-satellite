@@ -1,0 +1,84 @@
+# Harbor Satellite cells cite the docs; the other columns restate README "Why Not Run Harbor at Every Site?".
+hero:
+  title: Harbor at Every Site, a Mirror, or a Satellite?
+  description: Three common ways to get container images to edge sites, and what each one leaves you to solve.
+
+options:
+  title: The Approaches
+  subtitle: All three keep a copy of images near the workload. They differ in what runs at the site and who decides what is there.
+  items:
+    - name: Harbor at every site
+      sub: A full registry per location
+      points:
+        - Multiple processes and a database at every site
+        - Not designed for unattended operation on edge devices
+        - Each instance is operated and upgraded on its own
+    - name: Registry mirror or pull-through cache
+      sub: Fills on first pull
+      points:
+        - One registry process per site
+        - Holds only what someone already pulled
+        - No central control over which artifacts are present where
+    - name: Harbor Satellite
+      sub: Desired state from one control plane
+      featured: true
+      points:
+        - Single binary, OCI layout on disk or a BYO registry
+        - Prepositions exactly the artifacts assigned to the site
+        - Ground Control reports what each site applied
+
+table:
+  title: Side-by-Side
+  columns: [Harbor at every site, Mirror or pull-through cache, Harbor Satellite]
+  groups:
+    - name: At the site
+      rows:
+        - capability: What runs there
+          a: Harbor services and a database
+          b: A registry process
+          c: One satellite binary, plus a BYO registry if you choose one
+        - capability: Content before the first pull
+          a: With replication rules on that instance
+          b: No, filled on first pull
+          c: Yes, replicated from the groups assigned to the satellite
+        - capability: Serving during a WAN outage
+          a: Yes
+          b: Only what was already pulled
+          c: Yes, from the local store; replica mode never contacts Harbor
+        - capability: Isolated network without Harbor
+          a: Depends on its own replication
+          b: No
+          c: Peer copy from other satellites and a bootstrap desired-state file
+    - name: Fleet control
+      rows:
+        - capability: Decide centrally what each site holds
+          a: Per instance
+          b: No
+          c: Groups and configs assigned per satellite in Ground Control
+        - capability: Know what each site applied
+          a: Per instance
+          b: No
+          c: Heartbeats, lifecycle states and convergence per satellite
+        - capability: Credentials at the site
+          a: Local accounts per instance
+          b: Upstream credentials configured by hand
+          c: Robot account per satellite, scoped to its groups, optional rotation before expiry
+        - capability: Remove a lost device
+          a: Per instance
+          b: Rotate the shared credentials
+          c: Revoke the satellite; its robot is disabled in Harbor
+
+limits:
+  title: Know Before You Choose
+  subtitle: Current limits of Harbor Satellite 1.0, from the changelog.
+  items:
+    - title: The proxy serves the local node
+      text: The OCI proxy listens on loopback only and does not authenticate clients. Other nodes and peers need a registry endpoint such as a BYO registry.
+    - title: Keyless pulls wait for Harbor 3
+      text: Satellites pull with per-satellite robot accounts, rotated when you enable rotation. Workload identity federation needs a token exchange Harbor 3 has not released.
+    - title: Groups do not follow pushed tags yet
+      text: Harbor has no registry event feed for Ground Control yet, so groups change through the API.
+    - title: No Prometheus endpoint on Ground Control
+      text: Ground Control exposes /health and the fleet API. Satellites have Prometheus /metrics.
+  link_text: All known limitations
+  link_url: /docs/changelog/#known-limitations

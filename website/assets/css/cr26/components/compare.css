@@ -1,0 +1,66 @@
+@layer components {
+
+  /* ── 4-column approach grid (extends .pricing-cards) ── */
+
+  .compare-cards {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .compare-cards .pricing-card {
+    text-align: left;
+  }
+
+  /* ── Comparison table top spacing ── */
+
+  .compare-comparison {
+    padding-block-start: var(--space-20);
+  }
+
+  /* ── VS Links Section ── */
+
+  .compare-vs {
+    padding: var(--space-16) var(--page-padding) var(--space-20);
+    background: color-mix(in srgb, var(--color-navy) 4%, var(--color-canvas));
+  }
+
+  .compare-vs__inner {
+    max-width: var(--page-max-width);
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  .compare-vs__grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-3);
+    margin-block-start: var(--space-10);
+  }
+
+  .compare-vs__link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-5);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--color-ink);
+    text-decoration: none;
+    transition: border-color 0.2s;
+  }
+
+  .compare-vs__link:hover {
+    border-color: var(--color-navy);
+  }
+
+  .compare-vs__link-vs {
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    color: var(--color-ink-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+}

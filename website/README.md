@@ -1,3 +1,39 @@
+# Harbor Satellite Website
+
+Hugo site for satellite.container-registry.com, styled with the cr26 design system vendored from container-registry.com (`assets/css/cr26/`, copied unchanged; Satellite-only styles live in `assets/css/satellite/`). Built and verified with Hugo 0.163.3 extended.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `content/_index.md`, `layouts/landing/` | Home page |
+| `content/{features,use-cases,architecture,compare,support}/` with `data/*.yaml` | Product pages. Copy lives in the data files; every claim must be backed by a page in `docs/` or by the code |
+| `content/docs/` | **Generated** from the repository's `docs/`, `examples/deploy/` and `CHANGELOG.md`. Do not edit; edit the source and re-import |
+| `content/blog/` | Blog posts, see below |
+| `tools/` | Separate Go module: `importdocs` and `linkcheck` |
+
+## Import the Documentation
+
+`tools/importdocs/manifest.json` maps each source file to its page, title, weight and aliases. The importer reads the files from a git ref, removes the first heading (the layout renders the title), rewrites relative links to site URLs or to GitHub for files that are not imported, copies referenced images to `static/images/docs/`, and fails on a link to a file that does not exist in the ref. `rewrites` replaces dead external URLs until the sources are fixed.
+
+```bash
+go -C website/tools run ./importdocs -ref origin/harbor3/1.0-docs
+```
+
+GitHub links and the "Edit this page" link point at `main` (`-github-ref`).
+
+## Build and Check Links
+
+From `website/`:
+
+```bash
+hugo --gc --minify --cleanDestinationDir
+go -C tools run ./linkcheck          # every internal link and #fragment in public/
+go -C tools run ./linkcheck -external   # also list external targets (not fetched)
+```
+
+`linkcheck` exits 1 on a broken internal link or a missing anchor.
+
 # Website Blog Flow
 
 This file explains the exact steps to add a new blog post in this Hugo website.

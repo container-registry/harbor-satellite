@@ -1,0 +1,15 @@
+{{/* Context: dict { title, subtitle, facts: [{title, text}] } */}}
+<section class="proof-strip" aria-labelledby="proof-title">
+  <div class="proof-strip__inner">
+    <h2 id="proof-title" class="proof-strip__title">{{ .title }}</h2>
+    {{ with .subtitle }}<p class="proof-strip__subtitle">{{ . }}</p>{{ end }}
+    <ul class="proof-strip__facts">
+      {{ range .facts }}
+      <li>
+        <h3 class="proof-strip__fact-title">{{ .title }}</h3>
+        <p class="proof-strip__fact-text">{{ .text }}</p>
+      </li>
+      {{ end }}
+    </ul>
+  </div>
+</section>

@@ -54,9 +54,9 @@
 
   .navbar__github svg { width: 16px; height: 16px; }
 
-  .footer__columns--3 {
-    grid-template-columns: repeat(3, 1fr);
-    flex: 0 1 44rem;
+  .footer__columns--4 {
+    grid-template-columns: repeat(4, 1fr);
+    flex: 0 1 56rem;
   }
 
   .footer__copyright a { text-decoration: underline; }
@@ -476,5 +476,190 @@
     position: fixed;
     inset-inline: 0;
     inset-block-end: 0;
+  }
+}
+
+@layer components {
+  .docs-status {
+    font-size: var(--text-body-sm);
+    color: var(--color-ink-muted);
+  }
+
+  .docs-source {
+    margin-block-start: var(--space-10);
+    padding-block-start: var(--space-4);
+    border-block-start: 1px solid var(--color-border);
+    font-size: var(--text-body-sm);
+  }
+}
+
+/* Marketing pages: features, use cases, architecture, compare, support. */
+@layer components {
+  .sat-jump {
+    position: sticky;
+    top: var(--navbar-height);
+    z-index: 1;
+    background: var(--color-canvas);
+    border-block: 1px solid var(--color-border);
+  }
+
+  .sat-jump__inner {
+    display: flex;
+    gap: var(--space-2);
+    max-width: calc(var(--page-max-width) - 2 * var(--page-padding));
+    margin: 0 auto;
+    padding: var(--space-3) var(--page-padding);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .sat-jump__link {
+    flex: 0 0 auto;
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--color-ink-muted);
+    text-decoration: none;
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+
+    &:hover { background: oklch(var(--lch-gray-100)); color: var(--color-ink); }
+  }
+
+  .chapter__visual--snippet {
+    flex: 0 1 46%;
+    width: auto;
+    aspect-ratio: auto;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding: var(--space-6);
+    background: var(--color-navy);
+    overflow-x: auto;
+
+    & .highlight, & pre {
+      margin: 0;
+      width: 100%;
+      background: transparent !important;
+    }
+
+    & pre {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      line-height: var(--leading-relaxed);
+      color: oklch(var(--lch-gray-100));
+      white-space: pre;
+    }
+  }
+
+  .chapter--text {
+    align-items: flex-start;
+  }
+
+  .sat-checklist {
+    flex: 0 1 26rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin: 0;
+    padding: var(--space-6);
+    list-style: none;
+    background: oklch(var(--lch-navy-50));
+    border-radius: var(--radius-lg);
+
+    & li {
+      position: relative;
+      padding-inline-start: var(--space-6);
+      font-size: var(--text-sm);
+      line-height: var(--leading-body);
+    }
+
+    & li::before {
+      content: "";
+      position: absolute;
+      inset-inline-start: 0;
+      top: 0.45em;
+      width: 10px;
+      height: 10px;
+      border-radius: var(--radius-full);
+      background: var(--color-teal);
+    }
+  }
+
+  .sat-steps {
+    counter-reset: step;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: var(--space-4);
+    margin: var(--space-8) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .sat-steps__item {
+    counter-increment: step;
+    padding: var(--space-6);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+
+    &::before {
+      content: counter(step);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      margin-block-end: var(--space-3);
+      font-weight: var(--weight-semibold);
+      color: oklch(var(--lch-white));
+      background: var(--color-teal);
+      border-radius: var(--radius-full);
+    }
+  }
+
+  .sat-steps__title {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+  }
+
+  .sat-steps__text {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-body);
+    color: var(--color-ink-muted);
+  }
+
+  .sat-linklist {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-4) var(--space-8);
+    margin: var(--space-8) 0 0;
+    padding: 0;
+    list-style: none;
+
+    & a { color: oklch(var(--lch-white)); text-decoration: underline; text-underline-offset: 4px; }
+  }
+
+  .pricing-comparison__table th[scope="row"] {
+    text-align: start;
+    font-weight: var(--weight-medium);
+  }
+}
+
+@layer components {
+  .sat-table th,
+  .sat-table td {
+    text-align: start;
+    vertical-align: top;
+  }
+}
+
+@layer components {
+  .sat-card--neutral .pricing-card__features li::before {
+    content: "\2013";
+    color: var(--color-ink-muted);
   }
 }

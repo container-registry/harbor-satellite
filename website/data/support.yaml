@@ -1,0 +1,35 @@
+hero:
+  title: Commercial Support for Harbor Satellite
+  description: Harbor Satellite is open source under Apache 2.0 and maintained by 8gears, the team behind 8gears Container Registry. Talk to us when your fleet has to work, not only run.
+
+offers:
+  title: Where We Help
+  subtitle: Scope, response times and terms are agreed per engagement.
+  items:
+    - label: Evaluate
+      title: Fit for Your Environment
+      text: Compatibility with every registry and edge device cannot be guaranteed. We review your sites, runtimes and network constraints with you before you commit.
+    - label: Roll out
+      title: Rollout Planning
+      text: Token or SPIFFE/SPIRE onboarding, groups and configs for your site types, Ground Control on Kubernetes with PostgreSQL, and the production settings from the security hardening checklist.
+    - label: Operate
+      title: Production Support
+      text: A path to the people who write the code when a site does not converge, an upgrade needs planning, or a fix has to ship.
+    - label: Central registry
+      title: The Harbor Behind the Fleet
+      text: Every satellite needs a central Harbor. 8gears Container Registry can be that registry, hosted, in your cloud account or self-hosted.
+
+community:
+  title: Community Support
+  text: Questions, bugs and feature requests are welcome in the open.
+  links:
+    - name: "#harbor-satellite on CNCF Slack"
+      url: https://cloud-native.slack.com/archives/C06NE6EJBU1
+    - name: GitHub issues
+      url: https://github.com/container-registry/harbor-satellite/issues
+    - name: Security model and vulnerability reporting
+      url: /docs/concepts/security/
+
+cta:
+  title: Planning a Fleet?
+  text: Tell us about your sites and constraints. We answer with what Harbor Satellite does today, what it does not, and how we can help.

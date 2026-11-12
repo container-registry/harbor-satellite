@@ -2,7 +2,7 @@
 {{ $a := dict "name" "Harbor Satellite Team" "role" "" "url" "" "avatar" "" "bio" "" }}
 {{ with .Params.author }}
   {{ $a = merge $a (dict "name" .) }}
-  {{ with index site.Data.authors . }}
+  {{ with index hugo.Data.authors . }}
     {{ $a = merge $a (dict "name" (.name | default $a.name) "role" (.role | default "") "url" (.repository | default .github | default "") "avatar" (.avatar | default "") "bio" (.bio | default "")) }}
   {{ end }}
 {{ end }}

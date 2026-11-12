@@ -1,0 +1,53 @@
+# Condensed from docs/architecture.md and README "How It Works".
+hero:
+  title: How Harbor Satellite Works
+  description: Harbor stays the source of truth for artifacts. Ground Control decides what each site should hold. A satellite at each site pulls exactly that from Harbor and serves it locally.
+
+components:
+  title: Three Parts, Clear Boundaries
+  items:
+    - icon: harbor
+      name: Harbor
+      where: Cloud
+      text: Your existing Harbor 2.x. It holds every artifact and, in its satellite project, the desired-state artifacts Ground Control publishes. Satellites pull from it with their own robot accounts.
+    - icon: control
+      name: Ground Control
+      where: Cloud, next to Harbor
+      text: Fleet management backed by PostgreSQL. Onboarding, groups, configs, robot accounts, status and lifecycle. An API process and an async worker that reconciles Harbor through a transactional outbox.
+    - icon: satellite
+      name: Satellite
+      where: Every site
+      text: A single binary. Registers, fetches its desired state, replicates into an OCI layout or a BYO registry, serves pulls on 127.0.0.1:8585 and reports status with heartbeats.
+
+flow:
+  title: From a Group Change to a Running Pod
+  steps:
+    - title: Describe the desired state
+      text: An operator changes a group, a config or an assignment. Ground Control commits the change and an outbox event in one PostgreSQL transaction.
+    - title: Publish to Harbor
+      text: The async worker renders the group state and each member satellite's state as OCI artifacts in Harbor, only when the rendered digest changed.
+    - title: Replicate at the site
+      text: On its next tick the satellite sees the new digest, fetches the changed group state and replicates the artifacts from Harbor into its local store.
+    - title: Serve the runtime
+      text: containerd, CRI-O, Podman or Docker pull through the satellite's loopback proxy, with the upstream registry as fallback.
+    - title: Report back
+      text: The heartbeat carries the state and config digests the satellite applied, so Ground Control reports whether the site has converged.
+
+delivery:
+  title: Getting Artifacts to Workloads
+  columns: [Mode, How, Status]
+  rows:
+    - [Local OCI store (default), "Artifacts are written to an OCI image layout on disk, managed with ORAS. Workloads pull through the pull-only endpoint on 127.0.0.1:8585.", Available]
+    - [BYO registry, "The satellite replicates into a registry you run at the site, such as registry:2. Workloads and peers pull from it.", Available]
+    - [Transparent proxy, "proxy mode fills a miss from Harbor and keeps it; replica mode serves only replicated content. Edge admission can restrict what it serves.", "Available (pull only)"]
+    - [Direct delivery, "For k3s and RKE2, image tarballs are written into the node's image import directory.", Experimental]
+
+identity:
+  title: Who Authenticates How
+  columns: [Who, To, Credential]
+  rows:
+    - [Satellite, "Ground Control, registration", "One-time token, or an X.509 SVID over mTLS"]
+    - [Satellite, "Ground Control, after registration", "Satellite session token or the SVID"]
+    - [Satellite, Harbor, "Per-satellite robot account, rotated before expiry with ROBOT_ROTATION_ENABLED"]
+    - [Operator, Ground Control, "Password or OIDC session"]
+    - [Ground Control, Harbor, "A Harbor account that can create projects and robot accounts"]

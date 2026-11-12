@@ -1,0 +1,63 @@
+{{ define "body_classes" }}page-architecture{{ end }}
+{{ define "main" }}
+{{ $d := hugo.Data.architecture }}
+{{ with $d.hero }}
+{{ partial "page-hero.html" (dict "page" $ "title" .title "subtitle" .description
+    "image" ("images/harbor-satellite-overview.svg" | relURL) "imageAlt" "Harbor, Ground Control and satellites at edge sites"
+    "ctaText" "Read the Architecture Docs" "ctaURL" ("docs/concepts/architecture/" | relURL)
+    "ctaSecondaryText" "Security Model" "ctaSecondaryURL" ("docs/concepts/security/" | relURL)) }}
+{{ end }}
+
+{{ with $d.components }}
+<section class="sat-section">
+  <div class="sat-section__inner">
+    <div class="sat-section__header">
+      <h2 class="sat-section__title">{{ .title }}</h2>
+    </div>
+    <div class="sat-features card-grid card-grid--3">
+      {{ range $i, $c := .items }}
+      <article class="sat-feature{{ if modBool $i 2 | not }} sat-feature--orange{{ end }}">
+        <span class="sat-label">{{ $c.where }}</span>
+        <h3 class="sat-feature__title">{{ $c.name }}</h3>
+        <p class="sat-feature__desc">{{ $c.text }}</p>
+      </article>
+      {{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ with $d.flow }}
+<section class="pricing-section">
+  <div class="pricing-section__inner">
+    <h2 class="pricing-section__title">{{ .title }}</h2>
+    <ol class="sat-steps">
+      {{ range .steps }}
+      <li class="sat-steps__item">
+        <h3 class="sat-steps__title">{{ .title }}</h3>
+        <p class="sat-steps__text">{{ .text }}</p>
+      </li>
+      {{ end }}
+    </ol>
+  </div>
+</section>
+{{ end }}
+
+{{ range slice $d.delivery $d.identity }}
+<section class="pricing-comparison">
+  <div class="pricing-comparison__inner">
+    <h2 class="pricing-comparison__title">{{ .title }}</h2>
+    <div class="pricing-comparison__scroll">
+      <table class="pricing-comparison__table sat-table">
+        <thead><tr>{{ range .columns }}<th scope="col">{{ . }}</th>{{ end }}</tr></thead>
+        <tbody>
+          {{ range .rows }}<tr>{{ range $j, $cell := . }}{{ if eq $j 0 }}<th scope="row">{{ $cell }}</th>{{ else }}<td>{{ $cell }}</td>{{ end }}{{ end }}</tr>{{ end }}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ partial "support-cta.html" (dict "title" "Go Deeper" "text" "The documentation covers the outbox, hot and cold paths, the edge journal and every decision record behind them.") }}
+{{ end }}

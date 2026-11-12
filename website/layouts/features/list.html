@@ -1,0 +1,45 @@
+{{ define "body_classes" }}page-features{{ end }}
+{{ define "main" }}
+{{ $d := hugo.Data.features }}
+{{ with $d.hero }}
+{{ partial "page-hero.html" (dict "page" $ "title" .title "subtitle" .description
+    "ctaText" "Get Started" "ctaURL" ("docs/get-started/" | relURL)
+    "ctaSecondaryText" "Talk to the Maintainers" "ctaSecondaryURL" site.Params.contactURL
+    "note" .note) }}
+{{ end }}
+
+<nav class="sat-jump" aria-label="Features on this page">
+  <div class="sat-jump__inner">
+    {{ range $d.chapters }}<a href="#{{ .id }}" class="sat-jump__link">{{ .label }}</a>{{ end }}
+  </div>
+</nav>
+
+<section class="chapters">
+  <div class="chapters__list">
+    {{ range $i, $c := $d.chapters }}
+    <article id="{{ $c.id }}" class="chapter{{ if modBool $i 2 | not }} chapter--reverse{{ end }}">
+      <div class="chapter__content">
+        <span class="chapter__label">{{ $c.label }}</span>
+        <h2 class="chapter__title">{{ $c.title }}</h2>
+        <p class="chapter__lead">{{ $c.lead }}</p>
+        <ul class="chapter__points">
+          {{ range $c.points }}
+          <li>
+            <h3 class="chapter__point-title">{{ .title }}</h3>
+            <p class="chapter__point-text">{{ .text }}</p>
+          </li>
+          {{ end }}
+        </ul>
+        {{ with $c.link_url }}<a href="{{ . }}" class="chapter__link">{{ $c.link_text }} &rarr;</a>{{ end }}
+      </div>
+      <figure class="chapter__visual chapter__visual--snippet">
+        {{ highlight (strings.TrimRight "\n" $c.snippet) $c.snippet_lang "" }}
+      </figure>
+    </article>
+    {{ end }}
+  </div>
+</section>
+
+{{ with $d.proof }}{{ partial "proof-strip.html" . }}{{ end }}
+{{ partial "support-cta.html" (dict "title" "Ready to Put Harbor at the Edge?" "text" "Start with the token quickstart on one machine, or talk to the maintainers about your fleet.") }}
+{{ end }}

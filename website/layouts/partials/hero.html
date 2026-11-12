@@ -2,16 +2,16 @@
   <div class="hero__inner">
     <div class="hero__content">
       <div class="hero__heading">
-        <span class="sat-label">Open Source, part of CNCF Harbor</span>
-        <h1 class="hero__title">One Registry Workflow from Cloud to Edge to Air Gap</h1>
+        <span class="sat-label">Harbor Satellite 1.0 &middot; Open source, part of the CNCF Harbor project</span>
+        <h1 class="hero__title">Your Harbor Registry at Every Edge Site</h1>
       </div>
       <div class="hero__description">
-        <p>Harbor Satellite runs the same image distribution process everywhere, whether that's a regional data center, a rack on a factory floor or a site with no network at all.</p>
-        <p>Assign images once. Satellite delivers them however each site can receive them.</p>
+        <p>Harbor Satellite keeps a local copy of exactly the artifacts each site is assigned, serves them to the site's container runtime, and keeps serving when the link to the cloud is down.</p>
+        <p>Assign artifacts once in Ground Control. Every satellite in the fleet converges, and you can see which site holds what.</p>
       </div>
       <div class="hero__actions">
-        <a href="{{ "docs/quickstart/" | relURL }}" class="hero__cta">Get Started</a>
-        <a href="{{ .Site.Params.githubRepo }}" class="hero__cta hero__cta--secondary" target="_blank" rel="noopener">View on GitHub</a>
+        <a href="{{ "docs/get-started/" | relURL }}" class="hero__cta">Get Started</a>
+        <a href="{{ "features/" | relURL }}" class="hero__cta hero__cta--secondary">See the Features</a>
       </div>
     </div>
     <div class="hero__visual hero__visual--diagram">

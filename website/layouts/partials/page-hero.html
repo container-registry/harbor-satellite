@@ -1,0 +1,93 @@
+{{/*
+  Reusable top-of-page hero — mirrors the homepage `.hero` style.
+
+  Call styles:
+    A) {{ partial "cr26/page-hero.html" . }}
+       Auto-reads from .Params.heroHeading / heroSubHeading / heroDescription /
+       heroImage / heroImageAlt / heroCta / heroCtaSecondary, falling back to
+       .Title and .Description.
+
+    B) {{ partial "cr26/page-hero.html" (dict
+           "page"              .
+           "title"             "…"
+           "subtitle"          "…"
+           "description"       "…"
+           "image"             "/path/to.svg"
+           "imageAlt"          "…"
+           "ctaText"           "…"
+           "ctaURL"            "…"
+           "ctaSecondaryText"  "…"
+           "ctaSecondaryURL"   "…"
+           "note"              (slice "…" "…")
+       ) }}
+       Explicit overrides. Falls back to the supplied `page` for .Title /
+       .Description if title/subtitle are omitted.
+
+  Right-side image is optional. When `image` is empty, `.hero__content` fills
+  the row and the visual column is not rendered.
+*/}}
+
+{{ $title := "" }}
+{{ $subtitle := "" }}
+{{ $description := "" }}
+{{ $image := "" }}
+{{ $imgAlt := "" }}
+{{ $ctaText := "" }}
+{{ $ctaURL := "" }}
+{{ $cta2Text := "" }}
+{{ $cta2URL := "" }}
+{{ $note := slice }}
+
+{{ if reflect.IsMap . }}
+  {{ $p := index . "page" }}
+  {{ $title = or (index . "title") $p.Params.heroHeading $p.Title }}
+  {{ $subtitle = or (index . "subtitle") $p.Params.heroSubHeading $p.Description }}
+  {{ $description = or (index . "description") $p.Params.heroDescription }}
+  {{ $image = or (index . "image") $p.Params.heroImage }}
+  {{ $imgAlt = or (index . "imageAlt") $p.Params.heroImageAlt $title }}
+  {{ $ctaText = index . "ctaText" }}
+  {{ $ctaURL = index . "ctaURL" }}
+  {{ $cta2Text = index . "ctaSecondaryText" }}
+  {{ $cta2URL = index . "ctaSecondaryURL" }}
+  {{ $note = index . "note" }}
+  {{ if not $ctaURL }}{{ with $p.Params.heroCta }}{{ $ctaText = .text }}{{ $ctaURL = .url }}{{ end }}{{ end }}
+  {{ if not $cta2URL }}{{ with $p.Params.heroCtaSecondary }}{{ $cta2Text = .text }}{{ $cta2URL = .url }}{{ end }}{{ end }}
+{{ else }}
+  {{ $title = or .Params.heroHeading .Title }}
+  {{ $subtitle = or .Params.heroSubHeading .Description }}
+  {{ $description = .Params.heroDescription }}
+  {{ $image = .Params.heroImage }}
+  {{ $imgAlt = or .Params.heroImageAlt $title }}
+  {{ with .Params.heroCta }}{{ $ctaText = .text }}{{ $ctaURL = .url }}{{ end }}
+  {{ with .Params.heroCtaSecondary }}{{ $cta2Text = .text }}{{ $cta2URL = .url }}{{ end }}
+{{ end }}
+
+<section class="hero{{ if not $image }} hero--compact{{ end }}">
+  <div class="hero__inner">
+    <div class="hero__content">
+      <h1 class="hero__title">{{ $title }}</h1>
+      {{ if or $subtitle $description }}
+      <div class="hero__description">
+        {{ with $subtitle }}<p>{{ . }}</p>{{ end }}
+        {{ with $description }}<p>{{ . }}</p>{{ end }}
+      </div>
+      {{ end }}
+      {{ if or $ctaURL $cta2URL }}
+      <div class="hero__actions">
+        {{ if $ctaURL }}<a href="{{ $ctaURL }}" class="hero__cta">{{ $ctaText }}</a>{{ end }}
+        {{ if $cta2URL }}<a href="{{ $cta2URL }}" class="hero__cta hero__cta--secondary">{{ $cta2Text }}</a>{{ end }}
+      </div>
+      {{ end }}
+      {{ with $note }}
+      <ul class="hero__note">
+        {{ range . }}<li>{{ . }}</li>{{ end }}
+      </ul>
+      {{ end }}
+    </div>
+    {{ with $image }}
+    <div class="hero__visual hero__visual--image">
+      <img src="{{ . }}" alt="{{ $imgAlt }}" width="420" height="420" loading="eager">
+    </div>
+    {{ end }}
+  </div>
+</section>

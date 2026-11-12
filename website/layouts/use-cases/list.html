@@ -1,0 +1,48 @@
+{{ define "body_classes" }}page-use-cases{{ end }}
+{{ define "main" }}
+{{ $d := hugo.Data.use_cases }}
+{{ with $d.hero }}
+{{ partial "page-hero.html" (dict "page" $ "title" .title "subtitle" .description
+    "ctaText" "See the Features" "ctaURL" ("features/" | relURL)
+    "ctaSecondaryText" "Talk to the Maintainers" "ctaSecondaryURL" site.Params.contactURL) }}
+{{ end }}
+
+{{ with $d.problems }}
+<section class="pricing-section">
+  <div class="pricing-section__inner">
+    <h2 class="pricing-section__title">{{ .title }}</h2>
+    <p class="pricing-section__subtitle">{{ .subtitle }}</p>
+    <div class="split-card-row split-card-row--3">
+      {{ range .items }}
+      <article class="split-card split-card--text-only">
+        <div class="split-card__content">
+          <h3 class="split-card__title">{{ .title }}</h3>
+          <p class="split-card__text">{{ .text }}</p>
+        </div>
+      </article>
+      {{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}
+
+<section class="chapters">
+  <div class="chapters__list">
+    {{ range $i, $c := $d.cases }}
+    <article id="{{ $c.id }}" class="chapter chapter--text">
+      <div class="chapter__content">
+        <span class="chapter__label">{{ $c.label }}</span>
+        <h2 class="chapter__title">{{ $c.title }}</h2>
+        <p class="chapter__lead">{{ $c.text }}</p>
+        {{ with $c.link_url }}<a href="{{ . }}" class="chapter__link">{{ $c.link_text }} &rarr;</a>{{ end }}
+      </div>
+      <ul class="sat-checklist">
+        {{ range $c.points }}<li>{{ . }}</li>{{ end }}
+      </ul>
+    </article>
+    {{ end }}
+  </div>
+</section>
+
+{{ partial "support-cta.html" (dict "title" "Does Your Site Fit?" "text" "Compatibility with every registry and edge device cannot be guaranteed. Tell us about your sites and we will tell you what works today.") }}
+{{ end }}

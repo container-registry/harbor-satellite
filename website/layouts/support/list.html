@@ -1,0 +1,54 @@
+{{ define "body_classes" }}page-support{{ end }}
+{{ define "main" }}
+{{ $d := hugo.Data.support }}
+{{ with $d.hero }}
+{{ partial "page-hero.html" (dict "page" $ "title" .title "subtitle" .description
+    "ctaText" "Talk to Our Team" "ctaURL" site.Params.contactURL
+    "ctaSecondaryText" "Read the Docs" "ctaSecondaryURL" ("docs/" | relURL)) }}
+{{ end }}
+
+{{ with $d.offers }}
+<section class="pricing-section">
+  <div class="pricing-section__inner">
+    <h2 class="pricing-section__title">{{ .title }}</h2>
+    <p class="pricing-section__subtitle">{{ .subtitle }}</p>
+    <div class="split-card-row split-card-row--2">
+      {{ range .items }}
+      <article class="split-card split-card--text-only">
+        <div class="split-card__content">
+          <p class="split-card__eyebrow">{{ .label }}</p>
+          <h3 class="split-card__title">{{ .title }}</h3>
+          <p class="split-card__text">{{ .text }}</p>
+        </div>
+      </article>
+      {{ end }}
+    </div>
+  </div>
+</section>
+{{ end }}
+
+{{ with $d.community }}
+<section class="proof-strip" aria-labelledby="community-title">
+  <div class="proof-strip__inner">
+    <h2 id="community-title" class="proof-strip__title">{{ .title }}</h2>
+    <p class="proof-strip__subtitle">{{ .text }}</p>
+    <ul class="sat-linklist">
+      {{ range .links }}<li><a href="{{ .url }}"{{ if hasPrefix .url "http" }} target="_blank" rel="noopener"{{ end }}>{{ .name }}</a></li>{{ end }}
+    </ul>
+  </div>
+</section>
+{{ end }}
+
+{{ with $d.cta }}
+<section class="pricing-cta">
+  <div class="pricing-cta__inner">
+    <h2 class="pricing-cta__title">{{ .title }}</h2>
+    <p class="pricing-cta__subtitle">{{ .text }}</p>
+    <div class="pricing-cta__actions">
+      <a href="{{ site.Params.contactURL }}" class="button pricing-cta__button--light" target="_blank" rel="noopener">Talk to Our Team</a>
+      <a href="https://container-registry.com/8gcr/" class="button pricing-cta__button--outline" target="_blank" rel="noopener">8gears Container Registry</a>
+    </div>
+  </div>
+</section>
+{{ end }}
+{{ end }}
