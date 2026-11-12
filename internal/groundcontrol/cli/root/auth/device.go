@@ -40,11 +40,11 @@ func deviceLogin(ctx context.Context, client deviceClient, out io.Writer, sleep 
 	interval := time.Duration(max(auth.Interval, 1)) * time.Second
 	deadline := time.Now().Add(time.Duration(auth.ExpiresIn) * time.Second)
 	for {
-		if auth.ExpiresIn > 0 && time.Now().After(deadline) {
-			return groundcontrol.LoginResponse{}, fmt.Errorf("the device code expired before the login finished")
-		}
 		if err := sleep(ctx, interval); err != nil {
 			return groundcontrol.LoginResponse{}, err
+		}
+		if auth.ExpiresIn > 0 && time.Now().After(deadline) {
+			return groundcontrol.LoginResponse{}, fmt.Errorf("the device code expired before the login finished")
 		}
 		poll, err := client.OidcDeviceTokenWithResponse(ctx, groundcontrol.DeviceTokenRequest{DeviceCode: auth.DeviceCode})
 		if err != nil {

@@ -1,6 +1,7 @@
 package clitest
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
@@ -61,7 +62,7 @@ func CheckRoutes(t *testing.T, routes []Route) {
 				if out != "204 No Content\n" {
 					t.Fatalf("printed %q for an empty answer", out)
 				}
-			} else if !strings.Contains(strings.Join(strings.Fields(out), ""), strings.Join(strings.Fields(answer), "")) {
+			} else if !SameJSON(out, answer) {
 				t.Fatalf("printed %q, want the answer %q", out, answer)
 			}
 		})
@@ -82,4 +83,14 @@ func normalQuery(t *testing.T, raw string) string {
 		}
 	}
 	return values.Encode()
+}
+
+// SameJSON reports whether printed is the JSON value want and nothing else;
+// formatting whitespace does not count.
+func SameJSON(printed, want string) bool {
+	var got, expected any
+	if json.Unmarshal([]byte(printed), &got) != nil || json.Unmarshal([]byte(want), &expected) != nil {
+		return false
+	}
+	return reflect.DeepEqual(got, expected)
 }

@@ -19,6 +19,7 @@ func TestLoginOIDCFlag_DefaultOff(t *testing.T) {
 	flag := cmd.Flags().Lookup("oidc")
 	require.NotNil(t, flag)
 	require.Equal(t, "false", flag.DefValue)
+	require.Contains(t, cmd.Long, "--oidc", "the help describes the device flow login")
 
 	require.NoError(t, cmd.Flags().Set("oidc", "true"))
 	require.NoError(t, cmd.PreRunE(cmd, nil), "the device flow needs no --username")
@@ -79,4 +80,34 @@ func TestDeviceLogin_PollsUntilSessionAndSlowsDown(t *testing.T) {
 	require.Equal(t, []string{"dev-1", "dev-1", "dev-1"}, *polls)
 	require.Equal(t, []time.Duration{2 * time.Second, 2 * time.Second, 7 * time.Second}, waits, "slow_down adds 5 seconds")
 	require.True(t, strings.Contains(out.String(), "ABCD-EFGH"), out.String())
+}
+
+// RFC 8628 3.5: once expires_in has elapsed the device code is dead, so the
+// wait that crosses the deadline must not end in one more poll.
+func TestDeviceLogin_StopsWhenTheWaitCrossesTheExpiry(t *testing.T) {
+	polls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/oidc/device":
+			require.NoError(t, json.NewEncoder(w).Encode(groundcontrol.DeviceAuthorizationResponse{DeviceCode: "dev-1", UserCode: "ABCD-EFGH", VerificationURI: "https://idp.example/device", ExpiresIn: 1, Interval: 1}))
+		case "/oidc/device/token":
+			polls++
+			w.WriteHeader(http.StatusBadRequest)
+			require.NoError(t, json.NewEncoder(w).Encode(groundcontrol.AppError{Code: 400, Message: "authorization_pending"}))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	client, err := groundcontrol.NewClientWithResponses(srv.URL)
+	require.NoError(t, err)
+
+	_, err = deviceLogin(context.Background(), client, &bytes.Buffer{}, func(context.Context, time.Duration) error {
+		time.Sleep(1100 * time.Millisecond)
+		return nil
+	})
+
+	require.ErrorContains(t, err, "the device code expired")
+	require.Zero(t, polls, "no poll after the device code expired")
 }

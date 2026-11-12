@@ -213,6 +213,7 @@ func TestOperatorCommandsValidateBeforeCalling(t *testing.T) {
 		{"webhook event type", []string{"create", "webhook", "--url", "https://hooks.example", "--event-type", "GroupChanged,"}, "--event-type must not be empty"},
 		{"outbox state", []string{"get", "outbox-events", "--state", "done"}, "--state must be pending or failed"},
 		{"outbox limit", []string{"get", "outbox-events", "--limit", "1001"}, "--limit must be between 1 and 1000"},
+		{"outbox zero limit", []string{"get", "outbox-events", "--limit", "0"}, "--limit must be between 1 and 1000"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

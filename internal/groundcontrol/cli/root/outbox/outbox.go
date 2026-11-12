@@ -17,7 +17,7 @@ func NewListCommand(runtime *common.Runtime) *cobra.Command {
 (the default) lists every event that is not done, --state failed only those
 that reached OUTBOX_MAX_ATTEMPTS. System administrators only.`,
 		Args: cobra.NoArgs,
-		PreRunE: func(_ *cobra.Command, _ []string) error {
+		PreRunE: func(cmd *cobra.Command, _ []string) error {
 			if err := runtime.ValidateAuth(); err != nil {
 				return err
 			}
@@ -27,7 +27,7 @@ that reached OUTBOX_MAX_ATTEMPTS. System administrators only.`,
 				return fmt.Errorf("--state must be pending or failed")
 			}
 			// The server falls back to 100 for a limit out of range instead of refusing it.
-			if params.Limit < 0 || params.Limit > 1000 {
+			if cmd.Flags().Changed("limit") && (params.Limit < 1 || params.Limit > 1000) {
 				return fmt.Errorf("--limit must be between 1 and 1000")
 			}
 			return nil

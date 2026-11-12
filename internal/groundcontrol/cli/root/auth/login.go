@@ -15,8 +15,12 @@ func NewLoginCommand(runtime *common.Runtime) *cobra.Command {
 	loginCmd := &cobra.Command{
 		Use:   "login",
 		Short: "Create a Ground Control session",
-		Long:  "Create a Ground Control session using GROUND_CONTROL_PASSWORD and save it in the OS user configuration directory.",
-		Args:  cobra.NoArgs,
+		Long: `Create a Ground Control session and save it in the OS user configuration
+directory. A password login needs --username and the GROUND_CONTROL_PASSWORD
+environment variable. --oidc logs in through the OIDC device flow instead:
+it prints a URL and a code to confirm at the identity provider and needs no
+password; --username then only names the stored session (default "oidc").`,
+		Args: cobra.NoArgs,
 		PreRunE: func(_ *cobra.Command, _ []string) error {
 			if useOIDC {
 				return nil
