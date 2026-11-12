@@ -8,7 +8,7 @@ informed: [Harbor Satellite Developers]
 
 ## Implementation Status
 
-Partly implemented: the store and the proxy without policy. The Context section below describes the code base when this record was written.
+Partly implemented: the store, the proxy and edge admission. The Context section below describes the code base when this record was written.
 
 | Part | State |
 |---|---|
@@ -16,7 +16,9 @@ Partly implemented: the store and the proxy without policy. The Context section 
 | Typed OCI request parsing and process chain | Package added in [#649](https://github.com/container-registry/harbor-satellite/pull/649) (`internal/satellite/proxy`) |
 | Proxy wired into the satellite, `proxy` / `replica` modes | Done in [#654](https://github.com/container-registry/harbor-satellite/pull/654). `cmd/satellite` serves a pull-only OCI Distribution endpoint on `127.0.0.1:<proxy-port>` (default 8585, loopback only) backed by the local store, unless `--fallback-only`. `proxy` (default) fills a local miss from Harbor, `replica` serves only replicated content. Push, delete, tag list, referrers and catalog answer `UNSUPPORTED`. CRI mirror configs point at this endpoint |
 | `cache` mode | Not implemented |
-| Policy enforcement (CEL in this record) | Not implemented; the proxy enforces no policy yet. The CEL policy is superseded by Casbin edge admission ([ADR-0017](0017-policy-engine-casbin.md)), plan item 7.5; its middleware slot in `cmd/satellite` is empty |
+| Policy enforcement (CEL in this record) | Superseded by Casbin edge admission ([ADR-0017](0017-policy-engine-casbin.md)). Implemented as a request-level check: `app_config.admission` (`off`, `audit`, `enforce`) is evaluated for every proxy request on subject, repository, reference and operation. Content-aware checks on verified descriptor graphs are not implemented |
+| Streaming pull-through, write deadline, connection cap | Implemented, see [ADR-0013](0013-edge-store-concurrency-and-pull-through-streaming.md) |
+| Client authentication | Non-loopback clients are rejected; the listener is loopback only |
 | Replace Crane with ORAS | Partly done. The local OCI store and the registry store (Harbor source, BYO registry) use ORAS; go-containerregistry is still used for state fetching, the image catalog and direct delivery |
 
 ## Context

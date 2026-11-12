@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-16
 deciders: [Harbor Satellite Development Team]
 informed: [Harbor Satellite Developers]
@@ -43,12 +43,12 @@ Plan item 7 (policy) found these limits at `508b0d6`:
 
 | Part | Status |
 |---|---|
-| ADR | proposed |
-| Migration `020_policy_rules.sql` and its queries | done, SQL contract tests |
-| `adapters/casbin` (model, baseline, `RouteMatcher`), `fleet.PolicyService`, `PolicyRepo` and its postgres adapter, scoped checks in the services | skeleton, pending tests |
-| `server.PolicyRoutes`, `PolicyMiddleware` (used only with `POLICY_ENGINE=casbin` and a policy), policy and role-binding routes | routes in the spec and `PolicyRoutes`; handlers answer 501 |
-| `fleet.ConfigValidator`, `satconfig.Validator`, 422 on config writes | skeleton, pending tests |
-| `policybundle`, `internal/satellite/admission`, `app_config.admission` | skeleton, pending tests; `cmd/satellite` does not use it |
+| ADR | accepted |
+| Migration `020_policy_rules.sql` and its queries | implemented, SQL contract tests |
+| `adapters/casbin` (model, baseline, `RouteMatcher`, poller), `fleet.PolicyService`, `PolicyRepo` and its postgres adapter, scoped checks in the services | implemented; used with `POLICY_ENGINE=casbin` |
+| `server.PolicyRoutes`, `PolicyMiddleware`, policy and role-binding routes | implemented; the routes are system admin only |
+| `fleet.ConfigValidator`, `satconfig.Validator`, 422 on config writes | implemented |
+| `policybundle`, `internal/satellite/admission`, `app_config.admission` | implemented and composed in the satellite's proxy chain; the subject is empty until proxy authentication has a verifier |
 
 ## Validation
 
