@@ -25,6 +25,7 @@ Each satellite serves both on `TELEMETRY_ADDR` (default `127.0.0.1:8586`), separ
 | `satellite_replication_duration_seconds` | histogram | `outcome` (`ok`, `error`) | One artifact replication into the local OCI layout. |
 | `satellite_store_lock_wait_seconds` | histogram | `operation` (`publish`, `untag`, `collect`) | Wait for the exclusive index lock of the OCI layout. Readers hold it shared, so long waits mean writes queue behind pulls. |
 | `satellite_heartbeats_total` | counter | `code` (HTTP status of Ground Control's answer, or `error` without a readable answer) | Heartbeats to `POST /satellites/sync`. `200` is the only success. |
+| `satellite_heartbeats_too_large_total` | counter | `reaction` (`halved_batch`, `without_journal`, `none`) | Heartbeats Ground Control refused with `413` (`SYNC_MAX_BODY_BYTES`), by what the satellite does next: halve the journal batch, send the next beat without journal and cached-image inventory, or nothing left to cut. Each is also counted as `code="413"` in `satellite_heartbeats_total`. |
 | `satellite_journal_acks_total` | counter | `outcome` (`accepted`, `rejected`, `dropped`) | Ground Control's answers to journal uploads. `dropped` is the third rejection of one batch, after which the satellite skips it. |
 | `satellite_journal_acked_seq` | gauge | | The journal seq Ground Control last acknowledged holding. |
 
@@ -38,6 +39,7 @@ Suggested alerts:
 - `rate(satellite_proxy_pull_through_fills_total{outcome="error"}[10m]) > 0`: the satellite cannot reach Harbor for misses.
 - `increase(satellite_heartbeats_total{code!="200"}[10m]) > 0`: Ground Control refuses or does not answer heartbeats.
 - `increase(satellite_journal_acks_total{outcome="dropped"}[1h]) > 0`: journal records were lost.
+- `increase(satellite_heartbeats_too_large_total{reaction!="halved_batch"}[1h]) > 0`: even a heartbeat with one journal record is above `SYNC_MAX_BODY_BYTES`; the journal does not drain.
 
 ## Ground Control: `/metrics`
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -38,7 +39,7 @@ func applyRunSummary(req *StatusReportParams, run RunSummary) {
 	req.LatestStateDigest = run.StateDigest
 	req.LatestConfigDigest = run.ConfigDigest
 	req.LastSyncDurationMs = run.Duration.Milliseconds()
-	req.LastReplicationError = run.LastReplicationError
+	req.LastReplicationError = edgejournal.Truncate(run.LastReplicationError)
 	req.AppliedStates = append([]AppliedState(nil), run.Applied...)
 }
 

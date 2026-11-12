@@ -133,10 +133,16 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 	report := toStatusReport(req)
 	report.CredentialsGeneration = s.cm.GetStateConfig().CredentialsGeneration
+	bare := s.upload.bare()
+	if bare {
+		req.CachedImages = nil
+		report.CachedImages = nil
+	}
 	s.mu.Lock()
 	digest := s.inventory.prepare(&report, req.CachedImages, req.CachedImages != nil)
 	s.mu.Unlock()
-	batch, err := s.upload.next(s.cm.GetJournalConfig().UploadBatch)
+	uploadBatch := s.cm.GetJournalConfig().UploadBatch
+	batch, err := s.upload.next(uploadBatch)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to read the journal, reporting without it")
 	} else if batch != nil {
@@ -152,11 +158,23 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 	resp, err := s.sendStatusReport(ctx, report)
 	if err != nil {
-		recorder.CountHeartbeat(heartbeatCode(err))
+		code := heartbeatCode(err)
+		recorder.CountHeartbeat(code)
+		if code == strconv.Itoa(http.StatusRequestEntityTooLarge) {
+			reaction := s.upload.tooLarge(batch)
+			recorder.CountHeartbeatTooLarge(reaction)
+			ev := log.Error().Err(err).Str("reaction", reaction).Bool("bare", bare)
+			if batch != nil {
+				ev = ev.Int("journal_records", len(batch.Records))
+			}
+			ev.Msg("Ground Control refused the heartbeat as too large (SYNC_MAX_BODY_BYTES)")
+			return err
+		}
 		log.Error().Err(err).Msg("Failed to send status report")
 		return err
 	}
 	recorder.CountHeartbeat(strconv.Itoa(http.StatusOK))
+	s.upload.delivered(batch, uploadBatch)
 	s.mu.Lock()
 	s.inventory.answered(report, digest, resp.InventoryRequested)
 	s.mu.Unlock()

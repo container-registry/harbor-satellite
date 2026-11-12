@@ -506,7 +506,10 @@ func (j *Journal) cutTornTail() error {
 	return nil
 }
 
+// writeRecord bounds the payload's strings (edgejournal.BoundPayload), so
+// no record can push a heartbeat past Ground Control's body limit.
 func (j *Journal) writeRecord(r Record) error {
+	r.Payload = edgejournal.BoundPayload(r.Payload)
 	frame, err := encodeRecord(r)
 	if err != nil {
 		return err

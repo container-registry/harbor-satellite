@@ -13,10 +13,22 @@ const (
 	MetricHeartbeats          = "satellite_heartbeats_total"
 	MetricJournalAcks         = "satellite_journal_acks_total"
 	MetricJournalAckedSeq     = "satellite_journal_acked_seq"
+	MetricHeartbeatsTooLarge  = "satellite_heartbeats_too_large_total"
 )
 
 // Heartbeat codes of CountHeartbeat besides an HTTP status.
 const HeartbeatTransportError = "error"
+
+// Reactions of CountHeartbeatTooLarge to a 413 from Ground Control.
+const (
+	// TooLargeHalvedBatch: the next beats upload half as many journal records.
+	TooLargeHalvedBatch = "halved_batch"
+	// TooLargeWithoutJournal: the next beat carries neither the journal nor
+	// the cached-image inventory.
+	TooLargeWithoutJournal = "without_journal"
+	// TooLargeNone: the beat already carried neither; nothing is left to cut.
+	TooLargeNone = "none"
+)
 
 // Journal ack outcomes of ObserveJournalAck.
 const (
@@ -37,6 +49,9 @@ type Recorder interface {
 	// ObserveJournalAck counts Ground Control's answer to a journal upload
 	// and records the seq it holds.
 	ObserveJournalAck(outcome string, ackedSeq int64)
+	// CountHeartbeatTooLarge counts one heartbeat Ground Control refused
+	// with 413, by the satellite's reaction.
+	CountHeartbeatTooLarge(reaction string)
 }
 
 // Nop discards every observation.
@@ -50,3 +65,4 @@ func (Nop) ObserveReplication(int64, time.Duration, string) {}
 func (Nop) ObserveStoreLockWait(string, time.Duration)      {}
 func (Nop) CountHeartbeat(string)                           {}
 func (Nop) ObserveJournalAck(string, int64)                 {}
+func (Nop) CountHeartbeatTooLarge(string)                   {}

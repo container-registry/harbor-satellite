@@ -19,6 +19,7 @@ type promRecorder struct {
 	heartbeats          *prometheus.CounterVec
 	journalAcks         *prometheus.CounterVec
 	journalAckedSeq     prometheus.Gauge
+	heartbeatsTooLarge  *prometheus.CounterVec
 }
 
 var _ Recorder = (*promRecorder)(nil)
@@ -60,11 +61,15 @@ func newPromRecorder() *promRecorder {
 			Name: MetricJournalAckedSeq,
 			Help: "The journal seq Ground Control last acknowledged holding.",
 		}),
+		heartbeatsTooLarge: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: MetricHeartbeatsTooLarge,
+			Help: "Heartbeats Ground Control refused with 413, by reaction (halved_batch, without_journal, none).",
+		}, []string{"reaction"}),
 	}
 }
 
 func (r *promRecorder) register(reg prometheus.Registerer) error {
-	for _, c := range []prometheus.Collector{r.pullDuration, r.pullThroughFills, r.replicationBytes, r.replicationDuration, r.storeLockWait, r.heartbeats, r.journalAcks, r.journalAckedSeq} {
+	for _, c := range []prometheus.Collector{r.pullDuration, r.pullThroughFills, r.replicationBytes, r.replicationDuration, r.storeLockWait, r.heartbeats, r.journalAcks, r.journalAckedSeq, r.heartbeatsTooLarge} {
 		if err := reg.Register(c); err != nil {
 			return err
 		}
@@ -96,4 +101,8 @@ func (r *promRecorder) CountHeartbeat(code string) {
 func (r *promRecorder) ObserveJournalAck(outcome string, ackedSeq int64) {
 	r.journalAcks.WithLabelValues(outcome).Inc()
 	r.journalAckedSeq.Set(float64(ackedSeq))
+}
+
+func (r *promRecorder) CountHeartbeatTooLarge(reaction string) {
+	r.heartbeatsTooLarge.WithLabelValues(reaction).Inc()
 }

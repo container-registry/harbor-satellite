@@ -15,6 +15,10 @@ import (
 // before the satellite drops it (ADR-0015).
 const maxRejections = 3
 
+// growAfter is how many beats in a row must pass at a batch cap that a 413
+// lowered before the cap doubles again.
+const growAfter = 4
+
 // SetJournal makes the report carry a journal upload (plan item 6.5): the
 // journal's epoch, its floor as after_seq and the records above it, at
 // most min(app_config.journal.upload_batch, config.MaxJournalUploadBatch),
@@ -50,6 +54,21 @@ type journalUploader struct {
 	rejectedFirst    int64
 	rejectedLast     int64
 	rejectedAfterSeq int64
+	// oversize is the reaction to Ground Control's 413 (SYNC_MAX_BODY_BYTES).
+	oversize oversizeState
+}
+
+// oversizeState shrinks heartbeats that Ground Control refused as too
+// large. A 413 halves the journal batch (floor 1); a 413 at one record, or
+// without records, makes the next beat bare: no journal and no cached-image
+// inventory, so last_seen keeps moving. After a bare beat passes the next
+// one tries one record again. The cap doubles after growAfter passing beats
+// and is lifted once a beat uploads fewer records than the cap, since the
+// backlog that held the large records has then drained.
+type oversizeState struct {
+	limit  int // journal batch cap; 0 is none
+	bare   bool
+	passed int // beats in a row that passed at limit
 }
 
 func (u *journalUploader) set(j *journal.Journal) {
@@ -79,6 +98,12 @@ func (u *journalUploader) next(uploadBatch int) (*groundcontrol.JournalUpload, e
 	limit = min(limit, config.MaxJournalUploadBatch)
 	if !u.answered {
 		limit = 1
+	}
+	if u.oversize.bare {
+		return nil, nil
+	}
+	if u.oversize.limit > 0 {
+		limit = min(limit, u.oversize.limit)
 	}
 	floor := u.j.Floor()
 	records, err := u.j.ReadFrom(floor, limit)
@@ -138,4 +163,57 @@ func (u *journalUploader) answer(upload groundcontrol.JournalUpload, ack *gcclie
 		return telemetry.JournalRejected, err
 	}
 	return telemetry.JournalDropped, errors.New("journal batch dropped after repeated rejection: " + ack.Error)
+}
+
+// bare reports whether this beat goes without journal and inventory.
+func (u *journalUploader) bare() bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.oversize.bare
+}
+
+// tooLarge applies a 413 to the beat that carried upload (nil without a
+// journal) and returns the telemetry.TooLarge* reaction.
+func (u *journalUploader) tooLarge(upload *groundcontrol.JournalUpload) string {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	o := &u.oversize
+	o.passed = 0
+	switch {
+	case o.bare:
+		return telemetry.TooLargeNone
+	case upload != nil && len(upload.Records) > 1:
+		o.limit = len(upload.Records) / 2
+		return telemetry.TooLargeHalvedBatch
+	default:
+		o.bare = true
+		return telemetry.TooLargeWithoutJournal
+	}
+}
+
+// delivered applies a beat Ground Control accepted. uploadBatch is
+// app_config.journal.upload_batch.
+func (u *journalUploader) delivered(upload *groundcontrol.JournalUpload, uploadBatch int) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	o := &u.oversize
+	switch {
+	case o.bare:
+		o.bare, o.limit, o.passed = false, 1, 0
+	case o.limit == 0:
+	case upload == nil || len(upload.Records) < o.limit:
+		*o = oversizeState{}
+	default:
+		o.passed++
+		if o.passed < growAfter {
+			return
+		}
+		o.limit, o.passed = o.limit*2, 0
+		if uploadBatch <= 0 {
+			uploadBatch = config.DefaultJournalUploadBatch
+		}
+		if o.limit >= min(uploadBatch, config.MaxJournalUploadBatch) {
+			*o = oversizeState{}
+		}
+	}
 }

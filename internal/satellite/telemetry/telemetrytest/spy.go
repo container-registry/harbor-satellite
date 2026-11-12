@@ -26,6 +26,7 @@ type Spy struct {
 	LockWaits    []string
 	Heartbeats   []string
 	JournalAcks  []JournalAck
+	TooLarge     []string
 }
 
 type JournalAck struct {
@@ -71,6 +72,12 @@ func (s *Spy) ObserveJournalAck(outcome string, ackedSeq int64) {
 	s.JournalAcks = append(s.JournalAcks, JournalAck{Outcome: outcome, AckedSeq: ackedSeq})
 }
 
+func (s *Spy) CountHeartbeatTooLarge(reaction string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.TooLarge = append(s.TooLarge, reaction)
+}
+
 // Snapshot copies the observations under the lock.
 func (s *Spy) Snapshot() Spy {
 	s.mu.Lock()
@@ -82,5 +89,6 @@ func (s *Spy) Snapshot() Spy {
 		LockWaits:    append([]string(nil), s.LockWaits...),
 		Heartbeats:   append([]string(nil), s.Heartbeats...),
 		JournalAcks:  append([]JournalAck(nil), s.JournalAcks...),
+		TooLarge:     append([]string(nil), s.TooLarge...),
 	}
 }
