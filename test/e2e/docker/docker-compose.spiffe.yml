@@ -75,10 +75,11 @@ services:
       DB_SSLMODE: disable
       PORT: "8080"
       ADMIN_PASSWORD: AdminPass123
-      SKIP_HARBOR_HEALTH_CHECK: "true"
-      # The SPIFFE flow runs no Harbor; GC needs a Harbor URL to start and
-      # reports it degraded in /health.
-      HARBOR_URL: http://harbor.invalid
+      # Harbor comes from docker-compose.yml under its own project
+      # (task e2e-spiffe), so a SPIFFE satellite can replicate and heartbeat.
+      HARBOR_URL: http://core:8080
+      HARBOR_USERNAME: admin
+      HARBOR_PASSWORD: Harbor12345
       SPIFFE_SERVER_ENABLED: "true"
       SPIFFE_ENDPOINT_SOCKET: unix:///run/spire/sockets/agent.sock
       SPIFFE_TRUST_DOMAIN: harbor-satellite.local
@@ -92,6 +93,7 @@ services:
       - "9080:8080"
     networks:
       - spiffe-e2e
+      - harbor-e2e
     healthcheck:
       test: ["CMD", "curl", "-sfk", "https://localhost:8080/health"]
       interval: 5s
@@ -99,11 +101,61 @@ services:
       retries: 30
       start_period: 15s
 
+  # The satellite's agent and the satellite run only in task e2e-spiffe,
+  # which starts the satellite with --no-deps: recreating the agent without
+  # SATELLITE_JOIN_TOKEN would lose its attestation.
+  # The workload entry selects docker:label:com.docker.compose.service:satellite-spiffe,
+  # the label Compose puts on the satellite container.
+  spire-agent-satellite:
+    profiles: [satellite]
+    image: ghcr.io/spiffe/spire-agent:1.12.3
+    container_name: spire-agent-satellite
+    pid: host
+    command: ["-config", "/opt/spire/conf/agent/agent.conf", "-joinToken", "${SATELLITE_JOIN_TOKEN:-}"]
+    volumes:
+      - ./spiffe/agent-satellite.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./spiffe/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - spire-agent-satellite-socket:/run/spire/sockets
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck", "-socketPath", "/run/spire/sockets/agent.sock"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    networks:
+      - spiffe-e2e
+
+  satellite-spiffe:
+    profiles: [satellite]
+    image: satellite:e2e
+    container_name: satellite-spiffe
+    depends_on:
+      spire-agent-satellite:
+        condition: service_healthy
+    environment:
+      SPIFFE_ENABLED: "true"
+      SPIFFE_ENDPOINT_SOCKET: unix:///run/spire/sockets/agent.sock
+      SPIFFE_EXPECTED_SERVER_ID: spiffe://harbor-satellite.local/ground-control
+      GROUND_CONTROL_URL: https://gc:8080
+      HARBOR_REGISTRY_URL: http://core:8080
+      USE_UNSECURE: "true"
+      REGISTRY_DATA_DIR: /data/oci
+      JSON_LOGGING: "true"
+    volumes:
+      - spire-agent-satellite-socket:/run/spire/sockets:ro
+    networks:
+      - spiffe-e2e
+      - harbor-e2e
+
 volumes:
   spire-server-socket:
   spire-agent-gc-socket:
+  spire-agent-satellite-socket:
 
 networks:
   spiffe-e2e:
     name: spiffe-e2e
     driver: bridge
+  harbor-e2e:
+    name: harbor-e2e
+    external: true

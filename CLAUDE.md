@@ -58,7 +58,7 @@ task e2e
 # Run individual E2E variants
 task e2e-test               # Standard E2E (local OCI layout)
 task e2e-byo                # BYO registry E2E
-task e2e-spiffe             # SPIFFE join-token E2E
+task e2e-spiffe             # SPIFFE join-token E2E: satellite registers, replicates and heartbeats over SPIFFE
 task e2e-crash-recovery     # Crash recovery with the local OCI store
 task e2e-crash-recovery-byo # Crash recovery with BYO registry
 task e2e-multi-group        # Satellite in two groups replicates from both projects
@@ -331,8 +331,8 @@ The satellite watches `config.json`. Log level, state replication interval and a
 ## Testing
 
 - Unit tests colocated with source files (*_test.go)
-- E2E tests are Taskfile-driven flows (taskfiles/e2e.yml), not Go tests; `verify` pulls one image through the proxy (`verify-proxy-pull`) and waits for two heartbeats with `go run ./test/e2e/cmd/verify-heartbeat`. `HARBOR_EXTERNAL=1 HARBOR_NETWORK=<net> HARBOR_HOST_URL=<url>` runs them against a running Harbor
-- E2E compose stacks: `test/e2e/docker/docker-compose.yml`, `test/e2e/docker/docker-compose.spiffe.yml`
+- E2E tests are Taskfile-driven flows (taskfiles/e2e.yml), not Go tests; `verify` pulls one image through the proxy (`verify-proxy-pull`) and `go run ./test/e2e/cmd/verify-heartbeat` waits for two heartbeats in Ground Control, then for two more `200` heartbeats and an accepted journal ack in the satellite's own `/metrics` (`satellite_heartbeats_total`, `satellite_journal_acks_total`). Every variant that runs a satellite calls it; `e2e-spiffe` runs a satellite over SPIFFE against the bundled Harbor (compose project `spiffe-harbor`) and checks the same. `HARBOR_EXTERNAL=1 HARBOR_NETWORK=<net> HARBOR_HOST_URL=<url>` runs them against a running Harbor
+- E2E compose stacks: `test/e2e/docker/docker-compose.yml`, `test/e2e/docker/docker-compose.spiffe.yml` (needs the `harbor-e2e` network of the first; its `satellite` profile holds the satellite and its SPIRE agent)
 - Test configs in test/e2e/testconfig/, fixtures in test/e2e/testdata/
 - GC handler tests use go-sqlmock. Integration tests in the same packages run against real Postgres when `TEST_DATABASE_URL` is set and skip otherwise; `task test:integration` starts `test/integration/docker-compose.yml` (postgres:19rc1 with pg_stat_statements, host port `TEST_PG_PORT`, default 55434) and sets it for `./internal/groundcontrol/...` and `./test/contract/...`. `test/contract` `TestSatelliteJournalReachesGroundControl` composes Ground Control as `serve --worker=embedded` does and drives the satellite's ZTR, journal and heartbeat code against it
 - `internal/shared/logger/logtest.Capture(t)` routes the context-carried zerolog logger into a buffer at every level; tests use it to assert secrets never reach the log

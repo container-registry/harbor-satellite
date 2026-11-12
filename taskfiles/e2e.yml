@@ -50,6 +50,14 @@ vars:
   WEBHOOK_RECEIVER_CONTAINER: webhook-receiver
   WEBHOOK_SECRET: e2e-webhook-secret-of-at-least-32-bytes
   LIFECYCLE_COMPOSE: "WEBHOOK_SECRET={{.WEBHOOK_SECRET}} {{.COMPOSE}} -f test/e2e/docker/docker-compose.webhook.yml"
+  # The SPIFFE stack takes Harbor from docker-compose.yml under a project of
+  # its own, so its down never touches the SPIFFE services.
+  SPIFFE_COMPOSE: docker compose -f test/e2e/docker/docker-compose.spiffe.yml --profile satellite
+  SPIFFE_HARBOR_COMPOSE: E2E_HARBOR_HOST_PORT={{.HARBOR_HOST_PORT}} docker compose -p spiffe-harbor -f test/e2e/docker/docker-compose.yml
+  HARBOR_SERVICES: postgresql redis registry registryctl core jobservice
+  SPIFFE_GC_URL: https://localhost:9080
+  SPIFFE_SATELLITE_NAME: test-satellite
+  SPIFFE_SATELLITE_CONTAINER: satellite-spiffe
 
 tasks:
   test:
@@ -78,14 +86,50 @@ tasks:
       - echo "BYO registry E2E test passed"
 
   test-spiffe:
-    desc: Run SPIFFE join token E2E test
+    desc: Run SPIFFE join token E2E test (a satellite registers, replicates and heartbeats over SPIFFE)
+    preconditions:
+      - sh: '[ -z "{{.HARBOR_EXTERNAL}}" ]'
+        msg: the SPIFFE test runs only against the bundled Harbor
     cmds:
       - task: setup-spiffe
       - defer: { task: cleanup-spiffe }
       - task: wait-groundcontrol-spiffe
+      - task: create-harbor-project
+        vars: { PROJECT: "{{.PROJECT_NAME}}" }
+      - task: push-image
+        vars: { PROJECT: "{{.PROJECT_NAME}}" }
       - task: generate-join-token
       - task: verify-spiffe-attestation
+      - task: e2echeck
+        vars:
+          GROUNDCONTROL_URL: "{{.SPIFFE_GC_URL}}"
+          CHECK: >-
+            spiffe-setup -insecure -satellite {{.SPIFFE_SATELLITE_NAME}} -config {{.CONFIG_NAME}} -group {{.DEST_NAMESPACE}}
+            -registry {{.HARBOR_INTERNAL_URL}} -repository {{.PROJECT_NAME}}/alpine -gc-internal-url https://gc:8080
+      - task: run-satellite-spiffe
+      - task: verify-proxy-pull
+        vars: { CONTAINER: "{{.SPIFFE_SATELLITE_CONTAINER}}" }
+      - task: verify-heartbeat
+        vars:
+          SATELLITE: "{{.SPIFFE_SATELLITE_NAME}}"
+          CONTAINER: "{{.SPIFFE_SATELLITE_CONTAINER}}"
+          GC_URL: "{{.SPIFFE_GC_URL}}"
+          GC_CONTAINER: gc
+          INSECURE: "true"
       - echo "SPIFFE join token E2E test passed"
+
+  run-satellite-spiffe:
+    desc: Start the SPIFFE satellite and wait until it replicated the group's image
+    internal: true
+    cmds:
+      - docker build -t satellite:e2e -f Dockerfile .
+      - "{{.SPIFFE_COMPOSE}} up -d --no-deps {{.SPIFFE_SATELLITE_CONTAINER}}"
+      - |
+        for i in $(seq 1 18); do
+          docker exec {{.SPIFFE_SATELLITE_CONTAINER}} grep -q '"{{.PROJECT_NAME}}/alpine:latest"' /data/oci/index.json 2>/dev/null && echo "PASS: SPIFFE satellite replicated {{.PROJECT_NAME}}/alpine:latest" && exit 0
+          echo "Waiting for the SPIFFE satellite to replicate... ($i/18)"; sleep 10
+        done
+        docker logs {{.SPIFFE_SATELLITE_CONTAINER}} 2>&1 | tail -40; docker logs gc 2>&1 | tail -20; exit 1
 
   test-multi-group:
     desc: Run multi-group E2E test (a satellite in two groups pulls from both projects)
@@ -227,10 +271,12 @@ tasks:
     silent: true
 
   setup-spiffe:
-    desc: Start SPIFFE test stack with external SPIRE
+    desc: Start SPIFFE test stack with external SPIRE and the bundled Harbor
     cmds:
       - echo "Building Ground Control image..."
       - docker build --build-arg COMPONENT=groundcontrol -t gc:e2e -f Dockerfile .
+      - "{{.SPIFFE_HARBOR_COMPOSE}} up -d {{.HARBOR_SERVICES}}"
+      - task: wait-harbor
       - task: generate-spiffe-certs
       - task: start-spire-server
       - task: setup-groundcontrol-agent
@@ -424,8 +470,9 @@ tasks:
     desc: Stop and remove SPIFFE E2E containers
     cmds:
       - echo "Stopping spiffe containers..."
-      - docker compose -f test/e2e/docker/docker-compose.spiffe.yml down -v --remove-orphans 2>/dev/null || true
+      - "{{.SPIFFE_COMPOSE}} down -v --remove-orphans 2>/dev/null || true"
       - docker rm -f spire-agent-satellite satellite-spiffe 2>/dev/null || true
+      - "{{.SPIFFE_HARBOR_COMPOSE}} down -v --remove-orphans 2>/dev/null || true"
       - rm -f test/e2e/docker/spiffe/agent-groundcontrol-runtime.conf test/e2e/docker/spiffe/agent-satellite-runtime.conf 2>/dev/null || true
       - rm -rf test/e2e/docker/spiffe/certs 2>/dev/null || true
       - echo "Cleanup complete"
@@ -915,80 +962,11 @@ tasks:
         echo "$JOIN_TOKEN" > /tmp/spiffe_join_token
 
   verify-spiffe-attestation:
-    desc: Verify SPIFFE agent attestation with join token
+    desc: Attest the satellite's SPIRE agent with the join token
     cmds:
-      - |
-        JOIN_TOKEN=$(cat /tmp/spiffe_join_token)
-
-        echo "Creating satellite agent config with join token..."
-        cat > test/e2e/docker/spiffe/agent-satellite-runtime.conf << EOF
-        agent {
-            data_dir = "/tmp/spire-agent"
-            log_level = "INFO"
-            server_address = "spire-server"
-            server_port = "8081"
-            socket_path = "/run/spire/sockets/agent.sock"
-            trust_bundle_path = "/opt/spire/conf/agent/bootstrap.crt"
-            trust_domain = "harbor-satellite.local"
-            join_token = "$JOIN_TOKEN"
-        }
-        plugins {
-            NodeAttestor "join_token" {
-                plugin_data {}
-            }
-            KeyManager "memory" {
-                plugin_data {}
-            }
-            WorkloadAttestor "unix" {
-                plugin_data {}
-            }
-            WorkloadAttestor "docker" {
-                plugin_data {
-                    docker_socket_path = "unix:///var/run/docker.sock"
-                }
-            }
-        }
-        health_checks {
-            listener_enabled = true
-            bind_address = "0.0.0.0"
-            bind_port = "8080"
-            live_path = "/live"
-            ready_path = "/ready"
-        }
-        EOF
-
-        echo "Starting SPIRE agent for satellite..."
-        docker run -d --name spire-agent-satellite \
-          --network spiffe-e2e \
-          --pid host \
-          -v $(pwd)/test/e2e/docker/spiffe/agent-satellite-runtime.conf:/opt/spire/conf/agent/agent.conf:ro \
-          -v $(pwd)/test/e2e/docker/spiffe/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro \
-          -v ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock:ro \
-          ghcr.io/spiffe/spire-agent:1.12.3 \
-          -config /opt/spire/conf/agent/agent.conf
-
-        echo "Waiting for satellite agent to attest..."
-        sleep 5
-
-        for i in $(seq 1 20); do
-          if docker exec spire-agent-satellite /opt/spire/bin/spire-agent healthcheck -socketPath /run/spire/sockets/agent.sock > /dev/null 2>&1; then
-            echo "Satellite SPIRE agent is healthy - attestation successful"
-            break
-          fi
-          if [ "$i" -eq 20 ]; then
-            echo "ERROR: Satellite SPIRE agent failed to attest"
-            docker logs spire-agent-satellite 2>&1 | tail -30
-            exit 1
-          fi
-          echo "Waiting for satellite SPIRE agent... ($i/20)"
-          sleep 2
-        done
-
-        echo "Verifying agent is registered with SPIRE server..."
-        docker exec spire-server /opt/spire/bin/spire-server agent list \
-          -socketPath /tmp/spire-server/private/api.sock
-
-        echo "SPIFFE join token attestation verified successfully"
+      - SATELLITE_JOIN_TOKEN="$(cat /tmp/spiffe_join_token)" {{.SPIFFE_COMPOSE}} up -d --wait spire-agent-satellite || { docker logs spire-agent-satellite 2>&1 | tail -30; exit 1; }
+      - docker exec spire-server /opt/spire/bin/spire-server agent list -socketPath /tmp/spire-server/private/api.sock
+      - echo "SPIFFE join token attestation verified successfully"
 
   init-groundcontrol-byo:
     desc: Initialize Ground Control with BYO registry config

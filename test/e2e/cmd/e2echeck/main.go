@@ -6,8 +6,10 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"sort"
@@ -27,6 +29,7 @@ var checks = map[string]check{
 	"revoke":          {"a revoked satellite is answered 403 and recovers after unrevoke", revokeFlags},
 	"webhook-create":  {"subscribe the receiver to fleet events", webhookCreateFlags},
 	"webhook-deliver": {"wait for webhook deliveries and require each event ID exactly once", webhookDeliverFlags},
+	"spiffe-setup":    {"give a SPIFFE-registered satellite a config and a group", spiffeSetupFlags},
 }
 
 func main() {
@@ -41,6 +44,7 @@ func main() {
 	gcURL := fs.String("gc-url", "", "Ground Control URL reachable from the host")
 	user := fs.String("user", "admin", "Ground Control admin user")
 	timeout := fs.Duration("timeout", 10*time.Minute, "overall deadline of the check")
+	insecure := fs.Bool("insecure", false, "skip TLS verification of Ground Control")
 	runCheck := c.flags(fs)
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		os.Exit(2)
@@ -52,7 +56,14 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
-	err := run(ctx, newGCClient(*gcURL, *user, password), runCheck)
+	g := newGCClient(*gcURL, *user, password)
+	if *insecure {
+		g.http.Transport = &http.Transport{TLSClientConfig: &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: true, //nolint:gosec // the SPIFFE E2E Ground Control serves its SVID, not a CA-signed certificate
+		}}
+	}
+	err := run(ctx, g, runCheck)
 	cancel()
 	stop()
 	if err != nil {
