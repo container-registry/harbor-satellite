@@ -57,8 +57,21 @@ func (s *Server) StartCleanupJob(ctx context.Context, cfg CleanupConfig) {
 	}
 }
 
+// runCleanupWithLock runs the cleanup once across replicas. The lock is a
+// transaction-level advisory lock taken in the cleanup's own transaction,
+// so it is held on the connection doing the work and released at commit or
+// rollback; a session lock taken through the pool could be released on a
+// different connection and leak.
 func (s *Server) runCleanupWithLock(ctx context.Context, days int) {
-	acquired, err := s.tryAcquireAdvisoryLock(ctx, cleanupLockID)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Printf("Status cleanup: begin transaction: %v", err)
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck // After Commit this is a no-op; otherwise the error is the one already logged.
+	q := s.dbQueries.WithTx(tx)
+
+	acquired, err := q.TryAdvisoryXactLock(ctx, cleanupLockID)
 	if err != nil {
 		log.Printf("Failed to check advisory lock: %v", err)
 		return
@@ -66,33 +79,21 @@ func (s *Server) runCleanupWithLock(ctx context.Context, days int) {
 	if !acquired {
 		return
 	}
-	defer s.releaseAdvisoryLock(ctx, cleanupLockID)
 
-	if err := s.dbQueries.DeleteOldSatelliteStatus(ctx, days); err != nil {
+	if err := q.DeleteOldSatelliteStatus(ctx, days); err != nil {
 		log.Printf("Status cleanup failed: %v", err)
 		return
 	}
-
-	if err := s.dbQueries.DeleteOrphanedArtifacts(ctx, days); err != nil {
+	if err := q.DeleteOrphanedArtifacts(ctx, days); err != nil {
 		log.Printf("Orphaned artifacts cleanup failed: %v", err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		log.Printf("Status cleanup: commit: %v", err)
+		return
 	}
 
 	log.Printf("Status cleanup completed (deleted records older than %d days)", days)
-}
-
-func (s *Server) tryAcquireAdvisoryLock(ctx context.Context, lockID int) (bool, error) {
-	row := s.db.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", lockID)
-	var acquired bool
-	if err := row.Scan(&acquired); err != nil {
-		return false, err
-	}
-	return acquired, nil
-}
-
-func (s *Server) releaseAdvisoryLock(ctx context.Context, lockID int) {
-	if _, err := s.db.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", lockID); err != nil {
-		log.Printf("Failed to release advisory lock: %v", err)
-	}
 }
 
 func NewCleanupConfig() CleanupConfig {
