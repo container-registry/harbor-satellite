@@ -116,6 +116,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 		applyRunSummary(req, runSummary.LastRun())
 	}
 	report := toStatusReport(req)
+	report.CredentialsGeneration = s.cm.GetStateConfig().CredentialsGeneration
 	s.mu.Lock()
 	digest := s.inventory.prepare(&report, req.CachedImages, req.CachedImages != nil)
 	s.mu.Unlock()
@@ -135,6 +136,13 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	s.mu.Lock()
 	s.inventory.answered(report, digest, resp.InventoryRequested)
 	s.mu.Unlock()
+	if resp.Credentials != nil {
+		if err := ApplyRotatedCredentials(s.cm, *resp.Credentials); err != nil {
+			log.Error().Err(err).Int64("generation", resp.Credentials.Generation).Msg("Failed to apply rotated robot credentials")
+		} else {
+			log.Info().Int64("generation", resp.Credentials.Generation).Msg("Switched to the rotated robot credentials")
+		}
+	}
 	if resp.Session != nil {
 		s.cm.With(config.SetGCSession(config.GCSession{Token: resp.Session.Token, ExpiresAt: resp.Session.ExpiresAt}))
 		if err := s.cm.WriteConfig(); err != nil {

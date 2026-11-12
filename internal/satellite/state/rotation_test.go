@@ -8,13 +8,11 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
 )
 
 func TestApplyRotatedCredentials_PersistsAndReportsGeneration(t *testing.T) {
-	pending.Plan(t, "8.4", "robots are not rotated; the satellite refreshes its secret in the request (D2)")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	cm, err := config.NewConfigManager(path, filepath.Join(dir, "prev.json"), "token", "http://gc", false, &config.Config{
