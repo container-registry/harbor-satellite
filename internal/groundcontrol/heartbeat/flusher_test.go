@@ -7,7 +7,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/heartbeat"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,7 +18,6 @@ func newFlusher(t *testing.T, b *heartbeat.Buffer, s *store, c heartbeat.Config)
 }
 
 func TestFlusher_FlushesOnInterval(t *testing.T) {
-	pending.Plan(t, "4.2", pendingBuffer)
 	c := cfg
 	c.FlushInterval = 20 * time.Millisecond
 	b := newBuffer(t, c)
@@ -38,7 +36,6 @@ func TestFlusher_FlushesOnInterval(t *testing.T) {
 }
 
 func TestFlusher_FinalFlushAfterCancel(t *testing.T) {
-	pending.Plan(t, "4.2", pendingBuffer)
 	c := cfg
 	c.FlushInterval = time.Hour
 	b := newBuffer(t, c)
@@ -56,7 +53,6 @@ func TestFlusher_FinalFlushAfterCancel(t *testing.T) {
 }
 
 func TestFlusher_PoisonBeatDoesNotBlockOthers(t *testing.T) {
-	pending.Plan(t, "4.2", pendingBuffer)
 	b := newBuffer(t, cfg)
 	s := &store{poison: map[fleet.SatelliteID]bool{9: true}}
 	f := newFlusher(t, b, s, cfg)

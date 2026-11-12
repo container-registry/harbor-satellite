@@ -6,11 +6,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/heartbeat"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingBuffer = "the heartbeat writes 8 statements in the request; there is no buffer"
 
 var cfg = heartbeat.Config{FlushInterval: 5 * time.Second, MaxPending: 100, MaxFlushFailures: 3, FinalFlushTimeout: time.Second}
 
@@ -22,7 +19,6 @@ func newBuffer(t *testing.T, c heartbeat.Config) *heartbeat.Buffer {
 }
 
 func TestBuffer_LatestBySeenAtKeepsAllSamples(t *testing.T) {
-	pending.Plan(t, "4.2", pendingBuffer)
 	b := newBuffer(t, cfg)
 	b.Record(beatAt(7, 2*time.Second))
 	b.Record(beatAt(7, time.Second)) // arrives late, older
@@ -41,7 +37,6 @@ func TestBuffer_LatestBySeenAtKeepsAllSamples(t *testing.T) {
 }
 
 func TestBuffer_KeepsNewestNonNilInventory(t *testing.T) {
-	pending.Plan(t, "4.4", pendingBuffer)
 	b := newBuffer(t, cfg)
 	withInventory := beatAt(7, 0)
 	withInventory.InventoryDigest = "sha256:inv"
@@ -62,7 +57,6 @@ func TestBuffer_KeepsNewestNonNilInventory(t *testing.T) {
 }
 
 func TestBuffer_CoalescesAtMaxPending(t *testing.T) {
-	pending.Plan(t, "4.2", pendingBuffer)
 	c := cfg
 	c.MaxPending = 3
 	b := newBuffer(t, c)
@@ -78,7 +72,6 @@ func TestBuffer_CoalescesAtMaxPending(t *testing.T) {
 }
 
 func TestBuffer_RequeueMergesBySeenAt(t *testing.T) {
-	pending.Plan(t, "4.2", pendingBuffer)
 	b := newBuffer(t, cfg)
 	b.Record(beatAt(7, 0))
 	b.Record(beatAt(8, 0))

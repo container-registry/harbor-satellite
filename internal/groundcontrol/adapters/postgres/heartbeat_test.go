@@ -12,14 +12,10 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/heartbeat"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
-const pendingHeartbeat = "the postgres heartbeat store is a stub; the heartbeat writes 8 statements in the request"
-
 func TestHeartbeatStore_FlushIsOneTransaction(t *testing.T) {
-	pending.Plan(t, "4.2", pendingHeartbeat)
 	db := dbtest.New(t)
 	ctx := context.Background()
 	q := database.New(db.DB)
