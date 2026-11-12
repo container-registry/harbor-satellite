@@ -2,10 +2,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 )
 
 // tokenRepo runs D7's ClaimToken, UnclaimToken and ConsumeToken. ClaimToken
@@ -15,20 +17,39 @@ import (
 // ErrTokenInvalid) so the audit log keeps the reason while the response
 // stays 400, expired ErrTokenExpired. This is the only place that
 // classifies tokens once plan item 1.4 deletes server.claimZTRToken.
-type tokenRepo struct{}
+type tokenRepo struct{ q *database.Queries }
 
-func (tokenRepo) Add(ctx context.Context, satellite fleet.SatelliteID, token string, expiresAt time.Time) error {
-	return notimpl.Err("1.3 postgres add token")
+func (r tokenRepo) Add(ctx context.Context, satellite fleet.SatelliteID, token string, expiresAt time.Time) error {
+	_, err := r.q.AddToken(ctx, database.AddTokenParams{SatelliteID: int32(satellite), Token: token, ExpiresAt: expiresAt})
+	return mapError(err)
 }
 
-func (tokenRepo) Claim(ctx context.Context, token string, now time.Time) (fleet.SatelliteID, error) {
-	return 0, notimpl.Err("1.3 postgres claim token")
+func (r tokenRepo) Claim(ctx context.Context, token string, now time.Time) (fleet.SatelliteID, error) {
+	id, err := r.q.ClaimToken(ctx, database.ClaimTokenParams{Token: token, Now: now})
+	if err == nil {
+		return fleet.SatelliteID(id), nil
+	}
+	if !errors.Is(mapError(err), fleet.ErrNotFound) {
+		return 0, mapError(err)
+	}
+	row, err := r.q.GetTokenByValue(ctx, token)
+	switch {
+	case errors.Is(mapError(err), fleet.ErrNotFound):
+		return 0, fleet.ErrTokenInvalid
+	case err != nil:
+		return 0, mapError(err)
+	case row.ConsumedAt.Valid:
+		return 0, fmt.Errorf("%w: already consumed", fleet.ErrTokenInvalid)
+	default:
+		return 0, fleet.ErrTokenExpired
+	}
 }
 
-func (tokenRepo) Unclaim(ctx context.Context, token string) error {
-	return notimpl.Err("1.3 postgres unclaim token")
+func (r tokenRepo) Unclaim(ctx context.Context, token string) error {
+	return mapError(r.q.UnclaimToken(ctx, token))
 }
 
-func (tokenRepo) Consume(ctx context.Context, token string) error {
-	return notimpl.Err("1.3 postgres consume token")
+func (r tokenRepo) Consume(ctx context.Context, token string) error {
+	_, err := r.q.ConsumeToken(ctx, token)
+	return mapError(err)
 }

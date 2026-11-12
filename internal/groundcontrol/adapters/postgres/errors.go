@@ -1,9 +1,12 @@
 package postgres
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
+	"github.com/lib/pq"
 )
 
 // mapError maps driver errors onto the fleet sentinels, keeping the cause:
@@ -11,5 +14,20 @@ import (
 // fleet.ErrAlreadyExists and foreign_key_violation (23503) fleet.ErrInUse.
 // Other errors pass through.
 func mapError(err error) error {
-	return fmt.Errorf("%w: 1.3 postgres error mapping of %w", notimpl.ErrNotImplemented, err)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: %w", fleet.ErrNotFound, err)
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		switch pqErr.Code {
+		case "23505":
+			return fmt.Errorf("%w: %w", fleet.ErrAlreadyExists, err)
+		case "23503":
+			return fmt.Errorf("%w: %w", fleet.ErrInUse, err)
+		}
+	}
+	return err
 }

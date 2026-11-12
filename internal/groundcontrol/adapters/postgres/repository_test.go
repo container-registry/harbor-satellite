@@ -11,11 +11,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/postgres"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingAdapter = "the postgres adapter is a stub; handlers call sqlc directly"
 
 func newRepository(t *testing.T) *postgres.Repository {
 	t.Helper()
@@ -25,7 +22,6 @@ func newRepository(t *testing.T) *postgres.Repository {
 }
 
 func TestRepository_WithTxRollsBackOnError(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	repo := newRepository(t)
 	ctx := context.Background()
 	boom := errors.New("later step failed")
@@ -43,7 +39,6 @@ func TestRepository_WithTxRollsBackOnError(t *testing.T) {
 }
 
 func TestRepository_WithTxCommits(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	repo := newRepository(t)
 	ctx := context.Background()
 
@@ -58,7 +53,6 @@ func TestRepository_WithTxCommits(t *testing.T) {
 }
 
 func TestRepository_RobotGrantsInOneStatement(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	db := dbtest.New(t)
 	repo, err := postgres.NewRepository(db.DB)
 	require.NoError(t, err)
@@ -104,7 +98,6 @@ func TestRepository_RobotGrantsInOneStatement(t *testing.T) {
 // A group's artifacts live in group_artifacts (A81): the API transaction
 // writes them with the group, and the reconciler renders from them.
 func TestRepository_GroupUpsertStoresArtifactsInGroupArtifacts(t *testing.T) {
-	pending.Plan(t, "2.1", pendingAdapter)
 	db := dbtest.New(t)
 	repo, err := postgres.NewRepository(db.DB)
 	require.NoError(t, err)
@@ -137,7 +130,6 @@ func TestRepository_GroupUpsertStoresArtifactsInGroupArtifacts(t *testing.T) {
 }
 
 func TestRepository_MapsDriverErrors(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	repo := newRepository(t)
 	ctx := context.Background()
 	tx := repo.Autocommit()
@@ -155,7 +147,6 @@ func TestRepository_MapsDriverErrors(t *testing.T) {
 }
 
 func TestRepository_ConfigInUse(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	repo := newRepository(t)
 	ctx := context.Background()
 	tx := repo.Autocommit()
@@ -178,7 +169,6 @@ func TestRepository_ConfigInUse(t *testing.T) {
 }
 
 func TestRepository_RobotRoundTripsHarborID(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	repo := newRepository(t)
 	ctx := context.Background()
 	tx := repo.Autocommit()
@@ -197,7 +187,6 @@ func TestRepository_RobotRoundTripsHarborID(t *testing.T) {
 }
 
 func TestRepository_TokensClaimOnceAndUnclaim(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	repo := newRepository(t)
 	ctx := context.Background()
 	tx := repo.Autocommit()

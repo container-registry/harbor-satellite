@@ -7,13 +7,11 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMapError(t *testing.T) {
-	pending.Plan(t, "1.3", "the postgres adapter is a stub; handlers call sqlc directly")
 	other := errors.New("connection reset")
 	for _, tc := range []struct {
 		err  error

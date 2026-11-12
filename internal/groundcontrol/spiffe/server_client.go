@@ -219,3 +219,38 @@ func extractPath(spiffeID, trustDomain string) string {
 	}
 	return "/" + spiffeID
 }
+
+// TrustDomainName is the configured trust domain as a string.
+func (c *ServerClient) TrustDomainName() string {
+	return c.trustDomain.String()
+}
+
+// DeleteEntriesBySPIFFEID deletes every registration entry of spiffeID;
+// none is not an error.
+func (c *ServerClient) DeleteEntriesBySPIFFEID(ctx context.Context, spiffeID string) error {
+	id := &typesv1.SPIFFEID{TrustDomain: c.trustDomain.String(), Path: extractPath(spiffeID, c.trustDomain.String())}
+	var ids []string
+	var pageToken string
+	for {
+		resp, err := c.entryClient.ListEntries(ctx, &entryv1.ListEntriesRequest{
+			Filter:    &entryv1.ListEntriesRequest_Filter{BySpiffeId: id},
+			PageToken: pageToken,
+		})
+		if err != nil {
+			return fmt.Errorf("list entries of %s: %w", spiffeID, err)
+		}
+		for _, e := range resp.GetEntries() {
+			ids = append(ids, e.GetId())
+		}
+		if pageToken = resp.GetNextPageToken(); pageToken == "" {
+			break
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	if _, err := c.entryClient.BatchDeleteEntry(ctx, &entryv1.BatchDeleteEntryRequest{Ids: ids}); err != nil {
+		return fmt.Errorf("delete entries of %s: %w", spiffeID, err)
+	}
+	return nil
+}

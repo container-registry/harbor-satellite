@@ -32,7 +32,6 @@ func stateRef(stub *harbortest.Stub, kind, name string) fleet.ArtifactRef {
 }
 
 func TestRegistry_CreateRobotLikeTheRobotTemplate(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	stub := harbortest.New(t)
 	r := newRegistry(t, stub)
 
@@ -60,7 +59,6 @@ func TestRegistry_CreateRobotLikeTheRobotTemplate(t *testing.T) {
 }
 
 func TestRegistry_SetRobotAccessReadsThenReplaces(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	stub := harbortest.New(t)
 	seeded := stub.SeedRobot(harbortest.RobotPrefix+"edge-01", fleet.SatelliteProject)
 	r := newRegistry(t, stub)
@@ -107,7 +105,6 @@ func TestRegistry_SetRobotAccessOnePutKeepsOtherFields(t *testing.T) {
 }
 
 func TestRegistry_RotateRobotSecretReturnsTheNewSecret(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	stub := harbortest.New(t)
 	seeded := stub.SeedRobot(harbortest.RobotPrefix+"edge-01", fleet.SatelliteProject)
 	r := newRegistry(t, stub)
@@ -122,7 +119,6 @@ func TestRegistry_RotateRobotSecretReturnsTheNewSecret(t *testing.T) {
 }
 
 func TestRegistry_PushStateTagsLatestAndPushTime(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	stub := harbortest.New(t)
 	stub.AddProject(fleet.SatelliteProject)
 	r := newRegistry(t, stub)
@@ -140,7 +136,6 @@ func TestRegistry_PushStateTagsLatestAndPushTime(t *testing.T) {
 }
 
 func TestRegistry_DeleteStateRemovesTheRepository(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	stub := harbortest.New(t)
 	stub.AddProject(fleet.SatelliteProject)
 	r := newRegistry(t, stub)
@@ -155,7 +150,6 @@ func TestRegistry_DeleteStateRemovesTheRepository(t *testing.T) {
 }
 
 func TestRegistry_EnsureProjectCreatesOnlyWhenMissing(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	stub := harbortest.New(t)
 	r := newRegistry(t, stub)
 
@@ -167,7 +161,6 @@ func TestRegistry_EnsureProjectCreatesOnlyWhenMissing(t *testing.T) {
 }
 
 func TestRegistry_UnreachableIsErrRegistryUnavailable(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	stub := harbortest.New(t)
 	r := newRegistry(t, stub)
 	stub.SetDown(true)
@@ -180,7 +173,6 @@ func TestRegistry_UnreachableIsErrRegistryUnavailable(t *testing.T) {
 // Two registries in one process must not share a client: today's
 // harbor.GetClient is a sync.Once bound to the first URL it saw.
 func TestRegistry_InstancesUseTheirOwnHarbor(t *testing.T) {
-	pending.Plan(t, "1.3", pendingAdapter)
 	first, second := harbortest.New(t), harbortest.New(t)
 	a, b := newRegistry(t, first), newRegistry(t, second)
 
@@ -196,7 +188,6 @@ func TestRegistry_InstancesUseTheirOwnHarbor(t *testing.T) {
 // Tombstones run again after a crash; an object that is already gone must
 // look like it to them (fleet.ErrNotFound), not like a failure.
 func TestRegistry_MissingObjectsAreErrNotFound(t *testing.T) {
-	pending.Plan(t, "2.3", pendingAdapter)
 	stub := harbortest.New(t)
 	stub.AddProject(fleet.SatelliteProject)
 	r := newRegistry(t, stub)
