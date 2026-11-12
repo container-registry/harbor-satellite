@@ -36,7 +36,6 @@ func appendEvents(t *testing.T, db *dbtest.DB, n int) []int64 {
 }
 
 func TestOutboxSink_AppendsOnlyWithItsTransaction(t *testing.T) {
-	pending.Plan(t, "2.1", pendingOutbox)
 	db := dbtest.New(t)
 	ctx := context.Background()
 	event := fleet.Event{
@@ -75,7 +74,6 @@ func TestOutboxSink_AppendsOnlyWithItsTransaction(t *testing.T) {
 }
 
 func TestOutboxStore_ClaimFailCompleteStuck(t *testing.T) {
-	pending.Plan(t, "2.1", pendingOutbox)
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ids := appendEvents(t, db, 3)
@@ -110,7 +108,6 @@ func TestOutboxStore_ClaimFailCompleteStuck(t *testing.T) {
 }
 
 func TestDesiredStateStore_RecordPublishGet(t *testing.T) {
-	pending.Plan(t, "2.1", pendingOutbox)
 	db := dbtest.New(t)
 	ctx := context.Background()
 	store, err := postgres.NewDesiredStateStore(db.DB)
@@ -223,7 +220,6 @@ type reachable struct{}
 func (reachable) Reachable() bool { return true }
 
 func TestOutboxStore_ReleaseAndRearm(t *testing.T) {
-	pending.Plan(t, "2.1", pendingOutbox)
 	db := dbtest.New(t)
 	ctx := context.Background()
 	ids := appendEvents(t, db, 2)
@@ -255,7 +251,6 @@ func TestOutboxStore_ReleaseAndRearm(t *testing.T) {
 }
 
 func TestOutboxSink_FansOutToGroupMembersAndKeepsLogOnlyDone(t *testing.T) {
-	pending.Plan(t, "2.1", pendingOutbox)
 	db := dbtest.New(t)
 	ctx := context.Background()
 	q := database.New(db.DB)
@@ -281,7 +276,6 @@ func TestOutboxSink_FansOutToGroupMembersAndKeepsLogOnlyDone(t *testing.T) {
 
 // Two workers on one aggregate: the second waits for the first (A86).
 func TestAggregateLocker_ExcludesOtherWorkers(t *testing.T) {
-	pending.Plan(t, "2.3", pendingOutbox)
 	db := dbtest.New(t)
 	ctx := context.Background()
 	newLocker := func() *postgres.AggregateLocker {
