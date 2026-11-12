@@ -101,6 +101,10 @@ func DoMigrations(ctx context.Context) error {
 		return err
 	}
 
+	if err := CheckServer(ctx, db); err != nil {
+		return err
+	}
+
 	err = runMigrations(ctx, db)
 	if err != nil {
 		log.Println("failed to run migrations")
