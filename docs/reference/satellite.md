@@ -70,6 +70,8 @@ A layout whose `index.json` cannot be loaded is moved to `index.json.torn-<time>
 
 Ground Control validates a config document against the same rules before it stores it and answers `422` when it does not pass.
 
+The three intervals take only `@every <duration>` with a positive Go duration, such as `@every 30s` or `@every 00h05m00s`. Standard cron lines (`*/5 * * * *`) and descriptors such as `@hourly` are not supported: the satellite replaces them with the default and logs a warning, and Ground Control answers `422`.
+
 | Key | Default | Description |
 |---|---|---|
 | `ground_control_url` | | Overridden by `--ground-control-url`. |

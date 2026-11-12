@@ -84,7 +84,9 @@ func TestIntervalChangeWithoutSchedulerIsNoError(t *testing.T) {
 	require.NoError(t, hrm.ProcessConfigChanges(reload(t, cm)))
 }
 
-func TestIntervalChangeToANonEveryScheduleReportsTheError(t *testing.T) {
+// A standard cron line used to pass validation and fail in the scheduler,
+// which only runs @every; validation now replaces it with the default.
+func TestIntervalChangeToACronLineRunsTheDefault(t *testing.T) {
 	log := zerolog.Nop()
 	cm, path := newManager(t)
 	sched, err := scheduler.NewSchedulerWithInterval("@every 1h", &countingProcess{}, &log)
@@ -92,11 +94,9 @@ func TestIntervalChangeToANonEveryScheduleReportsTheError(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, sched.Stop(context.Background())) })
 	hrm := NewHotReloadManager(context.Background(), cm, &log, sched)
 
-	// A standard cron line passes config validation, but the scheduler
-	// only understands @every.
 	writeConfig(t, path, "info", "*/5 * * * *")
-	err = hrm.ProcessConfigChanges(reload(t, cm))
-	require.ErrorContains(t, err, "unable to restart state replication scheduler")
+	require.NoError(t, hrm.ProcessConfigChanges(reload(t, cm)))
+	require.Equal(t, config.DefaultFetchAndReplicateCronExpr, cm.GetStateReplicationInterval())
 }
 
 func TestLogLevelChangeSetsTheGlobalLevel(t *testing.T) {

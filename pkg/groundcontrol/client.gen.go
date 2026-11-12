@@ -176,14 +176,18 @@ type AppConfig struct {
 	EncryptConfig     bool                 `json:"encrypt_config,omitempty,omitzero"`
 	GroundControlURL  string               `json:"ground_control_url,omitempty,omitzero"`
 	HarborRegistryURL string               `json:"harbor_registry_url,omitempty,omitzero"`
-	HeartbeatInterval string               `json:"heartbeat_interval,omitempty,omitzero"`
-	Journal           JournalConfig        `json:"journal,omitempty,omitzero"`
-	LocalRegistry     RegistryCredentials  `json:"local_registry,omitempty,omitzero"`
-	LogLevel          string               `json:"log_level,omitempty,omitzero"`
-	Metrics           MetricsConfig        `json:"metrics,omitempty,omitzero"`
+
+	// HeartbeatInterval `@every <duration>` with a positive Go duration, such as `@every 30s`. Cron lines are refused with 422.
+	HeartbeatInterval string              `json:"heartbeat_interval,omitempty,omitzero"`
+	Journal           JournalConfig       `json:"journal,omitempty,omitzero"`
+	LocalRegistry     RegistryCredentials `json:"local_registry,omitempty,omitzero"`
+	LogLevel          string              `json:"log_level,omitempty,omitzero"`
+	Metrics           MetricsConfig       `json:"metrics,omitempty,omitzero"`
 
 	// PeerDistribution Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
-	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitempty,omitzero"`
+	PeerDistribution PeerDistributionConfig `json:"peer_distribution,omitempty,omitzero"`
+
+	// RegisterSatelliteInterval `@every <duration>` with a positive Go duration, such as `@every 30s`. Cron lines are refused with 422.
 	RegisterSatelliteInterval string                 `json:"register_satellite_interval,omitempty,omitzero"`
 	RegistryAuth              RegistryAuthConfig     `json:"registry_auth,omitempty,omitzero"`
 	RegistryFallback          RegistryFallbackConfig `json:"registry_fallback,omitempty,omitzero"`
@@ -192,11 +196,13 @@ type AppConfig struct {
 	ReplicationBandwidthBytesPerSec int64 `json:"replication_bandwidth_bytes_per_sec,omitempty,omitzero"`
 
 	// ReplicationConcurrency Group states replicated at once; 0 replicates every group at once as today (plan item 6.2, not read yet).
-	ReplicationConcurrency   int                `json:"replication_concurrency,omitempty,omitzero"`
-	Spiffe                   SPIFFEClientConfig `json:"spiffe,omitempty,omitzero"`
-	StateReplicationInterval string             `json:"state_replication_interval,omitempty,omitzero"`
-	Tls                      TLSConfig          `json:"tls,omitempty,omitzero"`
-	UseUnsecure              bool               `json:"use_unsecure,omitempty,omitzero"`
+	ReplicationConcurrency int                `json:"replication_concurrency,omitempty,omitzero"`
+	Spiffe                 SPIFFEClientConfig `json:"spiffe,omitempty,omitzero"`
+
+	// StateReplicationInterval `@every <duration>` with a positive Go duration, such as `@every 30s`. Cron lines are refused with 422.
+	StateReplicationInterval string    `json:"state_replication_interval,omitempty,omitzero"`
+	Tls                      TLSConfig `json:"tls,omitempty,omitzero"`
+	UseUnsecure              bool      `json:"use_unsecure,omitempty,omitzero"`
 }
 
 // AppError defines model for AppError.

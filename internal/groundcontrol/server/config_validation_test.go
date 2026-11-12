@@ -78,3 +78,22 @@ func TestCreateConfig_WarningsInResponse(t *testing.T) {
 	h.mustDo(http.MethodPatch, "/api/configs/loud", map[string]any{"app_config": map[string]any{"heartbeat_interval": "@every 00h01m00s"}}, h.admin, http.StatusOK).decode(t, &patched)
 	require.NotEmpty(t, patched.Warnings, "an update answers the merged document's warnings")
 }
+
+// The satellite scheduler runs only "@every <positive duration>"; a cron
+// line used to be stored and stopped every satellite that received it.
+func TestConfigWrite_RejectsIntervalsTheSchedulerCannotRun(t *testing.T) {
+	h := newGCHarness(t)
+	h.createConfig("edge-config")
+
+	for _, field := range []string{"state_replication_interval", "register_satellite_interval", "heartbeat_interval"} {
+		for _, value := range []string{"*/5 * * * *", "@hourly", "@every 0s", "@every -5s"} {
+			r := h.do(http.MethodPost, "/api/configs", map[string]any{"config_name": "cron", "config": appConfigWith(t, field, value)}, h.admin)
+			require.Equal(t, http.StatusUnprocessableEntity, r.Status, "%s=%q: %s", field, value, r.Body)
+			require.Contains(t, string(r.Body), field)
+
+			r = h.do(http.MethodPatch, "/api/configs/edge-config", map[string]any{"app_config": map[string]any{field: value}}, h.admin)
+			require.Equal(t, http.StatusUnprocessableEntity, r.Status, "%s=%q: %s", field, value, r.Body)
+		}
+	}
+	h.mustDo(http.MethodGet, "/api/configs/cron", nil, h.admin, http.StatusNotFound)
+}
