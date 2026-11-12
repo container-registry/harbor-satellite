@@ -40,6 +40,11 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 		switch cleanPath {
 		case "/login", "/oidc/login", "/oidc/callback", "/oidc/device", "/oidc/device/token", "/satellites/ztr", "/satellites/spiffe-ztr":
 			r.Body = http.MaxBytesReader(w, r.Body, anonymousMaxBodyBytes)
+		case "/satellites/sync":
+			// A heartbeat may carry up to 1000 journal records (ADR-0015).
+			if s.syncMaxBodyBytes > 0 {
+				r.Body = http.MaxBytesReader(w, r.Body, s.syncMaxBodyBytes)
+			}
 		}
 
 		switch cleanPath {

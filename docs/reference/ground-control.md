@@ -91,7 +91,7 @@ Without the split, satellites that share one source address, behind NAT or behin
 | `SESSION_EXPIRY_INTERVAL` | `1h` | How often the worker deletes expired satellite sessions and OIDC login states. |
 | `STATUS_RETENTION_DAYS` | `7` | Daily `satellite_status` partitions older than this are dropped. |
 | `STATUS_PARTITIONS_AHEAD` | `3` | Partitions created ahead of time. |
-| `SYNC_MAX_BODY_BYTES` | `4194304` | Parsed, not enforced in this release. |
+| `SYNC_MAX_BODY_BYTES` | `4194304` | Largest `POST /satellites/sync` body, journal upload included; a larger one is answered `413`. 0 disables the limit. |
 
 ## Async Plane
 

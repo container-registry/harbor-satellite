@@ -59,6 +59,9 @@ type Server struct {
 
 	// Satellite status
 	staleThreshold time.Duration
+	// syncMaxBodyBytes (SYNC_MAX_BODY_BYTES) bounds a heartbeat's body;
+	// a larger one is answered 413.
+	syncMaxBodyBytes int64
 
 	// Audit logger for security events
 	audit *auditlog.AuditLogger
@@ -186,6 +189,7 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 	appServer.sessionDuration = cfg.Server.SessionDuration
 	appServer.lockoutDuration = cfg.Server.LockoutDuration
 	appServer.staleThreshold = cfg.Server.StaleThreshold
+	appServer.syncMaxBodyBytes = cfg.Server.SyncMaxBodyBytes
 	appServer.trustForwardedHeaders = cfg.Audit.TrustForwardedHeaders
 	appServer.policyEngine = cfg.Policy.Engine
 	appServer.disablePasswordLogin = cfg.OIDC.DisablePasswordLogin

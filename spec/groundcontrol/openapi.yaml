@@ -2154,8 +2154,8 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "413":
           description: >
-            The request body exceeds SYNC_MAX_BODY_BYTES (plan item 6.5, not
-            enforced yet).
+            The request body exceeds SYNC_MAX_BODY_BYTES (default 4 MiB, plan
+            item 6.5).
           content:
             application/json:
               schema:

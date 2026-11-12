@@ -39,7 +39,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - Ground Control: OIDC operator login (browser and device flow, `groundcontrol auth login --oidc`), group to role mapping, password login limited to the bootstrap admin.
 - Ground Control: Harbor robot rotation before expiry, delivered with heartbeats (`ROBOT_ROTATION_ENABLED`).
 - Ground Control: signed CloudEvents webhooks with an event catalog in `spec/events/v1` (`WEBHOOKS_ENABLED`).
-- Ground Control: edge journal ingest. Heartbeats acknowledge journal uploads, and accepted records become log-only `Edge*` outbox events, once per record.
+- Ground Control: edge journal ingest. Heartbeats acknowledge journal uploads, and accepted records become log-only `Edge*` outbox events, once per record; `POST /satellites/sync` answers `413` above `SYNC_MAX_BODY_BYTES` (4 MiB).
 - Ground Control: one `groundcontrol` executable for server and client.
 
 ### Fixed
@@ -67,7 +67,6 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - Groups do not follow pushed tags automatically: Harbor has no registry event feed for Ground Control yet.
 - The CLI has no commands for revocation, lifecycle, policies, role bindings, webhooks and the outbox; use the API.
 - The proxy listens on loopback only and does not authenticate clients; peers need a registry endpoint such as a BYO registry.
-- `SYNC_MAX_BODY_BYTES` is parsed but not enforced.
 
 ## [0.0.6] - 2026-09-07
 

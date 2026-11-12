@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -100,7 +99,6 @@ func TestSync_MalformedJournalKeepsTheHeartbeat(t *testing.T) {
 // A131: a heartbeat may carry up to 1000 records, so the endpoint bounds
 // what it reads.
 func TestSync_RejectsAnOversizedBody(t *testing.T) {
-	pending.Plan(t, "6.5", "POST /satellites/sync reads bodies of any size")
 	t.Setenv("SYNC_MAX_BODY_BYTES", "4096")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")

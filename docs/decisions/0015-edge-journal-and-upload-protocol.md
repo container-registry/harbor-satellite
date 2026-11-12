@@ -111,7 +111,7 @@ Both paths can exist, for different consumers:
 | Migration `018_satellite_journal_cursor.sql`, queries `OpenJournalCursor`, `AdvanceJournalCursor` (6.5) | implemented, SQL contract tests |
 | Sync contract `journal` (request and response), `applied_states`, `last_replication_error` (6.5, 6.6) | the satellite sends them and applies the answer; `applied_states` and `last_replication_error` reach the read model |
 | `fleet.JournalService.Ingest` and the postgres `JournalRepo` (6.5) | implemented; a failing repository answers without the `journal` object. A payload holding `\u0000`, which `jsonb` refuses, is acked as an `EdgeJournalGap`. `TestBudgetHeartbeat_JournaledRenewingBeatCostsAtMostFive` stays pending: it measures 6 statements, because its session cache entry has expired and the beat looks the session up first |
-| `SYNC_MAX_BODY_BYTES` and the 413 | parsed, not enforced |
+| `SYNC_MAX_BODY_BYTES` and the 413 | implemented |
 | `fleet.NewEdgeEvent` and the edge kinds (9.4) | implemented; emitted by ingest, pruned by the outbox retention of 9.1 (`OUTBOX_RETENTION`) |
 | `state.StateArtifactChanged` (6.1), `RegistryOptions.BandwidthBytesPerSec`, `SetReplicationSource`, `lane.ThrottledTransport` and the `replication_*` keys (6.2), `state.RunSummary` (6.6), `Scheduler.TryTrigger` and `EventScheduler.Stop` (6.7) | implemented |
 | Retry transport with TLS (6.3) | implemented |
