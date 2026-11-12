@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/common"
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 	"github.com/spf13/cobra"
 )
@@ -31,7 +30,15 @@ func NewLoginCommand(runtime *common.Runtime) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if useOIDC {
-				return notimpl.Err("8.1 device flow")
+				session, err := deviceLogin(cmd.Context(), runtime.Client(), cmd.OutOrStdout(), sleepCtx)
+				if err != nil {
+					return err
+				}
+				name := username
+				if name == "" {
+					name = "oidc"
+				}
+				return runtime.StoreToken(name, session.Token, session.ExpiresAt)
 			}
 			response, err := runtime.Client().LoginWithResponse(cmd.Context(), groundcontrol.LoginRequest{
 				Username: username,
@@ -50,6 +57,6 @@ func NewLoginCommand(runtime *common.Runtime) *cobra.Command {
 		},
 	}
 	loginCmd.Flags().StringVar(&username, "username", "", "Ground Control username")
-	loginCmd.Flags().BoolVar(&useOIDC, "oidc", false, "Log in through the OIDC device flow (plan item 8.1, not implemented)")
+	loginCmd.Flags().BoolVar(&useOIDC, "oidc", false, "Log in through the OIDC device flow; --username only names the stored session")
 	return loginCmd
 }
