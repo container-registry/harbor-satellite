@@ -5171,6 +5171,8 @@ type CreateConfigHTTPResponse struct {
 	JSON401 *AppError
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON422 the response for an HTTP 422 `application/json` response
 	JSON422 *ConfigValidationError
 	// JSON500 the response for an HTTP 500 `application/json` response
@@ -5195,6 +5197,11 @@ func (r CreateConfigHTTPResponse) GetJSON401() *AppError {
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
 func (r CreateConfigHTTPResponse) GetJSON409() *AppError {
 	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r CreateConfigHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON422 returns the response for an HTTP 422 `application/json` response
@@ -5245,6 +5252,8 @@ type SetSatelliteConfigHTTPResponse struct {
 	JSON400 *AppError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -5262,6 +5271,11 @@ func (r SetSatelliteConfigHTTPResponse) GetJSON400() *AppError {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r SetSatelliteConfigHTTPResponse) GetJSON401() *AppError {
 	return r.JSON401
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r SetSatelliteConfigHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -5435,6 +5449,8 @@ type UpdateConfigHTTPResponse struct {
 	JSON404 *AppError
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON422 the response for an HTTP 422 `application/json` response
 	JSON422 *ConfigValidationError
 	// JSON500 the response for an HTTP 500 `application/json` response
@@ -5464,6 +5480,11 @@ func (r UpdateConfigHTTPResponse) GetJSON404() *AppError {
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
 func (r UpdateConfigHTTPResponse) GetJSON409() *AppError {
 	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r UpdateConfigHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON422 returns the response for an HTTP 422 `application/json` response
@@ -5569,6 +5590,8 @@ type RemoveSatelliteFromGroupHTTPResponse struct {
 	JSON400 *AppError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -5586,6 +5609,11 @@ func (r RemoveSatelliteFromGroupHTTPResponse) GetJSON400() *AppError {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r RemoveSatelliteFromGroupHTTPResponse) GetJSON401() *AppError {
 	return r.JSON401
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r RemoveSatelliteFromGroupHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -5631,6 +5659,8 @@ type AddSatelliteToGroupHTTPResponse struct {
 	JSON400 *AppError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -5648,6 +5678,11 @@ func (r AddSatelliteToGroupHTTPResponse) GetJSON400() *AppError {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r AddSatelliteToGroupHTTPResponse) GetJSON401() *AppError {
 	return r.JSON401
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r AddSatelliteToGroupHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -5693,6 +5728,8 @@ type SyncGroupHTTPResponse struct {
 	JSON400 *AppError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 	// JSON502 the response for an HTTP 502 `application/json` response
@@ -5712,6 +5749,11 @@ func (r SyncGroupHTTPResponse) GetJSON400() *AppError {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r SyncGroupHTTPResponse) GetJSON401() *AppError {
 	return r.JSON401
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r SyncGroupHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -6131,6 +6173,8 @@ type CreatePolicyRuleHTTPResponse struct {
 	JSON403 *AppError
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -6158,6 +6202,11 @@ func (r CreatePolicyRuleHTTPResponse) GetJSON403() *AppError {
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
 func (r CreatePolicyRuleHTTPResponse) GetJSON409() *AppError {
 	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r CreatePolicyRuleHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -6331,6 +6380,8 @@ type CreateRoleBindingHTTPResponse struct {
 	JSON403 *AppError
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -6358,6 +6409,11 @@ func (r CreateRoleBindingHTTPResponse) GetJSON403() *AppError {
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
 func (r CreateRoleBindingHTTPResponse) GetJSON409() *AppError {
 	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r CreateRoleBindingHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -6520,6 +6576,8 @@ type RegisterSatelliteHTTPResponse struct {
 	JSON400 *AppError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -6537,6 +6595,11 @@ func (r RegisterSatelliteHTTPResponse) GetJSON400() *AppError {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r RegisterSatelliteHTTPResponse) GetJSON401() *AppError {
 	return r.JSON401
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r RegisterSatelliteHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -6641,6 +6704,8 @@ type RegisterSatelliteWithSpiffeHTTPResponse struct {
 	JSON403 *AppError
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 	// JSON503 the response for an HTTP 503 `application/json` response
@@ -6670,6 +6735,11 @@ func (r RegisterSatelliteWithSpiffeHTTPResponse) GetJSON403() *AppError {
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
 func (r RegisterSatelliteWithSpiffeHTTPResponse) GetJSON404() *AppError {
 	return r.JSON404
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r RegisterSatelliteWithSpiffeHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -7385,6 +7455,8 @@ type CreateUserHTTPResponse struct {
 	JSON403 *AppError
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -7412,6 +7484,11 @@ func (r CreateUserHTTPResponse) GetJSON403() *AppError {
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
 func (r CreateUserHTTPResponse) GetJSON409() *AppError {
 	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r CreateUserHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -7455,6 +7532,8 @@ type ChangeOwnPasswordHTTPResponse struct {
 	JSON400 *AppError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -7467,6 +7546,11 @@ func (r ChangeOwnPasswordHTTPResponse) GetJSON400() *AppError {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r ChangeOwnPasswordHTTPResponse) GetJSON401() *AppError {
 	return r.JSON401
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r ChangeOwnPasswordHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -7645,6 +7729,8 @@ type ChangeUserPasswordHTTPResponse struct {
 	JSON403 *AppError
 	// JSON404 the response for an HTTP 404 `application/json` response
 	JSON404 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -7667,6 +7753,11 @@ func (r ChangeUserPasswordHTTPResponse) GetJSON403() *AppError {
 // GetJSON404 returns the response for an HTTP 404 `application/json` response
 func (r ChangeUserPasswordHTTPResponse) GetJSON404() *AppError {
 	return r.JSON404
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r ChangeUserPasswordHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -7778,6 +7869,8 @@ type CreateWebhookHTTPResponse struct {
 	JSON403 *AppError
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *AppError
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -7805,6 +7898,11 @@ func (r CreateWebhookHTTPResponse) GetJSON403() *AppError {
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
 func (r CreateWebhookHTTPResponse) GetJSON409() *AppError {
 	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r CreateWebhookHTTPResponse) GetJSON413() *AppError {
+	return r.JSON413
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -9646,6 +9744,13 @@ func ParseCreateConfigHTTPResponse(rsp *http.Response) (*CreateConfigHTTPRespons
 		}
 		response.JSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ConfigValidationError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -9699,6 +9804,13 @@ func ParseSetSatelliteConfigHTTPResponse(rsp *http.Response) (*SetSatelliteConfi
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
@@ -9855,6 +9967,13 @@ func ParseUpdateConfigHTTPResponse(rsp *http.Response) (*UpdateConfigHTTPRespons
 		}
 		response.JSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest ConfigValidationError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -9949,6 +10068,13 @@ func ParseRemoveSatelliteFromGroupHTTPResponse(rsp *http.Response) (*RemoveSatel
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -9996,6 +10122,13 @@ func ParseAddSatelliteToGroupHTTPResponse(rsp *http.Response) (*AddSatelliteToGr
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -10042,6 +10175,13 @@ func ParseSyncGroupHTTPResponse(rsp *http.Response) (*SyncGroupHTTPResponse, err
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
@@ -10389,6 +10529,13 @@ func ParseCreatePolicyRuleHTTPResponse(rsp *http.Response) (*CreatePolicyRuleHTT
 		}
 		response.JSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -10547,6 +10694,13 @@ func ParseCreateRoleBindingHTTPResponse(rsp *http.Response) (*CreateRoleBindingH
 		}
 		response.JSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -10684,6 +10838,13 @@ func ParseRegisterSatelliteHTTPResponse(rsp *http.Response) (*RegisterSatelliteH
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -10784,6 +10945,13 @@ func ParseRegisterSatelliteWithSpiffeHTTPResponse(rsp *http.Response) (*Register
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
@@ -11349,6 +11517,13 @@ func ParseCreateUserHTTPResponse(rsp *http.Response) (*CreateUserHTTPResponse, e
 		}
 		response.JSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -11391,6 +11566,13 @@ func ParseChangeOwnPasswordHTTPResponse(rsp *http.Response) (*ChangeOwnPasswordH
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
@@ -11553,6 +11735,13 @@ func ParseChangeUserPasswordHTTPResponse(rsp *http.Response) (*ChangeUserPasswor
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -11660,6 +11849,13 @@ func ParseCreateWebhookHTTPResponse(rsp *http.Response) (*CreateWebhookHTTPRespo
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError

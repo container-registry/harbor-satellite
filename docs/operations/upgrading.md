@@ -32,7 +32,7 @@ Ground Control migrations are forward only in production. To go back to an older
 | Ground Control | Concurrent `PATCH /api/configs/{config}` answers `409` instead of overwriting. Deleting a config that satellites use is refused by the database too. | Retry the patch after reading the config again. |
 | Ground Control | Config documents are validated before they are stored: `422` on invalid documents. | Fix the key named in the message. |
 | Ground Control | Basic auth on `/api` counts toward the account lockout. More than `AUTH_FAILURE_LIMIT` (20) failures per IP per minute answer `429`. | Fix clients with wrong credentials. |
-| Ground Control | Request bodies of `/login`, ZTR and the OIDC routes are limited to 64 KiB. | None for normal clients. |
+| Ground Control | Request bodies of `/login`, ZTR and the OIDC routes are limited to 64 KiB, `POST /api/groups/sync` to 16 MiB (`GROUP_SYNC_MAX_BODY_BYTES`) and other `/api` routes to 1 MiB (`API_MAX_BODY_BYTES`). | Raise the limit for a group of more than about 10000 artifacts. |
 | Ground Control | `RATE_LIMIT_SPLIT` defaults to `true`: sync and refresh 3/1s per satellite, ZTR and OIDC 10/1m per client IP, `/login` only by the failure limit. | Behind a proxy set `AUDIT_TRUST_FORWARDED_HEADERS=true`; set `RATE_LIMIT_SPLIT=false` for the old shared limiter. |
 | Ground Control | `SKIP_HARBOR_HEALTH_CHECK` only silences the startup log line. SPIFFE registration no longer hands out placeholder credentials. | Remove it from production settings. |
 | Ground Control | Satellite status rows are kept in daily partitions and dropped after `STATUS_RETENTION_DAYS` (7). | Export status history you need before upgrading. |

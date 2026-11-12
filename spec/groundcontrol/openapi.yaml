@@ -76,6 +76,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "422":
           description: >
             The configuration fails validation (plan item 7.4, not checked
@@ -120,6 +127,13 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "401":
           description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
           content:
             application/json:
               schema:
@@ -264,6 +278,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "422":
           description: >
             The configuration fails validation (plan item 7.4, not checked
@@ -336,6 +357,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "500":
           description: Satellite could not be added to the group.
           content:
@@ -366,6 +394,13 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "401":
           description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
           content:
             application/json:
               schema:
@@ -406,6 +441,13 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "401":
           description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds GROUP_SYNC_MAX_BODY_BYTES (default 16 MiB).
           content:
             application/json:
               schema:
@@ -710,6 +752,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "500":
           description: Policy rule could not be stored.
           content:
@@ -842,6 +891,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "500":
           description: Role binding could not be stored.
           content:
@@ -954,6 +1010,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "500":
           description: Satellite could not be registered.
           content:
@@ -1031,6 +1094,13 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "404":
           description: Required parent agent was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
           content:
             application/json:
               schema:
@@ -1505,6 +1575,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "500":
           description: User could not be created.
           content:
@@ -1538,6 +1615,13 @@ paths:
         "401":
           description: Authorization token is missing, invalid, or current password is
             incorrect.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
           content:
             application/json:
               schema:
@@ -1687,6 +1771,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "500":
           description: Password could not be reset.
           content:
@@ -1768,6 +1859,13 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "409":
           description: Webhooks are disabled (WEBHOOKS_ENABLED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds API_MAX_BODY_BYTES (default 1 MiB).
           content:
             application/json:
               schema:

@@ -56,6 +56,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - A group could delete local content another group of the same satellite still wanted; a group removed from a satellite left its content behind; a tag dropped from a group stayed pullable while another tag kept its digest. Deletes now run after every group replicated, against the union of all groups' wanted artifacts, and pending deletes are kept in `state.json` (`retired`) until they succeed.
 - Ground Control processes that started together raced on migrations, and all but one failed.
 - `/login`, `/satellites/ztr`, `/satellites/spiffe-ztr` and `/oidc/*` read request bodies of any size; they now answer `413` above 64 KiB.
+- Authenticated `/api` routes read request bodies of any size; they now answer `413` above `API_MAX_BODY_BYTES` (1 MiB), and `POST /api/groups/sync` above `GROUP_SYNC_MAX_BODY_BYTES` (16 MiB).
 - A satellite session renewed during re-registration stayed valid for a full TTL.
 - A journal batch that failed partway reused sequence numbers on the next flush.
 - `groundcontrol worker` exited 0 when one job stopped early; it now fails.

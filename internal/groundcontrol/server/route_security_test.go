@@ -1,10 +1,13 @@
 package server
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
 )
@@ -162,4 +165,47 @@ func TestRouteSecurity_AnonymousRoutesBoundTheBody(t *testing.T) {
 	}
 	got := h.do(http.MethodPost, "/login", LoginRequest{Username: "admin", Password: harnessAdminPassword}, nil)
 	require.Equal(t, http.StatusOK, got.Status, "a normal login still fits: %s", got.Body)
+}
+
+// Authenticated /api bodies are bounded too: API_MAX_BODY_BYTES for every
+// route, GROUP_SYNC_MAX_BODY_BYTES for the group sync, which carries the
+// group's whole artifact list.
+func TestRouteSecurity_APIRoutesBoundTheBody(t *testing.T) {
+	t.Setenv("API_MAX_BODY_BYTES", "4096")
+	t.Setenv("GROUP_SYNC_MAX_BODY_BYTES", "16384")
+	h := newGCHarness(t)
+	padded := func(prefix string, n int) string {
+		return prefix + `"pad":"` + strings.Repeat("A", n) + `"}`
+	}
+	for _, path := range []string{"/api/configs", "/api/satellites", "/api/users", "/api/policies", "/api/role-bindings", "/api/webhooks"} {
+		got := h.do(http.MethodPost, path, padded("{", 8192), h.admin)
+		require.Equal(t, http.StatusRequestEntityTooLarge, got.Status, "POST %s: %s", path, got.Body)
+	}
+	got := h.do(http.MethodPost, "/api/groups/sync", padded(`{"group":"g",`, 32768), h.admin)
+	require.Equal(t, http.StatusRequestEntityTooLarge, got.Status, "POST /api/groups/sync: %s", got.Body)
+
+	got = h.do(http.MethodPost, "/api/groups/sync", padded(`{"group":"edge-group","artifacts":[],`, 8192), h.admin)
+	require.Equal(t, http.StatusOK, got.Status, "a group sync above API_MAX_BODY_BYTES but within its own limit: %s", got.Body)
+}
+
+// The default GROUP_SYNC_MAX_BODY_BYTES holds a group of 10000 artifacts
+// with five 128-character tags and a 255-character repository each.
+func TestGroupSyncMaxBodyBytesDefaultFitsLargeGroup(t *testing.T) {
+	loadGCForTest(t)
+	tags := make([]string, 5)
+	for i := range tags {
+		tags[i] = strings.Repeat(string(rune('a'+i)), 128)
+	}
+	req := GroupSyncRequest{Group: "large", Registry: "https://harbor.example.com"}
+	for i := range 10000 {
+		req.Artifacts = append(req.Artifacts, GroupArtifact{
+			Repository: fmt.Sprintf("%s/%05d", strings.Repeat("r", 249), i),
+			Tag:        tags,
+			Digest:     "sha256:" + strings.Repeat("0", 64),
+			Type:       "IMAGE",
+		})
+	}
+	body, err := json.Marshal(req)
+	require.NoError(t, err)
+	require.Less(t, int64(len(body)), env.GC.Server.GroupSyncMaxBodyBytes, "%d bytes", len(body))
 }

@@ -94,6 +94,8 @@ With `RATE_LIMIT_SPLIT=false`, satellites that share one source address, behind 
 | `STATUS_RETENTION_DAYS` | `7` | Daily `satellite_status` partitions older than this are dropped. |
 | `STATUS_PARTITIONS_AHEAD` | `3` | Partitions created ahead of time. |
 | `SYNC_MAX_BODY_BYTES` | `4194304` | Largest `POST /satellites/sync` body, journal upload included; a larger one is answered `413`. 0 disables the limit. |
+| `GROUP_SYNC_MAX_BODY_BYTES` | `16777216` | Largest `POST /api/groups/sync` body, the group's whole artifact list; a larger one is answered `413`. 16 MiB holds 10000 artifacts with five 128-character tags and a 255-character repository each (about 10.3 MB). 0 disables the limit. |
+| `API_MAX_BODY_BYTES` | `1048576` | Largest body of every other `/api` request (configs, users, policies, role bindings, webhooks, satellites); a larger one is answered `413`. Those documents are a few KiB. 0 disables the limit. |
 
 ## Async Plane
 

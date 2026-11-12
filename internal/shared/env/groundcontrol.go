@@ -149,6 +149,13 @@ type Server struct {
 	// SyncMaxBodyBytes bounds the body of POST /satellites/sync, a journal
 	// upload included; a larger one is answered 413. 0 or less disables it.
 	SyncMaxBodyBytes int64 `env:"SYNC_MAX_BODY_BYTES" envDefault:"4194304"`
+	// GroupSyncMaxBodyBytes bounds POST /api/groups/sync, the one /api
+	// body that grows with the fleet: 16 MiB holds 10000 artifacts with
+	// five 128-character tags and a 255-character repository each.
+	// APIMaxBodyBytes bounds every other /api body; configs, policies and
+	// webhooks are a few KiB. 0 or less disables a limit.
+	GroupSyncMaxBodyBytes int64 `env:"GROUP_SYNC_MAX_BODY_BYTES" envDefault:"16777216"`
+	APIMaxBodyBytes       int64 `env:"API_MAX_BODY_BYTES"        envDefault:"1048576"`
 
 	FleetHotPath
 }

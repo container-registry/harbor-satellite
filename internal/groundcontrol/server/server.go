@@ -62,6 +62,9 @@ type Server struct {
 	// syncMaxBodyBytes (SYNC_MAX_BODY_BYTES) bounds a heartbeat's body;
 	// a larger one is answered 413.
 	syncMaxBodyBytes int64
+	// groupSyncMaxBodyBytes and apiMaxBodyBytes bound the /api bodies.
+	groupSyncMaxBodyBytes int64
+	apiMaxBodyBytes       int64
 
 	// Audit logger for security events
 	audit *auditlog.AuditLogger
@@ -192,6 +195,8 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 	appServer.lockoutDuration = cfg.Server.LockoutDuration
 	appServer.staleThreshold = cfg.Server.StaleThreshold
 	appServer.syncMaxBodyBytes = cfg.Server.SyncMaxBodyBytes
+	appServer.groupSyncMaxBodyBytes = cfg.Server.GroupSyncMaxBodyBytes
+	appServer.apiMaxBodyBytes = cfg.Server.APIMaxBodyBytes
 	appServer.trustForwardedHeaders = cfg.Audit.TrustForwardedHeaders
 	appServer.trustedProxyHops = cfg.Audit.TrustedProxyHops
 	appServer.policyEngine = cfg.Policy.Engine

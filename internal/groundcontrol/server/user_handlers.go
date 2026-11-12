@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -30,8 +29,8 @@ const (
 // CreateUser creates a new admin user (system_admin only)
 func (s *Server) CreateUser(w http.ResponseWriter, r *http.Request) {
 	var req CreateUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
 		return
 	}
 
@@ -197,8 +196,8 @@ func (s *Server) ChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req ChangePasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
 		return
 	}
 
@@ -256,8 +255,8 @@ func (s *Server) ChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 // ChangeUserPassword allows system_admin to change any user's password
 func (s *Server) ChangeUserPassword(w http.ResponseWriter, r *http.Request, username string) {
 	var req ChangeUserPasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteJSONError(w, "Invalid request body", http.StatusBadRequest)
+	if err := DecodeRequestBody(r, &req); err != nil {
+		HandleAppError(w, err)
 		return
 	}
 

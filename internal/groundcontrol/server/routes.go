@@ -42,8 +42,12 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 			r.Body = http.MaxBytesReader(w, r.Body, anonymousMaxBodyBytes)
 		case "/satellites/sync":
 			// A heartbeat may carry up to 1000 journal records (ADR-0015).
-			if s.syncMaxBodyBytes > 0 {
-				r.Body = http.MaxBytesReader(w, r.Body, s.syncMaxBodyBytes)
+			limitBody(w, r, s.syncMaxBodyBytes)
+		case "/api/groups/sync":
+			limitBody(w, r, s.groupSyncMaxBodyBytes)
+		default:
+			if strings.HasPrefix(cleanPath, "/api/") {
+				limitBody(w, r, s.apiMaxBodyBytes)
 			}
 		}
 
@@ -77,6 +81,14 @@ func (s *Server) routeSecurityMiddleware(next http.Handler) http.Handler {
 
 		handler.ServeHTTP(w, r)
 	})
+}
+
+// limitBody makes reading more than limit bytes of r's body fail, which
+// DecodeRequestBody answers with 413; a limit of 0 or less leaves it.
+func limitBody(w http.ResponseWriter, r *http.Request, limit int64) {
+	if limit > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
+	}
 }
 
 // policyRouteCheck reports whether the /api routes are checked by the
