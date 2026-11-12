@@ -1235,3 +1235,14 @@ func TestValidateAndEnforceCronSchedules_WarnsOnlyForInvalidValues(t *testing.T)
 	require.Equal(t, "@every 00h00m10s", cfg.AppConfig.StateReplicationInterval)
 	require.Equal(t, DefaultZTRCronExpr, cfg.AppConfig.RegisterSatelliteInterval, "absent: defaulted, no warning")
 }
+
+func TestValidateAndEnforceCronSchedules_NonPositiveEveryIsInvalid(t *testing.T) {
+	for _, expr := range []string{"@every 0s", "@every -5s"} {
+		cfg := &Config{AppConfig: AppConfig{StateReplicationInterval: expr}}
+
+		warnings := validateAndEnforceCronSchedules(cfg)
+
+		require.Equal(t, []string{`invalid schedule "` + expr + `" provided for state_replication_interval, using default schedule ` + DefaultFetchAndReplicateCronExpr}, warnings)
+		require.Equal(t, DefaultFetchAndReplicateCronExpr, cfg.AppConfig.StateReplicationInterval)
+	}
+}

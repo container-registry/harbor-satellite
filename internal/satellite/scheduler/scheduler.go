@@ -245,5 +245,12 @@ func parseEveryExpr(expr string) (time.Duration, error) {
 		return 0, fmt.Errorf("unsupported format: must start with %q", prefix)
 	}
 
-	return time.ParseDuration(strings.TrimPrefix(expr, prefix))
+	d, err := time.ParseDuration(strings.TrimPrefix(expr, prefix))
+	if err != nil {
+		return 0, err
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("interval %s must be positive", d)
+	}
+	return d, nil
 }

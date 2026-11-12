@@ -253,6 +253,12 @@ func isValidCronExpression(cronExpression string) bool {
 	if _, err := cron.ParseStandard(cronExpression); err != nil {
 		return false
 	}
+	// cron rounds "@every 0s" up to a second, but the satellite scheduler
+	// hands the duration to time.NewTicker, which panics on it.
+	if d, ok := strings.CutPrefix(cronExpression, "@every "); ok {
+		parsed, err := time.ParseDuration(d)
+		return err == nil && parsed > 0
+	}
 
 	return true
 }

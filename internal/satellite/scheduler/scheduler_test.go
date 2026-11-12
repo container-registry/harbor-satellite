@@ -225,3 +225,17 @@ func TestMultipleSchedulers_GracefulShutdown(t *testing.T) {
 		t.Fatal("timed out waiting for all schedulers to stop")
 	}
 }
+
+func TestNonPositiveIntervalIsAnErrorNotAPanic(t *testing.T) {
+	for _, expr := range []string{"@every 0s", "@every -5s", "@every 0h00m00s"} {
+		_, err := NewSchedulerWithInterval(expr, &mockProcess{name: "p"}, nopLogger())
+		require.ErrorContains(t, err, "must be positive", expr)
+	}
+
+	s, err := NewSchedulerWithInterval("@every 1h", &mockProcess{name: "p"}, nopLogger())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, s.Stop(context.Background())) })
+	require.NotPanics(t, func() {
+		require.ErrorContains(t, s.ResetIntervalFromExpr("@every 0s"), "must be positive")
+	})
+}
