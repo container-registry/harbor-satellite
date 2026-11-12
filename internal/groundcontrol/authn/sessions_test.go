@@ -9,11 +9,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/authn"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/authn/authntest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingLifecycle = "ADR-0006 lifecycle is not implemented; satellites are never revoked"
 
 var start = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 
@@ -58,7 +55,6 @@ func issued(t *testing.T, store *authntest.Store, auth fleet.SatelliteAuth) stri
 }
 
 func TestSessions_RejectsCacheTTLAboveMax(t *testing.T) {
-	pending.Plan(t, "4.1", pendingSessions)
 	c := &clock{t: start}
 	_, err := authn.NewSessions(authntest.NewStore(), c, authn.SessionConfig{TTL: time.Hour, CacheTTL: authn.MaxSessionCacheTTL + time.Second, CacheSize: 1})
 	require.ErrorIs(t, err, fleet.ErrInvalid)
@@ -67,7 +63,6 @@ func TestSessions_RejectsCacheTTLAboveMax(t *testing.T) {
 }
 
 func TestSessions_AuthenticateCachesPositive(t *testing.T) {
-	pending.Plan(t, "4.1", pendingSessions)
 	store := authntest.NewStore()
 	c := &clock{t: start}
 	s := newSessions(t, store, c)
@@ -95,7 +90,6 @@ func TestSessions_AuthenticateCachesPositive(t *testing.T) {
 // Two replicas share one store; B keeps accepting a deleted session only
 // until its cache entry is older than CacheTTL.
 func TestSessions_InvalidationReachesSecondInstanceWithinCacheTTL(t *testing.T) {
-	pending.Plan(t, "4.1", pendingSessions)
 	store := authntest.NewStore()
 	c := &clock{t: start}
 	a, b := newSessions(t, store, c), newSessions(t, store, c)
@@ -117,7 +111,6 @@ func TestSessions_InvalidationReachesSecondInstanceWithinCacheTTL(t *testing.T) 
 }
 
 func TestSessions_LifecycleRevokeReachesSecondInstanceWithinCacheTTL(t *testing.T) {
-	pending.Plan(t, "4.3", pendingLifecycle)
 	store := authntest.NewStore()
 	c := &clock{t: start}
 	b := newSessions(t, store, c)
@@ -139,7 +132,6 @@ func TestSessions_LifecycleRevokeReachesSecondInstanceWithinCacheTTL(t *testing.
 }
 
 func TestSessions_RevokedStateIsErrRevoked(t *testing.T) {
-	pending.Plan(t, "4.3", pendingLifecycle)
 	store := authntest.NewStore()
 	c := &clock{t: start}
 	s := newSessions(t, store, c)
@@ -155,7 +147,6 @@ func TestSessions_RevokedStateIsErrRevoked(t *testing.T) {
 }
 
 func TestSessions_RenewOnlyInLastThirdOneSuccessor(t *testing.T) {
-	pending.Plan(t, "4.1", pendingSessions)
 	store := authntest.NewStore()
 	c := &clock{t: start}
 	s := newSessions(t, store, c)
@@ -186,7 +177,6 @@ func TestSessions_RenewOnlyInLastThirdOneSuccessor(t *testing.T) {
 }
 
 func TestSessions_IssueIfNoneDropsLookupCache(t *testing.T) {
-	pending.Plan(t, "4.1", pendingSessions)
 	store := authntest.NewStore()
 	c := &clock{t: start}
 	s := newSessions(t, store, c)
