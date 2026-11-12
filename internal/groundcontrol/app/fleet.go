@@ -316,7 +316,11 @@ func asyncPool(p *dbpool.Pools) *sql.DB {
 }
 
 func newRegistry(h env.Harbor) (*harbor2.Registry, error) {
-	return harbor2.New(harbor2.Config{URL: h.URL, Username: h.Username, Password: h.Password, Insecure: strings.HasPrefix(h.URL, "http://")})
+	r, err := harbor2.New(harbor2.Config{URL: h.URL, Username: h.Username, Password: h.Password, Insecure: strings.HasPrefix(h.URL, "http://")})
+	if err != nil {
+		return nil, fmt.Errorf("HARBOR_URL must be the absolute URL of Harbor: %w", err)
+	}
+	return r, nil
 }
 
 // outboxReader adapts the outbox store to server.OutboxReader.

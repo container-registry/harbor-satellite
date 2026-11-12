@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"testing"
 	"time"
@@ -57,4 +58,12 @@ func TestSettings_FromTheHarborEnvironment(t *testing.T) {
 		StaleThreshold: 15 * time.Minute, HeartbeatFlushInterval: 5 * time.Second, WebhooksEnabled: true,
 	}, got)
 	require.Equal(t, 30*24*time.Hour, app.Settings(env.Harbor{RobotDurationDays: "nonsense"}, srv, env.Webhook{}).RobotDuration, "ROBOT_DURATION_DAYS falls back to 30")
+}
+
+// GC cannot run without a Harbor to publish to; the error names the
+// variable the operator has to set.
+func TestNewFleet_WithoutHarborURLNamesTheVariable(t *testing.T) {
+	_, err := app.NewFleet(app.FleetDeps{Pools: &dbpool.Pools{API: new(sql.DB)}})
+	require.ErrorIs(t, err, fleet.ErrInvalid)
+	require.ErrorContains(t, err, "HARBOR_URL")
 }
