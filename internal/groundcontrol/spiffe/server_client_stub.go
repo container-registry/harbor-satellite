@@ -48,3 +48,13 @@ type AgentInfo struct {
 func (c *ServerClient) ListAgents(_ context.Context, _ string) ([]AgentInfo, error) {
 	return nil, fmt.Errorf("SPIFFE support not compiled in (nospiffe build)")
 }
+
+// TrustDomainName is empty in nospiffe builds.
+func (c *ServerClient) TrustDomainName() string {
+	return ""
+}
+
+// DeleteEntriesBySPIFFEID is not available in nospiffe builds.
+func (c *ServerClient) DeleteEntriesBySPIFFEID(_ context.Context, _ string) error {
+	return fmt.Errorf("SPIFFE support not compiled in (nospiffe build)")
+}

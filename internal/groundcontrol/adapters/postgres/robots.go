@@ -2,36 +2,81 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
+	"strconv"
 
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 )
 
 // robotRepo stores Robot.HarborID in robot_accounts.robot_id, a string
 // column today.
-type robotRepo struct{}
+type robotRepo struct{ q *database.Queries }
 
-func (robotRepo) Add(ctx context.Context, robot fleet.Robot) (fleet.Robot, error) {
-	return fleet.Robot{}, notimpl.Err("1.3 postgres add robot")
+func parseHarborID(s string) (int64, error) {
+	id, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("robot id %q is not a number: %w", s, err)
+	}
+	return id, nil
 }
 
-func (robotRepo) BySatellite(ctx context.Context, satellite fleet.SatelliteID) (fleet.Robot, error) {
-	return fleet.Robot{}, notimpl.Err("1.3 postgres robot by satellite")
+func toRobot(r database.RobotAccount) (fleet.Robot, error) {
+	harborID, err := parseHarborID(r.RobotID)
+	if err != nil {
+		return fleet.Robot{}, err
+	}
+	return fleet.Robot{
+		ID: fleet.RobotID(r.ID), Satellite: fleet.SatelliteID(r.SatelliteID), Name: r.RobotName,
+		HarborID: harborID, SecretHash: r.RobotSecretHash, ExpiresAt: r.RobotExpiry.Time,
+	}, nil
 }
 
-func (robotRepo) ByName(ctx context.Context, name string) (fleet.Robot, error) {
-	return fleet.Robot{}, notimpl.Err("1.3 postgres robot by name")
+func expiry(robot fleet.Robot) sql.NullTime {
+	return sql.NullTime{Time: robot.ExpiresAt, Valid: !robot.ExpiresAt.IsZero()}
 }
 
-func (robotRepo) Update(ctx context.Context, robot fleet.Robot) error {
-	return notimpl.Err("1.3 postgres update robot")
+func (r robotRepo) Add(ctx context.Context, robot fleet.Robot) (fleet.Robot, error) {
+	row, err := r.q.AddRobotAccount(ctx, database.AddRobotAccountParams{
+		RobotName: robot.Name, RobotSecretHash: robot.SecretHash, RobotID: strconv.FormatInt(robot.HarborID, 10),
+		SatelliteID: int32(robot.Satellite), RobotExpiry: expiry(robot),
+	})
+	if err != nil {
+		return fleet.Robot{}, mapError(err)
+	}
+	return toRobot(row)
 }
 
-func (robotRepo) Delete(ctx context.Context, id fleet.RobotID) error {
-	return notimpl.Err("1.3 postgres delete robot")
+func (r robotRepo) BySatellite(ctx context.Context, satellite fleet.SatelliteID) (fleet.Robot, error) {
+	row, err := r.q.GetRobotAccBySatelliteID(ctx, int32(satellite))
+	if err != nil {
+		return fleet.Robot{}, mapError(err)
+	}
+	return toRobot(row)
+}
+
+func (r robotRepo) ByName(ctx context.Context, name string) (fleet.Robot, error) {
+	row, err := r.q.GetRobotAccByRobotName(ctx, name)
+	if err != nil {
+		return fleet.Robot{}, mapError(err)
+	}
+	return toRobot(row)
+}
+
+func (r robotRepo) Update(ctx context.Context, robot fleet.Robot) error {
+	return mapError(r.q.UpdateRobotAccount(ctx, database.UpdateRobotAccountParams{
+		ID: int32(robot.ID), RobotName: robot.Name, RobotSecretHash: robot.SecretHash,
+		RobotID: strconv.FormatInt(robot.HarborID, 10), RobotExpiry: expiry(robot),
+	}))
+}
+
+func (r robotRepo) Delete(ctx context.Context, id fleet.RobotID) error {
+	return mapError(r.q.DeleteRobotAccount(ctx, int32(id)))
 }
 
 // HarborIDs runs ListRobotHarborIDsOfSatellite.
-func (robotRepo) HarborIDs(ctx context.Context, satellite fleet.SatelliteID) ([]int64, error) {
-	return nil, notimpl.Err("8.4 postgres robot harbor IDs")
+func (r robotRepo) HarborIDs(ctx context.Context, satellite fleet.SatelliteID) ([]int64, error) {
+	ids, err := r.q.ListRobotHarborIDsOfSatellite(ctx, int32(satellite))
+	return ids, mapError(err)
 }
