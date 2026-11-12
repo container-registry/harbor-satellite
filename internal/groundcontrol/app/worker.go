@@ -52,8 +52,7 @@ type WorkerDeps struct {
 // SubscriptionLocker; async.OutboxPruner (OUTBOX_RETENTION) runs always,
 // because it is the only retention of the journal's edge events (9.1).
 //
-// Until those plan items land, the worker runs the publisher, its probe
-// and the reconcilers only. It returns the locker's Close, which the
+// The 8.4, 8.1 and 9.1 jobs are added when those items land. It returns the locker's Close, which the
 // caller runs after the worker stopped.
 func NewWorker(ctx context.Context, deps WorkerDeps) (*async.Worker, func() error, error) {
 	if deps.Pools == nil || deps.Pools.API == nil {
@@ -120,7 +119,24 @@ func NewWorker(ctx context.Context, deps WorkerDeps) (*async.Worker, func() erro
 	if err != nil {
 		return nil, nil, errors.Join(err, locker.Close())
 	}
-	worker, err := async.NewWorker(publisher, probe)
+	hot := withHotPathDefaults(deps.Server.FleetHotPath)
+	stale, err := async.NewStaleDetector(repo, fleet.SystemClock{}, settings, hot.StaleCheckInterval)
+	if err != nil {
+		return nil, nil, errors.Join(err, locker.Close())
+	}
+	partitions, err := postgres.NewPartitionMaintainer(pool, fleet.SystemClock{}, hot.StatusRetentionDays, hot.StatusPartitionsAhead)
+	if err != nil {
+		return nil, nil, errors.Join(err, locker.Close())
+	}
+	sessionStore, err := postgres.NewSessionStore(pool)
+	if err != nil {
+		return nil, nil, errors.Join(err, locker.Close())
+	}
+	expirer, err := async.NewSessionExpirer(sessionStore, fleet.SystemClock{}, hot.SessionExpiryInterval)
+	if err != nil {
+		return nil, nil, errors.Join(err, locker.Close())
+	}
+	worker, err := async.NewWorker(publisher, probe, stale, partitions, expirer)
 	if err != nil {
 		return nil, nil, errors.Join(err, locker.Close())
 	}
