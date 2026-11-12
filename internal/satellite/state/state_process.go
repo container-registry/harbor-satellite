@@ -713,17 +713,16 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	stateFetcherLog.Info().Msgf("State fetched successfully for %s", f.stateMap[index].url)
 
 	deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, &stateFetcherLog, f.stateMap[index].Entities)
+	// A digest a current entity of the group still references stays: a
+	// registry store deletes by digest, which would take that tag too.
+	deleteEntity = withoutWanted(deleteEntity, FetchEntitiesFromState(newState))
 	f.LogChanges(deleteEntity, replicateEntity, &stateFetcherLog)
 
-	if err := replicator.Delete(ctx, deleteEntity); err != nil {
-		stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
-		result.Error = fmt.Errorf("failed to delete entities for %s: %w", f.stateMap[index].url, err)
-		return result
-	}
-
-	if err := replicator.Replicate(ctx, sourceStore, replicateEntity); err != nil {
-		stateFetcherLog.Error().Err(err).Msg("Error replicating state")
-		result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
+	// Replicate before deleting, so a moved tag never goes missing and
+	// content the old and new digest share is not downloaded again.
+	if err := applyGroupChanges(ctx, replicator, sourceStore, changes{replicate: replicateEntity, remove: deleteEntity}); err != nil {
+		stateFetcherLog.Error().Err(err).Msg("Error applying state changes")
+		result.Error = fmt.Errorf("failed to apply state changes for %s: %w", f.stateMap[index].url, err)
 		return result
 	}
 

@@ -13,7 +13,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/google/go-containerregistry/pkg/registry"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -82,7 +81,6 @@ func blobExists(t *testing.T, root string, desc ocispec.Descriptor) bool {
 }
 
 func TestOCIStoreDelete_KeepsMovedTag(t *testing.T) {
-	pending.Plan(t, "D9", "Delete untags whatever the tag resolves to, also after a newer replication moved it")
 	src := newDigestSource(t)
 	local, err := NewOCIStore(t.TempDir())
 	require.NoError(t, err)
@@ -98,7 +96,6 @@ func TestOCIStoreDelete_KeepsMovedTag(t *testing.T) {
 }
 
 func TestOCIStoreDelete_CollectsMovedDigest(t *testing.T) {
-	pending.Plan(t, "D9", "Delete collects garbage only when it untagged something")
 	src := newDigestSource(t)
 	root := t.TempDir()
 	local, err := NewOCIStore(root)
@@ -117,7 +114,6 @@ func TestOCIStoreDelete_CollectsMovedDigest(t *testing.T) {
 }
 
 func TestOCIStoreDelete_CollectsWhenTagIsGone(t *testing.T) {
-	pending.Plan(t, "D9", "Delete returns early on a missing tag and skips collection")
 	src := newDigestSource(t)
 	root := t.TempDir()
 	local, err := NewOCIStore(root)
@@ -151,7 +147,6 @@ func TestOCIStoreDelete_RemovesUnchangedTagAndItsContent(t *testing.T) {
 }
 
 func TestRegistryStoreDelete_KeepsMovedTagsManifest(t *testing.T) {
-	pending.Plan(t, "D9", "Delete removes whatever manifest the tag resolves to, also after a newer replication moved it")
 	src := newDigestSource(t)
 	var (
 		mu      sync.Mutex
