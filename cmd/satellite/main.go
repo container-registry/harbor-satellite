@@ -18,11 +18,14 @@ import (
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
+	"github.com/container-registry/harbor-satellite/internal/satellite/identity"
 	proxyhandler "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	proxymw "github.com/container-registry/harbor-satellite/internal/satellite/proxy/middleware"
 	proxyimage "github.com/container-registry/harbor-satellite/internal/satellite/proxy/process/image"
+	"github.com/container-registry/harbor-satellite/internal/satellite/secure"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
+	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/shared/utils"
@@ -311,7 +314,8 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		opts.GroundControlURL = config.DefaultGroundControlURL
 	}
 
-	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
+	encryptor := secure.NewConfigEncryptor(crypto.NewAESProvider(), identity.NewLinuxDeviceIdentity())
+	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure, config.WithEncryptor(encryptor))
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v\n", err)
 		return err

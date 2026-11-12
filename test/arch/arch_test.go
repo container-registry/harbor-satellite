@@ -6,12 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
 func TestArchLintHasNoExceptions(t *testing.T) {
-	pending.Plan(t, "0.1", "shared/env and pkg/config still import internal/satellite (proxy.Mode, config encryption)")
 	cfg, err := os.ReadFile(filepath.Join("..", "..", ".go-arch-lint.yml"))
 	require.NoError(t, err)
 

@@ -168,13 +168,9 @@ deps:
     mayDependOn:
       - shared
       - pkg-config
-      # EXCEPTION 0.1: env/harbor-satellite.go imports internal/satellite/proxy for proxy.Mode.
-      - satellite
   pkg-config:
     mayDependOn:
       - shared
-      # EXCEPTION 0.1: manager.go imports internal/satellite/identity and secure for config encryption.
-      - satellite
   pkg-groundcontrol:
     mayDependOn:
       - pkg-config
