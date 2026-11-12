@@ -28,6 +28,7 @@ type HarborSatellite struct {
 	ProxyMode              config.ProxyMode `env:"PROXY_MODE"                envDefault:"proxy"`
 	ProxyPort              int              `env:"PROXY_PORT"                envDefault:"8585"`
 	TelemetryAddr          string           `env:"TELEMETRY_ADDR"`
+	StoreGCGrace           time.Duration    `env:"STORE_GC_GRACE"            envDefault:"10m"`
 
 	// Plan items 5.3 and 5.4, parsed only: cmd/satellite does not read them yet.
 	ProxyMaxConnections      int           `env:"PROXY_MAX_CONNECTIONS"      envDefault:"0"`

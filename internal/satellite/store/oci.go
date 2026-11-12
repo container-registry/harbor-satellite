@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	digest "github.com/opencontainers/go-digest"
@@ -39,6 +40,9 @@ type OCIStore struct {
 
 	stageMu      sync.Mutex
 	activeStages int
+
+	gcMu              sync.Mutex
+	unreferencedSince map[digest.Digest]time.Time
 }
 
 // NewOCIStore opens or creates an OCI image-layout store at root.
@@ -467,7 +471,8 @@ func (s *OCIStore) targetFor(Artifact) (oras.Target, error) { //nolint:unparam /
 	return s.store, nil
 }
 
-// Delete removes selected roots and garbage-collects unreachable blobs.
+// Delete untags the selected roots and collects what nothing references any
+// more, within the store's grace period.
 func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -475,6 +480,20 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	if len(artifacts) == 0 {
 		return nil
 	}
+	if err := s.untag(ctx, artifacts); err != nil {
+		return err
+	}
+	// Collect also when nothing was untagged: the tag may have moved or been
+	// removed before, leaving the old digest's content behind.
+	_, err := s.CollectGarbage(ctx, GCOptions{
+		Grace:        s.opts.GCGrace,
+		Roots:        []GCRoots{s.opts.FillLeases},
+		IngestMaxAge: defaultIngestMaxAge,
+	})
+	return err
+}
+
+func (s *OCIStore) untag(ctx context.Context, artifacts []Artifact) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, artifact := range artifacts {
@@ -499,11 +518,8 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	if err := s.persistIndexLocked(ctx); err != nil {
 		return fmt.Errorf("persist index after untagging: %w", err)
 	}
-	// Collect also when nothing was untagged: the tag may have moved or been
-	// removed before, leaving the old digest's content behind.
-	if err := s.store.GC(ctx); err != nil {
-		return err
-	}
+	// Provenance caches "repository holds digest"; untagged content must not
+	// stay pullable through it until the collection removes the files.
 	s.provenance.Clear()
 	return nil
 }
