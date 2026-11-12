@@ -64,10 +64,10 @@ And you are running into problems like:
 
 | Mode | How | Status |
 |---|---|---|
-| **Local OCI store** (default) | Artifacts are written to an OCI image layout on disk (`<config-dir>/oci`, managed with ORAS). The satellite does not expose a registry endpoint in this mode. | Available |
+| **Local OCI store** (default) | Artifacts are written to an OCI image layout on disk (`<config-dir>/oci`, managed with ORAS). Local workloads pull them through the satellite's pull-only OCI endpoint on `127.0.0.1:8585` (`--proxy-port`). | Available |
 | **BYO registry** | The satellite replicates into a registry you run at the site (for example `registry:2`). Workloads pull from it, and container runtimes can be configured to mirror through it. | Available |
 | **Direct delivery** | For k3s and RKE2, the satellite writes image tarballs into the node's image import directory. | Experimental |
-| **Transparent proxy** | The satellite serves artifacts from its local store and upstream as an OCI registry, with policy enforcement ([ADR-0009](docs/decisions/0009-transparent-oci-registry-proxy.md)). | In progress |
+| **Transparent proxy** | The satellite serves pulls on loopback from its local store and, in `proxy` mode (default), fills a miss from Harbor; `--proxy-mode replica` serves only replicated content ([ADR-0009](docs/decisions/0009-transparent-oci-registry-proxy.md)). Policy enforcement is not implemented yet. | Available (pull only, no policy) |
 
 ## Getting Started
 
@@ -210,7 +210,7 @@ _Example: a larger edge site where a single local registry cannot keep up with d
 
 ### Pattern 3: Proxy through the local store (in progress)
 
-The satellite acts as a transparent OCI registry proxy. It enforces policy and serves allowed content from upstream or from its local OCI layout ([ADR-0009](docs/decisions/0009-transparent-oci-registry-proxy.md)).
+The satellite acts as a transparent, pull-only OCI registry proxy on loopback. It serves content from its local OCI layout and, in `proxy` mode, fetches a miss from Harbor and keeps it ([ADR-0009](docs/decisions/0009-transparent-oci-registry-proxy.md)). Policy enforcement at the edge is planned and not implemented yet.
 
 _Example: the central side cannot produce a list of images for a site ahead of time. The satellite forwards requests upstream and keeps the results, so images stay available without a pre-compiled list._
 

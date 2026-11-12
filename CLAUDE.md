@@ -338,7 +338,7 @@ ADRs in docs/decisions/:
 - PDR-0005: SPIFFE identity and security (accepted)
 - ADR-0006: Satellite lifecycle states (proposed; not implemented; ADR-0016 designs its implementation)
 - ADR-0007, ADR-0008: PARSEC hardware-backed identity and bootstrapping flow (deprecated; PARSEC code was removed in #526). Related proposal in docs/proposals/
-- ADR-0009: ORAS OCI storage and a policy-enforcing transparent proxy (proposed; ORAS store #648, proxy package #649, wired with proxy/replica modes in #654; CEL policy and cache mode not implemented). Its Implementation Status table predates #654
+- ADR-0009: ORAS OCI storage and a policy-enforcing transparent proxy (proposed; ORAS store #648, proxy package #649, wired with proxy/replica modes in #654; CEL policy, superseded by Casbin edge admission, and cache mode not implemented; its Implementation Status table is current)
 - ADR-0010: Peer-to-peer distribution between satellites (proposed; config block #674 and peer roster #676 only)
 - ADR-0013: Edge store concurrency and pull-through streaming (proposed; skeleton only, see Harbor 3 skeleton below)
 - ADR-0014: Ground Control async plane, transactional outbox and level-triggered publisher (proposed; skeleton only)
