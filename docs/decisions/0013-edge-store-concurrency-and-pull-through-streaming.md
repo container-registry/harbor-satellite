@@ -49,7 +49,7 @@ The satellite keeps replicated content in an ORAS OCI image layout and serves it
 | `OpenOCIStore`, `WriteIndexAtomic`, `BuildIndex`, `ResetReplicatedEntities` (5.1) | done: `cmd/satellite` opens the layout with `AtomicIndex` and `RecoverIndex` and resyncs every group after a recovery; `Fetch` holds a `RefCounter` reference instead of the index lock until the body closes. Replication still stages each copy in `.stage/` (#694) and publishes by linking under the exclusive index lock; `.stage/` is removed when the last stage ends |
 | `CollectGarbage`, `FillLeases`, `RefCounter` (5.2) | done: `Delete` collects with `GCGrace` instead of oras `Store.GC`, `RunCollector` runs every `STORE_GC_GRACE` (default 10m). Leases matter only for streaming fills (5.3); a replication's copy lives in `.stage/` until it is published |
 | `lane`, `NewPullWithOptions`, `NewLanePrefetcher`, `Filler` (5.3) | skeleton, pending tests |
-| `WithWriteDeadline`, `PROXY_*` settings (5.4) | skeleton, pending test; settings parsed, not read |
+| `WithWriteDeadline`, `PROXY_*` settings (5.4) | done: `WriteDeadlineHandler` with `PROXY_WRITE_TIMEOUT` (default 60s) and `LimitListener` with `PROXY_MAX_CONNECTIONS` (default 0, unlimited) in `cmd/satellite` |
 
 ## Validation
 
