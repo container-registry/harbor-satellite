@@ -671,11 +671,11 @@ type SatelliteStatusRequest struct {
 	CachedImages  []CachedImageReport `json:"cached_images,omitempty,omitzero"`
 	CPUPercent    float64             `json:"cpu_percent,omitempty,omitzero"`
 
-	// CredentialsGeneration The robot generation the satellite uses; acks a delivered rotation (plan item 8.4, not read yet).
+	// CredentialsGeneration The robot generation the satellite uses; acks a delivered rotation (plan item 8.4).
 	CredentialsGeneration int64 `json:"credentials_generation,omitempty,omitzero"`
 	ImageCount            int32 `json:"image_count,omitempty,omitzero"`
 
-	// InventoryDigest Digest of cached_images (internal/shared/inventory, plan item 4.4, not read yet). A satellite sends cached_images only when this changed or Ground Control asked with inventory_requested.
+	// InventoryDigest Digest of cached_images (internal/shared/inventory, plan item 4.4). A satellite sends cached_images only when this changed or Ground Control asked with inventory_requested.
 	InventoryDigest      string        `json:"inventory_digest,omitempty,omitzero"`
 	Journal              JournalUpload `json:"journal,omitempty,omitzero"`
 	LastReplicationError string        `json:"last_replication_error,omitempty,omitzero"`
@@ -1112,12 +1112,12 @@ type ClientInterface interface {
 	// Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
 	ListOutboxEvents(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListPolicyRules Lists the stored policy rules (plan item 7.3, not implemented yet).
+	// ListPolicyRules Lists the stored policy rules (plan item 7.3).
 	//
 	// Corresponds with GET /api/policies (the `ListPolicyRules` operationId).
 	ListPolicyRules(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreatePolicyRuleWithBody Stores a policy rule (plan item 7.3, not implemented yet).
+	// CreatePolicyRuleWithBody Stores a policy rule (plan item 7.3).
 	//
 	// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
 	//
@@ -1126,7 +1126,7 @@ type ClientInterface interface {
 	// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
 	CreatePolicyRuleWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreatePolicyRule Stores a policy rule (plan item 7.3, not implemented yet).
+	// CreatePolicyRule Stores a policy rule (plan item 7.3).
 	//
 	// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
 	//
@@ -1135,17 +1135,17 @@ type ClientInterface interface {
 	// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
 	CreatePolicyRule(ctx context.Context, body CreatePolicyRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeletePolicyRule Deletes a stored policy rule (plan item 7.3, not implemented yet).
+	// DeletePolicyRule Deletes a stored policy rule (plan item 7.3).
 	//
 	// Corresponds with DELETE /api/policies/{id} (the `DeletePolicyRule` operationId).
 	DeletePolicyRule(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListRoleBindings Lists the stored role bindings (plan item 7.3, not implemented yet).
+	// ListRoleBindings Lists the stored role bindings (plan item 7.3).
 	//
 	// Corresponds with GET /api/role-bindings (the `ListRoleBindings` operationId).
 	ListRoleBindings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateRoleBindingWithBody Gives a principal an additional role (plan item 7.3, not implemented yet).
+	// CreateRoleBindingWithBody Gives a principal an additional role (plan item 7.3).
 	//
 	// Built-in roles come from the user's role and cannot be bound here.
 	//
@@ -1154,7 +1154,7 @@ type ClientInterface interface {
 	// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
 	CreateRoleBindingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateRoleBinding Gives a principal an additional role (plan item 7.3, not implemented yet).
+	// CreateRoleBinding Gives a principal an additional role (plan item 7.3).
 	//
 	// Built-in roles come from the user's role and cannot be bound here.
 	//
@@ -1163,7 +1163,7 @@ type ClientInterface interface {
 	// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
 	CreateRoleBinding(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeleteRoleBinding Deletes a stored role binding (plan item 7.3, not implemented yet).
+	// DeleteRoleBinding Deletes a stored role binding (plan item 7.3).
 	//
 	// Corresponds with DELETE /api/role-bindings/{id} (the `DeleteRoleBinding` operationId).
 	DeleteRoleBinding(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1768,7 +1768,7 @@ func (c *Client) ListOutboxEvents(ctx context.Context, params *ListOutboxEventsP
 	return c.Client.Do(req)
 }
 
-// ListPolicyRules Lists the stored policy rules (plan item 7.3, not implemented yet).
+// ListPolicyRules Lists the stored policy rules (plan item 7.3).
 //
 // Corresponds with GET /api/policies (the `ListPolicyRules` operationId).
 func (c *Client) ListPolicyRules(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1783,7 +1783,7 @@ func (c *Client) ListPolicyRules(ctx context.Context, reqEditors ...RequestEdito
 	return c.Client.Do(req)
 }
 
-// CreatePolicyRuleWithBody Stores a policy rule (plan item 7.3, not implemented yet).
+// CreatePolicyRuleWithBody Stores a policy rule (plan item 7.3).
 //
 // Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
 //
@@ -1802,7 +1802,7 @@ func (c *Client) CreatePolicyRuleWithBody(ctx context.Context, contentType strin
 	return c.Client.Do(req)
 }
 
-// CreatePolicyRule Stores a policy rule (plan item 7.3, not implemented yet).
+// CreatePolicyRule Stores a policy rule (plan item 7.3).
 //
 // Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
 //
@@ -1821,7 +1821,7 @@ func (c *Client) CreatePolicyRule(ctx context.Context, body CreatePolicyRuleJSON
 	return c.Client.Do(req)
 }
 
-// DeletePolicyRule Deletes a stored policy rule (plan item 7.3, not implemented yet).
+// DeletePolicyRule Deletes a stored policy rule (plan item 7.3).
 //
 // Corresponds with DELETE /api/policies/{id} (the `DeletePolicyRule` operationId).
 func (c *Client) DeletePolicyRule(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1836,7 +1836,7 @@ func (c *Client) DeletePolicyRule(ctx context.Context, id int64, reqEditors ...R
 	return c.Client.Do(req)
 }
 
-// ListRoleBindings Lists the stored role bindings (plan item 7.3, not implemented yet).
+// ListRoleBindings Lists the stored role bindings (plan item 7.3).
 //
 // Corresponds with GET /api/role-bindings (the `ListRoleBindings` operationId).
 func (c *Client) ListRoleBindings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1851,7 +1851,7 @@ func (c *Client) ListRoleBindings(ctx context.Context, reqEditors ...RequestEdit
 	return c.Client.Do(req)
 }
 
-// CreateRoleBindingWithBody Gives a principal an additional role (plan item 7.3, not implemented yet).
+// CreateRoleBindingWithBody Gives a principal an additional role (plan item 7.3).
 //
 // Built-in roles come from the user's role and cannot be bound here.
 //
@@ -1870,7 +1870,7 @@ func (c *Client) CreateRoleBindingWithBody(ctx context.Context, contentType stri
 	return c.Client.Do(req)
 }
 
-// CreateRoleBinding Gives a principal an additional role (plan item 7.3, not implemented yet).
+// CreateRoleBinding Gives a principal an additional role (plan item 7.3).
 //
 // Built-in roles come from the user's role and cannot be bound here.
 //
@@ -1889,7 +1889,7 @@ func (c *Client) CreateRoleBinding(ctx context.Context, body CreateRoleBindingJS
 	return c.Client.Do(req)
 }
 
-// DeleteRoleBinding Deletes a stored role binding (plan item 7.3, not implemented yet).
+// DeleteRoleBinding Deletes a stored role binding (plan item 7.3).
 //
 // Corresponds with DELETE /api/role-bindings/{id} (the `DeleteRoleBinding` operationId).
 func (c *Client) DeleteRoleBinding(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4732,14 +4732,14 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/ops/outbox (the `ListOutboxEvents` operationId).
 	ListOutboxEventsWithResponse(ctx context.Context, params *ListOutboxEventsParams, reqEditors ...RequestEditorFn) (*ListOutboxEventsHTTPResponse, error)
 
-	// ListPolicyRulesWithResponse Lists the stored policy rules (plan item 7.3, not implemented yet).
+	// ListPolicyRulesWithResponse Lists the stored policy rules (plan item 7.3).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/policies (the `ListPolicyRules` operationId).
 	ListPolicyRulesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListPolicyRulesHTTPResponse, error)
 
-	// CreatePolicyRuleWithBodyWithResponse Stores a policy rule (plan item 7.3, not implemented yet).
+	// CreatePolicyRuleWithBodyWithResponse Stores a policy rule (plan item 7.3).
 	//
 	// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
 	//
@@ -4748,7 +4748,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
 	CreatePolicyRuleWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreatePolicyRuleHTTPResponse, error)
 
-	// CreatePolicyRuleWithResponse Stores a policy rule (plan item 7.3, not implemented yet).
+	// CreatePolicyRuleWithResponse Stores a policy rule (plan item 7.3).
 	//
 	// Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
 	//
@@ -4757,21 +4757,21 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/policies (the `CreatePolicyRule` operationId).
 	CreatePolicyRuleWithResponse(ctx context.Context, body CreatePolicyRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreatePolicyRuleHTTPResponse, error)
 
-	// DeletePolicyRuleWithResponse Deletes a stored policy rule (plan item 7.3, not implemented yet).
+	// DeletePolicyRuleWithResponse Deletes a stored policy rule (plan item 7.3).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with DELETE /api/policies/{id} (the `DeletePolicyRule` operationId).
 	DeletePolicyRuleWithResponse(ctx context.Context, id int64, reqEditors ...RequestEditorFn) (*DeletePolicyRuleHTTPResponse, error)
 
-	// ListRoleBindingsWithResponse Lists the stored role bindings (plan item 7.3, not implemented yet).
+	// ListRoleBindingsWithResponse Lists the stored role bindings (plan item 7.3).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/role-bindings (the `ListRoleBindings` operationId).
 	ListRoleBindingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListRoleBindingsHTTPResponse, error)
 
-	// CreateRoleBindingWithBodyWithResponse Gives a principal an additional role (plan item 7.3, not implemented yet).
+	// CreateRoleBindingWithBodyWithResponse Gives a principal an additional role (plan item 7.3).
 	//
 	// Built-in roles come from the user's role and cannot be bound here.
 	//
@@ -4780,7 +4780,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
 	CreateRoleBindingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateRoleBindingHTTPResponse, error)
 
-	// CreateRoleBindingWithResponse Gives a principal an additional role (plan item 7.3, not implemented yet).
+	// CreateRoleBindingWithResponse Gives a principal an additional role (plan item 7.3).
 	//
 	// Built-in roles come from the user's role and cannot be bound here.
 	//
@@ -4789,7 +4789,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/role-bindings (the `CreateRoleBinding` operationId).
 	CreateRoleBindingWithResponse(ctx context.Context, body CreateRoleBindingJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRoleBindingHTTPResponse, error)
 
-	// DeleteRoleBindingWithResponse Deletes a stored role binding (plan item 7.3, not implemented yet).
+	// DeleteRoleBindingWithResponse Deletes a stored role binding (plan item 7.3).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8880,7 +8880,7 @@ func (c *ClientWithResponses) ListOutboxEventsWithResponse(ctx context.Context, 
 	return ParseListOutboxEventsHTTPResponse(rsp)
 }
 
-// ListPolicyRulesWithResponse Lists the stored policy rules (plan item 7.3, not implemented yet).
+// ListPolicyRulesWithResponse Lists the stored policy rules (plan item 7.3).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -8893,7 +8893,7 @@ func (c *ClientWithResponses) ListPolicyRulesWithResponse(ctx context.Context, r
 	return ParseListPolicyRulesHTTPResponse(rsp)
 }
 
-// CreatePolicyRuleWithBodyWithResponse Stores a policy rule (plan item 7.3, not implemented yet).
+// CreatePolicyRuleWithBodyWithResponse Stores a policy rule (plan item 7.3).
 //
 // Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
 //
@@ -8908,7 +8908,7 @@ func (c *ClientWithResponses) CreatePolicyRuleWithBodyWithResponse(ctx context.C
 	return ParseCreatePolicyRuleHTTPResponse(rsp)
 }
 
-// CreatePolicyRuleWithResponse Stores a policy rule (plan item 7.3, not implemented yet).
+// CreatePolicyRuleWithResponse Stores a policy rule (plan item 7.3).
 //
 // Every stored rule bumps the policy version that Ground Control replicas poll. A scoped rule (scope other than "*") may only name the satellite, group or config type.
 //
@@ -8923,7 +8923,7 @@ func (c *ClientWithResponses) CreatePolicyRuleWithResponse(ctx context.Context, 
 	return ParseCreatePolicyRuleHTTPResponse(rsp)
 }
 
-// DeletePolicyRuleWithResponse Deletes a stored policy rule (plan item 7.3, not implemented yet).
+// DeletePolicyRuleWithResponse Deletes a stored policy rule (plan item 7.3).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -8936,7 +8936,7 @@ func (c *ClientWithResponses) DeletePolicyRuleWithResponse(ctx context.Context, 
 	return ParseDeletePolicyRuleHTTPResponse(rsp)
 }
 
-// ListRoleBindingsWithResponse Lists the stored role bindings (plan item 7.3, not implemented yet).
+// ListRoleBindingsWithResponse Lists the stored role bindings (plan item 7.3).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -8949,7 +8949,7 @@ func (c *ClientWithResponses) ListRoleBindingsWithResponse(ctx context.Context, 
 	return ParseListRoleBindingsHTTPResponse(rsp)
 }
 
-// CreateRoleBindingWithBodyWithResponse Gives a principal an additional role (plan item 7.3, not implemented yet).
+// CreateRoleBindingWithBodyWithResponse Gives a principal an additional role (plan item 7.3).
 //
 // Built-in roles come from the user's role and cannot be bound here.
 //
@@ -8964,7 +8964,7 @@ func (c *ClientWithResponses) CreateRoleBindingWithBodyWithResponse(ctx context.
 	return ParseCreateRoleBindingHTTPResponse(rsp)
 }
 
-// CreateRoleBindingWithResponse Gives a principal an additional role (plan item 7.3, not implemented yet).
+// CreateRoleBindingWithResponse Gives a principal an additional role (plan item 7.3).
 //
 // Built-in roles come from the user's role and cannot be bound here.
 //
@@ -8979,7 +8979,7 @@ func (c *ClientWithResponses) CreateRoleBindingWithResponse(ctx context.Context,
 	return ParseCreateRoleBindingHTTPResponse(rsp)
 }
 
-// DeleteRoleBindingWithResponse Deletes a stored role binding (plan item 7.3, not implemented yet).
+// DeleteRoleBindingWithResponse Deletes a stored role binding (plan item 7.3).
 //
 // Returns a wrapper object for the known response body format(s).
 //

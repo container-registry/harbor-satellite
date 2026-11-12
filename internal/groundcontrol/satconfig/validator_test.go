@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/satconfig"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
 )
@@ -14,7 +13,6 @@ import (
 // The validator adds no rules of its own: it answers what
 // config.ValidateAppConfig answers for the document's app_config.
 func TestValidator_DelegatesToPkgConfig(t *testing.T) {
-	pending.Plan(t, "7.4", "satconfig.Validator is a stub")
 	ctx := context.Background()
 	for name, tc := range map[string]struct {
 		doc          string

@@ -26,6 +26,8 @@ type configRow struct {
 	Config      json.RawMessage
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	// Warnings are the validation warnings of a create or update.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 func toConfigRow(c fleet.Config) configRow {
@@ -92,8 +94,12 @@ func (s *Server) CreateConfig(w http.ResponseWriter, r *http.Request) {
 		HandleAppError(w, err)
 		return
 	}
-	if _, err := s.svc().Configs.Create(r.Context(), fleet.CreateConfigCmd{Name: req.ConfigName, Document: doc}); err != nil {
+	res, err := s.svc().Configs.Create(r.Context(), fleet.CreateConfigCmd{Name: req.ConfigName, Document: doc})
+	if err != nil {
 		log.Printf("Error creating config %s: %v", req.ConfigName, err)
+		if writeConfigValidationError(w, err) {
+			return
+		}
 		if errors.Is(err, fleet.ErrAlreadyExists) {
 			HandleAppError(w, &AppError{Message: "error: config already exists", Code: http.StatusConflict})
 			return
@@ -106,7 +112,22 @@ func (s *Server) CreateConfig(w http.ResponseWriter, r *http.Request) {
 		Actor: actorFromContext(r.Context()), ActorType: auditlog.ActorUser, Resource: req.ConfigName,
 		Details: map[string]any{"to": redactConfigForAudit(doc)},
 	})
-	w.WriteHeader(http.StatusCreated)
+	row := toConfigRow(res.Config)
+	row.Warnings = res.Warnings
+	WriteJSONResponse(w, http.StatusCreated, row)
+}
+
+// writeConfigValidationError answers a config that failed validation
+// with 422 and its warnings (plan item 7.4).
+func writeConfigValidationError(w http.ResponseWriter, err error) bool {
+	var verr *fleet.ConfigValidationError
+	if !errors.As(err, &verr) {
+		return false
+	}
+	WriteJSONResponse(w, http.StatusUnprocessableEntity, ConfigValidationError{
+		Code: http.StatusUnprocessableEntity, Message: "invalid config: " + verr.Err.Error(), Warnings: verr.Warnings,
+	})
+	return true
 }
 
 func (s *Server) UpdateConfig(w http.ResponseWriter, r *http.Request, configName string) {
@@ -127,6 +148,9 @@ func (s *Server) UpdateConfig(w http.ResponseWriter, r *http.Request, configName
 	res, err := s.svc().Configs.Update(r.Context(), fleet.UpdateConfigCmd{Name: configName, Patch: patch})
 	if err != nil {
 		log.Printf("Error updating config %s: %v", configName, err)
+		if writeConfigValidationError(w, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, fleet.ErrNotFound):
 			HandleAppError(w, &AppError{Message: "error: config not found", Code: http.StatusNotFound})
@@ -147,7 +171,9 @@ func (s *Server) UpdateConfig(w http.ResponseWriter, r *http.Request, configName
 		event.Details = map[string]any{"changed": changed}
 	}
 	s.auditEvent(r, event)
-	WriteJSONResponse(w, http.StatusOK, toConfigRow(res.Config))
+	row := toConfigRow(res.Config)
+	row.Warnings = res.Warnings
+	WriteJSONResponse(w, http.StatusOK, row)
 }
 
 func (s *Server) ListConfigs(w http.ResponseWriter, r *http.Request) {

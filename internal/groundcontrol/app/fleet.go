@@ -166,6 +166,7 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 		Settings:            Settings(deps.Harbor, deps.Server, deps.Webhook),
 		Sessions:            sessions,
 		HeartbeatSink:       buffer,
+		ConfigValidator:     satconfig.Validator{},
 	})
 	if err != nil {
 		return nil, err

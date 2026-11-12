@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -8,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
+	"github.com/container-registry/harbor-satellite/internal/shared/policybundle"
 	"github.com/robfig/cron/v3"
 	"github.com/rs/zerolog"
 )
@@ -46,13 +47,23 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		config.AppConfig.UseUnsecure = strings.ToLower(useUnsecure) == "true" || useUnsecure == "1"
 	}
 
-	bringOwnRegistry := config.AppConfig.BringOwnRegistry
+	more, err := validateApp(config)
+	warnings = append(warnings, more...)
+	if err != nil {
+		return nil, warnings, err
+	}
+	return config, warnings, nil
+}
 
-	if bringOwnRegistry {
+// validateApp runs the app_config checks that need neither the Ground
+// Control URL nor the environment.
+func validateApp(config *Config) ([]string, error) {
+	var warnings []string
+	if config.AppConfig.BringOwnRegistry {
 		borWarnings, borErr := validateBringOwnRegistry(config)
 		warnings = append(warnings, borWarnings...)
 		if borErr != nil {
-			return nil, warnings, borErr
+			return warnings, borErr
 		}
 	}
 
@@ -61,18 +72,17 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	tlsWarnings, tlsErr := validateTLSConfig(&config.AppConfig.TLS)
 	warnings = append(warnings, tlsWarnings...)
 	if tlsErr != nil {
-		return nil, warnings, tlsErr
+		return warnings, tlsErr
 	}
 
 	warnings = append(warnings, validateRegistryFallbackConfig(config)...)
 
 	if err := validateAndEnforcePeerDistribution(config); err != nil {
-		return nil, warnings, err
+		return warnings, err
 	}
 
 	warnings = append(warnings, validateAndEnforceAuditConfig(config)...)
-
-	return config, warnings, nil
+	return warnings, nil
 }
 
 // ValidateAppConfig is ValidateAndEnforceDefaults in Ground Control's mode
@@ -81,7 +91,27 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 // rejects an admission mode policybundle.ParseMode rejects and a bundle of
 // another model version. It returns the warnings and leaves app unchanged.
 func ValidateAppConfig(app AppConfig) (warnings []string, err error) {
-	return nil, notimpl.Err("7.4 config validation")
+	raw, err := json.Marshal(app)
+	if err != nil {
+		return nil, fmt.Errorf("encode app_config: %w", err)
+	}
+	cfg := &Config{}
+	if err := json.Unmarshal(raw, &cfg.AppConfig); err != nil {
+		return nil, fmt.Errorf("copy app_config: %w", err)
+	}
+	warnings = validateAndEnforceLogLevel(cfg)
+	more, err := validateApp(cfg)
+	warnings = append(warnings, more...)
+	if err != nil {
+		return warnings, err
+	}
+	if _, err := policybundle.ParseMode(cfg.AppConfig.Admission.Mode); err != nil {
+		return warnings, fmt.Errorf("app_config.admission.mode: %w", err)
+	}
+	if b := cfg.AppConfig.Admission.Bundle; b != nil && b.ModelVersion != policybundle.ModelVersion {
+		return warnings, fmt.Errorf("app_config.admission.bundle: model version %q, want %q", b.ModelVersion, policybundle.ModelVersion)
+	}
+	return warnings, nil
 }
 
 // validateAndEnforceAuditConfig fills in defaults for the audit syslog transport

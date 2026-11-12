@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/satconfig"
+
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/harbor2"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/postgres"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
@@ -140,7 +142,7 @@ func (h *hotPath) factory(_ context.Context, pools *dbpool.Pools, _ *spiffe.Serv
 	}
 	svc, err := fleet.NewServices(fleet.Deps{
 		Repository: repo, SatelliteRepository: fleetRepo, Registry: harnessRegistry(h.t, harborStub), Settings: harnessSettings(harborStub),
-		Sessions: sessions, HeartbeatSink: sink,
+		Sessions: sessions, HeartbeatSink: sink, ConfigValidator: satconfig.Validator{},
 	})
 	if err != nil {
 		return nil, err
