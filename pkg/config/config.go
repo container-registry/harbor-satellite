@@ -297,7 +297,7 @@ type AppConfig struct {
 	// RegistryAuth is plan item 8.3; validation rejects workload_identity
 	// until Harbor 3 offers the token exchange (docs/guides/keyless-pulls.md).
 	RegistryAuth RegistryAuthConfig `json:"registry_auth,omitzero"`
-	Network      NetworkConfig      `json:"network,omitempty"`
+	Network      NetworkConfig      `json:"network,omitempty,omitzero"`
 }
 
 // RegistryAuthConfig selects how the satellite authenticates to Harbor:

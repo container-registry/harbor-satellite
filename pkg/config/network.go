@@ -11,8 +11,8 @@ import (
 // NetworkConfig is the optional speed cap and transfer quota. A disabled
 // block leaves replication unchanged.
 type NetworkConfig struct {
-	Speed NetworkSpeedConfig `json:"speed,omitempty"`
-	Quota NetworkQuotaConfig `json:"quota,omitempty"`
+	Speed NetworkSpeedConfig `json:"speed,omitempty,omitzero"`
+	Quota NetworkQuotaConfig `json:"quota,omitempty,omitzero"`
 }
 
 // NetworkSpeedConfig caps the Harbor download rate. Limit is a quantity such
