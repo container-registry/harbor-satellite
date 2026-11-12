@@ -65,7 +65,14 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 		Username: d.srcUsername,
 		Password: d.srcPassword,
 	})
-	remoteOpts := []remote.Option{
+	// The size check reads the manifest before Admit. That read is rate limited
+	// and is not added to the quota. The image pull after Admit is counted.
+	probeOpts := []remote.Option{
+		remote.WithAuth(auth),
+		remote.WithContext(ctx),
+		remote.WithTransport(budget.LimitTransport(http.DefaultTransport)),
+	}
+	pullOpts := []remote.Option{
 		remote.WithAuth(auth),
 		remote.WithContext(ctx),
 		remote.WithTransport(budget.Transport(http.DefaultTransport)),
@@ -101,7 +108,7 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 			continue
 		}
 
-		desc, err := remote.Get(ref, remoteOpts...)
+		desc, err := remote.Get(ref, probeOpts...)
 		if err != nil {
 			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to read image manifest, skipping")
 			continue
@@ -119,7 +126,7 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 			}
 			continue
 		}
-		img, err := desc.Image()
+		img, err := remote.Image(ref, pullOpts...)
 		if err != nil {
 			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to pull image, skipping")
 			continue

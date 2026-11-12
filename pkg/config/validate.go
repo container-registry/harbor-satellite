@@ -86,20 +86,24 @@ func validateAndEnforceNetwork(config *Config) ([]string, error) {
 	network := &config.AppConfig.Network
 	var warnings []string
 
-	if network.Speed.Limit != "" {
+	if network.Speed.Enabled {
+		if network.Speed.Limit == "" {
+			return nil, errors.New("network.speed.limit is required when speed is enabled")
+		}
 		if _, err := ParseByteRate(network.Speed.Limit); err != nil {
 			return nil, fmt.Errorf("network.speed.limit: %w", err)
 		}
-	} else if network.Speed.Enabled {
-		return nil, errors.New("network.speed.limit is required when speed is enabled")
 	}
 
-	if network.Quota.Limit != "" {
-		if _, err := ParseByteSize(network.Quota.Limit); err != nil {
-			return nil, fmt.Errorf("network.quota.limit: %w", err)
-		}
-	} else if network.Quota.Enabled {
+	if !network.Quota.Enabled {
+		return warnings, nil
+	}
+
+	if network.Quota.Limit == "" {
 		return nil, errors.New("network.quota.limit is required when quota is enabled")
+	}
+	if _, err := ParseByteSize(network.Quota.Limit); err != nil {
+		return nil, fmt.Errorf("network.quota.limit: %w", err)
 	}
 
 	switch strings.ToLower(strings.TrimSpace(network.Quota.Window)) {

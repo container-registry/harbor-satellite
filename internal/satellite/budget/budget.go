@@ -155,31 +155,22 @@ func (b *Budget) Admit(missingBytes int64) error {
 	return nil
 }
 
-// Wrap records and slows a body. A disabled policy returns the body unchanged
-// in behavior: reads are not delayed and bytes are not recorded.
+// Wrap records and slows a body. A disabled speed limit does not delay the
+// read. Bytes are still recorded so a heartbeat can report throughput.
 func (b *Budget) Wrap(body io.ReadCloser) io.ReadCloser {
 	return b.WrapContext(context.Background(), body)
 }
 
 // WrapContext is Wrap with the caller's context, so a canceled pull stops waiting.
 func (b *Budget) WrapContext(ctx context.Context, body io.ReadCloser) io.ReadCloser {
-	if body == nil {
-		return nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return &meteredBody{ctx: ctx, budget: b, body: body}
+	return b.wrapBody(ctx, body, true)
 }
 
-// Snapshot returns the current speed and the byte counters. Both knobs
-// disabled reports zeros.
+// Snapshot returns the current speed and the byte counters. The window counter
+// stays at zero while the quota is disabled.
 func (b *Budget) Snapshot() Stats {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if !b.policy.Speed.Enabled && !b.policy.Quota.Enabled {
-		return Stats{}
-	}
 	now := b.clock()
 	b.roll(now)
 	return Stats{
@@ -192,26 +183,33 @@ func (b *Budget) Snapshot() Stats {
 // Transport meters every response body. Direct delivery uses it because that
 // client only talks to Harbor.
 func Transport(base http.RoundTripper) http.RoundTripper {
-	return newRoundTripper(base, true)
+	return newRoundTripper(base, true, true)
+}
+
+// LimitTransport applies the speed cap and does not record bytes. Direct
+// delivery uses it for the manifest read that happens before Admit.
+func LimitTransport(base http.RoundTripper) http.RoundTripper {
+	return newRoundTripper(base, true, false)
 }
 
 // ContextTransport meters a response body when the request context was marked
 // with WithMeter. The registry client shared with the OCI proxy uses it, so a
 // local pull is not capped.
 func ContextTransport(base http.RoundTripper) http.RoundTripper {
-	return newRoundTripper(base, false)
+	return newRoundTripper(base, false, true)
 }
 
-func newRoundTripper(base http.RoundTripper, always bool) http.RoundTripper {
+func newRoundTripper(base http.RoundTripper, always, count bool) http.RoundTripper {
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	return roundTripper{base: base, always: always}
+	return roundTripper{base: base, always: always, count: count}
 }
 
 type roundTripper struct {
 	base   http.RoundTripper
 	always bool
+	count  bool
 }
 
 func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -222,7 +220,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if !r.always && !Metered(req.Context()) {
 		return resp, nil
 	}
-	resp.Body = Ensure().WrapContext(req.Context(), resp.Body)
+	resp.Body = Ensure().wrapBody(req.Context(), resp.Body, r.count)
 	return resp, nil
 }
 
@@ -243,68 +241,68 @@ func Metered(ctx context.Context) bool {
 	return ok && metered
 }
 
+func (b *Budget) wrapBody(ctx context.Context, body io.ReadCloser, count bool) io.ReadCloser {
+	if body == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return &meteredBody{ctx: ctx, budget: b, body: body, count: count}
+}
+
 type meteredBody struct {
 	ctx    context.Context
 	budget *Budget
 	body   io.ReadCloser
+	count  bool
 }
 
 func (m *meteredBody) Read(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-	chunk := m.budget.chunk(len(p))
-	if chunk > 0 && chunk < len(p) {
-		p = p[:chunk]
+	// The limiter and the read size come from one snapshot. A config reload
+	// between them would wait for the new rate and still read the old size.
+	limiter, n := m.budget.prepareRead(len(p))
+	if n < len(p) {
+		p = p[:n]
 	}
-	if chunk > 0 {
-		if err := m.budget.wait(m.ctx, len(p)); err != nil {
+	if limiter != nil {
+		if err := limiter.WaitN(m.ctx, len(p)); err != nil {
 			return 0, err
 		}
 	}
-	n, err := m.body.Read(p)
-	if n > 0 {
-		m.budget.record(int64(n))
+	read, err := m.body.Read(p)
+	if read > 0 && m.count {
+		m.budget.record(int64(read))
 	}
-	return n, err
+	return read, err
 }
 
 func (m *meteredBody) Close() error {
 	return m.body.Close()
 }
 
-// chunk is the next read size when speed is enabled, or 0 when it is not.
-func (b *Budget) chunk(want int) int {
+// prepareRead returns the limiter to wait on and the number of bytes this
+// read may take. A nil limiter means the speed cap is off.
+func (b *Budget) prepareRead(want int) (*rate.Limiter, int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if !b.policy.Speed.Enabled || b.limiter == nil || want <= 0 {
-		return 0
+	if want < 1 {
+		return nil, 0
+	}
+	if !b.policy.Speed.Enabled || b.limiter == nil {
+		return nil, want
 	}
 	burst := b.limiter.Burst()
 	if burst < 1 {
 		burst = 1
 	}
 	if want > burst {
-		return burst
+		want = burst
 	}
-	return want
-}
-
-func (b *Budget) wait(ctx context.Context, n int) error {
-	b.mu.Lock()
-	limiter := b.limiter
-	enabled := b.policy.Speed.Enabled
-	b.mu.Unlock()
-	if !enabled || limiter == nil || n <= 0 {
-		return nil
-	}
-	if burst := limiter.Burst(); n > burst {
-		n = burst
-	}
-	if n < 1 {
-		return nil
-	}
-	return limiter.WaitN(ctx, n)
+	return b.limiter, want
 }
 
 func (b *Budget) record(n int64) {
@@ -313,9 +311,6 @@ func (b *Budget) record(n int64) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if !b.policy.Speed.Enabled && !b.policy.Quota.Enabled {
-		return
-	}
 	now := b.clock()
 	b.roll(now)
 	b.bytesTotal += n

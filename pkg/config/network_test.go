@@ -27,6 +27,8 @@ func TestParseNetworkQuantities(t *testing.T) {
 	require.Error(t, err)
 	_, err = ParseByteSize("10Mbps")
 	require.Error(t, err)
+	_, err = ParseByteSize("9223372036854775808")
+	require.Error(t, err)
 }
 
 func TestValidateNetworkConfig(t *testing.T) {
@@ -53,4 +55,14 @@ func TestValidateNetworkConfig(t *testing.T) {
 	cfg.AppConfig.Network.Speed.Limit = "fast"
 	_, _, err = ValidateAndEnforceDefaults(cfg, "")
 	require.ErrorContains(t, err, "network.speed.limit")
+
+	disabled := &Config{AppConfig: AppConfig{
+		GroundControlURL: "http://gc:8080",
+		Network: NetworkConfig{
+			Speed: NetworkSpeedConfig{Enabled: false, Limit: "fast"},
+			Quota: NetworkQuotaConfig{Enabled: false, Limit: "lots", Window: "month"},
+		},
+	}}
+	_, _, err = ValidateAndEnforceDefaults(disabled, "")
+	require.NoError(t, err)
 }

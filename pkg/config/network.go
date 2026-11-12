@@ -166,7 +166,9 @@ func scaleQuantity(value float64, prefix string, bits bool) (int64, error) {
 	if bits {
 		scaled /= 8
 	}
-	if scaled < 1 || scaled > float64(math.MaxInt64) {
+	// float64(math.MaxInt64) rounds up to 2^63, so a value at that bound does
+	// not fit in a positive int64.
+	if scaled < 1 || scaled >= float64(math.MaxInt64) {
 		return 0, fmt.Errorf("quantity is out of range")
 	}
 	return int64(scaled), nil

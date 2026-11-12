@@ -315,6 +315,12 @@ type NetworkQuotaConfig = config.NetworkQuotaConfig
 // NetworkSpeedConfig defines model for NetworkSpeedConfig.
 type NetworkSpeedConfig = config.NetworkSpeedConfig
 
+// NullableFloat64Value defines model for NullableFloat64Value.
+type NullableFloat64Value struct {
+	Float64 float64 `json:"Float64,omitempty,omitzero"`
+	Valid   bool    `json:"Valid,omitempty,omitzero"`
+}
+
 // NullableInt32Value defines model for NullableInt32Value.
 type NullableInt32Value struct {
 	Int32 int32 `json:"Int32,omitempty,omitzero"`
@@ -455,22 +461,22 @@ type SatelliteStatusRequest struct {
 
 // SatelliteStatusResponse defines model for SatelliteStatusResponse.
 type SatelliteStatusResponse struct {
-	Activity               string              `json:"Activity,omitempty,omitzero"`
-	ArtifactIds            []int32             `json:"ArtifactIds,omitempty,omitzero"`
-	BytesInWindow          NullableInt64Value  `json:"BytesInWindow,omitempty,omitzero"`
-	BytesTotal             NullableInt64Value  `json:"BytesTotal,omitempty,omitzero"`
-	CpuPercent             NullableStringValue `json:"CpuPercent,omitempty,omitzero"`
-	CreatedAt              time.Time           `json:"CreatedAt,omitempty,omitzero"`
-	DownloadBytesPerSecond float64             `json:"DownloadBytesPerSecond,omitempty,omitzero"`
-	ID                     int32               `json:"ID,omitempty,omitzero"`
-	ImageCount             NullableInt32Value  `json:"ImageCount,omitempty,omitzero"`
-	LastSyncDurationMs     NullableInt64Value  `json:"LastSyncDurationMs,omitempty,omitzero"`
-	LatestConfigDigest     NullableStringValue `json:"LatestConfigDigest,omitempty,omitzero"`
-	LatestStateDigest      NullableStringValue `json:"LatestStateDigest,omitempty,omitzero"`
-	MemoryUsedBytes        NullableInt64Value  `json:"MemoryUsedBytes,omitempty,omitzero"`
-	ReportedAt             time.Time           `json:"ReportedAt,omitempty,omitzero"`
-	SatelliteID            int32               `json:"SatelliteID,omitempty,omitzero"`
-	StorageUsedBytes       NullableInt64Value  `json:"StorageUsedBytes,omitempty,omitzero"`
+	Activity               string               `json:"Activity,omitempty,omitzero"`
+	ArtifactIds            []int32              `json:"ArtifactIds,omitempty,omitzero"`
+	BytesInWindow          NullableInt64Value   `json:"BytesInWindow,omitempty,omitzero"`
+	BytesTotal             NullableInt64Value   `json:"BytesTotal,omitempty,omitzero"`
+	CpuPercent             NullableStringValue  `json:"CpuPercent,omitempty,omitzero"`
+	CreatedAt              time.Time            `json:"CreatedAt,omitempty,omitzero"`
+	DownloadBytesPerSecond NullableFloat64Value `json:"DownloadBytesPerSecond,omitempty,omitzero"`
+	ID                     int32                `json:"ID,omitempty,omitzero"`
+	ImageCount             NullableInt32Value   `json:"ImageCount,omitempty,omitzero"`
+	LastSyncDurationMs     NullableInt64Value   `json:"LastSyncDurationMs,omitempty,omitzero"`
+	LatestConfigDigest     NullableStringValue  `json:"LatestConfigDigest,omitempty,omitzero"`
+	LatestStateDigest      NullableStringValue  `json:"LatestStateDigest,omitempty,omitzero"`
+	MemoryUsedBytes        NullableInt64Value   `json:"MemoryUsedBytes,omitempty,omitzero"`
+	ReportedAt             time.Time            `json:"ReportedAt,omitempty,omitzero"`
+	SatelliteID            int32                `json:"SatelliteID,omitempty,omitzero"`
+	StorageUsedBytes       NullableInt64Value   `json:"StorageUsedBytes,omitempty,omitzero"`
 }
 
 // StaleSatelliteResponse defines model for StaleSatelliteResponse.

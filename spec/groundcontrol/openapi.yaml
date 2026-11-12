@@ -1848,6 +1848,16 @@ components:
           format: int32
         Valid:
           type: boolean
+    NullableFloat64Value:
+      type: object
+      title: NullableFloat64Value represents an optional float64 value and its
+        validity state.
+      properties:
+        Float64:
+          type: number
+          format: double
+        Valid:
+          type: boolean
     NullableInt64Value:
       type: object
       title: NullableInt64Value represents an optional int64 value and its validity
@@ -1965,8 +1975,7 @@ components:
         ImageCount:
           $ref: "#/components/schemas/NullableInt32Value"
         DownloadBytesPerSecond:
-          type: number
-          format: double
+          $ref: "#/components/schemas/NullableFloat64Value"
         BytesInWindow:
           $ref: "#/components/schemas/NullableInt64Value"
         BytesTotal:

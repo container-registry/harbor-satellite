@@ -23,14 +23,17 @@ func TestAdmitSkipsWhenTheWindowIsFull(t *testing.T) {
 	require.ErrorIs(t, account.Admit(61), ErrQuotaExceeded)
 }
 
-func TestDisabledPolicyDoesNotCountOrBlock(t *testing.T) {
+func TestDisabledPolicyStillReportsThroughput(t *testing.T) {
 	account := New()
 	body := account.Wrap(io.NopCloser(bytes.NewReader([]byte("hello"))))
 	got, err := io.ReadAll(body)
 	require.NoError(t, err)
 	require.Equal(t, "hello", string(got))
 	require.NoError(t, body.Close())
-	require.Equal(t, Stats{}, account.Snapshot())
+	stats := account.Snapshot()
+	require.Equal(t, int64(5), stats.BytesTotal)
+	require.Equal(t, int64(0), stats.BytesInWindow)
+	require.Equal(t, float64(5), stats.BytesPerSecond)
 	require.NoError(t, account.Admit(1<<30))
 }
 
@@ -141,10 +144,13 @@ func TestSetPolicyUpdatesTheLiveLimiter(t *testing.T) {
 	account := New()
 	account.SetPolicy(Policy{Speed: Speed{Enabled: true, BytesPerSecond: 1}})
 	account.SetPolicy(Policy{Speed: Speed{Enabled: true, BytesPerSecond: 2_000}})
-	body := account.Wrap(io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("x"), 32))))
-	got, err := io.ReadAll(body)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	body := account.WrapContext(ctx, io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("x"), 32))))
+	got := make([]byte, 32)
+	n, err := io.ReadFull(body, got)
 	require.NoError(t, err)
-	require.Len(t, got, 32)
+	require.Equal(t, 32, n)
 	require.NoError(t, body.Close())
 	require.Equal(t, int64(32), account.Snapshot().BytesTotal)
 }
