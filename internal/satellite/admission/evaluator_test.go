@@ -6,7 +6,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/admission"
 	"github.com/container-registry/harbor-satellite/internal/shared/policybundle"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,7 +38,6 @@ func pull(repo, ref string) admission.Request {
 }
 
 func TestEvaluator_DeniesBlockedRepository(t *testing.T) {
-	pending.Plan(t, "7.5", "the admission evaluator is a stub")
 	e := evaluator(t, bundle(allowAll, blockRepo))
 
 	denied := decide(t, e, pull("library/blocked", "latest"))
@@ -50,7 +48,6 @@ func TestEvaluator_DeniesBlockedRepository(t *testing.T) {
 }
 
 func TestEvaluator_CachesPerBundleAndReference(t *testing.T) {
-	pending.Plan(t, "7.5", "the admission evaluator is a stub")
 	e := evaluator(t, bundle(allowAll, blockOldTags))
 
 	first := decide(t, e, pull("library/alpine", "3.19"))
@@ -72,7 +69,6 @@ func TestEvaluator_CachesPerBundleAndReference(t *testing.T) {
 }
 
 func TestEvaluator_TagOnlyAllowAdmitsBlobs(t *testing.T) {
-	pending.Plan(t, "7.5", "the admission evaluator is a stub")
 	e := evaluator(t, bundle([]string{"*", "library/app", "v1*", "*", "allow"}))
 
 	require.True(t, decide(t, e, pull("library/app", "v1.2")).Allowed)
@@ -81,7 +77,6 @@ func TestEvaluator_TagOnlyAllowAdmitsBlobs(t *testing.T) {
 }
 
 func TestEvaluator_RejectsUnknownModelVersion(t *testing.T) {
-	pending.Plan(t, "7.5", "the admission evaluator is a stub")
 	_, err := admission.NewEvaluator(policybundle.Bundle{ModelVersion: "edge-admission/v99", Policies: [][]string{allowAll}})
 	require.ErrorContains(t, err, "edge-admission/v99")
 	_, err = admission.NewEvaluator(bundle([]string{"*", "*"}))
@@ -94,7 +89,6 @@ func TestEvaluator_RejectsUnknownModelVersion(t *testing.T) {
 // A blob request carries no tag: its Reference is "*", so tag rules do not
 // apply to it and repository rules do.
 func TestEvaluator_BlobChecksRepositoryOnly(t *testing.T) {
-	pending.Plan(t, "7.5", "the admission evaluator is a stub")
 	e := evaluator(t, bundle(allowAll, blockRepo, blockOldTags))
 	blob := func(repo string) admission.Request {
 		return admission.Request{Repository: repo, Reference: "*", Action: "pull_blob"}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite"
+	"github.com/container-registry/harbor-satellite/internal/satellite/admission"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
@@ -440,10 +441,13 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	proxyAddress := net.JoinHostPort("127.0.0.1", strconv.Itoa(opts.ProxyPort))
 	proxyServer = &http.Server{
 		Addr: proxyAddress,
-		// Plan items 7.5, 9.3 and 0.4 fill the nil slots (admission,
-		// authentication, metrics); all nil keeps today's handler.
+		// The pull handler records pull metrics itself, so the metrics slot
+		// stays nil; the listener is loopback, so authentication needs no
+		// verifier until peers (G7).
 		Handler: proxyhandler.WriteDeadlineHandler(
-			proxyhandler.New(pullHandler).WrapAll(proxymw.Stack(nil, nil, nil)...).Handler(),
+			proxyhandler.New(pullHandler).WrapAll(proxymw.Stack(
+				admission.Middleware(admission.ConfigSource{CM: cm}), proxymw.Authenticate(nil), nil,
+			)...).Handler(),
 			opts.ProxyWriteTimeout,
 		),
 		ReadHeaderTimeout: 10 * time.Second,
