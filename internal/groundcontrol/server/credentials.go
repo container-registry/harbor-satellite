@@ -39,6 +39,10 @@ func (s *Server) verifyUserCredentials(ctx context.Context, clientIP netip.Addr,
 	if s.FailureLimiter.Blocked(clientIP) {
 		return database.User{}, errTooManyAttempts
 	}
+	if s.disablePasswordLogin && username != systemAdminUsername {
+		s.FailureLimiter.RecordFailure(clientIP)
+		return database.User{}, errPasswordLoginDisabled
+	}
 
 	attempts, err := s.dbQueries.GetLoginAttempts(ctx, username)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -105,6 +109,8 @@ func credentialFailureReason(err error) auditlog.Reason {
 		return auditlog.ReasonUnknownUser
 	case errors.Is(err, errBadPassword):
 		return auditlog.ReasonBadPassword
+	case errors.Is(err, errPasswordLoginDisabled):
+		return auditlog.ReasonForbidden
 	default:
 		return auditlog.ReasonInvalidCredentials
 	}
@@ -118,6 +124,8 @@ func writeCredentialError(w http.ResponseWriter, err error) {
 		WriteJSONError(w, "Too Many Requests", http.StatusTooManyRequests)
 	case errors.Is(err, errAccountLocked), errors.Is(err, errInvalidCredentials):
 		WriteJSONError(w, "Invalid credentials", http.StatusUnauthorized)
+	case errors.Is(err, errPasswordLoginDisabled):
+		WriteJSONError(w, "Invalid credentials: "+errPasswordLoginDisabled.Error()+"; log in through OIDC", http.StatusUnauthorized)
 	default:
 		WriteJSONError(w, "Internal server error", http.StatusInternalServerError)
 	}

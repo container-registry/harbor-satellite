@@ -4,14 +4,12 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
 // With OIDC_DISABLE_PASSWORD_LOGIN only the bootstrap admin, the
 // break-glass account, logs in with a password (plan item 8.2).
 func TestPasswordLogin_DisabledExceptBootstrap(t *testing.T) {
-	pending.Plan(t, "8.2", "password login cannot be disabled")
 	t.Setenv("OIDC_DISABLE_PASSWORD_LOGIN", "true")
 	h := newGCHarness(t)
 	h.mustDo(http.MethodPost, "/api/users", CreateUserRequest{Username: "operator", Password: "Operat0rPass"}, h.admin, http.StatusCreated)

@@ -92,6 +92,9 @@ type Server struct {
 	policyEngine string
 	// operatorLogin is set by WithOperatorLogin (plan item 8.1).
 	operatorLogin OperatorLogin
+	// disablePasswordLogin (OIDC_DISABLE_PASSWORD_LOGIN) leaves password
+	// login to the bootstrap admin only (plan item 8.2).
+	disablePasswordLogin bool
 }
 
 // HarborContact reports the last successful contact with Harbor; the
@@ -185,6 +188,7 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 	appServer.staleThreshold = cfg.Server.StaleThreshold
 	appServer.trustForwardedHeaders = cfg.Audit.TrustForwardedHeaders
 	appServer.policyEngine = cfg.Policy.Engine
+	appServer.disablePasswordLogin = cfg.OIDC.DisablePasswordLogin
 	if err := cfg.Policy.Validate(); err != nil {
 		return result, err
 	}
