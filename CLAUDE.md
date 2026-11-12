@@ -234,7 +234,7 @@ Ground Control CLI (`groundcontrol`): flags `--server` (default https://localhos
 
 **Ground Control API Routes** (spec/groundcontrol/openapi.yaml, security wrapping in internal/groundcontrol/server/routes.go):
 - Public: `GET /ping`, `GET /health`, `POST /login` (rate limited), `POST /satellites/ztr` (rate limited), `GET /satellites/spiffe-ztr` (SPIFFE required, rate limited)
-- Satellite-authenticated: `POST /satellites/sync` and `POST /satellites/refresh` (SPIFFE SVID or robot Basic auth, rate limited). Refresh rotates the robot secret in Harbor and returns it; an expired robot gets 401 and needs a new ZTR
+- Satellite-authenticated: `POST /satellites/sync` and `POST /satellites/refresh` (SPIFFE SVID or robot Basic auth, rate limited; the SPIFFE middleware is the outer layer, so a valid SVID wins over Basic credentials). Refresh rotates the robot secret in Harbor and returns it; an expired robot gets 401 and needs a new ZTR
 - Protected (under `/api`): groups, configs, satellites, users, logout
 - System admin only: user create/delete and admin password reset, group delete, `/api/spire/*`, `POST /api/satellites/register` (SPIFFE registration), `/api/ops/*` (`GET /api/ops/outbox` answers 501 until plan item 2.3)
 - Background cleanup job: every 24h under a PostgreSQL advisory lock, deletes status records older than 7 days and orphaned artifacts
@@ -400,7 +400,6 @@ This is core functionality; changes require careful review.
 Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNotImplemented` and no production path calls them yet; their behaviour is specified by `pending.Plan` tests.
 
 - internal/shared/notimpl/: `ErrNotImplemented` and `Err(item)`, returned by every skeleton stub
-- D3: `server.satelliteAuthChain` is the seam for the satellite auth order; it keeps today's order (SPIFFE middleware inner), the fix swaps it
 - internal/shared/logger/logtest/: D4 test helper, `Capture(t)` routes the context-carried zerolog logger into a buffer at every level; the D4 acceptance tests in `state` and `events` use it
 - test/arch/: repository-wide tests; `TestNoSecretsInLogArguments` (D4) parses every non-test file in cmd, internal and pkg for log arguments named like a password, secret or token
 - D5: `server.syncRobotPermissions` (for a set of satellites, one query and one Harbor update per robot with the union of the satellite's groups) and the query `GetProjectsOfSatellites`; D10 (empty satellite state artifact) has tests only

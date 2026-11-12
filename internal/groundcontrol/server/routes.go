@@ -70,9 +70,9 @@ func (s *Server) policyRouteCheck() bool {
 	return s.policy != nil && s.policyEngine == env.PolicyEngineCasbin
 }
 
-// satelliteAuthChain authenticates satellite-facing endpoints. D3: the
-// SPIFFE middleware must run first so an SVID is authoritative; today it is
-// the inner one, so SatelliteAuthMiddleware never sees the SVID. With a
+// satelliteAuthChain authenticates satellite-facing endpoints. The SPIFFE
+// middleware is the outer layer so an SVID is in the context before
+// SatelliteAuthMiddleware runs and wins over Basic credentials. With a
 // SatelliteAuthenticator (plan item 4.1) the chain is the SPIFFE
 // middleware, then authenticateSatellite, then the per-satellite fleet
 // limiter; the shared pre-auth limiter stays only while there is no fleet
@@ -85,8 +85,8 @@ func (s *Server) satelliteAuthChain(next http.Handler) http.Handler {
 		}
 		return handler
 	}
-	handler := spiffe.AuthMiddleware(next)
-	handler = s.SatelliteAuthMiddleware(handler)
+	handler := s.SatelliteAuthMiddleware(next)
+	handler = spiffe.AuthMiddleware(handler)
 	return middleware.RateLimitMiddleware(s.rateLimiter)(handler)
 }
 
