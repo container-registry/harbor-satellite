@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/advisorylock"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 )
 
 const (
@@ -89,12 +90,26 @@ func (s *Server) runCleanupWithLock(ctx context.Context, days int) {
 		log.Printf("Orphaned artifacts cleanup failed: %v", err)
 		return
 	}
+	if err := q.DeleteExpiredTokens(ctx); err != nil {
+		log.Printf("Expired ZTR token cleanup failed: %v", err)
+		return
+	}
+	if err := q.DeleteExpiredSessions(ctx); err != nil {
+		log.Printf("Expired session cleanup failed: %v", err)
+		return
+	}
+	// A row that still locks an account stays even when it is old, so the
+	// purge cannot end a lockout early.
+	if err := q.DeleteStaleLoginAttempts(ctx, database.DeleteStaleLoginAttemptsParams{Now: time.Now(), Days: int32(days)}); err != nil {
+		log.Printf("Stale login attempt cleanup failed: %v", err)
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		log.Printf("Status cleanup: commit: %v", err)
 		return
 	}
 
-	log.Printf("Status cleanup completed (deleted records older than %d days)", days)
+	log.Printf("Status cleanup completed (deleted records older than %d days, expired ZTR tokens and sessions, stale login attempts)", days)
 }
 
 func NewCleanupConfig() CleanupConfig {
