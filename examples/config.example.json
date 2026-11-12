@@ -26,6 +26,12 @@
       "registries": ["docker.io"],
       "runtimes": []
     },
+    "network": {
+      "speed": {
+        "enabled": false,
+        "limit": "10Mbps"
+      }
+    },
     "peer_distribution": {
       "enabled": false,
       "local_groups": ["edge-site-a"],

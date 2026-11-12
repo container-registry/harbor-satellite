@@ -16,6 +16,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/satellite"
 	"github.com/container-registry/harbor-satellite/internal/satellite/admission"
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
@@ -597,6 +598,10 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 			}
 		}
 	})
+
+	if err := budget.Apply(cm.GetNetworkConfig()); err != nil {
+		return fmt.Errorf("apply download speed cap: %w", err)
+	}
 
 	eventScheduler := events.NewEventScheduler(log)
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir, pathConfig.DesiredStateFile, eventScheduler)

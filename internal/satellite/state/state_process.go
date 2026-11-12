@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	"github.com/container-registry/harbor-satellite/internal/satellite/journal"
 	"github.com/container-registry/harbor-satellite/internal/satellite/peers"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
@@ -171,12 +172,24 @@ func NewStateMap(url []string) []StateMap {
 	return stateMap
 }
 
+// applyDownloadSpeed installs the current speed cap. A disabled cap leaves
+// replication at full speed. Bytes are still counted.
+func (f *FetchAndReplicateStateProcess) applyDownloadSpeed(log *zerolog.Logger) {
+	if f.cm == nil {
+		return
+	}
+	if err := budget.Apply(f.cm.GetNetworkConfig()); err != nil {
+		log.Warn().Err(err).Msg("download speed cap was not updated")
+	}
+}
+
 func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) (err error) {
 	f.start()
 	defer f.stop()
 
 	// Top level logger with process name
 	log := logger.FromContext(ctx).With().Str("process", f.name).Logger()
+	f.applyDownloadSpeed(&log)
 
 	// Check for early cancellation
 	select {
@@ -512,7 +525,7 @@ func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
 	f.LogChanges(nil, missing, &groupLog)
 
 	if len(missing) > 0 {
-		if err := f.replicateBounded(f.copyContext(ctx), groupName(f.stateMap[index].url), replicator, sourceStore, missing); err != nil {
+		if err := f.replicateBounded(budget.WithMeter(f.copyContext(ctx)), groupName(f.stateMap[index].url), replicator, sourceStore, missing); err != nil {
 			groupLog.Error().Err(err).Msg("Error replicating persisted state")
 			result.Error = fmt.Errorf("failed to replicate persisted entities for %s: %w", f.stateMap[index].url, err)
 			return result
@@ -770,7 +783,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	// deleted once every group has replicated (deleteRetired), so a moved
 	// tag never goes missing (D9) and another group's wanted content stays.
 	if len(replicateEntity) > 0 {
-		if err := f.replicateBounded(ctx, groupName(f.stateMap[index].url), replicator, sourceStore, replicateEntity); err != nil {
+		if err := f.replicateBounded(budget.WithMeter(ctx), groupName(f.stateMap[index].url), replicator, sourceStore, replicateEntity); err != nil {
 			stateFetcherLog.Error().Err(err).Msg("Error applying state changes")
 			result.Error = fmt.Errorf("failed to apply state changes for %s: %w", f.stateMap[index].url, err)
 			return result

@@ -10,6 +10,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/shirou/gopsutil/v3 v3.24.5
 	golang.org/x/sync v0.22.0
+	golang.org/x/time v0.14.0
 	oras.land/oras-go/v2 v2.6.2
 )
 
