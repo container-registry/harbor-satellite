@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/journal"
 	"github.com/container-registry/harbor-satellite/internal/satellite/peers"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
@@ -32,6 +33,20 @@ type FetchAndReplicateStateProcess struct {
 	remoteStore         store.Store
 	fetchRootState      func(ctx context.Context, satelliteStateURL, srcUsername, srcPassword string, useUnsecure bool, log *zerolog.Logger) (*SatelliteState, error)
 	fetchGroupState     func(ctx context.Context, groupURL, srcUsername, srcPassword string, useUnsecure bool, log *zerolog.Logger) (*StateReader, error)
+	// replicationSource is the Harbor store replication copies from when
+	// set, so its bandwidth cap never slows the proxy (plan item 6.2).
+	replicationSource store.Store
+	edgeJournal       *journal.Journal
+	// replicationSlots bounds the groups replicating at once in one
+	// Execute; nil is unbounded.
+	replicationSlots chan struct{}
+	// rootState is the satellite state of the last pull, reused while its
+	// digest stays the same (plan item 6.1).
+	rootState       *SatelliteState
+	rootStateURL    string
+	rootStateDigest string
+	lastRun         RunSummary
+	cycleID         string
 }
 
 // SetStores shares the proxy's local destination and Harbor source with state replication.
@@ -128,6 +143,9 @@ type StateMap struct {
 	url      string
 	State    StateReader
 	Entities []Entity
+	// appliedDigest is the digest of the group state whose entities were
+	// applied; empty until a replication of it succeeded.
+	appliedDigest string
 	// desired is the bootstrap wish list. It is not applied state and is not written to state.json.
 	desired []Entity
 }
@@ -140,7 +158,7 @@ func NewStateMap(url []string) []StateMap {
 	return stateMap
 }
 
-func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
+func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) (err error) {
 	f.start()
 	defer f.stop()
 
@@ -165,6 +183,10 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return nil
 	}
 	log.Info().Msg(reason)
+
+	started := time.Now()
+	defer func() { f.recordRun(started, err) }()
+	f.startCycle()
 
 	satelliteState, err := f.fetchSatelliteRootStateTimed(ctx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
 	if err != nil {
@@ -470,7 +492,7 @@ func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
 	f.LogChanges(nil, missing, &groupLog)
 
 	if len(missing) > 0 {
-		if err := replicator.Replicate(f.copyContext(ctx), sourceStore, missing); err != nil {
+		if err := f.replicateBounded(f.copyContext(ctx), groupName(f.stateMap[index].url), replicator, sourceStore, missing); err != nil {
 			groupLog.Error().Err(err).Msg("Error replicating persisted state")
 			result.Error = fmt.Errorf("failed to replicate persisted entities for %s: %w", f.stateMap[index].url, err)
 			return result
@@ -686,6 +708,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 
 	var newStateFetched *StateReader
 	var err error
+	var groupDigest string
 	if f.fetchGroupState != nil {
 		newStateFetched, err = f.fetchGroupState(fetchCtx, groupURL, srcUsername, srcPassword, useUnsecure, &stateFetcherLog)
 	} else {
@@ -700,7 +723,15 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 			return result
 		}
 
-		newStateFetched, err = f.FetchAndProcessState(fetchCtx, groupStateFetcher, &stateFetcherLog)
+		var changed bool
+		groupDigest, changed, err = StateArtifactChanged(fetchCtx, groupStateFetcher, f.appliedDigest(index), &stateFetcherLog)
+		if err == nil && !changed {
+			stateFetcherLog.Debug().Str("digest", groupDigest).Msg("Group state unchanged")
+			return result
+		}
+		if err == nil {
+			newStateFetched, err = f.FetchAndProcessState(fetchCtx, groupStateFetcher, &stateFetcherLog)
+		}
 	}
 	if err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error fetching state")
@@ -720,7 +751,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 
 	// Replicate before deleting, so a moved tag never goes missing and
 	// content the old and new digest share is not downloaded again.
-	if err := applyGroupChanges(ctx, replicator, sourceStore, changes{replicate: replicateEntity, remove: deleteEntity}); err != nil {
+	if err := f.applyGroupChangesBounded(ctx, groupName(f.stateMap[index].url), replicator, sourceStore, changes{replicate: replicateEntity, remove: deleteEntity}); err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error applying state changes")
 		result.Error = fmt.Errorf("failed to apply state changes for %s: %w", f.stateMap[index].url, err)
 		return result
@@ -740,6 +771,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	f.stateMap[index].State = newState
 	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
 	f.stateMap[index].desired = nil
+	f.stateMap[index].appliedDigest = groupDigest
 	if f.stateFilePath != "" {
 		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
 			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
@@ -767,6 +799,25 @@ func (f *FetchAndReplicateStateProcess) fetchSatelliteRootStateTimed(
 	return f.fetchSatelliteRootState(fetchCtx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, log)
 }
 
+// cachedRootState returns a copy of the satellite state last pulled from
+// url when its digest is still digest.
+func (f *FetchAndReplicateStateProcess) cachedRootState(url, digest string) *SatelliteState {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.rootState == nil || f.rootStateURL != url || f.rootStateDigest != digest {
+		return nil
+	}
+	return f.rootState.clone()
+}
+
+func (f *FetchAndReplicateStateProcess) rememberRootState(url, digest string, state *SatelliteState) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rootState = state.clone()
+	f.rootStateURL = url
+	f.rootStateDigest = digest
+}
+
 func (f *FetchAndReplicateStateProcess) fetchSatelliteRootState(
 	ctx context.Context,
 	satelliteStateURL, srcUsername, srcPassword string,
@@ -778,11 +829,29 @@ func (f *FetchAndReplicateStateProcess) fetchSatelliteRootState(
 		log.Error().Err(err).Msg("Error processing satellite state")
 		return nil, err
 	}
+	f.mu.Lock()
+	lastDigest := f.rootStateDigest
+	if f.rootStateURL != satelliteStateURL {
+		lastDigest = ""
+	}
+	f.mu.Unlock()
+	digest, changed, err := StateArtifactChanged(ctx, satelliteStateFetcher, lastDigest, log)
+	if err != nil {
+		log.Error().Err(err).Msgf("Error resolving state artifact digest from url: %s", satelliteStateURL)
+		return nil, err
+	}
+	if !changed {
+		if cached := f.cachedRootState(satelliteStateURL, digest); cached != nil {
+			log.Debug().Str("digest", digest).Msg("Satellite state unchanged")
+			return cached, nil
+		}
+	}
 	satelliteState := &SatelliteState{}
 	if err := satelliteStateFetcher.FetchStateArtifact(ctx, satelliteState, log); err != nil {
 		log.Error().Err(err).Msgf("Error fetching state artifact from url: %s", satelliteStateURL)
 		return nil, err
 	}
+	f.rememberRootState(satelliteStateURL, digest, satelliteState)
 	return satelliteState, nil
 }
 
@@ -815,9 +884,13 @@ func (f *FetchAndReplicateStateProcess) setupReplication() (
 		}
 	}
 
-	if f.remoteStore != nil {
+	switch {
+	case f.replicationSource != nil:
+		sourceStore = f.replicationSource
+	case f.remoteStore != nil:
 		sourceStore = f.remoteStore
-	} else {
+	default:
+		source.BandwidthBytesPerSec = f.cm.GetReplicationBandwidth()
 		sourceStore, err = store.NewRegistryStore(source)
 		if err != nil {
 			return nil, nil, "", "", "", "", false, "", err

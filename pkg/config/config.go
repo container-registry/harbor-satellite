@@ -287,8 +287,8 @@ type AppConfig struct {
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
 	Audit                     AuditConfig            `json:"audit,omitempty"`
 	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitzero"`
-	// Plan items 6.2 and 6.4 (Harbor 3 skeleton): accepted, not read yet. A
-	// ReplicationConcurrency of 0 replicates every group at once, as today.
+	// Plan items 6.2 and 6.4. A ReplicationConcurrency of 0 replicates every
+	// group at once.
 	ReplicationConcurrency          int           `json:"replication_concurrency,omitempty"`
 	ReplicationBandwidthBytesPerSec int64         `json:"replication_bandwidth_bytes_per_sec,omitempty"`
 	Journal                         JournalConfig `json:"journal,omitzero"`

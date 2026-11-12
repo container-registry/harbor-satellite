@@ -6,6 +6,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 )
 
 func newGCClient(cm *config.ConfigManager, httpClient *http.Client, creds gcclient.Credentials) (*gcclient.Client, error) {
@@ -53,6 +54,10 @@ func toStatusReport(p *StatusReportParams) gcclient.StatusReport {
 		LastSyncDurationMs:  p.LastSyncDurationMs,
 		ImageCount:          clampInt32(p.ImageCount),
 	}
+	for _, a := range p.AppliedStates {
+		report.AppliedStates = append(report.AppliedStates, groundcontrol.AppliedState{Ref: a.Ref, Digest: a.Digest})
+	}
+	report.LastReplicationError = p.LastReplicationError
 	for _, img := range p.CachedImages {
 		report.CachedImages = append(report.CachedImages, gcclient.CachedImageReport{Reference: img.Reference, SizeBytes: img.SizeBytes})
 	}

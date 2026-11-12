@@ -5,7 +5,8 @@ import "time"
 // AppliedState is a group state the replication run applied: its reference
 // as the satellite state lists it and the digest it applied.
 type AppliedState struct {
-	Ref, Digest string
+	Ref    string `json:"ref"`
+	Digest string `json:"digest"`
 }
 
 // RunSummary describes the last finished state replication run; the status
@@ -33,9 +34,29 @@ type RunSummarySource interface {
 // LastRun returns the summary of the last finished Execute, zero before
 // the first.
 func (f *FetchAndReplicateStateProcess) LastRun() RunSummary {
-	return RunSummary{}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	run := f.lastRun
+	run.Applied = append([]AppliedState(nil), run.Applied...)
+	return run
 }
 
-// SetRunSummarySource makes the report carry the last run's digests,
-// applied_states, duration and last_replication_error (plan item 6.6).
-func (s *StatusReportingProcess) SetRunSummarySource(src RunSummarySource) {}
+func (f *FetchAndReplicateStateProcess) recordRun(started time.Time, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	run := RunSummary{
+		StateDigest:  f.rootStateDigest,
+		ConfigDigest: f.currentConfigDigest,
+		Duration:     time.Since(started),
+		FinishedAt:   time.Now(),
+	}
+	for _, group := range f.stateMap {
+		if group.appliedDigest != "" {
+			run.Applied = append(run.Applied, AppliedState{Ref: group.url, Digest: group.appliedDigest})
+		}
+	}
+	if err != nil {
+		run.LastReplicationError = err.Error()
+	}
+	f.lastRun = run
+}

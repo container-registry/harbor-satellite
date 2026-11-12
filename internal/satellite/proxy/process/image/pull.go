@@ -32,6 +32,7 @@ type pullHandler struct {
 	filler       store.Filler
 	prefetcher   Prefetcher
 	recorder     telemetry.Recorder
+	journal      PullThroughJournal
 }
 
 // NewPull serves retained content from localStore and fills it from remoteStore
@@ -96,12 +97,16 @@ func (p *pullHandler) handle(request *proxy.Request) (err error) {
 			return p.remoteStore.Pull(fillCtx, artifact, resource)
 		}
 
+		started := time.Now()
 		if err := p.localStore.Replicate(fillCtx, p.remoteStore, []store.Artifact{artifact}); err != nil {
 			p.recorder.CountPullThroughFill("error")
+			p.journalFill(resource, artifact, identifier, ocispec.Descriptor{}, started, err)
 			return nil, err
 		}
 		p.recorder.CountPullThroughFill("ok")
-		return p.localStore.Pull(fillCtx, artifact, resource)
+		descriptor, err = p.localStore.Pull(fillCtx, artifact, resource)
+		p.journalFill(resource, artifact, identifier, descriptor, started, err)
+		return descriptor, err
 	})
 
 	var operationResult singleflight.Result
