@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -176,17 +177,16 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return nil
 	}
 	log.Info().Msg(reason)
+	// Announce the lists already on disk, but leave the catalog unpublished.
+	// The root state can add groups that still have no images, and Publish
+	// only takes effect once. Pulls wait until that catalog is complete.
 	f.announceKnownGroups()
-	// A restart already knows its last desired set. Publish that before the
-	// Harbor round trip so manifest pulls do not treat it as unwatched.
-	if len(f.stateMap) > 0 {
-		f.publishImageCatalog()
-	}
 
 	satelliteState, err := f.fetchSatelliteRootStateTimed(ctx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
 	if err != nil {
 		if f.canDegrade() {
 			log.Warn().Err(err).Msg("degraded replication from last-known state")
+			f.publishIfCatalogReady()
 			return f.replicateDegraded(ctx, replicator, sourceStore, &log)
 		}
 		return err
@@ -203,7 +203,9 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 
 	changed := f.updateStateMap(satelliteState.States)
 	f.announceKnownGroups()
-	f.publishImageCatalog()
+	// A root state with no groups is a complete empty catalog. A group added
+	// here has no inventory yet, so publishing waits until that list arrives.
+	f.publishIfCatalogReady()
 
 	// Persist state if groups were added, removed, or swapped
 	if f.stateFilePath != "" && changed {
@@ -395,8 +397,33 @@ func (f *FetchAndReplicateStateProcess) groupEntities(index int) []Entity {
 
 func (f *FetchAndReplicateStateProcess) setOutstanding(index int, entities []Entity) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.stateMap[index].outstanding = append([]Entity{}, entities...)
+	ready := f.catalogReadyLocked()
+	f.mu.Unlock()
+	if ready {
+		f.publishImageCatalog()
+	}
+}
+
+// catalogReadyLocked reports whether every group has a known image list.
+// An empty state map is a confirmed catalog with no groups. The caller holds f.mu.
+func (f *FetchAndReplicateStateProcess) catalogReadyLocked() bool {
+	for i := range f.stateMap {
+		group := f.stateMap[i]
+		if group.outstanding == nil && group.Entities == nil && group.desired == nil {
+			return false
+		}
+	}
+	return true
+}
+
+func (f *FetchAndReplicateStateProcess) publishIfCatalogReady() {
+	f.mu.Lock()
+	ready := f.catalogReadyLocked()
+	f.mu.Unlock()
+	if ready {
+		f.publishImageCatalog()
+	}
 }
 
 func (f *FetchAndReplicateStateProcess) markDesiredApplied(index int, applied []Entity) {
@@ -497,16 +524,14 @@ func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
 		return result
 	}
 	f.commitPresent(entities, missing)
+	f.noteDesiredBlobs(ctx, replicator, sourceStore, f.stateMap[index].url, entities, &groupLog)
 	f.LogChanges(nil, missing, &groupLog)
 
 	if len(missing) > 0 {
-		if err := replicator.Replicate(f.copyContext(ctx), sourceStore, missing); err != nil {
+		if err := f.replicateEach(f.copyContext(ctx), f.stateMap[index].url, replicator, sourceStore, missing); err != nil {
 			groupLog.Error().Err(err).Msg("Error replicating persisted state")
 			result.Error = fmt.Errorf("failed to replicate persisted entities for %s: %w", f.stateMap[index].url, err)
 			return result
-		}
-		for _, entity := range missing {
-			f.commitArtifact(entity)
 		}
 		if f.directDeliverer != nil {
 			deliveryCtx, cancel := context.WithTimeout(ctx, f.listFetchTimeout())
@@ -557,6 +582,43 @@ func (f *FetchAndReplicateStateProcess) commitArtifact(artifact Entity) {
 	f.images.Commit(artifact)
 }
 
+// replicateEach copies one image at a time. A copy that lands commits that
+// image. An image-specific failure leaves the rest of the list running.
+// A canceled context stops the list.
+func removalsOnly(deletions, copied []Entity) []Entity {
+	replaced := make(map[string]struct{}, len(copied))
+	for _, entity := range copied {
+		replaced[entity.Name+"|"+entity.Tag] = struct{}{}
+	}
+	kept := make([]Entity, 0, len(deletions))
+	for _, entity := range deletions {
+		if _, ok := replaced[entity.Name+"|"+entity.Tag]; ok {
+			continue
+		}
+		kept = append(kept, entity)
+	}
+	return kept
+}
+
+func (f *FetchAndReplicateStateProcess) replicateEach(ctx context.Context, _ string, local, source store.Store, artifacts []Entity) error {
+	var errs []error
+	for _, artifact := range artifacts {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(append(errs, err)...)
+		}
+		err := local.Replicate(ctx, source, []store.Artifact{artifact})
+		if err != nil {
+			errs = append(errs, err)
+			if ctx.Err() != nil {
+				return errors.Join(errs...)
+			}
+			continue
+		}
+		f.commitArtifact(artifact)
+	}
+	return errors.Join(errs...)
+}
+
 // commitPresent marks images that already resolve locally so a manifest pull
 // does not wait for a copy that is not going to run.
 func (f *FetchAndReplicateStateProcess) commitPresent(entities, missing []Entity) {
@@ -570,6 +632,42 @@ func (f *FetchAndReplicateStateProcess) commitPresent(entities, missing []Entity
 		}
 		f.commitArtifact(entity)
 	}
+}
+
+// noteDesiredBlobs records successor digests for the images group will publish.
+// The local graph is enough once its manifest is present, including a layer
+// that is not local yet. A failed walk leaves the previous membership in place.
+func (f *FetchAndReplicateStateProcess) noteDesiredBlobs(ctx context.Context, local, source store.Store, group string, desired []Entity, log *zerolog.Logger) {
+	if f.images == nil {
+		return
+	}
+	if len(desired) == 0 {
+		f.images.SetBlobs(group, nil)
+		return
+	}
+	var digests []string
+	noted := false
+	for _, artifact := range desired {
+		if err := ctx.Err(); err != nil {
+			return
+		}
+		found, err := store.GraphDigests(ctx, local, artifact)
+		if err != nil || len(found) == 0 {
+			found, err = store.GraphDigests(ctx, source, artifact)
+		}
+		if err != nil || len(found) == 0 {
+			if log != nil && err != nil {
+				log.Debug().Err(err).Str("artifact", artifact.Reference()).Msg("could not list desired image blobs")
+			}
+			continue
+		}
+		noted = true
+		digests = append(digests, found...)
+	}
+	if !noted {
+		return
+	}
+	f.images.SetBlobs(group, digests)
 }
 
 func appendMissing(scheduled, missing []Entity) []Entity {
@@ -816,6 +914,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	desired := FetchEntitiesFromState(newState)
 	f.announceGroup(f.stateMap[index].url, desired)
 	f.setOutstanding(index, desired)
+	f.noteDesiredBlobs(ctx, replicator, sourceStore, f.stateMap[index].url, desired, &stateFetcherLog)
 	f.LogChanges(deleteEntity, replicateEntity, &stateFetcherLog)
 
 	missing, err := missingLocally(ctx, replicator, desired)
@@ -826,21 +925,21 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	f.commitPresent(desired, missing)
 	replicateEntity = appendMissing(replicateEntity, missing)
 
-	if err := replicator.Delete(ctx, deleteEntity); err != nil {
-		stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
-		result.Error = fmt.Errorf("failed to delete entities for %s: %w", f.stateMap[index].url, err)
-		return result
-	}
-
 	if len(replicateEntity) > 0 {
-		if err := replicator.Replicate(ctx, sourceStore, replicateEntity); err != nil {
+		if err := f.replicateEach(ctx, f.stateMap[index].url, replicator, sourceStore, replicateEntity); err != nil {
 			stateFetcherLog.Error().Err(err).Msg("Error replicating state")
 			result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
 			return result
 		}
-		for _, entity := range replicateEntity {
-			f.commitArtifact(entity)
-		}
+	}
+
+	// A replacement is already tagged by the copy above. Deleting it here would
+	// remove that tag. Removals wait until the copy list has landed, so a
+	// partial group does not drop an image that is still wanted.
+	if err := replicator.Delete(ctx, removalsOnly(deleteEntity, replicateEntity)); err != nil {
+		stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
+		result.Error = fmt.Errorf("failed to delete entities for %s: %w", f.stateMap[index].url, err)
+		return result
 	}
 
 	// Direct delivery: write tarballs to k3s/RKE2 image dir after store replication.
@@ -854,8 +953,12 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	}
 
 	f.mu.Lock()
+	applied := FetchEntitiesFromState(newState)
+	if applied == nil {
+		applied = []Entity{}
+	}
 	f.stateMap[index].State = newState
-	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
+	f.stateMap[index].Entities = applied
 	f.stateMap[index].desired = nil
 	f.stateMap[index].outstanding = nil
 	if f.stateFilePath != "" {

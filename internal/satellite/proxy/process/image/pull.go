@@ -127,6 +127,11 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 			if resource == store.PullResourceManifest && p.known(artifact) {
 				return nil, errdef.ErrNotFound
 			}
+			// A layer of a desired image stays local. Blobs that are not
+			// successors of that set keep the usual upstream fill.
+			if resource == store.PullResourceBlob && p.watchesBlob(artifact.Digest) {
+				return nil, errdef.ErrNotFound
+			}
 			break
 		}
 		if !p.mode.AllowsUpstreamPull() {
@@ -213,6 +218,10 @@ func (p *pullHandler) watching(artifact store.Artifact) bool {
 
 func (p *pullHandler) known(artifact store.Artifact) bool {
 	return p.images != nil && p.images.Known(artifact)
+}
+
+func (p *pullHandler) watchesBlob(digest string) bool {
+	return p.images != nil && p.images.WatchesBlob(digest)
 }
 
 func (p *pullHandler) waitContext(ctx context.Context) (context.Context, context.CancelFunc) {

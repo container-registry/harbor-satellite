@@ -262,6 +262,71 @@ func TestImageOutsideTheDesiredSetKeepsProxyFill(t *testing.T) {
 	require.Equal(t, int32(1), local.replicateCalls.Load())
 }
 
+func TestDesiredImageBlobMissStaysLocal(t *testing.T) {
+	layerDigest := digest.FromString("missing-layer").String()
+	local := &fakeStore{
+		pull: func(context.Context, store.Artifact, store.PullResource, int32) (ocispec.Descriptor, error) {
+			return ocispec.Descriptor{}, errdef.ErrNotFound
+		},
+		fetch:     func(context.Context, store.Artifact, ocispec.Descriptor) (io.ReadCloser, error) { return nil, nil },
+		replicate: func(context.Context, store.Store, []store.Artifact) error { return nil },
+	}
+	remote := &fakeStore{
+		pull: func(context.Context, store.Artifact, store.PullResource, int32) (ocispec.Descriptor, error) {
+			return ocispec.Descriptor{}, errors.New("proxy must not contact upstream for a desired image blob")
+		},
+		fetch:     func(context.Context, store.Artifact, ocispec.Descriptor) (io.ReadCloser, error) { return nil, nil },
+		replicate: func(context.Context, store.Store, []store.Artifact) error { return nil },
+	}
+	gate := ready.New()
+	gate.SetGroup("edge", []store.Artifact{{Name: "team/app", Tag: "latest", Digest: "sha256:abc"}})
+	gate.SetBlobs("edge", []string{layerDigest})
+	gate.Publish()
+	handler := proxy.New(newPullWithGate(t, proxy.ModeProxy, local, remote, gate)).Handler()
+
+	got := serve(handler, http.MethodGet, "/v2/team/app/blobs/"+layerDigest, nil)
+	head := serve(handler, http.MethodHead, "/v2/team/app/blobs/"+layerDigest, nil)
+
+	require.Equal(t, http.StatusNotFound, got.Code)
+	require.Contains(t, got.Body.String(), string(proxy.ErrorCodeBlobUnknown))
+	require.Equal(t, http.StatusNotFound, head.Code)
+	require.Equal(t, int32(0), remote.pullCalls.Load())
+	require.Equal(t, int32(0), local.replicateCalls.Load())
+}
+
+func TestBlobOutsideTheDesiredSetKeepsProxyFill(t *testing.T) {
+	payload := []byte("layer-bytes")
+	descriptor := descriptorFor("application/vnd.example.layer.v1", payload)
+	var available atomic.Bool
+	local := &fakeStore{
+		pull: func(context.Context, store.Artifact, store.PullResource, int32) (ocispec.Descriptor, error) {
+			if !available.Load() {
+				return ocispec.Descriptor{}, errdef.ErrNotFound
+			}
+			return descriptor, nil
+		},
+		fetch: func(context.Context, store.Artifact, ocispec.Descriptor) (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(payload)), nil
+		},
+		replicate: func(context.Context, store.Store, []store.Artifact) error {
+			available.Store(true)
+			return nil
+		},
+	}
+	remote := descriptorStore(descriptor, payload)
+	gate := ready.New()
+	gate.SetGroup("edge", []store.Artifact{{Name: "library/other", Tag: "latest", Digest: "sha256:fff"}})
+	gate.SetBlobs("edge", []string{digest.FromString("some-other-layer").String()})
+	gate.Publish()
+	handler := proxy.New(newPullWithGate(t, proxy.ModeProxy, local, remote, gate)).Handler()
+
+	response := serve(handler, http.MethodGet, "/v2/team/app/blobs/"+descriptor.Digest.String(), nil)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, payload, response.Body.Bytes())
+	require.Equal(t, int32(1), local.replicateCalls.Load())
+}
+
 func TestUnpublishedCatalogDoesNotFillADesiredManifest(t *testing.T) {
 	payload := []byte(`{"schemaVersion":2}`)
 	descriptor := descriptorFor(ocispec.MediaTypeImageManifest, payload)
