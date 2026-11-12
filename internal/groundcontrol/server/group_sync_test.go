@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -90,19 +91,11 @@ func runSyncGroup(t *testing.T, wantStatus int, artifacts []GroupArtifact, group
 	mock.ExpectQuery("WHERE group_id").WithArgs(groups[0].id).WillReturnRows(memberRows)
 
 	if !failState {
-		mock.ExpectQuery("FROM robot_accounts").
-			WithArgs(int32(7)).
-			WillReturnRows(sqlmock.NewRows([]string{
-				"id", "robot_name", "robot_secret_hash", "robot_id", "satellite_id", "robot_expiry", "created_at", "updated_at",
-			}).AddRow(3, "robot$sat", "hash", "99", 7, nil, now, now))
-		membership := sqlmock.NewRows([]string{"satellite_id", "group_id"})
-		for _, group := range groups {
-			membership.AddRow(7, group.id)
-		}
-		mock.ExpectQuery("WHERE satellite_id").WithArgs(int32(7)).WillReturnRows(membership)
-		for _, group := range groups {
-			mock.ExpectQuery("WHERE id").WithArgs(group.id).WillReturnRows(groupRows(now, group))
-		}
+		// Postgres computes the union (GetProjectsOfSatellites); the
+		// integration tests in robot_permissions_test.go cover that query.
+		mock.ExpectQuery("FROM robot_accounts").WithArgs(sqlmock.AnyArg()).
+			WillReturnRows(sqlmock.NewRows([]string{"satellite_id", "robot_id", "robot_name", "projects"}).
+				AddRow(7, "99", "robot$sat", pq.Array(unionOfProjects(groups))))
 		mock.ExpectCommit()
 	} else {
 		mock.ExpectRollback()
@@ -117,6 +110,15 @@ func runSyncGroup(t *testing.T, wantStatus int, artifacts []GroupArtifact, group
 	require.Equal(t, wantStatus, rr.Code)
 	require.NoError(t, mock.ExpectationsWereMet())
 	return fake.projects, fake.steps
+}
+
+func unionOfProjects(groups []syncGroupRow) []string {
+	var all []string
+	for _, g := range groups {
+		all = append(all, g.projects...)
+	}
+	slices.Sort(all)
+	return slices.Compact(all)
 }
 
 func groupRows(now time.Time, group syncGroupRow) *sqlmock.Rows {

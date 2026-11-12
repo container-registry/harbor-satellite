@@ -52,7 +52,7 @@ go test -v -run TestFunctionName ./path/to/package
 # Ground Control tests against a disposable Postgres (also runs the unit tests of internal/groundcontrol)
 task test:integration
 
-# Run E2E tests (main, BYO, SPIFFE; crash-recovery variants run separately)
+# Run E2E tests (main, BYO, SPIFFE, multi-group; crash-recovery variants run separately)
 task e2e
 
 # Run individual E2E variants
@@ -61,7 +61,7 @@ task e2e-byo                # BYO registry E2E
 task e2e-spiffe             # SPIFFE join-token E2E
 task e2e-crash-recovery     # Crash recovery with the local OCI store
 task e2e-crash-recovery-byo # Crash recovery with BYO registry
-task e2e-multi-group        # Satellite in two groups (pending plan item D5, runs with HARBOR3_PENDING=1)
+task e2e-multi-group        # Satellite in two groups replicates from both projects
 
 # Fleet load test (build tag load) against a running GC: LOAD_GC_URL, LOAD_ADMIN_PASSWORD
 task test:load
@@ -166,7 +166,7 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 
 ### Key Concepts
 
-Groups: Collections of artifacts (repository, tag, digest, type) that satellites replicate. GC pushes each group's state as an OCI artifact into Harbor under `satellite/group-state/<group>/state`.
+Groups: Collections of artifacts (repository, tag, digest, type) that satellites replicate. GC pushes each group's state as an OCI artifact into Harbor under `satellite/group-state/<group>/state`. A satellite's robot can pull the union of the projects of all its groups plus `satellite`: every membership or group change (register, SPIFFE ZTR robot creation, group sync, add, remove, group delete) goes through `server.syncRobotPermissions`, one `GetProjectsOfSatellites` query and one Harbor update per robot, because Harbor replaces a robot's permissions on each update.
 
 Configs: Named satellite app configs (intervals, metrics, BYO registry, registry fallback, audit, TLS, peer distribution, etc.) delivered through Harbor as config state artifacts (`satellite/config-state/<config>/state`). Updates use JSON Merge Patch (evanphx/json-patch).
 
@@ -319,7 +319,7 @@ The satellite watches `config.json`. Log level, state replication interval and a
 ## CI/CD
 
 GitHub Actions workflows:
-- .github/workflows/test.yaml (PRs): unit tests + Codecov; Ground Control database generation drift check (`task generate:groundcontrol-database`); Ground Control integration tests via `task test:integration`; govulncheck, GoReleaser snapshot, satellite and GC builds, E2E main, BYO, SPIFFE (all ubuntu-latest). Crash-recovery E2E is not run in CI
+- .github/workflows/test.yaml (PRs): unit tests + Codecov; Ground Control database generation drift check (`task generate:groundcontrol-database`); Ground Control integration tests via `task test:integration`; govulncheck, GoReleaser snapshot, satellite and GC builds, E2E main, BYO, SPIFFE, multi-group (all ubuntu-latest). Crash-recovery E2E is not run in CI
 - .github/workflows/lint.yaml (PRs): golangci-lint v2.12.2 binary on ubuntu-latest, called directly rather than through `task lint-report`; job `arch` runs `task lint:arch`
 - .github/workflows/release.yaml (push to main and `v*.*.*` tags, ubuntu-latest): per-arch builds (linux amd64/arm64/ppc64le/s390x/riscv64) of the `satellite` and `ground-control` images to `${REGISTRY_ADDRESS}/${PROJECT_NAME}` from repository variables (README: registry.goharbor.io/harbor-satellite), multi-arch manifest, Cosign keyless signing; tags additionally run `task release` (GoReleaser)
 - .github/workflows/labeler.yaml (`pull_request_target`, ubuntu-latest): auto-labels PRs (documentation for *.md, golang for *.go)
@@ -402,7 +402,7 @@ This is core functionality; changes require careful review.
 Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNotImplemented` and no production path calls them yet; their behaviour is specified by `pending.Plan` tests.
 
 - internal/shared/notimpl/: `ErrNotImplemented` and `Err(item)`, returned by every skeleton stub
-- D5: `server.syncRobotPermissions` (for a set of satellites, one query and one Harbor update per robot with the union of the satellite's groups) and the query `GetProjectsOfSatellites`; D10 (empty satellite state artifact) has tests only
+- D10 (empty satellite state artifact) has tests only
 - D6: `server.verifyUserCredentials(ctx, clientIP, username, password)` (one credential check for Login and Basic auth that owns the lockout, the attempt records and the IP failure limiter) and `middleware.FailureLimiter` (per client IP, never blocks yet), built by `NewServer` into `Server.FailureLimiter` from AUTH_FAILURE_LIMIT (20) and AUTH_FAILURE_WINDOW (1m)
 - D7: migration 016 adds `satellite_token.consumed_at`; queries `ClaimToken`, `UnclaimToken`, `ConsumeToken` and the stubs `server.claimZTRToken` / `unclaimZTRToken` (a consumed token is `errTokenInvalid` wrapping `errTokenConsumed`, answered 400 like an unknown one); Ztr still reads and deletes the token without a claim
 - D8: query `TryAdvisoryXactLock`; `runCleanupWithLock` still takes a session advisory lock through the pool

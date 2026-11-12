@@ -164,10 +164,11 @@ func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := assignPermissionsToRobot(r.Context(), q, s.groupSync, req.Groups, rbt.ID); err != nil {
-		log.Println("Error assigning permissions to robot:", err)
-		HandleAppError(w, err)
-		return
+	if len(req.Groups) > 0 {
+		if err := syncRobotPermissionsWith(r.Context(), q, s.groupSync, []int32{satellite.ID}); err != nil {
+			HandleAppError(w, robotPermissionsError(err))
+			return
+		}
 	}
 
 	config, err := q.GetConfigByName(r.Context(), req.ConfigName)
@@ -818,6 +819,19 @@ func ensureSatelliteRobotAccount(r *http.Request, q *database.Queries, satellite
 	if err != nil {
 		return database.RobotAccount{}, harborRobotID, "", fmt.Errorf("store robot account: %w", err)
 	}
+	if !skipHarborCheck {
+		// A satellite added to groups before its first SPIFFE ZTR has no
+		// robot yet, so the robot starts with the projects of those groups.
+		groups, err := q.SatelliteGroupList(r.Context(), satellite.ID)
+		if err != nil {
+			return database.RobotAccount{}, harborRobotID, "", fmt.Errorf("list groups of satellite: %w", err)
+		}
+		if len(groups) > 0 {
+			if err := syncRobotPermissions(r.Context(), q, []int32{satellite.ID}); err != nil {
+				return database.RobotAccount{}, harborRobotID, "", err
+			}
+		}
+	}
 
 	log.Printf("SPIFFE ZTR: Created robot account %s for satellite %s", robotName, satellite.Name)
 	return robot, harborRobotID, robotSecret, nil
@@ -1226,7 +1240,6 @@ func (s *Server) AddSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var projects []string
 	var groupStates []string
 
 	for _, group := range groupList {
@@ -1240,7 +1253,6 @@ func (s *Server) AddSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 			HandleAppError(w, err)
 			return
 		}
-		projects = append(projects, grp.Projects...)
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
@@ -1251,27 +1263,8 @@ func (s *Server) AddSatelliteToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get robot account permissions
-	robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), sat.ID)
-	if err != nil {
-		log.Printf("Error: Failed to get robot account for satellite: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to get robot account for satellite",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
-	// Update robot account permissions
-	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
-	if err != nil {
-		log.Printf("Error: Failed to update robot account permissions: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to update robot account permissions",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
+	if err := syncRobotPermissionsWith(r.Context(), q, s.groupSync, []int32{sat.ID}); err != nil {
+		HandleAppError(w, robotPermissionsError(err))
 		return
 	}
 
@@ -1376,17 +1369,6 @@ func (s *Server) RemoveSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), sat.ID)
-	if err != nil {
-		log.Printf("Error: Failed to Add permission to robot account: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to Add permission to robot account",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
-	}
-
 	groupList, err := q.SatelliteGroupList(r.Context(), sat.ID)
 	if err != nil {
 		log.Printf("Error: Failed: %v", err)
@@ -1398,7 +1380,6 @@ func (s *Server) RemoveSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var projects []string
 	var groupStates []string
 
 	for _, group := range groupList {
@@ -1412,21 +1393,11 @@ func (s *Server) RemoveSatelliteFromGroup(w http.ResponseWriter, r *http.Request
 			HandleAppError(w, err)
 			return
 		}
-		projects = append(projects, grp.Projects...)
 		groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 	}
 
-	// 1. We need the list of state artifacts for the groups that satellite belongs to
-	// 2. Update the satellite state artifact accordingly
-
-	_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
-	if err != nil {
-		log.Printf("Error: Failed to Add permission to robot account: %v", err)
-		err := &AppError{
-			Message: "Error: Failed to update robot account permissions",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
+	if err := syncRobotPermissionsWith(r.Context(), q, s.groupSync, []int32{sat.ID}); err != nil {
+		HandleAppError(w, robotPermissionsError(err))
 		return
 	}
 
