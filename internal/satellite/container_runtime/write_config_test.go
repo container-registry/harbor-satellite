@@ -294,3 +294,25 @@ ca = "/etc/certs/root.pem"
 	require.Equal(t, true, dig(t, hosts, "host", "https://mirror.example", "override_path"))
 	require.Equal(t, []any{"1"}, dig(t, hosts, "host", "https://mirror.example", "header", "x-custom"))
 }
+
+// containerd reads certs.d/<host[:port]>/hosts.toml; a registry given with
+// its scheme must land there, not in certs.d/https:/<host>.
+func TestContainerdHostsDirIsTheRegistryHost(t *testing.T) {
+	inTempEtc(t)
+	_, err := setContainerdConfig([]string{"https://quay.io", "http://registry.local:5000/"}, proxy)
+	require.NoError(t, err)
+
+	require.Equal(t, "https://quay.io", decodeTOML(t, filepath.Join(containerdCertsDir, "quay.io", "hosts.toml"))["server"])
+	require.Equal(t, "http://registry.local:5000/", decodeTOML(t, filepath.Join(containerdCertsDir, "registry.local:5000", "hosts.toml"))["server"])
+	require.NoDirExists(t, filepath.Join(containerdCertsDir, "https:"))
+	require.NoDirExists(t, filepath.Join(containerdCertsDir, "http:"))
+}
+
+func TestContainerdRefusesARegistryOutsideCertsD(t *testing.T) {
+	inTempEtc(t)
+	for _, registry := range []string{"../../escape", "..", "https://", "a/b"} {
+		_, err := setContainerdConfig([]string{registry}, proxy)
+		require.ErrorContains(t, err, "is not a host[:port]", registry)
+	}
+	require.NoFileExists(t, filepath.Join(filepath.Dir(filepath.Dir(containerdCertsDir)), "escape", "hosts.toml"))
+}

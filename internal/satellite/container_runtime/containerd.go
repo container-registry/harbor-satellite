@@ -33,7 +33,13 @@ func setContainerdConfig(upstreamRegistries []string, proxyEndpoint string) (str
 
 // writeContainerdHostToml creates or updates hosts.toml for a registry
 func writeContainerdHostToml(registryURL, proxyEndpoint string) error {
-	dir := filepath.Join(containerdCertsDir, registryURL)
+	// containerd looks up certs.d/<host[:port]>, never a path with the
+	// scheme, and the name must not leave certs.d.
+	host := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(registryURL, "https://"), "http://"), "/")
+	if host == "" || host == "." || host == ".." || strings.ContainsAny(host, `/\`) {
+		return fmt.Errorf("registry %q is not a host[:port]", registryURL)
+	}
+	dir := filepath.Join(containerdCertsDir, host)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
