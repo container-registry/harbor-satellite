@@ -90,6 +90,9 @@ func statementKey(query string) string {
 			return name
 		}
 	}
+	if name, ok := sqlcQueryNames()[fingerprint(query)]; ok {
+		return name
+	}
 	key := strings.Join(strings.Fields(query), " ")
 	if len(key) > 80 {
 		key = key[:77] + "..."
