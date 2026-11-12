@@ -5,12 +5,10 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/policybundle"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBundle_DigestIsOrderIndependent(t *testing.T) {
-	pending.Plan(t, "7.5", "Bundle.Digest is a stub")
 	allow := []string{"*", "*", "*", "*", "allow"}
 	deny := []string{"*", "library/blocked", "*", "*", "deny"}
 	a := policybundle.Bundle{ModelVersion: policybundle.ModelVersion, Policies: [][]string{allow, deny}}
@@ -26,7 +24,6 @@ func TestBundle_DigestIsOrderIndependent(t *testing.T) {
 }
 
 func TestParseMode(t *testing.T) {
-	pending.Plan(t, "7.5", "ParseMode is a stub")
 	for in, want := range map[string]policybundle.Mode{
 		"":        policybundle.ModeOff,
 		"off":     policybundle.ModeOff,
