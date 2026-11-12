@@ -8,16 +8,16 @@ informed: [Harbor Satellite Developers]
 
 ## Implementation Status
 
-Partly implemented. The Context section below describes the code base when this record was written.
+Partly implemented: the store and the proxy without policy. The Context section below describes the code base when this record was written.
 
 | Part | State |
 |---|---|
 | ORAS OCI image layout replaces Zot as the local store | Done in [#648](https://github.com/container-registry/harbor-satellite/pull/648) (`internal/satellite/store`, default path `<config-dir>/oci`) |
-| Typed OCI request parsing and process chain | Package added in [#649](https://github.com/container-registry/harbor-satellite/pull/649) (`internal/satellite/proxy`). Not wired: `cmd/satellite` does not import it and the satellite opens no listener |
-| Forwarding, CEL policy, `proxy` / `replica` / `cache` modes | Not implemented. The CEL policy is superseded by Casbin edge admission ([ADR-0017](0017-policy-engine-casbin.md)) |
-| Replace Crane with ORAS | Not done. go-containerregistry is still used by the BYO registry store, direct delivery, state fetching and the image catalog |
-
-Until the proxy is wired, workloads get images from a BYO registry (`--byo-registry`) or via k3s/RKE2 direct delivery (`--direct-delivery`).
+| Typed OCI request parsing and process chain | Package added in [#649](https://github.com/container-registry/harbor-satellite/pull/649) (`internal/satellite/proxy`) |
+| Proxy wired into the satellite, `proxy` / `replica` modes | Done in [#654](https://github.com/container-registry/harbor-satellite/pull/654). `cmd/satellite` serves a pull-only OCI Distribution endpoint on `127.0.0.1:<proxy-port>` (default 8585, loopback only) backed by the local store, unless `--fallback-only`. `proxy` (default) fills a local miss from Harbor, `replica` serves only replicated content. Push, delete, tag list, referrers and catalog answer `UNSUPPORTED`. CRI mirror configs point at this endpoint |
+| `cache` mode | Not implemented |
+| Policy enforcement (CEL in this record) | Not implemented; the proxy enforces no policy yet. The CEL policy is superseded by Casbin edge admission ([ADR-0017](0017-policy-engine-casbin.md)), plan item 7.5; its middleware slot in `cmd/satellite` is empty |
+| Replace Crane with ORAS | Partly done. The local OCI store and the registry store (Harbor source, BYO registry) use ORAS; go-containerregistry is still used for state fetching, the image catalog and direct delivery |
 
 ## Context
 
