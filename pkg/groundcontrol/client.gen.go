@@ -1356,31 +1356,31 @@ type ClientInterface interface {
 	// Corresponds with POST /login (the `Login` operationId).
 	Login(ctx context.Context, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// OidcCallback Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+	// OidcCallback Completes an OIDC login in the browser that started it (plan item 8.1).
 	//
 	// Corresponds with GET /oidc/callback (the `OidcCallback` operationId).
 	OidcCallback(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// OidcDeviceAuthorize Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+	// OidcDeviceAuthorize Starts an OIDC device flow for the CLI (plan item 8.1).
 	//
 	// Corresponds with POST /oidc/device (the `OidcDeviceAuthorize` operationId).
 	OidcDeviceAuthorize(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// OidcDeviceTokenWithBody Polls an OIDC device flow (plan item 8.1, not implemented).
+	// OidcDeviceTokenWithBody Polls an OIDC device flow (plan item 8.1).
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
 	OidcDeviceTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// OidcDeviceToken Polls an OIDC device flow (plan item 8.1, not implemented).
+	// OidcDeviceToken Polls an OIDC device flow (plan item 8.1).
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
 	OidcDeviceToken(ctx context.Context, body OidcDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// OidcLogin Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+	// OidcLogin Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1).
 	//
 	// Corresponds with GET /oidc/login (the `OidcLogin` operationId).
 	OidcLogin(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2412,7 +2412,7 @@ func (c *Client) Login(ctx context.Context, body LoginJSONRequestBody, reqEditor
 	return c.Client.Do(req)
 }
 
-// OidcCallback Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+// OidcCallback Completes an OIDC login in the browser that started it (plan item 8.1).
 //
 // Corresponds with GET /oidc/callback (the `OidcCallback` operationId).
 func (c *Client) OidcCallback(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2427,7 +2427,7 @@ func (c *Client) OidcCallback(ctx context.Context, params *OidcCallbackParams, r
 	return c.Client.Do(req)
 }
 
-// OidcDeviceAuthorize Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+// OidcDeviceAuthorize Starts an OIDC device flow for the CLI (plan item 8.1).
 //
 // Corresponds with POST /oidc/device (the `OidcDeviceAuthorize` operationId).
 func (c *Client) OidcDeviceAuthorize(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2442,7 +2442,7 @@ func (c *Client) OidcDeviceAuthorize(ctx context.Context, reqEditors ...RequestE
 	return c.Client.Do(req)
 }
 
-// OidcDeviceTokenWithBody Polls an OIDC device flow (plan item 8.1, not implemented).
+// OidcDeviceTokenWithBody Polls an OIDC device flow (plan item 8.1).
 //
 // Takes any type of body and a specified content type.
 //
@@ -2459,7 +2459,7 @@ func (c *Client) OidcDeviceTokenWithBody(ctx context.Context, contentType string
 	return c.Client.Do(req)
 }
 
-// OidcDeviceToken Polls an OIDC device flow (plan item 8.1, not implemented).
+// OidcDeviceToken Polls an OIDC device flow (plan item 8.1).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -2476,7 +2476,7 @@ func (c *Client) OidcDeviceToken(ctx context.Context, body OidcDeviceTokenJSONRe
 	return c.Client.Do(req)
 }
 
-// OidcLogin Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+// OidcLogin Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1).
 //
 // Corresponds with GET /oidc/login (the `OidcLogin` operationId).
 func (c *Client) OidcLogin(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5020,35 +5020,35 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /login (the `Login` operationId).
 	LoginWithResponse(ctx context.Context, body LoginJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginHTTPResponse, error)
 
-	// OidcCallbackWithResponse Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+	// OidcCallbackWithResponse Completes an OIDC login in the browser that started it (plan item 8.1).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /oidc/callback (the `OidcCallback` operationId).
 	OidcCallbackWithResponse(ctx context.Context, params *OidcCallbackParams, reqEditors ...RequestEditorFn) (*OidcCallbackHTTPResponse, error)
 
-	// OidcDeviceAuthorizeWithResponse Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+	// OidcDeviceAuthorizeWithResponse Starts an OIDC device flow for the CLI (plan item 8.1).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /oidc/device (the `OidcDeviceAuthorize` operationId).
 	OidcDeviceAuthorizeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*OidcDeviceAuthorizeHTTPResponse, error)
 
-	// OidcDeviceTokenWithBodyWithResponse Polls an OIDC device flow (plan item 8.1, not implemented).
+	// OidcDeviceTokenWithBodyWithResponse Polls an OIDC device flow (plan item 8.1).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
 	OidcDeviceTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OidcDeviceTokenHTTPResponse, error)
 
-	// OidcDeviceTokenWithResponse Polls an OIDC device flow (plan item 8.1, not implemented).
+	// OidcDeviceTokenWithResponse Polls an OIDC device flow (plan item 8.1).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /oidc/device/token (the `OidcDeviceToken` operationId).
 	OidcDeviceTokenWithResponse(ctx context.Context, body OidcDeviceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*OidcDeviceTokenHTTPResponse, error)
 
-	// OidcLoginWithResponse Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+	// OidcLoginWithResponse Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -9408,7 +9408,7 @@ func (c *ClientWithResponses) LoginWithResponse(ctx context.Context, body LoginJ
 	return ParseLoginHTTPResponse(rsp)
 }
 
-// OidcCallbackWithResponse Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+// OidcCallbackWithResponse Completes an OIDC login in the browser that started it (plan item 8.1).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -9421,7 +9421,7 @@ func (c *ClientWithResponses) OidcCallbackWithResponse(ctx context.Context, para
 	return ParseOidcCallbackHTTPResponse(rsp)
 }
 
-// OidcDeviceAuthorizeWithResponse Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+// OidcDeviceAuthorizeWithResponse Starts an OIDC device flow for the CLI (plan item 8.1).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -9434,7 +9434,7 @@ func (c *ClientWithResponses) OidcDeviceAuthorizeWithResponse(ctx context.Contex
 	return ParseOidcDeviceAuthorizeHTTPResponse(rsp)
 }
 
-// OidcDeviceTokenWithBodyWithResponse Polls an OIDC device flow (plan item 8.1, not implemented).
+// OidcDeviceTokenWithBodyWithResponse Polls an OIDC device flow (plan item 8.1).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9447,7 +9447,7 @@ func (c *ClientWithResponses) OidcDeviceTokenWithBodyWithResponse(ctx context.Co
 	return ParseOidcDeviceTokenHTTPResponse(rsp)
 }
 
-// OidcDeviceTokenWithResponse Polls an OIDC device flow (plan item 8.1, not implemented).
+// OidcDeviceTokenWithResponse Polls an OIDC device flow (plan item 8.1).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9460,7 +9460,7 @@ func (c *ClientWithResponses) OidcDeviceTokenWithResponse(ctx context.Context, b
 	return ParseOidcDeviceTokenHTTPResponse(rsp)
 }
 
-// OidcLoginWithResponse Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+// OidcLoginWithResponse Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1).
 //
 // Returns a wrapper object for the known response body format(s).
 //

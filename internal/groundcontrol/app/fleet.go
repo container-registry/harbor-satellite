@@ -15,6 +15,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/casbin"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/harbor2"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/oidc"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/postgres"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/spire"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
@@ -22,6 +23,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/heartbeat"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/satconfig"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/secrets"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
@@ -59,6 +61,8 @@ type FleetDeps struct {
 	// delivers successor robots with heartbeats (plan item 8.4).
 	RobotRotation     env.RobotRotation
 	DataEncryptionKey string
+	// OIDC enables operator login through an OIDC provider (plan item 8.1).
+	OIDC env.OIDC
 }
 
 // Fleet is what a serve process runs: the services behind the handlers,
@@ -100,8 +104,8 @@ func (l operatorLogin) Start(ctx context.Context) (redirectURL, binding string, 
 // the repository's policies and the services and the server share it.
 //
 // With ROBOT_ROTATION_ENABLED the heartbeat delivers pending rotations
-// from a RotationCache on Pools.Fleet. The 8.1 login stays nil until that
-// item lands.
+// from a RotationCache on Pools.Fleet; with OIDC_ENABLED the operator
+// login discovers the provider at start-up.
 func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if deps.Pools == nil || deps.Pools.API == nil {
 		return nil, fmt.Errorf("%w: the fleet needs database pools", fleet.ErrInvalid)
@@ -201,7 +205,37 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Fleet{Services: services, Probe: probe, Sessions: sessions, HeartbeatBuffer: buffer, Flusher: flusher, Policy: policy, Rotations: rotations}, nil
+	f := &Fleet{Services: services, Probe: probe, Sessions: sessions, HeartbeatBuffer: buffer, Flusher: flusher, Policy: policy, Rotations: rotations}
+	if deps.OIDC.Enabled {
+		if f.Login, err = newOIDCLogin(deps.Pools, deps.OIDC, deps.Server); err != nil {
+			return nil, err
+		}
+	}
+	return f, nil
+}
+
+// newOIDCLogin discovers the provider and stores users and login states on
+// Pools.API.
+func newOIDCLogin(pools *dbpool.Pools, cfg env.OIDC, srv env.Server) (*authn.OIDCLogin, error) {
+	authCfg := authn.OIDCConfig{
+		Enabled: true, IssuerURL: cfg.IssuerURL, ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, RedirectURL: cfg.RedirectURL,
+		Scopes: cfg.Scopes, UsernameClaim: cfg.UsernameClaim, GroupsClaim: cfg.GroupsClaim, RoleMap: cfg.RoleMap,
+		LoginStateTTL: cmp.Or(cfg.LoginStateTTL, 10*time.Minute),
+	}
+	if rate, err := middleware.ParseRate(cmp.Or(srv.RateLimitAnonymous, "10/1m")); err == nil && srv.RateLimitSplit {
+		authCfg.MinDevicePollInterval = rate.Window / time.Duration(rate.Requests)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	provider, err := oidc.New(ctx, authCfg)
+	if err != nil {
+		return nil, err
+	}
+	store, err := postgres.NewIdentityStore(pools.API)
+	if err != nil {
+		return nil, err
+	}
+	return authn.NewOIDCLogin(provider, store, fleet.SystemClock{}, authCfg)
 }
 
 // withHotPathDefaults fills the plan item 4 settings a caller left zero

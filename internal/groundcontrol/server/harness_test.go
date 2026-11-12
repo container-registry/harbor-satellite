@@ -158,9 +158,13 @@ func (h *gcHarness) do(method, path string, body any, auth authFunc) response {
 	return r
 }
 
+// harnessClient answers redirects as they come, so a test sees the 302 of
+// /oidc/login instead of following it to the provider.
+var harnessClient = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
 // send is safe to call outside the test goroutine.
 func send(req *http.Request) (response, error) {
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := harnessClient.Do(req)
 	if err != nil {
 		return response{}, err
 	}
