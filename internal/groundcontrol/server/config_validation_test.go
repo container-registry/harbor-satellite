@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +33,6 @@ func requireValidationError(t *testing.T, r response) {
 }
 
 func TestCreateConfig_InvalidReturns422NotStored(t *testing.T) {
-	pending.Plan(t, "7.4", "configs are stored without validation")
 	h := newGCHarness(t)
 
 	r := h.do(http.MethodPost, "/api/configs", map[string]any{"config_name": "byo", "config": invalidAppConfig(t)}, h.admin)
@@ -45,7 +43,6 @@ func TestCreateConfig_InvalidReturns422NotStored(t *testing.T) {
 }
 
 func TestUpdateConfig_InvalidPatchReturns422(t *testing.T) {
-	pending.Plan(t, "7.4", "configs are stored without validation")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	var before ConfigResponse
@@ -63,7 +60,6 @@ func TestUpdateConfig_InvalidPatchReturns422(t *testing.T) {
 
 // Warnings come back with the write; the document is stored as submitted.
 func TestCreateConfig_WarningsInResponse(t *testing.T) {
-	pending.Plan(t, "7.4", "configs are stored without validation")
 	h := newGCHarness(t)
 	cfg := appConfigWith(t, "log_level", "loud")
 

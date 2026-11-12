@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/policybundle"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -1163,7 +1162,6 @@ func intPtr(i int) *int    { return &i }
 func boolPtr(b bool) *bool { return &b }
 
 func TestValidateAppConfig_NeedsNoGroundControlURL(t *testing.T) {
-	pending.Plan(t, "7.4", "ValidateAppConfig is a stub")
 	app := AppConfig{
 		LogLevel:                  "info",
 		StateReplicationInterval:  "@every 00h00m30s",
@@ -1197,7 +1195,6 @@ func TestValidateAppConfig_NeedsNoGroundControlURL(t *testing.T) {
 // GC's own USE_UNSECURE must not decide whether a satellite's config may
 // use HTTP peers.
 func TestValidateAppConfig_IgnoresProcessEnv(t *testing.T) {
-	pending.Plan(t, "7.4", "ValidateAppConfig is a stub")
 	t.Setenv("USE_UNSECURE", "true")
 	app := AppConfig{
 		PeerDistribution: PeerDistributionConfig{

@@ -8,7 +8,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -125,10 +124,7 @@ func (w *world) validatingServices(t *testing.T, v *fleettest.ConfigValidator) *
 	return svc
 }
 
-const pendingValidation = "Ground Control stores config documents without validating them"
-
 func TestConfigService_InvalidIsValidationErrorNotStored(t *testing.T) {
-	pending.Plan(t, "7.4", pendingValidation)
 	w := newWorld()
 	v := fleettest.NewConfigValidator(w.rec)
 	v.Err = errors.New("heartbeat_interval: not an @every expression")
@@ -146,7 +142,6 @@ func TestConfigService_InvalidIsValidationErrorNotStored(t *testing.T) {
 }
 
 func TestConfigService_WarningsStoredAndReturned(t *testing.T) {
-	pending.Plan(t, "7.4", pendingValidation)
 	w := newWorld()
 	w.repo.Configs.NextID = 3
 	v := fleettest.NewConfigValidator(w.rec)

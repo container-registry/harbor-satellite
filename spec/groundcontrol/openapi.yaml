@@ -52,8 +52,8 @@ paths:
       responses:
         "201":
           description: >
-            Configuration created. From plan item 7.4 the body is the stored
-            configuration with its validation warnings; today it is empty.
+            Configuration created. The body is the stored configuration with
+            its validation warnings (plan item 7.4).
           content:
             application/json:
               schema:
@@ -632,7 +632,7 @@ paths:
     get:
       tags:
         - policies
-      summary: Lists the stored policy rules (plan item 7.3, not implemented yet).
+      summary: Lists the stored policy rules (plan item 7.3).
       operationId: listPolicyRules
       responses:
         "200":
@@ -666,7 +666,7 @@ paths:
     post:
       tags:
         - policies
-      summary: Stores a policy rule (plan item 7.3, not implemented yet).
+      summary: Stores a policy rule (plan item 7.3).
       description: >
         Every stored rule bumps the policy version that Ground Control
         replicas poll. A scoped rule (scope other than "*") may only name
@@ -722,7 +722,7 @@ paths:
     delete:
       tags:
         - policies
-      summary: Deletes a stored policy rule (plan item 7.3, not implemented yet).
+      summary: Deletes a stored policy rule (plan item 7.3).
       operationId: deletePolicyRule
       parameters:
         - x-go-name: ID
@@ -766,7 +766,7 @@ paths:
     get:
       tags:
         - policies
-      summary: Lists the stored role bindings (plan item 7.3, not implemented yet).
+      summary: Lists the stored role bindings (plan item 7.3).
       operationId: listRoleBindings
       responses:
         "200":
@@ -800,7 +800,7 @@ paths:
     post:
       tags:
         - policies
-      summary: Gives a principal an additional role (plan item 7.3, not implemented yet).
+      summary: Gives a principal an additional role (plan item 7.3).
       description: >
         Built-in roles come from the user's role and cannot be bound here.
       operationId: createRoleBinding
@@ -854,7 +854,7 @@ paths:
     delete:
       tags:
         - policies
-      summary: Deletes a stored role binding (plan item 7.3, not implemented yet).
+      summary: Deletes a stored role binding (plan item 7.3).
       operationId: deleteRoleBinding
       parameters:
         - x-go-name: ID
@@ -3437,8 +3437,8 @@ components:
         inventory_digest:
           type: string
           description: >
-            Digest of cached_images (internal/shared/inventory, plan item 4.4,
-            not read yet). A satellite sends cached_images only when this
+            Digest of cached_images (internal/shared/inventory, plan item
+            4.4). A satellite sends cached_images only when this
             changed or Ground Control asked with inventory_requested.
           x-go-name: InventoryDigest
         journal:
@@ -3480,7 +3480,7 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: The robot generation the satellite uses; acks a delivered rotation (plan item 8.4, not read yet).
+          description: The robot generation the satellite uses; acks a delivered rotation (plan item 8.4).
           x-go-name: CredentialsGeneration
     SatelliteSyncResponse:
       type: object

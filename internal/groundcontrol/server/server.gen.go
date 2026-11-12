@@ -668,11 +668,11 @@ type SatelliteStatusRequest struct {
 	CachedImages  []CachedImageReport `json:"cached_images,omitempty,omitzero"`
 	CPUPercent    float64             `json:"cpu_percent,omitempty,omitzero"`
 
-	// CredentialsGeneration The robot generation the satellite uses; acks a delivered rotation (plan item 8.4, not read yet).
+	// CredentialsGeneration The robot generation the satellite uses; acks a delivered rotation (plan item 8.4).
 	CredentialsGeneration int64 `json:"credentials_generation,omitempty,omitzero"`
 	ImageCount            int32 `json:"image_count,omitempty,omitzero"`
 
-	// InventoryDigest Digest of cached_images (internal/shared/inventory, plan item 4.4, not read yet). A satellite sends cached_images only when this changed or Ground Control asked with inventory_requested.
+	// InventoryDigest Digest of cached_images (internal/shared/inventory, plan item 4.4). A satellite sends cached_images only when this changed or Ground Control asked with inventory_requested.
 	InventoryDigest      string        `json:"inventory_digest,omitempty,omitzero"`
 	Journal              JournalUpload `json:"journal,omitempty,omitzero"`
 	LastReplicationError string        `json:"last_replication_error,omitempty,omitzero"`
@@ -953,22 +953,22 @@ type ServerInterface interface {
 	// ListOutboxEvents Lists outbox events that are not done yet.
 	// (GET /api/ops/outbox)
 	ListOutboxEvents(w http.ResponseWriter, r *http.Request, params ListOutboxEventsParams)
-	// ListPolicyRules Lists the stored policy rules (plan item 7.3, not implemented yet).
+	// ListPolicyRules Lists the stored policy rules (plan item 7.3).
 	// (GET /api/policies)
 	ListPolicyRules(w http.ResponseWriter, r *http.Request)
-	// CreatePolicyRule Stores a policy rule (plan item 7.3, not implemented yet).
+	// CreatePolicyRule Stores a policy rule (plan item 7.3).
 	// (POST /api/policies)
 	CreatePolicyRule(w http.ResponseWriter, r *http.Request)
-	// DeletePolicyRule Deletes a stored policy rule (plan item 7.3, not implemented yet).
+	// DeletePolicyRule Deletes a stored policy rule (plan item 7.3).
 	// (DELETE /api/policies/{id})
 	DeletePolicyRule(w http.ResponseWriter, r *http.Request, id int64)
-	// ListRoleBindings Lists the stored role bindings (plan item 7.3, not implemented yet).
+	// ListRoleBindings Lists the stored role bindings (plan item 7.3).
 	// (GET /api/role-bindings)
 	ListRoleBindings(w http.ResponseWriter, r *http.Request)
-	// CreateRoleBinding Gives a principal an additional role (plan item 7.3, not implemented yet).
+	// CreateRoleBinding Gives a principal an additional role (plan item 7.3).
 	// (POST /api/role-bindings)
 	CreateRoleBinding(w http.ResponseWriter, r *http.Request)
-	// DeleteRoleBinding Deletes a stored role binding (plan item 7.3, not implemented yet).
+	// DeleteRoleBinding Deletes a stored role binding (plan item 7.3).
 	// (DELETE /api/role-bindings/{id})
 	DeleteRoleBinding(w http.ResponseWriter, r *http.Request, id int64)
 	// ListSatellites Lists satellites.
