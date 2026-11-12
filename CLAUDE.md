@@ -312,7 +312,7 @@ The satellite watches `config.json`. Log level, state replication interval and a
 ## Testing
 
 - Unit tests colocated with source files (*_test.go)
-- E2E tests are Taskfile-driven shell flows (taskfiles/e2e.yml), not Go tests
+- E2E tests are Taskfile-driven flows (taskfiles/e2e.yml), not Go tests; `verify` pulls one image through the proxy (`verify-proxy-pull`) and waits for two heartbeats with `go run ./test/e2e/cmd/verify-heartbeat`. `HARBOR_EXTERNAL=1 HARBOR_NETWORK=<net> HARBOR_HOST_URL=<url>` runs them against a running Harbor
 - E2E compose stacks: `test/e2e/docker/docker-compose.yml`, `test/e2e/docker/docker-compose.spiffe.yml`
 - Test configs in test/e2e/testconfig/, fixtures in test/e2e/testdata/
 - GC handler tests use go-sqlmock. Integration tests in the same packages run against real Postgres when `TEST_DATABASE_URL` is set and skip otherwise; `task test:integration` starts `test/integration/docker-compose.yml` (postgres:17 with pg_stat_statements, host port `TEST_PG_PORT`, default 55434) and sets it
