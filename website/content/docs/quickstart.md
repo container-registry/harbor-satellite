@@ -665,7 +665,7 @@ rm satellite.tar.gz
 
 ### 4.2 Run the satellite
 
-Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname and `<HARBOR_HOST>` with the Harbor address as reachable from the edge device. `--harbor-registry-url` is required: Ground Control returns its own `HARBOR_URL` (`host.docker.internal` in this setup), which the edge device cannot resolve. `--use-unsecure` allows plain HTTP to Harbor; drop it if Harbor serves HTTPS:
+Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname and `<HARBOR_HOST>` with the Harbor address as reachable from the edge device. `--harbor-registry-url` is required: Ground Control returns its own `HARBOR_URL` (`host.docker.internal` in this setup), which the edge device cannot resolve. `--use-unsecure` allows plain HTTP to Harbor and Ground Control; drop it if both serve HTTPS:
 
 ```bash
 ./satellite \

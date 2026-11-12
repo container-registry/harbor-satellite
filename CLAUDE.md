@@ -136,6 +136,7 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 - internal/satellite/identity/: Device fingerprint (machine-id, MAC, disk serial); real only on Linux default builds
 - internal/satellite/secure/: Device-bound config encryption (AES-256-GCM, Argon2id key from fingerprint)
 - internal/satellite/tls/: Client TLS config loading
+- internal/satellite/gcclient/: the only satellite→GC client (D1). Token ZTR, SPIFFE ZTR and sync go through the generated pkg/groundcontrol client, so paths come from the spec and a trailing slash or path prefix in `ground_control_url` works. It refuses an `http://` base URL unless use_unsecure, maps 401/403/429 to `ErrUnauthorized`/`ErrForbidden`/`ErrRateLimited` and keeps only GC's error message, never the raw body. `Credentials`: `RobotBasic` (read per request), `NoCredentials`, `SessionBearer`
 
 ### Shared Packages
 
@@ -275,7 +276,7 @@ Flags default to their env var equivalents (see internal/shared/env/harbor-satel
 - `--ground-control-url` / `GROUND_CONTROL_URL`: Always required
 - `--harbor-registry-url` / `HARBOR_REGISTRY_URL`: Always required (except `--fallback-only`); overrides the Harbor host in credentials and state URLs
 - `--json-logging`: JSON logging (default true, no env var)
-- `--use-unsecure` / `USE_UNSECURE`: HTTP and skip TLS verification
+- `--use-unsecure` / `USE_UNSECURE`: HTTP and skip TLS verification; required for an `http://` Ground Control URL (every GC call, ZTR included, goes through `internal/satellite/gcclient`)
 - `--mirrors`: CRI mirror config (`CRI:registry1,registry2`), no env var
 - `--spiffe-enabled`, `--spiffe-endpoint-socket`, `--spiffe-expected-server-id` / `SPIFFE_*`
 - `--byo-registry`, `--registry-url`, `--registry-username`, `--registry-password` / `BYO_REGISTRY`, `REGISTRY_*`
@@ -399,7 +400,6 @@ This is core functionality; changes require careful review.
 Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNotImplemented` and no production path calls them yet; their behaviour is specified by `pending.Plan` tests.
 
 - internal/shared/notimpl/: `ErrNotImplemented` and `Err(item)`, returned by every skeleton stub
-- internal/satellite/gcclient/: D1, the single satellite→GC client over pkg/groundcontrol (token ZTR, SPIFFE ZTR, sync) with its own result types (no pkg/config import) and `Credentials` (`RobotBasic`, `NoCredentials`); the state processes still join URLs themselves
 - D2: `POST /satellites/refresh` is routed behind satellite auth and answers 501 (`server/satellite_refresh.go`, `server/notimplemented.go`); `scheduler.NewScheduler` (no interval, used for the `refresh_credentials` event) still runs its process on Start; the fix makes it run only on Trigger
 - D3: `server.satelliteAuthChain` is the seam for the satellite auth order; it keeps today's order (SPIFFE middleware inner), the fix swaps it
 - internal/shared/logger/logtest/: D4 test helper, `Capture(t)` routes the context-carried zerolog logger into a buffer at every level; the D4 acceptance tests in `state` and `events` use it

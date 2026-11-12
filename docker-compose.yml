@@ -63,7 +63,10 @@ services:
       - GROUND_CONTROL_URL=http://ground-control:8080
       - HARBOR_REGISTRY_URL=${HARBOR_REGISTRY_URL:-${HARBOR_URL}}
       - TOKEN=${TOKEN:-}
-      - USE_UNSECURE=${USE_UNSECURE:-false}
+      # The compose Ground Control speaks plain HTTP, which the satellite
+      # refuses without use_unsecure. It also makes Harbor connections plain
+      # HTTP; set USE_UNSECURE=false only behind an HTTPS Ground Control.
+      - USE_UNSECURE=${USE_UNSECURE:-true}
       - CONFIG_DIR=/data
     volumes:
       - satellite-data:/data

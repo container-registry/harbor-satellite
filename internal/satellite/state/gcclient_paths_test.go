@@ -7,14 +7,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
 )
 
 func TestZtrProcess_TrailingSlashGroundControlURL(t *testing.T) {
-	pending.Plan(t, "D1", "a trailing slash on ground_control_url sends the ZTR to //satellites/ztr")
-
 	var (
 		mu   sync.Mutex
 		seen []string

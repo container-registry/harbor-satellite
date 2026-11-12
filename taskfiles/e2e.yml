@@ -615,6 +615,7 @@ tasks:
         docker run -d --name {{.SATELLITE_CONTAINER}} {{.SATELLITE_NETWORKS}} \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="{{.GC_INTERNAL_URL}}" \
+          -e USE_UNSECURE=true \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e REGISTRY_DATA_DIR=/data/oci \
           -e JSON_LOGGING=true \
@@ -661,6 +662,7 @@ tasks:
         docker run -d --name {{.SATELLITE_CONTAINER}} {{.SATELLITE_NETWORKS}} \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="{{.GC_INTERNAL_URL}}" \
+          -e USE_UNSECURE=true \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e REGISTRY_DATA_DIR=/data/oci \
           -e JSON_LOGGING=true \
@@ -1147,6 +1149,7 @@ tasks:
           -v {{.SAT_STATE_VOLUME}}:/data \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="{{.GC_INTERNAL_URL}}" \
+          -e USE_UNSECURE=true \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/data \
           satellite:e2e
@@ -1166,6 +1169,7 @@ tasks:
           -v {{.SAT_STATE_VOLUME}}:/data \
           -e TOKEN="$TOKEN" \
           -e GROUND_CONTROL_URL="{{.GC_INTERNAL_URL}}" \
+          -e USE_UNSECURE=true \
           -e HARBOR_REGISTRY_URL="{{.HARBOR_INTERNAL_URL}}" \
           -e CONFIG_DIR=/data \
           satellite:e2e

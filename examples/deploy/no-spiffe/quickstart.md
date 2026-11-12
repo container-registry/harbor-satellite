@@ -157,7 +157,7 @@ curl -i -X POST http://localhost:8080/api/configs \
 }'
 ```
 
-> Tip: The satellite's `--ground-control-url` / `GROUND_CONTROL_URL` takes precedence over `ground_control_url` in this config. `use_unsecure: true` makes the satellite talk plain HTTP to Harbor; set it to `false` for an HTTPS Harbor. A non-empty `USE_UNSECURE` environment variable on the satellite overrides this value.
+> Tip: The satellite's `--ground-control-url` / `GROUND_CONTROL_URL` takes precedence over `ground_control_url` in this config. `use_unsecure: true` makes the satellite talk plain HTTP to Harbor and allows a plain-HTTP Ground Control URL; set it to `false` when both serve HTTPS. Without it the satellite refuses an `http://` Ground Control URL, including for ZTR. A non-empty `USE_UNSECURE` environment variable on the satellite overrides this value.
 
 ## Step 7: Register the Satellite
 

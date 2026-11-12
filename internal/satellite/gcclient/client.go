@@ -6,12 +6,14 @@ package gcclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 )
 
@@ -96,30 +98,170 @@ func (e *StatusError) Error() string {
 	return fmt.Sprintf("ground control returned %d: %s", e.StatusCode, e.Message)
 }
 
-type Client struct{}
+type Client struct {
+	api *groundcontrol.Client
+}
+
+const defaultTimeout = 30 * time.Second
+
+// maxResponseBytes bounds what the satellite reads from one Ground Control
+// response; a healthy answer is a few kilobytes.
+const maxResponseBytes = 4 << 20
 
 func New(opts Options) (*Client, error) {
-	return nil, fmt.Errorf("%w: D1 Ground Control client for %s", notimpl.ErrNotImplemented, opts.BaseURL)
+	u, err := url.Parse(opts.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse ground control URL: %w", err)
+	}
+	if u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+		return nil, fmt.Errorf("ground control URL %q must be an absolute http or https URL", opts.BaseURL)
+	}
+	if u.Scheme != "https" && !opts.AllowInsecure {
+		return nil, fmt.Errorf("ground control URL %q must use https unless use_unsecure is set", opts.BaseURL)
+	}
+	httpClient := opts.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: defaultTimeout}
+	}
+	creds := opts.Credentials
+	if creds == nil {
+		creds = NoCredentials{}
+	}
+	api, err := groundcontrol.NewClient(opts.BaseURL,
+		groundcontrol.WithHTTPClient(httpClient),
+		groundcontrol.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+			creds.Authorize(req)
+			return nil
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create ground control client: %w", err)
+	}
+	return &Client{api: api}, nil
 }
 
 // ZeroTouch registers the satellite with its ZTR token.
 func (c *Client) ZeroTouch(ctx context.Context, token string) (ZTRResult, error) {
-	return ZTRResult{}, notimpl.Err("D1 token ZTR via generated client")
+	var out groundcontrol.StateConfigResponse
+	resp, err := c.api.Ztr(ctx, groundcontrol.ZTRRequest{Token: token})
+	if err != nil {
+		return ZTRResult{}, fmt.Errorf("zero-touch registration: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := decode(resp, &out); err != nil {
+		return ZTRResult{}, fmt.Errorf("zero-touch registration: %w", err)
+	}
+	return ztrResult(out), nil
 }
 
 // SPIFFEZeroTouch registers the satellite with its SVID.
 func (c *Client) SPIFFEZeroTouch(ctx context.Context) (ZTRResult, error) {
-	return ZTRResult{}, notimpl.Err("D1 SPIFFE ZTR via generated client")
+	var out groundcontrol.StateConfigResponse
+	resp, err := c.api.SpiffeZtr(ctx)
+	if err != nil {
+		return ZTRResult{}, fmt.Errorf("SPIFFE zero-touch registration: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := decode(resp, &out); err != nil {
+		return ZTRResult{}, fmt.Errorf("SPIFFE zero-touch registration: %w", err)
+	}
+	return ztrResult(out), nil
 }
 
 // Sync sends the heartbeat and returns the events Ground Control queued for
 // the satellite.
 func (c *Client) Sync(ctx context.Context, report StatusReport) (SyncResult, error) {
-	return SyncResult{}, notimpl.Err("D1 heartbeat via generated client")
+	var out groundcontrol.SatelliteSyncResponse
+	resp, err := c.api.SyncSatellite(ctx, report)
+	if err != nil {
+		return SyncResult{}, fmt.Errorf("status report: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := decode(resp, &out); err != nil {
+		return SyncResult{}, fmt.Errorf("status report: %w", err)
+	}
+	res := SyncResult{Events: out.Events, InventoryRequested: out.InventoryRequested}
+	if out.Journal != nil {
+		res.Journal = &JournalAck{Epoch: out.Journal.Epoch, AckedSeq: out.Journal.AckedSeq, Error: out.Journal.Error}
+	}
+	res.Session = session(out.Session)
+	if out.Credentials != nil {
+		res.Credentials = &RotatedCredentials{
+			Username:   out.Credentials.Username,
+			Password:   out.Credentials.Password,
+			ExpiresAt:  out.Credentials.ExpiresAt,
+			Generation: out.Credentials.Generation,
+		}
+	}
+	return res, nil
 }
 
 // RefreshCredentials asks Ground Control to rotate the satellite's robot
 // secret and returns the new one.
 func (c *Client) RefreshCredentials(ctx context.Context) (RefreshResult, error) {
-	return RefreshResult{}, notimpl.Err("D2 credential refresh via generated client")
+	var out groundcontrol.RefreshCredentialsResponse
+	resp, err := c.api.RefreshSatelliteCredentials(ctx)
+	if err != nil {
+		return RefreshResult{}, fmt.Errorf("credential refresh: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := decode(resp, &out); err != nil {
+		return RefreshResult{}, fmt.Errorf("credential refresh: %w", err)
+	}
+	if out.Secret == "" {
+		return RefreshResult{}, errors.New("credential refresh: ground control returned an empty secret")
+	}
+	return RefreshResult{Secret: out.Secret}, nil
 }
+
+func ztrResult(out groundcontrol.StateConfigResponse) ZTRResult {
+	return ZTRResult{
+		StateURL: out.State,
+		Robot:    RobotAccount{RegistryURL: out.Auth.URL, Username: out.Auth.Username, Password: out.Auth.Password},
+		Session:  session(out.Session),
+	}
+}
+
+func session(s *groundcontrol.SatelliteSession) *Session {
+	if s == nil {
+		return nil
+	}
+	return &Session{Token: s.Token, ExpiresAt: s.ExpiresAt}
+}
+
+// decode fills out from a 200 body, or returns the error the status maps to.
+func decode(resp *http.Response, out any) error {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return statusError(resp.StatusCode, body)
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+	return nil
+}
+
+// statusError keeps only Ground Control's error message, never the raw
+// body, so a response cannot carry a secret into the satellite's logs.
+func statusError(code int, body []byte) error {
+	var appErr groundcontrol.AppError
+	msg := http.StatusText(code)
+	if json.Unmarshal(body, &appErr) == nil && appErr.Message != "" {
+		msg = appErr.Message
+	}
+	switch code {
+	case http.StatusUnauthorized:
+		return fmt.Errorf("%w: %s", ErrUnauthorized, msg)
+	case http.StatusForbidden:
+		return fmt.Errorf("%w: %s", ErrForbidden, msg)
+	case http.StatusTooManyRequests:
+		return fmt.Errorf("%w: %s", ErrRateLimited, msg)
+	default:
+		return &StatusError{StatusCode: code, Message: msg}
+	}
+}
+
+type CachedImageReport = groundcontrol.CachedImageReport
