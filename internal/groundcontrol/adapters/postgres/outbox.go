@@ -4,13 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/advisorylock"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 )
 
 var (
@@ -108,8 +109,27 @@ func (s *OutboxStore) PendingCount(ctx context.Context) (int64, error) {
 
 // Prune takes advisorylock.OutboxPruner with TryAdvisoryXactLock and runs
 // PruneDoneOutboxEvents in one transaction.
-func (s *OutboxStore) Prune(ctx context.Context, retention time.Duration, limit int) (int64, error) {
-	return 0, notimpl.Err("9.1 outbox prune")
+func (s *OutboxStore) Prune(ctx context.Context, retention time.Duration, limit int) (n int64, err error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if err == nil {
+			err = tx.Commit()
+			return
+		}
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			err = errors.Join(err, rbErr)
+		}
+	}()
+	q := s.q.WithTx(tx)
+	locked, err := q.TryAdvisoryXactLock(ctx, advisorylock.OutboxPruner)
+	if err != nil || !locked {
+		return 0, mapError(err)
+	}
+	n, err = q.PruneDoneOutboxEvents(ctx, database.PruneDoneOutboxEventsParams{RetentionMs: retention.Milliseconds(), MaxRows: int32(limit)})
+	return n, mapError(err)
 }
 
 // OutboxSink appends events with AppendOutboxEvent inside the caller's

@@ -15,7 +15,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/webhook"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,7 +28,6 @@ func (plainSealer) Open(c []byte) ([]byte, error) { return c, nil }
 // A dispatcher stopped between two runs and a new one started on the same
 // database deliver every event ID exactly once: the checkpoint is durable.
 func TestDispatcher_ExactlyOncePerEventIDAcrossGracefulRestart(t *testing.T) {
-	pending.Plan(t, "9.1", "Ground Control delivers no events; there are no webhooks")
 	db := dbtest.New(t)
 	ctx := context.Background()
 	var mu sync.Mutex
@@ -89,4 +87,32 @@ func TestDispatcher_ExactlyOncePerEventIDAcrossGracefulRestart(t *testing.T) {
 	for id, n := range seen {
 		require.Equal(t, 1, n, "event %s", id)
 	}
+}
+
+// Retention never deletes a done event that an enabled subscription has
+// not passed yet.
+func TestOutboxStore_PruneKeepsRowsAboveEnabledCheckpoint(t *testing.T) {
+	db := dbtest.New(t)
+	ctx := context.Background()
+	repo, err := postgres.NewWebhookRepo(db.DB)
+	require.NoError(t, err)
+	sub, err := repo.Create(ctx, fleet.WebhookSubscription{URL: "https://hooks.example/a"}, []byte("whsec-0123456789abcdef0123456789abcdef"), "admin")
+	require.NoError(t, err)
+	_, err = database.New(db.DB).AppendOutboxEvent(ctx, database.AppendOutboxEventParams{
+		Kind: string(fleet.EventGroupChanged), AggregateType: "group", AggregateID: 1, Payload: []byte(`{"name":"g1"}`), LogOnly: true,
+	})
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, "UPDATE event_outbox SET done_at = NOW() - INTERVAL '2 hours'")
+	require.NoError(t, err)
+	store, err := postgres.NewOutboxStore(db.DB)
+	require.NoError(t, err)
+
+	n, err := store.Prune(ctx, time.Hour, 100)
+	require.NoError(t, err)
+	require.Zero(t, n, "the subscription has not received it")
+
+	require.NoError(t, repo.Delete(ctx, sub.ID))
+	n, err = store.Prune(ctx, time.Hour, 100)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, n)
 }

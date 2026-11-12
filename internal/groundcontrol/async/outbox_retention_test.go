@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +33,6 @@ func (o *pruneOutbox) Prune(_ context.Context, _ time.Duration, limit int) (int6
 }
 
 func TestOutboxPruner_FailingSubscriptionStopsHoldingRowsOnceDisabled(t *testing.T) {
-	pending.Plan(t, "9.1", "done outbox events are never pruned")
 	store := &pruneOutbox{fakeOutbox: newFakeOutbox(), held: true, rows: 250}
 	p, err := async.NewOutboxPruner(store, time.Hour, time.Minute, 100)
 	require.NoError(t, err)
