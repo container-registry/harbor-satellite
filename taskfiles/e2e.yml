@@ -764,42 +764,17 @@ tasks:
         echo "PASS: proxy served manifest $EXPECTED and blob $LAYER with matching digests"
 
   verify-heartbeat:
-    desc: Require a recent heartbeat in GET /api/satellites/{satellite}/status (pending plan item D1)
+    desc: Require two consecutive heartbeats in GET /api/satellites/{satellite}/status (D1)
     internal: true
     requires:
       vars: [SATELLITE, CONTAINER]
+    env:
+      GC_ADMIN_PASSWORD: "{{.GROUNDCONTROL_ADMIN_PASSWORD}}"
     cmds:
-      - |
-        if [ -z "$HARBOR3_PENDING" ]; then
-          echo "SKIP pending plan item D1: heartbeat of {{.SATELLITE}} not checked (set HARBOR3_PENDING=1 to run)"
-          exit 0
-        fi
-        GC_TOKEN=$(curl -sf -X POST {{.GROUNDCONTROL_URL}}/login \
-          -H "Content-Type: application/json" \
-          -d '{"username":"{{.GROUNDCONTROL_ADMIN_USER}}","password":"{{.GROUNDCONTROL_ADMIN_PASSWORD}}"}' | jq -r '.token')
-        echo "Waiting for two consecutive heartbeats of {{.SATELLITE}}..."
-        FIRST=""
-        for i in $(seq 1 24); do
-          SEEN=$(curl -sf -H "Authorization: Bearer $GC_TOKEN" "{{.GROUNDCONTROL_URL}}/api/satellites/{{.SATELLITE}}/status" |
-            jq -r '.CreatedAt // .created_at // empty' 2>/dev/null)
-          if [ -n "$SEEN" ] && [ -z "$FIRST" ]; then
-            FIRST="$SEEN"
-            echo "Heartbeat recorded at $FIRST"
-          elif [ -n "$SEEN" ] && [ "$SEEN" != "$FIRST" ]; then
-            echo "PASS: heartbeat recorded at $SEEN after $FIRST"
-            exit 0
-          fi
-          echo "Waiting for heartbeat... ($i/24)"
-          sleep 5
-        done
-        echo "FAIL: no recent heartbeat for {{.SATELLITE}}"
-        curl -s -H "Authorization: Bearer $GC_TOKEN" "{{.GROUNDCONTROL_URL}}/api/satellites/{{.SATELLITE}}/status"
-        echo
-        echo "--- satellite status report logs ---"
-        docker logs {{.CONTAINER}} 2>&1 | grep '"process":"status_report"' | tail -5
-        echo "--- Ground Control logs ---"
-        docker logs {{.E2E_PREFIX}}gc 2>&1 | tail -20
-        exit 1
+      - >-
+        go run ./test/e2e/cmd/verify-heartbeat
+        -gc-url {{.GROUNDCONTROL_URL}} -user {{.GROUNDCONTROL_ADMIN_USER}}
+        -satellite {{.SATELLITE}} -satellite-container {{.CONTAINER}} -gc-container {{.E2E_PREFIX}}gc
 
   generate-join-token:
     desc: Register satellite and generate SPIFFE join token
