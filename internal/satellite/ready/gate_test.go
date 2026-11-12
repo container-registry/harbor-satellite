@@ -157,17 +157,42 @@ func TestGateBlobMembershipFollowsTheGroup(t *testing.T) {
 	gate := New()
 	shared := "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	onlyEast := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	gate.SetBlobs("east", []string{shared, onlyEast, shared, ""})
-	gate.SetBlobs("west", []string{shared})
+	gate.SetBlobs("east", "library/east", []string{shared, onlyEast, shared, ""})
+	gate.SetBlobs("west", "library/west", []string{shared})
 
-	require.True(t, gate.WatchesBlob(shared))
-	require.True(t, gate.WatchesBlob(onlyEast))
-	require.False(t, gate.WatchesBlob(""))
+	require.True(t, gate.WatchesBlob("library/east", shared))
+	require.True(t, gate.WatchesBlob("library/west", shared))
+	require.True(t, gate.WatchesBlob("library/east", onlyEast))
+	require.False(t, gate.WatchesBlob("other/app", shared))
+	require.False(t, gate.WatchesBlob("library/east", ""))
 
 	gate.RemoveGroup("east")
-	require.True(t, gate.WatchesBlob(shared))
-	require.False(t, gate.WatchesBlob(onlyEast))
+	require.True(t, gate.WatchesBlob("library/west", shared))
+	require.False(t, gate.WatchesBlob("library/east", shared))
+	require.False(t, gate.WatchesBlob("library/east", onlyEast))
 
-	gate.SetBlobs("west", nil)
-	require.False(t, gate.WatchesBlob(shared))
+	gate.SetBlobs("west", "", nil)
+	require.False(t, gate.WatchesBlob("library/west", shared))
+}
+
+func TestGateImageBlobsStayWhenAnotherImageChanges(t *testing.T) {
+	t.Parallel()
+	gate := New()
+	shared := "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	onlyAlpine := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	gate.SetImageBlobs("edge", "library/alpine:latest", []string{shared, onlyAlpine})
+	gate.SetImageBlobs("edge", "library/nginx:latest", []string{shared})
+
+	gate.SetImageBlobs("edge", "library/alpine:latest", []string{onlyAlpine})
+	require.True(t, gate.WatchesBlob("library/nginx", shared))
+	require.False(t, gate.WatchesBlob("library/alpine", shared))
+	require.True(t, gate.WatchesBlob("library/alpine", onlyAlpine))
+	require.False(t, gate.WatchesBlob("other/app", shared))
+
+	gate.PruneImageBlobs("edge", []string{"library/nginx:latest"})
+	require.True(t, gate.WatchesBlob("library/nginx", shared))
+	require.False(t, gate.WatchesBlob("library/alpine", onlyAlpine))
+
+	gate.RemoveGroup("edge")
+	require.False(t, gate.WatchesBlob("library/nginx", shared))
 }

@@ -669,21 +669,23 @@ func (f *FetchAndReplicateStateProcess) commitPresent(entities, missing []Entity
 
 // noteDesiredBlobs records successor digests for the images group will publish.
 // The local graph is enough once its manifest is present, including a layer
-// that is not local yet. A failed walk leaves the previous membership in place.
+// that is not local yet. A failed walk keeps that image's previous digests.
+// Images that left the group are dropped even when another walk succeeded.
 func (f *FetchAndReplicateStateProcess) noteDesiredBlobs(ctx context.Context, local, source store.Store, group string, desired []Entity, log *zerolog.Logger) {
 	if f.images == nil {
 		return
 	}
 	if len(desired) == 0 {
-		f.images.SetBlobs(group, nil)
+		f.images.SetBlobs(group, "", nil)
 		return
 	}
-	var digests []string
-	noted := false
+	keep := make([]string, 0, len(desired))
 	for _, artifact := range desired {
 		if err := ctx.Err(); err != nil {
 			return
 		}
+		reference := artifact.Reference()
+		keep = append(keep, reference)
 		found, err := store.GraphDigests(ctx, local, artifact)
 		if err != nil || len(found) == 0 {
 			found, err = store.GraphDigests(ctx, source, artifact)
@@ -694,13 +696,9 @@ func (f *FetchAndReplicateStateProcess) noteDesiredBlobs(ctx context.Context, lo
 			}
 			continue
 		}
-		noted = true
-		digests = append(digests, found...)
+		f.images.SetImageBlobs(group, reference, found)
 	}
-	if !noted {
-		return
-	}
-	f.images.SetBlobs(group, digests)
+	f.images.PruneImageBlobs(group, keep)
 }
 
 func appendMissing(scheduled, missing []Entity) []Entity {
