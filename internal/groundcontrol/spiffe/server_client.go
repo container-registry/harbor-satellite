@@ -4,6 +4,7 @@ package spiffe
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	entryv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/entry/v1"
 	typesv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -125,13 +127,30 @@ func (c *ServerClient) CreateWorkloadEntry(ctx context.Context, parentID, spiffe
 
 // DeleteWorkloadEntry removes a workload registration entry by ID.
 func (c *ServerClient) DeleteWorkloadEntry(ctx context.Context, entryID string) error {
-	_, err := c.entryClient.BatchDeleteEntry(ctx, &entryv1.BatchDeleteEntryRequest{
+	resp, err := c.entryClient.BatchDeleteEntry(ctx, &entryv1.BatchDeleteEntryRequest{
 		Ids: []string{entryID},
 	})
 	if err != nil {
 		return fmt.Errorf("delete workload entry %s: %w", entryID, err)
 	}
+	if err := deleteResultsErr(resp); err != nil {
+		return fmt.Errorf("delete workload entry %s: %w", entryID, err)
+	}
 	return nil
+}
+
+// deleteResultsErr joins the failed results of a batch delete. SPIRE
+// answers the RPC with OK and reports each entry in its result. NotFound
+// counts as deleted, the entry is gone either way.
+func deleteResultsErr(resp *entryv1.BatchDeleteEntryResponse) error {
+	var errs []error
+	for _, r := range resp.GetResults() {
+		code := codes.Code(r.GetStatus().GetCode())
+		if code != codes.OK && code != codes.NotFound {
+			errs = append(errs, fmt.Errorf("entry %s: %s: %s", r.GetId(), code, r.GetStatus().GetMessage()))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // GetTrustDomain returns the configured trust domain.
@@ -249,7 +268,11 @@ func (c *ServerClient) DeleteEntriesBySPIFFEID(ctx context.Context, spiffeID str
 	if len(ids) == 0 {
 		return nil
 	}
-	if _, err := c.entryClient.BatchDeleteEntry(ctx, &entryv1.BatchDeleteEntryRequest{Ids: ids}); err != nil {
+	resp, err := c.entryClient.BatchDeleteEntry(ctx, &entryv1.BatchDeleteEntryRequest{Ids: ids})
+	if err != nil {
+		return fmt.Errorf("delete entries of %s: %w", spiffeID, err)
+	}
+	if err := deleteResultsErr(resp); err != nil {
 		return fmt.Errorf("delete entries of %s: %w", spiffeID, err)
 	}
 	return nil
