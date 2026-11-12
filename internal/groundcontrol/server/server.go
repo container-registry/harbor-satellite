@@ -17,6 +17,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
@@ -25,9 +26,15 @@ import (
 )
 
 type Server struct {
-	port           int
-	db             *sql.DB
-	dbQueries      *database.Queries
+	port      int
+	db        *sql.DB
+	dbQueries *database.Queries
+	// pools owns the connections; fleetQueries (satellite routes) and asyncDB
+	// (background jobs) are the API pool unless DB_URL_FLEET, DB_URL_ASYNC
+	// or their pool settings give them their own (plan item 3.2).
+	pools          *dbpool.Pools
+	fleetQueries   *database.Queries
+	asyncDB        *sql.DB
 	groupSync      groupSyncHarbor
 	rateLimiter    *middleware.RateLimiter
 	FailureLimiter *middleware.FailureLimiter
@@ -177,18 +184,19 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 		return result, fmt.Errorf("POLICY_ENGINE=%s needs a policy (WithPolicy), which serve does not pass yet", env.PolicyEngineCasbin)
 	}
 
-	dsn, err := cfg.Database.ConnectionURL()
+	poolConfig, err := dbpool.ConfigFromEnv(cfg.Database)
 	if err != nil {
 		return result, fmt.Errorf("database settings: %w", err)
 	}
-	db, err := sql.Open("postgres", dsn)
+	pools, err := dbpool.Open(ctx, poolConfig)
 	if err != nil {
 		return result, fmt.Errorf("open database: %w", err)
 	}
-	appServer.db = db
-
-	dbQueries := database.New(db)
-	appServer.dbQueries = dbQueries
+	appServer.pools = pools
+	appServer.db = pools.API
+	appServer.dbQueries = database.New(pools.API)
+	appServer.fleetQueries = database.New(pools.Fleet)
+	appServer.asyncDB = pools.Async
 	appServer.groupSync = harborGroupSync{}
 
 	// Initialize rate limiter: 10 requests per minute per IP for ZTR endpoint
@@ -363,7 +371,9 @@ func (r *ServerResult) Close() error {
 	if r.AppServer.FleetLimiter != nil {
 		r.AppServer.FleetLimiter.Stop()
 	}
-	if r.AppServer.db != nil {
+	if r.AppServer.pools != nil {
+		err = errors.Join(err, r.AppServer.pools.Close())
+	} else if r.AppServer.db != nil {
 		err = errors.Join(err, r.AppServer.db.Close())
 	}
 	if r.AppServer.audit != nil {
@@ -396,4 +406,21 @@ func buildServerTLSConfigWithWatcher(cfg *ServerTLSConfig, cw *middleware.CertWa
 	}
 
 	return tlsConfig, nil
+}
+
+// fleet returns the queries for satellite-facing routes; tests that build a
+// Server by hand set only dbQueries.
+func (s *Server) fleet() *database.Queries {
+	if s.fleetQueries != nil {
+		return s.fleetQueries
+	}
+	return s.dbQueries
+}
+
+// background returns the pool and queries for background jobs.
+func (s *Server) background() (*sql.DB, *database.Queries) {
+	if s.asyncDB != nil && s.asyncDB != s.db {
+		return s.asyncDB, database.New(s.asyncDB)
+	}
+	return s.db, s.dbQueries
 }

@@ -56,6 +56,7 @@ Key groups include:
 - Harbor access: `HARBOR_USERNAME`, `HARBOR_PASSWORD`, `HARBOR_URL`
 - Local development: `SKIP_HARBOR_HEALTH_CHECK` (set to `true` when running without a Harbor instance)
 - PostgreSQL access: `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` (escaped in the connection URL), `DB_SSLMODE` (default `require`; one of `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`) and `DB_SSLROOTCERT` (CA file for `verify-ca`/`verify-full`). A server without TLS needs `DB_SSLMODE=disable`
+- Connection pools, one per plane: API (operator routes and migrations), fleet (satellite routes: heartbeat, credential refresh, satellite authentication) and async (background jobs). `DB_URL_API`, `DB_URL_FLEET` and `DB_URL_ASYNC` give a plane its own URL; without one, fleet and async share the API pool unless one of their pool settings is set. Pool settings per plane are `DB_<PLANE>_MAX_OPEN_CONNS`, `_MAX_IDLE_CONNS`, `_CONN_MAX_LIFETIME`, `_CONN_MAX_IDLE_TIME`, `_STATEMENT_TIMEOUT`, `_LOCK_TIMEOUT` and `_IDLE_IN_TX_SESSION_TIMEOUT`, with `<PLANE>` one of `API`, `FLEET`, `ASYNC`. The timeouts are sent as connection parameters, and every connection carries `application_name` `groundcontrol-api`, `groundcontrol-fleet` or `groundcontrol-async`, which `pg_stat_activity` shows
 - Bootstrap: `ADMIN_PASSWORD` (required on first start)
 - Server settings: `PORT` (default `8080`), `SESSION_DURATION` (default `24h`), `LOCKOUT_DURATION` (default `5m`), `STALE_THRESHOLD` (default `15m`, not read yet)
 - Failed authentication limit per client IP (login and Basic auth, any username): `AUTH_FAILURE_LIMIT` (default `20`) failures within `AUTH_FAILURE_WINDOW` (default `1m`) before 429, `0` disables it. Independently, 5 failed attempts for one username, through `/login` or Basic auth, lock that account for `LOCKOUT_DURATION`
@@ -90,3 +91,21 @@ The full list with defaults is in `internal/shared/env/groundcontrol.go`.
 - [Quickstart](../../website/content/docs/quickstart.md)
 - [Decision records](../decisions/README.md)
 - [SPIFFE quickstarts](../../examples/deploy/spiffe/README.md)
+
+## Database roles per plane
+
+Where the deployment can create PostgreSQL roles, give each plane its own role and URL, so the server enforces the connection budget and the timeouts even if Ground Control's own settings are wrong:
+
+```sql
+CREATE ROLE gc_api   LOGIN PASSWORD '...' CONNECTION LIMIT 20;
+CREATE ROLE gc_fleet LOGIN PASSWORD '...' CONNECTION LIMIT 40;
+CREATE ROLE gc_async LOGIN PASSWORD '...' CONNECTION LIMIT 10;
+GRANT gc_owner TO gc_api, gc_fleet, gc_async;   -- the role that owns the schema
+
+ALTER ROLE gc_fleet SET statement_timeout = '5s';
+ALTER ROLE gc_fleet SET lock_timeout = '1s';
+ALTER ROLE gc_fleet SET idle_in_transaction_session_timeout = '10s';
+ALTER ROLE gc_async SET statement_timeout = '5min';
+```
+
+Then set `DB_URL_API`, `DB_URL_FLEET` and `DB_URL_ASYNC` to URLs with those roles, and keep `DB_<PLANE>_MAX_OPEN_CONNS` below each `CONNECTION LIMIT`. Migrations run with the API URL, so the API role needs the DDL privileges. A managed service that allows one role only works with the single DSN and the `DB_<PLANE>_*` settings.

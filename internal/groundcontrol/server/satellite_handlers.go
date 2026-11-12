@@ -597,7 +597,7 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 		satelliteName = req.Name
 	}
 
-	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
+	sat, err := s.fleet().GetSatelliteByName(r.Context(), satelliteName)
 	if err != nil {
 		log.Printf("Unknown satellite: %s", satelliteName)
 		HandleAppError(w, &AppError{
@@ -614,7 +614,7 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	robotAcc, err := s.fleet().GetRobotAccBySatelliteID(r.Context(), sat.ID)
 	if err != nil {
 		log.Printf("Failed to find robot account for satellite : %s", satelliteName)
 		HandleAppError(w, &AppError{
@@ -649,7 +649,7 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 			sizes[i] = img.SizeBytes
 		}
 
-		err := s.dbQueries.BatchInsertArtifacts(r.Context(), database.BatchInsertArtifactsParams{
+		err := s.fleet().BatchInsertArtifacts(r.Context(), database.BatchInsertArtifactsParams{
 			Refs:  refs,
 			Sizes: sizes,
 		})
@@ -659,7 +659,7 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		artifacts, err := s.dbQueries.GetArtifactIDsByReferences(r.Context(), refs)
+		artifacts, err := s.fleet().GetArtifactIDsByReferences(r.Context(), refs)
 		if err != nil {
 			log.Printf("Failed to resolve artifact IDs: %v", err)
 			HandleAppError(w, &AppError{Message: "failed to resolve artifact IDs", Code: http.StatusInternalServerError})
@@ -673,7 +673,7 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Stored %d artifacts for satellite %s", len(artifactIDs), satelliteName)
 	}
 
-	_, err = s.dbQueries.InsertSatelliteStatus(r.Context(), database.InsertSatelliteStatusParams{
+	_, err = s.fleet().InsertSatelliteStatus(r.Context(), database.InsertSatelliteStatusParams{
 		SatelliteID:        sat.ID,
 		Activity:           req.Activity,
 		LatestStateDigest:  toNullString(req.LatestStateDigest),
@@ -692,7 +692,7 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.dbQueries.UpdateSatelliteLastSeen(r.Context(), database.UpdateSatelliteLastSeenParams{
+	err = s.fleet().UpdateSatelliteLastSeen(r.Context(), database.UpdateSatelliteLastSeenParams{
 		ID:                sat.ID,
 		HeartbeatInterval: toNullString(normalizedInterval),
 	})
