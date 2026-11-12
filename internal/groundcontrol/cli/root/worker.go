@@ -3,9 +3,11 @@ package root
 import (
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/migrator"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/spf13/cobra"
 )
@@ -38,7 +40,11 @@ func WorkerCommand() *cobra.Command {
 				return fmt.Errorf("open database: %w", err)
 			}
 			defer func() { err = errors.Join(err, pools.Close()) }()
-			w, closeWorker, err := newWorker(ctx, pools, nil)
+			spire := workerSPIREClient(env.GC.SPIRE)
+			if spire != nil {
+				defer func() { err = errors.Join(err, spire.Close()) }()
+			}
+			w, closeWorker, err := newWorker(ctx, pools, spire)
 			if err != nil {
 				return err
 			}
@@ -46,4 +52,20 @@ func WorkerCommand() *cobra.Command {
 			return errors.Join(w.Run(ctx), closeWorker())
 		},
 	}
+}
+
+// workerSPIREClient connects to SPIRE_SERVER_SOCKET so tombstones delete the
+// SPIRE entries of deleted satellites. An embedded SPIRE server lives in the
+// serve process, which a standalone worker cannot reach. A failed connection
+// only warns, as it does in serve.
+func workerSPIREClient(cfg env.SPIRE) *spiffe.ServerClient {
+	if cfg.ServerSocket == "" {
+		return nil
+	}
+	client, err := spiffe.NewServerClient(cfg.ServerSocket, cfg.TrustDomain)
+	if err != nil {
+		log.Printf("Warning: Failed to connect to external SPIRE server at %q: %v", cfg.ServerSocket, err)
+		return nil
+	}
+	return client
 }
