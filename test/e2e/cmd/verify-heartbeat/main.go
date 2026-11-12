@@ -1,11 +1,15 @@
 // Command verify-heartbeat waits until Ground Control has recorded two
-// consecutive heartbeats of a satellite (E2E plan item 0.5, defect D1). On
-// failure it prints the last status and the satellite and GC logs.
+// consecutive heartbeats of a satellite (E2E plan item 0.5, defect D1), then
+// checks the satellite's own view in its /metrics: heartbeats answered 200,
+// none refused since, and an accepted journal ack. last_seen alone can move
+// while the satellite gets an error. On failure it prints the last status
+// and the satellite and GC logs.
 package main
 
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -23,6 +27,8 @@ type options struct {
 	gcURL, user, password           string
 	satellite                       string
 	satelliteContainer, gcContainer string
+	metricsURL                      string
+	insecure, requireJournalAck     bool
 	attempts                        int
 	interval                        time.Duration
 }
@@ -32,17 +38,24 @@ func main() {
 	flag.StringVar(&o.gcURL, "gc-url", "", "Ground Control URL reachable from the host")
 	flag.StringVar(&o.user, "user", "admin", "Ground Control admin user")
 	flag.StringVar(&o.satellite, "satellite", "", "satellite name")
-	flag.StringVar(&o.satelliteContainer, "satellite-container", "", "satellite container, for logs on failure")
+	flag.StringVar(&o.satelliteContainer, "satellite-container", "", "satellite container, scraped for /metrics and its logs on failure")
+	flag.StringVar(&o.metricsURL, "metrics-url", "http://127.0.0.1:8586/metrics", "satellite /metrics URL inside its container")
+	flag.BoolVar(&o.insecure, "insecure", false, "skip TLS verification of Ground Control")
+	flag.BoolVar(&o.requireJournalAck, "require-journal-ack", true, "require an accepted journal ack; false after a restart with an already acknowledged journal, which uploads nothing")
 	flag.StringVar(&o.gcContainer, "gc-container", "", "Ground Control container, for logs on failure")
 	flag.IntVar(&o.attempts, "attempts", 24, "status polls before giving up")
 	flag.DurationVar(&o.interval, "interval", 5*time.Second, "time between status polls")
 	flag.Parse()
 	o.password = os.Getenv("GC_ADMIN_PASSWORD")
-	if o.gcURL == "" || o.satellite == "" || o.password == "" {
-		fmt.Fprintln(os.Stderr, "verify-heartbeat: -gc-url, -satellite and GC_ADMIN_PASSWORD are required")
+	if o.gcURL == "" || o.satellite == "" || o.satelliteContainer == "" || o.password == "" {
+		fmt.Fprintln(os.Stderr, "verify-heartbeat: -gc-url, -satellite, -satellite-container and GC_ADMIN_PASSWORD are required")
 		os.Exit(2)
 	}
-	if err := run(context.Background(), o); err != nil {
+	err := run(context.Background(), o)
+	if err == nil {
+		err = verifySatelliteMetrics(context.Background(), o)
+	}
+	if err != nil {
 		fmt.Println("FAIL:", err)
 		dumpLogs(o)
 		os.Exit(1)
@@ -51,6 +64,12 @@ func main() {
 
 func run(ctx context.Context, o options) error {
 	client := &http.Client{Timeout: 10 * time.Second}
+	if o.insecure {
+		client.Transport = &http.Transport{TLSClientConfig: &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: true, //nolint:gosec // E2E Ground Control has a self-signed or SPIFFE certificate.
+		}}
+	}
 	token, err := login(ctx, client, o)
 	if err != nil {
 		return err

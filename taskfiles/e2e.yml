@@ -809,6 +809,8 @@ tasks:
         echo "--- satellite errors ---"
         docker logs {{.SATELLITE_CONTAINER}} 2>&1 | grep -iE '"level":"(error|warn)"' | tail -20
         exit 1
+      - task: verify-heartbeat
+        vars: { SATELLITE: "{{.MULTI_GROUP_SATELLITE_NAME}}", CONTAINER: "{{.SATELLITE_CONTAINER}}" }
 
   verify-proxy-pull:
     desc: Pull the replicated image through the satellite's loopback OCI proxy and check digests
@@ -861,17 +863,20 @@ tasks:
         echo "PASS: proxy served manifest $EXPECTED and blob $LAYER with matching digests"
 
   verify-heartbeat:
-    desc: Require two consecutive heartbeats in GET /api/satellites/{satellite}/status (D1)
+    desc: Require two heartbeats in GET /api/satellites/{satellite}/status (D1) and 200 heartbeats with an accepted journal ack in the satellite's /metrics
     internal: true
     requires:
       vars: [SATELLITE, CONTAINER]
+    vars:
+      GC_URL: '{{.GC_URL | default .GROUNDCONTROL_URL}}'
+      GC_CONTAINER: '{{.GC_CONTAINER | default (print .E2E_PREFIX "gc")}}'
     env:
       GC_ADMIN_PASSWORD: "{{.GROUNDCONTROL_ADMIN_PASSWORD}}"
     cmds:
       - >-
         go run ./test/e2e/cmd/verify-heartbeat
-        -gc-url {{.GROUNDCONTROL_URL}} -user {{.GROUNDCONTROL_ADMIN_USER}}
-        -satellite {{.SATELLITE}} -satellite-container {{.CONTAINER}} -gc-container {{.E2E_PREFIX}}gc
+        -gc-url {{.GC_URL}} -user {{.GROUNDCONTROL_ADMIN_USER}}{{if .INSECURE}} -insecure{{end}}{{if .NO_JOURNAL_ACK}} -require-journal-ack=false{{end}}
+        -satellite {{.SATELLITE}} -satellite-container {{.CONTAINER}} -gc-container {{.GC_CONTAINER}}
 
   generate-join-token:
     desc: Register satellite and generate SPIFFE join token
@@ -1159,6 +1164,10 @@ tasks:
       - task: verify
       - task: crash-and-restart-satellite
       - task: verify-crash-recovery
+      # The restarted satellite's journal is already acknowledged and nothing
+      # was replicated again, so its heartbeats carry no upload to ack.
+      - task: verify-heartbeat
+        vars: { SATELLITE: "{{.SATELLITE_NAME}}", CONTAINER: "{{.SATELLITE_CONTAINER}}", NO_JOURNAL_ACK: "true" }
       - echo "Crash recovery E2E test passed"
 
   test-crash-recovery-byo:
@@ -1174,6 +1183,10 @@ tasks:
       - task: verify-byo
       - task: crash-and-restart-satellite-byo
       - task: verify-crash-recovery-byo
+      # The restarted satellite's journal is already acknowledged and nothing
+      # was replicated again, so its heartbeats carry no upload to ack.
+      - task: verify-heartbeat
+        vars: { SATELLITE: "{{.BYO_SATELLITE_NAME}}", CONTAINER: "{{.SATELLITE_BYO_CONTAINER}}", NO_JOURNAL_ACK: "true" }
       - echo "Crash recovery BYO E2E test passed"
 
   register-and-run-satellite-with-volume:
