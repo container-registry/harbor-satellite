@@ -41,6 +41,9 @@ func TestOCIStoreReadyRequiresSuccessorBlobs(t *testing.T) {
 	_, err = local.Ready(context.Background(), wrong)
 	require.ErrorIs(t, err, errdef.ErrNotFound)
 
+	_, err = local.Ready(context.Background(), Artifact{Name: "team/app", Tag: layerDesc.Digest.String()})
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+
 	blob := filepath.Join(local.root, ocispec.ImageBlobsDir, layerDesc.Digest.Algorithm().String(), layerDesc.Digest.Encoded())
 	require.NoError(t, os.Remove(blob))
 	_, err = local.Ready(context.Background(), artifact)

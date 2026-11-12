@@ -168,6 +168,10 @@ type StateMap struct {
 	appliedDigest string
 	// desired is the bootstrap wish list. It is not applied state and is not written to state.json.
 	desired []Entity
+	// outstanding is the desired list last announced to the image gate and not
+	// yet reconciled. Nil means nothing is in flight. An empty non-nil slice
+	// means the group was announced with no images.
+	outstanding []Entity
 }
 
 func NewStateMap(url []string) []StateMap {
@@ -204,6 +208,11 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) (err error)
 	}
 	log.Info().Msg(reason)
 	f.announceKnownGroups()
+	// A restart already knows its last desired set. Publish that before the
+	// Harbor round trip so manifest pulls do not treat it as unwatched.
+	if len(f.stateMap) > 0 {
+		f.publishImageCatalog()
+	}
 
 	started := time.Now()
 	defer func() { f.recordRun(started, err) }()
@@ -229,6 +238,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) (err error)
 
 	changed := f.updateStateMap(satelliteState.States)
 	f.announceKnownGroups()
+	f.publishImageCatalog()
 
 	// Persist state if groups were added, removed, or swapped
 	if f.stateFilePath != "" && changed {
@@ -416,10 +426,19 @@ func (f *FetchAndReplicateStateProcess) hasDegradedList() bool {
 }
 
 func (f *FetchAndReplicateStateProcess) groupEntities(index int) []Entity {
+	if f.stateMap[index].outstanding != nil {
+		return f.stateMap[index].outstanding
+	}
 	if len(f.stateMap[index].Entities) > 0 {
 		return f.stateMap[index].Entities
 	}
 	return f.stateMap[index].desired
+}
+
+func (f *FetchAndReplicateStateProcess) setOutstanding(index int, entities []Entity) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stateMap[index].outstanding = append([]Entity{}, entities...)
 }
 
 func (f *FetchAndReplicateStateProcess) markDesiredApplied(index int, applied []Entity) {
@@ -547,6 +566,13 @@ func (f *FetchAndReplicateStateProcess) announceKnownGroups() {
 	for index := range f.stateMap {
 		f.announceGroup(f.stateMap[index].url, f.groupEntities(index))
 	}
+}
+
+func (f *FetchAndReplicateStateProcess) publishImageCatalog() {
+	if f.images == nil {
+		return
+	}
+	f.images.Publish()
 }
 
 func (f *FetchAndReplicateStateProcess) announceGroup(group string, entities []Entity) {
@@ -869,6 +895,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, &stateFetcherLog, f.stateMap[index].Entities)
 	desired := FetchEntitiesFromState(newState)
 	f.announceGroup(f.stateMap[index].url, desired)
+	f.setOutstanding(index, desired)
 	f.LogChanges(deleteEntity, replicateEntity, &stateFetcherLog)
 
 	// Only replication happens here. What the group dropped is retired and
@@ -903,6 +930,7 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
 	f.stateMap[index].desired = nil
 	f.stateMap[index].appliedDigest = groupDigest
+	f.stateMap[index].outstanding = nil
 	if f.stateFilePath != "" {
 		if err := f.saveState(); err != nil {
 			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")

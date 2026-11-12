@@ -61,6 +61,9 @@ func (r *RegistryStore) Ready(ctx context.Context, artifact Artifact) (ocispec.D
 	if artifact.Digest != "" && descriptor.Digest.String() != artifact.sourceIdentifier() {
 		return ocispec.Descriptor{}, errdef.ErrNotFound
 	}
+	if !manifestDescriptor(descriptor) {
+		return ocispec.Descriptor{}, errdef.ErrNotFound
+	}
 	repository, err := r.repository(artifact)
 	if err != nil {
 		return ocispec.Descriptor{}, err

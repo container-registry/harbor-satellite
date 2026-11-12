@@ -22,26 +22,62 @@ func TestGateWaitsUntilTheMatchingDigestIsCommitted(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "sha256:abc", digest)
 
-	release := make(chan struct{})
+	done := make(chan bool, 1)
 	go func() {
-		defer close(release)
-		time.Sleep(20 * time.Millisecond)
-		gate.Commit(store.Artifact{Repository: "library", Name: "nginx", Tag: "alpine", Digest: "sha256:old"})
-		gate.Commit(image)
+		ready, err := gate.Wait(context.Background(), request)
+		done <- err == nil && ready
 	}()
+	require.Eventually(t, func() bool { return gate.Watching(request) }, time.Second, time.Millisecond)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	ready, err := gate.Wait(ctx, request)
-	require.NoError(t, err)
-	require.True(t, ready)
-	<-release
+	gate.Commit(store.Artifact{Repository: "library", Name: "nginx", Tag: "alpine", Digest: "sha256:old"})
+	select {
+	case <-done:
+		t.Fatal("commit of the wrong digest released the waiter")
+	case <-time.After(30 * time.Millisecond):
+	}
+	require.True(t, gate.Watching(request))
+
+	gate.Commit(image)
+	select {
+	case ready := <-done:
+		require.True(t, ready)
+	case <-time.After(time.Second):
+		t.Fatal("commit of the matching digest did not release the waiter")
+	}
 	require.False(t, gate.Watching(request))
 
 	digestRequest := store.Artifact{Name: "library/nginx", Digest: "sha256:abc"}
-	ready, err = gate.Wait(ctx, digestRequest)
+	ready, err := gate.Wait(context.Background(), digestRequest)
 	require.NoError(t, err)
 	require.True(t, ready)
+}
+
+func TestGateHoldsPullsUntilTheCatalogIsPublished(t *testing.T) {
+	t.Parallel()
+	gate := New()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- gate.WaitReady(context.Background())
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("unpublished catalog released the waiter: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+
+	gate.Publish()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("publish did not release the waiter")
+	}
+	require.NoError(t, gate.WaitReady(ctx))
+	gate.Publish()
+	require.NoError(t, gate.WaitReady(ctx))
 }
 
 func TestGateDropWakesWaiters(t *testing.T) {

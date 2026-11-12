@@ -15,6 +15,21 @@ type graphStorage interface {
 	Exists(ctx context.Context, target ocispec.Descriptor) (bool, error)
 }
 
+// manifestDescriptor reports whether desc is a manifest or an index the proxy
+// can serve from the manifest endpoint.
+func manifestDescriptor(desc ocispec.Descriptor) bool {
+	switch desc.MediaType {
+	case ocispec.MediaTypeImageManifest,
+		ocispec.MediaTypeImageIndex,
+		"application/vnd.docker.distribution.manifest.v2+json",
+		"application/vnd.docker.distribution.manifest.list.v2+json",
+		"application/vnd.oci.artifact.manifest.v1+json":
+		return true
+	default:
+		return false
+	}
+}
+
 // descriptorGraphReady reports ErrNotFound when root or any successor is absent.
 func descriptorGraphReady(ctx context.Context, storage graphStorage, root ocispec.Descriptor) error {
 	err := walkDescriptorGraph(ctx, storage, root, func(desc ocispec.Descriptor) error {
