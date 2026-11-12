@@ -125,6 +125,27 @@ func (q *Queries) GetRobotAccount(ctx context.Context, id int32) (RobotAccount, 
 	return i, err
 }
 
+const getRobotAuthByRobotName = `-- name: GetRobotAuthByRobotName :one
+SELECT r.robot_secret_hash, r.robot_expiry, s.name AS satellite_name
+FROM robot_accounts r JOIN satellites s ON s.id = r.satellite_id
+WHERE r.robot_name = $1
+`
+
+type GetRobotAuthByRobotNameRow struct {
+	RobotSecretHash string
+	RobotExpiry     sql.NullTime
+	SatelliteName   string
+}
+
+// Robot Basic auth of a satellite in one statement: the secret hash, the
+// expiry and the satellite's name.
+func (q *Queries) GetRobotAuthByRobotName(ctx context.Context, robotName string) (GetRobotAuthByRobotNameRow, error) {
+	row := q.db.QueryRowContext(ctx, getRobotAuthByRobotName, robotName)
+	var i GetRobotAuthByRobotNameRow
+	err := row.Scan(&i.RobotSecretHash, &i.RobotExpiry, &i.SatelliteName)
+	return i, err
+}
+
 const listRobotAccounts = `-- name: ListRobotAccounts :many
 SELECT id, robot_name, robot_secret_hash, robot_id, satellite_id, robot_expiry, created_at, updated_at FROM robot_accounts
 `

@@ -339,10 +339,14 @@ func (s *Server) RegisterSatellite(w http.ResponseWriter, r *http.Request) {
 }
 
 func stateConfigResponse(res fleet.ZTRResult) StateConfigResponse {
-	return StateConfigResponse{
+	out := StateConfigResponse{
 		State: res.StateURL,
 		Auth:  RegistryCredentials{Username: res.Credentials.Name, Password: res.Credentials.Secret, URL: res.RegistryURL},
 	}
+	if res.Session != nil {
+		out.Session = &SatelliteSession{Token: res.Session.Token, ExpiresAt: res.Session.ExpiresAt}
+	}
+	return out
 }
 
 // Ztr answers 503 with Retry-After until the async plane created the

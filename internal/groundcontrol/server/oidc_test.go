@@ -66,7 +66,6 @@ func TestOIDCRoutes_AreServedWithoutAuth(t *testing.T) {
 // The /oidc routes share the anonymous per-IP bucket, also under the split
 // that leaves /login to the FailureLimiter.
 func TestOIDCRoutes_LimitedPerClientIPUnderSplit(t *testing.T) {
-	pending.Plan(t, "4.6", "the split limiters answer 501")
 	splitLimits(t, "2/1m", "3/1s")
 	h := newGCHarness(t, WithOperatorLogin(&fakeOperatorLogin{}))
 

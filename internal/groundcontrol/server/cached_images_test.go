@@ -193,7 +193,7 @@ func TestGetCachedImagesHandler(t *testing.T) {
 		artifactRows := sqlmock.NewRows([]string{"id", "reference", "size_bytes", "created_at"}).
 			AddRow(int32(10), "localhost:8585/library/nginx:latest@sha256:abc", int64(50000), now).
 			AddRow(int32(11), "localhost:8585/library/alpine:3.18@sha256:def", int64(5000), now)
-		mock.ExpectQuery("SELECT .+ FROM artifacts").
+		mock.ExpectQuery("SELECT .+ FROM satellite_view v JOIN artifacts").
 			WithArgs(int32(1)).
 			WillReturnRows(artifactRows)
 
@@ -251,7 +251,7 @@ func TestGetCachedImagesHandler(t *testing.T) {
 			WillReturnRows(satRows)
 
 		emptyRows := sqlmock.NewRows([]string{"id", "reference", "size_bytes", "created_at"})
-		mock.ExpectQuery("SELECT .+ FROM artifacts").
+		mock.ExpectQuery("SELECT .+ FROM satellite_view v JOIN artifacts").
 			WithArgs(int32(1)).
 			WillReturnRows(emptyRows)
 
@@ -359,7 +359,7 @@ func TestGetCachedImagesHandler_DBFailure(t *testing.T) {
 		WithArgs("edge-01").
 		WillReturnRows(satRows)
 
-	mock.ExpectQuery("SELECT .+ FROM artifacts").
+	mock.ExpectQuery("SELECT .+ FROM satellite_view v JOIN artifacts").
 		WithArgs(int32(1)).
 		WillReturnError(fmt.Errorf("db timeout"))
 

@@ -10,11 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	pendingSessions  = "Ground Control issues no satellite sessions; every beat verifies the robot secret"
-	pendingLifecycle = "ADR-0006 lifecycle is not implemented; satellites are never revoked or stale"
-)
-
 var errBoom = errors.New("boom")
 
 func TestSatelliteView_Converged(t *testing.T) {

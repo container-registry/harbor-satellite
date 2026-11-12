@@ -178,6 +178,9 @@ func (s *Sessions) Lookup(ctx context.Context, satelliteName string) (fleet.Sate
 	return auth, nil
 }
 
+// Forget drops this replica's cached auth of the satellite.
+func (s *Sessions) Forget(satellite fleet.SatelliteID) { s.forget(satellite) }
+
 func (s *Sessions) forget(satellite fleet.SatelliteID) {
 	match := func(a fleet.SatelliteAuth) bool { return a.Satellite == satellite }
 	s.byHash.deleteIf(match)

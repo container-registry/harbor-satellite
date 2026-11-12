@@ -121,9 +121,10 @@ func (s *HeartbeatService) Beat(ctx context.Context, cmd HeartbeatCmd) (Heartbea
 	res := HeartbeatResult{Events: refreshEvents(auth.RobotExpiresAt, every, now)}
 
 	digest := cmd.InventoryDigest
-	if cmd.Inventory != nil {
+	switch {
+	case cmd.Inventory != nil && digest == "":
 		digest = Digest(inventory.Digest(cmd.Inventory))
-	} else if digest != "" && digest != s.knownInventory(auth) {
+	case cmd.Inventory == nil && digest != "" && digest != s.knownInventory(auth):
 		res.InventoryRequested = true
 	}
 

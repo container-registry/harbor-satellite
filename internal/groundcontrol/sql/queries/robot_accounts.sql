@@ -21,6 +21,13 @@ WHERE satellite_id = $1;
 SELECT * FROM robot_accounts
 WHERE robot_name = $1;
 
+-- name: GetRobotAuthByRobotName :one
+-- Robot Basic auth of a satellite in one statement: the secret hash, the
+-- expiry and the satellite's name.
+SELECT r.robot_secret_hash, r.robot_expiry, s.name AS satellite_name
+FROM robot_accounts r JOIN satellites s ON s.id = r.satellite_id
+WHERE r.robot_name = $1;
+
 -- name: ListRobotAccounts :many
 SELECT * FROM robot_accounts;
 

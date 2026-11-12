@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/heartbeat"
+
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
 	"github.com/stretchr/testify/require"
@@ -40,12 +42,21 @@ type gcHarness struct {
 	admin authFunc
 	// sessionClock is the sessions' clock of newHotPathHarness.
 	sessionClock *manualClock
+	// flusher is the heartbeat flusher of newHotPathHarness.
+	flusher *heartbeat.Flusher
 }
 
 // newGCHarness needs TEST_DATABASE_URL and skips without it. Set extra GC
 // environment variables with t.Setenv before calling it; opts go to
-// NewServer.
+// NewServer. Satellites authenticate through the sessions of plan item
+// 4.1, and every heartbeat is flushed in its request, so a test reads it
+// back at once; newHotPathHarness keeps them buffered.
 func newGCHarness(t *testing.T, opts ...Option) *gcHarness {
+	t.Helper()
+	return newHarness(t, true, opts...)
+}
+
+func newHarness(t *testing.T, flushEachBeat bool, opts ...Option) *gcHarness {
 	t.Helper()
 	db := dbtest.New(t)
 	harborStub.Reset()
@@ -74,7 +85,8 @@ func newGCHarness(t *testing.T, opts ...Option) *gcHarness {
 	}
 	loadGCForTest(t)
 
-	opts = append([]Option{WithFleet(harnessServices(t, db))}, opts...)
+	hot := &hotPath{t: t, clock: &manualClock{t: time.Now()}, flushEachBeat: flushEachBeat}
+	opts = append([]Option{WithFleetFactory(hot.factory)}, opts...)
 	res, err := NewServer(context.Background(), opts...)
 	require.NoError(t, err)
 	ts := httptest.NewServer(res.Server.Handler)
@@ -83,7 +95,7 @@ func newGCHarness(t *testing.T, opts ...Option) *gcHarness {
 		require.NoError(t, res.Close())
 	})
 
-	h := &gcHarness{t: t, db: db, harbor: harborStub, app: res.AppServer, handler: res.Server.Handler, url: ts.URL}
+	h := &gcHarness{t: t, db: db, harbor: harborStub, app: res.AppServer, handler: res.Server.Handler, url: ts.URL, sessionClock: hot.clock, flusher: hot.flusher}
 	var session LoginResponse
 	h.mustDo(http.MethodPost, "/login", LoginRequest{Username: "admin", Password: harnessAdminPassword}, nil, http.StatusOK).decode(t, &session)
 	h.admin = bearerAuth(session.Token)

@@ -158,26 +158,6 @@ func (s *Server) GetSatelliteStatus(w http.ResponseWriter, r *http.Request, sate
 	WriteJSONResponse(w, http.StatusOK, status)
 }
 
-func (s *Server) ListActiveSatellites(w http.ResponseWriter, r *http.Request) {
-	satellites, err := s.dbQueries.GetActiveSatellites(r.Context())
-	if err != nil {
-		log.Printf("Failed to get active satellites: %v", err)
-		HandleAppError(w, &AppError{Message: "failed to get active satellites", Code: http.StatusInternalServerError})
-		return
-	}
-	WriteJSONResponse(w, http.StatusOK, satellites)
-}
-
-func (s *Server) ListStaleSatellites(w http.ResponseWriter, r *http.Request) {
-	satellites, err := s.dbQueries.GetStaleSatellites(r.Context())
-	if err != nil {
-		log.Printf("Failed to get stale satellites: %v", err)
-		HandleAppError(w, &AppError{Message: "failed to get stale satellites", Code: http.StatusInternalServerError})
-		return
-	}
-	WriteJSONResponse(w, http.StatusOK, satellites)
-}
-
 func (s *Server) GetCachedImages(w http.ResponseWriter, r *http.Request, satelliteName string) {
 	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
 	if err != nil {
@@ -185,7 +165,8 @@ func (s *Server) GetCachedImages(w http.ResponseWriter, r *http.Request, satelli
 		return
 	}
 
-	artifacts, err := s.dbQueries.GetLatestArtifacts(r.Context(), sat.ID)
+	// The inventory lives in satellite_view since plan item 4.4.
+	artifacts, err := s.dbQueries.ListSatelliteInventory(r.Context(), sat.ID)
 	if err != nil {
 		HandleAppError(w, &AppError{Message: "failed to get cached images", Code: http.StatusInternalServerError})
 		return

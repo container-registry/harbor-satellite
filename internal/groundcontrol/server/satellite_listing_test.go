@@ -8,20 +8,49 @@ import (
 	"testing"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/postgres"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
+
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gorilla/mux"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetActiveSatellitesHandler(t *testing.T) {
-	t.Run("returns active satellites", func(t *testing.T) {
-		server, mock := newMockServer(t)
-		now := time.Now().UTC().Truncate(time.Second)
+// viewColumns are the columns of ListSatelliteViewsByState.
+var viewColumns = []string{
+	"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval", "state", "last_activity", "last_reported_at",
+	"applied_state_digest", "applied_config_digest", "applied_states", "inventory_digest", "last_replication_error", "revoked_at",
+	"view_updated_at", "desired_version", "rendered_digest", "published_digest", "published_artifact_digest", "publish_error",
+	"published_at", "published_groups",
+}
 
-		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval", "last_activity", "last_status_time"}).
-			AddRow(1, "edge-01", now, now, sql.NullTime{Time: now, Valid: true}, sql.NullString{String: "30s", Valid: true}, "syncing", now)
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnRows(rows)
+func viewRow(rows *sqlmock.Rows, id int32, name, state string, now, lastSeen time.Time) *sqlmock.Rows {
+	return rows.AddRow(id, name, now, now, sql.NullTime{Time: lastSeen, Valid: true}, sql.NullString{String: "@every 00h00m30s", Valid: true},
+		state, sql.NullString{String: "syncing", Valid: true}, sql.NullTime{Time: now, Valid: true}, nil, nil, []byte("[]"), nil, nil, nil,
+		sql.NullTime{Time: now, Valid: true}, nil, nil, nil, nil, nil, nil, []byte("[]"))
+}
+
+// newMockViewServer is a mock server whose fleet services run on the mock
+// database, as the view listings do.
+func newMockViewServer(t *testing.T) (*Server, sqlmock.Sqlmock) {
+	t.Helper()
+	server, mock := newMockServer(t)
+	repo, err := postgres.NewRepository(server.db)
+	require.NoError(t, err)
+	svc, err := fleet.NewServices(fleet.Deps{Repository: repo, Registry: fleettest.NewRegistry(nil)})
+	require.NoError(t, err)
+	server.services = svc
+	return server, mock
+}
+
+func TestGetActiveSatellitesHandler(t *testing.T) {
+	t.Run("returns online satellites from the view", func(t *testing.T) {
+		server, mock := newMockViewServer(t)
+		now := time.Now().UTC().Truncate(time.Second)
+		mock.ExpectQuery("SELECT .+ FROM satellites s LEFT JOIN satellite_view").WithArgs("online").
+			WillReturnRows(viewRow(sqlmock.NewRows(viewColumns), 1, "edge-01", "online", now, now))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/active", nil)
 		rr := httptest.NewRecorder()
@@ -29,14 +58,13 @@ func TestGetActiveSatellitesHandler(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "edge-01")
+		require.Contains(t, rr.Body.String(), `"LastActivity":"syncing"`)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
 	t.Run("empty returns 200", func(t *testing.T) {
-		server, mock := newMockServer(t)
-
-		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval", "last_activity", "last_status_time"})
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnRows(rows)
+		server, mock := newMockViewServer(t)
+		mock.ExpectQuery("SELECT .+ FROM satellites s LEFT JOIN satellite_view").WithArgs("online").WillReturnRows(sqlmock.NewRows(viewColumns))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/active", nil)
 		rr := httptest.NewRecorder()
@@ -47,9 +75,8 @@ func TestGetActiveSatellitesHandler(t *testing.T) {
 	})
 
 	t.Run("db error returns 500", func(t *testing.T) {
-		server, mock := newMockServer(t)
-
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnError(fmt.Errorf("db error"))
+		server, mock := newMockViewServer(t)
+		mock.ExpectQuery("SELECT .+ FROM satellites s LEFT JOIN satellite_view").WillReturnError(fmt.Errorf("db error"))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/active", nil)
 		rr := httptest.NewRecorder()
@@ -61,13 +88,11 @@ func TestGetActiveSatellitesHandler(t *testing.T) {
 }
 
 func TestGetStaleSatellitesHandler(t *testing.T) {
-	t.Run("returns stale satellites", func(t *testing.T) {
-		server, mock := newMockServer(t)
+	t.Run("returns stale satellites from the view", func(t *testing.T) {
+		server, mock := newMockViewServer(t)
 		now := time.Now().UTC().Truncate(time.Second)
-
-		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval", "seconds_since_seen"}).
-			AddRow(1, "stale-01", now, now, sql.NullTime{Time: now.Add(-time.Hour), Valid: true}, sql.NullString{String: "30s", Valid: true}, int64(3600))
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnRows(rows)
+		mock.ExpectQuery("SELECT .+ FROM satellites s LEFT JOIN satellite_view").WithArgs("stale").
+			WillReturnRows(viewRow(sqlmock.NewRows(viewColumns), 1, "stale-01", "stale", now, now.Add(-time.Hour)))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/stale", nil)
 		rr := httptest.NewRecorder()
@@ -75,13 +100,13 @@ func TestGetStaleSatellitesHandler(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Contains(t, rr.Body.String(), "stale-01")
+		require.Contains(t, rr.Body.String(), `"SecondsSinceSeen":3600`)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
 	t.Run("db error returns 500", func(t *testing.T) {
-		server, mock := newMockServer(t)
-
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnError(fmt.Errorf("db error"))
+		server, mock := newMockViewServer(t)
+		mock.ExpectQuery("SELECT .+ FROM satellites s LEFT JOIN satellite_view").WillReturnError(fmt.Errorf("db error"))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/satellites/stale", nil)
 		rr := httptest.NewRecorder()

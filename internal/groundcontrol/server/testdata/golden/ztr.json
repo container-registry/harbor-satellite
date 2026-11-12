@@ -5,6 +5,10 @@
       "url": "http://harbor.test",
       "username": "robot$edge-01-1"
     },
+    "session": {
+      "expires_at": "\u003ctimestamp\u003e",
+      "token": "\u003csecret\u003e"
+    },
     "state": "http://harbor.test/satellite/satellite-state/edge-01/state:latest"
   },
   "request": "POST /satellites/ztr",
