@@ -285,6 +285,7 @@ type AppConfig struct {
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
 	Audit                     AuditConfig            `json:"audit,omitempty"`
 	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitzero"`
+	Network                   NetworkConfig          `json:"network,omitempty"`
 }
 
 type StateConfig struct {
