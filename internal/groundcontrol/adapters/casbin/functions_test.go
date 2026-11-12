@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,7 +23,6 @@ func call(t *testing.T, fn func(...any) (any, error), args ...any) bool {
 }
 
 func TestRequestFunctions(t *testing.T) {
-	pending.Plan(t, "7.1", "the matcher functions are stubs")
 	require.Equal(t, []string{"user:bob", "role:admin", "oidc:edge-team"},
 		requestSubjects(fleet.Principal{Subject: "user:bob", Roles: []string{"role:admin"}, Groups: []string{"oidc:edge-team"}}))
 	require.Equal(t, []string{"satellite:edge-01", "group:A", "group:B"},
