@@ -382,6 +382,8 @@ State replication in internal/satellite/state/ and internal/satellite/store/:
 - state_persistence.go: Atomic persistence to state.json
 - helpers.go: URL validation, state fetcher creation
 
+Each group's tick replicates first and deletes afterwards (`state.applyGroupChanges`), so a re-tagged image never goes missing and shared layers are not fetched again. Removals that a current entity of the group still references by image and digest are dropped (`state.withoutWanted`). `Store.Delete` is digest guarded: `OCIStore` untags only while the tag still resolves to the artifact's digest and always runs GC afterwards; `RegistryStore` deletes the artifact's own digest.
+
 This is core functionality; changes require careful review.
 
 ### Docker Compose Files
@@ -403,7 +405,7 @@ Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNo
 
 - internal/shared/notimpl/: `ErrNotImplemented` and `Err(item)`, returned by every skeleton stub
 - D10 (empty satellite state artifact) has tests only
-- D9 and D12: `store.Store.Delete` documents the digest guard (an artifact's tag goes only while it still resolves to the artifact's digest, then unreferenced content is collected; `RegistryStore` deletes the artifact's own digest), which neither store implements yet; `state.applyGroupChanges` (replicate, then delete) and `state.withoutWanted` (removals checked against every group's wanted entities, D12) are stubs; `state_process.go` still deletes before it replicates, per group
+- D12: `state.withoutWanted` is written and used per group (D9); widening `wanted` to the union of every group's entities, so one group does not delete what another still wants, is pending (`TestExecute_ImageStaysWhileAnotherGroupWantsIt`)
 - `.go-arch-lint.yml` (0.1, enforced): import boundaries checked by `task lint:arch` (go-arch-lint, pinned by `GO_ARCH_LINT_VERSION`, run with `go run`). `task lint` runs it before golangci-lint and the lint workflow runs it as job `arch`. Every package must belong to a component and a component may import its own packages only when it lists itself, so a new package needs an entry; test helper packages named `*test` fall into `testsupport` by themselves, and `internal/satellite/gcclient` is its own component that may import only `pkg/groundcontrol` and the shared packages. The two `EXCEPTION 0.1` entries go once `proxy.Mode` leaves `internal/satellite` and `pkg/config` gets an injected encryptor (`test/arch` pending test). `govet` is enabled with `shadow` off
 - `internal/satellite/telemetry` (0.4): metric names, `Recorder` and `Nop`, and a stub `/healthz` + `/metrics` server. `TELEMETRY_ADDR` is parsed; nothing starts the server
 - `internal/groundcontrol/dbpool` (3.2): one pool per plane (API, fleet, async); fleet and async use the API pool unless `DB_URL_FLEET`/`DB_URL_ASYNC` is set. `env.Database` parses `DB_URL_API|FLEET|ASYNC`, `DB_{API,FLEET,ASYNC}_*` pool settings and `DB_SSLMODE` (default `disable`; 3.3 makes it `require`)/`DB_SSLROOTCERT`, but GC still opens a single pool from `URL()` with `sslmode=disable`. lib/pq stays: it cancels server queries on context end (`TestLibPQCancelsQueryOnContextCancel`)

@@ -172,8 +172,8 @@ func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts [
 // single tag, so Delete removes the artifact's own digest, never the one a
 // moved tag resolves to now, and that drops every tag of the digest: state
 // replication passes only digests no wanted entity references. The registry
-// collects the content itself. D9 skeleton: it still deletes the manifest
-// the tag resolves to.
+// collects the content itself. An artifact without a digest falls back to
+// what its tag resolves to.
 func (r *RegistryStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	for _, artifact := range artifacts {
 		if err := artifact.validate(); err != nil {
@@ -183,7 +183,11 @@ func (r *RegistryStore) Delete(ctx context.Context, artifacts []Artifact) error 
 		if err != nil {
 			return err
 		}
-		desc, err := repository.Manifests().Resolve(ctx, artifact.destinationIdentifier())
+		reference := artifact.destinationIdentifier()
+		if artifact.Digest != "" {
+			reference = artifact.Digest
+		}
+		desc, err := repository.Manifests().Resolve(ctx, reference)
 		if errors.Is(err, errdef.ErrNotFound) {
 			continue
 		}

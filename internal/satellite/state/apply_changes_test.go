@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/google/go-containerregistry/pkg/registry"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -50,7 +49,6 @@ func (s *recordingLocalStore) Delete(context.Context, []store.Artifact) error {
 }
 
 func TestApplyGroupChanges_ReplicatesBeforeDeleting(t *testing.T) {
-	pending.Plan(t, "D9", "state replication deletes the old tag before it replicates the new digest")
 	local := &recordingLocalStore{}
 	moved := Entity{Name: "team/app", Tag: "latest", Digest: "sha256:" + strings.Repeat("b", 64)}
 	old := Entity{Name: "team/app", Tag: "latest", Digest: "sha256:" + strings.Repeat("a", 64)}
@@ -63,7 +61,6 @@ func TestApplyGroupChanges_ReplicatesBeforeDeleting(t *testing.T) {
 }
 
 func TestApplyGroupChanges_SharedLayerNotRefetched(t *testing.T) {
-	pending.Plan(t, "D9", "deleting the old digest first removes the layer it shares with the new one, which is then downloaded again")
 	shared := []byte("layer shared by both digests")
 	sharedDesc := content.NewDescriptorFromBytes("application/vnd.example.layer.v1", shared)
 	sharedPath := "/v2/team/app/blobs/" + sharedDesc.Digest.String()
@@ -117,7 +114,6 @@ func TestApplyGroupChanges_SharedLayerNotRefetched(t *testing.T) {
 }
 
 func TestWithoutWanted(t *testing.T) {
-	pending.Plan(t, "D12", "each group deletes what it dropped although another group in the same store still wants it")
 	digest := func(c string) string { return "sha256:" + strings.Repeat(c, 64) }
 	latestX := Entity{Name: "team/app", Tag: "latest", Digest: digest("1")}
 	cases := []struct {

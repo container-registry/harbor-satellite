@@ -437,30 +437,36 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if len(artifacts) == 0 {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	changed := false
 	for _, artifact := range artifacts {
 		if err := artifact.validate(); err != nil {
 			return err
 		}
-		if _, err := s.store.Resolve(ctx, artifact.Reference()); err != nil {
-			if errors.Is(err, errdef.ErrNotFound) {
-				continue
-			}
+		desc, err := s.store.Resolve(ctx, artifact.Reference())
+		if errors.Is(err, errdef.ErrNotFound) {
+			continue
+		}
+		if err != nil {
 			return err
+		}
+		if artifact.Digest != "" && desc.Digest.String() != artifact.Digest {
+			// A newer replication moved the tag; it must stay.
+			continue
 		}
 		if err := s.store.Untag(ctx, artifact.Reference()); err != nil {
 			return err
 		}
-		changed = true
 	}
-	if changed {
-		if err := s.store.GC(ctx); err != nil {
-			return err
-		}
-		s.provenance.Clear()
+	// Collect also when nothing was untagged: the tag may have moved or been
+	// removed before, leaving the old digest's content behind.
+	if err := s.store.GC(ctx); err != nil {
+		return err
 	}
+	s.provenance.Clear()
 	return nil
 }
 

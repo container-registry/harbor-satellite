@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/google/go-containerregistry/pkg/registry"
@@ -30,8 +29,6 @@ import (
 )
 
 func TestExecute_RetaggedImageStaysPullable(t *testing.T) {
-	pending.Plan(t, "D9", "re-tagged image is missing while the new digest replicates")
-
 	ctx := testContext()
 	server := httptest.NewServer(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
 	t.Cleanup(server.Close)
