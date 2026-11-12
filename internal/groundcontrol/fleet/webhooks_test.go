@@ -7,11 +7,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingWebhooks = "Ground Control delivers no events; there are no webhooks"
 
 var webhookSecret = bytes.Repeat([]byte("s"), fleet.MinWebhookSecretBytes)
 
@@ -45,7 +42,6 @@ func TestWebhookService_CreateValidates(t *testing.T) {
 		"unknown kind":                {url: "https://hooks.example/a", secret: webhookSecret, kinds: []fleet.EventKind{"Nope"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			pending.Plan(t, "9.1", pendingWebhooks)
 			w := newWorld()
 			svc := w.webhookServices(t, true)
 
@@ -57,7 +53,6 @@ func TestWebhookService_CreateValidates(t *testing.T) {
 	}
 
 	t.Run("http to loopback", func(t *testing.T) {
-		pending.Plan(t, "9.1", pendingWebhooks)
 		w := newWorld()
 		svc := w.webhookServices(t, true)
 
@@ -69,7 +64,6 @@ func TestWebhookService_CreateValidates(t *testing.T) {
 }
 
 func TestWebhookService_SealsSecret(t *testing.T) {
-	pending.Plan(t, "9.1", pendingWebhooks)
 	w := newWorld()
 	svc := w.webhookServices(t, true)
 
@@ -81,7 +75,6 @@ func TestWebhookService_SealsSecret(t *testing.T) {
 }
 
 func TestWebhookService_DisabledFeatureIsConflict(t *testing.T) {
-	pending.Plan(t, "9.1", pendingWebhooks)
 	w := newWorld()
 	svc := w.webhookServices(t, false)
 

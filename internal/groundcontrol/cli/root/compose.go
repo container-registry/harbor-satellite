@@ -62,6 +62,7 @@ func newWorker(ctx context.Context, pools *dbpool.Pools, spire *spiffe.ServerCli
 	w, closeWorker, err := app.NewWorker(ctx, app.WorkerDeps{
 		Pools: pools, Harbor: env.GC.Harbor, Server: env.GC.Server, Config: app.PublisherConfig(env.GC.Outbox),
 		Webhook: env.GC.Webhook, SPIRE: spire, RobotRotation: env.GC.RobotRotation, DataEncryptionKey: env.GC.DataEncryptionKey,
+		OutboxRetention: env.GC.Outbox.Retention,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("compose the async worker: %w", err)

@@ -182,7 +182,19 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 		}
 		rotationSource = rotations
 	}
+	var webhooks fleet.WebhookRepo
+	var webhookSealer fleet.Sealer
+	if deps.Webhook.Enabled {
+		if webhookSealer, err = NewSealer(deps.DataEncryptionKey); err != nil {
+			return nil, fmt.Errorf("WEBHOOKS_ENABLED: %w", err)
+		}
+		if webhooks, err = postgres.NewWebhookRepo(deps.Pools.API); err != nil {
+			return nil, err
+		}
+	}
 	services, err := fleet.NewServices(fleet.Deps{
+		Webhooks:            webhooks,
+		Sealer:              webhookSealer,
 		Policy:              servicePolicy,
 		Rotations:           rotationSource,
 		Repository:          repo,

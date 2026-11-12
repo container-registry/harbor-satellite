@@ -1031,13 +1031,13 @@ type ServerInterface interface {
 	// ChangeUserPassword Resets a user's password.
 	// (PATCH /api/users/{username}/password)
 	ChangeUserPassword(w http.ResponseWriter, r *http.Request, username string)
-	// ListWebhooks Lists webhook subscriptions (plan item 9.1, not implemented yet).
+	// ListWebhooks Lists webhook subscriptions (plan item 9.1).
 	// (GET /api/webhooks)
 	ListWebhooks(w http.ResponseWriter, r *http.Request)
-	// CreateWebhook Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+	// CreateWebhook Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1).
 	// (POST /api/webhooks)
 	CreateWebhook(w http.ResponseWriter, r *http.Request)
-	// DeleteWebhook Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+	// DeleteWebhook Deletes a webhook subscription and its checkpoint (plan item 9.1).
 	// (DELETE /api/webhooks/{id})
 	DeleteWebhook(w http.ResponseWriter, r *http.Request, id int32)
 	// Health Checks database connectivity and reports Harbor reachability.

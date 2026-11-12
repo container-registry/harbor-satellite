@@ -1313,26 +1313,26 @@ type ClientInterface interface {
 	// Corresponds with PATCH /api/users/{username}/password (the `ChangeUserPassword` operationId).
 	ChangeUserPassword(ctx context.Context, username string, body ChangeUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListWebhooks Lists webhook subscriptions (plan item 9.1, not implemented yet).
+	// ListWebhooks Lists webhook subscriptions (plan item 9.1).
 	//
 	// Corresponds with GET /api/webhooks (the `ListWebhooks` operationId).
 	ListWebhooks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateWebhookWithBody Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+	// CreateWebhookWithBody Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1).
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/webhooks (the `CreateWebhook` operationId).
 	CreateWebhookWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateWebhook Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+	// CreateWebhook Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1).
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with POST /api/webhooks (the `CreateWebhook` operationId).
 	CreateWebhook(ctx context.Context, body CreateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeleteWebhook Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+	// DeleteWebhook Deletes a webhook subscription and its checkpoint (plan item 9.1).
 	//
 	// Corresponds with DELETE /api/webhooks/{id} (the `DeleteWebhook` operationId).
 	DeleteWebhook(ctx context.Context, id int32, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -2299,7 +2299,7 @@ func (c *Client) ChangeUserPassword(ctx context.Context, username string, body C
 	return c.Client.Do(req)
 }
 
-// ListWebhooks Lists webhook subscriptions (plan item 9.1, not implemented yet).
+// ListWebhooks Lists webhook subscriptions (plan item 9.1).
 //
 // Corresponds with GET /api/webhooks (the `ListWebhooks` operationId).
 func (c *Client) ListWebhooks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2314,7 +2314,7 @@ func (c *Client) ListWebhooks(ctx context.Context, reqEditors ...RequestEditorFn
 	return c.Client.Do(req)
 }
 
-// CreateWebhookWithBody Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+// CreateWebhookWithBody Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1).
 //
 // Takes any type of body and a specified content type.
 //
@@ -2331,7 +2331,7 @@ func (c *Client) CreateWebhookWithBody(ctx context.Context, contentType string, 
 	return c.Client.Do(req)
 }
 
-// CreateWebhook Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+// CreateWebhook Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1).
 //
 // Takes a body of the `application/json` content type.
 //
@@ -2348,7 +2348,7 @@ func (c *Client) CreateWebhook(ctx context.Context, body CreateWebhookJSONReques
 	return c.Client.Do(req)
 }
 
-// DeleteWebhook Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+// DeleteWebhook Deletes a webhook subscription and its checkpoint (plan item 9.1).
 //
 // Corresponds with DELETE /api/webhooks/{id} (the `DeleteWebhook` operationId).
 func (c *Client) DeleteWebhook(ctx context.Context, id int32, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4971,28 +4971,28 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /api/users/{username}/password (the `ChangeUserPassword` operationId).
 	ChangeUserPasswordWithResponse(ctx context.Context, username string, body ChangeUserPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeUserPasswordHTTPResponse, error)
 
-	// ListWebhooksWithResponse Lists webhook subscriptions (plan item 9.1, not implemented yet).
+	// ListWebhooksWithResponse Lists webhook subscriptions (plan item 9.1).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/webhooks (the `ListWebhooks` operationId).
 	ListWebhooksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListWebhooksHTTPResponse, error)
 
-	// CreateWebhookWithBodyWithResponse Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+	// CreateWebhookWithBodyWithResponse Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/webhooks (the `CreateWebhook` operationId).
 	CreateWebhookWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWebhookHTTPResponse, error)
 
-	// CreateWebhookWithResponse Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+	// CreateWebhookWithResponse Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1).
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/webhooks (the `CreateWebhook` operationId).
 	CreateWebhookWithResponse(ctx context.Context, body CreateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWebhookHTTPResponse, error)
 
-	// DeleteWebhookWithResponse Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+	// DeleteWebhookWithResponse Deletes a webhook subscription and its checkpoint (plan item 9.1).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -9317,7 +9317,7 @@ func (c *ClientWithResponses) ChangeUserPasswordWithResponse(ctx context.Context
 	return ParseChangeUserPasswordHTTPResponse(rsp)
 }
 
-// ListWebhooksWithResponse Lists webhook subscriptions (plan item 9.1, not implemented yet).
+// ListWebhooksWithResponse Lists webhook subscriptions (plan item 9.1).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -9330,7 +9330,7 @@ func (c *ClientWithResponses) ListWebhooksWithResponse(ctx context.Context, reqE
 	return ParseListWebhooksHTTPResponse(rsp)
 }
 
-// CreateWebhookWithBodyWithResponse Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+// CreateWebhookWithBodyWithResponse Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9343,7 +9343,7 @@ func (c *ClientWithResponses) CreateWebhookWithBodyWithResponse(ctx context.Cont
 	return ParseCreateWebhookHTTPResponse(rsp)
 }
 
-// CreateWebhookWithResponse Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+// CreateWebhookWithResponse Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1).
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -9356,7 +9356,7 @@ func (c *ClientWithResponses) CreateWebhookWithResponse(ctx context.Context, bod
 	return ParseCreateWebhookHTTPResponse(rsp)
 }
 
-// DeleteWebhookWithResponse Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+// DeleteWebhookWithResponse Deletes a webhook subscription and its checkpoint (plan item 9.1).
 //
 // Returns a wrapper object for the known response body format(s).
 //
