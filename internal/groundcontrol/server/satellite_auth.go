@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"net/netip"
 
@@ -59,22 +58,12 @@ func (s *Server) fleetLimit(next http.Handler) http.Handler {
 
 // limitAnonymous limits an unauthenticated endpoint per client IP. Before
 // RATE_LIMIT_SPLIT it is the shared legacy limiter; after it the key is
-// clientIP, which honours trustForwardedHeaders. A forwarded entry that
-// does not parse falls back to the peer, the proxy, whose bucket those
-// clients then share.
+// clientAddr.
 func (s *Server) limitAnonymous(next http.Handler) http.Handler {
 	if s.AnonymousLimiter == nil {
 		return middleware.RateLimitMiddleware(s.rateLimiter)(next)
 	}
 	return middleware.LimitBy(s.AnonymousLimiter, func(r *http.Request) (netip.Addr, bool) {
-		if addr, err := netip.ParseAddr(s.clientIP(r)); err == nil {
-			return addr.Unmap(), true
-		}
-		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-			if addr, err := netip.ParseAddr(host); err == nil {
-				return addr.Unmap(), true
-			}
-		}
-		return netip.Addr{}, true
+		return s.clientAddr(r), true
 	})(next)
 }

@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +14,6 @@ var (
 )
 
 func TestFailureLimiter_BlocksIPAfterMax(t *testing.T) {
-	pending.Plan(t, "D6", "failed Basic auth attempts are not limited")
 	l := NewFailureLimiter(3, time.Minute)
 	t.Cleanup(l.Stop)
 
@@ -29,7 +27,6 @@ func TestFailureLimiter_BlocksIPAfterMax(t *testing.T) {
 }
 
 func TestFailureLimiter_WindowExpires(t *testing.T) {
-	pending.Plan(t, "D6", "failed Basic auth attempts are not limited")
 	l := NewFailureLimiter(2, 50*time.Millisecond)
 	t.Cleanup(l.Stop)
 
