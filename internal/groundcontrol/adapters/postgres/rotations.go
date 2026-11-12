@@ -30,7 +30,7 @@ func NewRotationStore(db *sql.DB) (*RotationStore, error) {
 }
 
 func (s *RotationStore) ExpiringBefore(ctx context.Context, now, before time.Time, limit int) ([]fleet.Robot, error) {
-	rows, err := s.q.ListRobotsExpiringBefore(ctx, database.ListRobotsExpiringBeforeParams{Before: before, Now: now, RowLimit: int32(limit)})
+	rows, err := s.q.ListRobotsExpiringBefore(ctx, database.ListRobotsExpiringBeforeParams{Before: before, Now: now, RowLimit: rowLimit(limit)})
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -76,7 +76,7 @@ func (s *RotationStore) Pending(ctx context.Context) ([]async.PendingRotation, e
 }
 
 func (s *RotationStore) Acked(ctx context.Context, limit int) ([]fleet.RobotRotation, error) {
-	rows, err := s.q.ListAckedRobotRotations(ctx, int32(limit))
+	rows, err := s.q.ListAckedRobotRotations(ctx, rowLimit(limit))
 	if err != nil {
 		return nil, mapError(err)
 	}

@@ -11,7 +11,9 @@ import (
 // Statements is what pg_stat_statements recorded for one database.
 type Statements struct {
 	// Calls maps a query key to its executions. sqlc queries are keyed by
-	// their name ("GetSatelliteByName"), others by their normalised text.
+	// their name ("GetSatelliteByName"), or by every name joined with "|"
+	// when PostgreSQL records them as one text; others by their normalised
+	// text.
 	Calls map[string]int64
 	Total int64
 }

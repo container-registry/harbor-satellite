@@ -26,7 +26,7 @@ func NewOutboxLog(db *sql.DB) (*OutboxLog, error) {
 
 func (l *OutboxLog) ReadAfter(ctx context.Context, after webhook.Position, limit int) ([]webhook.LogEntry, error) {
 	rows, err := l.q.ReadOutboxAfter(ctx, database.ReadOutboxAfterParams{
-		AfterXid: strconv.FormatUint(after.XID, 10), AfterID: after.ID, MaxRows: int32(limit),
+		AfterXid: strconv.FormatUint(after.XID, 10), AfterID: after.ID, MaxRows: rowLimit(limit),
 	})
 	if err != nil {
 		return nil, mapError(err)

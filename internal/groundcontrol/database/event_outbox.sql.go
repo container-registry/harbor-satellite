@@ -183,7 +183,7 @@ const listStuckOutboxEvents = `-- name: ListStuckOutboxEvents :many
 SELECT id, kind, aggregate_type, aggregate_id, attempts, created_at, next_attempt_at, last_error
 FROM event_outbox
 WHERE done_at IS NULL AND attempts >= $1::INT
-ORDER BY id
+ORDER BY created_at, id
 LIMIT $2::INT
 `
 
@@ -203,7 +203,8 @@ type ListStuckOutboxEventsRow struct {
 	LastError     sql.NullString
 }
 
-// min_attempts 0 lists every pending event.
+// min_attempts 0 lists every pending event, oldest first: created_at is
+// the appending transaction's start, so id order can differ from it.
 func (q *Queries) ListStuckOutboxEvents(ctx context.Context, arg ListStuckOutboxEventsParams) ([]ListStuckOutboxEventsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listStuckOutboxEvents, arg.MinAttempts, arg.MaxRows)
 	if err != nil {

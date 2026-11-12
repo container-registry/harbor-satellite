@@ -33,3 +33,10 @@ func mapError(err error) error {
 	}
 	return err
 }
+
+// rowLimit narrows a batch size to an SQL INT LIMIT. Sizes come from the
+// environment, so one above the INT range is capped instead of wrapping
+// into a negative LIMIT.
+func rowLimit(n int) int32 {
+	return int32(min(n, 1<<30))
+}

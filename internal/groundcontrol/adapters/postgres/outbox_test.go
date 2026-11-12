@@ -303,3 +303,30 @@ func TestAggregateLocker_ExcludesOtherWorkers(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'idle in transaction'").Scan(&open))
 	require.Zero(t, open, "the lock holds no transaction")
 }
+
+// created_at is NOW(), the start of the appending transaction, so a long
+// transaction's event can be older than one with a lower id.
+func TestOutboxStore_StuckListsOldestFirst(t *testing.T) {
+	db := dbtest.New(t)
+	ctx := context.Background()
+	long, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	_, err = long.ExecContext(ctx, "SELECT now()")
+	require.NoError(t, err)
+	time.Sleep(10 * time.Millisecond)
+	newer := appendEvents(t, db, 1)[0]
+	older, err := database.New(db.DB).WithTx(long).AppendOutboxEvent(ctx, database.AppendOutboxEventParams{
+		Kind: string(fleet.EventSatelliteCreated), AggregateType: string(fleet.AggregateSatellite), AggregateID: 9, Payload: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+	require.NoError(t, long.Commit())
+	require.Greater(t, older, newer)
+	store, err := postgres.NewOutboxStore(db.DB)
+	require.NoError(t, err)
+
+	stuck, err := store.Stuck(ctx, 0, 10)
+
+	require.NoError(t, err)
+	require.Len(t, stuck, 2)
+	require.Equal(t, []int64{older, newer}, []int64{stuck[0].ID, stuck[1].ID}, "oldest created first")
+}

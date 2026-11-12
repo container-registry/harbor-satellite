@@ -67,11 +67,12 @@ SET attempts = 0, next_attempt_at = NOW()
 WHERE done_at IS NULL AND attempts >= sqlc.arg(max_attempts)::INT;
 
 -- name: ListStuckOutboxEvents :many
--- min_attempts 0 lists every pending event.
+-- min_attempts 0 lists every pending event, oldest first: created_at is
+-- the appending transaction's start, so id order can differ from it.
 SELECT id, kind, aggregate_type, aggregate_id, attempts, created_at, next_attempt_at, last_error
 FROM event_outbox
 WHERE done_at IS NULL AND attempts >= sqlc.arg(min_attempts)::INT
-ORDER BY id
+ORDER BY created_at, id
 LIMIT sqlc.arg(max_rows)::INT;
 
 -- name: CountPendingOutboxEvents :one

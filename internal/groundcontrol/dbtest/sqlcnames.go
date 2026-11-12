@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +37,18 @@ func fingerprint(query string) string {
 	return strings.TrimSuffix(q, ";")
 }
 
+// addName records name for fp. Queries that differ only in what
+// PostgreSQL normalises away (LIMIT 1 against LIMIT $2) share a
+// fingerprint, so its key lists every name, sorted and joined by "|".
+func addName(fp, name string) {
+	names := []string{name}
+	if prev, ok := sqlcNames[fp]; ok {
+		names = append(strings.Split(prev, "|"), name)
+	}
+	slices.Sort(names)
+	sqlcNames[fp] = strings.Join(slices.Compact(names), "|")
+}
+
 func sqlcQueryNames() map[string]string {
 	sqlcNamesOnce.Do(func() {
 		sqlcNames = map[string]string{}
@@ -62,7 +75,7 @@ func sqlcQueryNames() map[string]string {
 					return true
 				}
 				if m := nameHeader.FindStringSubmatch(text); m != nil {
-					sqlcNames[fingerprint(text)] = m[1]
+					addName(fingerprint(text), m[1])
 				}
 				return true
 			})

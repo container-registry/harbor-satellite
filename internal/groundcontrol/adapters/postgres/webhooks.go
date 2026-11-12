@@ -94,7 +94,7 @@ func NewWebhookStore(db *sql.DB) (*WebhookStore, error) {
 }
 
 func (s *WebhookStore) Due(ctx context.Context, limit int) ([]webhook.DueSubscription, error) {
-	rows, err := s.q.ListDueWebhooks(ctx, int32(limit))
+	rows, err := s.q.ListDueWebhooks(ctx, rowLimit(limit))
 	if err != nil {
 		return nil, mapError(err)
 	}

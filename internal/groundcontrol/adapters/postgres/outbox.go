@@ -39,7 +39,7 @@ func millis(d time.Duration) int64 { return d.Milliseconds() }
 // Claim returns the events ordered by ID.
 func (s *OutboxStore) Claim(ctx context.Context, batchSize, maxAttempts int, lease time.Duration) ([]async.OutboxEvent, error) {
 	rows, err := s.q.ClaimOutboxEvents(ctx, database.ClaimOutboxEventsParams{
-		LeaseMs: millis(lease), MaxAttempts: int32(min(maxAttempts, 1<<30)), BatchSize: int32(min(batchSize, 1<<30)),
+		LeaseMs: millis(lease), MaxAttempts: int32(min(maxAttempts, 1<<30)), BatchSize: rowLimit(batchSize),
 	})
 	if err != nil {
 		return nil, mapError(err)
@@ -86,7 +86,7 @@ func (s *OutboxStore) Rearm(ctx context.Context, maxAttempts int) (int64, error)
 
 func (s *OutboxStore) Stuck(ctx context.Context, minAttempts, limit int) ([]async.OutboxEvent, error) {
 	rows, err := s.q.ListStuckOutboxEvents(ctx, database.ListStuckOutboxEventsParams{
-		MinAttempts: int32(min(minAttempts, 1<<30)), MaxRows: int32(min(limit, 1<<30)),
+		MinAttempts: int32(min(minAttempts, 1<<30)), MaxRows: rowLimit(limit),
 	})
 	if err != nil {
 		return nil, mapError(err)
@@ -145,7 +145,7 @@ func (s *OutboxStore) Prune(ctx context.Context, retention time.Duration, limit 
 	if err != nil || !locked {
 		return 0, mapError(err)
 	}
-	n, err = q.PruneDoneOutboxEvents(ctx, database.PruneDoneOutboxEventsParams{RetentionMs: retention.Milliseconds(), MaxRows: int32(limit)})
+	n, err = q.PruneDoneOutboxEvents(ctx, database.PruneDoneOutboxEventsParams{RetentionMs: retention.Milliseconds(), MaxRows: rowLimit(limit)})
 	return n, mapError(err)
 }
 
