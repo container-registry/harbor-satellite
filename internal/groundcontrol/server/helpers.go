@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -13,6 +14,9 @@ import (
 
 func DecodeRequestBody(r *http.Request, v any) error {
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		if tooLarge := (*http.MaxBytesError)(nil); errors.As(err, &tooLarge) {
+			return &AppError{Message: "Request body too large", Code: http.StatusRequestEntityTooLarge}
+		}
 		return &AppError{
 			Message: "Invalid request body",
 			Code:    http.StatusBadRequest,
