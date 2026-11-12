@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -261,49 +262,22 @@ func (s *Server) Ztr(w http.ResponseWriter, r *http.Request) {
 
 	q := s.dbQueries
 
-	// Get full token info including expiry
-	tokenInfo, err := q.GetTokenByValue(r.Context(), token)
+	satelliteID, err := claimZTRToken(r.Context(), q, token)
 	if err != nil {
-		masked := maskToken(token)
-		log.Printf("Invalid Satellite Token %s: %v", masked, err)
-		s.auditEvent(r, auditlog.AuditEvent{
-			Operation:    auditlog.OpAuth,
-			ResourceType: auditlog.ResSatellite,
-			Outcome:      auditlog.OutcomeFailure,
-			ActorType:    auditlog.ActorAnonymous,
-			Reason:       auditlog.ReasonInvalidToken,
-			Details:      map[string]any{"masked_token": masked},
-		})
-		HandleAppError(w, &AppError{
-			Message: "Error: Invalid Token",
-			Code:    http.StatusBadRequest,
-		})
+		s.rejectZTRToken(w, r, token, err)
 		return
 	}
-
-	// Validate token expiry
-	if time.Now().After(tokenInfo.ExpiresAt) {
-		masked := maskToken(token)
-		log.Printf("Expired Satellite Token %s (expired at %v)", masked, tokenInfo.ExpiresAt)
-		s.auditEvent(r, auditlog.AuditEvent{
-			Operation:    auditlog.OpAuth,
-			ResourceType: auditlog.ResSatellite,
-			Outcome:      auditlog.OutcomeFailure,
-			ActorType:    auditlog.ActorAnonymous,
-			Reason:       auditlog.ReasonTokenExpired,
-			Details: map[string]any{
-				"masked_token": masked,
-				"expired_at":   tokenInfo.ExpiresAt.Format(time.RFC3339),
-			},
-		})
-		HandleAppError(w, &AppError{
-			Message: "Error: Token Expired",
-			Code:    http.StatusUnauthorized,
-		})
-		return
-	}
-
-	satelliteID := tokenInfo.SatelliteID
+	// Until the token is consumed, any failure below releases it so the
+	// satellite can retry with the same token.
+	consumed := false
+	defer func() {
+		if consumed {
+			return
+		}
+		if err := unclaimZTRToken(context.WithoutCancel(r.Context()), q, token); err != nil {
+			log.Printf("ZTR: %v", err)
+		}
+	}()
 
 	robot, err := q.GetRobotAccBySatelliteID(r.Context(), satelliteID)
 	if err != nil {
@@ -380,16 +354,11 @@ func (s *Server) Ztr(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	err = q.DeleteToken(r.Context(), token)
-	if err != nil {
-		log.Println("error deleting token")
-		log.Println(err)
-		err := &AppError{
-			Message: "Error: Error deleting token",
-			Code:    http.StatusInternalServerError,
-		}
-		HandleAppError(w, err)
-		return
+	consumed = true
+	// The claim already makes the token unusable, so a failed delete only
+	// leaves a consumed row behind and must not fail the registration.
+	if _, err := q.ConsumeToken(r.Context(), token); err != nil {
+		log.Printf("ZTR: delete consumed token %s: %v", maskToken(token), err)
 	}
 
 	s.auditEvent(r, auditlog.AuditEvent{

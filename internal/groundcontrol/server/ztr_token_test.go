@@ -11,7 +11,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,7 +35,6 @@ func newTokenDB(t *testing.T) (q *database.Queries, satelliteID int32, valid, ex
 }
 
 func TestClaimZTRToken_SecondClaimIsInvalid(t *testing.T) {
-	pending.Plan(t, "D7", "Ztr reads the token without claiming it, so concurrent registrations all succeed")
 	q, satelliteID, valid, _ := newTokenDB(t)
 	ctx := context.Background()
 
@@ -50,7 +48,6 @@ func TestClaimZTRToken_SecondClaimIsInvalid(t *testing.T) {
 }
 
 func TestClaimZTRToken_UnknownIsInvalid(t *testing.T) {
-	pending.Plan(t, "D7", "Ztr reads the token without claiming it, so concurrent registrations all succeed")
 	q, _, _, _ := newTokenDB(t)
 
 	_, err := claimZTRToken(context.Background(), q, "unknown-token")
@@ -60,7 +57,6 @@ func TestClaimZTRToken_UnknownIsInvalid(t *testing.T) {
 }
 
 func TestClaimZTRToken_ExpiredIsExpired(t *testing.T) {
-	pending.Plan(t, "D7", "Ztr reads the token without claiming it, so concurrent registrations all succeed")
 	q, _, _, expired := newTokenDB(t)
 
 	_, err := claimZTRToken(context.Background(), q, expired)
@@ -69,7 +65,6 @@ func TestClaimZTRToken_ExpiredIsExpired(t *testing.T) {
 }
 
 func TestUnclaimZTRToken_AllowsRetry(t *testing.T) {
-	pending.Plan(t, "D7", "Ztr reads the token without claiming it, so concurrent registrations all succeed")
 	q, satelliteID, valid, _ := newTokenDB(t)
 	ctx := context.Background()
 	_, err := claimZTRToken(ctx, q, valid)
@@ -96,7 +91,6 @@ func TestZtr_FailureAfterClaimUnclaimsToken(t *testing.T) {
 }
 
 func TestZtr_ConsumedTokenIsRejectedAsInvalid(t *testing.T) {
-	pending.Plan(t, "D7", "Ztr ignores consumed_at, so a token another registration has claimed still works")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.syncGroup("edge-group", "library/alpine")
