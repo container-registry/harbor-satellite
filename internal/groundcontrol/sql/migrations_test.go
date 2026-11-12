@@ -6,9 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
-	"os"
 	"testing"
-	"testing/fstest"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	migrations "github.com/container-registry/harbor-satellite/internal/groundcontrol/sql"
@@ -81,27 +79,6 @@ func insertDuplicateRobots(t *testing.T, db *sql.DB) {
 			fmt.Sprintf("robot$edge-01-%d", i), fmt.Sprintf("%d", 100+i), satelliteID)
 		require.NoError(t, err)
 	}
-}
-
-// withPendingMigration is the embedded schema plus sql/pending/<name>.sql
-// as the next migration.
-func withPendingMigration(t *testing.T, name string) (fs.FS, int64) {
-	t.Helper()
-	latest, err := dbtest.LatestMigration()
-	require.NoError(t, err)
-	pendingSQL, err := os.ReadFile("pending/" + name + ".sql")
-	require.NoError(t, err)
-
-	files := fstest.MapFS{}
-	entries, err := fs.ReadDir(migrations.Schema, "schema")
-	require.NoError(t, err)
-	for _, e := range entries {
-		data, err := fs.ReadFile(migrations.Schema, "schema/"+e.Name())
-		require.NoError(t, err)
-		files[e.Name()] = &fstest.MapFile{Data: data}
-	}
-	files[fmt.Sprintf("%03d_%s.sql", latest+1, name)] = &fstest.MapFile{Data: pendingSQL}
-	return files, latest
 }
 
 func columnType(t *testing.T, db *sql.DB, table, column string) string {

@@ -26,14 +26,17 @@ func statusCount(t *testing.T, db *sql.DB, satellite int32) int {
 	return n
 }
 
-// The pending DDL is not applied anywhere, so this keeps it valid until it
-// moves into sql/schema.
-func TestPendingStatusPartitionsSQL_AppliesAndReverts(t *testing.T) {
+// Migration 024 partitions satellite_status (plan item 4.5); its Down
+// restores the plain table with every row.
+func TestMigration024_StatusPartitionsUpAndDown(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
 	q := database.New(db.DB)
-	schema, latest := withPendingMigration(t, "satellite_status_partitions")
-	p := provider(t, db.DB, schema)
+	const latest = 23
+	p := provider(t, db.DB, embeddedSchema(t))
+	_, err := p.DownTo(ctx, latest)
+	require.NoError(t, err)
+	require.Equal(t, "r", relationKind(t, db.DB, "satellite_status"))
 	insert := func(satellite int32) database.SatelliteStatus {
 		t.Helper()
 		row, err := q.InsertSatelliteStatus(ctx, database.InsertSatelliteStatusParams{SatelliteID: satellite, Activity: "idle", ReportedAt: time.Now().UTC()})
