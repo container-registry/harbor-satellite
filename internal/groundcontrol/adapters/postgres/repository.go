@@ -70,7 +70,7 @@ func (t tx) Events() fleet.EventSink {
 	if t.autocommit {
 		return fleet.AutocommitEvents{}
 	}
-	return fleet.NopEventSink{}
+	return &OutboxSink{q: t.q}
 }
 
 func (t tx) Journal() fleet.JournalRepo { return journalRepo{q: t.q} }
