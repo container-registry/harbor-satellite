@@ -11,6 +11,7 @@ func (f *FetchAndReplicateStateProcess) ResetReplicatedEntities() error {
 	defer f.mu.Unlock()
 	for i := range f.stateMap {
 		f.stateMap[i].Entities = nil
+		f.stateMap[i].appliedDigest = ""
 	}
 	if f.stateFilePath == "" {
 		return nil

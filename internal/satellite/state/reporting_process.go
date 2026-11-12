@@ -26,6 +26,8 @@ type StatusReportingProcess struct {
 	pendingCRI     []runtime.CRIConfigResult
 	eventScheduler *events.EventScheduler
 	criReported    bool
+	runSummary     RunSummarySource
+	upload         journalUploader
 }
 
 func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *events.EventScheduler) *StatusReportingProcess {
@@ -106,12 +108,30 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 	insecure := s.cm.UseUnsecure()
 	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
+	s.mu.Lock()
+	runSummary := s.runSummary
+	s.mu.Unlock()
+	if runSummary != nil {
+		applyRunSummary(req, runSummary.LastRun())
+	}
+	report := toStatusReport(req)
+	batch, err := s.upload.next(s.cm.GetJournalConfig().UploadBatch)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to read the journal, reporting without it")
+	} else if batch != nil {
+		report.Journal = *batch
+	}
 
 	log.Debug().Str("ground_control_url", s.cm.ResolveGroundControlURL()).Msg("Sending status report")
-	resp, err := s.sendStatusReport(ctx, req)
+	resp, err := s.sendStatusReport(ctx, report)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to send status report")
 		return err
+	}
+	if batch != nil {
+		if err := s.upload.answer(*batch, resp.Journal); err != nil {
+			log.Warn().Err(err).Msg("Failed to apply the journal answer")
+		}
 	}
 
 	// Sending response events to eventscheduler
@@ -171,7 +191,7 @@ func (s *StatusReportingProcess) newReportClient(ctx context.Context) (*http.Cli
 	return client, nil
 }
 
-func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, req *StatusReportParams) (gcclient.SyncResult, error) {
+func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, report gcclient.StatusReport) (gcclient.SyncResult, error) {
 	httpClient, err := s.newReportClient(ctx)
 	if err != nil {
 		return gcclient.SyncResult{}, err
@@ -184,7 +204,7 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, req *Stat
 	if err != nil {
 		return gcclient.SyncResult{}, err
 	}
-	return client.Sync(ctx, toStatusReport(req))
+	return client.Sync(ctx, report)
 }
 
 func (s *StatusReportingProcess) Name() string {

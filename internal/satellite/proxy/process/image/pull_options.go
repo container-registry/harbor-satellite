@@ -28,6 +28,9 @@ type PullOptions struct {
 	// Recorder receives pull durations and pull-through fills; nil records
 	// nothing.
 	Recorder telemetry.Recorder
+	// Journal receives one record per manifest filled from Harbor (plan
+	// item 6.4); nil journals nothing. It must not block.
+	Journal PullThroughJournal
 }
 
 // NewPullWithOptions is NewPull with the plan 5.3 pull-through options; zero
@@ -44,6 +47,7 @@ func NewPullWithOptions(lifecycleCtx context.Context, mode proxy.Mode, localStor
 		remoteStore:  remoteStore,
 		prefetcher:   opts.Prefetcher,
 		recorder:     opts.Recorder,
+		journal:      opts.Journal,
 	}
 	if handler.recorder == nil {
 		handler.recorder = telemetry.Nop{}

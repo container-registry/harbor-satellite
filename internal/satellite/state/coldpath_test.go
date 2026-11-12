@@ -21,7 +21,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/container-registry/harbor-satellite/pkg/groundcontrol"
 	"github.com/rs/zerolog"
@@ -45,7 +44,6 @@ func (f *digestFetcher) FetchDigest(context.Context, *zerolog.Logger) (string, e
 }
 
 func TestStateArtifactChanged(t *testing.T) {
-	pending.Plan(t, "6.1", "satellite and group states are pulled on every tick")
 	ctx := context.Background()
 	nop := zerolog.Nop()
 	fetcher := &digestFetcher{digest: "sha256:aaa"}
@@ -67,7 +65,6 @@ func TestStateArtifactChanged(t *testing.T) {
 }
 
 func TestExecute_UnchangedStateCostsOneHeadPerArtifact(t *testing.T) {
-	pending.Plan(t, "6.1", "satellite and group states are pulled on every tick")
 	reg := newCountingRegistry(t)
 	app := pushImage(t, reg, "team/app", []byte("layer"))
 	sat := newColdPathSatellite(t, reg, config.AppConfig{}, map[string][]Artifact{"edge": {app}})
@@ -84,7 +81,6 @@ func TestExecute_UnchangedStateCostsOneHeadPerArtifact(t *testing.T) {
 }
 
 func TestReplication_ConcurrencyBoundedAcrossGroups(t *testing.T) {
-	pending.Plan(t, "6.2", "every group replicates in its own goroutine")
 	reg := newCountingRegistry(t)
 	groups := map[string][]Artifact{}
 	for i := range 4 {
@@ -114,7 +110,6 @@ func TestReplication_ConcurrencyBoundedAcrossGroups(t *testing.T) {
 }
 
 func TestReplication_BandwidthCapStaysUnderCap(t *testing.T) {
-	pending.Plan(t, "6.2", "replication has no source of its own and no bandwidth budget")
 	reg := newCountingRegistry(t)
 	big := pushImage(t, reg, "team/big", bytes.Repeat([]byte("satellite"), (128<<10)/9))
 	_, probeLayer := pushRetagTestImage(t, reg.host, "team/probe", "latest", bytes.Repeat([]byte("proxy"), (128<<10)/5))
@@ -174,7 +169,6 @@ func replicationRecords(t *testing.T, j *journal.Journal) []edgejournal.Replicat
 }
 
 func TestExecute_JournalsReplicationPerArtifact(t *testing.T) {
-	pending.Plan(t, "6.4", "replication results are not journaled")
 	reg := newCountingRegistry(t)
 	one := pushImage(t, reg, "team/one", []byte("layer one"))
 	two := pushImage(t, reg, "team/two", []byte("layer two"))
@@ -199,7 +193,6 @@ func TestExecute_JournalsReplicationPerArtifact(t *testing.T) {
 }
 
 func TestLastRun_RecordsDigestsAndDuration(t *testing.T) {
-	pending.Plan(t, "6.6", "the report's digests and sync duration are never set")
 	reg := newCountingRegistry(t)
 	app := pushImage(t, reg, "team/app", []byte("layer"))
 	tool := pushImage(t, reg, "team/tool", []byte("tool layer"))
@@ -235,7 +228,6 @@ type fixedRun struct{ run RunSummary }
 func (f fixedRun) LastRun() RunSummary { return f.run }
 
 func TestStatusReport_SetsDigestsAndDuration(t *testing.T) {
-	pending.Plan(t, "6.6", "the report's digests and sync duration are never set")
 	var received groundcontrol.SatelliteStatusRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
@@ -344,7 +336,6 @@ func executeTimes(t *testing.T, p *StatusReportingProcess, n int) {
 }
 
 func TestStatusReport_UploadsJournalAndAcks(t *testing.T) {
-	pending.Plan(t, "6.5", "the heartbeat carries no journal")
 	url, uploads := journalGC(t, ackAll)
 	p, j := journalReport(t, url, 2, 3)
 
@@ -360,7 +351,6 @@ func TestStatusReport_UploadsJournalAndAcks(t *testing.T) {
 }
 
 func TestStatusReport_SendsOneRecordWhileGroundControlIgnoresTheJournal(t *testing.T) {
-	pending.Plan(t, "6.5", "the heartbeat carries no journal")
 	url, uploads := journalGC(t, func(groundcontrol.JournalUpload) *groundcontrol.JournalAck { return nil })
 	p, j := journalReport(t, url, 2, 3)
 
@@ -373,7 +363,6 @@ func TestStatusReport_SendsOneRecordWhileGroundControlIgnoresTheJournal(t *testi
 }
 
 func TestStatusReport_ContinuesAboveANewerGroundControlEpoch(t *testing.T) {
-	pending.Plan(t, "6.5", "the heartbeat carries no journal")
 	var gcEpoch atomic.Int64
 	url, uploads := journalGC(t, func(u groundcontrol.JournalUpload) *groundcontrol.JournalAck {
 		gcEpoch.CompareAndSwap(0, u.Epoch+60_000)
@@ -395,7 +384,6 @@ func TestStatusReport_ContinuesAboveANewerGroundControlEpoch(t *testing.T) {
 
 // A135: an upload_batch above the sync contract's limit is capped.
 func TestStatusReport_CapsTheBatchAtTheSyncLimit(t *testing.T) {
-	pending.Plan(t, "6.5", "the heartbeat carries no journal")
 	url, uploads := journalGC(t, ackAll)
 	p, j := journalReport(t, url, 5000, config.MaxJournalUploadBatch+2)
 
@@ -410,7 +398,6 @@ func TestStatusReport_CapsTheBatchAtTheSyncLimit(t *testing.T) {
 
 // A125: a batch Ground Control keeps rejecting must not block the journal.
 func TestStatusReport_DropsABatchRejectedThreeTimes(t *testing.T) {
-	pending.Plan(t, "6.5", "the heartbeat carries no journal")
 	url, uploads := journalGC(t, func(u groundcontrol.JournalUpload) *groundcontrol.JournalAck {
 		if len(u.Records) > 0 && u.Records[0].Seq == 1 {
 			return &groundcontrol.JournalAck{Epoch: u.Epoch, AckedSeq: u.AfterSeq, Error: "invalid journal: payload is not an object"}
@@ -437,7 +424,6 @@ func (p idleProcess) IsRunning() bool               { return false }
 func (p idleProcess) IsComplete() bool              { return false }
 
 func TestReportingProcess_EventDoesNotBlockHeartbeat(t *testing.T) {
-	pending.Plan(t, "6.7", "SendEvent blocks the heartbeat until the event loop receives, forever once it has stopped")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, w, groundcontrol.SatelliteSyncResponse{Events: []string{"refresh_credentials"}})
 	}))

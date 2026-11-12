@@ -7,9 +7,11 @@ import (
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
+	"github.com/container-registry/harbor-satellite/internal/satellite/journal"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
@@ -26,6 +28,22 @@ type Satellite struct {
 	localStore       store.Store
 	remoteStore      store.Store
 	fullResync       bool
+	// replicationSource is the bandwidth-capped Harbor store replication
+	// copies from (plan item 6.2); nil uses remoteStore.
+	replicationSource store.Store
+	journal           *journal.Journal
+}
+
+// SetReplicationSource gives replication a Harbor store of its own, so its
+// bandwidth cap never slows the proxy.
+func (s *Satellite) SetReplicationSource(src store.Store) {
+	s.replicationSource = src
+}
+
+// SetJournal records replication, CRI and heartbeat uploads in the edge
+// journal (plan items 6.4 and 6.5).
+func (s *Satellite) SetJournal(j *journal.Journal) {
+	s.journal = j
 }
 
 // SetStores supplies the same local and Harbor stores used by the proxy.
@@ -58,6 +76,13 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, s.storeRoot, s.desiredStateFile, log)
 	fetchAndReplicateStateProcess.SetStores(s.localStore, s.remoteStore)
+	if s.replicationSource != nil {
+		fetchAndReplicateStateProcess.SetReplicationSource(s.replicationSource)
+	}
+	if s.journal != nil {
+		fetchAndReplicateStateProcess.SetJournal(s.journal)
+		s.journalCRIResults(ctx)
+	}
 	s.stateProcess = fetchAndReplicateStateProcess
 	if s.fullResync {
 		if err := fetchAndReplicateStateProcess.ResetReplicatedEntities(); err != nil {
@@ -116,6 +141,10 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	// Create status report scheduler with pending CRI results
 	statusReportProcess := state.NewStatusReportingProcess(s.cm, s.eventscheduler)
+	statusReportProcess.SetRunSummarySource(fetchAndReplicateStateProcess)
+	if s.journal != nil {
+		statusReportProcess.SetJournal(s.journal)
+	}
 	if len(s.criResults) > 0 {
 		statusReportProcess.SetPendingCRIResults(s.criResults)
 	}
@@ -185,6 +214,22 @@ func (s *Satellite) Stop(ctx context.Context) {
 		log.Warn().Int("failed_count", failedCount).Msg("Some schedulers failed to stop")
 	} else {
 		log.Info().Msg("All schedulers stopped")
+	}
+}
+
+func (s *Satellite) journalCRIResults(ctx context.Context) {
+	log := logger.FromContext(ctx)
+	for _, r := range s.criResults {
+		err := s.journal.AppendCRI(ctx, edgejournal.CRI{
+			SchemaVersion: edgejournal.SchemaVersion,
+			Runtime:       string(r.CRI),
+			Success:       r.Success,
+			BackupPath:    r.BackupPath,
+			Error:         r.Error,
+		})
+		if err != nil {
+			log.Warn().Err(err).Str("runtime", string(r.CRI)).Msg("Failed to journal the CRI result")
+		}
 	}
 }
 

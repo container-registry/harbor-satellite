@@ -54,7 +54,9 @@ func (p *pullHandler) streamManifest(request *proxy.Request, artifact store.Arti
 	resultChannel := p.operations.DoChan(key, func() (any, error) {
 		fillCtx, cancel := context.WithTimeout(p.lifecycleCtx, manifestFillTimeout)
 		defer cancel()
+		started := time.Now()
 		descriptor, payload, err := p.filler.FillManifest(fillCtx, p.remoteStore, artifact)
+		p.journalFill(store.PullResourceManifest, artifact, identifier, descriptor, started, err)
 		if err != nil {
 			p.recorder.CountPullThroughFill("error")
 			return nil, err

@@ -237,3 +237,28 @@ func (cm *ConfigManager) GetAdmission() AdmissionConfig {
 
 	return cm.config.AppConfig.Admission
 }
+
+// GetReplicationConcurrency bounds the groups replicating at once; 0 is no
+// bound (plan item 6.2).
+func (cm *ConfigManager) GetReplicationConcurrency() int {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.AppConfig.ReplicationConcurrency
+}
+
+// GetReplicationBandwidth is the replication budget toward Harbor in bytes
+// per second; 0 is no cap (plan item 6.2).
+func (cm *ConfigManager) GetReplicationBandwidth() int64 {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.AppConfig.ReplicationBandwidthBytesPerSec
+}
+
+func (cm *ConfigManager) GetJournalConfig() JournalConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.AppConfig.Journal
+}

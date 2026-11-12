@@ -19,6 +19,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
 	"github.com/container-registry/harbor-satellite/internal/satellite/identity"
+	"github.com/container-registry/harbor-satellite/internal/satellite/journal"
 	"github.com/container-registry/harbor-satellite/internal/satellite/lane"
 	proxyhandler "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	proxymw "github.com/container-registry/harbor-satellite/internal/satellite/proxy/middleware"
@@ -422,6 +423,16 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	}
 	defer closePrefetch()
 	pullOptions.Recorder = recorder
+	edgeJournal, err := openJournal(cm, pathConfig.JournalDir)
+	if err != nil {
+		return fmt.Errorf("open edge journal: %w", err)
+	}
+	defer func() {
+		if err := edgeJournal.Close(); err != nil {
+			fmt.Printf("warning: close edge journal: %v\n", err)
+		}
+	}()
+	pullOptions.Journal = edgeJournal
 	pullHandler, err := proxyimage.NewPullWithOptions(proxyLifecycleCtx, opts.ProxyMode, localStore, remoteStore, pullOptions)
 	if err != nil {
 		return fmt.Errorf("initialize OCI proxy pull handler: %w", err)
@@ -586,6 +597,16 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	eventScheduler := events.NewEventScheduler(log)
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir, pathConfig.DesiredStateFile, eventScheduler)
 	s.SetStores(localStore, remoteStore)
+	s.SetJournal(edgeJournal)
+	replicationSource, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
+		options, err := store.ResolveSourceRegistry(cm)
+		options.BandwidthBytesPerSec = cm.GetReplicationBandwidth()
+		return options, err
+	})
+	if err != nil {
+		return fmt.Errorf("initialize replication source: %w", err)
+	}
+	s.SetReplicationSource(replicationSource)
 	if indexRecovered {
 		s.RequireFullResync()
 	}
@@ -801,6 +822,18 @@ func resolveLocalRegistryEndpoint(proxyMode proxyhandler.Mode, proxyPort int) st
 		return ""
 	}
 	return net.JoinHostPort("127.0.0.1", strconv.Itoa(proxyPort))
+}
+
+// openJournal opens the edge journal (plan item 6.4) with the sizes of
+// app_config.journal.
+func openJournal(cm *config.ConfigManager, dir string) (*journal.Journal, error) {
+	cfg := cm.GetJournalConfig()
+	return journal.Open(journal.Options{
+		Dir:             dir,
+		MaxSegmentBytes: cfg.MaxSegmentBytes,
+		MaxTotalBytes:   cfg.MaxTotalBytes,
+		SyncInterval:    10 * time.Millisecond,
+	})
 }
 
 // proxyStores reports whether the OCI layout's index was unreadable and moved
