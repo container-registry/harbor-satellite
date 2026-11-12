@@ -67,7 +67,9 @@ func TestWriteDeadlineHandler_KeptAliveConnectionOutlivesDeadline(t *testing.T) 
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		_, _ = w.Write([]byte("ok"))
+		if _, err := w.Write([]byte("ok")); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}), perWrite))
 	t.Cleanup(server.Close)
 	client := server.Client()
