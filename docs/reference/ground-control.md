@@ -73,7 +73,7 @@ Every connection sets `application_name` to `groundcontrol-api`, `groundcontrol-
 | `RATE_LIMIT_ANONYMOUS` | `10/1m` | With the split: requests per client IP on ZTR and the OIDC routes, as `<requests>/<duration>`. |
 | `RATE_LIMIT_FLEET` | `3/1s` | With the split: requests per satellite on sync and refresh. |
 
-Without the split, satellites that share one source address, behind NAT or behind a reverse proxy, share 10 requests per minute. A fleet of more than a few satellites needs `RATE_LIMIT_SPLIT=true`. The shared limiter always keys on the TCP peer address. The split limiters and the failure limit use `X-Forwarded-For` or `X-Real-IP` when `AUDIT_TRUST_FORWARDED_HEADERS=true`; enable it only behind a proxy that sets those headers.
+Without the split, satellites that share one source address, behind NAT or behind a reverse proxy, share 10 requests per minute. A fleet of more than a few satellites needs `RATE_LIMIT_SPLIT=true`. The shared limiter always keys on the TCP peer address. The split limiters and the failure limit use the `X-Forwarded-For` entry `AUDIT_TRUSTED_PROXY_HOPS` (default `1`) from the right, then `X-Real-IP`, when `AUDIT_TRUST_FORWARDED_HEADERS=true`; enable it only behind a proxy that appends to those headers, and set the hops to the number of such proxies.
 
 ## Satellite Sessions and Fleet Jobs
 
@@ -166,7 +166,7 @@ The browser flow sets a `Secure` cookie, so Ground Control must be served over H
 
 ## Audit
 
-`AUDIT_LOG_ENABLED`, `AUDIT_SYSLOG_*`, `AUDIT_OTEL_ENDPOINT` and `AUDIT_TRUST_FORWARDED_HEADERS` are described in [Audit Logging](../guides/audit-logging.md).
+`AUDIT_LOG_ENABLED`, `AUDIT_SYSLOG_*`, `AUDIT_OTEL_ENDPOINT`, `AUDIT_TRUST_FORWARDED_HEADERS` and `AUDIT_TRUSTED_PROXY_HOPS` are described in [Audit Logging](../guides/audit-logging.md).
 
 ## CLI Client
 

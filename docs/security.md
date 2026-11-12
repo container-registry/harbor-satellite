@@ -47,7 +47,7 @@ With OIDC, `OIDC_ROLE_MAP` maps provider groups to `admin` or `system_admin`, an
 
 ## Audit
 
-Both components can write security events (logins, registrations, configuration changes, credential refreshes) to syslog or OpenTelemetry. See [Audit Logging](guides/audit-logging.md). Set `AUDIT_TRUST_FORWARDED_HEADERS=true` only behind a proxy that sets `X-Forwarded-For`, otherwise clients choose their recorded source address.
+Both components can write security events (logins, registrations, configuration changes, credential refreshes) to syslog or OpenTelemetry. See [Audit Logging](guides/audit-logging.md). Set `AUDIT_TRUST_FORWARDED_HEADERS=true` only behind a proxy that appends to `X-Forwarded-For`, otherwise clients choose their recorded source address; set `AUDIT_TRUSTED_PROXY_HOPS` to the number of such proxies.
 
 ## Supply Chain
 

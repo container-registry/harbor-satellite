@@ -59,6 +59,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - A journal batch that failed partway reused sequence numbers on the next flush.
 - `groundcontrol worker` exited 0 when one job stopped early; it now fails.
 - Ground Control without `HARBOR_URL` failed with an error that did not name the variable.
+- With `AUDIT_TRUST_FORWARDED_HEADERS=true`, the audit source IP, the per-IP failure limit and the anonymous limiter took the leftmost `X-Forwarded-For` entry, which the client writes. They now take the entry `AUDIT_TRUSTED_PROXY_HOPS` (default `1`) from the right, the one the trusted proxy appended.
 
 ### Known Limitations
 

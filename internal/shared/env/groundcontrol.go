@@ -274,4 +274,9 @@ type Audit struct {
 	SyslogFileMaxBackups  int     `env:"SYSLOG_FILE_MAX_BACKUPS"  envDefault:"7"`
 	SyslogFileMaxAgeDays  int     `env:"SYSLOG_FILE_MAX_AGE_DAYS" envDefault:"30"`
 	SyslogFileCompress    bool    `env:"SYSLOG_FILE_COMPRESS"     envDefault:"true"`
+
+	// TrustedProxyHops is the number of reverse proxies that append to
+	// X-Forwarded-For in front of GC when TrustForwardedHeaders is set;
+	// the client address is that many entries from the right.
+	TrustedProxyHops int `env:"TRUSTED_PROXY_HOPS" envDefault:"1"`
 }

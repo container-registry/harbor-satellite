@@ -189,16 +189,15 @@ func extractBearerToken(r *http.Request) string {
 // clientIP returns the request's source IP. By default it returns the host
 // portion of RemoteAddr, ignoring X-Forwarded-For and X-Real-IP because those
 // headers can be set by any client and would make audit source_ip values
-// unreliable. When s.trustForwardedHeaders is true (i.e. GC is behind a
-// trusted reverse proxy), the first entry of X-Forwarded-For is used, then
-// X-Real-IP, then RemoteAddr.
+// unreliable. When s.trustForwardedHeaders is true (GC behind trusted reverse
+// proxies), it returns the X-Forwarded-For entry s.trustedProxyHops from the
+// right, then X-Real-IP, then RemoteAddr. Each proxy appends the address it
+// saw, so only the entries on the right were written by a proxy; everything
+// left of them came from the client and may be forged.
 func (s *Server) clientIP(r *http.Request) string {
 	if s != nil && s.trustForwardedHeaders {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			if comma := strings.Index(xff, ","); comma > 0 {
-				return strings.TrimSpace(xff[:comma])
-			}
-			return strings.TrimSpace(xff)
+		if ip, ok := forwardedFor(r.Header.Values("X-Forwarded-For"), s.trustedProxyHops); ok {
+			return ip
 		}
 		if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
 			return xri
@@ -208,6 +207,24 @@ func (s *Server) clientIP(r *http.Request) string {
 		return host
 	}
 	return r.RemoteAddr
+}
+
+// forwardedFor picks the entry hops from the right of the X-Forwarded-For
+// header lines, read as one comma-separated list; hops below 1 count as 1.
+// With fewer entries than hops it returns the leftmost one.
+func forwardedFor(values []string, hops int) (string, bool) {
+	var entries []string
+	for _, v := range values {
+		for e := range strings.SplitSeq(v, ",") {
+			if e = strings.TrimSpace(e); e != "" {
+				entries = append(entries, e)
+			}
+		}
+	}
+	if len(entries) == 0 {
+		return "", false
+	}
+	return entries[max(0, len(entries)-max(1, hops))], true
 }
 
 // auditEvent records a security-relevant event, filling in the request-scoped

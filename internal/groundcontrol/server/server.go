@@ -69,8 +69,10 @@ type Server struct {
 	// trustForwardedHeaders controls whether clientIP() honors
 	// X-Forwarded-For / X-Real-IP. Disabled by default to prevent clients
 	// from spoofing the audit source_ip. Enable only when GC sits behind a
-	// trusted reverse proxy.
+	// trusted reverse proxy. trustedProxyHops is how many proxies append
+	// to X-Forwarded-For in front of GC (AUDIT_TRUSTED_PROXY_HOPS).
 	trustForwardedHeaders bool
+	trustedProxyHops      int
 
 	// services is set by WithFleet or built by fleetFactory; the admin,
 	// registration and refresh handlers call it (plan item 1.4).
@@ -191,10 +193,14 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 	appServer.staleThreshold = cfg.Server.StaleThreshold
 	appServer.syncMaxBodyBytes = cfg.Server.SyncMaxBodyBytes
 	appServer.trustForwardedHeaders = cfg.Audit.TrustForwardedHeaders
+	appServer.trustedProxyHops = cfg.Audit.TrustedProxyHops
 	appServer.policyEngine = cfg.Policy.Engine
 	appServer.disablePasswordLogin = cfg.OIDC.DisablePasswordLogin
 	if err := cfg.Policy.Validate(); err != nil {
 		return result, err
+	}
+	if cfg.Audit.TrustedProxyHops < 1 {
+		return result, fmt.Errorf("AUDIT_TRUSTED_PROXY_HOPS %d: must be at least 1", cfg.Audit.TrustedProxyHops)
 	}
 	if err := cfg.OIDC.Validate(); err != nil {
 		return result, err
