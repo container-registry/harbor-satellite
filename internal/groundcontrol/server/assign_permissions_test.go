@@ -9,28 +9,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAssignPermissionsToRobotKeepsEveryGroup(t *testing.T) {
+func TestSyncRobotPermissionsUpdatesEachRobotOnce(t *testing.T) {
 	server, mock := newMockServer(t)
 	fake := &fakeGroupSync{}
+	mock.ExpectQuery("FROM robot_accounts").WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"satellite_id", "robot_id", "robot_name", "projects"}).
+			AddRow(7, "99", "robot$sat-7", pq.Array([]string{"shared", "store-a", "store-b"})))
 
-	mock.ExpectQuery("SELECT projects FROM groups").WithArgs("edge-a").
-		WillReturnRows(sqlmock.NewRows([]string{"projects"}).AddRow(pq.Array([]string{"store-a", "shared"})))
-	mock.ExpectQuery("SELECT projects FROM groups").WithArgs("edge-b").
-		WillReturnRows(sqlmock.NewRows([]string{"projects"}).AddRow(pq.Array([]string{"shared", "store-b"})))
-
-	err := assignPermissionsToRobot(context.Background(), server.dbQueries, fake, []string{"edge-a", "edge-b"}, 99)
-	require.NoError(t, err)
+	require.NoError(t, syncRobotPermissionsWith(context.Background(), server.dbQueries, fake, []int32{7}))
 
 	require.Equal(t, []string{"robot"}, fake.steps)
-	require.Equal(t, []string{"store-a", "shared", "store-b"}, fake.projects)
+	require.Equal(t, []string{"shared", "store-a", "store-b"}, fake.projects)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestAssignPermissionsToRobotWithoutGroupsLeavesRobotAlone(t *testing.T) {
+func TestSyncRobotPermissionsWithoutSatellitesLeavesRobotsAlone(t *testing.T) {
 	server, mock := newMockServer(t)
 	fake := &fakeGroupSync{}
 
-	require.NoError(t, assignPermissionsToRobot(context.Background(), server.dbQueries, fake, nil, 99))
+	require.NoError(t, syncRobotPermissionsWith(context.Background(), server.dbQueries, fake, nil))
 
 	require.Empty(t, fake.steps)
 	require.NoError(t, mock.ExpectationsWereMet())

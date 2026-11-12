@@ -124,6 +124,7 @@ tasks:
       - task: _e2e:test
       - task: _e2e:test-byo
       - task: _e2e:test-spiffe
+      - task: _e2e:test-multi-group
 
   e2e-test:
     desc: Run main E2E test
@@ -151,7 +152,7 @@ tasks:
       - task: _e2e:test-crash-recovery-byo
 
   e2e-multi-group:
-    desc: Run multi-group E2E test (pending plan item D5, runs with HARBOR3_PENDING=1)
+    desc: Run multi-group E2E test (a satellite in two groups pulls from both projects)
     cmds:
       - task: _e2e:test-multi-group
 

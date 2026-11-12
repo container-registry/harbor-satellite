@@ -131,8 +131,14 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 
 	// Harbor keeps robot edits if this transaction rolls back, so update
 	// them only after the state artifact push has succeeded.
-	if err := syncGroupRobots(r.Context(), q, s.groupSync, satellites); err != nil {
-		HandleAppError(w, err)
+	ids := make([]int32, 0, len(satellites))
+	for _, satellite := range satellites {
+		ids = append(ids, satellite.SatelliteID)
+	}
+	// q is the sync transaction, so the query sees the group row this
+	// request just wrote.
+	if err := syncRobotPermissionsWith(r.Context(), q, s.groupSync, ids); err != nil {
+		HandleAppError(w, robotPermissionsError(err))
 		return
 	}
 
@@ -147,57 +153,6 @@ func (s *Server) SyncGroup(w http.ResponseWriter, r *http.Request) {
 	committed = true
 
 	WriteJSONResponse(w, http.StatusOK, result)
-}
-
-// syncGroupRobots sets each member robot to the projects of every group that
-// satellite still belongs to. q must be the sync transaction, so it sees the
-// group row this request just wrote.
-func syncGroupRobots(ctx context.Context, q *database.Queries, hb groupSyncHarbor, satellites []database.SatelliteGroup) error {
-	for _, satellite := range satellites {
-		robotAcc, err := q.GetRobotAccBySatelliteID(ctx, satellite.SatelliteID)
-		if err != nil {
-			log.Println("Error getting robot account by satellite ID:", err)
-			return err
-		}
-
-		projects, err := projectsForSatellite(ctx, q, satellite.SatelliteID)
-		if err != nil {
-			log.Println("Error listing projects for satellite:", err)
-			return err
-		}
-
-		if err := hb.UpdateRobotProjects(ctx, projects, robotAcc.RobotID); err != nil {
-			log.Println("Error updating robot projects:", err)
-			return err
-		}
-	}
-	return nil
-}
-
-// projectsForSatellite returns the Harbor projects granted by the satellite's
-// groups. A project listed by more than one group is returned once.
-func projectsForSatellite(ctx context.Context, q *database.Queries, satelliteID int32) ([]string, error) {
-	groups, err := q.SatelliteGroupList(ctx, satelliteID)
-	if err != nil {
-		return nil, err
-	}
-
-	seen := make(map[string]struct{})
-	var projects []string
-	for _, membership := range groups {
-		group, err := q.GetGroupByID(ctx, membership.GroupID)
-		if err != nil {
-			return nil, err
-		}
-		for _, project := range group.Projects {
-			if _, ok := seen[project]; ok {
-				continue
-			}
-			seen[project] = struct{}{}
-			projects = append(projects, project)
-		}
-	}
-	return projects, nil
 }
 
 func (s *Server) GetGroup(w http.ResponseWriter, r *http.Request, group string) {
@@ -282,18 +237,6 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 			return
 		}
 
-		// Update robot permissions and state artifact for each satellite
-		robotAcc, err := q.GetRobotAccBySatelliteID(r.Context(), satellite.SatelliteID)
-		if err != nil {
-			log.Println(err)
-			err := &AppError{
-				Message: "Error: Failed to update satellite permissions",
-				Code:    http.StatusInternalServerError,
-			}
-			HandleAppError(w, err)
-			return
-		}
-
 		// Get remaining groups for this satellite
 		groupList, err := q.SatelliteGroupList(r.Context(), satellite.SatelliteID)
 		if err != nil {
@@ -306,8 +249,6 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 			return
 		}
 
-		// Update projects and state artifacts
-		var projects []string
 		var groupStates []string
 		for _, g := range groupList {
 			grp, err := q.GetGroupByID(r.Context(), g.GroupID)
@@ -320,19 +261,11 @@ func (s *Server) DeleteGroup(w http.ResponseWriter, r *http.Request, groupName s
 				HandleAppError(w, err)
 				return
 			}
-			projects = append(projects, grp.Projects...)
 			groupStates = append(groupStates, utils.AssembleGroupState(grp.GroupName))
 		}
 
-		// Update robot permissions
-		_, err = utils.UpdateRobotProjects(r.Context(), projects, robotAcc.RobotID)
-		if err != nil {
-			log.Println(err)
-			err := &AppError{
-				Message: "Error: Failed to update satellite permissions",
-				Code:    http.StatusInternalServerError,
-			}
-			HandleAppError(w, err)
+		if err := syncRobotPermissionsWith(r.Context(), q, s.groupSync, []int32{satellite.SatelliteID}); err != nil {
+			HandleAppError(w, robotPermissionsError(err))
 			return
 		}
 

@@ -83,15 +83,7 @@ tasks:
       - echo "SPIFFE join token E2E test passed"
 
   test-multi-group:
-    desc: Run multi-group E2E test (pending plan item D5, runs with HARBOR3_PENDING=1)
-    cmds:
-      - cmd: 'echo "SKIP pending plan item D5: robot permissions keep only the projects of the last group (set HARBOR3_PENDING=1 to run)"'
-        if: '[ -z "$HARBOR3_PENDING" ]'
-      - task: run-multi-group
-        if: '[ -n "$HARBOR3_PENDING" ]'
-
-  run-multi-group:
-    internal: true
+    desc: Run multi-group E2E test (a satellite in two groups pulls from both projects)
     cmds:
       - task: setup
       - defer: { task: cleanup }
@@ -697,7 +689,7 @@ tasks:
         vars: { SATELLITE: "{{.SATELLITE_NAME}}", CONTAINER: "{{.SATELLITE_CONTAINER}}" }
 
   verify-multi-group:
-    desc: Verify the satellite replicated the images of both groups (pending plan item D5)
+    desc: Verify the satellite replicated the images of both groups
     internal: true
     cmds:
       - |

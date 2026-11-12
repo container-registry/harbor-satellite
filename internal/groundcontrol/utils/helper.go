@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -41,9 +42,11 @@ func UpdateRobotProjects(ctx context.Context, projects []string, id string) (*ro
 		return nil, fmt.Errorf("error getting robot account: %w", err)
 	}
 
-	// satellites should always have permission to satellite project by default
-	// to get state artifacts
-	projects = append(projects, "satellite")
+	// Satellites always read the satellite project, where their state
+	// artifacts live.
+	projects = append(slices.Clone(projects), "satellite")
+	slices.Sort(projects)
+	projects = slices.Compact(projects)
 
 	robot.Permissions = harbor.GenRobotPerms(projects)
 
