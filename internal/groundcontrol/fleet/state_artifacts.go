@@ -1,10 +1,13 @@
 package fleet
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"regexp"
 	"strconv"
 	"time"
-
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 )
 
 // DefaultTokenTTL is how long a registration token stays valid.
@@ -30,27 +33,80 @@ type Settings struct {
 	WebhooksEnabled bool
 }
 
+// validName is utils.IsValidName: 1 to 255 characters of lowercase
+// letters, digits and ._-, starting with a letter or digit.
+var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+// ValidName reports whether name is a valid satellite, group or config
+// name.
+func ValidName(name string) bool {
+	return len(name) <= 255 && validName.MatchString(name)
+}
+
+func (s Settings) stateRef(kind, name string) (ArtifactRef, error) {
+	if !ValidName(name) {
+		return ArtifactRef{}, fmt.Errorf("%w: %s name %q", ErrInvalid, kind, name)
+	}
+	return ArtifactRef{Registry: s.RegistryURL, Repository: SatelliteProject + "/" + kind + "-state/" + name + "/state", Tag: "latest"}, nil
+}
+
 // GroupStateRef is <registry>/satellite/group-state/<group>/state:latest.
 // The state refs fail with ErrInvalid for a name that is not a valid
 // resource name (utils.IsValidName).
 func (s Settings) GroupStateRef(group string) (ArtifactRef, error) {
-	return ArtifactRef{}, notimpl.Err("1.2 group state ref")
+	return s.stateRef("group", group)
 }
 
 // ConfigStateRef is <registry>/satellite/config-state/<config>/state:latest.
 func (s Settings) ConfigStateRef(config string) (ArtifactRef, error) {
-	return ArtifactRef{}, notimpl.Err("1.2 config state ref")
+	return s.stateRef("config", config)
 }
 
 // SatelliteStateRef is <registry>/satellite/satellite-state/<satellite>/state:latest.
 func (s Settings) SatelliteStateRef(satellite string) (ArtifactRef, error) {
-	return ArtifactRef{}, notimpl.Err("1.2 satellite state ref")
+	return s.stateRef("satellite", satellite)
+}
+
+func (s Settings) tokenTTL() time.Duration {
+	if s.TokenTTL > 0 {
+		return s.TokenTTL
+	}
+	return DefaultTokenTTL
+}
+
+func digestOf(doc []byte) Digest {
+	sum := sha256.Sum256(doc)
+	return Digest("sha256:" + hex.EncodeToString(sum[:]))
+}
+
+// satelliteStateDoc has server.SatelliteStateArtifact's field order and
+// tags, so both encode to the same bytes.
+type satelliteStateDoc struct {
+	Config string   `json:"config,omitempty,omitzero"`
+	States []string `json:"states,omitempty,omitzero"`
 }
 
 // RenderSatelliteState returns the satellite's state document, byte for
 // byte what server.SatelliteStateArtifact encodes to, and its digest.
 func RenderSatelliteState(state DesiredState) ([]byte, Digest, error) {
-	return nil, "", notimpl.Err("1.2 render satellite state")
+	doc := satelliteStateDoc{Config: state.ConfigState.String()}
+	if state.ConfigState == (ArtifactRef{}) {
+		doc.Config = ""
+	}
+	for _, g := range state.GroupStates {
+		doc.States = append(doc.States, g.String())
+	}
+	data, err := json.Marshal(doc)
+	if err != nil {
+		return nil, "", fmt.Errorf("render satellite state: %w", err)
+	}
+	return data, digestOf(data), nil
+}
+
+type satelliteDesiredDoc struct {
+	RobotDisabled bool            `json:"robot_disabled,omitempty"`
+	RobotProjects []string        `json:"robot_projects"`
+	State         json.RawMessage `json:"state"`
 }
 
 // RenderSatelliteDesiredState is the document the satellite reconciler
@@ -60,7 +116,28 @@ func RenderSatelliteState(state DesiredState) ([]byte, Digest, error) {
 // part, so a change of either is published; PushState stores only the
 // state part.
 func RenderSatelliteDesiredState(state DesiredState, robotProjects []string, robotDisabled bool) ([]byte, Digest, error) {
-	return nil, "", notimpl.Err("2.3 render satellite desired state")
+	stateDoc, _, err := RenderSatelliteState(state)
+	if err != nil {
+		return nil, "", err
+	}
+	if robotProjects == nil {
+		robotProjects = []string{}
+	}
+	data, err := json.Marshal(satelliteDesiredDoc{RobotDisabled: robotDisabled, RobotProjects: robotProjects, State: stateDoc})
+	if err != nil {
+		return nil, "", fmt.Errorf("render satellite desired state: %w", err)
+	}
+	return data, digestOf(data), nil
+}
+
+// SatelliteStatePart returns the state document inside a document of
+// RenderSatelliteDesiredState, which is what PushState stores.
+func SatelliteStatePart(desired []byte) (json.RawMessage, []string, bool, error) {
+	var doc satelliteDesiredDoc
+	if err := json.Unmarshal(desired, &doc); err != nil {
+		return nil, nil, false, fmt.Errorf("decode satellite desired state: %w", err)
+	}
+	return doc.State, doc.RobotProjects, doc.RobotDisabled, nil
 }
 
 // RobotName is the registry robot name of a satellite created from plan
@@ -71,8 +148,19 @@ func RobotName(id SatelliteID, satellite string) string {
 	return satellite + "-" + strconv.FormatInt(int64(id), 10)
 }
 
+// groupStateDoc has server.GroupSyncRequest's field order and tags.
+type groupStateDoc struct {
+	Artifacts []Artifact `json:"artifacts,omitempty,omitzero"`
+	Group     string     `json:"group"`
+	Registry  string     `json:"registry,omitempty,omitzero"`
+}
+
 // RenderGroupState returns the group's state document, byte for byte what
 // server.GroupSyncRequest encodes to with Registry set, and its digest.
 func RenderGroupState(group Group, registryURL string) ([]byte, Digest, error) {
-	return nil, "", notimpl.Err("1.2 render group state")
+	data, err := json.Marshal(groupStateDoc{Artifacts: group.Artifacts, Group: group.Name, Registry: registryURL})
+	if err != nil {
+		return nil, "", fmt.Errorf("render group state: %w", err)
+	}
+	return data, digestOf(data), nil
 }

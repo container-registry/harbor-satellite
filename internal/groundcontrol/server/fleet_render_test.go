@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -97,7 +96,6 @@ func TestFleetArtifactEncodesLikeGroupArtifact(t *testing.T) {
 }
 
 func TestRenderGroupState_MatchesGoldenDigest(t *testing.T) {
-	pending.Plan(t, "1.2", "group state is rendered by createStateArtifact from the request")
 	group := fleet.Group{Name: goldenGroupState.Group}
 	for _, a := range goldenGroupState.Artifacts {
 		group.Artifacts = append(group.Artifacts, toFleetArtifact(a))
@@ -113,7 +111,6 @@ func TestRenderGroupState_MatchesGoldenDigest(t *testing.T) {
 }
 
 func TestRenderSatelliteState_MatchesServerType(t *testing.T) {
-	pending.Plan(t, "1.2", "satellite state is rendered by createOrUpdateSatStateArtifact")
 	ref := func(kind, name string) fleet.ArtifactRef {
 		return fleet.ArtifactRef{Registry: goldenRegistry, Repository: "satellite/" + kind + "-state/" + name + "/state", Tag: "latest"}
 	}

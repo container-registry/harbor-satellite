@@ -2,11 +2,12 @@ package fleet
 
 import (
 	"context"
-
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
+	"fmt"
+	"slices"
+	"strings"
 )
 
-type GroupService struct{}
+type GroupService struct{ c *core }
 
 type SyncGroupCmd struct {
 	Name      string
@@ -18,35 +19,140 @@ type MembershipCmd struct {
 }
 
 // Sync stores the group with the distinct projects of its non-deleted
-// artifacts, pushes its state and gives every member's robot the union of
-// that member's groups. A failure leaves the group unchanged.
+// artifacts and appends GroupChanged; the group reconciler pushes its
+// state and fans out to the members (plan item 2.5). A failure leaves the
+// group unchanged.
 func (s *GroupService) Sync(ctx context.Context, cmd SyncGroupCmd) (Group, error) {
-	return Group{}, notimpl.Err("1.2 sync group")
+	if !ValidName(cmd.Name) {
+		return Group{}, fmt.Errorf("%w: group name %q", ErrInvalid, cmd.Name)
+	}
+	group := Group{Name: cmd.Name, RegistryURL: s.c.settings.RegistryURL, Projects: ArtifactProjects(cmd.Artifacts), Artifacts: cmd.Artifacts}
+	var stored Group
+	err := s.c.inTx(ctx, func(tx Tx) error {
+		var err error
+		stored, err = tx.Groups().Upsert(ctx, group)
+		if err != nil {
+			return fmt.Errorf("store group %s: %w", cmd.Name, err)
+		}
+		return tx.Events().Append(ctx, groupEvent(EventGroupChanged, stored))
+	})
+	if err != nil {
+		return Group{}, err
+	}
+	return stored, nil
+}
+
+// ArtifactProjects are the distinct registry projects of the artifacts
+// that are not deleted, sorted.
+func ArtifactProjects(artifacts []Artifact) []string {
+	var projects []string
+	for _, a := range artifacts {
+		if a.Deleted {
+			continue
+		}
+		project, _, _ := strings.Cut(a.Repository, "/")
+		if project != "" {
+			projects = append(projects, project)
+		}
+	}
+	slices.Sort(projects)
+	return slices.Compact(projects)
+}
+
+func groupEvent(kind EventKind, g Group) Event {
+	return Event{Kind: kind, Aggregate: Aggregate{Type: AggregateGroup, ID: int64(g.ID)}, Payload: ChangedPayload{Name: g.Name}}
 }
 
 func (s *GroupService) Delete(ctx context.Context, name string) error {
-	return notimpl.Err("1.2 delete group")
+	stateRef, err := s.c.settings.GroupStateRef(name)
+	if err != nil {
+		return err
+	}
+	return s.c.inTx(ctx, func(tx Tx) error {
+		group, err := tx.Groups().GetByName(ctx, name)
+		if err != nil {
+			return fmt.Errorf("group %s: %w", name, err)
+		}
+		members, err := tx.Groups().Members(ctx, group.ID)
+		if err != nil {
+			return fmt.Errorf("members of group %s: %w", name, err)
+		}
+		if err := tx.Groups().Delete(ctx, group.ID); err != nil {
+			return fmt.Errorf("delete group %s: %w", name, err)
+		}
+		if members == nil {
+			members = []SatelliteID{}
+		}
+		return tx.Events().Append(ctx, Event{
+			Kind:      EventGroupDeleted,
+			Aggregate: Aggregate{Type: AggregateGroup, ID: int64(group.ID)},
+			Payload:   GroupDeletedPayload{Name: group.Name, Members: members, StateRef: stateRef},
+		})
+	})
 }
 
 func (s *GroupService) Get(ctx context.Context, name string) (Group, error) {
-	return Group{}, notimpl.Err("1.2 get group")
+	group, err := s.c.read().Groups().GetByName(ctx, name)
+	if err != nil {
+		return Group{}, fmt.Errorf("group %s: %w", name, err)
+	}
+	return group, nil
 }
 
 func (s *GroupService) List(ctx context.Context) ([]Group, error) {
-	return nil, notimpl.Err("1.2 list groups")
+	return s.c.read().Groups().List(ctx)
 }
 
 func (s *GroupService) Members(ctx context.Context, name string) ([]Satellite, error) {
-	return nil, notimpl.Err("1.2 group members")
+	read := s.c.read()
+	group, err := read.Groups().GetByName(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("group %s: %w", name, err)
+	}
+	ids, err := read.Groups().Members(ctx, group.ID)
+	if err != nil {
+		return nil, fmt.Errorf("members of group %s: %w", name, err)
+	}
+	out := make([]Satellite, 0, len(ids))
+	for _, id := range ids {
+		sat, err := read.Satellites().Get(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("member %d of group %s: %w", id, name, err)
+		}
+		out = append(out, sat)
+	}
+	return out, nil
 }
 
-// AddSatellite and RemoveSatellite recompute the robot's projects from all
-// of the satellite's groups and republish its state; removing the last
-// group publishes a state without groups (D10).
+// AddSatellite and RemoveSatellite change the membership and append
+// AssignmentChanged; the satellite reconciler recomputes the robot's
+// projects from all of the satellite's groups and republishes its state,
+// a state without groups after the last one (D10).
 func (s *GroupService) AddSatellite(ctx context.Context, cmd MembershipCmd) error {
-	return notimpl.Err("1.2 add satellite to group")
+	return s.membership(ctx, cmd, func(tx Tx, group GroupID, sat SatelliteID) error {
+		return tx.Groups().AddMember(ctx, group, sat)
+	})
 }
 
 func (s *GroupService) RemoveSatellite(ctx context.Context, cmd MembershipCmd) error {
-	return notimpl.Err("1.2 remove satellite from group")
+	return s.membership(ctx, cmd, func(tx Tx, group GroupID, sat SatelliteID) error {
+		return tx.Groups().RemoveMember(ctx, group, sat)
+	})
+}
+
+func (s *GroupService) membership(ctx context.Context, cmd MembershipCmd, change func(Tx, GroupID, SatelliteID) error) error {
+	return s.c.inTx(ctx, func(tx Tx) error {
+		sat, err := tx.Satellites().GetByName(ctx, cmd.Satellite)
+		if err != nil {
+			return fmt.Errorf("satellite %s: %w", cmd.Satellite, err)
+		}
+		group, err := tx.Groups().GetByName(ctx, cmd.Group)
+		if err != nil {
+			return fmt.Errorf("group %s: %w", cmd.Group, err)
+		}
+		if err := change(tx, group.ID, sat.ID); err != nil {
+			return fmt.Errorf("membership of %s in %s: %w", cmd.Satellite, cmd.Group, err)
+		}
+		return tx.Events().Append(ctx, satelliteEvent(EventAssignmentChanged, sat))
+	})
 }

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,7 +28,6 @@ func TestSatelliteService_Register(t *testing.T) {
 	cmd := fleet.RegisterSatelliteCmd{Name: "edge-01", ConfigName: "edge-config", Groups: []string{"g1", "g2"}}
 
 	t.Run("one transaction with SatelliteCreated and no registry call", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedRegistration(w)
 
@@ -63,7 +61,6 @@ func TestSatelliteService_Register(t *testing.T) {
 	})
 
 	t.Run("a failure rolls back the event too", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedRegistration(w)
 		boom := errors.New("database failed")
@@ -77,7 +74,6 @@ func TestSatelliteService_Register(t *testing.T) {
 	})
 
 	t.Run("existing satellite is ErrAlreadyExists", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedRegistration(w)
 		w.rec.FailOn("Satellites.Create", fleet.ErrAlreadyExists)
@@ -90,7 +86,6 @@ func TestSatelliteService_Register(t *testing.T) {
 	})
 
 	t.Run("groupless satellite is created all the same (D10)", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedRegistration(w)
 
@@ -103,7 +98,6 @@ func TestSatelliteService_Register(t *testing.T) {
 }
 
 func TestSatelliteService_DeleteAppendsATombstone(t *testing.T) {
-	pending.Plan(t, "2.5", pendingServices)
 	w := newWorld()
 	spiffeID := "spiffe://harbor-satellite.local/satellite/region/default/edge-01"
 	w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01", SPIFFEID: spiffeID}}
@@ -125,7 +119,6 @@ func TestSatelliteService_DeleteAppendsATombstone(t *testing.T) {
 }
 
 func TestSatelliteService_UnknownIsErrNotFound(t *testing.T) {
-	pending.Plan(t, "2.5", pendingServices)
 	w := newWorld()
 
 	_, err := w.services(t).Satellites.Get(context.Background(), "edge-01")

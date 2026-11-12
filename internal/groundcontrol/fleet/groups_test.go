@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,7 +28,6 @@ func TestGroupService_Sync(t *testing.T) {
 	}}
 
 	t.Run("stores the group with GroupChanged, nothing per member", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedGroup(w)
 
@@ -52,7 +50,6 @@ func TestGroupService_Sync(t *testing.T) {
 	})
 
 	t.Run("a failure leaves the group and the outbox unchanged", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedGroup(w)
 		boom := errors.New("database failed")
@@ -75,7 +72,6 @@ func TestGroupService_DeleteAndMembership(t *testing.T) {
 	}
 
 	t.Run("adding a satellite is AssignmentChanged", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedGroup(w)
 
@@ -89,7 +85,6 @@ func TestGroupService_DeleteAndMembership(t *testing.T) {
 	})
 
 	t.Run("removing a satellite is AssignmentChanged, its last group too (D10)", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedGroup(w)
 
@@ -101,7 +96,6 @@ func TestGroupService_DeleteAndMembership(t *testing.T) {
 	})
 
 	t.Run("deleting a group appends a tombstone naming its members", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedGroup(w)
 

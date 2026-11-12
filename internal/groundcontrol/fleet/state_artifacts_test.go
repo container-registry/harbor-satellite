@@ -19,7 +19,6 @@ func TestArtifactRef_String(t *testing.T) {
 // The references must stay the strings utils.Assemble*State builds today,
 // because satellites already store them.
 func TestSettings_StateRefsMatchTodaysURLs(t *testing.T) {
-	pending.Plan(t, "1.2", "state references are built from env.GC in utils/helper.go")
 	s := fleet.Settings{RegistryURL: "http://harbor.example:8080"}
 
 	for _, tc := range []struct {
@@ -38,7 +37,6 @@ func TestSettings_StateRefsMatchTodaysURLs(t *testing.T) {
 }
 
 func TestSettings_StateRefRejectsInvalidNames(t *testing.T) {
-	pending.Plan(t, "1.2", "state references are built from env.GC in utils/helper.go")
 	s := fleet.Settings{RegistryURL: "http://harbor.example"}
 
 	for _, name := range []string{"", "Edge", "a/b", "../x"} {
