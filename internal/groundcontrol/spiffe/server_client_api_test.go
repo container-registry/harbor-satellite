@@ -83,6 +83,12 @@ func TestCreateWorkloadEntryErrors(t *testing.T) {
 		require.ErrorContains(t, err, `invalid selector format "uid0"`)
 		require.Empty(t, srv.Entries(), "nothing is sent for an invalid selector")
 	})
+	t.Run("per-entry status", func(t *testing.T) {
+		c, srv := newAPIClient(t)
+		srv.FailCreates(codes.AlreadyExists)
+		_, err := c.CreateWorkloadEntry(ctx, "/agent/a", "/sat/a", []string{"unix:uid:0"})
+		require.ErrorContains(t, err, "status 6 - create refused", "SPIRE's reason reaches the caller")
+	})
 	t.Run("rpc error", func(t *testing.T) {
 		c, srv := newAPIClient(t)
 		srv.FailRPCs(grpcstatus.Error(codes.Unavailable, "down"))
