@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,7 +35,6 @@ func requireEmptyStatePublished(t *testing.T, h *gcHarness, mark int, config str
 }
 
 func TestRemoveFromLastGroup_PublishesEmptyState(t *testing.T) {
-	pending.Plan(t, "D10", "createOrUpdateSatStateArtifact skips the push when the satellite has no groups, so it keeps replicating the old ones (#561)")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.syncGroup("group-a", "library/alpine")
@@ -49,7 +47,6 @@ func TestRemoveFromLastGroup_PublishesEmptyState(t *testing.T) {
 }
 
 func TestDeleteLastGroup_PublishesEmptyState(t *testing.T) {
-	pending.Plan(t, "D10", "deleting a satellite's last group leaves its state artifact pointing at the deleted group (#561)")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.syncGroup("group-a", "library/alpine")
@@ -62,7 +59,6 @@ func TestDeleteLastGroup_PublishesEmptyState(t *testing.T) {
 }
 
 func TestRegisterWithoutGroups_PublishesEmptyState(t *testing.T) {
-	pending.Plan(t, "D10", "a satellite registered without groups gets no state artifact, so its first state fetch fails (#561)")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	mark := h.harbor.Mark()
@@ -73,7 +69,6 @@ func TestRegisterWithoutGroups_PublishesEmptyState(t *testing.T) {
 }
 
 func TestSetConfigWithoutGroups_PublishesState(t *testing.T) {
-	pending.Plan(t, "D10", "a new config for a satellite without groups is never published (#561)")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.createConfig("edge-config-2")
