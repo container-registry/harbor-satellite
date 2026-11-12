@@ -8,7 +8,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,7 +30,6 @@ func (e *expiredLoginStates) seen() []time.Time {
 }
 
 func TestLoginStateExpirer_DeletesExpired(t *testing.T) {
-	pending.Plan(t, "8.1", "there is no OIDC login; nothing stores login states")
 	store := &expiredLoginStates{}
 	e, err := async.NewLoginStateExpirer(store, fleettest.Clock{T: staleNow}, 10*time.Millisecond)
 	require.NoError(t, err)

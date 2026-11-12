@@ -7,11 +7,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingScoped = "authorization is the hard-coded system_admin check; nothing is scoped"
 
 var allow = fleet.Decision{Allowed: true, Rule: "test"}
 
@@ -53,7 +50,6 @@ func noWrites(t *testing.T, w *world) {
 }
 
 func TestGroupService_ScopedAdminCannotSyncOtherGroup(t *testing.T) {
-	pending.Plan(t, "7.3", pendingScoped)
 	w := newWorld()
 	seedRegistration(w)
 	svc, ctx := w.scoped(t, g1Admin)
@@ -67,7 +63,6 @@ func TestGroupService_ScopedAdminCannotSyncOtherGroup(t *testing.T) {
 }
 
 func TestSatelliteService_RegisterIntoOutOfScopeGroupIsForbidden(t *testing.T) {
-	pending.Plan(t, "7.3", pendingScoped)
 	w := newWorld()
 	seedRegistration(w)
 	svc, ctx := w.scoped(t, g1Admin)
@@ -86,7 +81,6 @@ func TestSatelliteService_RegisterIntoOutOfScopeGroupIsForbidden(t *testing.T) {
 }
 
 func TestConfigService_AssignNeedsEveryGroup(t *testing.T) {
-	pending.Plan(t, "7.3", pendingScoped)
 	w := newWorld()
 	seedRegistration(w)
 	w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01"}}
@@ -105,7 +99,6 @@ func TestConfigService_AssignNeedsEveryGroup(t *testing.T) {
 }
 
 func TestSatelliteService_ListFiltersWithOneParentQuery(t *testing.T) {
-	pending.Plan(t, "7.3", pendingScoped)
 	w := newWorld()
 	w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01"}, "edge-02": {ID: 8, Name: "edge-02"}}
 	w.repo.Groups.NamesOf = map[fleet.SatelliteID][]string{7: {"g1"}, 8: {"g2"}}
@@ -120,7 +113,6 @@ func TestSatelliteService_ListFiltersWithOneParentQuery(t *testing.T) {
 }
 
 func TestSatelliteService_OutOfScopeGetIs403(t *testing.T) {
-	pending.Plan(t, "7.3", pendingScoped)
 	w := newWorld()
 	w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01"}, "edge-02": {ID: 8, Name: "edge-02"}}
 	w.repo.Groups.NamesOf = map[fleet.SatelliteID][]string{7: {"g1"}, 8: {"g2"}}

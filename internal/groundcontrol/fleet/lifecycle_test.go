@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -56,7 +55,6 @@ func seedView(w *world, state fleet.LifecycleState) {
 
 func TestRegistrationService_ZeroTouchIssuesSessionBeforeTx(t *testing.T) {
 	t.Run("rotates, issues, then commits", func(t *testing.T) {
-		pending.Plan(t, "4.1", pendingSessions)
 		w := newWorld()
 		seedZTR(w)
 		seedView(w, fleet.StatePending)
@@ -74,7 +72,6 @@ func TestRegistrationService_ZeroTouchIssuesSessionBeforeTx(t *testing.T) {
 	})
 
 	t.Run("a failed commit unclaims and invalidates the session", func(t *testing.T) {
-		pending.Plan(t, "4.1", pendingSessions)
 		w := newWorld()
 		seedZTR(w)
 		seedView(w, fleet.StatePending)
@@ -89,7 +86,6 @@ func TestRegistrationService_ZeroTouchIssuesSessionBeforeTx(t *testing.T) {
 }
 
 func TestRegistrationService_ZeroTouchChecksRevokedRightAfterClaim(t *testing.T) {
-	pending.Plan(t, "4.3", pendingLifecycle)
 	w := newWorld()
 	seedZTR(w)
 	seedView(w, fleet.StateRevoked)
@@ -102,7 +98,6 @@ func TestRegistrationService_ZeroTouchChecksRevokedRightAfterClaim(t *testing.T)
 }
 
 func TestRegistrationService_SPIFFEZeroTouchRefusesRevoked(t *testing.T) {
-	pending.Plan(t, "4.3", pendingLifecycle)
 	w := newWorld()
 	seedZTR(w)
 	seedView(w, fleet.StateRevoked)
@@ -116,7 +111,6 @@ func TestRegistrationService_SPIFFEZeroTouchRefusesRevoked(t *testing.T) {
 }
 
 func TestRegistrationService_SPIFFEZeroTouchStoresIdentity(t *testing.T) {
-	pending.Plan(t, "4.3", pendingLifecycle)
 	w := newWorld()
 	seedZTR(w)
 	seedView(w, fleet.StateOnline)
@@ -141,7 +135,6 @@ func TestSatelliteService_DeleteTombstoneCarriesSPIFFEID(t *testing.T) {
 		"token satellite":          {},
 	} {
 		t.Run(name, func(t *testing.T) {
-			pending.Plan(t, "4.3", "satellite_identities is not read; the tombstone has no SPIFFE ID")
 			w := newWorld()
 			w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01", SPIFFEID: tc.spiffeID}}
 			w.repo.Robots.BySatelliteID = map[fleet.SatelliteID]fleet.Robot{7: {ID: 5, Satellite: 7, HarborID: 42}}
@@ -158,7 +151,6 @@ func TestSatelliteService_DeleteTombstoneCarriesSPIFFEID(t *testing.T) {
 }
 
 func TestSatelliteService_DeleteInvalidatesSessions(t *testing.T) {
-	pending.Plan(t, "4.1", pendingSessions)
 	w := newWorld()
 	w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01"}}
 	w.repo.Robots.BySatelliteID = map[fleet.SatelliteID]fleet.Robot{7: {ID: 5, Satellite: 7, HarborID: 42}}
@@ -181,7 +173,6 @@ func lifecycleEvents(w *world, kind fleet.EventKind) []fleet.Event {
 
 func TestSatelliteService_RevokeAppendsEventOnce(t *testing.T) {
 	t.Run("an online satellite", func(t *testing.T) {
-		pending.Plan(t, "4.3", pendingLifecycle)
 		w := newWorld()
 		w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01"}}
 		seedView(w, fleet.StateRevoked)
@@ -202,7 +193,6 @@ func TestSatelliteService_RevokeAppendsEventOnce(t *testing.T) {
 	})
 
 	t.Run("an already revoked satellite", func(t *testing.T) {
-		pending.Plan(t, "4.3", pendingLifecycle)
 		w := newWorld()
 		w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01"}}
 		seedView(w, fleet.StateRevoked)
@@ -218,7 +208,6 @@ func TestSatelliteService_RevokeAppendsEventOnce(t *testing.T) {
 func TestSatelliteService_UnrevokeReturnsToPending(t *testing.T) {
 	for name, changed := range map[string]bool{"a revoked satellite": true, "a satellite that is not revoked": false} {
 		t.Run(name, func(t *testing.T) {
-			pending.Plan(t, "4.3", pendingLifecycle)
 			w := newWorld()
 			w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01"}}
 			seedView(w, fleet.StatePending)
@@ -238,7 +227,6 @@ func TestSatelliteService_UnrevokeReturnsToPending(t *testing.T) {
 }
 
 func TestSatelliteService_ViewFillsPublishedRefs(t *testing.T) {
-	pending.Plan(t, "4.3", pendingLifecycle)
 	w := newWorld()
 	w.repo.Views.ByID = map[fleet.SatelliteID]fleet.SatelliteView{7: {
 		Satellite:       fleet.Satellite{ID: 7, Name: "edge-01"},

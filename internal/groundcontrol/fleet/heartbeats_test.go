@@ -12,8 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const pendingHeartbeat = "the heartbeat writes 8 statements in the request; there is no buffer"
-
 func sessionAuth() fleet.SatelliteAuth {
 	return fleet.SatelliteAuth{
 		Method: fleet.AuthSession, SessionID: 11, Satellite: 7, SatelliteName: "edge-01",
@@ -35,7 +33,6 @@ func beat(t *testing.T, w *world, cmd fleet.HeartbeatCmd) (fleet.HeartbeatResult
 }
 
 func TestHeartbeatService_PlainBeatTouchesNoRepository(t *testing.T) {
-	pending.Plan(t, "4.2", pendingHeartbeat)
 	w := newWorld()
 
 	res, err := beat(t, w, plainBeat(sessionAuth()))
@@ -70,7 +67,6 @@ func TestHeartbeatService_RejectsOversizedFields(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			pending.Plan(t, "4.2", pendingHeartbeat)
 			w := newWorld()
 			cmd := plainBeat(sessionAuth())
 			change(&cmd)
@@ -93,7 +89,6 @@ func TestHeartbeatService_RefreshCredentialsFromCachedExpiry(t *testing.T) {
 		"no expiry":                    {},
 	} {
 		t.Run(name, func(t *testing.T) {
-			pending.Plan(t, "4.2", pendingHeartbeat)
 			w := newWorld()
 			auth := sessionAuth()
 			auth.RobotExpiresAt = tc.expires
@@ -108,7 +103,6 @@ func TestHeartbeatService_RefreshCredentialsFromCachedExpiry(t *testing.T) {
 }
 
 func TestHeartbeatService_RevokedIsErrRevoked(t *testing.T) {
-	pending.Plan(t, "4.3", pendingLifecycle)
 	w := newWorld()
 	auth := sessionAuth()
 	auth.State = fleet.StateRevoked
@@ -122,7 +116,6 @@ func TestHeartbeatService_RevokedIsErrRevoked(t *testing.T) {
 func TestHeartbeatService_RenewsSessionInLastThird(t *testing.T) {
 	for name, renewed := range map[string]bool{"in the last third": true, "earlier": false} {
 		t.Run(name, func(t *testing.T) {
-			pending.Plan(t, "4.1", pendingSessions)
 			w := newWorld()
 			w.sessions.Renewed = renewed
 			w.sessions.Grant = fleet.SessionGrant{Token: "hss_next", ExpiresAt: now.Add(720 * time.Hour)}
@@ -141,7 +134,6 @@ func TestHeartbeatService_RenewsSessionInLastThird(t *testing.T) {
 	}
 
 	t.Run("an SVID beat never renews", func(t *testing.T) {
-		pending.Plan(t, "4.1", pendingSessions)
 		w := newWorld()
 		auth := sessionAuth()
 		auth.Method, auth.SessionID, auth.HasSession = fleet.AuthSVID, 0, false
@@ -159,7 +151,6 @@ func TestHeartbeatService_RobotBeatWithoutSessionGetsOneOnce(t *testing.T) {
 	robot.Method, robot.SessionID, robot.HasSession = fleet.AuthRobot, 0, false
 
 	t.Run("without a session", func(t *testing.T) {
-		pending.Plan(t, "4.1", pendingSessions)
 		w := newWorld()
 		w.sessions.IssuedIfNone = true
 		w.sessions.Grant = fleet.SessionGrant{Token: "hss_first", ExpiresAt: now.Add(720 * time.Hour)}
@@ -173,7 +164,6 @@ func TestHeartbeatService_RobotBeatWithoutSessionGetsOneOnce(t *testing.T) {
 	})
 
 	t.Run("another replica issued it first", func(t *testing.T) {
-		pending.Plan(t, "4.1", pendingSessions)
 		w := newWorld()
 
 		res, err := beat(t, w, plainBeat(robot))
@@ -184,7 +174,6 @@ func TestHeartbeatService_RobotBeatWithoutSessionGetsOneOnce(t *testing.T) {
 	})
 
 	t.Run("with a session", func(t *testing.T) {
-		pending.Plan(t, "4.1", pendingSessions)
 		w := newWorld()
 		withSession := robot
 		withSession.HasSession = true
@@ -241,7 +230,6 @@ func TestHeartbeatService_RequestsInventoryOnDigestChange(t *testing.T) {
 		"changed digest with list": {reported: fleet.Digest(inventory.Digest(nil)), inventory: []fleet.InventoryItem{}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			pending.Plan(t, "4.4", "every heartbeat rewrites the cached images")
 			w := newWorld()
 			w.beats.Digests = map[fleet.SatelliteID]fleet.Digest{7: known}
 			cmd := plainBeat(sessionAuth())
@@ -256,7 +244,6 @@ func TestHeartbeatService_RequestsInventoryOnDigestChange(t *testing.T) {
 }
 
 func TestHeartbeatService_ComputesDigestForLegacyList(t *testing.T) {
-	pending.Plan(t, "4.4", "every heartbeat rewrites the cached images")
 	w := newWorld()
 	items := []fleet.InventoryItem{{Reference: "library/busybox:1.36", SizeBytes: 1 << 20}, {Reference: "library/alpine:3.20", SizeBytes: 3 << 20}}
 	cmd := plainBeat(sessionAuth())

@@ -33,6 +33,9 @@ func (s *ConfigService) Create(ctx context.Context, cmd CreateConfigCmd) (Config
 	if !ValidName(cmd.Name) {
 		return ConfigWriteResult{}, fmt.Errorf("%w: config name %q", ErrInvalid, cmd.Name)
 	}
+	if err := s.c.authorize(ctx, ActionCreate, configResource(cmd.Name)); err != nil {
+		return ConfigWriteResult{}, err
+	}
 	warnings, err := s.validate(ctx, cmd.Document)
 	if err != nil {
 		return ConfigWriteResult{}, err
@@ -58,6 +61,9 @@ func (s *ConfigService) Create(ctx context.Context, cmd CreateConfigCmd) (Config
 func (s *ConfigService) Update(ctx context.Context, cmd UpdateConfigCmd) (ConfigWriteResult, error) {
 	if !ValidName(cmd.Name) {
 		return ConfigWriteResult{}, fmt.Errorf("%w: config name %q", ErrInvalid, cmd.Name)
+	}
+	if err := s.c.authorize(ctx, ActionUpdate, configResource(cmd.Name)); err != nil {
+		return ConfigWriteResult{}, err
 	}
 	var (
 		stored, previous Config
@@ -110,6 +116,9 @@ func (s *ConfigService) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
+	if err := s.c.authorize(ctx, ActionDelete, configResource(name)); err != nil {
+		return err
+	}
 	return s.c.inTx(ctx, func(tx Tx) error {
 		cfg, err := tx.Configs().GetByName(ctx, name)
 		if err != nil {
@@ -134,6 +143,9 @@ func (s *ConfigService) Delete(ctx context.Context, name string) error {
 }
 
 func (s *ConfigService) Get(ctx context.Context, name string) (Config, error) {
+	if err := s.c.authorize(ctx, ActionRead, configResource(name)); err != nil {
+		return Config{}, err
+	}
 	cfg, err := s.c.read().Configs().GetByName(ctx, name)
 	if err != nil {
 		return Config{}, fmt.Errorf("config %s: %w", name, err)
@@ -142,10 +154,34 @@ func (s *ConfigService) Get(ctx context.Context, name string) (Config, error) {
 }
 
 func (s *ConfigService) List(ctx context.Context) ([]Config, error) {
-	return s.c.read().Configs().List(ctx)
+	configs, err := s.c.read().Configs().List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return filterAllowed(ctx, s.c, ResourceConfig, configs, func(c Config) Resource { return configResource(c.Name) })
 }
 
+func configResource(name string) Resource {
+	return Resource{Type: ResourceConfig, ID: name}
+}
+
+// Assign needs assign_config on the satellite and add_member on each of
+// its groups, so a scoped admin cannot move a satellite it shares with
+// another group's admin onto a config of its choice.
 func (s *ConfigService) Assign(ctx context.Context, cmd AssignConfigCmd) error {
+	if !s.c.allowsAll() {
+		_, groups, err := s.c.satelliteScope(ctx, s.c.read(), cmd.Satellite)
+		if err != nil {
+			return err
+		}
+		checks := []check{{ActionAssignConfig, satelliteResource(cmd.Satellite, groups)}, {ActionRead, configResource(cmd.Config)}}
+		for _, g := range groups {
+			checks = append(checks, check{ActionAddMember, Resource{Type: ResourceGroup, ID: g}})
+		}
+		if err := s.c.authorizeAll(ctx, checks...); err != nil {
+			return err
+		}
+	}
 	return s.c.inTx(ctx, func(tx Tx) error {
 		sat, err := tx.Satellites().GetByName(ctx, cmd.Satellite)
 		if err != nil {

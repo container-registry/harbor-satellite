@@ -7,7 +7,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,7 +32,6 @@ func TestAllowAllAllows(t *testing.T) {
 // anything, so plan item 7.3's scoped administration needs no new
 // parameters.
 func TestServices_AuthorizeThePrincipalOfTheContext(t *testing.T) {
-	pending.Plan(t, "7.3", pendingServices)
 	w := newWorld()
 	seedRegistration(w)
 	policy := fleettest.NewPolicy(w.rec)

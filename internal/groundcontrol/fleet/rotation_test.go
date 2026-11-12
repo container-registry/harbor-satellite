@@ -8,11 +8,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingRotation = "robots are not rotated; the satellite refreshes its secret in the request (D2)"
 
 func TestSuccessorRobotName(t *testing.T) {
 	require.Equal(t, "edge-01-7-g1", fleet.SuccessorRobotName(7, "edge-01", 1))
@@ -46,7 +43,6 @@ func (w *world) rotatingServices(t *testing.T) *fleet.Services {
 func TestHeartbeatService_DeliversPendingRotationToSessionAndSVIDOnly(t *testing.T) {
 	for method, delivered := range map[fleet.AuthMethod]bool{fleet.AuthSession: true, fleet.AuthSVID: true, fleet.AuthRobot: false} {
 		t.Run(string(method), func(t *testing.T) {
-			pending.Plan(t, "8.4", pendingRotation)
 			w := newWorld()
 			auth := sessionAuth()
 			auth.Method = method
@@ -68,7 +64,6 @@ func TestHeartbeatService_DeliversPendingRotationToSessionAndSVIDOnly(t *testing
 }
 
 func TestHeartbeatService_NoDeliveryForCurrentGeneration(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	w := newWorld()
 	cmd := plainBeat(sessionAuth())
 	cmd.CredentialsGeneration = 2
@@ -86,7 +81,6 @@ func TestHeartbeatService_NoDeliveryForCurrentGeneration(t *testing.T) {
 // pending rotation reaches the buffer, so the flush pays AckRobotRotations
 // only while one is due.
 func TestHeartbeatService_ForwardsOnlyThePendingGeneration(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	w := newWorld()
 	cmd := plainBeat(sessionAuth())
 	cmd.CredentialsGeneration = 1
@@ -101,7 +95,6 @@ func TestHeartbeatService_ForwardsOnlyThePendingGeneration(t *testing.T) {
 }
 
 func TestSatelliteService_DeleteTombstoneIncludesUnpromotedSuccessor(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	w := newWorld()
 	w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01"}}
 	w.repo.Robots.BySatelliteID = map[fleet.SatelliteID]fleet.Robot{7: {ID: 5, Satellite: 7, HarborID: 42}}
