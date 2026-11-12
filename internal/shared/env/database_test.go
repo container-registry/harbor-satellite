@@ -5,7 +5,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,7 +13,6 @@ func testDatabase() Database {
 }
 
 func TestDatabaseConnectionURL_EscapesCredentials(t *testing.T) {
-	pending.Plan(t, "3.3", "URL() formats the DSN with Sprintf and does not escape credentials")
 	d := testDatabase()
 	d.Username = "gc@edge"
 	d.Password = "p@ss:w/rd#"
@@ -31,7 +29,6 @@ func TestDatabaseConnectionURL_EscapesCredentials(t *testing.T) {
 }
 
 func TestDatabaseConnectionURL_SSLModeAndRootCert(t *testing.T) {
-	pending.Plan(t, "3.3", "the DSN hard-codes sslmode=disable")
 	d := testDatabase()
 	d.SSLMode = "verify-full"
 	d.SSLRootCert = "/ca.pem"
@@ -44,7 +41,6 @@ func TestDatabaseConnectionURL_SSLModeAndRootCert(t *testing.T) {
 }
 
 func TestDatabaseValidate_RejectsUnknownSSLMode(t *testing.T) {
-	pending.Plan(t, "3.3", "DB_SSLMODE is not validated")
 	for _, mode := range []string{"disable", "allow", "prefer", "require", "verify-ca", "verify-full"} {
 		d := testDatabase()
 		d.SSLMode = mode
@@ -59,7 +55,6 @@ func TestDatabaseValidate_RejectsUnknownSSLMode(t *testing.T) {
 }
 
 func TestDatabaseSSLModeDefaultsToRequire(t *testing.T) {
-	pending.Plan(t, "3.3", "G5: the default sslmode is still disable")
 	t.Setenv("DB_SSLMODE", "")
 	require.NoError(t, os.Unsetenv("DB_SSLMODE"))
 	previous := GC

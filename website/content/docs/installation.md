@@ -49,6 +49,8 @@ DB_PORT=5432
 DB_DATABASE=groundcontrol
 DB_USERNAME=postgres
 DB_PASSWORD=password
+# A local PostgreSQL without TLS; the default is require.
+DB_SSLMODE=disable
 EOF
 ```
 

@@ -43,6 +43,8 @@ Ground Control is the central service that manages satellite configurations.
    DB_DATABASE=groundcontrol
    DB_USERNAME=postgres
    DB_PASSWORD=password
+   # The compose PostgreSQL serves no TLS; the default is require.
+   DB_SSLMODE=disable
    ```
 
    > Note: `ADMIN_PASSWORD` must satisfy the password policy (default: at least 8 characters with an uppercase letter, a lowercase letter and a number). Ground Control exits on startup if it is missing or invalid.

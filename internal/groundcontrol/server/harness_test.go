@@ -65,6 +65,7 @@ func newGCHarness(t *testing.T, opts ...Option) *gcHarness {
 		"DB_USERNAME":              db.User,
 		"DB_PASSWORD":              db.Password,
 		"DB_DATABASE":              db.Name,
+		"DB_SSLMODE":               db.SSLMode,
 		"HARBOR_URL":               harborStub.URL(),
 		"HARBOR_USERNAME":          harbortest.Username,
 		"HARBOR_PASSWORD":          harbortest.Password,

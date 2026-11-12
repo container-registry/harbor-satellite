@@ -55,7 +55,7 @@ Key groups include:
 
 - Harbor access: `HARBOR_USERNAME`, `HARBOR_PASSWORD`, `HARBOR_URL`
 - Local development: `SKIP_HARBOR_HEALTH_CHECK` (set to `true` when running without a Harbor instance)
-- PostgreSQL access: `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`
+- PostgreSQL access: `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` (escaped in the connection URL), `DB_SSLMODE` (default `require`; one of `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`) and `DB_SSLROOTCERT` (CA file for `verify-ca`/`verify-full`). A server without TLS needs `DB_SSLMODE=disable`
 - Bootstrap: `ADMIN_PASSWORD` (required on first start)
 - Server settings: `PORT` (default `8080`), `SESSION_DURATION` (default `24h`), `LOCKOUT_DURATION` (default `5m`), `STALE_THRESHOLD` (default `15m`, not read yet)
 - Failed authentication limit per client IP (login and Basic auth, any username): `AUTH_FAILURE_LIMIT` (default `20`) failures within `AUTH_FAILURE_WINDOW` (default `1m`) before 429, `0` disables it. Independently, 5 failed attempts for one username, through `/login` or Basic auth, lock that account for `LOCKOUT_DURATION`

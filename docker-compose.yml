@@ -32,6 +32,8 @@ services:
       DB_DATABASE: groundcontrol
       DB_USERNAME: postgres
       DB_PASSWORD: password
+      # The bundled postgres serves no TLS; DB_SSLMODE defaults to require.
+      DB_SSLMODE: disable
       HARBOR_URL: ${HARBOR_URL:?set HARBOR_URL to the Harbor instance Ground Control manages}
       HARBOR_USERNAME: ${HARBOR_USERNAME:-admin}
       HARBOR_PASSWORD: ${HARBOR_PASSWORD:-Harbor12345}

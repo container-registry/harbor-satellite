@@ -35,6 +35,9 @@ type DB struct {
 	Port     string
 	User     string
 	Password string
+	// SSLMode is the sslmode of TEST_DATABASE_URL, or require, which is how
+	// lib/pq v1.12 treats a URL without one (ssl.go).
+	SSLMode string
 }
 
 // Enabled reports whether integration tests can run.
@@ -96,7 +99,12 @@ func connect(adminURL, name string) (*DB, error) {
 		return nil, fmt.Errorf("open %s: %w", name, err)
 	}
 	password, _ := u.User.Password()
+	sslMode := u.Query().Get("sslmode")
+	if sslMode == "" {
+		sslMode = "require"
+	}
 	return &DB{
+		SSLMode:  sslMode,
 		DB:       db,
 		URL:      u.String(),
 		Name:     name,

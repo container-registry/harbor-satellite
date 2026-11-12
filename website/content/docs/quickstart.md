@@ -333,6 +333,7 @@ services:
       - DB_DATABASE=harbor_satellite
       - DB_USERNAME=harbor
       - DB_PASSWORD=harbor
+      - DB_SSLMODE=disable
       - PORT=8080
       - HARBOR_URL=${HARBOR_URL:-http://host.docker.internal:8080}
       - HARBOR_USERNAME=${HARBOR_USERNAME:-admin}

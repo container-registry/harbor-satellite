@@ -33,9 +33,8 @@ type Database struct {
 	Username string `env:"USERNAME"`
 	Port     string `env:"PORT"`
 	Host     string `env:"HOST"`
-	// SSLMode and SSLRootCert are parsed but not used yet: URL() still sends
-	// sslmode=disable. Plan 3.3 (G5) switches the default to "require".
-	SSLMode     string `env:"SSLMODE"     envDefault:"disable"`
+	// SSLMode defaults to require (G5); local compose stacks set disable.
+	SSLMode     string `env:"SSLMODE"     envDefault:"require"`
 	SSLRootCert string `env:"SSLROOTCERT"`
 	// Not used yet (plan 3.2): the API pool opens URL_API or the single DSN;
 	// fleet and async open their own pool only when their URL is set.

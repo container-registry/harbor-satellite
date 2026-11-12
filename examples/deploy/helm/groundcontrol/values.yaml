@@ -44,6 +44,9 @@ database:
   username: "postgres"
   # -- Database password
   password: ""
+  # -- libpq sslmode. Empty means disable for the internal PostgreSQL (no TLS)
+  # and require for an external one
+  sslMode: ""
 
 # -- Internal PostgreSQL settings (only used when database.internal.enabled is true)
 postgresql:

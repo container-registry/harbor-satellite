@@ -108,6 +108,7 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: password
       DB_DATABASE: groundcontrol
+      DB_SSLMODE: disable
       PORT: "8080"
       HARBOR_USERNAME: admin
       HARBOR_PASSWORD: Harbor12345
