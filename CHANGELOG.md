@@ -51,6 +51,12 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - The cleanup job's advisory lock could leak through the connection pool.
 - A re-tagged image was missing locally while its new digest replicated.
 - A satellite that left its last group kept replicating it.
+- Ground Control processes that started together raced on migrations, and all but one failed.
+- `/login`, `/satellites/ztr`, `/satellites/spiffe-ztr` and `/oidc/*` read request bodies of any size; they now answer `413` above 64 KiB.
+- A satellite session renewed during re-registration stayed valid for a full TTL.
+- A journal batch that failed partway reused sequence numbers on the next flush.
+- `groundcontrol worker` exited 0 when one job stopped early; it now fails.
+- Ground Control without `HARBOR_URL` failed with an error that did not name the variable.
 
 ### Known Limitations
 

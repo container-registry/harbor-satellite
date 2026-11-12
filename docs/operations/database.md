@@ -18,7 +18,7 @@ The Helm chart in `examples/deploy/helm/groundcontrol` sets `disable` for its in
 
 Migrations are embedded in the binary and run when `serve` or `worker` starts, with the API pool's URL (`DB_URL_API` or the `DB_*` settings). The container image also carries them in `/migrations`, which takes priority when it exists. The role needs the privileges to create and alter tables, indexes and partitions.
 
-When several replicas start at once, start one first and let it finish the migrations, then the others.
+Replicas and workers that start at once take turns: each process holds a PostgreSQL advisory lock while it migrates, so only one applies migrations and the others wait, then find nothing left to apply.
 
 ## Pools per Plane
 
