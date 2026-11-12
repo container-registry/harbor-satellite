@@ -43,7 +43,8 @@ func (w *deadlineWriter) Write(p []byte) (int, error) {
 
 func (w *deadlineWriter) Flush() {
 	w.extend()
-	_ = w.controller.Flush() //nolint:errcheck // http.Flusher has no error result
+	// http.Flusher reports no error; a failed flush shows on the next Write.
+	_ = w.controller.Flush()
 }
 
 func (w *deadlineWriter) Unwrap() http.ResponseWriter {
