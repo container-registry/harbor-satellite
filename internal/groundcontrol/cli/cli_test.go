@@ -24,7 +24,7 @@ func TestRootHelpIncludesServeAndAdministration(t *testing.T) {
 	t.Parallel()
 	output, err := execute(t, "--help")
 	require.NoError(t, err)
-	for _, command := range []string{"serve", "auth", "get", "create", "update", "delete", "add", "remove", "sync", "register", "health", "ping"} {
+	for _, command := range []string{"serve", "auth", "get", "create", "update", "delete", "add", "remove", "sync", "register", "revoke", "unrevoke", "health", "ping"} {
 		require.Contains(t, output, command)
 	}
 }

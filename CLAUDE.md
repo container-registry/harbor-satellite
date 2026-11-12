@@ -180,7 +180,7 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 - internal/groundcontrol/middleware/: Rate limiting (legacy per-IP limiter, `FailureLimiter`, generic token bucket `Limiter`/`LimitBy`), TLS cert watching
 - internal/groundcontrol/telemetry/: Prometheus `/metrics` of serve on `METRICS_ADDR` (HTTP requests by route template, heartbeats, heartbeat buffer and flushes, outbox counts read at scrape time, `go_sql_*` per pool); app wires the recorder into the heartbeat sink, the flusher store and `server.WithRequestObserver`
 - internal/groundcontrol/spiffe/: SPIFFE provider, middleware, authorizer, embedded SPIRE server, SPIRE server client
-- internal/groundcontrol/cli/: `groundcontrol` commands (serve, worker (hidden), auth, get, create, update, delete, register, add, remove, sync, ping, health)
+- internal/groundcontrol/cli/: `groundcontrol` commands (serve, worker (hidden), auth, get, create, update, delete, register, revoke, unrevoke, add, remove, sync, ping, health)
 - pkg/groundcontrol/: Generated Go client for the GC API
 
 ### Key Concepts
@@ -242,7 +242,7 @@ Ground Control:
 - SPIRE: EMBEDDED_SPIRE_ENABLED, SPIRE_DATA_DIR, SPIRE_TRUST_DOMAIN, SPIRE_BIND_ADDRESS, SPIRE_SERVER_SOCKET, SPIRE_SERVER_ADDRESS, SPIRE_SERVER_PORT (8081)
 - Audit: AUDIT_LOG_ENABLED (false), AUDIT_SYSLOG_ENABLED (true), AUDIT_SYSLOG_TARGET (daemon|network|file, default file), AUDIT_SYSLOG_TAG, AUDIT_SYSLOG_SOCKET_PATH, AUDIT_SYSLOG_NETWORK, AUDIT_SYSLOG_ADDRESS, AUDIT_SYSLOG_FILE_PATH, AUDIT_SYSLOG_FILE_MAX_SIZE_MB/MAX_BACKUPS/MAX_AGE_DAYS/COMPRESS, AUDIT_OTEL_ENDPOINT, AUDIT_TRUST_FORWARDED_HEADERS
 
-Ground Control CLI (`groundcontrol`): flags `--server` (default https://localhost:8080/), `--token`, `--timeout`, `--insecure`, `--config`; env prefix `GROUND_CONTROL_` (GROUND_CONTROL_URL, GROUND_CONTROL_TOKEN). Passwords only via env: GROUND_CONTROL_PASSWORD, GROUND_CONTROL_USER_PASSWORD, GROUND_CONTROL_CURRENT_PASSWORD, GROUND_CONTROL_NEW_PASSWORD.
+Ground Control CLI (`groundcontrol`): flags `--server` (default https://localhost:8080/), `--token`, `--timeout`, `--insecure`, `--config`; env prefix `GROUND_CONTROL_` (GROUND_CONTROL_URL, GROUND_CONTROL_TOKEN). Passwords only via env: GROUND_CONTROL_PASSWORD, GROUND_CONTROL_USER_PASSWORD, GROUND_CONTROL_CURRENT_PASSWORD, GROUND_CONTROL_NEW_PASSWORD; the webhook secret via GROUND_CONTROL_WEBHOOK_SECRET.
 
 ### Authentication
 

@@ -6,9 +6,12 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/config"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/group"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/outbox"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/policy"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/satellite"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/spire"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/user"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/cli/root/webhook"
 	"github.com/spf13/cobra"
 )
 
@@ -47,6 +50,11 @@ through the environment; see the help for each password-using command.`,
 		satellite.NewStaleCommand(runtime),
 		satellite.NewCachedImagesCommand(runtime),
 		satellite.NewStatusCommand(runtime),
+		satellite.NewLifecycleCommand(runtime),
+		policy.NewListCommand(runtime),
+		policy.NewListRoleBindingsCommand(runtime),
+		webhook.NewListCommand(runtime),
+		outbox.NewListCommand(runtime),
 		spire.NewAgentsCommand(runtime),
 		spire.NewStatusCommand(runtime),
 		user.NewListCommand(runtime),
@@ -54,7 +62,10 @@ through the environment; see the help for each password-using command.`,
 	)
 	createCmd := commandGroup("create", "Create Ground Control resources",
 		config.NewCreateCommand(runtime),
+		policy.NewCreateCommand(runtime),
+		policy.NewCreateRoleBindingCommand(runtime),
 		user.NewCreateCommand(runtime),
+		webhook.NewCreateCommand(runtime),
 	)
 	updateCmd := commandGroup("update", "Update Ground Control resources",
 		config.NewUpdateCommand(runtime),
@@ -65,8 +76,11 @@ through the environment; see the help for each password-using command.`,
 	deleteCmd := commandGroup("delete", "Delete Ground Control resources",
 		config.NewDeleteCommand(runtime),
 		group.NewDeleteCommand(runtime),
+		policy.NewDeleteCommand(runtime),
+		policy.NewDeleteRoleBindingCommand(runtime),
 		satellite.NewDeleteCommand(runtime),
 		user.NewDeleteCommand(runtime),
+		webhook.NewDeleteCommand(runtime),
 	)
 	addCmd := commandGroup("add", "Add Ground Control resource relationships",
 		group.NewAddSatelliteCommand(runtime),
@@ -80,6 +94,12 @@ through the environment; see the help for each password-using command.`,
 	registerCmd := commandGroup("register", "Register Ground Control resources",
 		satellite.NewRegisterCommand(runtime),
 		satellite.NewRegisterSpiffeCommand(runtime),
+	)
+	revokeCmd := commandGroup("revoke", "Revoke Ground Control resources",
+		satellite.NewRevokeCommand(runtime),
+	)
+	unrevokeCmd := commandGroup("unrevoke", "Lift the revocation of Ground Control resources",
+		satellite.NewUnrevokeCommand(runtime),
 	)
 
 	rootCmd.AddCommand(
@@ -96,6 +116,8 @@ through the environment; see the help for each password-using command.`,
 		removeCmd,
 		syncCmd,
 		registerCmd,
+		revokeCmd,
+		unrevokeCmd,
 	)
 
 	return rootCmd

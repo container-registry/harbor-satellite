@@ -175,6 +175,15 @@ The browser flow sets a `Secure` cookie, so Ground Control must be served over H
 
 ## CLI Client
 
-The same executable is the administration client. Flags: `--server` (default `https://localhost:8080/`), `--token`, `--timeout` (`30s`), `--insecure`, `--config`. Environment variables use the `GROUND_CONTROL_` prefix (`GROUND_CONTROL_URL`, `GROUND_CONTROL_TOKEN`). Passwords are read only from `GROUND_CONTROL_PASSWORD`, `GROUND_CONTROL_USER_PASSWORD`, `GROUND_CONTROL_CURRENT_PASSWORD` and `GROUND_CONTROL_NEW_PASSWORD`.
+The same executable is the administration client. Flags: `--server` (default `https://localhost:8080/`), `--token`, `--timeout` (`30s`), `--insecure`, `--config`. Environment variables use the `GROUND_CONTROL_` prefix (`GROUND_CONTROL_URL`, `GROUND_CONTROL_TOKEN`). Passwords are read only from `GROUND_CONTROL_PASSWORD`, `GROUND_CONTROL_USER_PASSWORD`, `GROUND_CONTROL_CURRENT_PASSWORD` and `GROUND_CONTROL_NEW_PASSWORD`, the webhook secret only from `GROUND_CONTROL_WEBHOOK_SECRET`.
 
-The CLI covers satellites, groups, configs, users, SPIRE and sessions. Revocation, lifecycle, policies, role bindings, webhooks and the outbox are API only in this release.
+The CLI covers satellites, groups, configs, users, SPIRE and sessions, and the operator routes of 1.0:
+
+| Command | Route |
+|---|---|
+| `revoke satellite --name <n>`, `unrevoke satellite --name <n>` | `POST /api/satellites/{satellite}/revoke`, `/unrevoke` |
+| `get satellite-lifecycle --satellite <n>` | `GET /api/satellites/{satellite}/lifecycle` |
+| `get policies`, `create policy --subject --effect [--scope --resource-type --action]`, `delete policy --id` | `/api/policies` |
+| `get role-bindings`, `create role-binding --principal --role`, `delete role-binding --id` | `/api/role-bindings` |
+| `get webhooks`, `create webhook --url [--event-type ...]`, `delete webhook --id` | `/api/webhooks`; the signing secret comes from `GROUND_CONTROL_WEBHOOK_SECRET`. Delivery state (`enabled`, `consecutive_failures`, `last_error`, `disabled_reason`) is part of `get webhooks`; there is no per-delivery route. |
+| `get outbox-events [--state pending\|failed] [--limit n]` | `GET /api/ops/outbox` |
