@@ -2,9 +2,24 @@ package telemetry
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net"
+	"net/http"
+	"sort"
+	"sync"
+	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
+	"github.com/container-registry/harbor-satellite/internal/shared/logger"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+const (
+	checkTimeout      = 2 * time.Second
+	readHeaderTimeout = 5 * time.Second
+	shutdownTimeout   = 5 * time.Second
 )
 
 // HealthCheck reports one dependency; a non-nil error makes /healthz answer 503.
@@ -15,17 +30,110 @@ type ServerOptions struct {
 	Checks map[string]HealthCheck
 }
 
-type Server struct{}
+type Server struct {
+	checks   map[string]HealthCheck
+	registry *prometheus.Registry
+	recorder *promRecorder
+}
 
 func NewServer(opts ServerOptions) (*Server, error) {
-	return nil, notimpl.Err("0.4 telemetry server")
+	for name, check := range opts.Checks {
+		if name == "" || check == nil {
+			return nil, errors.New("telemetry: every health check needs a name and a function")
+		}
+	}
+	registry := prometheus.NewRegistry()
+	recorder := newPromRecorder()
+	if err := recorder.register(registry); err != nil {
+		return nil, err
+	}
+	if err := registry.Register(collectors.NewGoCollector()); err != nil {
+		return nil, err
+	}
+	if err := registry.Register(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{})); err != nil {
+		return nil, err
+	}
+	checks := make(map[string]HealthCheck, len(opts.Checks))
+	for name, check := range opts.Checks {
+		checks[name] = check
+	}
+	return &Server{checks: checks, registry: registry, recorder: recorder}, nil
 }
 
 // Serve answers /healthz and /metrics on l until ctx is done.
 func (s *Server) Serve(ctx context.Context, l net.Listener) error {
-	return notimpl.Err("0.4 /healthz and /metrics")
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", s.healthz)
+	mux.Handle("GET /metrics", promhttp.HandlerFor(s.registry, promhttp.HandlerOpts{}))
+	srv := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: readHeaderTimeout,
+		BaseContext:       func(net.Listener) context.Context { return ctx },
+	}
+
+	errc := make(chan error, 1)
+	go func() { errc <- srv.Serve(l) }()
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+	if err := <-errc; err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) Recorder() Recorder {
-	return Nop{}
+	return s.recorder
+}
+
+type healthReport struct {
+	Status string            `json:"status"`
+	Checks map[string]string `json:"checks"`
+}
+
+func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), checkTimeout)
+	defer cancel()
+
+	names := make([]string, 0, len(s.checks))
+	for name := range s.checks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	results := make([]string, len(names))
+	var wg sync.WaitGroup
+	for i, name := range names {
+		wg.Go(func() {
+			if err := s.checks[name](ctx); err != nil {
+				results[i] = err.Error()
+				return
+			}
+			results[i] = "ok"
+		})
+	}
+	wg.Wait()
+
+	report := healthReport{Status: "ok", Checks: make(map[string]string, len(names))}
+	status := http.StatusOK
+	for i, name := range names {
+		report.Checks[name] = results[i]
+		if results[i] != "ok" {
+			report.Status = "unhealthy"
+			status = http.StatusServiceUnavailable
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(report); err != nil {
+		logger.FromContext(r.Context()).Debug().Err(err).Msg("write /healthz response")
+	}
 }

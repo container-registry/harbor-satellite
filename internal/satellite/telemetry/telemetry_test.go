@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,7 +48,6 @@ func get(t *testing.T, url string) (int, string) {
 }
 
 func TestServer_HealthzAndMetrics(t *testing.T) {
-	pending.Plan(t, "0.4", "the satellite has no /healthz and no /metrics")
 	srv, base := serve(t, telemetry.ServerOptions{
 		Checks: map[string]telemetry.HealthCheck{
 			"store": func(context.Context) error { return nil },
@@ -66,7 +64,6 @@ func TestServer_HealthzAndMetrics(t *testing.T) {
 }
 
 func TestServer_HealthzFailsWhenCheckFails(t *testing.T) {
-	pending.Plan(t, "0.4", "the satellite has no /healthz and no /metrics")
 	_, base := serve(t, telemetry.ServerOptions{
 		Checks: map[string]telemetry.HealthCheck{
 			"store": func(context.Context) error { return nil },
