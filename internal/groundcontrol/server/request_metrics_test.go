@@ -48,3 +48,21 @@ func TestRequestMetrics_LabelByRouteTemplate(t *testing.T) {
 		{unmatchedRoute, http.MethodGet, http.StatusNotFound},
 	}, obs.seen)
 }
+
+// The method is client input: any token is a valid HTTP method, so an
+// unknown one must not become a label value of its own.
+func TestRequestMetrics_UnknownMethodsShareOneLabel(t *testing.T) {
+	obs := &fakeObserver{}
+	s := &Server{requests: obs}
+	handler := s.RegisterRoutes()
+
+	for _, method := range []string{"SCAN1", "SCAN2", http.MethodPatch} {
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(method, "/ping", nil))
+	}
+
+	methods := map[string]bool{}
+	for _, o := range obs.seen {
+		methods[o.method] = true
+	}
+	require.Equal(t, map[string]bool{otherMethod: true, http.MethodPatch: true}, methods)
+}

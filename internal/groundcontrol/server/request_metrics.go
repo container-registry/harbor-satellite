@@ -23,6 +23,21 @@ func WithRequestObserver(o RequestObserver) Option {
 // paths cannot grow the label set.
 const unmatchedRoute = "unmatched"
 
+// otherMethod labels a method outside the standard ones: net/http accepts
+// any token as a method, so the raw value would let clients grow the
+// label set just as random paths would.
+const otherMethod = "other"
+
+func methodLabel(method string) string {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch,
+		http.MethodDelete, http.MethodOptions, http.MethodConnect, http.MethodTrace:
+		return method
+	default:
+		return otherMethod
+	}
+}
+
 type routeTemplateKey struct{}
 
 // observeRequests wraps the whole router so 404, 405 and the 401 and 429
@@ -37,7 +52,7 @@ func (s *Server) observeRequests(next http.Handler) http.Handler {
 		route := unmatchedRoute
 		rec := &statusRecorder{ResponseWriter: w, code: http.StatusOK}
 		next.ServeHTTP(rec, r.WithContext(context.WithValue(r.Context(), routeTemplateKey{}, &route)))
-		s.requests.ObserveHTTP(route, r.Method, rec.code, time.Since(start))
+		s.requests.ObserveHTTP(route, methodLabel(r.Method), rec.code, time.Since(start))
 	})
 }
 
