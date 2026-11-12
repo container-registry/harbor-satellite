@@ -74,6 +74,7 @@ type SatelliteOptions struct {
 	ProxyMode              proxyhandler.Mode
 	ProxyPort              int
 	ProxyModeExplicit      bool
+	StoreGCGrace           time.Duration
 }
 
 func main() {
@@ -102,6 +103,7 @@ func main() {
 		ImageDir:               envCfg.ImageDir,
 		ProxyMode:              envCfg.ProxyMode,
 		ProxyPort:              envCfg.ProxyPort,
+		StoreGCGrace:           envCfg.StoreGCGrace,
 	}
 	_, opts.ProxyModeExplicit = os.LookupEnv("PROXY_MODE")
 	shutdownTimeout := envCfg.ShutdownTimeout
@@ -129,6 +131,7 @@ func main() {
 	flag.StringVar(&opts.ImageDir, "image-dir", opts.ImageDir, "Override image directory for direct delivery (auto-detected if empty)")
 	flag.Var(&opts.ProxyMode, "proxy-mode", "OCI proxy mode: proxy or replica")
 	flag.IntVar(&opts.ProxyPort, "proxy-port", opts.ProxyPort, "Local OCI registry proxy port")
+	flag.DurationVar(&opts.StoreGCGrace, "store-gc-grace", opts.StoreGCGrace, "How long unreferenced local OCI content is kept before garbage collection; 0 deletes it at once")
 
 	flag.Parse()
 	flag.Visit(func(current *flag.Flag) {
@@ -219,6 +222,9 @@ func validateSatelliteOptions(opts SatelliteOptions) error {
 	}
 	if opts.ProxyPort < 1 || opts.ProxyPort > 65535 {
 		return fmt.Errorf("--proxy-port must be between 1 and 65535, got %d", opts.ProxyPort)
+	}
+	if opts.StoreGCGrace < 0 {
+		return fmt.Errorf("--store-gc-grace must not be negative, got %s", opts.StoreGCGrace)
 	}
 	return nil
 }
@@ -365,7 +371,13 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		localStore    store.Store
 		remoteStore   store.Store
 	)
-	localStore, remoteStore, indexRecovered, err := proxyStores(cm, pathConfig.StoreDir)
+	fillLeases := store.NewFillLeases()
+	localStore, remoteStore, indexRecovered, err := proxyStores(cm, pathConfig.StoreDir, store.OCIStoreOptions{
+		AtomicIndex:  true,
+		RecoverIndex: true,
+		FillLeases:   fillLeases,
+		GCGrace:      opts.StoreGCGrace,
+	})
 	if err != nil {
 		return fmt.Errorf("initialize proxy stores: %w", err)
 	}
@@ -438,6 +450,16 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	// audit-specific changes and rebuild the logger in place.
 	currentAuditCfg := auditCfg
 	ctx = logger.WithAuditLogger(ctx, audit)
+	if ociStore, ok := localStore.(*store.OCIStore); ok && opts.StoreGCGrace > 0 {
+		collectorCtx := ctx
+		wg.Go(func() error {
+			return ociStore.RunCollector(collectorCtx, opts.StoreGCGrace, store.GCOptions{
+				Grace:        opts.StoreGCGrace,
+				Roots:        []store.GCRoots{fillLeases},
+				IngestMaxAge: time.Hour,
+			})
+		})
+	}
 	if audit.Enabled() {
 		log.Info().
 			Str("target", auditCfg.Syslog.TargetOrDefault()).
@@ -671,7 +693,7 @@ func resolveLocalRegistryEndpoint(proxyMode proxyhandler.Mode, proxyPort int) st
 
 // proxyStores reports whether the OCI layout's index was unreadable and moved
 // aside, in which case state replication has to start over.
-func proxyStores(cm *config.ConfigManager, storeRoot string) (local, remote store.Store, indexRecovered bool, err error) {
+func proxyStores(cm *config.ConfigManager, storeRoot string, ociOpts store.OCIStoreOptions) (local, remote store.Store, indexRecovered bool, err error) {
 	remoteStore, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
 		return store.ResolveSourceRegistry(cm)
 	})
@@ -696,7 +718,7 @@ func proxyStores(cm *config.ConfigManager, storeRoot string) (local, remote stor
 		return localStore, remoteStore, false, nil
 	}
 
-	localStore, report, err := store.OpenOCIStore(storeRoot, store.OCIStoreOptions{AtomicIndex: true, RecoverIndex: true})
+	localStore, report, err := store.OpenOCIStore(storeRoot, ociOpts)
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("initialize OCI layout store: %w", err)
 	}

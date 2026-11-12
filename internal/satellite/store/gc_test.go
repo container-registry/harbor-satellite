@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"os"
@@ -79,7 +80,6 @@ func TestCollectGarbage_KeepsInFlightCopy(t *testing.T) {
 }
 
 func TestCollectGarbage_SkipsBlobWithOpenReader(t *testing.T) {
-	pending.Plan(t, "5.2", "garbage collection does not track open readers")
 	ctx := edgeContext(t)
 	root := t.TempDir()
 	s, err := NewOCIStore(root)
@@ -112,7 +112,6 @@ func TestCollectGarbage_SkipsBlobWithOpenReader(t *testing.T) {
 }
 
 func TestCollectGarbage_RespectsGrace(t *testing.T) {
-	pending.Plan(t, "5.2", "garbage collection has no grace period")
 	root := t.TempDir()
 	s, err := NewOCIStore(root)
 	require.NoError(t, err)
@@ -128,7 +127,6 @@ func TestCollectGarbage_RespectsGrace(t *testing.T) {
 }
 
 func TestCollectGarbage_DeletesAfterGrace(t *testing.T) {
-	pending.Plan(t, "5.2", "garbage collection has no grace period")
 	ctx := edgeContext(t)
 	root := t.TempDir()
 	s, err := NewOCIStore(root)
@@ -149,7 +147,6 @@ func TestCollectGarbage_DeletesAfterGrace(t *testing.T) {
 }
 
 func TestCollectGarbage_RemovesStaleIngest(t *testing.T) {
-	pending.Plan(t, "5.2", "oras never removes ingest files a crash leaves behind")
 	root := t.TempDir()
 	s, err := NewOCIStore(root)
 	require.NoError(t, err)
@@ -169,7 +166,6 @@ func TestCollectGarbage_RemovesStaleIngest(t *testing.T) {
 }
 
 func TestRefCounter_TracksReaders(t *testing.T) {
-	pending.Plan(t, "5.2", "garbage collection does not track open readers")
 	r := NewRefCounter()
 	d := digest.FromString("layer")
 	releaseFirst := r.Acquire(d)
@@ -181,4 +177,45 @@ func TestRefCounter_TracksReaders(t *testing.T) {
 	releaseSecond()
 	require.False(t, r.InUse(d))
 	require.False(t, r.InUse(digest.FromString("other")))
+}
+
+func TestRunCollector_FreesContentAfterGrace(t *testing.T) {
+	root := t.TempDir()
+	s, _, err := OpenOCIStore(root, OCIStoreOptions{AtomicIndex: true, GCGrace: 30 * time.Millisecond})
+	require.NoError(t, err)
+	digests := replicateAndUntag(t, s)
+
+	ctx, cancel := context.WithCancel(edgeContext(t))
+	done := make(chan error, 1)
+	go func() {
+		done <- s.RunCollector(ctx, 20*time.Millisecond, GCOptions{Grace: 30 * time.Millisecond})
+	}()
+	require.Eventually(t, func() bool {
+		for _, d := range digests {
+			if _, err := os.Stat(edgeBlobPath(root, d)); err == nil {
+				return false
+			}
+		}
+		return true
+	}, 5*time.Second, 10*time.Millisecond)
+	cancel()
+	require.NoError(t, <-done)
+}
+
+func TestDelete_KeepsContentInGraceUntilCollector(t *testing.T) {
+	root := t.TempDir()
+	s, _, err := OpenOCIStore(root, OCIStoreOptions{AtomicIndex: true, GCGrace: time.Hour})
+	require.NoError(t, err)
+	ctx := edgeContext(t)
+	address, source := edgeUpstream(t, nil)
+	manifest, _ := pushEdgeImage(t, address, "team/app", "v1", []byte("graced layer"))
+	artifact := Artifact{Name: "team/app", Tag: "v1"}
+	require.NoError(t, s.Replicate(ctx, source, []Artifact{artifact}))
+
+	require.NoError(t, s.Delete(ctx, []Artifact{artifact}))
+	_, err = s.Pull(ctx, artifact, PullResourceManifest)
+	require.Error(t, err, "an untagged artifact must not be pullable while its content waits out the grace period")
+	_, err = s.Pull(ctx, Artifact{Name: "team/app", Digest: manifest.Digest.String()}, PullResourceManifest)
+	require.Error(t, err)
+	require.FileExists(t, edgeBlobPath(root, manifest.Digest))
 }

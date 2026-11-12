@@ -153,7 +153,7 @@ func TestProxyStoresPrioritizesBYORegistry(t *testing.T) {
 			LocalRegistryCredentials: config.RegistryCredentials{URL: "http://byor.example.com"},
 		},
 	})
-	local, remote, _, err := proxyStores(cm, t.TempDir())
+	local, remote, _, err := proxyStores(cm, t.TempDir(), store.OCIStoreOptions{AtomicIndex: true, RecoverIndex: true})
 	require.NoError(t, err)
 	require.IsType(t, &store.RegistryStore{}, local)
 	require.IsType(t, &store.RegistryStore{}, remote)
@@ -176,7 +176,7 @@ func TestProxyStoresUseCredentialsRegisteredAfterStartup(t *testing.T) {
 		HarborRegistryURL: upstream.URL,
 		UseUnsecure:       true,
 	}})
-	local, remote, recovered, err := proxyStores(cm, t.TempDir())
+	local, remote, recovered, err := proxyStores(cm, t.TempDir(), store.OCIStoreOptions{AtomicIndex: true, RecoverIndex: true})
 	require.NoError(t, err)
 	require.False(t, recovered)
 	require.IsType(t, &store.OCIStore{}, local)
@@ -196,7 +196,7 @@ func TestProxyStoresRecoversTornIndex(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "index.json"), []byte(`{"schemaVersion":2,"manifests":[{"dig`), 0o600))
 	cm := newTestConfigManager(t, &config.Config{AppConfig: config.AppConfig{HarborRegistryURL: "http://harbor.example.com", UseUnsecure: true}})
 
-	local, _, recovered, err := proxyStores(cm, root)
+	local, _, recovered, err := proxyStores(cm, root, store.OCIStoreOptions{AtomicIndex: true, RecoverIndex: true})
 	require.NoError(t, err)
 	require.True(t, recovered, "an unreadable index must be moved aside, not stop the satellite")
 	require.IsType(t, &store.OCIStore{}, local)

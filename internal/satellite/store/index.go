@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	digest "github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/content/oci"
@@ -68,10 +69,11 @@ func OpenOCIStore(root string, opts OCIStoreOptions) (*OCIStore, OpenReport, err
 		}
 	}
 	return &OCIStore{
-		root:    root,
-		store:   target,
-		opts:    opts,
-		readers: NewRefCounter(),
+		root:              root,
+		store:             target,
+		opts:              opts,
+		readers:           NewRefCounter(),
+		unreferencedSince: map[digest.Digest]time.Time{},
 	}, report, nil
 }
 
