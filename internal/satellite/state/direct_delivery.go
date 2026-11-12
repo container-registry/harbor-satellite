@@ -113,6 +113,10 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to read image manifest, skipping")
 			continue
 		}
+		if entity.Digest != "" && desc.Digest.String() != entity.Digest {
+			log.Warn().Str("ref", srcRef).Str("got", desc.Digest.String()).Str("want", entity.Digest).Msg("Direct delivery: tag does not match the group digest, skipping")
+			continue
+		}
 		size, err := imageTransferBytes(desc)
 		if err != nil {
 			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to size image, skipping")
@@ -126,9 +130,18 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 			}
 			continue
 		}
-		img, err := remote.Image(ref, pullOpts...)
+		// Pull the probed digest. Resolving the tag again could fetch a different
+		// image than the one Admit sized, and the digest map would label it as
+		// entity.Digest.
+		pinned := fmt.Sprintf("%s/%s/%s@%s", d.srcRegistry, entity.Repository, entity.Name, desc.Digest.String())
+		digestRef, err := name.NewDigest(pinned, nameOpts...)
 		if err != nil {
-			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to pull image, skipping")
+			log.Warn().Err(err).Str("ref", pinned).Msg("Direct delivery: failed to parse digest, skipping")
+			continue
+		}
+		img, err := remote.Image(digestRef, pullOpts...)
+		if err != nil {
+			log.Warn().Err(err).Str("ref", pinned).Msg("Direct delivery: failed to pull image, skipping")
 			continue
 		}
 

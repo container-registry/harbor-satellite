@@ -573,6 +573,20 @@ func copiedReferences(entities, copied []Entity) []Entity {
 	return matched
 }
 
+// digestOnly drops the tag so Delete addresses the previous digest. The tag
+// now points at the image that just copied.
+func digestOnly(entities []Entity) []Entity {
+	var pinned []Entity
+	for _, entity := range entities {
+		if entity.Digest == "" {
+			continue
+		}
+		entity.Tag = ""
+		pinned = append(pinned, entity)
+	}
+	return pinned
+}
+
 func uncopied(requested, copied []Entity) []Entity {
 	done := make(map[string]struct{}, len(copied))
 	for _, entity := range copied {
@@ -865,9 +879,12 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 		result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
 		return result
 	}
+	// Delete the previous digest, not the tag. The copy has already moved
+	// name:tag onto the new image, and Delete resolves a tag to whatever it
+	// points at now.
 	replaced := copiedReferences(replacements, copied)
 	if len(replaced) > 0 {
-		if err := replicator.Delete(ctx, replaced); err != nil {
+		if err := replicator.Delete(ctx, digestOnly(replaced)); err != nil {
 			stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
 			result.Error = fmt.Errorf("failed to delete entities for %s: %w", f.stateMap[index].url, err)
 			return result
