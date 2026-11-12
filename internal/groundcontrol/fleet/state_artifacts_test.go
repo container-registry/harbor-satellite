@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -78,7 +77,6 @@ func TestRenderSatelliteDesiredState_MatchesGolden(t *testing.T) {
 }
 
 func TestRenderSatelliteDesiredState_RobotDisabledOnlyWhenTrue(t *testing.T) {
-	pending.Plan(t, "4.3", pendingLifecycle)
 	state := fleet.DesiredState{Satellite: 7, ConfigState: stateRef("config", "edge-config")}
 
 	enabled, enabledDigest, err := fleet.RenderSatelliteDesiredState(state, []string{"library", "satellite"}, false)

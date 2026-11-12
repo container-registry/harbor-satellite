@@ -148,12 +148,17 @@ func (r *SatelliteReconciler) Reconcile(ctx context.Context, id fleet.SatelliteI
 	case !errors.Is(err, fleet.ErrNotFound):
 		return fmt.Errorf("config of satellite %s: %w", sat.Name, err)
 	}
+	view, err := read.Views().Get(ctx, id)
+	if err != nil && !errors.Is(err, fleet.ErrNotFound) {
+		return fmt.Errorf("lifecycle of satellite %s: %w", sat.Name, err)
+	}
+	disabled := view.State == fleet.StateRevoked
 	robotProjects := fleet.RobotProjects(projects)
 	robot, err := r.robot(ctx, sat, robotProjects)
 	if err != nil {
 		return err
 	}
-	doc, digest, err := fleet.RenderSatelliteDesiredState(state, robotProjects, false)
+	doc, digest, err := fleet.RenderSatelliteDesiredState(state, robotProjects, disabled)
 	if err != nil {
 		return err
 	}
@@ -163,7 +168,7 @@ func (r *SatelliteReconciler) Reconcile(ctx context.Context, id fleet.SatelliteI
 	}
 	agg := fleet.Aggregate{Type: fleet.AggregateSatellite, ID: int64(id)}
 	return p.publish(ctx, agg, doc, digest, func() (fleet.Digest, error) {
-		if err := p.registry.SetRobotAccess(ctx, robot.HarborID, robotProjects, false); err != nil {
+		if err := p.registry.SetRobotAccess(ctx, robot.HarborID, robotProjects, disabled); err != nil {
 			return "", fmt.Errorf("set robot access of %s: %w", sat.Name, err)
 		}
 		statePart, _, err := fleet.RenderSatelliteState(state)

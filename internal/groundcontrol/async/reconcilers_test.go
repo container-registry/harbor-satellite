@@ -417,8 +417,6 @@ func TestLimitRegistry_SpacesCalls(t *testing.T) {
 	require.Equal(t, 11, registry.Count("Ping"))
 }
 
-const pendingRevoke = "ADR-0006 lifecycle is not implemented; a revoked satellite keeps an enabled robot"
-
 func TestSatelliteReconciler_KindsIncludeLifecycle(t *testing.T) {
 	var r *async.SatelliteReconciler
 	kinds := r.Kinds()
@@ -444,7 +442,6 @@ func lastAccess(t *testing.T, rec *fleettest.Recorder) ([]string, bool) {
 }
 
 func TestSatelliteReconciler_RevokedEndsDisabledWithProjects(t *testing.T) {
-	pending.Plan(t, "4.3", pendingRevoke)
 	p := newPlane()
 	p.repo.Views.ByID = map[fleet.SatelliteID]fleet.SatelliteView{7: {Satellite: fleet.Satellite{ID: 7, Name: "edge-01"}, State: fleet.StateRevoked}}
 
@@ -454,13 +451,17 @@ func TestSatelliteReconciler_RevokedEndsDisabledWithProjects(t *testing.T) {
 	projects, disabled := lastAccess(t, p.rec)
 	require.True(t, disabled)
 	require.Equal(t, []string{"library", fleet.SatelliteProject, "team"}, projects, "Harbor rejects an empty permission list")
+	// robot_disabled is in the recorded desired document only: PushState
+	// stores the state part, which the revoked robot cannot pull anyway.
+	record, err := p.desired.Get(context.Background(), fleet.Aggregate{Type: fleet.AggregateSatellite, ID: 7})
+	require.NoError(t, err)
+	require.Contains(t, string(record.Document), `"robot_disabled":true`)
 	payload, ok := p.rec.CallsTo("PushState")[0].Args[1].([]byte)
 	require.True(t, ok)
-	require.Contains(t, string(payload), `"robot_disabled":true`)
+	require.NotContains(t, string(payload), "robot_disabled")
 }
 
 func TestSatelliteReconciler_UnrevokedEndsEnabled(t *testing.T) {
-	pending.Plan(t, "4.3", pendingRevoke)
 	p := newPlane()
 	p.repo.Views.ByID = map[fleet.SatelliteID]fleet.SatelliteView{7: {Satellite: fleet.Satellite{ID: 7, Name: "edge-01"}, State: fleet.StatePending}}
 

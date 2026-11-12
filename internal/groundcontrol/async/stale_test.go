@@ -8,11 +8,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingStale = "ADR-0006 lifecycle is not implemented; stale satellites are computed per request"
 
 var staleNow = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 
@@ -31,7 +28,6 @@ func newStaleDetector(t *testing.T, p *plane) *async.StaleDetector {
 }
 
 func TestStaleDetector_MarksAndAppendsLogOnlyEvents(t *testing.T) {
-	pending.Plan(t, "4.3", pendingStale)
 	p := newPlane()
 	p.repo.Views.Stale = []fleet.StaleSatellite{
 		{Satellite: 7, Name: "edge-01", LastSeen: staleNow.Add(-time.Hour)},
@@ -58,7 +54,6 @@ func TestStaleDetector_MarksAndAppendsLogOnlyEvents(t *testing.T) {
 }
 
 func TestStaleDetector_PassesThresholdAndFloor(t *testing.T) {
-	pending.Plan(t, "4.3", pendingStale)
 	p := newPlane()
 
 	got, err := newStaleDetector(t, p).RunOnce(context.Background())

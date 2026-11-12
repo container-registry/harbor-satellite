@@ -9,11 +9,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/harbor2"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingAdapter = "the harbor2 adapter is a stub; GC uses the global harbor client"
 
 func newRegistry(t *testing.T, stub *harbortest.Stub) *harbor2.Registry {
 	t.Helper()
@@ -77,7 +74,6 @@ func TestRegistry_SetRobotAccessReadsThenReplaces(t *testing.T) {
 // Harbor rejects an empty permission list, so revoking disables the robot
 // in the same PUT and keeps its projects.
 func TestRegistry_SetRobotAccessOnePutKeepsOtherFields(t *testing.T) {
-	pending.Plan(t, "4.3", pendingAdapter)
 	stub := harbortest.New(t)
 	seeded := stub.SeedRobot(harbortest.RobotPrefix+"edge-01", "library", fleet.SatelliteProject)
 	r := newRegistry(t, stub)
