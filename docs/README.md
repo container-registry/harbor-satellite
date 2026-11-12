@@ -5,6 +5,7 @@
 - [Installation](installation.md): release artifacts, Ground Control with Helm, containers or binaries, satellites with containers or systemd
 - [Token quickstart](../examples/deploy/no-spiffe/quickstart.md): Ground Control and a satellite on one machine
 - [SPIFFE/SPIRE quickstarts](../examples/deploy/spiffe/README.md): join token, X.509 PoP and SSH PoP attestation
+- [SPIFFE end-to-end walkthrough](guides/spiffe-end-to-end.md): Harbor, SPIRE with X.509 PoP, Ground Control and a satellite, step by step
 - [k3s reference architecture](guides/k3s-reference-architecture.md)
 
 ## Concepts
