@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -23,12 +21,21 @@ type PendingRotation struct {
 	ExpiresAt    time.Time
 }
 
+// ExpiringRobot is a robot due for rotation and the generation its
+// successor gets, which robot_rotations holds: a robot name can look like
+// a successor's without being one (pre-1.0 robots are named after the
+// satellite), so the generation is never read from the name.
+type ExpiringRobot struct {
+	fleet.Robot
+	NextGeneration int64
+}
+
 // RotationStore holds robot rotations (plan item 8.4, robot_rotations).
 type RotationStore interface {
 	// ExpiringBefore lists robots expiring before before whose satellite
 	// can take a rotation: a session unexpired at now or a SPIFFE
 	// identity, because only those beats deliver the successor.
-	ExpiringBefore(ctx context.Context, now, before time.Time, limit int) ([]fleet.Robot, error)
+	ExpiringBefore(ctx context.Context, now, before time.Time, limit int) ([]ExpiringRobot, error)
 	Stage(ctx context.Context, rotation fleet.RobotRotation, sealedSecret []byte, secretHash string) (generation int64, err error)
 	Pending(ctx context.Context) ([]PendingRotation, error)
 	Acked(ctx context.Context, limit int) ([]fleet.RobotRotation, error)
@@ -146,7 +153,7 @@ func (r *RobotRotator) locked(ctx context.Context, sat fleet.SatelliteID, fn fun
 	return true, fn()
 }
 
-func (r *RobotRotator) stage(ctx context.Context, robot fleet.Robot) error {
+func (r *RobotRotator) stage(ctx context.Context, robot ExpiringRobot) error {
 	read := r.repo.Autocommit()
 	sat, err := read.Satellites().Get(ctx, robot.Satellite)
 	if err != nil {
@@ -160,7 +167,7 @@ func (r *RobotRotator) stage(ctx context.Context, robot fleet.Robot) error {
 	for _, g := range grants {
 		projects = append(projects, g.Projects...)
 	}
-	generation := currentGeneration(robot.Name, sat.ID) + 1
+	generation := robot.NextGeneration
 	name := fleet.SuccessorRobotName(sat.ID, sat.Name, generation)
 	creds, err := r.registry.CreateRobot(ctx, fleet.RobotSpec{Name: name, Projects: fleet.RobotProjects(projects), Duration: r.robotDuration})
 	if errors.Is(err, fleet.ErrAlreadyExists) {
@@ -186,7 +193,7 @@ func (r *RobotRotator) stage(ctx context.Context, robot fleet.Robot) error {
 		creds.Name = name
 	}
 	creds.Secret = ""
-	if _, err := r.store.Stage(ctx, fleet.RobotRotation{Satellite: sat.ID, Generation: generation, Successor: creds, Previous: robot}, sealed, hash); err != nil {
+	if _, err := r.store.Stage(ctx, fleet.RobotRotation{Satellite: sat.ID, Generation: generation, Successor: creds, Previous: robot.Robot}, sealed, hash); err != nil {
 		return fmt.Errorf("stage rotation of %s: %w", sat.Name, err)
 	}
 	return nil
@@ -200,21 +207,6 @@ func (r *RobotRotator) promote(ctx context.Context, rot fleet.RobotRotation) err
 		return fmt.Errorf("promote rotation of satellite %d: %w", rot.Satellite, err)
 	}
 	return nil
-}
-
-// currentGeneration reads the generation from a successor robot's name
-// (fleet.SuccessorRobotName); the robot a satellite was created with is 0.
-func currentGeneration(robotName string, sat fleet.SatelliteID) int64 {
-	marker := "-" + strconv.FormatInt(int64(sat), 10) + "-g"
-	i := strings.LastIndex(robotName, marker)
-	if i < 0 {
-		return 0
-	}
-	n, err := strconv.ParseInt(robotName[i+len(marker):], 10, 64)
-	if err != nil || n < 0 {
-		return 0
-	}
-	return n
 }
 
 // RotationCache refreshes pending rotations every interval in each serve

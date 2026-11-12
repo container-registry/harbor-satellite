@@ -29,12 +29,13 @@ func NewRotationStore(db *sql.DB) (*RotationStore, error) {
 	return &RotationStore{db: db, q: database.New(db)}, nil
 }
 
-func (s *RotationStore) ExpiringBefore(ctx context.Context, now, before time.Time, limit int) ([]fleet.Robot, error) {
+// ExpiringBefore carries ListRobotsExpiringBefore's next_generation.
+func (s *RotationStore) ExpiringBefore(ctx context.Context, now, before time.Time, limit int) ([]async.ExpiringRobot, error) {
 	rows, err := s.q.ListRobotsExpiringBefore(ctx, database.ListRobotsExpiringBeforeParams{Before: before, Now: now, RowLimit: rowLimit(limit)})
 	if err != nil {
 		return nil, mapError(err)
 	}
-	out := make([]fleet.Robot, 0, len(rows))
+	out := make([]async.ExpiringRobot, 0, len(rows))
 	for _, r := range rows {
 		robot, err := toRobot(database.RobotAccount{
 			ID: r.ID, RobotName: r.RobotName, RobotSecretHash: r.RobotSecretHash, RobotID: r.RobotID,
@@ -43,7 +44,7 @@ func (s *RotationStore) ExpiringBefore(ctx context.Context, now, before time.Tim
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, robot)
+		out = append(out, async.ExpiringRobot{Robot: robot, NextGeneration: r.NextGeneration})
 	}
 	return out, nil
 }

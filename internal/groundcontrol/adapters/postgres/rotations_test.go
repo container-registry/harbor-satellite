@@ -45,8 +45,9 @@ func TestRotationStore_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, robots, 1)
 	require.Equal(t, int64(42), robots[0].HarborID)
+	require.Equal(t, int64(1), robots[0].NextGeneration)
 	rotation := fleet.RobotRotation{
-		Satellite: id, Generation: 1, Previous: robots[0],
+		Satellite: id, Generation: 1, Previous: robots[0].Robot,
 		Successor: fleet.RobotCredentials{HarborID: 43, Name: fleet.SuccessorRobotName(id, "edge-01", 1), ExpiresAt: hotNow.Add(30 * 24 * time.Hour)},
 	}
 	gen, err := store.Stage(ctx, rotation, []byte("sealed"), "new-hash")

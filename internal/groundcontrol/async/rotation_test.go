@@ -17,12 +17,12 @@ var rotationNow = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 // and answers from its fields.
 type rotationStore struct {
 	rec      *fleettest.Recorder
-	expiring []fleet.Robot
+	expiring []async.ExpiringRobot
 	pending  []async.PendingRotation
 	acked    []fleet.RobotRotation
 }
 
-func (s *rotationStore) ExpiringBefore(_ context.Context, now, before time.Time, limit int) ([]fleet.Robot, error) {
+func (s *rotationStore) ExpiringBefore(_ context.Context, now, before time.Time, limit int) ([]async.ExpiringRobot, error) {
 	if err := s.rec.Record("Rotations.ExpiringBefore", now, before, limit); err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func expiringEdge01() fleet.Robot {
 func TestRobotRotator_StagesSuccessorBeforeExpiry(t *testing.T) {
 	p := newPlane()
 	p.registry.Credentials = fleet.RobotCredentials{HarborID: 43, Name: "robot$edge-01-7-g1", Secret: "successor", ExpiresAt: rotationNow.Add(30 * 24 * time.Hour)}
-	store := &rotationStore{rec: p.rec, expiring: []fleet.Robot{expiringEdge01()}}
+	store := &rotationStore{rec: p.rec, expiring: []async.ExpiringRobot{{Robot: expiringEdge01(), NextGeneration: 1}}}
 
 	staged, promoted, err := newRotator(t, p, store).RunOnce(context.Background())
 
@@ -109,7 +109,7 @@ func TestRobotRotator_CrashBeforeStageAdoptsSuccessor(t *testing.T) {
 	p.registry.FailOn("CreateRobot", fleet.ErrAlreadyExists)
 	p.registry.Robots = map[string]fleet.RobotCredentials{name: {HarborID: 43, Name: name}}
 	p.registry.Credentials = fleet.RobotCredentials{HarborID: 43, Name: name, Secret: "replaced"}
-	store := &rotationStore{rec: p.rec, expiring: []fleet.Robot{expiringEdge01()}}
+	store := &rotationStore{rec: p.rec, expiring: []async.ExpiringRobot{{Robot: expiringEdge01(), NextGeneration: 1}}}
 
 	staged, _, err := newRotator(t, p, store).RunOnce(context.Background())
 
@@ -167,7 +167,7 @@ func TestRobotRotator_RegistryDownSkips(t *testing.T) {
 	p := newPlane()
 	p.registry.FailOn("CreateRobot", fleet.ErrRegistryUnavailable)
 	p.registry.FailOn("DeleteRobot", fleet.ErrRegistryUnavailable)
-	store := &rotationStore{rec: p.rec, expiring: []fleet.Robot{expiringEdge01()}, acked: []fleet.RobotRotation{ackedEdge01()}}
+	store := &rotationStore{rec: p.rec, expiring: []async.ExpiringRobot{{Robot: expiringEdge01(), NextGeneration: 1}}, acked: []fleet.RobotRotation{ackedEdge01()}}
 
 	staged, promoted, err := newRotator(t, p, store).RunOnce(context.Background())
 
