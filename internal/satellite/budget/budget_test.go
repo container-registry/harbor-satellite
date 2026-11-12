@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -21,6 +22,10 @@ func TestAdmitSkipsWhenTheWindowIsFull(t *testing.T) {
 	account.record(40)
 	require.NoError(t, account.Admit(60))
 	require.ErrorIs(t, account.Admit(61), ErrQuotaExceeded)
+
+	account.record(70)
+	require.NoError(t, account.Admit(0))
+	require.ErrorIs(t, account.Admit(1), ErrQuotaExceeded)
 }
 
 func TestDisabledQuotaLeavesTheWindowAtZero(t *testing.T) {
@@ -135,11 +140,34 @@ func TestContextTransportMetersOnlyMarkedRequests(t *testing.T) {
 }
 
 func TestContextTransportUsesTheRequestContext(t *testing.T) {
-	account := New()
-	body := account.WrapContext(context.Background(), io.NopCloser(bytes.NewReader([]byte("xy"))))
-	got, err := io.ReadAll(body)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if _, err := w.Write([]byte("xy")); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	request, err := http.NewRequest(http.MethodGet, server.URL, nil)
 	require.NoError(t, err)
-	require.Equal(t, "xy", string(got))
-	require.NoError(t, body.Close())
-	require.Equal(t, int64(2), account.Snapshot().BytesTotal)
+	request = request.WithContext(WithMeter(ctx))
+	client := &http.Client{Transport: ContextTransport(nil)}
+	before := Ensure().Snapshot().BytesTotal
+	response, err := client.Do(request)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, response.Body.Close())
+	})
+
+	cancel()
+	_, err = response.Body.Read(make([]byte, 8))
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, before, Ensure().Snapshot().BytesTotal)
+}
+
+func TestAdmitRejectsASumThatOverflows(t *testing.T) {
+	account := New()
+	account.SetPolicy(Policy{Quota: Quota{Enabled: true, LimitBytes: math.MaxInt64, Window: WindowDay}})
+	account.record(math.MaxInt64)
+	require.ErrorIs(t, account.Admit(math.MaxInt64), ErrQuotaExceeded)
 }

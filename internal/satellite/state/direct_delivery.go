@@ -49,9 +49,11 @@ func NewDirectDeliverer(imageDir, srcUsername, srcPassword, srcRegistry string, 
 // Deliver writes a Docker-save tarball for each entity into the image directory.
 // Existing tarballs with matching digests are skipped. Errors for individual
 // entities are logged and skipped so that one failure does not block the rest.
-func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error {
+// The returned entities were skipped because they did not fit the quota, so
+// the caller can leave them pending.
+func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) ([]Entity, error) {
 	if len(entities) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	log := logger.FromContext(ctx)
@@ -85,11 +87,12 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 
 	// Collect successful writes to merge atomically at the end.
 	updates := make(map[string]string)
+	var quotaSkipped []Entity
 
 	for _, entity := range entities {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return quotaSkipped, ctx.Err()
 		default:
 		}
 
@@ -125,6 +128,7 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 		if err := budget.Ensure().Admit(size); err != nil {
 			if errors.Is(err, budget.ErrQuotaExceeded) {
 				log.Warn().Str("ref", srcRef).Int64("missing_bytes", size).Msg("Direct delivery: transfer quota is exhausted, skipping")
+				quotaSkipped = append(quotaSkipped, entity)
 			} else {
 				log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: quota check failed, skipping")
 			}
@@ -156,7 +160,7 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 	}
 
 	if len(updates) == 0 {
-		return nil
+		return quotaSkipped, nil
 	}
 
 	// Merge updates atomically: re-load from disk under lock so concurrent
@@ -167,7 +171,7 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 	for k, v := range updates {
 		digests[k] = v
 	}
-	return d.saveDigestMap(digests)
+	return quotaSkipped, d.saveDigestMap(digests)
 }
 
 // Delete removes tarballs for entities no longer in the desired state.

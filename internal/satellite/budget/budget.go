@@ -99,6 +99,13 @@ func (b *Budget) BeginSync() {
 	b.windowStart = b.clock().UTC()
 }
 
+// QuotaEnabled reports whether Admit can reject an image.
+func (b *Budget) QuotaEnabled() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.policy.Quota.Enabled
+}
+
 // Admit reports whether missingBytes still fit in the open window. A disabled
 // quota always fits. The bytes are not reserved; Wrap records what arrives.
 func (b *Budget) Admit(missingBytes int64) error {
@@ -111,7 +118,9 @@ func (b *Budget) Admit(missingBytes int64) error {
 		return nil
 	}
 	b.roll(b.clock())
-	if b.bytesInWindow+missingBytes > b.policy.Quota.LimitBytes {
+	// A copy that adds nothing still fits, including when the window is
+	// already over the limit. Subtracting avoids wrapping the sum.
+	if missingBytes > 0 && missingBytes > b.policy.Quota.LimitBytes-b.bytesInWindow {
 		return ErrQuotaExceeded
 	}
 	return nil
