@@ -117,7 +117,7 @@ func NewServices(deps Deps) (*Services, error) {
 		Configs:      &ConfigService{c: c},
 		Registration: &RegistrationService{c: c},
 		Heartbeats:   &HeartbeatService{c: c, journal: journal, sink: deps.HeartbeatSink, rotations: deps.Rotations},
-		Policies:     &PolicyService{},
+		Policies:     &PolicyService{c: c},
 		Webhooks:     &WebhookService{},
 	}, nil
 }

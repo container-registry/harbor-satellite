@@ -27,7 +27,7 @@ func NewRepository(db *sql.DB) (*Repository, error) {
 }
 
 func (r *Repository) Autocommit() fleet.Tx {
-	return tx{q: r.q, autocommit: true}
+	return tx{q: r.q, db: r.db, autocommit: true}
 }
 
 // WithTx rolls back when fn fails or panics.
@@ -45,7 +45,7 @@ func (r *Repository) WithTx(ctx context.Context, fn func(tx fleet.Tx) error) (er
 			err = errors.Join(err, fmt.Errorf("roll back: %w", rbErr))
 		}
 	}()
-	if err := fn(tx{q: r.q.WithTx(sqlTx)}); err != nil {
+	if err := fn(tx{q: r.q.WithTx(sqlTx), db: r.db}); err != nil {
 		return err
 	}
 	if err := sqlTx.Commit(); err != nil {
@@ -56,7 +56,9 @@ func (r *Repository) WithTx(ctx context.Context, fn func(tx fleet.Tx) error) (er
 }
 
 type tx struct {
-	q          *database.Queries
+	q *database.Queries
+	// db is the pool, for reads that need a transaction of their own.
+	db         *sql.DB
 	autocommit bool
 }
 
@@ -75,5 +77,5 @@ func (t tx) Events() fleet.EventSink {
 
 func (t tx) Journal() fleet.JournalRepo { return journalRepo{q: t.q} }
 
-func (t tx) Views() fleet.ViewRepo    { return viewRepo{q: t.q} }
-func (tx) Policies() fleet.PolicyRepo { return policyRepo{} }
+func (t tx) Views() fleet.ViewRepo      { return viewRepo{q: t.q} }
+func (t tx) Policies() fleet.PolicyRepo { return policyRepo{q: t.q, db: t.db} }

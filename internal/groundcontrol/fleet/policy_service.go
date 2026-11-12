@@ -2,8 +2,9 @@ package fleet
 
 import (
 	"context"
-
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
+	"fmt"
+	"slices"
+	"strings"
 )
 
 // EventPolicyChanged is log-only: replicas pick up a change by polling
@@ -78,28 +79,150 @@ type PolicyRepo interface {
 //   - a scoped rule whose type is not in ScopedTypes() ("*" included),
 //
 // so a scoped rule can never reach users, SPIRE, ops or the policy API.
-type PolicyService struct{}
+type PolicyService struct{ c *core }
+
+// Built-in roles come from users.role and are never bound.
+var builtinRoles = []string{SubjectRole + "admin", SubjectRole + "system_admin"}
+
+func policyResource() Resource { return Resource{Type: ResourcePolicy} }
 
 func (s *PolicyService) Rules(ctx context.Context) ([]PolicyRule, error) {
-	return nil, notimpl.Err("7.3 list policy rules")
+	if err := s.c.authorize(ctx, ActionList, policyResource()); err != nil {
+		return nil, err
+	}
+	return s.c.read().Policies().ListRules(ctx)
 }
 
 func (s *PolicyService) AddRule(ctx context.Context, rule PolicyRule) (PolicyRule, error) {
-	return PolicyRule{}, notimpl.Err("7.3 add policy rule")
+	if err := validateRule(rule); err != nil {
+		return PolicyRule{}, err
+	}
+	if err := s.c.authorize(ctx, ActionCreate, policyResource()); err != nil {
+		return PolicyRule{}, err
+	}
+	var stored PolicyRule
+	err := s.write(ctx, func(tx Tx) (string, int64, string, error) {
+		var err error
+		stored, err = tx.Policies().AddRule(ctx, rule)
+		return rule.Subject, stored.ID, PolicyRuleCreated, err
+	})
+	return stored, err
 }
 
 func (s *PolicyService) DeleteRule(ctx context.Context, id int64) error {
-	return notimpl.Err("7.3 delete policy rule")
+	if err := s.c.authorize(ctx, ActionDelete, policyResource()); err != nil {
+		return err
+	}
+	return s.write(ctx, func(tx Tx) (string, int64, string, error) {
+		return "", id, PolicyRuleDeleted, tx.Policies().DeleteRule(ctx, id)
+	})
 }
 
 func (s *PolicyService) Bindings(ctx context.Context) ([]RoleBinding, error) {
-	return nil, notimpl.Err("7.3 list role bindings")
+	if err := s.c.authorize(ctx, ActionList, policyResource()); err != nil {
+		return nil, err
+	}
+	return s.c.read().Policies().ListBindings(ctx)
 }
 
 func (s *PolicyService) AddBinding(ctx context.Context, binding RoleBinding) (RoleBinding, error) {
-	return RoleBinding{}, notimpl.Err("7.3 add role binding")
+	if err := validateBinding(binding); err != nil {
+		return RoleBinding{}, err
+	}
+	if err := s.c.authorize(ctx, ActionCreate, policyResource()); err != nil {
+		return RoleBinding{}, err
+	}
+	var stored RoleBinding
+	err := s.write(ctx, func(tx Tx) (string, int64, string, error) {
+		var err error
+		stored, err = tx.Policies().AddBinding(ctx, binding)
+		return binding.Principal, stored.ID, PolicyBindingCreated, err
+	})
+	return stored, err
 }
 
 func (s *PolicyService) DeleteBinding(ctx context.Context, id int64) error {
-	return notimpl.Err("7.3 delete role binding")
+	if err := s.c.authorize(ctx, ActionDelete, policyResource()); err != nil {
+		return err
+	}
+	return s.write(ctx, func(tx Tx) (string, int64, string, error) {
+		return "", id, PolicyBindingDeleted, tx.Policies().DeleteBinding(ctx, id)
+	})
+}
+
+// write runs change, BumpVersion and the PolicyChanged event in one
+// transaction.
+func (s *PolicyService) write(ctx context.Context, change func(Tx) (name string, id int64, kind string, err error)) error {
+	return s.c.inTx(ctx, func(tx Tx) error {
+		name, id, kind, err := change(tx)
+		if err != nil {
+			return err
+		}
+		version, err := tx.Policies().BumpVersion(ctx)
+		if err != nil {
+			return fmt.Errorf("bump policy version: %w", err)
+		}
+		return tx.Events().Append(ctx, Event{
+			Kind:      EventPolicyChanged,
+			Aggregate: Aggregate{Type: AggregatePolicy, ID: id},
+			Payload:   PolicyChangedPayload{Name: name, Version: version, Change: kind, ID: id},
+		})
+	})
+}
+
+func invalid(format string, args ...any) error {
+	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, args...))
+}
+
+func hasKind(s string, kinds ...string) bool {
+	for _, k := range kinds {
+		if name, ok := strings.CutPrefix(s, k); ok && name != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func validateRule(r PolicyRule) error {
+	for _, f := range []string{r.Subject, r.Scope, r.Type, r.Action, r.Effect} {
+		if strings.Contains(f, ",") {
+			return invalid("policy fields may not contain ','")
+		}
+	}
+	if !hasKind(r.Subject, SubjectUser, SubjectRole, SubjectOIDC) {
+		return invalid("subject %q must be user:, role: or oidc: plus a name", r.Subject)
+	}
+	if r.Type != "*" && !slices.Contains(ResourceTypes(), ResourceType(r.Type)) {
+		return invalid("resource type %q", r.Type)
+	}
+	if r.Action != "*" && !slices.Contains(Actions(), Action(r.Action)) {
+		return invalid("action %q", r.Action)
+	}
+	if r.Effect != EffectAllow && r.Effect != EffectDeny {
+		return invalid("effect %q", r.Effect)
+	}
+	if r.Scope == "*" {
+		return nil
+	}
+	typ, name, ok := strings.Cut(r.Scope, ":")
+	if !ok || name == "" || !slices.Contains(ScopedTypes(), ResourceType(typ)) {
+		return invalid("scope %q must be * or <satellite|group|config>:<name>", r.Scope)
+	}
+	if !slices.Contains(ScopedTypes(), ResourceType(r.Type)) {
+		return invalid("a scoped rule must name one of %v, not %q", ScopedTypes(), r.Type)
+	}
+	return nil
+}
+
+func validateBinding(b RoleBinding) error {
+	if strings.Contains(b.Principal, ",") || strings.Contains(b.Role, ",") {
+		return invalid("binding fields may not contain ','")
+	}
+	if !hasKind(b.Principal, SubjectUser, SubjectOIDC) {
+		return invalid("principal %q must be user: or oidc: plus a name", b.Principal)
+	}
+	if !hasKind(b.Role, SubjectRole) || slices.Contains(builtinRoles, b.Role) {
+		return invalid("role %q must be role: plus a name and not a built-in role", b.Role)
+	}
+	return nil
 }
