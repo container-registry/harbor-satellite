@@ -19,7 +19,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -204,7 +203,6 @@ WHERE locktype = 'advisory' AND objid = $1
 }
 
 func TestCachedImagesAreListedAfterHeartbeat(t *testing.T) {
-	pending.Plan(t, "N1", "GetLatestArtifacts compares integer with integer[] (SQLSTATE 42883); the images endpoint always answers 500")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.syncGroup("edge-group", "library/alpine")
