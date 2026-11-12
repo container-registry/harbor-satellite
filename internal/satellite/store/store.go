@@ -22,6 +22,13 @@ type Store interface {
 	// The caller owns and must close the response body.
 	Fetch(ctx context.Context, artifact Artifact, descriptor ocispec.Descriptor, resource PullResource, headers http.Header) (*http.Response, error)
 	Replicate(ctx context.Context, source Store, artifacts []Artifact) error
+	// Delete retires replicated artifacts. An artifact that carries a digest
+	// loses its tag only while the tag still resolves to that digest, so a
+	// tag a newer replication moved stays pullable. Content no tag references
+	// any more is collected afterwards, also when no tag was removed because
+	// it had moved on or was already gone. D9 skeleton: the stores still
+	// untag whatever the tag resolves to, and OCIStore collects only after it
+	// untagged something.
 	Delete(ctx context.Context, artifacts []Artifact) error
 }
 
@@ -122,6 +129,12 @@ type RegistryOptions struct {
 	Password   string
 	PlainHTTP  bool
 	TLS        config.TLSConfig
+	// BandwidthBytesPerSec caps the bytes the store moves per second, shared
+	// by all its requests; zero is no cap (plan item 6.2, not read yet).
+	// The store builds its client as retry(throttle(TLS transport)) with
+	// lane.ThrottledTransport, so the TLS settings stay and retries spend
+	// the budget too.
+	BandwidthBytesPerSec int64
 }
 
 func (o RegistryOptions) validate() error {

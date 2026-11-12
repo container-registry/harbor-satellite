@@ -1,0 +1,27 @@
+# Overlay for HARBOR_EXTERNAL=1 (taskfiles/e2e.yml). Only postgres and gc are
+# started; gc joins the network of an already running Harbor instead of the
+# bundled one. Names, network and host port differ from the base file so the
+# stack can run next to local Harbor and Ground Control dev stacks.
+services:
+  postgres:
+    container_name: hs-e2e-postgres
+
+  gc:
+    container_name: hs-e2e-gc
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+    environment:
+      HARBOR_URL: ${HARBOR_INTERNAL_URL:-http://core:8080}
+    ports: !override
+      - "${E2E_GC_HOST_PORT:-9180}:8080"
+    networks:
+      - harbor-e2e
+      - harbor-external
+
+networks:
+  harbor-e2e:
+    name: hs-e2e
+  harbor-external:
+    name: ${HARBOR_NETWORK:?HARBOR_NETWORK must name the network of the external Harbor}
+    external: true

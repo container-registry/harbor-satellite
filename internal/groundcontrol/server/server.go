@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/netip"
 	"os"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
@@ -28,10 +30,16 @@ type Server struct {
 	dbQueries      *database.Queries
 	groupSync      groupSyncHarbor
 	rateLimiter    *middleware.RateLimiter
-	spiffeProvider spiffe.Provider
-	embeddedSpire  *spiffe.EmbeddedSpireServer
-	spireClient    *spiffe.ServerClient
-	spireEnabled   bool
+	FailureLimiter *middleware.FailureLimiter
+	// AnonymousLimiter (ZTR per client IP) and FleetLimiter (per
+	// authenticated satellite) replace rateLimiter on those endpoints; both
+	// exist only with RATE_LIMIT_SPLIT (plan item 4.6).
+	AnonymousLimiter *middleware.Limiter[netip.Addr]
+	FleetLimiter     *middleware.Limiter[fleet.SatelliteID]
+	spiffeProvider   spiffe.Provider
+	embeddedSpire    *spiffe.EmbeddedSpireServer
+	spireClient      *spiffe.ServerClient
+	spireEnabled     bool
 
 	// External SPIRE server metadata (used when embeddedSpire is nil)
 	spireServerAddress string
@@ -54,6 +62,70 @@ type Server struct {
 	// from spoofing the audit source_ip. Enable only when GC sits behind a
 	// trusted reverse proxy.
 	trustForwardedHeaders bool
+
+	// services is set by WithFleet; no handler calls it before plan item 1.4.
+	services *fleet.Services
+
+	// harborContact and harborStaleAfter are set by WithHarborContact;
+	// Health does not read them before plan item 2.6.
+	harborContact    HarborContact
+	harborStaleAfter time.Duration
+
+	// outbox is set by WithOutboxReader; ListOutboxEvents does not read
+	// it before plan item 2.3.
+	outbox OutboxReader
+
+	// satelliteAuth is set by WithSatelliteAuthenticator; nil keeps the
+	// robot Basic chain of today.
+	satelliteAuth SatelliteAuthenticator
+	// policy is set by WithPolicy. The /api route check uses it instead of
+	// requiresSystemAdmin only when policyEngine (POLICY_ENGINE) is casbin.
+	policy       fleet.Policy
+	policyEngine string
+	// operatorLogin is set by WithOperatorLogin (plan item 8.1).
+	operatorLogin OperatorLogin
+}
+
+// HarborContact reports the last successful contact with Harbor; the
+// async plane's registry probe implements it.
+type HarborContact interface {
+	LastContact() time.Time
+}
+
+// OutboxReader lists the outbox events that are not done, for
+// GET /api/ops/outbox: all of them for state "pending", those that ran out
+// of attempts for "failed". The composition root adapts the async plane's
+// outbox store to it, so the server does not import the async plane.
+type OutboxReader interface {
+	ListOutbox(ctx context.Context, failedOnly bool, limit int) ([]OutboxEventResponse, error)
+}
+
+// Option configures NewServer.
+type Option func(*Server)
+
+// WithFleet hands the fleet services to the handlers.
+func WithFleet(services *fleet.Services) Option {
+	return func(s *Server) { s.services = services }
+}
+
+// WithHarborContact makes /health report Harbor as degraded, with status
+// 200, while contact's last contact is zero or older than staleAfter. The
+// database alone decides between healthy and unhealthy.
+func WithHarborContact(contact HarborContact, staleAfter time.Duration) Option {
+	return func(s *Server) {
+		s.harborContact = contact
+		s.harborStaleAfter = staleAfter
+	}
+}
+
+func WithOutboxReader(r OutboxReader) Option {
+	return func(s *Server) { s.outbox = r }
+}
+
+// WithPolicy gives the /api route check a policy (plan item 7.2). With
+// POLICY_ENGINE=builtin, the default, it is not consulted.
+func WithPolicy(policy fleet.Policy) Option {
+	return func(s *Server) { s.policy = policy }
 }
 
 // ServerTLSConfig holds TLS settings for the Ground Control HTTP server.
@@ -75,7 +147,7 @@ type ServerResult struct {
 	EmbeddedSpire  *spiffe.EmbeddedSpireServer
 }
 
-func NewServer(ctx context.Context) (result *ServerResult, err error) {
+func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err error) {
 	result = &ServerResult{AppServer: &Server{}}
 	defer func() {
 		if err != nil {
@@ -85,12 +157,25 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 	}()
 	cfg := env.GC
 	appServer := result.AppServer
+	for _, opt := range opts {
+		opt(appServer)
+	}
 	appServer.port = cfg.Server.Port
 	appServer.passwordPolicy = auth.LoadPolicyFromConfig(cfg.PasswordPolicy)
 	appServer.sessionDuration = cfg.Server.SessionDuration
 	appServer.lockoutDuration = cfg.Server.LockoutDuration
 	appServer.staleThreshold = cfg.Server.StaleThreshold
 	appServer.trustForwardedHeaders = cfg.Audit.TrustForwardedHeaders
+	appServer.policyEngine = cfg.Policy.Engine
+	if err := cfg.Policy.Validate(); err != nil {
+		return result, err
+	}
+	if err := cfg.OIDC.Validate(); err != nil {
+		return result, err
+	}
+	if appServer.policyEngine == env.PolicyEngineCasbin && appServer.policy == nil {
+		return result, fmt.Errorf("POLICY_ENGINE=%s needs a policy (WithPolicy), which serve does not pass yet", env.PolicyEngineCasbin)
+	}
 
 	db, err := sql.Open("postgres", cfg.Database.URL())
 	if err != nil {
@@ -105,6 +190,19 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 	// Initialize rate limiter: 10 requests per minute per IP for ZTR endpoint
 	rateLimiter := middleware.NewRateLimiter(10, time.Minute)
 	appServer.rateLimiter = rateLimiter
+	appServer.FailureLimiter = middleware.NewFailureLimiter(cfg.Server.AuthFailureLimit, cfg.Server.AuthFailureWindow)
+	if cfg.Server.RateLimitSplit {
+		anonymous, err := middleware.ParseRate(cfg.Server.RateLimitAnonymous)
+		if err != nil {
+			return result, fmt.Errorf("RATE_LIMIT_ANONYMOUS: %w", err)
+		}
+		fleetRate, err := middleware.ParseRate(cfg.Server.RateLimitFleet)
+		if err != nil {
+			return result, fmt.Errorf("RATE_LIMIT_FLEET: %w", err)
+		}
+		appServer.AnonymousLimiter = middleware.NewLimiter[netip.Addr](anonymous)
+		appServer.FleetLimiter = middleware.NewLimiter[fleet.SatelliteID](fleetRate)
+	}
 
 	// Load SPIFFE configuration
 	spiffeCfg := spiffe.LoadConfig()
@@ -251,6 +349,15 @@ func (r *ServerResult) Close() error {
 	}
 	if r.AppServer.rateLimiter != nil {
 		r.AppServer.rateLimiter.Stop()
+	}
+	if r.AppServer.FailureLimiter != nil {
+		r.AppServer.FailureLimiter.Stop()
+	}
+	if r.AppServer.AnonymousLimiter != nil {
+		r.AppServer.AnonymousLimiter.Stop()
+	}
+	if r.AppServer.FleetLimiter != nil {
+		r.AppServer.FleetLimiter.Stop()
 	}
 	if r.AppServer.db != nil {
 		err = errors.Join(err, r.AppServer.db.Close())

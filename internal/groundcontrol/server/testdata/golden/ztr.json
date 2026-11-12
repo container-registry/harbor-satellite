@@ -1,0 +1,12 @@
+{
+  "body": {
+    "auth": {
+      "password": "\u003csecret\u003e",
+      "url": "http://harbor.test",
+      "username": "robot$edge-01"
+    },
+    "state": "http://harbor.test/satellite/satellite-state/edge-01/state:latest"
+  },
+  "request": "POST /satellites/ztr",
+  "status": 200
+}

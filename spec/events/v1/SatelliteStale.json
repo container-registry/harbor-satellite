@@ -1,0 +1,28 @@
+{
+  "$id": "https://satellite.container-registry.com/schemas/events/v1/SatelliteStale.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "data of the io.harborsatellite.groundcontrol.SatelliteStale event (SatelliteStale); v1 changes are additive only",
+  "properties": {
+    "last_seen": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "previous_state": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "state",
+    "previous_state"
+  ],
+  "title": "SatelliteStale",
+  "type": "object"
+}

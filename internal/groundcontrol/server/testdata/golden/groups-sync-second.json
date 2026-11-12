@@ -1,0 +1,14 @@
+{
+  "body": {
+    "CreatedAt": "\u003ctimestamp\u003e",
+    "GroupName": "edge-group-2",
+    "ID": "\u003cid\u003e",
+    "Projects": [
+      "tools"
+    ],
+    "RegistryUrl": "http://harbor.test",
+    "UpdatedAt": "\u003ctimestamp\u003e"
+  },
+  "request": "POST /api/groups/sync",
+  "status": 200
+}

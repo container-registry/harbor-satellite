@@ -51,7 +51,13 @@ paths:
         required: true
       responses:
         "201":
-          description: Configuration created.
+          description: >
+            Configuration created. From plan item 7.4 the body is the stored
+            configuration with its validation warnings; today it is empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResponse"
         "400":
           description: Configuration payload or name is invalid.
           content:
@@ -70,6 +76,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "422":
+          description: >
+            The configuration fails validation (plan item 7.4, not checked
+            yet); nothing is stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigValidationError"
         "500":
           description: Configuration could not be created.
           content:
@@ -244,6 +258,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "409":
+          description: The configuration changed concurrently; retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "422":
+          description: >
+            The configuration fails validation (plan item 7.4, not checked
+            yet); nothing is stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigValidationError"
         "500":
           description: Configuration could not be updated.
           content:
@@ -543,6 +571,323 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "500":
           description: Session could not be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/ops/outbox:
+    get:
+      tags:
+        - ops
+      summary: Lists outbox events that are not done yet.
+      operationId: listOutboxEvents
+      parameters:
+        - x-go-name: State
+          description: "pending lists every event that is not done; failed only those that reached the maximum attempts. Default pending."
+          name: state
+          in: query
+          schema:
+            type: string
+        - x-go-name: Limit
+          description: Maximum number of events returned.
+          name: limit
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: Outbox events returned, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OutboxEventResponse"
+        "400":
+          description: Unknown state or limit out of range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/policies:
+    get:
+      tags:
+        - policies
+      summary: Lists the stored policy rules (plan item 7.3, not implemented yet).
+      operationId: listPolicyRules
+      responses:
+        "200":
+          description: Policy rules returned, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PolicyRule"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Policy rules could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    post:
+      tags:
+        - policies
+      summary: Stores a policy rule (plan item 7.3, not implemented yet).
+      description: >
+        Every stored rule bumps the policy version that Ground Control
+        replicas poll. A scoped rule (scope other than "*") may only name
+        the satellite, group or config type.
+      operationId: createPolicyRule
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyRuleRequest"
+        description: Policy rule.
+        required: true
+      responses:
+        "201":
+          description: Policy rule stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyRule"
+        "400":
+          description: The rule is malformed or names a type, action or scope it may not.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "409":
+          description: The same rule is already stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Policy rule could not be stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/policies/{id}":
+    delete:
+      tags:
+        - policies
+      summary: Deletes a stored policy rule (plan item 7.3, not implemented yet).
+      operationId: deletePolicyRule
+      parameters:
+        - x-go-name: ID
+          description: Policy rule ID.
+          name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "204":
+          description: Policy rule deleted.
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Policy rule was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Policy rule could not be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  /api/role-bindings:
+    get:
+      tags:
+        - policies
+      summary: Lists the stored role bindings (plan item 7.3, not implemented yet).
+      operationId: listRoleBindings
+      responses:
+        "200":
+          description: Role bindings returned, oldest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoleBinding"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Role bindings could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    post:
+      tags:
+        - policies
+      summary: Gives a principal an additional role (plan item 7.3, not implemented yet).
+      description: >
+        Built-in roles come from the user's role and cannot be bound here.
+      operationId: createRoleBinding
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleBindingRequest"
+        description: Role binding.
+        required: true
+      responses:
+        "201":
+          description: Role binding stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleBinding"
+        "400":
+          description: The principal or role is malformed or a built-in role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "409":
+          description: The principal already has the role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Role binding could not be stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/role-bindings/{id}":
+    delete:
+      tags:
+        - policies
+      summary: Deletes a stored role binding (plan item 7.3, not implemented yet).
+      operationId: deleteRoleBinding
+      parameters:
+        - x-go-name: ID
+          description: Role binding ID.
+          name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "204":
+          description: Role binding deleted.
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Role binding was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Role binding could not be deleted.
           content:
             application/json:
               schema:
@@ -851,6 +1196,88 @@ paths:
                 $ref: "#/components/schemas/AppError"
       security:
         - tokenAuth: []
+  "/api/satellites/{satellite}/lifecycle":
+    get:
+      tags:
+        - satellites
+      summary: Gets a satellite's lifecycle state and convergence (ADR-0006, plan item 4.3).
+      operationId: getSatelliteLifecycle
+      parameters:
+        - x-go-name: Satellite
+          description: Satellite name.
+          name: satellite
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Satellite lifecycle returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatelliteLifecycleResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Satellite was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite lifecycle could not be loaded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/satellites/{satellite}/revoke":
+    post:
+      tags:
+        - satellites
+      summary: Revokes a satellite; sync and ZTR answer 403 until it is unrevoked.
+      operationId: revokeSatellite
+      parameters:
+        - x-go-name: Satellite
+          description: Satellite name.
+          name: satellite
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Satellite revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatelliteLifecycleResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Satellite was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite could not be revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
   "/api/satellites/{satellite}/status":
     get:
       tags:
@@ -886,6 +1313,47 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "500":
           description: Satellite status could not be loaded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/satellites/{satellite}/unrevoke":
+    post:
+      tags:
+        - satellites
+      summary: Returns a revoked satellite to pending; it goes online with its next heartbeat.
+      operationId: unrevokeSatellite
+      parameters:
+        - x-go-name: Satellite
+          description: Satellite name.
+          name: satellite
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Satellite unrevoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatelliteLifecycleResponse"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Satellite was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Satellite could not be unrevoked.
           content:
             application/json:
               schema:
@@ -1227,15 +1695,144 @@ paths:
                 $ref: "#/components/schemas/AppError"
       security:
         - tokenAuth: []
+  /api/webhooks:
+    get:
+      tags:
+        - webhooks
+      summary: Lists webhook subscriptions (plan item 9.1, not implemented yet).
+      operationId: listWebhooks
+      responses:
+        "200":
+          description: Webhook subscriptions returned.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WebhookSubscription"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Webhook subscriptions could not be listed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+    post:
+      tags:
+        - webhooks
+      summary: Subscribes a receiver to fleet events as signed CloudEvents (plan item 9.1, not implemented yet).
+      operationId: createWebhook
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookSubscriptionRequest"
+        required: true
+      responses:
+        "201":
+          description: Webhook subscription created; delivery starts with events committed after it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSubscription"
+        "400":
+          description: URL, secret or event types are invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "409":
+          description: Webhooks are disabled (WEBHOOKS_ENABLED).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Webhook subscription could not be created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
+  "/api/webhooks/{id}":
+    delete:
+      tags:
+        - webhooks
+      summary: Deletes a webhook subscription and its checkpoint (plan item 9.1, not implemented yet).
+      operationId: deleteWebhook
+      parameters:
+        - x-go-name: ID
+          description: Webhook subscription ID.
+          name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        "204":
+          description: Webhook subscription deleted.
+        "401":
+          description: Authorization token is missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: System administrator role is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "404":
+          description: Webhook subscription was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Webhook subscription could not be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+      security:
+        - tokenAuth: []
   /health:
     get:
       tags:
         - health
-      summary: Checks database connectivity.
+      summary: Checks database connectivity and reports Harbor reachability.
       operationId: health
       responses:
         "200":
-          description: Database connection is healthy.
+          description: Database connection is healthy; status is degraded while Harbor is unreachable.
           content:
             application/json:
               schema:
@@ -1290,6 +1887,134 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+  /oidc/callback:
+    get:
+      tags:
+        - auth
+      summary: Completes an OIDC login in the browser that started it (plan item 8.1, not implemented).
+      operationId: oidcCallback
+      parameters:
+        - x-go-name: Code
+          name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - x-go-name: State
+          name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session token created for the mapped user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: State, code or browser binding is missing, unknown or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: No role mapping matches the user, or a local account holds the username.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Session could not be created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+  /oidc/device:
+    post:
+      tags:
+        - auth
+      summary: Starts an OIDC device flow for the CLI (plan item 8.1, not implemented).
+      operationId: oidcDeviceAuthorize
+      responses:
+        "200":
+          description: Device authorization started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceAuthorizationResponse"
+        "500":
+          description: The OIDC provider could not be reached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+  /oidc/device/token:
+    post:
+      tags:
+        - auth
+      summary: Polls an OIDC device flow (plan item 8.1, not implemented).
+      operationId: oidcDeviceToken
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceTokenRequest"
+        required: true
+      responses:
+        "200":
+          description: Session token created for the mapped user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: authorization_pending, slow_down, or the device code is unknown or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: No role mapping matches the user, or a local account holds the username.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Session could not be created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+  /oidc/login:
+    get:
+      tags:
+        - auth
+      summary: Redirects to the OIDC provider and sets the browser binding cookie gc_oidc_binding (plan item 8.1, not implemented).
+      operationId: oidcLogin
+      responses:
+        "302":
+          description: Redirect to the OIDC provider.
+          headers:
+            Location:
+              schema:
+                type: string
+            Set-Cookie:
+              schema:
+                type: string
+        "404":
+          description: OIDC login is not enabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Login could not be started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
   /ping:
     get:
       tags:
@@ -1303,6 +2028,43 @@ paths:
             text/plain:
               schema:
                 type: string
+  /satellites/refresh:
+    post:
+      tags:
+        - satellites
+      summary: Rotates the satellite's Harbor robot secret.
+      operationId: refreshSatelliteCredentials
+      responses:
+        "200":
+          description: Robot secret rotated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshCredentialsResponse"
+        "401":
+          description: Satellite credentials are missing, invalid or expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: Satellite or robot account is unknown.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "429":
+          description: Too many satellite requests.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "500":
+          description: Robot secret could not be rotated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
   /satellites/spiffe-ztr:
     get:
       tags:
@@ -1341,6 +2103,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "503":
+          description: The satellite's registry account is not provisioned yet; retry after the delay.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
   /satellites/sync:
     post:
       tags:
@@ -1357,14 +2130,38 @@ paths:
       responses:
         "200":
           description: Satellite status report accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SatelliteSyncResponse"
         "400":
           description: Status payload or heartbeat interval is invalid.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "401":
+          description: Satellite credentials are missing or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "403":
           description: Satellite identity is unknown or not authorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "413":
+          description: >
+            The request body exceeds SYNC_MAX_BODY_BYTES (plan item 6.5, not
+            enforced yet).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "429":
+          description: Too many status reports.
           content:
             application/json:
               schema:
@@ -1421,6 +2218,17 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "500":
           description: Zero-touch registration could not be completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "503":
+          description: The satellite's registry account is not provisioned yet; retry after the delay.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying.
+              schema:
+                type: integer
           content:
             application/json:
               schema:
@@ -1516,6 +2324,147 @@ components:
         peer_distribution:
           $ref: "#/components/schemas/PeerDistributionConfig"
           x-go-name: PeerDistribution
+        replication_concurrency:
+          type: integer
+          minimum: 0
+          description: >
+            Group states replicated at once; 0 replicates every group at once
+            as today (plan item 6.2, not read yet).
+          x-go-name: ReplicationConcurrency
+        replication_bandwidth_bytes_per_sec:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Bandwidth budget of state replication (plan item 6.2, not read yet).
+          x-go-name: ReplicationBandwidthBytesPerSec
+        journal:
+          $ref: "#/components/schemas/JournalConfig"
+        admission:
+          $ref: "#/components/schemas/AdmissionConfig"
+        registry_auth:
+          $ref: "#/components/schemas/RegistryAuthConfig"
+    RegistryAuthConfig:
+      type: object
+      title: RegistryAuthConfig selects how the satellite authenticates to Harbor (plan item 8.3, not read yet).
+      properties:
+        mode:
+          type: string
+          description: robot (default) or workload_identity.
+          x-go-name: Mode
+        audience:
+          type: string
+          description: JWT-SVID audience for workload_identity.
+          x-go-name: Audience
+    DeviceAuthorizationResponse:
+      type: object
+      title: DeviceAuthorizationResponse starts an OIDC device flow (RFC 8628).
+      required:
+        - device_code
+        - user_code
+        - verification_uri
+        - expires_in
+        - interval
+      properties:
+        device_code:
+          type: string
+          x-go-name: DeviceCode
+        user_code:
+          type: string
+          x-go-name: UserCode
+        verification_uri:
+          type: string
+          x-go-name: VerificationURI
+        verification_uri_complete:
+          type: string
+          x-go-name: VerificationURIComplete
+        expires_in:
+          type: integer
+          format: int64
+          description: Seconds until the device code expires.
+          x-go-name: ExpiresIn
+        interval:
+          type: integer
+          format: int64
+          description: Seconds to wait between polls.
+          x-go-name: Interval
+    DeviceTokenRequest:
+      type: object
+      required:
+        - device_code
+      properties:
+        device_code:
+          type: string
+          x-go-name: DeviceCode
+    RotatedCredentials:
+      type: object
+      title: RotatedCredentials are a successor robot's credentials (plan item 8.4, not set yet).
+      required:
+        - username
+        - password
+        - generation
+      properties:
+        username:
+          type: string
+          x-go-name: Username
+        password:
+          type: string
+          x-go-name: Password
+        expires_at:
+          type: string
+          format: date-time
+          x-go-name: ExpiresAt
+        generation:
+          type: integer
+          format: int64
+          x-go-name: Generation
+    AdmissionConfig:
+      type: object
+      title: AdmissionConfig is the edge admission policy of the satellite proxy (plan item 7.5, not read yet).
+      properties:
+        mode:
+          type: string
+          description: off (default), audit or enforce.
+          x-go-name: Mode
+        bundle:
+          $ref: "#/components/schemas/AdmissionBundle"
+    AdmissionBundle:
+      type: object
+      title: AdmissionBundle is a set of policy lines for the edge admission model.
+      required:
+        - model_version
+        - policies
+      properties:
+        model_version:
+          type: string
+          description: The admission model the lines are written for, edge-admission/v1.
+          x-go-name: ModelVersion
+        policies:
+          type: array
+          description: One line per entry, [subject, repository, reference, operation, allow|deny].
+          items:
+            type: array
+            items:
+              type: string
+          x-go-name: Policies
+    JournalConfig:
+      type: object
+      title: JournalConfig sizes the satellite's edge journal (plan item 6.4, not read yet).
+      properties:
+        max_segment_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          x-go-name: MaxSegmentBytes
+        max_total_bytes:
+          type: integer
+          format: int64
+          minimum: 0
+          x-go-name: MaxTotalBytes
+        upload_batch:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          x-go-name: UploadBatch
     AuditConfig:
       type: object
       title: AuditConfig controls satellite security-event audit logging.
@@ -1664,6 +2613,33 @@ components:
         UpdatedAt:
           type: string
           format: date-time
+        warnings:
+          type: array
+          description: >
+            Validation warnings of a create or update (plan item 7.4);
+            omitted when empty.
+          items:
+            type: string
+          x-go-name: Warnings
+    ConfigValidationError:
+      type: object
+      title: ConfigValidationError is an AppError with the validation warnings.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          format: http-status-code
+          x-go-name: Code
+        message:
+          type: string
+          x-go-name: Message
+        warnings:
+          type: array
+          items:
+            type: string
+          x-go-name: Warnings
     ConfigValue:
       type: object
       title: ConfigValue contains a Harbor Satellite configuration document.
@@ -1761,8 +2737,75 @@ components:
           type: string
           enum:
             - healthy
+            - degraded
             - unhealthy
           x-go-name: Status
+        components:
+          type: object
+          description: Health per dependency, such as harbor. Omitted when there is nothing to report.
+          additionalProperties:
+            $ref: "#/components/schemas/ComponentHealth"
+          x-go-name: Components
+    ComponentHealth:
+      type: object
+      title: ComponentHealth is the health of one dependency.
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          description: healthy, degraded or unhealthy.
+          x-go-name: Status
+        last_contact:
+          type: string
+          format: date-time
+          description: Last successful contact.
+          x-go-name: LastContact
+        detail:
+          type: string
+          description: A fixed phrase such as "no contact since startup"; never a URL or error text, because /health is public.
+          x-go-name: Detail
+    OutboxEventResponse:
+      type: object
+      title: OutboxEventResponse is one outbox event that is not done yet.
+      required:
+        - id
+        - kind
+        - aggregate_type
+        - aggregate_id
+        - attempts
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+          x-go-name: ID
+        kind:
+          type: string
+          x-go-name: Kind
+        aggregate_type:
+          type: string
+          x-go-name: AggregateType
+        aggregate_id:
+          type: integer
+          format: int64
+          x-go-name: AggregateID
+        attempts:
+          type: integer
+          format: int32
+          x-omitempty: false
+          x-go-name: Attempts
+        created_at:
+          type: string
+          format: date-time
+          x-go-name: CreatedAt
+        next_attempt_at:
+          type: string
+          format: date-time
+          x-go-name: NextAttemptAt
+        last_error:
+          type: string
+          x-go-name: LastError
     MessageResponse:
       type: object
       title: MessageResponse contains a human-readable operation result.
@@ -1968,6 +3011,9 @@ components:
         state:
           type: string
           x-go-name: State
+        session:
+          $ref: "#/components/schemas/SatelliteSession"
+          x-go-type-skip-optional-pointer: false
     StateConfigValue:
       type: object
       title: StateConfigValue contains state artifact and registry settings in a
@@ -2367,6 +3413,14 @@ components:
         activity:
           type: string
           x-go-name: Activity
+        applied_states:
+          type: array
+          description: >
+            The group states the last replication run applied, by reference as
+            listed in the satellite state (plan item 6.6, not read yet).
+          items:
+            $ref: "#/components/schemas/AppliedState"
+          x-go-name: AppliedStates
         cached_images:
           type: array
           items:
@@ -2380,6 +3434,18 @@ components:
           type: integer
           format: int32
           x-go-name: ImageCount
+        inventory_digest:
+          type: string
+          description: >
+            Digest of cached_images (internal/shared/inventory, plan item 4.4,
+            not read yet). A satellite sends cached_images only when this
+            changed or Ground Control asked with inventory_requested.
+          x-go-name: InventoryDigest
+        journal:
+          $ref: "#/components/schemas/JournalUpload"
+        last_replication_error:
+          type: string
+          x-go-name: LastReplicationError
         last_sync_duration_ms:
           type: integer
           format: int64
@@ -2410,6 +3476,387 @@ components:
           format: int64
           minimum: 0
           x-go-name: StorageUsedBytes
+        credentials_generation:
+          type: integer
+          format: int64
+          minimum: 0
+          description: The robot generation the satellite uses; acks a delivered rotation (plan item 8.4, not read yet).
+          x-go-name: CredentialsGeneration
+    SatelliteSyncResponse:
+      type: object
+      title: SatelliteSyncResponse carries Ground Control events for the satellite.
+      required:
+        - events
+      properties:
+        events:
+          type: array
+          items:
+            type: string
+          x-go-name: Events
+        journal:
+          $ref: "#/components/schemas/JournalAck"
+          x-go-type-skip-optional-pointer: false
+        session:
+          $ref: "#/components/schemas/SatelliteSession"
+          x-go-type-skip-optional-pointer: false
+        inventory_requested:
+          type: boolean
+          description: Ground Control has no inventory for the reported digest; the next heartbeat sends cached_images.
+          x-go-name: InventoryRequested
+        credentials:
+          $ref: "#/components/schemas/RotatedCredentials"
+          x-go-type-skip-optional-pointer: false
+    SatelliteSession:
+      type: object
+      title: SatelliteSession is the Ground Control session a satellite authenticates with (ADR-0016).
+      required:
+        - token
+        - expires_at
+      properties:
+        token:
+          type: string
+          x-go-name: Token
+        expires_at:
+          type: string
+          format: date-time
+          x-go-name: ExpiresAt
+    StateConvergence:
+      type: object
+      title: StateConvergence is one group state of a satellite, applied and published.
+      required:
+        - ref
+      properties:
+        ref:
+          type: string
+          x-go-name: Ref
+        digest:
+          type: string
+          description: Applied digest the satellite reported.
+          x-go-name: Digest
+        published_digest:
+          type: string
+          description: Artifact digest GC published last.
+          x-go-name: PublishedDigest
+    SatelliteLifecycleResponse:
+      type: object
+      title: SatelliteLifecycleResponse is a satellite's lifecycle and convergence (ADR-0006, plan 4.3).
+      required:
+        - name
+        - state
+        - converged
+      properties:
+        name:
+          type: string
+          x-go-name: Name
+        state:
+          type: string
+          description: pending, online, stale or revoked
+          x-go-name: State
+        last_seen:
+          type: string
+          format: date-time
+          x-go-name: LastSeen
+        revoked_at:
+          type: string
+          format: date-time
+          x-go-name: RevokedAt
+        desired_version:
+          type: integer
+          format: int64
+          x-go-name: DesiredVersion
+        rendered_digest:
+          type: string
+          x-go-name: RenderedDigest
+        published_artifact_digest:
+          type: string
+          x-go-name: PublishedArtifactDigest
+        applied_state_digest:
+          type: string
+          x-go-name: AppliedStateDigest
+        applied_config_digest:
+          type: string
+          x-go-name: AppliedConfigDigest
+        applied_states:
+          type: array
+          items:
+            $ref: "#/components/schemas/StateConvergence"
+          x-go-name: AppliedStates
+        converged:
+          type: boolean
+          x-go-name: Converged
+        publish_error:
+          type: string
+          x-go-name: PublishError
+        last_replication_error:
+          type: string
+          x-go-name: LastReplicationError
+        updated_at:
+          type: string
+          format: date-time
+          x-go-name: UpdatedAt
+    AppliedState:
+      type: object
+      title: AppliedState is a group state reference and the digest a satellite applied.
+      required:
+        - ref
+        - digest
+      properties:
+        ref:
+          type: string
+          x-go-name: Ref
+        digest:
+          type: string
+          x-go-name: Digest
+    JournalUpload:
+      type: object
+      title: JournalUpload carries edge journal records above the satellite's floor (plan item 6.5, not read yet).
+      required:
+        - epoch
+        - after_seq
+        - records
+      properties:
+        epoch:
+          type: integer
+          format: int64
+          minimum: 1
+          description: >
+            Identifies the satellite's journal. Epochs are time-ordered: a
+            newer one resets Ground Control's cursor, an older one is answered
+            with Ground Control's epoch.
+          x-go-name: Epoch
+        after_seq:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >
+            The satellite's floor: it holds nothing at or below this seq for
+            Ground Control any more. A floor above Ground Control's cursor is
+            recorded as an EdgeJournalGap event.
+          x-go-name: AfterSeq
+        records:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/JournalRecord"
+          x-go-name: Records
+    JournalAck:
+      type: object
+      title: JournalAck answers a journal upload; present whenever the request carried one.
+      required:
+        - epoch
+        - acked_seq
+      properties:
+        epoch:
+          type: integer
+          format: int64
+          description: >
+            Ground Control's epoch for the satellite. A satellite whose epoch
+            is older continues as epoch + 1.
+          x-go-name: Epoch
+        acked_seq:
+          type: integer
+          format: int64
+          description: The seq Ground Control holds the epoch up to; the satellite deletes records up to it.
+          x-go-name: AckedSeq
+        error:
+          type: string
+          description: >
+            Why the upload was rejected. The ack does not advance; the
+            heartbeat itself is accepted.
+          x-go-name: Error
+    JournalRecord:
+      type: object
+      title: JournalRecord is one record of a satellite's edge journal.
+      required:
+        - seq
+        - type
+        - recorded_at
+        - payload
+      properties:
+        seq:
+          type: integer
+          format: int64
+          minimum: 1
+          x-go-name: Seq
+        type:
+          type: string
+          description: >
+            replication, cri or pull_through; the payload is the record type's
+            internal/shared/edgejournal payload.
+          x-go-name: Type
+        recorded_at:
+          type: string
+          format: date-time
+          x-go-name: RecordedAt
+        payload:
+          type: object
+          additionalProperties: true
+          x-go-type: json.RawMessage
+          x-go-name: Payload
+    PolicyRuleRequest:
+      type: object
+      title: PolicyRuleRequest is a policy rule to store.
+      required:
+        - subject
+        - effect
+      properties:
+        subject:
+          type: string
+          description: user:<name>, role:<role> or oidc:<group>.
+          x-go-name: Subject
+        scope:
+          type: string
+          description: '"*" (the default) or <satellite|group|config>:<name>.'
+          x-go-name: Scope
+        resource_type:
+          type: string
+          description: A resource type or "*" (the default).
+          x-go-name: ResourceType
+        action:
+          type: string
+          description: An action or "*" (the default).
+          x-go-name: Action
+        effect:
+          type: string
+          enum:
+            - allow
+            - deny
+          x-go-name: Effect
+    PolicyRule:
+      type: object
+      title: PolicyRule is a stored policy rule.
+      required:
+        - id
+        - subject
+        - scope
+        - resource_type
+        - action
+        - effect
+      properties:
+        id:
+          type: integer
+          format: int64
+          x-go-name: ID
+        subject:
+          type: string
+          x-go-name: Subject
+        scope:
+          type: string
+          x-go-name: Scope
+        resource_type:
+          type: string
+          x-go-name: ResourceType
+        action:
+          type: string
+          x-go-name: Action
+        effect:
+          type: string
+          x-go-name: Effect
+    WebhookSubscriptionRequest:
+      type: object
+      title: WebhookSubscriptionRequest subscribes a receiver to fleet events.
+      required:
+        - url
+        - secret
+      properties:
+        url:
+          type: string
+          description: https, or http for a loopback host.
+          x-go-name: URL
+        secret:
+          type: string
+          minLength: 32
+          writeOnly: true
+          description: HMAC-SHA256 key of the X-Ground-Control-Signature-256 header.
+          x-go-name: Secret
+        event_types:
+          type: array
+          description: Event kinds to deliver; empty delivers every kind.
+          items:
+            type: string
+          x-go-name: EventTypes
+    WebhookSubscription:
+      type: object
+      title: WebhookSubscription is a receiver of fleet events and its delivery state.
+      required:
+        - id
+        - url
+        - event_types
+        - enabled
+        - consecutive_failures
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int32
+          x-go-name: ID
+        url:
+          type: string
+          x-go-name: URL
+        event_types:
+          type: array
+          items:
+            type: string
+          x-go-name: EventTypes
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+        disabled_reason:
+          type: string
+          x-go-name: DisabledReason
+        consecutive_failures:
+          type: integer
+          format: int32
+          x-go-name: ConsecutiveFailures
+        last_error:
+          type: string
+          x-go-name: LastError
+        created_at:
+          type: string
+          format: date-time
+          x-go-name: CreatedAt
+    RoleBindingRequest:
+      type: object
+      title: RoleBindingRequest gives a principal an additional role.
+      required:
+        - principal
+        - role
+      properties:
+        principal:
+          type: string
+          description: user:<name> or oidc:<group>.
+          x-go-name: Principal
+        role:
+          type: string
+          description: role:<name>, not a built-in role.
+          x-go-name: Role
+    RoleBinding:
+      type: object
+      title: RoleBinding is a stored role binding.
+      required:
+        - id
+        - principal
+        - role
+      properties:
+        id:
+          type: integer
+          format: int64
+          x-go-name: ID
+        principal:
+          type: string
+          x-go-name: Principal
+        role:
+          type: string
+          x-go-name: Role
+    RefreshCredentialsResponse:
+      type: object
+      title: RefreshCredentialsResponse carries the satellite's new robot secret.
+      required:
+        - secret
+      properties:
+        secret:
+          type: string
+          x-go-name: Secret
     GroupSyncRequest:
       type: object
       title: GroupSyncRequest contains a group state artifact synchronized from

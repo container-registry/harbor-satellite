@@ -1,0 +1,12 @@
+{
+  "body": [
+    {
+      "CreatedAt": "\u003ctimestamp\u003e",
+      "ID": "\u003cid\u003e",
+      "Name": "edge-01",
+      "UpdatedAt": "\u003ctimestamp\u003e"
+    }
+  ],
+  "request": "GET /api/groups/edge-group/satellites",
+  "status": 200
+}

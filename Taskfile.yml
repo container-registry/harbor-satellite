@@ -2,6 +2,7 @@ version: "3"
 
 vars:
   GOVULNCHECK_VERSION: "v1.1.4"
+  GO_ARCH_LINT_VERSION: "v1.19.0"
   OAPI_CODEGEN_VERSION: "de2d8b2b0afb287198554eb305bb0d2687d26a85"
   OAPI_CODEGEN_RELEASE_VERSION: "v2.8.0"
   # Matches the version recorded in internal/groundcontrol/database.
@@ -25,6 +26,9 @@ includes:
   _gen:
     taskfile: ./taskfiles/gen.yml
     dir: "{{.ROOT_DIR}}"
+  _test:
+    taskfile: ./taskfiles/test.yml
+    dir: "{{.ROOT_DIR}}"
 
 tasks:
   default:
@@ -44,10 +48,16 @@ tasks:
       - task: _build:all
 
   lint:
-    desc: Run golangci-lint
+    desc: Run go-arch-lint and golangci-lint
     aliases: [l]
     cmds:
+      - task: _lint:arch
       - task: _lint:lint
+
+  lint:arch:
+    desc: Check package import boundaries with go-arch-lint
+    cmds:
+      - task: _lint:arch
 
   lint-fix:
     desc: Run golangci-lint with auto-fix
@@ -93,6 +103,21 @@ tasks:
     cmds:
       - task: _gen:groundcontrol-client
 
+  test:integration:
+    desc: Run Ground Control integration tests against a disposable Postgres (TEST_PG_PORT, default 55434)
+    cmds:
+      - task: _test:integration
+
+  test:load:
+    desc: Run the fleet load test (build tag load) against the Ground Control at LOAD_GC_URL, admin password LOAD_ADMIN_PASSWORD
+    cmds:
+      - go test -tags load -count=1 -timeout 30m -v ./test/load/...
+
+  test:integration-db-down:
+    desc: Remove the integration test Postgres
+    cmds:
+      - task: _test:db-down
+
   e2e:
     desc: Run all E2E tests
     cmds:
@@ -124,6 +149,11 @@ tasks:
     desc: Run crash recovery BYO registry E2E test
     cmds:
       - task: _e2e:test-crash-recovery-byo
+
+  e2e-multi-group:
+    desc: Run multi-group E2E test (pending plan item D5, runs with HARBOR3_PENDING=1)
+    cmds:
+      - task: _e2e:test-multi-group
 
   publish:
     desc: "Publish both components to registry"

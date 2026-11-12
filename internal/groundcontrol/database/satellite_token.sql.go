@@ -29,6 +29,41 @@ func (q *Queries) AddToken(ctx context.Context, arg AddTokenParams) (string, err
 	return token, err
 }
 
+const claimToken = `-- name: ClaimToken :one
+UPDATE satellite_token SET consumed_at = NOW()
+WHERE token = $1
+  AND consumed_at IS NULL
+  AND expires_at > $2::TIMESTAMP
+RETURNING satellite_id
+`
+
+type ClaimTokenParams struct {
+	Token string
+	Now   time.Time
+}
+
+// expires_at is a TIMESTAMP the app writes, so it is compared with the
+// app's clock (now) rather than the database's NOW().
+func (q *Queries) ClaimToken(ctx context.Context, arg ClaimTokenParams) (int32, error) {
+	row := q.db.QueryRowContext(ctx, claimToken, arg.Token, arg.Now)
+	var satellite_id int32
+	err := row.Scan(&satellite_id)
+	return satellite_id, err
+}
+
+const consumeToken = `-- name: ConsumeToken :execrows
+DELETE FROM satellite_token
+WHERE token = $1 AND consumed_at IS NOT NULL
+`
+
+func (q *Queries) ConsumeToken(ctx context.Context, token string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, consumeToken, token)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteExpiredTokens = `-- name: DeleteExpiredTokens :exec
 DELETE FROM satellite_token
 WHERE expires_at < NOW()
@@ -63,7 +98,7 @@ func (q *Queries) GetSatelliteIDByToken(ctx context.Context, token string) (int3
 }
 
 const getToken = `-- name: GetToken :one
-SELECT id, satellite_id, token, created_at, updated_at, expires_at FROM satellite_token
+SELECT id, satellite_id, token, created_at, updated_at, expires_at, consumed_at FROM satellite_token
 WHERE id = $1
 `
 
@@ -77,12 +112,13 @@ func (q *Queries) GetToken(ctx context.Context, id int32) (SatelliteToken, error
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ExpiresAt,
+		&i.ConsumedAt,
 	)
 	return i, err
 }
 
 const getTokenByValue = `-- name: GetTokenByValue :one
-SELECT id, satellite_id, token, created_at, updated_at, expires_at FROM satellite_token
+SELECT id, satellite_id, token, created_at, updated_at, expires_at, consumed_at FROM satellite_token
 WHERE token = $1
 `
 
@@ -96,12 +132,13 @@ func (q *Queries) GetTokenByValue(ctx context.Context, token string) (SatelliteT
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ExpiresAt,
+		&i.ConsumedAt,
 	)
 	return i, err
 }
 
 const listToken = `-- name: ListToken :many
-SELECT id, satellite_id, token, created_at, updated_at, expires_at FROM satellite_token
+SELECT id, satellite_id, token, created_at, updated_at, expires_at, consumed_at FROM satellite_token
 `
 
 func (q *Queries) ListToken(ctx context.Context) ([]SatelliteToken, error) {
@@ -120,6 +157,7 @@ func (q *Queries) ListToken(ctx context.Context) ([]SatelliteToken, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ExpiresAt,
+			&i.ConsumedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -132,4 +170,14 @@ func (q *Queries) ListToken(ctx context.Context) ([]SatelliteToken, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const unclaimToken = `-- name: UnclaimToken :exec
+UPDATE satellite_token SET consumed_at = NULL
+WHERE token = $1
+`
+
+func (q *Queries) UnclaimToken(ctx context.Context, token string) error {
+	_, err := q.db.ExecContext(ctx, unclaimToken, token)
+	return err
 }

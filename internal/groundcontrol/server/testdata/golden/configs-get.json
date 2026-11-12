@@ -1,0 +1,19 @@
+{
+  "body": {
+    "Config": {
+      "app_config": {
+        "heartbeat_interval": "@every 00h00m30s",
+        "log_level": "info",
+        "register_satellite_interval": "@every 00h00m05s",
+        "state_replication_interval": "@every 00h00m30s"
+      }
+    },
+    "ConfigName": "edge-config",
+    "CreatedAt": "\u003ctimestamp\u003e",
+    "ID": "\u003cid\u003e",
+    "RegistryUrl": "http://harbor.test",
+    "UpdatedAt": "\u003ctimestamp\u003e"
+  },
+  "request": "GET /api/configs/edge-config",
+  "status": 200
+}

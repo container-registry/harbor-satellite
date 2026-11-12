@@ -14,7 +14,7 @@ Partly implemented. The Context section below describes the code base when this 
 |---|---|
 | ORAS OCI image layout replaces Zot as the local store | Done in [#648](https://github.com/container-registry/harbor-satellite/pull/648) (`internal/satellite/store`, default path `<config-dir>/oci`) |
 | Typed OCI request parsing and process chain | Package added in [#649](https://github.com/container-registry/harbor-satellite/pull/649) (`internal/satellite/proxy`). Not wired: `cmd/satellite` does not import it and the satellite opens no listener |
-| Forwarding, CEL policy, `proxy` / `replica` / `cache` modes | Not implemented |
+| Forwarding, CEL policy, `proxy` / `replica` / `cache` modes | Not implemented. The CEL policy is superseded by Casbin edge admission ([ADR-0017](0017-policy-engine-casbin.md)) |
 | Replace Crane with ORAS | Not done. go-containerregistry is still used by the BYO registry store, direct delivery, state fetching and the image catalog |
 
 Until the proxy is wired, workloads get images from a BYO registry (`--byo-registry`) or via k3s/RKE2 direct delivery (`--direct-delivery`).

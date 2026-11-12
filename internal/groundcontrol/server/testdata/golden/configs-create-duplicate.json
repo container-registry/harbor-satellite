@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 409,
+    "message": "error: config already exists"
+  },
+  "request": "POST /api/configs",
+  "status": 409
+}

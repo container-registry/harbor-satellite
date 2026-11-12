@@ -1,0 +1,26 @@
+{
+  "artifact": "satellite/group-state/edge-group/state:latest",
+  "body": {
+    "artifacts": [
+      {
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "repository": "library/alpine",
+        "tag": [
+          "3.20"
+        ],
+        "type": "image"
+      },
+      {
+        "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "repository": "team/app",
+        "tag": [
+          "v1",
+          "latest"
+        ],
+        "type": "image"
+      }
+    ],
+    "group": "edge-group",
+    "registry": "http://harbor.test"
+  }
+}

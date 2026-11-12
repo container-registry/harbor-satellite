@@ -1,0 +1,7 @@
+{
+  "body": {
+    "message": "Satellite is already in the group"
+  },
+  "request": "POST /api/groups/satellite",
+  "status": 200
+}

@@ -214,7 +214,9 @@ func TestEnsureSatelliteRobotAccount_SkipModeValidation(t *testing.T) {
 func TestMain(m *testing.M) {
 	// Ensure SKIP_HARBOR_HEALTH_CHECK doesn't leak between tests
 	origValue := os.Getenv("SKIP_HARBOR_HEALTH_CHECK")
+	harborStub = startHarborStub()
 	code := m.Run()
+	harborStub.Close()
 	if origValue != "" {
 		_ = os.Setenv("SKIP_HARBOR_HEALTH_CHECK", origValue)
 	} else {

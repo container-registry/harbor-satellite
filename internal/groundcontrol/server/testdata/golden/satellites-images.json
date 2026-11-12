@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 500,
+    "message": "failed to get cached images"
+  },
+  "request": "GET /api/satellites/edge-01/images",
+  "status": 500
+}

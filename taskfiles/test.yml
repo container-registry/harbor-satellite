@@ -1,0 +1,29 @@
+version: "3"
+
+vars:
+  TEST_PG_PORT: '{{.TEST_PG_PORT | default "55434"}}'
+  TEST_PG_COMPOSE: test/integration/docker-compose.yml
+  INTEGRATION_PACKAGES: ./internal/groundcontrol/...
+
+tasks:
+  db-up:
+    desc: Start the Postgres used by the integration tests
+    cmds:
+      - docker compose -f {{.TEST_PG_COMPOSE}} up -d --wait
+    env:
+      TEST_PG_PORT: "{{.TEST_PG_PORT}}"
+
+  db-down:
+    desc: Remove the integration test Postgres and its data
+    cmds:
+      - docker compose -f {{.TEST_PG_COMPOSE}} down -v
+    env:
+      TEST_PG_PORT: "{{.TEST_PG_PORT}}"
+
+  integration:
+    desc: Run the Ground Control tests with the Postgres integration tests enabled
+    cmds:
+      - task: db-up
+      - go test -count=1 -v {{.INTEGRATION_PACKAGES}}
+    env:
+      TEST_DATABASE_URL: "postgres://postgres:postgres@127.0.0.1:{{.TEST_PG_PORT}}/postgres?sslmode=disable"
