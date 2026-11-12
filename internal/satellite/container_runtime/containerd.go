@@ -9,7 +9,8 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-const (
+// Variables so tests can point them at a temporary directory.
+var (
 	containerdCertsDir   = "/etc/containerd/certs.d"
 	containerdConfigPath = "/etc/containerd/config.toml"
 )

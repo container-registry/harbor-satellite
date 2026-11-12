@@ -14,9 +14,15 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	dockerConfigPath     = "/etc/docker/daemon.json"
-	dockerRestartTimeout = 30 * time.Second
+const dockerRestartTimeout = 30 * time.Second
+
+// Variables so tests can point the config at a temporary directory and
+// replace the restart.
+var (
+	dockerConfigPath = "/etc/docker/daemon.json"
+	restartDocker    = func(ctx context.Context) error {
+		return exec.CommandContext(ctx, "systemctl", "restart", "docker").Run()
+	}
 )
 
 func setDockerdConfig(mirrors []string, proxyEndpoint string) (string, error) {
@@ -79,8 +85,7 @@ func setDockerdConfig(mirrors []string, proxyEndpoint string) (string, error) {
 	// restart docker safely
 	ctx, cancel := context.WithTimeout(context.Background(), dockerRestartTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "systemctl", "restart", "docker")
-	if err := cmd.Run(); err != nil {
+	if err := restartDocker(ctx); err != nil {
 		if backupPath != "" {
 			if restoreErr := restoreBackup(backupPath, dockerConfigPath); restoreErr != nil {
 				return backupPath, fmt.Errorf("failed to restart Docker and rollback failed: %w", errors.Join(err, restoreErr))

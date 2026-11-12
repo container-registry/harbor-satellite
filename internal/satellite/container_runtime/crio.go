@@ -12,7 +12,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
+// Variables so tests can point them at a temporary directory.
+var (
 	tempRegistriesConfigPath = "/etc/containers/registries.toml"
 	registriesConfigPath     = "/etc/containers/registries.conf"
 )
