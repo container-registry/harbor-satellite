@@ -133,7 +133,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	// Registering events
 	log.Info().Msg("registering events")
-	err = s.registerEvents(context.Background(), s.cm)
+	err = s.registerEvents(ctx, s.cm)
 	if err != nil {
 		return err
 	}
@@ -174,6 +174,13 @@ func (s *Satellite) Stop(ctx context.Context) {
 		}
 	}
 
+	if s.eventscheduler != nil {
+		if err := s.eventscheduler.Stop(ctx); err != nil {
+			failedCount++
+			log.Warn().Err(err).Msg("Event schedulers failed to stop")
+		}
+	}
+
 	if failedCount > 0 {
 		log.Warn().Int("failed_count", failedCount).Msg("Some schedulers failed to stop")
 	} else {
@@ -191,10 +198,9 @@ func (s *Satellite) registerEvents(ctx context.Context, cm *config.ConfigManager
 	refreshSched, err := events.NewRefreshCredentialsEvent(cm, log)
 	if err != nil {
 		errs = append(errs, err)
+	} else {
+		s.eventscheduler.Register(ctx, refreshSched)
 	}
-
-	// Register Schedulers
-	s.eventscheduler.Register(ctx, refreshSched)
 
 	return errors.Join(errs...)
 }

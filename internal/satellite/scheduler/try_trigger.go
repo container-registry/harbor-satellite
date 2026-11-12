@@ -6,5 +6,13 @@ package scheduler
 // blocks the caller (the heartbeat) until the scheduler loop receives, and
 // forever once the loop has exited (plan item 6.7).
 func (s *Scheduler) TryTrigger() bool {
-	return false
+	if s.stopped.Load() {
+		return false
+	}
+	select {
+	case s.pending <- struct{}{}:
+		return true
+	default:
+		return false
+	}
 }

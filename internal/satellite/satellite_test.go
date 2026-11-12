@@ -12,14 +12,12 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSatellite_StopStopsEventSchedulers(t *testing.T) {
-	pending.Plan(t, "6.7", "Run starts the event schedulers on context.Background() and Stop never stops them")
 	var refreshes atomic.Int32
 	gc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/refresh") {
