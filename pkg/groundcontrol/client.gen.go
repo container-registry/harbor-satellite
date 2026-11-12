@@ -8463,6 +8463,8 @@ type SpiffeZtrHTTPResponse struct {
 	JSON400 *AppError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
 	// JSON429 the response for an HTTP 429 `application/json` response
 	JSON429 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
@@ -8486,6 +8488,11 @@ func (r SpiffeZtrHTTPResponse) GetJSON400() *AppError {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r SpiffeZtrHTTPResponse) GetJSON401() *AppError {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r SpiffeZtrHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
 }
 
 // GetJSON429 returns the response for an HTTP 429 `application/json` response
@@ -8629,6 +8636,8 @@ type ZtrHTTPResponse struct {
 	JSON400 *AppError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *AppError
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *AppError
 	// JSON422 the response for an HTTP 422 `application/json` response
 	JSON422 *AppError
 	// JSON429 the response for an HTTP 429 `application/json` response
@@ -8654,6 +8663,11 @@ func (r ZtrHTTPResponse) GetJSON400() *AppError {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r ZtrHTTPResponse) GetJSON401() *AppError {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ZtrHTTPResponse) GetJSON403() *AppError {
+	return r.JSON403
 }
 
 // GetJSON422 returns the response for an HTTP 422 `application/json` response
@@ -12294,6 +12308,13 @@ func ParseSpiffeZtrHTTPResponse(rsp *http.Response) (*SpiffeZtrHTTPResponse, err
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
 		var dest AppError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -12435,6 +12456,13 @@ func ParseZtrHTTPResponse(rsp *http.Response) (*ZtrHTTPResponse, error) {
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest AppError

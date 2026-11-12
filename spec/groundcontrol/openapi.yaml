@@ -2192,6 +2192,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "403":
+          description: >
+            The satellite is revoked (POST /api/satellites/{satellite}/revoke);
+            registration is refused until it is unrevoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "429":
           description: Too many SPIFFE zero-touch registration attempts.
           content:
@@ -2301,6 +2309,14 @@ paths:
                 $ref: "#/components/schemas/AppError"
         "401":
           description: Registration token has expired.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
+        "403":
+          description: >
+            The satellite is revoked (POST /api/satellites/{satellite}/revoke);
+            registration is refused until it is unrevoked.
           content:
             application/json:
               schema:
