@@ -359,19 +359,38 @@ func TestFetchSatelliteRootStateTimedStopsHungHarbor(t *testing.T) {
 
 type degradedLogCapture struct {
 	ctx context.Context
-	buf *bytes.Buffer
+	buf *lockedBuffer
+}
+
+// lockedBuffer serializes writes; the group goroutines of a degraded tick
+// log while collectResults does.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func newDegradedProcess(t *testing.T, dir, stateFile, bootstrap string, peers bool, local *degradedStubStore) (degradedLogCapture, *FetchAndReplicateStateProcess) {
 	t.Helper()
-	var buf bytes.Buffer
-	log := zerolog.New(&buf)
+	buf := &lockedBuffer{}
+	log := zerolog.New(buf)
 	cm := degradedTestManager(t, peers, "80ms")
 	process := NewFetchAndReplicateStateProcess(cm, stateFile, dir, bootstrap, &log)
 	process.SetStores(local, &degradedStubStore{})
 	return degradedLogCapture{
 		ctx: context.WithValue(context.Background(), logger.LoggerKey, &log),
-		buf: &buf,
+		buf: buf,
 	}, process
 }
 
