@@ -10,7 +10,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +19,6 @@ func singleDSNDatabase() env.Database {
 }
 
 func TestConfigFromEnv_PlanesWithoutURLUseTheAPIPool(t *testing.T) {
-	pending.Plan(t, "3.2", "GC opens one pool with Go defaults (server.go sql.Open)")
 	cfg, err := dbpool.ConfigFromEnv(singleDSNDatabase())
 	require.NoError(t, err)
 
@@ -34,7 +32,6 @@ func TestConfigFromEnv_PlanesWithoutURLUseTheAPIPool(t *testing.T) {
 }
 
 func TestConfigFromEnv_PlaneOverride(t *testing.T) {
-	pending.Plan(t, "3.2", "DB_URL_<PLANE> and the per-plane pool settings are not read")
 	db := singleDSNDatabase()
 	db.URLAPI = "postgres://api@db-api.example:5432/groundcontrol"
 	db.URLFleet = "postgres://fleet@db-fleet.example:5432/groundcontrol"
@@ -52,7 +49,6 @@ func TestConfigFromEnv_PlaneOverride(t *testing.T) {
 }
 
 func TestWithRuntimeParams_EncodesOptions(t *testing.T) {
-	pending.Plan(t, "3.2", "per-pool runtime parameters are not set")
 	dsn, err := dbpool.WithRuntimeParams("postgres://gc:secret@db.example:5432/groundcontrol?sslmode=disable", dbpool.PoolConfig{
 		StatementTimeout:       5 * time.Second,
 		LockTimeout:            time.Second,
@@ -77,7 +73,6 @@ func show(t *testing.T, db *sql.DB, setting string) string {
 }
 
 func TestOpen_PoolsApplyRuntimeParams(t *testing.T) {
-	pending.Plan(t, "3.2", "per-pool runtime parameters are not set")
 	db := dbtest.New(t)
 	pools, err := dbpool.Open(context.Background(), dbpool.Config{
 		API: dbpool.PoolConfig{DSN: db.URL, ApplicationName: "groundcontrol-api"},
@@ -98,7 +93,6 @@ func TestOpen_PoolsApplyRuntimeParams(t *testing.T) {
 }
 
 func TestOpen_PlanesWithoutDSNShareTheAPIPool(t *testing.T) {
-	pending.Plan(t, "3.2", "GC opens one pool with Go defaults (server.go sql.Open)")
 	db := dbtest.New(t)
 	pools, err := dbpool.Open(context.Background(), dbpool.Config{API: dbpool.PoolConfig{DSN: db.URL}})
 	require.NoError(t, err)
@@ -134,4 +128,49 @@ func TestLibPQCancelsQueryOnContextCancel(t *testing.T) {
 			"SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND query LIKE 'SELECT pg_sleep(20)%' AND state = 'active'").Scan(&running))
 		return running == 0
 	}, 5*time.Second, 50*time.Millisecond, "pg_sleep still runs on the server after the context ended")
+}
+
+func TestConfigFromEnv_PlaneSettingsWithoutURLGetTheirOwnPool(t *testing.T) {
+	db := singleDSNDatabase()
+	db.AsyncPool = env.Pool{MaxOpenConns: 2, StatementTimeout: time.Minute}
+
+	cfg, err := dbpool.ConfigFromEnv(db)
+	require.NoError(t, err)
+	require.Equal(t, cfg.API.DSN, cfg.Async.DSN, "DB_ASYNC_* without DB_URL_ASYNC opens a pool on the API DSN")
+	require.Equal(t, 2, cfg.Async.MaxOpenConns)
+	require.Equal(t, "groundcontrol-async", cfg.Async.ApplicationName)
+	require.Empty(t, cfg.Fleet.DSN)
+}
+
+func TestConfigFromEnv_RejectsInvalidSSLMode(t *testing.T) {
+	db := singleDSNDatabase()
+	db.SSLMode = "verify"
+	_, err := dbpool.ConfigFromEnv(db)
+	require.ErrorContains(t, err, "DB_SSLMODE")
+}
+
+func TestWithRuntimeParams_KeepsExistingOptionsFirst(t *testing.T) {
+	dsn, err := dbpool.WithRuntimeParams("postgres://gc@db.example/gc?options=-c%20search_path%3Dgc", dbpool.PoolConfig{LockTimeout: time.Second})
+	require.NoError(t, err)
+	u, err := url.Parse(dsn)
+	require.NoError(t, err)
+	require.Equal(t, "-c search_path=gc -c lock_timeout=1000", u.Query().Get("options"))
+
+	_, err = dbpool.WithRuntimeParams("mysql://db.example/gc", dbpool.PoolConfig{})
+	require.Error(t, err)
+}
+
+func TestOpen_SeparatePoolsCloseOnce(t *testing.T) {
+	db := dbtest.New(t)
+	pools, err := dbpool.Open(context.Background(), dbpool.Config{
+		API:   dbpool.PoolConfig{DSN: db.URL, ApplicationName: "groundcontrol-api"},
+		Async: dbpool.PoolConfig{DSN: db.URL, ApplicationName: "groundcontrol-async", MaxOpenConns: 1},
+	})
+	require.NoError(t, err)
+	require.NotSame(t, pools.API, pools.Async)
+	require.Same(t, pools.API, pools.Fleet)
+	require.Equal(t, "groundcontrol-async", show(t, pools.Async, "application_name"))
+	require.Equal(t, 1, pools.Async.Stats().MaxOpenConnections)
+	require.NoError(t, pools.Close())
+	require.Error(t, pools.API.PingContext(context.Background()), "closed")
 }

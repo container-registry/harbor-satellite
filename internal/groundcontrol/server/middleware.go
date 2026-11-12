@@ -249,7 +249,7 @@ var (
 
 // validateSPIFFEAuth validates if the satellite exists in database by name.
 func (s *Server) validateSPIFFEAuth(ctx context.Context, spiffeName string) (string, error) {
-	sat, err := s.dbQueries.GetSatelliteByName(ctx, spiffeName)
+	sat, err := s.fleet().GetSatelliteByName(ctx, spiffeName)
 	if err != nil {
 		return "", err
 	}
@@ -258,7 +258,7 @@ func (s *Server) validateSPIFFEAuth(ctx context.Context, spiffeName string) (str
 
 // validateRobotAuth validates Basic Auth credentials against the robot account DB records.
 func (s *Server) validateRobotAuth(ctx context.Context, username, password string) (string, error) {
-	robot, err := s.dbQueries.GetRobotAccByRobotName(ctx, username)
+	robot, err := s.fleet().GetRobotAccByRobotName(ctx, username)
 	if err != nil {
 		_ = crypto.VerifySecret(password, crypto.TimingMitigationHash)
 		return "", err
@@ -269,7 +269,7 @@ func (s *Server) validateRobotAuth(ctx context.Context, username, password strin
 	if robot.RobotExpiry.Valid && robot.RobotExpiry.Time.Before(time.Now()) {
 		return "", errRobotExpired
 	}
-	sat, err := s.dbQueries.GetSatellite(ctx, robot.SatelliteID)
+	sat, err := s.fleet().GetSatellite(ctx, robot.SatelliteID)
 	if err != nil {
 		return "", err
 	}

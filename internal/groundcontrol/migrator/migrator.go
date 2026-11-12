@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
 	migrations "github.com/container-registry/harbor-satellite/internal/groundcontrol/sql"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	_ "github.com/lib/pq"
@@ -78,11 +79,12 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 func DoMigrations(ctx context.Context) error {
 	cfg := env.GC.Database
 
-	dsn, err := cfg.ConnectionURL()
+	// Migrations run on the API plane's DSN: DB_URL_API when set.
+	pools, err := dbpool.ConfigFromEnv(cfg)
 	if err != nil {
 		return err
 	}
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open(dbpool.DriverName, pools.API.DSN)
 	if err != nil {
 		log.Println("failed to open DB connection")
 		return err

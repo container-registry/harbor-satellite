@@ -22,7 +22,7 @@ func (s *Server) RefreshSatelliteCredentials(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	sat, err := s.dbQueries.GetSatelliteByName(r.Context(), satelliteName)
+	sat, err := s.fleet().GetSatelliteByName(r.Context(), satelliteName)
 	if err != nil {
 		log.Printf("Unknown satellite: %s", satelliteName)
 		HandleAppError(w, &AppError{
@@ -32,7 +32,7 @@ func (s *Server) RefreshSatelliteCredentials(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	robotAcc, err := s.dbQueries.GetRobotAccBySatelliteID(r.Context(), sat.ID)
+	robotAcc, err := s.fleet().GetRobotAccBySatelliteID(r.Context(), sat.ID)
 	if err != nil {
 		log.Printf("Failed to find robot account for satellite : %s", satelliteName)
 		HandleAppError(w, &AppError{
@@ -42,7 +42,7 @@ func (s *Server) RefreshSatelliteCredentials(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	newSecret, err := refreshRobotSecret(r, s.dbQueries, robotAcc)
+	newSecret, err := refreshRobotSecret(r, s.fleet(), robotAcc)
 	if err != nil {
 		log.Printf("Failed to refresh robot secret for satellite %s: %v", satelliteName, err)
 		HandleAppError(w, &AppError{

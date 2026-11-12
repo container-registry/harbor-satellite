@@ -63,13 +63,14 @@ func (s *Server) StartCleanupJob(ctx context.Context, cfg CleanupConfig) {
 // rollback; a session lock taken through the pool could be released on a
 // different connection and leak.
 func (s *Server) runCleanupWithLock(ctx context.Context, days int) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	db, queries := s.background()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		log.Printf("Status cleanup: begin transaction: %v", err)
 		return
 	}
 	defer tx.Rollback() //nolint:errcheck // After Commit this is a no-op; otherwise the error is the one already logged.
-	q := s.dbQueries.WithTx(tx)
+	q := queries.WithTx(tx)
 
 	acquired, err := q.TryAdvisoryXactLock(ctx, cleanupLockID)
 	if err != nil {
