@@ -44,6 +44,8 @@ type gcHarness struct {
 	sessionClock *manualClock
 	// flusher is the heartbeat flusher of newHotPathHarness.
 	flusher *heartbeat.Flusher
+	// hot is the composed hot path, robot rotation included.
+	hot *hotPath
 }
 
 // newGCHarness needs TEST_DATABASE_URL and skips without it. Set extra GC
@@ -95,7 +97,7 @@ func newHarness(t *testing.T, flushEachBeat bool, opts ...Option) *gcHarness {
 		require.NoError(t, res.Close())
 	})
 
-	h := &gcHarness{t: t, db: db, harbor: harborStub, app: res.AppServer, handler: res.Server.Handler, url: ts.URL, sessionClock: hot.clock, flusher: hot.flusher}
+	h := &gcHarness{t: t, db: db, harbor: harborStub, app: res.AppServer, handler: res.Server.Handler, url: ts.URL, sessionClock: hot.clock, flusher: hot.flusher, hot: hot}
 	var session LoginResponse
 	h.mustDo(http.MethodPost, "/login", LoginRequest{Username: "admin", Password: harnessAdminPassword}, nil, http.StatusOK).decode(t, &session)
 	h.admin = bearerAuth(session.Token)

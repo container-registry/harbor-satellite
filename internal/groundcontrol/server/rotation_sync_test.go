@@ -1,20 +1,22 @@
 package server
 
 import (
+	"context"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
-const pendingRotation = "robots are not rotated; the satellite refreshes its secret in the request (D2)"
-
 // rotateRobots runs one robot rotator pass and refreshes the server's
 // RotationCache, so the next beat sees the rotation without waiting for
-// ROBOT_ROTATION_CACHE_REFRESH. Today nothing rotates, so it does nothing;
-// plan item 8.4 makes it run async.RobotRotator, like drainOutbox the
-// worker.
-func (h *gcHarness) rotateRobots() {}
+// ROBOT_ROTATION_CACHE_REFRESH.
+func (h *gcHarness) rotateRobots() {
+	h.t.Helper()
+	require.NotNil(h.t, h.hot.rotator, "ROBOT_ROTATION_ENABLED composes the rotator")
+	_, _, err := h.hot.rotator.RunOnce(context.Background())
+	require.NoError(h.t, err)
+	require.NoError(h.t, h.hot.rotations.Refresh(context.Background()))
+}
 
 func robotName(t *testing.T, h *gcHarness, satellite string) string {
 	t.Helper()
@@ -27,7 +29,6 @@ func robotName(t *testing.T, h *gcHarness, satellite string) string {
 // The old and the successor robot both exist and stay enabled until the
 // satellite acks the successor's generation; then the old one goes.
 func TestSync_RotationOverlapWithoutDowntime(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	t.Setenv("ROBOT_ROTATION_ENABLED", "true")
 	t.Setenv("ROBOT_ROTATION_BEFORE_EXPIRY", "8760h")
 	t.Setenv("DATA_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
@@ -59,7 +60,6 @@ func TestSync_RotationOverlapWithoutDowntime(t *testing.T) {
 }
 
 func TestBudgetHeartbeat_RotationDeliveryAddsNoStatement(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	splitLimits(t, "100/1m", "100/1s")
 	t.Setenv("ROBOT_ROTATION_ENABLED", "true")
 	t.Setenv("ROBOT_ROTATION_BEFORE_EXPIRY", "8760h")

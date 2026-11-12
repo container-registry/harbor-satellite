@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -136,7 +137,24 @@ func NewWorker(ctx context.Context, deps WorkerDeps) (*async.Worker, func() erro
 	if err != nil {
 		return nil, nil, errors.Join(err, locker.Close())
 	}
-	worker, err := async.NewWorker(publisher, probe, stale, partitions, expirer)
+	jobs := []async.Job{probe, stale, partitions, expirer}
+	if deps.RobotRotation.Enabled {
+		sealer, err := NewSealer(deps.DataEncryptionKey)
+		if err != nil {
+			return nil, nil, errors.Join(err, locker.Close())
+		}
+		store, err := postgres.NewRotationStore(pool)
+		if err != nil {
+			return nil, nil, errors.Join(err, locker.Close())
+		}
+		rotator, err := async.NewRobotRotator(store, repo, registry, locker, sealer, fleet.SystemClock{}, settings.RobotDuration,
+			cmp.Or(deps.RobotRotation.BeforeExpiry, 72*time.Hour), cmp.Or(deps.RobotRotation.Interval, 10*time.Minute))
+		if err != nil {
+			return nil, nil, errors.Join(err, locker.Close())
+		}
+		jobs = append(jobs, rotator)
+	}
+	worker, err := async.NewWorker(publisher, jobs...)
 	if err != nil {
 		return nil, nil, errors.Join(err, locker.Close())
 	}

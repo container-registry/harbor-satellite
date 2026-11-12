@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/satconfig"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/secrets"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/harbor2"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/postgres"
@@ -102,6 +103,9 @@ type hotPath struct {
 	clock         *manualClock
 	flushEachBeat bool
 	flusher       *heartbeat.Flusher
+	// rotations and rotator exist with ROBOT_ROTATION_ENABLED (plan item 8.4).
+	rotations *async.RotationCache
+	rotator   *async.RobotRotator
 }
 
 func (h *hotPath) factory(_ context.Context, pools *dbpool.Pools, _ *spiffe.ServerClient) ([]Option, error) {
@@ -140,9 +144,16 @@ func (h *hotPath) factory(_ context.Context, pools *dbpool.Pools, _ *spiffe.Serv
 	if err != nil {
 		return nil, err
 	}
+	var rotationSource fleet.RotationSource
+	if env.GC.RobotRotation.Enabled {
+		if err := h.composeRotation(pools); err != nil {
+			return nil, err
+		}
+		rotationSource = h.rotations
+	}
 	svc, err := fleet.NewServices(fleet.Deps{
 		Repository: repo, SatelliteRepository: fleetRepo, Registry: harnessRegistry(h.t, harborStub), Settings: harnessSettings(harborStub),
-		Sessions: sessions, HeartbeatSink: sink, ConfigValidator: satconfig.Validator{},
+		Sessions: sessions, HeartbeatSink: sink, ConfigValidator: satconfig.Validator{}, Rotations: rotationSource,
 	})
 	if err != nil {
 		return nil, err
@@ -163,4 +174,37 @@ func (s flushingSink) Record(beat fleet.Heartbeat) {
 	if err := s.flusher.Flush(context.Background()); err != nil {
 		s.t.Errorf("flush heartbeat: %v", err)
 	}
+}
+
+// composeRotation builds the rotation cache of the serve process and the
+// worker's rotator, as app.NewFleet and app.NewWorker do.
+func (h *hotPath) composeRotation(pools *dbpool.Pools) error {
+	rot := env.GC.RobotRotation
+	key, err := secrets.ParseKey(env.GC.DataEncryptionKey)
+	if err != nil {
+		return err
+	}
+	sealer, err := secrets.NewAESGCM(key)
+	if err != nil {
+		return err
+	}
+	store, err := postgres.NewRotationStore(pools.Fleet)
+	if err != nil {
+		return err
+	}
+	if h.rotations, err = async.NewRotationCache(store, sealer, rot.CacheRefresh); err != nil {
+		return err
+	}
+	locker, err := postgres.NewAggregateLocker(context.Background(), pools.Fleet)
+	if err != nil {
+		return err
+	}
+	h.t.Cleanup(func() { _ = locker.Close() })
+	repo, err := postgres.NewRepository(pools.Fleet)
+	if err != nil {
+		return err
+	}
+	h.rotator, err = async.NewRobotRotator(store, repo, harnessRegistry(h.t, harborStub), locker, sealer, fleet.SystemClock{},
+		harnessSettings(harborStub).RobotDuration, rot.BeforeExpiry, rot.Interval)
+	return err
 }
