@@ -5,18 +5,14 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingPolicies = "policies are not stored; authorization is the hard-coded system_admin check"
 
 func validRule() fleet.PolicyRule {
 	return fleet.PolicyRule{Subject: "role:edge-admins", Scope: "group:g1", Type: "satellite", Action: "read", Effect: fleet.EffectAllow}
 }
 
 func TestPolicyService_WriteBumpsVersionAndAppendsLogOnlyEvent(t *testing.T) {
-	pending.Plan(t, "7.3", pendingPolicies)
 	w := newWorld()
 	w.repo.Policies.CurrentVersion = 4
 	w.repo.Policies.NextID = 9
@@ -47,7 +43,6 @@ func TestPolicyService_RejectsMalformedRule(t *testing.T) {
 		"comma in a field":       func(r *fleet.PolicyRule) { r.Subject = "role:a,b" },
 	} {
 		t.Run(name, func(t *testing.T) {
-			pending.Plan(t, "7.3", pendingPolicies)
 			w := newWorld()
 			rule := validRule()
 			change(&rule)
@@ -61,7 +56,6 @@ func TestPolicyService_RejectsMalformedRule(t *testing.T) {
 	}
 
 	t.Run("a binding to a user: role", func(t *testing.T) {
-		pending.Plan(t, "7.3", pendingPolicies)
 		w := newWorld()
 
 		_, err := w.services(t).Policies.AddBinding(context.Background(), fleet.RoleBinding{Principal: "role:x", Role: "role:edge-admins"})
@@ -75,7 +69,6 @@ func TestPolicyService_RejectsMalformedRule(t *testing.T) {
 func TestPolicyService_RejectsScopedRuleOnNonScopedType(t *testing.T) {
 	for _, typ := range []string{"*", "user", "spire", "ops", "policy", "session"} {
 		t.Run(typ, func(t *testing.T) {
-			pending.Plan(t, "7.3", pendingPolicies)
 			w := newWorld()
 			rule := validRule()
 			rule.Type = typ

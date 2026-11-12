@@ -6,14 +6,10 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
-const pendingPolicies = "the postgres policy repository is a stub; policies are not stored"
-
 func TestPolicyRepo_RoundTrip(t *testing.T) {
-	pending.Plan(t, "7.3", pendingPolicies)
 	repo := newRepository(t)
 	ctx := context.Background()
 	policies := repo.Autocommit().Policies()
@@ -50,7 +46,6 @@ func TestPolicyRepo_RoundTrip(t *testing.T) {
 // A snapshot taken while a write is in flight shows either the old version
 // with the old rules or the new version with the new rules, never a mix.
 func TestPolicyRepo_SnapshotIsConsistent(t *testing.T) {
-	pending.Plan(t, "7.3", pendingPolicies)
 	repo := newRepository(t)
 	ctx := context.Background()
 	rule := fleet.PolicyRule{Subject: "role:edge-admins", Scope: "*", Type: "group", Action: "read", Effect: fleet.EffectAllow}
@@ -80,7 +75,6 @@ func TestPolicyRepo_SnapshotIsConsistent(t *testing.T) {
 // passed; reading the two in separate statements would let a commit in
 // between show a mix.
 func TestPolicyRepo_SnapshotMatchesItsVersionUnderConcurrentWrites(t *testing.T) {
-	pending.Plan(t, "7.3", pendingPolicies)
 	repo := newRepository(t)
 	ctx := context.Background()
 	base, err := repo.Autocommit().Policies().Version(ctx)
