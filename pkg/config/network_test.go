@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -65,4 +66,17 @@ func TestValidateNetworkConfig(t *testing.T) {
 	}}
 	_, _, err = ValidateAndEnforceDefaults(disabled, "")
 	require.NoError(t, err)
+}
+
+func TestUnsetNetworkIsOmitted(t *testing.T) {
+	unset, err := json.Marshal(Config{})
+	require.NoError(t, err)
+	require.NotContains(t, string(unset), `"network"`)
+
+	quotaOnly, err := json.Marshal(Config{AppConfig: AppConfig{Network: NetworkConfig{
+		Quota: NetworkQuotaConfig{Enabled: true, Limit: "5GB", Window: "day"},
+	}}})
+	require.NoError(t, err)
+	require.Contains(t, string(quotaOnly), `"quota"`)
+	require.NotContains(t, string(quotaOnly), `"speed"`)
 }
