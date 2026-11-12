@@ -6,11 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingLimits = "one shared per-IP limiter covers ZTR, login and every satellite beat"
 
 func TestParseRate(t *testing.T) {
 	for in, want := range map[string]Rate{
@@ -33,7 +30,6 @@ func TestParseRate(t *testing.T) {
 const appErrorBody = `{"code":429,"message":"Too Many Requests"}`
 
 func TestLimitBy_KeysAndAnswersAppError(t *testing.T) {
-	pending.Plan(t, "4.6", pendingLimits)
 	l := NewLimiter[string](Rate{Requests: 2, Window: time.Minute})
 	t.Cleanup(l.Stop)
 	handler := LimitBy(l, func(r *http.Request) (string, bool) {
@@ -64,7 +60,6 @@ func TestLimitBy_KeysAndAnswersAppError(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_WritesAppError(t *testing.T) {
-	pending.Plan(t, "4.6", "the legacy limiter answers 429 with {\"error\": ...}, not the AppError of every other error")
 	rl := NewRateLimiter(1, time.Minute)
 	t.Cleanup(rl.Stop)
 	handler := RateLimitMiddleware(rl)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
