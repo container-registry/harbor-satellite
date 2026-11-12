@@ -21,6 +21,7 @@ func TestMapError(t *testing.T) {
 		{fmt.Errorf("get satellite: %w", sql.ErrNoRows), fleet.ErrNotFound},
 		{&pq.Error{Code: "23505"}, fleet.ErrAlreadyExists},
 		{&pq.Error{Code: "23503"}, fleet.ErrInUse},
+		{&pq.Error{Code: "23001"}, fleet.ErrInUse},
 		{other, other},
 	} {
 		got := mapError(tc.err)

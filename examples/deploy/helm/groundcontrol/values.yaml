@@ -54,7 +54,8 @@ postgresql:
     # -- PostgreSQL image repository
     repository: postgres
     # -- PostgreSQL image tag
-    tag: "16"
+    # -- PostgreSQL image tag; ADR-0020 requires 19 or later
+    tag: "19rc1"
     # -- PostgreSQL image pull policy
     pullPolicy: IfNotPresent
   # -- Persistent volume size

@@ -11,7 +11,9 @@ import (
 
 // mapError maps driver errors onto the fleet sentinels, keeping the cause:
 // sql.ErrNoRows is fleet.ErrNotFound, unique_violation (23505)
-// fleet.ErrAlreadyExists and foreign_key_violation (23503) fleet.ErrInUse.
+// fleet.ErrAlreadyExists, and foreign_key_violation (23503) and
+// restrict_violation (23001, what PostgreSQL 19 reports for an ON DELETE
+// RESTRICT key) fleet.ErrInUse.
 // Other errors pass through.
 func mapError(err error) error {
 	if err == nil {
@@ -25,7 +27,7 @@ func mapError(err error) error {
 		switch pqErr.Code {
 		case "23505":
 			return fmt.Errorf("%w: %w", fleet.ErrAlreadyExists, err)
-		case "23503":
+		case "23503", "23001":
 			return fmt.Errorf("%w: %w", fleet.ErrInUse, err)
 		}
 	}

@@ -4,7 +4,7 @@ name: harbor-satellite-test
 
 services:
   postgres:
-    image: postgres:17
+    image: postgres:19rc1
     command:
       - postgres
       - -c
@@ -22,7 +22,7 @@ services:
     ports:
       - "127.0.0.1:${TEST_PG_PORT:-55434}:5432"
     tmpfs:
-      - /var/lib/postgresql/data
+      - /var/lib/postgresql
     healthcheck:
       # TCP probe: the init-time server listens on the unix socket only.
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"]

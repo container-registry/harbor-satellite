@@ -55,7 +55,9 @@ func TestConstraint_ConfigRestrict(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = db.ExecContext(ctx, "DELETE FROM configs WHERE id = $1", config)
-	requireSQLState(t, err, "23503")
+	// PostgreSQL 19 reports an ON DELETE RESTRICT violation as
+	// restrict_violation (23001); 18 and earlier used 23503.
+	requireSQLState(t, err, "23001")
 }
 
 func TestConstraint_HeartbeatCheck(t *testing.T) {

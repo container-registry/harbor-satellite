@@ -22,7 +22,7 @@ The release notes of 17, 18 and 19 remove these limits:
 * 18: `idle_replication_slot_timeout`, `autovacuum_vacuum_max_threshold`, eager freezing.
 * 19: with `wal_level=replica` (the default), creating the first logical slot raises `effective_wal_level` to `logical` without a restart, and dropping or invalidating the last one lowers it again. NOTIFY wakes only the backends that listen. `REPACK (CONCURRENTLY)` rebuilds a table without blocking writes.
 
-On 2026-10-16, 19 is at RC1 (released 2026-10-15), and Docker Hub has `postgres:19beta3` but no `19`, `19rc1` or `19-alpine` tag.
+On 2026-10-16, 19 is at RC1 (released 2026-10-15), and Docker Hub has `postgres:19beta3` but no `19`, `19rc1` or `19-alpine` tag. On 2026-11-11 Docker Hub has `postgres:19rc1` and `19rc1-alpine`, still no `19`.
 
 ## Decision Drivers
 
@@ -34,7 +34,7 @@ On 2026-10-16, 19 is at RC1 (released 2026-10-15), and Docker Hub has `postgres:
 
 1. **The minimum is PostgreSQL 19.0.** Supersedes ADR-0014 decision 10. Ground Control refuses to start when `server_version_num` is below 190000 and names the version it found.
 2. **Logical decoding is part of the design (ADR-0019, decision 6).** The webhook dispatcher reads `event_outbox` inserts from one logical slot, and Ground Control's database role needs the `REPLICATION` attribute to create it. A server with `wal_level=minimal` is refused at startup, because no slot can be created there.
-3. **Test and example images move to `postgres:19` at the 19.0 release.** Until Docker Hub has that tag, the integration, E2E and compose stacks stay on their current images, and no stack runs a beta or a release candidate.
+3. **Test and example images run `postgres:19rc1` until the 19.0 release, then `postgres:19`.** Amended 2026-11-11: the stacks no longer wait for 19.0, so the 1.0 code is tested on the major it requires. The release candidate is used only in test, example and test-deployment stacks; the release notes tell production installs to run 19.0 or later. Betas and release candidates report `server_version_num` 190000 and pass the startup check. Images of 18 and later keep their data in `/var/lib/postgresql/<major>/docker`, so volumes mount `/var/lib/postgresql`, not `/var/lib/postgresql/data`.
 4. **Existing installs upgrade PostgreSQL before Ground Control.** The release notes of the first release with this floor say so and point to `pg_upgrade` or dump and restore. No Ground Control release supports both ranges.
 
 ## Consequences
@@ -51,8 +51,8 @@ On 2026-10-16, 19 is at RC1 (released 2026-10-15), and Docker Hub has `postgres:
 | Part | Status |
 |---|---|
 | ADR | accepted |
-| Startup check of `server_version_num` and `wal_level` | not started |
-| `postgres:19` in `test/integration`, `test/e2e/docker`, `docker-compose.yml`, `examples/deploy`, the Helm chart and the quickstart | waits for the 19.0 image |
+| Startup check of `server_version_num` and `wal_level` | implemented: `internal/groundcontrol/migrator/server.go`, before migrations |
+| `postgres:19rc1` in `test/integration`, `test/e2e/docker`, `docker-compose.yml`, `examples/deploy`, the Helm chart (0.2.0) and the quickstart | implemented; switch the tag to `19` at the 19.0 release |
 | `REPLICATION` attribute in the deployment docs and the Helm chart | not started |
 | Release notes of the first release with the floor | not started |
 
