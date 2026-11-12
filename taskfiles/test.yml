@@ -3,7 +3,7 @@ version: "3"
 vars:
   TEST_PG_PORT: '{{.TEST_PG_PORT | default "55434"}}'
   TEST_PG_COMPOSE: test/integration/docker-compose.yml
-  INTEGRATION_PACKAGES: ./internal/groundcontrol/...
+  INTEGRATION_PACKAGES: ./internal/groundcontrol/... ./test/contract/...
 
 tasks:
   db-up:
