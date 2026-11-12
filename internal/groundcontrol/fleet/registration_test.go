@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,7 +21,6 @@ func seedZTR(w *world) {
 
 func TestRegistrationService_ZeroTouch(t *testing.T) {
 	t.Run("claims, rotates, then stores the hash and consumes in one transaction", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedZTR(w)
 
@@ -53,7 +51,6 @@ func TestRegistrationService_ZeroTouch(t *testing.T) {
 	})
 
 	t.Run("no robot yet is ErrNotProvisioned and keeps the token", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedZTR(w)
 		w.repo.Robots.BySatelliteID = nil
@@ -67,7 +64,6 @@ func TestRegistrationService_ZeroTouch(t *testing.T) {
 
 	for _, step := range []string{"RotateRobotSecret", "Robots.Update"} {
 		t.Run("unclaims the token when "+step+" fails", func(t *testing.T) {
-			pending.Plan(t, "2.5", pendingServices)
 			w := newWorld()
 			seedZTR(w)
 			boom := errors.New("step failed")
@@ -82,7 +78,6 @@ func TestRegistrationService_ZeroTouch(t *testing.T) {
 	}
 
 	t.Run("expired token is ErrTokenExpired", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedZTR(w)
 		w.rec.FailOn("Tokens.Claim", fleet.ErrTokenExpired)
@@ -94,7 +89,6 @@ func TestRegistrationService_ZeroTouch(t *testing.T) {
 	})
 
 	t.Run("unknown or claimed token is ErrTokenInvalid", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedZTR(w)
 
@@ -108,7 +102,6 @@ func TestRegistrationService_ZeroTouch(t *testing.T) {
 
 func TestRegistrationService_SPIFFEZeroTouch(t *testing.T) {
 	t.Run("an unknown satellite is created with the default config and waits for its robot", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		w.repo.Satellites.NextID = 9
 		w.repo.Configs.ByName = map[string]fleet.Config{fleet.DefaultConfigName: {ID: 3, Name: fleet.DefaultConfigName}}
@@ -130,7 +123,6 @@ func TestRegistrationService_SPIFFEZeroTouch(t *testing.T) {
 	})
 
 	t.Run("creates the default config when it is missing", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		w.repo.Satellites.NextID = 9
 		w.repo.Configs.NextID = 4
@@ -145,7 +137,6 @@ func TestRegistrationService_SPIFFEZeroTouch(t *testing.T) {
 	})
 
 	t.Run("a provisioned satellite gets a fresh secret", func(t *testing.T) {
-		pending.Plan(t, "2.5", pendingServices)
 		w := newWorld()
 		seedZTR(w)
 
@@ -162,7 +153,6 @@ func TestRegistrationService_SPIFFEZeroTouch(t *testing.T) {
 
 // D2: the refresh returns the new secret, so it rotates in the request.
 func TestRegistrationService_RefreshCredentialsRotatesAndStoresHash(t *testing.T) {
-	pending.Plan(t, "2.5", pendingServices)
 	w := newWorld()
 	seedZTR(w)
 
@@ -178,7 +168,6 @@ func TestRegistrationService_RefreshCredentialsRotatesAndStoresHash(t *testing.T
 }
 
 func TestNewServices_RequiresRepositoryAndRegistry(t *testing.T) {
-	pending.Plan(t, "1.2", "fleet services are stubs")
 	w := newWorld()
 
 	_, err := fleet.NewServices(fleet.Deps{Registry: w.registry})

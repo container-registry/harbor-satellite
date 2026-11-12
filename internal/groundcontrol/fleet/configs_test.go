@@ -21,7 +21,6 @@ func configChanged(id fleet.ConfigID, name string) fleet.Event {
 }
 
 func TestConfigService_CreateAppendsConfigChanged(t *testing.T) {
-	pending.Plan(t, "2.5", pendingServices)
 	w := newWorld()
 	w.repo.Configs.NextID = 3
 	doc := json.RawMessage(`{"app_config":{"log_level":"info"}}`)
@@ -40,7 +39,6 @@ func TestConfigService_CreateAppendsConfigChanged(t *testing.T) {
 }
 
 func TestConfigService_UpdateMergePatches(t *testing.T) {
-	pending.Plan(t, "2.5", pendingServices)
 	w := newWorld()
 	w.repo.Configs.ByName = map[string]fleet.Config{"edge-config": {
 		ID:       3,
@@ -62,7 +60,6 @@ func TestConfigService_UpdateMergePatches(t *testing.T) {
 }
 
 func TestConfigService_DeleteInUseIsErrInUse(t *testing.T) {
-	pending.Plan(t, "2.5", pendingServices)
 	w := newWorld()
 	w.repo.Configs.ByName = map[string]fleet.Config{"edge-config": {ID: 3, Name: "edge-config"}}
 	w.repo.Configs.InUseIDs = map[fleet.ConfigID]bool{3: true}
@@ -75,7 +72,6 @@ func TestConfigService_DeleteInUseIsErrInUse(t *testing.T) {
 }
 
 func TestConfigService_DeleteAppendsATombstone(t *testing.T) {
-	pending.Plan(t, "2.5", pendingServices)
 	w := newWorld()
 	w.repo.Configs.ByName = map[string]fleet.Config{"edge-config": {ID: 3, Name: "edge-config"}}
 
@@ -91,7 +87,6 @@ func TestConfigService_DeleteAppendsATombstone(t *testing.T) {
 }
 
 func TestConfigService_AssignUnknownIsErrNotFound(t *testing.T) {
-	pending.Plan(t, "2.5", pendingServices)
 	w := newWorld()
 	w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01"}}
 
@@ -103,7 +98,6 @@ func TestConfigService_AssignUnknownIsErrNotFound(t *testing.T) {
 }
 
 func TestConfigService_AssignIsAssignmentChanged(t *testing.T) {
-	pending.Plan(t, "2.5", pendingServices)
 	w := newWorld()
 	w.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 7, Name: "edge-01"}}
 	w.repo.Configs.ByName = map[string]fleet.Config{"other": {ID: 4, Name: "other"}}

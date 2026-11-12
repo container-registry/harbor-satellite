@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 )
 
@@ -103,7 +104,9 @@ type RobotGrant struct {
 // of all of the satellite's groups, de-duplicated and sorted, plus
 // SatelliteProject for the state artifacts.
 func RobotProjects(projects []string) []string {
-	return nil
+	out := append([]string{SatelliteProject}, projects...)
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 type RobotSpec struct {

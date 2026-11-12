@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRobotProjects(t *testing.T) {
-	pending.Plan(t, "1.2", "each group overwrites the robot permissions (D5)")
 	for name, tc := range map[string]struct {
 		projects, want []string
 	}{

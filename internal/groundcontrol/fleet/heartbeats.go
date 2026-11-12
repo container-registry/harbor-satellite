@@ -75,7 +75,12 @@ type HeartbeatResult struct {
 
 // HeartbeatService takes satellite heartbeats on the fleet plane; it owns
 // the JournalService.
-type HeartbeatService struct{}
+type HeartbeatService struct {
+	c         *core
+	journal   *JournalService
+	sink      HeartbeatSink
+	rotations RotationSource
+}
 
 // Beat validates the report against the column limits of 008 and 015
 // (activity and digests at most 255 bytes, references at most 512, cpu in

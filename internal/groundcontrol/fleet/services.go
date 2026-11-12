@@ -1,6 +1,9 @@
 package fleet
 
-import "github.com/container-registry/harbor-satellite/internal/shared/notimpl"
+import (
+	"context"
+	"fmt"
+)
 
 // Deps are the ports and settings the services run on. Identity is nil
 // when SPIRE is not configured.
@@ -45,6 +48,19 @@ type Services struct {
 	Webhooks   *WebhookService
 }
 
+// core is what every service shares.
+type core struct {
+	repo      Repository
+	fleetRepo Repository
+	registry  Registry
+	identity  WorkloadIdentity
+	policy    Policy
+	validator ConfigValidator
+	clock     Clock
+	settings  Settings
+	sessions  SessionIssuer
+}
+
 // NewServices fails with ErrInvalid when Repository or Registry is
 // missing; a missing Clock is SystemClock and a missing Policy AllowAll.
 // It builds the JournalService on SatelliteRepository and hands it to the
@@ -65,5 +81,52 @@ type Services struct {
 // failure is returned as is, never as ErrForbidden. The satellite-facing
 // methods are not checked.
 func NewServices(deps Deps) (*Services, error) {
-	return nil, notimpl.Err("1.2 fleet services")
+	if deps.Repository == nil {
+		return nil, fmt.Errorf("%w: fleet services need a repository", ErrInvalid)
+	}
+	if deps.Registry == nil {
+		return nil, fmt.Errorf("%w: fleet services need a registry", ErrInvalid)
+	}
+	c := &core{
+		repo:      deps.Repository,
+		fleetRepo: deps.SatelliteRepository,
+		registry:  deps.Registry,
+		identity:  deps.Identity,
+		policy:    deps.Policy,
+		validator: deps.ConfigValidator,
+		clock:     deps.Clock,
+		settings:  deps.Settings,
+		sessions:  deps.Sessions,
+	}
+	if c.fleetRepo == nil {
+		c.fleetRepo = c.repo
+	}
+	if c.clock == nil {
+		c.clock = SystemClock{}
+	}
+	if c.policy == nil {
+		c.policy = AllowAll{}
+	}
+	journal, err := NewJournalService(c.fleetRepo)
+	if err != nil {
+		return nil, err
+	}
+	return &Services{
+		Satellites:   &SatelliteService{c: c},
+		Groups:       &GroupService{c: c},
+		Configs:      &ConfigService{c: c},
+		Registration: &RegistrationService{c: c},
+		Heartbeats:   &HeartbeatService{c: c, journal: journal, sink: deps.HeartbeatSink, rotations: deps.Rotations},
+		Policies:     &PolicyService{},
+		Webhooks:     &WebhookService{},
+	}, nil
+}
+
+// inTx runs fn in one transaction of the admin repository.
+func (c *core) inTx(ctx context.Context, fn func(tx Tx) error) error {
+	return c.repo.WithTx(ctx, fn)
+}
+
+func (c *core) read() Tx {
+	return c.repo.Autocommit()
 }

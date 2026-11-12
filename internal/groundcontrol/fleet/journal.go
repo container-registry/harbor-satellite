@@ -3,6 +3,7 @@ package fleet
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
@@ -148,12 +149,17 @@ type JournalRepo interface {
 // journal never makes a satellite stale. The emission must not ship
 // before the outbox retention of plan item 9.1, or edge events grow the
 // outbox without bound.
-type JournalService struct{}
+type JournalService struct {
+	repo Repository
+}
 
 // NewJournalService runs on repo, the fleet plane's repository; a nil repo
 // is ErrInvalid.
 func NewJournalService(repo Repository) (*JournalService, error) {
-	return nil, notimpl.Err("6.5 journal service")
+	if repo == nil {
+		return nil, fmt.Errorf("%w: the journal service needs a repository", ErrInvalid)
+	}
+	return &JournalService{repo: repo}, nil
 }
 
 // Ingest accepts one upload of satellite name and answers it.
