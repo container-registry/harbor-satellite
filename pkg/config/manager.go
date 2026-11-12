@@ -21,6 +21,7 @@ const (
 	LogLevelChanged    ConfigChangeType = "log_level"
 	IntervalsChanged   ConfigChangeType = "intervals"
 	AuditConfigChanged ConfigChangeType = "audit"
+	NetworkChanged     ConfigChangeType = "network"
 )
 
 type ConfigChange struct {
@@ -136,6 +137,14 @@ func (cm *ConfigManager) detectChanges(oldConfig *Config, newConfig *Config) []C
 			Type:     AuditConfigChanged,
 			OldValue: oldConfig.AppConfig.Audit,
 			NewValue: newConfig.AppConfig.Audit,
+		})
+	}
+
+	if oldConfig.AppConfig.Network != newConfig.AppConfig.Network {
+		changes = append(changes, ConfigChange{
+			Type:     NetworkChanged,
+			OldValue: oldConfig.AppConfig.Network,
+			NewValue: newConfig.AppConfig.Network,
 		})
 	}
 
