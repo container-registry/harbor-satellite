@@ -51,7 +51,6 @@ components:
       - internal/groundcontrol/auth
       - internal/groundcontrol/database
       - internal/groundcontrol/dbpool
-      - internal/groundcontrol/harbor
       - internal/groundcontrol/harborhealth
       - internal/groundcontrol/middleware
       - internal/groundcontrol/migrator
@@ -59,7 +58,6 @@ components:
       - internal/groundcontrol/secrets
       - internal/groundcontrol/spiffe
       - internal/groundcontrol/sql
-      - internal/groundcontrol/utils
   shared:
     in:
       - internal/shared/crypto

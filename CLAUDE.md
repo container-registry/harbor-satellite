@@ -155,13 +155,15 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 - internal/groundcontrol/database/: sqlc-generated PostgreSQL access (do not edit)
 - internal/groundcontrol/sql/: `schema/` (goose migrations, also the sqlc schema) and `queries/`
 - internal/groundcontrol/migrator/: goose runner; reads `/migrations` when present, otherwise uses the embedded SQL schema so installed binaries work outside the checkout
-- internal/groundcontrol/harbor/: Harbor v2 API client (projects, robots, replication)
+- internal/groundcontrol/fleet/: Domain types, ports and services (satellites, groups, configs, registration); `fleettest` has recording fakes
+- internal/groundcontrol/adapters/: `postgres` (sqlc repository, outbox, desired state, aggregate locks), `harbor2` (fleet.Registry over the Harbor v2 API and crane, one client per instance), `spire`
+- internal/groundcontrol/async/: Outbox publisher, reconcilers, tombstones, registry probe and worker
+- internal/groundcontrol/app/: Composition root (`NewFleet`, `NewWorker`)
 - internal/groundcontrol/harborhealth/: Startup Harbor health check, logged only; `/health` reports Harbor `degraded` from the registry probe
 - internal/groundcontrol/auth/: Password policy validation, Argon2id password hashing (via internal/shared/crypto), session token generation
 - internal/groundcontrol/middleware/: Rate limiting, TLS cert watching
 - internal/groundcontrol/spiffe/: SPIFFE provider, middleware, authorizer, embedded SPIRE server, SPIRE server client
 - internal/groundcontrol/cli/: `groundcontrol` commands (serve, auth, get, create, update, delete, register, add, remove, sync, ping, health)
-- internal/groundcontrol/utils/: State/config artifact URL helpers, robot project updates
 - pkg/groundcontrol/: Generated Go client for the GC API
 
 ### Key Concepts
