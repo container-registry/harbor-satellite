@@ -1,26 +1,22 @@
 package state
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 )
 
-const (
-	ZeroTouchRegistrationRoute     = "satellites/ztr"
-	ZeroTouchRegistrationEventName = "zero-touch-registration-event"
-)
+const ZeroTouchRegistrationEventName = "zero-touch-registration-event"
 
 type ZtrProcess struct {
 	// Name is the name of the process
@@ -60,15 +56,7 @@ func (z *ZtrProcess) Execute(ctx context.Context) error {
 	gcURL := z.cm.ResolveGroundControlURL()
 	audit := logger.AuditFromContext(ctx)
 
-	// Register the satellite
-	stateConfig, err := registerSatellite(
-		gcURL,
-		ZeroTouchRegistrationRoute,
-		z.cm.GetToken(),
-		z.cm.GetTLSConfig(),
-		z.cm.UseUnsecure(),
-		ctx,
-	)
+	stateConfig, err := registerSatellite(ctx, z.cm)
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to register satellite")
 		audit.Log(logger.AuditEvent{
@@ -199,43 +187,20 @@ func sanitizeAuditReason(err error, token string) string {
 	return s
 }
 
-func registerSatellite(groundControlURL, path, token string, tlsCfg config.TLSConfig, useUnsecure bool, ctx context.Context) (config.StateConfig, error) {
-	ztrURL := fmt.Sprintf("%s/%s", groundControlURL, path)
-	body, err := json.Marshal(map[string]string{"token": token})
-	if err != nil {
-		return config.StateConfig{}, fmt.Errorf("failed to encode request: %w", err)
-	}
-
-	client, err := createHTTPClient(tlsCfg, useUnsecure)
+func registerSatellite(ctx context.Context, cm *config.ConfigManager) (config.StateConfig, error) {
+	httpClient, err := createHTTPClient(cm.GetTLSConfig(), cm.UseUnsecure())
 	if err != nil {
 		return config.StateConfig{}, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ztrURL, bytes.NewReader(body))
+	client, err := newGCClient(cm, httpClient, gcclient.NoCredentials{})
 	if err != nil {
-		return config.StateConfig{}, fmt.Errorf("failed to create request: %w", err)
+		return config.StateConfig{}, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	response, err := client.Do(req)
+	res, err := client.ZeroTouch(ctx, cm.GetToken())
 	if err != nil {
-		return config.StateConfig{}, fmt.Errorf("failed to send request: %w", err)
+		return config.StateConfig{}, err
 	}
-	defer func() {
-		if err := response.Body.Close(); err != nil {
-			logger.FromContext(ctx).Warn().Err(err).Msg("error closing response body")
-		}
-	}()
-
-	if response.StatusCode != http.StatusOK {
-		return config.StateConfig{}, fmt.Errorf("failed to register satellite: %s", response.Status)
-	}
-
-	var authResponse config.StateConfig
-	if err := json.NewDecoder(response.Body).Decode(&authResponse); err != nil {
-		return config.StateConfig{}, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return authResponse, nil
+	return stateConfigFromZTR(res), nil
 }
 
 func createHTTPClient(tlsCfg config.TLSConfig, useUnsecure bool) (*http.Client, error) {

@@ -307,7 +307,7 @@ func TestExecute_StatusReportDoesNotLogRegistrySecret(t *testing.T) {
 	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		requests.Add(1)
-		writeJSON(t, w, StatusReportResponse{})
+		writeJSON(t, w, map[string]any{"events": []string{}})
 	}))
 	defer srv.Close()
 

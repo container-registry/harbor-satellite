@@ -79,7 +79,6 @@ func newClient(t *testing.T, baseURL string) *gcclient.Client {
 }
 
 func TestClient_PathsWithTrailingSlashAndPrefix(t *testing.T) {
-	pending.Plan(t, "D1", "the satellite joins the Ground Control URL and the route with a format string")
 	ctx := context.Background()
 	calls := []struct {
 		name   string
@@ -130,7 +129,6 @@ func TestClient_PathsWithTrailingSlashAndPrefix(t *testing.T) {
 }
 
 func TestClientSync_ReturnsEvents(t *testing.T) {
-	pending.Plan(t, "D1", "the heartbeat does not go through the generated Ground Control client")
 	gc := newFakeGC(t, http.StatusOK, map[string]any{"events": []string{"refresh_credentials"}})
 	c := newClient(t, gc.server.URL)
 
@@ -141,7 +139,6 @@ func TestClientSync_ReturnsEvents(t *testing.T) {
 }
 
 func TestClientZeroTouch_DecodesStateAndRobot(t *testing.T) {
-	pending.Plan(t, "D1", "token ZTR does not go through the generated Ground Control client")
 	gc := newFakeGC(t, http.StatusOK, anyGCResponse)
 	c := newClient(t, gc.server.URL)
 
@@ -182,7 +179,6 @@ func TestClient_Credentials(t *testing.T) {
 }
 
 func TestClient_MapsErrorStatuses(t *testing.T) {
-	pending.Plan(t, "D1", "the heartbeat reports every non-200 status as one opaque error")
 	cases := []struct {
 		status int
 		want   error
@@ -215,7 +211,6 @@ func TestClient_MapsErrorStatuses(t *testing.T) {
 }
 
 func TestNew_RequiresHTTPSUnlessInsecure(t *testing.T) {
-	pending.Plan(t, "D1", "the https requirement lives in the status report only")
 	robot := gcclient.RobotBasic(func() (string, string) { return "robot$edge-01", "secret" })
 	cases := []struct {
 		name     string

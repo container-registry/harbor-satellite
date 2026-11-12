@@ -1,10 +1,7 @@
 package state
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -13,13 +10,12 @@ import (
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
+	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/shared/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/utils"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
-
-const StatusReportRoute = "satellites/sync"
 
 type StatusReportingProcess struct {
 	name           string
@@ -30,10 +26,6 @@ type StatusReportingProcess struct {
 	pendingCRI     []runtime.CRIConfigResult
 	eventScheduler *events.EventScheduler
 	criReported    bool
-}
-
-type StatusReportResponse struct {
-	Events []string `json:"events"`
 }
 
 func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *events.EventScheduler) *StatusReportingProcess {
@@ -115,16 +107,12 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	insecure := s.cm.UseUnsecure()
 	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
 
-	log.Info().Msg("Sending Status Report")
-	groundControlURL := s.cm.ResolveGroundControlURL()
-	log.Info().Msgf("GC URL: %s", groundControlURL)
-	resp, err := s.sendStatusReport(ctx, groundControlURL, req)
+	log.Debug().Str("ground_control_url", s.cm.ResolveGroundControlURL()).Msg("Sending status report")
+	resp, err := s.sendStatusReport(ctx, req)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to send status report")
 		return err
 	}
-
-	log.Info().Msgf("Received report: %v", *resp)
 
 	// Sending response events to eventscheduler
 	for _, v := range resp.Events {
@@ -183,79 +171,20 @@ func (s *StatusReportingProcess) newReportClient(ctx context.Context) (*http.Cli
 	return client, nil
 }
 
-// checkStatusReportRedirect caps status-report redirects, blocks cross-scheme
-// hops, and re-attaches the request body Go otherwise clears on redirect.
-func checkStatusReportRedirect(req *http.Request, via []*http.Request) error {
-	if len(via) >= 10 {
-		return errors.New("stopped after 10 redirects")
-	}
-	if req.URL.Scheme != via[0].URL.Scheme {
-		return fmt.Errorf("refusing cross-scheme redirect from %s to %s", via[0].URL.Scheme, req.URL.Scheme)
-	}
-	if via[0].GetBody != nil {
-		body, err := via[0].GetBody()
-		if err != nil {
-			return err
-		}
-		req.Body = body
-	}
-	req.Method = via[0].Method
-	req.ContentLength = via[0].ContentLength
-	return nil
-}
-
-func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, groundControlURL string, req *StatusReportParams) (*StatusReportResponse, error) {
-	body, err := json.Marshal(req)
+func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, req *StatusReportParams) (gcclient.SyncResult, error) {
+	httpClient, err := s.newReportClient(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("marshal status report: %w", err)
+		return gcclient.SyncResult{}, err
 	}
-
-	syncURL := fmt.Sprintf("%s/%s", strings.TrimRight(groundControlURL, "/"), StatusReportRoute)
-
-	client, err := s.newReportClient(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, syncURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
+	var creds gcclient.Credentials = gcclient.NoCredentials{}
 	if s.spiffeClient == nil {
-		if !s.cm.UseUnsecure() && !strings.HasPrefix(syncURL, "https://") {
-			return nil, fmt.Errorf("insecure connection: sync URL %q must use HTTPS when use_unsecure is false", syncURL)
-		}
-		username := s.cm.GetSourceRegistryUsername()
-		password := s.cm.GetSourceRegistryPassword()
-		if username != "" && password != "" {
-			httpReq.SetBasicAuth(username, password)
-		}
+		creds = robotCredentials(s.cm)
 	}
-
-	client.CheckRedirect = checkStatusReportRedirect
-
-	resp, err := client.Do(httpReq)
+	client, err := newGCClient(s.cm, httpClient, creds)
 	if err != nil {
-		return nil, fmt.Errorf("send request: %w", err)
+		return gcclient.SyncResult{}, err
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.FromContext(ctx).Warn().Err(err).Msg("error closing response body")
-		}
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status report failed: %s", resp.Status)
-	}
-
-	var data StatusReportResponse
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, fmt.Errorf("error reading body: %w", err)
-	}
-
-	return &data, nil
+	return client.Sync(ctx, toStatusReport(req))
 }
 
 func (s *StatusReportingProcess) Name() string {

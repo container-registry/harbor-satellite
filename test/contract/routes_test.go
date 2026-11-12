@@ -12,6 +12,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
+	"github.com/container-registry/harbor-satellite/internal/satellite/gcclient"
 	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
@@ -94,9 +95,12 @@ func TestSatelliteCallsMatchTable(t *testing.T) {
 	})
 
 	t.Run("SPIFFE ZTR", func(t *testing.T) {
-		// Driving SpiffeZtrProcess needs a SPIRE agent; its URL is the GC
-		// base URL joined with this route.
-		require.Equal(t, tableEntry(t, "SPIFFE ZTR").path, "/"+state.SPIFFEZeroTouchRegistrationRoute)
+		// SpiffeZtrProcess needs a SPIRE agent, so drive the client it
+		// sends the request with.
+		c, err := gcclient.New(gcclient.Options{BaseURL: rec.URL(), Credentials: gcclient.NoCredentials{}, AllowInsecure: true})
+		require.NoError(t, err)
+		_, _ = c.SPIFFEZeroTouch(ctx) //nolint:errcheck // Only the request matters here.
+		rec.requireLast(t, tableEntry(t, "SPIFFE ZTR"))
 	})
 
 	t.Run("heartbeat", func(t *testing.T) {
