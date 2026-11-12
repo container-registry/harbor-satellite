@@ -399,7 +399,7 @@ func Settings(h env.Harbor, srv env.Server, webhooks env.Webhook) fleet.Settings
 		RobotDuration:          time.Duration(h.RobotDurationDaysValue()) * 24 * time.Hour,
 		TokenTTL:               fleet.DefaultTokenTTL,
 		StaleThreshold:         cmp.Or(srv.StaleThreshold, 15*time.Minute),
-		HeartbeatFlushInterval: srv.HeartbeatFlushInterval,
+		HeartbeatFlushInterval: withHotPathDefaults(srv.FleetHotPath).HeartbeatFlushInterval,
 		WebhooksEnabled:        webhooks.Enabled,
 	}
 }

@@ -380,6 +380,11 @@ func TestNewRoutes_HandlesEveryEventKind(t *testing.T) {
 	require.ErrorIs(t, router.Handle(context.Background(), async.OutboxEvent{Kind: "Unknown"}), async.ErrNoHandler)
 }
 
+func TestNewRoutes_RejectsANilHandler(t *testing.T) {
+	_, err := async.NewRoutes(nil)
+	require.ErrorIs(t, err, fleet.ErrInvalid)
+}
+
 func TestRegistryProbe_RecordsLastSuccessfulPing(t *testing.T) {
 	registry := fleettest.NewRegistry(nil)
 	registry.FailOn("Ping", fleet.ErrRegistryUnavailable)

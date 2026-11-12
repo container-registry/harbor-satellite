@@ -65,7 +65,10 @@ func (r *Router) Handle(ctx context.Context, event OutboxEvent) error {
 // handlers without changing this signature.
 func NewRoutes(handlers ...RoutedHandler) (*Router, error) {
 	r := NewRouter()
-	for _, h := range handlers {
+	for i, h := range handlers {
+		if h == nil {
+			return nil, fmt.Errorf("%w: routed handler %d is nil", fleet.ErrInvalid, i)
+		}
 		for _, kind := range h.Kinds() {
 			if err := r.Register(kind, h); err != nil {
 				return nil, err

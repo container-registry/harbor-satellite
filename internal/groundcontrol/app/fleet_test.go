@@ -62,6 +62,15 @@ func TestSettings_FromTheHarborEnvironment(t *testing.T) {
 	require.Equal(t, 30*24*time.Hour, app.Settings(env.Harbor{RobotDurationDays: "nonsense"}, srv, env.Webhook{}).RobotDuration, "ROBOT_DURATION_DAYS falls back to 30")
 }
 
+// The heartbeat flusher runs every 5s when HEARTBEAT_FLUSH_INTERVAL is 0,
+// so the stale floor derived from Settings must use that interval too.
+func TestSettings_FlushIntervalMatchesTheFlusher(t *testing.T) {
+	for _, flush := range []time.Duration{0, -time.Second} {
+		got := app.Settings(env.Harbor{}, env.Server{FleetHotPath: env.FleetHotPath{HeartbeatFlushInterval: flush}}, env.Webhook{})
+		require.Equal(t, 5*time.Second, got.HeartbeatFlushInterval, "HEARTBEAT_FLUSH_INTERVAL=%s", flush)
+	}
+}
+
 // GC cannot run without a Harbor to publish to; the error names the
 // variable the operator has to set.
 func TestNewFleet_WithoutHarborURLNamesTheVariable(t *testing.T) {
