@@ -9,6 +9,9 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 )
 
+// ErrJobStopped is a job that returned nil while the worker still ran.
+var ErrJobStopped = errors.New("job stopped before the worker")
+
 var (
 	_ Job = (*Publisher)(nil)
 	_ Job = (*RegistryProbe)(nil)
@@ -45,7 +48,7 @@ func NewWorker(publisher *Publisher, jobs ...Job) (*Worker, error) {
 }
 
 // Run stops every job when ctx ends or one job returns, and returns the
-// first error.
+// first error. A job that returns nil before ctx ends is ErrJobStopped.
 func (w *Worker) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -57,6 +60,9 @@ func (w *Worker) Run(ctx context.Context) error {
 	for _, j := range w.jobs {
 		wg.Go(func() {
 			err := j.Run(ctx)
+			if err == nil && ctx.Err() == nil {
+				err = ErrJobStopped
+			}
 			if err != nil && !errors.Is(err, context.Canceled) {
 				once.Do(func() { first = fmt.Errorf("%s: %w", j.Name(), err) })
 			}
