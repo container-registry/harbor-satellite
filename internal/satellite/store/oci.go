@@ -21,29 +21,37 @@ import (
 )
 
 // OCIStore persists content in one Satellite-owned OCI image layout.
+//
+// Locking (ADR-0013): oras-go v2.6.2 content/oci takes only its own read lock
+// for Fetch, Push, Tag and Resolve, and a pushed blob appears by rename after
+// its digest is verified, so reads by digest are safe next to writes. mu is
+// the index lock: shared for resolving and for opening a reader, exclusive
+// for tag changes, publish and collection. An open body holds no lock; the
+// reference counter keeps collection away from it instead.
 type OCIStore struct {
 	root              string
 	store             *oci.Store
+	opts              OCIStoreOptions
+	readers           *RefCounter
 	mu                sync.RWMutex
 	provenance        sync.Map
 	beforePublishLock func()
+
+	stageMu      sync.Mutex
+	activeStages int
 }
 
 // NewOCIStore opens or creates an OCI image-layout store at root.
 func NewOCIStore(root string) (*OCIStore, error) {
-	if strings.TrimSpace(root) == "" {
-		return nil, errors.New("OCI store root is required")
-	}
-	// A killed process cannot run the stage cleanup. This store is opened once,
-	// before replication, so anything still under .stage belongs to that process.
-	if err := clearStaleStages(root); err != nil {
-		return nil, err
-	}
-	target, err := oci.New(root)
-	if err != nil {
-		return nil, fmt.Errorf("open OCI store at %s: %w", root, err)
-	}
-	return &OCIStore{root: root, store: target}, nil
+	s, _, err := OpenOCIStore(root, OCIStoreOptions{})
+	return s, err
+}
+
+// layout returns the oras store for work that runs outside the index lock.
+func (s *OCIStore) layout() *oci.Store {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.store
 }
 
 // Pull resolves already retained content. It deliberately performs no request
@@ -99,24 +107,27 @@ func (s *OCIStore) Pull(ctx context.Context, artifact Artifact, resource PullRes
 	}
 }
 
-// Fetch opens one independent local stream. Holding the read lock until Close
-// prevents Delete and GC from removing a blob while it is being served.
+// Fetch opens one independent local stream. The body holds a reader
+// reference until Close, which keeps collection from deleting the blob; it
+// holds no store lock, so tag changes and publishes do not wait for it.
 func (s *OCIStore) Fetch(ctx context.Context, _ Artifact, descriptor ocispec.Descriptor, _ PullResource, _ http.Header) (*http.Response, error) {
+	release := s.readers.Acquire(descriptor.Digest)
 	s.mu.RLock()
 	reader, err := s.store.Fetch(ctx, descriptor)
+	s.mu.RUnlock()
 	if err != nil {
-		s.mu.RUnlock()
+		release()
 		return nil, err
 	}
 	if seeker, ok := reader.(io.ReadSeekCloser); ok {
-		return contentResponse(descriptor, &lockedReadSeekCloser{ReadSeekCloser: seeker, unlock: s.mu.RUnlock}), nil
+		return contentResponse(descriptor, &releasingReadSeekCloser{ReadSeekCloser: seeker, release: release}), nil
 	}
-	return contentResponse(descriptor, &lockedReadCloser{ReadCloser: reader, unlock: s.mu.RUnlock}), nil
+	return contentResponse(descriptor, &releasingReadCloser{ReadCloser: reader, release: release}), nil
 }
 
 // Replicate copies complete manifest graphs or standalone blobs from source.
-// The remote transfer is staged outside the serving lock, then published under
-// that lock. Publish uses a read/write mutex and waits out an open local body.
+// The remote transfer is staged outside the index lock, then published under
+// it; publishing links files and tags, and does not wait for open bodies.
 func (s *OCIStore) Replicate(ctx context.Context, source Store, artifacts []Artifact) error {
 	sourceTarget, ok := source.(storeTarget)
 	if !ok {
@@ -169,6 +180,7 @@ func (s *OCIStore) replicateOne(ctx context.Context, source Store, sourceTarget 
 }
 
 type stagedArtifact struct {
+	owner *OCIStore
 	dir   string
 	store *oci.Store
 	desc  ocispec.Descriptor
@@ -178,7 +190,7 @@ func (s stagedArtifact) cleanup() error {
 	if s.dir == "" {
 		return nil
 	}
-	return os.RemoveAll(s.dir)
+	return s.owner.removeStage(s.dir)
 }
 
 func (s *OCIStore) stage(ctx context.Context, source Store, remote oras.Target, artifact Artifact) (stagedArtifact, error) {
@@ -186,11 +198,11 @@ func (s *OCIStore) stage(ctx context.Context, source Store, remote oras.Target, 
 	if err != nil {
 		return stagedArtifact{}, err
 	}
-	desc, err := copyIntoStage(ctx, source, remote, target, s.store, dir, s.root, artifact)
+	desc, err := copyIntoStage(ctx, source, remote, target, s.layout(), dir, s.root, artifact)
 	if err != nil {
-		return stagedArtifact{}, errors.Join(err, os.RemoveAll(dir))
+		return stagedArtifact{}, errors.Join(err, s.removeStage(dir))
 	}
-	return stagedArtifact{dir: dir, store: target, desc: desc}, nil
+	return stagedArtifact{owner: s, dir: dir, store: target, desc: desc}, nil
 }
 
 // clearStaleStages removes copy directories left by a process that exited
@@ -217,20 +229,40 @@ func clearStaleStages(root string) error {
 
 // newStage keeps the temporary layout on the store volume. A remote graph can
 // be large, and the serving layout must not be the writer for that transfer.
+// The .stage parent exists only while a stage does, so the layout root holds
+// nothing but OCI files between copies.
 func (s *OCIStore) newStage() (string, *oci.Store, error) {
 	parent := filepath.Join(s.root, ".stage")
+	s.stageMu.Lock()
 	if err := os.MkdirAll(parent, 0o700); err != nil {
+		s.stageMu.Unlock()
 		return "", nil, fmt.Errorf("create OCI staging directory: %w", err)
 	}
 	dir, err := os.MkdirTemp(parent, "copy-")
 	if err != nil {
+		s.stageMu.Unlock()
 		return "", nil, fmt.Errorf("create OCI staging directory: %w", err)
 	}
+	s.activeStages++
+	s.stageMu.Unlock()
 	target, err := oci.New(dir)
 	if err != nil {
-		return "", nil, errors.Join(fmt.Errorf("open OCI staging store: %w", err), os.RemoveAll(dir))
+		return "", nil, errors.Join(fmt.Errorf("open OCI staging store: %w", err), s.removeStage(dir))
 	}
 	return dir, target, nil
+}
+
+func (s *OCIStore) removeStage(dir string) error {
+	err := os.RemoveAll(dir)
+	s.stageMu.Lock()
+	defer s.stageMu.Unlock()
+	s.activeStages--
+	if s.activeStages == 0 {
+		if rmErr := os.Remove(filepath.Dir(dir)); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			err = errors.Join(err, fmt.Errorf("remove OCI staging directory: %w", rmErr))
+		}
+	}
+	return err
 }
 
 func copyIntoStage(ctx context.Context, source Store, remote oras.Target, stage, present *oci.Store, stageRoot, presentRoot string, artifact Artifact) (ocispec.Descriptor, error) {
@@ -374,6 +406,9 @@ func (s *OCIStore) publish(ctx context.Context, staged stagedArtifact, artifact 
 	if err := s.store.Tag(ctx, staged.desc, artifact.Reference()); err != nil {
 		return fmt.Errorf("tag %s in OCI store: %w", artifact.Reference(), err)
 	}
+	if err := s.persistIndexLocked(ctx); err != nil {
+		return fmt.Errorf("persist index after tagging %s: %w", artifact.Reference(), err)
+	}
 	if artifact.Tag == "" {
 		s.provenance.Store(provenanceKey(artifact.Name, staged.desc.Digest), struct{}{})
 		return nil
@@ -461,6 +496,9 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 			return err
 		}
 	}
+	if err := s.persistIndexLocked(ctx); err != nil {
+		return fmt.Errorf("persist index after untagging: %w", err)
+	}
 	// Collect also when nothing was untagged: the tag may have moved or been
 	// removed before, leaving the old digest's content behind.
 	if err := s.store.GC(ctx); err != nil {
@@ -547,26 +585,26 @@ func provenanceKey(repository string, contentDigest digest.Digest) string {
 	return strings.Trim(repository, "/") + "\x00" + contentDigest.String()
 }
 
-type lockedReadCloser struct {
+type releasingReadCloser struct {
 	io.ReadCloser
-	once   sync.Once
-	unlock func()
+	once    sync.Once
+	release func()
 }
 
-func (r *lockedReadCloser) Close() error {
+func (r *releasingReadCloser) Close() error {
 	err := r.ReadCloser.Close()
-	r.once.Do(r.unlock)
+	r.once.Do(r.release)
 	return err
 }
 
-type lockedReadSeekCloser struct {
+type releasingReadSeekCloser struct {
 	io.ReadSeekCloser
-	once   sync.Once
-	unlock func()
+	once    sync.Once
+	release func()
 }
 
-func (r *lockedReadSeekCloser) Close() error {
+func (r *releasingReadSeekCloser) Close() error {
 	err := r.ReadSeekCloser.Close()
-	r.once.Do(r.unlock)
+	r.once.Do(r.release)
 	return err
 }

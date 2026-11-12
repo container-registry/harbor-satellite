@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/google/go-containerregistry/pkg/registry"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -28,8 +27,6 @@ import (
 // Fitness target for the edge pull path: a replication in progress must not
 // stall local reads of content the store already holds.
 func TestOCIStoreServesRetainedContentDuringReplication(t *testing.T) {
-	pending.Plan(t, "5.1", "edge store lock model")
-
 	const (
 		readBound     = 250 * time.Millisecond
 		throttleChunk = 4 << 10

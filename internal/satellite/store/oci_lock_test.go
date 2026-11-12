@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -83,12 +84,13 @@ func TestReciprocalReplicaCopiesFinishWithinPeerTimeout(t *testing.T) {
 	require.Equal(t, alphaDesc.Digest, gotAlpha.Digest)
 }
 
-func TestPublishWaitsForOpenFetchBody(t *testing.T) {
+func TestPublishDoesNotWaitForOpenFetchBody(t *testing.T) {
 	local, _, manifestDesc := seedLayout(t, "team/app", []byte("held-layer"))
 	_, remote, _ := seedLayout(t, "team/app", []byte("held-layer"))
 	artifact := store.Artifact{Name: "team/app", Tag: "latest"}
 	response, err := local.Fetch(context.Background(), artifact, manifestDesc, store.PullResourceManifest, nil)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = response.Body.Close() })
 
 	reachedLock := make(chan struct{})
 	store.SetBeforePublishLockForTest(local, func() { close(reachedLock) })
@@ -101,21 +103,18 @@ func TestPublishWaitsForOpenFetchBody(t *testing.T) {
 	select {
 	case <-reachedLock:
 	case <-time.After(5 * time.Second):
-		t.Fatal("publish did not reach the serving lock")
+		t.Fatal("publish did not reach the index lock")
 	}
-	select {
-	case replicateErr := <-done:
-		t.Fatalf("publish finished while a local response body was open: %v", replicateErr)
-	default:
-	}
-
-	require.NoError(t, response.Body.Close())
 	select {
 	case replicateErr := <-done:
 		require.NoError(t, replicateErr)
 	case <-time.After(5 * time.Second):
-		t.Fatal("publish stayed blocked after the response body closed")
+		t.Fatal("publish waited for an open local response body")
 	}
+
+	payload, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.Equal(t, manifestDesc.Size, int64(len(payload)), "the open body must still read completely after the publish")
 }
 
 func seedLayout(t *testing.T, name string, layer []byte) (*store.OCIStore, store.Store, ocispec.Descriptor) {

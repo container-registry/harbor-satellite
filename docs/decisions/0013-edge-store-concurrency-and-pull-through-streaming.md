@@ -46,7 +46,7 @@ The satellite keeps replicated content in an ORAS OCI image layout and serves it
 | Part | Status |
 |---|---|
 | ADR | proposed |
-| `OpenOCIStore`, `WriteIndexAtomic`, `BuildIndex`, `ResetReplicatedEntities` (5.1) | skeleton, pending tests |
+| `OpenOCIStore`, `WriteIndexAtomic`, `BuildIndex`, `ResetReplicatedEntities` (5.1) | done: `cmd/satellite` opens the layout with `AtomicIndex` and `RecoverIndex` and resyncs every group after a recovery; `Fetch` holds a `RefCounter` reference instead of the index lock until the body closes. Replication still stages each copy in `.stage/` (#694) and publishes by linking under the exclusive index lock; `.stage/` is removed when the last stage ends |
 | `CollectGarbage`, `FillLeases`, `RefCounter` (5.2) | skeleton, pending tests |
 | `lane`, `NewPullWithOptions`, `NewLanePrefetcher`, `Filler` (5.3) | skeleton, pending tests |
 | `WithWriteDeadline`, `PROXY_*` settings (5.4) | skeleton, pending test; settings parsed, not read |

@@ -3,6 +3,7 @@ package satellite
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
@@ -24,12 +25,19 @@ type Satellite struct {
 	eventscheduler   *events.EventScheduler
 	localStore       store.Store
 	remoteStore      store.Store
+	fullResync       bool
 }
 
 // SetStores supplies the same local and Harbor stores used by the proxy.
 func (s *Satellite) SetStores(localStore, remoteStore store.Store) {
 	s.localStore = localStore
 	s.remoteStore = remoteStore
+}
+
+// RequireFullResync makes Run forget the replicated entities before the first
+// replication, after OpenOCIStore recovered a torn index.
+func (s *Satellite) RequireFullResync() {
+	s.fullResync = true
 }
 
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, storeRoot, desiredStateFile string, jq *events.EventScheduler) *Satellite {
@@ -51,6 +59,12 @@ func (s *Satellite) Run(ctx context.Context) error {
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, s.storeRoot, s.desiredStateFile, log)
 	fetchAndReplicateStateProcess.SetStores(s.localStore, s.remoteStore)
 	s.stateProcess = fetchAndReplicateStateProcess
+	if s.fullResync {
+		if err := fetchAndReplicateStateProcess.ResetReplicatedEntities(); err != nil {
+			return fmt.Errorf("reset replicated state after index recovery: %w", err)
+		}
+		log.Warn().Msg("OCI index was recovered; every group replicates again")
+	}
 
 	// Create ZTR scheduler if not already done
 	if !s.cm.IsZTRDone() {
