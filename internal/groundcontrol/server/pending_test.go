@@ -27,7 +27,6 @@ import (
 // plan and fail today; see package pending.
 
 func TestRefreshRotatesRobotSecret(t *testing.T) {
-	pending.Plan(t, "D2", "GC does not route the credential refresh the satellite calls")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.syncGroup("edge-group", "library/alpine")

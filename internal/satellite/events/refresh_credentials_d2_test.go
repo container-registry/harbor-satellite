@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -34,7 +33,6 @@ func newRefreshConfig(t *testing.T, gcURL string) (*config.ConfigManager, string
 }
 
 func TestRefreshCredentialsEvent_NotRunOnSatelliteStart(t *testing.T) {
-	pending.Plan(t, "D2", "registering refresh_credentials runs it at once, so every satellite start rotates the robot secret once the refresh route works")
 	var requests atomic.Int32
 	gc := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		requests.Add(1)
@@ -60,7 +58,6 @@ func TestRefreshCredentialsEvent_NotRunOnSatelliteStart(t *testing.T) {
 }
 
 func TestRefreshCredentialProcess_PersistsSecret(t *testing.T) {
-	pending.Plan(t, "D2", "the satellite posts the credential refresh to /sat/refresh, which Ground Control does not serve")
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /satellites/refresh", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

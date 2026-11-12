@@ -5,12 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSchedulerWithoutInterval_RunsOnlyWhenTriggered(t *testing.T) {
-	pending.Plan(t, "D2", "schedulers run their process once on Start, so a working refresh route would rotate the robot secret on every satellite start")
 	proc := &mockProcess{name: "on-demand"}
 	sched, err := NewScheduler(proc, nopLogger())
 	require.NoError(t, err)

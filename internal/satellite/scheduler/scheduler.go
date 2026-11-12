@@ -21,6 +21,9 @@ type Scheduler struct {
 	log          *zerolog.Logger
 	mu           sync.Mutex
 	wg           sync.WaitGroup
+	// runOnStart is set for interval schedulers. An on-demand scheduler
+	// (an event such as refresh_credentials) runs only when triggered.
+	runOnStart bool
 }
 
 // NewSchedulerWithInterval creates a new scheduler with a parsed interval string
@@ -41,6 +44,7 @@ func NewSchedulerWithInterval(intervalExpr string, process process.Process, log 
 		name:         process.Name(),
 		process:      process,
 		log:          log,
+		runOnStart:   true,
 	}
 
 	createTrigger(ctx, duration, triggerChan)
@@ -48,6 +52,8 @@ func NewSchedulerWithInterval(intervalExpr string, process process.Process, log 
 	return sched, nil
 }
 
+// NewScheduler creates an on-demand scheduler: its process runs on Trigger
+// only, never on Start.
 func NewScheduler(process process.Process, log *zerolog.Logger) (*Scheduler, error) {
 	return &Scheduler{
 		tickerCancel: func() {},
@@ -73,8 +79,9 @@ func (s *Scheduler) run(ctx context.Context) {
 		Str("Process", s.process.Name()).
 		Msg("Starting scheduler")
 
-	// Run once immediately
-	s.launchProcess(ctx)
+	if s.runOnStart {
+		s.launchProcess(ctx)
+	}
 
 	for {
 		select {
