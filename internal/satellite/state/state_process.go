@@ -525,9 +525,11 @@ func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
 		if f.directDeliverer != nil && len(copied) > 0 {
 			deliveryCtx, cancel := context.WithTimeout(ctx, f.listFetchTimeout())
 			defer cancel()
-			if err := f.directDeliverer.Deliver(deliveryCtx, copied); err != nil {
+			skipped, err := f.directDeliverer.Deliver(deliveryCtx, copied)
+			if err != nil {
 				groupLog.Warn().Err(err).Msg("Direct delivery: failed to write tarballs")
 			}
+			copied = uncopied(copied, skipped)
 		}
 		if len(uncopied(missing, copied)) > 0 {
 			return result
@@ -569,22 +571,29 @@ func (f *FetchAndReplicateStateProcess) copyArtifacts(
 	artifacts []Entity,
 	log *zerolog.Logger,
 ) ([]Entity, error) {
-	quotaEnabled := f.cm != nil && f.cm.GetNetworkConfig().Quota.Enabled
+	quotaEnabled := budget.Ensure().QuotaEnabled()
 	var copied []Entity
 	var errs []error
 	for _, artifact := range artifacts {
 		if err := ctx.Err(); err != nil {
 			return copied, errors.Join(append(errs, err)...)
 		}
-		missing, err := f.imageMissingBytes(budget.WithMeter(ctx), destination, source, artifact)
-		if err != nil {
-			if quotaEnabled && !errors.Is(err, store.ErrUnsized) {
-				return copied, errors.Join(append(errs, err)...)
+		// Sizing reads manifests. Those reads stay off the meter so they do
+		// not consume the quota before Admit sees the image. A disabled quota
+		// does not walk the graph.
+		var missing int64
+		if quotaEnabled {
+			var sizeErr error
+			missing, sizeErr = f.imageMissingBytes(ctx, destination, source, artifact)
+			if sizeErr != nil {
+				if !errors.Is(sizeErr, store.ErrUnsized) {
+					return copied, errors.Join(append(errs, sizeErr)...)
+				}
+				if log != nil {
+					log.Warn().Err(sizeErr).Str("artifact", artifact.Reference()).Msg("could not size missing blobs")
+				}
+				missing = 0
 			}
-			if log != nil {
-				log.Warn().Err(err).Str("artifact", artifact.Reference()).Msg("could not size missing blobs")
-			}
-			missing = 0
 		}
 		if err := budget.Ensure().Admit(missing); err != nil {
 			if errors.Is(err, budget.ErrQuotaExceeded) {
@@ -596,7 +605,7 @@ func (f *FetchAndReplicateStateProcess) copyArtifacts(
 			return copied, errors.Join(append(errs, err)...)
 		}
 		started := time.Now()
-		err = destination.Replicate(budget.WithMeter(ctx), source, []Entity{artifact})
+		err := destination.Replicate(budget.WithMeter(ctx), source, []Entity{artifact})
 		f.journalReplication(ctx, group, edgejournal.ActionReplicated, artifact, time.Since(started), err)
 		if err != nil {
 			errs = append(errs, err)
@@ -961,9 +970,13 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	}
 
 	if f.directDeliverer != nil && len(copied) > 0 {
-		if err := f.directDeliverer.Deliver(ctx, copied); err != nil {
+		skipped, err := f.directDeliverer.Deliver(ctx, copied)
+		if err != nil {
 			stateFetcherLog.Warn().Err(err).Msg("Direct delivery: failed to write tarballs")
 		}
+		// A quota skip leaves the image pending, so the next sync retries
+		// the tarball. The store copy has already succeeded.
+		copied = uncopied(copied, skipped)
 	}
 
 	f.commitReplicatedGroup(index, newState, replicateEntity, copied, deleteEntity, groupDigest, &stateFetcherLog)
