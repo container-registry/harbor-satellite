@@ -125,6 +125,8 @@ tasks:
       - task: _e2e:test-byo
       - task: _e2e:test-spiffe
       - task: _e2e:test-multi-group
+      - task: _e2e:test-harbor-outage
+      - task: _e2e:test-lifecycle
 
   e2e-test:
     desc: Run main E2E test
@@ -155,6 +157,16 @@ tasks:
     desc: Run multi-group E2E test (a satellite in two groups pulls from both projects)
     cmds:
       - task: _e2e:test-multi-group
+
+  e2e-harbor-outage:
+    desc: Run the Harbor outage E2E test (GC starts and accepts writes without Harbor, then converges)
+    cmds:
+      - task: _e2e:test-harbor-outage
+
+  e2e-lifecycle:
+    desc: Run the lifecycle E2E test (revoked satellite gets 403; webhooks deliver once across a dispatcher restart)
+    cmds:
+      - task: _e2e:test-lifecycle
 
   publish:
     desc: "Publish both components to registry"

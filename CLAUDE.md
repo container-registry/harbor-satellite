@@ -52,7 +52,7 @@ go test -v -run TestFunctionName ./path/to/package
 # Ground Control tests against a disposable Postgres (also runs the unit tests of internal/groundcontrol)
 task test:integration
 
-# Run E2E tests (main, BYO, SPIFFE, multi-group; crash-recovery variants run separately)
+# Run E2E tests (main, BYO, SPIFFE, multi-group, Harbor outage, lifecycle; crash-recovery variants run separately)
 task e2e
 
 # Run individual E2E variants
@@ -62,6 +62,9 @@ task e2e-spiffe             # SPIFFE join-token E2E
 task e2e-crash-recovery     # Crash recovery with the local OCI store
 task e2e-crash-recovery-byo # Crash recovery with BYO registry
 task e2e-multi-group        # Satellite in two groups replicates from both projects
+task e2e-harbor-outage      # GC starts and accepts writes with Harbor down, then converges
+task e2e-lifecycle          # Revoked satellite gets 403 and recovers; webhooks once across a worker restart
+# E2E_HARBOR_HOST_PORT (default 8080) moves the bundled Harbor's host port
 
 # Fleet load test (build tag load) against a running GC: LOAD_GC_URL, LOAD_ADMIN_PASSWORD
 task test:load
@@ -327,7 +330,7 @@ The satellite watches `config.json`. Log level, state replication interval and a
 ## CI/CD
 
 GitHub Actions workflows:
-- .github/workflows/test.yaml (PRs): unit tests + Codecov; Ground Control database generation drift check (`task generate:groundcontrol-database`); Ground Control integration tests via `task test:integration`; govulncheck, GoReleaser snapshot, satellite and GC builds, E2E main, BYO, SPIFFE, multi-group (all ubuntu-latest). Crash-recovery E2E is not run in CI
+- .github/workflows/test.yaml (PRs): unit tests + Codecov; Ground Control database generation drift check (`task generate:groundcontrol-database`); Ground Control integration tests via `task test:integration`; govulncheck, GoReleaser snapshot, satellite and GC builds, E2E main, BYO, SPIFFE, multi-group, and a matrix of crash recovery (both stores), Harbor outage and lifecycle (all ubuntu-latest)
 - .github/workflows/lint.yaml (PRs): golangci-lint v2.12.2 binary on ubuntu-latest, called directly rather than through `task lint-report`; job `arch` runs `task lint:arch`
 - .github/workflows/release.yaml (push to main and `v*.*.*` tags, ubuntu-latest): per-arch builds (linux amd64/arm64/ppc64le/s390x/riscv64) of the `satellite` and `ground-control` images to `${REGISTRY_ADDRESS}/${PROJECT_NAME}` from repository variables (README: registry.goharbor.io/harbor-satellite), multi-arch manifest, Cosign keyless signing; tags additionally run `task release` (GoReleaser)
 - .github/workflows/labeler.yaml (`pull_request_target`, ubuntu-latest): auto-labels PRs (documentation for *.md, golang for *.go)

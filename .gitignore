@@ -53,3 +53,4 @@ bin/
 website/public/
 website/resources/
 .hugo_build.lock
+test/e2e/docker/.bin/

@@ -107,14 +107,17 @@ The Postgres listens on `127.0.0.1:55434`; set `TEST_PG_PORT` to move it. To use
 
 | Command | Description |
 |---------|-------------|
-| `task e2e` | Run `e2e-test`, `e2e-byo` and `e2e-spiffe` in sequence |
+| `task e2e` | Run `e2e-test`, `e2e-byo`, `e2e-spiffe`, `e2e-multi-group`, `e2e-harbor-outage` and `e2e-lifecycle` in sequence |
 | `task e2e-test` | Run main E2E test only |
 | `task e2e-byo` | Run BYO registry E2E test |
 | `task e2e-spiffe` | Run SPIFFE join token E2E test |
 | `task e2e-crash-recovery` | Run crash recovery E2E test with the local OCI store |
 | `task e2e-crash-recovery-byo` | Run crash recovery E2E test with a BYO registry |
+| `task e2e-multi-group` | A satellite in two groups replicates the images of both projects |
+| `task e2e-harbor-outage` | Stop Harbor core, restart GC, create a config, group and satellite, require GC healthy-but-degraded with nothing published, start Harbor and wait until the satellite's state is published and applied |
+| `task e2e-lifecycle` | Revoke a running satellite and require 403 for its heartbeat and every credential it holds, unrevoke it until it is online; deliver `GroupChanged` and `SatelliteStale` webhooks to a loopback receiver and require each event ID exactly once across a restart of the worker (`docker-compose.webhook.yml`) |
 
-`task e2e` does not include the crash recovery variants.
+`task e2e` does not include the crash recovery variants. `E2E_HARBOR_HOST_PORT` (default 8080) moves the bundled Harbor's host port. The outage and lifecycle variants run only against the bundled Harbor.
 
 ## BYO Registry Tasks
 

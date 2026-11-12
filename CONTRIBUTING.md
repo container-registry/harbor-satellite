@@ -91,12 +91,14 @@ Before pushing, verify your changes pass all checks:
 go test ./... -v -count=1
 
 # Run E2E tests
-task e2e         # runs e2e-test, e2e-byo and e2e-spiffe
+task e2e         # runs e2e-test, e2e-byo, e2e-spiffe, e2e-multi-group, e2e-harbor-outage and e2e-lifecycle
 task e2e-test    # standard E2E
 task e2e-byo     # BYO registry E2E
 task e2e-spiffe  # SPIFFE mTLS E2E
 task e2e-crash-recovery      # crash recovery with the local OCI store
 task e2e-crash-recovery-byo  # crash recovery with a BYO registry
+task e2e-harbor-outage       # GC through a Harbor outage
+task e2e-lifecycle           # revocation and webhook delivery
 
 # Lint
 task lint

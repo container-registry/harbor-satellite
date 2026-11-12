@@ -1,0 +1,49 @@
+# Overlay of docker-compose.yml for the lifecycle E2E (task e2e-lifecycle).
+# Webhooks go to http only on loopback, so the receiver and the worker that
+# dispatches to it share one network namespace, and GC serves the API with
+# the worker off. Restarting gc-worker restarts the dispatcher while the
+# receiver keeps what it got.
+x-webhook-env: &webhook-env
+  WEBHOOKS_ENABLED: "true"
+  WEBHOOK_POLL_INTERVAL: 1s
+  DATA_ENCRYPTION_KEY: 0V8njmTKv6cdWj26u0W2OQuZ8ziGL31NZWEj7hccnWM=
+  STALE_CHECK_INTERVAL: 5s
+
+services:
+  gc:
+    command: ["serve", "--worker", "off"]
+    environment: *webhook-env
+
+  webhook-receiver:
+    image: alpine:latest
+    container_name: webhook-receiver
+    command: ["/webhook-receiver", "-addr", "127.0.0.1:9999"]
+    environment:
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?WEBHOOK_SECRET is required}
+    volumes:
+      - ./.bin/webhook-receiver:/webhook-receiver:ro
+    networks:
+      - harbor-e2e
+
+  gc-worker:
+    command: ["worker"]
+    image: gc:e2e
+    container_name: gc-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      webhook-receiver:
+        condition: service_started
+    restart: on-failure
+    network_mode: service:webhook-receiver
+    environment:
+      <<: *webhook-env
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USERNAME: postgres
+      DB_PASSWORD: password
+      DB_DATABASE: groundcontrol
+      DB_SSLMODE: disable
+      HARBOR_USERNAME: admin
+      HARBOR_PASSWORD: Harbor12345
+      HARBOR_URL: http://core:8080

@@ -47,6 +47,9 @@ vars:
   SATELLITE_NAME: "{{.E2E_PREFIX}}test-satellite"
   BYO_SATELLITE_NAME: "{{.E2E_PREFIX}}byo-satellite"
   MULTI_GROUP_SATELLITE_NAME: "{{.E2E_PREFIX}}multi-group-satellite"
+  WEBHOOK_RECEIVER_CONTAINER: webhook-receiver
+  WEBHOOK_SECRET: e2e-webhook-secret-of-at-least-32-bytes
+  LIFECYCLE_COMPOSE: "WEBHOOK_SECRET={{.WEBHOOK_SECRET}} {{.COMPOSE}} -f test/e2e/docker/docker-compose.webhook.yml"
 
 tasks:
   test:
@@ -101,6 +104,97 @@ tasks:
       - task: register-satellite-multi-group
       - task: verify-multi-group
       - echo "Multi-group E2E test passed"
+
+  test-harbor-outage:
+    desc: GC starts and accepts writes with Harbor unreachable, then converges when Harbor returns
+    preconditions:
+      - sh: '[ -z "{{.HARBOR_EXTERNAL}}" ]'
+        msg: the Harbor outage test stops Harbor core and runs only against the bundled Harbor
+    cmds:
+      - task: setup
+      - defer: { task: cleanup }
+      - task: wait-harbor
+      - task: wait-groundcontrol
+      - task: init-harbor
+      - task: harbor-stop
+      - task: init-groundcontrol
+      - task: register-satellite
+      - task: e2echeck
+        vars: { CHECK: "harbor-down -satellite {{.SATELLITE_NAME}}" }
+      - task: harbor-start
+      - task: e2echeck
+        vars: { CHECK: "converged -satellite {{.SATELLITE_NAME}}" }
+      - task: verify
+      - echo "Harbor outage E2E test passed"
+
+  test-lifecycle:
+    desc: A revoked satellite gets 403 and recovers; webhooks deliver GroupChanged and SatelliteStale once across a dispatcher restart
+    preconditions:
+      - sh: '[ -z "{{.HARBOR_EXTERNAL}}" ]'
+        msg: the lifecycle test runs only against the bundled Harbor
+    cmds:
+      - task: build-webhook-receiver
+      - task: setup
+        vars: { COMPOSE: "{{.LIFECYCLE_COMPOSE}}" }
+      - defer: { task: cleanup, vars: { COMPOSE: "{{.LIFECYCLE_COMPOSE}}" } }
+      - task: wait-harbor
+      - task: wait-groundcontrol
+      - task: e2echeck
+        vars: { CHECK: "webhook-create -url http://127.0.0.1:9999/hook -events GroupChanged,SatelliteStale" }
+      - task: init-harbor
+      - task: init-groundcontrol
+        vars: { HEARTBEAT_INTERVAL: "@every 00h00m10s" }
+      - task: register-satellite
+      - task: verify
+      - task: e2echeck
+        vars: { CHECK: "revoke -satellite {{.SATELLITE_NAME}} -satellite-container {{.SATELLITE_CONTAINER}}" }
+      - task: e2echeck
+        vars: { CHECK: "webhook-deliver -receiver-container {{.WEBHOOK_RECEIVER_CONTAINER}} -want GroupChanged=1 -settle 5s" }
+      - echo "Stopping the dispatcher, then changing a group and stopping the satellite while it is down..."
+      - docker stop gc-worker
+      - task: init-group-b
+        vars: { PROJECT_NAME_B: "{{.PROJECT_NAME}}" }
+      - docker stop {{.SATELLITE_CONTAINER}}
+      - docker start gc-worker
+      - task: e2echeck
+        vars: { CHECK: "webhook-deliver -receiver-container {{.WEBHOOK_RECEIVER_CONTAINER}} -want GroupChanged=2,SatelliteStale=1 -settle 20s" }
+      - echo "Lifecycle E2E test passed"
+
+  build-webhook-receiver:
+    desc: Build the E2E webhook receiver for the Docker host's Linux
+    internal: true
+    env:
+      CGO_ENABLED: "0"
+      GOOS: linux
+      GOARCH: "{{ARCH}}"
+    cmds:
+      - go build -o test/e2e/docker/.bin/webhook-receiver ./test/e2e/cmd/webhook-receiver
+
+  harbor-stop:
+    desc: Stop Harbor core and restart GC, so GC starts with Harbor unreachable
+    internal: true
+    cmds:
+      - docker stop core
+      - docker restart {{.E2E_PREFIX}}gc
+      - task: wait-groundcontrol
+
+  harbor-start:
+    desc: Start Harbor core again
+    internal: true
+    cmds:
+      - docker start core
+      - task: wait-harbor
+
+  e2echeck:
+    desc: Run one Ground Control check of test/e2e/cmd/e2echeck
+    internal: true
+    requires:
+      vars: [CHECK]
+    env:
+      GC_ADMIN_PASSWORD: "{{.GROUNDCONTROL_ADMIN_PASSWORD}}"
+      WEBHOOK_SECRET: "{{.WEBHOOK_SECRET}}"
+    cmds:
+      - go run ./test/e2e/cmd/e2echeck {{.CHECK}} -gc-url {{.GROUNDCONTROL_URL}} -user {{.GROUNDCONTROL_ADMIN_USER}}
 
   setup:
     desc: Start Harbor and Ground Control stack
@@ -534,7 +628,8 @@ tasks:
                 "log_level": "info",
                 "use_unsecure": true,
                 "state_replication_interval": "@every 00h00m10s",
-                "register_satellite_interval": "@every 00h00m10s",
+                "register_satellite_interval": "@every 00h00m10s",{{if .HEARTBEAT_INTERVAL}}
+                "heartbeat_interval": "{{.HEARTBEAT_INTERVAL}}",{{end}}
                 "bring_own_registry": false
               }
             }
