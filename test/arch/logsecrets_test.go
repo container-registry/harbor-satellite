@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +27,6 @@ var (
 // TestNoSecretsInLogArguments rejects log calls whose arguments name a
 // password, secret or token, or that log a raw response body.
 func TestNoSecretsInLogArguments(t *testing.T) {
-	pending.Plan(t, "D4", "the status report logs the robot password and the credential refresh logs the response body with the new secret")
 	root := filepath.Join("..", "..")
 	fset := token.NewFileSet()
 	var findings []string

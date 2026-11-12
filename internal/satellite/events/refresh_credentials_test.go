@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/logger/logtest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/stretchr/testify/require"
 )
@@ -88,8 +87,6 @@ func TestRefreshCredentialProcess_StartStop_Concurrent(t *testing.T) {
 }
 
 func TestRefreshCredentialProcess_ExecuteDoesNotLogSecrets(t *testing.T) {
-	pending.Plan(t, "D4", "credential refresh logs the response body with the new secret")
-
 	const (
 		currentSecret   = "d4-refresh-current-robot-secret"
 		refreshedSecret = "d4-refresh-new-robot-secret"

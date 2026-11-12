@@ -310,6 +310,8 @@ The satellite watches `config.json`. Log level, state replication interval and a
 - E2E compose stacks: `test/e2e/docker/docker-compose.yml`, `test/e2e/docker/docker-compose.spiffe.yml`
 - Test configs in test/e2e/testconfig/, fixtures in test/e2e/testdata/
 - GC handler tests use go-sqlmock. Integration tests in the same packages run against real Postgres when `TEST_DATABASE_URL` is set and skip otherwise; `task test:integration` starts `test/integration/docker-compose.yml` (postgres:17 with pg_stat_statements, host port `TEST_PG_PORT`, default 55434) and sets it
+- `internal/shared/logger/logtest.Capture(t)` routes the context-carried zerolog logger into a buffer at every level; tests use it to assert secrets never reach the log
+- test/arch/: repository-wide tests. `TestNoSecretsInLogArguments` (D4) parses every non-test file in cmd, internal and pkg and fails on a log argument named like a password, secret or token, or a logged response body; never log a GC or Harbor response body
 - `internal/groundcontrol/dbtest`: a fresh database per test with all goose migrations, plus pg_stat_statements counts per test database. `internal/groundcontrol/harbortest`: in-process Harbor API and registry stub that records every call and can fail, go down or hold requests
 - `internal/groundcontrol/server`: SQL statement and Harbor call budgets (`budget_test.go`), golden responses of every endpoint in `testdata/golden` (refresh with `go test ./internal/groundcontrol/server -run TestGoldenAPI -update`). `test/contract`: the paths the satellite calls must be served by the GC router
 - Tests for Harbor 3 plan items that have not landed (defects D1..D9, planned features) start with `pending.Plan` (`internal/shared/testutil/pending`) and skip unless `HARBOR3_PENDING=1`; the implementing change removes the marker
@@ -400,8 +402,6 @@ This is core functionality; changes require careful review.
 Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNotImplemented` and no production path calls them yet; their behaviour is specified by `pending.Plan` tests.
 
 - internal/shared/notimpl/: `ErrNotImplemented` and `Err(item)`, returned by every skeleton stub
-- internal/shared/logger/logtest/: D4 test helper, `Capture(t)` routes the context-carried zerolog logger into a buffer at every level; the D4 acceptance tests in `state` and `events` use it
-- test/arch/: repository-wide tests; `TestNoSecretsInLogArguments` (D4) parses every non-test file in cmd, internal and pkg for log arguments named like a password, secret or token
 - D5: `server.syncRobotPermissions` (for a set of satellites, one query and one Harbor update per robot with the union of the satellite's groups) and the query `GetProjectsOfSatellites`; D10 (empty satellite state artifact) has tests only
 - D6: `server.verifyUserCredentials(ctx, clientIP, username, password)` (one credential check for Login and Basic auth that owns the lockout, the attempt records and the IP failure limiter) and `middleware.FailureLimiter` (per client IP, never blocks yet), built by `NewServer` into `Server.FailureLimiter` from AUTH_FAILURE_LIMIT (20) and AUTH_FAILURE_WINDOW (1m)
 - D7: migration 016 adds `satellite_token.consumed_at`; queries `ClaimToken`, `UnclaimToken`, `ConsumeToken` and the stubs `server.claimZTRToken` / `unclaimZTRToken` (a consumed token is `errTokenInvalid` wrapping `errTokenConsumed`, answered 400 like an unknown one); Ztr still reads and deletes the token without a claim
