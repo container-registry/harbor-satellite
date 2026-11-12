@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"strings"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
+	"github.com/rs/zerolog"
 )
 
 // SetJournal makes replication append one edgejournal.Replication record
@@ -88,31 +88,13 @@ func (f *FetchAndReplicateStateProcess) deleteJournaled(ctx context.Context, loc
 }
 
 // replicateBounded replicates artifacts in one replication slot.
-func (f *FetchAndReplicateStateProcess) replicateBounded(ctx context.Context, group string, local, source store.Store, artifacts []Entity) error {
+func (f *FetchAndReplicateStateProcess) replicateBounded(ctx context.Context, group string, local, source store.Store, artifacts []Entity, log *zerolog.Logger) ([]Entity, error) {
 	release, err := f.acquireSlot(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer release()
-	return f.replicateEach(ctx, group, local, source, artifacts)
-}
-
-// replicateEach replicates one artifact per call, so one failing artifact
-// does not hide the others, and journals each result.
-func (f *FetchAndReplicateStateProcess) replicateEach(ctx context.Context, group string, local, source store.Store, artifacts []Entity) error {
-	var errs []error
-	for _, a := range artifacts {
-		if err := ctx.Err(); err != nil {
-			return errors.Join(append(errs, err)...)
-		}
-		started := time.Now()
-		err := local.Replicate(ctx, source, []store.Artifact{a})
-		f.journalReplication(ctx, group, edgejournal.ActionReplicated, a, time.Since(started), err)
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
+	return f.copyArtifacts(ctx, group, local, source, artifacts, log)
 }
 
 func (f *FetchAndReplicateStateProcess) journalReplication(ctx context.Context, group string, action edgejournal.ReplicationAction, e Entity, took time.Duration, err error) {

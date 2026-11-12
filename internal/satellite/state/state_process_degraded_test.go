@@ -452,6 +452,7 @@ type degradedStubStore struct {
 	pullErr        error
 	replicateCalls int
 	deleteCalls    int
+	lastDeleted    []store.Artifact
 	lastReplicated []store.Artifact
 	harborTimeout  time.Duration
 	replicateErr   error
@@ -479,10 +480,11 @@ func (s *degradedStubStore) Fetch(context.Context, store.Artifact, ocispec.Descr
 	return nil, errors.New("unexpected fetch")
 }
 
-func (s *degradedStubStore) Delete(_ context.Context, _ []store.Artifact) error {
+func (s *degradedStubStore) Delete(_ context.Context, artifacts []store.Artifact) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.deleteCalls++
+	s.lastDeleted = append(s.lastDeleted, artifacts...)
 	return nil
 }
 

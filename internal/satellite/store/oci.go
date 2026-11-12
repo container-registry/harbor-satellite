@@ -537,6 +537,12 @@ func (s *OCIStore) untag(ctx context.Context, artifacts []Artifact) error {
 		if err := artifact.validate(); err != nil {
 			return err
 		}
+		if artifact.Tag == "" {
+			if _, err := s.deleteDigest(ctx, artifact); err != nil {
+				return err
+			}
+			continue
+		}
 		desc, err := s.store.Resolve(ctx, artifact.Reference())
 		if errors.Is(err, errdef.ErrNotFound) {
 			continue
@@ -559,6 +565,26 @@ func (s *OCIStore) untag(ctx context.Context, artifacts []Artifact) error {
 	// stay pullable through it until the collection removes the files.
 	s.provenance.Clear()
 	return nil
+}
+
+// deleteDigest removes the manifest identified by the digest. It does not
+// follow name:tag, which may already point at a replacement.
+func (s *OCIStore) deleteDigest(ctx context.Context, artifact Artifact) (bool, error) {
+	identifier := artifact.sourceIdentifier()
+	desc, err := s.store.Resolve(ctx, identifier)
+	if errors.Is(err, errdef.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if desc.Digest.String() != identifier {
+		return false, nil
+	}
+	if err := s.store.Delete(ctx, desc); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *OCIStore) recordGraphProvenance(ctx context.Context, repository string, root ocispec.Descriptor) error {
