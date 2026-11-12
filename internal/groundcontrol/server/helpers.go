@@ -33,9 +33,6 @@ func isConfigInUse(ctx context.Context, q *database.Queries, config database.Con
 }
 
 func createOrUpdateSatStateArtifact(ctx context.Context, satelliteName string, states []string, configName string) error {
-	if len(states) == 0 {
-		return nil
-	}
 	if satelliteName == "" {
 		return fmt.Errorf("the satellite name must be at least one character long")
 	}

@@ -168,6 +168,8 @@ One Go module at the repository root (`github.com/container-registry/harbor-sate
 
 Groups: Collections of artifacts (repository, tag, digest, type) that satellites replicate. GC pushes each group's state as an OCI artifact into Harbor under `satellite/group-state/<group>/state`. A satellite's robot can pull the union of the projects of all its groups plus `satellite`: every membership or group change (register, SPIFFE ZTR robot creation, group sync, add, remove, group delete) goes through `server.syncRobotPermissions`, one `GetProjectsOfSatellites` query and one Harbor update per robot, because Harbor replaces a robot's permissions on each update.
 
+Satellite state: GC republishes `satellite/satellite-state/<name>/state` on every membership or config change, also when the satellite has no groups (then without `states`), so a satellite that leaves its last group stops replicating it (D10, #561).
+
 Configs: Named satellite app configs (intervals, metrics, BYO registry, registry fallback, audit, TLS, peer distribution, etc.) delivered through Harbor as config state artifacts (`satellite/config-state/<config>/state`). Updates use JSON Merge Patch (evanphx/json-patch).
 
 State Replication: The satellite fetches its root state artifact (`satellite/satellite-state/<name>/state`) directly from Harbor with its robot credentials, then fetches each group state and replicates changes into the local store. GC is not on the replication data path.
@@ -404,7 +406,6 @@ This is core functionality; changes require careful review.
 Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNotImplemented` and no production path calls them yet; their behaviour is specified by `pending.Plan` tests.
 
 - internal/shared/notimpl/: `ErrNotImplemented` and `Err(item)`, returned by every skeleton stub
-- D10 (empty satellite state artifact) has tests only
 - D12: `state.withoutWanted` is written and used per group (D9); widening `wanted` to the union of every group's entities, so one group does not delete what another still wants, is pending (`TestExecute_ImageStaysWhileAnotherGroupWantsIt`)
 - `.go-arch-lint.yml` (0.1, enforced): import boundaries checked by `task lint:arch` (go-arch-lint, pinned by `GO_ARCH_LINT_VERSION`, run with `go run`). `task lint` runs it before golangci-lint and the lint workflow runs it as job `arch`. Every package must belong to a component and a component may import its own packages only when it lists itself, so a new package needs an entry; test helper packages named `*test` fall into `testsupport` by themselves, and `internal/satellite/gcclient` is its own component that may import only `pkg/groundcontrol` and the shared packages. The two `EXCEPTION 0.1` entries go once `proxy.Mode` leaves `internal/satellite` and `pkg/config` gets an injected encryptor (`test/arch` pending test). `govet` is enabled with `shadow` off
 - `internal/satellite/telemetry` (0.4): metric names, `Recorder` and `Nop`, and a stub `/healthz` + `/metrics` server. `TELEMETRY_ADDR` is parsed; nothing starts the server
