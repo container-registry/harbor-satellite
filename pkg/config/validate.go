@@ -82,6 +82,14 @@ func validateApp(config *Config) ([]string, error) {
 	}
 
 	warnings = append(warnings, validateAndEnforceAuditConfig(config)...)
+
+	switch config.AppConfig.RegistryAuth.Mode {
+	case "", RegistryAuthRobot:
+	case RegistryAuthWorkloadIdentity:
+		return warnings, errors.New("app_config.registry_auth.mode workload_identity needs Harbor 3 workload identity federation, which this release cannot use yet; use robot")
+	default:
+		return warnings, fmt.Errorf("app_config.registry_auth.mode %q: want robot or workload_identity", config.AppConfig.RegistryAuth.Mode)
+	}
 	return warnings, nil
 }
 

@@ -8,11 +8,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/registryauth"
 	"github.com/container-registry/harbor-satellite/internal/satellite/registryauth/registryauthtest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingKeyless = "the satellite pulls with its robot only; there is no keyless pull"
 
 var keylessNow = time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 
@@ -40,7 +37,6 @@ func newWorkloadIdentity(t *testing.T, now *time.Time) (*registryauth.WorkloadId
 }
 
 func TestWorkloadIdentityProvider_ExchangesJWTSVID(t *testing.T) {
-	pending.Plan(t, "8.3", pendingKeyless)
 	now := keylessNow
 	p, source, exchanger := newWorkloadIdentity(t, &now)
 
@@ -54,7 +50,6 @@ func TestWorkloadIdentityProvider_ExchangesJWTSVID(t *testing.T) {
 }
 
 func TestWorkloadIdentityProvider_CachesUntilExpiry(t *testing.T) {
-	pending.Plan(t, "8.3", pendingKeyless)
 	now := keylessNow
 	p, _, exchanger := newWorkloadIdentity(t, &now)
 
@@ -71,7 +66,6 @@ func TestWorkloadIdentityProvider_CachesUntilExpiry(t *testing.T) {
 }
 
 func TestWorkloadIdentityProvider_SourceFailureIsError(t *testing.T) {
-	pending.Plan(t, "8.3", pendingKeyless)
 	now := keylessNow
 	p, source, exchanger := newWorkloadIdentity(t, &now)
 	boom := errors.New("workload API unavailable")

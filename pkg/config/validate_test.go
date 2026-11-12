@@ -1207,3 +1207,21 @@ func TestValidateAppConfig_IgnoresProcessEnv(t *testing.T) {
 
 	require.ErrorContains(t, err, "uses HTTP but use_unsecure is false")
 }
+
+// Keyless pulls (plan item 8.3) wait for Harbor 3's token exchange, so a
+// config asking for them fails instead of pulling with the robot silently.
+func TestValidateAppConfig_RegistryAuthMode(t *testing.T) {
+	for mode, wantErr := range map[string]string{
+		"":                           "",
+		RegistryAuthRobot:            "",
+		RegistryAuthWorkloadIdentity: "needs Harbor 3",
+		"token":                      "want robot or workload_identity",
+	} {
+		_, err := ValidateAppConfig(AppConfig{RegistryAuth: RegistryAuthConfig{Mode: mode}})
+		if wantErr == "" {
+			require.NoError(t, err, "%q", mode)
+			continue
+		}
+		require.ErrorContains(t, err, wantErr, "%q", mode)
+	}
+}
