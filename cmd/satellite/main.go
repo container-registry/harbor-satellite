@@ -75,6 +75,8 @@ type SatelliteOptions struct {
 	ProxyPort              int
 	ProxyModeExplicit      bool
 	StoreGCGrace           time.Duration
+	ProxyWriteTimeout      time.Duration
+	ProxyMaxConnections    int
 }
 
 func main() {
@@ -104,6 +106,8 @@ func main() {
 		ProxyMode:              envCfg.ProxyMode,
 		ProxyPort:              envCfg.ProxyPort,
 		StoreGCGrace:           envCfg.StoreGCGrace,
+		ProxyWriteTimeout:      envCfg.ProxyWriteTimeout,
+		ProxyMaxConnections:    envCfg.ProxyMaxConnections,
 	}
 	_, opts.ProxyModeExplicit = os.LookupEnv("PROXY_MODE")
 	shutdownTimeout := envCfg.ShutdownTimeout
@@ -131,6 +135,8 @@ func main() {
 	flag.StringVar(&opts.ImageDir, "image-dir", opts.ImageDir, "Override image directory for direct delivery (auto-detected if empty)")
 	flag.Var(&opts.ProxyMode, "proxy-mode", "OCI proxy mode: proxy or replica")
 	flag.IntVar(&opts.ProxyPort, "proxy-port", opts.ProxyPort, "Local OCI registry proxy port")
+	flag.DurationVar(&opts.ProxyWriteTimeout, "proxy-write-timeout", opts.ProxyWriteTimeout, "Per-write deadline for OCI proxy responses; a client that accepts no data for this long is cut off (0 disables)")
+	flag.IntVar(&opts.ProxyMaxConnections, "proxy-max-connections", opts.ProxyMaxConnections, "Maximum concurrent OCI proxy connections (0 is unlimited)")
 	flag.DurationVar(&opts.StoreGCGrace, "store-gc-grace", opts.StoreGCGrace, "How long unreferenced local OCI content is kept before garbage collection; 0 deletes it at once")
 
 	flag.Parse()
@@ -222,6 +228,12 @@ func validateSatelliteOptions(opts SatelliteOptions) error {
 	}
 	if opts.ProxyPort < 1 || opts.ProxyPort > 65535 {
 		return fmt.Errorf("--proxy-port must be between 1 and 65535, got %d", opts.ProxyPort)
+	}
+	if opts.ProxyWriteTimeout < 0 {
+		return fmt.Errorf("--proxy-write-timeout must not be negative, got %s", opts.ProxyWriteTimeout)
+	}
+	if opts.ProxyMaxConnections < 0 {
+		return fmt.Errorf("--proxy-max-connections must not be negative, got %d", opts.ProxyMaxConnections)
 	}
 	if opts.StoreGCGrace < 0 {
 		return fmt.Errorf("--store-gc-grace must not be negative, got %s", opts.StoreGCGrace)
@@ -393,7 +405,10 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		Addr: proxyAddress,
 		// Plan items 7.5, 9.3 and 0.4 fill the nil slots (admission,
 		// authentication, metrics); all nil keeps today's handler.
-		Handler:           proxyhandler.New(pullHandler).WrapAll(proxymw.Stack(nil, nil, nil)...).Handler(),
+		Handler: proxyhandler.WriteDeadlineHandler(
+			proxyhandler.New(pullHandler).WrapAll(proxymw.Stack(nil, nil, nil)...).Handler(),
+			opts.ProxyWriteTimeout,
+		),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       time.Minute,
 	}
@@ -401,6 +416,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	if err != nil {
 		return fmt.Errorf("listen for OCI proxy on %s: %w", proxyAddress, err)
 	}
+	proxyListener = proxyhandler.LimitListener(proxyListener, opts.ProxyMaxConnections)
 	defer proxyServer.Close()
 
 	wg.Go(func() error {
