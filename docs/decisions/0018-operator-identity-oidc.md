@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-16
 deciders: [Harbor Satellite Development Team]
 informed: [Harbor Satellite Developers]
@@ -45,11 +45,13 @@ Plan item 8 (identity) found these limits at `508b0d6`:
 
 | Part | Status |
 |---|---|
-| ADR | proposed |
-| Migration `021_operator_identities.sql`, identity and rotation queries | done, SQL contract tests |
-| `authn` OIDC login and mapping, `adapters/oidc` (no go-oidc yet), postgres identity and rotation stores, `secrets.AESGCM`, `async.RobotRotator` and `RotationCache` | skeleton, pending tests |
-| `/oidc/login`, `/oidc/callback`, `/oidc/device`, `/oidc/device/token`, sync `credentials` and `credentials_generation`, `app_config.registry_auth` | in the spec; the routes answer 501 |
-| `registryauth`, `state.ApplyRotatedCredentials`, `auth login --oidc` | skeleton, pending tests |
+| ADR | accepted |
+| Migration `021_operator_identities.sql`, identity and rotation queries | implemented, SQL contract tests |
+| `authn` OIDC login and mapping, `adapters/oidc` (go-oidc), postgres identity and rotation stores, `secrets.AESGCM`, `async.RobotRotator` and `RotationCache` | implemented; OIDC with `OIDC_ENABLED`, rotation with `ROBOT_ROTATION_ENABLED` |
+| `/oidc/login`, `/oidc/callback`, `/oidc/device`, `/oidc/device/token`, sync `credentials` and `credentials_generation` | implemented |
+| `OIDC_DISABLE_PASSWORD_LOGIN` (8.2) | implemented; the bootstrap `admin` keeps password login |
+| `state.ApplyRotatedCredentials`, `auth login --oidc` | implemented |
+| `registryauth.WorkloadIdentityProvider`, `app_config.registry_auth` (8.3) | provider written, no Harbor 3 token exchanger exists; `workload_identity` is refused by validation |
 
 ## Validation
 

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-15
 deciders: [Harbor Satellite Development Team]
 informed: [Harbor Satellite Developers]
@@ -45,11 +45,11 @@ The satellite keeps replicated content in an ORAS OCI image layout and serves it
 
 | Part | Status |
 |---|---|
-| ADR | proposed |
-| `OpenOCIStore`, `WriteIndexAtomic`, `BuildIndex`, `ResetReplicatedEntities` (5.1) | done: `cmd/satellite` opens the layout with `AtomicIndex` and `RecoverIndex` and resyncs every group after a recovery; `Fetch` holds a `RefCounter` reference instead of the index lock until the body closes. Replication still stages each copy in `.stage/` (#694) and publishes by linking under the exclusive index lock; `.stage/` is removed when the last stage ends |
-| `CollectGarbage`, `FillLeases`, `RefCounter` (5.2) | done: `Delete` collects with `GCGrace` instead of oras `Store.GC`, `RunCollector` runs every `STORE_GC_GRACE` (default 10m). Leases matter only for streaming fills (5.3); a replication's copy lives in `.stage/` until it is published |
-| `lane`, `NewPullWithOptions`, `NewLanePrefetcher`, `Filler` (5.3) | done behind `PROXY_STREAMING` (default false): `CompleteGraph` reuses the staged replication and pins the root digest it served; a blob of unknown size falls back to the whole-blob fill. `lane.Close` cancels running prefetches |
-| `WithWriteDeadline`, `PROXY_*` settings (5.4) | done: `WriteDeadlineHandler` with `PROXY_WRITE_TIMEOUT` (default 60s) and `LimitListener` with `PROXY_MAX_CONNECTIONS` (default 0, unlimited) in `cmd/satellite` |
+| ADR | accepted |
+| `OpenOCIStore`, `WriteIndexAtomic`, `BuildIndex`, `ResetReplicatedEntities` (5.1) | implemented: `cmd/satellite` opens the layout with `AtomicIndex` and `RecoverIndex` and resyncs every group after a recovery; `Fetch` holds a `RefCounter` reference instead of the index lock until the body closes. Replication stages each copy in `.stage/` (#694) and publishes by linking under the exclusive index lock |
+| `CollectGarbage`, `FillLeases`, `RefCounter` (5.2) | implemented: `Delete` collects with `GCGrace`, `RunCollector` runs every `STORE_GC_GRACE` (default 10m) |
+| `lane`, `NewPullWithOptions`, `NewLanePrefetcher`, `Filler` (5.3) | implemented behind `PROXY_STREAMING` (default false), composed by `cmd/satellite` with `PROXY_PREFETCH_CONCURRENCY` workers; ignored with a BYO registry |
+| `WithWriteDeadline`, `PROXY_*` settings (5.4) | implemented: `WriteDeadlineHandler` with `PROXY_WRITE_TIMEOUT` (default 60s) and `LimitListener` with `PROXY_MAX_CONNECTIONS` (default 0, unlimited) |
 
 ## Validation
 
