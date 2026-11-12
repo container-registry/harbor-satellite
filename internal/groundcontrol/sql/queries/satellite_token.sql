@@ -28,12 +28,12 @@ DELETE FROM satellite_token
 WHERE expires_at < NOW();
 
 -- name: ClaimToken :one
--- expires_at is a TIMESTAMP the app writes, so it is compared with the
--- app's clock (now) rather than the database's NOW().
+-- expires_at is written by the app, so it is compared with the app's clock
+-- (now) rather than the database's NOW(); both are TIMESTAMPTZ (023).
 UPDATE satellite_token SET consumed_at = NOW()
 WHERE token = sqlc.arg(token)
   AND consumed_at IS NULL
-  AND expires_at > sqlc.arg(now)::TIMESTAMP
+  AND expires_at > sqlc.arg(now)::TIMESTAMPTZ
 RETURNING satellite_id;
 
 -- name: UnclaimToken :exec

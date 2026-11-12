@@ -25,5 +25,5 @@ WHERE username = $1;
 -- TIMESTAMP; NOW() would compare it with the server's wall clock.
 -- name: DeleteStaleLoginAttempts :exec
 DELETE FROM login_attempts
-WHERE last_attempt < sqlc.arg(now)::TIMESTAMP - make_interval(days => sqlc.arg(days)::INT)
-  AND (locked_until IS NULL OR locked_until < sqlc.arg(now)::TIMESTAMP);
+WHERE last_attempt < sqlc.arg(now)::TIMESTAMPTZ - make_interval(days => sqlc.arg(days)::INT)
+  AND (locked_until IS NULL OR locked_until < sqlc.arg(now)::TIMESTAMPTZ);

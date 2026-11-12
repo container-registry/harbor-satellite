@@ -314,7 +314,7 @@ func (s *Server) UpdateConfig(w http.ResponseWriter, r *http.Request, configName
 		}
 	}()
 
-	existing, err := q.GetConfigByName(r.Context(), configName)
+	existing, err := q.GetConfigWithVersionByName(r.Context(), configName)
 	if err != nil {
 		// If config not found, send StatusNotFound
 		if errors.Is(err, sql.ErrNoRows) {
@@ -359,13 +359,22 @@ func (s *Server) UpdateConfig(w http.ResponseWriter, r *http.Request, configName
 		return
 	}
 
-	params := database.UpdateConfigParams{
+	// The version guard turns a concurrent update into 409 instead of a lost
+	// update: the second request waits for the first one's row lock, then
+	// finds the version moved on, before it pushes anything to Harbor.
+	result, err := q.UpdateConfigIfVersion(r.Context(), database.UpdateConfigIfVersionParams{
 		ConfigName:  configName,
+		Version:     existing.Version,
 		RegistryUrl: env.GC.Harbor.URL,
 		Config:      patchedJson,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		HandleAppError(w, &AppError{
+			Message: "error: the config was changed by another request; fetch it and retry",
+			Code:    http.StatusConflict,
+		})
+		return
 	}
-
-	result, err := q.UpdateConfig(r.Context(), params)
 	if err != nil {
 		log.Println("Error persisting config object to database: ", err)
 		HandleAppError(w, err)
@@ -542,7 +551,7 @@ func (s *Server) DeleteConfig(w http.ResponseWriter, r *http.Request, configName
 		return
 	}
 
-	isConfigInUse, err := isConfigInUse(r.Context(), q, configObject)
+	isConfigInUse, err := isConfigInUse(r.Context(), q, configObject.ID)
 	if err != nil {
 		log.Printf("Error: Could not delete config: %v", err)
 		HandleAppError(w, err)

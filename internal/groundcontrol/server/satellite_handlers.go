@@ -873,7 +873,9 @@ func ensureSatelliteConfig(r *http.Request, q *database.Queries, satellite datab
 		return nil
 	}
 
+	var defaultConfigID int32
 	defaultConfig, err := q.GetConfigByName(r.Context(), "default")
+	defaultConfigID = defaultConfig.ID
 	if err != nil {
 		defaultConfigJSON := []byte(`{
   "app_config": {
@@ -883,7 +885,7 @@ func ensureSatelliteConfig(r *http.Request, q *database.Queries, satellite datab
     "heartbeat_interval": "@every 00h00m30s"
   }
 }`)
-		defaultConfig, err = q.CreateConfig(r.Context(), database.CreateConfigParams{
+		created, err := q.CreateConfig(r.Context(), database.CreateConfigParams{
 			ConfigName:  "default",
 			RegistryUrl: env.GC.Harbor.URL,
 			Config:      defaultConfigJSON,
@@ -891,6 +893,7 @@ func ensureSatelliteConfig(r *http.Request, q *database.Queries, satellite datab
 		if err != nil {
 			return fmt.Errorf("create default config: %w", err)
 		}
+		defaultConfigID = created.ID
 
 		if pushErr := utils.CreateAndPushConfigStateArtifact(r.Context(), defaultConfigJSON, "default"); pushErr != nil {
 			log.Printf("SPIFFE ZTR: Warning - failed to create config-state artifact: %v", pushErr)
@@ -899,7 +902,7 @@ func ensureSatelliteConfig(r *http.Request, q *database.Queries, satellite datab
 
 	configLinkParams := database.SetSatelliteConfigParams{
 		SatelliteID: satellite.ID,
-		ConfigID:    defaultConfig.ID,
+		ConfigID:    defaultConfigID,
 	}
 	if err := q.SetSatelliteConfig(r.Context(), configLinkParams); err != nil {
 		return fmt.Errorf("link satellite to config: %w", err)

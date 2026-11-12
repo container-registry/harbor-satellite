@@ -34,3 +34,16 @@ WHERE id = $1;
 SELECT config FROM configs
 WHERE config_name = $1;
 
+
+-- name: GetConfigWithVersionByName :one
+SELECT id, config_name, registry_url, config, version FROM configs
+WHERE config_name = $1;
+
+-- name: UpdateConfigIfVersion :one
+UPDATE configs
+SET registry_url = $3,
+    config = $4,
+    updated_at = NOW(),
+    version = version + 1
+WHERE config_name = $1 AND version = $2
+RETURNING id, config_name, registry_url, config, created_at, updated_at;

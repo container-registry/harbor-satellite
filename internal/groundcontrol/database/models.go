@@ -24,6 +24,7 @@ type Config struct {
 	Config      json.RawMessage
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	Version     int32
 }
 
 type DesiredState struct {

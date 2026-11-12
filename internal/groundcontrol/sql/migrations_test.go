@@ -12,7 +12,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	migrations "github.com/container-registry/harbor-satellite/internal/groundcontrol/sql"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +34,9 @@ func provider(t *testing.T, db *sql.DB, schema fs.FS) *goose.Provider {
 func publicTables(t *testing.T, db *sql.DB) []string {
 	t.Helper()
 	rows, err := db.QueryContext(context.Background(),
-		"SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name <> 'goose_db_version' ORDER BY table_name")
+		// Base tables only: dbtest installs pg_stat_statements, whose views
+		// live in public and belong to no migration.
+		"SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name <> 'goose_db_version' ORDER BY table_name")
 	require.NoError(t, err)
 	defer rows.Close()
 	var tables []string
@@ -49,7 +50,6 @@ func publicTables(t *testing.T, db *sql.DB) []string {
 }
 
 func TestMigrations_UpDownUp(t *testing.T) {
-	pending.Plan(t, "3.4", "015's Down recreates satellite_cached_images of the removed 014 and nothing drops it, so reverting 001 fails with 2BP01")
 	db := dbtest.New(t)
 	ctx := context.Background()
 	p := provider(t, db.DB, embeddedSchema(t))
@@ -83,13 +83,6 @@ func insertDuplicateRobots(t *testing.T, db *sql.DB) {
 	}
 }
 
-// withPendingConstraints is the embedded schema plus sql/pending/constraints.sql
-// as the next migration, which is where 3.4 puts it.
-func withPendingConstraints(t *testing.T) (fs.FS, int64) {
-	t.Helper()
-	return withPendingMigration(t, "constraints")
-}
-
 // withPendingMigration is the embedded schema plus sql/pending/<name>.sql
 // as the next migration.
 func withPendingMigration(t *testing.T, name string) (fs.FS, int64) {
@@ -120,29 +113,48 @@ func columnType(t *testing.T, db *sql.DB, table, column string) string {
 	return dataType
 }
 
-// The pending DDL is not applied anywhere, so this keeps it valid until it
-// moves into sql/schema.
-func TestPendingConstraintsSQL_AppliesRefusesDuplicatesAndReverts(t *testing.T) {
+// constraintsVersion is the embedded migration that adds the 3.4 constraints.
+func constraintsVersion(t *testing.T, schema fs.FS) int64 {
+	t.Helper()
+	entries, err := fs.ReadDir(schema, ".")
+	require.NoError(t, err)
+	var version int64
+	for _, e := range entries {
+		data, err := fs.ReadFile(schema, e.Name())
+		require.NoError(t, err)
+		if bytes.Contains(data, []byte("robot_accounts_satellite_id_key")) {
+			_, err := fmt.Sscanf(e.Name(), "%d_", &version)
+			require.NoError(t, err)
+		}
+	}
+	require.NotZero(t, version, "no embedded migration adds robot_accounts_satellite_id_key")
+	return version
+}
+
+func TestConstraintsMigration_AppliesRefusesDuplicatesAndReverts(t *testing.T) {
 	db := dbtest.New(t)
 	ctx := context.Background()
-	schema, latest := withPendingConstraints(t)
+	schema := embeddedSchema(t)
+	version := constraintsVersion(t, schema)
 	p := provider(t, db.DB, schema)
+	_, err := p.DownTo(ctx, version-1)
+	require.NoError(t, err)
 	insertDuplicateRobots(t, db.DB)
 
-	_, err := p.Up(ctx)
+	_, err = p.UpTo(ctx, version)
 	require.ErrorContains(t, err, "robot_accounts has several robots for satellites")
-	version, err := p.GetDBVersion(ctx)
+	current, err := p.GetDBVersion(ctx)
 	require.NoError(t, err)
-	require.Equal(t, latest, version)
+	require.Equal(t, version-1, current)
 
 	_, err = db.ExecContext(ctx, "DELETE FROM robot_accounts WHERE robot_id = '101'")
 	require.NoError(t, err)
-	_, err = p.Up(ctx)
+	_, err = p.UpTo(ctx, version)
 	require.NoError(t, err)
 	require.Equal(t, "timestamp with time zone", columnType(t, db.DB, "satellites", "last_seen"))
 	require.Equal(t, "integer", columnType(t, db.DB, "configs", "version"))
 
-	_, err = p.DownTo(ctx, latest)
+	_, err = p.DownTo(ctx, version-1)
 	require.NoError(t, err)
 	require.Equal(t, "timestamp without time zone", columnType(t, db.DB, "satellites", "last_seen"))
 	var versionColumns int
@@ -152,26 +164,13 @@ func TestPendingConstraintsSQL_AppliesRefusesDuplicatesAndReverts(t *testing.T) 
 }
 
 func TestConstraintsMigration_FailsOnDuplicateRobots(t *testing.T) {
-	pending.Plan(t, "3.4", "robot_accounts allows several robots per satellite")
 	db := dbtest.New(t)
 	ctx := context.Background()
 	schema := embeddedSchema(t)
-
-	entries, err := fs.ReadDir(schema, ".")
-	require.NoError(t, err)
-	var constraintsVersion int64
-	for _, e := range entries {
-		data, err := fs.ReadFile(schema, e.Name())
-		require.NoError(t, err)
-		if bytes.Contains(data, []byte("robot_accounts_satellite_id_key")) {
-			_, err := fmt.Sscanf(e.Name(), "%d_", &constraintsVersion)
-			require.NoError(t, err)
-		}
-	}
-	require.NotZero(t, constraintsVersion, "no embedded migration adds robot_accounts_satellite_id_key")
+	version := constraintsVersion(t, schema)
 
 	p := provider(t, db.DB, schema)
-	_, err = p.DownTo(ctx, constraintsVersion-1)
+	_, err := p.DownTo(ctx, version-1)
 	require.NoError(t, err)
 	insertDuplicateRobots(t, db.DB)
 

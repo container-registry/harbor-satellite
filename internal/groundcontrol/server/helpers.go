@@ -21,9 +21,9 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 )
 
-func isConfigInUse(ctx context.Context, q *database.Queries, config database.Config) (bool, error) {
+func isConfigInUse(ctx context.Context, q *database.Queries, configID int32) (bool, error) {
 	// Check if any satellite is using this config
-	satellites, err := q.ConfigSatelliteList(ctx, config.ID)
+	satellites, err := q.ConfigSatelliteList(ctx, configID)
 	if err != nil {
 		return false, err
 	}
@@ -298,11 +298,11 @@ func GetAuthToken(r *http.Request) (string, error) {
 	return token, nil
 }
 
-func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, satelliteID int32) (database.Config, error) {
+func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, satelliteID int32) (database.GetConfigByIDRow, error) {
 	satelliteConfig, err := dbQueries.SatelliteConfig(ctx, satelliteID)
 	if err != nil {
 		log.Printf("Error: Failed to fetch satellite config: %v", err)
-		return database.Config{}, &AppError{
+		return database.GetConfigByIDRow{}, &AppError{
 			Message: "Error: Failed to fetch satellite config",
 			Code:    http.StatusInternalServerError,
 		}
@@ -311,7 +311,7 @@ func fetchSatelliteConfig(ctx context.Context, dbQueries *database.Queries, sate
 	configObject, err := dbQueries.GetConfigByID(ctx, satelliteConfig.ConfigID)
 	if err != nil {
 		log.Printf("Error: Failed to fetch satellite config: %v", err)
-		return database.Config{}, &AppError{
+		return database.GetConfigByIDRow{}, &AppError{
 			Message: "Error: Failed to fetch satellite config",
 			Code:    http.StatusInternalServerError,
 		}
