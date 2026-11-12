@@ -13,11 +13,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/heartbeat"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingRotation = "the postgres rotation store is a stub; robots are not rotated"
 
 // expiringRobot is satellite edge-01 with robot 42 expiring in a day.
 func expiringRobot(t *testing.T, db *dbtest.DB) fleet.SatelliteID {
@@ -38,7 +35,6 @@ func expiringRobot(t *testing.T, db *dbtest.DB) fleet.SatelliteID {
 }
 
 func TestRotationStore_RoundTrip(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	db := dbtest.New(t)
 	ctx := context.Background()
 	id := expiringRobot(t, db)
@@ -82,7 +78,6 @@ func TestRotationStore_RoundTrip(t *testing.T) {
 }
 
 func TestHeartbeatStore_AcksRotationOnlyWhenPresent(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	db := dbtest.New(t)
 	ctx := context.Background()
 	id := expiringRobot(t, db)

@@ -11,7 +11,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -474,7 +473,6 @@ func TestSatelliteReconciler_UnrevokedEndsEnabled(t *testing.T) {
 }
 
 func TestSatelliteReconciler_RobotRotatedClearsAndRegrants(t *testing.T) {
-	pending.Plan(t, "8.4", pendingRotation)
 	p := newPlane()
 	r := p.satellites(t)
 	require.NoError(t, r.Reconcile(context.Background(), 7))
