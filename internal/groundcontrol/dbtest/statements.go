@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Statements is what pg_stat_statements recorded for one database.
@@ -100,4 +101,26 @@ func statementKey(query string) string {
 		key = key[:77] + "..."
 	}
 	return key
+}
+
+// WaitForLockWaiter waits until a session of this database waits for a
+// lock, so a test can commit the transaction a concurrent statement races
+// only once that statement blocks on it.
+func (d *DB) WaitForLockWaiter(t testing.TB) {
+	t.Helper()
+	const q = `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var n int
+		if err := d.QueryRowContext(context.Background(), q).Scan(&n); err != nil {
+			t.Fatalf("read pg_stat_activity: %v", err)
+		}
+		if n > 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no session of %s waits for a lock", d.Name)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }

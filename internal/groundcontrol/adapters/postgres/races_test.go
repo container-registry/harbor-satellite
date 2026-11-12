@@ -13,17 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mustWait fails when done delivers within 200ms: the operation under test
-// did not block on the open transaction.
-func mustWait[T any](t *testing.T, done <-chan T, what string) {
-	t.Helper()
-	select {
-	case <-done:
-		t.Fatalf("%s did not wait for the open transaction", what)
-	case <-time.After(200 * time.Millisecond):
-	}
-}
-
 // Two first logins of one OIDC subject whose claims carry different
 // usernames: the one that loses the (issuer, subject) race logs in as the
 // user the winner linked.
@@ -47,7 +36,7 @@ func TestIdentityStore_ConcurrentFirstLoginsWithDifferentUsernames(t *testing.T)
 		id, upsertErr := store.Upsert(ctx, authn.Claims{Issuer: "https://dex.example", Subject: "sub-alice", Username: "alice.renamed"}, "admin")
 		done <- result{id, upsertErr}
 	}()
-	mustWait(t, done, "Upsert")
+	db.WaitForLockWaiter(t)
 	require.NoError(t, tx.Commit())
 
 	got := <-done
@@ -87,7 +76,7 @@ func TestJournal_ConcurrentFirstOpenIsNotFreshForTheWaiter(t *testing.T) {
 		})
 		done <- r
 	}()
-	mustWait(t, done, "OpenCursor")
+	db.WaitForLockWaiter(t)
 	require.NoError(t, tx.Commit())
 
 	got := <-done

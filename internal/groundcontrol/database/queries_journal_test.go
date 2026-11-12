@@ -162,7 +162,7 @@ func TestOpenJournalCursor_ConcurrentCreateReturnsTheRowOnTheRerun(t *testing.T)
 		row, err := q.OpenJournalCursor(ctx, params)
 		waiting <- result{row, err}
 	}()
-	time.Sleep(200 * time.Millisecond)
+	db.WaitForLockWaiter(t)
 	require.NoError(t, tx.Commit())
 
 	got := <-waiting

@@ -110,7 +110,11 @@ type GroupRepo interface {
 	Upsert(ctx context.Context, group Group) (Group, error)
 	Get(ctx context.Context, id GroupID) (Group, error)
 	GetByName(ctx context.Context, name string) (Group, error)
+	// List leaves Artifacts out; the list endpoint never shows them.
 	List(ctx context.Context) ([]Group, error)
+	// Tracking returns, with their artifacts, the groups that list an
+	// artifact of repository under tag.
+	Tracking(ctx context.Context, repository, tag string) ([]Group, error)
 	Delete(ctx context.Context, id GroupID) error
 	Members(ctx context.Context, id GroupID) ([]SatelliteID, error)
 	AddMember(ctx context.Context, id GroupID, satellite SatelliteID) error

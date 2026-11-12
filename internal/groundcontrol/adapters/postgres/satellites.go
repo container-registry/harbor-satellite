@@ -60,17 +60,18 @@ func (r satelliteRepo) Delete(ctx context.Context, id fleet.SatelliteID) error {
 	return mapError(r.q.DeleteSatellite(ctx, int32(id)))
 }
 
+// Groups runs ListGroupsOfSatelliteWithArtifacts, one statement however
+// many groups the satellite is in.
 func (r satelliteRepo) Groups(ctx context.Context, id fleet.SatelliteID) ([]fleet.Group, error) {
-	links, err := r.q.SatelliteGroupList(ctx, int32(id))
+	rows, err := r.q.ListGroupsOfSatelliteWithArtifacts(ctx, int32(id))
 	if err != nil {
 		return nil, mapError(err)
 	}
-	groups := groupRepo(r)
-	out := make([]fleet.Group, 0, len(links))
-	for _, l := range links {
-		g, err := groups.Get(ctx, fleet.GroupID(l.GroupID))
+	out := make([]fleet.Group, 0, len(rows))
+	for _, row := range rows {
+		g, err := decodeArtifacts(row.Group, row.Artifacts)
 		if err != nil {
-			return nil, fmt.Errorf("group %d of satellite %d: %w", l.GroupID, id, err)
+			return nil, fmt.Errorf("group %d of satellite %d: %w", row.Group.ID, id, err)
 		}
 		out = append(out, g)
 	}

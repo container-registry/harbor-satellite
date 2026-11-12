@@ -3,6 +3,7 @@ package fleettest
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"time"
 
@@ -241,6 +242,24 @@ func (g *GroupRepo) GetByName(_ context.Context, name string) (fleet.Group, erro
 
 func (g *GroupRepo) List(context.Context) ([]fleet.Group, error) {
 	return values(g.rec, "Groups.List", g.ByName)
+}
+
+// Tracking answers the groups of ByName with an artifact of repository
+// under tag.
+func (g *GroupRepo) Tracking(_ context.Context, repository, tag string) ([]fleet.Group, error) {
+	all, err := values(g.rec, "Groups.Tracking", g.ByName)
+	if err != nil {
+		return nil, err
+	}
+	var out []fleet.Group
+	for _, group := range all {
+		if slices.ContainsFunc(group.Artifacts, func(a fleet.Artifact) bool {
+			return a.Repository == repository && slices.Contains(a.Tags, tag)
+		}) {
+			out = append(out, group)
+		}
+	}
+	return out, nil
 }
 
 func (g *GroupRepo) Delete(_ context.Context, id fleet.GroupID) error {

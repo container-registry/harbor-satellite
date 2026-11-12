@@ -40,9 +40,9 @@ func (s *GroupService) FollowPush(ctx context.Context, event RegistryEvent) ([]s
 	}
 	var updated []string
 	err := s.c.inTx(ctx, func(tx Tx) error {
-		groups, err := tx.Groups().List(ctx)
+		groups, err := tx.Groups().Tracking(ctx, repo, event.Tag)
 		if err != nil {
-			return fmt.Errorf("list groups: %w", err)
+			return fmt.Errorf("groups tracking %s:%s: %w", repo, event.Tag, err)
 		}
 		for _, g := range groups {
 			changed := false

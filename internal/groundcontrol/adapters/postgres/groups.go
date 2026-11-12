@@ -46,22 +46,14 @@ func toGroup(g database.Group) fleet.Group {
 // withArtifacts reads the group's artifacts; a group stored before
 // group_artifacts existed has none.
 func (r groupRepo) withArtifacts(ctx context.Context, g database.Group) (fleet.Group, error) {
-	out := toGroup(g)
 	doc, err := r.q.GetGroupArtifacts(ctx, g.ID)
 	if err != nil {
 		if errors.Is(mapError(err), fleet.ErrNotFound) {
-			return out, nil
+			return toGroup(g), nil
 		}
 		return fleet.Group{}, mapError(err)
 	}
-	var artifacts []fleet.Artifact
-	if err := json.Unmarshal(doc, &artifacts); err != nil {
-		return fleet.Group{}, fmt.Errorf("decode artifacts of group %s: %w", g.GroupName, err)
-	}
-	if len(artifacts) > 0 {
-		out.Artifacts = artifacts
-	}
-	return out, nil
+	return decodeArtifacts(g, doc)
 }
 
 func (r groupRepo) Get(ctx context.Context, id fleet.GroupID) (fleet.Group, error) {
@@ -78,6 +70,36 @@ func (r groupRepo) GetByName(ctx context.Context, name string) (fleet.Group, err
 		return fleet.Group{}, mapError(err)
 	}
 	return r.withArtifacts(ctx, g)
+}
+
+// decodeArtifacts keeps nil for an empty document, as withArtifacts does.
+func decodeArtifacts(g database.Group, doc []byte) (fleet.Group, error) {
+	out := toGroup(g)
+	var artifacts []fleet.Artifact
+	if err := json.Unmarshal(doc, &artifacts); err != nil {
+		return fleet.Group{}, fmt.Errorf("decode artifacts of group %s: %w", g.GroupName, err)
+	}
+	if len(artifacts) > 0 {
+		out.Artifacts = artifacts
+	}
+	return out, nil
+}
+
+// Tracking runs ListGroupsTrackingTag.
+func (r groupRepo) Tracking(ctx context.Context, repository, tag string) ([]fleet.Group, error) {
+	rows, err := r.q.ListGroupsTrackingTag(ctx, database.ListGroupsTrackingTagParams{Repository: repository, Tag: tag})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	out := make([]fleet.Group, 0, len(rows))
+	for _, row := range rows {
+		g, err := decodeArtifacts(row.Group, row.Artifacts)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, nil
 }
 
 // List leaves the artifacts out: the list endpoint never shows them.

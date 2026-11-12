@@ -8,6 +8,8 @@ package database
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/lib/pq"
 )
 
 const getGroupArtifacts = `-- name: GetGroupArtifacts :one
@@ -20,6 +22,104 @@ func (q *Queries) GetGroupArtifacts(ctx context.Context, groupID int32) (json.Ra
 	var artifacts json.RawMessage
 	err := row.Scan(&artifacts)
 	return artifacts, err
+}
+
+const listGroupsOfSatelliteWithArtifacts = `-- name: ListGroupsOfSatelliteWithArtifacts :many
+SELECT g.id, g.group_name, g.registry_url, g.projects, g.created_at, g.updated_at, COALESCE(ga.artifacts, '[]'::JSONB)::JSONB AS artifacts
+FROM satellite_groups sg
+JOIN groups g ON g.id = sg.group_id
+LEFT JOIN group_artifacts ga ON ga.group_id = g.id
+WHERE sg.satellite_id = $1
+ORDER BY g.id
+`
+
+type ListGroupsOfSatelliteWithArtifactsRow struct {
+	Group     Group
+	Artifacts json.RawMessage
+}
+
+// A satellite's groups with their artifacts in one statement; a group
+// stored before group_artifacts existed has none.
+func (q *Queries) ListGroupsOfSatelliteWithArtifacts(ctx context.Context, satelliteID int32) ([]ListGroupsOfSatelliteWithArtifactsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listGroupsOfSatelliteWithArtifacts, satelliteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGroupsOfSatelliteWithArtifactsRow
+	for rows.Next() {
+		var i ListGroupsOfSatelliteWithArtifactsRow
+		if err := rows.Scan(
+			&i.Group.ID,
+			&i.Group.GroupName,
+			&i.Group.RegistryUrl,
+			pq.Array(&i.Group.Projects),
+			&i.Group.CreatedAt,
+			&i.Group.UpdatedAt,
+			&i.Artifacts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGroupsTrackingTag = `-- name: ListGroupsTrackingTag :many
+SELECT g.id, g.group_name, g.registry_url, g.projects, g.created_at, g.updated_at, ga.artifacts
+FROM groups g
+JOIN group_artifacts ga ON ga.group_id = g.id
+WHERE ga.artifacts @> jsonb_build_array(jsonb_build_object('repository', $1::TEXT, 'tag', jsonb_build_array($2::TEXT)))
+ORDER BY g.id
+`
+
+type ListGroupsTrackingTagParams struct {
+	Repository string
+	Tag        string
+}
+
+type ListGroupsTrackingTagRow struct {
+	Group     Group
+	Artifacts json.RawMessage
+}
+
+// The groups whose artifacts list repository under tag, with their
+// artifacts: the groups a push of that tag can move.
+func (q *Queries) ListGroupsTrackingTag(ctx context.Context, arg ListGroupsTrackingTagParams) ([]ListGroupsTrackingTagRow, error) {
+	rows, err := q.db.QueryContext(ctx, listGroupsTrackingTag, arg.Repository, arg.Tag)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGroupsTrackingTagRow
+	for rows.Next() {
+		var i ListGroupsTrackingTagRow
+		if err := rows.Scan(
+			&i.Group.ID,
+			&i.Group.GroupName,
+			&i.Group.RegistryUrl,
+			pq.Array(&i.Group.Projects),
+			&i.Group.CreatedAt,
+			&i.Group.UpdatedAt,
+			&i.Artifacts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const upsertGroupArtifacts = `-- name: UpsertGroupArtifacts :exec
