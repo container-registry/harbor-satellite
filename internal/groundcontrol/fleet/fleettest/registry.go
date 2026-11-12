@@ -84,3 +84,21 @@ func (r *Registry) ReplicationPolicyExists(_ context.Context, name string) (bool
 func (r *Registry) Ping(context.Context) error {
 	return r.Record("Ping")
 }
+
+// registryMethods are the fleet.Registry methods.
+var registryMethods = map[string]bool{
+	"FindRobot": true, "CreateRobot": true, "SetRobotAccess": true, "RotateRobotSecret": true, "DeleteRobot": true,
+	"PushState": true, "DeleteState": true, "EnsureProject": true, "ReplicationPolicyExists": true, "Ping": true,
+}
+
+// Calls returns the registry calls only, also when the Recorder is shared
+// with other fakes, so "no registry call" can be asserted on it.
+func (r *Registry) Calls() []Call {
+	var out []Call
+	for _, c := range r.Recorder.Calls() {
+		if registryMethods[c.Method] {
+			out = append(out, c)
+		}
+	}
+	return out
+}

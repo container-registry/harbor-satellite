@@ -101,7 +101,6 @@ func event(t *testing.T, id int64, kind fleet.EventKind, typ fleet.AggregateType
 }
 
 func TestSatelliteReconciler_UnionAndSinglePush(t *testing.T) {
-	pending.Plan(t, "2.3", pendingReconcilers)
 	p := newPlane()
 	r := p.satellites(t)
 
@@ -132,7 +131,6 @@ func TestSatelliteReconciler_UnionAndSinglePush(t *testing.T) {
 }
 
 func TestSatelliteReconciler_GrouplessPublishesEmptyState(t *testing.T) {
-	pending.Plan(t, "2.3", "D10: a satellite without groups gets no state artifact")
 	p := newPlane()
 	p.repo.Satellites.GroupsOf[7] = nil
 	p.repo.Satellites.GrantsOf[7] = fleet.RobotGrant{Satellite: 7, HarborID: 42, RobotName: "robot$edge-01"}
@@ -154,7 +152,6 @@ func TestSatelliteReconciler_GrouplessPublishesEmptyState(t *testing.T) {
 }
 
 func TestSatelliteReconciler_FailureIsRetriedAndRecorded(t *testing.T) {
-	pending.Plan(t, "2.3", pendingReconcilers)
 	p := newPlane()
 	r := p.satellites(t)
 	boom := errors.New("registry down")
@@ -172,7 +169,6 @@ func TestSatelliteReconciler_FailureIsRetriedAndRecorded(t *testing.T) {
 }
 
 func TestSatelliteReconciler_GoneSatelliteIsDone(t *testing.T) {
-	pending.Plan(t, "2.3", pendingReconcilers)
 	p := newPlane()
 
 	require.NoError(t, p.satellites(t).Reconcile(context.Background(), 99))
@@ -184,7 +180,6 @@ func TestSatelliteReconciler_GoneSatelliteIsDone(t *testing.T) {
 // ID. A crash between creating it and storing it leaves a robot the next
 // attempt adopts, by exactly that name.
 func TestSatelliteReconciler_CreatesTheRobotAndAdoptsItAfterACrash(t *testing.T) {
-	pending.Plan(t, "2.5", "RegisterSatellite creates the robot in the request")
 	p := newPlane()
 	delete(p.repo.Robots.BySatelliteID, 7)
 	delete(p.repo.Satellites.GrantsOf, 7)
@@ -250,7 +245,6 @@ func onlyCallArg(t *testing.T, rec *fleettest.Recorder, method string) any {
 // A85: the group reconciler publishes the group and fans out to its
 // members in one statement; it reconciles none of them itself.
 func TestGroupReconciler_PublishesAndFansOutToMembers(t *testing.T) {
-	pending.Plan(t, "2.3", pendingReconcilers)
 	p := newPlane()
 	grp, err := async.NewGroupReconciler(p.repo, p.registry, p.desired, settings)
 	require.NoError(t, err)
@@ -266,7 +260,6 @@ func TestGroupReconciler_PublishesAndFansOutToMembers(t *testing.T) {
 }
 
 func TestConfigReconciler_PublishesConfigState(t *testing.T) {
-	pending.Plan(t, "2.3", pendingReconcilers)
 	p := newPlane()
 	cfg, err := async.NewConfigReconciler(p.repo, p.registry, p.desired, settings)
 	require.NoError(t, err)
@@ -281,7 +274,6 @@ func TestConfigReconciler_PublishesConfigState(t *testing.T) {
 }
 
 func TestTombstoneHandler_DeletesWhatThePayloadNames(t *testing.T) {
-	pending.Plan(t, "2.3", pendingReconcilers)
 	p := newPlane()
 	p.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-02": {ID: 8, Name: "edge-02"}}
 	p.repo.Groups.ByName = nil
@@ -328,7 +320,6 @@ func TestTombstoneHandler_DeletesWhatThePayloadNames(t *testing.T) {
 // A84: edge-01 (7) is deleted and registered again as 9, which publishes
 // first. The old tombstone must not delete what 9 published.
 func TestTombstoneHandler_KeepsTheStateOfARecreatedName(t *testing.T) {
-	pending.Plan(t, "2.3", pendingReconcilers)
 	p := newPlane()
 	p.repo.Satellites.ByName = map[string]fleet.Satellite{"edge-01": {ID: 9, Name: "edge-01"}}
 	ctx := context.Background()
@@ -352,7 +343,6 @@ func TestTombstoneHandler_KeepsTheStateOfARecreatedName(t *testing.T) {
 // Level-triggered handlers make the order and number of events irrelevant:
 // whatever arrives, each state is pushed once.
 func TestReconcilers_DuplicateAndReorderedEventsHarmless(t *testing.T) {
-	pending.Plan(t, "2.3", pendingReconcilers)
 	events := []async.OutboxEvent{
 		{ID: 1, Kind: fleet.EventGroupChanged, Aggregate: fleet.Aggregate{Type: fleet.AggregateGroup, ID: 1}},
 		{ID: 2, Kind: fleet.EventSatelliteCreated, Aggregate: fleet.Aggregate{Type: fleet.AggregateSatellite, ID: 7}},
@@ -378,7 +368,6 @@ func TestReconcilers_DuplicateAndReorderedEventsHarmless(t *testing.T) {
 }
 
 func TestNewRoutes_HandlesEveryEventKind(t *testing.T) {
-	pending.Plan(t, "2.3", pendingReconcilers)
 	p := newPlane()
 	router := p.routes(t)
 
@@ -393,7 +382,6 @@ func TestNewRoutes_HandlesEveryEventKind(t *testing.T) {
 }
 
 func TestRegistryProbe_RecordsLastSuccessfulPing(t *testing.T) {
-	pending.Plan(t, "2.6", "/health checks only the database; nothing pings Harbor after startup")
 	registry := fleettest.NewRegistry(nil)
 	registry.FailOn("Ping", fleet.ErrRegistryUnavailable)
 	probe, err := async.NewRegistryProbe(registry, 10*time.Millisecond, time.Second)
@@ -417,7 +405,6 @@ func TestRegistryProbe_RecordsLastSuccessfulPing(t *testing.T) {
 }
 
 func TestLimitRegistry_SpacesCalls(t *testing.T) {
-	pending.Plan(t, "2.3", "nothing limits the request rate toward Harbor")
 	registry := fleettest.NewRegistry(nil)
 	limited := async.LimitRegistry(registry, 20)
 

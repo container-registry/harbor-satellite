@@ -12,11 +12,8 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingOutbox = "the outbox adapters are stubs; handlers call Harbor in the request"
 
 func appendEvents(t *testing.T, db *dbtest.DB, n int) []int64 {
 	t.Helper()
@@ -144,7 +141,6 @@ func TestDesiredStateStore_RecordPublishGet(t *testing.T) {
 // once: the second may handle again what the first finished but had not
 // completed yet, which level-triggered handlers make harmless.
 func TestPublisher_KillMidBatchConverges(t *testing.T) {
-	pending.Plan(t, "2.3", pendingOutbox)
 	db := dbtest.New(t)
 	ids := appendEvents(t, db, 5)
 	store, err := postgres.NewOutboxStore(db.DB)

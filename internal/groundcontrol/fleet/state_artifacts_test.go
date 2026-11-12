@@ -65,7 +65,6 @@ func TestDesiredSatelliteGoldenDigest(t *testing.T) {
 }
 
 func TestRenderSatelliteDesiredState_MatchesGolden(t *testing.T) {
-	pending.Plan(t, "2.3", "nothing renders desired state; handlers push artifacts directly")
 	ref := func(kind, name string) fleet.ArtifactRef {
 		return fleet.ArtifactRef{Registry: "http://harbor.example:8080", Repository: "satellite/" + kind + "-state/" + name + "/state", Tag: "latest"}
 	}

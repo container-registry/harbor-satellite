@@ -11,11 +11,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingPublisher = "the publisher is a stub; handlers still call Harbor in the request"
 
 func TestDefaultPublisherConfig(t *testing.T) {
 	cfg := async.DefaultPublisherConfig()
@@ -28,7 +25,6 @@ func TestDefaultPublisherConfig(t *testing.T) {
 }
 
 func TestBackoff_ExponentialCapped(t *testing.T) {
-	pending.Plan(t, "2.3", pendingPublisher)
 	for attempt, want := range map[int]time.Duration{
 		0:   time.Second,
 		1:   time.Second,
@@ -51,7 +47,6 @@ func newPublisher(t *testing.T, store async.OutboxStore, h async.Handler, cfg as
 }
 
 func TestPublisher_CompletesHandledEvents(t *testing.T) {
-	pending.Plan(t, "2.3", pendingPublisher)
 	store := newFakeOutbox(fleet.EventSatelliteCreated, fleet.EventGroupChanged, fleet.EventConfigChanged)
 	var handled []int64
 	var mu sync.Mutex
@@ -72,7 +67,6 @@ func TestPublisher_CompletesHandledEvents(t *testing.T) {
 }
 
 func TestPublisher_BacksOffFailures(t *testing.T) {
-	pending.Plan(t, "2.3", pendingPublisher)
 	store := newFakeOutbox(fleet.EventSatelliteCreated, fleet.EventSatelliteCreated)
 	cfg := async.DefaultPublisherConfig()
 	cfg.BackoffBase, cfg.BackoffMax = 10*time.Second, time.Hour
@@ -96,7 +90,6 @@ func TestPublisher_BacksOffFailures(t *testing.T) {
 }
 
 func TestPublisher_StopsAtMaxAttempts(t *testing.T) {
-	pending.Plan(t, "2.3", pendingPublisher)
 	store := newFakeOutbox(fleet.EventSatelliteCreated)
 	cfg := async.DefaultPublisherConfig()
 	cfg.MaxAttempts = 3
@@ -119,7 +112,6 @@ func TestPublisher_StopsAtMaxAttempts(t *testing.T) {
 }
 
 func TestPublisher_RespectsConcurrencyLimit(t *testing.T) {
-	pending.Plan(t, "2.3", pendingPublisher)
 	kinds := make([]fleet.EventKind, 12)
 	for i := range kinds {
 		kinds[i] = fleet.EventSatelliteCreated
@@ -148,7 +140,6 @@ func TestPublisher_RespectsConcurrencyLimit(t *testing.T) {
 }
 
 func TestPublisher_RunStopsWhenTheContextEnds(t *testing.T) {
-	pending.Plan(t, "2.3", pendingPublisher)
 	store := newFakeOutbox(fleet.EventSatelliteCreated)
 	cfg := async.DefaultPublisherConfig()
 	cfg.PollInterval = 10 * time.Millisecond
@@ -169,7 +160,6 @@ func TestPublisher_RunStopsWhenTheContextEnds(t *testing.T) {
 }
 
 func TestPublisher_CompletesEventsWithoutHandler(t *testing.T) {
-	pending.Plan(t, "2.3", pendingPublisher)
 	store := newFakeOutbox("SomethingNew")
 	p := newPublisher(t, store, async.HandlerFunc(func(context.Context, async.OutboxEvent) error {
 		return fmt.Errorf("route: %w", async.ErrNoHandler)
@@ -185,7 +175,6 @@ func TestPublisher_CompletesEventsWithoutHandler(t *testing.T) {
 // Another worker reconciles the aggregate right now: the event waits
 // without paying an attempt (A86).
 func TestPublisher_ReleasesEventsOfLockedAggregates(t *testing.T) {
-	pending.Plan(t, "2.3", pendingPublisher)
 	store := newFakeOutbox(fleet.EventSatelliteCreated, fleet.EventSatelliteCreated)
 	locker := newFakeLocker()
 	locker.held[fleet.Aggregate{Type: fleet.AggregateSatellite, ID: 2}] = true
@@ -216,7 +205,6 @@ func TestPublisher_ReleasesEventsOfLockedAggregates(t *testing.T) {
 // nothing: unreachable failures give their attempt back, claiming pauses
 // while the probe is stale, and recovery re-arms what ran out (A82).
 func TestPublisher_ConvergesAfterALongOutage(t *testing.T) {
-	pending.Plan(t, "2.3", pendingPublisher)
 	store := newFakeOutbox(fleet.EventSatelliteCreated, fleet.EventGroupChanged)
 	store.events[1].Attempts = 3
 	reach := &fakeReachability{reachable: true}

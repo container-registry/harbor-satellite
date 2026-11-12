@@ -2,8 +2,11 @@ package async
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 )
 
 var (
@@ -24,14 +27,42 @@ type Job interface {
 // Worker runs the publisher and further jobs until ctx ends. It runs
 // embedded in `groundcontrol serve --worker=embedded` or alone as
 // `groundcontrol worker`; several workers may run against one database.
-type Worker struct{}
+type Worker struct {
+	jobs []Job
+}
 
 func NewWorker(publisher *Publisher, jobs ...Job) (*Worker, error) {
-	return nil, notimpl.Err("2.4 worker")
+	if publisher == nil {
+		return nil, fmt.Errorf("%w: the worker needs a publisher", fleet.ErrInvalid)
+	}
+	all := []Job{publisher}
+	for _, j := range jobs {
+		if j != nil {
+			all = append(all, j)
+		}
+	}
+	return &Worker{jobs: all}, nil
 }
 
 // Run stops every job when ctx ends or one job returns, and returns the
 // first error.
 func (w *Worker) Run(ctx context.Context) error {
-	return notimpl.Err("2.4 worker run")
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var (
+		wg    sync.WaitGroup
+		once  sync.Once
+		first error
+	)
+	for _, j := range w.jobs {
+		wg.Go(func() {
+			err := j.Run(ctx)
+			if err != nil && !errors.Is(err, context.Canceled) {
+				once.Do(func() { first = fmt.Errorf("%s: %w", j.Name(), err) })
+			}
+			cancel()
+		})
+	}
+	wg.Wait()
+	return first
 }
