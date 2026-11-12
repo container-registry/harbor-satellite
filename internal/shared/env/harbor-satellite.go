@@ -3,32 +3,31 @@ package env
 import (
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
 
 type HarborSatellite struct {
-	Token                  string     `env:"TOKEN"`
-	GroundControlURL       string     `env:"GROUND_CONTROL_URL"`
-	SPIFFEEnabled          bool       `env:"SPIFFE_ENABLED"            envDefault:"false"`
-	SPIFFEEndpointSocket   string     `env:"SPIFFE_ENDPOINT_SOCKET"    envDefault:"unix:///run/spire/sockets/agent.sock"`
-	SPIFFEExpectedServerID string     `env:"SPIFFE_EXPECTED_SERVER_ID"`
-	UseUnsecure            bool       `env:"USE_UNSECURE"              envDefault:"false"`
-	BYORegistry            bool       `env:"BYO_REGISTRY"              envDefault:"false"`
-	RegistryURL            string     `env:"REGISTRY_URL"`
-	RegistryUsername       string     `env:"REGISTRY_USERNAME"`
-	RegistryPassword       string     `env:"REGISTRY_PASSWORD"`
-	ConfigDir              string     `env:"CONFIG_DIR"`
-	DesiredStateFile       string     `env:"DESIRED_STATE_FILE"`
-	RegistryDataDir        string     `env:"REGISTRY_DATA_DIR"`
-	ShutdownTimeout        string     `env:"SHUTDOWN_TIMEOUT"          envDefault:"30s"`
-	NoRegistryFallback     bool       `env:"NO_REGISTRY_FALLBACK"      envDefault:"false"`
-	HarborRegistryURL      string     `env:"HARBOR_REGISTRY_URL"`
-	DirectDelivery         bool       `env:"DIRECT_DELIVERY"           envDefault:"false"`
-	ImageDir               string     `env:"IMAGE_DIR"`
-	ProxyMode              proxy.Mode `env:"PROXY_MODE"                envDefault:"proxy"`
-	ProxyPort              int        `env:"PROXY_PORT"                envDefault:"8585"`
-	TelemetryAddr          string     `env:"TELEMETRY_ADDR"`
+	Token                  string           `env:"TOKEN"`
+	GroundControlURL       string           `env:"GROUND_CONTROL_URL"`
+	SPIFFEEnabled          bool             `env:"SPIFFE_ENABLED"            envDefault:"false"`
+	SPIFFEEndpointSocket   string           `env:"SPIFFE_ENDPOINT_SOCKET"    envDefault:"unix:///run/spire/sockets/agent.sock"`
+	SPIFFEExpectedServerID string           `env:"SPIFFE_EXPECTED_SERVER_ID"`
+	UseUnsecure            bool             `env:"USE_UNSECURE"              envDefault:"false"`
+	BYORegistry            bool             `env:"BYO_REGISTRY"              envDefault:"false"`
+	RegistryURL            string           `env:"REGISTRY_URL"`
+	RegistryUsername       string           `env:"REGISTRY_USERNAME"`
+	RegistryPassword       string           `env:"REGISTRY_PASSWORD"`
+	ConfigDir              string           `env:"CONFIG_DIR"`
+	DesiredStateFile       string           `env:"DESIRED_STATE_FILE"`
+	RegistryDataDir        string           `env:"REGISTRY_DATA_DIR"`
+	ShutdownTimeout        string           `env:"SHUTDOWN_TIMEOUT"          envDefault:"30s"`
+	NoRegistryFallback     bool             `env:"NO_REGISTRY_FALLBACK"      envDefault:"false"`
+	HarborRegistryURL      string           `env:"HARBOR_REGISTRY_URL"`
+	DirectDelivery         bool             `env:"DIRECT_DELIVERY"           envDefault:"false"`
+	ImageDir               string           `env:"IMAGE_DIR"`
+	ProxyMode              config.ProxyMode `env:"PROXY_MODE"                envDefault:"proxy"`
+	ProxyPort              int              `env:"PROXY_PORT"                envDefault:"8585"`
+	TelemetryAddr          string           `env:"TELEMETRY_ADDR"`
 
 	// Plan items 5.3 and 5.4, parsed only: cmd/satellite does not read them yet.
 	ProxyMaxConnections      int           `env:"PROXY_MAX_CONNECTIONS"      envDefault:"0"`
@@ -45,7 +44,7 @@ func (h HarborSatellite) ApplyDefaults() HarborSatellite {
 		h.ShutdownTimeout = "30s"
 	}
 	if h.ProxyMode == "" {
-		h.ProxyMode = proxy.ModeProxy
+		h.ProxyMode = config.ProxyModeProxy
 	}
 	return h
 }

@@ -143,6 +143,11 @@ func (e *ConfigEncryptor) ReEncrypt(data []byte) ([]byte, error) {
 	return e.EncryptBytes(plaintext)
 }
 
+// IsEncrypted is the method form of IsEncrypted for config.Encryptor.
+func (e *ConfigEncryptor) IsEncrypted(data []byte) bool {
+	return IsEncrypted(data)
+}
+
 // IsEncrypted checks if data appears to be an encrypted config.
 func IsEncrypted(data []byte) bool {
 	var encConfig EncryptedConfig
