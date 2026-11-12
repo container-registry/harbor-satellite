@@ -4,6 +4,12 @@ WITH gone AS (DELETE FROM satellite_sessions WHERE satellite_id = sqlc.arg(satel
 INSERT INTO satellite_sessions (satellite_id, token_hash, expires_at)
 VALUES (sqlc.arg(satellite_id), sqlc.arg(token_hash), sqlc.arg(expires_at)::TIMESTAMPTZ);
 
+-- name: LockSatelliteForSessionWipe :exec
+-- Waits for every open transaction that inserted a row referencing the
+-- satellite (a renewal holds FOR KEY SHARE on it), so the next statement's
+-- snapshot sees that row.
+SELECT id FROM satellites WHERE id = $1 FOR UPDATE;
+
 -- name: LockSatelliteSessions :exec
 -- Holds the satellite's session lock (namespace
 -- advisorylock.SatelliteSessions) until the transaction ends.
