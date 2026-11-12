@@ -33,7 +33,7 @@ const claimToken = `-- name: ClaimToken :one
 UPDATE satellite_token SET consumed_at = NOW()
 WHERE token = $1
   AND consumed_at IS NULL
-  AND expires_at > $2::TIMESTAMP
+  AND expires_at > $2::TIMESTAMPTZ
 RETURNING satellite_id
 `
 
@@ -42,8 +42,8 @@ type ClaimTokenParams struct {
 	Now   time.Time
 }
 
-// expires_at is a TIMESTAMP the app writes, so it is compared with the
-// app's clock (now) rather than the database's NOW().
+// expires_at is written by the app, so it is compared with the app's clock
+// (now) rather than the database's NOW(); both are TIMESTAMPTZ (023).
 func (q *Queries) ClaimToken(ctx context.Context, arg ClaimTokenParams) (int32, error) {
 	row := q.db.QueryRowContext(ctx, claimToken, arg.Token, arg.Now)
 	var satellite_id int32

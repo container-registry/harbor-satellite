@@ -109,3 +109,27 @@ ALTER ROLE gc_async SET statement_timeout = '5min';
 ```
 
 Then set `DB_URL_API`, `DB_URL_FLEET` and `DB_URL_ASYNC` to URLs with those roles, and keep `DB_<PLANE>_MAX_OPEN_CONNS` below each `CONNECTION LIMIT`. Migrations run with the API URL, so the API role needs the DDL privileges. A managed service that allows one role only works with the single DSN and the `DB_<PLANE>_*` settings.
+
+## Upgrading
+
+### Migration 023: constraints and time zones
+
+Migration 023 adds `UNIQUE (satellite_id)` to `robot_accounts`, makes deleting a config that satellites use fail (`ON DELETE RESTRICT`), checks `satellites.heartbeat_interval` against `@every HHhMMmSSs`, adds `configs.version` (a concurrent `PATCH /api/configs/{config}` now answers 409 instead of overwriting the other update), and turns every `TIMESTAMP` column into `TIMESTAMPTZ`.
+
+**Duplicate robot accounts.** The migration stops with `robot_accounts has several robots for satellites: ...` when a satellite has more than one row in `robot_accounts`. Keep the newest row per satellite and delete the others:
+
+```sql
+SELECT satellite_id, id, robot_name, robot_id, created_at
+FROM robot_accounts
+WHERE satellite_id IN (SELECT satellite_id FROM robot_accounts GROUP BY satellite_id HAVING count(*) > 1)
+ORDER BY satellite_id, created_at DESC, id DESC;
+
+DELETE FROM robot_accounts r
+USING robot_accounts newer
+WHERE newer.satellite_id = r.satellite_id
+  AND (newer.created_at, newer.id) > (r.created_at, r.id);
+```
+
+Delete the Harbor robots of the removed rows (`robot_id`) in Harbor as well, then start Ground Control again.
+
+**Time zones.** The conversion reads every stored value as UTC wall-clock time (`AT TIME ZONE 'UTC'`). Values written with `NOW()` follow the database's `TimeZone` setting, and values written by Ground Control (for example `robot_expiry`, `expires_at`, `locked_until`) follow the time zone of the Ground Control process. Check that both were UTC before upgrading; otherwise adjust the stored values first.

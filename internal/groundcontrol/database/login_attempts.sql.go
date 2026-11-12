@@ -13,8 +13,8 @@ import (
 
 const deleteStaleLoginAttempts = `-- name: DeleteStaleLoginAttempts :exec
 DELETE FROM login_attempts
-WHERE last_attempt < $1::TIMESTAMP - make_interval(days => $2::INT)
-  AND (locked_until IS NULL OR locked_until < $1::TIMESTAMP)
+WHERE last_attempt < $1::TIMESTAMPTZ - make_interval(days => $2::INT)
+  AND (locked_until IS NULL OR locked_until < $1::TIMESTAMPTZ)
 `
 
 type DeleteStaleLoginAttemptsParams struct {

@@ -34,7 +34,6 @@ func insertSatellite(t *testing.T, db *sql.DB) int32 {
 }
 
 func TestConstraint_RobotPerSatellite(t *testing.T) {
-	pending.Plan(t, "3.4", "robot_accounts allows several robots per satellite")
 	db := dbtest.New(t)
 	ctx := context.Background()
 	satellite := insertSatellite(t, db.DB)
@@ -47,7 +46,6 @@ func TestConstraint_RobotPerSatellite(t *testing.T) {
 }
 
 func TestConstraint_ConfigRestrict(t *testing.T) {
-	pending.Plan(t, "3.4", "deleting a config cascades to satellite_configs instead of being refused")
 	db := dbtest.New(t)
 	ctx := context.Background()
 	satellite := insertSatellite(t, db.DB)
@@ -62,7 +60,6 @@ func TestConstraint_ConfigRestrict(t *testing.T) {
 }
 
 func TestConstraint_HeartbeatCheck(t *testing.T) {
-	pending.Plan(t, "3.4", "satellites.heartbeat_interval accepts any string")
 	db := dbtest.New(t)
 	ctx := context.Background()
 	satellite := insertSatellite(t, db.DB)
@@ -75,7 +72,6 @@ func TestConstraint_HeartbeatCheck(t *testing.T) {
 }
 
 func TestConstraint_Timestamptz(t *testing.T) {
-	pending.Plan(t, "3.4", "timestamps are TIMESTAMP without time zone")
 	db := dbtest.New(t)
 	rows, err := db.QueryContext(context.Background(), `SELECT table_name, column_name FROM information_schema.columns
 WHERE table_schema = 'public' AND table_name <> 'goose_db_version' AND data_type = 'timestamp without time zone'
@@ -93,7 +89,6 @@ ORDER BY table_name, column_name`)
 }
 
 func TestUpdateConfig_ConcurrentPatchOneGets409(t *testing.T) {
-	pending.Plan(t, "3.4", "concurrent config updates both succeed and the later one overwrites the earlier one")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.harbor.Gate(harbortest.RoutePutManifest, 2, 5*time.Second)

@@ -1,5 +1,7 @@
--- Plan item 3.4. Not applied: neither goose nor sqlc reads sql/pending.
--- See README.md before moving it into sql/schema.
+-- Plan item 3.4: one robot per satellite, configs in use cannot be deleted,
+-- a checked heartbeat interval, an optimistic version on configs, and
+-- TIMESTAMPTZ everywhere. docs/guides/groundcontrol.md (Upgrading) covers
+-- the duplicate-robot cleanup and the UTC assumption of the conversion.
 
 -- +goose Up
 -- +goose StatementBegin
@@ -9,7 +11,7 @@ BEGIN
   SELECT string_agg(satellite_id::TEXT || ' (' || n || ')', ', ') INTO dup
   FROM (SELECT satellite_id, count(*) AS n FROM robot_accounts GROUP BY satellite_id HAVING count(*) > 1) d;
   IF dup IS NOT NULL THEN
-    RAISE EXCEPTION 'robot_accounts has several robots for satellites: %; run the cleanup in sql/pending/README.md', dup;
+    RAISE EXCEPTION 'robot_accounts has several robots for satellites: %; keep one robot per satellite as described in docs/guides/groundcontrol.md (Upgrading: duplicate robot accounts)', dup;
   END IF;
 END $$;
 -- +goose StatementEnd
@@ -59,8 +61,12 @@ ALTER TABLE login_attempts
   ALTER COLUMN last_attempt TYPE TIMESTAMPTZ USING last_attempt AT TIME ZONE 'UTC';
 ALTER TABLE artifacts
   ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC';
+ALTER TABLE satellite_view
+  ALTER COLUMN last_reported_at TYPE TIMESTAMPTZ USING last_reported_at AT TIME ZONE 'UTC';
 
 -- +goose Down
+ALTER TABLE satellite_view
+  ALTER COLUMN last_reported_at TYPE TIMESTAMP USING last_reported_at AT TIME ZONE 'UTC';
 ALTER TABLE artifacts
   ALTER COLUMN created_at TYPE TIMESTAMP USING created_at AT TIME ZONE 'UTC';
 ALTER TABLE login_attempts
