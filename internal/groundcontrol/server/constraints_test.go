@@ -11,7 +11,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
@@ -115,7 +114,6 @@ func TestUpdateConfig_ConcurrentPatchOneGets409(t *testing.T) {
 }
 
 func TestCleanup_PurgesExpiredTokensSessionsAttempts(t *testing.T) {
-	pending.Plan(t, "3.5", "the cleanup never calls DeleteExpiredTokens or DeleteExpiredSessions and keeps login_attempts forever")
 	db := dbtest.New(t)
 	ctx := context.Background()
 	s := &Server{db: db.DB, dbQueries: database.New(db.DB)}
