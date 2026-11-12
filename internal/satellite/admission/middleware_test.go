@@ -11,7 +11,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger/logtest"
 	"github.com/container-registry/harbor-satellite/internal/shared/policybundle"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -63,7 +62,6 @@ func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 const blockedManifest = "/v2/library/blocked/manifests/latest"
 
 func TestMiddleware_ModeOffAllowsAll(t *testing.T) {
-	pending.Plan(t, "7.5", "the admission middleware is a stub")
 	src := &source{}
 	h, s := handler(src)
 	require.Equal(t, http.StatusOK, get(t, h, blockedManifest).Code, "no bundle")
@@ -74,7 +72,6 @@ func TestMiddleware_ModeOffAllowsAll(t *testing.T) {
 }
 
 func TestMiddleware_AuditAllowsAndLogs(t *testing.T) {
-	pending.Plan(t, "7.5", "the admission middleware is a stub")
 	ctx, _, logs := logtest.Capture(t)
 	src := &source{}
 	src.set(bundle(allowAll, blockRepo), policybundle.ModeAudit)
@@ -90,7 +87,6 @@ func TestMiddleware_AuditAllowsAndLogs(t *testing.T) {
 }
 
 func TestMiddleware_EnforceDeniesWithOCIDenied(t *testing.T) {
-	pending.Plan(t, "7.5", "the admission middleware is a stub")
 	src := &source{}
 	src.set(bundle(allowAll, blockRepo), policybundle.ModeEnforce)
 	h, s := handler(src)
@@ -114,7 +110,6 @@ func TestMiddleware_EnforceDeniesWithOCIDenied(t *testing.T) {
 }
 
 func TestMiddleware_ReloadsWhenBundleDigestChanges(t *testing.T) {
-	pending.Plan(t, "7.5", "the admission middleware is a stub")
 	src := &source{}
 	src.set(bundle(allowAll), policybundle.ModeEnforce)
 	h, _ := handler(src)

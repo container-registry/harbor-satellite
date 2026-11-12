@@ -3,5 +3,5 @@
 // proxy (plan item 7.5, ADR-0017, superseding ADR-0009's CEL section). The
 // bundle travels in app_config.admission of the config state artifact, so
 // it reaches a satellite with its config and needs no second artifact.
-// Nothing composes the middleware yet; cmd/satellite is unchanged.
+// cmd/satellite composes it in the proxy chain (proxy/middleware.Stack).
 package admission

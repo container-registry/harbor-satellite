@@ -19,5 +19,15 @@ type ConfigSource struct{ CM *config.ConfigManager }
 // policybundle.ParseMode; a mode that does not parse is ModeEnforce, so a
 // typo fails closed. ok is false when no bundle is configured.
 func (s ConfigSource) Current() (policybundle.Bundle, policybundle.Mode, bool) {
-	return policybundle.Bundle{}, policybundle.ModeOff, false
+	adm := s.CM.GetAdmission()
+	if adm.Bundle == nil {
+		return policybundle.Bundle{}, policybundle.ModeOff, false
+	}
+	mode, err := policybundle.ParseMode(adm.Mode)
+	if err != nil {
+		mode = policybundle.ModeEnforce
+	}
+	b := *adm.Bundle
+	b.Policies = append([][]string(nil), adm.Bundle.Policies...)
+	return b, mode, true
 }
