@@ -6,11 +6,8 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/secrets"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingSealer = "successor robot secrets are not sealed; there is no rotation"
 
 func newSealer(t *testing.T, key byte) *secrets.AESGCM {
 	t.Helper()
@@ -20,7 +17,6 @@ func newSealer(t *testing.T, key byte) *secrets.AESGCM {
 }
 
 func TestAESGCM_SealOpenRoundTrip(t *testing.T) {
-	pending.Plan(t, "8.4", pendingSealer)
 	s := newSealer(t, 1)
 
 	sealed, err := s.Seal([]byte("robot secret"))
@@ -36,7 +32,6 @@ func TestAESGCM_SealOpenRoundTrip(t *testing.T) {
 }
 
 func TestAESGCM_RejectsTamperedOrWrongKey(t *testing.T) {
-	pending.Plan(t, "8.4", pendingSealer)
 	s := newSealer(t, 1)
 	sealed, err := s.Seal([]byte("robot secret"))
 	require.NoError(t, err)
@@ -52,7 +47,6 @@ func TestAESGCM_RejectsTamperedOrWrongKey(t *testing.T) {
 }
 
 func TestParseKey_Requires32Bytes(t *testing.T) {
-	pending.Plan(t, "8.4", pendingSealer)
 	key, err := secrets.ParseKey(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)))
 	require.NoError(t, err)
 	require.Len(t, key, 32)
