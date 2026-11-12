@@ -190,6 +190,22 @@ type SatelliteStatus struct {
 	ArtifactIds        []int32
 }
 
+type SatelliteStatusDefault struct {
+	ID                 int32
+	SatelliteID        int32
+	Activity           string
+	LatestStateDigest  sql.NullString
+	LatestConfigDigest sql.NullString
+	CpuPercent         sql.NullString
+	MemoryUsedBytes    sql.NullInt64
+	StorageUsedBytes   sql.NullInt64
+	LastSyncDurationMs sql.NullInt64
+	ImageCount         sql.NullInt32
+	ReportedAt         time.Time
+	CreatedAt          time.Time
+	ArtifactIds        []int32
+}
+
 type SatelliteToken struct {
 	ID          int32
 	SatelliteID int32
