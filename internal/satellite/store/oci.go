@@ -444,6 +444,17 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 		if err := artifact.validate(); err != nil {
 			return err
 		}
+		// A digest with no tag is the previous image after a replacement. The
+		// name:tag already points at the new digest, so untagging the reference
+		// would remove the image that was just copied.
+		if artifact.Tag == "" {
+			removed, err := s.deleteDigest(ctx, artifact)
+			if err != nil {
+				return err
+			}
+			changed = changed || removed
+			continue
+		}
 		if _, err := s.store.Resolve(ctx, artifact.Reference()); err != nil {
 			if errors.Is(err, errdef.ErrNotFound) {
 				continue
@@ -462,6 +473,26 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 		s.provenance.Clear()
 	}
 	return nil
+}
+
+// deleteDigest removes the manifest identified by the digest. It does not
+// follow name:tag, which may already point at a replacement.
+func (s *OCIStore) deleteDigest(ctx context.Context, artifact Artifact) (bool, error) {
+	identifier := artifact.sourceIdentifier()
+	desc, err := s.store.Resolve(ctx, identifier)
+	if errors.Is(err, errdef.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if desc.Digest.String() != identifier {
+		return false, nil
+	}
+	if err := s.store.Delete(ctx, desc); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *OCIStore) recordGraphProvenance(ctx context.Context, repository string, root ocispec.Descriptor) error {

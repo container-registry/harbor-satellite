@@ -16,18 +16,21 @@ import (
 )
 
 type StatusReportParams struct {
-	Name                string        `json:"name"`
-	Activity            string        `json:"activity"`
-	StateReportInterval string        `json:"state_report_interval"`
-	LatestStateDigest   string        `json:"latest_state_digest"`
-	LatestConfigDigest  string        `json:"latest_config_digest"`
-	MemoryUsedBytes     uint64        `json:"memory_used_bytes"`
-	StorageUsedBytes    uint64        `json:"storage_used_bytes"`
-	CPUPercent          float64       `json:"cpu_percent"`
-	RequestCreatedTime  time.Time     `json:"request_created_time"`
-	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
-	ImageCount          int           `json:"image_count"`
-	CachedImages        []CachedImage `json:"cached_images,omitempty"`
+	Name                   string        `json:"name"`
+	Activity               string        `json:"activity"`
+	StateReportInterval    string        `json:"state_report_interval"`
+	LatestStateDigest      string        `json:"latest_state_digest"`
+	LatestConfigDigest     string        `json:"latest_config_digest"`
+	MemoryUsedBytes        uint64        `json:"memory_used_bytes"`
+	StorageUsedBytes       uint64        `json:"storage_used_bytes"`
+	CPUPercent             float64       `json:"cpu_percent"`
+	RequestCreatedTime     time.Time     `json:"request_created_time"`
+	LastSyncDurationMs     int64         `json:"last_sync_duration_ms"`
+	ImageCount             int           `json:"image_count"`
+	CachedImages           []CachedImage `json:"cached_images,omitempty"`
+	DownloadBytesPerSecond float64       `json:"download_bytes_per_second"`
+	BytesInWindow          int64         `json:"bytes_in_window"`
+	BytesTotal             int64         `json:"bytes_total"`
 }
 
 func collectStatusReportParams(ctx context.Context, heartbeatInterval time.Duration, req *StatusReportParams, cfg config.MetricsConfig, registryURL string, insecure bool) {

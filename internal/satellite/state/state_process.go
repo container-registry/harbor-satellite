@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	"github.com/container-registry/harbor-satellite/internal/satellite/peers"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
@@ -32,6 +34,7 @@ type FetchAndReplicateStateProcess struct {
 	remoteStore         store.Store
 	fetchRootState      func(ctx context.Context, satelliteStateURL, srcUsername, srcPassword string, useUnsecure bool, log *zerolog.Logger) (*SatelliteState, error)
 	fetchGroupState     func(ctx context.Context, groupURL, srcUsername, srcPassword string, useUnsecure bool, log *zerolog.Logger) (*StateReader, error)
+	measureMissing      func(ctx context.Context, destination, source store.Store, artifact store.Artifact) (int64, error)
 }
 
 // SetStores shares the proxy's local destination and Harbor source with state replication.
@@ -165,6 +168,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) error {
 		return nil
 	}
 	log.Info().Msg(reason)
+	f.applyNetworkBudget(&log)
 
 	satelliteState, err := f.fetchSatelliteRootStateTimed(ctx, satelliteStateURL, srcUsername, srcPassword, useUnsecure, &log)
 	if err != nil {
@@ -470,21 +474,163 @@ func (f *FetchAndReplicateStateProcess) replicatePersistedGroup(
 	f.LogChanges(nil, missing, &groupLog)
 
 	if len(missing) > 0 {
-		if err := replicator.Replicate(f.copyContext(ctx), sourceStore, missing); err != nil {
+		copied, err := f.replicateEach(f.copyContext(ctx), replicator, sourceStore, missing, &groupLog)
+		if err != nil {
 			groupLog.Error().Err(err).Msg("Error replicating persisted state")
 			result.Error = fmt.Errorf("failed to replicate persisted entities for %s: %w", f.stateMap[index].url, err)
 			return result
 		}
-		if f.directDeliverer != nil {
+		if f.directDeliverer != nil && len(copied) > 0 {
 			deliveryCtx, cancel := context.WithTimeout(ctx, f.listFetchTimeout())
 			defer cancel()
-			if err := f.directDeliverer.Deliver(deliveryCtx, missing); err != nil {
+			if err := f.directDeliverer.Deliver(deliveryCtx, copied); err != nil {
 				groupLog.Warn().Err(err).Msg("Direct delivery: failed to write tarballs")
 			}
+		}
+		if len(uncopied(missing, copied)) > 0 {
+			return result
 		}
 	}
 	f.markDesiredApplied(index, entities)
 	return result
+}
+
+// applyNetworkBudget installs the current config and opens a sync quota window.
+func (f *FetchAndReplicateStateProcess) applyNetworkBudget(log *zerolog.Logger) {
+	if f.cm == nil {
+		return
+	}
+	if err := budget.Apply(f.cm.GetNetworkConfig()); err != nil {
+		log.Warn().Err(err).Msg("network budget was not updated")
+		return
+	}
+	budget.Ensure().BeginSync()
+}
+
+// replicateEach copies one image at a time. An image that does not fit in the
+// quota is skipped. The group continues with the images that fit.
+func (f *FetchAndReplicateStateProcess) replicateEach(
+	ctx context.Context,
+	destination, source store.Store,
+	artifacts []Entity,
+	log *zerolog.Logger,
+) ([]Entity, error) {
+	quotaEnabled := f.cm != nil && f.cm.GetNetworkConfig().Quota.Enabled
+	var copied []Entity
+	for _, artifact := range artifacts {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		missing, err := f.imageMissingBytes(budget.WithMeter(ctx), destination, source, artifact)
+		if err != nil {
+			if quotaEnabled && !errors.Is(err, store.ErrUnsized) {
+				return nil, err
+			}
+			log.Warn().Err(err).Str("artifact", artifact.Reference()).Msg("could not size missing blobs")
+			missing = 0
+		}
+		if err := budget.Ensure().Admit(missing); err != nil {
+			if errors.Is(err, budget.ErrQuotaExceeded) {
+				log.Warn().Str("artifact", artifact.Reference()).Int64("missing_bytes", missing).Msg("skipping image because the transfer quota is exhausted")
+				continue
+			}
+			return nil, err
+		}
+		if err := destination.Replicate(budget.WithMeter(ctx), source, []Entity{artifact}); err != nil {
+			return nil, err
+		}
+		copied = append(copied, artifact)
+	}
+	return copied, nil
+}
+
+func splitDeletes(deletes, updating []Entity) (removals, replacements []Entity) {
+	pending := make(map[string]struct{}, len(updating))
+	for _, entity := range updating {
+		pending[entity.Name+"|"+entity.Tag] = struct{}{}
+	}
+	for _, entity := range deletes {
+		if _, ok := pending[entity.Name+"|"+entity.Tag]; ok {
+			replacements = append(replacements, entity)
+			continue
+		}
+		removals = append(removals, entity)
+	}
+	return removals, replacements
+}
+
+func copiedReferences(entities, copied []Entity) []Entity {
+	done := make(map[string]struct{}, len(copied))
+	for _, entity := range copied {
+		done[entity.Name+"|"+entity.Tag] = struct{}{}
+	}
+	var matched []Entity
+	for _, entity := range entities {
+		if _, ok := done[entity.Name+"|"+entity.Tag]; ok {
+			matched = append(matched, entity)
+		}
+	}
+	return matched
+}
+
+// digestOnly drops the tag so Delete addresses the previous digest. The tag
+// now points at the image that just copied.
+func digestOnly(entities []Entity) []Entity {
+	var pinned []Entity
+	for _, entity := range entities {
+		if entity.Digest == "" {
+			continue
+		}
+		entity.Tag = ""
+		pinned = append(pinned, entity)
+	}
+	return pinned
+}
+
+func uncopied(requested, copied []Entity) []Entity {
+	done := make(map[string]struct{}, len(copied))
+	for _, entity := range copied {
+		done[entity.Name+"|"+entity.Tag] = struct{}{}
+	}
+	var skipped []Entity
+	for _, entity := range requested {
+		if _, ok := done[entity.Name+"|"+entity.Tag]; !ok {
+			skipped = append(skipped, entity)
+		}
+	}
+	return skipped
+}
+
+// retainUncopied keeps the previous entity for an image that was not copied.
+// A new image that was skipped is left out, so the next sync schedules it again.
+func retainUncopied(previous, fetched, skipped []Entity) []Entity {
+	omit := make(map[string]struct{}, len(skipped))
+	for _, entity := range skipped {
+		omit[entity.Name+"|"+entity.Tag] = struct{}{}
+	}
+	prior := make(map[string]Entity, len(previous))
+	for _, entity := range previous {
+		prior[entity.Name+"|"+entity.Tag] = entity
+	}
+	applied := make([]Entity, 0, len(fetched))
+	for _, entity := range fetched {
+		key := entity.Name + "|" + entity.Tag
+		if _, skippedEntity := omit[key]; !skippedEntity {
+			applied = append(applied, entity)
+			continue
+		}
+		if old, ok := prior[key]; ok {
+			applied = append(applied, old)
+		}
+	}
+	return applied
+}
+
+func (f *FetchAndReplicateStateProcess) imageMissingBytes(ctx context.Context, destination, source store.Store, artifact store.Artifact) (int64, error) {
+	if f.measureMissing != nil {
+		return f.measureMissing(ctx, destination, source, artifact)
+	}
+	return store.MissingBytes(ctx, destination, source, artifact)
 }
 
 func missingLocally(ctx context.Context, local store.Store, entities []Entity) ([]Entity, error) {
@@ -715,40 +861,71 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, &stateFetcherLog, f.stateMap[index].Entities)
 	f.LogChanges(deleteEntity, replicateEntity, &stateFetcherLog)
 
-	if err := replicator.Delete(ctx, deleteEntity); err != nil {
-		stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
-		result.Error = fmt.Errorf("failed to delete entities for %s: %w", f.stateMap[index].url, err)
-		return result
+	// A digest change deletes the previous image only after the replacement
+	// copies. A quota skip then leaves the previous image in place and still
+	// listed, so the next sync tries the new digest again.
+	removals, replacements := splitDeletes(deleteEntity, replicateEntity)
+	if len(removals) > 0 {
+		if err := replicator.Delete(ctx, removals); err != nil {
+			stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
+			result.Error = fmt.Errorf("failed to delete entities for %s: %w", f.stateMap[index].url, err)
+			return result
+		}
 	}
 
-	if err := replicator.Replicate(ctx, sourceStore, replicateEntity); err != nil {
+	copied, err := f.replicateEach(ctx, replicator, sourceStore, replicateEntity, &stateFetcherLog)
+	if err != nil {
 		stateFetcherLog.Error().Err(err).Msg("Error replicating state")
 		result.Error = fmt.Errorf("failed to replicate entities for %s: %w", f.stateMap[index].url, err)
 		return result
 	}
+	// Delete the previous digest, not the tag. The copy has already moved
+	// name:tag onto the new image, and Delete resolves a tag to whatever it
+	// points at now.
+	replaced := copiedReferences(replacements, copied)
+	if len(replaced) > 0 {
+		if err := replicator.Delete(ctx, digestOnly(replaced)); err != nil {
+			stateFetcherLog.Error().Err(err).Msg("Error deleting entities")
+			result.Error = fmt.Errorf("failed to delete entities for %s: %w", f.stateMap[index].url, err)
+			return result
+		}
+	}
 
 	// Direct delivery: write tarballs to k3s/RKE2 image dir after store replication.
 	if f.directDeliverer != nil {
-		if err := f.directDeliverer.Delete(ctx, deleteEntity); err != nil {
+		obsolete := append(append([]Entity{}, removals...), replaced...)
+		if err := f.directDeliverer.Delete(ctx, obsolete); err != nil {
 			stateFetcherLog.Warn().Err(err).Msg("Direct delivery: failed to remove old tarballs")
 		}
-		if err := f.directDeliverer.Deliver(ctx, replicateEntity); err != nil {
-			stateFetcherLog.Warn().Err(err).Msg("Direct delivery: failed to write tarballs")
+		if len(copied) > 0 {
+			if err := f.directDeliverer.Deliver(ctx, copied); err != nil {
+				stateFetcherLog.Warn().Err(err).Msg("Direct delivery: failed to write tarballs")
+			}
 		}
 	}
 
+	f.commitReplicatedGroup(index, newState, replicateEntity, copied, &stateFetcherLog)
+	return result
+}
+
+// commitReplicatedGroup records the images that were copied. A skipped image
+// keeps its previous entity, so the next sync still sees it as pending.
+func (f *FetchAndReplicateStateProcess) commitReplicatedGroup(index int, newState StateReader, requested, copied []Entity, log *zerolog.Logger) {
+	skipped := uncopied(requested, copied)
 	f.mu.Lock()
-	f.stateMap[index].State = newState
-	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
-	f.stateMap[index].desired = nil
+	defer f.mu.Unlock()
+	if len(skipped) == 0 {
+		f.stateMap[index].State = newState
+		f.stateMap[index].Entities = FetchEntitiesFromState(newState)
+		f.stateMap[index].desired = nil
+	} else {
+		f.stateMap[index].Entities = retainUncopied(f.stateMap[index].Entities, FetchEntitiesFromState(newState), skipped)
+	}
 	if f.stateFilePath != "" {
 		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
-			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
+			log.Warn().Err(err).Msg("Failed to persist state to disk")
 		}
 	}
-	f.mu.Unlock()
-
-	return result
 }
 
 func (f *FetchAndReplicateStateProcess) fetchSatelliteRootStateTimed(
