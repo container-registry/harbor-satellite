@@ -280,7 +280,7 @@ func TestDesiredImageBlobMissStaysLocal(t *testing.T) {
 	}
 	gate := ready.New()
 	gate.SetGroup("edge", []store.Artifact{{Name: "team/app", Tag: "latest", Digest: "sha256:abc"}})
-	gate.SetBlobs("edge", []string{layerDigest})
+	gate.SetBlobs("edge", "team/app", []string{layerDigest})
 	gate.Publish()
 	handler := proxy.New(newPullWithGate(t, proxy.ModeProxy, local, remote, gate)).Handler()
 
@@ -316,7 +316,7 @@ func TestBlobOutsideTheDesiredSetKeepsProxyFill(t *testing.T) {
 	remote := descriptorStore(descriptor, payload)
 	gate := ready.New()
 	gate.SetGroup("edge", []store.Artifact{{Name: "library/other", Tag: "latest", Digest: "sha256:fff"}})
-	gate.SetBlobs("edge", []string{digest.FromString("some-other-layer").String()})
+	gate.SetBlobs("edge", "library/other", []string{descriptor.Digest.String()})
 	gate.Publish()
 	handler := proxy.New(newPullWithGate(t, proxy.ModeProxy, local, remote, gate)).Handler()
 

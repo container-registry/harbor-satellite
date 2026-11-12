@@ -15,13 +15,14 @@ import (
 // as outside it. A request for a published reference then blocks until that
 // publish commits, the reference leaves the set, or the caller gives up.
 type Gate struct {
-	mu        sync.Mutex
-	groups    map[string]map[string]struct{}
-	refs      map[string]*refState
-	blobs     map[string]map[string]struct{}
-	blobUsers map[string]int
-	published bool
-	ready     chan struct{}
+	mu         sync.Mutex
+	groups     map[string]map[string]struct{}
+	refs       map[string]*refState
+	blobs      map[string]map[string]struct{}
+	imageBlobs map[string]map[string]map[string]struct{}
+	blobUsers  map[string]int
+	published  bool
+	ready      chan struct{}
 }
 
 type refState struct {
@@ -92,7 +93,7 @@ func (g *Gate) SetGroup(group string, artifacts []store.Artifact) {
 	previous := g.groups[group]
 	if len(next) == 0 {
 		delete(g.groups, group)
-		g.replaceBlobsLocked(group, nil)
+		g.replaceBlobsLocked(group, "", nil)
 	} else {
 		keys := make(map[string]struct{}, len(next))
 		for key, digest := range next {
@@ -149,26 +150,61 @@ func (g *Gate) Commit(artifact store.Artifact) {
 	}
 }
 
-// SetBlobs replaces the successor digests group expects in the local store.
-// A pull for one of those digests stays local while the blob is absent.
+// SetBlobs replaces every successor digest recorded for group in repository.
+// A pull for one of those digests stays local in that repository while the blob
+// is absent. The same digest in another repository is not watched.
 // An empty list clears the group. A digest another group still lists stays watched.
-func (g *Gate) SetBlobs(group string, digests []string) {
+func (g *Gate) SetBlobs(group, repository string, digests []string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.replaceBlobsLocked(group, digests)
+	g.replaceBlobsLocked(group, repository, digests)
 }
 
-// WatchesBlob reports whether digest belongs to a desired image's graph.
-func (g *Gate) WatchesBlob(digest string) bool {
-	if digest == "" {
+// SetImageBlobs replaces the successor digests recorded for one image in group.
+// The other images in the group keep the digests already recorded for them.
+func (g *Gate) SetImageBlobs(group, reference string, digests []string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.setImageBlobsLocked(group, reference, digests)
+}
+
+// PruneImageBlobs drops images in group whose reference is not in keep.
+func (g *Gate) PruneImageBlobs(group string, keep []string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	images := g.imageBlobs[group]
+	if len(images) == 0 {
+		return
+	}
+	allowed := make(map[string]struct{}, len(keep))
+	for _, reference := range keep {
+		if reference == "" {
+			continue
+		}
+		allowed[reference] = struct{}{}
+	}
+	for reference := range images {
+		if _, ok := allowed[reference]; ok {
+			continue
+		}
+		g.releaseImageBlobsLocked(group, reference)
+	}
+}
+
+// WatchesBlob reports whether repository has digest in a desired image's graph.
+// The same digest in another repository is not watched.
+func (g *Gate) WatchesBlob(repository, digest string) bool {
+	repository = strings.Trim(repository, "/")
+	if repository == "" || digest == "" {
 		return false
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.blobUsers[digest] > 0
+	return g.blobUsers[blobKey(repository, digest)] > 0
 }
 
-func (g *Gate) replaceBlobsLocked(group string, digests []string) {
+func (g *Gate) replaceBlobsLocked(group, repository string, digests []string) {
+	g.clearImageBlobsLocked(group)
 	if g.blobs == nil && len(digests) == 0 {
 		return
 	}
@@ -178,14 +214,42 @@ func (g *Gate) replaceBlobsLocked(group string, digests []string) {
 	if g.blobUsers == nil {
 		g.blobUsers = make(map[string]int)
 	}
-	for digest := range g.blobs[group] {
-		g.blobUsers[digest]--
-		if g.blobUsers[digest] <= 0 {
-			delete(g.blobUsers, digest)
-		}
+	for key := range g.blobs[group] {
+		g.releaseBlobKeyLocked(key)
 	}
 	delete(g.blobs, group)
-	if len(digests) == 0 {
+	repository = strings.Trim(repository, "/")
+	if len(digests) == 0 || repository == "" {
+		return
+	}
+	next := make(map[string]struct{}, len(digests))
+	for _, digest := range digests {
+		if digest == "" {
+			continue
+		}
+		key := blobKey(repository, digest)
+		if _, ok := next[key]; ok {
+			continue
+		}
+		next[key] = struct{}{}
+		g.blobUsers[key]++
+	}
+	if len(next) == 0 {
+		return
+	}
+	g.blobs[group] = next
+}
+
+func (g *Gate) setImageBlobsLocked(group, reference string, digests []string) {
+	if group == "" || reference == "" {
+		return
+	}
+	if g.blobUsers == nil {
+		g.blobUsers = make(map[string]int)
+	}
+	g.releaseImageBlobsLocked(group, reference)
+	repository := repositoryFromReference(reference)
+	if repository == "" {
 		return
 	}
 	next := make(map[string]struct{}, len(digests))
@@ -197,12 +261,63 @@ func (g *Gate) replaceBlobsLocked(group string, digests []string) {
 			continue
 		}
 		next[digest] = struct{}{}
-		g.blobUsers[digest]++
+		g.blobUsers[blobKey(repository, digest)]++
 	}
 	if len(next) == 0 {
 		return
 	}
-	g.blobs[group] = next
+	if g.imageBlobs == nil {
+		g.imageBlobs = make(map[string]map[string]map[string]struct{})
+	}
+	if g.imageBlobs[group] == nil {
+		g.imageBlobs[group] = make(map[string]map[string]struct{})
+	}
+	g.imageBlobs[group][reference] = next
+}
+
+func (g *Gate) clearImageBlobsLocked(group string) {
+	for reference := range g.imageBlobs[group] {
+		g.releaseImageBlobsLocked(group, reference)
+	}
+}
+
+func (g *Gate) releaseImageBlobsLocked(group, reference string) {
+	images := g.imageBlobs[group]
+	if len(images) == 0 {
+		return
+	}
+	repository := repositoryFromReference(reference)
+	for digest := range images[reference] {
+		g.releaseBlobKeyLocked(blobKey(repository, digest))
+	}
+	delete(images, reference)
+	if len(images) == 0 {
+		delete(g.imageBlobs, group)
+	}
+}
+
+func (g *Gate) releaseBlobKeyLocked(key string) {
+	if g.blobUsers == nil {
+		return
+	}
+	g.blobUsers[key]--
+	if g.blobUsers[key] <= 0 {
+		delete(g.blobUsers, key)
+	}
+}
+
+func blobKey(repository, digest string) string {
+	return repository + "\x00" + digest
+}
+
+func repositoryFromReference(reference string) string {
+	repository := reference
+	if name, _, found := strings.Cut(reference, "@"); found {
+		repository = name
+	} else if name, _, found := strings.Cut(reference, ":"); found {
+		repository = name
+	}
+	return strings.Trim(repository, "/")
 }
 
 // Known reports whether artifact is in the current set, committed or not.
