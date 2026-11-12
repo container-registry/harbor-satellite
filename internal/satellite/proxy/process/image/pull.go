@@ -23,6 +23,10 @@ const (
 	pullFillTimeout        = 30 * time.Minute
 )
 
+// errImageUnwatched means a manifest wait ended because the image left the
+// desired set. The miss path may then fill from upstream.
+var errImageUnwatched = errors.New("image left the desired set")
+
 type pullHandler struct {
 	lifecycleCtx context.Context
 	mode         proxy.Mode
@@ -33,10 +37,11 @@ type pullHandler struct {
 }
 
 // NewPull serves retained content from localStore and fills it from remoteStore
-// on a miss. images, when set, holds manifest requests for references the state
-// job is publishing until that publish commits a complete local graph. The
-// shared operation returns only an immutable descriptor; every HTTP request
-// opens and streams its own reader after the flight completes.
+// on a miss. images, when set, holds every manifest request until the desired
+// set is published, then holds references the state job is publishing until
+// that publish commits a complete local graph. The shared operation returns
+// only an immutable descriptor; every HTTP request opens and streams its own
+// reader after the flight completes.
 func NewPull(lifecycleCtx context.Context, mode proxy.Mode, localStore, remoteStore store.Store, images *ready.Gate) (proxy.HandlerFunc, error) {
 	if lifecycleCtx == nil {
 		return nil, errors.New("image.NewPull: lifecycle context is required")
@@ -75,6 +80,11 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 	}
 
 	metadataOnly := request.Operation == proxy.CheckManifest || request.Operation == proxy.CheckBlob
+	if resource == store.PullResourceManifest {
+		if err := p.waitForCatalog(request.Context()); err != nil {
+			return err
+		}
+	}
 	handled, err := p.serveIfWatched(request, artifact, resource, metadataOnly)
 	if handled {
 		return err
@@ -89,23 +99,38 @@ func (p *pullHandler) handle(request *proxy.Request) error {
 		if err := fillCtx.Err(); err != nil {
 			return nil, err
 		}
-		descriptor, err := p.localDescriptor(fillCtx, artifact, resource)
-		if err == nil {
-			return descriptor, nil
-		}
-		if !errors.Is(err, errdef.ErrNotFound) {
-			return nil, err
-		}
-		// The reference may have entered the desired set after this flight
-		// started. A desired image is served only from the local store.
-		if resource == store.PullResourceManifest && p.watching(artifact) {
-			return p.waitForLocal(fillCtx, artifact, resource)
-		}
-		if resource == store.PullResourceManifest && p.known(artifact) {
-			return nil, errdef.ErrNotFound
+		var (
+			descriptor ocispec.Descriptor
+			fillErr    error
+		)
+		for {
+			descriptor, fillErr = p.localDescriptor(fillCtx, artifact, resource)
+			if fillErr == nil {
+				return descriptor, nil
+			}
+			if !errors.Is(fillErr, errdef.ErrNotFound) {
+				return nil, fillErr
+			}
+			// The reference may have entered the desired set after this flight
+			// started. A desired image is served only from the local store.
+			// Leaving the set while the wait is blocked resumes the normal miss path.
+			if resource == store.PullResourceManifest && p.watching(artifact) {
+				descriptor, fillErr = p.waitForLocal(fillCtx, artifact, resource)
+				if fillErr == nil {
+					return descriptor, nil
+				}
+				if !errors.Is(fillErr, errImageUnwatched) {
+					return nil, fillErr
+				}
+				continue
+			}
+			if resource == store.PullResourceManifest && p.known(artifact) {
+				return nil, errdef.ErrNotFound
+			}
+			break
 		}
 		if !p.mode.AllowsUpstreamPull() {
-			return nil, err
+			return nil, fillErr
 		}
 		if metadataOnly {
 			return p.remoteStore.Pull(fillCtx, artifact, resource)
@@ -168,9 +193,18 @@ func (p *pullHandler) waitForLocal(ctx context.Context, artifact store.Artifact,
 		return ocispec.Descriptor{}, err
 	}
 	if !committed {
-		return ocispec.Descriptor{}, errdef.ErrNotFound
+		return ocispec.Descriptor{}, errImageUnwatched
 	}
 	return p.lookupLocal(ctx, artifact, resource)
+}
+
+func (p *pullHandler) waitForCatalog(ctx context.Context) error {
+	if p.images == nil {
+		return nil
+	}
+	waitCtx, cancel := p.waitContext(ctx)
+	defer cancel()
+	return p.images.WaitReady(waitCtx)
 }
 
 func (p *pullHandler) watching(artifact store.Artifact) bool {
@@ -203,7 +237,7 @@ func (p *pullHandler) localDescriptor(ctx context.Context, artifact store.Artifa
 }
 
 func (p *pullHandler) lookupLocal(ctx context.Context, artifact store.Artifact, resource store.PullResource) (ocispec.Descriptor, error) {
-	if resource != store.PullResourceManifest {
+	if resource != store.PullResourceManifest || !p.known(artifact) {
 		return p.localStore.Pull(ctx, artifact, resource)
 	}
 	return p.localManifest(ctx, artifact)

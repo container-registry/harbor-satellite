@@ -10,13 +10,16 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 )
 
-// Gate is the set of images the state job intends to publish. A manifest
-// request for one of those references blocks until that publish commits, the
-// reference leaves the set, or the caller gives up.
+// Gate is the set of images the state job intends to publish. Until Publish,
+// that set is unknown and manifest pulls wait instead of treating every image
+// as outside it. A request for a published reference then blocks until that
+// publish commits, the reference leaves the set, or the caller gives up.
 type Gate struct {
-	mu     sync.Mutex
-	groups map[string]map[string]struct{}
-	refs   map[string]*refState
+	mu        sync.Mutex
+	groups    map[string]map[string]struct{}
+	refs      map[string]*refState
+	published bool
+	ready     chan struct{}
 }
 
 type refState struct {
@@ -31,6 +34,36 @@ func New() *Gate {
 	return &Gate{
 		groups: make(map[string]map[string]struct{}),
 		refs:   make(map[string]*refState),
+		ready:  make(chan struct{}),
+	}
+}
+
+// Publish marks the desired set as known. The first call releases manifest
+// pulls that were waiting for it. Later calls do nothing.
+func (g *Gate) Publish() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.published {
+		return
+	}
+	g.published = true
+	close(g.ready)
+}
+
+// WaitReady blocks until Publish or ctx ends.
+func (g *Gate) WaitReady(ctx context.Context) error {
+	g.mu.Lock()
+	ready := g.ready
+	published := g.published
+	g.mu.Unlock()
+	if published {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-ready:
+		return nil
 	}
 }
 

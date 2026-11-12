@@ -269,6 +269,37 @@ func addStaticPeer(process *FetchAndReplicateStateProcess) {
 	process.cm.With(config.SetPeerDistributionConfig(cfg))
 }
 
+func TestFailedReplicationKeepsTheAnnouncedImageWatched(t *testing.T) {
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "state.json")
+	writePersistedGroup(t, stateFile, alpineEntity())
+	fresh := Entity{Name: "nginx", Repository: "library", Tag: "alpine", Digest: "sha256:new"}
+	local := &degradedStubStore{pullErr: errors.New("not found"), replicateErr: errors.New("copy failed")}
+	process := NewFetchAndReplicateStateProcess(degradedTestManager(t, false, ""), stateFile, dir, "", nil)
+	process.fetchGroupState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*StateReader, error) {
+		state := &State{Artifacts: []Artifact{{
+			Name:       fresh.Name,
+			Repository: fresh.Repository,
+			Tags:       []string{fresh.Tag},
+			Digest:     fresh.Digest,
+		}}}
+		var reader StateReader = state
+		return &reader, nil
+	}
+	gate := ready.New()
+	process.SetImageGate(gate)
+
+	log := zerolog.Nop()
+	result := process.processGroupState(context.Background(), 0, "source-user", "source-password", true, local, &degradedStubStore{}, &log)
+	require.Error(t, result.Error)
+
+	request := store.Artifact{Name: "library/nginx", Tag: "alpine"}
+	require.True(t, gate.Watching(request))
+	process.announceKnownGroups()
+	require.True(t, gate.Watching(request))
+	require.False(t, gate.Known(store.Artifact{Name: "library/alpine", Tag: "latest"}))
+}
+
 func TestProcessGroupStateCommitsWatchedImage(t *testing.T) {
 	dir := t.TempDir()
 	stateFile := filepath.Join(dir, "state.json")
