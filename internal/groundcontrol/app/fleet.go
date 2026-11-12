@@ -182,7 +182,7 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if deps.RobotRotation.Enabled {
 		sealer, err := NewSealer(deps.DataEncryptionKey)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("ROBOT_ROTATION_ENABLED: %w", err)
 		}
 		store, err := postgres.NewRotationStore(fleetPool(deps.Pools))
 		if err != nil {
@@ -290,10 +290,10 @@ func withHotPathDefaults(h env.FleetHotPath) env.FleetHotPath {
 }
 
 // NewSealer seals stored secrets with DATA_ENCRYPTION_KEY, which robot
-// rotation requires.
+// rotation and webhooks require.
 func NewSealer(key string) (*secrets.AESGCM, error) {
 	if key == "" {
-		return nil, fmt.Errorf("%w: ROBOT_ROTATION_ENABLED needs DATA_ENCRYPTION_KEY", fleet.ErrInvalid)
+		return nil, fmt.Errorf("%w: DATA_ENCRYPTION_KEY is not set", fleet.ErrInvalid)
 	}
 	raw, err := secrets.ParseKey(key)
 	if err != nil {

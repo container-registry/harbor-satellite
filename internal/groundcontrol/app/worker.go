@@ -152,7 +152,7 @@ func NewWorker(ctx context.Context, deps WorkerDeps) (*async.Worker, func() erro
 	if deps.RobotRotation.Enabled {
 		sealer, err := NewSealer(deps.DataEncryptionKey)
 		if err != nil {
-			return nil, nil, errors.Join(err, locker.Close())
+			return nil, nil, errors.Join(fmt.Errorf("ROBOT_ROTATION_ENABLED: %w", err), locker.Close())
 		}
 		store, err := postgres.NewRotationStore(pool)
 		if err != nil {

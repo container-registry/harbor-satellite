@@ -12,7 +12,7 @@ Start with the satellite's `/healthz` (`curl -s 127.0.0.1:8586/healthz` on the h
 | Exits with `bootstrap system admin` | `ADMIN_PASSWORD` unset or not matching the password policy on first start. | Set a password that passes the `PASSWORD_*` policy. |
 | Exits with `POLICY_ENGINE "..."` or `OIDC_ROLE_MAP ...` | Invalid value. | Fix the variable named in the message. |
 | Exits with `build fleet services: ...` and an OIDC error | `OIDC_ENABLED=true` and the issuer cannot be discovered. | Check `OIDC_ISSUER_URL` and network access to the provider. |
-| Exits with `ROBOT_ROTATION_ENABLED needs DATA_ENCRYPTION_KEY` | Rotation or webhooks without a key. | Set `DATA_ENCRYPTION_KEY` to base64 of 32 bytes. |
+| Exits with `ROBOT_ROTATION_ENABLED: ... DATA_ENCRYPTION_KEY is not set` or the same with `WEBHOOKS_ENABLED` | Rotation or webhooks without a key. | Set `DATA_ENCRYPTION_KEY` to base64 of 32 bytes. |
 | `/health` answers `503` with a component `"detail":"stopped"` | A background job of `serve`, such as the embedded async worker, returned. The log line `<job> stopped: <error>` names the cause. | Fix the cause and restart the process; a stopped job does not restart by itself. |
 | `/health` answers `degraded` | No contact with Harbor for three `HARBOR_PROBE_INTERVAL`s. Writes are stored and queued. | Check `HARBOR_URL`, credentials and the network. The outbox drains once Harbor answers. |
 | Group or config changes do not reach satellites | No worker is running, or events fail. | Run `serve` with the default `--worker=embedded` or a `groundcontrol worker`. Check `GET /api/ops/outbox?state=failed`. |
