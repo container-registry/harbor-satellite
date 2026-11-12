@@ -2345,7 +2345,7 @@ components:
           $ref: "#/components/schemas/RegistryAuthConfig"
     RegistryAuthConfig:
       type: object
-      title: RegistryAuthConfig selects how the satellite authenticates to Harbor (plan item 8.3, not read yet).
+      title: RegistryAuthConfig selects how the satellite authenticates to Harbor (plan item 8.3); workload_identity is rejected until Harbor 3 offers the token exchange.
       properties:
         mode:
           type: string
@@ -2419,7 +2419,7 @@ components:
           x-go-name: Generation
     AdmissionConfig:
       type: object
-      title: AdmissionConfig is the edge admission policy of the satellite proxy (plan item 7.5, not read yet).
+      title: AdmissionConfig is the edge admission policy of the satellite proxy (plan item 7.5).
       properties:
         mode:
           type: string

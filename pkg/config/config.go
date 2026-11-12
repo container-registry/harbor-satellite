@@ -294,8 +294,8 @@ type AppConfig struct {
 	Journal                         JournalConfig `json:"journal,omitzero"`
 	// Plan item 7.5 (Harbor 3 skeleton): accepted, not read yet.
 	Admission AdmissionConfig `json:"admission,omitzero"`
-	// Plan item 8.3 (Harbor 3 skeleton): accepted, not read yet; the
-	// satellite pulls with its robot.
+	// RegistryAuth is plan item 8.3; validation rejects workload_identity
+	// until Harbor 3 offers the token exchange (docs/guides/keyless-pulls.md).
 	RegistryAuth RegistryAuthConfig `json:"registry_auth,omitzero"`
 }
 
