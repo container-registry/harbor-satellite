@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -21,7 +22,8 @@ type MembershipCmd struct {
 // Sync stores the group with the distinct projects of its non-deleted
 // artifacts and appends GroupChanged; the group reconciler pushes its
 // state and fans out to the members (plan item 2.5). A failure leaves the
-// group unchanged.
+// group unchanged. Creating a group with a ReservedGroupNames name is
+// ErrInvalid; an existing one keeps syncing.
 func (s *GroupService) Sync(ctx context.Context, cmd SyncGroupCmd) (Group, error) {
 	if !ValidName(cmd.Name) {
 		return Group{}, fmt.Errorf("%w: group name %q", ErrInvalid, cmd.Name)
@@ -32,6 +34,15 @@ func (s *GroupService) Sync(ctx context.Context, cmd SyncGroupCmd) (Group, error
 	group := Group{Name: cmd.Name, RegistryURL: s.c.settings.RegistryURL, Projects: ArtifactProjects(cmd.Artifacts), Artifacts: cmd.Artifacts}
 	var stored Group
 	err := s.c.inTx(ctx, func(tx Tx) error {
+		if slices.Contains(ReservedGroupNames, cmd.Name) {
+			_, err := tx.Groups().GetByName(ctx, cmd.Name)
+			if errors.Is(err, ErrNotFound) {
+				return reservedName("group", cmd.Name, ReservedGroupNames)
+			}
+			if err != nil {
+				return fmt.Errorf("group %s: %w", cmd.Name, err)
+			}
+		}
 		var err error
 		stored, err = tx.Groups().Upsert(ctx, group)
 		if err != nil {

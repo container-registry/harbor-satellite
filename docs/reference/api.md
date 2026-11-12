@@ -4,6 +4,16 @@ The contract is the OpenAPI 3 document [`spec/groundcontrol/openapi.yaml`](../..
 
 Errors are JSON: `{"code": <status>, "message": "<text>"}`. Every response carries an `X-Request-ID` header.
 
+Satellite, group and config names are 1 to 255 characters of lowercase letters, digits and `._-`, starting with a letter or digit. Some names collide with a literal route that the router matches first, so they are reserved for new resources and answer `400`:
+
+| Reserved name | Route that wins | Route it would block |
+|---|---|---|
+| satellite `active` | `GET /api/satellites/active` | `GET /api/satellites/{satellite}` |
+| satellite `stale` | `GET /api/satellites/stale` | `GET /api/satellites/{satellite}` |
+| group `satellite` | `DELETE /api/groups/satellite` | `DELETE /api/groups/{group}` |
+
+A satellite or group created with such a name before 1.0 keeps working on every other route, and the group can still be synchronized. Other literal routes (`/api/satellites/register`, `/api/groups/sync`, `/api/configs/satellite`, `/api/users/password`) use a method their parameter route does not have, so they do not collide.
+
 ## Authentication
 
 | Class | Credentials |

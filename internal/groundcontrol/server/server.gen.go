@@ -358,8 +358,10 @@ type GroupSatelliteResponse struct {
 // GroupSyncRequest defines model for GroupSyncRequest.
 type GroupSyncRequest struct {
 	Artifacts []GroupArtifact `json:"artifacts,omitempty,omitzero"`
-	Group     string          `json:"group"`
-	Registry  string          `json:"registry,omitempty,omitzero"`
+
+	// Group Group name. `satellite` is reserved for a new group; an existing group with that name can still be synchronized.
+	Group    string `json:"group"`
+	Registry string `json:"registry,omitempty,omitzero"`
 }
 
 // HealthResponse defines model for HealthResponse.
@@ -576,9 +578,11 @@ type SPIFFESatelliteRegistrationRequest struct {
 	AttestationMethod SPIFFESatelliteRegistrationRequestAttestationMethod `json:"attestation_method"`
 	ParentAgentID     string                                              `json:"parent_agent_id,omitempty,omitzero"`
 	Region            string                                              `json:"region,omitempty,omitzero"`
-	SatelliteName     string                                              `json:"satellite_name"`
-	Selectors         []string                                            `json:"selectors"`
-	TTLSeconds        *int64                                              `json:"ttl_seconds,omitempty"`
+
+	// SatelliteName Satellite name. `active` and `stale` are reserved for a new satellite.
+	SatelliteName string   `json:"satellite_name"`
+	Selectors     []string `json:"selectors"`
+	TTLSeconds    *int64   `json:"ttl_seconds,omitempty"`
 }
 
 // SPIFFESatelliteRegistrationRequestAttestationMethod defines model for SPIFFESatelliteRegistrationRequest.AttestationMethod.
@@ -786,7 +790,9 @@ type TLSConfig struct {
 type TokenSatelliteRegistrationRequest struct {
 	ConfigName string   `json:"config_name"`
 	Groups     []string `json:"groups,omitempty,omitzero"`
-	Name       string   `json:"name"`
+
+	// Name Satellite name. `active` and `stale` are reserved.
+	Name string `json:"name"`
 }
 
 // TokenSatelliteRegistrationResponse defines model for TokenSatelliteRegistrationResponse.

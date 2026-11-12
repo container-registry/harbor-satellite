@@ -29,6 +29,9 @@ func (s *SatelliteService) Register(ctx context.Context, cmd RegisterSatelliteCm
 	if !ValidName(cmd.Name) {
 		return RegistrationToken{}, fmt.Errorf("%w: satellite name %q", ErrInvalid, cmd.Name)
 	}
+	if err := reservedName("satellite", cmd.Name, ReservedSatelliteNames); err != nil {
+		return RegistrationToken{}, err
+	}
 	if !ValidName(cmd.ConfigName) {
 		return RegistrationToken{}, fmt.Errorf("%w: config name %q", ErrInvalid, cmd.ConfigName)
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"time"
 )
@@ -41,6 +42,25 @@ var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 // name.
 func ValidName(name string) bool {
 	return len(name) <= 255 && validName.MatchString(name)
+}
+
+// ReservedSatelliteNames and ReservedGroupNames are literal path segments
+// that the API router matches before the {satellite} or {group} parameter
+// of the same method: GET /api/satellites/active and /stale come before
+// GET /api/satellites/{satellite}, DELETE /api/groups/satellite before
+// DELETE /api/groups/{group}. A new satellite or group may not take them.
+// ValidName still accepts them, so state refs of existing resources with
+// such a name keep working.
+var (
+	ReservedSatelliteNames = []string{"active", "stale"}
+	ReservedGroupNames     = []string{"satellite"}
+)
+
+func reservedName(kind, name string, reserved []string) error {
+	if slices.Contains(reserved, name) {
+		return fmt.Errorf("%w: %s name %q is reserved by the API", ErrInvalid, kind, name)
+	}
+	return nil
 }
 
 func (s Settings) stateRef(kind, name string) (ArtifactRef, error) {

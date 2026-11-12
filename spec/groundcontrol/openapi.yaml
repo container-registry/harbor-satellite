@@ -5,6 +5,15 @@ info:
     group membership, user administration, status reporting, and SPIRE/SPIFFE
     bootstrap flows. JSON schemas describe the public transport contract and
     are intentionally independent of the Ground Control database schema.
+
+    Satellite, group and config names are 1 to 255 characters of lowercase
+    letters, digits and `._-`, starting with a letter or digit. A new
+    satellite may not be named `active` or `stale`, and a new group may not
+    be named `satellite`: `GET /api/satellites/active` and `/stale` are
+    matched before `GET /api/satellites/{satellite}`, and
+    `DELETE /api/groups/satellite` before `DELETE /api/groups/{group}`.
+    Creating one answers 400; existing resources with such a name keep
+    working everywhere else.
   title: Ground Control
   version: 1.0.0
 paths:
@@ -434,7 +443,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/GroupResponse"
         "400":
-          description: Group state artifact payload is invalid.
+          description: Group state artifact payload is invalid, or a new group has a reserved name.
           content:
             application/json:
               schema:
@@ -999,7 +1008,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/TokenSatelliteRegistrationResponse"
         "400":
-          description: Registration payload, name, config, or robot account is invalid.
+          description: Registration payload, name, config, or robot account is invalid, or the name is reserved.
           content:
             application/json:
               schema:
@@ -1075,7 +1084,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/SPIFFESatelliteRegistrationResponse"
         "400":
-          description: Registration payload, selectors, or attestation method is invalid.
+          description: Registration payload, selectors, or attestation method is invalid, or a new satellite has a reserved name.
           content:
             application/json:
               schema:
@@ -3383,6 +3392,7 @@ components:
           x-go-name: Groups
         name:
           type: string
+          description: Satellite name. `active` and `stale` are reserved.
           x-go-name: Name
     SPIFFESatelliteRegistrationRequest:
       type: object
@@ -3408,6 +3418,9 @@ components:
           x-go-name: Region
         satellite_name:
           type: string
+          description: >
+            Satellite name. `active` and `stale` are reserved for a new
+            satellite.
           x-go-name: SatelliteName
         selectors:
           type: array
@@ -3988,6 +4001,9 @@ components:
           x-go-name: Artifacts
         group:
           type: string
+          description: >
+            Group name. `satellite` is reserved for a new group; an existing
+            group with that name can still be synchronized.
           x-go-name: Group
         registry:
           type: string

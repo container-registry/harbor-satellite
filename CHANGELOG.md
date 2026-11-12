@@ -27,6 +27,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - Satellite: an `http://` Ground Control URL needs `use_unsecure`.
 - Satellite: `/healthz` and `/metrics` listen on `127.0.0.1:8586` by default; a port in use stops startup.
 - Satellite: unreferenced local content is collected after `STORE_GC_GRACE` (10 minutes).
+- Ground Control: a new satellite may not be named `active` or `stale`, and a new group may not be named `satellite`; registration (token, SPIFFE and SPIFFE ZTR) and `POST /api/groups/sync` answer `400`. The router matches `GET /api/satellites/active` and `/stale` before `GET /api/satellites/{satellite}`, and `DELETE /api/groups/satellite` before `DELETE /api/groups/{group}`, so such a satellite could not be fetched and such a group not deleted. Existing satellites and groups with these names keep working, apart from those two routes.
 
 ### Added
 

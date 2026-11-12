@@ -244,8 +244,12 @@ func (s *RegistrationService) SPIFFEZeroTouch(ctx context.Context, satelliteName
 }
 
 // createSPIFFESatellite creates the satellite with its config, the
-// default one created when missing, and its groups.
+// default one created when missing, and its groups. A reserved name is
+// ErrInvalid; an existing satellite with one keeps registering.
 func (s *RegistrationService) createSPIFFESatellite(ctx context.Context, tx Tx, name, configName string, groups []string) (Satellite, error) {
+	if err := reservedName("satellite", name, ReservedSatelliteNames); err != nil {
+		return Satellite{}, err
+	}
 	sat, err := tx.Satellites().Create(ctx, name)
 	if err != nil {
 		return Satellite{}, fmt.Errorf("create satellite %s: %w", name, err)
