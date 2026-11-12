@@ -28,6 +28,7 @@ type StatusReportingProcess struct {
 	criReported    bool
 	runSummary     RunSummarySource
 	upload         journalUploader
+	inventory      inventoryState
 }
 
 func NewStatusReportingProcess(cm *config.ConfigManager, eventScheduler *events.EventScheduler) *StatusReportingProcess {
@@ -115,6 +116,9 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 		applyRunSummary(req, runSummary.LastRun())
 	}
 	report := toStatusReport(req)
+	s.mu.Lock()
+	digest := s.inventory.prepare(&report, req.CachedImages, req.CachedImages != nil)
+	s.mu.Unlock()
 	batch, err := s.upload.next(s.cm.GetJournalConfig().UploadBatch)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to read the journal, reporting without it")
@@ -127,6 +131,15 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to send status report")
 		return err
+	}
+	s.mu.Lock()
+	s.inventory.answered(report, digest, resp.InventoryRequested)
+	s.mu.Unlock()
+	if resp.Session != nil {
+		s.cm.With(config.SetGCSession(config.GCSession{Token: resp.Session.Token, ExpiresAt: resp.Session.ExpiresAt}))
+		if err := s.cm.WriteConfig(); err != nil {
+			log.Warn().Err(err).Msg("Failed to persist the renewed Ground Control session")
+		}
 	}
 	if batch != nil {
 		if err := s.upload.answer(*batch, resp.Journal); err != nil {
@@ -198,7 +211,7 @@ func (s *StatusReportingProcess) sendStatusReport(ctx context.Context, report gc
 	}
 	var creds gcclient.Credentials = gcclient.NoCredentials{}
 	if s.spiffeClient == nil {
-		creds = robotCredentials(s.cm)
+		creds = gcCredentials(s.cm)
 	}
 	client, err := newGCClient(s.cm, httpClient, creds)
 	if err != nil {

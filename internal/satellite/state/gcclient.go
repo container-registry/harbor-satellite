@@ -29,8 +29,18 @@ func robotCredentials(cm *config.ConfigManager) gcclient.Credentials {
 	})
 }
 
+// gcCredentials prefer the Ground Control session (ADR-0016) and fall back
+// to the robot for a satellite onboarded before sessions; both are read per
+// request, so a renewal applies at once.
+func gcCredentials(cm *config.ConfigManager) gcclient.Credentials {
+	if cm.GetGCSession().Token == "" {
+		return robotCredentials(cm)
+	}
+	return gcclient.SessionBearer(func() string { return cm.GetGCSession().Token })
+}
+
 func stateConfigFromZTR(res gcclient.ZTRResult) config.StateConfig {
-	return config.StateConfig{
+	sc := config.StateConfig{
 		StateURL: res.StateURL,
 		RegistryCredentials: config.RegistryCredentials{
 			URL:      config.URL(res.Robot.RegistryURL),
@@ -38,6 +48,10 @@ func stateConfigFromZTR(res gcclient.ZTRResult) config.StateConfig {
 			Password: res.Robot.Password,
 		},
 	}
+	if res.Session != nil {
+		sc.GCSession = config.GCSession{Token: res.Session.Token, ExpiresAt: res.Session.ExpiresAt}
+	}
+	return sc
 }
 
 func toStatusReport(p *StatusReportParams) gcclient.StatusReport {
