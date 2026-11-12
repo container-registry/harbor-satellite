@@ -443,6 +443,12 @@ type MetricsConfig struct {
 	CollectStorage bool `json:"collect_storage,omitempty,omitzero"`
 }
 
+// NullableFloat64Value defines model for NullableFloat64Value.
+type NullableFloat64Value struct {
+	Float64 float64 `json:"Float64,omitempty,omitzero"`
+	Valid   bool    `json:"Valid,omitempty,omitzero"`
+}
+
 // NullableInt32Value defines model for NullableInt32Value.
 type NullableInt32Value struct {
 	Int32 int32 `json:"Int32,omitempty,omitzero"`
@@ -683,34 +689,40 @@ type SatelliteStatusRequest struct {
 	ImageCount            int32 `json:"image_count,omitempty,omitzero"`
 
 	// InventoryDigest Digest of cached_images (internal/shared/inventory, plan item 4.4). A satellite sends cached_images only when this changed or Ground Control asked with inventory_requested.
-	InventoryDigest      string        `json:"inventory_digest,omitempty,omitzero"`
-	Journal              JournalUpload `json:"journal,omitempty,omitzero"`
-	LastReplicationError string        `json:"last_replication_error,omitempty,omitzero"`
-	LastSyncDurationMs   int64         `json:"last_sync_duration_ms,omitempty,omitzero"`
-	LatestConfigDigest   string        `json:"latest_config_digest,omitempty,omitzero"`
-	LatestStateDigest    string        `json:"latest_state_digest,omitempty,omitzero"`
-	MemoryUsedBytes      int64         `json:"memory_used_bytes,omitempty,omitzero"`
-	Name                 string        `json:"name,omitempty,omitzero"`
-	RequestCreatedTime   time.Time     `json:"request_created_time,omitempty,omitzero"`
-	StateReportInterval  string        `json:"state_report_interval,omitempty,omitzero"`
-	StorageUsedBytes     int64         `json:"storage_used_bytes,omitempty,omitzero"`
+	InventoryDigest        string        `json:"inventory_digest,omitempty,omitzero"`
+	Journal                JournalUpload `json:"journal,omitempty,omitzero"`
+	LastReplicationError   string        `json:"last_replication_error,omitempty,omitzero"`
+	LastSyncDurationMs     int64         `json:"last_sync_duration_ms,omitempty,omitzero"`
+	LatestConfigDigest     string        `json:"latest_config_digest,omitempty,omitzero"`
+	LatestStateDigest      string        `json:"latest_state_digest,omitempty,omitzero"`
+	MemoryUsedBytes        int64         `json:"memory_used_bytes,omitempty,omitzero"`
+	Name                   string        `json:"name,omitempty,omitzero"`
+	RequestCreatedTime     time.Time     `json:"request_created_time,omitempty,omitzero"`
+	StateReportInterval    string        `json:"state_report_interval,omitempty,omitzero"`
+	StorageUsedBytes       int64         `json:"storage_used_bytes,omitempty,omitzero"`
+	DownloadBytesPerSecond float64       `json:"download_bytes_per_second,omitempty,omitzero"`
+	BytesInWindow          int64         `json:"bytes_in_window,omitempty,omitzero"`
+	BytesTotal             int64         `json:"bytes_total,omitempty,omitzero"`
 }
 
 // SatelliteStatusResponse defines model for SatelliteStatusResponse.
 type SatelliteStatusResponse struct {
-	Activity           string              `json:"Activity,omitempty,omitzero"`
-	ArtifactIds        []int32             `json:"ArtifactIds,omitempty,omitzero"`
-	CpuPercent         NullableStringValue `json:"CpuPercent,omitempty,omitzero"`
-	CreatedAt          time.Time           `json:"CreatedAt,omitempty,omitzero"`
-	ID                 int32               `json:"ID,omitempty,omitzero"`
-	ImageCount         NullableInt32Value  `json:"ImageCount,omitempty,omitzero"`
-	LastSyncDurationMs NullableInt64Value  `json:"LastSyncDurationMs,omitempty,omitzero"`
-	LatestConfigDigest NullableStringValue `json:"LatestConfigDigest,omitempty,omitzero"`
-	LatestStateDigest  NullableStringValue `json:"LatestStateDigest,omitempty,omitzero"`
-	MemoryUsedBytes    NullableInt64Value  `json:"MemoryUsedBytes,omitempty,omitzero"`
-	ReportedAt         time.Time           `json:"ReportedAt,omitempty,omitzero"`
-	SatelliteID        int32               `json:"SatelliteID,omitempty,omitzero"`
-	StorageUsedBytes   NullableInt64Value  `json:"StorageUsedBytes,omitempty,omitzero"`
+	Activity               string               `json:"Activity,omitempty,omitzero"`
+	ArtifactIds            []int32              `json:"ArtifactIds,omitempty,omitzero"`
+	BytesInWindow          NullableInt64Value   `json:"BytesInWindow,omitempty,omitzero"`
+	BytesTotal             NullableInt64Value   `json:"BytesTotal,omitempty,omitzero"`
+	CpuPercent             NullableStringValue  `json:"CpuPercent,omitempty,omitzero"`
+	CreatedAt              time.Time            `json:"CreatedAt,omitempty,omitzero"`
+	DownloadBytesPerSecond NullableFloat64Value `json:"DownloadBytesPerSecond,omitempty,omitzero"`
+	ID                     int32                `json:"ID,omitempty,omitzero"`
+	ImageCount             NullableInt32Value   `json:"ImageCount,omitempty,omitzero"`
+	LastSyncDurationMs     NullableInt64Value   `json:"LastSyncDurationMs,omitempty,omitzero"`
+	LatestConfigDigest     NullableStringValue  `json:"LatestConfigDigest,omitempty,omitzero"`
+	LatestStateDigest      NullableStringValue  `json:"LatestStateDigest,omitempty,omitzero"`
+	MemoryUsedBytes        NullableInt64Value   `json:"MemoryUsedBytes,omitempty,omitzero"`
+	ReportedAt             time.Time            `json:"ReportedAt,omitempty,omitzero"`
+	SatelliteID            int32                `json:"SatelliteID,omitempty,omitzero"`
+	StorageUsedBytes       NullableInt64Value   `json:"StorageUsedBytes,omitempty,omitzero"`
 }
 
 // SatelliteSyncResponse defines model for SatelliteSyncResponse.

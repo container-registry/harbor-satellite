@@ -125,6 +125,7 @@ func (s *StatusReportingProcess) Execute(ctx context.Context) error {
 	}
 	insecure := s.cm.UseUnsecure()
 	collectStatusReportParams(ctx, heartbeatDuration, req, metricsCfg, registryURL, insecure)
+	recordDownloadStats(req)
 	s.mu.Lock()
 	runSummary := s.runSummary
 	s.mu.Unlock()

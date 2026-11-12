@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -31,8 +32,11 @@ type StatusReportParams struct {
 	CachedImages        []CachedImage `json:"cached_images,omitempty"`
 	// AppliedStates and LastReplicationError come from the last replication
 	// run (plan item 6.6).
-	AppliedStates        []AppliedState `json:"applied_states,omitempty"`
-	LastReplicationError string         `json:"last_replication_error,omitempty"`
+	AppliedStates          []AppliedState `json:"applied_states,omitempty"`
+	LastReplicationError   string         `json:"last_replication_error,omitempty"`
+	DownloadBytesPerSecond float64        `json:"download_bytes_per_second"`
+	BytesInWindow          int64          `json:"bytes_in_window"`
+	BytesTotal             int64          `json:"bytes_total"`
 }
 
 func applyRunSummary(req *StatusReportParams, run RunSummary) {
@@ -41,6 +45,14 @@ func applyRunSummary(req *StatusReportParams, run RunSummary) {
 	req.LastSyncDurationMs = run.Duration.Milliseconds()
 	req.LastReplicationError = edgejournal.Truncate(run.LastReplicationError)
 	req.AppliedStates = append([]AppliedState(nil), run.Applied...)
+}
+
+// recordDownloadStats copies the process download counters onto the heartbeat.
+func recordDownloadStats(req *StatusReportParams) {
+	stats := budget.Ensure().Snapshot()
+	req.DownloadBytesPerSecond = stats.BytesPerSecond
+	req.BytesInWindow = stats.BytesInWindow
+	req.BytesTotal = stats.BytesTotal
 }
 
 func collectStatusReportParams(ctx context.Context, heartbeatInterval time.Duration, req *StatusReportParams, cfg config.MetricsConfig, registryURL string, insecure bool) {

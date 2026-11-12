@@ -132,11 +132,13 @@ func TestGetSatelliteStatusHandler(t *testing.T) {
 			"id", "satellite_id", "activity", "latest_state_digest", "latest_config_digest",
 			"cpu_percent", "memory_used_bytes", "storage_used_bytes", "last_sync_duration_ms",
 			"image_count", "reported_at", "created_at", "artifact_ids",
+			"download_bytes_per_second", "bytes_in_window", "bytes_total",
 		}).AddRow(
 			1, 1, "syncing", sql.NullString{String: "sha256:abc", Valid: true}, sql.NullString{},
 			sql.NullString{String: "12.50", Valid: true}, sql.NullInt64{Int64: 1024, Valid: true},
 			sql.NullInt64{}, sql.NullInt64{},
 			sql.NullInt32{Int32: 3, Valid: true}, now, now, pq.Array([]int32{1, 2, 3}),
+			sql.NullFloat64{}, sql.NullInt64{}, sql.NullInt64{},
 		)
 		mock.ExpectQuery("SELECT .+ FROM satellite_status").
 			WithArgs(int32(1)).

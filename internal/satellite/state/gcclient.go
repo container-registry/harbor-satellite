@@ -56,17 +56,20 @@ func stateConfigFromZTR(res gcclient.ZTRResult) config.StateConfig {
 
 func toStatusReport(p *StatusReportParams) gcclient.StatusReport {
 	report := gcclient.StatusReport{
-		Name:                p.Name,
-		Activity:            p.Activity,
-		StateReportInterval: p.StateReportInterval,
-		LatestStateDigest:   p.LatestStateDigest,
-		LatestConfigDigest:  p.LatestConfigDigest,
-		MemoryUsedBytes:     clampInt64(p.MemoryUsedBytes),
-		StorageUsedBytes:    clampInt64(p.StorageUsedBytes),
-		CPUPercent:          p.CPUPercent,
-		RequestCreatedTime:  p.RequestCreatedTime,
-		LastSyncDurationMs:  p.LastSyncDurationMs,
-		ImageCount:          clampInt32(p.ImageCount),
+		Name:                   p.Name,
+		Activity:               p.Activity,
+		StateReportInterval:    p.StateReportInterval,
+		LatestStateDigest:      p.LatestStateDigest,
+		LatestConfigDigest:     p.LatestConfigDigest,
+		MemoryUsedBytes:        clampInt64(p.MemoryUsedBytes),
+		StorageUsedBytes:       clampInt64(p.StorageUsedBytes),
+		CPUPercent:             p.CPUPercent,
+		RequestCreatedTime:     p.RequestCreatedTime,
+		LastSyncDurationMs:     p.LastSyncDurationMs,
+		ImageCount:             clampInt32(p.ImageCount),
+		DownloadBytesPerSecond: p.DownloadBytesPerSecond,
+		BytesInWindow:          p.BytesInWindow,
+		BytesTotal:             p.BytesTotal,
 	}
 	for _, a := range p.AppliedStates {
 		report.AppliedStates = append(report.AppliedStates, groundcontrol.AppliedState{Ref: a.Ref, Digest: a.Digest})

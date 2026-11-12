@@ -183,6 +183,7 @@ func heartbeatCmd(auth fleet.SatelliteAuth, req SatelliteStatusRequest) fleet.He
 			LatestStateDigest: req.LatestStateDigest, LatestConfigDigest: req.LatestConfigDigest,
 			CPUPercent: req.CPUPercent, MemoryUsedBytes: req.MemoryUsedBytes, StorageUsedBytes: req.StorageUsedBytes,
 			LastSyncDuration: req.LastSyncDurationMs, ImageCount: req.ImageCount, ReportedAt: req.RequestCreatedTime,
+			DownloadBytesPerSecond: req.DownloadBytesPerSecond, BytesInWindow: req.BytesInWindow, BytesTotal: req.BytesTotal,
 		},
 		StateDigest:           fleet.Digest(req.LatestStateDigest),
 		ConfigDigest:          fleet.Digest(req.LatestConfigDigest),

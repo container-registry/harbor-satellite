@@ -21,6 +21,8 @@ type StatusSample struct {
 	MemoryUsedBytes, StorageUsedBytes, LastSyncDuration int64
 	ImageCount                                          int32
 	ReportedAt                                          time.Time // request_created_time, as today
+	DownloadBytesPerSecond                              float64
+	BytesInWindow, BytesTotal                           int64
 }
 
 // Heartbeat is what a beat leaves for the flusher (plan item 4.2).
