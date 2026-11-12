@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -238,4 +239,36 @@ func TestNonPositiveIntervalIsAnErrorNotAPanic(t *testing.T) {
 	require.NotPanics(t, func() {
 		require.ErrorContains(t, s.ResetIntervalFromExpr("@every 0s"), "must be positive")
 	})
+}
+
+// A process marks itself running only once its goroutine runs Execute, so
+// the scheduler must not rely on IsRunning alone: two triggers in a row
+// would otherwise start two runs of one process at the same time.
+func TestLaunchProcess_NeverRunsTheProcessTwiceAtOnce(t *testing.T) {
+	// One P keeps the first run's goroutine from starting before the
+	// second launch, the window a busy machine opens by chance.
+	prev := runtime.GOMAXPROCS(1)
+	t.Cleanup(func() { runtime.GOMAXPROCS(prev) })
+	release := make(chan struct{})
+	var active, peak atomic.Int32
+	proc := &mockProcess{name: "replication", execFn: func(context.Context) error {
+		n := active.Add(1)
+		for p := peak.Load(); n > p && !peak.CompareAndSwap(p, n); p = peak.Load() {
+		}
+		<-release
+		active.Add(-1)
+		return nil
+	}}
+	s, err := NewScheduler(proc, nopLogger())
+	require.NoError(t, err)
+
+	s.launchProcess(context.Background())
+	s.launchProcess(context.Background())
+	require.Eventually(t, func() bool { return proc.execCount.Load() >= 1 }, time.Second, time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
+	close(release)
+	s.wg.Wait()
+
+	require.EqualValues(t, 1, peak.Load(), "runs at once")
+	require.EqualValues(t, 1, proc.execCount.Load())
 }

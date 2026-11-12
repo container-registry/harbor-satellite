@@ -20,11 +20,15 @@ type Scheduler struct {
 	// pending holds at most one TryTrigger the run loop has not taken yet.
 	pending chan struct{}
 	stopped atomic.Bool
-	name    string
-	process process.Process
-	log     *zerolog.Logger
-	mu      sync.Mutex
-	wg      sync.WaitGroup
+	// launched is set before the run's goroutine starts and cleared when
+	// Execute returns. A process sets IsRunning only inside Execute, so a
+	// second trigger before the goroutine runs would start a second run.
+	launched atomic.Bool
+	name     string
+	process  process.Process
+	log      *zerolog.Logger
+	mu       sync.Mutex
+	wg       sync.WaitGroup
 	// runOnStart is set for interval schedulers. An on-demand scheduler
 	// (an event such as refresh_credentials) runs only when triggered.
 	runOnStart bool
@@ -214,7 +218,7 @@ func (s *Scheduler) launchProcess(ctx context.Context) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if !s.process.IsRunning() {
+	if !s.process.IsRunning() && s.launched.CompareAndSwap(false, true) {
 		s.log.Info().
 			Str("Process", s.process.Name()).
 			Msg("Scheduler triggering task execution")
@@ -222,6 +226,7 @@ func (s *Scheduler) launchProcess(ctx context.Context) {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
+			defer s.launched.Store(false)
 			if err := s.process.Execute(ctx); err != nil {
 				s.log.Warn().
 					Str("Process", s.process.Name()).
