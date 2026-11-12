@@ -194,7 +194,7 @@ func (s *Server) GetConfig(w http.ResponseWriter, r *http.Request, configName st
 	cfg, err := s.svc().Configs.Get(r.Context(), configName)
 	if err != nil {
 		if errors.Is(err, fleet.ErrNotFound) {
-			HandleAppError(w, &AppError{Message: "Config not found: " + sql.ErrNoRows.Error(), Code: http.StatusNotFound})
+			HandleAppError(w, &AppError{Message: "Config not found", Code: http.StatusNotFound})
 			return
 		}
 		HandleAppError(w, err)

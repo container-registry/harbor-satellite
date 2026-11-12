@@ -89,7 +89,7 @@ func (s *Server) ListActiveSatellites(w http.ResponseWriter, r *http.Request) {
 		handleFleetError(w, err, &AppError{Message: "failed to get active satellites", Code: StatusForError(err)})
 		return
 	}
-	var out []ActiveSatelliteResponse
+	out := make([]ActiveSatelliteResponse, 0, len(views))
 	for _, v := range views {
 		statusTime := v.LastReportedAt
 		if statusTime.IsZero() {
@@ -112,7 +112,7 @@ func (s *Server) ListStaleSatellites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	var out []StaleSatelliteResponse
+	out := make([]StaleSatelliteResponse, 0, len(views))
 	for _, v := range views {
 		out = append(out, StaleSatelliteResponse{
 			ID: int32(v.Satellite.ID), Name: v.Satellite.Name, CreatedAt: v.Satellite.CreatedAt, UpdatedAt: v.Satellite.UpdatedAt,

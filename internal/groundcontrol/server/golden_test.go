@@ -181,6 +181,7 @@ func TestGoldenAPI(t *testing.T) {
 	login.decode(t, &session)
 	admin := bearerAuth(session.Token)
 	g.step("api-without-credentials", http.MethodGet, "/api/configs", nil, nil)
+	g.step("satellites-active-empty", http.MethodGet, "/api/satellites/active", nil, admin)
 
 	g.step("spire-status", http.MethodGet, "/api/spire/status", nil, admin)
 	g.step("spire-agents", http.MethodGet, "/api/spire/agents", nil, admin)

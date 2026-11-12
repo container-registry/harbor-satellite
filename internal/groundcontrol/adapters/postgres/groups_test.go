@@ -84,3 +84,26 @@ func TestSatelliteRepo_GroupsInOneStatement(t *testing.T) {
 	require.Equal(t, "no-artifacts", groups[3].Name)
 	require.Nil(t, groups[3].Artifacts, "a group stored before group_artifacts has none")
 }
+
+// Updating a row writes a new tuple at the end of the heap, so without an
+// ORDER BY a sequential scan returns the updated group last.
+func TestGroups_ListIsOrderedByName(t *testing.T) {
+	repo := newRepository(t)
+	ctx := context.Background()
+	groups := repo.Autocommit().Groups()
+	for _, name := range []string{"alpha", "bravo"} {
+		_, err := groups.Upsert(ctx, fleet.Group{Name: name, RegistryURL: "http://harbor.example", Projects: []string{"library"}})
+		require.NoError(t, err)
+	}
+	_, err := groups.Upsert(ctx, fleet.Group{Name: "alpha", RegistryURL: "http://harbor.example", Projects: []string{"tools"}})
+	require.NoError(t, err)
+
+	listed, err := groups.List(ctx)
+
+	require.NoError(t, err)
+	names := make([]string, 0, len(listed))
+	for _, g := range listed {
+		names = append(names, g.Name)
+	}
+	require.Equal(t, []string{"alpha", "bravo"}, names)
+}

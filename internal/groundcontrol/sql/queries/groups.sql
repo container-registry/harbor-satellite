@@ -9,7 +9,7 @@ VALUES ($1, $2, $3, NOW(), NOW())
 RETURNING *;
 
 -- name: ListGroups :many
-SELECT * FROM groups;
+SELECT * FROM groups ORDER BY group_name;
 
 -- name: GetGroupByID :one
 SELECT * FROM groups
