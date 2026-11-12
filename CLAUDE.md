@@ -237,7 +237,7 @@ Ground Control CLI (`groundcontrol`): flags `--server` (default https://localhos
 - Satellite-authenticated: `POST /satellites/sync` and `POST /satellites/refresh` (SPIFFE SVID or robot Basic auth, rate limited; the SPIFFE middleware is the outer layer, so a valid SVID wins over Basic credentials). Refresh rotates the robot secret in Harbor and returns it; an expired robot gets 401 and needs a new ZTR
 - Protected (under `/api`): groups, configs, satellites, users, logout
 - System admin only: user create/delete and admin password reset, group delete, `/api/spire/*`, `POST /api/satellites/register` (SPIFFE registration), `/api/ops/*` (`GET /api/ops/outbox` answers 501 until plan item 2.3)
-- Background cleanup job: every 24h under a PostgreSQL advisory lock, deletes status records older than 7 days and orphaned artifacts
+- Background cleanup job: every 24h, in one transaction that takes `pg_try_advisory_xact_lock(advisorylock.Cleanup)` (released at commit or rollback, so it cannot leak through the pool; a replica that does not get it skips the run), deletes status records older than 7 days and orphaned artifacts
 
 **SPIFFE/SPIRE Authentication** (satellite to Ground Control):
 - mTLS using X.509 SVIDs from the SPIRE Workload API
@@ -403,7 +403,6 @@ Scaffolding for the Harbor 3 plan. Stubs return an error wrapping `notimpl.ErrNo
 
 - internal/shared/notimpl/: `ErrNotImplemented` and `Err(item)`, returned by every skeleton stub
 - D10 (empty satellite state artifact) has tests only
-- D8: query `TryAdvisoryXactLock`; `runCleanupWithLock` still takes a session advisory lock through the pool
 - D9 and D12: `store.Store.Delete` documents the digest guard (an artifact's tag goes only while it still resolves to the artifact's digest, then unreferenced content is collected; `RegistryStore` deletes the artifact's own digest), which neither store implements yet; `state.applyGroupChanges` (replicate, then delete) and `state.withoutWanted` (removals checked against every group's wanted entities, D12) are stubs; `state_process.go` still deletes before it replicates, per group
 - `.go-arch-lint.yml` (0.1, enforced): import boundaries checked by `task lint:arch` (go-arch-lint, pinned by `GO_ARCH_LINT_VERSION`, run with `go run`). `task lint` runs it before golangci-lint and the lint workflow runs it as job `arch`. Every package must belong to a component and a component may import its own packages only when it lists itself, so a new package needs an entry; test helper packages named `*test` fall into `testsupport` by themselves, and `internal/satellite/gcclient` is its own component that may import only `pkg/groundcontrol` and the shared packages. The two `EXCEPTION 0.1` entries go once `proxy.Mode` leaves `internal/satellite` and `pkg/config` gets an injected encryptor (`test/arch` pending test). `govet` is enabled with `shadow` off
 - `internal/satellite/telemetry` (0.4): metric names, `Recorder` and `Nop`, and a stub `/healthz` + `/metrics` server. `TELEMETRY_ADDR` is parsed; nothing starts the server

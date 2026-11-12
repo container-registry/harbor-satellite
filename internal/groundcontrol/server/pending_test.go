@@ -137,7 +137,6 @@ func TestZTRTokenCanBeUsedOnlyOnce(t *testing.T) {
 }
 
 func TestCleanupRunsOnceAndReleasesItsLock(t *testing.T) {
-	pending.Plan(t, "D8", "the cleanup advisory lock is taken and released through the pool, so the unlock can miss and the lock leaks")
 	db := dbtest.New(t)
 	ctx := context.Background()
 	pool, err := sql.Open("postgres", db.URL)
