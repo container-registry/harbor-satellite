@@ -4,9 +4,17 @@ Ground Control is the only component with a database. Satellites keep files only
 
 ## Supported PostgreSQL Versions
 
-[ADR-0020](../decisions/0020-postgresql-19-minimum.md) sets PostgreSQL 19 as the minimum for Ground Control, because the planned outbox reader depends on logical decoding features of 17 to 19. This release does not check the server version at startup yet, and its CI, integration and end-to-end tests run on PostgreSQL 17. The schema of this release uses `xid8`, `pg_current_xact_id()` and declarative partitioning, so it needs at least PostgreSQL 13.
+Ground Control needs PostgreSQL 19 or later ([ADR-0020](../decisions/0020-postgresql-19-minimum.md)). Before they migrate, `serve` and `worker` read `server_version_num` and `wal_level` and stop with an error when the server is older than 19.0 or runs `wal_level=minimal`. Against the `postgres:18.6` image the error reads:
 
-Plan new installations on PostgreSQL 19 once your platform offers it. Existing installations on 13 to 18 keep working with this release; a later release will refuse to start below 19, so plan the PostgreSQL upgrade before that one.
+```
+PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2) is not supported: Ground Control needs PostgreSQL 19 or later (ADR-0020); upgrade the server with pg_upgrade or dump and restore
+```
+
+Use PostgreSQL 19.0 or later in production. The compose files, the end-to-end and integration tests and the Helm chart's internal PostgreSQL run `postgres:19rc1`, which reports `server_version_num` 190000 and passes the check; release candidates are for tests only.
+
+`wal_level` can stay at the default `replica`. This release does not create a logical replication slot, so the Ground Control role does not need the `REPLICATION` attribute yet; the logical outbox reader of ADR-0019 will need it.
+
+The images of PostgreSQL 18 and later keep their data in `/var/lib/postgresql/<major>/docker`. Mount volumes at `/var/lib/postgresql`, not `/var/lib/postgresql/data`.
 
 ## Connection and TLS
 

@@ -53,8 +53,8 @@ On 2026-10-16, 19 is at RC1 (released 2026-10-15), and Docker Hub has `postgres:
 | ADR | accepted |
 | Startup check of `server_version_num` and `wal_level` | implemented: `internal/groundcontrol/migrator/server.go`, before migrations |
 | `postgres:19rc1` in `test/integration`, `test/e2e/docker`, `docker-compose.yml`, `examples/deploy`, the Helm chart (0.2.0) and the quickstart | implemented; switch the tag to `19` at the 19.0 release |
-| `REPLICATION` attribute in the deployment docs and the Helm chart | not started |
-| Release notes of the first release with the floor | not started |
+| `REPLICATION` attribute in the deployment docs and the Helm chart | not needed yet: no code creates a logical slot until the decision-6 reader of ADR-0019 exists; `docs/operations/database.md` says so |
+| Release notes of the first release with the floor | implemented: `CHANGELOG.md` 1.0.0 and `docs/operations/upgrading.md#postgresql-19` |
 
 ## Validation
 

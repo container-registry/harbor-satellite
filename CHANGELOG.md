@@ -4,10 +4,19 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 
 ## [1.0.0] - Unreleased
 
-1.0 is the first release with a stable configuration, API and on-disk format. Upgrade notes and every breaking change are in [Upgrading to 1.0](docs/operations/upgrading.md#upgrading-to-10-from-00x).
+1.0 is the first release with a stable configuration, API and on-disk format. Upgrade notes and every breaking change are in [Upgrading to 1.0](docs/operations/upgrading.md#upgrading-to-10-from-00x). The Ground Control API reports version `1.0.0` (`spec/groundcontrol/openapi.yaml`), and the Helm chart is 0.3.0 with `appVersion` `1.0.0`.
+
+### Upgrade Notes
+
+1. Upgrade PostgreSQL to 19 before Ground Control, with `pg_upgrade` or dump and restore. Ground Control 1.0 refuses older servers, and no release supports both ranges. Production must run PostgreSQL 19.0 or later; the `postgres:19rc1` image in the compose files and the Helm chart is for tests and evaluation only.
+2. With the Helm chart's internal PostgreSQL or the repository's `docker-compose.yml`, dump the database before the upgrade and restore it afterwards, see [PostgreSQL 19](docs/operations/upgrading.md#postgresql-19). The new volume layout does not pick up the old data directory.
+3. Set `DB_SSLMODE=disable` for a PostgreSQL without TLS, and check `robot_accounts` for duplicates before migration 023 runs.
+4. Back up the database, stop every Ground Control process, start one of the new version, then the rest, then upgrade the satellites. The full procedure is in [Upgrading](docs/operations/upgrading.md).
 
 ### Breaking Changes
 
+- Ground Control: PostgreSQL 19 is the minimum (ADR-0020). `serve` and `worker` read `server_version_num` and `wal_level` before they migrate and stop when the server is older than 19.0 (the error names the version found) or runs `wal_level=minimal`. Release candidates of 19 report 190000 and pass.
+- Helm chart and `docker-compose.yml`: the PostgreSQL volume is mounted at `/var/lib/postgresql` instead of `/var/lib/postgresql/data`, because images of 18 and later keep their data in `/var/lib/postgresql/<major>/docker`. The chart no longer sets `PGDATA` (was `/var/lib/postgresql/data/pgdata`). A volume from an earlier chart or compose file is not migrated: the new server initializes an empty cluster in `/var/lib/postgresql/19/docker` and the old data stays unused next to it.
 - Ground Control: `DB_SSLMODE` defaults to `require`. A PostgreSQL without TLS needs `DB_SSLMODE=disable`.
 - Ground Control: migration 023 adds `UNIQUE (satellite_id)` to `robot_accounts` and stops on duplicates, makes configs in use undeletable, adds optimistic config versions and converts timestamps to `TIMESTAMPTZ`, reading them as UTC.
 - Ground Control: migration 024 partitions `satellite_status` by day. Status older than `STATUS_RETENTION_DAYS` (7) is dropped.
@@ -24,7 +33,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - Satellite: pull-only OCI proxy on `127.0.0.1:8585` in `proxy` and `replica` modes, used as the container runtime mirror endpoint.
 - Satellite: streaming pull-through (`PROXY_STREAMING`), with background graph completion.
 - Satellite: proxy write deadline and connection cap (`PROXY_WRITE_TIMEOUT`, `PROXY_MAX_CONNECTIONS`).
-- Satellite: `/healthz` and Prometheus `/metrics` for pulls, pull-through fills, replication and index lock waits.
+- Satellite: `/healthz` and Prometheus `/metrics` for pulls, pull-through fills, replication, index lock waits, heartbeats (`satellite_heartbeats_total`) and journal acknowledgements (`satellite_journal_acks_total`, `satellite_journal_acked_seq`).
 - Satellite: crash-safe OCI layout: atomic `index.json`, recovery of a torn index with full resync, mark-and-sweep garbage collection that respects open readers.
 - Satellite: edge journal of replication results, CRI results and pull-through fills, uploaded with heartbeats.
 - Satellite: replication concurrency and bandwidth limits (`replication_concurrency`, `replication_bandwidth_bytes_per_sec`); state artifacts are fetched only when their digest changed.
@@ -42,6 +51,8 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - Ground Control: signed CloudEvents webhooks with an event catalog in `spec/events/v1` (`WEBHOOKS_ENABLED`).
 - Ground Control: edge journal ingest. Heartbeats acknowledge journal uploads, and accepted records become log-only `Edge*` outbox events, once per record; `POST /satellites/sync` answers `413` above `SYNC_MAX_BODY_BYTES` (4 MiB).
 - Ground Control: one `groundcontrol` executable for server and client.
+- Ground Control CLI: `revoke`/`unrevoke satellite`, `get satellite-lifecycle`, policies, role bindings, webhooks (secret from `GROUND_CONTROL_WEBHOOK_SECRET`) and `get outbox-events`.
+- Helm chart: `extraEnv` and `extraEnvFrom` to set any Ground Control variable, secrets included.
 - Ground Control: Prometheus `/metrics` on `METRICS_ADDR` (default `:9464`) with HTTP requests by route template, heartbeats and the heartbeat buffer, outbox pending and failed events, and the database pools.
 
 ### Fixed
@@ -64,15 +75,20 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - The satellite logged `invalid schedule provided for heartbeat_interval` (and the other two intervals) when the setting was simply absent. An absent interval now takes its default silently; an invalid one is still reported, with the rejected value.
 - The OpenAPI spec did not list the `403` that `POST /satellites/ztr` and `GET /satellites/spiffe-ztr` answer for a revoked satellite, so generated clients had no type for it.
 - `groundcontrol serve` kept answering `/health` healthy after a background job, such as the embedded async worker, stopped; `/health` now answers `503` with that job as an unhealthy component.
+- The containerd `hosts.toml` of a registry given with a scheme (`--mirrors=containerd:https://quay.io` or a `registry_fallback` entry) was written to `certs.d/https:/quay.io`, which containerd never reads; it now goes to `certs.d/<host[:port]>`, and a name that is not a host is refused.
+- Rewriting `hosts.toml` dropped every key the satellite does not manage, such as `ca`, `skip_verify` and `header`; rewriting the CRI-O `registries.conf` dropped `prefix`, `blocked`, `mirror-by-digest-only` and `pull-from-mirror`. Both now keep them.
+- The satellite stopped noticing changes to `config.json` once a tool replaced the file by renaming over it, and lost a change written while a reload was running.
+- `@every 0s` or a negative interval passed validation and crashed the satellite at startup or on hot reload; it is now rejected and the default is used.
+- Ground Control said `ROBOT_ROTATION_ENABLED needs DATA_ENCRYPTION_KEY` when `WEBHOOKS_ENABLED` asked for the key; the message now names the setting that needs it.
+- A SPIRE entry create that SPIRE refused was reported as an empty response, and a refused entry delete as success, which left a deleted satellite's entry in SPIRE.
 - Ground Control without `HARBOR_URL` failed with an error that did not name the variable.
 - With `AUDIT_TRUST_FORWARDED_HEADERS=true`, the audit source IP, the per-IP failure limit and the anonymous limiter took the leftmost `X-Forwarded-For` entry, which the client writes. They now take the entry `AUDIT_TRUSTED_PROXY_HOPS` (default `1`) from the right, the one the trusted proxy appended.
 
 ### Known Limitations
 
-- PostgreSQL 19 is the decided minimum (ADR-0020), but the version is not checked yet, and tests run on PostgreSQL 17.
+- Webhook delivery polls the outbox and waits for the oldest open transaction on the server. The logical decoding reader of ADR-0019 is not implemented, so the Ground Control role needs no `REPLICATION` attribute yet. There is no per-subscription delivery-lag metric.
 - Keyless pulls through Harbor 3 workload identity federation are not available; `registry_auth.mode: workload_identity` is refused.
 - Groups do not follow pushed tags automatically: Harbor has no registry event feed for Ground Control yet.
-- The CLI has no commands for revocation, lifecycle, policies, role bindings, webhooks and the outbox; use the API.
 - The proxy listens on loopback only and does not authenticate clients; peers need a registry endpoint such as a BYO registry.
 
 ## [0.0.6] - 2026-09-07

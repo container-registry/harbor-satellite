@@ -15,6 +15,7 @@ Ground Control migrations are forward only in production. To go back to an older
 
 ### Before You Start
 
+- **PostgreSQL 19.** Ground Control 1.0 refuses a server older than 19.0. Upgrade PostgreSQL first, see [PostgreSQL 19](#postgresql-19).
 - **Database TLS.** `DB_SSLMODE` now defaults to `require`; earlier versions always connected with `sslmode=disable`. A PostgreSQL without TLS needs `DB_SSLMODE=disable`, or Ground Control stops at startup. The compose files in this repository and the Helm chart's internal PostgreSQL set `disable`. For an external database the chart now uses `require` unless `database.sslMode` is set.
 - **Duplicate robot rows.** Migration 023 stops when a satellite has more than one row in `robot_accounts`. Check before upgrading, see [below](#migration-023-constraints-and-time-zones).
 - **Time zone.** Migration 023 converts every timestamp column to `TIMESTAMPTZ`, reading stored values as UTC. Check that the database `TimeZone` and the Ground Control process both ran in UTC.
@@ -26,6 +27,8 @@ Ground Control migrations are forward only in production. To go back to an older
 
 | Area | Change | Action |
 |---|---|---|
+| Ground Control | PostgreSQL 19 minimum; `serve` and `worker` stop below 19.0 or with `wal_level=minimal`. | Upgrade PostgreSQL first, see [PostgreSQL 19](#postgresql-19). |
+| Helm chart, `docker-compose.yml` | The PostgreSQL volume is mounted at `/var/lib/postgresql`, and the chart no longer sets `PGDATA`. An old volume's data is not picked up. | Dump before, restore after, see [PostgreSQL 19](#postgresql-19). |
 | Ground Control | `DB_SSLMODE` default `require`. | Set `DB_SSLMODE=disable` for a server without TLS. |
 | Ground Control | Starts while Harbor is unreachable and reports it in `/health` as `degraded`. Admin writes are queued and applied by the worker. | Use `/health` status and `GET /api/ops/outbox` in monitoring instead of startup failures. |
 | Ground Control | Token registration answers `503` with `Retry-After` until the worker created the satellite's robot. A used token answers `400`, an expired one `401`. | Satellites retry by themselves. Scripts that call ZTR must retry on `503`. |
@@ -75,6 +78,21 @@ Delete the Harbor robots of the removed rows (`robot_id`) in Harbor as well, the
 - Check `GET /api/ops/outbox?state=failed` is empty, and `GET /api/satellites/{satellite}/lifecycle` shows `converged` for upgraded satellites.
 - Consider `ROBOT_ROTATION_ENABLED=true` with a `DATA_ENCRYPTION_KEY`, so robots are replaced before `ROBOT_DURATION_DAYS` runs out.
 
+### PostgreSQL 19
+
+Upgrade PostgreSQL to 19 while the old Ground Control is stopped, then start Ground Control 1.0. Use PostgreSQL 19.0 or later in production; `postgres:19rc1`, which the compose files and the chart use, is for tests and evaluation. See [Database Operations](database.md#supported-postgresql-versions).
+
+**External server.** Use `pg_upgrade` or dump and restore, following the PostgreSQL or your provider's documentation. Keep `wal_level` at `replica` or `logical`.
+
+**Helm chart internal PostgreSQL or `docker-compose.yml`.** Earlier charts ran `postgres:16` with `PGDATA=/var/lib/postgresql/data/pgdata` on a volume mounted at `/var/lib/postgresql/data`, and the compose file mounted its `pgdata` volume there too. The new layout mounts the volume at `/var/lib/postgresql` and the server keeps its data in `/var/lib/postgresql/19/docker`. The old cluster is neither upgraded nor read: PostgreSQL 19 initializes an empty one, and Ground Control then starts on an empty database. Move the data with dump and restore:
+
+1. With the old release still running, dump the database: `kubectl exec <release>-ground-control-postgresql-0 -- pg_dump -U <user> -Fc <database> > gc.dump` (compose: `docker compose exec -T postgres pg_dump -U postgres -Fc groundcontrol > gc.dump`).
+2. Scale Ground Control to zero, upgrade the chart (or the compose file), and wait until the new PostgreSQL is ready. Keep Ground Control stopped.
+3. Restore: `kubectl exec -i <release>-ground-control-postgresql-0 -- pg_restore -U <user> -d <database> --clean --if-exists < gc.dump`.
+4. Start Ground Control. It runs migrations 016 to 024 on a database restored from 0.0.6.
+
+The old files stay on the volume (`/var/lib/postgresql/pgdata` for the chart) until you delete them.
+
 ## PostgreSQL Major Upgrades
 
-Ground Control has no version-specific SQL beyond PostgreSQL 13. Upgrade PostgreSQL with `pg_upgrade` or dump and restore while Ground Control is stopped, then start Ground Control. A future release will require PostgreSQL 19, see [Database Operations](database.md#supported-postgresql-versions).
+Upgrade PostgreSQL with `pg_upgrade` or dump and restore while Ground Control is stopped, then start Ground Control. Ground Control 1.0 supports PostgreSQL 19 and later, see [Database Operations](database.md#supported-postgresql-versions).
