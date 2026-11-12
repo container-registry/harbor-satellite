@@ -191,3 +191,7 @@ func (p *RegistryProbe) Reachable() bool {
 	last := p.LastContact()
 	return !last.IsZero() && time.Since(last) <= p.staleAfter
 }
+
+// StaleAfter is how old the last contact may be while the registry counts
+// as reachable.
+func (p *RegistryProbe) StaleAfter() time.Duration { return p.staleAfter }

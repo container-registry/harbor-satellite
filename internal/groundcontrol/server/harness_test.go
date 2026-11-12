@@ -11,25 +11,17 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
-	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbor"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
-	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/stretchr/testify/require"
 )
 
 const harnessAdminPassword = "Adm1nPassw0rd"
 
-// harborStub serves every Harbor call of this test binary. GC's Harbor
-// client is a process-wide sync.Once, so it can only ever point at one URL.
+// harborStub serves every Harbor call of this test binary.
 var harborStub *harbortest.Stub
 
 func startHarborStub() *harbortest.Stub {
-	stub := harbortest.Start()
-	previous := env.GC
-	env.GC.Harbor = env.Harbor{URL: stub.URL(), Username: harbortest.Username, Password: harbortest.Password}
-	harbor.GetClient()
-	env.GC = previous
-	return stub
+	return harbortest.Start()
 }
 
 // gcHarness is a Ground Control built by NewServer on a fresh database,
@@ -82,6 +74,7 @@ func newGCHarness(t *testing.T, opts ...Option) *gcHarness {
 	}
 	loadGCForTest(t)
 
+	opts = append([]Option{WithFleet(harnessServices(t, db))}, opts...)
 	res, err := NewServer(context.Background(), opts...)
 	require.NoError(t, err)
 	ts := httptest.NewServer(res.Server.Handler)
@@ -216,12 +209,12 @@ func (h *gcHarness) registerSatellite(name, config string, groups ...string) str
 	return tok.Token
 }
 
-// drainOutbox runs the async plane until the outbox is empty. Today the
-// request still creates the robot and pushes the states, so there is
-// nothing to drain; plan item 2.5 moves that work to the outbox and makes
-// this run the worker (see runWorker), which keeps the ZTR, golden and
-// budget tests valid.
-func (h *gcHarness) drainOutbox() {}
+// drainOutbox runs the async plane until the outbox is empty, or returns
+// at once while Harbor is down, leaving the events pending.
+func (h *gcHarness) drainOutbox() {
+	h.t.Helper()
+	drainOutbox(h.t, h.db, h.harbor)
+}
 
 func (h *gcHarness) ztr(token string) StateConfigResponse {
 	h.t.Helper()

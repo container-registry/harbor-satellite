@@ -26,4 +26,6 @@ func (e *ConfigValidationError) Unwrap() error { return e.Err }
 type ConfigWriteResult struct {
 	Config   Config
 	Warnings []string
+	// Previous is the config Update replaced; zero for Create.
+	Previous Config
 }

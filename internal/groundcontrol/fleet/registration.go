@@ -163,7 +163,17 @@ func (s *RegistrationService) SPIFFEZeroTouch(ctx context.Context, satelliteName
 	if err != nil {
 		return ZTRResult{}, fmt.Errorf("satellite %s: %w", satelliteName, err)
 	}
-	return s.rotate(ctx, sat, nil)
+	res, err := s.rotate(ctx, sat, nil)
+	if errors.Is(err, ErrNotProvisioned) {
+		// A satellite created before the async plane has no robot and no
+		// event that would make one; this asks the reconciler for it.
+		if aerr := repo.WithTx(ctx, func(tx Tx) error {
+			return tx.Events().Append(ctx, satelliteEvent(EventSatelliteChanged, sat))
+		}); aerr != nil {
+			return ZTRResult{}, errors.Join(err, aerr)
+		}
+	}
+	return res, err
 }
 
 // createSPIFFESatellite creates the satellite with its config, the

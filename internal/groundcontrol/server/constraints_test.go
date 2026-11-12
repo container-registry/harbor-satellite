@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"sync"
 	"testing"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
-	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
@@ -90,7 +90,19 @@ ORDER BY table_name, column_name`)
 func TestUpdateConfig_ConcurrentPatchOneGets409(t *testing.T) {
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
-	h.harbor.Gate(harbortest.RoutePutManifest, 2, 5*time.Second)
+	// The update pushes nothing to Harbor any more (plan item 2.5), so a
+	// row lock held here makes both requests read the same version and
+	// wait at their UPDATE until it is released.
+	ctx := context.Background()
+	hold, err := h.db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := hold.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			t.Errorf("roll back the lock: %v", err)
+		}
+	})
+	_, err = hold.ExecContext(ctx, "SELECT id FROM configs WHERE config_name = 'edge-config' FOR UPDATE")
+	require.NoError(t, err)
 
 	reqs := []*http.Request{
 		h.newRequest(http.MethodPatch, "/api/configs/edge-config", map[string]any{"app_config": map[string]any{"log_level": "debug"}}, h.admin),
@@ -102,6 +114,13 @@ func TestUpdateConfig_ConcurrentPatchOneGets409(t *testing.T) {
 	for i, req := range reqs {
 		wg.Go(func() { results[i], errs[i] = send(req) })
 	}
+	waitFor(t, "both updates wait for the row lock", func() bool {
+		var waiting int
+		require.NoError(t, h.db.QueryRowContext(ctx,
+			"SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%UPDATE configs%'").Scan(&waiting))
+		return waiting == 2
+	})
+	require.NoError(t, hold.Commit())
 	wg.Wait()
 
 	statuses := make([]int, len(reqs))

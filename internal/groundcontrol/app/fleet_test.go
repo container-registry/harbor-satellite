@@ -12,7 +12,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,7 +19,6 @@ import (
 // Harbor to the async plane (plan item 2.5); the probe runs on the Harbor
 // they were given, not on the process-wide env.GC one.
 func TestNewFleet_ServicesUseTheInjectedDatabaseAndHarbor(t *testing.T) {
-	pending.Plan(t, "2.5", "fleet composition is a stub; serve builds no services")
 	db := dbtest.New(t)
 	stub := harbortest.New(t)
 

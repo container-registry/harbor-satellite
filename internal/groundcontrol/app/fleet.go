@@ -7,9 +7,15 @@ package app
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/casbin"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/harbor2"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/postgres"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/spire"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/authn"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
@@ -20,7 +26,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
-	"github.com/container-registry/harbor-satellite/internal/shared/notimpl"
 )
 
 // The composition root asserts what the server and the worker receive, so
@@ -88,8 +93,93 @@ func (l operatorLogin) Start(ctx context.Context) (redirectURL, binding string, 
 // is also the services' SatelliteRepository. The services validate configs
 // with satconfig.Validator. With POLICY_ENGINE=casbin, casbin.New loads
 // the repository's policies and the services and the server share it.
+//
+// The plan item 4, 7, 8.1 and 8.4 parts (sessions, heartbeat buffer and
+// flusher, policy, rotations, login) stay nil until those items land.
 func NewFleet(deps FleetDeps) (*Fleet, error) {
-	return nil, notimpl.Err("1.3 fleet composition")
+	if deps.Pools == nil || deps.Pools.API == nil {
+		return nil, fmt.Errorf("%w: the fleet needs database pools", fleet.ErrInvalid)
+	}
+	registry, err := newRegistry(deps.Harbor)
+	if err != nil {
+		return nil, err
+	}
+	repo, err := postgres.NewRepository(deps.Pools.API)
+	if err != nil {
+		return nil, err
+	}
+	fleetRepo, err := postgres.NewRepository(fleetPool(deps.Pools))
+	if err != nil {
+		return nil, err
+	}
+	var identity fleet.WorkloadIdentity
+	if deps.SPIRE != nil {
+		if identity, err = spire.New(deps.SPIRE); err != nil {
+			return nil, err
+		}
+	}
+	services, err := fleet.NewServices(fleet.Deps{
+		Repository:          repo,
+		SatelliteRepository: fleetRepo,
+		Registry:            registry,
+		Identity:            identity,
+		Settings:            Settings(deps.Harbor, deps.Server, deps.Webhook),
+	})
+	if err != nil {
+		return nil, err
+	}
+	interval := deps.Harbor.ProbeInterval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	probe, err := async.NewRegistryProbe(registry, interval, 3*interval)
+	if err != nil {
+		return nil, err
+	}
+	return &Fleet{Services: services, Probe: probe}, nil
+}
+
+func fleetPool(p *dbpool.Pools) *sql.DB {
+	if p.Fleet != nil {
+		return p.Fleet
+	}
+	return p.API
+}
+
+func asyncPool(p *dbpool.Pools) *sql.DB {
+	if p.Async != nil {
+		return p.Async
+	}
+	return p.API
+}
+
+func newRegistry(h env.Harbor) (*harbor2.Registry, error) {
+	return harbor2.New(harbor2.Config{URL: h.URL, Username: h.Username, Password: h.Password, Insecure: strings.HasPrefix(h.URL, "http://")})
+}
+
+// outboxReader adapts the outbox store to server.OutboxReader.
+type outboxReader struct {
+	store      *postgres.OutboxStore
+	maxAttempt int
+}
+
+func (o outboxReader) ListOutbox(ctx context.Context, failedOnly bool, limit int) ([]server.OutboxEventResponse, error) {
+	minAttempts := 0
+	if failedOnly {
+		minAttempts = o.maxAttempt
+	}
+	events, err := o.store.Stuck(ctx, minAttempts, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]server.OutboxEventResponse, 0, len(events))
+	for _, e := range events {
+		out = append(out, server.OutboxEventResponse{
+			ID: e.ID, Kind: string(e.Kind), AggregateType: string(e.Aggregate.Type), AggregateID: e.Aggregate.ID,
+			Attempts: e.Attempts, CreatedAt: e.CreatedAt, NextAttemptAt: e.NextAttemptAt, LastError: e.LastError,
+		})
+	}
+	return out, nil
 }
 
 // ServerOptions hands the server the services (server.WithFleet), the
@@ -99,7 +189,25 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 // (server.WithPolicy(f.Policy)) and, with OIDC, the operator login
 // (server.WithOperatorLogin).
 func (f *Fleet) ServerOptions(pools *dbpool.Pools) []server.Option {
-	return nil
+	opts := []server.Option{server.WithFleet(f.Services)}
+	if f.Probe != nil {
+		opts = append(opts, server.WithHarborContact(f.Probe, f.Probe.StaleAfter()))
+	}
+	if pools != nil {
+		if store, err := postgres.NewOutboxStore(asyncPool(pools)); err == nil {
+			opts = append(opts, server.WithOutboxReader(outboxReader{store: store, maxAttempt: env.GC.Outbox.MaxAttempts}))
+		}
+	}
+	if f.Sessions != nil {
+		opts = append(opts, server.WithSatelliteAuthenticator(f.Sessions))
+	}
+	if f.Policy != nil {
+		opts = append(opts, server.WithPolicy(f.Policy))
+	}
+	if f.Login != nil {
+		opts = append(opts, server.WithOperatorLogin(operatorLogin{f.Login}))
+	}
+	return opts
 }
 
 // Settings maps the Harbor, server and webhook environment to the fleet

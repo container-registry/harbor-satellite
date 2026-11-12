@@ -14,54 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestListSatelliteHandler(t *testing.T) {
-	t.Run("returns satellites", func(t *testing.T) {
-		server, mock := newMockServer(t)
-		now := time.Now().UTC().Truncate(time.Second)
-
-		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"}).
-			AddRow(1, "edge-01", now, now, sql.NullTime{Time: now, Valid: true}, sql.NullString{String: "30s", Valid: true}).
-			AddRow(2, "edge-02", now, now, sql.NullTime{}, sql.NullString{})
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnRows(rows)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
-		rr := httptest.NewRecorder()
-		server.ListSatellites(rr, req)
-
-		require.Equal(t, http.StatusOK, rr.Code)
-		require.Contains(t, rr.Body.String(), "edge-01")
-		require.Contains(t, rr.Body.String(), "edge-02")
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("empty list", func(t *testing.T) {
-		server, mock := newMockServer(t)
-
-		rows := sqlmock.NewRows([]string{"id", "name", "created_at", "updated_at", "last_seen", "heartbeat_interval"})
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnRows(rows)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
-		rr := httptest.NewRecorder()
-		server.ListSatellites(rr, req)
-
-		require.Equal(t, http.StatusOK, rr.Code)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("db error returns 500", func(t *testing.T) {
-		server, mock := newMockServer(t)
-
-		mock.ExpectQuery("SELECT .+ FROM satellites").WillReturnError(fmt.Errorf("db error"))
-
-		req := httptest.NewRequest(http.MethodGet, "/api/satellites", nil)
-		rr := httptest.NewRecorder()
-		server.ListSatellites(rr, req)
-
-		require.Equal(t, http.StatusInternalServerError, rr.Code)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-}
-
 func TestGetActiveSatellitesHandler(t *testing.T) {
 	t.Run("returns active satellites", func(t *testing.T) {
 		server, mock := newMockServer(t)

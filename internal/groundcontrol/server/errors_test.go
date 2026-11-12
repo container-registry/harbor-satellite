@@ -7,12 +7,10 @@ import (
 	"testing"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
 func TestStatusForError(t *testing.T) {
-	pending.Plan(t, "1.4", "handlers map errors themselves; StatusForError is a stub")
 	for _, tc := range []struct {
 		err  error
 		want int
@@ -38,7 +36,6 @@ func TestStatusForError(t *testing.T) {
 }
 
 func TestAppErrorFor_KeepsTodaysTokenBodies(t *testing.T) {
-	pending.Plan(t, "1.4", "handlers map errors themselves; AppErrorFor is a stub")
 	require.Equal(t, &AppError{Code: http.StatusBadRequest, Message: "Error: Invalid Token"}, AppErrorFor(fmt.Errorf("claim: %w", fleet.ErrTokenInvalid)))
 	require.Equal(t, &AppError{Code: http.StatusUnauthorized, Message: "Error: Token Expired"}, AppErrorFor(fmt.Errorf("claim: %w", fleet.ErrTokenExpired)))
 }

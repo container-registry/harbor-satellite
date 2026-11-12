@@ -35,7 +35,6 @@ type Server struct {
 	pools          *dbpool.Pools
 	fleetQueries   *database.Queries
 	asyncDB        *sql.DB
-	groupSync      groupSyncHarbor
 	rateLimiter    *middleware.RateLimiter
 	FailureLimiter *middleware.FailureLimiter
 	// AnonymousLimiter (ZTR per client IP) and FleetLimiter (per
@@ -70,8 +69,10 @@ type Server struct {
 	// trusted reverse proxy.
 	trustForwardedHeaders bool
 
-	// services is set by WithFleet; no handler calls it before plan item 1.4.
-	services *fleet.Services
+	// services is set by WithFleet or built by fleetFactory; the admin,
+	// registration and refresh handlers call it (plan item 1.4).
+	services     *fleet.Services
+	fleetFactory FleetFactory
 
 	// harborContact and harborStaleAfter are set by WithHarborContact;
 	// Health does not read them before plan item 2.6.
@@ -113,6 +114,16 @@ type Option func(*Server)
 // WithFleet hands the fleet services to the handlers.
 func WithFleet(services *fleet.Services) Option {
 	return func(s *Server) { s.services = services }
+}
+
+// FleetFactory builds the fleet services once NewServer has opened the
+// database pools and connected SPIRE (spire is nil without one), and
+// returns the options that hand them to the server.
+type FleetFactory func(ctx context.Context, pools *dbpool.Pools, spire *spiffe.ServerClient) ([]Option, error)
+
+// WithFleetFactory makes NewServer build its fleet services with f.
+func WithFleetFactory(f FleetFactory) Option {
+	return func(s *Server) { s.fleetFactory = f }
 }
 
 // WithHarborContact makes /health report Harbor as degraded, with status
@@ -197,7 +208,6 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 	appServer.dbQueries = database.New(pools.API)
 	appServer.fleetQueries = database.New(pools.Fleet)
 	appServer.asyncDB = pools.Async
-	appServer.groupSync = harborGroupSync{}
 
 	// Initialize rate limiter: 10 requests per minute per IP for ZTR endpoint
 	rateLimiter := middleware.NewRateLimiter(10, time.Minute)
@@ -274,6 +284,18 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 		spireServerPort = cfg.SPIRE.ServerPort
 	}
 	appServer.spireClient = spireClient
+	if appServer.fleetFactory != nil {
+		fleetOpts, err := appServer.fleetFactory(ctx, pools, spireClient)
+		if err != nil {
+			return result, fmt.Errorf("build fleet services: %w", err)
+		}
+		for _, opt := range fleetOpts {
+			opt(appServer)
+		}
+	}
+	if appServer.services == nil {
+		return result, errors.New("the fleet services are required (WithFleet or WithFleetFactory)")
+	}
 	appServer.spireServerAddress = spireServerAddress
 	appServer.spireServerPort = spireServerPort
 	appServer.spireTrustDomain = spireTrustDomain

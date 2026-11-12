@@ -42,6 +42,8 @@ func (g *goldenRecorder) step(name, method, path string, body any, auth authFunc
 // artifact records the JSON file inside a state artifact GC pushed to Harbor.
 func (g *goldenRecorder) artifact(name, repository string) {
 	g.t.Helper()
+	// State artifacts are published by the async plane (plan item 2.5).
+	g.h.drainOutbox()
 	data, err := g.h.harbor.ArtifactFile(repository, "latest", "artifacts.json")
 	require.NoError(g.t, err)
 	g.compare(name, map[string]any{

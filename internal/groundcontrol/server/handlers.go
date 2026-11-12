@@ -3,6 +3,7 @@ package server
 import (
 	"log"
 	"net/http"
+	"time"
 )
 
 const (
@@ -23,5 +24,21 @@ func (s *Server) Health(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, HealthResponse{Status: Healthy})
+	resp := HealthResponse{Status: Healthy}
+	if s.harborContact != nil {
+		harbor := ComponentHealth{Status: "healthy"}
+		last := s.harborContact.LastContact()
+		switch {
+		case last.IsZero():
+			harbor = ComponentHealth{Status: "degraded", Detail: "no contact since startup"}
+			resp.Status = Degraded
+		case time.Since(last) > s.harborStaleAfter:
+			harbor = ComponentHealth{Status: "degraded", Detail: "no recent contact", LastContact: last}
+			resp.Status = Degraded
+		default:
+			harbor.LastContact = last
+		}
+		resp.Components = map[string]ComponentHealth{"harbor": harbor}
+	}
+	WriteJSONResponse(w, http.StatusOK, resp)
 }

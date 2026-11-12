@@ -19,7 +19,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,7 +37,6 @@ func TestListOutboxEvents_RequiresSystemAdmin(t *testing.T) {
 }
 
 func TestHealth_ReportsHarborDegraded(t *testing.T) {
-	pending.Plan(t, "2.6", "/health checks only the database")
 	var mu sync.Mutex
 	var contact time.Time
 	h := newGCHarness(t, WithHarborContact(contactFunc(func() time.Time {
@@ -79,7 +77,6 @@ func (h *gcHarness) withHeaders(method, path string, body any) (int, http.Header
 }
 
 func TestZtr_Returns503UntilRobotProvisioned(t *testing.T) {
-	pending.Plan(t, "2.5", "registration creates the robot in the request and fails while Harbor is down")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.syncGroup("edge-group", "library/alpine")
@@ -109,8 +106,6 @@ func skipHarborCheck(t *testing.T) {
 }
 
 func TestZtr_NeverReturnsPlaceholderSecret(t *testing.T) {
-	pending.Plan(t, "2.6", "SKIP_HARBOR_HEALTH_CHECK makes ZTR hand out a hard-coded placeholder secret")
-
 	t.Run("token ZTR with Harbor up returns the robot's secret", func(t *testing.T) {
 		h := newGCHarness(t)
 		h.createConfig("edge-config")
@@ -219,7 +214,6 @@ func (h *gcHarness) pendingEvents() int {
 }
 
 func TestHarborDown_AdminWritesSucceedAndConverge(t *testing.T) {
-	pending.Plan(t, "2.5", "admin writes call Harbor in the request and fail while it is down")
 	h := newGCHarness(t)
 	h.harbor.SetDown(true)
 
@@ -239,12 +233,13 @@ func TestHarborDown_AdminWritesSucceedAndConverge(t *testing.T) {
 	} {
 		require.True(t, h.harbor.HasRepository(repo), repo)
 	}
-	require.Equal(t, []string{"library", "satellite"}, h.harbor.RobotProjects(harbortest.RobotPrefix+"edge-01"))
+	var id int64
+	require.NoError(t, h.db.QueryRowContext(context.Background(), "SELECT id FROM satellites WHERE name = 'edge-01'").Scan(&id))
+	require.Equal(t, []string{"library", "satellite"}, h.harbor.RobotProjects(harbortest.RobotPrefix+fleet.RobotName(fleet.SatelliteID(id), "edge-01")))
 	h.ztr(token)
 }
 
 func TestBudgetSyncGroup_ConstantInMembers(t *testing.T) {
-	pending.Plan(t, "2.5", "SyncGroup updates every member's robot and pushes the state in the request")
 	measure := func(members int) usage {
 		h := newGCHarness(t)
 		h.syncGroup("edge-group", "library/alpine")
