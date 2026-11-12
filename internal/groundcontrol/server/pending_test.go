@@ -101,7 +101,6 @@ func TestBasicAuthLocksAccountAfterFailedAttempts(t *testing.T) {
 }
 
 func TestZTRTokenCanBeUsedOnlyOnce(t *testing.T) {
-	pending.Plan(t, "D7", "the ZTR token is read and deleted without a claim, so concurrent ZTR calls both succeed")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.syncGroup("edge-group", "library/alpine")
