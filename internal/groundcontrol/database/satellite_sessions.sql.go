@@ -157,6 +157,18 @@ func (q *Queries) IssueSatelliteSession(ctx context.Context, arg IssueSatelliteS
 	return err
 }
 
+const lockSatelliteForSessionWipe = `-- name: LockSatelliteForSessionWipe :exec
+SELECT id FROM satellites WHERE id = $1 FOR UPDATE
+`
+
+// Waits for every open transaction that inserted a row referencing the
+// satellite (a renewal holds FOR KEY SHARE on it), so the next statement's
+// snapshot sees that row.
+func (q *Queries) LockSatelliteForSessionWipe(ctx context.Context, id int32) error {
+	_, err := q.db.ExecContext(ctx, lockSatelliteForSessionWipe, id)
+	return err
+}
+
 const lockSatelliteSessions = `-- name: LockSatelliteSessions :exec
 SELECT pg_advisory_xact_lock($1::INT, $2::INT)
 `

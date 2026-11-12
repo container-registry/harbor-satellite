@@ -98,7 +98,9 @@ func TestBudgetZTR(t *testing.T) {
 	got := h.measure(func() { h.ztr(token) })
 
 	// 8: plan item 4.1 adds the satellite session (IssueSatelliteSession).
-	requireWithinBudget(t, "ZTR", got, budget{Statements: 8, HarborAPI: 2, Registry: 0})
+	// 11: the session replace waits for renewals in flight in its own
+	// transaction (BEGIN, LockSatelliteForSessionWipe, COMMIT).
+	requireWithinBudget(t, "ZTR", got, budget{Statements: 11, HarborAPI: 2, Registry: 0})
 }
 
 func TestBudgetSyncGroup(t *testing.T) {

@@ -27,7 +27,8 @@ var (
 // GetSatelliteAuthByName, DeleteSatelliteSessions and
 // DeleteExpiredSatelliteSessions. A lookup without a row is
 // fleet.ErrNotFound. AddIfNone runs LockSatelliteSessions and
-// IssueFirstSatelliteSession in one transaction. Renew maps the foreign
+// IssueFirstSatelliteSession in one transaction; Replace and
+// DeleteForSatellite run LockSatelliteForSessionWipe first. Renew maps the foreign
 // key violation of a predecessor deleted meanwhile (23503) to
 // fleet.ErrSessionInvalid.
 type SessionStore struct {
@@ -42,10 +43,36 @@ func NewSessionStore(db *sql.DB) (*SessionStore, error) {
 	return &SessionStore{db: db, q: database.New(db)}, nil
 }
 
+// Replace and DeleteForSatellite first wait for renewals in flight: a
+// successor committed after their DELETE took its snapshot would survive
+// with renewed_from set to NULL.
 func (s *SessionStore) Replace(ctx context.Context, satellite fleet.SatelliteID, hash [sha256.Size]byte, expiresAt time.Time) error {
-	return mapError(s.q.IssueSatelliteSession(ctx, database.IssueSatelliteSessionParams{
-		SatelliteID: int32(satellite), TokenHash: hash[:], ExpiresAt: expiresAt,
-	}))
+	return s.wipe(ctx, satellite, func(q *database.Queries) error {
+		return q.IssueSatelliteSession(ctx, database.IssueSatelliteSessionParams{
+			SatelliteID: int32(satellite), TokenHash: hash[:], ExpiresAt: expiresAt,
+		})
+	})
+}
+
+func (s *SessionStore) wipe(ctx context.Context, satellite fleet.SatelliteID, run func(*database.Queries) error) (err error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err == nil {
+			err = mapError(tx.Commit())
+			return
+		}
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			err = errors.Join(err, rbErr)
+		}
+	}()
+	q := s.q.WithTx(tx)
+	if err := q.LockSatelliteForSessionWipe(ctx, int32(satellite)); err != nil {
+		return mapError(err)
+	}
+	return mapError(run(q))
 }
 
 func (s *SessionStore) AddIfNone(ctx context.Context, satellite fleet.SatelliteID, hash [sha256.Size]byte, expiresAt, now time.Time) (added bool, err error) {
@@ -123,7 +150,9 @@ func (s *SessionStore) FindByName(ctx context.Context, satelliteName string, now
 }
 
 func (s *SessionStore) DeleteForSatellite(ctx context.Context, satellite fleet.SatelliteID) error {
-	return mapError(s.q.DeleteSatelliteSessions(ctx, int32(satellite)))
+	return s.wipe(ctx, satellite, func(q *database.Queries) error {
+		return q.DeleteSatelliteSessions(ctx, int32(satellite))
+	})
 }
 
 func (s *SessionStore) DeleteExpired(ctx context.Context, now time.Time) (int64, error) {
