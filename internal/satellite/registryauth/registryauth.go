@@ -5,11 +5,10 @@ package registryauth
 
 import (
 	"context"
-	"time"
-
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // Credential is either Username and Password or a BearerToken.
