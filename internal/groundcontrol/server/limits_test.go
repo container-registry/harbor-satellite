@@ -5,17 +5,13 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingSplitLimits = "one shared per-IP limiter covers ZTR, login and every satellite beat"
 
 // Ten satellites behind one NAT; the legacy limiter (10 per minute per IP)
 // would answer 429 from the 11th request on. A minute window keeps the 40
 // round trips inside it, so the test checks the keying, not the timing.
 func TestFleetLimiter_TenSatellitesBehindOneIPGetNo429(t *testing.T) {
-	pending.Plan(t, "4.6", pendingSplitLimits)
 	splitLimits(t, "100/1m", "3/1m")
 	h := newHotPathHarness(t)
 	h.edgeSetup()
@@ -38,7 +34,6 @@ func TestFleetLimiter_TenSatellitesBehindOneIPGetNo429(t *testing.T) {
 }
 
 func TestAnonymousLimiter_ZTRLimitedPerClientIP(t *testing.T) {
-	pending.Plan(t, "4.6", pendingSplitLimits)
 	splitLimits(t, "2/1m", "3/1s")
 	t.Setenv("AUDIT_TRUST_FORWARDED_HEADERS", "true")
 	h := newGCHarness(t)

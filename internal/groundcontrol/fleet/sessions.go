@@ -50,4 +50,7 @@ type SessionIssuer interface {
 	// Invalidate deletes the satellite's sessions and this replica's cache
 	// entries; other replicas follow within the cache TTL.
 	Invalidate(ctx context.Context, satellite SatelliteID) error
+	// Forget drops this replica's cached auth of the satellite after a
+	// lifecycle change, so this replica answers by the new state at once.
+	Forget(satellite SatelliteID)
 }

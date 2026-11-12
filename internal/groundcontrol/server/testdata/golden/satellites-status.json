@@ -1,10 +1,7 @@
 {
   "body": {
     "Activity": "replicating",
-    "ArtifactIds": [
-      "\u003cid\u003e",
-      "\u003cid\u003e"
-    ],
+    "ArtifactIds": null,
     "CpuPercent": {
       "String": "12.50",
       "Valid": true

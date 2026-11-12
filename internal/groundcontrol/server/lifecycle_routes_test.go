@@ -4,11 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingLifecycle = "ADR-0006 lifecycle is not implemented; satellites are never revoked"
 
 func TestLifecycleRoutes_ServedAndGated(t *testing.T) {
 	h := newGCHarness(t)
@@ -28,7 +25,6 @@ func TestLifecycleRoutes_ServedAndGated(t *testing.T) {
 }
 
 func TestRevoke_SyncAndZTRReturn403UntilUnrevoked(t *testing.T) {
-	pending.Plan(t, "4.3", pendingLifecycle)
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.syncGroup("edge-group", "library/alpine")
@@ -52,7 +48,6 @@ func TestRevoke_SyncAndZTRReturn403UntilUnrevoked(t *testing.T) {
 }
 
 func TestListActiveSatellites_ReadsViewInOneStatement(t *testing.T) {
-	pending.Plan(t, "4.3", pendingLifecycle)
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.syncGroup("edge-group", "library/alpine")

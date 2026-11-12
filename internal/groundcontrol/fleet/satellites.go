@@ -223,6 +223,9 @@ func (s *SatelliteService) transition(ctx context.Context, action Action, name s
 	if err != nil {
 		return SatelliteView{}, err
 	}
+	if s.c.sessions != nil {
+		s.c.sessions.Forget(view.Satellite.ID)
+	}
 	return s.withRefs(view), nil
 }
 

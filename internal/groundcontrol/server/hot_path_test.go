@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/postgres"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/authn"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
@@ -40,29 +39,12 @@ func (c *manualClock) Advance(d time.Duration) {
 	c.t = c.t.Add(d)
 }
 
-// lazyAuthenticator is handed to NewServer before the harness database
-// that its session store reads exists.
-type lazyAuthenticator struct{ SatelliteAuthenticator }
-
-// newHotPathHarness is a harness on the session path of plan item 4.1:
-// satellites authenticate through authn.Sessions on the postgres session
-// store, configured from SATELLITE_SESSION_*, on h.sessionClock. Set GC
-// environment variables with t.Setenv before calling it.
+// newHotPathHarness is a harness on the session path of plan item 4.1
+// whose heartbeats stay in the replica's buffer until h.flushHeartbeats
+// (4.2). Set GC environment variables with t.Setenv before calling it.
 func newHotPathHarness(t *testing.T) *gcHarness {
 	t.Helper()
-	lazy := &lazyAuthenticator{}
-	h := newGCHarness(t, WithSatelliteAuthenticator(lazy))
-	store, err := postgres.NewSessionStore(h.db.DB)
-	require.NoError(t, err)
-	srv := env.GC.Server
-	clock := &manualClock{t: time.Now()}
-	sessions, err := authn.NewSessions(store, clock, authn.SessionConfig{
-		TTL: srv.SatelliteSessionTTL, CacheTTL: srv.SatelliteSessionCacheTTL, CacheSize: srv.SatelliteSessionCacheSize,
-	})
-	require.NoError(t, err)
-	lazy.SatelliteAuthenticator = sessions
-	h.sessionClock = clock
-	return h
+	return newHarness(t, false)
 }
 
 // splitLimits turns on RATE_LIMIT_SPLIT with the given rates.
@@ -83,10 +65,14 @@ func (h *gcHarness) onboardWithSession(name string) (RegistryCredentials, string
 	return cfg.Auth, cfg.Session.Token
 }
 
-// flushHeartbeats writes the buffered heartbeats. Today every beat writes
-// in the request, so there is nothing to flush; plan item 4.2 makes this
-// run the replica's heartbeat flusher.
-func (h *gcHarness) flushHeartbeats() {}
+// flushHeartbeats writes the buffered heartbeats with the replica's
+// flusher; a harness without one writes in the request.
+func (h *gcHarness) flushHeartbeats() {
+	h.t.Helper()
+	if h.flusher != nil {
+		require.NoError(h.t, h.flusher.Flush(context.Background()))
+	}
+}
 
 func (h *gcHarness) beat(req SatelliteStatusRequest, auth authFunc) SatelliteSyncResponse {
 	h.t.Helper()
@@ -102,7 +88,6 @@ func (h *gcHarness) edgeSetup() {
 }
 
 func TestZtr_ReturnsSessionStoredAsHash(t *testing.T) {
-	pending.Plan(t, "4.1", pendingHotPath)
 	h := newHotPathHarness(t)
 	h.edgeSetup()
 
@@ -124,7 +109,6 @@ func TestZtr_ReturnsSessionStoredAsHash(t *testing.T) {
 }
 
 func TestSync_AcceptsSessionBearer(t *testing.T) {
-	pending.Plan(t, "4.1", pendingHotPath)
 	h := newHotPathHarness(t)
 	h.edgeSetup()
 	_, token := h.onboardWithSession("edge-01")
@@ -134,7 +118,6 @@ func TestSync_AcceptsSessionBearer(t *testing.T) {
 }
 
 func TestSync_RejectsRobotBasicWhenDisabled(t *testing.T) {
-	pending.Plan(t, "4.1", pendingHotPath)
 	t.Setenv("SATELLITE_ROBOT_AUTH", "false")
 	h := newHotPathHarness(t)
 	h.edgeSetup()
@@ -145,7 +128,6 @@ func TestSync_RejectsRobotBasicWhenDisabled(t *testing.T) {
 }
 
 func TestSync_SessionPathSkipsRobotLookup(t *testing.T) {
-	pending.Plan(t, "4.1", pendingHotPath)
 	h := newHotPathHarness(t)
 	h.edgeSetup()
 	_, token := h.onboardWithSession("edge-01")
@@ -158,7 +140,6 @@ func TestSync_SessionPathSkipsRobotLookup(t *testing.T) {
 // Satellites onboarded before sessions existed get one on their first
 // robot-Basic beat, once.
 func TestSync_RobotBasicBeatGetsSessionOnce(t *testing.T) {
-	pending.Plan(t, "4.1", pendingHotPath)
 	h := newHotPathHarness(t)
 	h.edgeSetup()
 	creds, _ := h.onboardWithSession("edge-01")
@@ -189,7 +170,6 @@ func TestSync_MalformedJournalAnswers200WithJournalError(t *testing.T) {
 }
 
 func TestSync_RequestsInventoryOnDigestChange(t *testing.T) {
-	pending.Plan(t, "4.4", pendingInventory)
 	h := newHotPathHarness(t)
 	h.edgeSetup()
 	_, token := h.onboardWithSession("edge-01")
@@ -209,7 +189,6 @@ func TestSync_RequestsInventoryOnDigestChange(t *testing.T) {
 // Failed satellite authentications count in D6's per-IP FailureLimiter,
 // checked before the Argon2id verify.
 func TestSync_FailedSatelliteAuthFeedsFailureLimiter(t *testing.T) {
-	pending.Plan(t, "4.6", pendingHotPath)
 	t.Setenv("AUTH_FAILURE_LIMIT", "3")
 	h := newHotPathHarness(t)
 	h.edgeSetup()
@@ -229,7 +208,6 @@ func TestSync_FailedSatelliteAuthFeedsFailureLimiter(t *testing.T) {
 }
 
 func TestBudgetHeartbeat_AtMostOneStatementPerBeat(t *testing.T) {
-	pending.Plan(t, "4.2", pendingHotPath)
 	splitLimits(t, "100/1m", "100/1s")
 	h := newHotPathHarness(t)
 	h.edgeSetup()
@@ -278,7 +256,7 @@ func TestBudgetHeartbeat_JournaledBeatCostsAtMostFour(t *testing.T) {
 }
 
 func TestBudgetHeartbeat_JournaledRenewingBeatCostsAtMostFive(t *testing.T) {
-	pending.Plan(t, "4.1", pendingHotPath)
+	pending.Plan(t, "6.5", "the renewal half of 4.1 is in; the journaled beat needs JournalService.Ingest (6.5)")
 	splitLimits(t, "100/1m", "100/1s")
 	h := newHotPathHarness(t)
 	h.edgeSetup()

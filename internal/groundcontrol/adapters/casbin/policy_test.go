@@ -127,11 +127,11 @@ func newPolicy(t *testing.T, repo *fleettest.PolicyRepo) *casbin.Policy {
 
 func groupAdminOfA() (rules []fleet.PolicyRule, bindings []fleet.RoleBinding) {
 	return []fleet.PolicyRule{
-			{ID: 1, Subject: "role:group-admin:A", Scope: "group:A", Type: "group", Action: "*", Effect: "allow"},
-			{ID: 2, Subject: "role:group-admin:A", Scope: "group:A", Type: "satellite", Action: "*", Effect: "allow"},
-		}, []fleet.RoleBinding{
-			{ID: 1, Principal: "user:bob", Role: "role:group-admin:A"},
-		}
+		{ID: 1, Subject: "role:group-admin:A", Scope: "group:A", Type: "group", Action: "*", Effect: "allow"},
+		{ID: 2, Subject: "role:group-admin:A", Scope: "group:A", Type: "satellite", Action: "*", Effect: "allow"},
+	}, []fleet.RoleBinding{
+		{ID: 1, Principal: "user:bob", Role: "role:group-admin:A"},
+	}
 }
 
 func seededRepo() (*fleettest.Repository, *fleettest.PolicyRepo) {

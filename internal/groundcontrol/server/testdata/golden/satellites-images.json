@@ -1,8 +1,18 @@
 {
-  "body": {
-    "code": 500,
-    "message": "failed to get cached images"
-  },
+  "body": [
+    {
+      "CreatedAt": "\u003ctimestamp\u003e",
+      "ID": "\u003cid\u003e",
+      "Reference": "library/alpine:3.20",
+      "SizeBytes": 3145728
+    },
+    {
+      "CreatedAt": "\u003ctimestamp\u003e",
+      "ID": "\u003cid\u003e",
+      "Reference": "library/busybox:1.36",
+      "SizeBytes": 1048576
+    }
+  ],
   "request": "GET /api/satellites/edge-01/images",
-  "status": 500
+  "status": 200
 }

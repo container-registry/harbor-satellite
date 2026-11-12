@@ -54,3 +54,7 @@ func (s *SessionIssuer) Renew(_ context.Context, auth fleet.SatelliteAuth) (flee
 func (s *SessionIssuer) Invalidate(_ context.Context, satellite fleet.SatelliteID) error {
 	return s.Record("Sessions.Invalidate", satellite)
 }
+
+func (s *SessionIssuer) Forget(satellite fleet.SatelliteID) {
+	s.Note("Sessions.Forget", satellite)
+}
