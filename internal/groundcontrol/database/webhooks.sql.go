@@ -152,6 +152,40 @@ func (q *Queries) FailWebhookDelivery(ctx context.Context, arg FailWebhookDelive
 	return i, err
 }
 
+const getDueWebhook = `-- name: GetDueWebhook :one
+SELECT s.id, s.url, s.secret_ciphertext, s.event_types, c.last_xid::TEXT AS last_xid, c.last_id, c.attempts
+FROM webhook_subscriptions s
+JOIN webhook_checkpoints c ON c.subscription_id = s.id
+WHERE s.id = $1 AND s.enabled AND c.next_attempt_at <= NOW()
+`
+
+type GetDueWebhookRow struct {
+	ID               int32
+	Url              string
+	SecretCiphertext []byte
+	EventTypes       []string
+	LastXid          string
+	LastID           int64
+	Attempts         int32
+}
+
+// ListDueWebhooks for one subscription, reread under its lock: no row when
+// it is no longer due (another worker failed it, it was disabled) or gone.
+func (q *Queries) GetDueWebhook(ctx context.Context, subscriptionID int32) (GetDueWebhookRow, error) {
+	row := q.db.QueryRowContext(ctx, getDueWebhook, subscriptionID)
+	var i GetDueWebhookRow
+	err := row.Scan(
+		&i.ID,
+		&i.Url,
+		&i.SecretCiphertext,
+		pq.Array(&i.EventTypes),
+		&i.LastXid,
+		&i.LastID,
+		&i.Attempts,
+	)
+	return i, err
+}
+
 const listDueWebhooks = `-- name: ListDueWebhooks :many
 SELECT s.id, s.url, s.secret_ciphertext, s.event_types, c.last_xid::TEXT AS last_xid, c.last_id, c.attempts
 FROM webhook_subscriptions s

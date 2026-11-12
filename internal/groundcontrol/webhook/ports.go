@@ -40,6 +40,10 @@ type LogReader interface {
 
 type SubscriptionStore interface {
 	Due(ctx context.Context, limit int) ([]DueSubscription, error)
+	// Refresh rereads a subscription once its lock is held, because Due
+	// read it before: another worker may have advanced or failed it since.
+	// ok is false when it is no longer due.
+	Refresh(ctx context.Context, id fleet.WebhookID) (sub DueSubscription, ok bool, err error)
 	Advance(ctx context.Context, id fleet.WebhookID, to Position, status int) error
 	// Fail disables the subscription once it has failed without a delivery
 	// for disableAfter.

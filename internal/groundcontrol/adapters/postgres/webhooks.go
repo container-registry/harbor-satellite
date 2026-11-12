@@ -82,8 +82,8 @@ func (r *WebhookRepo) Delete(ctx context.Context, id fleet.WebhookID) error {
 	return nil
 }
 
-// WebhookStore runs ListDueWebhooks, AdvanceWebhookCheckpoint and
-// FailWebhookDelivery; xid8 values cross the driver as text.
+// WebhookStore runs ListDueWebhooks, GetDueWebhook, AdvanceWebhookCheckpoint
+// and FailWebhookDelivery; xid8 values cross the driver as text.
 type WebhookStore struct{ q *database.Queries }
 
 func NewWebhookStore(db *sql.DB) (*WebhookStore, error) {
@@ -100,16 +100,37 @@ func (s *WebhookStore) Due(ctx context.Context, limit int) ([]webhook.DueSubscri
 	}
 	out := make([]webhook.DueSubscription, 0, len(rows))
 	for _, r := range rows {
-		xid, err := strconv.ParseUint(r.LastXid, 10, 64)
+		sub, err := toDue(r)
 		if err != nil {
-			return nil, fmt.Errorf("webhook %d: checkpoint xid %q: %w", r.ID, r.LastXid, err)
+			return nil, err
 		}
-		out = append(out, webhook.DueSubscription{
-			ID: fleet.WebhookID(r.ID), URL: r.Url, SealedSecret: r.SecretCiphertext, EventTypes: kinds(r.EventTypes),
-			After: webhook.Position{XID: xid, ID: r.LastID}, Attempts: r.Attempts,
-		})
+		out = append(out, sub)
 	}
 	return out, nil
+}
+
+// Refresh runs GetDueWebhook.
+func (s *WebhookStore) Refresh(ctx context.Context, id fleet.WebhookID) (webhook.DueSubscription, bool, error) {
+	row, err := s.q.GetDueWebhook(ctx, int32(id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return webhook.DueSubscription{}, false, nil
+	}
+	if err != nil {
+		return webhook.DueSubscription{}, false, mapError(err)
+	}
+	sub, err := toDue(database.ListDueWebhooksRow(row))
+	return sub, err == nil, err
+}
+
+func toDue(r database.ListDueWebhooksRow) (webhook.DueSubscription, error) {
+	xid, err := strconv.ParseUint(r.LastXid, 10, 64)
+	if err != nil {
+		return webhook.DueSubscription{}, fmt.Errorf("webhook %d: checkpoint xid %q: %w", r.ID, r.LastXid, err)
+	}
+	return webhook.DueSubscription{
+		ID: fleet.WebhookID(r.ID), URL: r.Url, SealedSecret: r.SecretCiphertext, EventTypes: kinds(r.EventTypes),
+		After: webhook.Position{XID: xid, ID: r.LastID}, Attempts: r.Attempts,
+	}, nil
 }
 
 func (s *WebhookStore) Advance(ctx context.Context, id fleet.WebhookID, to webhook.Position, status int) error {

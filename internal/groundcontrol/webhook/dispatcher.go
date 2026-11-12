@@ -107,13 +107,22 @@ func (d *Dispatcher) RunOnce(ctx context.Context) (delivered int, err error) {
 }
 
 // deliver sends one subscription's events after its checkpoint until the
-// first failure, under the subscription's lock.
-func (d *Dispatcher) deliver(ctx context.Context, sub DueSubscription) (int, error) {
-	unlock, ok, err := d.locker.TryLock(ctx, sub.ID)
+// first failure, under the subscription's lock. The checkpoint is reread
+// under the lock, so events another worker delivered meanwhile are not
+// sent again.
+func (d *Dispatcher) deliver(ctx context.Context, listed DueSubscription) (int, error) {
+	unlock, ok, err := d.locker.TryLock(ctx, listed.ID)
 	if err != nil || !ok {
 		return 0, err
 	}
 	defer unlock()
+	sub, ok, err := d.subs.Refresh(ctx, listed.ID)
+	if err != nil {
+		return 0, fmt.Errorf("reread checkpoint: %w", err)
+	}
+	if !ok {
+		return 0, nil
+	}
 	secret, err := d.sealer.Open(sub.SealedSecret)
 	if err != nil {
 		return 0, fmt.Errorf("open secret: %w", err)

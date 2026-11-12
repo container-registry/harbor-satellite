@@ -56,6 +56,20 @@ func (s *subStore) Due(context.Context, int) ([]webhook.DueSubscription, error) 
 	return s.due, nil
 }
 
+func (s *subStore) Refresh(_ context.Context, id fleet.WebhookID) (webhook.DueSubscription, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, sub := range s.due {
+		if sub.ID == id {
+			if to, ok := s.advanced[id]; ok {
+				sub.After = to
+			}
+			return sub, true, nil
+		}
+	}
+	return webhook.DueSubscription{}, false, nil
+}
+
 func (s *subStore) Advance(_ context.Context, id fleet.WebhookID, to webhook.Position, _ int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
