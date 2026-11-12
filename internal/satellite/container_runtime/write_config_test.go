@@ -266,3 +266,31 @@ pull-from-mirror = "digest-only"
 		{"location": proxy, "insecure": true},
 	}, got[0]["mirror"])
 }
+
+// Settings of hosts.toml the satellite does not manage stay as they were.
+func TestContainerdHostsTomlKeepsHostSettings(t *testing.T) {
+	inTempEtc(t)
+	dir := filepath.Join(containerdCertsDir, "registry.example")
+	require.NoError(t, os.MkdirAll(dir, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "hosts.toml"), []byte(`server = "https://registry.example"
+capabilities = ["pull", "resolve", "push"]
+ca = "/etc/certs/root.pem"
+
+[host."https://mirror.example"]
+  capabilities = ["pull"]
+  skip_verify = true
+  override_path = true
+  [host."https://mirror.example".header]
+    x-custom = ["1"]
+`), 0o600))
+
+	_, err := setContainerdConfig([]string{"registry.example"}, proxy)
+	require.NoError(t, err)
+
+	hosts := decodeTOML(t, filepath.Join(dir, "hosts.toml"))
+	require.Equal(t, []any{"pull", "resolve", "push"}, hosts["capabilities"])
+	require.Equal(t, "/etc/certs/root.pem", hosts["ca"])
+	require.Equal(t, true, dig(t, hosts, "host", "https://mirror.example", "skip_verify"))
+	require.Equal(t, true, dig(t, hosts, "host", "https://mirror.example", "override_path"))
+	require.Equal(t, []any{"1"}, dig(t, hosts, "host", "https://mirror.example", "header", "x-custom"))
+}

@@ -50,26 +50,20 @@ func writeContainerdHostToml(registryURL, proxyEndpoint string) error {
 		return fmt.Errorf("failed to backup %s: %w", path, err)
 	}
 
-	var cfg ContainerdHosts
-
-	if _, err := os.Stat(path); err == nil {
-		if _, err := toml.DecodeFile(path, &cfg); err != nil {
-			return fmt.Errorf("failed to parse %s: %w", path, err)
-		}
+	// A generic table keeps the keys the satellite does not manage, such
+	// as ca, skip_verify and header.
+	cfg, err := loadToml(path)
+	if err != nil {
+		return err
 	}
-
-	if cfg.Host == nil {
-		cfg.Host = make(map[string]Host)
-	}
-	cfg.Server = registryURL
+	cfg["server"] = registryURL
 
 	if !strings.HasPrefix(proxyEndpoint, "http://") && !strings.HasPrefix(proxyEndpoint, "https://") {
 		proxyEndpoint = "http://" + proxyEndpoint
 	}
 
-	cfg.Host[proxyEndpoint] = Host{
-		Capabilities: []string{"pull", "resolve"},
-	}
+	proxyHost := loadNestedMap(loadNestedMap(cfg, "host"), proxyEndpoint)
+	proxyHost["capabilities"] = []string{"pull", "resolve"}
 
 	f, err := os.Create(filepath.Clean(path))
 	if err != nil {
