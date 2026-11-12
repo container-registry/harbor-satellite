@@ -52,6 +52,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - The cleanup job's advisory lock could leak through the connection pool.
 - A re-tagged image was missing locally while its new digest replicated.
 - A satellite that left its last group kept replicating it.
+- A group could delete local content another group of the same satellite still wanted; a group removed from a satellite left its content behind; a tag dropped from a group stayed pullable while another tag kept its digest. Deletes now run after every group replicated, against the union of all groups' wanted artifacts, and pending deletes are kept in `state.json` (`retired`) until they succeed.
 - Ground Control processes that started together raced on migrations, and all but one failed.
 - `/login`, `/satellites/ztr`, `/satellites/spiffe-ztr` and `/oidc/*` read request bodies of any size; they now answer `413` above 64 KiB.
 - A satellite session renewed during re-registration stayed valid for a full TTL.

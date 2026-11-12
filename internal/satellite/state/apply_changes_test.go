@@ -117,10 +117,11 @@ func TestWithoutWanted(t *testing.T) {
 	digest := func(c string) string { return "sha256:" + strings.Repeat(c, 64) }
 	latestX := Entity{Name: "team/app", Tag: "latest", Digest: digest("1")}
 	cases := []struct {
-		name   string
-		remove []Entity
-		wanted []Entity
-		want   []Entity
+		name       string
+		singleTags bool
+		remove     []Entity
+		wanted     []Entity
+		want       []Entity
 	}{
 		{name: "another group wants the same tag and digest", remove: []Entity{latestX}, wanted: []Entity{latestX}, want: []Entity{}},
 		{
@@ -142,10 +143,38 @@ func TestWithoutWanted(t *testing.T) {
 			want:   []Entity{latestX},
 		},
 		{name: "nothing wants it", remove: []Entity{latestX}, wanted: nil, want: []Entity{latestX}},
+		{
+			name:       "single tags: another group wants the same tag and digest",
+			singleTags: true,
+			remove:     []Entity{latestX},
+			wanted:     []Entity{latestX},
+			want:       []Entity{},
+		},
+		{
+			name:       "single tags: another tag of the digest does not keep this tag",
+			singleTags: true,
+			remove:     []Entity{latestX},
+			wanted:     []Entity{{Name: "team/app", Tag: "v1", Digest: digest("1")}},
+			want:       []Entity{latestX},
+		},
+		{
+			name:       "single tags: the tag moved to another digest",
+			singleTags: true,
+			remove:     []Entity{latestX},
+			wanted:     []Entity{{Name: "team/app", Tag: "latest", Digest: digest("2")}},
+			want:       []Entity{latestX},
+		},
+		{
+			name:       "single tags: a tag without a digest matches by tag",
+			singleTags: true,
+			remove:     []Entity{{Name: "team/app", Tag: "latest"}},
+			wanted:     []Entity{latestX},
+			want:       []Entity{},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := withoutWanted(tc.remove, tc.wanted)
+			got := withoutWanted(tc.remove, tc.wanted, tc.singleTags)
 
 			require.ElementsMatch(t, tc.want, got)
 		})

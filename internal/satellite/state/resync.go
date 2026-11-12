@@ -16,7 +16,7 @@ func (f *FetchAndReplicateStateProcess) ResetReplicatedEntities() error {
 	if f.stateFilePath == "" {
 		return nil
 	}
-	if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+	if err := f.saveState(); err != nil {
 		return fmt.Errorf("persist the reset state: %w", err)
 	}
 	return nil

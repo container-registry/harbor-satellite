@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -73,32 +72,19 @@ func (f *FetchAndReplicateStateProcess) appliedDigest(index int) string {
 	return f.stateMap[index].appliedDigest
 }
 
-// applyGroupChangesBounded is applyGroupChanges in one replication slot,
-// one artifact at a time so every result is journaled.
-func (f *FetchAndReplicateStateProcess) applyGroupChangesBounded(ctx context.Context, group string, local, source store.Store, c changes) error {
-	if len(c.replicate) == 0 && len(c.remove) == 0 {
-		return nil
-	}
-	release, err := f.acquireSlot(ctx)
-	if err != nil {
-		return err
-	}
-	defer release()
-	if err := f.replicateEach(ctx, group, local, source, c.replicate); err != nil {
-		return fmt.Errorf("replicate: %w", err)
-	}
-	if len(c.remove) == 0 {
-		return nil
+// deleteJournaled deletes entities from local in one call and journals
+// each under the group that retired it.
+func (f *FetchAndReplicateStateProcess) deleteJournaled(ctx context.Context, local store.Store, entities []retiredEntity) error {
+	artifacts := make([]store.Artifact, 0, len(entities))
+	for _, e := range entities {
+		artifacts = append(artifacts, e.entity)
 	}
 	started := time.Now()
-	err = local.Delete(ctx, c.remove)
-	for _, e := range c.remove {
-		f.journalReplication(ctx, group, edgejournal.ActionDeleted, e, time.Since(started), err)
+	err := local.Delete(ctx, artifacts)
+	for _, e := range entities {
+		f.journalReplication(ctx, e.group, edgejournal.ActionDeleted, e.entity, time.Since(started), err)
 	}
-	if err != nil {
-		return fmt.Errorf("delete: %w", err)
-	}
-	return nil
+	return err
 }
 
 // replicateBounded replicates artifacts in one replication slot.

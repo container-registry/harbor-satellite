@@ -30,10 +30,25 @@ type Store interface {
 	Delete(ctx context.Context, artifacts []Artifact) error
 }
 
+// TagDeleter is a Store whose Delete removes only the tag it is given and
+// keeps the other tags of that digest. A Store that does not implement it
+// is taken to delete by digest, which drops every tag of the digest.
+type TagDeleter interface {
+	DeletesSingleTags() bool
+}
+
 var (
-	_ Store = (*OCIStore)(nil)
-	_ Store = (*RegistryStore)(nil)
+	_ Store      = (*OCIStore)(nil)
+	_ Store      = (*RegistryStore)(nil)
+	_ TagDeleter = (*OCIStore)(nil)
+	_ TagDeleter = (*PeerFillingStore)(nil)
 )
+
+// DeletesSingleTags reports whether s implements TagDeleter and says so.
+func DeletesSingleTags(s Store) bool {
+	d, ok := s.(TagDeleter)
+	return ok && d.DeletesSingleTags()
+}
 
 func contentResponse(descriptor ocispec.Descriptor, body io.ReadCloser) *http.Response {
 	mediaType := descriptor.MediaType

@@ -73,6 +73,9 @@ func (s *PeerFillingStore) Delete(ctx context.Context, artifacts []Artifact) err
 	return s.local.Delete(ctx, artifacts)
 }
 
+// DeletesSingleTags is the wrapped local store's answer; Delete goes there.
+func (s *PeerFillingStore) DeletesSingleTags() bool { return DeletesSingleTags(s.local) }
+
 func (s *PeerFillingStore) Replicate(ctx context.Context, source Store, artifacts []Artifact) error {
 	var failed []error
 	for _, artifact := range artifacts {

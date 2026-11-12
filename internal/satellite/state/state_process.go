@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -47,6 +48,10 @@ type FetchAndReplicateStateProcess struct {
 	rootStateDigest string
 	lastRun         RunSummary
 	cycleID         string
+	// retired holds, per group, entities no longer in that group's state
+	// and not deleted yet. Execute deletes them after every group has
+	// replicated, except what any current group still wants (D12).
+	retired []StateMap
 }
 
 // SetStores shares the proxy's local destination and Harbor source with state replication.
@@ -118,6 +123,14 @@ func (f *FetchAndReplicateStateProcess) applyPersistedState(persisted *Persisted
 			Entities: g.Entities,
 		})
 	}
+	f.retired = nil
+	for _, g := range persisted.Retired {
+		f.retired = append(f.retired, StateMap{url: g.URL, Entities: g.Entities})
+	}
+}
+
+func (f *FetchAndReplicateStateProcess) saveState() error {
+	return saveState(f.stateFilePath, f.stateMap, f.retired, f.currentConfigDigest)
 }
 
 // applyBootstrapState keeps the wish list out of the applied entity list and
@@ -210,7 +223,7 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) (err error)
 
 	// Persist state if groups were added, removed, or swapped
 	if f.stateFilePath != "" && changed {
-		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+		if err := f.saveState(); err != nil {
 			log.Warn().Err(err).Msg("Failed to persist state after group changes")
 		}
 	}
@@ -233,7 +246,11 @@ func (f *FetchAndReplicateStateProcess) Execute(ctx context.Context) (err error)
 		configFetcherResult <- result
 	}()
 
-	return f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), &log)
+	err = f.collectResults(ctx, stateFetcherResults, configFetcherResult, len(f.stateMap), &log)
+	if ctx.Err() != nil {
+		return err
+	}
+	return errors.Join(err, f.deleteRetired(ctx, replicator, &log))
 }
 
 func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) bool {
@@ -259,6 +276,9 @@ func (f *FetchAndReplicateStateProcess) updateStateMap(states []string) bool {
 			updatedStateMap = append(updatedStateMap, stateMap)
 		} else {
 			removed++
+			f.mu.Lock()
+			f.retire(stateMap.url, stateMap.Entities)
+			f.mu.Unlock()
 		}
 	}
 
@@ -663,7 +683,7 @@ func (f *FetchAndReplicateStateProcess) reconcileRemoteConfig(
 		f.mu.Lock()
 		f.currentConfigDigest = configDigest
 		if f.stateFilePath != "" {
-			if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+			if err := f.saveState(); err != nil {
 				configFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
 			}
 		}
@@ -744,36 +764,34 @@ func (f *FetchAndReplicateStateProcess) processGroupState(
 	stateFetcherLog.Info().Msgf("State fetched successfully for %s", f.stateMap[index].url)
 
 	deleteEntity, replicateEntity, newState := f.GetChanges(*newStateFetched, &stateFetcherLog, f.stateMap[index].Entities)
-	// A digest a current entity of the group still references stays: a
-	// registry store deletes by digest, which would take that tag too.
-	deleteEntity = withoutWanted(deleteEntity, FetchEntitiesFromState(newState))
 	f.LogChanges(deleteEntity, replicateEntity, &stateFetcherLog)
 
-	// Replicate before deleting, so a moved tag never goes missing and
-	// content the old and new digest share is not downloaded again.
-	if err := f.applyGroupChangesBounded(ctx, groupName(f.stateMap[index].url), replicator, sourceStore, changes{replicate: replicateEntity, remove: deleteEntity}); err != nil {
-		stateFetcherLog.Error().Err(err).Msg("Error applying state changes")
-		result.Error = fmt.Errorf("failed to apply state changes for %s: %w", f.stateMap[index].url, err)
-		return result
+	// Only replication happens here. What the group dropped is retired and
+	// deleted once every group has replicated (deleteRetired), so a moved
+	// tag never goes missing (D9) and another group's wanted content stays.
+	if len(replicateEntity) > 0 {
+		if err := f.replicateBounded(ctx, groupName(f.stateMap[index].url), replicator, sourceStore, replicateEntity); err != nil {
+			stateFetcherLog.Error().Err(err).Msg("Error applying state changes")
+			result.Error = fmt.Errorf("failed to apply state changes for %s: %w", f.stateMap[index].url, err)
+			return result
+		}
 	}
 
 	// Direct delivery: write tarballs to k3s/RKE2 image dir after store replication.
 	if f.directDeliverer != nil {
-		if err := f.directDeliverer.Delete(ctx, deleteEntity); err != nil {
-			stateFetcherLog.Warn().Err(err).Msg("Direct delivery: failed to remove old tarballs")
-		}
 		if err := f.directDeliverer.Deliver(ctx, replicateEntity); err != nil {
 			stateFetcherLog.Warn().Err(err).Msg("Direct delivery: failed to write tarballs")
 		}
 	}
 
 	f.mu.Lock()
+	f.retire(f.stateMap[index].url, deleteEntity)
 	f.stateMap[index].State = newState
 	f.stateMap[index].Entities = FetchEntitiesFromState(newState)
 	f.stateMap[index].desired = nil
 	f.stateMap[index].appliedDigest = groupDigest
 	if f.stateFilePath != "" {
-		if err := SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest); err != nil {
+		if err := f.saveState(); err != nil {
 			stateFetcherLog.Warn().Err(err).Msg("Failed to persist state to disk")
 		}
 	}
@@ -1021,7 +1039,7 @@ func (f *FetchAndReplicateStateProcess) PersistState() error {
 	if f.stateFilePath == "" {
 		return nil
 	}
-	return SaveState(f.stateFilePath, f.stateMap, f.currentConfigDigest)
+	return f.saveState()
 }
 
 func (f *FetchAndReplicateStateProcess) RemoveNullTagArtifacts(state StateReader) StateReader {

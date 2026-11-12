@@ -18,19 +18,23 @@ type PersistedGroupState struct {
 type PersistedState struct {
 	ConfigDigest string                `json:"config_digest,omitempty"`
 	Groups       []PersistedGroupState `json:"groups"`
+	// Retired is content a group dropped or a removed group held that is
+	// not deleted yet, so a failed delete is retried after a restart.
+	Retired []PersistedGroupState `json:"retired,omitempty"`
 }
 
 // SaveState writes the current stateMap and configDigest to disk.
 func SaveState(path string, stateMap []StateMap, configDigest string) error {
+	return saveState(path, stateMap, nil, configDigest)
+}
+
+func saveState(path string, stateMap, retired []StateMap, configDigest string) error {
 	persisted := PersistedState{
 		ConfigDigest: configDigest,
-		Groups:       make([]PersistedGroupState, 0, len(stateMap)),
+		Groups:       persistedGroups(stateMap),
 	}
-	for _, sm := range stateMap {
-		persisted.Groups = append(persisted.Groups, PersistedGroupState{
-			URL:      sm.url,
-			Entities: sm.Entities,
-		})
+	if len(retired) > 0 {
+		persisted.Retired = persistedGroups(retired)
 	}
 
 	data, err := json.MarshalIndent(persisted, "", "  ")
@@ -71,6 +75,14 @@ func SaveState(path string, stateMap []StateMap, configDigest string) error {
 	}
 
 	return nil
+}
+
+func persistedGroups(groups []StateMap) []PersistedGroupState {
+	out := make([]PersistedGroupState, 0, len(groups))
+	for _, sm := range groups {
+		out = append(out, PersistedGroupState{URL: sm.url, Entities: sm.Entities})
+	}
+	return out
 }
 
 // LoadState reads the persisted state from disk.

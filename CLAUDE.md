@@ -338,7 +338,7 @@ The satellite watches `config.json`. Log level, state replication interval and a
 - test/arch/: repository-wide tests. `TestNoSecretsInLogArguments` (D4) parses every non-test file in cmd, internal and pkg and fails on a log argument named like a password, secret or token, or a logged response body; never log a GC or Harbor response body
 - `internal/groundcontrol/dbtest`: a fresh database per test with all goose migrations, plus pg_stat_statements counts per test database. `internal/groundcontrol/harbortest`: in-process Harbor API and registry stub that records every call and can fail, go down or hold requests
 - `internal/groundcontrol/server`: SQL statement and Harbor call budgets (`budget_test.go`), golden responses of every endpoint in `testdata/golden` (refresh with `go test ./internal/groundcontrol/server -run TestGoldenAPI -update`). `test/contract`: the paths the satellite calls must be served by the GC router
-- Tests for Harbor 3 plan items that have not landed start with `pending.Plan` (`internal/shared/testutil/pending`) and skip unless `HARBOR3_PENDING=1`; the implementing change removes the marker. Left: 6.5 (GC journal ingest, 15 tests) and D12 (one test)
+- Tests for Harbor 3 plan items that have not landed start with `pending.Plan` (`internal/shared/testutil/pending`) and skip unless `HARBOR3_PENDING=1`; the implementing change removes the marker. Left: one 6.5 statement budget test (`internal/groundcontrol/server/hot_path_test.go`)
 
 ## CI/CD
 
@@ -396,7 +396,8 @@ ADRs in docs/decisions/:
 
 State replication in internal/satellite/state/ and internal/satellite/store/:
 - fetcher.go: Fetching state artifacts from Harbor
-- state_process.go: Orchestrating fetch, diff, delete/replicate, config reconcile, direct delivery
+- state_process.go: Orchestrating fetch, diff, replicate, config reconcile, direct delivery
+- apply_changes.go: `deleteRetired` deletes what groups dropped or removed groups held, after every group replicated, minus the union of all groups' entities (D12); pending deletes persist in `state.json` `retired`
 - store/store.go: Backend-neutral `Store` contract shared with the OCI proxy
 - store/oci.go: Replicating OCI graphs into the local image layout (ORAS)
 - store/registry.go: Remote registry store (ORAS) for Harbor and BYO registries
@@ -436,7 +437,7 @@ The 1.0 work implemented the Harbor 3 plan (`plan.md` in the primary checkout, A
 - Schema (3.4, 3.5, 4.5): migration 023 (robot uniqueness, RESTRICT, heartbeat CHECK, `configs.version` with `UpdateConfigIfVersion`, TIMESTAMPTZ via `AT TIME ZONE 'UTC'`), 024 (daily `satellite_status` partitions, `PartitionMaintainer`). Queries comparing with the app clock cast `sqlc.arg(now)::TIMESTAMPTZ`. Every migration reverts to 0 (`TestMigrations_UpDownUp`)
 - Edge store (5): `store.OpenOCIStore` with `AtomicIndex` and `RecoverIndex` (torn index moved to `index.json.torn-<time>`, `Satellite.RequireFullResync`); `OCIStore.mu` is the index lock (shared for resolve and open, exclusive for publish, untag, collect); an open `Fetch` body holds a `RefCounter` reference; `CollectGarbage` with `FillLeases` roots and `GCGrace`; replication stages copies in `.stage/`; streaming fills (`StreamBlob`, `Filler.FillManifest`, `NewLanePrefetcher`) only with `PROXY_STREAMING`
 - Edge cold path (6): `state.StateArtifactChanged` HEADs before pulling, `replication_concurrency`, `replication_bandwidth_bytes_per_sec` via `SetReplicationSource` and `lane.ThrottledTransport`, `state.RunSummary` feeds `applied_states`, `latest_*_digest`, `last_sync_duration_ms` and `last_replication_error`. Journal uploads one record until GC answered once, then `journal.upload_batch`
-- Open items: 6.5 GC journal ingest (`fleet.JournalService.Ingest` and postgres `JournalRepo` return `notimpl`; a heartbeat with a journal gets 500), D12 (widening `wanted` to the union of every group's entities, `TestExecute_ImageStaysWhileAnotherGroupWantsIt`), the PostgreSQL 19 startup check (ADR-0020), a Harbor 3 adapter for `fleet.RegistryEventSource` and a token exchanger for `registryauth.WorkloadIdentityProvider`
+- Open items: 6.5 GC journal ingest (`fleet.JournalService.Ingest` and postgres `JournalRepo` return `notimpl`; a heartbeat with a journal gets 500), the PostgreSQL 19 startup check (ADR-0020), a Harbor 3 adapter for `fleet.RegistryEventSource` and a token exchanger for `registryauth.WorkloadIdentityProvider`
 - Policy (7): `PolicyRoutes` maps every `/api` route to a resource type and action (`TestPolicyRoutes_CoverGeneratedRouter`); `PolicyMiddleware` is used only with `POLICY_ENGINE=casbin`. Config writes are validated by `satconfig.Validator` (422). Edge admission: `policybundle` model `edge-admission/v1`, evaluator cached per bundle digest
 - Identity (8): `UpsertOIDCUser` never adopts a local account, `TakeOIDCLoginState` is single use and bound to the `gc_oidc_binding` cookie; rotation stages a successor robot sealed with `secrets.AESGCM`, delivers it in the heartbeat and deletes the old robot after the satellite acknowledged its generation
 - Extension points (9): webhook dispatcher reads the outbox with the xmin guard (`ReadOutboxAfter`), checkpoints never move backwards, a failing subscription is disabled after `WEBHOOK_DISABLE_AFTER`; event catalog `fleet.EventPayloads` and `spec/events/v1` (checked by `test/contract`); `async.RegistryFollower` and `GroupService.FollowPush` exist, nothing composes them

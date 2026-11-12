@@ -526,6 +526,10 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	return err
 }
 
+// DeletesSingleTags is true: Delete untags one reference and collects only
+// content no remaining tag references.
+func (s *OCIStore) DeletesSingleTags() bool { return true }
+
 func (s *OCIStore) untag(ctx context.Context, artifacts []Artifact) error {
 	unlock := s.lockIndex("untag")
 	defer unlock()
