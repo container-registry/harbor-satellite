@@ -50,6 +50,22 @@ func Enabled() bool {
 // schema, keeps statement statistics apart: they are recorded per database.
 func New(t testing.TB) *DB {
 	t.Helper()
+	d := NewEmpty(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if err := migrate(ctx, d.DB); err != nil {
+		t.Fatalf("migrate %s: %v", d.Name, err)
+	}
+	if _, err := d.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"); err != nil {
+		t.Fatalf("create extension pg_stat_statements: %v", err)
+	}
+	return d
+}
+
+// NewEmpty creates a fresh database without migrations, for tests of the
+// migrations themselves.
+func NewEmpty(t testing.TB) *DB {
+	t.Helper()
 	adminURL := os.Getenv(EnvURL)
 	if adminURL == "" {
 		t.Skipf("%s is not set; run `task test:integration`", EnvURL)
@@ -78,13 +94,6 @@ func New(t testing.TB) *DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = d.Close() })
-
-	if err := migrate(ctx, d.DB); err != nil {
-		t.Fatalf("migrate %s: %v", name, err)
-	}
-	if _, err := d.ExecContext(ctx, "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"); err != nil {
-		t.Fatalf("create extension pg_stat_statements: %v", err)
-	}
 	return d
 }
 
