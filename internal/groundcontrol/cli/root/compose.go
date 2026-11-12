@@ -39,6 +39,9 @@ func (c *composition) jobs(ctx context.Context, embedded bool) ([]job, error) {
 	if c.fleet.Flusher != nil {
 		jobs = append(jobs, job{name: c.fleet.Flusher.Name(), run: c.fleet.Flusher.Run})
 	}
+	if c.fleet.Policy != nil {
+		jobs = append(jobs, job{name: c.fleet.Policy.Name(), run: c.fleet.Policy.Run})
+	}
 	if !embedded {
 		return jobs, nil
 	}
