@@ -21,7 +21,7 @@ var fleetHotPathKeys = map[string]string{
 	"SESSION_EXPIRY_INTERVAL":      "2h",
 	"STATUS_RETENTION_DAYS":        "14",
 	"STATUS_PARTITIONS_AHEAD":      "5",
-	"RATE_LIMIT_SPLIT":             "true",
+	"RATE_LIMIT_SPLIT":             "false",
 	"RATE_LIMIT_ANONYMOUS":         "5/1m",
 	"RATE_LIMIT_FLEET":             "6/1s",
 }
@@ -50,7 +50,7 @@ func TestLoadGCParsesFleetHotPathKeys(t *testing.T) {
 			SessionExpiryInterval:     time.Hour,
 			StatusRetentionDays:       7,
 			StatusPartitionsAhead:     3,
-			RateLimitSplit:            false,
+			RateLimitSplit:            true,
 			RateLimitAnonymous:        "10/1m",
 			RateLimitFleet:            "3/1s",
 		}, GC.Server.FleetHotPath)
@@ -75,7 +75,7 @@ func TestLoadGCParsesFleetHotPathKeys(t *testing.T) {
 			SessionExpiryInterval:     2 * time.Hour,
 			StatusRetentionDays:       14,
 			StatusPartitionsAhead:     5,
-			RateLimitSplit:            true,
+			RateLimitSplit:            false,
 			RateLimitAnonymous:        "5/1m",
 			RateLimitFleet:            "6/1s",
 		}, GC.Server.FleetHotPath)

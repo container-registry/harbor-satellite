@@ -12,7 +12,7 @@ Behind a TLS-terminating reverse proxy, run Ground Control on plain HTTP inside 
 
 - satellites still reach Ground Control over HTTPS through the proxy;
 - the OIDC browser flow works, because the client sees HTTPS;
-- set `AUDIT_TRUST_FORWARDED_HEADERS=true` and `RATE_LIMIT_SPLIT=true`, so audit records, the failure limit and the per-IP limits see the client address instead of the proxy's.
+- set `AUDIT_TRUST_FORWARDED_HEADERS=true` and keep `RATE_LIMIT_SPLIT=true` (the default), so audit records, the failure limit and the per-IP limits see the client address instead of the proxy's.
 
 ## Satellite Client
 

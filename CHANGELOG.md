@@ -14,6 +14,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - Ground Control: admin changes reach Harbor through the async worker. Token registration answers `503` with `Retry-After` until the robot exists, and a used token answers `400`.
 - Ground Control: concurrent config updates answer `409`, invalid config documents `422`.
 - Ground Control: `/api` Basic auth counts toward the account lockout, and failed authentications per client IP are limited (`AUTH_FAILURE_LIMIT`).
+- Ground Control: `RATE_LIMIT_SPLIT` defaults to `true`. Sync and refresh are limited per satellite (`RATE_LIMIT_FLEET`, 3/1s), ZTR and OIDC per client IP (`RATE_LIMIT_ANONYMOUS`, 10/1m), and `/login` only by `AUTH_FAILURE_LIMIT` and the lockout, instead of one limiter of 10 requests per minute per IP for all of them. A satellite that sends more than 3 requests per second now gets `429`. `RATE_LIMIT_SPLIT=false` restores the old limiter.
 - Satellite: an `http://` Ground Control URL needs `use_unsecure`.
 - Satellite: `/healthz` and `/metrics` listen on `127.0.0.1:8586` by default; a port in use stops startup.
 - Satellite: unreferenced local content is collected after `STORE_GC_GRACE` (10 minutes).

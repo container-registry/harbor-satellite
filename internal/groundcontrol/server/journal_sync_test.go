@@ -39,6 +39,8 @@ func (h *gcHarness) edgeEvents() int {
 }
 
 func TestSync_IngestsJournalOnceAndAcks(t *testing.T) {
+	// Four uploads within a second; a satellite sends one per heartbeat.
+	splitLimits(t, "100/1m", "100/1s")
 	h := newGCHarness(t)
 	h.createConfig("edge-config")
 	h.syncGroup("edge-group", "library/alpine")

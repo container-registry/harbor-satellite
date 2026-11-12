@@ -20,7 +20,7 @@ Ground Control migrations are forward only in production. To go back to an older
 - **Time zone.** Migration 023 converts every timestamp column to `TIMESTAMPTZ`, reading stored values as UTC. Check that the database `TimeZone` and the Ground Control process both ran in UTC.
 - **Status table size.** Migration 024 copies `satellite_status` into a partitioned table in one transaction. On a large table this takes time and disk space; delete old rows first if you do not need them.
 - **Worker.** Changes to groups, configs and satellites now reach Harbor through the async worker. `serve` runs it by default. If you run `serve --worker=off`, also run `groundcontrol worker`.
-- **Rate limits.** If more than a few satellites reach Ground Control from one source address, plan `RATE_LIMIT_SPLIT=true`.
+- **Rate limits.** `RATE_LIMIT_SPLIT` now defaults to `true`: satellites are limited per satellite (`RATE_LIMIT_FLEET`, 3/1s), ZTR and OIDC per client IP (`RATE_LIMIT_ANONYMOUS`, 10/1m), and `/login` only by the failure limit and lockout. Behind a reverse proxy also set `AUDIT_TRUST_FORWARDED_HEADERS=true`, or every ZTR shares the proxy address. `RATE_LIMIT_SPLIT=false` restores the shared limiter of 10 requests per minute per IP.
 
 ### Breaking Changes
 
@@ -33,6 +33,7 @@ Ground Control migrations are forward only in production. To go back to an older
 | Ground Control | Config documents are validated before they are stored: `422` on invalid documents. | Fix the key named in the message. |
 | Ground Control | Basic auth on `/api` counts toward the account lockout. More than `AUTH_FAILURE_LIMIT` (20) failures per IP per minute answer `429`. | Fix clients with wrong credentials. |
 | Ground Control | Request bodies of `/login`, ZTR and the OIDC routes are limited to 64 KiB. | None for normal clients. |
+| Ground Control | `RATE_LIMIT_SPLIT` defaults to `true`: sync and refresh 3/1s per satellite, ZTR and OIDC 10/1m per client IP, `/login` only by the failure limit. | Behind a proxy set `AUDIT_TRUST_FORWARDED_HEADERS=true`; set `RATE_LIMIT_SPLIT=false` for the old shared limiter. |
 | Ground Control | `SKIP_HARBOR_HEALTH_CHECK` only silences the startup log line. SPIFFE registration no longer hands out placeholder credentials. | Remove it from production settings. |
 | Ground Control | Satellite status rows are kept in daily partitions and dropped after `STATUS_RETENTION_DAYS` (7). | Export status history you need before upgrading. |
 | Satellite | An `http://` Ground Control URL is refused unless `use_unsecure` is set. | Use HTTPS, or set `USE_UNSECURE=true` in development. |

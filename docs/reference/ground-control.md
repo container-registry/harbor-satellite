@@ -69,11 +69,13 @@ Every connection sets `application_name` to `groundcontrol-api`, `groundcontrol-
 
 | Variable | Default | Description |
 |---|---|---|
-| `RATE_LIMIT_SPLIT` | `false` | Off: one limiter of 10 requests per minute per client IP is shared by `/login`, `/satellites/ztr`, `/satellites/spiffe-ztr`, `/satellites/sync` and `/satellites/refresh`. On: anonymous routes are limited per client IP and satellite routes per authenticated satellite. |
+| `RATE_LIMIT_SPLIT` | `true` | On: anonymous routes are limited per client IP, satellite routes per authenticated satellite, and `/login` only by `AUTH_FAILURE_LIMIT` and the account lockout. Off: one limiter of 10 requests per minute per client IP is shared by `/login`, `/satellites/ztr`, `/satellites/spiffe-ztr`, `/satellites/sync` and `/satellites/refresh`. |
 | `RATE_LIMIT_ANONYMOUS` | `10/1m` | With the split: requests per client IP on ZTR and the OIDC routes, as `<requests>/<duration>`. |
 | `RATE_LIMIT_FLEET` | `3/1s` | With the split: requests per satellite on sync and refresh. |
 
-Without the split, satellites that share one source address, behind NAT or behind a reverse proxy, share 10 requests per minute. A fleet of more than a few satellites needs `RATE_LIMIT_SPLIT=true`. The shared limiter always keys on the TCP peer address. The split limiters and the failure limit use the `X-Forwarded-For` entry `AUDIT_TRUSTED_PROXY_HOPS` (default `1`) from the right, then `X-Real-IP`, when `AUDIT_TRUST_FORWARDED_HEADERS=true`; enable it only behind a proxy that appends to those headers, and set the hops to the number of such proxies.
+`RATE_LIMIT_FLEET` is counted per satellite, so its size does not depend on the fleet size or on how many satellites share a source address. Each satellite may burst 3 requests and then 3 per second: a heartbeat at the shortest interval Ground Control accepts (`@every 1s`), the refresh that follows a `refresh_credentials` event, and one retry. With the default 30s heartbeat a satellite uses about 1/90 of it. ZTR stays per client IP: a site that registers many satellites at once from one address gets 10 per minute, and each satellite's ZTR scheduler retries.
+
+With `RATE_LIMIT_SPLIT=false`, satellites that share one source address, behind NAT or behind a reverse proxy, share 10 requests per minute. The shared limiter always keys on the TCP peer address. The split limiters and the failure limit use the `X-Forwarded-For` entry `AUDIT_TRUSTED_PROXY_HOPS` (default `1`) from the right, then `X-Real-IP`, when `AUDIT_TRUST_FORWARDED_HEADERS=true`; enable it only behind a proxy that appends to those headers, and set the hops to the number of such proxies.
 
 ## Satellite Sessions and Fleet Jobs
 

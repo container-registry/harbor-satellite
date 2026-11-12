@@ -172,9 +172,12 @@ type FleetHotPath struct {
 	SessionExpiryInterval     time.Duration `env:"SESSION_EXPIRY_INTERVAL"      envDefault:"1h"`
 	StatusRetentionDays       int           `env:"STATUS_RETENTION_DAYS"        envDefault:"7"`
 	StatusPartitionsAhead     int           `env:"STATUS_PARTITIONS_AHEAD"      envDefault:"3"`
-	RateLimitSplit            bool          `env:"RATE_LIMIT_SPLIT"             envDefault:"false"`
+	RateLimitSplit            bool          `env:"RATE_LIMIT_SPLIT"             envDefault:"true"`
 	RateLimitAnonymous        string        `env:"RATE_LIMIT_ANONYMOUS"         envDefault:"10/1m"`
-	// RateLimitFleet: 3 per the 1s heartbeat floor of normalizeHeartbeatInterval.
+	// RateLimitFleet is per satellite, so it does not grow with the fleet
+	// or with satellites sharing an address. 3/1s covers a heartbeat at the
+	// 1s floor of normalizeHeartbeatInterval, the refresh that follows a
+	// refresh_credentials event and one retry in the same second.
 	RateLimitFleet string `env:"RATE_LIMIT_FLEET" envDefault:"3/1s"`
 }
 

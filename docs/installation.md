@@ -85,7 +85,7 @@ At minimum:
 
 - HTTPS: `TLS_CERT_FILE`/`TLS_KEY_FILE`, or a TLS-terminating proxy, see [TLS](operations/tls.md).
 - `DB_SSLMODE=verify-full` and `DB_SSLROOTCERT` for a remote database.
-- `RATE_LIMIT_SPLIT=true`.
+- `RATE_LIMIT_SPLIT=true` (the default) and, behind a proxy, `AUDIT_TRUST_FORWARDED_HEADERS=true`.
 - `ROBOT_ROTATION_ENABLED=true` with `DATA_ENCRYPTION_KEY`.
 - A readiness probe on `GET /health` and a liveness probe on `GET /ping`.
 

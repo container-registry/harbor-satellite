@@ -57,7 +57,7 @@ Release container images are signed with Cosign (keyless). Release archives carr
 
 - Serve Ground Control over HTTPS, and set `USE_UNSECURE=false` on every satellite.
 - Use `DB_SSLMODE=verify-full` with `DB_SSLROOTCERT` for a database on another host.
-- Set `RATE_LIMIT_SPLIT=true`.
+- Keep `RATE_LIMIT_SPLIT=true` (the default).
 - Rotate `ADMIN_PASSWORD` after the first start, and prefer OIDC for operators.
 - Enable `ROBOT_ROTATION_ENABLED` with a `DATA_ENCRYPTION_KEY` kept in a secret store.
 - Keep `TELEMETRY_ADDR` on loopback unless a scraper needs it, and restrict that port at the network.

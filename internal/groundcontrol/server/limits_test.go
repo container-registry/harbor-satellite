@@ -56,3 +56,22 @@ func TestAnonymousLimiter_ZTRLimitedPerClientIP(t *testing.T) {
 	require.Equal(t, AppError{Code: http.StatusTooManyRequests, Message: "Too Many Requests"}, body)
 	require.NotEqual(t, http.StatusTooManyRequests, ztrFrom("10.0.0.2").Status, "another client IP has its own budget")
 }
+
+// With the default limits, ten satellites behind one NAT register and
+// heartbeat three times each in a burst: 41 requests from one IP, login
+// included, where the legacy shared limiter allowed 10 per minute.
+func TestDefaultLimits_FleetBehindOneIPGetsNo429(t *testing.T) {
+	h := newHotPathHarness(t)
+	h.edgeSetup()
+	tokens := map[string]string{}
+	for i := range 10 {
+		name := fmt.Sprintf("edge-%02d", i)
+		_, tokens[name] = h.onboardWithSession(name)
+	}
+
+	for name, token := range tokens {
+		for range 3 {
+			h.mustDo(http.MethodPost, "/satellites/sync", heartbeatRequest(name), bearerAuth(token), http.StatusOK)
+		}
+	}
+}

@@ -60,7 +60,7 @@ Plan item 4 (fleet hot path) found these limits at `508b0d6`:
 | Migration `019_satellite_sessions_and_view.sql` and its queries | implemented, SQL contract tests |
 | `authn.Sessions`, `heartbeat.Buffer` and `Flusher`, `fleet.HeartbeatService`, lifecycle services, `async.StaleDetector`, `SessionExpirer`, postgres adapters | implemented and composed by `serve` (sessions, buffer, flusher) and the worker (stale detector, session expiry) |
 | Sync and ZTR contract (`session`, `inventory_requested`, `inventory_digest`), lifecycle, revoke and unrevoke routes | implemented |
-| Split limiters (`RATE_LIMIT_SPLIT`) | implemented; off by default, which keeps the shared 10/min per IP limiter |
+| Split limiters (`RATE_LIMIT_SPLIT`) | implemented; on by default since 1.0, `false` keeps the shared 10/min per IP limiter |
 | `satellite_status` partitions (migration 024, `PartitionMaintainer`) | implemented |
 | Fleet load test (`task test:load`) | implemented |
 

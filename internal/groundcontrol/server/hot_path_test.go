@@ -164,6 +164,8 @@ func TestSync_MalformedJournalAnswers200WithJournalError(t *testing.T) {
 }
 
 func TestSync_RequestsInventoryOnDigestChange(t *testing.T) {
+	// Four heartbeats within a second, above the default RATE_LIMIT_FLEET.
+	splitLimits(t, "100/1m", "100/1s")
 	h := newHotPathHarness(t)
 	h.edgeSetup()
 	_, token := h.onboardWithSession("edge-01")
