@@ -29,11 +29,18 @@ func WatchChanges(ctx context.Context, log zerolog.Logger, path string, eventCha
 
 	log.Info().Str("path", path).Msg("Started watching config file for changes")
 
+	// out is eventChan while a change is waiting for the consumer and nil
+	// otherwise. Changes that arrive meanwhile merge into the waiting one,
+	// so a consumer busy with a reload still sees the last write.
+	var out chan<- struct{}
 	for {
 		select {
 		case <-ctx.Done():
 			log.Info().Msg("Watcher received context cancellation. Shutting down gracefully...")
 			return nil
+		case out <- struct{}{}:
+			out = nil
+			log.Debug().Msg("Notified config change event on channel")
 		case event, ok := <-watcher.Events:
 			if !ok {
 				log.Error().Msg("Watcher event channel closed unexpectedly")
@@ -42,12 +49,7 @@ func WatchChanges(ctx context.Context, log zerolog.Logger, path string, eventCha
 			log.Debug().Str("event", event.String()).Msg("Received fsnotify event")
 			if event.Op&fsnotify.Write == fsnotify.Write {
 				log.Info().Str("file", event.Name).Msg("File modified")
-				select {
-				case eventChan <- struct{}{}:
-					log.Debug().Msg("Notified config change event on channel")
-				default:
-					log.Warn().Msg("Config change channel full; skipping event")
-				}
+				out = eventChan
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
