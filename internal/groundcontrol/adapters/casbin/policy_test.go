@@ -16,7 +16,6 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
 	"github.com/container-registry/harbor-satellite/internal/shared/policybundle"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
 
@@ -169,7 +168,6 @@ func satelliteIn(name string, groups ...string) fleet.Resource {
 }
 
 func TestCasbinPolicy_GroupAdminScopedToGroup(t *testing.T) {
-	pending.Plan(t, "7.3", "the Casbin policy is a stub")
 	_, repo := seededRepo()
 	p := newPolicy(t, repo)
 
@@ -188,7 +186,6 @@ func TestCasbinPolicy_GroupAdminScopedToGroup(t *testing.T) {
 }
 
 func TestCasbinPolicy_DenyOverridesAcrossSubjects(t *testing.T) {
-	pending.Plan(t, "7.3", "the Casbin policy is a stub")
 	_, repo := seededRepo()
 	repo.Rules = append(repo.Rules,
 		fleet.PolicyRule{ID: 3, Subject: "oidc:contractors", Scope: "*", Type: "satellite", Action: "delete", Effect: "deny"},
@@ -208,7 +205,6 @@ func TestCasbinPolicy_DenyOverridesAcrossSubjects(t *testing.T) {
 // even if one is stored: a scoped rule never opens a route outside
 // satellite, group and config, and a scoped deny never closes one.
 func TestCasbinPolicy_ScopedWildcardTypeIgnoredByRouteMatcher(t *testing.T) {
-	pending.Plan(t, "7.3", "the Casbin policy is a stub")
 	_, repo := seededRepo()
 	repo.Rules = append(repo.Rules,
 		fleet.PolicyRule{ID: 3, Subject: "user:mallory", Scope: "group:A", Type: "*", Action: "*", Effect: "allow"},
@@ -228,7 +224,6 @@ func TestCasbinPolicy_ScopedWildcardTypeIgnoredByRouteMatcher(t *testing.T) {
 }
 
 func TestCasbinPolicy_ReloadsOnVersionChange(t *testing.T) {
-	pending.Plan(t, "7.3", "the Casbin policy is a stub")
 	repo := fleettest.NewRepository(nil)
 	repo.Policies.CurrentVersion = 1
 	p := newPolicy(t, repo.Policies)
@@ -246,7 +241,6 @@ func TestCasbinPolicy_ReloadsOnVersionChange(t *testing.T) {
 }
 
 func TestCasbinPolicy_FailedReloadKeepsLastGood(t *testing.T) {
-	pending.Plan(t, "7.3", "the Casbin policy is a stub")
 	ctx := context.Background()
 	repo, policies := seededRepo()
 	down := errors.New("database down")
