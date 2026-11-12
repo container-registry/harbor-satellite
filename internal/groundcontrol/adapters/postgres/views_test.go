@@ -10,16 +10,12 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/stretchr/testify/require"
 )
-
-const pendingViews = "the postgres view repository is a stub; ADR-0006 lifecycle is not implemented"
 
 // A second worker holding the StaleDetector lock makes MarkStale a no-op,
 // so two workers never append SatelliteStale twice.
 func TestViewRepo_MarkStaleTakesLock(t *testing.T) {
-	pending.Plan(t, "4.3", pendingViews)
 	db := dbtest.New(t)
 	ctx := context.Background()
 	repo, err := postgres.NewRepository(db.DB)
