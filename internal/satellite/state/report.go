@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -16,18 +17,29 @@ import (
 )
 
 type StatusReportParams struct {
-	Name                string        `json:"name"`
-	Activity            string        `json:"activity"`
-	StateReportInterval string        `json:"state_report_interval"`
-	LatestStateDigest   string        `json:"latest_state_digest"`
-	LatestConfigDigest  string        `json:"latest_config_digest"`
-	MemoryUsedBytes     uint64        `json:"memory_used_bytes"`
-	StorageUsedBytes    uint64        `json:"storage_used_bytes"`
-	CPUPercent          float64       `json:"cpu_percent"`
-	RequestCreatedTime  time.Time     `json:"request_created_time"`
-	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
-	ImageCount          int           `json:"image_count"`
-	CachedImages        []CachedImage `json:"cached_images,omitempty"`
+	Name                   string        `json:"name"`
+	Activity               string        `json:"activity"`
+	StateReportInterval    string        `json:"state_report_interval"`
+	LatestStateDigest      string        `json:"latest_state_digest"`
+	LatestConfigDigest     string        `json:"latest_config_digest"`
+	MemoryUsedBytes        uint64        `json:"memory_used_bytes"`
+	StorageUsedBytes       uint64        `json:"storage_used_bytes"`
+	CPUPercent             float64       `json:"cpu_percent"`
+	RequestCreatedTime     time.Time     `json:"request_created_time"`
+	LastSyncDurationMs     int64         `json:"last_sync_duration_ms"`
+	ImageCount             int           `json:"image_count"`
+	CachedImages           []CachedImage `json:"cached_images,omitempty"`
+	DownloadBytesPerSecond float64       `json:"download_bytes_per_second"`
+	BytesInWindow          int64         `json:"bytes_in_window"`
+	BytesTotal             int64         `json:"bytes_total"`
+}
+
+// recordDownloadStats copies the process download counters onto the heartbeat.
+func recordDownloadStats(req *StatusReportParams) {
+	stats := budget.Ensure().Snapshot()
+	req.DownloadBytesPerSecond = stats.BytesPerSecond
+	req.BytesInWindow = stats.BytesInWindow
+	req.BytesTotal = stats.BytesTotal
 }
 
 func collectStatusReportParams(ctx context.Context, heartbeatInterval time.Duration, req *StatusReportParams, cfg config.MetricsConfig, registryURL string, insecure bool) {

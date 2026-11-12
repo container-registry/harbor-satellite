@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -93,7 +95,11 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 			continue
 		}
 
-		opts := []remote.Option{remote.WithAuth(auth), remote.WithContext(ctx)}
+		opts := []remote.Option{
+			remote.WithAuth(auth),
+			remote.WithContext(ctx),
+			remote.WithTransport(budget.Transport(http.DefaultTransport)),
+		}
 		img, err := remote.Image(ref, opts...)
 		if err != nil {
 			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to pull image, skipping")
