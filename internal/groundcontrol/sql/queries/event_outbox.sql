@@ -76,3 +76,13 @@ LIMIT sqlc.arg(max_rows)::INT;
 
 -- name: CountPendingOutboxEvents :one
 SELECT count(*) FROM event_outbox WHERE done_at IS NULL;
+
+-- name: OutboxStats :one
+-- Counts for /metrics: pending events have attempts left, failed ones
+-- ran out of them; oldest_age_seconds is 0 without an event.
+SELECT
+    count(*) FILTER (WHERE attempts < sqlc.arg(max_attempts)::INT) AS pending,
+    count(*) FILTER (WHERE attempts >= sqlc.arg(max_attempts)::INT) AS failed,
+    COALESCE(EXTRACT(EPOCH FROM NOW() - min(created_at)), 0)::FLOAT8 AS oldest_age_seconds
+FROM event_outbox
+WHERE done_at IS NULL;

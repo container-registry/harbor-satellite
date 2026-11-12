@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"net"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/app"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/telemetry"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 )
 
@@ -24,6 +27,7 @@ func (c *composition) fleetFactory(_ context.Context, pools *dbpool.Pools, spire
 	f, err := app.NewFleet(app.FleetDeps{
 		Pools: pools, Harbor: env.GC.Harbor, Server: env.GC.Server, Webhook: env.GC.Webhook, SPIRE: spire, Policy: env.GC.Policy,
 		RobotRotation: env.GC.RobotRotation, DataEncryptionKey: env.GC.DataEncryptionKey, OIDC: env.GC.OIDC,
+		OutboxMaxAttempts: env.GC.Outbox.MaxAttempts,
 	})
 	if err != nil {
 		return nil, err
@@ -46,6 +50,13 @@ func (c *composition) jobs(ctx context.Context, embedded bool) ([]job, error) {
 	if c.fleet.Policy != nil {
 		jobs = append(jobs, job{name: c.fleet.Policy.Name(), run: c.fleet.Policy.Run})
 	}
+	if addr := env.GC.Server.MetricsAddr; addr != "" && c.fleet.Metrics != nil {
+		metricsJob, err := listenMetrics(ctx, addr, c.fleet.Metrics)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, metricsJob)
+	}
 	if !embedded {
 		return jobs, nil
 	}
@@ -56,6 +67,17 @@ func (c *composition) jobs(ctx context.Context, embedded bool) ([]job, error) {
 	return append(jobs, job{name: "async worker", run: func(ctx context.Context) error {
 		return errors.Join(w.Run(ctx), closeWorker())
 	}}), nil
+}
+
+// listenMetrics binds addr before serve starts, so a port in use stops
+// startup instead of leaving Ground Control without metrics.
+func listenMetrics(ctx context.Context, addr string, metrics *telemetry.Server) (job, error) {
+	l, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
+	if err != nil {
+		return job{}, fmt.Errorf("METRICS_ADDR %s: %w", addr, err)
+	}
+	log.Printf("Serving metrics on %s/metrics", l.Addr())
+	return job{name: "metrics", run: func(ctx context.Context) error { return metrics.Serve(ctx, l) }}, nil
 }
 
 func newWorker(ctx context.Context, pools *dbpool.Pools, spire *spiffe.ServerClient) (interface{ Run(context.Context) error }, func() error, error) {

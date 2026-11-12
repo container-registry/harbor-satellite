@@ -34,9 +34,34 @@ Suggested alerts:
 - `histogram_quantile(0.99, rate(satellite_store_lock_wait_seconds_bucket[5m])) > 1`: replication and garbage collection queue behind the index lock.
 - `rate(satellite_proxy_pull_through_fills_total{outcome="error"}[10m]) > 0`: the satellite cannot reach Harbor for misses.
 
-## Ground Control: `/health`, `/ping` and the Fleet API
+## Ground Control: `/metrics`
 
-Ground Control has no Prometheus endpoint in this release.
+`groundcontrol serve` answers `GET /metrics` in Prometheus text format on `METRICS_ADDR` (default `:9464`), apart from the API port so the scrape port can stay inside the cluster. `METRICS_ADDR=` turns it off. A port in use stops startup. `groundcontrol worker` has no metrics endpoint; the outbox gauges come from the database, so any `serve` replica reports them.
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `groundcontrol_http_requests_total` | counter | `route` (the route template, such as `/api/groups/{group}`, or `unmatched`), `method`, `code` | Requests answered, including `401`, `413` and `429` from the security middleware. |
+| `groundcontrol_http_request_duration_seconds` | histogram | `route`, `method` | Request duration. |
+| `groundcontrol_heartbeats_total` | counter | | Heartbeats this replica accepted into its buffer. |
+| `groundcontrol_heartbeat_buffer_satellites` | gauge | | Satellites with heartbeats buffered on this replica and not yet written. |
+| `groundcontrol_heartbeat_flushes_total` | counter | `outcome` (`ok`, `error`) | Writes of the heartbeat buffer, including the per-satellite retries after a failed batch. |
+| `groundcontrol_heartbeat_flush_duration_seconds` | histogram | `outcome` | Duration of one buffer write. |
+| `groundcontrol_outbox_events` | gauge | `state` (`pending`, `failed`) | Outbox events not done yet: `pending` have attempts left, `failed` ran out of `OUTBOX_MAX_ATTEMPTS`. |
+| `groundcontrol_outbox_oldest_pending_age_seconds` | gauge | | Age of the oldest event not done; `0` without one. |
+| `groundcontrol_outbox_stats_up` | gauge | | `1` when the outbox query of this scrape succeeded, `0` otherwise. |
+| `go_sql_*` | gauge, counter | `db_name` (`api`, `fleet`, `async`) | `database/sql` pool statistics per plane: open, in use and idle connections, waits. A pool shared by several planes appears once, under the first name. |
+
+The Go runtime (`go_*`) and process (`process_*`) collectors are included.
+
+Suggested alerts:
+
+- `groundcontrol_outbox_events{state="failed"} > 0`: Harbor changes that will not be retried without `POST /api/ops/outbox` or a new change.
+- `groundcontrol_outbox_oldest_pending_age_seconds > 600`: no worker drains the outbox, or Harbor is unreachable.
+- `rate(groundcontrol_heartbeat_flushes_total{outcome="error"}[5m]) > 0`: heartbeats are not written; `last_seen` stops moving.
+- `sum(rate(groundcontrol_http_requests_total{code="429"}[5m])) by (route) > 0`.
+- `go_sql_wait_count_total` growing: a pool is too small for its plane.
+
+## Ground Control: `/health`, `/ping` and the Fleet API
 
 | Endpoint | Use |
 |---|---|

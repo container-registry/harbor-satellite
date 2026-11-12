@@ -18,15 +18,18 @@ const anonymousMaxBodyBytes = 64 << 10
 
 func (s *Server) RegisterRoutes() http.Handler {
 	router := mux.NewRouter()
+	if s.requests != nil {
+		router.Use(recordRouteTemplate)
+	}
 	router.Use(s.RequestIDMiddleware)
 	router.Use(s.routeSecurityMiddleware)
 
-	return HandlerWithOptions(s, GorillaServerOptions{
+	return s.observeRequests(HandlerWithOptions(s, GorillaServerOptions{
 		BaseRouter: router,
 		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			WriteJSONError(w, err.Error(), http.StatusBadRequest)
 		},
-	})
+	}))
 }
 
 // routeSecurityMiddleware retains the endpoint-specific policy that used to

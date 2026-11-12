@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -66,4 +68,31 @@ func TestNewFleet_WithoutHarborURLNamesTheVariable(t *testing.T) {
 	_, err := app.NewFleet(app.FleetDeps{Pools: &dbpool.Pools{API: new(sql.DB)}})
 	require.ErrorIs(t, err, fleet.ErrInvalid)
 	require.ErrorContains(t, err, "HARBOR_URL")
+}
+
+// The composed /metrics reads the shared outbox and the pools at scrape
+// time.
+func TestNewFleet_MetricsReportOutboxAndPools(t *testing.T) {
+	db := dbtest.New(t)
+	stub := harbortest.New(t)
+	f, err := app.NewFleet(app.FleetDeps{
+		Pools:  &dbpool.Pools{API: db.DB, Fleet: db.DB, Async: db.DB},
+		Harbor: env.Harbor{URL: stub.URL(), Username: harbortest.Username, Password: harbortest.Password, RobotDurationDays: "30"},
+	})
+	require.NoError(t, err)
+	_, err = f.Services.Configs.Create(context.Background(), fleet.CreateConfigCmd{Name: "edge-config", Document: json.RawMessage(`{"app_config":{}}`)})
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	f.Metrics.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	for _, want := range []string{
+		`groundcontrol_outbox_events{state="pending"} 1`,
+		`groundcontrol_outbox_events{state="failed"} 0`,
+		`groundcontrol_outbox_stats_up 1`,
+		`groundcontrol_heartbeat_buffer_satellites 0`,
+		`go_sql_max_open_connections{db_name="api"}`,
+	} {
+		require.Contains(t, rec.Body.String(), want)
+	}
 }

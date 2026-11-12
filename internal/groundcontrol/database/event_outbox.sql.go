@@ -236,6 +236,30 @@ func (q *Queries) ListStuckOutboxEvents(ctx context.Context, arg ListStuckOutbox
 	return items, nil
 }
 
+const outboxStats = `-- name: OutboxStats :one
+SELECT
+    count(*) FILTER (WHERE attempts < $1::INT) AS pending,
+    count(*) FILTER (WHERE attempts >= $1::INT) AS failed,
+    COALESCE(EXTRACT(EPOCH FROM NOW() - min(created_at)), 0)::FLOAT8 AS oldest_age_seconds
+FROM event_outbox
+WHERE done_at IS NULL
+`
+
+type OutboxStatsRow struct {
+	Pending          int64
+	Failed           int64
+	OldestAgeSeconds float64
+}
+
+// Counts for /metrics: pending events have attempts left, failed ones
+// ran out of them; oldest_age_seconds is 0 without an event.
+func (q *Queries) OutboxStats(ctx context.Context, maxAttempts int32) (OutboxStatsRow, error) {
+	row := q.db.QueryRowContext(ctx, outboxStats, maxAttempts)
+	var i OutboxStatsRow
+	err := row.Scan(&i.Pending, &i.Failed, &i.OldestAgeSeconds)
+	return i, err
+}
+
 const rearmOutboxEvents = `-- name: RearmOutboxEvents :execrows
 UPDATE event_outbox
 SET attempts = 0, next_attempt_at = NOW()

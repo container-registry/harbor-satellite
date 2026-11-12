@@ -107,6 +107,23 @@ func (s *OutboxStore) PendingCount(ctx context.Context) (int64, error) {
 	return n, mapError(err)
 }
 
+// OutboxStats is what OutboxStore.Stats counts for /metrics.
+type OutboxStats struct {
+	// Pending events have attempts left; Failed ran out of maxAttempts.
+	Pending, Failed int64
+	// OldestPending is the age of the oldest event that is not done.
+	OldestPending time.Duration
+}
+
+// Stats runs OutboxStats.
+func (s *OutboxStore) Stats(ctx context.Context, maxAttempts int) (OutboxStats, error) {
+	row, err := s.q.OutboxStats(ctx, int32(min(maxAttempts, 1<<30)))
+	if err != nil {
+		return OutboxStats{}, mapError(err)
+	}
+	return OutboxStats{Pending: row.Pending, Failed: row.Failed, OldestPending: time.Duration(row.OldestAgeSeconds * float64(time.Second))}, nil
+}
+
 // Prune takes advisorylock.OutboxPruner with TryAdvisoryXactLock and runs
 // PruneDoneOutboxEvents in one transaction.
 func (s *OutboxStore) Prune(ctx context.Context, retention time.Duration, limit int) (n int64, err error) {

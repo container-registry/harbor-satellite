@@ -123,6 +123,13 @@ func (b *Buffer) InventoryDigest(satellite fleet.SatelliteID) (fleet.Digest, boo
 	return d, ok
 }
 
+// Len is the number of satellites with something buffered.
+func (b *Buffer) Len() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.entries)
+}
+
 // Drain hands out everything buffered and empties the buffer.
 func (b *Buffer) Drain() Batch {
 	b.mu.Lock()

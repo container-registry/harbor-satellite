@@ -106,6 +106,8 @@ type Server struct {
 	// stopped makes /health unhealthy once a background job of serve
 	// returned (JobStopped).
 	stopped stoppedJobs
+	// requests is set by WithRequestObserver and sees every request.
+	requests RequestObserver
 }
 
 // HarborContact reports the last successful contact with Harbor; the

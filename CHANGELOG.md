@@ -42,6 +42,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - Ground Control: signed CloudEvents webhooks with an event catalog in `spec/events/v1` (`WEBHOOKS_ENABLED`).
 - Ground Control: edge journal ingest. Heartbeats acknowledge journal uploads, and accepted records become log-only `Edge*` outbox events, once per record; `POST /satellites/sync` answers `413` above `SYNC_MAX_BODY_BYTES` (4 MiB).
 - Ground Control: one `groundcontrol` executable for server and client.
+- Ground Control: Prometheus `/metrics` on `METRICS_ADDR` (default `:9464`) with HTTP requests by route template, heartbeats and the heartbeat buffer, outbox pending and failed events, and the database pools.
 
 ### Fixed
 
@@ -66,7 +67,6 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 
 ### Known Limitations
 
-- Ground Control has no Prometheus endpoint.
 - PostgreSQL 19 is the decided minimum (ADR-0020), but the version is not checked yet, and tests run on PostgreSQL 17.
 - Keyless pulls through Harbor 3 workload identity federation are not available; `registry_auth.mode: workload_identity` is refused.
 - Groups do not follow pushed tags automatically: Harbor has no registry event feed for Ground Control yet.

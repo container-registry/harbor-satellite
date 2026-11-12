@@ -53,6 +53,7 @@ Every connection sets `application_name` to `groundcontrol-api`, `groundcontrol-
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `8080` | Listen port. |
+| `METRICS_ADDR` | `:9464` | Address of the Prometheus `/metrics` listener of `serve`, separate from `PORT`. Empty disables it; a port in use stops startup. See [Monitoring](../operations/monitoring.md#ground-control-metrics). |
 | `ADMIN_PASSWORD` | | Creates the `admin` system administrator on first start. Required then, and must pass the password policy. |
 | `SESSION_DURATION` | `24h` | Lifetime of an operator session from `/login` or OIDC. |
 | `LOCKOUT_DURATION` | `5m` | Lockout after 5 failed logins for one username, through `/login` or Basic auth. |

@@ -58,6 +58,7 @@ components:
       - internal/groundcontrol/secrets
       - internal/groundcontrol/spiffe
       - internal/groundcontrol/sql
+      - internal/groundcontrol/telemetry
   shared:
     in:
       - internal/shared/crypto

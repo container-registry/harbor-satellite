@@ -28,6 +28,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/secrets"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/telemetry"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 )
 
@@ -63,6 +64,9 @@ type FleetDeps struct {
 	DataEncryptionKey string
 	// OIDC enables operator login through an OIDC provider (plan item 8.1).
 	OIDC env.OIDC
+	// OutboxMaxAttempts (OUTBOX_MAX_ATTEMPTS) separates pending from
+	// failed outbox events in /metrics; 0 means the default 10.
+	OutboxMaxAttempts int
 }
 
 // Fleet is what a serve process runs: the services behind the handlers,
@@ -83,6 +87,9 @@ type Fleet struct {
 	// disabled.
 	Rotations *async.RotationCache
 	Login     *authn.OIDCLogin
+	// Metrics is Ground Control's /metrics; it records requests and
+	// heartbeats whether or not serve listens for scrapes.
+	Metrics *telemetry.Server
 }
 
 // operatorLogin adapts authn.OIDCLogin to server.OperatorLogin.
@@ -148,7 +155,11 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if err != nil {
 		return nil, err
 	}
-	flusher, err := heartbeat.NewFlusher(buffer, beatStore, beatCfg)
+	metrics, err := NewMetrics(deps.Pools, buffer, cmp.Or(deps.OutboxMaxAttempts, 10))
+	if err != nil {
+		return nil, fmt.Errorf("metrics: %w", err)
+	}
+	flusher, err := heartbeat.NewFlusher(buffer, timedBeatStore{Store: beatStore, rec: metrics.Recorder()}, beatCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +214,7 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 		Identity:            identity,
 		Settings:            Settings(deps.Harbor, deps.Server, deps.Webhook),
 		Sessions:            sessions,
-		HeartbeatSink:       buffer,
+		HeartbeatSink:       countingSink{HeartbeatSink: buffer, rec: metrics.Recorder()},
 		ConfigValidator:     satconfig.Validator{},
 	})
 	if err != nil {
@@ -217,7 +228,7 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := &Fleet{Services: services, Probe: probe, Sessions: sessions, HeartbeatBuffer: buffer, Flusher: flusher, Policy: policy, Rotations: rotations}
+	f := &Fleet{Services: services, Probe: probe, Sessions: sessions, HeartbeatBuffer: buffer, Flusher: flusher, Policy: policy, Rotations: rotations, Metrics: metrics}
 	if deps.OIDC.Enabled {
 		if f.Login, err = newOIDCLogin(deps.Pools, deps.OIDC, deps.Server); err != nil {
 			return nil, err
@@ -351,11 +362,15 @@ func (o outboxReader) ListOutbox(ctx context.Context, failedOnly bool, limit int
 // ServerOptions hands the server the services (server.WithFleet), the
 // probe (server.WithHarborContact), the outbox reader for
 // /api/ops/outbox (server.WithOutboxReader), the sessions
-// (server.WithSatelliteAuthenticator(f.Sessions)), when set, the policy
+// (server.WithSatelliteAuthenticator(f.Sessions)), the request metrics
+// (server.WithRequestObserver), when set, the policy
 // (server.WithPolicy(f.Policy)) and, with OIDC, the operator login
 // (server.WithOperatorLogin).
 func (f *Fleet) ServerOptions(pools *dbpool.Pools) []server.Option {
 	opts := []server.Option{server.WithFleet(f.Services)}
+	if f.Metrics != nil {
+		opts = append(opts, server.WithRequestObserver(f.Metrics.Recorder()))
+	}
 	if f.Probe != nil {
 		opts = append(opts, server.WithHarborContact(f.Probe, f.Probe.StaleAfter()))
 	}

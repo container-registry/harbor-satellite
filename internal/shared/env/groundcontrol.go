@@ -157,6 +157,10 @@ type Server struct {
 	GroupSyncMaxBodyBytes int64 `env:"GROUP_SYNC_MAX_BODY_BYTES" envDefault:"16777216"`
 	APIMaxBodyBytes       int64 `env:"API_MAX_BODY_BYTES"        envDefault:"1048576"`
 
+	// MetricsAddr is where serve answers Prometheus /metrics, apart from
+	// the API port so it can stay inside the cluster; empty disables it.
+	MetricsAddr string `env:"METRICS_ADDR" envDefault:":9464"`
+
 	FleetHotPath
 }
 

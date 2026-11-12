@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/server"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/telemetry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -84,4 +86,15 @@ func TestServe_StoppedJobMarksHealthUnhealthy(t *testing.T) {
 	cancel()
 	require.NoError(t, receive(t, done))
 	require.Equal(t, []string{"async worker"}, result.AppServer.StoppedJobs(), "the probe returned on shutdown")
+}
+
+func TestListenMetrics_PortInUseStopsStartup(t *testing.T) {
+	metrics, err := telemetry.NewServer(telemetry.Options{})
+	require.NoError(t, err)
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer taken.Close()
+
+	_, err = listenMetrics(t.Context(), taken.Addr().String(), metrics)
+	require.ErrorContains(t, err, "METRICS_ADDR")
 }
