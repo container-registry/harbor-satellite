@@ -55,7 +55,7 @@ Choose one of the following options to start Ground Control.
 
 ### Option 1: Using Docker Compose
 
-The root `docker-compose.yml` takes `HARBOR_URL` (required), `HARBOR_USERNAME`, `HARBOR_PASSWORD` and `ADMIN_PASSWORD` from `.env` or the shell, and sets the database settings itself. It also reads `SKIP_HARBOR_HEALTH_CHECK`, which defaults to `true` when unset; `.env.example` sets it to `false`, so Ground Control fails fast when Harbor is unreachable.
+The root `docker-compose.yml` takes `HARBOR_URL` (required), `HARBOR_USERNAME`, `HARBOR_PASSWORD` and `ADMIN_PASSWORD` from `.env` or the shell, and sets the database settings itself. Ground Control starts even when Harbor is unreachable: it logs the failed check, reports Harbor as `degraded` in `/health`, and applies queued changes once Harbor answers.
 
 ```bash
 docker compose up -d
@@ -93,7 +93,7 @@ Check if Ground Control is running:
 curl http://localhost:8080/health
 ```
 
-A `200 OK` response with `{"status":"healthy"}` indicates Ground Control and its database are up.
+A `200 OK` response with `"status":"healthy"` indicates Ground Control, its database and Harbor are reachable. `"status":"degraded"` with a `components.harbor` entry means Ground Control has not reached Harbor yet; check `HARBOR_URL` and the credentials.
 
 ## Step 4: Log In
 
@@ -163,7 +163,7 @@ curl -i -X POST http://localhost:8080/api/configs \
 
 ## Step 7: Register the Satellite
 
-Register the satellite with the group and configuration created earlier. Both must exist, otherwise the request fails. The response is `{"token":"..."}`. The token is single-use and expires after 24 hours.
+Register the satellite with the group and configuration created earlier. Both must exist, otherwise the request fails. The response is `{"token":"..."}`. The token is single-use and expires after 24 hours. Ground Control creates the satellite's Harbor robot in the background; until it exists, registration answers `503` and the satellite retries by itself.
 
 ```bash
 curl -X POST http://localhost:8080/api/satellites \
@@ -220,7 +220,16 @@ TOKEN=<your-token> docker compose up -d satellite
 
 ## Step 9: Verify Replication
 
-The satellite writes replicated images to an OCI image layout in `<config-dir>/oci`. It does not serve them over HTTP, so check the layout on disk. The config directory is `CONFIG_DIR` (`/data` in the compose file) or `--config-dir`; the default is `satellite` under the user config directory (`~/.config/satellite` on Linux).
+The satellite writes replicated images to an OCI image layout in `<config-dir>/oci` and serves them through its pull-only OCI proxy on `127.0.0.1:8585` inside its own network namespace. Pull the manifest through the proxy:
+
+```bash
+# Docker Compose (the proxy listens on the container's loopback)
+docker exec satellite curl -sf \
+  -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' \
+  http://127.0.0.1:8585/v2/satellite/alpine/manifests/latest
+```
+
+You can also check the layout on disk. The config directory is `CONFIG_DIR` (`/data` in the compose file) or `--config-dir`; the default is `satellite` under the user config directory (`~/.config/satellite` on Linux).
 
 ```bash
 # Docker Compose
@@ -232,12 +241,14 @@ docker exec satellite sh -c \
 grep -o "org.opencontainers.image.ref.name[^}]*" ~/.config/satellite/oci/index.json
 ```
 
-Ground Control also lists what the satellite reported in its last heartbeat:
+Ground Control shows whether the satellite reports in and has applied its state:
 
 ```bash
-curl -s http://localhost:8080/api/satellites/satellite_1/images \
+curl -s http://localhost:8080/api/satellites/satellite_1/lifecycle \
   -H "Authorization: Bearer ${AUTH_TOKEN}"
 ```
+
+With a BYO registry, `GET /api/satellites/satellite_1/images` also lists the images the satellite found in it.
 
 ## Cleanup
 
@@ -249,7 +260,7 @@ docker compose --profile satellite down -v
 
 ## Configure a BYO Registry as Mirror (Optional)
 
-Harbor Satellite can configure an external BYO registry as a mirror for upstream registries. Start Satellite with `--byo-registry --registry-url <url>` and use `--mirrors` to select the upstream registries. The default local OCI layout does not expose a registry endpoint and cannot be used as a CRI mirror.
+Harbor Satellite can configure container runtimes to pull through it, with the upstream registry as fallback. Use `--mirrors` to select the upstream registries. The mirror endpoint is the satellite's OCI proxy at `127.0.0.1:8585`, so the satellite must run on the host or with host networking. With `--fallback-only` no proxy runs, and the endpoint is a BYO registry (`--byo-registry --registry-url <url>`).
 
 ### Supported CRIs
 - `docker`

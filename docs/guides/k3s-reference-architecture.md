@@ -32,15 +32,14 @@ Deploying Kubernetes at the edge introduces architectural challenges that are no
 
 **Harbor Satellite**, an edge extension of the CNCF-graduated Harbor registry, pre-positions OCI content at each edge site. It synchronizes the artifacts assigned to it by Ground Control from a central Harbor registry into one of two stores:
 
-- **Local OCI image layout** (default): an ORAS-backed OCI layout on disk (`<config-dir>/oci`). It does not listen on any port, so workloads cannot pull from it directly.
+- **Local OCI image layout** (default): an ORAS-backed OCI layout on disk (`<config-dir>/oci`), served to the node by the satellite's pull-only OCI proxy on `127.0.0.1:8585`.
 - **BYO registry** (`--byo-registry`): an external OCI registry you run next to the node (for example `registry:2`). Satellite copies images into it and container runtimes pull from it.
 
-Workloads receive images in one of two ways today:
+Workloads receive images in one of three ways:
 
+- **Loopback proxy:** a satellite running on the node's host network serves pulls on `127.0.0.1:8585` ([ADR-0009](../decisions/0009-transparent-oci-registry-proxy.md)). Point the K3s mirror (`/etc/rancher/k3s/registries.yaml`) at `http://127.0.0.1:8585`, or let the satellite write containerd's `hosts.toml` with `--mirrors`. In `proxy` mode a miss is filled from Harbor; in `replica` mode only replicated content is served.
 - **Method 1:** a containerd mirror pointing at a BYO registry ([Section 5](#5-setup-guide-method-1---registry-mirror-via-byo-registry)).
 - **Method 2:** the experimental k3s/RKE2 **direct delivery** mode, which writes image tarballs into the K3s auto-import directory ([Section 6](#6-setup-guide-method-2---automated-air-gap-via-direct-delivery)).
-
-A transparent proxy that serves workloads from Satellite itself is designed in [ADR-0009](../decisions/0009-transparent-oci-registry-proxy.md). It is not wired into the satellite binary yet.
 
 ### Challenges & Solutions
 
