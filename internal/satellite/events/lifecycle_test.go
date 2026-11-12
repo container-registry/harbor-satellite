@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
-	"github.com/container-registry/harbor-satellite/internal/shared/testutil/pending"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +27,6 @@ func (p *countingProcess) IsRunning() bool  { return false }
 func (p *countingProcess) IsComplete() bool { return false }
 
 func TestEventScheduler_StopStopsRegisteredSchedulers(t *testing.T) {
-	pending.Plan(t, "6.7", "event schedulers are never stopped")
 	log := zerolog.Nop()
 	proc := &countingProcess{name: "refresh_credentials"}
 	sched, err := scheduler.NewScheduler(proc, &log)
@@ -57,7 +55,6 @@ func TestEventScheduler_StopStopsRegisteredSchedulers(t *testing.T) {
 
 // SendEvent reads eventMap while Register writes it, without a lock.
 func TestEventScheduler_SendEventTakesTheLock(t *testing.T) {
-	pending.Plan(t, "6.7", "SendEvent reads the registrations without the lock Register holds")
 	log := zerolog.Nop()
 	es := NewEventScheduler(&log)
 	es.mu.Lock()

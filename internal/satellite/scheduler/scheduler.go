@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite/process"
@@ -16,11 +17,14 @@ import (
 type Scheduler struct {
 	tickerCancel context.CancelFunc
 	triggerChan  chan time.Time
-	name         string
-	process      process.Process
-	log          *zerolog.Logger
-	mu           sync.Mutex
-	wg           sync.WaitGroup
+	// pending holds at most one TryTrigger the run loop has not taken yet.
+	pending chan struct{}
+	stopped atomic.Bool
+	name    string
+	process process.Process
+	log     *zerolog.Logger
+	mu      sync.Mutex
+	wg      sync.WaitGroup
 	// runOnStart is set for interval schedulers. An on-demand scheduler
 	// (an event such as refresh_credentials) runs only when triggered.
 	runOnStart bool
@@ -40,6 +44,7 @@ func NewSchedulerWithInterval(intervalExpr string, process process.Process, log 
 
 	sched := &Scheduler{
 		triggerChan:  triggerChan,
+		pending:      make(chan struct{}, 1),
 		tickerCancel: triggerCancel,
 		name:         process.Name(),
 		process:      process,
@@ -58,6 +63,7 @@ func NewScheduler(process process.Process, log *zerolog.Logger) (*Scheduler, err
 	return &Scheduler{
 		tickerCancel: func() {},
 		triggerChan:  make(chan time.Time),
+		pending:      make(chan struct{}, 1),
 		name:         process.Name(),
 		process:      process,
 		log:          log,
@@ -74,6 +80,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 // run starts the scheduler and blocks until context is cancelled.
 func (s *Scheduler) run(ctx context.Context) {
 	defer s.wg.Done()
+	defer s.stopped.Store(true)
 
 	s.log.Info().
 		Str("Process", s.process.Name()).
@@ -92,21 +99,32 @@ func (s *Scheduler) run(ctx context.Context) {
 
 			return
 
-		case <-s.triggerChan:
-			if s.process.IsComplete() {
-				s.log.Info().
-					Str("Process", s.process.Name()).
-					Msg("Process marked as complete. Stopping scheduling.")
-
+		case <-s.pending:
+			if !s.trigger(ctx) {
 				return
 			}
-
-			s.log.Info().
-				Str("Process", s.process.Name()).
-				Msg("Process to be executed, started scheduling.")
-			s.launchProcess(ctx)
+		case <-s.triggerChan:
+			if !s.trigger(ctx) {
+				return
+			}
 		}
 	}
+}
+
+// trigger runs the process once; false means it is complete and the loop
+// ends.
+func (s *Scheduler) trigger(ctx context.Context) bool {
+	if s.process.IsComplete() {
+		s.log.Info().
+			Str("Process", s.process.Name()).
+			Msg("Process marked as complete. Stopping scheduling.")
+		return false
+	}
+	s.log.Info().
+		Str("Process", s.process.Name()).
+		Msg("Process to be executed, started scheduling.")
+	s.launchProcess(ctx)
+	return true
 }
 
 func (s *Scheduler) Trigger() {
@@ -173,7 +191,10 @@ func (s *Scheduler) Name() string {
 
 // Stop signals the scheduler to stop and waits for all goroutines to complete.
 func (s *Scheduler) Stop(ctx context.Context) error {
+	s.stopped.Store(true)
+	s.mu.Lock()
 	s.tickerCancel()
+	s.mu.Unlock()
 
 	done := make(chan struct{})
 	go func() {
