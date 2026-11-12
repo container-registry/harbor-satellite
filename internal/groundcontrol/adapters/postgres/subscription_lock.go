@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/advisorylock"
@@ -65,7 +66,9 @@ func (l *SubscriptionLocker) TryLock(ctx context.Context, id fleet.WebhookID) (f
 			}
 			// A lock that cannot be released goes with the session.
 			if _, err := l.q.AggregateUnlock(context.Background(), database.AggregateUnlockParams(params)); err != nil {
-				_ = l.conn.Close()
+				if discardErr := discard(l.conn); discardErr != nil {
+					log.Printf("discard subscription lock session after unlock error %v: %v", err, discardErr)
+				}
 				l.conn = nil
 				l.held = map[fleet.WebhookID]bool{}
 			}
@@ -73,14 +76,23 @@ func (l *SubscriptionLocker) TryLock(ctx context.Context, id fleet.WebhookID) (f
 	}, true, nil
 }
 
-// Close releases every lock with the connection.
+// Close unlocks every held subscription and returns the connection to the
+// pool, or discards the session when an unlock fails.
 func (l *SubscriptionLocker) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.conn == nil {
 		return nil
 	}
-	err := l.conn.Close()
+	held := l.held
+	err := release(l.conn, func() error {
+		var errs []error
+		for id := range held {
+			_, err := l.q.AggregateUnlock(context.Background(), database.AggregateUnlockParams{Namespace: advisorylock.WebhookSubscriptions, ID: int32(id)})
+			errs = append(errs, err)
+		}
+		return errors.Join(errs...)
+	})
 	l.conn = nil
 	l.held = map[fleet.WebhookID]bool{}
 	return err

@@ -3,8 +3,10 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/advisorylock"
@@ -90,7 +92,9 @@ func (l *AggregateLocker) TryLock(ctx context.Context, aggregate fleet.Aggregate
 			}
 			// A lock that cannot be released goes with the session.
 			if _, err := l.q.AggregateUnlock(context.Background(), database.AggregateUnlockParams{Namespace: ns, ID: id}); err != nil {
-				_ = l.conn.Close()
+				if discardErr := discard(l.conn); discardErr != nil {
+					log.Printf("discard aggregate lock session after unlock error %v: %v", err, discardErr)
+				}
 				l.conn = nil
 				l.held = map[fleet.Aggregate]bool{}
 			}
@@ -98,15 +102,48 @@ func (l *AggregateLocker) TryLock(ctx context.Context, aggregate fleet.Aggregate
 	}, true, nil
 }
 
-// Close releases every lock with the connection.
+// Close unlocks every held aggregate and returns the connection to the
+// pool, or discards the session when an unlock fails.
 func (l *AggregateLocker) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.conn == nil {
 		return nil
 	}
-	err := l.conn.Close()
+	held := l.held
+	err := release(l.conn, func() error {
+		var errs []error
+		for aggregate := range held {
+			ns, err := namespace(aggregate.Type)
+			if err == nil {
+				_, err = l.q.AggregateUnlock(context.Background(), database.AggregateUnlockParams{Namespace: ns, ID: int32(aggregate.ID)})
+			}
+			errs = append(errs, err)
+		}
+		return errors.Join(errs...)
+	})
 	l.conn = nil
 	l.held = map[fleet.Aggregate]bool{}
 	return err
+}
+
+// release returns conn to the pool once unlock succeeded. sql.Conn.Close
+// keeps a healthy session open in the pool with its session-level locks,
+// so a session whose locks may survive is discarded instead.
+func release(conn *sql.Conn, unlock func() error) error {
+	if err := unlock(); err != nil {
+		return errors.Join(err, discard(conn))
+	}
+	return conn.Close()
+}
+
+// discard closes conn's session rather than pooling it, which ends every
+// lock it holds: database/sql drops a connection whose use reported
+// driver.ErrBadConn.
+func discard(conn *sql.Conn) error {
+	err := conn.Raw(func(any) error { return driver.ErrBadConn })
+	if !errors.Is(err, driver.ErrBadConn) {
+		return errors.Join(err, conn.Close())
+	}
+	return nil
 }
