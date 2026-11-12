@@ -237,3 +237,32 @@ func TestDockerConfigFlag(t *testing.T) {
 	require.ErrorContains(t, err, "docker mirror must be true/false")
 	require.NoFileExists(t, dockerConfigPath)
 }
+
+// Settings of a registry the satellite does not manage stay as they were.
+func TestCrioConfigKeepsTheRegistrySettings(t *testing.T) {
+	inTempEtc(t)
+	require.NoError(t, os.WriteFile(registriesConfigPath, []byte(`[[registry]]
+prefix = "docker.io"
+location = "docker.io"
+insecure = true
+blocked = false
+mirror-by-digest-only = true
+
+[[registry.mirror]]
+location = "mirror.example"
+pull-from-mirror = "digest-only"
+`), 0o600))
+
+	_, err := setCrioConfig([]string{"docker.io"}, proxy)
+	require.NoError(t, err)
+
+	got := registries(t)
+	require.Len(t, got, 1)
+	for key, want := range map[string]any{"prefix": "docker.io", "insecure": true, "blocked": false, "mirror-by-digest-only": true} {
+		require.Equal(t, want, got[0][key], key)
+	}
+	require.Equal(t, []map[string]any{
+		{"location": "mirror.example", "insecure": false, "pull-from-mirror": "digest-only"},
+		{"location": proxy, "insecure": true},
+	}, got[0]["mirror"])
+}

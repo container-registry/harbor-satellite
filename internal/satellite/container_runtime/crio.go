@@ -76,7 +76,11 @@ func setCrioConfig(upstreamRegistries []string, proxyEndpoint string) (string, e
 		}
 	}
 
-	v.Set("registry", cfg.Registries)
+	tables := make([]map[string]any, 0, len(cfg.Registries))
+	for _, r := range cfg.Registries {
+		tables = append(tables, r.tomlTable())
+	}
+	v.Set("registry", tables)
 
 	if err := v.WriteConfigAs(tempRegistriesConfigPath); err != nil {
 		return bkPath, fmt.Errorf("failed to write registries.conf: %w", err)
