@@ -65,7 +65,8 @@ type FleetDeps struct {
 	// OIDC enables operator login through an OIDC provider (plan item 8.1).
 	OIDC env.OIDC
 	// OutboxMaxAttempts (OUTBOX_MAX_ATTEMPTS) separates pending from
-	// failed outbox events in /metrics; 0 means the default 10.
+	// failed outbox events in /metrics and /api/ops/outbox; 0 or less
+	// means the publisher's default.
 	OutboxMaxAttempts int
 }
 
@@ -90,6 +91,8 @@ type Fleet struct {
 	// Metrics is Ground Control's /metrics; it records requests and
 	// heartbeats whether or not serve listens for scrapes.
 	Metrics *telemetry.Server
+
+	outboxMaxAttempts int
 }
 
 // operatorLogin adapts authn.OIDCLogin to server.OperatorLogin.
@@ -228,7 +231,10 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := &Fleet{Services: services, Probe: probe, Sessions: sessions, HeartbeatBuffer: buffer, Flusher: flusher, Policy: policy, Rotations: rotations, Metrics: metrics}
+	f := &Fleet{
+		Services: services, Probe: probe, Sessions: sessions, HeartbeatBuffer: buffer, Flusher: flusher, Policy: policy, Rotations: rotations, Metrics: metrics,
+		outboxMaxAttempts: outboxMaxAttempts(deps.OutboxMaxAttempts),
+	}
 	if deps.OIDC.Enabled {
 		if f.Login, err = newOIDCLogin(deps.Pools, deps.OIDC, deps.Server); err != nil {
 			return nil, err
@@ -371,6 +377,17 @@ func (o outboxReader) ListOutbox(ctx context.Context, failedOnly bool, limit int
 	return out, nil
 }
 
+func (f *Fleet) outboxReader(pools *dbpool.Pools) (outboxReader, bool) {
+	if pools == nil {
+		return outboxReader{}, false
+	}
+	store, err := postgres.NewOutboxStore(asyncPool(pools))
+	if err != nil {
+		return outboxReader{}, false
+	}
+	return outboxReader{store: store, maxAttempt: outboxMaxAttempts(f.outboxMaxAttempts)}, true
+}
+
 // ServerOptions hands the server the services (server.WithFleet), the
 // probe (server.WithHarborContact), the outbox reader for
 // /api/ops/outbox (server.WithOutboxReader), the sessions
@@ -386,10 +403,8 @@ func (f *Fleet) ServerOptions(pools *dbpool.Pools) []server.Option {
 	if f.Probe != nil {
 		opts = append(opts, server.WithHarborContact(f.Probe, f.Probe.StaleAfter()))
 	}
-	if pools != nil {
-		if store, err := postgres.NewOutboxStore(asyncPool(pools)); err == nil {
-			opts = append(opts, server.WithOutboxReader(outboxReader{store: store, maxAttempt: env.GC.Outbox.MaxAttempts}))
-		}
+	if reader, ok := f.outboxReader(pools); ok {
+		opts = append(opts, server.WithOutboxReader(reader))
 	}
 	if f.Sessions != nil {
 		opts = append(opts, server.WithSatelliteAuthenticator(f.Sessions))

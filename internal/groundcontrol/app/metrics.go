@@ -41,14 +41,20 @@ func (s timedBeatStore) Flush(ctx context.Context, batch heartbeat.Batch) error 
 	return err
 }
 
+// outboxMaxAttempts reads OUTBOX_MAX_ATTEMPTS as NewPublisher does.
+func outboxMaxAttempts(n int) int {
+	if n <= 0 {
+		return async.DefaultPublisherConfig().MaxAttempts
+	}
+	return n
+}
+
 // NewMetrics builds Ground Control's /metrics over the pools, the fleet's
 // heartbeat buffer and the outbox on the async pool; events with
 // maxAttempts or more attempts count as failed. A maxAttempts of 0 or less
 // is the publisher's default, as NewPublisher reads it.
 func NewMetrics(pools *dbpool.Pools, buffer *heartbeat.Buffer, maxAttempts int) (*telemetry.Server, error) {
-	if maxAttempts <= 0 {
-		maxAttempts = async.DefaultPublisherConfig().MaxAttempts
-	}
+	maxAttempts = outboxMaxAttempts(maxAttempts)
 	opts := telemetry.Options{}
 	if pools != nil {
 		opts.Pools = []telemetry.NamedPool{{Name: "api", DB: pools.API}, {Name: "fleet", DB: pools.Fleet}, {Name: "async", DB: pools.Async}}
