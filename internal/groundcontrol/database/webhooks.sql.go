@@ -169,8 +169,9 @@ type GetDueWebhookRow struct {
 	Attempts         int32
 }
 
-// ListDueWebhooks for one subscription, reread under its lock: no row when
-// it is no longer due (another worker failed it, it was disabled) or gone.
+// The ListDueWebhooks row of one subscription, reread under its lock: no
+// row when it is no longer due (another worker failed it, it was disabled)
+// or gone.
 func (q *Queries) GetDueWebhook(ctx context.Context, subscriptionID int32) (GetDueWebhookRow, error) {
 	row := q.db.QueryRowContext(ctx, getDueWebhook, subscriptionID)
 	var i GetDueWebhookRow

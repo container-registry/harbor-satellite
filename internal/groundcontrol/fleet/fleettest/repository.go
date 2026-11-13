@@ -232,16 +232,36 @@ func (g *GroupRepo) Upsert(_ context.Context, group fleet.Group) (fleet.Group, e
 	return group, nil
 }
 
+// cloneGroup copies the slices of a seeded group, so a caller that edits
+// what it read leaves ByName as it was, as with the Postgres store.
+func cloneGroup(g fleet.Group) fleet.Group {
+	g.Projects = slices.Clone(g.Projects)
+	g.Artifacts = slices.Clone(g.Artifacts)
+	for i := range g.Artifacts {
+		g.Artifacts[i].Tags = slices.Clone(g.Artifacts[i].Tags)
+	}
+	return g
+}
+
+func cloneGroups(groups []fleet.Group, err error) ([]fleet.Group, error) {
+	for i := range groups {
+		groups[i] = cloneGroup(groups[i])
+	}
+	return groups, err
+}
+
 func (g *GroupRepo) Get(_ context.Context, id fleet.GroupID) (fleet.Group, error) {
-	return find(g.rec, "Groups.Get", id, g.ByName, func(v fleet.Group) bool { return v.ID == id })
+	group, err := find(g.rec, "Groups.Get", id, g.ByName, func(v fleet.Group) bool { return v.ID == id })
+	return cloneGroup(group), err
 }
 
 func (g *GroupRepo) GetByName(_ context.Context, name string) (fleet.Group, error) {
-	return lookup(g.rec, "Groups.GetByName", g.ByName, name)
+	group, err := lookup(g.rec, "Groups.GetByName", g.ByName, name)
+	return cloneGroup(group), err
 }
 
 func (g *GroupRepo) List(context.Context) ([]fleet.Group, error) {
-	return values(g.rec, "Groups.List", g.ByName)
+	return cloneGroups(values(g.rec, "Groups.List", g.ByName))
 }
 
 // Tracking answers the groups of ByName with an artifact of repository
@@ -256,7 +276,7 @@ func (g *GroupRepo) Tracking(_ context.Context, repository, tag string) ([]fleet
 		if slices.ContainsFunc(group.Artifacts, func(a fleet.Artifact) bool {
 			return a.Repository == repository && slices.Contains(a.Tags, tag)
 		}) {
-			out = append(out, group)
+			out = append(out, cloneGroup(group))
 		}
 	}
 	return out, nil

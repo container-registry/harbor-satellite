@@ -116,3 +116,38 @@ func TestOutboxStore_PruneKeepsRowsAboveEnabledCheckpoint(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 1, n)
 }
+
+// Refresh rereads a subscription under its lock and answers no row once it
+// is disabled, not yet due again or deleted.
+func TestWebhookStore_RefreshAnswersOnlyADueEnabledSubscription(t *testing.T) {
+	db := dbtest.New(t)
+	ctx := context.Background()
+	repo, err := postgres.NewWebhookRepo(db.DB)
+	require.NoError(t, err)
+	store, err := postgres.NewWebhookStore(db.DB)
+	require.NoError(t, err)
+	create := func() fleet.WebhookID {
+		t.Helper()
+		sub, createErr := repo.Create(ctx, fleet.WebhookSubscription{URL: "https://hooks.example/a"}, []byte("whsec-0123456789abcdef0123456789abcdef"), "admin")
+		require.NoError(t, createErr)
+		_, ok, refreshErr := store.Refresh(ctx, sub.ID)
+		require.NoError(t, refreshErr)
+		require.True(t, ok, "a new subscription is due")
+		return sub.ID
+	}
+
+	disabled := create()
+	_, err = db.ExecContext(ctx, "UPDATE webhook_subscriptions SET enabled = FALSE WHERE id = $1", int32(disabled))
+	require.NoError(t, err)
+	notDue := create()
+	_, err = store.Fail(ctx, notDue, http.StatusBadGateway, "receiver down", time.Hour, 24*time.Hour)
+	require.NoError(t, err)
+	deleted := create()
+	require.NoError(t, repo.Delete(ctx, deleted))
+
+	for name, id := range map[string]fleet.WebhookID{"disabled": disabled, "not yet due": notDue, "deleted": deleted} {
+		_, ok, refreshErr := store.Refresh(ctx, id)
+		require.NoError(t, refreshErr, name)
+		require.False(t, ok, name)
+	}
+}

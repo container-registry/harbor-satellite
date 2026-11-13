@@ -33,8 +33,9 @@ ORDER BY c.next_attempt_at, s.id
 LIMIT @max_rows;
 
 -- name: GetDueWebhook :one
--- ListDueWebhooks for one subscription, reread under its lock: no row when
--- it is no longer due (another worker failed it, it was disabled) or gone.
+-- The ListDueWebhooks row of one subscription, reread under its lock: no
+-- row when it is no longer due (another worker failed it, it was disabled)
+-- or gone.
 SELECT s.id, s.url, s.secret_ciphertext, s.event_types, c.last_xid::TEXT AS last_xid, c.last_id, c.attempts
 FROM webhook_subscriptions s
 JOIN webhook_checkpoints c ON c.subscription_id = s.id

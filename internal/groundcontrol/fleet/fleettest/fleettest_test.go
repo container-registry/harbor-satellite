@@ -73,3 +73,38 @@ func TestRepository_LookupsAnswerFromSeeds(t *testing.T) {
 	require.NoError(t, repo.WithTx(ctx, func(tx fleet.Tx) error { return tx.Events().Append(ctx, event) }))
 	require.Equal(t, []fleet.Event{event}, repo.Events.Appended())
 }
+
+// A caller that edits the groups it read, as FollowPush does before a
+// rollback, must not change the seeds; the Postgres store returns copies.
+func TestGroupRepo_ReadsReturnCopies(t *testing.T) {
+	ctx := context.Background()
+	repo := fleettest.NewRepository(nil)
+	repo.Groups.ByName = map[string]fleet.Group{"g1": {
+		ID: 1, Name: "g1", Projects: []string{"library"},
+		Artifacts: []fleet.Artifact{{Repository: "library/nginx", Tags: []string{"latest"}, Digest: "sha256:old"}},
+	}}
+	edit := func(g fleet.Group) {
+		g.Artifacts[0].Digest = "sha256:new"
+		g.Artifacts[0].Tags[0] = "edited"
+		g.Projects[0] = "edited"
+	}
+
+	tracking, err := repo.Groups.Tracking(ctx, "library/nginx", "latest")
+	require.NoError(t, err)
+	require.Len(t, tracking, 1)
+	edit(tracking[0])
+	list, err := repo.Groups.List(ctx)
+	require.NoError(t, err)
+	edit(list[0])
+	byID, err := repo.Groups.Get(ctx, 1)
+	require.NoError(t, err)
+	edit(byID)
+	byName, err := repo.Groups.GetByName(ctx, "g1")
+	require.NoError(t, err)
+	edit(byName)
+
+	seed := repo.Groups.ByName["g1"]
+	require.Equal(t, "sha256:old", seed.Artifacts[0].Digest)
+	require.Equal(t, []string{"latest"}, seed.Artifacts[0].Tags)
+	require.Equal(t, []string{"library"}, seed.Projects)
+}

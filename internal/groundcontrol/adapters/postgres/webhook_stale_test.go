@@ -15,6 +15,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet/fleettest"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/webhook"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -73,11 +74,13 @@ func TestDispatcher_StaleDueListDoesNotRedeliver(t *testing.T) {
 	// The outbox xmin guard is cluster wide, so transactions of tests running in
 	// other databases can hide the events from a single pass.
 	fresh, total := dispatcher(subs), 0
-	require.Eventually(t, func() bool {
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		n, runErr := fresh.RunOnce(ctx)
-		require.NoError(t, runErr)
+		if !assert.NoError(c, runErr) {
+			return
+		}
 		total += n
-		return total == 3
+		assert.Equal(c, 3, total)
 	}, 10*time.Second, 50*time.Millisecond)
 	delivered, err := dispatcher(staleDue{WebhookStore: subs, due: listed}).RunOnce(ctx)
 	require.NoError(t, err)
