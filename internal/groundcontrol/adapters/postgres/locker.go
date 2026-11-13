@@ -24,21 +24,18 @@ var _ async.AggregateLocker = (*AggregateLocker)(nil)
 // PostgreSQL advisory locks are reentrant per session, so the locker also
 // keeps the aggregates it holds and refuses a second holder in-process.
 type AggregateLocker struct {
-	mu   sync.Mutex
-	conn *sql.Conn
-	q    *database.Queries
-	held map[fleet.Aggregate]bool
+	session *lockSession[fleet.Aggregate]
 }
 
 func NewAggregateLocker(ctx context.Context, db *sql.DB) (*AggregateLocker, error) {
 	if db == nil {
 		return nil, fmt.Errorf("%w: the aggregate locker needs a database", fleet.ErrInvalid)
 	}
-	conn, err := db.Conn(ctx)
+	session, err := openLockSession[fleet.Aggregate](ctx, db, "aggregate")
 	if err != nil {
-		return nil, fmt.Errorf("open aggregate lock connection: %w", err)
+		return nil, err
 	}
-	return &AggregateLocker{conn: conn, q: database.New(conn), held: map[fleet.Aggregate]bool{}}, nil
+	return &AggregateLocker{session: session}, nil
 }
 
 func namespace(t fleet.AggregateType) (int32, error) {
@@ -64,66 +61,117 @@ func (l *AggregateLocker) TryLock(ctx context.Context, aggregate fleet.Aggregate
 	if aggregate.ID < 0 || aggregate.ID > 1<<31-1 {
 		return nil, false, fmt.Errorf("%w: aggregate id %d", fleet.ErrInvalid, aggregate.ID)
 	}
-	id := int32(aggregate.ID)
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.conn == nil {
-		return nil, false, errors.New("aggregate locker closed")
-	}
-	if l.held[aggregate] {
-		return nil, false, nil
-	}
-	acquired, err := l.q.TryAggregateLock(ctx, database.TryAggregateLockParams{Namespace: ns, ID: id})
-	if err != nil {
-		return nil, false, fmt.Errorf("try aggregate lock: %w", err)
-	}
-	if !acquired {
-		return nil, false, nil
-	}
-	l.held[aggregate] = true
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			l.mu.Lock()
-			defer l.mu.Unlock()
-			delete(l.held, aggregate)
-			if l.conn == nil {
-				return
-			}
-			// A lock that cannot be released goes with the session.
-			if _, err := l.q.AggregateUnlock(context.Background(), database.AggregateUnlockParams{Namespace: ns, ID: id}); err != nil {
-				if discardErr := discard(l.conn); discardErr != nil {
-					log.Printf("discard aggregate lock session after unlock error %v: %v", err, discardErr)
-				}
-				l.conn = nil
-				l.held = map[fleet.Aggregate]bool{}
-			}
-		})
-	}, true, nil
+	return l.session.tryLock(ctx, aggregate, database.TryAggregateLockParams{Namespace: ns, ID: int32(aggregate.ID)})
 }
 
 // Close unlocks every held aggregate and returns the connection to the
 // pool, or discards the session when an unlock fails.
-func (l *AggregateLocker) Close() error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.conn == nil {
+func (l *AggregateLocker) Close() error { return l.session.close() }
+
+// lockSession takes session-level advisory locks on one dedicated
+// connection. When that session is lost, it ends every lock taken on it,
+// and the next tryLock opens a new one from the pool.
+type lockSession[K comparable] struct {
+	name   string
+	db     *sql.DB
+	mu     sync.Mutex
+	conn   *sql.Conn
+	q      *database.Queries
+	held   map[K]database.TryAggregateLockParams
+	closed bool
+}
+
+func openLockSession[K comparable](ctx context.Context, db *sql.DB, name string) (*lockSession[K], error) {
+	s := &lockSession[K]{name: name, db: db, held: map[K]database.TryAggregateLockParams{}}
+	if err := s.open(ctx); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *lockSession[K]) open(ctx context.Context) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("open %s lock connection: %w", s.name, err)
+	}
+	s.conn, s.q = conn, database.New(conn)
+	return nil
+}
+
+func (s *lockSession[K]) tryLock(ctx context.Context, key K, params database.TryAggregateLockParams) (func(), bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, false, fmt.Errorf("%s locker closed", s.name)
+	}
+	if s.conn == nil {
+		if err := s.open(ctx); err != nil {
+			return nil, false, err
+		}
+	}
+	if _, ok := s.held[key]; ok {
+		return nil, false, nil
+	}
+	acquired, err := s.q.TryAggregateLock(ctx, params)
+	if err != nil {
+		// A cancelled call leaves the session usable; one that no longer
+		// answers a ping has lost its locks.
+		if pingErr := s.conn.PingContext(context.WithoutCancel(ctx)); pingErr != nil {
+			s.drop()
+		}
+		return nil, false, fmt.Errorf("try %s lock: %w", s.name, err)
+	}
+	if !acquired {
+		return nil, false, nil
+	}
+	s.held[key] = params
+	conn := s.conn
+	var once sync.Once
+	return func() { once.Do(func() { s.unlock(conn, key, params) }) }, true, nil
+}
+
+func (s *lockSession[K]) unlock(conn *sql.Conn, key K, params database.TryAggregateLockParams) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// The lock ended with the session it was taken on; the key may now be
+	// held by someone else on the current session.
+	if s.conn != conn {
+		return
+	}
+	delete(s.held, key)
+	if _, err := s.q.AggregateUnlock(context.Background(), database.AggregateUnlockParams(params)); err != nil {
+		log.Printf("unlock %s lock (%d, %d): %v; discarding the session", s.name, params.Namespace, params.ID, err)
+		s.drop()
+	}
+}
+
+// drop discards the session, which ends every lock it holds.
+func (s *lockSession[K]) drop() {
+	if err := discard(s.conn); err != nil {
+		log.Printf("discard %s lock session: %v", s.name, err)
+	}
+	s.conn, s.q = nil, nil
+	s.held = map[K]database.TryAggregateLockParams{}
+}
+
+func (s *lockSession[K]) close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	if s.conn == nil {
 		return nil
 	}
-	held := l.held
-	err := release(l.conn, func() error {
+	held := s.held
+	err := release(s.conn, func() error {
 		var errs []error
-		for aggregate := range held {
-			ns, err := namespace(aggregate.Type)
-			if err == nil {
-				_, err = l.q.AggregateUnlock(context.Background(), database.AggregateUnlockParams{Namespace: ns, ID: int32(aggregate.ID)})
-			}
+		for _, params := range held {
+			_, err := s.q.AggregateUnlock(context.Background(), database.AggregateUnlockParams(params))
 			errs = append(errs, err)
 		}
 		return errors.Join(errs...)
 	})
-	l.conn = nil
-	l.held = map[fleet.Aggregate]bool{}
+	s.conn, s.q = nil, nil
+	s.held = map[K]database.TryAggregateLockParams{}
 	return err
 }
 
@@ -139,11 +187,12 @@ func release(conn *sql.Conn, unlock func() error) error {
 
 // discard closes conn's session rather than pooling it, which ends every
 // lock it holds: database/sql drops a connection whose use reported
-// driver.ErrBadConn.
+// driver.ErrBadConn. A conn that database/sql already closed has no
+// session left.
 func discard(conn *sql.Conn) error {
 	err := conn.Raw(func(any) error { return driver.ErrBadConn })
-	if !errors.Is(err, driver.ErrBadConn) {
-		return errors.Join(err, conn.Close())
+	if errors.Is(err, driver.ErrBadConn) || errors.Is(err, sql.ErrConnDone) {
+		return nil
 	}
-	return nil
+	return errors.Join(err, conn.Close())
 }
