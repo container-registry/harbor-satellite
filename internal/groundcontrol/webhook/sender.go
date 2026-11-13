@@ -74,10 +74,7 @@ func guardTransport(rt http.RoundTripper) http.RoundTripper {
 	return t
 }
 
-func blocked(addr netip.Addr) bool {
-	addr = addr.Unmap()
-	return addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified()
-}
+func blocked(addr netip.Addr) bool { return fleet.BlockedWebhookAddr(addr) }
 
 func isLoopbackHost(host string) bool {
 	if host == "localhost" {

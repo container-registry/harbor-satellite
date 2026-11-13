@@ -33,6 +33,12 @@ func TestSatelliteView_Converged(t *testing.T) {
 		"a group not yet published":         {change: func(v *fleet.SatelliteView) { v.PublishedGroups[1].ArtifactDigest = "" }},
 		"a satellite digest that differs":   {change: func(v *fleet.SatelliteView) { v.AppliedStateDigest = "sha256:other" }},
 		"nothing applied yet":               {change: func(v *fleet.SatelliteView) { v.AppliedStateDigest = "" }},
+		"a group reported with two digests": {change: func(v *fleet.SatelliteView) {
+			v.AppliedStates = append([]fleet.AppliedState{{Ref: "g2-ref", Digest: "sha256:old"}}, v.AppliedStates...)
+		}},
+		"a group reported twice alike": {change: func(v *fleet.SatelliteView) {
+			v.AppliedStates = append(v.AppliedStates, v.AppliedStates[0])
+		}, want: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			v := converged

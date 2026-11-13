@@ -94,6 +94,8 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - A negative `OUTBOX_MAX_ATTEMPTS` made `/metrics` report every unfinished outbox event as failed; it now uses the publisher's default of 10, as the publisher does.
 - `500` answers of the policy and webhook API carried the internal error, database text included; they now say `Internal Server Error`.
 - The heartbeat flusher counted a flush stopped by shutdown as a failed one and could drop the buffered beats, and after dropping a satellite's beats it dropped that satellite's next batch at its first failure.
+- `POST /api/webhooks` accepted a URL without a host name (`https://:443`) and link-local or unspecified IP addresses, which the sender refuses on every delivery; it now answers `400`. The webhook service checks the caller's permission before it reports webhooks disabled or unavailable.
+- A satellite that reported one group twice with different digests could count as converged.
 
 ### Known Limitations
 

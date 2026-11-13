@@ -130,7 +130,7 @@ System admin. Available with `WEBHOOKS_ENABLED=true`.
 | Method and path | Description |
 |---|---|
 | `GET /api/webhooks` | Lists subscriptions with their delivery state. |
-| `POST /api/webhooks` | Subscribes `{"url", "secret", "event_types"}`. The URL must be `https`, or `http` on a loopback host; the secret has at least 32 characters. Delivery starts with events committed after the subscription. |
+| `POST /api/webhooks` | Subscribes `{"url", "secret", "event_types"}`. The URL must be `https`, or `http` on a loopback host, and its host neither a link-local nor an unspecified IP address; the secret has at least 32 characters. Delivery starts with events committed after the subscription. |
 | `DELETE /api/webhooks/{id}` | Deletes a subscription. |
 
 Each delivery is a `POST` of a CloudEvents 1.0 JSON document (`application/cloudevents+json`) with headers `X-Ground-Control-Timestamp` (Unix seconds), `X-Ground-Control-Signature-256` (`sha256=` and the hex HMAC-SHA256 of `<timestamp>.<body>` with the subscription secret) and `Idempotency-Key` (the event ID). Delivery is at least once and in order per subscription. The event `type` is `io.harborsatellite.groundcontrol.<Kind>`. Payload schemas per kind are in [`spec/events/v1`](../../spec/events/v1).

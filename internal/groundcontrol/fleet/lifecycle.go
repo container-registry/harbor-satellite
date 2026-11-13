@@ -67,14 +67,17 @@ type SatelliteView struct {
 
 // Converged reports whether the satellite applied everything GC published
 // for it: its own state artifact by digest, and every group by ref, where a
-// group not yet published, not reported or reported with another digest
-// is not converged.
+// group not yet published, not reported, reported with another digest or
+// reported twice with different digests is not converged.
 func (v SatelliteView) Converged() bool {
 	if v.AppliedStateDigest == "" || v.AppliedStateDigest != v.PublishedArtifactDigest {
 		return false
 	}
 	applied := make(map[string]Digest, len(v.AppliedStates))
 	for _, a := range v.AppliedStates {
+		if prev, ok := applied[a.Ref]; ok && prev != a.Digest {
+			return false
+		}
 		applied[a.Ref] = a.Digest
 	}
 	for _, g := range v.PublishedGroups {

@@ -45,16 +45,16 @@ func webhookResource() Resource { return Resource{Type: ResourceWebhook} }
 
 // Create fails with ErrConflict ("webhooks disabled") while
 // Settings.WebhooksEnabled is off. It needs https unless the host is
-// loopback, a secret of at least MinWebhookSecretBytes and event types from
+// loopback, no BlockedWebhookAddr literal as host, a secret of at least MinWebhookSecretBytes and event types from
 // EventKinds(), else ErrInvalid. The secret is sealed with Deps.Sealer.
 func (s *WebhookService) Create(ctx context.Context, sub WebhookSubscription, secret []byte) (WebhookSubscription, error) {
+	if err := s.c.authorize(ctx, ActionCreate, webhookResource()); err != nil {
+		return WebhookSubscription{}, err
+	}
 	if err := s.ready(); err != nil {
 		return WebhookSubscription{}, err
 	}
 	if err := validateWebhook(sub, secret); err != nil {
-		return WebhookSubscription{}, err
-	}
-	if err := s.c.authorize(ctx, ActionCreate, webhookResource()); err != nil {
 		return WebhookSubscription{}, err
 	}
 	sealed, err := s.sealer.Seal(secret)
@@ -66,21 +66,21 @@ func (s *WebhookService) Create(ctx context.Context, sub WebhookSubscription, se
 }
 
 func (s *WebhookService) List(ctx context.Context) ([]WebhookSubscription, error) {
-	if s.repo == nil {
-		return []WebhookSubscription{}, nil
-	}
 	if err := s.c.authorize(ctx, ActionList, webhookResource()); err != nil {
 		return nil, err
+	}
+	if s.repo == nil {
+		return []WebhookSubscription{}, nil
 	}
 	return s.repo.List(ctx)
 }
 
 func (s *WebhookService) Delete(ctx context.Context, id WebhookID) error {
-	if s.repo == nil {
-		return fmt.Errorf("webhook %d: %w", id, ErrNotFound)
-	}
 	if err := s.c.authorize(ctx, ActionDelete, webhookResource()); err != nil {
 		return err
+	}
+	if s.repo == nil {
+		return fmt.Errorf("webhook %d: %w", id, ErrNotFound)
 	}
 	return s.repo.Delete(ctx, id)
 }
@@ -95,15 +95,26 @@ func (s *WebhookService) ready() error {
 	return nil
 }
 
+// BlockedWebhookAddr reports the addresses no webhook is delivered to:
+// link-local, which covers the cloud metadata endpoints (ADR-0019), and
+// unspecified. Create refuses them as IP literals, the sender at dial time.
+func BlockedWebhookAddr(addr netip.Addr) bool {
+	addr = addr.Unmap()
+	return addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified()
+}
+
 func validateWebhook(sub WebhookSubscription, secret []byte) error {
 	u, err := url.Parse(sub.URL)
-	if err != nil || u.Host == "" {
-		return fmt.Errorf("%w: webhook URL %q is not an absolute URL", ErrInvalid, sub.URL)
+	if err != nil || u.Hostname() == "" {
+		return fmt.Errorf("%w: webhook URL %q is not an absolute URL with a host", ErrInvalid, sub.URL)
+	}
+	host := u.Hostname()
+	if addr, perr := netip.ParseAddr(host); perr == nil && BlockedWebhookAddr(addr) {
+		return fmt.Errorf("%w: webhook URL host %s is link-local or unspecified", ErrInvalid, host)
 	}
 	switch u.Scheme {
 	case "https":
 	case "http":
-		host := u.Hostname()
 		addr, perr := netip.ParseAddr(host)
 		if host != "localhost" && (perr != nil || !addr.Unmap().IsLoopback()) {
 			return fmt.Errorf("%w: webhook URL must be https unless the host is loopback", ErrInvalid)

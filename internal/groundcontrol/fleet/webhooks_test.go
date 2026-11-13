@@ -40,6 +40,11 @@ func TestWebhookService_CreateValidates(t *testing.T) {
 		"not a URL":                   {url: "::", secret: webhookSecret},
 		"short secret":                {url: "https://hooks.example/a", secret: webhookSecret[:31]},
 		"unknown kind":                {url: "https://hooks.example/a", secret: webhookSecret, kinds: []fleet.EventKind{"Nope"}},
+		"a port without a host":       {url: "https://:443/a", secret: webhookSecret},
+		"link-local metadata address": {url: "https://169.254.169.254/latest", secret: webhookSecret},
+		"link-local IPv6":             {url: "https://[fe80::1]/a", secret: webhookSecret},
+		"unspecified address":         {url: "https://0.0.0.0/a", secret: webhookSecret},
+		"mapped link-local":           {url: "https://[::ffff:169.254.169.254]/a", secret: webhookSecret},
 	} {
 		t.Run(name, func(t *testing.T) {
 			w := newWorld()
@@ -82,4 +87,35 @@ func TestWebhookService_DisabledFeatureIsConflict(t *testing.T) {
 
 	require.ErrorIs(t, err, fleet.ErrConflict)
 	require.Zero(t, w.rec.Count("Webhooks.Create"))
+}
+
+// The service authorizes before anything else, also while webhooks are
+// unavailable, so a denied caller learns nothing about them.
+func TestWebhookService_AuthorizesBeforeAvailability(t *testing.T) {
+	for name, deps := range map[string]func(w *world) fleet.Deps{
+		"no store": func(w *world) fleet.Deps {
+			return fleet.Deps{Repository: w.repo, Registry: w.registry, Clock: fleettest.Clock{T: now}, Settings: fleet.Settings{RegistryURL: registryURL}}
+		},
+		"disabled": func(w *world) fleet.Deps {
+			return fleet.Deps{
+				Repository: w.repo, Registry: w.registry, Webhooks: fleettest.NewWebhookRepo(w.rec), Sealer: prefixSealer{},
+				Clock: fleettest.Clock{T: now}, Settings: fleet.Settings{RegistryURL: registryURL},
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld()
+			d := deps(w)
+			d.Policy = fleettest.NewPolicy(w.rec)
+			svc, err := fleet.NewServices(d)
+			require.NoError(t, err)
+			ctx := context.Background()
+
+			_, err = svc.Webhooks.List(ctx)
+			require.ErrorIs(t, err, fleet.ErrForbidden)
+			require.ErrorIs(t, svc.Webhooks.Delete(ctx, 5), fleet.ErrForbidden)
+			_, err = svc.Webhooks.Create(ctx, fleet.WebhookSubscription{URL: "https://hooks.example/a"}, webhookSecret)
+			require.ErrorIs(t, err, fleet.ErrForbidden)
+		})
+	}
 }
