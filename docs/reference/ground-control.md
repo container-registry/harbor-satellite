@@ -58,7 +58,7 @@ Every connection sets `application_name` to `groundcontrol-api`, `groundcontrol-
 | `SESSION_DURATION` | `24h` | Lifetime of an operator session from `/login` or OIDC. |
 | `LOCKOUT_DURATION` | `5m` | Lockout after 5 failed logins for one username, through `/login` or Basic auth. |
 | `AUTH_FAILURE_LIMIT` | `20` | Failed authentications per client IP, across usernames, before `429`. `0` disables it. |
-| `AUTH_FAILURE_WINDOW` | `1m` | Window of `AUTH_FAILURE_LIMIT`. |
+| `AUTH_FAILURE_WINDOW` | `1m` | Window of `AUTH_FAILURE_LIMIT`; must be positive while the limit is set. |
 | `PASSWORD_MIN_LENGTH` | `8` | |
 | `PASSWORD_MAX_LENGTH` | `128` | |
 | `PASSWORD_REQUIRE_UPPERCASE` | `true` | |

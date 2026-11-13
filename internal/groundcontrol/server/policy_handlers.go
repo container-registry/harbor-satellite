@@ -15,7 +15,7 @@ func policyError(w http.ResponseWriter, op string, err error) {
 	if StatusForError(err) == http.StatusInternalServerError {
 		log.Printf("policy %s: %v", op, err)
 	}
-	handleFleetError(w, err, &AppError{Code: StatusForError(err), Message: err.Error()})
+	handleFleetError(w, err, nil)
 }
 
 func (s *Server) ListPolicyRules(w http.ResponseWriter, r *http.Request) {

@@ -73,3 +73,24 @@ func TestNewServer_RejectsTrustedProxyHopsBelowOne(t *testing.T) {
 	_, err := NewServer(context.Background())
 	require.ErrorContains(t, err, "AUDIT_TRUSTED_PROXY_HOPS")
 }
+
+func TestNewServer_RejectsNonPositiveAuthFailureWindow(t *testing.T) {
+	for _, window := range []string{"0s", "-1m"} {
+		t.Run(window, func(t *testing.T) {
+			t.Setenv("AUTH_FAILURE_LIMIT", "5")
+			t.Setenv("AUTH_FAILURE_WINDOW", window)
+			loadGCForTest(t)
+			_, err := NewServer(context.Background())
+			require.ErrorContains(t, err, "AUTH_FAILURE_WINDOW")
+		})
+	}
+}
+
+func TestNewServer_AcceptsZeroAuthFailureWindowWhenLimitDisabled(t *testing.T) {
+	t.Setenv("AUTH_FAILURE_LIMIT", "0")
+	t.Setenv("AUTH_FAILURE_WINDOW", "0s")
+	t.Setenv("OIDC_ROLE_MAP", "ops=bogus")
+	loadGCForTest(t)
+	_, err := NewServer(context.Background())
+	require.ErrorContains(t, err, "OIDC_ROLE_MAP", "validation goes past the failure window")
+}

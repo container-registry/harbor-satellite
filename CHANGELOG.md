@@ -30,6 +30,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - Satellite: a heartbeat Ground Control refuses with `413` (above `SYNC_MAX_BODY_BYTES`) no longer repeats forever. The satellite halves the journal batch for the following beats; when one record is still too large it sends the beat without journal and cached-image inventory, so `last_seen` keeps moving. The batch doubles again after four accepted beats and the cap is lifted once the backlog drained. Every string in a journal record and `last_replication_error` is cut to 1 KiB when written. 413s are counted in `satellite_heartbeats_too_large_total`.
 - Intervals (`state_replication_interval`, `register_satellite_interval`, `heartbeat_interval`) accept only `@every <positive duration>`. Ground Control answers `422` to a config create or update with a standard cron line or a descriptor such as `@hourly`, and the satellite replaces one with the default and a warning. Before, validation accepted any cron line, but the satellite scheduler runs only `@every`, so such a config stopped the satellite at its next start.
 - Ground Control: a new satellite may not be named `active` or `stale`, and a new group may not be named `satellite`; registration (token, SPIFFE and SPIFFE ZTR) and `POST /api/groups/sync` answer `400`. The router matches `GET /api/satellites/active` and `/stale` before `GET /api/satellites/{satellite}`, and `DELETE /api/groups/satellite` before `DELETE /api/groups/{group}`, so such a satellite could not be fetched and such a group not deleted. Existing satellites and groups with these names keep working, apart from those two routes.
+- Ground Control: `AUTH_FAILURE_WINDOW` of `0` or less stops startup while `AUTH_FAILURE_LIMIT` is positive. Before, it silently disabled the per-IP failure limit.
 
 ### Added
 
@@ -90,6 +91,8 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - An OIDC identity whose username claim changed after its first login got a session for the account the new claim named, a local or another OIDC account included, or a `500` when no account had that name. The login now uses the username stored at the first login.
 - The OIDC binding cookie expired after ten minutes whatever `OIDC_LOGIN_STATE_TTL` said, so a slower browser login failed; it now lives as long as the login state.
 - With `RATE_LIMIT_SPLIT=false` the device flow advertised the provider's poll interval (often 5s), faster than the shared limiter's 10 requests per minute allows, so a client polling as told got `429`. The interval is now at least 6s there.
+- A negative `OUTBOX_MAX_ATTEMPTS` made `/metrics` report every unfinished outbox event as failed; it now uses the publisher's default of 10, as the publisher does.
+- `500` answers of the policy and webhook API carried the internal error, database text included; they now say `Internal Server Error`.
 - The heartbeat flusher counted a flush stopped by shutdown as a failed one and could drop the buffered beats, and after dropping a satellite's beats it dropped that satellite's next batch at its first failure.
 
 ### Known Limitations

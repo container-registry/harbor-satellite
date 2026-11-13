@@ -212,6 +212,9 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 	if cfg.Audit.TrustedProxyHops < 1 {
 		return result, fmt.Errorf("AUDIT_TRUSTED_PROXY_HOPS %d: must be at least 1", cfg.Audit.TrustedProxyHops)
 	}
+	if cfg.Server.AuthFailureLimit > 0 && cfg.Server.AuthFailureWindow <= 0 {
+		return result, fmt.Errorf("AUTH_FAILURE_WINDOW %s: must be positive while AUTH_FAILURE_LIMIT is set", cfg.Server.AuthFailureWindow)
+	}
 	if err = cfg.OIDC.Validate(); err != nil {
 		return result, err
 	}

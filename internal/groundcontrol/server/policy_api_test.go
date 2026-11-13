@@ -2,7 +2,10 @@ package server
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 	"time"
@@ -45,4 +48,20 @@ func TestPolicyAPI_StoresRulesAndBindingsAndBumpsVersion(t *testing.T) {
 	d, err = p.Authorize(context.Background(), fleet.Principal{Subject: "user:bob"}, fleet.ActionSync, fleet.Resource{Type: fleet.ResourceGroup, ID: "A"})
 	require.NoError(t, err)
 	require.False(t, d.Allowed, "the reload sees the deletes")
+}
+
+func TestPolicyAndWebhookErrors_HideInternalDetails(t *testing.T) {
+	for name, answer := range map[string]func(http.ResponseWriter, string, error){"policy": policyError, "webhook": webhookError} {
+		t.Run(name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			answer(rec, "list", errors.New(`ERROR: relation "secret_table" does not exist`))
+			require.Equal(t, http.StatusInternalServerError, rec.Code)
+			require.NotContains(t, rec.Body.String(), "secret_table")
+
+			rec = httptest.NewRecorder()
+			answer(rec, "create", fmt.Errorf("%w: unknown resource type", fleet.ErrInvalid))
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Contains(t, rec.Body.String(), "unknown resource type", "a mapped error keeps its message")
+		})
+	}
 }

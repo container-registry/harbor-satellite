@@ -155,7 +155,7 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 	if err != nil {
 		return nil, err
 	}
-	metrics, err := NewMetrics(deps.Pools, buffer, cmp.Or(deps.OutboxMaxAttempts, 10))
+	metrics, err := NewMetrics(deps.Pools, buffer, deps.OutboxMaxAttempts)
 	if err != nil {
 		return nil, fmt.Errorf("metrics: %w", err)
 	}

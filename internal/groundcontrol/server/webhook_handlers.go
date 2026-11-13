@@ -14,7 +14,7 @@ func webhookError(w http.ResponseWriter, op string, err error) {
 	if StatusForError(err) == http.StatusInternalServerError {
 		log.Printf("webhook %s: %v", op, err)
 	}
-	handleFleetError(w, err, &AppError{Code: StatusForError(err), Message: err.Error()})
+	handleFleetError(w, err, nil)
 }
 
 func toWebhook(sub fleet.WebhookSubscription) WebhookSubscription {

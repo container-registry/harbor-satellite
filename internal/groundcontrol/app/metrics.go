@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/postgres"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/heartbeat"
@@ -42,8 +43,12 @@ func (s timedBeatStore) Flush(ctx context.Context, batch heartbeat.Batch) error 
 
 // NewMetrics builds Ground Control's /metrics over the pools, the fleet's
 // heartbeat buffer and the outbox on the async pool; events with
-// maxAttempts or more attempts count as failed.
+// maxAttempts or more attempts count as failed. A maxAttempts of 0 or less
+// is the publisher's default, as NewPublisher reads it.
 func NewMetrics(pools *dbpool.Pools, buffer *heartbeat.Buffer, maxAttempts int) (*telemetry.Server, error) {
+	if maxAttempts <= 0 {
+		maxAttempts = async.DefaultPublisherConfig().MaxAttempts
+	}
 	opts := telemetry.Options{}
 	if pools != nil {
 		opts.Pools = []telemetry.NamedPool{{Name: "api", DB: pools.API}, {Name: "fleet", DB: pools.Fleet}, {Name: "async", DB: pools.Async}}
