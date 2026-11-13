@@ -248,3 +248,30 @@ func TestPublisher_ConvergesAfterALongOutage(t *testing.T) {
 	require.Positive(t, store.rearms, "recovery re-arms events that ran out of attempts")
 	require.Equal(t, []int64{1, 2}, store.completed())
 }
+
+func TestPublisher_StartsNoEventAfterACancelWhileWaitingForASlot(t *testing.T) {
+	store := newFakeOutbox(fleet.EventSatelliteCreated, fleet.EventSatelliteCreated, fleet.EventSatelliteCreated)
+	cfg := async.DefaultPublisherConfig()
+	cfg.Concurrency = 1
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var mu sync.Mutex
+	var handled []int64
+	p := newPublisher(t, store, async.HandlerFunc(func(hctx context.Context, e async.OutboxEvent) error {
+		mu.Lock()
+		handled = append(handled, e.ID)
+		mu.Unlock()
+		// The loop is blocked on the only slot while this handler cancels.
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+		<-hctx.Done()
+		return hctx.Err()
+	}), cfg)
+
+	_, err := p.RunOnce(ctx)
+
+	require.ErrorIs(t, err, context.Canceled)
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, []int64{1}, handled)
+}

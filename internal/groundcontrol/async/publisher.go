@@ -145,10 +145,15 @@ func (p *Publisher) RunOnce(ctx context.Context) (processed int, err error) {
 	)
 	slots := make(chan struct{}, p.cfg.Concurrency)
 	for _, e := range events {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+		}
+		// Waiting for a slot can outlast a cancel, and select picks randomly
+		// between ready cases.
 		if ctx.Err() != nil {
 			break
 		}
-		slots <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-slots }()
 			completed, err := p.handle(ctx, e)
