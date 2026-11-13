@@ -9,6 +9,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/heartbeat"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/telemetry"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,4 +48,12 @@ func TestTimedBeatStore_RecordsOutcome(t *testing.T) {
 	boom := errors.New("boom")
 	require.ErrorIs(t, timedBeatStore{Store: failingStore{err: boom}, rec: rec}.Flush(context.Background(), heartbeat.Batch{}), boom)
 	require.Equal(t, []string{telemetry.OutcomeOK, telemetry.OutcomeError}, rec.flushes)
+}
+
+// A device client polling at the advertised interval stays inside the
+// limiter of the /oidc routes, with or without RATE_LIMIT_SPLIT.
+func TestMinDevicePollInterval_FollowsTheEffectiveLimiter(t *testing.T) {
+	require.Equal(t, 6*time.Second, minDevicePollInterval(env.Server{FleetHotPath: env.FleetHotPath{RateLimitSplit: false}}), "legacy 10/1m")
+	require.Equal(t, 6*time.Second, minDevicePollInterval(env.Server{FleetHotPath: env.FleetHotPath{RateLimitSplit: true, RateLimitAnonymous: "10/1m"}}))
+	require.Equal(t, 30*time.Second, minDevicePollInterval(env.Server{FleetHotPath: env.FleetHotPath{RateLimitSplit: true, RateLimitAnonymous: "2/1m"}}))
 }

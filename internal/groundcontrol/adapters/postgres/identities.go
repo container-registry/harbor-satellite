@@ -25,7 +25,7 @@ var (
 // UpsertOIDCUser is retried once when it answers no row or the identity's
 // unique violation, because a concurrent first login of the same identity
 // is invisible to the statement's snapshot (the violation when the two
-// claims carry different usernames); no row again means a local account
+// claims carry different usernames); no row again means another account
 // holds the username: fleet.ErrForbidden.
 type IdentityStore struct{ q *database.Queries }
 
@@ -36,7 +36,7 @@ func NewIdentityStore(db *sql.DB) (*IdentityStore, error) {
 	return &IdentityStore{q: database.New(db)}, nil
 }
 
-func (s *IdentityStore) Upsert(ctx context.Context, claims authn.Claims, role string) (int32, error) {
+func (s *IdentityStore) Upsert(ctx context.Context, claims authn.Claims, role string) (int32, string, error) {
 	groups := claims.Groups
 	if groups == nil {
 		groups = []string{}
@@ -47,18 +47,18 @@ func (s *IdentityStore) Upsert(ctx context.Context, claims authn.Claims, role st
 	}
 	var err error
 	for range 2 {
-		var id int32
-		if id, err = s.q.UpsertOIDCUser(ctx, params); err == nil {
-			return id, nil
+		var row database.UpsertOIDCUserRow
+		if row, err = s.q.UpsertOIDCUser(ctx, params); err == nil {
+			return row.UserID, row.Username, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) && !identityLinkedConcurrently(err) {
-			return 0, mapError(err)
+			return 0, "", mapError(err)
 		}
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("%w: the username %q belongs to a local account", fleet.ErrForbidden, claims.Username)
+		return 0, "", fmt.Errorf("%w: the username %q belongs to another account", fleet.ErrForbidden, claims.Username)
 	}
-	return 0, mapError(err)
+	return 0, "", mapError(err)
 }
 
 // identityLinkedConcurrently reports the unique violation of

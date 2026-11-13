@@ -142,9 +142,9 @@ WITH existing AS (
     FROM created
     RETURNING user_id
 )
-SELECT user_id FROM existing
+SELECT e.user_id, u.username FROM existing e JOIN users u ON u.id = e.user_id
 UNION ALL
-SELECT user_id FROM linked
+SELECT user_id, $7::TEXT FROM linked
 `
 
 type UpsertOIDCUserParams struct {
@@ -157,13 +157,20 @@ type UpsertOIDCUserParams struct {
 	Username string
 }
 
+type UpsertOIDCUserRow struct {
+	UserID   int32
+	Username string
+}
+
 // An existing (issuer, subject) identity returns its user and refreshes its
 // groups and its role, which every login re-derives from OIDC_ROLE_MAP;
 // otherwise the user is created with an unusable password hash and linked.
+// The stored username is returned: a later username claim does not rename
+// the user.
 // No row means a local account holds the username, or a concurrent first
 // login of the same identity committed after this statement's snapshot
 // (READ COMMITTED); the adapter retries once.
-func (q *Queries) UpsertOIDCUser(ctx context.Context, arg UpsertOIDCUserParams) (int32, error) {
+func (q *Queries) UpsertOIDCUser(ctx context.Context, arg UpsertOIDCUserParams) (UpsertOIDCUserRow, error) {
 	row := q.db.QueryRowContext(ctx, upsertOIDCUser,
 		pq.Array(arg.Groups),
 		arg.Email,
@@ -173,7 +180,7 @@ func (q *Queries) UpsertOIDCUser(ctx context.Context, arg UpsertOIDCUserParams) 
 		arg.Role,
 		arg.Username,
 	)
-	var user_id int32
-	err := row.Scan(&user_id)
-	return user_id, err
+	var i UpsertOIDCUserRow
+	err := row.Scan(&i.UserID, &i.Username)
+	return i, err
 }

@@ -17,8 +17,9 @@ type OIDCConfig struct {
 	UsernameClaim, GroupsClaim                     string
 	RoleMap                                        map[string]string // group → "admin" | "system_admin"
 	LoginStateTTL                                  time.Duration
-	// MinDevicePollInterval is RATE_LIMIT_ANONYMOUS's window divided by its
-	// requests, the spacing the /oidc routes' limiter allows.
+	// MinDevicePollInterval is the spacing the /oidc routes' limiter
+	// allows: RATE_LIMIT_ANONYMOUS, or the legacy limiter without
+	// RATE_LIMIT_SPLIT.
 	MinDevicePollInterval time.Duration
 }
 
@@ -33,7 +34,6 @@ type OIDCProvider interface {
 	Exchange(ctx context.Context, code, codeVerifier, nonce string) (Claims, error)
 	DeviceAuthorize(ctx context.Context) (fleet.DeviceAuthorization, error)
 	PollDeviceToken(ctx context.Context, deviceCode string) (Claims, error)
-	VerifyIDToken(ctx context.Context, rawIDToken string) (Claims, error)
 }
 
 type LoginState struct {
@@ -45,8 +45,9 @@ type LoginState struct {
 type IdentityStore interface {
 	// Upsert never adopts a local account: a username held by a user without
 	// this (issuer, subject) identity is fleet.ErrForbidden. It sets the
-	// user's role to role at every login.
-	Upsert(ctx context.Context, claims Claims, role string) (userID int32, err error)
+	// user's role to role at every login and returns the stored username,
+	// which a changed username claim does not rename.
+	Upsert(ctx context.Context, claims Claims, role string) (userID int32, username string, err error)
 	SaveLoginState(ctx context.Context, state LoginState) error
 	TakeLoginState(ctx context.Context, state string, bindingHash [sha256.Size]byte, now time.Time) (codeVerifier, nonce string, err error)
 }

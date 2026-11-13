@@ -1,10 +1,13 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/stretchr/testify/require"
@@ -17,10 +20,11 @@ type fakeOperatorLogin struct {
 	principal fleet.Principal
 	err       error
 	bindings  []string
+	stateTTL  time.Duration
 }
 
-func (f *fakeOperatorLogin) Start(context.Context) (string, string, error) {
-	return "https://idp.example/authorize", "binding", nil
+func (f *fakeOperatorLogin) Start(context.Context) (string, string, time.Time, error) {
+	return "https://idp.example/authorize", "binding", time.Now().Add(cmp.Or(f.stateTTL, 10*time.Minute)), nil
 }
 
 func (f *fakeOperatorLogin) Callback(_ context.Context, _, _, binding string) (fleet.Principal, error) {
@@ -97,4 +101,19 @@ func TestOIDCCallback_UnmappedUserGets403(t *testing.T) {
 	var body AppError
 	r.decode(t, &body)
 	require.Equal(t, http.StatusForbidden, body.Code)
+}
+
+// The binding cookie lives as long as the login state, so a callback within
+// a longer OIDC_LOGIN_STATE_TTL still carries it.
+func TestOIDCLogin_BindingCookieLivesAsLongAsTheLoginState(t *testing.T) {
+	s := &Server{operatorLogin: &fakeOperatorLogin{stateTTL: 30 * time.Minute}}
+	rec := httptest.NewRecorder()
+
+	s.OidcLogin(rec, httptest.NewRequest(http.MethodGet, "/oidc/login", nil))
+
+	require.Equal(t, http.StatusFound, rec.Code)
+	cookies := rec.Result().Cookies()
+	require.Len(t, cookies, 1)
+	require.Equal(t, oidcBindingCookie, cookies[0].Name)
+	require.InDelta(t, (30 * time.Minute).Seconds(), cookies[0].MaxAge, 2)
 }

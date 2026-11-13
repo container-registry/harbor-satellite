@@ -17,6 +17,10 @@ type Rate struct {
 	Window   time.Duration
 }
 
+// LegacyRate is the one per-IP limiter shared by every anonymous and
+// satellite endpoint when RATE_LIMIT_SPLIT is off.
+var LegacyRate = Rate{Requests: 10, Window: time.Minute}
+
 // ParseRate parses "<requests>/<duration>", e.g. "10/1m" or "3/1s", as
 // RATE_LIMIT_ANONYMOUS and RATE_LIMIT_FLEET carry it.
 func ParseRate(s string) (Rate, error) {

@@ -30,8 +30,10 @@ func TestUpsertOIDCUser_SQLContract(t *testing.T) {
 	q := database.New(db.DB)
 	ctx := context.Background()
 
-	id, err := q.UpsertOIDCUser(ctx, oidcUser("sub-alice", "alice", "edge-team"))
+	created, err := q.UpsertOIDCUser(ctx, oidcUser("sub-alice", "alice", "edge-team"))
 	require.NoError(t, err)
+	id := created.UserID
+	require.Equal(t, "alice", created.Username)
 	user, err := q.GetUserByUsername(ctx, "alice")
 	require.NoError(t, err)
 	require.Equal(t, user.ID, id, "a new identity creates the user")
@@ -41,7 +43,7 @@ func TestUpsertOIDCUser_SQLContract(t *testing.T) {
 
 	again, err := q.UpsertOIDCUser(ctx, oidcUser("sub-alice", "alice-renamed", "ops"))
 	require.NoError(t, err)
-	require.Equal(t, id, again, "the same identity is the same user")
+	require.Equal(t, database.UpsertOIDCUserRow{UserID: id, Username: "alice"}, again, "the same identity is the same user, under its stored username")
 	var groups []string
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT array_to_json(groups) FROM user_identities WHERE subject = 'sub-alice'").Scan(jsonScanner{&groups}))
 	require.Equal(t, []string{"ops"}, groups, "groups are refreshed")

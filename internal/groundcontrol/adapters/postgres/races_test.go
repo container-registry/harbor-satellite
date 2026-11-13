@@ -28,20 +28,22 @@ func TestIdentityStore_ConcurrentFirstLoginsWithDifferentUsernames(t *testing.T)
 	})
 	require.NoError(t, err)
 	type result struct {
-		id  int32
-		err error
+		id       int32
+		username string
+		err      error
 	}
 	done := make(chan result, 1)
 	go func() {
-		id, upsertErr := store.Upsert(ctx, authn.Claims{Issuer: "https://dex.example", Subject: "sub-alice", Username: "alice.renamed"}, "admin")
-		done <- result{id, upsertErr}
+		id, username, upsertErr := store.Upsert(ctx, authn.Claims{Issuer: "https://dex.example", Subject: "sub-alice", Username: "alice.renamed"}, "admin")
+		done <- result{id, username, upsertErr}
 	}()
 	db.WaitForLockWaiter(t)
 	require.NoError(t, tx.Commit())
 
 	got := <-done
 	require.NoError(t, got.err)
-	require.Equal(t, winner, got.id)
+	require.Equal(t, winner.UserID, got.id)
+	require.Equal(t, "alice", got.username, "the loser logs in under the winner's username")
 }
 
 // Two uploads open the cursor of a satellite that has none: the one that

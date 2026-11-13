@@ -95,9 +95,9 @@ type Fleet struct {
 // operatorLogin adapts authn.OIDCLogin to server.OperatorLogin.
 type operatorLogin struct{ *authn.OIDCLogin }
 
-func (l operatorLogin) Start(ctx context.Context) (redirectURL, binding string, err error) {
+func (l operatorLogin) Start(ctx context.Context) (redirectURL, binding string, expiresAt time.Time, err error) {
 	start, err := l.OIDCLogin.Start(ctx)
-	return start.RedirectURL, start.Binding, err
+	return start.RedirectURL, start.Binding, start.ExpiresAt, err
 }
 
 // NewFleet builds the services over postgres.Repository, a harbor2.Registry
@@ -237,16 +237,28 @@ func NewFleet(deps FleetDeps) (*Fleet, error) {
 	return f, nil
 }
 
+// minDevicePollInterval is the request spacing the limiter of the /oidc
+// routes allows: RATE_LIMIT_ANONYMOUS with RATE_LIMIT_SPLIT, the shared
+// legacy limiter without. An invalid RATE_LIMIT_ANONYMOUS stops NewServer.
+func minDevicePollInterval(srv env.Server) time.Duration {
+	rate := middleware.LegacyRate
+	if srv.RateLimitSplit {
+		parsed, err := middleware.ParseRate(cmp.Or(srv.RateLimitAnonymous, "10/1m"))
+		if err != nil {
+			return 0
+		}
+		rate = parsed
+	}
+	return rate.Window / time.Duration(rate.Requests)
+}
+
 // newOIDCLogin discovers the provider and stores users and login states on
 // Pools.API.
 func newOIDCLogin(pools *dbpool.Pools, cfg env.OIDC, srv env.Server) (*authn.OIDCLogin, error) {
 	authCfg := authn.OIDCConfig{
 		Enabled: true, IssuerURL: cfg.IssuerURL, ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, RedirectURL: cfg.RedirectURL,
 		Scopes: cfg.Scopes, UsernameClaim: cfg.UsernameClaim, GroupsClaim: cfg.GroupsClaim, RoleMap: cfg.RoleMap,
-		LoginStateTTL: cmp.Or(cfg.LoginStateTTL, 10*time.Minute),
-	}
-	if rate, err := middleware.ParseRate(cmp.Or(srv.RateLimitAnonymous, "10/1m")); err == nil && srv.RateLimitSplit {
-		authCfg.MinDevicePollInterval = rate.Window / time.Duration(rate.Requests)
+		LoginStateTTL: cmp.Or(cfg.LoginStateTTL, 10*time.Minute), MinDevicePollInterval: minDevicePollInterval(srv),
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

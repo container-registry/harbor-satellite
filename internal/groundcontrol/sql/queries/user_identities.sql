@@ -2,6 +2,8 @@
 -- An existing (issuer, subject) identity returns its user and refreshes its
 -- groups and its role, which every login re-derives from OIDC_ROLE_MAP;
 -- otherwise the user is created with an unusable password hash and linked.
+-- The stored username is returned: a later username claim does not rename
+-- the user.
 -- No row means a local account holds the username, or a concurrent first
 -- login of the same identity committed after this statement's snapshot
 -- (READ COMMITTED); the adapter retries once.
@@ -26,9 +28,9 @@ WITH existing AS (
     FROM created
     RETURNING user_id
 )
-SELECT user_id FROM existing
+SELECT e.user_id, u.username FROM existing e JOIN users u ON u.id = e.user_id
 UNION ALL
-SELECT user_id FROM linked;
+SELECT user_id, @username::TEXT FROM linked;
 
 -- name: InsertOIDCLoginState :exec
 INSERT INTO oidc_login_states (state, code_verifier, nonce, binding_hash, expires_at)

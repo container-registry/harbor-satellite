@@ -16,7 +16,7 @@ type Provider struct {
 	mu    sync.Mutex
 	calls []Call
 	fails map[string]error
-	// Answer answers Exchange, PollDeviceToken and VerifyIDToken.
+	// Answer answers Exchange and PollDeviceToken.
 	Answer authn.Claims
 	Device fleet.DeviceAuthorization
 	// PollAnswers are returned by PollDeviceToken in order; once used up it
@@ -76,13 +76,6 @@ func (p *Provider) PollDeviceToken(_ context.Context, deviceCode string) (authn.
 	if len(p.PollAnswers) > 0 {
 		err := p.PollAnswers[0]
 		p.PollAnswers = p.PollAnswers[1:]
-		return authn.Claims{}, err
-	}
-	return p.Answer, nil
-}
-
-func (p *Provider) VerifyIDToken(_ context.Context, rawIDToken string) (authn.Claims, error) {
-	if err := p.record("VerifyIDToken", rawIDToken); err != nil {
 		return authn.Claims{}, err
 	}
 	return p.Answer, nil

@@ -20,13 +20,35 @@ func TestIdentityStore_NeverAdoptsLocalAccount(t *testing.T) {
 	store, err := postgres.NewIdentityStore(db.DB)
 	require.NoError(t, err)
 
-	_, err = store.Upsert(ctx, authn.Claims{Issuer: "https://dex.example", Subject: "sub-bob", Username: "bob"}, "system_admin")
+	_, _, err = store.Upsert(ctx, authn.Claims{Issuer: "https://dex.example", Subject: "sub-bob", Username: "bob"}, "system_admin")
 	require.ErrorIs(t, err, fleet.ErrForbidden)
 
 	alice := authn.Claims{Issuer: "https://dex.example", Subject: "sub-alice", Username: "alice", Groups: []string{"edge-ops"}}
-	id, err := store.Upsert(ctx, alice, "admin")
+	id, _, err := store.Upsert(ctx, alice, "admin")
 	require.NoError(t, err)
-	again, err := store.Upsert(ctx, alice, "admin")
+	again, _, err := store.Upsert(ctx, alice, "admin")
 	require.NoError(t, err)
 	require.Equal(t, id, again)
+}
+
+// A known identity whose username claim now names a local account stays
+// its own user: the stored username is returned, never the claimed one.
+func TestIdentityStore_ChangedUsernameClaimKeepsTheStoredUser(t *testing.T) {
+	db := dbtest.New(t)
+	ctx := context.Background()
+	store, err := postgres.NewIdentityStore(db.DB)
+	require.NoError(t, err)
+	alice := authn.Claims{Issuer: "https://dex.example", Subject: "sub-alice", Username: "alice"}
+	id, username, err := store.Upsert(ctx, alice, "admin")
+	require.NoError(t, err)
+	require.Equal(t, "alice", username)
+	_, err = database.New(db.DB).CreateUser(ctx, database.CreateUserParams{Username: "bob", PasswordHash: "local-hash", Role: "system_admin"})
+	require.NoError(t, err)
+
+	alice.Username = "bob"
+	again, username, err := store.Upsert(ctx, alice, "admin")
+
+	require.NoError(t, err)
+	require.Equal(t, id, again)
+	require.Equal(t, "alice", username)
 }

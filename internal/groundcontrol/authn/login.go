@@ -6,15 +6,17 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 )
 
 type LoginStart struct {
 	RedirectURL string
-	// Binding is set as an HttpOnly, Secure, SameSite=Lax cookie; Callback
-	// needs it back.
-	Binding string
+	// Binding is set as an HttpOnly, Secure, SameSite=Lax cookie until
+	// ExpiresAt, when the login state expires; Callback needs it back.
+	Binding   string
+	ExpiresAt time.Time
 }
 
 // OIDCLogin runs the authorization code flow with PKCE, a nonce and a
@@ -65,9 +67,10 @@ func (l *OIDCLogin) Start(ctx context.Context) (LoginStart, error) {
 		vals[i] = v
 	}
 	state, verifier, nonce, binding := vals[0], vals[1], vals[2], vals[3]
+	expiresAt := l.clock.Now().Add(l.cfg.LoginStateTTL)
 	if err := l.identities.SaveLoginState(ctx, LoginState{
 		State: state, CodeVerifier: verifier, Nonce: nonce,
-		BindingHash: sha256.Sum256([]byte(binding)), ExpiresAt: l.clock.Now().Add(l.cfg.LoginStateTTL),
+		BindingHash: sha256.Sum256([]byte(binding)), ExpiresAt: expiresAt,
 	}); err != nil {
 		return LoginStart{}, fmt.Errorf("store login state: %w", err)
 	}
@@ -75,7 +78,7 @@ func (l *OIDCLogin) Start(ctx context.Context) (LoginStart, error) {
 	if err != nil {
 		return LoginStart{}, fmt.Errorf("authorization URL: %w", err)
 	}
-	return LoginStart{RedirectURL: redirect, Binding: binding}, nil
+	return LoginStart{RedirectURL: redirect, Binding: binding, ExpiresAt: expiresAt}, nil
 }
 
 // Callback takes the login state for state and the binding's hash, so it
@@ -97,15 +100,18 @@ func (l *OIDCLogin) Callback(ctx context.Context, code, state, binding string) (
 }
 
 // admit maps the claims and stores the user; an unmapped user stores
-// nothing.
+// nothing. The principal is the stored user: the session must not follow a
+// username claim that now names another account.
 func (l *OIDCLogin) admit(ctx context.Context, claims Claims) (fleet.Principal, error) {
 	principal, role, err := MapPrincipal(claims, l.cfg)
 	if err != nil {
 		return fleet.Principal{}, err
 	}
-	if _, err := l.identities.Upsert(ctx, claims, role); err != nil {
+	_, username, err := l.identities.Upsert(ctx, claims, role)
+	if err != nil {
 		return fleet.Principal{}, fmt.Errorf("store OIDC user %s: %w", claims.Username, err)
 	}
+	principal.Subject = fleet.SubjectUser + username
 	return principal, nil
 }
 

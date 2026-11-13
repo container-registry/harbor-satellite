@@ -141,3 +141,67 @@ func TestOIDCLogin_DevicePendingThenPrincipal(t *testing.T) {
 	require.Equal(t, "user:alice", principal.Subject)
 	require.Equal(t, 1, w.identities.Count("Upsert"))
 }
+
+// A known identity whose username claim now names another account logs in
+// as its stored user, never as the account the claim names.
+func TestOIDCLogin_ChangedUsernameClaimKeepsTheStoredUser(t *testing.T) {
+	w := newOIDCWorld(t)
+	w.provider.Answer = claims("alice", "edge-ops")
+	state, binding := w.started(t)
+	_, err := w.login.Callback(context.Background(), "code", state, binding)
+	require.NoError(t, err)
+
+	renamed := claims("alice", "edge-ops")
+	renamed.Username = "bob"
+	w.provider.Answer = renamed
+	state, binding = w.started(t)
+	principal, err := w.login.Callback(context.Background(), "code", state, binding)
+
+	require.NoError(t, err)
+	require.Equal(t, "user:alice", principal.Subject)
+}
+
+func TestOIDCLogin_UsernameOfAnotherIdentityIsForbidden(t *testing.T) {
+	w := newOIDCWorld(t)
+	w.provider.Answer = claims("alice", "edge-ops")
+	state, binding := w.started(t)
+	_, err := w.login.Callback(context.Background(), "code", state, binding)
+	require.NoError(t, err)
+
+	other := claims("alice", "edge-ops")
+	other.Subject = "sub-other"
+	w.provider.Answer = other
+	state, binding = w.started(t)
+	_, err = w.login.Callback(context.Background(), "code", state, binding)
+
+	require.ErrorIs(t, err, fleet.ErrForbidden, "users.username is unique")
+}
+
+func TestOIDCLogin_InvalidLoginStateIsForbidden(t *testing.T) {
+	w := newOIDCWorld(t)
+	w.provider.Answer = claims("alice", "edge-ops")
+	state, _ := w.started(t)
+
+	_, err := w.login.Callback(context.Background(), "code", state, "another-browser")
+
+	require.ErrorIs(t, err, fleet.ErrForbidden, "as the SQL store answers")
+}
+
+func TestIdentities_SaveLoginStateRejectsADuplicate(t *testing.T) {
+	ids := authntest.NewIdentities()
+	st := authn.LoginState{State: "s", CodeVerifier: "v1", ExpiresAt: start.Add(time.Minute)}
+	require.NoError(t, ids.SaveLoginState(context.Background(), st))
+	st.CodeVerifier = "v2"
+
+	require.ErrorIs(t, ids.SaveLoginState(context.Background(), st), fleet.ErrAlreadyExists)
+	require.Equal(t, "v1", ids.States()[0].CodeVerifier)
+}
+
+func TestOIDCLogin_StartReturnsTheStateExpiry(t *testing.T) {
+	w := newOIDCWorld(t)
+
+	got, err := w.login.Start(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, w.identities.States()[0].ExpiresAt, got.ExpiresAt, "the binding cookie expires with the state")
+}

@@ -87,6 +87,9 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - A SPIRE entry create that SPIRE refused was reported as an empty response, and a refused entry delete as success, which left a deleted satellite's entry in SPIRE.
 - Ground Control without `HARBOR_URL` failed with an error that did not name the variable.
 - With `AUDIT_TRUST_FORWARDED_HEADERS=true`, the audit source IP, the per-IP failure limit and the anonymous limiter took the leftmost `X-Forwarded-For` entry, which the client writes. They now take the entry `AUDIT_TRUSTED_PROXY_HOPS` (default `1`) from the right, the one the trusted proxy appended.
+- An OIDC identity whose username claim changed after its first login got a session for the account the new claim named, a local or another OIDC account included, or a `500` when no account had that name. The login now uses the username stored at the first login.
+- The OIDC binding cookie expired after ten minutes whatever `OIDC_LOGIN_STATE_TTL` said, so a slower browser login failed; it now lives as long as the login state.
+- With `RATE_LIMIT_SPLIT=false` the device flow advertised the provider's poll interval (often 5s), faster than the shared limiter's 10 requests per minute allows, so a client polling as told got `429`. The interval is now at least 6s there.
 - The heartbeat flusher counted a flush stopped by shutdown as a failed one and could drop the buffered beats, and after dropping a satellite's beats it dropped that satellite's next batch at its first failure.
 
 ### Known Limitations

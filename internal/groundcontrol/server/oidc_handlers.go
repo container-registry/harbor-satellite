@@ -20,7 +20,8 @@ const oidcBindingCookie = "gc_oidc_binding"
 // OperatorLogin is the OIDC login of plan item 8.1; app adapts
 // authn.OIDCLogin to it, so the server imports no gc-core package.
 type OperatorLogin interface {
-	Start(ctx context.Context) (redirectURL, binding string, err error)
+	// Start's binding cookie lives until expiresAt, the login state's expiry.
+	Start(ctx context.Context) (redirectURL, binding string, expiresAt time.Time, err error)
 	Callback(ctx context.Context, code, state, binding string) (fleet.Principal, error)
 	DeviceStart(ctx context.Context) (fleet.DeviceAuthorization, error)
 	DevicePoll(ctx context.Context, deviceCode string) (fleet.Principal, error)
@@ -45,7 +46,7 @@ func (s *Server) OidcLogin(w http.ResponseWriter, r *http.Request) {
 	if s.oidcDisabled(w) {
 		return
 	}
-	redirect, binding, err := s.operatorLogin.Start(r.Context())
+	redirect, binding, expiresAt, err := s.operatorLogin.Start(r.Context())
 	if err != nil {
 		log.Printf("OIDC login start: %v", err)
 		HandleAppError(w, &AppError{Code: http.StatusInternalServerError, Message: "OIDC login could not start"})
@@ -53,7 +54,7 @@ func (s *Server) OidcLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: oidcBindingCookie, Value: binding, Path: "/oidc", HttpOnly: true, Secure: true,
-		SameSite: http.SameSiteLaxMode, MaxAge: int((10 * time.Minute).Seconds()),
+		SameSite: http.SameSiteLaxMode, MaxAge: max(1, int(time.Until(expiresAt).Round(time.Second).Seconds())),
 	})
 	http.Redirect(w, r, redirect, http.StatusFound)
 }

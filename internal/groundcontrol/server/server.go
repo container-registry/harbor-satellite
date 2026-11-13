@@ -234,7 +234,7 @@ func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err e
 	appServer.asyncDB = pools.Async
 
 	// Initialize rate limiter: 10 requests per minute per IP for ZTR endpoint
-	rateLimiter := middleware.NewRateLimiter(10, time.Minute)
+	rateLimiter := middleware.NewRateLimiter(middleware.LegacyRate.Requests, middleware.LegacyRate.Window)
 	appServer.rateLimiter = rateLimiter
 	appServer.FailureLimiter = middleware.NewFailureLimiter(cfg.Server.AuthFailureLimit, cfg.Server.AuthFailureWindow)
 	if cfg.Server.RateLimitSplit {
