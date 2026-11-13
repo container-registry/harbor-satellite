@@ -22,7 +22,7 @@ follow tags without an operator syncing them.
 
 Harbor 3 has not published its extension API and event feed, so there is
 no adapter that implements `RegistryEventSource`, and neither `serve` nor
-`worker` runs a `RegistryFollower`. Groups change only through
+`worker` runs a `RegistryFollower`. A group's artifacts change only through
 `POST /api/groups/sync`, as before.
 
 When the API exists, the remaining work is an adapter under

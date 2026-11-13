@@ -8,7 +8,7 @@ https://github.com/container-registry/harbor-satellite/security/advisories/new
 
 Do not open a public issue, pull request or discussion for a suspected vulnerability. Include the affected version or commit, the component (satellite, Ground Control, `groundcontrol` CLI, Helm chart), the configuration needed to reproduce it, and the impact you expect. A proof of concept helps but is not required.
 
-Vulnerabilities in Harbor itself go to the Harbor project ([goharbor/harbor security policy](https://github.com/goharbor/harbor/security/policy)), and those in SPIRE, PostgreSQL or another dependency to that project. If you are unsure where a problem belongs, report it here and we forward it.
+Vulnerabilities in Harbor itself go to the Harbor project ([goharbor/harbor security policy](https://github.com/goharbor/harbor/security/policy)), and those in SPIRE, PostgreSQL or another dependency go to that dependency's maintainers. If you are unsure where a problem belongs, report it here and we forward it.
 
 ## Supported Versions
 

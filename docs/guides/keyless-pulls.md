@@ -14,9 +14,13 @@ Ground Control rotates each satellite's robot account before it expires
    identity.
 2. It creates a successor robot with the satellite's current projects,
    seals its secret with `DATA_ENCRYPTION_KEY` (AES-256-GCM) and stages it.
-3. The next heartbeat of the satellite answers the successor in
-   `credentials`. The satellite stores it with its generation in
-   `config.json` and reports the generation with its next heartbeat.
+3. Each serve process reloads the staged rotations every
+   `ROBOT_ROTATION_CACHE_REFRESH` (default 30s). The first heartbeat the
+   satellite sends to a serve process that has reloaded the rotation
+   answers the successor in `credentials`, so delivery can take up to one
+   refresh interval after staging, plus the heartbeat interval. The
+   satellite stores it with its generation in `config.json` and reports
+   the generation with its next heartbeat.
 4. After that acknowledgement the worker deletes the old robot and promotes
    the successor. Old and successor robot both work until then, so a
    rotation never interrupts pulls.
