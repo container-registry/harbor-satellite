@@ -18,7 +18,7 @@ Partly implemented: the store, the proxy and edge admission. The Context section
 | `cache` mode | Not implemented |
 | Policy enforcement (CEL in this record) | Superseded by Casbin edge admission ([ADR-0017](0017-policy-engine-casbin.md)). Implemented as a request-level check: `app_config.admission` (`off`, `audit`, `enforce`) is evaluated for every proxy request on subject, repository, reference and operation. Content-aware checks on verified descriptor graphs are not implemented |
 | Streaming pull-through, write deadline, connection cap | Implemented, see [ADR-0013](0013-edge-store-concurrency-and-pull-through-streaming.md) |
-| Client authentication | Non-loopback clients are rejected; the listener is loopback only |
+| Client authentication | Not implemented. Every loopback caller is accepted without credentials, so admission evaluates an empty subject. `middleware.Authenticate` is composed without a verifier, so a non-loopback client would get `UNAUTHORIZED`; the listener binds loopback only (G7, [ADR-0019](0019-ground-control-hosting-and-extension-points.md)) |
 | Replace Crane with ORAS | Partly done. The local OCI store and the registry store (Harbor source, BYO registry) use ORAS; go-containerregistry is still used for state fetching, the image catalog and direct delivery |
 
 ## Context

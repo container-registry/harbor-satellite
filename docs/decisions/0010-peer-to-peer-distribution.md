@@ -16,7 +16,7 @@ informed: [Harbor Satellite Developers]
 | Peer-first replication, first complete graph wins (#684, #697), staging outside the serving lock (#694) | implemented in `store.PeerFillingStore` |
 | Degraded replication from the last known state while Harbor is unreachable (#687, #701) | implemented |
 | Ground Control filling `gc_peers` | not implemented; both peer lists come from the config document |
-| Peers serving from the satellite proxy | not possible: the proxy listens on loopback only (gate G7); a peer URL is a registry endpoint such as a BYO registry |
+| Peers serving from the satellite proxy (the Listen part of the Decision Outcome) | not implemented: default-mode satellites cannot serve peers in this release. The proxy listens on loopback only until non-loopback client authentication exists (gate G7, [ADR-0019](0019-ground-control-hosting-and-extension-points.md)), so a peer URL must be a reachable registry endpoint such as a BYO registry |
 | Content-aware policy on a peer graph | not implemented |
 
 ## Context
@@ -129,7 +129,9 @@ Satellite will add opt-in peer distribution **on top of replica mode**:
   accept push, delete, pull-through, or CRI miss-fill. BYO deployments may
   list an existing registry as a peer URL; default-mode sites use replica
   mode. Implementing replica/proxy itself is the proxy-integration work, not
-  this decision.
+  this decision. Not implemented yet: the replica proxy binds loopback only
+  until gate G7, so default-mode satellites cannot be peers (see
+  Implementation Status).
 * A **source resolver** in front of `store.Store`. It **builds a unique peer
   list** from operator static peers and, later, an optional Ground Control
   list (`gc_peers`, same schema, empty until those APIs exist). The same

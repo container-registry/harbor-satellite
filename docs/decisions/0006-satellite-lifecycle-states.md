@@ -10,7 +10,20 @@ informed: [Harbor-Satellite Developers, Operators]
 
 Tracks: [#268](https://github.com/container-registry/harbor-satellite/issues/268)
 
-Implementation: [ADR-0016](0016-satellite-session-authentication.md) (plan item 4.3). The states `pending`, `online`, `stale` and `revoked` live in `satellite_view.state`, not in a `satellites.status` column; there is no `deleted` flag, a deleted satellite leaves a tombstone event. The worker's stale detector marks satellites stale, `POST /api/satellites/{satellite}/revoke` and `/unrevoke` change the state, and a revoked satellite gets 403 on sync and ZTR.
+## Implementation Status
+
+The four states are implemented with [ADR-0016](0016-satellite-session-authentication.md) (plan item 4.3). The decision (four states, deletion outside the state machine) holds; the storage and several mechanics differ from the plan in the sections below, which are kept as written. Where they disagree, this table describes the code.
+
+| Planned in this record | Implemented |
+|---|---|
+| `status` enum column on `satellites` | `satellite_view.state`; a satellite without a `satellite_view` row is `pending` |
+| `deleted` boolean, soft delete kept for audit, queries filter deleted rows | No soft delete. `DELETE /api/satellites/{satellite}` deletes the row and appends a tombstone event; the async plane deletes the robot, the SPIRE entries and the state artifact. The record of the deletion is that event, kept in the outbox for `OUTBOX_RETENTION` |
+| Heartbeat of a deleted satellite gets 401 | Yes: its sessions are invalidated and it is unknown, so sync answers 401 |
+| `pending -> online` on ZTR | On the first heartbeat a satellite sends; ZTR does not change the state |
+| Background job marks `online -> stale` | The worker's stale detector: 3x the reported heartbeat interval, else `STALE_THRESHOLD` |
+| Revoke disables the robot and revokes the SPIRE entry | `POST /api/satellites/{satellite}/revoke` disables the robot in Harbor. The SPIRE entry stays; sync and ZTR answer 403 for every credential, SVID included |
+| Re-enable sets `pending`, heartbeat answers a refresh directive, new refresh route | `POST /api/satellites/{satellite}/unrevoke` sets `pending` and enables the robot again; the next heartbeat moves the satellite to `online`. No refresh directive and no route for it |
+| Satellites created by `POST /api/satellites` and `POST /api/join-tokens` | `POST /api/satellites` (token) and `POST /api/satellites/register` (SPIFFE); `/api/join-tokens` does not exist |
 
 ## Context and Problem Statement
 
@@ -44,8 +57,8 @@ Chosen option: "Four-state enum with deletion as a separate concern", because it
 * Good, because terminology aligns with SPIFFE/PKI conventions used by the project.
 * Good, because soft delete preserves audit trail without complicating the state machine.
 * Good, because distinct HTTP responses (401/403) let the satellite react appropriately per state.
-* Neutral, because stale detection logic already exists via `GetStaleSatellites`; this formalizes it as a background job with a status column.
-* Bad, because it requires a migration to add `status` and `deleted` columns.
+* Neutral, because stale detection logic already exists via `GetStaleSatellites`; this formalizes it as a background job that stores the state.
+* Bad, because it requires a migration for the state (implemented as the `satellite_view` table, see Implementation Status).
 * Bad, because existing satellite creation flow needs to be updated to set initial status.
 * Bad, because a new refresh route needs to be built for the re-enable flow.
 
@@ -77,6 +90,8 @@ Chosen option: "Four-state enum with deletion as a separate concern", because it
 * Bad, because queries must always filter for both status and deletion, defeating the purpose of a single field.
 
 ## Validation
+
+> Planned design. Where it differs from the code, [Implementation Status](#implementation-status) applies.
 
 Implementation will be validated by:
 * Database migration adding `status` enum and `deleted` boolean to `satellites` table.
@@ -116,6 +131,8 @@ Transitions:
 
 ### Deletion as a Separate Concern
 
+> Planned design. Where it differs from the code, [Implementation Status](#implementation-status) applies.
+
 Deletion is not a lifecycle state. It is handled via a `deleted` boolean column on the `satellites` table:
 
 * On delete: `deleted = true`, full cleanup of robot account, SPIRE entry, and group/config assignments.
@@ -124,6 +141,8 @@ Deletion is not a lifecycle state. It is handled via a `deleted` boolean column 
 * No recovery path. Deletion is permanent from the operator's perspective.
 
 ### State Transition Diagram
+
+> Planned design. Where it differs from the code, [Implementation Status](#implementation-status) applies.
 
 ```mermaid
 stateDiagram-v2
@@ -151,6 +170,8 @@ stateDiagram-v2
 Note: Any state can be soft-deleted (`deleted = true`). This is not a state transition but a separate operation that hides the satellite from the GC UI and cleans up all associated resources.
 
 ### Onboarding Flows
+
+> Planned design. Where it differs from the code, [Implementation Status](#implementation-status) applies.
 
 Both flows coexist long-term as deployment options. Both start at `pending` and transition to `online` upon ZTR completion.
 
@@ -205,6 +226,8 @@ flowchart TD
 
 ### Heartbeat Response by State
 
+> Planned design. Where it differs from the code, [Implementation Status](#implementation-status) applies.
+
 ```mermaid
 flowchart LR
     HB[Satellite sends heartbeat] --> Check{Satellite status?}
@@ -224,6 +247,8 @@ flowchart LR
 | `deleted` | `401 Unauthorized` | Credentials invalidated, no recovery |
 
 ### What Needs to Change
+
+> Planned design. Where it differs from the code, [Implementation Status](#implementation-status) applies.
 
 1. Add `status` enum column (`pending`, `online`, `stale`, `revoked`) to `satellites` table.
 2. Add `deleted` boolean column to `satellites` table (default `false`).
