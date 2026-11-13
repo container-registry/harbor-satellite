@@ -262,3 +262,10 @@ func (cm *ConfigManager) GetJournalConfig() JournalConfig {
 
 	return cm.config.AppConfig.Journal
 }
+
+func (cm *ConfigManager) GetNetworkConfig() NetworkConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	return cm.config.AppConfig.Network
+}

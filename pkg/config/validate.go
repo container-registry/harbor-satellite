@@ -82,6 +82,10 @@ func validateApp(config *Config) ([]string, error) {
 
 	warnings = append(warnings, validateAndEnforceAuditConfig(config)...)
 
+	if err := validateAndEnforceNetwork(config); err != nil {
+		return warnings, err
+	}
+
 	switch config.AppConfig.RegistryAuth.Mode {
 	case "", RegistryAuthRobot:
 	case RegistryAuthWorkloadIdentity:
@@ -123,6 +127,22 @@ func ValidateAppConfig(app AppConfig) (warnings []string, err error) {
 		return warnings, fmt.Errorf("app_config.admission.bundle: model version %q, want %q", b.ModelVersion, policybundle.ModelVersion)
 	}
 	return warnings, nil
+}
+
+// validateAndEnforceNetwork checks the optional speed cap. A disabled block
+// keeps a malformed limit from rejecting the rest of the config.
+func validateAndEnforceNetwork(config *Config) error {
+	network := &config.AppConfig.Network
+	if !network.Speed.Enabled {
+		return nil
+	}
+	if network.Speed.Limit == "" {
+		return errors.New("network.speed.limit is required when speed is enabled")
+	}
+	if _, err := ParseByteRate(network.Speed.Limit); err != nil {
+		return fmt.Errorf("network.speed.limit: %w", err)
+	}
+	return nil
 }
 
 // validateAndEnforceAuditConfig fills in defaults for the audit syslog transport

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	"github.com/container-registry/harbor-satellite/internal/satellite/lane"
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -284,12 +285,15 @@ func registryHTTPClient(cfg config.TLSConfig) (*http.Client, error) {
 	return registryHTTPClientWithCap(cfg, 0)
 }
 
-// registryHTTPClientWithCap builds retry(throttle(TLS transport)), so
-// retries keep working with TLS settings and spend the bandwidth budget.
+// registryHTTPClientWithCap builds retry(throttle(meter(TLS transport))), so
+// retries keep working with TLS settings and spend the bandwidth budget. The
+// meter slows a request only when its context was marked for the speed cap.
 func registryHTTPClientWithCap(cfg config.TLSConfig, bytesPerSec int64) (*http.Client, error) {
 	customTLS := cfg.CertFile != "" || cfg.KeyFile != "" || cfg.CAFile != "" || cfg.SkipVerify
 	if !customTLS && bytesPerSec <= 0 {
-		return retry.DefaultClient, nil
+		client := *retry.DefaultClient
+		client.Transport = budget.ContextTransport(client.Transport)
+		return &client, nil
 	}
 	base := http.DefaultTransport
 	if customTLS {
@@ -307,5 +311,5 @@ func registryHTTPClientWithCap(cfg config.TLSConfig, bytesPerSec int64) (*http.C
 		transport.TLSClientConfig = tlsConfig
 		base = transport
 	}
-	return &http.Client{Transport: retry.NewTransport(lane.ThrottledTransport(base, bytesPerSec))}, nil
+	return &http.Client{Transport: retry.NewTransport(lane.ThrottledTransport(budget.ContextTransport(base), bytesPerSec))}, nil
 }
