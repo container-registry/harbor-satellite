@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"sync"
-	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/advisorylock"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
@@ -99,11 +98,14 @@ func (s *lockSession[K]) open(ctx context.Context) error {
 	return nil
 }
 
-// lockPingTimeout bounds the liveness check after a failed lock, which runs
-// while the session mutex blocks every other lock call.
-const lockPingTimeout = 2 * time.Second
-
+// tryLock never lets a context cancel a query on the session: lib/pq marks a
+// connection bad when its context ends mid-call, database/sql then closes it,
+// and that ends every lock held on the session while its holders still run.
+// The pool's server-side statement_timeout bounds these queries instead.
 func (s *lockSession[K]) tryLock(ctx context.Context, key K, params database.TryAggregateLockParams) (func(), bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, fmt.Errorf("try %s lock: %w", s.name, err)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -117,14 +119,12 @@ func (s *lockSession[K]) tryLock(ctx context.Context, key K, params database.Try
 	if _, ok := s.held[key]; ok {
 		return nil, false, nil
 	}
-	acquired, err := s.q.TryAggregateLock(ctx, params)
+	session := context.WithoutCancel(ctx)
+	acquired, err := s.q.TryAggregateLock(session, params)
 	if err != nil {
-		// A cancelled call leaves the session usable; one that no longer
-		// answers a ping has lost its locks.
-		pingCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lockPingTimeout)
-		pingErr := s.conn.PingContext(pingCtx)
-		cancel()
-		if pingErr != nil {
+		// A statement timeout leaves the session and its locks intact; a
+		// session that no longer answers a ping has lost them.
+		if pingErr := s.conn.PingContext(session); pingErr != nil {
 			s.drop()
 		}
 		return nil, false, fmt.Errorf("try %s lock: %w", s.name, err)

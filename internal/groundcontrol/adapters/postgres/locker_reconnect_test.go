@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/adapters/postgres"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
@@ -89,4 +90,34 @@ func TestLockers_ReopenTheSessionAfterItIsLost(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestLockers_KeepTheirLocksWhenALockCallIsCanceled(t *testing.T) {
+	for _, name := range lockerNames {
+		t.Run(name, func(t *testing.T) {
+			db := dbtest.New(t)
+			lock := lockers(t, db)[name]
+			_, ok, err := lock(context.Background(), 1)
+			require.NoError(t, err)
+			require.True(t, ok)
+			// Deadlines across one round trip, so some expire while the
+			// query runs, which is what made lib/pq close the session.
+			for i := range 200 {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(i*5)*time.Microsecond)
+				unlock, got, lockErr := lock(ctx, 2)
+				cancel()
+				if lockErr != nil {
+					require.ErrorIs(t, lockErr, context.DeadlineExceeded)
+				}
+				if got {
+					unlock()
+				}
+			}
+
+			require.GreaterOrEqual(t, advisoryLocks(t, db), 1, "a canceled call must not release held locks")
+			_, ok, err = lock(context.Background(), 1)
+			require.NoError(t, err)
+			require.False(t, ok, "the session still holds the lock")
+		})
+	}
 }
