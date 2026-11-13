@@ -52,6 +52,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Regenerate the Ground Control database package
         run: task generate:groundcontrol-database
@@ -83,6 +84,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       # Service containers cannot pass -c shared_preload_libraries, which the
       # statement budgets need, so the task starts Postgres with compose.
@@ -145,6 +147,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Install GoReleaser
         uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
@@ -174,6 +177,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Build the binary for the satellite
         run: task _build:satellite
@@ -194,6 +198,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Build Ground Control
         run: task _build:groundcontrol
@@ -215,6 +220,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Test E2E satellite
         run: task e2e-test
@@ -236,6 +242,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Test multi-group E2E
         run: task e2e-multi-group
@@ -257,6 +264,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Test BYO Registry E2E
         run: task e2e-byo
@@ -278,6 +286,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Test SPIFFE Join Token E2E
         run: task e2e-spiffe
@@ -307,6 +316,7 @@ jobs:
         uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
+          repo-token: ${{ github.token }}
 
       - name: Test ${{ matrix.variant }}
         env:
