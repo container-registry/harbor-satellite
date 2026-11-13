@@ -36,8 +36,10 @@ func NewFlusher(buffer *Buffer, store Store, cfg Config) (*Flusher, error) {
 func (f *Flusher) Name() string { return "heartbeat-flusher" }
 
 // Run flushes every FlushInterval and once more after ctx ends. After a
-// failed batch it flushes satellite by satellite, so a poison row affects
-// only its own satellite, which is dropped after MaxFlushFailures.
+// failed batch it pings the store: when the store does not answer, the
+// batch is requeued whole and nothing counts as failed. Otherwise it
+// flushes satellite by satellite, so a poison row affects only its own
+// satellite, which is dropped after MaxFlushFailures.
 func (f *Flusher) Run(ctx context.Context) error {
 	ticker := time.NewTicker(f.cfg.FlushInterval)
 	defer ticker.Stop()
@@ -76,6 +78,11 @@ func (f *Flusher) Flush(ctx context.Context) error {
 	if ctx.Err() != nil {
 		f.buffer.Requeue(batch)
 		return fmt.Errorf("flush heartbeats: %w", err)
+	}
+	// During an outage every satellite would fail and be dropped.
+	if perr := f.store.Ping(ctx); perr != nil {
+		f.buffer.Requeue(batch)
+		return fmt.Errorf("flush heartbeats: %w; store unreachable: %w", err, perr)
 	}
 	var errs []error
 	for _, part := range split(batch) {

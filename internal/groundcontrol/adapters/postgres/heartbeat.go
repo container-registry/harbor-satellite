@@ -39,6 +39,9 @@ func NewHeartbeatStore(db *sql.DB, clock fleet.Clock) (*HeartbeatStore, error) {
 	return &HeartbeatStore{db: db, q: database.New(db), clock: clock}, nil
 }
 
+// Ping checks that the fleet pool reaches PostgreSQL.
+func (s *HeartbeatStore) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
+
 type lastSeenRow struct {
 	ID                int32     `json:"id"`
 	SeenAt            time.Time `json:"seen_at"`

@@ -13,7 +13,7 @@ import (
 type Config struct {
 	FlushInterval     time.Duration
 	MaxPending        int           // beyond it a satellite's older samples coalesce into its newest
-	MaxFlushFailures  int           // a satellite's beats are dropped, with an error log, after this many failed flushes
+	MaxFlushFailures  int           // a satellite's beats are dropped, with an error log, after this many failed flushes while the store answers pings
 	FinalFlushTimeout time.Duration // the flush after ctx ends runs on context.WithoutCancel with this timeout
 }
 
@@ -46,6 +46,9 @@ type Store interface {
 	// and Inventories hold at most one entry per satellite; a duplicate
 	// fails the whole flush.
 	Flush(ctx context.Context, batch Batch) error
+	// Ping reports whether the store answers at all; after a failed batch
+	// it tells an outage, which drops nothing, from poison rows.
+	Ping(ctx context.Context) error
 }
 
 type pending struct {

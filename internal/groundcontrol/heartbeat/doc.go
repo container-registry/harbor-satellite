@@ -4,5 +4,6 @@
 // beat only when it is not older than what is stored. A failed flush is
 // requeued, so a crash loses every beat buffered since the last successful
 // flush: one flush interval while flushes succeed, more during a database
-// outage. It is part of gc-core and imports neither async nor authn.
+// outage. An outage drops nothing; only a satellite whose flush fails while
+// the store answers is dropped, after MaxFlushFailures. It is part of gc-core and imports neither async nor authn.
 package heartbeat

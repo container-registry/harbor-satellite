@@ -37,6 +37,7 @@ func (n *nopSink) InventoryDigest(fleet.SatelliteID) (fleet.Digest, bool) { retu
 type failingStore struct{ err error }
 
 func (f failingStore) Flush(context.Context, heartbeat.Batch) error { return f.err }
+func (f failingStore) Ping(context.Context) error                   { return nil }
 
 func TestCountingSink_CountsRecordedBeats(t *testing.T) {
 	rec, sink := &spyRecorder{}, &nopSink{}

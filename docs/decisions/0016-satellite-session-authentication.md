@@ -33,7 +33,7 @@ Plan item 4 (fleet hot path) found these limits at `508b0d6`:
    * Migration: a robot-Basic beat of a satellite without a session gets one, once.
    * SPIFFE IDs live in `satellite_identities`, so the tombstone can name them.
 2. **Hot path (4.2, 4.4).**
-   * Each replica buffers heartbeats (`internal/groundcontrol/heartbeat`) and flushes them every `HEARTBEAT_FLUSH_INTERVAL` in one transaction. A flush never moves a value backwards, and a poison row affects only its own satellite, which is dropped after `HEARTBEAT_MAX_FLUSH_FAILURES`.
+   * Each replica buffers heartbeats (`internal/groundcontrol/heartbeat`) and flushes them every `HEARTBEAT_FLUSH_INTERVAL` in one transaction. A flush never moves a value backwards, and a poison row affects only its own satellite, which is dropped after `HEARTBEAT_MAX_FLUSH_FAILURES`. A failed batch is requeued whole without counting when the store does not answer a ping, so a database outage drops no beats.
    * Inventory digest (`internal/shared/inventory`): the satellite sends `cached_images` only when the digest changed or Ground Control asked with `inventory_requested`.
    * Journal ingestion (ADR-0015) goes through `HeartbeatService.Beat`, which records the beat before ingesting; a malformed journal answers 200 with an ack error.
    * Statements: a plain beat at most 1 on average, a journaled beat at most 4, at most 5 with a session renewal. ZTR may rise from 9 to 11; it is a once-per-satellite cold path.

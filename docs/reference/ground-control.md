@@ -88,7 +88,7 @@ With `RATE_LIMIT_SPLIT=false`, satellites that share one source address, behind 
 | `SATELLITE_ROBOT_AUTH` | `true` | Accept robot Basic auth on satellite routes next to sessions and SVIDs. Satellites registered before sessions existed need it until their next heartbeat gives them a session. |
 | `HEARTBEAT_FLUSH_INTERVAL` | `5s` | Heartbeats are buffered per process and written in batches at this interval. |
 | `HEARTBEAT_BUFFER_MAX` | `10000` | Buffered heartbeats per process. |
-| `HEARTBEAT_MAX_FLUSH_FAILURES` | `3` | After a failed batch, satellites are flushed one by one; a satellite whose beats fail this often is dropped from the buffer with an error log. |
+| `HEARTBEAT_MAX_FLUSH_FAILURES` | `3` | After a failed batch, satellites are flushed one by one; a satellite whose beats fail this often is dropped from the buffer with an error log. While PostgreSQL does not answer a ping, the batch is kept whole and nothing counts. |
 | `STALE_THRESHOLD` | `15m` | Stale threshold for a satellite whose heartbeat interval is not `@every`. Others are stale after three intervals, never sooner than twice the flush interval. |
 | `STALE_CHECK_INTERVAL` | `1m` | How often the worker marks satellites stale. |
 | `SESSION_EXPIRY_INTERVAL` | `1h` | How often the worker deletes expired satellite sessions and OIDC login states. |

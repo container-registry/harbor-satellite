@@ -15,17 +15,38 @@ var (
 	errBoom = errors.New("boom")
 )
 
-// store records every flushed batch and fails the satellites in poison.
+// store records every flushed batch and fails the satellites in poison,
+// or, while down, every flush and ping.
 type store struct {
 	mu      sync.Mutex
 	batches []heartbeat.Batch
 	poison  map[fleet.SatelliteID]bool
 	fails   int
+	down    bool
+}
+
+func (s *store) setDown(down bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.down = down
+}
+
+func (s *store) Ping(context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.down {
+		return errBoom
+	}
+	return nil
 }
 
 func (s *store) Flush(_ context.Context, batch heartbeat.Batch) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.down {
+		s.fails++
+		return errBoom
+	}
 	for _, b := range batch.Latest {
 		if s.poison[b.Satellite] {
 			s.fails++

@@ -76,6 +76,8 @@ type cancelStore struct {
 	calls  int
 }
 
+func (s *cancelStore) Ping(context.Context) error { return nil }
+
 func (s *cancelStore) Flush(ctx context.Context, _ heartbeat.Batch) error {
 	s.calls++
 	if s.calls == 2 {
@@ -114,4 +116,22 @@ func TestFlusher_DropResetsTheFailureCount(t *testing.T) {
 	b.Record(beatAt(9, time.Minute))
 	_ = f.Flush(context.Background())
 	require.Len(t, b.Drain().Latest, 1, "a later beat gets its own MaxFlushFailures retries")
+}
+
+// A store outage fails every satellite's flush; unlike a poison row it must
+// not drop the beats after MaxFlushFailures.
+func TestFlusher_StoreOutageKeepsEveryBeat(t *testing.T) {
+	b := newBuffer(t, cfg)
+	s := &store{down: true}
+	f := newFlusher(t, b, s, cfg)
+	b.Record(beatAt(7, 0))
+	b.Record(beatAt(9, 0))
+
+	for range cfg.MaxFlushFailures + 1 {
+		require.Error(t, f.Flush(context.Background()))
+	}
+	s.setDown(false)
+	require.NoError(t, f.Flush(context.Background()))
+
+	require.ElementsMatch(t, []fleet.SatelliteID{7, 9}, s.satellites(), "the beats outlived the outage")
 }
