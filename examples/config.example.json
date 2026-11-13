@@ -26,6 +26,13 @@
       "registries": ["docker.io"],
       "runtimes": []
     },
+    "network": {
+      "quota": {
+        "enabled": false,
+        "limit": "5GB",
+        "window": "day"
+      }
+    },
     "peer_distribution": {
       "enabled": false,
       "local_groups": ["edge-site-a"],

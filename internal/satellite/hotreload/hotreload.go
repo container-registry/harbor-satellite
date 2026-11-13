@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
@@ -43,6 +44,7 @@ func (hrm *HotReloadManager) registerCallbacks() {
 	hrm.registerChangeCallback(config.IntervalsChanged, hrm.handleIntervalsChange)
 	hrm.registerChangeCallback(config.HeartbeatIntervalChanged, hrm.handleHeartbeatIntervalChange)
 	hrm.registerChangeCallback(config.LogLevelChanged, hrm.handleLogLevelChange)
+	hrm.registerChangeCallback(config.NetworkChanged, hrm.handleNetworkChange)
 }
 
 func (hrm *HotReloadManager) notifyChangeCallbacks(change config.ConfigChange) []error {
@@ -129,6 +131,18 @@ func (hrm *HotReloadManager) handleLogLevelChange(change config.ConfigChange) er
 	zerolog.SetGlobalLevel(level)
 	hrm.log.Info().Str("new_level", level.String()).Msg("Log level updated successfully")
 
+	return nil
+}
+
+func (hrm *HotReloadManager) handleNetworkChange(change config.ConfigChange) error {
+	network, ok := change.NewValue.(config.NetworkConfig)
+	if !ok {
+		return fmt.Errorf("invalid network config type: %T", change.NewValue)
+	}
+	if err := budget.Apply(network); err != nil {
+		return fmt.Errorf("apply transfer quota: %w", err)
+	}
+	hrm.log.Info().Msg("Transfer quota updated")
 	return nil
 }
 
