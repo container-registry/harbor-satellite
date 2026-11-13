@@ -70,10 +70,16 @@ func TestDispatcher_StaleDueListDoesNotRedeliver(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, listed, 1)
 
-	delivered, err := dispatcher(subs).RunOnce(ctx)
-	require.NoError(t, err)
-	require.Equal(t, 3, delivered)
-	delivered, err = dispatcher(staleDue{WebhookStore: subs, due: listed}).RunOnce(ctx)
+	// The outbox xmin guard is cluster wide, so transactions of tests running in
+	// other databases can hide the events from a single pass.
+	fresh, total := dispatcher(subs), 0
+	require.Eventually(t, func() bool {
+		n, runErr := fresh.RunOnce(ctx)
+		require.NoError(t, runErr)
+		total += n
+		return total == 3
+	}, 10*time.Second, 50*time.Millisecond)
+	delivered, err := dispatcher(staleDue{WebhookStore: subs, due: listed}).RunOnce(ctx)
 	require.NoError(t, err)
 
 	require.Zero(t, delivered, "the stale worker replayed delivered events")
