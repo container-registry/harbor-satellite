@@ -62,16 +62,19 @@ type viewRow struct {
 }
 
 type statusRow struct {
-	SatelliteID        int32       `json:"satellite_id"`
-	Activity           string      `json:"activity"`
-	LatestStateDigest  *string     `json:"latest_state_digest"`
-	LatestConfigDigest *string     `json:"latest_config_digest"`
-	CPUPercent         json.Number `json:"cpu_percent"`
-	MemoryUsedBytes    int64       `json:"memory_used_bytes"`
-	StorageUsedBytes   int64       `json:"storage_used_bytes"`
-	LastSyncDurationMs int64       `json:"last_sync_duration_ms"`
-	ImageCount         int32       `json:"image_count"`
-	ReportedAt         *time.Time  `json:"reported_at"`
+	SatelliteID            int32       `json:"satellite_id"`
+	Activity               string      `json:"activity"`
+	LatestStateDigest      *string     `json:"latest_state_digest"`
+	LatestConfigDigest     *string     `json:"latest_config_digest"`
+	CPUPercent             json.Number `json:"cpu_percent"`
+	MemoryUsedBytes        int64       `json:"memory_used_bytes"`
+	StorageUsedBytes       int64       `json:"storage_used_bytes"`
+	LastSyncDurationMs     int64       `json:"last_sync_duration_ms"`
+	ImageCount             int32       `json:"image_count"`
+	ReportedAt             *time.Time  `json:"reported_at"`
+	DownloadBytesPerSecond float64     `json:"download_bytes_per_second"`
+	BytesInWindow          int64       `json:"bytes_in_window"`
+	BytesTotal             int64       `json:"bytes_total"`
 }
 
 type inventoryItemRow struct {
@@ -131,6 +134,7 @@ func (s *HeartbeatStore) Flush(ctx context.Context, batch heartbeat.Batch) (err 
 			CPUPercent:      json.Number(strconv.FormatFloat(sm.CPUPercent, 'f', 2, 64)),
 			MemoryUsedBytes: sm.MemoryUsedBytes, StorageUsedBytes: sm.StorageUsedBytes, LastSyncDurationMs: sm.LastSyncDuration,
 			ImageCount: sm.ImageCount, ReportedAt: timeOrNil(sm.ReportedAt),
+			DownloadBytesPerSecond: sm.DownloadBytesPerSecond, BytesInWindow: sm.BytesInWindow, BytesTotal: sm.BytesTotal,
 		})
 	}
 	inventories := make([]inventoryRow, 0, len(batch.Inventories))

@@ -111,17 +111,20 @@ func (s *Server) SyncSatellite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = s.fleet().InsertSatelliteStatus(r.Context(), database.InsertSatelliteStatusParams{
-		SatelliteID:        sat.ID,
-		Activity:           req.Activity,
-		LatestStateDigest:  toNullString(req.LatestStateDigest),
-		LatestConfigDigest: toNullString(req.LatestConfigDigest),
-		CpuPercent:         toNullString(fmt.Sprintf("%.2f", req.CPUPercent)),
-		MemoryUsedBytes:    toNullInt64(req.MemoryUsedBytes),
-		StorageUsedBytes:   toNullInt64(req.StorageUsedBytes),
-		LastSyncDurationMs: toNullInt64(req.LastSyncDurationMs),
-		ImageCount:         toNullInt32(req.ImageCount),
-		ReportedAt:         req.RequestCreatedTime,
-		ArtifactIds:        artifactIDs,
+		SatelliteID:            sat.ID,
+		Activity:               req.Activity,
+		LatestStateDigest:      toNullString(req.LatestStateDigest),
+		LatestConfigDigest:     toNullString(req.LatestConfigDigest),
+		CpuPercent:             toNullString(fmt.Sprintf("%.2f", req.CPUPercent)),
+		MemoryUsedBytes:        toNullInt64(req.MemoryUsedBytes),
+		StorageUsedBytes:       toNullInt64(req.StorageUsedBytes),
+		LastSyncDurationMs:     toNullInt64(req.LastSyncDurationMs),
+		ImageCount:             toNullInt32(req.ImageCount),
+		ReportedAt:             req.RequestCreatedTime,
+		ArtifactIds:            artifactIDs,
+		DownloadBytesPerSecond: toNullFloat64(req.DownloadBytesPerSecond),
+		BytesInWindow:          toNullInt64(req.BytesInWindow),
+		BytesTotal:             toNullInt64(req.BytesTotal),
 	})
 	if err != nil {
 		log.Printf("Failed to insert status: %v", err)

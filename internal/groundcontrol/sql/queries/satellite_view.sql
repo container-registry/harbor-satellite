@@ -44,12 +44,15 @@ WHERE satellite_view.last_seen IS NULL OR EXCLUDED.last_seen >= satellite_view.l
 -- Zero values arrive as JSON null, like InsertSatelliteStatus's toNull*.
 -- artifact_ids is not written: the inventory lives in satellite_view (4.4).
 INSERT INTO satellite_status (satellite_id, activity, latest_state_digest, latest_config_digest, cpu_percent,
-    memory_used_bytes, storage_used_bytes, last_sync_duration_ms, image_count, reported_at)
+    memory_used_bytes, storage_used_bytes, last_sync_duration_ms, image_count, reported_at,
+    download_bytes_per_second, bytes_in_window, bytes_total)
 SELECT r.satellite_id, r.activity, r.latest_state_digest, r.latest_config_digest, r.cpu_percent, r.memory_used_bytes,
-    r.storage_used_bytes, r.last_sync_duration_ms, r.image_count, r.reported_at
+    r.storage_used_bytes, r.last_sync_duration_ms, r.image_count, r.reported_at,
+    r.download_bytes_per_second, r.bytes_in_window, r.bytes_total
 FROM jsonb_to_recordset(sqlc.arg(rows)::JSONB) AS r(satellite_id INT, activity TEXT, latest_state_digest TEXT,
     latest_config_digest TEXT, cpu_percent NUMERIC(5,2), memory_used_bytes BIGINT, storage_used_bytes BIGINT,
-    last_sync_duration_ms BIGINT, image_count INT, reported_at TIMESTAMPTZ)
+    last_sync_duration_ms BIGINT, image_count INT, reported_at TIMESTAMPTZ,
+    download_bytes_per_second DOUBLE PRECISION, bytes_in_window BIGINT, bytes_total BIGINT)
 JOIN satellites s ON s.id = r.satellite_id;
 
 -- name: StoreSatelliteInventories :exec

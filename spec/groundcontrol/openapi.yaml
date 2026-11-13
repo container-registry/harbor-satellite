@@ -2977,6 +2977,16 @@ components:
           format: int32
         Valid:
           type: boolean
+    NullableFloat64Value:
+      type: object
+      title: NullableFloat64Value represents an optional float64 value and its
+        validity state.
+      properties:
+        Float64:
+          type: number
+          format: double
+        Valid:
+          type: boolean
     NullableInt64Value:
       type: object
       title: NullableInt64Value represents an optional int64 value and its validity
@@ -3093,6 +3103,12 @@ components:
           $ref: "#/components/schemas/NullableInt64Value"
         ImageCount:
           $ref: "#/components/schemas/NullableInt32Value"
+        DownloadBytesPerSecond:
+          $ref: "#/components/schemas/NullableFloat64Value"
+        BytesInWindow:
+          $ref: "#/components/schemas/NullableInt64Value"
+        BytesTotal:
+          $ref: "#/components/schemas/NullableInt64Value"
         ReportedAt:
           type: string
           format: date-time
@@ -3627,6 +3643,20 @@ components:
           minimum: 0
           description: The robot generation the satellite uses; acks a delivered rotation (plan item 8.4).
           x-go-name: CredentialsGeneration
+        download_bytes_per_second:
+          type: number
+          format: double
+          x-go-name: DownloadBytesPerSecond
+        bytes_in_window:
+          type: integer
+          format: int64
+          minimum: 0
+          x-go-name: BytesInWindow
+        bytes_total:
+          type: integer
+          format: int64
+          minimum: 0
+          x-go-name: BytesTotal
     SatelliteSyncResponse:
       type: object
       title: SatelliteSyncResponse carries Ground Control events for the satellite.
