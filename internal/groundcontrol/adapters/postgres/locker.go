@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/advisorylock"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/async"
@@ -98,6 +99,10 @@ func (s *lockSession[K]) open(ctx context.Context) error {
 	return nil
 }
 
+// lockPingTimeout bounds the liveness check after a failed lock, which runs
+// while the session mutex blocks every other lock call.
+const lockPingTimeout = 2 * time.Second
+
 func (s *lockSession[K]) tryLock(ctx context.Context, key K, params database.TryAggregateLockParams) (func(), bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -116,7 +121,10 @@ func (s *lockSession[K]) tryLock(ctx context.Context, key K, params database.Try
 	if err != nil {
 		// A cancelled call leaves the session usable; one that no longer
 		// answers a ping has lost its locks.
-		if pingErr := s.conn.PingContext(context.WithoutCancel(ctx)); pingErr != nil {
+		pingCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), lockPingTimeout)
+		pingErr := s.conn.PingContext(pingCtx)
+		cancel()
+		if pingErr != nil {
 			s.drop()
 		}
 		return nil, false, fmt.Errorf("try %s lock: %w", s.name, err)
