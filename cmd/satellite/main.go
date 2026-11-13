@@ -25,6 +25,7 @@ import (
 	proxyhandler "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	proxymw "github.com/container-registry/harbor-satellite/internal/satellite/proxy/middleware"
 	proxyimage "github.com/container-registry/harbor-satellite/internal/satellite/proxy/process/image"
+	"github.com/container-registry/harbor-satellite/internal/satellite/ready"
 	"github.com/container-registry/harbor-satellite/internal/satellite/secure"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
@@ -434,6 +435,8 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	}()
 	pullOptions.Journal = edgeJournal
+	imageGate := ready.New()
+	pullOptions.Gate = imageGate
 	pullHandler, err := proxyimage.NewPullWithOptions(proxyLifecycleCtx, opts.ProxyMode, localStore, remoteStore, pullOptions)
 	if err != nil {
 		return fmt.Errorf("initialize OCI proxy pull handler: %w", err)
@@ -603,6 +606,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	s.SetStores(localStore, remoteStore)
 	s.SetJournal(edgeJournal)
 	s.SetRecorder(recorder)
+	s.SetImageGate(imageGate)
 	replicationSource, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
 		options, resolveErr := store.ResolveSourceRegistry(cm)
 		options.BandwidthBytesPerSec = cm.GetReplicationBandwidth()

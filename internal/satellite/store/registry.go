@@ -47,6 +47,33 @@ func NewRegistryStoreWithOptions(options func() (RegistryOptions, error)) (*Regi
 	return &RegistryStore{options: options}, nil
 }
 
+// Ready resolves a manifest and requires every successor blob to exist in
+// this registry. A digest on artifact must match the tagged root.
+func (r *RegistryStore) Ready(ctx context.Context, artifact Artifact) (ocispec.Descriptor, error) {
+	lookup := artifact
+	if lookup.Tag != "" {
+		lookup.Digest = ""
+	}
+	descriptor, err := r.Pull(ctx, lookup, PullResourceManifest)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	if artifact.Digest != "" && descriptor.Digest.String() != artifact.sourceIdentifier() {
+		return ocispec.Descriptor{}, errdef.ErrNotFound
+	}
+	if !manifestDescriptor(descriptor) {
+		return ocispec.Descriptor{}, errdef.ErrNotFound
+	}
+	repository, err := r.repository(artifact)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	if err := descriptorGraphReady(ctx, repository, descriptor); err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	return descriptor, nil
+}
+
 func (r *RegistryStore) Pull(ctx context.Context, artifact Artifact, resource PullResource) (ocispec.Descriptor, error) {
 	repository, err := r.repository(artifact)
 	if err != nil {

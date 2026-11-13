@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/ready"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
@@ -268,6 +269,277 @@ func addStaticPeer(process *FetchAndReplicateStateProcess) {
 	process.cm.With(config.SetPeerDistributionConfig(cfg))
 }
 
+func TestFailedReplicationKeepsTheAnnouncedImageWatched(t *testing.T) {
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "state.json")
+	writePersistedGroup(t, stateFile, alpineEntity())
+	fresh := Entity{Name: "nginx", Repository: "library", Tag: "alpine", Digest: "sha256:new"}
+	local := &degradedStubStore{pullErr: errors.New("not found"), replicateErr: errors.New("copy failed")}
+	process := NewFetchAndReplicateStateProcess(degradedTestManager(t, false, ""), stateFile, dir, "", nil)
+	process.fetchGroupState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*StateReader, error) {
+		state := &State{Artifacts: []Artifact{{
+			Name:       fresh.Name,
+			Repository: fresh.Repository,
+			Tags:       []string{fresh.Tag},
+			Digest:     fresh.Digest,
+		}}}
+		var reader StateReader = state
+		return &reader, nil
+	}
+	gate := ready.New()
+	process.SetImageGate(gate)
+
+	log := zerolog.Nop()
+	result := process.processGroupState(context.Background(), 0, "source-user", "source-password", true, local, &degradedStubStore{}, &log)
+	require.Error(t, result.Error)
+
+	request := store.Artifact{Name: "library/nginx", Tag: "alpine"}
+	require.True(t, gate.Watching(request))
+	process.announceKnownGroups()
+	require.True(t, gate.Watching(request))
+	require.False(t, gate.Known(store.Artifact{Name: "library/alpine", Tag: "latest"}))
+}
+
+func TestProcessGroupStateCommitsWatchedImage(t *testing.T) {
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "state.json")
+	bootstrap := filepath.Join(dir, config.DefaultDesiredStateFile)
+	entity := alpineEntity()
+	writePersistedGroup(t, bootstrap, entity)
+
+	local := &degradedStubStore{pullErr: errors.New("not found")}
+	_, process := newDegradedProcess(t, dir, stateFile, bootstrap, false, local)
+	process.fetchGroupState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*StateReader, error) {
+		state := &State{Artifacts: []Artifact{{
+			Name:       entity.Name,
+			Repository: entity.Repository,
+			Tags:       []string{entity.Tag},
+			Digest:     entity.Digest,
+		}}}
+		var reader StateReader = state
+		return &reader, nil
+	}
+	gate := ready.New()
+	process.SetImageGate(gate)
+
+	log := zerolog.Nop()
+	result := process.processGroupState(context.Background(), 0, "source-user", "source-password", true, local, &degradedStubStore{}, &log)
+	require.Nil(t, result.Error)
+
+	request := store.Artifact{Name: "library/alpine", Tag: "latest"}
+	require.False(t, gate.Watching(request))
+	committed, err := gate.Wait(context.Background(), request)
+	require.NoError(t, err)
+	require.True(t, committed)
+	digest, ok := gate.ExpectedDigest(request)
+	require.True(t, ok)
+	require.Equal(t, entity.Digest, digest)
+}
+
+func TestReplicateEachContinuesAfterAnImageSpecificFailure(t *testing.T) {
+	dir := t.TempDir()
+	alpine := alpineEntity()
+	nginx := Entity{Name: "nginx", Repository: "library", Tag: "latest", Digest: "sha256:bbb"}
+	local := &degradedStubStore{failReference: alpine.Reference()}
+	_, process := newDegradedProcess(t, dir, filepath.Join(dir, "state.json"), "", false, local)
+	gate := ready.New()
+	process.SetImageGate(gate)
+	gate.SetGroup("group", []store.Artifact{alpine, nginx})
+	gate.Publish()
+
+	err := process.replicateEach(context.Background(), "group", local, &degradedStubStore{}, []Entity{alpine, nginx})
+
+	require.ErrorContains(t, err, "copy failed")
+	require.Equal(t, 2, local.replicateCalls)
+	require.True(t, gate.Watching(store.Artifact{Name: "library/alpine", Tag: "latest"}))
+	nginxRequest := store.Artifact{Name: "library/nginx", Tag: "latest"}
+	require.False(t, gate.Watching(nginxRequest))
+	committed, waitErr := gate.Wait(context.Background(), nginxRequest)
+	require.NoError(t, waitErr)
+	require.True(t, committed)
+}
+
+func TestReplicateEachStopsWhenReplicationIsCanceled(t *testing.T) {
+	dir := t.TempDir()
+	alpine := alpineEntity()
+	nginx := Entity{Name: "nginx", Repository: "library", Tag: "latest", Digest: "sha256:bbb"}
+	ctx, cancel := context.WithCancel(context.Background())
+	local := &degradedStubStore{
+		onReplicate:  cancel,
+		replicateErr: errors.New("copy failed"),
+	}
+	_, process := newDegradedProcess(t, dir, filepath.Join(dir, "state.json"), "", false, local)
+	gate := ready.New()
+	process.SetImageGate(gate)
+	gate.SetGroup("group", []store.Artifact{alpine, nginx})
+	gate.Publish()
+
+	err := process.replicateEach(ctx, "group", local, &degradedStubStore{}, []Entity{alpine, nginx})
+
+	require.ErrorContains(t, err, "copy failed")
+	require.Equal(t, 1, local.replicateCalls)
+	require.True(t, gate.Watching(store.Artifact{Name: "library/alpine", Tag: "latest"}))
+	require.True(t, gate.Watching(store.Artifact{Name: "library/nginx", Tag: "latest"}))
+}
+
+func TestRetryKeepsACopyThatAlreadyMatchesTheDesiredDigest(t *testing.T) {
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "state.json")
+	oldAlpine := alpineEntity()
+	newAlpine := oldAlpine
+	newAlpine.Digest = "sha256:new"
+	oldNginx := Entity{Name: "nginx", Repository: "library", Tag: "latest", Digest: "sha256:oldb"}
+	newNginx := oldNginx
+	newNginx.Digest = "sha256:newb"
+
+	local := &degradedStubStore{pullErr: errors.New("not found"), failAfter: 1}
+	_, process := newDegradedProcess(t, dir, stateFile, "", false, local)
+	process.stateMap = []StateMap{{
+		url:      "http://source.example.com/group-state",
+		Entities: []Entity{oldAlpine, oldNginx},
+	}}
+	gate := ready.New()
+	process.SetImageGate(gate)
+	process.fetchGroupState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*StateReader, error) {
+		state := &State{Artifacts: []Artifact{
+			{Name: newAlpine.Name, Repository: newAlpine.Repository, Tags: []string{newAlpine.Tag}, Digest: newAlpine.Digest},
+			{Name: newNginx.Name, Repository: newNginx.Repository, Tags: []string{newNginx.Tag}, Digest: newNginx.Digest},
+		}}
+		var reader StateReader = state
+		return &reader, nil
+	}
+
+	log := zerolog.Nop()
+	first := process.processGroupState(context.Background(), 0, "source-user", "source-password", true, local, &degradedStubStore{}, &log)
+	require.Error(t, first.Error)
+	require.Equal(t, []Entity{oldAlpine, oldNginx}, process.stateMap[0].Entities)
+
+	alpine := store.Artifact{Name: "library/alpine", Tag: "latest"}
+	nginx := store.Artifact{Name: "library/nginx", Tag: "latest"}
+	require.False(t, gate.Watching(alpine))
+	require.True(t, gate.Watching(nginx))
+
+	second := process.processGroupState(context.Background(), 0, "source-user", "source-password", true, local, &degradedStubStore{}, &log)
+	require.Error(t, second.Error)
+	require.Empty(t, local.deletedBatches)
+	kept, pullErr := local.Pull(context.Background(), newAlpine, store.PullResourceManifest)
+	require.NoError(t, pullErr)
+	require.Equal(t, newAlpine.Digest, kept.Digest.String())
+	require.False(t, gate.Watching(alpine))
+	committed, err := gate.Wait(context.Background(), alpine)
+	require.NoError(t, err)
+	require.True(t, committed)
+	require.True(t, gate.Watching(nginx))
+}
+
+func TestFreshStartPublishesAfterTheGroupInventory(t *testing.T) {
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "state.json")
+	entity := alpineEntity()
+	local := &degradedStubStore{pullErr: errors.New("not found")}
+	logs, process := newDegradedProcess(t, dir, stateFile, "", false, local)
+	gate := ready.New()
+	process.SetImageGate(gate)
+
+	groupURL := "http://source.example.com/group-state"
+	process.fetchRootState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*SatelliteState, error) {
+		return &SatelliteState{States: []string{groupURL}}, nil
+	}
+	inventoryRelease := make(chan struct{})
+	copyRelease := make(chan struct{})
+	var releaseInventoryOnce sync.Once
+	var releaseCopyOnce sync.Once
+	releaseInventory := func() { releaseInventoryOnce.Do(func() { close(inventoryRelease) }) }
+	releaseCopy := func() { releaseCopyOnce.Do(func() { close(copyRelease) }) }
+	t.Cleanup(func() {
+		releaseInventory()
+		releaseCopy()
+	})
+
+	inventoryStarted := make(chan struct{})
+	process.fetchGroupState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*StateReader, error) {
+		close(inventoryStarted)
+		<-inventoryRelease
+		state := &State{Artifacts: []Artifact{{
+			Name:       entity.Name,
+			Repository: entity.Repository,
+			Tags:       []string{entity.Tag},
+			Digest:     entity.Digest,
+		}}}
+		var reader StateReader = state
+		return &reader, nil
+	}
+	copying := make(chan struct{})
+	local.onReplicate = func() {
+		close(copying)
+		<-copyRelease
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- process.Execute(logs.ctx)
+	}()
+
+	select {
+	case <-inventoryStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("group inventory fetch did not start")
+	}
+	unpublished, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	require.Error(t, gate.WaitReady(unpublished))
+
+	releaseInventory()
+	select {
+	case <-copying:
+	case <-time.After(2 * time.Second):
+		t.Fatal("image copy did not start")
+	}
+	require.NoError(t, gate.WaitReady(context.Background()))
+	require.True(t, gate.Watching(store.Artifact{Name: "library/alpine", Tag: "latest"}))
+
+	releaseCopy()
+	select {
+	case err := <-done:
+		require.ErrorContains(t, err, "config state fetcher")
+	case <-time.After(2 * time.Second):
+		t.Fatal("state replication did not finish")
+	}
+}
+
+func TestEmptyRootStatePublishesImmediately(t *testing.T) {
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "state.json")
+	logs, process := newDegradedProcess(t, dir, stateFile, "", false, &degradedStubStore{})
+	gate := ready.New()
+	process.SetImageGate(gate)
+	process.fetchRootState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*SatelliteState, error) {
+		return &SatelliteState{}, nil
+	}
+
+	require.ErrorContains(t, process.Execute(logs.ctx), "config state fetcher")
+	require.NoError(t, gate.WaitReady(context.Background()))
+}
+
+func TestFailedGroupInventoryLeavesTheCatalogUnpublished(t *testing.T) {
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "state.json")
+	logs, process := newDegradedProcess(t, dir, stateFile, "", false, &degradedStubStore{})
+	gate := ready.New()
+	process.SetImageGate(gate)
+	process.fetchRootState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*SatelliteState, error) {
+		return &SatelliteState{States: []string{"http://source.example.com/group-state"}}, nil
+	}
+	process.fetchGroupState = func(context.Context, string, string, string, bool, *zerolog.Logger) (*StateReader, error) {
+		return nil, errors.New("group state unavailable")
+	}
+
+	require.Error(t, process.Execute(logs.ctx))
+	unpublished, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	require.Error(t, gate.WaitReady(unpublished))
+}
+
 func TestBootstrapLiveFetchReplicatesUnappliedArtifacts(t *testing.T) {
 	dir := t.TempDir()
 	stateFile := filepath.Join(dir, "state.json")
@@ -456,12 +728,20 @@ type degradedStubStore struct {
 	harborTimeout  time.Duration
 	replicateErr   error
 	lastLookup     store.Artifact
+	onReplicate    func()
+	digestByKey    map[string]string
+	deletedBatches [][]store.Artifact
+	failAfter      int
+	failReference  string
 }
 
 func (s *degradedStubStore) Pull(_ context.Context, artifact store.Artifact, _ store.PullResource) (ocispec.Descriptor, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.lastLookup = artifact
+	if digestValue, ok := s.digestByKey[entityKey(artifact)]; ok {
+		return ocispec.Descriptor{Digest: digest.Digest(digestValue)}, nil
+	}
 	if s.present[entityKey(artifact)] {
 		reported := artifact.Digest
 		if s.localDigest != "" {
@@ -479,18 +759,41 @@ func (s *degradedStubStore) Fetch(context.Context, store.Artifact, ocispec.Descr
 	return nil, errors.New("unexpected fetch")
 }
 
-func (s *degradedStubStore) Delete(_ context.Context, _ []store.Artifact) error {
+func (s *degradedStubStore) Delete(_ context.Context, artifacts []store.Artifact) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.deleteCalls++
+	s.deletedBatches = append(s.deletedBatches, append([]store.Artifact(nil), artifacts...))
 	return nil
 }
 
 func (s *degradedStubStore) Replicate(ctx context.Context, _ store.Store, artifacts []store.Artifact) error {
+	if s.onReplicate != nil {
+		s.onReplicate()
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.replicateCalls++
 	s.lastReplicated = append([]store.Artifact(nil), artifacts...)
 	s.harborTimeout = store.HarborTimeoutFrom(ctx)
-	return s.replicateErr
+	if s.failAfter > 0 && s.replicateCalls > s.failAfter {
+		return errors.New("copy failed")
+	}
+	for _, artifact := range artifacts {
+		if s.failReference != "" && artifact.Reference() == s.failReference {
+			return errors.New("copy failed")
+		}
+	}
+	if err := s.replicateErr; err != nil {
+		return err
+	}
+	if s.digestByKey == nil {
+		s.digestByKey = map[string]string{}
+	}
+	for _, artifact := range artifacts {
+		if artifact.Digest != "" {
+			s.digestByKey[entityKey(artifact)] = artifact.Digest
+		}
+	}
+	return nil
 }
