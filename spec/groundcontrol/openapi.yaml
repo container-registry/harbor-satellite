@@ -1184,6 +1184,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
+        "404":
+          description: Satellite does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppError"
         "500":
           description: Satellite could not be loaded.
           content:
@@ -1212,14 +1218,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EmptyResponse"
-        "400":
-          description: Satellite does not exist or cannot be deleted.
+        "401":
+          description: Authorization token is missing or invalid.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppError"
-        "401":
-          description: Authorization token is missing or invalid.
+        "404":
+          description: Satellite does not exist.
           content:
             application/json:
               schema:

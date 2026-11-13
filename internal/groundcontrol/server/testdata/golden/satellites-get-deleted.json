@@ -1,8 +1,8 @@
 {
   "body": {
-    "code": 500,
-    "message": "Error: Failed to Get Satellite"
+    "code": 404,
+    "message": "Error: Satellite Not Found"
   },
   "request": "GET /api/satellites/edge-01",
-  "status": 500
+  "status": 404
 }

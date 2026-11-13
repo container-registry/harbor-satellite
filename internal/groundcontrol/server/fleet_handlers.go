@@ -475,6 +475,11 @@ func (s *Server) ListSatellites(w http.ResponseWriter, r *http.Request) {
 func (s *Server) GetSatellite(w http.ResponseWriter, r *http.Request, satellite string) {
 	sat, err := s.svc().Satellites.Get(r.Context(), satellite)
 	if err != nil {
+		if errors.Is(err, fleet.ErrNotFound) {
+			HandleAppError(w, &AppError{Message: "Error: Satellite Not Found", Code: http.StatusNotFound})
+			return
+		}
+		log.Printf("Error getting satellite %s: %v", satellite, err)
 		HandleAppError(w, &AppError{Message: "Error: Failed to Get Satellite", Code: http.StatusInternalServerError})
 		return
 	}
@@ -485,7 +490,7 @@ func (s *Server) DeleteSatellite(w http.ResponseWriter, r *http.Request, satelli
 	if err := s.svc().Satellites.Delete(r.Context(), satellite); err != nil {
 		log.Printf("Error deleting satellite %s: %v", satellite, err)
 		if errors.Is(err, fleet.ErrNotFound) {
-			HandleAppError(w, &AppError{Message: "Error: Satellite Not Found", Code: http.StatusBadRequest})
+			HandleAppError(w, &AppError{Message: "Error: Satellite Not Found", Code: http.StatusNotFound})
 			return
 		}
 		HandleAppError(w, &AppError{Message: "Error: Failed to Delete Satellite", Code: http.StatusInternalServerError})

@@ -6853,10 +6853,10 @@ type DeleteSatelliteHTTPResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *EmptyResponse
-	// JSON400 the response for an HTTP 400 `application/json` response
-	JSON400 *AppError
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -6866,14 +6866,14 @@ func (r DeleteSatelliteHTTPResponse) GetJSON200() *EmptyResponse {
 	return r.JSON200
 }
 
-// GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r DeleteSatelliteHTTPResponse) GetJSON400() *AppError {
-	return r.JSON400
-}
-
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r DeleteSatelliteHTTPResponse) GetJSON401() *AppError {
 	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteSatelliteHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -6917,6 +6917,8 @@ type GetSatelliteHTTPResponse struct {
 	JSON200 *SatelliteResponse
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *AppError
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *AppError
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *AppError
 }
@@ -6929,6 +6931,11 @@ func (r GetSatelliteHTTPResponse) GetJSON200() *SatelliteResponse {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r GetSatelliteHTTPResponse) GetJSON401() *AppError {
 	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetSatelliteHTTPResponse) GetJSON404() *AppError {
+	return r.JSON404
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -11059,19 +11066,19 @@ func ParseDeleteSatelliteHTTPResponse(rsp *http.Response) (*DeleteSatelliteHTTPR
 		}
 		response.JSON200 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest AppError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON400 = &dest
-
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest AppError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError
@@ -11112,6 +11119,13 @@ func ParseGetSatelliteHTTPResponse(rsp *http.Response) (*GetSatelliteHTTPRespons
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest AppError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest AppError

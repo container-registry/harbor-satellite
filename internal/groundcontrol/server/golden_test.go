@@ -263,6 +263,7 @@ func TestGoldenAPI(t *testing.T) {
 	g.step("groups-delete", http.MethodDelete, "/api/groups/edge-group-2", nil, admin)
 	g.step("satellites-delete", http.MethodDelete, "/api/satellites/edge-01", nil, admin)
 	g.step("satellites-get-deleted", http.MethodGet, "/api/satellites/edge-01", nil, admin)
+	g.step("satellites-delete-missing", http.MethodDelete, "/api/satellites/edge-01", nil, admin)
 	g.step("users-delete", http.MethodDelete, "/api/users/operator", nil, admin)
 	g.step("logout", http.MethodPost, "/api/logout", nil, admin)
 	g.step("api-after-logout", http.MethodGet, "/api/configs", nil, admin)
