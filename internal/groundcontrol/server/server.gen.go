@@ -181,6 +181,9 @@ type AppConfig struct {
 	LogLevel          string              `json:"log_level,omitempty,omitzero"`
 	Metrics           MetricsConfig       `json:"metrics,omitempty,omitzero"`
 
+	// Network Disabled blocks leave replication unchanged. speed.limit is a rate such as 10Mbps. quota.limit is a size such as 5GB. quota.window is sync, day, or week.
+	Network NetworkConfig `json:"network,omitempty,omitzero"`
+
 	// PeerDistribution Opt-in peer copy block. static_peers and gc_peers share one descriptor shape. An omitted block leaves replication unchanged.
 	PeerDistribution PeerDistributionConfig `json:"peer_distribution,omitempty,omitzero"`
 
@@ -442,6 +445,15 @@ type MetricsConfig struct {
 	CollectMemory  bool `json:"collect_memory,omitempty,omitzero"`
 	CollectStorage bool `json:"collect_storage,omitempty,omitzero"`
 }
+
+// NetworkConfig Disabled blocks leave replication unchanged. speed.limit is a rate such as 10Mbps. quota.limit is a size such as 5GB. quota.window is sync, day, or week.
+type NetworkConfig = config.NetworkConfig
+
+// NetworkQuotaConfig defines model for NetworkQuotaConfig.
+type NetworkQuotaConfig = config.NetworkQuotaConfig
+
+// NetworkSpeedConfig defines model for NetworkSpeedConfig.
+type NetworkSpeedConfig = config.NetworkSpeedConfig
 
 // NullableInt32Value defines model for NullableInt32Value.
 type NullableInt32Value struct {

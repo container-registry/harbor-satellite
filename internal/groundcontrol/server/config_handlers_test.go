@@ -60,6 +60,32 @@ func TestConfigValueKeepsPeerDistribution(t *testing.T) {
 	require.Contains(t, string(encoded), `"peer_distribution"`)
 }
 
+func TestConfigValueKeepsNetwork(t *testing.T) {
+	const withNetwork = `{
+		"app_config": {
+			"network": {
+				"speed": {"enabled": false, "limit": "10Mbps"},
+				"quota": {"enabled": true, "limit": "5GB", "window": "day"}
+			}
+		}
+	}`
+
+	var created ConfigValue
+	require.NoError(t, json.Unmarshal([]byte(withNetwork), &created))
+	require.False(t, created.AppConfig.Network.Speed.Enabled)
+	require.Equal(t, "10Mbps", created.AppConfig.Network.Speed.Limit)
+	require.True(t, created.AppConfig.Network.Quota.Enabled)
+	require.Equal(t, "5GB", created.AppConfig.Network.Quota.Limit)
+	require.Equal(t, "day", created.AppConfig.Network.Quota.Window)
+
+	stored, err := json.Marshal(created)
+	require.NoError(t, err)
+	require.Contains(t, string(stored), `"10Mbps"`)
+	require.Contains(t, string(stored), `"5GB"`)
+	require.Contains(t, string(stored), `"day"`)
+	require.Contains(t, string(stored), `"enabled":true`)
+}
+
 func TestConfigMergePatchKeepsPeerDistribution(t *testing.T) {
 	const patchBody = `{"app_config":{"peer_distribution":{"enabled":true,"gc_peers":[{"id":"satellite-b","url":"https://satellite-b.example:5000"}]}}}`
 
