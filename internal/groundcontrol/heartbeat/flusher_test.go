@@ -57,14 +57,61 @@ func TestFlusher_PoisonBeatDoesNotBlockOthers(t *testing.T) {
 	s := &store{poison: map[fleet.SatelliteID]bool{9: true}}
 	f := newFlusher(t, b, s, cfg)
 
-	for round := range cfg.MaxFlushFailures + 1 {
+	for round := range cfg.MaxFlushFailures {
 		b.Record(beatAt(7, time.Duration(round)*time.Second))
 		b.Record(beatAt(9, time.Duration(round)*time.Second))
 		_ = f.Flush(context.Background())
 	}
 
 	flushed := s.satellites()
-	require.Len(t, flushed, cfg.MaxFlushFailures+1, "satellite 7 flushes every round")
+	require.Len(t, flushed, cfg.MaxFlushFailures, "satellite 7 flushes every round")
 	require.NotContains(t, flushed, fleet.SatelliteID(9))
 	require.Empty(t, b.Drain().Latest, "the poison satellite is dropped after MaxFlushFailures")
+}
+
+// cancelStore fails the whole batch, then cancels the flush while it is
+// retried satellite by satellite.
+type cancelStore struct {
+	cancel context.CancelFunc
+	calls  int
+}
+
+func (s *cancelStore) Flush(ctx context.Context, _ heartbeat.Batch) error {
+	s.calls++
+	if s.calls == 2 {
+		s.cancel()
+		return ctx.Err()
+	}
+	return errBoom
+}
+
+func TestFlusher_CancelledRetryKeepsTheBeats(t *testing.T) {
+	c := cfg
+	c.MaxFlushFailures = 1
+	b := newBuffer(t, c)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	f, err := heartbeat.NewFlusher(b, &cancelStore{cancel: cancel}, c)
+	require.NoError(t, err)
+
+	b.Record(beatAt(7, 0))
+	require.Error(t, f.Flush(ctx))
+
+	require.Len(t, b.Drain().Latest, 1, "a cancelled flush is requeued, not counted as a failure")
+}
+
+func TestFlusher_DropResetsTheFailureCount(t *testing.T) {
+	b := newBuffer(t, cfg)
+	s := &store{poison: map[fleet.SatelliteID]bool{9: true}}
+	f := newFlusher(t, b, s, cfg)
+
+	for round := range cfg.MaxFlushFailures {
+		b.Record(beatAt(9, time.Duration(round)*time.Second))
+		_ = f.Flush(context.Background())
+	}
+	require.Empty(t, b.Drain().Latest, "dropped after MaxFlushFailures")
+
+	b.Record(beatAt(9, time.Minute))
+	_ = f.Flush(context.Background())
+	require.Len(t, b.Drain().Latest, 1, "a later beat gets its own MaxFlushFailures retries")
 }

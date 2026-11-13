@@ -84,8 +84,16 @@ func (f *Flusher) Flush(ctx context.Context) error {
 			delete(f.failures, part.satellite)
 			continue
 		}
+		// A flush the caller stopped says nothing about the batch, so it
+		// does not count towards dropping it.
+		if ctx.Err() != nil {
+			f.buffer.Requeue(part.batch)
+			errs = append(errs, fmt.Errorf("satellite %d: %w", part.satellite, perr))
+			continue
+		}
 		f.failures[part.satellite]++
 		if n := f.failures[part.satellite]; n >= f.cfg.MaxFlushFailures {
+			delete(f.failures, part.satellite)
 			log.Printf("heartbeat flusher: dropping %d samples of satellite %d after %d failed flushes: %v", len(part.batch.Samples), part.satellite, n, perr)
 		} else {
 			f.buffer.Requeue(part.batch)

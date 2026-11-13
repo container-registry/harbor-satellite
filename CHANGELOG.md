@@ -87,6 +87,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 - A SPIRE entry create that SPIRE refused was reported as an empty response, and a refused entry delete as success, which left a deleted satellite's entry in SPIRE.
 - Ground Control without `HARBOR_URL` failed with an error that did not name the variable.
 - With `AUDIT_TRUST_FORWARDED_HEADERS=true`, the audit source IP, the per-IP failure limit and the anonymous limiter took the leftmost `X-Forwarded-For` entry, which the client writes. They now take the entry `AUDIT_TRUSTED_PROXY_HOPS` (default `1`) from the right, the one the trusted proxy appended.
+- The heartbeat flusher counted a flush stopped by shutdown as a failed one and could drop the buffered beats, and after dropping a satellite's beats it dropped that satellite's next batch at its first failure.
 
 ### Known Limitations
 
