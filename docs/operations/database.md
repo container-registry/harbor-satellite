@@ -71,4 +71,4 @@ Then set `DB_URL_API`, `DB_URL_FLEET` and `DB_URL_ASYNC` to URLs with those role
 curl -s -H "Authorization: Bearer $TOKEN" "$GC/api/ops/outbox?state=failed"
 ```
 
-Each entry names the event kind, the aggregate, the attempts and the last error. Events that failed because Harbor was unreachable are retried without limit and re-armed when Harbor is back. Any other failure stops after `OUTBOX_MAX_ATTEMPTS`; fix the cause, then change the aggregate again (for example sync the group) to queue a new event.
+Each entry names the event kind, the aggregate, the attempts and the last error. Events that failed because Harbor was unreachable give their attempt back and are retried without limit. Any other failure stops after `OUTBOX_MAX_ATTEMPTS`. Stopped events do not stay stopped: whenever a publisher sees Harbor reachable after it saw it unreachable, and on the first pass after each start of `worker` or `serve --worker=embedded`, it re-arms every event that ran out of attempts, whatever the cause, so a permanent failure is retried and logs the same error again. Fix the cause; the next re-arm or a new change of the aggregate (for example syncing the group) publishes it.
