@@ -322,7 +322,7 @@ CRI configs make the runtime pull through the satellite with the upstream as fal
 
 ### Database Migrations
 
-goose migrations live in `internal/groundcontrol/sql/schema/` (001 to 024, no 014; 024 partitions `satellite_status` by day) and run automatically on GC startup, after a check that refuses PostgreSQL below 19 and `wal_level=minimal` (ADR-0020, `migrator/server.go`). The Dockerfile copies them to `/migrations`.
+goose migrations live in `internal/groundcontrol/sql/schema/` (001 to 025, no 014; 024 partitions `satellite_status` by day, 025 builds the tag-tracking GIN and pending-outbox indexes `CONCURRENTLY` outside a transaction) and run automatically on GC startup, after a check that refuses PostgreSQL below 19 and `wal_level=minimal` (ADR-0020, `migrator/server.go`). The Dockerfile copies them to `/migrations`.
 
 ### Hot Reload
 

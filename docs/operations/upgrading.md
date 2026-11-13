@@ -20,6 +20,7 @@ Ground Control migrations are forward only in production. To go back to an older
 - **Duplicate robot rows.** Migration 023 stops when a satellite has more than one row in `robot_accounts`. Check before upgrading, see [below](#migration-023-constraints-and-time-zones).
 - **Time zone.** Migration 023 converts every timestamp column to `TIMESTAMPTZ`, reading stored values as UTC. Check that the database `TimeZone` and the Ground Control process both ran in UTC.
 - **Status table size.** Migration 024 copies `satellite_status` into a partitioned table in one transaction. On a large table this takes time and disk space; delete old rows first if you do not need them.
+- **Indexes.** Migration 025 builds two indexes with `CREATE INDEX CONCURRENTLY`, outside a transaction, so writes continue while they build. Interrupted, it leaves an invalid index that the next start drops and builds again.
 - **Worker.** Changes to groups, configs and satellites now reach Harbor through the async worker. `serve` runs it by default. If you run `serve --worker=off`, also run `groundcontrol worker`.
 - **Rate limits.** `RATE_LIMIT_SPLIT` now defaults to `true`: satellites are limited per satellite (`RATE_LIMIT_FLEET`, 3/1s), ZTR and OIDC per client IP (`RATE_LIMIT_ANONYMOUS`, 10/1m), and `/login` only by the failure limit and lockout. Behind a reverse proxy also set `AUDIT_TRUST_FORWARDED_HEADERS=true`, or every ZTR shares the proxy address. `RATE_LIMIT_SPLIT=false` restores the shared limiter of 10 requests per minute per IP.
 
@@ -89,7 +90,7 @@ Upgrade PostgreSQL to 19 while the old Ground Control is stopped, then start Gro
 1. With the old release still running, dump the database: `kubectl exec <release>-ground-control-postgresql-0 -- pg_dump -U <user> -Fc <database> > gc.dump` (compose: `docker compose exec -T postgres pg_dump -U postgres -Fc groundcontrol > gc.dump`).
 2. Scale Ground Control to zero, upgrade the chart (or the compose file), and wait until the new PostgreSQL is ready. Keep Ground Control stopped.
 3. Restore: `kubectl exec -i <release>-ground-control-postgresql-0 -- pg_restore -U <user> -d <database> --clean --if-exists < gc.dump`.
-4. Start Ground Control. It runs migrations 016 to 024 on a database restored from 0.0.6.
+4. Start Ground Control. It runs migrations 016 to 025 on a database restored from 0.0.6.
 
 The old files stay on the volume (`/var/lib/postgresql/pgdata` for the chart) until you delete them.
 

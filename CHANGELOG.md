@@ -62,6 +62,7 @@ All notable changes to Harbor Satellite are recorded here. Versions follow [Sema
 
 ### Fixed
 
+- Ground Control: a registry push scanned every group's artifacts and `GET /api/ops/outbox` sorted every pending event; migration 025 indexes both, built `CONCURRENTLY`.
 - Satellite heartbeats were sent to a path Ground Control did not serve; credential refresh had no route.
 - SPIFFE satellites failed heartbeat authentication.
 - Registry secrets and response bodies were logged.
