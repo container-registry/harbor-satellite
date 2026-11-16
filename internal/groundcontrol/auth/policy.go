@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 )
@@ -56,11 +57,11 @@ func LoadPolicyFromConfig(cfg env.PasswordPolicy) PasswordPolicy {
 func (p PasswordPolicy) Validate(password string) error {
 	var violations []string
 
-	if len(password) < p.MinLength {
+	if utf8.RuneCountInString(password) < p.MinLength {
 		violations = append(violations, fmt.Sprintf("at least %d characters", p.MinLength))
 	}
 
-	if len(password) > p.MaxLength {
+	if utf8.RuneCountInString(password) > p.MaxLength {
 		violations = append(violations, fmt.Sprintf("at most %d characters", p.MaxLength))
 	}
 
