@@ -1159,3 +1159,55 @@ func omittedRemoteConfig(t *testing.T) Config {
 
 func intPtr(i int) *int    { return &i }
 func boolPtr(b bool) *bool { return &b }
+
+func TestValidateAndEnforceSignaturePolicy(t *testing.T) {
+	tests := []struct {
+		name       string
+		policy     SignaturePolicyConfig
+		wantAction string
+		wantErr    string
+	}{
+		{name: "omitted", policy: SignaturePolicyConfig{}},
+		{name: "key defaults to block", policy: SignaturePolicyConfig{Enabled: true, PublicKeys: []string{"/etc/cosign.pub"}}, wantAction: SignatureActionBlock},
+		{name: "warn", policy: SignaturePolicyConfig{Enabled: true, Action: "warn", PublicKeys: []string{"/etc/cosign.pub"}}, wantAction: SignatureActionWarn},
+		{
+			name: "keyless with regexps",
+			policy: SignaturePolicyConfig{Enabled: true, Keyless: KeylessSignatureConfig{
+				Enabled: true, IssuerRegexp: `^https://token\.actions\.githubusercontent\.com$`, SubjectRegexp: `^https://github\.com/org/`,
+			}},
+			wantAction: SignatureActionBlock,
+		},
+		{name: "unknown action", policy: SignaturePolicyConfig{Enabled: true, Action: "deny", PublicKeys: []string{"k"}}, wantErr: "action"},
+		{name: "nothing to verify with", policy: SignaturePolicyConfig{Enabled: true}, wantErr: "needs public_keys or keyless.enabled"},
+		{name: "blank key", policy: SignaturePolicyConfig{Enabled: true, PublicKeys: []string{" "}}, wantErr: "public_keys[0] is empty"},
+		{name: "keyless without issuer", policy: SignaturePolicyConfig{Enabled: true, Keyless: KeylessSignatureConfig{Enabled: true, Subject: "a@b"}}, wantErr: "issuer"},
+		{name: "keyless without subject", policy: SignaturePolicyConfig{Enabled: true, Keyless: KeylessSignatureConfig{Enabled: true, Issuer: "https://x"}}, wantErr: "subject"},
+		{name: "bad regexp", policy: SignaturePolicyConfig{Enabled: true, Keyless: KeylessSignatureConfig{Enabled: true, Issuer: "https://x", SubjectRegexp: "("}}, wantErr: "subject_regexp"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := tt.policy
+			err := validateAndEnforceSignaturePolicy(&policy)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantAction, policy.Action)
+		})
+	}
+}
+
+func TestSignaturePolicyRoundTripsThroughJSON(t *testing.T) {
+	raw := []byte(`{"app_config":{"signature_policy":{"enabled":true,"action":"warn","public_keys":["/k.pub"],"keyless":{"enabled":true,"issuer":"https://i","subject":"s"}}}}`)
+	var cfg Config
+	require.NoError(t, json.Unmarshal(raw, &cfg))
+	require.Equal(t, SignaturePolicyConfig{
+		Enabled: true, Action: "warn", PublicKeys: []string{"/k.pub"},
+		Keyless: KeylessSignatureConfig{Enabled: true, Issuer: "https://i", Subject: "s"},
+	}, cfg.AppConfig.SignaturePolicy)
+
+	empty, err := json.Marshal(Config{})
+	require.NoError(t, err)
+	require.NotContains(t, string(empty), "signature_policy")
+}

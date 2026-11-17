@@ -42,6 +42,16 @@
       "retries": 1,
       "concurrency": 4
     },
+    "signature_policy": {
+      "enabled": false,
+      "action": "block",
+      "public_keys": ["/etc/satellite/cosign.pub"],
+      "keyless": {
+        "enabled": false,
+        "issuer": "https://token.actions.githubusercontent.com",
+        "subject_regexp": "^https://github.com/example-org/"
+      }
+    },
     "audit": {
       "enabled": false,
       "syslog": {

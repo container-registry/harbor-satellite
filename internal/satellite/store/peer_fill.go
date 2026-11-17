@@ -10,6 +10,7 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 )
@@ -67,6 +68,10 @@ func (s *PeerFillingStore) Pull(ctx context.Context, artifact Artifact, resource
 
 func (s *PeerFillingStore) Fetch(ctx context.Context, artifact Artifact, descriptor ocispec.Descriptor, resource PullResource, headers http.Header) (*http.Response, error) {
 	return s.local.Fetch(ctx, artifact, descriptor, resource, headers)
+}
+
+func (s *PeerFillingStore) Referrers(ctx context.Context, artifact Artifact, subject digest.Digest, artifactType string) ([]ocispec.Descriptor, error) {
+	return s.local.Referrers(ctx, artifact, subject, artifactType)
 }
 
 func (s *PeerFillingStore) Delete(ctx context.Context, artifacts []Artifact) error {

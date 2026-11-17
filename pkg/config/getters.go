@@ -217,6 +217,17 @@ func (cm *ConfigManager) GetPeerDistributionConfig() PeerDistributionConfig {
 	return cm.config.AppConfig.PeerDistribution
 }
 
+// GetSignaturePolicy returns the signature policy. The slice is copied so the
+// caller cannot change the stored config.
+func (cm *ConfigManager) GetSignaturePolicy() SignaturePolicyConfig {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	policy := cm.config.AppConfig.SignaturePolicy
+	policy.PublicKeys = append([]string(nil), policy.PublicKeys...)
+	return policy
+}
+
 func (cm *ConfigManager) GetDirectDeliveryConfig() DirectDeliveryConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
