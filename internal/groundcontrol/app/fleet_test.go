@@ -1,0 +1,107 @@
+package app_test
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/app"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbtest"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/harbortest"
+	"github.com/container-registry/harbor-satellite/internal/shared/env"
+	"github.com/stretchr/testify/require"
+)
+
+// The composed services write to the database they were given and leave
+// Harbor to the async plane (plan item 2.5); the probe runs on the Harbor
+// they were given, not on the process-wide env.GC one.
+func TestNewFleet_ServicesUseTheInjectedDatabaseAndHarbor(t *testing.T) {
+	db := dbtest.New(t)
+	stub := harbortest.New(t)
+
+	f, err := app.NewFleet(app.FleetDeps{
+		Pools:  &dbpool.Pools{API: db.DB, Fleet: db.DB, Async: db.DB},
+		Harbor: env.Harbor{URL: stub.URL(), Username: harbortest.Username, Password: harbortest.Password, RobotDurationDays: "30", ProbeInterval: 10 * time.Millisecond},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, f.Probe)
+	require.NotEmpty(t, f.ServerOptions(&dbpool.Pools{API: db.DB, Fleet: db.DB, Async: db.DB}))
+
+	_, err = f.Services.Configs.Create(context.Background(), fleet.CreateConfigCmd{Name: "edge-config", Document: json.RawMessage(`{"app_config":{}}`)})
+	require.NoError(t, err)
+
+	var name, kind string
+	require.NoError(t, db.QueryRowContext(context.Background(), "SELECT config_name FROM configs").Scan(&name))
+	require.Equal(t, "edge-config", name)
+	require.NoError(t, db.QueryRowContext(context.Background(), "SELECT kind FROM event_outbox").Scan(&kind))
+	require.Equal(t, string(fleet.EventConfigChanged), kind)
+	require.Empty(t, stub.Calls(), "the request leaves Harbor to the async plane")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- f.Probe.Run(ctx) }()
+	require.Eventually(t, f.Probe.Reachable, 5*time.Second, 10*time.Millisecond)
+	cancel()
+	require.NoError(t, <-done)
+}
+
+func TestSettings_FromTheHarborEnvironment(t *testing.T) {
+	srv := env.Server{StaleThreshold: 15 * time.Minute, FleetHotPath: env.FleetHotPath{HeartbeatFlushInterval: 5 * time.Second}}
+	got := app.Settings(env.Harbor{URL: "https://harbor.example", RobotDurationDays: "7"}, srv, env.Webhook{Enabled: true})
+
+	require.Equal(t, fleet.Settings{
+		RegistryURL: "https://harbor.example", RobotDuration: 7 * 24 * time.Hour, TokenTTL: fleet.DefaultTokenTTL,
+		StaleThreshold: 15 * time.Minute, HeartbeatFlushInterval: 5 * time.Second, WebhooksEnabled: true,
+	}, got)
+	require.Equal(t, 30*24*time.Hour, app.Settings(env.Harbor{RobotDurationDays: "nonsense"}, srv, env.Webhook{}).RobotDuration, "ROBOT_DURATION_DAYS falls back to 30")
+}
+
+// The heartbeat flusher runs every 5s when HEARTBEAT_FLUSH_INTERVAL is 0,
+// so the stale floor derived from Settings must use that interval too.
+func TestSettings_FlushIntervalMatchesTheFlusher(t *testing.T) {
+	for _, flush := range []time.Duration{0, -time.Second} {
+		got := app.Settings(env.Harbor{}, env.Server{FleetHotPath: env.FleetHotPath{HeartbeatFlushInterval: flush}}, env.Webhook{})
+		require.Equal(t, 5*time.Second, got.HeartbeatFlushInterval, "HEARTBEAT_FLUSH_INTERVAL=%s", flush)
+	}
+}
+
+// GC cannot run without a Harbor to publish to; the error names the
+// variable the operator has to set.
+func TestNewFleet_WithoutHarborURLNamesTheVariable(t *testing.T) {
+	_, err := app.NewFleet(app.FleetDeps{Pools: &dbpool.Pools{API: new(sql.DB)}})
+	require.ErrorIs(t, err, fleet.ErrInvalid)
+	require.ErrorContains(t, err, "HARBOR_URL")
+}
+
+// The composed /metrics reads the shared outbox and the pools at scrape
+// time.
+func TestNewFleet_MetricsReportOutboxAndPools(t *testing.T) {
+	db := dbtest.New(t)
+	stub := harbortest.New(t)
+	f, err := app.NewFleet(app.FleetDeps{
+		Pools:  &dbpool.Pools{API: db.DB, Fleet: db.DB, Async: db.DB},
+		Harbor: env.Harbor{URL: stub.URL(), Username: harbortest.Username, Password: harbortest.Password, RobotDurationDays: "30"},
+	})
+	require.NoError(t, err)
+	_, err = f.Services.Configs.Create(context.Background(), fleet.CreateConfigCmd{Name: "edge-config", Document: json.RawMessage(`{"app_config":{}}`)})
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	f.Metrics.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	for _, want := range []string{
+		`groundcontrol_outbox_events{state="pending"} 1`,
+		`groundcontrol_outbox_events{state="failed"} 0`,
+		`groundcontrol_outbox_stats_up 1`,
+		`groundcontrol_heartbeat_buffer_satellites 0`,
+		`go_sql_max_open_connections{db_name="api"}`,
+	} {
+		require.Contains(t, rec.Body.String(), want)
+	}
+}

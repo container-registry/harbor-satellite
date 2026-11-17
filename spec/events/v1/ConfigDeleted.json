@@ -1,0 +1,37 @@
+{
+  "$id": "https://satellite.container-registry.com/schemas/events/v1/ConfigDeleted.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "data of the io.harborsatellite.groundcontrol.ConfigDeleted event (ConfigDeleted); v1 changes are additive only",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "state_ref": {
+      "additionalProperties": true,
+      "properties": {
+        "registry": {
+          "type": "string"
+        },
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "registry",
+        "repository",
+        "tag"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "name",
+    "state_ref"
+  ],
+  "title": "ConfigDeleted",
+  "type": "object"
+}

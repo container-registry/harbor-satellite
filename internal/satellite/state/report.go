@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -28,6 +29,18 @@ type StatusReportParams struct {
 	LastSyncDurationMs  int64         `json:"last_sync_duration_ms"`
 	ImageCount          int           `json:"image_count"`
 	CachedImages        []CachedImage `json:"cached_images,omitempty"`
+	// AppliedStates and LastReplicationError come from the last replication
+	// run (plan item 6.6).
+	AppliedStates        []AppliedState `json:"applied_states,omitempty"`
+	LastReplicationError string         `json:"last_replication_error,omitempty"`
+}
+
+func applyRunSummary(req *StatusReportParams, run RunSummary) {
+	req.LatestStateDigest = run.StateDigest
+	req.LatestConfigDigest = run.ConfigDigest
+	req.LastSyncDurationMs = run.Duration.Milliseconds()
+	req.LastReplicationError = edgejournal.Truncate(run.LastReplicationError)
+	req.AppliedStates = append([]AppliedState(nil), run.Applied...)
 }
 
 func collectStatusReportParams(ctx context.Context, heartbeatInterval time.Duration, req *StatusReportParams, cfg config.MetricsConfig, registryURL string, insecure bool) {

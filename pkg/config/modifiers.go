@@ -27,6 +27,12 @@ func SetStateConfig(sc StateConfig) func(*Config) {
 	}
 }
 
+func SetGCSession(session GCSession) func(*Config) {
+	return func(cfg *Config) {
+		cfg.StateConfig.GCSession = session
+	}
+}
+
 func SetGroundControlURL(url string) func(*Config) {
 	return func(cfg *Config) {
 		cfg.AppConfig.GroundControlURL = URL(url)
@@ -120,6 +126,12 @@ func SetPeerDistributionConfig(peers PeerDistributionConfig) func(*Config) {
 func SetDirectDelivery(dd DirectDeliveryConfig) func(*Config) {
 	return func(cfg *Config) {
 		cfg.AppConfig.DirectDelivery = dd
+	}
+}
+
+func SetNetworkConfig(network NetworkConfig) func(*Config) {
+	return func(cfg *Config) {
+		cfg.AppConfig.Network = network
 	}
 }
 

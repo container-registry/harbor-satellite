@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	"github.com/rs/zerolog"
@@ -15,6 +16,7 @@ type HotReloadManager struct {
 	log                       *zerolog.Logger
 	ctx                       context.Context
 	stateReplicationScheduler *scheduler.Scheduler
+	statusReportScheduler     *scheduler.Scheduler
 	changeCallbacks           map[config.ConfigChangeType][]config.ConfigChangeCallback
 	callbackMu                sync.RWMutex
 }
@@ -40,7 +42,9 @@ func NewHotReloadManager(
 
 func (hrm *HotReloadManager) registerCallbacks() {
 	hrm.registerChangeCallback(config.IntervalsChanged, hrm.handleIntervalsChange)
+	hrm.registerChangeCallback(config.HeartbeatIntervalChanged, hrm.handleHeartbeatIntervalChange)
 	hrm.registerChangeCallback(config.LogLevelChanged, hrm.handleLogLevelChange)
+	hrm.registerChangeCallback(config.NetworkChanged, hrm.handleNetworkChange)
 }
 
 func (hrm *HotReloadManager) notifyChangeCallbacks(change config.ConfigChange) []error {
@@ -91,6 +95,20 @@ func (hrm *HotReloadManager) handleIntervalsChange(change config.ConfigChange) e
 	return nil
 }
 
+func (hrm *HotReloadManager) handleHeartbeatIntervalChange(change config.ConfigChange) error {
+	hrm.log.Info().
+		Interface("old_value", change.OldValue).
+		Interface("new_value", change.NewValue).
+		Msg("Handling heartbeat interval change")
+
+	if hrm.statusReportScheduler != nil {
+		if err := hrm.statusReportScheduler.ResetIntervalFromExpr(hrm.cm.GetHeartbeatInterval()); err != nil {
+			return fmt.Errorf("unable to restart status report scheduler: %w", err)
+		}
+	}
+	return nil
+}
+
 func (hrm *HotReloadManager) handleLogLevelChange(change config.ConfigChange) error {
 	hrm.log.Info().
 		Str("type", string(change.Type)).
@@ -116,8 +134,24 @@ func (hrm *HotReloadManager) handleLogLevelChange(change config.ConfigChange) er
 	return nil
 }
 
+func (hrm *HotReloadManager) handleNetworkChange(change config.ConfigChange) error {
+	network, ok := change.NewValue.(config.NetworkConfig)
+	if !ok {
+		return fmt.Errorf("invalid network config type: %T", change.NewValue)
+	}
+	if err := budget.Apply(network); err != nil {
+		return fmt.Errorf("apply transfer quota: %w", err)
+	}
+	hrm.log.Info().Msg("Transfer quota updated")
+	return nil
+}
+
 func (hrm *HotReloadManager) SetStateReplicationScheduler(stateReplicationScheduler *scheduler.Scheduler) {
 	hrm.stateReplicationScheduler = stateReplicationScheduler
+}
+
+func (hrm *HotReloadManager) SetStatusReportScheduler(statusReportScheduler *scheduler.Scheduler) {
+	hrm.statusReportScheduler = statusReportScheduler
 }
 
 func (hrm *HotReloadManager) ProcessConfigChanges(changes []config.ConfigChange) error {

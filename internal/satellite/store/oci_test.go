@@ -68,7 +68,7 @@ func TestOCIStoreDropsStagedGraphWhenDigestDiffers(t *testing.T) {
 	func() {
 		local.mu.Lock()
 		defer local.mu.Unlock()
-		err = local.publish(context.Background(), staged, rejected)
+		_, err = local.publish(context.Background(), staged, rejected)
 	}()
 	require.ErrorContains(t, err, "does not match group list digest")
 	_, err = local.Pull(context.Background(), Artifact{Name: "team/app", Tag: "latest"}, PullResourceManifest)
@@ -141,6 +141,36 @@ func TestOCIStoreDeleteRetainsSharedContentAndMissingDeleteIsIdempotent(t *testi
 
 	require.NoError(t, local.Delete(context.Background(), []Artifact{second}))
 	_, err = local.Pull(context.Background(), blob, PullResourceBlob)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+}
+
+func TestOCIStoreDeleteByDigestKeepsTheReplacementTag(t *testing.T) {
+	remote, manifestPayload, manifestDesc, _, _ := testArtifact(t)
+	local, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	latest := Artifact{Name: "team/app", Tag: "latest"}
+	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{latest}))
+
+	var replacement ocispec.Manifest
+	require.NoError(t, json.Unmarshal(manifestPayload, &replacement))
+	replacement.Annotations = map[string]string{"org.opencontainers.image.version": "replacement"}
+	replacementPayload, err := json.Marshal(replacement)
+	require.NoError(t, err)
+	replacementDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageManifest, replacementPayload)
+	repository, err := remote.repository(latest)
+	require.NoError(t, err)
+	require.NoError(t, repository.PushReference(context.Background(), replacementDesc, bytes.NewReader(replacementPayload), "latest"))
+	require.NoError(t, local.Replicate(context.Background(), remote, []Artifact{latest}))
+
+	require.NoError(t, local.Delete(context.Background(), []Artifact{{
+		Name:   "team/app",
+		Digest: manifestDesc.Digest.String(),
+	}}))
+
+	kept, err := local.Pull(context.Background(), latest, PullResourceManifest)
+	require.NoError(t, err)
+	require.Equal(t, replacementDesc.Digest, kept.Digest)
+	_, err = local.Pull(context.Background(), Artifact{Name: "team/app", Digest: manifestDesc.Digest.String()}, PullResourceManifest)
 	require.ErrorIs(t, err, errdef.ErrNotFound)
 }
 
@@ -285,7 +315,8 @@ func TestOCIStorePinnedBlobSurvivesDeleteBeforePublish(t *testing.T) {
 	func() {
 		local.mu.Lock()
 		defer local.mu.Unlock()
-		require.NoError(t, local.publish(context.Background(), staged, next))
+		_, publishErr := local.publish(context.Background(), staged, next)
+		require.NoError(t, publishErr)
 	}()
 	require.Equal(t, fetchedForFirst, layerFetches.Load())
 	published, err := os.Stat(filepath.Join(local.root, blobName))

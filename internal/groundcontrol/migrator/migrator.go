@@ -9,10 +9,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
 	migrations "github.com/container-registry/harbor-satellite/internal/groundcontrol/sql"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	_ "github.com/lib/pq"
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 )
 
 func waitForPostgresReady(ctx context.Context, db *sql.DB, timeout time.Duration) error {
@@ -42,7 +44,9 @@ func waitForPostgresReady(ctx context.Context, db *sql.DB, timeout time.Duration
 	}
 }
 
-func runMigrations(ctx context.Context, db *sql.DB) error {
+// Run applies the migrations in /migrations when present, else the embedded
+// schema.
+func Run(ctx context.Context, db *sql.DB) error {
 	schema, err := fs.Sub(migrations.Schema, "schema")
 	if err != nil {
 		return err
@@ -60,7 +64,12 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 		schema = os.DirFS("/migrations")
 	}
 
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, schema)
+	// GC replicas and workers may start together against one database.
+	locker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		return err
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, schema, goose.WithSessionLocker(locker))
 	if err != nil {
 		log.Println("failed to create goose provider")
 		return err
@@ -78,14 +87,19 @@ func runMigrations(ctx context.Context, db *sql.DB) error {
 func DoMigrations(ctx context.Context) error {
 	cfg := env.GC.Database
 
-	db, err := sql.Open("postgres", cfg.URL())
+	// Migrations run on the API plane's DSN: DB_URL_API when set.
+	pools, err := dbpool.ConfigFromEnv(cfg)
+	if err != nil {
+		return err
+	}
+	db, err := sql.Open(dbpool.DriverName, pools.API.DSN)
 	if err != nil {
 		log.Println("failed to open DB connection")
 		return err
 	}
 	defer func() {
-		if err := db.Close(); err != nil {
-			log.Printf("error closing DB: %v", err)
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("error closing DB: %v", closeErr)
 		}
 	}()
 
@@ -95,7 +109,11 @@ func DoMigrations(ctx context.Context) error {
 		return err
 	}
 
-	err = runMigrations(ctx, db)
+	if err = CheckServer(ctx, db); err != nil {
+		return err
+	}
+
+	err = Run(ctx, db)
 	if err != nil {
 		log.Println("failed to run migrations")
 		return err

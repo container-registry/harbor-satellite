@@ -53,8 +53,8 @@ func main() {
 }
 `
 
-	if err := os.WriteFile(mainFile, []byte(mainCode), 0o600); err != nil {
-		t.Fatalf("failed to write test main file: %v", err)
+	if writeErr := os.WriteFile(mainFile, []byte(mainCode), 0o600); writeErr != nil {
+		t.Fatalf("failed to write test main file: %v", writeErr)
 	}
 
 	pkgPath := "github.com/container-registry/harbor-satellite/internal/version"

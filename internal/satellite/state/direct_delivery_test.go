@@ -131,12 +131,18 @@ func TestDeliverEmptyEntitiesIsNoop(t *testing.T) {
 	d := &DirectDeliverer{imageDir: dir}
 
 	ctx := testContext()
-	err := d.Deliver(ctx, nil)
+	skipped, err := d.Deliver(ctx, nil)
 	if err != nil {
 		t.Fatalf("Deliver(nil): %v", err)
 	}
-	err = d.Deliver(ctx, []Entity{})
+	if len(skipped) != 0 {
+		t.Fatalf("Deliver(nil) skipped %v", skipped)
+	}
+	skipped, err = d.Deliver(ctx, []Entity{})
 	if err != nil {
 		t.Fatalf("Deliver([]): %v", err)
+	}
+	if len(skipped) != 0 {
+		t.Fatalf("Deliver([]) skipped %v", skipped)
 	}
 }

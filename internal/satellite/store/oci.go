@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -21,29 +23,43 @@ import (
 )
 
 // OCIStore persists content in one Satellite-owned OCI image layout.
+//
+// Locking (ADR-0013): oras-go v2.6.2 content/oci takes only its own read lock
+// for Fetch, Push, Tag and Resolve, and a pushed blob appears by rename after
+// its digest is verified, so reads by digest are safe next to writes. mu is
+// the index lock: shared for resolving and for opening a reader, exclusive
+// for tag changes, publish and collection. An open body holds no lock; the
+// reference counter keeps collection away from it instead.
 type OCIStore struct {
 	root              string
 	store             *oci.Store
+	opts              OCIStoreOptions
+	readers           *RefCounter
 	mu                sync.RWMutex
 	provenance        sync.Map
 	beforePublishLock func()
+
+	stageMu      sync.Mutex
+	activeStages int
+
+	gcMu              sync.Mutex
+	unreferencedSince map[digest.Digest]time.Time
+
+	streamsMu sync.Mutex
+	streams   map[digest.Digest]chan struct{}
 }
 
 // NewOCIStore opens or creates an OCI image-layout store at root.
 func NewOCIStore(root string) (*OCIStore, error) {
-	if strings.TrimSpace(root) == "" {
-		return nil, errors.New("OCI store root is required")
-	}
-	// A killed process cannot run the stage cleanup. This store is opened once,
-	// before replication, so anything still under .stage belongs to that process.
-	if err := clearStaleStages(root); err != nil {
-		return nil, err
-	}
-	target, err := oci.New(root)
-	if err != nil {
-		return nil, fmt.Errorf("open OCI store at %s: %w", root, err)
-	}
-	return &OCIStore{root: root, store: target}, nil
+	s, _, err := OpenOCIStore(root, OCIStoreOptions{})
+	return s, err
+}
+
+// layout returns the oras store for work that runs outside the index lock.
+func (s *OCIStore) layout() *oci.Store {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.store
 }
 
 // Pull resolves already retained content. It deliberately performs no request
@@ -99,24 +115,27 @@ func (s *OCIStore) Pull(ctx context.Context, artifact Artifact, resource PullRes
 	}
 }
 
-// Fetch opens one independent local stream. Holding the read lock until Close
-// prevents Delete and GC from removing a blob while it is being served.
+// Fetch opens one independent local stream. The body holds a reader
+// reference until Close, which keeps collection from deleting the blob; it
+// holds no store lock, so tag changes and publishes do not wait for it.
 func (s *OCIStore) Fetch(ctx context.Context, _ Artifact, descriptor ocispec.Descriptor, _ PullResource, _ http.Header) (*http.Response, error) {
+	release := s.readers.Acquire(descriptor.Digest)
 	s.mu.RLock()
 	reader, err := s.store.Fetch(ctx, descriptor)
+	s.mu.RUnlock()
 	if err != nil {
-		s.mu.RUnlock()
+		release()
 		return nil, err
 	}
 	if seeker, ok := reader.(io.ReadSeekCloser); ok {
-		return contentResponse(descriptor, &lockedReadSeekCloser{ReadSeekCloser: seeker, unlock: s.mu.RUnlock}), nil
+		return contentResponse(descriptor, &releasingReadSeekCloser{ReadSeekCloser: seeker, release: release}), nil
 	}
-	return contentResponse(descriptor, &lockedReadCloser{ReadCloser: reader, unlock: s.mu.RUnlock}), nil
+	return contentResponse(descriptor, &releasingReadCloser{ReadCloser: reader, release: release}), nil
 }
 
 // Replicate copies complete manifest graphs or standalone blobs from source.
-// The remote transfer is staged outside the serving lock, then published under
-// that lock. Publish uses a read/write mutex and waits out an open local body.
+// The remote transfer is staged outside the index lock, then published under
+// it; publishing links files and tags, and does not wait for open bodies.
 func (s *OCIStore) Replicate(ctx context.Context, source Store, artifacts []Artifact) error {
 	sourceTarget, ok := source.(storeTarget)
 	if !ok {
@@ -137,6 +156,15 @@ func (s *OCIStore) replicateOne(ctx context.Context, source Store, sourceTarget 
 	if err = artifact.validate(); err != nil {
 		return err
 	}
+	started := time.Now()
+	var published int64
+	defer func() {
+		outcome := "ok"
+		if err != nil {
+			outcome = "error"
+		}
+		s.recorder().ObserveReplication(published, time.Since(started), outcome)
+	}()
 	remote, err := sourceTarget.targetFor(artifact)
 	if err != nil {
 		return err
@@ -154,12 +182,12 @@ func (s *OCIStore) replicateOne(ctx context.Context, source Store, sourceTarget 
 	if s.beforePublishLock != nil {
 		s.beforePublishLock()
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	unlock := s.lockIndex("publish")
+	defer unlock()
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	if err = s.publish(ctx, staged, artifact); err != nil {
+	if published, err = s.publish(ctx, staged, artifact); err != nil {
 		return err
 	}
 	if onWin := peerRaceOnWin(ctx); onWin != nil {
@@ -169,6 +197,7 @@ func (s *OCIStore) replicateOne(ctx context.Context, source Store, sourceTarget 
 }
 
 type stagedArtifact struct {
+	owner *OCIStore
 	dir   string
 	store *oci.Store
 	desc  ocispec.Descriptor
@@ -178,7 +207,7 @@ func (s stagedArtifact) cleanup() error {
 	if s.dir == "" {
 		return nil
 	}
-	return os.RemoveAll(s.dir)
+	return s.owner.removeStage(s.dir)
 }
 
 func (s *OCIStore) stage(ctx context.Context, source Store, remote oras.Target, artifact Artifact) (stagedArtifact, error) {
@@ -186,11 +215,11 @@ func (s *OCIStore) stage(ctx context.Context, source Store, remote oras.Target, 
 	if err != nil {
 		return stagedArtifact{}, err
 	}
-	desc, err := copyIntoStage(ctx, source, remote, target, s.store, dir, s.root, artifact)
+	desc, err := copyIntoStage(ctx, source, remote, target, s.layout(), dir, s.root, artifact)
 	if err != nil {
-		return stagedArtifact{}, errors.Join(err, os.RemoveAll(dir))
+		return stagedArtifact{}, errors.Join(err, s.removeStage(dir))
 	}
-	return stagedArtifact{dir: dir, store: target, desc: desc}, nil
+	return stagedArtifact{owner: s, dir: dir, store: target, desc: desc}, nil
 }
 
 // clearStaleStages removes copy directories left by a process that exited
@@ -217,20 +246,40 @@ func clearStaleStages(root string) error {
 
 // newStage keeps the temporary layout on the store volume. A remote graph can
 // be large, and the serving layout must not be the writer for that transfer.
+// The .stage parent exists only while a stage does, so the layout root holds
+// nothing but OCI files between copies.
 func (s *OCIStore) newStage() (string, *oci.Store, error) {
 	parent := filepath.Join(s.root, ".stage")
+	s.stageMu.Lock()
 	if err := os.MkdirAll(parent, 0o700); err != nil {
+		s.stageMu.Unlock()
 		return "", nil, fmt.Errorf("create OCI staging directory: %w", err)
 	}
 	dir, err := os.MkdirTemp(parent, "copy-")
 	if err != nil {
+		s.stageMu.Unlock()
 		return "", nil, fmt.Errorf("create OCI staging directory: %w", err)
 	}
+	s.activeStages++
+	s.stageMu.Unlock()
 	target, err := oci.New(dir)
 	if err != nil {
-		return "", nil, errors.Join(fmt.Errorf("open OCI staging store: %w", err), os.RemoveAll(dir))
+		return "", nil, errors.Join(fmt.Errorf("open OCI staging store: %w", err), s.removeStage(dir))
 	}
 	return dir, target, nil
+}
+
+func (s *OCIStore) removeStage(dir string) error {
+	err := os.RemoveAll(dir)
+	s.stageMu.Lock()
+	defer s.stageMu.Unlock()
+	s.activeStages--
+	if s.activeStages == 0 {
+		if rmErr := os.Remove(filepath.Dir(dir)); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			err = errors.Join(err, fmt.Errorf("remove OCI staging directory: %w", rmErr))
+		}
+	}
+	return err
 }
 
 func copyIntoStage(ctx context.Context, source Store, remote oras.Target, stage, present *oci.Store, stageRoot, presentRoot string, artifact Artifact) (ocispec.Descriptor, error) {
@@ -359,36 +408,42 @@ func (t *stageTarget) PushReference(ctx context.Context, expected ocispec.Descri
 	return t.Tag(ctx, expected, reference)
 }
 
-func (s *OCIStore) publish(ctx context.Context, staged stagedArtifact, artifact Artifact) error {
+// publish returns the bytes it linked into the layout, which are the bytes
+// this replication added.
+func (s *OCIStore) publish(ctx context.Context, staged stagedArtifact, artifact Artifact) (int64, error) {
 	// The stage is the quarantine. A root the group list did not ask for is
 	// discarded here, before any blob is linked into the store that clients pull.
 	if err := rejectUnlistedDigest(staged.desc, artifact); err != nil {
-		return err
+		return 0, err
 	}
 	// Linking keeps the write lock to a metadata update. oras.Copy would read
 	// and write every new blob again while Pull and Fetch wait, and the stage
 	// would still be on disk until this returns.
-	if err := s.promote(ctx, staged.dir, staged.store, staged.desc); err != nil {
-		return fmt.Errorf("publish %s to OCI store: %w", artifact.Reference(), err)
+	linked, err := s.promote(ctx, staged.dir, staged.store, staged.desc)
+	if err != nil {
+		return 0, fmt.Errorf("publish %s to OCI store: %w", artifact.Reference(), err)
 	}
 	if err := s.store.Tag(ctx, staged.desc, artifact.Reference()); err != nil {
-		return fmt.Errorf("tag %s in OCI store: %w", artifact.Reference(), err)
+		return 0, fmt.Errorf("tag %s in OCI store: %w", artifact.Reference(), err)
+	}
+	if err := s.persistIndexLocked(ctx); err != nil {
+		return 0, fmt.Errorf("persist index after tagging %s: %w", artifact.Reference(), err)
 	}
 	if artifact.Tag == "" {
 		s.provenance.Store(provenanceKey(artifact.Name, staged.desc.Digest), struct{}{})
-		return nil
+		return linked, nil
 	}
 	if err := s.recordGraphProvenance(ctx, artifact.Name, staged.desc); err != nil {
-		return err
+		return 0, err
 	}
 	logger.FromContext(ctx).Info().Str("reference", artifact.Reference()).Str("digest", staged.desc.Digest.String()).Msg("artifact replicated to OCI store")
-	return nil
+	return linked, nil
 }
 
 // promote links staged blobs into the serving layout, then Tag records the root
 // in index.json. Blobs already in the serving store stay there. A failed
 // promote removes only the links it added.
-func (s *OCIStore) promote(ctx context.Context, stageRoot string, stage *oci.Store, root ocispec.Descriptor) (err error) {
+func (s *OCIStore) promote(ctx context.Context, stageRoot string, stage *oci.Store, root ocispec.Descriptor) (linkedBytes int64, err error) {
 	var created []string
 	defer func() {
 		if err == nil {
@@ -401,7 +456,7 @@ func (s *OCIStore) promote(ctx context.Context, stageRoot string, stage *oci.Sto
 			}
 		}
 	}()
-	return walkDescriptorGraph(ctx, stage, root, func(desc ocispec.Descriptor) error {
+	err = walkDescriptorGraph(ctx, stage, root, func(desc ocispec.Descriptor) error {
 		exists, existsErr := s.store.Exists(ctx, desc)
 		if existsErr != nil {
 			return existsErr
@@ -423,45 +478,113 @@ func (s *OCIStore) promote(ctx context.Context, stageRoot string, stage *oci.Sto
 		}
 		if linked {
 			created = append(created, dst)
+			linkedBytes += info.Size()
 		}
 		return nil
 	})
+	return linkedBytes, err
 }
 
 func (s *OCIStore) targetFor(Artifact) (oras.Target, error) { //nolint:unparam // shared adapter permits registry construction errors.
-	return s.store, nil
+	return s.layout(), nil
 }
 
-// Delete removes selected roots and garbage-collects unreachable blobs.
+// lockIndex takes the exclusive index lock and reports how long it waited.
+func (s *OCIStore) lockIndex(operation string) (unlock func()) {
+	started := time.Now()
+	s.mu.Lock()
+	s.recorder().ObserveStoreLockWait(operation, time.Since(started))
+	return s.mu.Unlock
+}
+
+func (s *OCIStore) recorder() telemetry.Recorder {
+	if s.opts.Recorder == nil {
+		return telemetry.Nop{}
+	}
+	return s.opts.Recorder
+}
+
+// Delete untags the selected roots and collects what nothing references any
+// more, within the store's grace period.
 func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	changed := false
+	if len(artifacts) == 0 {
+		return nil
+	}
+	if err := s.untag(ctx, artifacts); err != nil {
+		return err
+	}
+	// Collect also when nothing was untagged: the tag may have moved or been
+	// removed before, leaving the old digest's content behind.
+	_, err := s.CollectGarbage(ctx, GCOptions{
+		Grace:        s.opts.GCGrace,
+		Roots:        []GCRoots{s.opts.FillLeases},
+		IngestMaxAge: defaultIngestMaxAge,
+	})
+	return err
+}
+
+// DeletesSingleTags is true: Delete untags one reference and collects only
+// content no remaining tag references.
+func (s *OCIStore) DeletesSingleTags() bool { return true }
+
+func (s *OCIStore) untag(ctx context.Context, artifacts []Artifact) error {
+	unlock := s.lockIndex("untag")
+	defer unlock()
 	for _, artifact := range artifacts {
 		if err := artifact.validate(); err != nil {
 			return err
 		}
-		if _, err := s.store.Resolve(ctx, artifact.Reference()); err != nil {
-			if errors.Is(err, errdef.ErrNotFound) {
-				continue
+		if artifact.Tag == "" {
+			if _, err := s.deleteDigest(ctx, artifact); err != nil {
+				return err
 			}
+			continue
+		}
+		desc, err := s.store.Resolve(ctx, artifact.Reference())
+		if errors.Is(err, errdef.ErrNotFound) {
+			continue
+		}
+		if err != nil {
 			return err
+		}
+		if artifact.Digest != "" && desc.Digest.String() != artifact.Digest {
+			// A newer replication moved the tag; it must stay.
+			continue
 		}
 		if err := s.store.Untag(ctx, artifact.Reference()); err != nil {
 			return err
 		}
-		changed = true
 	}
-	if changed {
-		if err := s.store.GC(ctx); err != nil {
-			return err
-		}
-		s.provenance.Clear()
+	if err := s.persistIndexLocked(ctx); err != nil {
+		return fmt.Errorf("persist index after untagging: %w", err)
 	}
+	// Provenance caches "repository holds digest"; untagged content must not
+	// stay pullable through it until the collection removes the files.
+	s.provenance.Clear()
 	return nil
+}
+
+// deleteDigest removes the manifest identified by the digest. It does not
+// follow name:tag, which may already point at a replacement.
+func (s *OCIStore) deleteDigest(ctx context.Context, artifact Artifact) (bool, error) {
+	identifier := artifact.sourceIdentifier()
+	desc, err := s.store.Resolve(ctx, identifier)
+	if errors.Is(err, errdef.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if desc.Digest.String() != identifier {
+		return false, nil
+	}
+	if err := s.store.Delete(ctx, desc); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *OCIStore) recordGraphProvenance(ctx context.Context, repository string, root ocispec.Descriptor) error {
@@ -541,26 +664,26 @@ func provenanceKey(repository string, contentDigest digest.Digest) string {
 	return strings.Trim(repository, "/") + "\x00" + contentDigest.String()
 }
 
-type lockedReadCloser struct {
+type releasingReadCloser struct {
 	io.ReadCloser
-	once   sync.Once
-	unlock func()
+	once    sync.Once
+	release func()
 }
 
-func (r *lockedReadCloser) Close() error {
+func (r *releasingReadCloser) Close() error {
 	err := r.ReadCloser.Close()
-	r.once.Do(r.unlock)
+	r.once.Do(r.release)
 	return err
 }
 
-type lockedReadSeekCloser struct {
+type releasingReadSeekCloser struct {
 	io.ReadSeekCloser
-	once   sync.Once
-	unlock func()
+	once    sync.Once
+	release func()
 }
 
-func (r *lockedReadSeekCloser) Close() error {
+func (r *releasingReadSeekCloser) Close() error {
 	err := r.ReadSeekCloser.Close()
-	r.once.Do(r.unlock)
+	r.once.Do(r.release)
 	return err
 }

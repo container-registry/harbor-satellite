@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 403,
+    "message": "Forbidden"
+  },
+  "request": "POST /api/users",
+  "status": 403
+}

@@ -3,12 +3,15 @@ package state
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
@@ -46,9 +49,11 @@ func NewDirectDeliverer(imageDir, srcUsername, srcPassword, srcRegistry string, 
 // Deliver writes a Docker-save tarball for each entity into the image directory.
 // Existing tarballs with matching digests are skipped. Errors for individual
 // entities are logged and skipped so that one failure does not block the rest.
-func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error {
+// The returned entities were skipped because they did not fit the quota, so
+// the caller can leave them pending.
+func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) ([]Entity, error) {
 	if len(entities) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	log := logger.FromContext(ctx)
@@ -62,6 +67,18 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 		Username: d.srcUsername,
 		Password: d.srcPassword,
 	})
+	// The size check reads the manifest before Admit and is not added to the
+	// quota. The image pull after Admit is counted.
+	probeOpts := []remote.Option{
+		remote.WithAuth(auth),
+		remote.WithContext(ctx),
+		remote.WithTransport(http.DefaultTransport),
+	}
+	pullOpts := []remote.Option{
+		remote.WithAuth(auth),
+		remote.WithContext(ctx),
+		remote.WithTransport(budget.Transport(http.DefaultTransport)),
+	}
 
 	var nameOpts []name.Option
 	if d.useUnsecure {
@@ -70,11 +87,12 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 
 	// Collect successful writes to merge atomically at the end.
 	updates := make(map[string]string)
+	var quotaSkipped []Entity
 
 	for _, entity := range entities {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return quotaSkipped, ctx.Err()
 		default:
 		}
 
@@ -93,10 +111,41 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 			continue
 		}
 
-		opts := []remote.Option{remote.WithAuth(auth), remote.WithContext(ctx)}
-		img, err := remote.Image(ref, opts...)
+		desc, err := remote.Get(ref, probeOpts...)
 		if err != nil {
-			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to pull image, skipping")
+			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to read image manifest, skipping")
+			continue
+		}
+		if entity.Digest != "" && desc.Digest.String() != entity.Digest {
+			log.Warn().Str("ref", srcRef).Str("got", desc.Digest.String()).Str("want", entity.Digest).Msg("Direct delivery: tag does not match the group digest, skipping")
+			continue
+		}
+		size, err := imageTransferBytes(desc)
+		if err != nil {
+			log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: failed to size image, skipping")
+			continue
+		}
+		if err := budget.Ensure().Admit(size); err != nil {
+			if errors.Is(err, budget.ErrQuotaExceeded) {
+				log.Warn().Str("ref", srcRef).Int64("missing_bytes", size).Msg("Direct delivery: transfer quota is exhausted, skipping")
+				quotaSkipped = append(quotaSkipped, entity)
+			} else {
+				log.Warn().Err(err).Str("ref", srcRef).Msg("Direct delivery: quota check failed, skipping")
+			}
+			continue
+		}
+		// Pull the probed digest. Resolving the tag again could fetch a different
+		// image than the one Admit sized, and the digest map would label it as
+		// entity.Digest.
+		pinned := fmt.Sprintf("%s/%s/%s@%s", d.srcRegistry, entity.Repository, entity.Name, desc.Digest.String())
+		digestRef, err := name.NewDigest(pinned, nameOpts...)
+		if err != nil {
+			log.Warn().Err(err).Str("ref", pinned).Msg("Direct delivery: failed to parse digest, skipping")
+			continue
+		}
+		img, err := remote.Image(digestRef, pullOpts...)
+		if err != nil {
+			log.Warn().Err(err).Str("ref", pinned).Msg("Direct delivery: failed to pull image, skipping")
 			continue
 		}
 
@@ -111,7 +160,7 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 	}
 
 	if len(updates) == 0 {
-		return nil
+		return quotaSkipped, nil
 	}
 
 	// Merge updates atomically: re-load from disk under lock so concurrent
@@ -122,7 +171,7 @@ func (d *DirectDeliverer) Deliver(ctx context.Context, entities []Entity) error 
 	for k, v := range updates {
 		digests[k] = v
 	}
-	return d.saveDigestMap(digests)
+	return quotaSkipped, d.saveDigestMap(digests)
 }
 
 // Delete removes tarballs for entities no longer in the desired state.
@@ -168,6 +217,51 @@ func (d *DirectDeliverer) Delete(ctx context.Context, entities []Entity) error {
 		delete(digests, filename)
 	}
 	return d.saveDigestMap(digests)
+}
+
+// imageTransferBytes is the compressed config and layer size crane will download.
+func imageTransferBytes(desc *remote.Descriptor) (int64, error) {
+	if img, err := desc.Image(); err == nil {
+		return compressedImageBytes(img)
+	}
+	index, err := desc.ImageIndex()
+	if err != nil {
+		return 0, err
+	}
+	manifest, err := index.IndexManifest()
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, child := range manifest.Manifests {
+		img, err := index.Image(child.Digest)
+		if err != nil {
+			return 0, err
+		}
+		size, err := compressedImageBytes(img)
+		if err != nil {
+			return 0, err
+		}
+		total += size
+	}
+	return total, nil
+}
+
+func compressedImageBytes(img v1.Image) (int64, error) {
+	manifest, err := img.Manifest()
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	if manifest.Config.Size > 0 {
+		total += manifest.Config.Size
+	}
+	for _, layer := range manifest.Layers {
+		if layer.Size > 0 {
+			total += layer.Size
+		}
+	}
+	return total, nil
 }
 
 // writeAtomically writes the tarball to a temp file then renames it,

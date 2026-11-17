@@ -29,7 +29,7 @@ func (s *Server) BootstrapSystemAdmin(ctx context.Context) error {
 		return fmt.Errorf("ADMIN_PASSWORD environment variable is required for initial setup")
 	}
 
-	if err := s.passwordPolicy.Validate(password); err != nil {
+	if err = s.passwordPolicy.Validate(password); err != nil {
 		return fmt.Errorf("ADMIN_PASSWORD invalid: %w", err)
 	}
 

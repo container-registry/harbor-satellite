@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -8,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/robfig/cron/v3"
+	"github.com/container-registry/harbor-satellite/internal/shared/policybundle"
 	"github.com/rs/zerolog"
 )
 
 // ValidateAndEnforceDefaults validates and normalizes the given config.
-// It applies default values where required, verifies URLs, cron expressions,
+// It applies default values where required, verifies URLs, @every intervals,
 // and handles the logic for bring-your-own-registry vs default registry setup.
 // Returns warnings for any defaulted or ignored fields and a fatal error for critical misconfigurations.
 func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) (*Config, []string, error) {
@@ -45,13 +46,23 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 		config.AppConfig.UseUnsecure = strings.ToLower(useUnsecure) == "true" || useUnsecure == "1"
 	}
 
-	bringOwnRegistry := config.AppConfig.BringOwnRegistry
+	more, err := validateApp(config)
+	warnings = append(warnings, more...)
+	if err != nil {
+		return nil, warnings, err
+	}
+	return config, warnings, nil
+}
 
-	if bringOwnRegistry {
+// validateApp runs the app_config checks that need neither the Ground
+// Control URL nor the environment.
+func validateApp(config *Config) ([]string, error) {
+	var warnings []string
+	if config.AppConfig.BringOwnRegistry {
 		borWarnings, borErr := validateBringOwnRegistry(config)
 		warnings = append(warnings, borWarnings...)
 		if borErr != nil {
-			return nil, warnings, borErr
+			return warnings, borErr
 		}
 	}
 
@@ -60,18 +71,92 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	tlsWarnings, tlsErr := validateTLSConfig(&config.AppConfig.TLS)
 	warnings = append(warnings, tlsWarnings...)
 	if tlsErr != nil {
-		return nil, warnings, tlsErr
+		return warnings, tlsErr
 	}
 
 	warnings = append(warnings, validateRegistryFallbackConfig(config)...)
 
 	if err := validateAndEnforcePeerDistribution(config); err != nil {
-		return nil, warnings, err
+		return warnings, err
 	}
 
 	warnings = append(warnings, validateAndEnforceAuditConfig(config)...)
 
-	return config, warnings, nil
+	networkWarnings, networkErr := validateAndEnforceNetwork(config)
+	warnings = append(warnings, networkWarnings...)
+	if networkErr != nil {
+		return warnings, networkErr
+	}
+
+	switch config.AppConfig.RegistryAuth.Mode {
+	case "", RegistryAuthRobot:
+	case RegistryAuthWorkloadIdentity:
+		return warnings, errors.New("app_config.registry_auth.mode workload_identity needs Harbor 3 workload identity federation, which this release cannot use yet; use robot")
+	default:
+		return warnings, fmt.Errorf("app_config.registry_auth.mode %q: want robot or workload_identity", config.AppConfig.RegistryAuth.Mode)
+	}
+	return warnings, nil
+}
+
+// ValidateAppConfig is ValidateAndEnforceDefaults in Ground Control's mode
+// (plan item 7.4): no ground_control_url needed (GC knows its own URL), no
+// environment read (GC's USE_UNSECURE is not the satellite's). Where the
+// satellite replaces an invalid interval with its default, it rejects
+// one. It also rejects an admission mode policybundle.ParseMode rejects and a bundle of
+// another model version. It returns the warnings and leaves app unchanged.
+func ValidateAppConfig(app AppConfig) (warnings []string, err error) {
+	raw, err := json.Marshal(app)
+	if err != nil {
+		return nil, fmt.Errorf("encode app_config: %w", err)
+	}
+	cfg := &Config{}
+	if err = json.Unmarshal(raw, &cfg.AppConfig); err != nil {
+		return nil, fmt.Errorf("copy app_config: %w", err)
+	}
+	warnings = validateAndEnforceLogLevel(cfg)
+	if err = rejectInvalidSchedules(&cfg.AppConfig); err != nil {
+		return warnings, err
+	}
+	more, err := validateApp(cfg)
+	warnings = append(warnings, more...)
+	if err != nil {
+		return warnings, err
+	}
+	if _, err := policybundle.ParseMode(cfg.AppConfig.Admission.Mode); err != nil {
+		return warnings, fmt.Errorf("app_config.admission.mode: %w", err)
+	}
+	if b := cfg.AppConfig.Admission.Bundle; b != nil && b.ModelVersion != policybundle.ModelVersion {
+		return warnings, fmt.Errorf("app_config.admission.bundle: model version %q, want %q", b.ModelVersion, policybundle.ModelVersion)
+	}
+	return warnings, nil
+}
+
+// validateAndEnforceNetwork checks the optional transfer quota. A disabled
+// block keeps a malformed limit from rejecting the rest of the config. An
+// enabled quota with an empty window defaults to day.
+func validateAndEnforceNetwork(config *Config) ([]string, error) {
+	network := &config.AppConfig.Network
+	if !network.Quota.Enabled {
+		return nil, nil
+	}
+	if network.Quota.Limit == "" {
+		return nil, errors.New("network.quota.limit is required when quota is enabled")
+	}
+	if _, err := ParseByteSize(network.Quota.Limit); err != nil {
+		return nil, fmt.Errorf("network.quota.limit: %w", err)
+	}
+
+	var warnings []string
+	switch strings.ToLower(strings.TrimSpace(network.Quota.Window)) {
+	case "":
+		network.Quota.Window = "day"
+		warnings = append(warnings, "network.quota.window defaulted to day")
+	case "sync", "day", "week":
+		network.Quota.Window = strings.ToLower(strings.TrimSpace(network.Quota.Window))
+	default:
+		return nil, fmt.Errorf("network.quota.window %q must be sync, day, or week", network.Quota.Window)
+	}
+	return warnings, nil
 }
 
 // validateAndEnforceAuditConfig fills in defaults for the audit syslog transport
@@ -200,13 +285,43 @@ func enforceAuditRotation(f *SyslogAuditFile) []string {
 	return warnings
 }
 
-// isValidCronExpression checks the validity of a cron expression.
-func isValidCronExpression(cronExpression string) bool {
-	if _, err := cron.ParseStandard(cronExpression); err != nil {
+// isValidSchedule reports whether expr is "@every <positive duration>", the
+// only form the satellite scheduler runs. A standard cron line such as
+// "*/5 * * * *" would pass a cron parser but stop the satellite at start.
+func isValidSchedule(expr string) bool {
+	d, ok := strings.CutPrefix(expr, "@every ")
+	if !ok {
 		return false
 	}
+	parsed, err := time.ParseDuration(d)
+	return err == nil && parsed > 0
+}
 
-	return true
+// scheduleFields are the app_config intervals and their defaults.
+func scheduleFields(app *AppConfig) []scheduleField {
+	return []scheduleField{
+		{"state_replication_interval", DefaultFetchAndReplicateCronExpr, &app.StateReplicationInterval},
+		{"register_satellite_interval", DefaultZTRCronExpr, &app.RegisterSatelliteInterval},
+		{"heartbeat_interval", DefaultHeartbeatCronExpr, &app.HeartbeatInterval},
+	}
+}
+
+type scheduleField struct {
+	field, def string
+	value      *string
+}
+
+// rejectInvalidSchedules is Ground Control's check: an interval that is set
+// must be "@every <positive duration>", so a config the satellites would
+// silently replace with the default is never stored.
+func rejectInvalidSchedules(app *AppConfig) error {
+	var errs []error
+	for _, s := range scheduleFields(app) {
+		if *s.value != "" && !isValidSchedule(*s.value) {
+			errs = append(errs, fmt.Errorf("app_config.%s %q: want \"@every <positive duration>\", such as %q", s.field, *s.value, s.def))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // validateAndEnforceLogLevel validates log level and defaults to info if invalid.
@@ -244,26 +359,32 @@ func validateBringOwnRegistry(config *Config) ([]string, error) {
 	return warnings, nil
 }
 
-// validateAndEnforceCronSchedules validates and defaults cron schedules.
+// validateAndEnforceCronSchedules replaces an interval that is not
+// "@every <positive duration>" with its default and a warning.
 func validateAndEnforceCronSchedules(config *Config) []string {
 	var warnings []string
-
-	if !isValidCronExpression(config.AppConfig.StateReplicationInterval) {
-		config.AppConfig.StateReplicationInterval = DefaultFetchAndReplicateCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for state_replication_interval, using default schedule %s", DefaultFetchAndReplicateCronExpr))
+	for _, s := range scheduleFields(&config.AppConfig) {
+		if w := enforceSchedule(s.field, s.value, s.def); w != "" {
+			warnings = append(warnings, w)
+		}
 	}
-
-	if !isValidCronExpression(config.AppConfig.RegisterSatelliteInterval) {
-		config.AppConfig.RegisterSatelliteInterval = DefaultZTRCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for register_satellite_interval, using default schedule %s", DefaultZTRCronExpr))
-	}
-
-	if !isValidCronExpression(config.AppConfig.HeartbeatInterval) {
-		config.AppConfig.HeartbeatInterval = DefaultHeartbeatCronExpr
-		warnings = append(warnings, fmt.Sprintf("invalid schedule provided for heartbeat_interval, using default schedule %s", DefaultHeartbeatCronExpr))
-	}
-
 	return warnings
+}
+
+// enforceSchedule sets an absent schedule to def without a warning, since
+// leaving it out is how a config asks for the default; an invalid one is
+// replaced with a warning that quotes it.
+func enforceSchedule(field string, value *string, def string) string {
+	if *value == "" {
+		*value = def
+		return ""
+	}
+	if isValidSchedule(*value) {
+		return ""
+	}
+	invalid := *value
+	*value = def
+	return fmt.Sprintf("invalid schedule %q provided for %s, using default schedule %s", invalid, field, def)
 }
 
 // validateAndEnforcePeerDistribution defaults and checks the opt-in peer block.
