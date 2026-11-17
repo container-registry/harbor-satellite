@@ -1,0 +1,47 @@
+{
+  "$id": "https://satellite.container-registry.com/schemas/events/v1/SatelliteDeleted.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "data of the io.harborsatellite.groundcontrol.SatelliteDeleted event (SatelliteDeleted); v1 changes are additive only",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "robot_harbor_ids": {
+      "items": {
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "spiffe_id": {
+      "type": "string"
+    },
+    "state_ref": {
+      "additionalProperties": true,
+      "properties": {
+        "registry": {
+          "type": "string"
+        },
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "registry",
+        "repository",
+        "tag"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "name",
+    "robot_harbor_ids",
+    "state_ref"
+  ],
+  "title": "SatelliteDeleted",
+  "type": "object"
+}

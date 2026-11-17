@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/netip"
 	"os"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/auth"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/database"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/dbpool"
+	"github.com/container-registry/harbor-satellite/internal/groundcontrol/fleet"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/middleware"
 	"github.com/container-registry/harbor-satellite/internal/groundcontrol/spiffe"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
@@ -23,15 +26,26 @@ import (
 )
 
 type Server struct {
-	port           int
-	db             *sql.DB
-	dbQueries      *database.Queries
-	groupSync      groupSyncHarbor
+	port      int
+	db        *sql.DB
+	dbQueries *database.Queries
+	// pools owns the connections; fleetQueries (satellite routes) and asyncDB
+	// (background jobs) are the API pool unless DB_URL_FLEET, DB_URL_ASYNC
+	// or their pool settings give them their own (plan item 3.2).
+	pools          *dbpool.Pools
+	fleetQueries   *database.Queries
+	asyncDB        *sql.DB
 	rateLimiter    *middleware.RateLimiter
-	spiffeProvider spiffe.Provider
-	embeddedSpire  *spiffe.EmbeddedSpireServer
-	spireClient    *spiffe.ServerClient
-	spireEnabled   bool
+	FailureLimiter *middleware.FailureLimiter
+	// AnonymousLimiter (ZTR per client IP) and FleetLimiter (per
+	// authenticated satellite) replace rateLimiter on those endpoints; both
+	// exist only with RATE_LIMIT_SPLIT (plan item 4.6).
+	AnonymousLimiter *middleware.Limiter[netip.Addr]
+	FleetLimiter     *middleware.Limiter[fleet.SatelliteID]
+	spiffeProvider   spiffe.Provider
+	embeddedSpire    *spiffe.EmbeddedSpireServer
+	spireClient      *spiffe.ServerClient
+	spireEnabled     bool
 
 	// External SPIRE server metadata (used when embeddedSpire is nil)
 	spireServerAddress string
@@ -45,6 +59,12 @@ type Server struct {
 
 	// Satellite status
 	staleThreshold time.Duration
+	// syncMaxBodyBytes (SYNC_MAX_BODY_BYTES) bounds a heartbeat's body;
+	// a larger one is answered 413.
+	syncMaxBodyBytes int64
+	// groupSyncMaxBodyBytes and apiMaxBodyBytes bound the /api bodies.
+	groupSyncMaxBodyBytes int64
+	apiMaxBodyBytes       int64
 
 	// Audit logger for security events
 	audit *auditlog.AuditLogger
@@ -52,8 +72,94 @@ type Server struct {
 	// trustForwardedHeaders controls whether clientIP() honors
 	// X-Forwarded-For / X-Real-IP. Disabled by default to prevent clients
 	// from spoofing the audit source_ip. Enable only when GC sits behind a
-	// trusted reverse proxy.
+	// trusted reverse proxy. trustedProxyHops is how many proxies append
+	// to X-Forwarded-For in front of GC (AUDIT_TRUSTED_PROXY_HOPS).
 	trustForwardedHeaders bool
+	trustedProxyHops      int
+
+	// services is set by WithFleet or built by fleetFactory; the admin,
+	// registration and refresh handlers call it (plan item 1.4).
+	services     *fleet.Services
+	fleetFactory FleetFactory
+
+	// harborContact and harborStaleAfter are set by WithHarborContact;
+	// Health does not read them before plan item 2.6.
+	harborContact    HarborContact
+	harborStaleAfter time.Duration
+
+	// outbox is set by WithOutboxReader; ListOutboxEvents does not read
+	// it before plan item 2.3.
+	outbox OutboxReader
+
+	// satelliteAuth is set by WithSatelliteAuthenticator; nil keeps the
+	// robot Basic chain of today.
+	satelliteAuth SatelliteAuthenticator
+	// policy is set by WithPolicy. The /api route check uses it instead of
+	// requiresSystemAdmin only when policyEngine (POLICY_ENGINE) is casbin.
+	policy       fleet.Policy
+	policyEngine string
+	// operatorLogin is set by WithOperatorLogin (plan item 8.1).
+	operatorLogin OperatorLogin
+	// disablePasswordLogin (OIDC_DISABLE_PASSWORD_LOGIN) leaves password
+	// login to the bootstrap admin only (plan item 8.2).
+	disablePasswordLogin bool
+	// stopped makes /health unhealthy once a background job of serve
+	// returned (JobStopped).
+	stopped stoppedJobs
+	// requests is set by WithRequestObserver and sees every request.
+	requests RequestObserver
+}
+
+// HarborContact reports the last successful contact with Harbor; the
+// async plane's registry probe implements it.
+type HarborContact interface {
+	LastContact() time.Time
+}
+
+// OutboxReader lists the outbox events that are not done, for
+// GET /api/ops/outbox: all of them for state "pending", those that ran out
+// of attempts for "failed". The composition root adapts the async plane's
+// outbox store to it, so the server does not import the async plane.
+type OutboxReader interface {
+	ListOutbox(ctx context.Context, failedOnly bool, limit int) ([]OutboxEventResponse, error)
+}
+
+// Option configures NewServer.
+type Option func(*Server)
+
+// WithFleet hands the fleet services to the handlers.
+func WithFleet(services *fleet.Services) Option {
+	return func(s *Server) { s.services = services }
+}
+
+// FleetFactory builds the fleet services once NewServer has opened the
+// database pools and connected SPIRE (spire is nil without one), and
+// returns the options that hand them to the server.
+type FleetFactory func(ctx context.Context, pools *dbpool.Pools, spire *spiffe.ServerClient) ([]Option, error)
+
+// WithFleetFactory makes NewServer build its fleet services with f.
+func WithFleetFactory(f FleetFactory) Option {
+	return func(s *Server) { s.fleetFactory = f }
+}
+
+// WithHarborContact makes /health report Harbor as degraded, with status
+// 200, while contact's last contact is zero or older than staleAfter. The
+// database alone decides between healthy and unhealthy.
+func WithHarborContact(contact HarborContact, staleAfter time.Duration) Option {
+	return func(s *Server) {
+		s.harborContact = contact
+		s.harborStaleAfter = staleAfter
+	}
+}
+
+func WithOutboxReader(r OutboxReader) Option {
+	return func(s *Server) { s.outbox = r }
+}
+
+// WithPolicy gives the /api route check a policy (plan item 7.2). With
+// POLICY_ENGINE=builtin, the default, it is not consulted.
+func WithPolicy(policy fleet.Policy) Option {
+	return func(s *Server) { s.policy = policy }
 }
 
 // ServerTLSConfig holds TLS settings for the Ground Control HTTP server.
@@ -75,7 +181,7 @@ type ServerResult struct {
 	EmbeddedSpire  *spiffe.EmbeddedSpireServer
 }
 
-func NewServer(ctx context.Context) (result *ServerResult, err error) {
+func NewServer(ctx context.Context, opts ...Option) (result *ServerResult, err error) {
 	result = &ServerResult{AppServer: &Server{}}
 	defer func() {
 		if err != nil {
@@ -85,26 +191,67 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 	}()
 	cfg := env.GC
 	appServer := result.AppServer
+	for _, opt := range opts {
+		opt(appServer)
+	}
 	appServer.port = cfg.Server.Port
 	appServer.passwordPolicy = auth.LoadPolicyFromConfig(cfg.PasswordPolicy)
 	appServer.sessionDuration = cfg.Server.SessionDuration
 	appServer.lockoutDuration = cfg.Server.LockoutDuration
 	appServer.staleThreshold = cfg.Server.StaleThreshold
+	appServer.syncMaxBodyBytes = cfg.Server.SyncMaxBodyBytes
+	appServer.groupSyncMaxBodyBytes = cfg.Server.GroupSyncMaxBodyBytes
+	appServer.apiMaxBodyBytes = cfg.Server.APIMaxBodyBytes
 	appServer.trustForwardedHeaders = cfg.Audit.TrustForwardedHeaders
+	appServer.trustedProxyHops = cfg.Audit.TrustedProxyHops
+	appServer.policyEngine = cfg.Policy.Engine
+	appServer.disablePasswordLogin = cfg.OIDC.DisablePasswordLogin
+	if err = cfg.Policy.Validate(); err != nil {
+		return result, err
+	}
+	if cfg.Audit.TrustedProxyHops < 1 {
+		return result, fmt.Errorf("AUDIT_TRUSTED_PROXY_HOPS %d: must be at least 1", cfg.Audit.TrustedProxyHops)
+	}
+	if cfg.Server.AuthFailureLimit > 0 && cfg.Server.AuthFailureWindow <= 0 {
+		return result, fmt.Errorf("AUTH_FAILURE_WINDOW %s: must be positive while AUTH_FAILURE_LIMIT is set", cfg.Server.AuthFailureWindow)
+	}
+	if err = cfg.OIDC.Validate(); err != nil {
+		return result, err
+	}
+	if appServer.policyEngine == env.PolicyEngineCasbin && appServer.policy == nil {
+		return result, fmt.Errorf("POLICY_ENGINE=%s needs a policy (WithPolicy)", env.PolicyEngineCasbin)
+	}
 
-	db, err := sql.Open("postgres", cfg.Database.URL())
+	poolConfig, err := dbpool.ConfigFromEnv(cfg.Database)
+	if err != nil {
+		return result, fmt.Errorf("database settings: %w", err)
+	}
+	pools, err := dbpool.Open(ctx, poolConfig)
 	if err != nil {
 		return result, fmt.Errorf("open database: %w", err)
 	}
-	appServer.db = db
-
-	dbQueries := database.New(db)
-	appServer.dbQueries = dbQueries
-	appServer.groupSync = harborGroupSync{}
+	appServer.pools = pools
+	appServer.db = pools.API
+	appServer.dbQueries = database.New(pools.API)
+	appServer.fleetQueries = database.New(pools.Fleet)
+	appServer.asyncDB = pools.Async
 
 	// Initialize rate limiter: 10 requests per minute per IP for ZTR endpoint
-	rateLimiter := middleware.NewRateLimiter(10, time.Minute)
+	rateLimiter := middleware.NewRateLimiter(middleware.LegacyRate.Requests, middleware.LegacyRate.Window)
 	appServer.rateLimiter = rateLimiter
+	appServer.FailureLimiter = middleware.NewFailureLimiter(cfg.Server.AuthFailureLimit, cfg.Server.AuthFailureWindow)
+	if cfg.Server.RateLimitSplit {
+		anonymous, rateErr := middleware.ParseRate(cfg.Server.RateLimitAnonymous)
+		if rateErr != nil {
+			return result, fmt.Errorf("RATE_LIMIT_ANONYMOUS: %w", rateErr)
+		}
+		fleetRate, rateErr := middleware.ParseRate(cfg.Server.RateLimitFleet)
+		if rateErr != nil {
+			return result, fmt.Errorf("RATE_LIMIT_FLEET: %w", rateErr)
+		}
+		appServer.AnonymousLimiter = middleware.NewLimiter[netip.Addr](anonymous)
+		appServer.FleetLimiter = middleware.NewLimiter[fleet.SatelliteID](fleetRate)
+	}
 
 	// Load SPIFFE configuration
 	spiffeCfg := spiffe.LoadConfig()
@@ -164,6 +311,18 @@ func NewServer(ctx context.Context) (result *ServerResult, err error) {
 		spireServerPort = cfg.SPIRE.ServerPort
 	}
 	appServer.spireClient = spireClient
+	if appServer.fleetFactory != nil {
+		fleetOpts, err := appServer.fleetFactory(ctx, pools, spireClient)
+		if err != nil {
+			return result, fmt.Errorf("build fleet services: %w", err)
+		}
+		for _, opt := range fleetOpts {
+			opt(appServer)
+		}
+	}
+	if appServer.services == nil {
+		return result, errors.New("the fleet services are required (WithFleet or WithFleetFactory)")
+	}
 	appServer.spireServerAddress = spireServerAddress
 	appServer.spireServerPort = spireServerPort
 	appServer.spireTrustDomain = spireTrustDomain
@@ -252,7 +411,18 @@ func (r *ServerResult) Close() error {
 	if r.AppServer.rateLimiter != nil {
 		r.AppServer.rateLimiter.Stop()
 	}
-	if r.AppServer.db != nil {
+	if r.AppServer.FailureLimiter != nil {
+		r.AppServer.FailureLimiter.Stop()
+	}
+	if r.AppServer.AnonymousLimiter != nil {
+		r.AppServer.AnonymousLimiter.Stop()
+	}
+	if r.AppServer.FleetLimiter != nil {
+		r.AppServer.FleetLimiter.Stop()
+	}
+	if r.AppServer.pools != nil {
+		err = errors.Join(err, r.AppServer.pools.Close())
+	} else if r.AppServer.db != nil {
 		err = errors.Join(err, r.AppServer.db.Close())
 	}
 	if r.AppServer.audit != nil {
@@ -285,4 +455,21 @@ func buildServerTLSConfigWithWatcher(cfg *ServerTLSConfig, cw *middleware.CertWa
 	}
 
 	return tlsConfig, nil
+}
+
+// fleet returns the queries for satellite-facing routes; tests that build a
+// Server by hand set only dbQueries.
+func (s *Server) fleet() *database.Queries {
+	if s.fleetQueries != nil {
+		return s.fleetQueries
+	}
+	return s.dbQueries
+}
+
+// background returns the pool and queries for background jobs.
+func (s *Server) background() (*sql.DB, *database.Queries) {
+	if s.asyncDB != nil && s.asyncDB != s.db {
+		return s.asyncDB, database.New(s.asyncDB)
+	}
+	return s.db, s.dbQueries
 }

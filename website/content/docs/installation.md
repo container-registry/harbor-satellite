@@ -49,6 +49,8 @@ DB_PORT=5432
 DB_DATABASE=groundcontrol
 DB_USERNAME=postgres
 DB_PASSWORD=password
+# A local PostgreSQL without TLS; the default is require.
+DB_SSLMODE=disable
 EOF
 ```
 
@@ -153,7 +155,7 @@ Satellite runs at each edge location. Required settings:
 | `--token` | `TOKEN` | Unless `--spiffe-enabled` / `SPIFFE_ENABLED=true` |
 | `--registry-url` | `REGISTRY_URL` | With `--byo-registry` / `BYO_REGISTRY=true` |
 
-Other options: `--config-dir` / `CONFIG_DIR` (default `~/.config/satellite`), `--registry-data-dir` / `REGISTRY_DATA_DIR` (default `<config-dir>/oci`), `--use-unsecure` / `USE_UNSECURE` (plain HTTP to registries), `--spiffe-endpoint-socket`, `--spiffe-expected-server-id`, `--mirrors`, `--direct-delivery` / `DIRECT_DELIVERY`, `--image-dir` / `IMAGE_DIR`, `--shutdown-timeout` / `SHUTDOWN_TIMEOUT` (default 30s). Run `satellite -h` for the full list.
+Other options: `--config-dir` / `CONFIG_DIR` (default `~/.config/satellite`), `--registry-data-dir` / `REGISTRY_DATA_DIR` (default `<config-dir>/oci`), `--use-unsecure` / `USE_UNSECURE` (plain HTTP to registries and Ground Control; without it an `http://` Ground Control URL is refused), `--spiffe-endpoint-socket`, `--spiffe-expected-server-id`, `--mirrors`, `--direct-delivery` / `DIRECT_DELIVERY`, `--image-dir` / `IMAGE_DIR`, `--shutdown-timeout` / `SHUTDOWN_TIMEOUT` (default 30s). Run `satellite -h` for the full list.
 
 ### Satellite Binary
 
@@ -217,7 +219,7 @@ Environment variables read by the compose file:
 
 - `TOKEN` - Satellite registration token (token-based auth)
 - `HARBOR_REGISTRY_URL` - Harbor URL as reachable from the satellite container (defaults to `HARBOR_URL`)
-- `USE_UNSECURE` - set to `true` for a plain-HTTP Harbor
+- `USE_UNSECURE` - set to `true` for a plain-HTTP Harbor or Ground Control
 
 ### Satellite Docker Run
 

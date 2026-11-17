@@ -44,14 +44,17 @@ database:
   username: "postgres"
   # -- Database password
   password: ""
+  # -- libpq sslmode. Empty means disable for the internal PostgreSQL (no TLS)
+  # and require for an external one
+  sslMode: ""
 
 # -- Internal PostgreSQL settings (only used when database.internal.enabled is true)
 postgresql:
   image:
     # -- PostgreSQL image repository
     repository: postgres
-    # -- PostgreSQL image tag
-    tag: "16"
+    # -- PostgreSQL image tag; ADR-0020 requires 19 or later
+    tag: "19rc1"
     # -- PostgreSQL image pull policy
     pullPolicy: IfNotPresent
   # -- Persistent volume size
@@ -82,6 +85,23 @@ service:
   type: ClusterIP
   # -- Service port
   port: 8080
+
+# -- Extra environment variables for the Ground Control container, as
+# Kubernetes EnvVar entries (value or valueFrom). They override the chart's
+# ConfigMap and Secret. See docs/reference/ground-control.md for the names.
+extraEnv: []
+# - name: METRICS_ADDR
+#   value: ":9464"
+# - name: DATA_ENCRYPTION_KEY
+#   valueFrom:
+#     secretKeyRef:
+#       name: ground-control-keys
+#       key: data-encryption-key
+
+# -- Extra envFrom sources (ConfigMaps or Secrets) for the Ground Control container
+extraEnvFrom: []
+# - secretRef:
+#     name: ground-control-oidc
 
 # -- Container resource requests and limits
 resources: {}

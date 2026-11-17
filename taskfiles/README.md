@@ -49,13 +49,14 @@ Single components: `task _build:satellite`, `task _build:groundcontrol`. Start t
 
 | Command | Description |
 |---------|-------------|
-| `task lint` | Run golangci-lint in a pinned container |
+| `task lint` | Run `task lint:arch`, then golangci-lint in a pinned container |
+| `task lint:arch` | Check import boundaries against `.go-arch-lint.yml` (go-arch-lint, version pinned in `Taskfile.yml`, run with `go run`) |
 | `task lint-fix` | Run golangci-lint with auto-fix |
 | `task lint-report` | Run lint and export to `golangci-lint.report` |
 | `task vuln` | Run govulncheck (filters known issues) |
 | `task vuln-report` | Run govulncheck and export to `vulnerability-check.report` |
 
-CI (`.github/workflows/lint.yaml`) runs golangci-lint v2.12.2 directly.
+CI (`.github/workflows/lint.yaml`) runs golangci-lint v2.12.2 directly and `task lint:arch` in a separate job.
 
 ## Publish Tasks
 
@@ -93,18 +94,30 @@ task publish DEST=ttl.sh/my-test TAG=v1.0.0
 REG_USER=user REG_PASS=pass task publish DEST=ghcr.io/myorg/project
 ```
 
+## Integration Test Tasks
+
+| Command | Description |
+|---------|-------------|
+| `task test:integration` | Start the test Postgres (`test/integration/docker-compose.yml`) and run `go test ./internal/groundcontrol/...` with `TEST_DATABASE_URL` set |
+| `task test:integration-db-down` | Remove the test Postgres |
+
+The Postgres listens on `127.0.0.1:55434`; set `TEST_PG_PORT` to move it. To use another server, run `TEST_DATABASE_URL=postgres://... go test ./internal/groundcontrol/...`; the user must be allowed to create databases and the server must load `pg_stat_statements`.
+
 ## E2E Test Tasks
 
 | Command | Description |
 |---------|-------------|
-| `task e2e` | Run `e2e-test`, `e2e-byo` and `e2e-spiffe` in sequence |
+| `task e2e` | Run `e2e-test`, `e2e-byo`, `e2e-spiffe`, `e2e-multi-group`, `e2e-harbor-outage` and `e2e-lifecycle` in sequence |
 | `task e2e-test` | Run main E2E test only |
 | `task e2e-byo` | Run BYO registry E2E test |
 | `task e2e-spiffe` | Run SPIFFE join token E2E test |
 | `task e2e-crash-recovery` | Run crash recovery E2E test with the local OCI store |
 | `task e2e-crash-recovery-byo` | Run crash recovery E2E test with a BYO registry |
+| `task e2e-multi-group` | A satellite in two groups replicates the images of both projects |
+| `task e2e-harbor-outage` | Stop Harbor core, restart GC, create a config, group and satellite, require GC healthy-but-degraded with nothing published, start Harbor and wait until the satellite's state is published and applied |
+| `task e2e-lifecycle` | Revoke a running satellite and require 403 for its heartbeat and every credential it holds, unrevoke it until it is online; deliver `GroupChanged` and `SatelliteStale` webhooks to a loopback receiver and require each event ID exactly once across a restart of the worker (`docker-compose.webhook.yml`) |
 
-`task e2e` does not include the crash recovery variants.
+`task e2e` does not include the crash recovery variants. `E2E_HARBOR_HOST_PORT` (default 8080) moves the bundled Harbor's host port. The outage and lifecycle variants run only against the bundled Harbor.
 
 ## BYO Registry Tasks
 

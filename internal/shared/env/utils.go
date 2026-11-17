@@ -2,20 +2,9 @@ package env
 
 import (
 	"fmt"
-	"net"
 
 	auditlog "github.com/container-registry/harbor-satellite/internal/shared/logger"
 )
-
-func (d Database) URL() string {
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s/%s?sslmode=disable",
-		d.Username,
-		d.Password,
-		net.JoinHostPort(d.Host, d.Port),
-		d.Database,
-	)
-}
 
 func (h Harbor) Validate() error {
 	if h.URL == "" {

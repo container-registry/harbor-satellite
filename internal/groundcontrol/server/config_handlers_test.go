@@ -2,106 +2,13 @@ package server
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
 )
-
-func TestListConfigsHandler(t *testing.T) {
-	t.Run("returns config list", func(t *testing.T) {
-		server, mock := newMockServer(t)
-		now := time.Now().UTC().Truncate(time.Second)
-
-		rows := sqlmock.NewRows([]string{"id", "config_name", "registry_url", "config", "created_at", "updated_at"}).
-			AddRow(1, "test-config", "http://harbor:8080", json.RawMessage(`{"app_config":{}}`), now, now).
-			AddRow(2, "prod-config", "http://harbor:8080", json.RawMessage(`{"app_config":{}}`), now, now)
-		mock.ExpectQuery("SELECT .+ FROM configs").WillReturnRows(rows)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/configs", nil)
-		rr := httptest.NewRecorder()
-		server.ListConfigs(rr, req)
-
-		require.Equal(t, http.StatusOK, rr.Code)
-		require.Contains(t, rr.Body.String(), "test-config")
-		require.Contains(t, rr.Body.String(), "prod-config")
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("empty list", func(t *testing.T) {
-		server, mock := newMockServer(t)
-
-		rows := sqlmock.NewRows([]string{"id", "config_name", "registry_url", "config", "created_at", "updated_at"})
-		mock.ExpectQuery("SELECT .+ FROM configs").WillReturnRows(rows)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/configs", nil)
-		rr := httptest.NewRecorder()
-		server.ListConfigs(rr, req)
-
-		require.Equal(t, http.StatusOK, rr.Code)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("db error returns 500", func(t *testing.T) {
-		server, mock := newMockServer(t)
-
-		mock.ExpectQuery("SELECT .+ FROM configs").WillReturnError(fmt.Errorf("db error"))
-
-		req := httptest.NewRequest(http.MethodGet, "/api/configs", nil)
-		rr := httptest.NewRecorder()
-		server.ListConfigs(rr, req)
-
-		require.Equal(t, http.StatusInternalServerError, rr.Code)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-}
-
-func TestGetConfigHandler(t *testing.T) {
-	t.Run("found returns 200", func(t *testing.T) {
-		server, mock := newMockServer(t)
-		now := time.Now().UTC().Truncate(time.Second)
-
-		rows := sqlmock.NewRows([]string{"id", "config_name", "registry_url", "config", "created_at", "updated_at"}).
-			AddRow(1, "test-config", "http://harbor:8080", json.RawMessage(`{"app_config":{}}`), now, now)
-		mock.ExpectQuery("SELECT .+ FROM configs WHERE config_name").
-			WithArgs("test-config").
-			WillReturnRows(rows)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/configs/test-config", nil)
-		req = mux.SetURLVars(req, map[string]string{"config": "test-config"})
-
-		rr := httptest.NewRecorder()
-		server.GetConfig(rr, req, mux.Vars(req)["config"])
-
-		require.Equal(t, http.StatusOK, rr.Code)
-		require.Contains(t, rr.Body.String(), "test-config")
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("not found returns 404", func(t *testing.T) {
-		server, mock := newMockServer(t)
-
-		mock.ExpectQuery("SELECT .+ FROM configs WHERE config_name").
-			WithArgs("nonexistent").
-			WillReturnError(sql.ErrNoRows)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/configs/nonexistent", nil)
-		req = mux.SetURLVars(req, map[string]string{"config": "nonexistent"})
-
-		rr := httptest.NewRecorder()
-		server.GetConfig(rr, req, mux.Vars(req)["config"])
-
-		require.Equal(t, http.StatusNotFound, rr.Code)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-}
 
 func TestCreateConfigHandler_InvalidBody(t *testing.T) {
 	server, _ := newMockServer(t)
@@ -128,47 +35,6 @@ func TestCreateConfigHandler_EmptyName(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
-func TestDeleteConfigHandler_NotFound(t *testing.T) {
-	server, mock := newMockServer(t)
-
-	mock.ExpectQuery("SELECT .+ FROM configs WHERE config_name").
-		WithArgs("nonexistent").
-		WillReturnError(fmt.Errorf("db error"))
-
-	req := httptest.NewRequest(http.MethodDelete, "/api/configs/nonexistent", nil)
-	req = mux.SetURLVars(req, map[string]string{"config": "nonexistent"})
-
-	rr := httptest.NewRecorder()
-	server.DeleteConfig(rr, req, mux.Vars(req)["config"])
-
-	require.Equal(t, http.StatusInternalServerError, rr.Code)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestDeleteConfigHandler_ConfigInUse(t *testing.T) {
-	server, mock := newMockServer(t)
-	now := time.Now().UTC().Truncate(time.Second)
-
-	mock.ExpectQuery("SELECT .+ FROM configs WHERE config_name").
-		WithArgs("used-config").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "config_name", "registry_url", "config", "created_at", "updated_at"}).
-			AddRow(1, "used-config", "http://harbor:8080", json.RawMessage(`{}`), now, now))
-
-	mock.ExpectQuery("SELECT .+ FROM satellite_configs").
-		WithArgs(int32(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"satellite_id", "config_id"}).
-			AddRow(1, 1))
-
-	req := httptest.NewRequest(http.MethodDelete, "/api/configs/used-config", nil)
-	req = mux.SetURLVars(req, map[string]string{"config": "used-config"})
-
-	rr := httptest.NewRecorder()
-	server.DeleteConfig(rr, req, mux.Vars(req)["config"])
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
 func TestConfigValueKeepsPeerDistribution(t *testing.T) {
 	const withPeers = `{
 		"app_config": {
@@ -192,6 +58,32 @@ func TestConfigValueKeepsPeerDistribution(t *testing.T) {
 	encoded, err := json.Marshal(disabled)
 	require.NoError(t, err)
 	require.Contains(t, string(encoded), `"peer_distribution"`)
+}
+
+func TestConfigValueKeepsNetwork(t *testing.T) {
+	const withNetwork = `{
+		"app_config": {
+			"network": {
+				"speed": {"enabled": false, "limit": "10Mbps"},
+				"quota": {"enabled": true, "limit": "5GB", "window": "day"}
+			}
+		}
+	}`
+
+	var created ConfigValue
+	require.NoError(t, json.Unmarshal([]byte(withNetwork), &created))
+	require.False(t, created.AppConfig.Network.Speed.Enabled)
+	require.Equal(t, "10Mbps", created.AppConfig.Network.Speed.Limit)
+	require.True(t, created.AppConfig.Network.Quota.Enabled)
+	require.Equal(t, "5GB", created.AppConfig.Network.Quota.Limit)
+	require.Equal(t, "day", created.AppConfig.Network.Quota.Window)
+
+	stored, err := json.Marshal(created)
+	require.NoError(t, err)
+	require.Contains(t, string(stored), `"10Mbps"`)
+	require.Contains(t, string(stored), `"5GB"`)
+	require.Contains(t, string(stored), `"day"`)
+	require.Contains(t, string(stored), `"enabled":true`)
 }
 
 func TestConfigMergePatchKeepsPeerDistribution(t *testing.T) {

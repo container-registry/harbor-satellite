@@ -68,7 +68,7 @@ func TestOCIStoreDropsStagedGraphWhenDigestDiffers(t *testing.T) {
 	func() {
 		local.mu.Lock()
 		defer local.mu.Unlock()
-		err = local.publish(context.Background(), staged, rejected)
+		_, err = local.publish(context.Background(), staged, rejected)
 	}()
 	require.ErrorContains(t, err, "does not match group list digest")
 	_, err = local.Pull(context.Background(), Artifact{Name: "team/app", Tag: "latest"}, PullResourceManifest)
@@ -285,7 +285,8 @@ func TestOCIStorePinnedBlobSurvivesDeleteBeforePublish(t *testing.T) {
 	func() {
 		local.mu.Lock()
 		defer local.mu.Unlock()
-		require.NoError(t, local.publish(context.Background(), staged, next))
+		_, publishErr := local.publish(context.Background(), staged, next)
+		require.NoError(t, publishErr)
 	}()
 	require.Equal(t, fetchedForFirst, layerFetches.Load())
 	published, err := os.Stat(filepath.Join(local.root, blobName))

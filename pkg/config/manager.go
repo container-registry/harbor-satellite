@@ -9,18 +9,32 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"github.com/container-registry/harbor-satellite/internal/satellite/identity"
-	"github.com/container-registry/harbor-satellite/internal/satellite/secure"
-	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
 )
+
+// Encryptor seals config.json at rest. pkg/config is the contract layer and
+// cannot import the device-bound implementation, so cmd/satellite injects it.
+type Encryptor interface {
+	EncryptConfig(config any) ([]byte, error)
+	DecryptConfig(data []byte, config any) error
+	IsEncrypted(data []byte) bool
+}
+
+var ErrNoEncryptor = errors.New("config encryption needs an encryptor (config.WithEncryptor)")
+
+type ManagerOption func(*ConfigManager)
+
+func WithEncryptor(e Encryptor) ManagerOption {
+	return func(cm *ConfigManager) { cm.encryptor = e }
+}
 
 type ConfigChangeType string
 
 const (
-	LogLevelChanged    ConfigChangeType = "log_level"
-	IntervalsChanged   ConfigChangeType = "intervals"
-	AuditConfigChanged ConfigChangeType = "audit"
+	LogLevelChanged          ConfigChangeType = "log_level"
+	IntervalsChanged         ConfigChangeType = "intervals"
+	HeartbeatIntervalChanged ConfigChangeType = "heartbeat_interval"
+	AuditConfigChanged       ConfigChangeType = "audit"
+	NetworkChanged           ConfigChangeType = "network"
 )
 
 type ConfigChange struct {
@@ -39,25 +53,24 @@ type ConfigManager struct {
 	configPath              string
 	prevConfigPath          string
 	mu                      sync.RWMutex
-	encryptor               *secure.ConfigEncryptor
+	encryptor               Encryptor
 	encryptEnabled          bool
 }
 
-func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config) (*ConfigManager, error) {
-	cryptoProvider := crypto.NewAESProvider()
-	deviceIdentity := identity.NewLinuxDeviceIdentity()
-	encryptor := secure.NewConfigEncryptor(cryptoProvider, deviceIdentity)
-
-	return &ConfigManager{
+func NewConfigManager(configPath, prevConfigPath, token, defaultGroundControlURL string, jsonLog bool, config *Config, opts ...ManagerOption) (*ConfigManager, error) {
+	cm := &ConfigManager{
 		config:                  config,
 		configPath:              configPath,
 		prevConfigPath:          prevConfigPath,
 		Token:                   token,
 		DefaultGroundControlURL: defaultGroundControlURL,
 		JsonLog:                 jsonLog,
-		encryptor:               encryptor,
 		encryptEnabled:          config.AppConfig.EncryptConfig,
-	}, nil
+	}
+	for _, opt := range opts {
+		opt(cm)
+	}
+	return cm, nil
 }
 
 func (cm *ConfigManager) With(mutators ...func(*Config)) *ConfigManager {
@@ -82,6 +95,9 @@ func (cm *ConfigManager) writeConfigUnlocked(config *Config, path string) error 
 	var err error
 
 	if cm.encryptEnabled {
+		if cm.encryptor == nil {
+			return ErrNoEncryptor
+		}
 		data, err = cm.encryptor.EncryptConfig(config)
 		if err != nil {
 			return fmt.Errorf("encrypt config: %w", err)
@@ -131,11 +147,27 @@ func (cm *ConfigManager) detectChanges(oldConfig *Config, newConfig *Config) []C
 		})
 	}
 
+	if oldConfig.AppConfig.HeartbeatInterval != newConfig.AppConfig.HeartbeatInterval {
+		changes = append(changes, ConfigChange{
+			Type:     HeartbeatIntervalChanged,
+			OldValue: oldConfig.AppConfig.HeartbeatInterval,
+			NewValue: newConfig.AppConfig.HeartbeatInterval,
+		})
+	}
+
 	if !oldConfig.AppConfig.Audit.Equal(newConfig.AppConfig.Audit) {
 		changes = append(changes, ConfigChange{
 			Type:     AuditConfigChanged,
 			OldValue: oldConfig.AppConfig.Audit,
 			NewValue: newConfig.AppConfig.Audit,
+		})
+	}
+
+	if oldConfig.AppConfig.Network != newConfig.AppConfig.Network {
+		changes = append(changes, ConfigChange{
+			Type:     NetworkChanged,
+			OldValue: oldConfig.AppConfig.Network,
+			NewValue: newConfig.AppConfig.Network,
 		})
 	}
 
@@ -148,7 +180,7 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 
 	oldConfig := cm.config
 
-	newConfig, err := readAndReturnConfig(cm.configPath)
+	newConfig, err := readAndReturnConfig(cm.configPath, cm.encryptor)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read config from disk: %w", err)
 	}
@@ -165,15 +197,19 @@ func (cm *ConfigManager) ReloadConfig() ([]ConfigChange, []string, error) {
 	return changes, warnings, nil
 }
 
-func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure bool) (*ConfigManager, []string, error) {
+func InitConfigManager(token, groundControlURL, configPath, prevConfigPath string, jsonLogging, useUnsecure bool, opts ...ManagerOption) (*ConfigManager, []string, error) {
 	var cfg *Config
 	var err error
 
-	if _, err := url.ParseRequestURI(groundControlURL); err != nil {
+	if _, err = url.ParseRequestURI(groundControlURL); err != nil {
 		return nil, nil, fmt.Errorf("invalid URL provided for ground_control_url env var: %w", err)
 	}
 
-	cfg, err = readAndReturnConfig(configPath)
+	probe := &ConfigManager{}
+	for _, opt := range opts {
+		opt(probe)
+	}
+	cfg, err = readAndReturnConfig(configPath, probe.encryptor)
 	if errors.Is(err, os.ErrNotExist) {
 		cfg = &Config{}
 	} else if err != nil {
@@ -190,7 +226,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 		return nil, warnings, fmt.Errorf("invalid config: %w", err)
 	}
 
-	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, jsonLogging, cfg)
+	cm, err := NewConfigManager(configPath, prevConfigPath, token, groundControlURL, jsonLogging, cfg, opts...)
 	if err != nil {
 		return nil, warnings, fmt.Errorf("failed to create config manager: %w", err)
 	}
@@ -199,7 +235,7 @@ func InitConfigManager(token, groundControlURL, configPath, prevConfigPath strin
 }
 
 // Reads the config at the given path and returns the parsed Config.
-func readAndReturnConfig(path string) (*Config, error) {
+func readAndReturnConfig(path string, encryptor Encryptor) (*Config, error) {
 	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, err
@@ -210,11 +246,10 @@ func readAndReturnConfig(path string) (*Config, error) {
 		return nil, os.ErrNotExist
 	}
 
-	if secure.IsEncrypted(data) {
-		cryptoProvider := crypto.NewAESProvider()
-		deviceIdentity := identity.NewLinuxDeviceIdentity()
-		encryptor := secure.NewConfigEncryptor(cryptoProvider, deviceIdentity)
-
+	if encryptor == nil && looksSealed(data) {
+		return nil, ErrNoEncryptor
+	}
+	if encryptor != nil && encryptor.IsEncrypted(data) {
 		var cfg Config
 		if err := encryptor.DecryptConfig(data, &cfg); err != nil {
 			return nil, fmt.Errorf("decrypt config: %w", err)
@@ -228,4 +263,17 @@ func readAndReturnConfig(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// looksSealed guards against reading a sealed config.json without an
+// encryptor: json.Unmarshal would silently return an empty Config.
+func looksSealed(data []byte) bool {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(data, &top); err != nil {
+		return false
+	}
+	_, hasData := top["data"]
+	_, hasSalt := top["salt"]
+	_, hasApp := top["app_config"]
+	return hasData && hasSalt && !hasApp
 }
