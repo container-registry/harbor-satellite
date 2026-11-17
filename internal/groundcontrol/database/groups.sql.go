@@ -130,7 +130,7 @@ func (q *Queries) GetProjectsOfGroup(ctx context.Context, groupName string) ([][
 }
 
 const listGroups = `-- name: ListGroups :many
-SELECT id, group_name, registry_url, projects, created_at, updated_at FROM groups
+SELECT id, group_name, registry_url, projects, created_at, updated_at FROM groups ORDER BY group_name
 `
 
 func (q *Queries) ListGroups(ctx context.Context) ([]Group, error) {

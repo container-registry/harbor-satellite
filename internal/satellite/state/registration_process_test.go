@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -50,8 +51,23 @@ func TestRegisterSatellitePostsTokenInJSONBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := registerSatellite(server.URL, ZeroTouchRegistrationRoute, token, config.TLSConfig{}, false, context.Background())
+	dir := t.TempDir()
+	cm, err := config.NewConfigManager(filepath.Join(dir, "config.json"), filepath.Join(dir, "prev.json"), token, server.URL, false,
+		&config.Config{AppConfig: config.AppConfig{GroundControlURL: config.URL(server.URL), UseUnsecure: true}})
 	require.NoError(t, err)
+
+	_, err = registerSatellite(context.Background(), cm)
+	require.NoError(t, err)
+}
+
+func TestRegisterSatelliteRequiresHTTPSWithoutUseUnsecure(t *testing.T) {
+	dir := t.TempDir()
+	cm, err := config.NewConfigManager(filepath.Join(dir, "config.json"), filepath.Join(dir, "prev.json"), "token", "http://gc.test", false,
+		&config.Config{AppConfig: config.AppConfig{GroundControlURL: "http://gc.test"}})
+	require.NoError(t, err)
+
+	_, err = registerSatellite(context.Background(), cm)
+	require.ErrorContains(t, err, "https")
 }
 
 func TestSanitizeAuditReason_TokenAppearsMultipleTimes(t *testing.T) {

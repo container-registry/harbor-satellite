@@ -1,0 +1,8 @@
+{
+  "body": {
+    "connected": false,
+    "enabled": false
+  },
+  "request": "GET /api/spire/status",
+  "status": 200
+}

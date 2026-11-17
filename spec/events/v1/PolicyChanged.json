@@ -1,0 +1,28 @@
+{
+  "$id": "https://satellite.container-registry.com/schemas/events/v1/PolicyChanged.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "data of the io.harborsatellite.groundcontrol.PolicyChanged event (PolicyChanged); v1 changes are additive only",
+  "properties": {
+    "change": {
+      "type": "string"
+    },
+    "id": {
+      "type": "integer"
+    },
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "name",
+    "version",
+    "change",
+    "id"
+  ],
+  "title": "PolicyChanged",
+  "type": "object"
+}

@@ -1,0 +1,5 @@
+{
+  "body": [],
+  "request": "GET /api/satellites/active",
+  "status": 200
+}

@@ -123,3 +123,16 @@ func TestConfigManager_WriteConfig(t *testing.T) {
 		require.Equal(t, "warn", saved.AppConfig.LogLevel)
 	})
 }
+
+func TestConfigManager_detectChangesHeartbeatInterval(t *testing.T) {
+	cm := &ConfigManager{}
+	old := &Config{AppConfig: AppConfig{HeartbeatInterval: "@every 30s"}}
+	next := &Config{AppConfig: AppConfig{HeartbeatInterval: "@every 10s"}}
+
+	require.Empty(t, cm.detectChanges(old, old))
+	changes := cm.detectChanges(old, next)
+	require.Len(t, changes, 1)
+	require.Equal(t, HeartbeatIntervalChanged, changes[0].Type)
+	require.Equal(t, "@every 30s", changes[0].OldValue)
+	require.Equal(t, "@every 10s", changes[0].NewValue)
+}

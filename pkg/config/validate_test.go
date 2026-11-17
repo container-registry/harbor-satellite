@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/container-registry/harbor-satellite/internal/shared/policybundle"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -39,13 +40,13 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 			config:         nil,
 			expectError:    false,
 			expectedErrMsg: "nil config",
-			expectWarnings: true,
+			expectWarnings: false,
 		},
 		{
 			name:           "empty config - defaults applied",
 			config:         &Config{},
 			expectError:    false,
-			expectWarnings: true,
+			expectWarnings: false,
 			expectedConfig: &Config{
 				AppConfig: AppConfig{
 					GroundControlURL:          URL(DefaultGroundControlURL),
@@ -177,17 +178,16 @@ func TestValidateAndEnforceDefaults(t *testing.T) {
 			},
 		},
 		{
-			name: "empty cron expression defaults",
+			name: "absent schedules default without a warning",
 			config: &Config{
 				AppConfig: AppConfig{
-					GroundControlURL:          URL("https://example.com"),
 					StateReplicationInterval:  "",
 					RegisterSatelliteInterval: "",
 					HeartbeatInterval:         "",
 				},
 			},
 			expectError:    false,
-			expectWarnings: true,
+			expectWarnings: false,
 			expectedConfig: &Config{
 				AppConfig: AppConfig{
 					StateReplicationInterval:  DefaultFetchAndReplicateCronExpr,
@@ -1159,3 +1159,90 @@ func omittedRemoteConfig(t *testing.T) Config {
 
 func intPtr(i int) *int    { return &i }
 func boolPtr(b bool) *bool { return &b }
+
+func TestValidateAppConfig_NeedsNoGroundControlURL(t *testing.T) {
+	app := AppConfig{
+		LogLevel:                  "info",
+		StateReplicationInterval:  "@every 00h00m30s",
+		RegisterSatelliteInterval: "@every 00h00m05s",
+		HeartbeatInterval:         "@every 00h00m30s",
+	}
+
+	warnings, err := ValidateAppConfig(app)
+
+	require.NoError(t, err)
+	require.Empty(t, warnings)
+
+	app.BringOwnRegistry = true
+	_, err = ValidateAppConfig(app)
+	require.ErrorContains(t, err, "custom registry URL is required", "a real error is still an error")
+
+	app = AppConfig{LogLevel: "loud", HeartbeatInterval: "@every 00h00m30s", Admission: AdmissionConfig{
+		Mode:   "audit",
+		Bundle: &policybundle.Bundle{ModelVersion: policybundle.ModelVersion, Policies: [][]string{{"*", "*", "*", "*", "allow"}}},
+	}}
+	before, err := json.Marshal(app)
+	require.NoError(t, err)
+	warnings, err = ValidateAppConfig(app)
+	require.NoError(t, err)
+	require.NotEmpty(t, warnings, "an invalid log level is a warning")
+	after, err := json.Marshal(app)
+	require.NoError(t, err)
+	require.JSONEq(t, string(before), string(after), "validation never rewrites the document, the bundle behind its pointer included")
+}
+
+// GC's own USE_UNSECURE must not decide whether a satellite's config may
+// use HTTP peers.
+func TestValidateAppConfig_IgnoresProcessEnv(t *testing.T) {
+	t.Setenv("USE_UNSECURE", "true")
+	app := AppConfig{
+		PeerDistribution: PeerDistributionConfig{
+			Enabled:     true,
+			StaticPeers: []PeerDescriptor{{ID: "peer-1", URL: "http://peer.local:8585"}},
+		},
+	}
+
+	_, err := ValidateAppConfig(app)
+
+	require.ErrorContains(t, err, "uses HTTP but use_unsecure is false")
+}
+
+// Keyless pulls (plan item 8.3) wait for Harbor 3's token exchange, so a
+// config asking for them fails instead of pulling with the robot silently.
+func TestValidateAppConfig_RegistryAuthMode(t *testing.T) {
+	for mode, wantErr := range map[string]string{
+		"":                           "",
+		RegistryAuthRobot:            "",
+		RegistryAuthWorkloadIdentity: "needs Harbor 3",
+		"token":                      "want robot or workload_identity",
+	} {
+		_, err := ValidateAppConfig(AppConfig{RegistryAuth: RegistryAuthConfig{Mode: mode}})
+		if wantErr == "" {
+			require.NoError(t, err, "%q", mode)
+			continue
+		}
+		require.ErrorContains(t, err, wantErr, "%q", mode)
+	}
+}
+
+func TestValidateAndEnforceCronSchedules_WarnsOnlyForInvalidValues(t *testing.T) {
+	cfg := &Config{AppConfig: AppConfig{HeartbeatInterval: "every minute", StateReplicationInterval: "@every 00h00m10s"}}
+
+	warnings := validateAndEnforceCronSchedules(cfg)
+
+	require.Equal(t, []string{`invalid schedule "every minute" provided for heartbeat_interval, using default schedule ` + DefaultHeartbeatCronExpr}, warnings)
+	require.Equal(t, DefaultHeartbeatCronExpr, cfg.AppConfig.HeartbeatInterval)
+	require.Equal(t, "@every 00h00m10s", cfg.AppConfig.StateReplicationInterval)
+	require.Equal(t, DefaultZTRCronExpr, cfg.AppConfig.RegisterSatelliteInterval, "absent: defaulted, no warning")
+}
+
+func TestValidateAndEnforceCronSchedules_NonPositiveEveryIsInvalid(t *testing.T) {
+	for _, expr := range []string{"@every 0s", "@every -5s"} {
+		cfg := &Config{AppConfig: AppConfig{StateReplicationInterval: expr}}
+
+		warnings := validateAndEnforceCronSchedules(cfg)
+
+		require.Equal(t, []string{`invalid schedule "` + expr + `" provided for state_replication_interval, using default schedule ` + DefaultFetchAndReplicateCronExpr}, warnings)
+		require.Equal(t, DefaultFetchAndReplicateCronExpr, cfg.AppConfig.StateReplicationInterval)
+	}
+}

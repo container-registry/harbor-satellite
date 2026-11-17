@@ -15,13 +15,22 @@ import (
 	"time"
 
 	"github.com/container-registry/harbor-satellite/internal/satellite"
+	"github.com/container-registry/harbor-satellite/internal/satellite/admission"
+	"github.com/container-registry/harbor-satellite/internal/satellite/budget"
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
+	"github.com/container-registry/harbor-satellite/internal/satellite/identity"
+	"github.com/container-registry/harbor-satellite/internal/satellite/journal"
+	"github.com/container-registry/harbor-satellite/internal/satellite/lane"
 	proxyhandler "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
+	proxymw "github.com/container-registry/harbor-satellite/internal/satellite/proxy/middleware"
 	proxyimage "github.com/container-registry/harbor-satellite/internal/satellite/proxy/process/image"
+	"github.com/container-registry/harbor-satellite/internal/satellite/secure"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
+	"github.com/container-registry/harbor-satellite/internal/shared/crypto"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/internal/shared/utils"
@@ -70,6 +79,12 @@ type SatelliteOptions struct {
 	ProxyMode              proxyhandler.Mode
 	ProxyPort              int
 	ProxyModeExplicit      bool
+	StoreGCGrace           time.Duration
+	ProxyWriteTimeout      time.Duration
+	ProxyMaxConnections    int
+	ProxyStreaming         bool
+	ProxyPrefetchWorkers   int
+	TelemetryAddr          string
 }
 
 func main() {
@@ -98,6 +113,12 @@ func main() {
 		ImageDir:               envCfg.ImageDir,
 		ProxyMode:              envCfg.ProxyMode,
 		ProxyPort:              envCfg.ProxyPort,
+		StoreGCGrace:           envCfg.StoreGCGrace,
+		ProxyWriteTimeout:      envCfg.ProxyWriteTimeout,
+		ProxyMaxConnections:    envCfg.ProxyMaxConnections,
+		ProxyStreaming:         envCfg.ProxyStreaming,
+		ProxyPrefetchWorkers:   envCfg.ProxyPrefetchConcurrency,
+		TelemetryAddr:          envCfg.TelemetryAddr,
 	}
 	_, opts.ProxyModeExplicit = os.LookupEnv("PROXY_MODE")
 	shutdownTimeout := envCfg.ShutdownTimeout
@@ -125,6 +146,12 @@ func main() {
 	flag.StringVar(&opts.ImageDir, "image-dir", opts.ImageDir, "Override image directory for direct delivery (auto-detected if empty)")
 	flag.Var(&opts.ProxyMode, "proxy-mode", "OCI proxy mode: proxy or replica")
 	flag.IntVar(&opts.ProxyPort, "proxy-port", opts.ProxyPort, "Local OCI registry proxy port")
+	flag.DurationVar(&opts.ProxyWriteTimeout, "proxy-write-timeout", opts.ProxyWriteTimeout, "Per-write deadline for OCI proxy responses; a client that accepts no data for this long is cut off (0 disables)")
+	flag.IntVar(&opts.ProxyMaxConnections, "proxy-max-connections", opts.ProxyMaxConnections, "Maximum concurrent OCI proxy connections (0 is unlimited)")
+	flag.StringVar(&opts.TelemetryAddr, "telemetry-addr", opts.TelemetryAddr, "Address for /healthz and /metrics, separate from the OCI proxy (empty disables)")
+	flag.BoolVar(&opts.ProxyStreaming, "proxy-streaming", opts.ProxyStreaming, "Answer a proxy-mode manifest miss once the manifest is stored and stream blob misses (ADR-0013); off fills the whole graph first")
+	flag.IntVar(&opts.ProxyPrefetchWorkers, "proxy-prefetch-concurrency", opts.ProxyPrefetchWorkers, "Concurrent background graph completions for streaming pull-through")
+	flag.DurationVar(&opts.StoreGCGrace, "store-gc-grace", opts.StoreGCGrace, "How long unreferenced local OCI content is kept before garbage collection; 0 deletes it at once")
 
 	flag.Parse()
 	flag.Visit(func(current *flag.Flag) {
@@ -166,7 +193,7 @@ func main() {
 	if opts.DesiredStateFile != "" {
 		desiredStateFile := opts.DesiredStateFile
 		if !filepath.IsAbs(desiredStateFile) {
-			if abs, err := filepath.Abs(desiredStateFile); err == nil {
+			if abs, absErr := filepath.Abs(desiredStateFile); absErr == nil {
 				desiredStateFile = abs
 			}
 		}
@@ -215,6 +242,18 @@ func validateSatelliteOptions(opts SatelliteOptions) error {
 	}
 	if opts.ProxyPort < 1 || opts.ProxyPort > 65535 {
 		return fmt.Errorf("--proxy-port must be between 1 and 65535, got %d", opts.ProxyPort)
+	}
+	if opts.ProxyWriteTimeout < 0 {
+		return fmt.Errorf("--proxy-write-timeout must not be negative, got %s", opts.ProxyWriteTimeout)
+	}
+	if opts.ProxyMaxConnections < 0 {
+		return fmt.Errorf("--proxy-max-connections must not be negative, got %d", opts.ProxyMaxConnections)
+	}
+	if opts.ProxyStreaming && opts.ProxyPrefetchWorkers < 1 {
+		return fmt.Errorf("--proxy-prefetch-concurrency must be at least 1 with --proxy-streaming, got %d", opts.ProxyPrefetchWorkers)
+	}
+	if opts.StoreGCGrace < 0 {
+		return fmt.Errorf("--store-gc-grace must not be negative, got %s", opts.StoreGCGrace)
 	}
 	return nil
 }
@@ -310,7 +349,8 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		opts.GroundControlURL = config.DefaultGroundControlURL
 	}
 
-	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure)
+	encryptor := secure.NewConfigEncryptor(crypto.NewAESProvider(), identity.NewLinuxDeviceIdentity())
+	cm, warnings, err := config.InitConfigManager(opts.Token, opts.GroundControlURL, pathConfig.ConfigFile, pathConfig.PrevConfigFile, opts.JSONLogging, opts.UseUnsecure, config.WithEncryptor(encryptor))
 	if err != nil {
 		fmt.Printf("Error initiating the config manager: %v\n", err)
 		return err
@@ -360,21 +400,57 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		localStore    store.Store
 		remoteStore   store.Store
 	)
-	localStore, remoteStore, err = proxyStores(cm, pathConfig.StoreDir)
+	telemetryServer, err := telemetry.NewServer(telemetry.ServerOptions{Addr: opts.TelemetryAddr})
+	if err != nil {
+		return fmt.Errorf("initialize telemetry: %w", err)
+	}
+	recorder := telemetryServer.Recorder()
+	fillLeases := store.NewFillLeases()
+	localStore, remoteStore, indexRecovered, err := proxyStores(cm, pathConfig.StoreDir, store.OCIStoreOptions{
+		AtomicIndex:  true,
+		RecoverIndex: true,
+		FillLeases:   fillLeases,
+		GCGrace:      opts.StoreGCGrace,
+		Recorder:     recorder,
+	})
 	if err != nil {
 		return fmt.Errorf("initialize proxy stores: %w", err)
 	}
 
 	proxyLifecycleCtx, cancelProxy := context.WithCancel(context.Background())
 	defer cancelProxy()
-	pullHandler, err := proxyimage.NewPull(proxyLifecycleCtx, opts.ProxyMode, localStore, remoteStore)
+	pullOptions, closePrefetch, err := streamingPullOptions(opts, localStore, remoteStore)
+	if err != nil {
+		return fmt.Errorf("initialize streaming pull-through: %w", err)
+	}
+	defer closePrefetch()
+	pullOptions.Recorder = recorder
+	edgeJournal, err := openJournal(cm, pathConfig.JournalDir)
+	if err != nil {
+		return fmt.Errorf("open edge journal: %w", err)
+	}
+	defer func() {
+		if closeErr := edgeJournal.Close(); closeErr != nil {
+			fmt.Printf("warning: close edge journal: %v\n", closeErr)
+		}
+	}()
+	pullOptions.Journal = edgeJournal
+	pullHandler, err := proxyimage.NewPullWithOptions(proxyLifecycleCtx, opts.ProxyMode, localStore, remoteStore, pullOptions)
 	if err != nil {
 		return fmt.Errorf("initialize OCI proxy pull handler: %w", err)
 	}
 	proxyAddress := net.JoinHostPort("127.0.0.1", strconv.Itoa(opts.ProxyPort))
 	proxyServer = &http.Server{
-		Addr:              proxyAddress,
-		Handler:           proxyhandler.New(pullHandler).Handler(),
+		Addr: proxyAddress,
+		// The pull handler records pull metrics itself, so the metrics slot
+		// stays nil; the listener is loopback, so authentication needs no
+		// verifier until peers (G7).
+		Handler: proxyhandler.WriteDeadlineHandler(
+			proxyhandler.New(pullHandler).WrapAll(proxymw.Stack(
+				admission.Middleware(admission.ConfigSource{CM: cm}), proxymw.Authenticate(nil), nil,
+			)...).Handler(),
+			opts.ProxyWriteTimeout,
+		),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       time.Minute,
 	}
@@ -382,14 +458,34 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	if err != nil {
 		return fmt.Errorf("listen for OCI proxy on %s: %w", proxyAddress, err)
 	}
+	proxyListener = proxyhandler.LimitListener(proxyListener, opts.ProxyMaxConnections)
+	if checker, ok := localStore.(interface {
+		Check(ctx context.Context) error
+	}); ok {
+		if err = telemetryServer.AddCheck("store", checker.Check); err != nil {
+			return err
+		}
+	}
+	if err = telemetryServer.AddCheck("proxy", func(checkCtx context.Context) error {
+		conn, dialErr := (&net.Dialer{Timeout: time.Second}).DialContext(checkCtx, "tcp", proxyAddress)
+		if dialErr != nil {
+			return fmt.Errorf("OCI proxy: %w", dialErr)
+		}
+		return conn.Close()
+	}); err != nil {
+		return err
+	}
+	if err = serveTelemetry(ctx, wg, telemetryServer, opts.TelemetryAddr); err != nil {
+		return err
+	}
 	defer proxyServer.Close()
 
 	wg.Go(func() error {
-		err := proxyServer.Serve(proxyListener)
-		if err == nil || errors.Is(err, http.ErrServerClosed) {
+		serveErr := proxyServer.Serve(proxyListener)
+		if serveErr == nil || errors.Is(serveErr, http.ErrServerClosed) {
 			return nil
 		}
-		return fmt.Errorf("serve OCI proxy: %w", err)
+		return fmt.Errorf("serve OCI proxy: %w", serveErr)
 	})
 
 	// Resolve local registry endpoint for CRI mirror config
@@ -409,7 +505,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		if imageDir == "" {
 			return fmt.Errorf("--direct-delivery enabled but no k3s/RKE2 image directory found; use --image-dir to specify one")
 		}
-		if err := os.MkdirAll(imageDir, 0o755); err != nil {
+		if err = os.MkdirAll(imageDir, 0o755); err != nil {
 			return fmt.Errorf("create image directory %s: %w", imageDir, err)
 		}
 		cm.With(config.SetDirectDelivery(config.DirectDeliveryConfig{
@@ -431,6 +527,16 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	// audit-specific changes and rebuild the logger in place.
 	currentAuditCfg := auditCfg
 	ctx = logger.WithAuditLogger(ctx, audit)
+	if ociStore, ok := localStore.(*store.OCIStore); ok && opts.StoreGCGrace > 0 {
+		collectorCtx := ctx
+		wg.Go(func() error {
+			return ociStore.RunCollector(collectorCtx, opts.StoreGCGrace, store.GCOptions{
+				Grace:        opts.StoreGCGrace,
+				Roots:        []store.GCRoots{fillLeases},
+				IngestMaxAge: time.Hour,
+			})
+		})
+	}
 	if audit.Enabled() {
 		log.Info().
 			Str("target", auditCfg.Syslog.TargetOrDefault()).
@@ -438,7 +544,7 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	}
 
 	// Write the config to disk, in case any defaults were enforced at runtime
-	if err := cm.WriteConfig(); err != nil {
+	if err = cm.WriteConfig(); err != nil {
 		log.Error().Err(err).Msg("Error writing config to disk")
 		return err
 	}
@@ -465,9 +571,9 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 				return nil
 			case <-eventChan:
 				log.Info().Msg("Event chan event received")
-				changes, warnings, err := cm.ReloadConfig()
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to reload configuration")
+				changes, warnings, reloadErr := cm.ReloadConfig()
+				if reloadErr != nil {
+					log.Error().Err(reloadErr).Msg("Failed to reload configuration")
 				} else {
 					if len(warnings) > 0 {
 						for _, warning := range warnings {
@@ -484,8 +590,8 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 						// event is emitted before the swap so the disable action is
 						// still captured.
 						currentAuditCfg = reconfigureAuditOnReload(audit, currentAuditCfg, cm.GetAuditConfig(), changedKeys, log)
-						if err := hotReloadManager.ProcessConfigChanges(changes); err != nil {
-							log.Error().Err(err).Msg("Error processing configuration changes")
+						if processErr := hotReloadManager.ProcessConfigChanges(changes); processErr != nil {
+							log.Error().Err(processErr).Msg("Error processing configuration changes")
 						}
 					}
 				}
@@ -493,9 +599,27 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		}
 	})
 
+	if err := budget.Apply(cm.GetNetworkConfig()); err != nil {
+		return fmt.Errorf("apply download speed cap: %w", err)
+	}
+
 	eventScheduler := events.NewEventScheduler(log)
 	s := satellite.NewSatellite(cm, criResults, pathConfig.StateFile, pathConfig.StoreDir, pathConfig.DesiredStateFile, eventScheduler)
 	s.SetStores(localStore, remoteStore)
+	s.SetJournal(edgeJournal)
+	s.SetRecorder(recorder)
+	replicationSource, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
+		options, resolveErr := store.ResolveSourceRegistry(cm)
+		options.BandwidthBytesPerSec = cm.GetReplicationBandwidth()
+		return options, resolveErr
+	})
+	if err != nil {
+		return fmt.Errorf("initialize replication source: %w", err)
+	}
+	s.SetReplicationSource(replicationSource)
+	if indexRecovered {
+		s.RequireFullResync()
+	}
 
 	err = s.Run(ctx)
 	if err != nil {
@@ -507,8 +631,11 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 	}
 
 	for _, s := range s.GetSchedulers() {
-		if s.Name() == config.ReplicateStateJobName {
+		switch s.Name() {
+		case config.ReplicateStateJobName:
 			hotReloadManager.SetStateReplicationScheduler(s)
+		case config.StatusReportJobName:
+			hotReloadManager.SetStatusReportScheduler(s)
 		}
 	}
 
@@ -652,6 +779,57 @@ func fallbackRegistryEndpoint(cm *config.ConfigManager) string {
 	return cm.GetLocalRegistryURL()
 }
 
+// serveTelemetry listens before the satellite starts, so a taken port fails
+// startup instead of silently dropping /healthz.
+func serveTelemetry(ctx context.Context, wg *errgroup.Group, server *telemetry.Server, addr string) error {
+	if strings.TrimSpace(addr) == "" {
+		return nil
+	}
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listen for telemetry on %s: %w", addr, err)
+	}
+	wg.Go(func() error {
+		if err := server.Serve(ctx, listener); err != nil {
+			return fmt.Errorf("serve telemetry: %w", err)
+		}
+		return nil
+	})
+	return nil
+}
+
+// prefetchQueueSize bounds manifests waiting for graph completion; beyond it
+// a prefetch is dropped and the next pull of that manifest asks again.
+const prefetchQueueSize = 256
+
+// streamingPullOptions builds the 5.3 pull-through options. Streaming needs
+// the OCI layout as the local store; with a BYO registry it stays off.
+func streamingPullOptions(opts SatelliteOptions, localStore, remoteStore store.Store) (proxyimage.PullOptions, func(), error) {
+	noop := func() {}
+	if !opts.ProxyStreaming || !opts.ProxyMode.AllowsUpstreamPull() {
+		return proxyimage.PullOptions{}, noop, nil
+	}
+	if _, ok := localStore.(store.Filler); !ok {
+		fmt.Printf("WARNING: --proxy-streaming needs the local OCI layout; %T keeps the whole-graph fill\n", localStore)
+		return proxyimage.PullOptions{}, noop, nil
+	}
+	prefetchLane, err := lane.New("prefetch", lane.Options{Concurrency: opts.ProxyPrefetchWorkers, QueueSize: prefetchQueueSize})
+	if err != nil {
+		return proxyimage.PullOptions{}, noop, err
+	}
+	closeLane := func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = prefetchLane.Close(closeCtx)
+	}
+	prefetcher, err := proxyimage.NewLanePrefetcher(prefetchLane, localStore, remoteStore)
+	if err != nil {
+		closeLane()
+		return proxyimage.PullOptions{}, noop, err
+	}
+	return proxyimage.PullOptions{Streaming: true, Prefetcher: prefetcher}, closeLane, nil
+}
+
 func resolveLocalRegistryEndpoint(proxyMode proxyhandler.Mode, proxyPort int) string {
 	if !proxyMode.Valid() {
 		return ""
@@ -659,16 +837,30 @@ func resolveLocalRegistryEndpoint(proxyMode proxyhandler.Mode, proxyPort int) st
 	return net.JoinHostPort("127.0.0.1", strconv.Itoa(proxyPort))
 }
 
-func proxyStores(cm *config.ConfigManager, storeRoot string) (store.Store, store.Store, error) {
+// openJournal opens the edge journal (plan item 6.4) with the sizes of
+// app_config.journal.
+func openJournal(cm *config.ConfigManager, dir string) (*journal.Journal, error) {
+	cfg := cm.GetJournalConfig()
+	return journal.Open(journal.Options{
+		Dir:             dir,
+		MaxSegmentBytes: cfg.MaxSegmentBytes,
+		MaxTotalBytes:   cfg.MaxTotalBytes,
+		SyncInterval:    10 * time.Millisecond,
+	})
+}
+
+// proxyStores reports whether the OCI layout's index was unreadable and moved
+// aside, in which case state replication has to start over.
+func proxyStores(cm *config.ConfigManager, storeRoot string, ociOpts store.OCIStoreOptions) (local, remote store.Store, indexRecovered bool, err error) {
 	remoteStore, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
 		return store.ResolveSourceRegistry(cm)
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("initialize Harbor registry store: %w", err)
+		return nil, nil, false, fmt.Errorf("initialize Harbor registry store: %w", err)
 	}
 
 	if cm.GetOwnRegistry() {
-		localStore, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
+		localStore, byoErr := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
 			credentials := cm.GetRemoteRegistryCredentials()
 			return store.RegistryOptions{
 				Endpoint:  utils.FormatRegistryURL(string(credentials.URL)),
@@ -678,15 +870,18 @@ func proxyStores(cm *config.ConfigManager, storeRoot string) (store.Store, store
 				TLS:       cm.GetTLSConfig(),
 			}, nil
 		})
-		if err != nil {
-			return nil, nil, fmt.Errorf("initialize BYO registry store: %w", err)
+		if byoErr != nil {
+			return nil, nil, false, fmt.Errorf("initialize BYO registry store: %w", byoErr)
 		}
-		return localStore, remoteStore, nil
+		return localStore, remoteStore, false, nil
 	}
 
-	localStore, err := store.NewOCIStore(storeRoot)
+	localStore, report, err := store.OpenOCIStore(storeRoot, ociOpts)
 	if err != nil {
-		return nil, nil, fmt.Errorf("initialize OCI layout store: %w", err)
+		return nil, nil, false, fmt.Errorf("initialize OCI layout store: %w", err)
 	}
-	return localStore, remoteStore, nil
+	if report.IndexRecovered {
+		fmt.Printf("WARNING: unreadable OCI index moved to %s; replicating every group again\n", report.QuarantinedPath)
+	}
+	return localStore, remoteStore, report.IndexRecovered, nil
 }

@@ -60,7 +60,7 @@ services:
     env_file:
       - ../testconfig/config/core/env
     ports:
-      - "8080:8080"
+      - "${E2E_HARBOR_HOST_PORT:-8080}:8080"
     networks:
       - harbor-e2e
 
@@ -78,7 +78,7 @@ services:
       - harbor-e2e
 
   postgres:
-    image: postgres:17
+    image: postgres:19rc1
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
@@ -108,6 +108,7 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: password
       DB_DATABASE: groundcontrol
+      DB_SSLMODE: disable
       PORT: "8080"
       HARBOR_USERNAME: admin
       HARBOR_PASSWORD: Harbor12345

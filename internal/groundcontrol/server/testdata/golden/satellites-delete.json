@@ -1,0 +1,5 @@
+{
+  "body": {},
+  "request": "DELETE /api/satellites/edge-01",
+  "status": 200
+}

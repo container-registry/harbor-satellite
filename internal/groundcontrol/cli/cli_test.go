@@ -24,9 +24,21 @@ func TestRootHelpIncludesServeAndAdministration(t *testing.T) {
 	t.Parallel()
 	output, err := execute(t, "--help")
 	require.NoError(t, err)
-	for _, command := range []string{"serve", "auth", "get", "create", "update", "delete", "add", "remove", "sync", "register", "health", "ping"} {
+	for _, command := range []string{"serve", "auth", "get", "create", "update", "delete", "add", "remove", "sync", "register", "revoke", "unrevoke", "health", "ping"} {
 		require.Contains(t, output, command)
 	}
+}
+
+func TestWorkerIsHiddenAndNeedsNoClient(t *testing.T) {
+	t.Setenv("GROUND_CONTROL_CREDENTIALS_FILE", t.TempDir())
+	help, err := execute(t, "--help")
+	require.NoError(t, err)
+	require.NotContains(t, help, "worker")
+
+	_, err = execute(t, "--server", "invalid-url", "--config", "missing.yaml", "worker")
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "invalid-url")
+	require.NotContains(t, err.Error(), "missing.yaml")
 }
 
 func TestRootWithoutCommandDisplaysHelp(t *testing.T) {
