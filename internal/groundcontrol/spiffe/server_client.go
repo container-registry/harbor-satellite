@@ -4,6 +4,7 @@ package spiffe
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	entryv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/server/entry/v1"
 	typesv1 "github.com/spiffe/spire-api-sdk/proto/spire/api/types"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -112,12 +114,14 @@ func (c *ServerClient) CreateWorkloadEntry(ctx context.Context, parentID, spiffe
 	}
 
 	results := resp.GetResults()
-	if len(results) == 0 || results[0].GetEntry() == nil {
+	if len(results) == 0 {
 		return "", fmt.Errorf("create workload entry: empty response")
 	}
-	if results[0].GetStatus() != nil && results[0].GetStatus().GetCode() != 0 {
-		return "", fmt.Errorf("create workload entry: status %d - %s",
-			results[0].GetStatus().GetCode(), results[0].GetStatus().GetMessage())
+	if st := results[0].GetStatus(); st.GetCode() != int32(codes.OK) {
+		return "", fmt.Errorf("create workload entry: status %d - %s", st.GetCode(), st.GetMessage())
+	}
+	if results[0].GetEntry() == nil {
+		return "", fmt.Errorf("create workload entry: empty response")
 	}
 
 	return results[0].GetEntry().GetId(), nil
@@ -125,13 +129,30 @@ func (c *ServerClient) CreateWorkloadEntry(ctx context.Context, parentID, spiffe
 
 // DeleteWorkloadEntry removes a workload registration entry by ID.
 func (c *ServerClient) DeleteWorkloadEntry(ctx context.Context, entryID string) error {
-	_, err := c.entryClient.BatchDeleteEntry(ctx, &entryv1.BatchDeleteEntryRequest{
+	resp, err := c.entryClient.BatchDeleteEntry(ctx, &entryv1.BatchDeleteEntryRequest{
 		Ids: []string{entryID},
 	})
 	if err != nil {
 		return fmt.Errorf("delete workload entry %s: %w", entryID, err)
 	}
+	if err := deleteResultsErr(resp); err != nil {
+		return fmt.Errorf("delete workload entry %s: %w", entryID, err)
+	}
 	return nil
+}
+
+// deleteResultsErr joins the failed results of a batch delete. SPIRE
+// answers the RPC with OK and reports each entry in its result. NotFound
+// counts as deleted, the entry is gone either way.
+func deleteResultsErr(resp *entryv1.BatchDeleteEntryResponse) error {
+	var errs []error
+	for _, r := range resp.GetResults() {
+		code := codes.Code(r.GetStatus().GetCode())
+		if code != codes.OK && code != codes.NotFound {
+			errs = append(errs, fmt.Errorf("entry %s: %s: %s", r.GetId(), code, r.GetStatus().GetMessage()))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // GetTrustDomain returns the configured trust domain.
@@ -218,4 +239,43 @@ func extractPath(spiffeID, trustDomain string) string {
 		return spiffeID
 	}
 	return "/" + spiffeID
+}
+
+// TrustDomainName is the configured trust domain as a string.
+func (c *ServerClient) TrustDomainName() string {
+	return c.trustDomain.String()
+}
+
+// DeleteEntriesBySPIFFEID deletes every registration entry of spiffeID;
+// none is not an error.
+func (c *ServerClient) DeleteEntriesBySPIFFEID(ctx context.Context, spiffeID string) error {
+	id := &typesv1.SPIFFEID{TrustDomain: c.trustDomain.String(), Path: extractPath(spiffeID, c.trustDomain.String())}
+	var ids []string
+	var pageToken string
+	for {
+		resp, err := c.entryClient.ListEntries(ctx, &entryv1.ListEntriesRequest{
+			Filter:    &entryv1.ListEntriesRequest_Filter{BySpiffeId: id},
+			PageToken: pageToken,
+		})
+		if err != nil {
+			return fmt.Errorf("list entries of %s: %w", spiffeID, err)
+		}
+		for _, e := range resp.GetEntries() {
+			ids = append(ids, e.GetId())
+		}
+		if pageToken = resp.GetNextPageToken(); pageToken == "" {
+			break
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	resp, err := c.entryClient.BatchDeleteEntry(ctx, &entryv1.BatchDeleteEntryRequest{Ids: ids})
+	if err != nil {
+		return fmt.Errorf("delete entries of %s: %w", spiffeID, err)
+	}
+	if err := deleteResultsErr(resp); err != nil {
+		return fmt.Errorf("delete entries of %s: %w", spiffeID, err)
+	}
+	return nil
 }

@@ -38,8 +38,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "ground-control.fullname" . }}
                   key: DB_PASSWORD
-            - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
           livenessProbe:
             exec:
               command:
@@ -62,7 +60,8 @@ spec:
             periodSeconds: 5
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql/data
+              # postgres 18+ images keep PGDATA in /var/lib/postgresql/<major>/docker
+              mountPath: /var/lib/postgresql
           {{- with .Values.postgresql.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

@@ -255,14 +255,14 @@ Create `docker-compose.yml` in the `gc/` directory:
 ```yaml
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:19rc1-alpine
     container_name: harbor-satellite-postgres
     environment:
       POSTGRES_USER: harbor
       POSTGRES_PASSWORD: harbor
       POSTGRES_DB: harbor_satellite
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "harbor", "-d", "harbor_satellite"]
       interval: 5s
@@ -333,6 +333,7 @@ services:
       - DB_DATABASE=harbor_satellite
       - DB_USERNAME=harbor
       - DB_PASSWORD=harbor
+      - DB_SSLMODE=disable
       - PORT=8080
       - HARBOR_URL=${HARBOR_URL:-http://host.docker.internal:8080}
       - HARBOR_USERNAME=${HARBOR_USERNAME:-admin}
@@ -665,7 +666,7 @@ rm satellite.tar.gz
 
 ### 4.2 Run the satellite
 
-Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname and `<HARBOR_HOST>` with the Harbor address as reachable from the edge device. `--harbor-registry-url` is required: Ground Control returns its own `HARBOR_URL` (`host.docker.internal` in this setup), which the edge device cannot resolve. `--use-unsecure` allows plain HTTP to Harbor; drop it if Harbor serves HTTPS:
+Replace `<CLOUD_SERVER_IP>` with your cloud server's IP or hostname and `<HARBOR_HOST>` with the Harbor address as reachable from the edge device. `--harbor-registry-url` is required: Ground Control returns its own `HARBOR_URL` (`host.docker.internal` in this setup), which the edge device cannot resolve. `--use-unsecure` allows plain HTTP to Harbor and Ground Control; drop it if both serve HTTPS:
 
 ```bash
 ./satellite \

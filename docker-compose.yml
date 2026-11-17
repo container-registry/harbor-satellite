@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16
+    image: postgres:19rc1
     container_name: groundcontrol-db
     environment:
       POSTGRES_DB: groundcontrol
@@ -9,7 +9,7 @@ services:
     ports:
       - "8100:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d groundcontrol"]
       interval: 5s
@@ -32,6 +32,8 @@ services:
       DB_DATABASE: groundcontrol
       DB_USERNAME: postgres
       DB_PASSWORD: password
+      # The bundled postgres serves no TLS; DB_SSLMODE defaults to require.
+      DB_SSLMODE: disable
       HARBOR_URL: ${HARBOR_URL:?set HARBOR_URL to the Harbor instance Ground Control manages}
       HARBOR_USERNAME: ${HARBOR_USERNAME:-admin}
       HARBOR_PASSWORD: ${HARBOR_PASSWORD:-Harbor12345}
@@ -63,7 +65,10 @@ services:
       - GROUND_CONTROL_URL=http://ground-control:8080
       - HARBOR_REGISTRY_URL=${HARBOR_REGISTRY_URL:-${HARBOR_URL}}
       - TOKEN=${TOKEN:-}
-      - USE_UNSECURE=${USE_UNSECURE:-false}
+      # The compose Ground Control speaks plain HTTP, which the satellite
+      # refuses without use_unsecure. It also makes Harbor connections plain
+      # HTTP; set USE_UNSECURE=false only behind an HTTPS Ground Control.
+      - USE_UNSECURE=${USE_UNSECURE:-true}
       - CONFIG_DIR=/data
     volumes:
       - satellite-data:/data

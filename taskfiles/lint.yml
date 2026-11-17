@@ -4,8 +4,14 @@ vars:
   GOLANGCI_LINT_IMAGE: "golangci/golangci-lint@sha256:5cceeef04e53efe1470638d4b4b4f5ceefd574955ab3941b2d9a68a8c9ad5240"
   GOVULNCHECK_IMAGE: "golang@sha256:3aff6657219a4d9c14e27fb1d8976c49c29fddb70ba835014f477e1c70636647"
   GOVULNCHECK_PACKAGE: "golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}}"
+  GO_ARCH_LINT_PACKAGE: "github.com/fe3dback/go-arch-lint@{{.GO_ARCH_LINT_VERSION}}"
 
 tasks:
+  arch:
+    desc: Check package import boundaries against .go-arch-lint.yml
+    cmds:
+      - go run {{.GO_ARCH_LINT_PACKAGE}} check --project-path {{.ROOT_DIR}}
+
   lint:
     desc: Run golangci-lint inside a pinned Docker container
     cmds:

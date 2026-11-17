@@ -125,6 +125,27 @@ func (q *Queries) GetRobotAccount(ctx context.Context, id int32) (RobotAccount, 
 	return i, err
 }
 
+const getRobotAuthByRobotName = `-- name: GetRobotAuthByRobotName :one
+SELECT r.robot_secret_hash, r.robot_expiry, s.name AS satellite_name
+FROM robot_accounts r JOIN satellites s ON s.id = r.satellite_id
+WHERE r.robot_name = $1
+`
+
+type GetRobotAuthByRobotNameRow struct {
+	RobotSecretHash string
+	RobotExpiry     sql.NullTime
+	SatelliteName   string
+}
+
+// Robot Basic auth of a satellite in one statement: the secret hash, the
+// expiry and the satellite's name.
+func (q *Queries) GetRobotAuthByRobotName(ctx context.Context, robotName string) (GetRobotAuthByRobotNameRow, error) {
+	row := q.db.QueryRowContext(ctx, getRobotAuthByRobotName, robotName)
+	var i GetRobotAuthByRobotNameRow
+	err := row.Scan(&i.RobotSecretHash, &i.RobotExpiry, &i.SatelliteName)
+	return i, err
+}
+
 const listRobotAccounts = `-- name: ListRobotAccounts :many
 SELECT id, robot_name, robot_secret_hash, robot_id, satellite_id, robot_expiry, created_at, updated_at FROM robot_accounts
 `
@@ -161,7 +182,7 @@ func (q *Queries) ListRobotAccounts(ctx context.Context) ([]RobotAccount, error)
 	return items, nil
 }
 
-const updateRobotAccount = `-- name: UpdateRobotAccount :exec
+const updateRobotAccount = `-- name: UpdateRobotAccount :execrows
 UPDATE robot_accounts
 SET robot_name = $2,
     robot_secret_hash = $3,
@@ -179,13 +200,16 @@ type UpdateRobotAccountParams struct {
 	RobotExpiry     sql.NullTime
 }
 
-func (q *Queries) UpdateRobotAccount(ctx context.Context, arg UpdateRobotAccountParams) error {
-	_, err := q.db.ExecContext(ctx, updateRobotAccount,
+func (q *Queries) UpdateRobotAccount(ctx context.Context, arg UpdateRobotAccountParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateRobotAccount,
 		arg.ID,
 		arg.RobotName,
 		arg.RobotSecretHash,
 		arg.RobotID,
 		arg.RobotExpiry,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

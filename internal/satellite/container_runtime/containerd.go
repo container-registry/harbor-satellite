@@ -9,7 +9,8 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-const (
+// Variables so tests can point them at a temporary directory.
+var (
 	containerdCertsDir   = "/etc/containerd/certs.d"
 	containerdConfigPath = "/etc/containerd/config.toml"
 )
@@ -32,7 +33,13 @@ func setContainerdConfig(upstreamRegistries []string, proxyEndpoint string) (str
 
 // writeContainerdHostToml creates or updates hosts.toml for a registry
 func writeContainerdHostToml(registryURL, proxyEndpoint string) error {
-	dir := filepath.Join(containerdCertsDir, registryURL)
+	// containerd looks up certs.d/<host[:port]>, never a path with the
+	// scheme, and the name must not leave certs.d.
+	host := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(registryURL, "https://"), "http://"), "/")
+	if host == "" || host == "." || host == ".." || strings.ContainsAny(host, `/\`) {
+		return fmt.Errorf("registry %q is not a host[:port]", registryURL)
+	}
+	dir := filepath.Join(containerdCertsDir, host)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
@@ -49,26 +56,20 @@ func writeContainerdHostToml(registryURL, proxyEndpoint string) error {
 		return fmt.Errorf("failed to backup %s: %w", path, err)
 	}
 
-	var cfg ContainerdHosts
-
-	if _, err := os.Stat(path); err == nil {
-		if _, err := toml.DecodeFile(path, &cfg); err != nil {
-			return fmt.Errorf("failed to parse %s: %w", path, err)
-		}
+	// A generic table keeps the keys the satellite does not manage, such
+	// as ca, skip_verify and header.
+	cfg, err := loadToml(path)
+	if err != nil {
+		return err
 	}
-
-	if cfg.Host == nil {
-		cfg.Host = make(map[string]Host)
-	}
-	cfg.Server = registryURL
+	cfg["server"] = registryURL
 
 	if !strings.HasPrefix(proxyEndpoint, "http://") && !strings.HasPrefix(proxyEndpoint, "https://") {
 		proxyEndpoint = "http://" + proxyEndpoint
 	}
 
-	cfg.Host[proxyEndpoint] = Host{
-		Capabilities: []string{"pull", "resolve"},
-	}
+	proxyHost := loadNestedMap(loadNestedMap(cfg, "host"), proxyEndpoint)
+	proxyHost["capabilities"] = []string{"pull", "resolve"}
 
 	f, err := os.Create(filepath.Clean(path))
 	if err != nil {

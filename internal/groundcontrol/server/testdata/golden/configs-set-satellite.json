@@ -1,0 +1,5 @@
+{
+  "body": {},
+  "request": "POST /api/configs/satellite",
+  "status": 200
+}
