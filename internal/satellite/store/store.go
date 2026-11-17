@@ -22,13 +22,41 @@ type Store interface {
 	// The caller owns and must close the response body.
 	Fetch(ctx context.Context, artifact Artifact, descriptor ocispec.Descriptor, resource PullResource, headers http.Header) (*http.Response, error)
 	Replicate(ctx context.Context, source Store, artifacts []Artifact) error
+	// Delete retires replicated artifacts. An artifact that carries a digest
+	// loses its tag only while the tag still resolves to that digest, so a
+	// tag a newer replication moved stays pullable. Content no tag references
+	// any more is collected afterwards, also when no tag was removed because
+	// it had moved on or was already gone.
 	Delete(ctx context.Context, artifacts []Artifact) error
 }
 
+// TagDeleter is a Store whose Delete removes only the tag it is given and
+// keeps the other tags of that digest. A Store that does not implement it
+// is taken to delete by digest, which drops every tag of the digest.
+type TagDeleter interface {
+	DeletesSingleTags() bool
+}
+
+// ReadyChecker reports that a manifest tag resolves to the requested digest
+// and that every successor blob is present in the store.
+type ReadyChecker interface {
+	Ready(ctx context.Context, artifact Artifact) (ocispec.Descriptor, error)
+}
+
 var (
-	_ Store = (*OCIStore)(nil)
-	_ Store = (*RegistryStore)(nil)
+	_ Store        = (*OCIStore)(nil)
+	_ Store        = (*RegistryStore)(nil)
+	_ TagDeleter   = (*OCIStore)(nil)
+	_ TagDeleter   = (*PeerFillingStore)(nil)
+	_ ReadyChecker = (*OCIStore)(nil)
+	_ ReadyChecker = (*RegistryStore)(nil)
 )
+
+// DeletesSingleTags reports whether s implements TagDeleter and says so.
+func DeletesSingleTags(s Store) bool {
+	d, ok := s.(TagDeleter)
+	return ok && d.DeletesSingleTags()
+}
 
 func contentResponse(descriptor ocispec.Descriptor, body io.ReadCloser) *http.Response {
 	mediaType := descriptor.MediaType
@@ -122,6 +150,12 @@ type RegistryOptions struct {
 	Password   string
 	PlainHTTP  bool
 	TLS        config.TLSConfig
+	// BandwidthBytesPerSec caps the bytes the store moves per second, shared
+	// by all its requests; zero is no cap (plan item 6.2).
+	// The store builds its client as retry(throttle(TLS transport)) with
+	// lane.ThrottledTransport, so the TLS settings stay and retries spend
+	// the budget too.
+	BandwidthBytesPerSec int64
 }
 
 func (o RegistryOptions) validate() error {

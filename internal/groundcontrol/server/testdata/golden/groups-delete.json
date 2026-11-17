@@ -1,0 +1,5 @@
+{
+  "body": {},
+  "request": "DELETE /api/groups/edge-group-2",
+  "status": 200
+}

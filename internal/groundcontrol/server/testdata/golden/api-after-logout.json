@@ -1,0 +1,8 @@
+{
+  "body": {
+    "code": 401,
+    "message": "Unauthorized"
+  },
+  "request": "GET /api/configs",
+  "status": 401
+}

@@ -32,21 +32,20 @@ Deploying Kubernetes at the edge introduces architectural challenges that are no
 
 **Harbor Satellite**, an edge extension of the CNCF-graduated Harbor registry, pre-positions OCI content at each edge site. It synchronizes the artifacts assigned to it by Ground Control from a central Harbor registry into one of two stores:
 
-- **Local OCI image layout** (default): an ORAS-backed OCI layout on disk (`<config-dir>/oci`). It does not listen on any port, so workloads cannot pull from it directly.
+- **Local OCI image layout** (default): an ORAS-backed OCI layout on disk (`<config-dir>/oci`), served to the node by the satellite's pull-only OCI proxy on `127.0.0.1:8585`.
 - **BYO registry** (`--byo-registry`): an external OCI registry you run next to the node (for example `registry:2`). Satellite copies images into it and container runtimes pull from it.
 
-Workloads receive images in one of two ways today:
+Workloads receive images in one of three ways:
 
+- **Loopback proxy:** a satellite running on the node's host network serves pulls on `127.0.0.1:8585` ([ADR-0009](../decisions/0009-transparent-oci-registry-proxy.md)). Point K3s at `http://127.0.0.1:8585` in `/etc/rancher/k3s/registries.yaml`; for other containerd installations, let the satellite write `hosts.toml` with `--mirrors`. In `proxy` mode a miss is filled from Harbor; in `replica` mode only replicated content is served.
 - **Method 1:** a containerd mirror pointing at a BYO registry ([Section 5](#5-setup-guide-method-1---registry-mirror-via-byo-registry)).
 - **Method 2:** the experimental k3s/RKE2 **direct delivery** mode, which writes image tarballs into the K3s auto-import directory ([Section 6](#6-setup-guide-method-2---automated-air-gap-via-direct-delivery)).
-
-A transparent proxy that serves workloads from Satellite itself is designed in [ADR-0009](../decisions/0009-transparent-oci-registry-proxy.md). It is not wired into the satellite binary yet.
 
 ### Challenges & Solutions
 
 | Edge Challenge | Harbor Satellite Solution |
 |---|---|
-| **Content unavailable during network partitions** | The BYO registry or the K3s node image store keeps synchronized images available while the WAN is down. |
+| **Content unavailable during network partitions** | The local OCI layout behind the loopback proxy, the BYO registry or the K3s node image store keeps synchronized images available while the WAN is down. |
 | **High bandwidth costs on metered links** | Content-addressed copying transfers only blobs that are missing at the destination. |
 | **Bootstrapping restricted clusters** | Direct delivery writes images into K3s auto-import without manual tarball handling. |
 | **Credential management at scale** | SPIFFE/SPIRE Zero-Touch Registration (ZTR) replaces the per-satellite registration token with an attested workload identity. Ground Control then issues a Harbor robot account per satellite. |
@@ -90,7 +89,7 @@ The architecture is divided into two operational planes separated by a network b
 | **Desired State** | Satellite reads its state artifacts from Harbor and pulls the listed images from Harbor using the robot account (HTTP basic auth). mTLS is used only between Satellite and Ground Control. |
 | **Reconciliation Loop** | Satellite compares the fetched state with its last applied state, copies new artifacts, and removes artifacts that are no longer assigned. |
 | **Heartbeat** | Satellite sends a status report (CPU, memory, storage, cached images, sync timing) to `POST /satellites/sync`. The response can carry events for Satellite to act on. There is no command channel beyond this. |
-| **Workload delivery** | K3s containerd pulls from the BYO registry through a `registries.yaml` mirror (Method 1), or imports tarballs written by direct delivery (Method 2). |
+| **Workload delivery** | K3s containerd pulls from the satellite's loopback proxy on `127.0.0.1:8585` through a `registries.yaml` mirror, from the BYO registry through a `registries.yaml` mirror (Method 1), or imports tarballs written by direct delivery (Method 2). |
 
 ### 2.2 Component Placement
 
@@ -115,7 +114,8 @@ The architecture is divided into two operational planes separated by a network b
 ║  Ground Control assigns images to an edge group          ║
 ║    └──► Satellite reads group state from Harbor          ║
 ║            └──► Satellite pulls images (robot account)   ║
-║                  └──► Copies into BYO registry           ║
+║                  └──► Copies into the local OCI layout   ║
+║                       or BYO registry,                   ║
 ║                       and/or writes K3s tarballs         ║
 ║                                                          ║
 ╠══════════════════════════════════════════════════════════╣
@@ -123,6 +123,7 @@ The architecture is divided into two operational planes separated by a network b
 ╠══════════════════════════════════════════════════════════╣
 ║                                                          ║
 ║  K3s containerd                                          ║
+║    └──► Loopback proxy: mirror to 127.0.0.1:8585         ║
 ║    └──► Method 1: mirror to BYO registry on the node     ║
 ║    └──► Method 2: image already imported from tarball    ║
 ║            └──► Workload starts without WAN access       ║

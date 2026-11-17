@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/container-registry/harbor-satellite/internal/satellite/lane"
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -44,6 +45,33 @@ func NewRegistryStoreWithOptions(options func() (RegistryOptions, error)) (*Regi
 		return nil, errors.New("registry options source is required")
 	}
 	return &RegistryStore{options: options}, nil
+}
+
+// Ready resolves a manifest and requires every successor blob to exist in
+// this registry. A digest on artifact must match the tagged root.
+func (r *RegistryStore) Ready(ctx context.Context, artifact Artifact) (ocispec.Descriptor, error) {
+	lookup := artifact
+	if lookup.Tag != "" {
+		lookup.Digest = ""
+	}
+	descriptor, err := r.Pull(ctx, lookup, PullResourceManifest)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	if artifact.Digest != "" && descriptor.Digest.String() != artifact.sourceIdentifier() {
+		return ocispec.Descriptor{}, errdef.ErrNotFound
+	}
+	if !manifestDescriptor(descriptor) {
+		return ocispec.Descriptor{}, errdef.ErrNotFound
+	}
+	repository, err := r.repository(artifact)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	if err := descriptorGraphReady(ctx, repository, descriptor); err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	return descriptor, nil
 }
 
 func (r *RegistryStore) Pull(ctx context.Context, artifact Artifact, resource PullResource) (ocispec.Descriptor, error) {
@@ -135,12 +163,12 @@ func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts [
 			return err
 		}
 		if artifact.Tag == "" {
-			desc, err := source.Pull(ctx, artifact, PullResourceBlob)
-			if err != nil {
-				return err
+			desc, blobErr := source.Pull(ctx, artifact, PullResourceBlob)
+			if blobErr != nil {
+				return blobErr
 			}
-			if err := oras.CopyGraph(ctx, from, to, desc, oras.DefaultCopyGraphOptions); err != nil {
-				return err
+			if blobErr = oras.CopyGraph(ctx, from, to, desc, oras.DefaultCopyGraphOptions); blobErr != nil {
+				return blobErr
 			}
 			continue
 		}
@@ -168,7 +196,12 @@ func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts [
 	return nil
 }
 
-// Delete removes manifest roots from this registry.
+// Delete removes manifest roots from this registry. A registry cannot drop a
+// single tag, so Delete removes the artifact's own digest, never the one a
+// moved tag resolves to now, and that drops every tag of the digest: state
+// replication passes only digests no wanted entity references. The registry
+// collects the content itself. An artifact without a digest falls back to
+// what its tag resolves to.
 func (r *RegistryStore) Delete(ctx context.Context, artifacts []Artifact) error {
 	for _, artifact := range artifacts {
 		if err := artifact.validate(); err != nil {
@@ -178,7 +211,11 @@ func (r *RegistryStore) Delete(ctx context.Context, artifacts []Artifact) error 
 		if err != nil {
 			return err
 		}
-		desc, err := repository.Manifests().Resolve(ctx, artifact.destinationIdentifier())
+		reference := artifact.destinationIdentifier()
+		if artifact.Digest != "" {
+			reference = artifact.Digest
+		}
+		desc, err := repository.Manifests().Resolve(ctx, reference)
 		if errors.Is(err, errdef.ErrNotFound) {
 			continue
 		}
@@ -241,7 +278,7 @@ func newRegistryAuthClient(options RegistryOptions) (*auth.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client, err := registryHTTPClient(options.TLS)
+	client, err := registryHTTPClientWithCap(options.TLS, options.BandwidthBytesPerSec)
 	if err != nil {
 		return nil, err
 	}
@@ -271,22 +308,31 @@ func registryHost(reference string) (string, error) {
 }
 
 func registryHTTPClient(cfg config.TLSConfig) (*http.Client, error) {
-	if cfg.CertFile == "" && cfg.KeyFile == "" && cfg.CAFile == "" && !cfg.SkipVerify {
+	return registryHTTPClientWithCap(cfg, 0)
+}
+
+// registryHTTPClientWithCap builds retry(throttle(TLS transport)), so
+// retries keep working with TLS settings and spend the bandwidth budget.
+func registryHTTPClientWithCap(cfg config.TLSConfig, bytesPerSec int64) (*http.Client, error) {
+	customTLS := cfg.CertFile != "" || cfg.KeyFile != "" || cfg.CAFile != "" || cfg.SkipVerify
+	if !customTLS && bytesPerSec <= 0 {
 		return retry.DefaultClient, nil
 	}
-	tlsConfig, err := satTLS.LoadClientTLSConfig(&satTLS.Config{
-		CertFile: cfg.CertFile, KeyFile: cfg.KeyFile, CAFile: cfg.CAFile, SkipVerify: cfg.SkipVerify, MinVersion: tls.VersionTLS12,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("load registry TLS config: %w", err)
+	base := http.DefaultTransport
+	if customTLS {
+		tlsConfig, err := satTLS.LoadClientTLSConfig(&satTLS.Config{
+			CertFile: cfg.CertFile, KeyFile: cfg.KeyFile, CAFile: cfg.CAFile, SkipVerify: cfg.SkipVerify, MinVersion: tls.VersionTLS12,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("load registry TLS config: %w", err)
+		}
+		defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			return nil, errors.New("default HTTP transport is not an *http.Transport")
+		}
+		transport := defaultTransport.Clone()
+		transport.TLSClientConfig = tlsConfig
+		base = transport
 	}
-	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
-	if !ok {
-		return nil, errors.New("default HTTP transport is not an *http.Transport")
-	}
-	transport := defaultTransport.Clone()
-	transport.TLSClientConfig = tlsConfig
-	client := *retry.DefaultClient
-	client.Transport = transport
-	return &client, nil
+	return &http.Client{Transport: retry.NewTransport(lane.ThrottledTransport(base, bytesPerSec))}, nil
 }

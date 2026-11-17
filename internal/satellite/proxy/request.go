@@ -51,6 +51,13 @@ func (request *Request) Context() context.Context {
 	return request.httpRequest.Context()
 }
 
+// SetContext replaces the request's context, so a middleware can hand
+// values such as an authenticated peer to the handlers after it. It
+// mutates in place because the response state is shared by the chain.
+func (request *Request) SetContext(ctx context.Context) {
+	request.httpRequest = request.httpRequest.WithContext(ctx)
+}
+
 // newRequest is the mandatory HTTP-to-domain parser used by the adapter.
 func newRequest(
 	response http.ResponseWriter,

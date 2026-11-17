@@ -1,0 +1,47 @@
+{
+  "$id": "https://satellite.container-registry.com/schemas/events/v1/EdgeCRIConfigured.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "data of the io.harborsatellite.groundcontrol.EdgeCRIConfigured event (EdgeCRIConfigured); v1 changes are additive only",
+  "properties": {
+    "backup_path": {
+      "type": "string"
+    },
+    "epoch": {
+      "type": "integer"
+    },
+    "error": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "recorded_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "runtime": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "seq": {
+      "type": "integer"
+    },
+    "success": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "runtime",
+    "success",
+    "name",
+    "epoch",
+    "seq",
+    "recorded_at"
+  ],
+  "title": "EdgeCRIConfigured",
+  "type": "object"
+}

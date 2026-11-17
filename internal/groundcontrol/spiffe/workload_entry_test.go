@@ -101,7 +101,7 @@ func TestCreateWorkloadEntry(t *testing.T) {
 				},
 			},
 			selectors: []string{"unix:uid:1000"},
-			wantErr:   "create workload entry: empty response",
+			wantErr:   "create workload entry: status 2 - internal error",
 		},
 		{
 			name: "already exists status rejected",
@@ -127,6 +127,16 @@ func TestCreateWorkloadEntry(t *testing.T) {
 							Status: &typesv1.Status{Code: 3, Message: "invalid argument"},
 						},
 					},
+				},
+			},
+			selectors: []string{"unix:uid:1000"},
+			wantErr:   "create workload entry: status 3 - invalid argument",
+		},
+		{
+			name: "OK status without entry",
+			mock: &mockEntryClient{
+				batchCreateResp: &entryv1.BatchCreateEntryResponse{
+					Results: []*entryv1.BatchCreateEntryResponse_Result{{Status: &typesv1.Status{Code: 0}}},
 				},
 			},
 			selectors: []string{"unix:uid:1000"},

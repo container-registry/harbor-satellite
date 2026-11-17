@@ -3,12 +3,17 @@ package satellite
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	runtime "github.com/container-registry/harbor-satellite/internal/satellite/container_runtime"
 	"github.com/container-registry/harbor-satellite/internal/satellite/events"
+	"github.com/container-registry/harbor-satellite/internal/satellite/journal"
+	"github.com/container-registry/harbor-satellite/internal/satellite/ready"
 	"github.com/container-registry/harbor-satellite/internal/satellite/scheduler"
 	"github.com/container-registry/harbor-satellite/internal/satellite/state"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
+	"github.com/container-registry/harbor-satellite/internal/satellite/telemetry"
+	"github.com/container-registry/harbor-satellite/internal/shared/edgejournal"
 	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
 )
@@ -24,12 +29,47 @@ type Satellite struct {
 	eventscheduler   *events.EventScheduler
 	localStore       store.Store
 	remoteStore      store.Store
+	fullResync       bool
+	// replicationSource is the bandwidth-capped Harbor store replication
+	// copies from (plan item 6.2); nil uses remoteStore.
+	replicationSource store.Store
+	journal           *journal.Journal
+	recorder          telemetry.Recorder
+	imageGate         *ready.Gate
+}
+
+// SetRecorder makes heartbeats and journal answers show on /metrics.
+func (s *Satellite) SetRecorder(rec telemetry.Recorder) {
+	s.recorder = rec
+}
+
+// SetReplicationSource gives replication a Harbor store of its own, so its
+// bandwidth cap never slows the proxy.
+func (s *Satellite) SetReplicationSource(src store.Store) {
+	s.replicationSource = src
+}
+
+// SetJournal records replication, CRI and heartbeat uploads in the edge
+// journal (plan items 6.4 and 6.5).
+func (s *Satellite) SetJournal(j *journal.Journal) {
+	s.journal = j
 }
 
 // SetStores supplies the same local and Harbor stores used by the proxy.
 func (s *Satellite) SetStores(localStore, remoteStore store.Store) {
 	s.localStore = localStore
 	s.remoteStore = remoteStore
+}
+
+// RequireFullResync makes Run forget the replicated entities before the first
+// replication, after OpenOCIStore recovered a torn index.
+func (s *Satellite) RequireFullResync() {
+	s.fullResync = true
+}
+
+// SetImageGate shares the manifest-wait register with state replication.
+func (s *Satellite) SetImageGate(gate *ready.Gate) {
+	s.imageGate = gate
 }
 
 func NewSatellite(cm *config.ConfigManager, criResults []runtime.CRIConfigResult, stateFilePath, storeRoot, desiredStateFile string, jq *events.EventScheduler) *Satellite {
@@ -50,7 +90,21 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	fetchAndReplicateStateProcess := state.NewFetchAndReplicateStateProcess(s.cm, s.stateFilePath, s.storeRoot, s.desiredStateFile, log)
 	fetchAndReplicateStateProcess.SetStores(s.localStore, s.remoteStore)
+	if s.replicationSource != nil {
+		fetchAndReplicateStateProcess.SetReplicationSource(s.replicationSource)
+	}
+	if s.journal != nil {
+		fetchAndReplicateStateProcess.SetJournal(s.journal)
+		s.journalCRIResults(ctx)
+	}
+	fetchAndReplicateStateProcess.SetImageGate(s.imageGate)
 	s.stateProcess = fetchAndReplicateStateProcess
+	if s.fullResync {
+		if err := fetchAndReplicateStateProcess.ResetReplicatedEntities(); err != nil {
+			return fmt.Errorf("reset replicated state after index recovery: %w", err)
+		}
+		log.Warn().Msg("OCI index was recovered; every group replicates again")
+	}
 
 	// Create ZTR scheduler if not already done
 	if !s.cm.IsZTRDone() {
@@ -102,6 +156,11 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	// Create status report scheduler with pending CRI results
 	statusReportProcess := state.NewStatusReportingProcess(s.cm, s.eventscheduler)
+	statusReportProcess.SetRunSummarySource(fetchAndReplicateStateProcess)
+	statusReportProcess.SetRecorder(s.recorder)
+	if s.journal != nil {
+		statusReportProcess.SetJournal(s.journal)
+	}
 	if len(s.criResults) > 0 {
 		statusReportProcess.SetPendingCRIResults(s.criResults)
 	}
@@ -119,7 +178,7 @@ func (s *Satellite) Run(ctx context.Context) error {
 
 	// Registering events
 	log.Info().Msg("registering events")
-	err = s.registerEvents(context.Background(), s.cm)
+	err = s.registerEvents(ctx, s.cm)
 	if err != nil {
 		return err
 	}
@@ -160,10 +219,33 @@ func (s *Satellite) Stop(ctx context.Context) {
 		}
 	}
 
+	if s.eventscheduler != nil {
+		if err := s.eventscheduler.Stop(ctx); err != nil {
+			failedCount++
+			log.Warn().Err(err).Msg("Event schedulers failed to stop")
+		}
+	}
+
 	if failedCount > 0 {
 		log.Warn().Int("failed_count", failedCount).Msg("Some schedulers failed to stop")
 	} else {
 		log.Info().Msg("All schedulers stopped")
+	}
+}
+
+func (s *Satellite) journalCRIResults(ctx context.Context) {
+	log := logger.FromContext(ctx)
+	for _, r := range s.criResults {
+		err := s.journal.AppendCRI(ctx, edgejournal.CRI{
+			SchemaVersion: edgejournal.SchemaVersion,
+			Runtime:       string(r.CRI),
+			Success:       r.Success,
+			BackupPath:    r.BackupPath,
+			Error:         r.Error,
+		})
+		if err != nil {
+			log.Warn().Err(err).Str("runtime", string(r.CRI)).Msg("Failed to journal the CRI result")
+		}
 	}
 }
 
@@ -177,10 +259,9 @@ func (s *Satellite) registerEvents(ctx context.Context, cm *config.ConfigManager
 	refreshSched, err := events.NewRefreshCredentialsEvent(cm, log)
 	if err != nil {
 		errs = append(errs, err)
+	} else {
+		s.eventscheduler.Register(ctx, refreshSched)
 	}
-
-	// Register Schedulers
-	s.eventscheduler.Register(ctx, refreshSched)
 
 	return errors.Join(errs...)
 }
