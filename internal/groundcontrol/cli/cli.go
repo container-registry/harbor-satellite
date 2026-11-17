@@ -34,6 +34,7 @@ through the environment; see the help for each password-using command.`,
 	authCmd := commandGroup("auth", "Manage Ground Control sessions",
 		auth.NewLoginCommand(runtime),
 		auth.NewLogoutCommand(runtime),
+		auth.NewWhoamiCommand(runtime),
 	)
 	getCmd := commandGroup("get", "Get Ground Control resources",
 		config.NewListCommand(runtime),
