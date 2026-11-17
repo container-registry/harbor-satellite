@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -597,4 +598,23 @@ func TestListReferrersInProxyModeRequiresRemoteStore(t *testing.T) {
 	response := serve(handler, http.MethodGet, "/v2/team/app/referrers/"+digest.FromString("subject").String(), nil)
 
 	require.Equal(t, http.StatusInternalServerError, response.Code)
+}
+
+func TestProxyFillRejectedBySignaturePolicyIsDenied(t *testing.T) {
+	descriptor := descriptorFor(ocispec.MediaTypeImageManifest, []byte(`{"schemaVersion":2}`))
+	local := &fakeStore{
+		pull: func(context.Context, store.Artifact, store.PullResource, int32) (ocispec.Descriptor, error) {
+			return ocispec.Descriptor{}, errdef.ErrNotFound
+		},
+		fetch: func(context.Context, store.Artifact, ocispec.Descriptor) (io.ReadCloser, error) { return nil, nil },
+		replicate: func(context.Context, store.Store, []store.Artifact) error {
+			return fmt.Errorf("%w: team/app:latest", store.ErrSignatureRejected)
+		},
+	}
+	handler := proxy.New(newPull(t, proxy.ModeProxy, local, descriptorStore(descriptor, nil))).Handler()
+
+	response := serve(handler, http.MethodGet, "/v2/team/app/manifests/latest", nil)
+
+	require.Equal(t, http.StatusForbidden, response.Code)
+	require.Contains(t, response.Body.String(), string(proxy.ErrorCodeDenied))
 }

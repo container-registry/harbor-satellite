@@ -28,6 +28,7 @@ const (
 	// schema 2 types Harbor still serves for images pushed by Docker.
 	mediaTypeDockerManifest     = "application/vnd.docker.distribution.manifest.v2+json"
 	mediaTypeDockerManifestList = "application/vnd.docker.distribution.manifest.list.v2+json"
+	mediaTypeDockerImageConfig  = "application/vnd.docker.container.image.v1+json"
 )
 
 // cosignTagSuffixes are the tags cosign writes next to a signed digest when

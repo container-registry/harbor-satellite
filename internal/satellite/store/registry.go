@@ -29,6 +29,14 @@ type RegistryStore struct {
 	mu      sync.Mutex
 	current RegistryOptions
 	client  *auth.Client
+	// verifier checks signatures before Replicate copies a root.
+	verifier SignatureVerifier
+}
+
+// SetSignatureVerifier makes Replicate check signatures before it copies a
+// root. Call it before the store is used.
+func (r *RegistryStore) SetSignatureVerifier(verifier SignatureVerifier) {
+	r.verifier = verifier
 }
 
 func NewRegistryStore(options RegistryOptions) (*RegistryStore, error) {
@@ -124,53 +132,70 @@ func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts [
 	if !ok {
 		return errors.New("source store does not support OCI graph transfer")
 	}
+	var rejected []error
 	for _, artifact := range artifacts {
-		if err := artifact.validate(); err != nil {
-			return err
-		}
-		from, err := sourceTarget.targetFor(artifact)
-		if err != nil {
-			return err
-		}
-		to, err := r.repository(artifact)
-		if err != nil {
-			return err
-		}
-		if artifact.Tag == "" {
-			desc, err := source.Pull(ctx, artifact, PullResourceBlob)
-			if err != nil {
-				return err
-			}
-			if err := oras.CopyGraph(ctx, from, to, desc, oras.DefaultCopyGraphOptions); err != nil {
-				return err
-			}
+		err := r.replicateOne(ctx, source, sourceTarget, artifact)
+		if errors.Is(err, ErrSignatureRejected) {
+			rejected = append(rejected, err)
 			continue
 		}
-		// oras.Copy tags inside the transfer, so copy the graph by descriptor
-		// and tag it only after the root matches the group list. Look the root
-		// up by the listed digest: a source tag can still name an older root.
-		lookup := artifact
-		if artifact.Digest != "" {
-			lookup.Tag = ""
-		}
-		desc, err := source.Pull(ctx, lookup, PullResourceManifest)
 		if err != nil {
 			return err
 		}
-		if err := rejectUnlistedDigest(desc, artifact); err != nil {
+	}
+	return errors.Join(rejected...)
+}
+
+func (r *RegistryStore) replicateOne(ctx context.Context, source Store, sourceTarget storeTarget, artifact Artifact) error {
+	if err := artifact.validate(); err != nil {
+		return err
+	}
+	from, err := sourceTarget.targetFor(artifact)
+	if err != nil {
+		return err
+	}
+	to, err := r.repository(artifact)
+	if err != nil {
+		return err
+	}
+	if artifact.Tag == "" {
+		desc, err := source.Pull(ctx, artifact, PullResourceBlob)
+		if err != nil {
 			return err
 		}
-		if err := oras.CopyGraph(ctx, from, to, desc, oras.DefaultCopyGraphOptions); err != nil {
-			return err
-		}
-		// Signatures go in before the root tag, so a tagged root always has
-		// the signatures it had at the source.
-		if err := copySupplyChainToRegistry(ctx, from, to, desc); err != nil {
-			return fmt.Errorf("copy signatures of %s: %w", artifact.Reference(), err)
-		}
-		if err := to.Tag(ctx, desc, artifact.destinationIdentifier()); err != nil {
-			return err
-		}
+		return oras.CopyGraph(ctx, from, to, desc, oras.DefaultCopyGraphOptions)
+	}
+	// oras.Copy tags inside the transfer, so copy the graph by descriptor
+	// and tag it only after the root matches the group list. Look the root
+	// up by the listed digest: a source tag can still name an older root.
+	lookup := artifact
+	if artifact.Digest != "" {
+		lookup.Tag = ""
+	}
+	desc, err := source.Pull(ctx, lookup, PullResourceManifest)
+	if err != nil {
+		return err
+	}
+	if err := rejectUnlistedDigest(desc, artifact); err != nil {
+		return err
+	}
+	chain, err := discoverSupplyChain(ctx, from, from, desc)
+	if err != nil {
+		return fmt.Errorf("find signatures of %s: %w", artifact.Reference(), err)
+	}
+	if err := verifySignatures(ctx, r.verifier, artifact, chain, from, desc); err != nil {
+		return err
+	}
+	if err := oras.CopyGraph(ctx, from, to, desc, oras.DefaultCopyGraphOptions); err != nil {
+		return err
+	}
+	// Signatures go in before the root tag, so a tagged root always has
+	// the signatures it had at the source.
+	if err := copySupplyChainToRegistry(ctx, chain, from, to, desc); err != nil {
+		return fmt.Errorf("copy signatures of %s: %w", artifact.Reference(), err)
+	}
+	if err := to.Tag(ctx, desc, artifact.destinationIdentifier()); err != nil {
+		return err
 	}
 	return nil
 }
@@ -179,10 +204,9 @@ func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts [
 // cosign tag keeps its source name. A referrer is pushed with its subject, so
 // ORAS updates the destination's referrers tag schema index when the
 // destination has no referrers API.
-func copySupplyChainToRegistry(ctx context.Context, from oras.ReadOnlyTarget, to *remote.Repository, root ocispec.Descriptor) error {
-	chain, err := discoverSupplyChain(ctx, from, to, root)
-	if err != nil || chain.empty() {
-		return err
+func copySupplyChainToRegistry(ctx context.Context, chain supplyChain, from oras.ReadOnlyTarget, to *remote.Repository, root ocispec.Descriptor) error {
+	if chain.empty() {
+		return nil
 	}
 	if err := chain.copyTo(ctx, from, to); err != nil {
 		return err

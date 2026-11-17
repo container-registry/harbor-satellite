@@ -227,6 +227,9 @@ func pullKey(resource store.PullResource, repository, identifier string) string 
 }
 
 func mapPullError(resource store.PullResource, err error) error {
+	if errors.Is(err, store.ErrSignatureRejected) {
+		return proxy.NewError(proxy.ErrorCodeDenied, "image signature does not satisfy the signature policy", nil)
+	}
 	if !errors.Is(err, errdef.ErrNotFound) {
 		return err
 	}

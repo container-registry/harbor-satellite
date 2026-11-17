@@ -1516,6 +1516,9 @@ components:
         peer_distribution:
           $ref: "#/components/schemas/PeerDistributionConfig"
           x-go-name: PeerDistribution
+        signature_policy:
+          $ref: "#/components/schemas/SignaturePolicyConfig"
+          x-go-name: SignaturePolicy
     AuditConfig:
       type: object
       title: AuditConfig controls satellite security-event audit logging.
@@ -1570,6 +1573,62 @@ components:
         concurrency:
           type: integer
           x-go-name: Concurrency
+    SignaturePolicyConfig:
+      type: object
+      title: SignaturePolicyConfig requires cosign signatures on satellite images.
+      description: >
+        Requires cosign signatures on replicated and proxied images. A
+        signature passes when any public key or the keyless identity verifies
+        it. An omitted or disabled block copies images without checks.
+      x-go-type: config.SignaturePolicyConfig
+      x-go-type-import:
+        path: github.com/container-registry/harbor-satellite/pkg/config
+        name: config
+      properties:
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+        action:
+          type: string
+          enum: [block, warn]
+          description: block (default) keeps unverified images out; warn logs and copies them
+          x-go-name: Action
+        public_keys:
+          type: array
+          items:
+            type: string
+          description: PEM public keys, inline or as file paths on the satellite
+          x-go-name: PublicKeys
+        keyless:
+          $ref: "#/components/schemas/KeylessSignatureConfig"
+          x-go-name: Keyless
+    KeylessSignatureConfig:
+      type: object
+      title: KeylessSignatureConfig accepts Fulcio certificates for one OIDC identity.
+      x-go-type: config.KeylessSignatureConfig
+      x-go-type-import:
+        path: github.com/container-registry/harbor-satellite/pkg/config
+        name: config
+      properties:
+        enabled:
+          type: boolean
+          x-go-name: Enabled
+        issuer:
+          type: string
+          x-go-name: Issuer
+        issuer_regexp:
+          type: string
+          x-go-name: IssuerRegexp
+        subject:
+          type: string
+          x-go-name: Subject
+        subject_regexp:
+          type: string
+          x-go-name: SubjectRegexp
+        trusted_root:
+          type: string
+          description: Sigstore trusted_root.json path; empty uses the public-good root through TUF
+          x-go-name: TrustedRoot
     PeerDescriptor:
       type: object
       title: PeerDescriptor is one allow-listed Satellite that may be copied from.

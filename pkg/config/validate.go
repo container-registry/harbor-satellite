@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -66,6 +67,10 @@ func ValidateAndEnforceDefaults(config *Config, defaultGroundControlURL string) 
 	warnings = append(warnings, validateRegistryFallbackConfig(config)...)
 
 	if err := validateAndEnforcePeerDistribution(config); err != nil {
+		return nil, warnings, err
+	}
+
+	if err := validateAndEnforceSignaturePolicy(&config.AppConfig.SignaturePolicy); err != nil {
 		return nil, warnings, err
 	}
 
@@ -283,6 +288,45 @@ func validateAndEnforcePeerDistribution(config *Config) error {
 	}
 
 	return validatePeerList(p.GCPeers, config.AppConfig.UseUnsecure, "gc_peers")
+}
+
+// validateAndEnforceSignaturePolicy defaults the action and checks that an
+// enabled policy can accept at least one signature.
+func validateAndEnforceSignaturePolicy(p *SignaturePolicyConfig) error {
+	if !p.Enabled {
+		return nil
+	}
+	switch p.Action {
+	case "":
+		p.Action = SignatureActionBlock
+	case SignatureActionBlock, SignatureActionWarn:
+	default:
+		return fmt.Errorf("signature_policy.action %q is invalid (expected block|warn)", p.Action)
+	}
+	for i, key := range p.PublicKeys {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("signature_policy.public_keys[%d] is empty", i)
+		}
+	}
+	keyless := p.Keyless
+	if !keyless.Enabled {
+		if len(p.PublicKeys) == 0 {
+			return errors.New("signature_policy needs public_keys or keyless.enabled")
+		}
+		return nil
+	}
+	if keyless.Issuer == "" && keyless.IssuerRegexp == "" {
+		return errors.New("signature_policy.keyless needs issuer or issuer_regexp")
+	}
+	if keyless.Subject == "" && keyless.SubjectRegexp == "" {
+		return errors.New("signature_policy.keyless needs subject or subject_regexp")
+	}
+	for field, expr := range map[string]string{"issuer_regexp": keyless.IssuerRegexp, "subject_regexp": keyless.SubjectRegexp} {
+		if _, err := regexp.Compile(expr); err != nil {
+			return fmt.Errorf("signature_policy.keyless.%s: %w", field, err)
+		}
+	}
+	return nil
 }
 
 func enforcePeerDistributionDefaults(p *PeerDistributionConfig) error {

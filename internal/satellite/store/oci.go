@@ -29,6 +29,13 @@ type OCIStore struct {
 	mu                sync.RWMutex
 	provenance        sync.Map
 	beforePublishLock func()
+	verifier          SignatureVerifier
+}
+
+// SetSignatureVerifier makes Replicate check signatures before it publishes a
+// root. Call it before the store is used.
+func (s *OCIStore) SetSignatureVerifier(verifier SignatureVerifier) {
+	s.verifier = verifier
 }
 
 // NewOCIStore opens or creates an OCI image-layout store at root.
@@ -172,15 +179,21 @@ func (s *OCIStore) Replicate(ctx context.Context, source Store, artifacts []Arti
 	if !ok {
 		return errors.New("source store does not support OCI graph transfer")
 	}
+	var rejected []error
 	for _, artifact := range artifacts {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := s.replicateOne(ctx, source, sourceTarget, artifact); err != nil {
+		err := s.replicateOne(ctx, source, sourceTarget, artifact)
+		if errors.Is(err, ErrSignatureRejected) {
+			rejected = append(rejected, err)
+			continue
+		}
+		if err != nil {
 			return err
 		}
 	}
-	return nil
+	return errors.Join(rejected...)
 }
 
 func (s *OCIStore) replicateOne(ctx context.Context, source Store, sourceTarget storeTarget, artifact Artifact) (err error) {
@@ -198,6 +211,9 @@ func (s *OCIStore) replicateOne(ctx context.Context, source Store, sourceTarget 
 	defer func() {
 		err = errors.Join(err, staged.cleanup())
 	}()
+	if err = verifySignatures(ctx, s.verifier, artifact, staged.chain, staged.store, staged.desc); err != nil {
+		return err
+	}
 	if err = ctx.Err(); err != nil {
 		return err
 	}
@@ -224,6 +240,8 @@ type stagedArtifact struct {
 	desc  ocispec.Descriptor
 	// related are signature and referrer manifests tagged with the root.
 	related []taggedDescriptor
+	// chain is what related was built from.
+	chain supplyChain
 }
 
 func (s stagedArtifact) cleanup() error {
@@ -247,7 +265,7 @@ func (s *OCIStore) stage(ctx context.Context, source Store, remote oras.Target, 
 	if artifact.Tag == "" {
 		return staged, nil
 	}
-	staged.related, err = stageSupplyChain(ctx, remote, dst, desc)
+	staged.chain, staged.related, err = stageSupplyChain(ctx, remote, dst, desc)
 	if err != nil {
 		return stagedArtifact{}, errors.Join(fmt.Errorf("stage signatures of %s: %w", artifact.Reference(), err), os.RemoveAll(dir))
 	}
@@ -257,29 +275,29 @@ func (s *OCIStore) stage(ctx context.Context, source Store, remote oras.Target, 
 // stageSupplyChain copies the signatures and referrers of root into the stage.
 // It returns the tags publish adds next to the root: each cosign tag as the
 // source names it, and one referrers tag schema index per signed subject.
-func stageSupplyChain(ctx context.Context, remote oras.ReadOnlyTarget, dst *stageTarget, root ocispec.Descriptor) ([]taggedDescriptor, error) {
+func stageSupplyChain(ctx context.Context, remote oras.ReadOnlyTarget, dst *stageTarget, root ocispec.Descriptor) (supplyChain, []taggedDescriptor, error) {
 	chain, err := discoverSupplyChain(ctx, remote, dst, root)
 	if err != nil {
-		return nil, err
+		return supplyChain{}, nil, err
 	}
 	if chain.empty() {
-		return nil, nil
+		return chain, nil, nil
 	}
 	if err := chain.copyTo(ctx, remote, dst); err != nil {
-		return nil, err
+		return supplyChain{}, nil, err
 	}
 	related := append([]taggedDescriptor(nil), chain.tagged...)
 	for _, group := range chain.referrers {
 		desc, payload, err := referrersIndex(group.referrers)
 		if err != nil {
-			return nil, err
+			return supplyChain{}, nil, err
 		}
 		if err := dst.Push(ctx, desc, bytes.NewReader(payload)); err != nil && !errors.Is(err, errdef.ErrAlreadyExists) {
-			return nil, fmt.Errorf("stage referrers index of %s: %w", group.subject, err)
+			return supplyChain{}, nil, fmt.Errorf("stage referrers index of %s: %w", group.subject, err)
 		}
 		related = append(related, taggedDescriptor{tag: supplyChainTag(group.subject, ""), desc: desc})
 	}
-	return related, nil
+	return chain, related, nil
 }
 
 // clearStaleStages removes copy directories left by a process that exited

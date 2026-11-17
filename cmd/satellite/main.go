@@ -20,6 +20,7 @@ import (
 	"github.com/container-registry/harbor-satellite/internal/satellite/hotreload"
 	proxyhandler "github.com/container-registry/harbor-satellite/internal/satellite/proxy"
 	proxyimage "github.com/container-registry/harbor-satellite/internal/satellite/proxy/process/image"
+	"github.com/container-registry/harbor-satellite/internal/satellite/signature"
 	"github.com/container-registry/harbor-satellite/internal/satellite/store"
 	"github.com/container-registry/harbor-satellite/internal/satellite/watcher"
 	"github.com/container-registry/harbor-satellite/internal/shared/env"
@@ -360,7 +361,8 @@ func run(opts SatelliteOptions, pathConfig *config.PathConfig, shutdownTimeout s
 		localStore    store.Store
 		remoteStore   store.Store
 	)
-	localStore, remoteStore, err = proxyStores(cm, pathConfig.StoreDir)
+	verifier := signature.NewVerifier(cm.GetSignaturePolicy, filepath.Join(pathConfig.ConfigDir, "sigstore"))
+	localStore, remoteStore, err = proxyStores(cm, pathConfig.StoreDir, verifier)
 	if err != nil {
 		return fmt.Errorf("initialize proxy stores: %w", err)
 	}
@@ -659,7 +661,9 @@ func resolveLocalRegistryEndpoint(proxyMode proxyhandler.Mode, proxyPort int) st
 	return net.JoinHostPort("127.0.0.1", strconv.Itoa(proxyPort))
 }
 
-func proxyStores(cm *config.ConfigManager, storeRoot string) (store.Store, store.Store, error) {
+// proxyStores builds the local and Harbor stores shared by the proxy and state
+// replication. verifier, when set, gates what enters the local store.
+func proxyStores(cm *config.ConfigManager, storeRoot string, verifier store.SignatureVerifier) (store.Store, store.Store, error) {
 	remoteStore, err := store.NewRegistryStoreWithOptions(func() (store.RegistryOptions, error) {
 		return store.ResolveSourceRegistry(cm)
 	})
@@ -681,6 +685,7 @@ func proxyStores(cm *config.ConfigManager, storeRoot string) (store.Store, store
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize BYO registry store: %w", err)
 		}
+		localStore.SetSignatureVerifier(verifier)
 		return localStore, remoteStore, nil
 	}
 
@@ -688,5 +693,6 @@ func proxyStores(cm *config.ConfigManager, storeRoot string) (store.Store, store
 	if err != nil {
 		return nil, nil, fmt.Errorf("initialize OCI layout store: %w", err)
 	}
+	localStore.SetSignatureVerifier(verifier)
 	return localStore, remoteStore, nil
 }

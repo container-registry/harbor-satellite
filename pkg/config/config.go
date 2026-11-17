@@ -285,6 +285,44 @@ type AppConfig struct {
 	DirectDelivery            DirectDeliveryConfig   `json:"direct_delivery,omitempty"`
 	Audit                     AuditConfig            `json:"audit,omitempty"`
 	PeerDistribution          PeerDistributionConfig `json:"peer_distribution,omitzero"`
+	SignaturePolicy           SignaturePolicyConfig  `json:"signature_policy,omitzero"`
+}
+
+// Signature policy actions.
+const (
+	SignatureActionBlock = "block"
+	SignatureActionWarn  = "warn"
+)
+
+// SignaturePolicyConfig requires cosign signatures on replicated and proxied
+// images. A signature passes when any public key or the keyless identity
+// verifies it.
+type SignaturePolicyConfig struct {
+	Enabled bool `json:"enabled,omitempty"`
+	// Action is block (the default) or warn. Block leaves an image without a
+	// valid signature out of the local store. Warn logs and keeps it.
+	Action string `json:"action,omitempty"`
+	// PublicKeys are PEM public keys, inline or as paths on the satellite.
+	PublicKeys []string               `json:"public_keys,omitempty"`
+	Keyless    KeylessSignatureConfig `json:"keyless,omitzero"`
+}
+
+// KeylessSignatureConfig accepts Fulcio certificates issued to one OIDC
+// identity. Each of issuer and subject is matched exactly or by RE2 regexp.
+type KeylessSignatureConfig struct {
+	Enabled       bool   `json:"enabled,omitempty"`
+	Issuer        string `json:"issuer,omitempty"`
+	IssuerRegexp  string `json:"issuer_regexp,omitempty"`
+	Subject       string `json:"subject,omitempty"`
+	SubjectRegexp string `json:"subject_regexp,omitempty"`
+	// TrustedRoot is a Sigstore trusted_root.json path. Empty uses the
+	// Sigstore public-good root through TUF.
+	TrustedRoot string `json:"trusted_root,omitempty"`
+}
+
+// IsZero reports an omitted signature_policy block.
+func (p SignaturePolicyConfig) IsZero() bool {
+	return !p.Enabled && p.Action == "" && len(p.PublicKeys) == 0 && p.Keyless == KeylessSignatureConfig{}
 }
 
 type StateConfig struct {

@@ -29,6 +29,7 @@ tasks:
       - task: init-groundcontrol
       - task: register-satellite
       - task: verify
+      - task: verify-signature-policy
       - task: verify-signatures
 
   test-byo:
@@ -380,6 +381,12 @@ tasks:
           --new-bundle-format=true --type spdxjson --predicate sbom.json $AUTH -y "$IMAGE"
         echo "Image signed"
 
+        echo "Pushing an unsigned image for the signature policy check..."
+        printf 'FROM alpine:latest\nLABEL e2e=unsigned\n' | \
+          docker build -t localhost:8080/{{.PROJECT_NAME}}/unsigned:latest -
+        docker push localhost:8080/{{.PROJECT_NAME}}/unsigned:latest 2>/dev/null || \
+          docker push localhost:8080/{{.PROJECT_NAME}}/unsigned:latest --tls-verify=false
+
   init-groundcontrol:
     desc: Initialize Ground Control with config and group
     vars:
@@ -391,6 +398,16 @@ tasks:
             grep -o '"token":"[^"]*"' | cut -d'"' -f4
     cmds:
       - |
+        # After sign-image, require the test key and add an unsigned image
+        # the policy must keep out.
+        POLICY=""
+        UNSIGNED=""
+        if [ -f "{{.COSIGN_DIR}}/cosign.pub" ]; then
+          KEY=$(awk '{printf "%s\\n", $0}' "{{.COSIGN_DIR}}/cosign.pub")
+          POLICY=", \"signature_policy\": {\"enabled\": true, \"action\": \"block\", \"public_keys\": [\"$KEY\"]}"
+          UNSIGNED=', {"repository": "{{.PROJECT_NAME}}/unsigned", "tag": ["latest"]}'
+        fi
+
         echo "Creating config..."
         curl -sf -X POST {{.GROUNDCONTROL_URL}}/api/configs \
           -H "Authorization: Bearer {{.GC_TOKEN}}" \
@@ -405,7 +422,7 @@ tasks:
                 "use_unsecure": true,
                 "state_replication_interval": "@every 00h00m10s",
                 "register_satellite_interval": "@every 00h00m10s",
-                "bring_own_registry": false
+                "bring_own_registry": false'"$POLICY"'
               }
             }
           }'
@@ -417,7 +434,7 @@ tasks:
           -d '{
             "group": "{{.DEST_NAMESPACE}}",
             "registry": "{{.HARBOR_INTERNAL_URL}}",
-            "artifacts": [{"repository": "{{.PROJECT_NAME}}/alpine", "tag": ["latest"]}]
+            "artifacts": [{"repository": "{{.PROJECT_NAME}}/alpine", "tag": ["latest"]}'"$UNSIGNED"']
           }'
 
         echo "Ground Control initialized"
@@ -719,6 +736,30 @@ tasks:
           -e REGISTRY_URL=http://byo-registry:5000 \
           -e USE_UNSECURE=true \
           satellite:e2e
+
+  verify-signature-policy:
+    desc: Verify the signature policy keeps the unsigned image out of the satellite
+    cmds:
+      - |
+        set -eu
+        echo "Waiting for the satellite to reject the unsigned image..."
+        for i in $(seq 1 12); do
+          if docker logs satellite 2>&1 | grep -q 'unsigned:latest".*artifact blocked'; then
+            break
+          fi
+          if [ "$i" -eq 12 ]; then
+            echo "ERROR: the satellite did not block the unsigned image"
+            docker logs satellite 2>&1 | tail -50
+            exit 1
+          fi
+          sleep 5
+        done
+        if docker exec satellite grep -q "unsigned:latest" /data/oci/index.json; then
+          echo "ERROR: the unsigned image reached the satellite store"
+          exit 1
+        fi
+        docker logs satellite 2>&1 | grep -q 'alpine:latest".*signature verified'
+        echo "Signature policy E2E test passed: signed image verified, unsigned image blocked"
 
   verify-signatures:
     desc: Verify the image signatures with cosign against the satellite proxy while Harbor is down
