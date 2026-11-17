@@ -226,3 +226,30 @@ func TestConfigMergePatchPreservesExplicitNull(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateConfigHandler_RollbackFailureDoesNotCorruptResponse(t *testing.T) {
+	server, mock := newMockServer(t)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT .+ FROM configs WHERE config_name").
+		WithArgs("nonexistent").
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectRollback().
+		WillReturnError(sql.ErrTxDone)
+
+	body := []byte(`{"app_config":{}}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/configs/nonexistent", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	server.UpdateConfig(rr, req, "nonexistent")
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
+	var resp map[string]any
+	err := json.Unmarshal(rr.Body.Bytes(), &resp)
+	require.NoError(t, err, "Response body should be valid single JSON: %s", rr.Body.String())
+	require.Contains(t, rr.Body.String(), "config not found")
+	require.NotContains(t, rr.Body.String(), "Failed to rollback transaction")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
