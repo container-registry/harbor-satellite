@@ -148,6 +148,9 @@ func (p *pullHandler) listReferrers(request *proxy.Request) error {
 	if p.localStore == nil {
 		return errors.New("proxy image pull requires a local store")
 	}
+	if p.mode.AllowsUpstreamPull() && p.remoteStore == nil {
+		return errors.New("proxy mode requires a remote store")
+	}
 	artifact := store.Artifact{Name: request.Repository}
 	var artifactType string
 	if request.Query.ArtifactType != nil {
@@ -157,7 +160,7 @@ func (p *pullHandler) listReferrers(request *proxy.Request) error {
 	if err != nil {
 		return err
 	}
-	if len(referrers) == 0 && p.mode.AllowsUpstreamPull() && p.remoteStore != nil {
+	if len(referrers) == 0 && p.mode.AllowsUpstreamPull() {
 		referrers, err = p.remoteStore.Referrers(request.Context(), artifact, request.Digest, artifactType)
 		if err != nil {
 			return err

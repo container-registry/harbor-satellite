@@ -22,10 +22,6 @@ import (
 	"oras.land/oras-go/v2/errdef"
 )
 
-// maxManifestBytes bounds a manifest read to learn its media type. It matches
-// the limit most registries apply to manifest pushes.
-const maxManifestBytes = 4 << 20
-
 // OCIStore persists content in one Satellite-owned OCI image layout.
 type OCIStore struct {
 	root              string
@@ -111,9 +107,6 @@ func (s *OCIStore) Pull(ctx context.Context, artifact Artifact, resource PullRes
 func (s *OCIStore) withManifestMediaType(ctx context.Context, desc ocispec.Descriptor) (ocispec.Descriptor, error) {
 	if desc.MediaType != "" && desc.MediaType != "application/octet-stream" {
 		return desc, nil
-	}
-	if desc.Size > maxManifestBytes {
-		return ocispec.Descriptor{}, fmt.Errorf("manifest %s is larger than %d bytes", desc.Digest, maxManifestBytes)
 	}
 	payload, err := content.FetchAll(ctx, s.store, desc)
 	if err != nil {
@@ -538,8 +531,53 @@ func (s *OCIStore) promote(ctx context.Context, stageRoot string, stage *oci.Sto
 	})
 }
 
-func (s *OCIStore) targetFor(Artifact) (oras.Target, error) { //nolint:unparam // shared adapter permits registry construction errors.
-	return s.store, nil
+func (s *OCIStore) targetFor(artifact Artifact) (oras.Target, error) { //nolint:unparam // shared adapter permits registry construction errors.
+	return &repositoryTarget{Store: s.store, owner: s, artifact: artifact}, nil
+}
+
+// repositoryTarget reads one repository of the layout the way a registry
+// serves it, so the layout can be a copy source with signatures: a bare tag
+// such as sha256-<hex>.sig resolves to the repository-qualified layout
+// reference, and referrers come from the stored referrers index.
+type repositoryTarget struct {
+	*oci.Store
+	owner    *OCIStore
+	artifact Artifact
+}
+
+// Resolve keeps a digest inside the repository too: the layout holds every
+// repository's content, and a digest reachable only from another repository
+// is not found here.
+func (t *repositoryTarget) Resolve(ctx context.Context, reference string) (ocispec.Descriptor, error) {
+	if _, err := digest.Parse(reference); err != nil {
+		return t.Store.Resolve(ctx, t.artifact.withTag(reference).Reference())
+	}
+	desc, err := t.Store.Resolve(ctx, reference)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	known, err := t.owner.repositoryGraphContains(ctx, t.artifact.path(), desc.Digest)
+	if err != nil {
+		return ocispec.Descriptor{}, err
+	}
+	if !known {
+		return ocispec.Descriptor{}, fmt.Errorf("%s in %s: %w", reference, t.artifact.path(), errdef.ErrNotFound)
+	}
+	// A digest the layout resolves as a blob may be a manifest. Copy needs its
+	// media type to follow the graph; a plain blob keeps the default.
+	if typed, err := t.owner.withManifestMediaType(ctx, desc); err == nil {
+		desc = typed
+	}
+	return desc, nil
+}
+
+// Referrers implements registry.ReferrerLister.
+func (t *repositoryTarget) Referrers(ctx context.Context, desc ocispec.Descriptor, artifactType string, fn func([]ocispec.Descriptor) error) error {
+	referrers, err := t.owner.Referrers(ctx, t.artifact, desc.Digest, artifactType)
+	if err != nil || len(referrers) == 0 {
+		return err
+	}
+	return fn(referrers)
 }
 
 // Delete removes selected roots and garbage-collects unreachable blobs.
@@ -583,14 +621,15 @@ func (s *OCIStore) Delete(ctx context.Context, artifacts []Artifact) error {
 }
 
 // untagOrphanedSupplyChain removes the signature and referrer tags of manifests
-// in roots that no other tag in repository still reaches. GC then drops them.
+// that roots reach and no other tag in repository still reaches, including
+// referrers of referrers. GC then drops them.
 func (s *OCIStore) untagOrphanedSupplyChain(ctx context.Context, repository string, roots []ocispec.Descriptor) error {
 	refs, err := s.repositoryRefs(ctx, repository)
 	if err != nil {
 		return err
 	}
 	tags := make(map[string]struct{}, len(refs))
-	kept := make(map[digest.Digest]struct{})
+	var kept []ocispec.Descriptor
 	for _, ref := range refs {
 		tags[ref] = struct{}{}
 		if isSupplyChainTag(strings.TrimPrefix(ref, repository+":")) {
@@ -600,35 +639,68 @@ func (s *OCIStore) untagOrphanedSupplyChain(ctx context.Context, repository stri
 		if err != nil {
 			return err
 		}
-		if err := walkDescriptorGraph(ctx, s.store, root, func(desc ocispec.Descriptor) error {
-			kept[desc.Digest] = struct{}{}
-			return nil
-		}); err != nil {
-			return err
-		}
+		kept = append(kept, root)
 	}
-	for _, root := range roots {
-		err := walkDescriptorGraph(ctx, s.store, root, func(desc ocispec.Descriptor) error {
-			if _, ok := kept[desc.Digest]; ok || !isManifestMediaType(desc.MediaType) {
-				return nil
+	keep, err := s.supplyChainClosure(ctx, repository, tags, kept)
+	if err != nil {
+		return err
+	}
+	drop, err := s.supplyChainClosure(ctx, repository, tags, roots)
+	if err != nil {
+		return err
+	}
+	for manifest := range drop {
+		if _, ok := keep[manifest]; ok {
+			continue
+		}
+		for _, suffix := range append(cosignTagSuffixes(), "") {
+			ref := repository + ":" + supplyChainTag(manifest, suffix)
+			if _, ok := tags[ref]; !ok {
+				continue
 			}
-			for _, suffix := range append(cosignTagSuffixes(), "") {
-				ref := repository + ":" + supplyChainTag(desc.Digest, suffix)
-				if _, ok := tags[ref]; !ok {
-					continue
-				}
-				if err := s.store.Untag(ctx, ref); err != nil {
-					return err
-				}
-				delete(tags, ref)
+			if err := s.store.Untag(ctx, ref); err != nil {
+				return err
 			}
-			return nil
-		})
-		if err != nil {
-			return err
 		}
 	}
 	return nil
+}
+
+// supplyChainClosure returns the manifests reachable from roots through
+// successors and through the signature and referrer tags of each manifest.
+func (s *OCIStore) supplyChainClosure(ctx context.Context, repository string, tags map[string]struct{}, roots []ocispec.Descriptor) (map[digest.Digest]struct{}, error) {
+	manifests := make(map[digest.Digest]struct{})
+	seen := make(map[digest.Digest]struct{})
+	queue := append([]ocispec.Descriptor(nil), roots...)
+	for len(queue) > 0 {
+		desc := queue[0]
+		queue = queue[1:]
+		if _, ok := seen[desc.Digest]; ok {
+			continue
+		}
+		seen[desc.Digest] = struct{}{}
+		successors, err := content.Successors(ctx, s.store, desc)
+		if err != nil {
+			return nil, err
+		}
+		queue = append(queue, successors...)
+		if !isManifestMediaType(desc.MediaType) {
+			continue
+		}
+		manifests[desc.Digest] = struct{}{}
+		for _, suffix := range append(cosignTagSuffixes(), "") {
+			ref := repository + ":" + supplyChainTag(desc.Digest, suffix)
+			if _, ok := tags[ref]; !ok {
+				continue
+			}
+			related, err := s.store.Resolve(ctx, ref)
+			if err != nil {
+				return nil, err
+			}
+			queue = append(queue, related)
+		}
+	}
+	return manifests, nil
 }
 
 // repositoryRefs lists the layout references that belong to repository.

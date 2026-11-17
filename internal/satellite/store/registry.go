@@ -163,11 +163,13 @@ func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts [
 		if err := oras.CopyGraph(ctx, from, to, desc, oras.DefaultCopyGraphOptions); err != nil {
 			return err
 		}
-		if err := to.Tag(ctx, desc, artifact.destinationIdentifier()); err != nil {
-			return err
-		}
+		// Signatures go in before the root tag, so a tagged root always has
+		// the signatures it had at the source.
 		if err := copySupplyChainToRegistry(ctx, from, to, desc); err != nil {
 			return fmt.Errorf("copy signatures of %s: %w", artifact.Reference(), err)
+		}
+		if err := to.Tag(ctx, desc, artifact.destinationIdentifier()); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -205,15 +207,10 @@ func (r *RegistryStore) Referrers(ctx context.Context, artifact Artifact, subjec
 	if err != nil {
 		return nil, err
 	}
-	desc, err := repository.Manifests().Resolve(ctx, subject.String())
-	if errors.Is(err, errdef.ErrNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
+	// The subject manifest need not exist: referrers can outlive it or
+	// arrive first, and both APIs are keyed by digest alone.
 	var referrers []ocispec.Descriptor
-	err = repository.Referrers(ctx, desc, artifactType, func(page []ocispec.Descriptor) error {
+	err = repository.Referrers(ctx, ocispec.Descriptor{Digest: subject}, artifactType, func(page []ocispec.Descriptor) error {
 		referrers = append(referrers, page...)
 		return nil
 	})

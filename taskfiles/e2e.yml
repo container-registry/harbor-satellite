@@ -726,10 +726,12 @@ tasks:
       - |
         set -eu
         DIGEST=$(cat "{{.COSIGN_DIR}}/digest")
-        SIG_TAG="$(echo "$DIGEST" | tr ':' '-').sig"
-        echo "Waiting for the signature tag $SIG_TAG in the satellite layout..."
+        REFERRERS_TAG="$(echo "$DIGEST" | tr ':' '-')"
+        echo "Waiting for $REFERRERS_TAG.sig and the referrers index $REFERRERS_TAG in the satellite layout..."
         for i in $(seq 1 12); do
-          if docker exec satellite grep -q "$SIG_TAG" /data/oci/index.json; then
+          # The referrers index is tagged last, after the cosign tags.
+          if docker exec satellite grep -q "alpine:$REFERRERS_TAG.sig\"" /data/oci/index.json &&
+            docker exec satellite grep -q "alpine:$REFERRERS_TAG\"" /data/oci/index.json; then
             break
           fi
           if [ "$i" -eq 12 ]; then

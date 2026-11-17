@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -249,4 +251,131 @@ func TestSupplyChainTagNames(t *testing.T) {
 	for _, tag := range []string{"latest", "v1.2.3", "sha256-short.sig", "sha256-" + subject.Encoded() + ".txt"} {
 		require.False(t, isSupplyChainTag(tag), tag)
 	}
+}
+
+func TestOCIStoreDeleteDropsReferrersOfReferrers(t *testing.T) {
+	ctx := context.Background()
+	src := newSignedSource(t)
+	sbom := pushTestManifest(t, src.repo, "", []byte("sbom"), &src.image, "application/spdx+json")
+	sbomSignature := pushTestManifest(t, src.repo, "", []byte("sbom-signature"), &sbom, testBundleType)
+	local, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	artifact := Artifact{Name: "team/app", Tag: "latest", Digest: src.image.Digest.String()}
+	require.NoError(t, local.Replicate(ctx, src.store, []Artifact{artifact}))
+
+	nested, err := local.Referrers(ctx, Artifact{Name: "team/app"}, sbom.Digest, "")
+	require.NoError(t, err)
+	require.Len(t, nested, 1)
+	require.Equal(t, sbomSignature.Digest, nested[0].Digest)
+
+	require.NoError(t, local.Delete(ctx, []Artifact{artifact}))
+	var left []string
+	require.NoError(t, local.store.Tags(ctx, "", func(tags []string) error {
+		left = append(left, tags...)
+		return nil
+	}))
+	require.Empty(t, left)
+	exists, err := local.store.Exists(ctx, sbomSignature)
+	require.NoError(t, err)
+	require.False(t, exists, "GC keeps the signature of an orphaned SBOM")
+}
+
+func TestRegistryStoreCopiesSignaturesFromOCIStore(t *testing.T) {
+	ctx := context.Background()
+	src := newSignedSource(t)
+	layout, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	artifact := Artifact{Name: "team/app", Tag: "latest", Digest: src.image.Digest.String()}
+	require.NoError(t, layout.Replicate(ctx, src.store, []Artifact{artifact}))
+	destination := plainRegistry(t)
+
+	require.NoError(t, destination.Replicate(ctx, layout, []Artifact{artifact}))
+
+	signature, err := destination.Pull(ctx, Artifact{Name: "team/app", Tag: supplyChainTag(src.image.Digest, ".sig")}, PullResourceManifest)
+	require.NoError(t, err)
+	require.Equal(t, src.signature.Digest, signature.Digest)
+	referrers, err := destination.Referrers(ctx, Artifact{Name: "team/app"}, src.image.Digest, "")
+	require.NoError(t, err)
+	require.Len(t, referrers, 1)
+	require.Equal(t, src.referrer.Digest, referrers[0].Digest)
+}
+
+func TestOCIStoreCopiesImageWhenSignatureLookupFails(t *testing.T) {
+	ctx := context.Background()
+	src := newSignedSource(t)
+	// A proxy-mode peer whose Harbor is down fails signature lookups. The
+	// status is one the ORAS client does not retry, to keep the test fast.
+	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/manifests/sha256-") || strings.Contains(r.URL.Path, "/referrers/") {
+			http.Error(w, "upstream unavailable", http.StatusForbidden)
+			return
+		}
+		proxyTo(t, w, r, src.repo.Reference.Registry)
+	}))
+	t.Cleanup(failing.Close)
+	peer, err := NewRegistryStore(RegistryOptions{Endpoint: strings.TrimPrefix(failing.URL, "http://"), PlainHTTP: true})
+	require.NoError(t, err)
+	local, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	artifact := Artifact{Name: "team/app", Tag: "latest", Digest: src.image.Digest.String()}
+
+	require.NoError(t, local.Replicate(ctx, peer, []Artifact{artifact}))
+
+	_, err = local.Pull(ctx, artifact, PullResourceManifest)
+	require.NoError(t, err)
+	_, err = local.Pull(ctx, Artifact{Name: "team/app", Tag: supplyChainTag(src.image.Digest, ".sig")}, PullResourceManifest)
+	require.ErrorIs(t, err, errdef.ErrNotFound)
+}
+
+func TestRegistryStoreListsReferrersOfAMissingSubject(t *testing.T) {
+	ctx := context.Background()
+	src := newSignedSource(t)
+	missing := ocispec.Descriptor{MediaType: ocispec.MediaTypeImageManifest, Digest: digest.FromString("not pushed"), Size: 10}
+	orphan := pushTestManifest(t, src.repo, "", []byte("orphan-signature"), &missing, testBundleType)
+
+	referrers, err := src.store.Referrers(ctx, Artifact{Name: "team/app"}, missing.Digest, "")
+	require.NoError(t, err)
+	require.Len(t, referrers, 1)
+	require.Equal(t, orphan.Digest, referrers[0].Digest)
+}
+
+// proxyTo forwards one request to the registry at host.
+func proxyTo(t *testing.T, w http.ResponseWriter, r *http.Request, host string) {
+	t.Helper()
+	upstream := r.Clone(r.Context())
+	upstream.RequestURI = ""
+	upstream.URL.Scheme = "http"
+	upstream.URL.Host = host
+	response, err := http.DefaultTransport.RoundTrip(upstream)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer response.Body.Close()
+	for name, values := range response.Header {
+		w.Header()[name] = values
+	}
+	w.WriteHeader(response.StatusCode)
+	if _, err := io.Copy(w, response.Body); err != nil {
+		t.Logf("proxy copy: %v", err)
+	}
+}
+
+func TestOCIStoreSourceKeepsDigestsInTheirRepository(t *testing.T) {
+	ctx := context.Background()
+	src := newSignedSource(t)
+	layout, err := NewOCIStore(t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, layout.Replicate(ctx, src.store, []Artifact{{Name: "team/app", Tag: "latest", Digest: src.image.Digest.String()}}))
+
+	own, err := layout.targetFor(Artifact{Name: "team/app"})
+	require.NoError(t, err)
+	desc, err := own.Resolve(ctx, src.image.Digest.String())
+	require.NoError(t, err)
+	require.Equal(t, ocispec.MediaTypeImageManifest, desc.MediaType)
+
+	other, err := layout.targetFor(Artifact{Name: "other/app"})
+	require.NoError(t, err)
+	_, err = other.Resolve(ctx, src.image.Digest.String())
+	require.ErrorIs(t, err, errdef.ErrNotFound)
 }

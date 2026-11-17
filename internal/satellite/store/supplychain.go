@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	digest "github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -114,6 +115,11 @@ func (c supplyChain) manifestCount() int {
 // index that cosign signs one by one. graph is any store that already holds
 // the root graph. A source without a referrers API is read through the tag
 // schema fallback by ORAS.
+//
+// A failed lookup is logged and skipped. Signatures are optional content: a
+// proxy-mode peer asked for a missing .sig tag while Harbor is down answers
+// with an error, and that must not stop the image copy. A signature policy
+// still rejects the image when its signature was not found.
 func discoverSupplyChain(ctx context.Context, src oras.ReadOnlyTarget, graph content.Fetcher, root ocispec.Descriptor) (supplyChain, error) {
 	subjects, err := manifestsIn(ctx, graph, root)
 	if err != nil {
@@ -121,7 +127,7 @@ func discoverSupplyChain(ctx context.Context, src oras.ReadOnlyTarget, graph con
 	}
 	var chain supplyChain
 	if chain.tagged, err = discoverCosignTags(ctx, src, subjects); err != nil {
-		return supplyChain{}, err
+		return supplyChain{}, fmt.Errorf("%s: %w", root.Digest, err)
 	}
 	lister, ok := src.(content.ReadOnlyGraphStorage)
 	if !ok {
@@ -156,9 +162,16 @@ func discoverCosignTags(ctx context.Context, src oras.ReadOnlyTarget, subjects [
 				continue
 			}
 			if err != nil {
-				return nil, fmt.Errorf("resolve %s: %w", tag, err)
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return nil, ctxErr
+				}
+				logger.FromContext(ctx).Warn().Err(err).Str("tag", tag).Msg("skipping signature tag that could not be resolved")
+				continue
 			}
 			tagged = append(tagged, taggedDescriptor{tag: tag, desc: desc})
+			if len(tagged) > maxSupplyChainManifests {
+				return nil, fmt.Errorf("more than %d signature and referrer manifests", maxSupplyChainManifests)
+			}
 		}
 	}
 	return tagged, nil
@@ -176,7 +189,11 @@ func discoverReferrers(ctx context.Context, lister content.ReadOnlyGraphStorage,
 		for _, subject := range level {
 			referrers, err := registry.Referrers(ctx, lister, subject, "")
 			if err != nil && !errors.Is(err, errdef.ErrNotFound) {
-				return nil, fmt.Errorf("list referrers of %s: %w", subject.Digest, err)
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return nil, ctxErr
+				}
+				logger.FromContext(ctx).Warn().Err(err).Str("subject", subject.Digest.String()).Msg("skipping referrers that could not be listed")
+				continue
 			}
 			fresh := unseen(referrers, seen)
 			if len(fresh) == 0 {

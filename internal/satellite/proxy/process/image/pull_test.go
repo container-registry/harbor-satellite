@@ -590,3 +590,11 @@ func TestListReferrersAsksHarborOnlyInProxyMode(t *testing.T) {
 		})
 	}
 }
+
+func TestListReferrersInProxyModeRequiresRemoteStore(t *testing.T) {
+	handler := proxy.New(newPull(t, proxy.ModeProxy, descriptorStore(ocispec.Descriptor{}, nil), nil)).Handler()
+
+	response := serve(handler, http.MethodGet, "/v2/team/app/referrers/"+digest.FromString("subject").String(), nil)
+
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+}
