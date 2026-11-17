@@ -11,7 +11,10 @@ import (
 )
 
 func GetProject(ctx context.Context, name string) (bool, error) {
-	client := GetClient()
+	client, err := GetClient()
+	if err != nil {
+		return false, fmt.Errorf("getting harbor client: %w", err)
+	}
 	proj, err := client.Project.HeadProject(ctx, &project.HeadProjectParams{
 		ProjectName: name,
 	})
@@ -26,7 +29,10 @@ func GetProject(ctx context.Context, name string) (bool, error) {
 }
 
 func CreateSatelliteProject(ctx context.Context) (bool, error) {
-	client := GetClient()
+	client, err := GetClient()
+	if err != nil {
+		return false, fmt.Errorf("getting harbor client: %w", err)
+	}
 	var (
 		public  = true
 		storage = int64(-1)
