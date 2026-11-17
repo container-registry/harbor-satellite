@@ -11,7 +11,9 @@ import (
 	"sync"
 
 	satTLS "github.com/container-registry/harbor-satellite/internal/satellite/tls"
+	"github.com/container-registry/harbor-satellite/internal/shared/logger"
 	"github.com/container-registry/harbor-satellite/pkg/config"
+	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	oras "oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/errdef"
@@ -164,8 +166,66 @@ func (r *RegistryStore) Replicate(ctx context.Context, source Store, artifacts [
 		if err := to.Tag(ctx, desc, artifact.destinationIdentifier()); err != nil {
 			return err
 		}
+		if err := copySupplyChainToRegistry(ctx, from, to, desc); err != nil {
+			return fmt.Errorf("copy signatures of %s: %w", artifact.Reference(), err)
+		}
 	}
 	return nil
+}
+
+// copySupplyChainToRegistry copies the signatures and referrers of root. A
+// cosign tag keeps its source name. A referrer is pushed with its subject, so
+// ORAS updates the destination's referrers tag schema index when the
+// destination has no referrers API.
+func copySupplyChainToRegistry(ctx context.Context, from oras.ReadOnlyTarget, to *remote.Repository, root ocispec.Descriptor) error {
+	chain, err := discoverSupplyChain(ctx, from, to, root)
+	if err != nil || chain.empty() {
+		return err
+	}
+	if err := chain.copyTo(ctx, from, to); err != nil {
+		return err
+	}
+	for _, tagged := range chain.tagged {
+		if err := to.Tag(ctx, tagged.desc, tagged.tag); err != nil {
+			return fmt.Errorf("tag %s: %w", tagged.tag, err)
+		}
+	}
+	logger.FromContext(ctx).Info().Str("digest", root.Digest.String()).
+		Int("signature_manifests", chain.manifestCount()).Msg("signatures copied to registry")
+	return nil
+}
+
+// Referrers lists the referrers of subject through the registry API, or the
+// referrers tag schema when the registry has no referrers API.
+func (r *RegistryStore) Referrers(ctx context.Context, artifact Artifact, subject digest.Digest, artifactType string) ([]ocispec.Descriptor, error) {
+	if err := subject.Validate(); err != nil {
+		return nil, fmt.Errorf("referrers subject: %w", err)
+	}
+	repository, err := r.repository(artifact)
+	if err != nil {
+		return nil, err
+	}
+	desc, err := repository.Manifests().Resolve(ctx, subject.String())
+	if errors.Is(err, errdef.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var referrers []ocispec.Descriptor
+	err = repository.Referrers(ctx, desc, artifactType, func(page []ocispec.Descriptor) error {
+		referrers = append(referrers, page...)
+		return nil
+	})
+	if errors.Is(err, errdef.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	// The tag schema fallback returns every referrer. Filter again so both
+	// paths honour artifactType.
+	return filterArtifactType(referrers, artifactType), nil
 }
 
 // Delete removes manifest roots from this registry.

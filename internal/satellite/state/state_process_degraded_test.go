@@ -460,6 +460,10 @@ func (s *degradedStubStore) Fetch(context.Context, store.Artifact, ocispec.Descr
 	return nil, errors.New("unexpected fetch")
 }
 
+func (s *degradedStubStore) Referrers(context.Context, store.Artifact, digest.Digest, string) ([]ocispec.Descriptor, error) {
+	return nil, nil
+}
+
 func (s *degradedStubStore) Delete(_ context.Context, _ []store.Artifact) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
